@@ -23,14 +23,15 @@ public class Constants {
                 .pathConstraints(pathConstraints)
                 .build();
 
-        public static FollowerConstants followerConstants = new FollowerConstants()
-                .mass(9.616158);
+
 
         return new FollowerBuilder(followerConstants, hardwareMap)
                 .pinpointLocalizer(localizerConstants)
                 /* other builder steps */
                 .build();
     }
+    public static FollowerConstants weight = new FollowerConstants()
+            .mass(9.616158);
 
 
     public static MecanumConstants driveConstants = new MecanumConstants()
