@@ -19,7 +19,7 @@ import edu.ftcphoenix.fw.spatial.SpatialMath2d;
  */
 final class DriveGuidanceEvaluator {
 
-    private final DriveGuidancePlan plan;
+    private final DriveGuidanceSpec spec;
 
     // For “observed tag” targets (tagId = -1), remember the last seen tag ID so field-pose mode
     // can keep working even if the tag temporarily drops out of view.
@@ -29,8 +29,8 @@ final class DriveGuidanceEvaluator {
     // overlay becomes enabled. This allows "move forward N inches" style plans.
     private Pose2d fieldToTranslationFrameAnchor = null;
 
-    DriveGuidanceEvaluator(DriveGuidancePlan plan) {
-        this.plan = plan;
+    DriveGuidanceEvaluator(DriveGuidanceSpec spec) {
+        this.spec = spec;
     }
 
     void onEnable() {
@@ -47,7 +47,7 @@ final class DriveGuidanceEvaluator {
     }
 
     Solution solveWithObservation(LoopClock clock) {
-        DriveGuidancePlan.Observation cfg = plan.feedback.observation;
+        DriveGuidanceSpec.Observation cfg = spec.feedback.observation;
         TargetObservation2d obs = cfg.source.sample(clock);
 
         if (obs == null) {
@@ -83,8 +83,8 @@ final class DriveGuidanceEvaluator {
         boolean canOmega = false;
 
         // --- Translation ---
-        if (plan.translationTarget instanceof DriveGuidancePlan.TagRelativePoint) {
-            DriveGuidancePlan.TagRelativePoint tp = (DriveGuidancePlan.TagRelativePoint) plan.translationTarget;
+        if (spec.translationTarget instanceof DriveGuidanceSpec.TagRelativePoint) {
+            DriveGuidanceSpec.TagRelativePoint tp = (DriveGuidanceSpec.TagRelativePoint) spec.translationTarget;
 
             boolean idMatches = (tp.tagId < 0)
                     || (obs.hasTargetId() && obs.targetId == tp.tagId);
@@ -95,7 +95,7 @@ final class DriveGuidanceEvaluator {
             if (idMatches && hasPos && orientationOk && robotToAnchorPose != null) {
                 Pose2d robotToTarget = SpatialMath2d.anchorRelativePointInches(robotToAnchorPose, tp.forwardInches, tp.leftInches);
 
-                Pose2d robotToTFrame = plan.controlFrames.robotToTranslationFrame();
+                Pose2d robotToTFrame = spec.controlFrames.robotToTranslationFrame();
                 forwardErr = robotToTarget.xInches - robotToTFrame.xInches;
                 leftErr = robotToTarget.yInches - robotToTFrame.yInches;
                 canTranslate = true;
@@ -103,12 +103,12 @@ final class DriveGuidanceEvaluator {
         }
 
         // --- Omega / Aim ---
-        if (plan.aimTarget instanceof DriveGuidancePlan.FieldHeading
-                || plan.aimTarget instanceof DriveGuidancePlan.TagHeading) {
+        if (spec.aimTarget instanceof DriveGuidanceSpec.FieldHeading
+                || spec.aimTarget instanceof DriveGuidanceSpec.TagHeading) {
             // Cannot solve absolute field headings from observation-only feedback.
             canOmega = false;
-        } else if (plan.aimTarget instanceof DriveGuidancePlan.TagRelativePoint) {
-            DriveGuidancePlan.TagRelativePoint tp = (DriveGuidancePlan.TagRelativePoint) plan.aimTarget;
+        } else if (spec.aimTarget instanceof DriveGuidanceSpec.TagRelativePoint) {
+            DriveGuidanceSpec.TagRelativePoint tp = (DriveGuidanceSpec.TagRelativePoint) spec.aimTarget;
 
             boolean idMatches = (tp.tagId < 0)
                     || (obs.hasTargetId() && obs.targetId == tp.tagId);
@@ -116,7 +116,7 @@ final class DriveGuidanceEvaluator {
             boolean needsOrientation = !(Math.abs(tp.forwardInches) < 1e-9 && Math.abs(tp.leftInches) < 1e-9);
             boolean orientationOk = !needsOrientation || obs.hasOrientation();
 
-            Pose2d robotToAimFrame = plan.controlFrames.robotToAimFrame();
+            Pose2d robotToAimFrame = spec.controlFrames.robotToAimFrame();
 
             // If we have position, compute the true vector from the aim frame origin.
             if (idMatches && hasPos && orientationOk && robotToAnchorPose != null) {
@@ -137,7 +137,7 @@ final class DriveGuidanceEvaluator {
                     canOmega = true;
                 }
             }
-        } else if (plan.aimTarget instanceof DriveGuidancePlan.FieldPoint) {
+        } else if (spec.aimTarget instanceof DriveGuidanceSpec.FieldPoint) {
             // A field point cannot be resolved from observation-only feedback.
             canOmega = false;
         }
@@ -146,7 +146,7 @@ final class DriveGuidanceEvaluator {
     }
 
     Solution solveWithFieldPose() {
-        DriveGuidancePlan.FieldPose cfg = plan.feedback.fieldPose;
+        DriveGuidanceSpec.FieldPose cfg = spec.feedback.fieldPose;
         PoseEstimate est = cfg.poseEstimator.getEstimate();
 
         boolean valid = est != null
@@ -162,12 +162,12 @@ final class DriveGuidanceEvaluator {
         TagLayout layout = cfg.tagLayout;
 
         // Current controlled-frame poses.
-        Pose2d fieldToTFrame = fieldToRobot.then(plan.controlFrames.robotToTranslationFrame());
+        Pose2d fieldToTFrame = fieldToRobot.then(spec.controlFrames.robotToTranslationFrame());
 
         // Resolve translation target.
         Pose2d fieldToTranslatePoint;
-        if (plan.translationTarget instanceof DriveGuidancePlan.RobotRelativePoint) {
-            DriveGuidancePlan.RobotRelativePoint rr = (DriveGuidancePlan.RobotRelativePoint) plan.translationTarget;
+        if (spec.translationTarget instanceof DriveGuidanceSpec.RobotRelativePoint) {
+            DriveGuidanceSpec.RobotRelativePoint rr = (DriveGuidanceSpec.RobotRelativePoint) spec.translationTarget;
 
             // Capture the "starting" translation-frame pose once per enable cycle.
             if (fieldToTranslationFrameAnchor == null) {
@@ -176,14 +176,14 @@ final class DriveGuidanceEvaluator {
 
             fieldToTranslatePoint = fieldToTranslationFrameAnchor.then(new Pose2d(rr.forwardInches, rr.leftInches, 0.0));
         } else {
-            fieldToTranslatePoint = resolveToFieldPoint(plan.translationTarget, layout);
+            fieldToTranslatePoint = resolveToFieldPoint(spec.translationTarget, layout);
         }
 
         // Resolve aim target (some targets are handled as non-point targets below).
-        Pose2d fieldToAimPoint = ((plan.aimTarget instanceof DriveGuidancePlan.FieldHeading)
-                || (plan.aimTarget instanceof DriveGuidancePlan.TagHeading))
+        Pose2d fieldToAimPoint = ((spec.aimTarget instanceof DriveGuidanceSpec.FieldHeading)
+                || (spec.aimTarget instanceof DriveGuidanceSpec.TagHeading))
                 ? null
-                : resolveToFieldPoint(plan.aimTarget, layout);
+                : resolveToFieldPoint(spec.aimTarget, layout);
 
         double forwardErr = 0.0;
         double leftErr = 0.0;
@@ -208,27 +208,27 @@ final class DriveGuidanceEvaluator {
         }
 
         // --- Omega / Aim ---
-        if (plan.aimTarget instanceof DriveGuidancePlan.FieldHeading) {
-            DriveGuidancePlan.FieldHeading fh = (DriveGuidancePlan.FieldHeading) plan.aimTarget;
-            Pose2d fieldToAimFrame = fieldToRobot.then(plan.controlFrames.robotToAimFrame());
+        if (spec.aimTarget instanceof DriveGuidanceSpec.FieldHeading) {
+            DriveGuidanceSpec.FieldHeading fh = (DriveGuidanceSpec.FieldHeading) spec.aimTarget;
+            Pose2d fieldToAimFrame = fieldToRobot.then(spec.controlFrames.robotToAimFrame());
             omegaErr = Pose2d.wrapToPi(fh.fieldHeadingRad - fieldToAimFrame.headingRad);
             canOmega = true;
-        } else if (plan.aimTarget instanceof DriveGuidancePlan.TagHeading) {
+        } else if (spec.aimTarget instanceof DriveGuidanceSpec.TagHeading) {
             if (layout != null) {
-                DriveGuidancePlan.TagHeading th = (DriveGuidancePlan.TagHeading) plan.aimTarget;
+                DriveGuidanceSpec.TagHeading th = (DriveGuidanceSpec.TagHeading) spec.aimTarget;
                 int tagId = (th.tagId >= 0) ? th.tagId : lastObservedTagId;
                 if (tagId >= 0) {
                     TagLayout.TagPose tagPose = layout.get(tagId);
                     if (tagPose != null) {
                         Pose2d fieldToTag = tagPose.fieldToTagPose().toPose2d();
-                        Pose2d fieldToAimFrame = fieldToRobot.then(plan.controlFrames.robotToAimFrame());
+                        Pose2d fieldToAimFrame = fieldToRobot.then(spec.controlFrames.robotToAimFrame());
                         omegaErr = Pose2d.wrapToPi((fieldToTag.headingRad + th.headingOffsetRad) - fieldToAimFrame.headingRad);
                         canOmega = true;
                     }
                 }
             }
         } else if (fieldToAimPoint != null) {
-            Pose2d fieldToAimFrame = fieldToRobot.then(plan.controlFrames.robotToAimFrame());
+            Pose2d fieldToAimFrame = fieldToRobot.then(spec.controlFrames.robotToAimFrame());
             Pose2d aimFrameToPoint = fieldToAimFrame.inverse().then(fieldToAimPoint);
             omegaErr = Pose2d.wrapToPi(
                     SpatialMath2d.bearingRadOfVector(aimFrameToPoint.xInches, aimFrameToPoint.yInches));
@@ -246,17 +246,17 @@ final class DriveGuidanceEvaluator {
             return null;
         }
 
-        if (target instanceof DriveGuidancePlan.FieldPoint) {
-            DriveGuidancePlan.FieldPoint fp = (DriveGuidancePlan.FieldPoint) target;
+        if (target instanceof DriveGuidanceSpec.FieldPoint) {
+            DriveGuidanceSpec.FieldPoint fp = (DriveGuidanceSpec.FieldPoint) target;
             return new Pose2d(fp.xInches, fp.yInches, 0.0);
         }
 
-        if (target instanceof DriveGuidancePlan.TagRelativePoint) {
+        if (target instanceof DriveGuidanceSpec.TagRelativePoint) {
             if (layout == null) {
                 return null;
             }
 
-            DriveGuidancePlan.TagRelativePoint tp = (DriveGuidancePlan.TagRelativePoint) target;
+            DriveGuidanceSpec.TagRelativePoint tp = (DriveGuidanceSpec.TagRelativePoint) target;
             int tagId = (tp.tagId >= 0) ? tp.tagId : lastObservedTagId;
             if (tagId < 0) {
                 return null;

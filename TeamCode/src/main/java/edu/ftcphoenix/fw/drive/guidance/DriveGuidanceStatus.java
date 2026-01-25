@@ -74,7 +74,7 @@ public final class DriveGuidanceStatus {
     public final int lastObservedTagId;
 
     /**
-     * Anchor pose (field frame) captured for {@link DriveGuidancePlan.RobotRelativePoint} targets.
+     * Anchor pose (field frame) captured for {@link DriveGuidanceSpec.RobotRelativePoint} targets.
      * May be null if not applicable.
      */
     public final Pose2d fieldToTranslationFrameAnchor;

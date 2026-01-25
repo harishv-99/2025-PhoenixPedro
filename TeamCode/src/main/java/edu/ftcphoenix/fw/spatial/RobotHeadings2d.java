@@ -31,7 +31,7 @@ public final class RobotHeadings2d {
      *
      * <p>This is the same concept as {@link edu.ftcphoenix.fw.drive.guidance.ControlFrames#robotToAimFrame()}.
      * If you are aiming with an off-center shooter, pass that robot→shooter transform here.
-     * </p>
+     *</p>
      *
      * @param robotToFrame robot→frame transform (inches + heading)
      */

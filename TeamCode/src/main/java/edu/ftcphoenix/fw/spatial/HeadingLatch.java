@@ -32,9 +32,9 @@ public final class HeadingLatch {
     /**
      * Create a latch using the provided heading error rule.
      *
-     * @param heading     heading error rule
-     * @param enterTolRad tolerance (radians) to enter the “ON” state
-     * @param exitTolRad  tolerance (radians) to leave the “ON” state
+     * @param heading      heading error rule
+     * @param enterTolRad  tolerance (radians) to enter the “ON” state
+     * @param exitTolRad   tolerance (radians) to leave the “ON” state
      */
     public HeadingLatch(RobotHeading2d heading, double enterTolRad, double exitTolRad) {
         this.heading = Objects.requireNonNull(heading, "heading");

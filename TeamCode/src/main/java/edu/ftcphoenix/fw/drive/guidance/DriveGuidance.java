@@ -10,7 +10,17 @@ import edu.ftcphoenix.fw.localization.PoseEstimator;
 import edu.ftcphoenix.fw.sensing.observation.ObservationSource2d;
 
 /**
- * Builder + helpers for creating {@link DriveGuidancePlan}s.
+ * Builder + helpers for creating {@link DriveGuidanceSpec}s and {@link DriveGuidancePlan}s.
+ *
+ * <p>DriveGuidance is intentionally split into two objects:</p>
+ * <ul>
+ *   <li>{@link DriveGuidanceSpec}: controller-neutral “what” (targets + feedback selection + control frames)</li>
+ *   <li>{@link DriveGuidancePlan}: spec + {@link DriveGuidancePlan.Tuning} (controller tuning)
+ *   </li>
+ * </ul>
+ *
+ * <p>You can build a spec using {@link #spec()} and finish with {@link SpecBuilderCommon#build()},
+ * or build a plan directly with {@link #plan()} and finish with {@link PlanBuilderCommon#build()}.</p>
  *
  * <p>This replaces older tag-specific drive assist helpers (e.g. TagAim) with a single,
  * composable “guidance overlay” abstraction:</p>
@@ -22,6 +32,7 @@ import edu.ftcphoenix.fw.sensing.observation.ObservationSource2d;
  *       {@link edu.ftcphoenix.fw.drive.DriveSource#overlayWhen}.</li>
  * </ul>
  */
+
 public final class DriveGuidance {
 
     private DriveGuidance() {
@@ -29,10 +40,60 @@ public final class DriveGuidance {
     }
 
     /**
+     * Start building a controller-neutral {@link DriveGuidanceSpec}.
+     *
+     * <p>This staged builder exposes only spec-relevant configuration (targets, control frames, feedback).
+     * Controller tuning is intentionally not part of a spec.</p>
+     */
+    public static SpecBuilder0 spec() {
+        return new Spec0(new State());
+    }
+
+    /**
      * Start building a {@link DriveGuidancePlan}.
      */
     public static PlanBuilder0 plan() {
         return new Builder0(new State());
+    }
+
+    /**
+     * Start building a {@link DriveGuidancePlan} from a pre-built {@link DriveGuidanceSpec}.
+     *
+     * <p>This is the recommended way to reuse one spec with multiple tunings. For example, you
+     * can keep the same targets/feedback but apply gentler tuning in TeleOp and stronger tuning
+     * in Auto.</p>
+     */
+    public static PlanFromSpecBuilder plan(DriveGuidanceSpec spec) {
+        return new PlanFromSpecBuilderImpl(spec);
+    }
+
+    /**
+     * Minimal builder for combining a spec with tuning to create a plan.
+     */
+    public interface PlanFromSpecBuilder {
+        PlanFromSpecBuilder tuning(DriveGuidancePlan.Tuning tuning);
+
+        DriveGuidancePlan build();
+    }
+
+    private static final class PlanFromSpecBuilderImpl implements PlanFromSpecBuilder {
+        private final DriveGuidanceSpec spec;
+        private DriveGuidancePlan.Tuning tuning = DriveGuidancePlan.Tuning.defaults();
+
+        PlanFromSpecBuilderImpl(DriveGuidanceSpec spec) {
+            this.spec = Objects.requireNonNull(spec, "spec");
+        }
+
+        @Override
+        public PlanFromSpecBuilder tuning(DriveGuidancePlan.Tuning tuning) {
+            this.tuning = Objects.requireNonNull(tuning, "tuning");
+            return this;
+        }
+
+        @Override
+        public DriveGuidancePlan build() {
+            return new DriveGuidancePlan(spec, tuning);
+        }
     }
 
     /**
@@ -47,6 +108,79 @@ public final class DriveGuidance {
      */
     public static DriveOverlay poseLock(PoseEstimator poseEstimator, DriveGuidancePlan.Tuning tuning) {
         return new PoseLockOverlay(poseEstimator, tuning);
+    }
+
+    // ------------------------------------------------------------------------
+    // Spec builder staging
+    // ------------------------------------------------------------------------
+
+    /**
+     * Common methods shared by all <b>spec</b> builder stages.
+     *
+     * <p><b>Student mental model:</b> a spec describes <em>what</em> you want (targets, control frames,
+     * and feedback sources). A spec contains no controller tuning.</p>
+     */
+    public interface SpecBuilderCommon<SELF> {
+
+        /**
+         * Configure how DriveGuidance knows where the robot and/or the target is.
+         *
+         * <p>You must configure at least one feedback source:</p>
+         * <ul>
+         *   <li><b>Vision / observations</b> via {@link FeedbackBuilder#observation(ObservationSource2d)}.
+         *       This works even with no odometry.</li>
+         *   <li><b>Field pose / odometry</b> via {@link FeedbackBuilder#fieldPose(PoseEstimator)}.</li>
+         *   <li><b>Both</b> for adaptive behavior (use vision when available, fall back to odometry).</li>
+         * </ul>
+         */
+        FeedbackBuilder<SELF> feedback();
+
+        /**
+         * Choose which point(s) on the robot DriveGuidance should control.
+         */
+        SELF controlFrames(ControlFrames frames);
+
+        /**
+         * Finish the builder and create an immutable {@link DriveGuidanceSpec}.
+         */
+        DriveGuidanceSpec build();
+    }
+
+    /**
+     * Initial stage: you may configure translation (move) and/or aim (turn).
+     */
+    public interface SpecBuilder0 extends SpecBuilderCommon<SpecBuilder0> {
+
+        /**
+         * Configure a translation target: “move the robot to a point”.
+         */
+        TranslateToBuilder<SpecBuilder1> translateTo();
+
+        /**
+         * Configure an aim target: “turn the robot to point toward something”.
+         */
+        AimToBuilder<SpecBuilder2> aimTo();
+    }
+
+    /**
+     * Stage after {@code translateTo()} has been configured (you can still add aim).
+     */
+    public interface SpecBuilder1 extends SpecBuilderCommon<SpecBuilder1> {
+        AimToBuilder<SpecBuilder3> aimTo();
+    }
+
+    /**
+     * Stage after {@code aimTo()} has been configured (you can still add translation).
+     */
+    public interface SpecBuilder2 extends SpecBuilderCommon<SpecBuilder2> {
+        TranslateToBuilder<SpecBuilder3> translateTo();
+    }
+
+    /**
+     * Stage after both translation and aim targets have been configured.
+     */
+    public interface SpecBuilder3 extends SpecBuilderCommon<SpecBuilder3> {
+        // No additional target methods.
     }
 
     // ------------------------------------------------------------------------
@@ -93,7 +227,7 @@ public final class DriveGuidance {
          *     .aimTo().tagCenter().doneAimTo()
          *     .feedback()
          *         .observation(obs, 0.25, 0.0)   // ignore obs older than 0.25s
-         *         .lossPolicy(DriveGuidancePlan.LossPolicy.PASS_THROUGH)
+         *         .lossPolicy(DriveGuidanceSpec.LossPolicy.PASS_THROUGH)
          *         .doneFeedback()
          *     .build();
          * }</pre>
@@ -446,10 +580,10 @@ public final class DriveGuidance {
         /**
          * Set behavior when guidance cannot produce a valid command.
          *
-         * <p><b>Recommendation for TeleOp:</b> use {@link DriveGuidancePlan.LossPolicy#PASS_THROUGH}
+         * <p><b>Recommendation for TeleOp:</b> use {@link DriveGuidanceSpec.LossPolicy#PASS_THROUGH}
          * so the driver keeps control if vision/pose drops out.</p>
          */
-        FeedbackBuilder<RETURN> lossPolicy(DriveGuidancePlan.LossPolicy lossPolicy);
+        FeedbackBuilder<RETURN> lossPolicy(DriveGuidanceSpec.LossPolicy lossPolicy);
 
         /**
          * Finish feedback configuration and return to the main plan builder.
@@ -469,30 +603,30 @@ public final class DriveGuidance {
      * (like calling {@code translateTo()} twice).</p>
      */
     private static final class State {
-        DriveGuidancePlan.TranslationTarget translationTarget;
-        DriveGuidancePlan.AimTarget aimTarget;
+        DriveGuidanceSpec.TranslationTarget translationTarget;
+        DriveGuidanceSpec.AimTarget aimTarget;
 
         ControlFrames controlFrames = ControlFrames.robotCenter();
         DriveGuidancePlan.Tuning tuning = DriveGuidancePlan.Tuning.defaults();
 
         // Feedback
         ObservationSource2d observationSource;
-        double obsMaxAgeSec = DriveGuidancePlan.Observation.DEFAULT_MAX_AGE_SEC;
-        double obsMinQuality = DriveGuidancePlan.Observation.DEFAULT_MIN_QUALITY;
+        double obsMaxAgeSec = DriveGuidanceSpec.Observation.DEFAULT_MAX_AGE_SEC;
+        double obsMinQuality = DriveGuidanceSpec.Observation.DEFAULT_MIN_QUALITY;
 
         PoseEstimator poseEstimator;
         TagLayout tagLayout;
-        double poseMaxAgeSec = DriveGuidancePlan.FieldPose.DEFAULT_MAX_AGE_SEC;
-        double poseMinQuality = DriveGuidancePlan.FieldPose.DEFAULT_MIN_QUALITY;
+        double poseMaxAgeSec = DriveGuidanceSpec.FieldPose.DEFAULT_MAX_AGE_SEC;
+        double poseMinQuality = DriveGuidanceSpec.FieldPose.DEFAULT_MIN_QUALITY;
 
-        DriveGuidancePlan.Gates gates;
+        DriveGuidanceSpec.Gates gates;
         boolean preferObsOmega = true;
-        DriveGuidancePlan.LossPolicy lossPolicy = DriveGuidancePlan.LossPolicy.PASS_THROUGH;
+        DriveGuidanceSpec.LossPolicy lossPolicy = DriveGuidanceSpec.LossPolicy.PASS_THROUGH;
     }
 
-    private static DriveGuidancePlan buildPlan(State s) {
+    private static DriveGuidanceSpec buildSpec(State s) {
         if (s.translationTarget == null && s.aimTarget == null) {
-            throw new IllegalStateException("DriveGuidance plan needs translateTo() and/or aimTo() configured");
+            throw new IllegalStateException("DriveGuidance spec needs translateTo() and/or aimTo() configured");
         }
 
         // Validate cross-feature compatibility up front so students get a clear error at build()
@@ -500,21 +634,21 @@ public final class DriveGuidance {
         validateCapabilitiesOrThrow(s);
 
         // Build feedback config.
-        DriveGuidancePlan.Observation obs = null;
+        DriveGuidanceSpec.Observation obs = null;
         if (s.observationSource != null) {
-            obs = new DriveGuidancePlan.Observation(s.observationSource, s.obsMaxAgeSec, s.obsMinQuality);
+            obs = new DriveGuidanceSpec.Observation(s.observationSource, s.obsMaxAgeSec, s.obsMinQuality);
         }
 
-        DriveGuidancePlan.FieldPose fp = null;
+        DriveGuidanceSpec.FieldPose fp = null;
         if (s.poseEstimator != null) {
-            fp = new DriveGuidancePlan.FieldPose(s.poseEstimator, s.tagLayout, s.poseMaxAgeSec, s.poseMinQuality);
+            fp = new DriveGuidanceSpec.FieldPose(s.poseEstimator, s.tagLayout, s.poseMaxAgeSec, s.poseMinQuality);
         }
 
         if (obs == null && fp == null) {
-            throw new IllegalStateException("DriveGuidance plan needs feedback(): observation(...) and/or fieldPose(...)");
+            throw new IllegalStateException("DriveGuidance spec needs feedback(): observation(...) and/or fieldPose(...)");
         }
 
-        DriveGuidancePlan.Feedback fb = DriveGuidancePlan.Feedback.create(
+        DriveGuidanceSpec.Feedback fb = DriveGuidanceSpec.Feedback.create(
                 obs,
                 fp,
                 s.gates,
@@ -522,13 +656,17 @@ public final class DriveGuidance {
                 s.lossPolicy
         );
 
-        return new DriveGuidancePlan(
+        return new DriveGuidanceSpec(
                 s.translationTarget,
                 s.aimTarget,
                 s.controlFrames,
-                s.tuning,
                 fb
         );
+    }
+
+    private static DriveGuidancePlan buildPlan(State s) {
+        DriveGuidanceSpec spec = buildSpec(s);
+        return new DriveGuidancePlan(spec, s.tuning);
     }
 
     /**
@@ -594,32 +732,32 @@ public final class DriveGuidance {
 
         // --- Target/feedback capability checks ---
         // Field points require field pose feedback.
-        if ((s.translationTarget instanceof DriveGuidancePlan.FieldPoint)
-                || (s.aimTarget instanceof DriveGuidancePlan.FieldPoint)) {
+        if ((s.translationTarget instanceof DriveGuidanceSpec.FieldPoint)
+                || (s.aimTarget instanceof DriveGuidanceSpec.FieldPoint)) {
             if (!hasFieldPose) {
                 errors.add("field point targets require fieldPose(...) feedback");
             }
         }
 
         // Field heading requires field pose feedback.
-        if (s.aimTarget instanceof DriveGuidancePlan.FieldHeading
-                || s.aimTarget instanceof DriveGuidancePlan.TagHeading) {
+        if (s.aimTarget instanceof DriveGuidanceSpec.FieldHeading
+                || s.aimTarget instanceof DriveGuidanceSpec.TagHeading) {
             if (!hasFieldPose) {
                 errors.add("field heading targets require fieldPose(...) feedback");
             }
         }
 
         // Robot-relative translation requires field pose feedback.
-        if (s.translationTarget instanceof DriveGuidancePlan.RobotRelativePoint) {
+        if (s.translationTarget instanceof DriveGuidanceSpec.RobotRelativePoint) {
             if (!hasFieldPose) {
                 errors.add("robot-relative translation targets require fieldPose(...) feedback");
             }
         }
 
         // Tag-relative targets: certain combinations require observation and/or a tag layout.
-        boolean usesTagTargets = (s.translationTarget instanceof DriveGuidancePlan.TagRelativePoint)
-                || (s.aimTarget instanceof DriveGuidancePlan.TagRelativePoint)
-                || (s.aimTarget instanceof DriveGuidancePlan.TagHeading);
+        boolean usesTagTargets = (s.translationTarget instanceof DriveGuidanceSpec.TagRelativePoint)
+                || (s.aimTarget instanceof DriveGuidanceSpec.TagRelativePoint)
+                || (s.aimTarget instanceof DriveGuidanceSpec.TagHeading);
 
         if (usesTagTargets && hasFieldPose) {
             if (s.tagLayout == null) {
@@ -652,25 +790,25 @@ public final class DriveGuidance {
     }
 
     private static boolean isObservedTag(Object target) {
-        if (target instanceof DriveGuidancePlan.TagRelativePoint) {
-            return ((DriveGuidancePlan.TagRelativePoint) target).tagId < 0;
+        if (target instanceof DriveGuidanceSpec.TagRelativePoint) {
+            return ((DriveGuidanceSpec.TagRelativePoint) target).tagId < 0;
         }
-        if (target instanceof DriveGuidancePlan.TagHeading) {
-            return ((DriveGuidancePlan.TagHeading) target).tagId < 0;
+        if (target instanceof DriveGuidanceSpec.TagHeading) {
+            return ((DriveGuidanceSpec.TagHeading) target).tagId < 0;
         }
         return false;
     }
 
     private static void checkTagIdExists(Object target, TagLayout layout, ArrayList<String> errors) {
-        if (target instanceof DriveGuidancePlan.TagRelativePoint) {
-            DriveGuidancePlan.TagRelativePoint tp = (DriveGuidancePlan.TagRelativePoint) target;
+        if (target instanceof DriveGuidanceSpec.TagRelativePoint) {
+            DriveGuidanceSpec.TagRelativePoint tp = (DriveGuidanceSpec.TagRelativePoint) target;
             if (tp.tagId >= 0 && !layout.has(tp.tagId)) {
                 errors.add("TagLayout does not contain tag id=" + tp.tagId);
             }
             return;
         }
-        if (target instanceof DriveGuidancePlan.TagHeading) {
-            DriveGuidancePlan.TagHeading th = (DriveGuidancePlan.TagHeading) target;
+        if (target instanceof DriveGuidanceSpec.TagHeading) {
+            DriveGuidanceSpec.TagHeading th = (DriveGuidanceSpec.TagHeading) target;
             if (th.tagId >= 0 && !layout.has(th.tagId)) {
                 errors.add("TagLayout does not contain tag id=" + th.tagId);
             }
@@ -679,12 +817,12 @@ public final class DriveGuidance {
     }
 
     /**
-     * Base builder that provides shared methods across plan stages.
+     * Base builder that provides shared methods across <b>spec</b> and <b>plan</b> stages.
      */
-    private static abstract class BaseBuilder<SELF> {
+    private static abstract class CommonBuilder<SELF> {
         final State s;
 
-        BaseBuilder(State s) {
+        CommonBuilder(State s) {
             this.s = s;
         }
 
@@ -698,13 +836,35 @@ public final class DriveGuidance {
             return self();
         }
 
+        public final FeedbackBuilder<SELF> feedback() {
+            return new FeedbackStep<>(s, self());
+        }
+    }
+
+    /**
+     * Spec-only builder base (no tuning).
+     */
+    private static abstract class SpecBaseBuilder<SELF> extends CommonBuilder<SELF> {
+        SpecBaseBuilder(State s) {
+            super(s);
+        }
+
+        public final DriveGuidanceSpec build() {
+            return DriveGuidance.buildSpec(s);
+        }
+    }
+
+    /**
+     * Plan builder base (spec + tuning).
+     */
+    private static abstract class PlanBaseBuilder<SELF> extends CommonBuilder<SELF> {
+        PlanBaseBuilder(State s) {
+            super(s);
+        }
+
         public final SELF tuning(DriveGuidancePlan.Tuning tuning) {
             s.tuning = Objects.requireNonNull(tuning, "tuning");
             return self();
-        }
-
-        public final FeedbackBuilder<SELF> feedback() {
-            return new FeedbackStep<>(s, self());
         }
 
         public final DriveGuidancePlan build() {
@@ -713,9 +873,65 @@ public final class DriveGuidance {
     }
 
     /**
-     * Implementation of the initial plan builder stage.
+     * Implementation of the initial <b>spec</b> builder stage.
      */
-    private static final class Builder0 extends BaseBuilder<PlanBuilder0> implements PlanBuilder0 {
+    private static final class Spec0 extends SpecBaseBuilder<SpecBuilder0> implements SpecBuilder0 {
+        Spec0(State s) {
+            super(s);
+        }
+
+        @Override
+        public TranslateToBuilder<SpecBuilder1> translateTo() {
+            return new TranslateToStep<>(s, new Spec1(s));
+        }
+
+        @Override
+        public AimToBuilder<SpecBuilder2> aimTo() {
+            return new AimToStep<>(s, new Spec2(s));
+        }
+    }
+
+    /**
+     * Implementation of the spec builder stage after translation has been configured.
+     */
+    private static final class Spec1 extends SpecBaseBuilder<SpecBuilder1> implements SpecBuilder1 {
+        Spec1(State s) {
+            super(s);
+        }
+
+        @Override
+        public AimToBuilder<SpecBuilder3> aimTo() {
+            return new AimToStep<>(s, new Spec3(s));
+        }
+    }
+
+    /**
+     * Implementation of the spec builder stage after aiming has been configured.
+     */
+    private static final class Spec2 extends SpecBaseBuilder<SpecBuilder2> implements SpecBuilder2 {
+        Spec2(State s) {
+            super(s);
+        }
+
+        @Override
+        public TranslateToBuilder<SpecBuilder3> translateTo() {
+            return new TranslateToStep<>(s, new Spec3(s));
+        }
+    }
+
+    /**
+     * Implementation of the spec builder stage after both translation and aim have been configured.
+     */
+    private static final class Spec3 extends SpecBaseBuilder<SpecBuilder3> implements SpecBuilder3 {
+        Spec3(State s) {
+            super(s);
+        }
+    }
+
+    /**
+     * Implementation of the initial <b>plan</b> builder stage.
+     */
+    private static final class Builder0 extends PlanBaseBuilder<PlanBuilder0> implements PlanBuilder0 {
         Builder0(State s) {
             super(s);
         }
@@ -734,7 +950,7 @@ public final class DriveGuidance {
     /**
      * Implementation of the plan builder stage after translation has been configured.
      */
-    private static final class Builder1 extends BaseBuilder<PlanBuilder1> implements PlanBuilder1 {
+    private static final class Builder1 extends PlanBaseBuilder<PlanBuilder1> implements PlanBuilder1 {
         Builder1(State s) {
             super(s);
         }
@@ -748,7 +964,7 @@ public final class DriveGuidance {
     /**
      * Implementation of the plan builder stage after aiming has been configured.
      */
-    private static final class Builder2 extends BaseBuilder<PlanBuilder2> implements PlanBuilder2 {
+    private static final class Builder2 extends PlanBaseBuilder<PlanBuilder2> implements PlanBuilder2 {
         Builder2(State s) {
             super(s);
         }
@@ -762,11 +978,12 @@ public final class DriveGuidance {
     /**
      * Implementation of the plan builder stage after both translation and aim have been configured.
      */
-    private static final class Builder3 extends BaseBuilder<PlanBuilder3> implements PlanBuilder3 {
+    private static final class Builder3 extends PlanBaseBuilder<PlanBuilder3> implements PlanBuilder3 {
         Builder3(State s) {
             super(s);
         }
     }
+
 
     /**
      * Implementation of {@link TranslateToBuilder}.
@@ -785,7 +1002,7 @@ public final class DriveGuidance {
             if (s.translationTarget != null) {
                 throw new IllegalStateException("translateTo() target already configured; choose only one target method");
             }
-            s.translationTarget = new DriveGuidancePlan.FieldPoint(xInches, yInches);
+            s.translationTarget = new DriveGuidanceSpec.FieldPoint(xInches, yInches);
             return this;
         }
 
@@ -794,7 +1011,7 @@ public final class DriveGuidance {
             if (s.translationTarget != null) {
                 throw new IllegalStateException("translateTo() target already configured; choose only one target method");
             }
-            s.translationTarget = new DriveGuidancePlan.TagRelativePoint(tagId, forwardInches, leftInches);
+            s.translationTarget = new DriveGuidanceSpec.TagRelativePoint(tagId, forwardInches, leftInches);
             return this;
         }
 
@@ -808,7 +1025,7 @@ public final class DriveGuidance {
             if (s.translationTarget != null) {
                 throw new IllegalStateException("translateTo() target already configured; choose only one target method");
             }
-            s.translationTarget = new DriveGuidancePlan.RobotRelativePoint(forwardInches, leftInches);
+            s.translationTarget = new DriveGuidanceSpec.RobotRelativePoint(forwardInches, leftInches);
             return this;
         }
 
@@ -838,7 +1055,7 @@ public final class DriveGuidance {
             if (s.aimTarget != null) {
                 throw new IllegalStateException("aimTo() target already configured; choose only one target method");
             }
-            s.aimTarget = new DriveGuidancePlan.FieldPoint(xInches, yInches);
+            s.aimTarget = new DriveGuidanceSpec.FieldPoint(xInches, yInches);
             return this;
         }
 
@@ -847,7 +1064,7 @@ public final class DriveGuidance {
             if (s.aimTarget != null) {
                 throw new IllegalStateException("aimTo() target already configured; choose only one target method");
             }
-            s.aimTarget = new DriveGuidancePlan.FieldHeading(fieldHeadingRad);
+            s.aimTarget = new DriveGuidanceSpec.FieldHeading(fieldHeadingRad);
             return this;
         }
 
@@ -861,7 +1078,7 @@ public final class DriveGuidance {
             if (s.aimTarget != null) {
                 throw new IllegalStateException("aimTo() target already configured; choose only one target method");
             }
-            s.aimTarget = new DriveGuidancePlan.TagHeading(tagId, headingOffsetRad);
+            s.aimTarget = new DriveGuidanceSpec.TagHeading(tagId, headingOffsetRad);
             return this;
         }
 
@@ -875,7 +1092,7 @@ public final class DriveGuidance {
             if (s.aimTarget != null) {
                 throw new IllegalStateException("aimTo() target already configured; choose only one target method");
             }
-            s.aimTarget = new DriveGuidancePlan.TagRelativePoint(tagId, forwardInches, leftInches);
+            s.aimTarget = new DriveGuidanceSpec.TagRelativePoint(tagId, forwardInches, leftInches);
             return this;
         }
 
@@ -918,8 +1135,8 @@ public final class DriveGuidance {
         @Override
         public FeedbackBuilder<RETURN> observation(ObservationSource2d observation) {
             s.observationSource = Objects.requireNonNull(observation, "observation");
-            s.obsMaxAgeSec = DriveGuidancePlan.Observation.DEFAULT_MAX_AGE_SEC;
-            s.obsMinQuality = DriveGuidancePlan.Observation.DEFAULT_MIN_QUALITY;
+            s.obsMaxAgeSec = DriveGuidanceSpec.Observation.DEFAULT_MAX_AGE_SEC;
+            s.obsMinQuality = DriveGuidanceSpec.Observation.DEFAULT_MIN_QUALITY;
             return this;
         }
 
@@ -934,8 +1151,8 @@ public final class DriveGuidance {
         @Override
         public FeedbackBuilder<RETURN> fieldPose(PoseEstimator poseEstimator) {
             s.poseEstimator = Objects.requireNonNull(poseEstimator, "poseEstimator");
-            s.poseMaxAgeSec = DriveGuidancePlan.FieldPose.DEFAULT_MAX_AGE_SEC;
-            s.poseMinQuality = DriveGuidancePlan.FieldPose.DEFAULT_MIN_QUALITY;
+            s.poseMaxAgeSec = DriveGuidanceSpec.FieldPose.DEFAULT_MAX_AGE_SEC;
+            s.poseMinQuality = DriveGuidanceSpec.FieldPose.DEFAULT_MIN_QUALITY;
             return this;
         }
 
@@ -943,8 +1160,8 @@ public final class DriveGuidance {
         public FeedbackBuilder<RETURN> fieldPose(PoseEstimator poseEstimator, TagLayout tagLayout) {
             s.poseEstimator = Objects.requireNonNull(poseEstimator, "poseEstimator");
             s.tagLayout = tagLayout;
-            s.poseMaxAgeSec = DriveGuidancePlan.FieldPose.DEFAULT_MAX_AGE_SEC;
-            s.poseMinQuality = DriveGuidancePlan.FieldPose.DEFAULT_MIN_QUALITY;
+            s.poseMaxAgeSec = DriveGuidanceSpec.FieldPose.DEFAULT_MAX_AGE_SEC;
+            s.poseMinQuality = DriveGuidanceSpec.FieldPose.DEFAULT_MIN_QUALITY;
             return this;
         }
 
@@ -968,7 +1185,7 @@ public final class DriveGuidance {
 
         @Override
         public FeedbackBuilder<RETURN> gates(double enterRangeInches, double exitRangeInches, double takeoverBlendSec) {
-            s.gates = new DriveGuidancePlan.Gates(enterRangeInches, exitRangeInches, takeoverBlendSec);
+            s.gates = new DriveGuidanceSpec.Gates(enterRangeInches, exitRangeInches, takeoverBlendSec);
             return this;
         }
 
@@ -979,7 +1196,7 @@ public final class DriveGuidance {
         }
 
         @Override
-        public FeedbackBuilder<RETURN> lossPolicy(DriveGuidancePlan.LossPolicy lossPolicy) {
+        public FeedbackBuilder<RETURN> lossPolicy(DriveGuidanceSpec.LossPolicy lossPolicy) {
             s.lossPolicy = Objects.requireNonNull(lossPolicy, "lossPolicy");
             return this;
         }

@@ -1,358 +1,296 @@
 # Drive Guidance
 
-Phoenix `DriveGuidance` is a small “driver assist” API built around two ideas:
+Drive Guidance is Phoenix’s structured way to help you:
 
-1. **Describe what you want** (a *plan*): go to a point, look at a point, or both.
-2. **Apply it without rewriting TeleOp** by turning that plan into a `DriveOverlay` and enabling it
-   with `DriveSource.overlayWhen(...)`.
+- **Create driver assists** (e.g., “aim at the speaker while I drive”).
+- **Run the same motion as a Task** (e.g., “go to this pose in auto”).
+- **Query the same spatial logic** for gating and telemetry (e.g., “only shoot when aimed”).
 
-It replaces the older `drive.assist` utilities (`TagAim`, `BearingSource`, etc.). The new API:
+This doc also covers a parallel, lighter-weight set of APIs for answering questions like:
 
-* uses a single mental model for “go-to” and “aim-at” behaviors
-* supports multiple feedback styles (vision-only, localization-only, or adaptive)
-* makes the “controlled point” on the robot explicit via `ControlFrames`
+- “Is the robot (partially) in the shooting zone?”
+- “Is the robot fully inside the parking box?”
+- “Is a mechanism-facing control frame pointing at a field point?”
 
----
-
-## Layering: math, predicates, controllers
-
-Phoenix keeps “where am I?” logic separate from “how do I drive?” logic. This makes it easier to:
-
-* gate actions (shooting/intake) based on position without enabling a drive assist,
-* reuse the same geometry checks in TeleOp, tasks, and testers, and
-* keep DriveGuidance / tasks focused on generating commands.
-
-The three layers are:
-
-1) **Spatial math** (pure geometry): bearings, errors, frame transforms. See `edu.ftcphoenix.fw.spatial.SpatialMath2d`.
-2) **Spatial predicates** (yes/no decisions): zone membership and “safe” booleans, often with hysteresis.
-   See `ConvexRegion2d` / `ConvexRegions2d`, `RobotZones2d`, `ZoneLatch`, `RobotHeadings2d`, and `HeadingLatch` in `edu.ftcphoenix.fw.spatial`.
-3) **Controllers** (produce commands): DriveGuidance overlays and drive tasks (e.g., `DriveGuidanceTask` / `GoToPoseTasks`) use errors from the math layer and turn them into drive outputs.
+…without needing any DriveGuidance plan at all.
 
 ---
 
-## Quick start
+## Spec vs Plan
 
-### 1) Start with a normal TeleOp drive source
+DriveGuidance intentionally has **two** objects:
+
+### DriveGuidanceSpec
+
+A **controller-neutral** description of:
+
+- **Targets** (translate to / aim to)
+- **Control frames** (which point on the robot you’re controlling)
+- **Feedback selection policy** (observation, field-pose, or adaptive blending)
+
+A spec contains **no tuning** and does not generate drive commands by itself.
+
+### DriveGuidancePlan
+
+An **executable** bundle:
+
+- `DriveGuidanceSpec` (**what**) +
+- `DriveGuidancePlan.Tuning` (**how aggressively to drive the error to zero**)
+
+Plans are what you attach to:
+
+- a TeleOp overlay: `plan.overlay()`
+- a task: `plan.task(...)`
+- a query sampler: `plan.query()`
+
+---
+
+## The 3-layer architecture
+
+DriveGuidance (and related geometry utilities) follow a simple layered structure:
+
+1) **Spatial math** (pure geometry)
+- Example: `SpatialMath2d`
+
+2) **Spatial predicates** (answer yes/no questions)
+- Examples: `RobotZones2d`, `RobotHeadings2d` (+ latches for hysteresis)
+
+3) **Controllers** (turn errors into drive commands)
+- Example: `DriveGuidancePlan` executed through `DriveGuidanceOverlay` / `DriveGuidanceTask`
+
+The important idea: you can often solve “should I enable X?” using layer (2) without involving controllers at all.
+
+---
+
+## Targets you can express in a spec
+
+A DriveGuidanceSpec can include any combination of:
+
+- **Translation targets**
+  - Field point: `fieldPointInches(x, y)`
+  - Tag-relative point: `tagRelativePointInches(tagId, forward, left)`
+  - Robot-relative delta: `robotRelativePointInches(forward, left)` (captured on enable)
+
+- **Aim targets**
+  - Field heading: `fieldHeadingRad(heading)`
+  - Tag heading: `tagHeadingRad(tagId, offset)`
+  - A point (aim at the point): `fieldPointInches(...)` or `tagRelativePointInches(...)`
+
+---
+
+## Feedback sources in a spec
+
+A spec can use:
+
+- **Observation feedback** (`ObservationSource2d`) – robot-relative, typically AprilTag based.
+- **Field pose feedback** (`PoseEstimator`) – absolute field pose from localization.
+- **Adaptive feedback** (both configured) – selects observation vs field pose per DOF using gates/hysteresis.
+
+Key knobs:
+
+- `gates(enterRangeIn, exitRangeIn, blendStepPerSec)`
+- `preferObsOmega(true/false)`
+- `lossPolicy(PASS_THROUGH or ZERO_OUTPUT)`
+
+---
+
+## Building specs and plans
+
+### Build a spec (targets + feedback + control frames)
+
+You build a spec using the dedicated `DriveGuidance.spec()` staged builder, then finish with `build()`:
 
 ```java
-DriveSource base = GamepadDriveSource.teleOpMecanum(gamepads);
-```
-
-### 2) Build a guidance plan
-
-This plan **aims** at the currently observed tag center (it does not translate).
-
-```java
-ObservationSource2d obs = ObservationSources.aprilTag(scoringTarget, cameraMount);
-
-DriveGuidancePlan aimPlan = DriveGuidance.plan()
+DriveGuidanceSpec spec = DriveGuidance.spec()
+        .translateTo()
+            .fieldPointInches(48, 24)
+            .doneTranslateTo()
         .aimTo()
-            .tagRelativePointInches(0.0, 0.0)   // center of the observed tag
+            .tagRelativePointInches(/*tagId=*/ 5, /*forward=*/ 6, /*left=*/ 0)
             .doneAimTo()
+        .controlFrames(ControlFrames.robotCenter())
         .feedback()
-            .observation(obs)                 // vision-only feedback
+            .observation(tagObsSource)
+            .fieldPose(poseEstimator, tagLayout)
+            .gates(36, 60, 2.0)
+            .preferObsOmega(true)
+            .lossPolicy(DriveGuidanceSpec.LossPolicy.PASS_THROUGH)
             .doneFeedback()
         .build();
 ```
 
-### 3) Enable the overlay
-
-Drive overlays take a `BooleanSupplier`. The most common patterns are:
-
-* **Hold to enable** (while the button is held)
-* **Toggle to enable** (press once to turn it on, press again to turn it off)
-
-#### Hold to enable
+### Build a plan from a spec (tuning only)
 
 ```java
-DriveSource drive = base.overlayWhen(
-        gamepads.p1().leftBumper()::isHeld,
-        aimPlan.overlay(),
-        DriveOverlayMask.OMEGA_ONLY
-);
-```
-
-#### Toggle to enable
-
-Use `Button.isToggled()` via a method reference to get a `BooleanSupplier` that flips on each press:
-
-```java
-DriveSource drive = base.overlayWhen(
-        gamepads.p1().leftBumper()::isToggled,
-        aimPlan.overlay(),
-        DriveOverlayMask.OMEGA_ONLY
-);
-```
-
-That’s it: your driver keeps full stick translation, and the overlay “owns” only omega.
-
-#### Multiple overlays (recommended): overlay stack
-
-When you want to layer multiple assists (for example: a **pose lock** that overrides translation
-*and* an **auto-aim** that overrides omega), use an overlay stack.
-
-```java
-DriveSource drive = base.overlayStack()
-        .add(
-                "shootBrace",
-                () -> shootBraceEnabled,
-                DriveGuidance.poseLock(poseEstimator),
-                DriveOverlayMask.TRANSLATION_ONLY
-        )
-        .add(
-                "autoAim",
-                gamepads.p2().leftBumper()::isHeld,
-                aimPlan.overlay(),
-                DriveOverlayMask.OMEGA_ONLY
+DriveGuidancePlan plan = DriveGuidance.plan(spec)
+        .tuning(
+                DriveGuidancePlan.Tuning.defaults()
+                        .withTranslateKp(0.06)
+                        .withAimKp(2.0)
         )
         .build();
 ```
 
-Notes:
+### Build a plan in one shot (spec + tuning together)
 
-* Layers are evaluated **top to bottom**.
-* If two enabled layers claim the same DOF, **the last layer wins** for that DOF.
-
----
-
-## Common recipes
-
-These are small, copy-paste friendly patterns that show up a lot in TeleOp.
-
-### Aim-only: observed tag (vision-only)
+If you don’t need to reuse the spec separately:
 
 ```java
 DriveGuidancePlan plan = DriveGuidance.plan()
-        .aimTo().tagCenter().doneAimTo()
-        .feedback().observation(obs).doneFeedback()
+        .translateTo()
+            .fieldPointInches(48, 24)
+            .doneTranslateTo()
+        .aimTo()
+            .tagRelativePointInches(5, 6, 0)
+            .doneAimTo()
+        .feedback()
+            .observation(tagObsSource)
+            .fieldPose(poseEstimator, tagLayout)
+            .doneFeedback()
+        .tuning(DriveGuidancePlan.Tuning.defaults())
         .build();
+```
 
-DriveSource drive = base.overlayWhen(
-        gamepads.p2().leftBumper()::isHeld,
-        plan.overlay(),
-        DriveOverlayMask.OMEGA_ONLY
+---
+
+## Using a plan
+
+### TeleOp overlay
+
+```java
+DriveOverlayStack overlays = new DriveOverlayStack();
+
+// Add the guidance overlay when you want assist.
+if (enableAssist) {
+    overlays.add(plan.overlay());
+}
+
+DriveSignal driver = driverDriveSource.sample();
+DriveSignal assisted = overlays.apply(driver, loopClock);
+```
+
+### Task execution
+
+```java
+DriveGuidanceTask task = plan.task(drivebase, DriveGuidanceTask.Config.defaults()
+        .withTimeoutSec(2.0)
+        .withTranslationTolInches(1.0)
+        .withOmegaTolRad(Math.toRadians(2))
 );
 ```
 
-### Query a plan's errors (without enabling the overlay)
-
-Sometimes you want the *same math* as a DriveGuidance assist, but you don't actually want to
-take control of the drivetrain.
-
-Use `DriveGuidanceQuery` / `DriveGuidanceStatus` via `plan.query()`:
+### Query sampler (reuse exact same evaluation)
 
 ```java
 DriveGuidanceQuery q = plan.query();
+q.reset();
 
-// Each loop:
-DriveGuidanceStatus s = q.sample(clock, DriveOverlayMask.OMEGA_ONLY);
-
-if (s != null && s.omegaWithin(Math.toRadians(2))) {
-    telemetry.addLine(">>> AIMED <<<");
-}
-telemetry.addData("omegaErrDeg", s != null ? Math.toDegrees(s.omegaErrorRad) : Double.NaN);
-```
-
-### Translate + aim: observed tag-relative point (vision-only)
-
-Drive to a point relative to the currently observed tag while also aiming at it.
-
-```java
-DriveGuidancePlan plan = DriveGuidance.plan()
-        .translateTo().tagRelativePointInches(6, 0).doneTranslateTo() // 6" in front of the observed tag
-        .aimTo().tagCenter().doneAimTo()
-        .feedback().observation(obs).doneFeedback()
-        .build();
-```
-
-### Translate + aim: fixed tag ID using field pose (tag may disappear)
-
-If you have localization, you can keep driving/aiming even if the camera loses the tag.
-
-```java
-DriveGuidancePlan plan = DriveGuidance.plan()
-        .translateTo().tagRelativePointInches(1, 6, 0).doneTranslateTo()
-        .aimTo().tagCenter(1).doneAimTo()
-        .feedback().fieldPose(poseEstimator, tagLayout).doneFeedback()
-        .build();
-```
-
-### Aim to an absolute field heading
-
-```java
-DriveGuidancePlan plan = DriveGuidance.plan()
-        .aimTo().fieldHeadingDeg(90).doneAimTo()
-        .feedback().fieldPose(poseEstimator).doneFeedback()
-        .build();
-```
-
-### Robot-relative “nudge” translation
-
-Useful for micro adjustments. Captures the current pose when the overlay turns on.
-
-```java
-DriveGuidancePlan plan = DriveGuidance.plan()
-        .translateTo().robotRelativePointInches(6, 0).doneTranslateTo()
-        .feedback().fieldPose(poseEstimator).doneFeedback()
-        .build();
+DriveGuidanceStatus s = q.sample(loopClock);
+boolean okToShoot = s.translationWithin(3.0) && s.omegaWithin(Math.toRadians(3));
 ```
 
 ---
 
-## What a plan can do
+## Manual queries
 
-`DriveGuidancePlan` can control up to two degrees of freedom:
+If you don’t need a drive assist (or you don’t want any tuning/controller behavior at all), prefer the “predicate” layer.
 
-* **Translation**: move a point on the robot to a target point
-* **Omega**: rotate the robot so a point on the robot either “looks at” a target point
-  <em>or</em> matches an absolute field heading
+### Zone membership (robot vs convex region)
 
-You can use either one independently, or both together.
-
-### Translation target
-
-* `.translateTo().fieldPointInches(x, y)` — a fixed point on the field
-* `.translateTo().tagRelativePointInches(tagId, forward, left)` — a point in a tag’s coordinate frame
-* `.translateTo().tagRelativePointInches(forward, left)` — a point in the **currently observed** tag’s frame
-* `.translateTo().robotRelativePointInches(forward, left)` — "nudge" by an offset from wherever you are
-  (requires field pose)
-
-### Aim target
-
-* `.aimTo().fieldPointInches(x, y)`
-* `.aimTo().fieldHeadingDeg(deg)` / `.aimTo().fieldHeadingRad(rad)` — turn to an absolute field heading
-  (requires field pose)
-* `.aimTo().tagRelativePointInches(tagId, forward, left)`
-* `.aimTo().tagRelativePointInches(forward, left)` — **currently observed** tag
-
----
-
-## ControlFrames
-
-By default, plans control the robot’s center.
-
-If you want to aim using an off-center mechanism (like a shooter), you can set an aim control frame:
+Create your robot geometry once:
 
 ```java
-ControlFrames frames = ControlFrames.robotCenter()
-        .withAimFrame(new Pose2d(6.0, 0.0, 0.0));   // 6" forward of robot center
-
-DriveGuidancePlan plan = DriveGuidance.plan()
-        .aimTo().tagCenter(1).doneAimTo()
-        .feedback().fieldPose(poseEstimator, tagLayout).doneFeedback()
-        .controlFrames(frames)
+RobotGeometry2d robot = RobotGeometry2d.builder()
+        .rectangleFootprint(/*length=*/ 18, /*width=*/ 18)
+        .point("shooter", /*forwardIn=*/ 9, /*leftIn=*/ 0)
         .build();
 ```
 
-Now the robot rotates so that the shooter point is what “faces” the target.
-
----
-
-## Feedback modes
-
-Guidance needs a way to know where the robot is (or where the target is).
-
-### Observation-only feedback
-
-Use when you only care about **relative** movement and the target is visible.
+Create a region:
 
 ```java
-ObservationSource2d obs = ObservationSources.aprilTag(tagTarget, cameraMount);
-
-DriveGuidancePlan plan = DriveGuidance.plan()
-        .aimTo().tagRelativePointInches(0.0, 0.0).doneAimTo()
-        .feedback().observation(obs).doneFeedback()
-        .build();
-```
-
-Pros:
-
-* simple
-* no odometry required
-* very accurate up close
-
-Cons:
-
-* if the target drops out of view, guidance can’t “see” anymore
-
-### Field-pose feedback
-
-Use when you have a localization estimate (odometry, fused vision, etc.) and want to aim/drive to a
-known field point.
-
-```java
-DriveGuidancePlan plan = DriveGuidance.plan()
-        .translateTo().fieldPointInches(12, 48).doneTranslateTo()
-        .aimTo().fieldPointInches(0, 0).doneAimTo()
-        .feedback().fieldPose(poseEstimator, tagLayout).doneFeedback()
-        .build();
-```
-
-Pros:
-
-* works even when you can’t see the target
-* supports field points and tag-relative points (via `TagLayout`)
-
-Cons:
-
-* depends on localization quality
-
-### Adaptive feedback
-
-If you configure **both** observation and field pose feedback, DriveGuidance becomes adaptive:
-
-* far away: prefer field pose (stable global behavior)
-* close: prefer observation (better local accuracy)
-* for omega: can prefer observation whenever the target is visible
-
-```java
-DriveGuidancePlan plan = DriveGuidance.plan()
-        .translateTo().tagRelativePointInches(1, 6, 0).doneTranslateTo()
-        .aimTo().tagCenter(1).doneAimTo()
-        .feedback()
-            .fieldPose(poseEstimator, tagLayout)
-            .observation(obs)
-            .gates(10.0, 14.0, 0.20)   // enter, exit, blend (inches, inches, seconds)
-            .doneFeedback()
-        .build();
-```
-
----
-
-## Loss policy
-
-When guidance can’t compute an output (no pose, no target, too old, too low quality), it needs to
-decide what to do.
-
-* `PASS_THROUGH` (default): output mask is reduced to the DOFs we can solve; other DOFs remain under
-  driver control.
-* `ZERO_OUTPUT`: if any requested DOF can’t be solved, output **zeros** for all requested DOFs.
-
-`ZERO_OUTPUT` is useful for “hold still” behaviors.
-
----
-
-## Pose lock
-
-If you want the robot to “brace” in TeleOp (resist bumps), use `poseLock`.
-
-```java
-DriveOverlay lock = DriveGuidance.poseLock(poseEstimator);
-
-DriveSource drive = base.overlayWhen(
-        () -> gamepads.p2().x().isHeld(),
-        lock,
-        DriveOverlayMask.ALL
+ConvexRegion2d shootingZone = ConvexRegions2d.convexPolygonInches(
+        new double[] { 36, 60, 60, 36 },
+        new double[] { 12, 12, 36, 36 }
 );
 ```
 
-Tip: pose lock only works as well as your localization.
+Now choose the rule you care about:
+
+- **“Robot overlaps the zone at least a little”** (good for “I can shoot if any part is in”)  
+  Uses probe points on the footprint.
+
+```java
+RobotZone2d overlaps = RobotZones2d.in(shootingZone)
+        .robot(robot)
+        .footprintOverlaps(/*samplesPerEdge=*/ 3);
+```
+
+- **“Robot is fully inside the zone”** (good for parking box / endgame constraints)
+
+```java
+RobotZone2d fullyInside = RobotZones2d.in(shootingZone)
+        .robot(robot)
+        .footprintFullyInside(/*samplesPerEdge=*/ 3);
+```
+
+- **“A specific mechanism point is inside”** (good when the center is misleading)
+
+```java
+RobotZone2d shooterPointInside = RobotZones2d.in(shootingZone)
+        .robot(robot)
+        .pointInside("shooter");
+```
+
+Add hysteresis (recommended for safety/gating):
+
+```java
+ZoneLatch latch = new ZoneLatch(
+        shooterPointInside,
+        /*enterSec=*/ 0.10,
+        /*exitSec=*/ 0.20
+);
+
+boolean inZone = latch.update(loopClock, fieldToRobotPose2d);
+```
+
+### Heading predicates (aiming)
+
+The heading APIs are intentionally parallel to the zone APIs.
+
+Example: “Is the shooter control frame pointing at a field point within tolerance?”
+
+```java
+RobotHeading2d aimedAtSpeaker = RobotHeadings2d
+        .inAimFrame(ControlFrames.robotCenter().robotToAimFrame())
+        .toFaceFieldPointInches(48, 72);
+
+HeadingLatch aimLatch = new HeadingLatch(
+        aimedAtSpeaker,
+        /*enterTolRad=*/ Math.toRadians(2),
+        /*exitTolRad=*/ Math.toRadians(4)
+);
+
+boolean aimed = aimLatch.update(loopClock, fieldToRobotPose2d);
+```
+
+### Combining zone + heading (typical TeleOp “auto-enable” gating)
+
+```java
+boolean enableShooting = inZone && aimed;
+```
+
+This is intentionally **independent** from any DriveGuidance plan. You can use it with:
+
+- purely manual driving
+- a DriveGuidance overlay
+- an autonomous task
 
 ---
 
-## Debugging tips
+## When to use what
 
-* Start with `feedback().fieldPose(...).doneFeedback()` and verify your pose estimate looks sane.
-* Then add `observation(...)` and switch to adaptive.
-* Add `debugDump(...)` calls to your telemetry if you want to see which feedback source is active.
+- **Use a DriveGuidancePlan** when you want the framework to generate drive commands.
+- **Use RobotZones2d / RobotHeadings2d** when you only want to answer “is it true?” questions.
+- **Use DriveGuidanceQuery** when you want to reuse the exact same evaluation logic as a plan,
+  but you don’t want to enable the overlay.

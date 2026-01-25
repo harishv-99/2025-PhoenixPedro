@@ -23,6 +23,7 @@ import edu.ftcphoenix.fw.drive.DriveSource;
 import edu.ftcphoenix.fw.drive.MecanumDrivebase;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidance;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidancePlan;
+import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceSpec;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceQuery;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceStatus;
 import edu.ftcphoenix.fw.drive.source.GamepadDriveSource;
@@ -196,7 +197,7 @@ public final class PhoenixRobot {
                 .tuning(aimTuning)
                 .feedback()
                 .observation(obs2d, 0.50, 0.0)
-                .lossPolicy(DriveGuidancePlan.LossPolicy.PASS_THROUGH)
+                .lossPolicy(DriveGuidanceSpec.LossPolicy.PASS_THROUGH)
                 .doneFeedback()
                 .build();
 
@@ -210,7 +211,7 @@ public final class PhoenixRobot {
                 .tuning(aimTuning)
                 .feedback()
                 .observation(obs2d, 0.50, 0.0)
-                .lossPolicy(DriveGuidancePlan.LossPolicy.PASS_THROUGH)
+                .lossPolicy(DriveGuidanceSpec.LossPolicy.PASS_THROUGH)
                 .doneFeedback()
                 .build();
 
@@ -267,7 +268,7 @@ public final class PhoenixRobot {
 //                .fieldPose(pinpoint, gameTagLayout, 0.25, 0.0)
 //                .gates(72.0, 84.0, 0.25) // enterRange, exitRange, blendSeconds (example numbers)
 //                .preferObservationForOmegaWhenValid(true)
-//                .lossPolicy(DriveGuidancePlan.LossPolicy.PASS_THROUGH)
+//                .lossPolicy(DriveGuidanceSpec.LossPolicy.PASS_THROUGH)
 //                .doneFeedback()
 //                .build();
 //
@@ -284,7 +285,7 @@ public final class PhoenixRobot {
 //                .fieldPose(pinpoint, gameTagLayout, 0.25, 0.0)
 //                .gates(72.0, 84.0, 0.25)
 //                .preferObservationForOmegaWhenValid(true)
-//                .lossPolicy(DriveGuidancePlan.LossPolicy.PASS_THROUGH)
+//                .lossPolicy(DriveGuidanceSpec.LossPolicy.PASS_THROUGH)
 //                .doneFeedback()
 //                .build();
 

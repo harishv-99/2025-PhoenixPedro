@@ -247,6 +247,19 @@ DriveSource drive = GamepadDriveSource.teleOpMecanumStandard(pads);
 
 **Rate limiting note:** `MecanumDrivebase` can rate-limit components using the most recent `dtSec`. Call `drivebase.update(clock)` once per loop. If you want rate limiting to use the *current* loop’s `dt`, call `update(clock)` **before** `drive(...)`.
 
+### Spatial reasoning layers (math → predicates → controllers)
+
+Phoenix tries to keep “spatial logic” reusable by splitting it into three layers:
+
+1. **Spatial math** (pure geometry): `Pose2d`, `SpatialMath2d`, region/shape primitives.
+2. **Spatial predicates** (answering yes/no): `RobotZones2d`, `RobotHeadings2d` (often with
+   hysteresis latches).
+3. **Controllers** (turn errors into commands): `DriveGuidanceSpec` + `DriveGuidancePlan` and their
+   overlays/tasks/queries.
+
+If you only want to ask “is the robot in the zone?” or “is the robot aimed?”, use layer (2). If you
+want the framework to *drive*, use layer (3).
+
 ---
 
 ## Tasks and macros

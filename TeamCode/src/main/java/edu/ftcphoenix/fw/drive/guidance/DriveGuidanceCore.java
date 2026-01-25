@@ -28,7 +28,7 @@ final class DriveGuidanceCore {
 
     DriveGuidanceCore(DriveGuidancePlan plan) {
         this.plan = plan;
-        this.evaluator = new DriveGuidanceEvaluator(plan);
+        this.evaluator = new DriveGuidanceEvaluator(plan.spec);
         this.lastMode = "init";
         this.lastStep = Step.noCommand("init");
     }
@@ -43,7 +43,7 @@ final class DriveGuidanceCore {
     }
 
     Step step(LoopClock clock, DriveOverlayMask requested) {
-        DriveGuidancePlan.Feedback fb = plan.feedback;
+        DriveGuidanceSpec.Feedback fb = plan.spec.feedback;
 
         if (requested == null || requested.isNone()) {
             lastMode = "none";
@@ -70,7 +70,7 @@ final class DriveGuidanceCore {
         }
 
         // Adaptive: choose per DOF.
-        DriveGuidancePlan.Gates gates = (fb.gates != null) ? fb.gates : DriveGuidancePlan.Gates.defaults();
+        DriveGuidanceSpec.Gates gates = (fb.gates != null) ? fb.gates : DriveGuidanceSpec.Gates.defaults();
 
         boolean wantTranslation = requested.overridesTranslation();
         boolean wantOmega = requested.overridesOmega();
@@ -297,7 +297,7 @@ final class DriveGuidanceCore {
 
     private static Step applyLossPolicy(CandidateSolution sol,
                                         DriveOverlayMask requested,
-                                        DriveGuidancePlan.LossPolicy policy,
+                                        DriveGuidanceSpec.LossPolicy policy,
                                         String mode) {
         DriveOverlayMask mask = DriveOverlayMask.NONE;
 
@@ -327,7 +327,7 @@ final class DriveGuidanceCore {
         }
 
         // If we couldn't produce any usable command this loop.
-        if (policy == DriveGuidancePlan.LossPolicy.ZERO_OUTPUT) {
+        if (policy == DriveGuidanceSpec.LossPolicy.ZERO_OUTPUT) {
             return new Step(
                     new DriveOverlayOutput(DriveSignal.zero(), requested),
                     mode + ":zeroOutput",
