@@ -1,373 +1,250 @@
-# Phoenix Framework Loop Structure
+# Loop Structure
 
-This document describes the recommended structure for a Phoenix robot loop (FTC `OpMode.loop()`), and how the major framework pieces fit into it: `Gamepads`, `Bindings`, `TaskRunner`, `Plants`, `TagTarget`, `TagAim`, `DriveSource`, and `Drivebase`.
+Phoenix assumes that your OpMode loop is the “heartbeat” of the robot.
 
-The goal is to give teams a **simple mental model**:
+This document explains:
 
-> **Clock → Sense → Decide → Control → Report**
-
-If every OpMode follows this ordering, it becomes much easier to:
-
-* Avoid subtle "stale data" bugs.
-* Reason about why the robot did something on a particular loop.
-* Introduce more advanced features (vision, macros, autonomous logic) without breaking existing code.
+* the recommended **update order**,
+* why certain components are **idempotent by cycle**,
+* and how to avoid common FTC loop pitfalls (double-updates, hidden time steps, and accidental blocking).
 
 ---
 
-## 1. High-Level Loop Cycle
+## 1. The Phoenix loop contract
 
-Each call to `loop()` should follow this order:
+Phoenix code is designed around a single contract:
 
-1. **Clock** – compute the timestep (`dtSec`).
-2. **Sense** – read all inputs and sensors (gamepads, TagTarget, odometry, IMU, etc.).
-3. **Decide** – compute high-level decisions (bindings, macros, state machines).
-4. **Control / Actuate** – turn decisions into motor/servo commands via Plants and drivebase.
-5. **Report** – send telemetry and debug information.
+> **One OpMode loop cycle advances the robot once.**
 
-In pseudocode:
+Everything else should be driven from that cycle.
+
+This keeps behavior predictable and makes it much easier to reason about timing.
+
+---
+
+## 2. The recommended loop order
+
+Phoenix’s preferred ordering is:
+
+> **Clock → Inputs → Bindings → Tasks → Drive → Plants → Telemetry**
+
+### 2.1 Why this order?
+
+**Clock first**
+
+* Many subsystems depend on `dtSec()` and `cycle()`.
+* Updating the clock once defines “this loop cycle” for every component.
+
+**Inputs before Bindings**
+
+* Button edges (`onPress()`, `onRelease()`) are computed during input update.
+* Bindings should read those edges after they’ve been refreshed.
+
+**Bindings before Tasks**
+
+* Bindings typically enqueue tasks (macros).
+* If you enqueue in this cycle, you usually want the runner to see it immediately.
+
+**Tasks before Drive and Plants**
+
+* Tasks are the “decision layer” that sets targets.
+* Drive/Plants are the “actuation layer” that consumes the latest targets.
+
+**Drive before Plants**
+
+* Drive is often the most time-sensitive and can benefit from being updated early.
+* More importantly: `MecanumDrivebase.update(clock)` provides loop timing to its rate limiters.
+
+**Telemetry last**
+
+* Telemetry is slow and should never influence state updates.
+
+---
+
+## 3. A canonical loop template
+
+Below is a typical Phoenix loop (TeleOp or Auto). This is intended as a reference pattern.
 
 ```java
+@Override
+public void start() {
+    clock.reset(getRuntime());
+}
+
 @Override
 public void loop() {
     // 1) Clock
     clock.update(getRuntime());
+
+    // 2) Inputs
+    gamepads.update(clock);
+
+    // 3) Bindings (may enqueue macros)
+    bindings.update(clock);
+
+    // 4) Tasks / macros
+    macroRunner.update(clock);
+
+    // 5) Drive
+    DriveSignal cmd = driveSource.get(clock).clamped();
+    drivebase.update(clock);   // ensure rate limiting uses current dt
+    drivebase.drive(cmd);      // applies motor power immediately
+
+    // 6) Plants (mechanisms)
     double dtSec = clock.dtSec();
-
-    // 2) Sense (inputs & sensors)
-    gamepads.update(dtSec);
-    scoringTarget.update();      // TagTarget → AprilTagSensor.best(...)
-    // odometry.update(dtSec);
-    // imuWrapper.update(dtSec);
-
-    // 3) Decide (high-level logic)
-    bindings.update(dtSec);      // may enqueue tasks, toggle modes, etc.
-    macroRunner.update(clock);   // advances macros, sets plant targets
-    // other state machines / planners here
-
-    // 4) Control / Actuate (subsystems)
-    DriveSignal cmd = driveWithAim.get(clock).clamped();
-    drivebase.drive(cmd);
-    drivebase.update(clock);
-
     shooter.update(dtSec);
     transfer.update(dtSec);
     pusher.update(dtSec);
 
-    // 5) Report (telemetry & debug)
-    telemetry.addData("omega", cmd.omega);
+    // 7) Telemetry
+    telemetry.addData("dtSec", dtSec);
     telemetry.update();
 }
 ```
 
 ---
 
-## 2. Phase Details
+## 4. Idempotency: “safe if called twice”
 
-### 1) Clock
+Phoenix is used in real teams with multiple layers of helper code:
 
-Everything in the loop depends on a consistent sense of time. Update the `LoopClock` first so that all subsequent calls in this loop see the same timestamp and `dt`:
+* testers and debug menus
+* robot frameworks wrapping robot frameworks
+* subsystems that try to “helpfully” update inputs or tasks
 
-```java
-clock.update(getRuntime());
-double dtSec = clock.dtSec();
-```
+To avoid brittle behavior, several Phoenix components are **idempotent by `clock.cycle()`**.
 
-**Guideline:** do not call `clock.update(...)` multiple times per loop. All time-based logic should use the same `dtSec`.
+That means:
 
----
+* If the component was already updated during the current cycle, additional calls do nothing.
 
-### 2) Sense – Inputs & Sensors
+### 4.1 Buttons are globally polled once per cycle
 
-"Sense" is where the robot reads the world for this loop:
+Buttons use a global registry and an update gate:
 
-* **Gamepads** (user intent):
+* `Button.updateAllRegistered(clock)` updates edge state once per cycle.
 
-    * `gamepads.update(dtSec);`
-* **Vision** (e.g., AprilTags):
+`Gamepads.update(clock)` calls this for you.
 
-    * `scoringTarget.update();` (which internally calls `AprilTagSensor.best(...)`).
-* **Other sensors**:
+### 4.2 Bindings are idempotent
 
-    * Odometry, IMU, distance sensors, etc., via their own wrappers.
+`Bindings.update(clock)` is guarded so it will not fire actions twice in a cycle.
 
-Example:
+### 4.3 TaskRunner is idempotent
 
-```java
-// Gamepad state (sticks, buttons, triggers)
-gamepads.update(dtSec);
+`TaskRunner.update(clock)` will not advance the current task twice in one loop cycle.
 
-// Tag-based target tracking (TagTarget)
-scoringTarget.update();
-
-// Other sensors
-// odometry.update(dtSec);
-// imuWrapper.update(dtSec);
-```
-
-**Why this phase is important:**
-
-Any later code that makes decisions based on sensors (e.g. starting a shooting macro based on the current tag distance) needs a fresh snapshot of the world. That only happens if you call things like `TagTarget.update()` before that decision code runs.
+This is critical because advancing tasks twice effectively doubles loop speed and breaks timeouts.
 
 ---
 
-### 3) Decide – High-Level Logic
+## 5. Where time comes from (and where it must not come from)
 
-"Decide" is where you choose **what** the robot should do this loop, based on the inputs you just read.
+Phoenix is intentionally strict about time:
 
-This includes:
+* `LoopClock.update(getRuntime())` defines `dtSec()`.
+* Tasks and drive rate limiters use `dtSec()`.
 
-* **Bindings** (user-input–driven decisions):
+Avoid these patterns:
 
-    * Mapping button presses to actions.
-    * Starting or cancelling macros.
-    * Toggling modes (e.g., slow mode, auto-aim on/off).
-* **TaskRunner / macros**:
+* calling `System.nanoTime()` or `ElapsedTime` deep inside tasks to “self-time”
+* calling `getRuntime()` inside multiple subsystems and letting each compute its own dt
 
-    * High-level sequences that control Plants and other systems over time.
-* **Other state machines or planners**:
-
-    * Autonomous step logic.
-    * Mode controllers.
-
-Example:
-
-```java
-// User-input driven decisions.
-bindings.update(dtSec);      // might call startShootOneBallMacro(), etc.
-
-// Higher-level decisions / macros.
-macroRunner.update(clock);   // drives PlantTasks, updates plant targets
-
-// Other state machines/planners (if any)
-// autoController.update(clock, odometry, scoringTarget.last());
-```
-
-By the end of this phase, your code should have:
-
-* Decided which tasks/macros are active.
-* Set desired targets on Plants (e.g., shooter velocity, servo positions).
-* Chosen which DriveSource is currently controlling the drivetrain (e.g., base sticks vs. TagAim-wrapped drive).
-
-**Important separation:**
-
-* **Decide** sets *targets* and *modes*.
-* **Control / Actuate** (the next phase) turns those targets into actual motor outputs.
-
-This separation keeps it clear where the "brain" lives vs. where the "muscles" live.
+If you need time, take it from the `LoopClock`.
 
 ---
 
-### 4) Control / Actuate – Subsystems
+## 6. Rate limiting and the drive update call
 
-In this phase, you run the controllers that translate decisions into motor & servo commands.
+`MecanumDrivebase` can rate-limit axial/lateral/omega based on the most recent `update(clock)`.
 
-This is where you:
+Guideline:
 
-* Ask a `DriveSource` for a `DriveSignal`.
-* Feed the `DriveSignal` to the `Drivebase`.
-* Call `update(...)` on all Plants and subsystem controllers.
+* If you use rate limiting, call:
 
-Example:
+  ```java
+  drivebase.update(clock);
+  drivebase.drive(signal);
+  ```
 
-```java
-// Drive: TagAim-wrapped drive source (may override omega while aim button held)
-DriveSignal cmd = driveWithAim.get(clock).clamped();
-drivebase.drive(cmd);
-drivebase.update(clock);
+Calling `drive(signal)` before `update(clock)` means the rate limiter uses the previous cycle’s dt.
 
-// Mechanisms: shooter, transfer, pusher, etc.
-shooter.update(dtSec);
-transfer.update(dtSec);
-pusher.update(dtSec);
-```
+Also remember the semantics:
 
-How the pieces fit:
-
-* `driveWithAim` is typically built via:
-
-    * `TagAim.teleOpAim(baseDrive, aimButton, scoringTarget, config)`.
-    * Internally, this uses `TagAimDriveSource` and `TagAimController`.
-* Plants (e.g. `shooter`, `transfer`, `pusher`) encapsulate:
-
-    * Control loops (e.g., PID or simple proportional control).
-    * Hardware access (motors/servos via HAL adapters).
-
-**Guideline:**
-
-* Do not change plant targets *after* calling `plant.update()` in the same loop.
-* Keep all `update(...)` calls together in this phase for readability and predictability.
+* `drivebase.drive(...)` sends power commands to the hardware **immediately**.
+* `drivebase.update(clock)` only provides timing (`dtSec`) for optional rate limiting; it does not move motors by itself.
 
 ---
 
-### 5) Report – Telemetry & Debug
+## 7. Plants: update is mandatory
 
-Finally, report what happened this loop. This phase should not change behavior; it only observes.
+Plants are stateful actuators. Tasks typically set targets on plants, but targets do not apply “by magic.”
 
-Typical things to report:
-
-* Tag info: `hasTarget`, `id`, `rangeInches`, `bearingRad`, `ageSec`.
-* Drive commands: axial, lateral, omega.
-* Macro status: active/not, current step, target shooter velocity.
-* Plant debug information (optional via `debugDump(...)`).
-
-Example:
+Your loop must call:
 
 ```java
-telemetry.addLine("Drive")
-        .addData("axial",   lastDrive.axial)
-        .addData("lateral", lastDrive.lateral)
-        .addData("omega",   lastDrive.omega);
-
-AprilTagObservation obs = scoringTarget.last();
-telemetry.addLine("Tag")
-        .addData("hasTarget", obs.hasTarget)
-        .addData("id",         obs.id)
-        .addData("rangeIn",    obs.rangeInches)
-        .addData("bearingRad", obs.bearingRad)
-        .addData("ageSec",     obs.ageSec);
-
-telemetry.addLine("Macro")
-        .addData("active", macroRunner.hasActiveTask())
-        .addData("status", lastMacroStatus);
-
-telemetry.update();
+plant.update(clock.dtSec());
 ```
 
-Optional debug tracing:
+for each plant you care about.
 
-```java
-// Example: dump TagTarget state for logging.
-scoringTarget.debugDump(debugSink, "tags.scoring");
+Typical pattern:
 
-// Example: dump TagAimDriveSource state (last bearing, last omega, etc.).
-tagAimDriveSource.debugDump(debugSink, "drive.tagAim");
-```
+* store plants as fields
+* update them every loop
 
 ---
 
-## 3. Where TagTarget and TagAim Fit
+## 8. Telemetry and debug output
 
-Tag-related classes fit naturally into this loop structure:
+Telemetry should not control robot behavior.
 
-* **TagTarget**
+If you need structured debug output, prefer Phoenix debug sinks:
 
-    * Lives in the **Sense** phase.
-    * `TagTarget.update()` calls `AprilTagSensor.best(...)` once per loop.
-    * `TagTarget.last()` is used later in Decide/Control.
+* many subsystems expose `debugDump(dbg, prefix)`
 
-* **TagAim**
+Use a consistent prefix so logs are easy to scan, for example:
 
-    * Wiring happens at init:
-
-      ```java
-      scoringTarget = new TagTarget(tagSensor, SCORING_TAG_IDS, MAX_TAG_AGE_SEC);
-      driveWithAim = TagAim.teleOpAim(
-              baseDrive,
-              gamepads.p1().leftBumper(),
-              scoringTarget
-      );
-      ```
-    * At runtime, the **Control** phase calls `driveWithAim.get(clock)`, which:
-
-        * Samples the current bearing via `scoringTarget.toBearingSample()`.
-        * Uses `TagAimController` to compute omega.
-        * Overrides only the turn component while the aim button is held.
-
-* **Shooters and other mechanisms**
-
-    * Use `TagTarget.last().rangeInches` in the **Decide** phase (e.g., when starting a macro) to compute desired velocities.
-    * Plants then drive the hardware in the **Control** phase.
-
-This ensures that:
-
-* Aiming and shooter logic both see the **same** tag observation.
-* Vision is read once per loop and shared across subsystems.
+* `drive.*`
+* `shooter.*`
+* `tasks.*`
 
 ---
 
-## 4. Example Skeleton TeleOp Using This Pattern
+## 9. Common loop mistakes
 
-A minimal TeleOp that follows the structure:
+### Mistake: blocking waits
+
+Bad:
 
 ```java
-public final class MyTeleOp extends OpMode {
-    private final LoopClock clock = new LoopClock();
-
-    private Gamepads gamepads;
-    private Bindings bindings;
-
-    private MecanumDrivebase drivebase;
-    private DriveSource baseDrive;
-    private DriveSource driveWithAim;
-
-    private AprilTagSensor tagSensor;
-    private TagTarget scoringTarget;
-
-    private Plant shooter;
-    private final TaskRunner macroRunner = new TaskRunner();
-
-    private DriveSignal lastDrive = new DriveSignal(0.0, 0.0, 0.0);
-
-    @Override
-    public void init() {
-        gamepads = Gamepads.create(gamepad1, gamepad2);
-        bindings = new Bindings();
-
-        drivebase = Drives.mecanum(hardwareMap);
-        baseDrive = GamepadDriveSource.teleOpMecanumStandard(gamepads);
-
-        tagSensor = FtcVision.aprilTags(hardwareMap, "Webcam 1");
-        scoringTarget = new TagTarget(tagSensor, SCORING_TAG_IDS, 0.5);
-
-        driveWithAim = TagAim.teleOpAim(
-                baseDrive,
-                gamepads.p1().leftBumper(),
-                scoringTarget
-        );
-
-        shooter = Actuators.plant(hardwareMap)
-                .motor("shooterMotor", false)
-                .velocity(100.0)
-                .build();
-
-        // Bindings, macros, etc.
-        // bindings.onPress(...);
-    }
-
-    @Override
-    public void start() {
-        clock.reset(getRuntime());
-    }
-
-    @Override
-    public void loop() {
-        // 1) Clock
-        clock.update(getRuntime());
-        double dtSec = clock.dtSec();
-
-        // 2) Sense
-        gamepads.update(dtSec);
-        scoringTarget.update();
-
-        // 3) Decide
-        bindings.update(dtSec);
-        macroRunner.update(clock);
-
-        // 4) Control / Actuate
-        DriveSignal cmd = driveWithAim.get(clock).clamped();
-        lastDrive = cmd;
-
-        drivebase.drive(cmd);
-        drivebase.update(clock);
-
-        shooter.update(dtSec);
-
-        // 5) Report
-        telemetry.addData("axial", lastDrive.axial);
-        telemetry.addData("omega", lastDrive.omega);
-        telemetry.update();
-    }
-}
+while (!shooter.atSetpoint()) { }
 ```
 
-This structure is intentionally repetitive: once students internalize **Clock → Sense → Decide → Control → Report**, it becomes much easier to slot new features (vision, macros, autonomous planning) into the right phase without breaking existing behavior.
+Good:
+
+* use `PlantTasks.moveTo(...)` or `Tasks.waitUntil(...)` and run it in a `TaskRunner`.
+
+### Mistake: consuming button edges in two places
+
+If you call `Button.updateAllRegistered(clock)` manually *and* also call `gamepads.update(clock)`, that’s okay because it’s idempotent — but you should still treat `gamepads.update(clock)` as the canonical input update.
+
+### Mistake: double-running task updates
+
+If two helpers both call `macroRunner.update(clock)`, Phoenix prevents double-advancement in the same cycle — but the better design is still: update it exactly once, in your main loop.
+
+---
+
+## 10. Summary
+
+Phoenix’s loop structure is intentionally boring:
+
+* one clock
+* one update order
+* no hidden time steps
+
+Stick to:
+
+> Clock → Inputs → Bindings → Tasks → Drive → Plants → Telemetry
+
+and the rest of the framework will behave predictably.

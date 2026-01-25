@@ -6,6 +6,7 @@ import java.util.Objects;
 import java.util.function.BooleanSupplier;
 
 import edu.ftcphoenix.fw.actuation.Plant;
+import edu.ftcphoenix.fw.core.debug.DebugSink;
 
 /**
  * Controller that turns high-level "buffer" commands (SEND / EJECT) into
@@ -16,7 +17,10 @@ import edu.ftcphoenix.fw.actuation.Plant;
  *
  * <pre>{@code
  * // Example: CR-servo feeder with timed pulses and shooter-ready gating.
- * Plant bufferPlant = FtcPlants.motorPower(hw, "feeder", false);
+ * Plant bufferPlant = Actuators.plant(hw)
+ *         .motor("feeder", Direction.FORWARD)
+ *         .power()
+ *         .build();
  *
  * BufferController buffer = new BufferController(
  *     bufferPlant,
@@ -89,6 +93,9 @@ public final class BufferController {
 
     private Cmd activeCmd = null;
     private double remainingSec = 0.0;
+
+    // Debug: last sampled downstream readiness (only evaluated when a queued pulse is eligible to start).
+    private boolean lastDownstreamReady = true;
 
     /**
      * Construct a {@link BufferController} with explicit targets and an optional
@@ -163,6 +170,7 @@ public final class BufferController {
                 queue.clear();
                 activeCmd = null;
                 remainingSec = 0.0;
+                lastDownstreamReady = true;
                 plant.setTarget(idleTarget);
                 break;
         }
@@ -214,6 +222,10 @@ public final class BufferController {
      * @param dtSec time step in seconds
      */
     public void update(double dtSec) {
+        if (downstreamReady == null) {
+            lastDownstreamReady = true;
+        }
+
         // 1) Advance current pulse (if any).
         if (activeCmd != null) {
             remainingSec -= dtSec;
@@ -221,13 +233,16 @@ public final class BufferController {
                 // Pulse complete: go idle and clear active command.
                 activeCmd = null;
                 remainingSec = 0.0;
+                lastDownstreamReady = true;
                 plant.setTarget(idleTarget);
             }
         }
 
         // 2) If idle, consider starting the next queued pulse.
         if (activeCmd == null && !queue.isEmpty()) {
-            if (downstreamReady == null || downstreamReady.getAsBoolean()) {
+            boolean ready = (downstreamReady == null) || downstreamReady.getAsBoolean();
+            lastDownstreamReady = ready;
+            if (ready) {
                 Cmd next = queue.removeFirst();
                 activeCmd = next;
                 remainingSec = pulseSeconds;
@@ -271,6 +286,7 @@ public final class BufferController {
         queue.clear();
         activeCmd = null;
         remainingSec = 0.0;
+        lastDownstreamReady = true;
         plant.reset();
         plant.setTarget(idleTarget);
     }
@@ -316,4 +332,28 @@ public final class BufferController {
     public double getIdleTarget() {
         return idleTarget;
     }
+
+
+    /**
+     * Debug helper: emit current queue / pulse state and the wrapped plant's debug output.
+     */
+    public void debugDump(DebugSink dbg, String prefix) {
+        if (dbg == null) {
+            return;
+        }
+        String p = (prefix == null || prefix.isEmpty()) ? "buffer" : prefix;
+
+        dbg.addLine(p)
+                .addData(p + ".activeCmd", activeCmd)
+                .addData(p + ".remainingSec", remainingSec)
+                .addData(p + ".queueSize", queue.size())
+                .addData(p + ".downstreamReady", lastDownstreamReady)
+                .addData(p + ".forwardTarget", forwardTarget)
+                .addData(p + ".reverseTarget", reverseTarget)
+                .addData(p + ".idleTarget", idleTarget)
+                .addData(p + ".pulseSeconds", pulseSeconds);
+
+        plant.debugDump(dbg, p + ".plant");
+    }
+
 }

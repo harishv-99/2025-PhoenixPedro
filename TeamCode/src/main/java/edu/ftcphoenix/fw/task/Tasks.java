@@ -3,7 +3,7 @@ package edu.ftcphoenix.fw.task;
 import java.util.Objects;
 import java.util.function.BooleanSupplier;
 
-import edu.ftcphoenix.fw.util.LoopClock;
+import edu.ftcphoenix.fw.core.time.LoopClock;
 
 /**
  * Convenience factory and composition helpers for {@link Task} instances.
@@ -68,21 +68,25 @@ public final class Tasks {
      */
     public static Task noop() {
         return new Task() {
+            /** {@inheritDoc} */
             @Override
             public void start(LoopClock clock) {
                 // no-op
             }
 
+            /** {@inheritDoc} */
             @Override
             public void update(LoopClock clock) {
                 // no-op
             }
 
+            /** {@inheritDoc} */
             @Override
             public boolean isComplete() {
                 return true;
             }
 
+            /** {@inheritDoc} */
             @Override
             public TaskOutcome getOutcome() {
                 // A no-op task is always considered a successful no-op.
@@ -213,11 +217,13 @@ public final class Tasks {
 
             private TaskOutcome branchOutcome = TaskOutcome.UNKNOWN;
 
+            /** {@inheritDoc} */
             @Override
             public void start(LoopClock clock) {
                 current.start(clock);
             }
 
+            /** {@inheritDoc} */
             @Override
             public void update(LoopClock clock) {
                 if (phase == BranchPhase.DONE) {
@@ -254,11 +260,13 @@ public final class Tasks {
                 }
             }
 
+            /** {@inheritDoc} */
             @Override
             public boolean isComplete() {
                 return phase == BranchPhase.DONE;
             }
 
+            /** {@inheritDoc} */
             @Override
             public TaskOutcome getOutcome() {
                 switch (phase) {
@@ -276,6 +284,7 @@ public final class Tasks {
                 }
             }
 
+            /** {@inheritDoc} */
             @Override
             public String getDebugName() {
                 return "BranchOnOutcome(" + move.getDebugName() + ")";

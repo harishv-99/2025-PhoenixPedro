@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.Objects;
 
 import edu.ftcphoenix.fw.actuation.Plant;
+import edu.ftcphoenix.fw.core.debug.DebugSink;
 
 /**
  * Simple "mode → setpoint" controller on top of a single {@link Plant}.
@@ -222,4 +223,29 @@ public final class GoalController<G> {
             return new GoalController<>(plant, targetsByGoal, defaultGoal);
         }
     }
+
+
+    /**
+     * Debug helper: emit the current goal mapping and delegate to the wrapped plant.
+     */
+    public void debugDump(DebugSink dbg, String prefix) {
+        if (dbg == null) {
+            return;
+        }
+        String p = (prefix == null || prefix.isEmpty()) ? "goalCtrl" : prefix;
+
+        Double mapped = targetsByGoal.get(currentGoal);
+
+        dbg.addLine(p)
+                .addData(p + ".goal", currentGoal)
+                .addData(p + ".defaultGoal", defaultGoal)
+                .addData(p + ".hasMapping", mapped != null)
+                .addData(p + ".mappedTarget", mapped)
+                .addData(p + ".plantTarget", plant.getTarget())
+                .addData(p + ".atSetpoint", plant.atSetpoint())
+                .addData(p + ".hasFeedback", plant.hasFeedback());
+
+        plant.debugDump(dbg, p + ".plant");
+    }
+
 }

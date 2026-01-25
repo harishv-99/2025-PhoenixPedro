@@ -1,332 +1,374 @@
-# Phoenix Framework Overview
+# Framework Overview
 
-This document gives a high‑level tour of the Phoenix framework and how the
-major pieces fit together. It focuses on the **conceptual layers** and on the
-APIs that students should reach for first.
+Phoenix is a small FTC framework that helps you structure robot code around a clean, repeatable loop.
 
-The main ideas:
-
-* Separate **hardware wiring** from **robot behavior**.
-* Keep everything **non‑blocking** and **task‑driven**.
-* Favor **factory helpers** over low‑level classes in student code.
+The big idea is: **advance a single `LoopClock` once per OpMode cycle**, then run everything else (inputs, bindings, tasks, drive, mechanisms) off that clock.
 
 ---
 
-## 1. Layered architecture
+## Package structure
 
-Phoenix is organized into a small set of layers:
+Phoenix is organized by **robot concepts**, not by FTC SDK details.
 
-1. **FTC SDK hardware** – `HardwareMap`, `DcMotor`, `Servo`, `CRServo`, etc.
-2. **Phoenix HAL** – small interfaces like `PowerOutput`, `PositionOutput`,
-   `VelocityOutput`.
-3. **Actuators / Plants** – turn HAL outputs into `Plant` objects.
-4. **Drive** – `DriveSource` + `Drivebase` (e.g., `MecanumDrivebase`).
-5. **Tasks** – non‑blocking behaviors that run over time.
-6. **Bindings** – mapping inputs (gamepads, triggers) to behaviors.
+### Packages students use day-to-day
 
-### 1.1 Why this structure?
+Most robot code should only need imports from these packages:
 
-The goals are:
+* `edu.ftcphoenix.fw.input` — gamepad wrappers (`Gamepads`, `GamepadDevice`, `Axis`, `Button`).
+* `edu.ftcphoenix.fw.input.binding` — `Bindings`: map button edges to actions.
+* `edu.ftcphoenix.fw.task` — `Task`, `TaskRunner`, `Tasks`: non-blocking macros over time.
+* `edu.ftcphoenix.fw.actuation` — `Plant`, `Actuators`, `PlantTasks`: mechanisms you command with numeric targets.
+* `edu.ftcphoenix.fw.drive` — `DriveSignal`, `DriveSource`, `MecanumDrivebase` (FTC-independent drive logic).
+* `edu.ftcphoenix.fw.ftc` — FTC entrypoints/adapters (e.g. `FtcDrives` for drivetrain wiring).
+* `edu.ftcphoenix.fw.sensing` — sensor-facing wrappers (vision, odometry, etc.).
+* `edu.ftcphoenix.fw.localization` — pose estimation (AprilTags, odometry, fusion).
+* `edu.ftcphoenix.fw.field` — field metadata (tag layouts, constants).
 
-* Make robot code **read like a story** ("spin up shooter, feed, then spin down").
-* Make it easy to **swap hardware** or add new mechanisms.
-* Keep timing and scheduling consistent across TeleOp and Autonomous.
+Within `drive/`, subpackages are intentionally parallel and predictable:
 
-Your OpMode lives at the top of this stack and mostly talks to:
+* `drive.source` — “where drive commands come from” (gamepad, autonomous logic).
+* `drive.guidance` — driver-assist building blocks (auto-aim, “go-to point”, pose lock, etc.).
+* `drive.control` — closed-loop drive behaviors/controllers/tasks (go-to-pose, heading controllers).
 
-* `Drivebase` / `DriveSource` for motion.
-* `Plant`s for mechanisms.
-* `Tasks` / `TaskRunner` for behavior.
+### Packages that are intentionally “behind the scenes”
+
+These exist so the student-facing packages stay small and consistent:
+
+* `edu.ftcphoenix.fw.core.*` — shared plumbing: time, math, geometry, control, debug, and the HAL.
+* `edu.ftcphoenix.fw.ftc.*` — the **FTC SDK boundary** (hardware adapters, frame conversions, FTC vision plumbing). Most teams only touch a couple entrypoints like `FtcDrives`.
+* `edu.ftcphoenix.fw.tools.*` — testers and examples you can copy.
+* `edu.ftcphoenix.fw.legacy.*` — intentionally retained older base classes (not recommended for new code).
+
+One important gotcha with FTC vision:
+
+* Anything backed by a `VisionPortal` **owns the camera**. When you are done with a vision tester/OpMode,
+  make sure the portal is closed so the next tester can start the camera cleanly.
+  In Phoenix, `AprilTagSensor` has a `close()` method for this purpose—call it on `stop()`/BACK navigation.
+
+One more gotcha that matters a lot for AprilTags:
+
+### Coordinate frames and 3rd-party conventions (especially AprilTags)
+
+Phoenix uses `Pose2d`/`Pose3d` heavily. Those are just *math objects* — they don't know what "+X" means
+unless you define the frame.
+
+Phoenix's standard convention is right-handed:
+
+* Units: **inches** (translation) and **radians** (angles).
+* Rotations:
+  * yaw = rotation about **+Z** (turning left / CCW is positive)
+  * pitch = rotation about **+Y**
+  * roll = rotation about **+X**
+
+For field-centric work, Phoenix uses the **FTC Field Coordinate System**:
+
+* Origin at the field center
+* +Z up
+* Stand at the **Red Wall center** facing the field: +X is to your right, +Y is away from the Red Wall
+
+AprilTags add an extra complication: FTC exposes *multiple* pose frames.
+
+* **Game database / layout** (`AprilTagGameDatabase` → `TagLayout`)
+  * Tag poses come from FTC metadata (`fieldPosition` + `fieldOrientation`).
+* **Detections** (`AprilTagDetection`)
+  * `rawPose` is the **native AprilTag/OpenCV camera frame** (+X right, +Y down, +Z forward).
+  * `ftcPose` is a **convenience re-frame** (+X right, +Y forward, +Z up) with yaw/pitch/roll labels.
+
+Phoenix's rule of thumb:
+
+* If you are composing detections with the FTC game database (localization, camera mount calibration),
+  use `rawPose` (then convert it into Phoenix camera axes). Mixing `ftcPose` with game database
+  metadata can put you in two different coordinate systems and produce nonsense transforms.
+
+Implementation pointers:
+
+* `fw.ftc.FtcFrames` documents the basis transforms and exposes the conversion matrices.
+* `fw.ftc.FtcVision` builds `AprilTagObservation.cameraToTagPose` from `rawPose` and converts it into
+  Phoenix camera axes (+X forward, +Y left, +Z up).
+
+Tester naming conventions (telemetry menus):
+
+* Prefix calibration routines with `Calib:`
+* Prefix localization/pose display tools with `Loc:`
+* Prefix hardware sanity checks with `HW:`
+* If a tester is robot-specific, make that obvious in the label (for example, append `(Robot)` or include the robot name)
+
+Two rules of thumb:
+
+1. If a class references FTC SDK types (`com.qualcomm.*`), it belongs in `fw.ftc` or `fw.tools`, not in the core building blocks.
+2. The package tree is kept **parallel** on purpose (for example, `sensing.vision` ↔ `localization.apriltag`, and later `sensing.odometry` ↔ `localization.odometry`). That makes it easy to predict where new features should go.
 
 ---
 
-## 2. From hardware to HAL
+## The layers (top → bottom)
 
-The Phoenix HAL defines small, focused interfaces:
+Think of Phoenix as a few thin layers you stack:
 
-* `PowerOutput` – something that accepts a normalized power (e.g. ‑1..+1).
-* `PositionOutput` – something that accepts a position in native units
-  (servo position or encoder ticks).
-* `VelocityOutput` – something that accepts a velocity in native units
-  (ticks/sec, etc.).
+1. **OpMode / Robot code (you)**
 
-Adapters in `edu.ftcphoenix.fw.adapters.ftc` (e.g. `FtcHardware`) take FTC
-SDK objects and expose them as HAL interfaces. This layer hides:
+    * Owns the loop and decides what updates when.
+2. **Input** (`fw.input`)
 
-* Which controller you’re using.
-* How encoders are configured.
-* The details of SDK calls like `setPower()`, `setMode()`, etc.
+    * `Gamepads`, `GamepadDevice`, `Axis`, `Button`.
+    * `Button` supports edge detection (`onPress`/`onRelease`), <i>and</i> a built-in
+      press-to-toggle state via `Button.isToggled()` (useful when enabling drive overlays).
+3. **Bindings** (`fw.input.binding`)
 
-Most student code does not need to touch `FtcHardware` directly.
+    * `Bindings` turns button edges into actions (often: enqueue a macro).
+4. **Tasks / Macros** (`fw.task`, plus helpers in other packages)
+
+    * `Task`, `TaskRunner`, `Tasks`, `PlantTasks`, `DriveTasks`.
+5. **Drive behavior** (`fw.drive` + `fw.drive.source` + `fw.drive.guidance`)
+
+    * `DriveSource` produces a `DriveSignal` (stick drive, driver assist overlays, etc.).
+6. **Actuation**
+
+    * Drivebase: `MecanumDrivebase`.
+    * Mechanisms: `Plant`.
+7. **Core HAL** (`fw.core.hal`)
+
+    * Tiny device-neutral interfaces: `PowerOutput`, `PositionOutput`, `VelocityOutput`.
+8. **FTC boundary** (`fw.ftc`)
+
+    * `FtcHardware` wraps FTC SDK hardware into Phoenix HAL outputs.
 
 ---
 
-## 3. Actuators and Plants
+## The loop clock (and why it matters)
 
-### 3.1 Plants: behavior at the mechanism level
+`LoopClock` (in `fw.core.time`) tracks:
 
-A `Plant` represents a mechanism you can command with a single numeric target:
+* `nowSec()` — current time
+* `dtSec()` — delta time since last loop
+* `cycle()` — a monotonically increasing **per-loop id**
+
+Several Phoenix systems are **idempotent by `clock.cycle()`** (safe if accidentally called twice in the same loop), including:
+
+* `Gamepads.update(clock)`
+* `Bindings.update(clock)`
+* `TaskRunner.update(clock)`
+* `Button.updateAllRegistered(clock)`
+
+This prevents bugs like “button press fired twice” or “tasks advanced twice” when helper code gets layered.
+
+---
+
+## Hardware and mechanisms: `Actuators`, `Plant`, and the HAL
+
+### HAL outputs (lowest level)
+
+Phoenix abstracts FTC hardware into small output interfaces (in `fw.core.hal`):
+
+* `PowerOutput` — normalized power (typically `[-1, +1]`)
+* `PositionOutput` — native position units (servo `0..1`, motor encoder ticks, etc.)
+* `VelocityOutput` — native velocity units (e.g., ticks/sec)
+
+### FTC boundary: `FtcHardware`
+
+`edu.ftcphoenix.fw.ftc.FtcHardware` provides factories like:
+
+* `FtcHardware.motorPower(hw, name, direction)`
+* `FtcHardware.motorVelocity(hw, name, direction)`
+* `FtcHardware.motorPosition(hw, name, direction)`
+* `FtcHardware.servoPosition(hw, name, direction)`
+* `FtcHardware.crServoPower(hw, name, direction)`
+
+These return HAL outputs.
+
+### Beginner entrypoint: `Actuators`
+
+Most teams should **not** call `FtcHardware` directly. Use the staged builder in `Actuators`:
 
 ```java
-public interface Plant {
-    void setTarget(double target);
-    double getTarget();
+import edu.ftcphoenix.fw.core.hal.Direction;
 
-    void update(double dtSec);
-    void stop();
+import edu.ftcphoenix.fw.actuation.Actuators;
+import edu.ftcphoenix.fw.actuation.Plant;
 
-    boolean atSetpoint();
-    boolean hasFeedback();
-    void reset();
-}
-```
-
-Examples:
-
-* Shooter flywheel – target is velocity in native units.
-* Elevator – target is position (ticks) with encoder feedback.
-* Pusher servo – target is servo position 0.0..1.0.
-* Intake – target is power (‑1..+1).
-
-Plants don’t know about gamepads or tasks. They simply move toward whatever
-`setTarget(...)` you ask for.
-
-### 3.2 Actuators: recommended way to create Plants
-
-In student code, the preferred entry point is:
-
-```java
+// Shooter: dual-motor velocity plant (native units) with a rate limit.
 Plant shooter = Actuators.plant(hardwareMap)
-        .motorPair("shooterLeftMotor",  false,
-                   "shooterRightMotor", true)
-        .velocity()               // or .velocity(tolerance)
+        .motor("shooterLeftMotor", Direction.FORWARD)
+        .andMotor("shooterRightMotor", Direction.REVERSE)
+        .velocity()            // default tolerance (native units)
+        .rateLimit(500.0)      // max delta in native units per second
         .build();
 
+// Transfer: CR servo power plant.
 Plant transfer = Actuators.plant(hardwareMap)
-        .crServoPair("transferLeft", false,
-                     "transferRight", true)
+        .crServo("transferServo", Direction.FORWARD)
         .power()
         .build();
 
+// Pusher: positional servo plant (0..1).
 Plant pusher = Actuators.plant(hardwareMap)
-        .servo("pusherServo", false)
-        .position()               // open‑loop servo position
+        .servo("pusherServo", Direction.FORWARD)
+        .position()
         .build();
 ```
 
-The builder has three steps:
-
-1. **Pick hardware**: `.motor(...)`, `.motorPair(...)`, `.servo(...)`,
-   `.servoPair(...)`, `.crServo(...)`, `.crServoPair(...)`.
-2. **Pick control type**:
-
-    * `.power()` – open‑loop power.
-    * `.velocity()` / `.velocity(tolerance)` – closed‑loop velocity.
-    * `.position()` / `.position(tolerance)` – positional control.
-3. **Optional modifiers** – `.rateLimit(...)` then `.build()`.
-
-Internally, the builder calls the lower‑level `Plants` factories and the FTC
-HAL adapters. Student code should normally use the **builder** and avoid
-calling `Plants.*` directly.
-
-### 3.3 Position semantics
-
-The `.position(...)` mode is intentionally flexible:
-
-* **Motors** – feedback position plants:
-
-    * Created via `.motor(...)`/`.motorPair(...).position(tolerance)`.
-    * Use encoders via `FtcHardware.motorPosition(...)`.
-    * `hasFeedback() == true`.
-    * `atSetpoint()` checks encoder error vs tolerance.
-    * `reset()` re‑zeros the plant’s coordinate frame.
-* **Servos** – open‑loop position plants:
-
-    * Created via `.servo(...).position()` or `.servoPair().position()`.
-    * Use servo position 0.0..1.0.
-    * `hasFeedback() == false`.
-    * `atSetpoint()` always returns `true`.
-
-Because of this, feedback‑based helpers (like `PlantTasks.moveTo(...)`) are
-only valid for plants where `hasFeedback() == true`.
+**Important:** tasks can set targets on plants, but *your loop* must still call `plant.update(dtSec)` each cycle.
 
 ---
 
-## 4. Drive: DriveSource and Drivebase
+## Drive: `DriveSignal`, `DriveSource`, and `MecanumDrivebase`
 
-Phoenix separates **what you want the robot to do** from **how the drivebase
-makes it happen**.
+### `DriveSignal` (robot-centric command)
 
-* `DriveSource` – produces a `DriveSignal` based on inputs and state.
+A `DriveSignal` is **robot-centric** and follows Phoenix pose conventions:
 
-    * Examples: `GamepadDriveSource`, `TagAimDriveSource`.
-* `DriveSignal` – a high‑level command (e.g., strafe, forward, rotate).
-* `Drivebase` – turns a `DriveSignal` into motor outputs.
+* `axial > 0` → forward
+* `lateral > 0` → left
+* `omega > 0` → counter-clockwise (CCW)
 
-    * Example: `MecanumDrivebase` from `Drives.mecanum(...)`.
+### `DriveSource` (where commands come from)
 
-Typical pattern in an OpMode:
+A `DriveSource` produces a `DriveSignal` each loop:
+
+* Manual TeleOp: `GamepadDriveSource`
+* Assisted aiming / guidance: `DriveGuidance` (build a plan) + {@code DriveSource.overlayWhen(...) }
+* Autonomous logic: anything implementing `DriveSource`
+
+`DriveSource` also supports composition helpers (like scaling and blending) via default methods.
+
+### `MecanumDrivebase` + `FtcDrives`
+
+`FtcDrives.mecanum(hardwareMap)` is the beginner-friendly way to wire a mecanum drivetrain.
 
 ```java
-DriveSignal cmd = driveSource.get(clock).clamped();
-drivebase.drive(cmd);
-drivebase.update(clock);
+import edu.ftcphoenix.fw.drive.*;
+import edu.ftcphoenix.fw.drive.source.GamepadDriveSource;
+import edu.ftcphoenix.fw.input.Gamepads;
+
+Gamepads pads = Gamepads.create(gamepad1, gamepad2);
+
+MecanumDrivebase drivebase = FtcDrives.mecanum(hardwareMap);
+DriveSource drive = GamepadDriveSource.teleOpMecanumStandard(pads);
 ```
 
-Drive sources can be swapped without changing the rest of the robot:
-
-* Basic TeleOp: `GamepadDriveSource`.
-* Vision‑assisted alignment: `TagAimDriveSource`.
+**Rate limiting note:** `MecanumDrivebase` can rate-limit components using the most recent `dtSec`. Call `drivebase.update(clock)` once per loop. If you want rate limiting to use the *current* loop’s `dt`, call `update(clock)` **before** `drive(...)`.
 
 ---
 
-## 5. Tasks: non‑blocking behaviors
+## Tasks and macros
 
-### 5.1 Task and TaskRunner
+### `Task` and `TaskRunner`
 
-Tasks are small objects that run over time:
+A `Task` is non-blocking work that progresses over multiple loop cycles.
+
+A `TaskRunner` runs tasks **sequentially** (FIFO): start one task, update it each cycle until it completes, then move to the next.
+
+### Factories: `Tasks`, `PlantTasks`, `DriveTasks`
+
+Phoenix gives you factories so your code reads like intent:
+
+* `Tasks` — general composition (`sequence`, `parallelAll`, `waitForSeconds`, `waitUntil`, `runOnce`, …)
+* `PlantTasks` — patterns that command a `Plant` (`setInstant`, `holdFor`, `moveTo`, …)
+* `DriveTasks` — simple patterns that command a `MecanumDrivebase` (`driveForSeconds`, `stop`, …)
+* `DriveGuidanceTasks` — execute a `DriveGuidancePlan` as a Task (autonomous-style guidance)
+* `GoToPoseTasks` — convenience wrappers for common go-to-pose behaviors (`goToPoseFieldRelative`, `goToPoseTagRelative`, …)
+
+Example macro (shoot one disc):
 
 ```java
-public interface Task {
-    void start(LoopClock clock);
-    void update(LoopClock clock);
-    boolean isComplete();
-    TaskOutcome getOutcome();
+import edu.ftcphoenix.fw.actuation.Plant;
+import edu.ftcphoenix.fw.actuation.PlantTasks;
+import edu.ftcphoenix.fw.task.Task;
+import edu.ftcphoenix.fw.task.Tasks;
+
+private Task buildShootOneDiscMacro(Plant shooter, Plant transfer) {
+    return Tasks.sequence(
+            PlantTasks.setInstant(shooter, 3200.0),
+            Tasks.waitUntil(shooter::atSetpoint, 1.0),
+            PlantTasks.holdForThen(transfer, 1.0, 0.20, 0.0)
+    );
 }
 ```
 
-`TaskRunner` manages a queue of tasks and calls `start` / `update` for you.
+---
 
-The golden rule:
+## Inputs and bindings
 
-> **Never block** inside `start(...)` or `update(...)`.
->
-> Use time and conditions to decide when a task is done, not sleeps or loops.
+### `Gamepads`
 
-### 5.2 Factory helpers: Tasks, PlantTasks, DriveTasks
+`Gamepads` wraps FTC `gamepad1` / `gamepad2` and exposes calibrated axes and edge-tracked buttons.
 
-In student code, you should almost always build tasks using **factory helpers**:
+Call **once per loop**:
 
-* `Tasks.*` – general utilities:
+```java
+gamepads.update(clock);
+```
 
-    * `Tasks.instant(...)` – one‑shot actions.
-    * `Tasks.waitForSeconds(...)` – time‑based waits.
-    * `Tasks.waitUntil(...)` – condition‑based waits.
-    * `Tasks.sequence(...)` – run tasks one after another.
-    * `Tasks.parallelAll(...)` – run tasks in parallel.
-* `PlantTasks.*` – mechanism patterns:
+### `Bindings`
 
-    * `holdFor(...)`, `holdForThen(...)` – time‑based plant commands.
-    * `moveTo(...)`, `moveTo(..., timeout)` – feedback‑based moves.
-    * `moveToThen(...)` – move then change target once.
-    * `setInstant(...)` – set target once and complete.
-* `DriveTasks.*` – drive‑specific behaviors (drive for time/distance, stop,
-  etc.).
+`Bindings` lets you map button edges to actions.
 
-Under the hood, these factories use classes like `InstantTask`,
-`RunForSecondsTask`, `WaitUntilTask`, `SequenceTask`, and `ParallelAllTask`,
-so you can still drop down a level when needed.
+Most commonly: **enqueue a macro** on press.
 
-Recommended usage:
+```java
+import edu.ftcphoenix.fw.input.binding.Bindings;
+import edu.ftcphoenix.fw.task.TaskRunner;
 
-* Use **`Tasks`/`PlantTasks`/`DriveTasks`** in your OpModes and robot code.
-* Use the raw `Task` classes when:
+Bindings bindings = new Bindings();
+TaskRunner macros = new TaskRunner();
 
-    * You are building new helper factories for your team.
-    * You need a behavior that the existing helpers don’t cover yet.
+bindings.onPress(gamepads.p1().y(), () ->
+        macros.enqueue(buildShootOneDiscMacro(shooter, transfer))
+);
+```
+
+Call **once per loop** (after `gamepads.update(clock)`):
+
+```java
+bindings.update(clock);
+```
 
 ---
 
-## 6. Bindings: connecting inputs to behavior
+## A standard OpMode loop shape
 
-Bindings map input events (button presses, stick moves) to actions:
-
-* "When P1.Y is pressed, enqueue shooter macro."
-* "While P1.RB is held, enable slow mode."
-
-Example:
+This is the “everything has a place” pattern Phoenix is built around:
 
 ```java
-bindings.onPress(gamepads.p1().y(), () -> {
-    macroRunner.enqueue(buildShootOneDiscMacro());
-});
+@Override
+public void start() {
+    clock.reset(getRuntime());
+}
 
-bindings.whileHeld(gamepads.p1().rightBumper(), () -> {
-    driveSource.setSlowMode(true);
-});
-```
-
-The main loop calls:
-
-```java
-gamepads.update(clock.dtSec());
-bindings.update(clock.dtSec());
-```
-
-Bindings stay at the top of the stack and never touch motors directly.
-They only call helpers (Tasks, PlantTasks, DriveTasks, or your own methods).
-
----
-
-## 7. The standard loop shape
-
-Almost every Phoenix OpMode follows this shape:
-
-```java
 @Override
 public void loop() {
     // 1) Clock
     clock.update(getRuntime());
 
-    // 2) Inputs + bindings
-    gamepads.update(clock.dtSec());
-    bindings.update(clock.dtSec());
+    // 2) Inputs
+    gamepads.update(clock);
 
-    // 3) Macros / tasks
+    // 3) Bindings (may enqueue macros)
+    bindings.update(clock);
+
+    // 4) Tasks / macros
     macroRunner.update(clock);
 
-    // 4) Drive
-    DriveSignal driveCmd = driveSource.get(clock).clamped();
-    drivebase.drive(driveCmd);
-    drivebase.update(clock);
+    // 5) Drive
+    DriveSignal cmd = driveSource.get(clock).clamped();
+    drivebase.update(clock);   // call before drive(...) if you want current-dt rate limiting
+    drivebase.drive(cmd);
 
-    // 5) Mechanisms
-    shooter.update(clock.dtSec());
-    transfer.update(clock.dtSec());
-    pusher.update(clock.dtSec());
+    // 6) Mechanisms
+    double dtSec = clock.dtSec();
+    shooter.update(dtSec);
+    transfer.update(dtSec);
 
-    // 6) Telemetry
+    // 7) Telemetry
     telemetry.update();
 }
 ```
 
-This works for both TeleOp and Autonomous. In Autonomous you typically:
-
-* Enqueue one big `Tasks.sequence(...)` macro in `start()`.
-* Let it run while the loop keeps everything updated.
-
 ---
 
-## 8. Putting it together: suggested workflow
+## Where to go next
 
-When building a new robot or mechanism:
-
-1. **Define hardware mapping** in the FTC Robot Configuration.
-2. **Create Plants** using `Actuators.plant(hardwareMap)`:
-
-    * Use motor `.velocity(...)` / `.position(tolerance)` for feedback.
-    * Use servo `.position()` or `.power()` for simpler mechanisms.
-3. **Write small behaviors** with `PlantTasks` and `Tasks`:
-
-    * Time‑based holds, feedback moves, instant changes.
-4. **Compose behaviors into macros**:
-
-    * `Tasks.sequence(...)` and `Tasks.parallelAll(...)`.
-5. **Hook macros to inputs** using `Bindings`.
-6. Keep the **main loop shape** simple and consistent.
-
-If you find yourself repeating the same wiring of plants and tasks, pull it
-into a helper method or a new factory so the next student can call a single
-function. The provided examples (especially the shooter case study) are
-intended as templates you can adapt to your own robot while keeping the
-same structure.
+* **Beginner’s Guide** — first setup + “how to write a Phoenix OpMode”.
+* **Framework Principles** — the rules-of-thumb Phoenix expects you to follow.
+* **Loop Structure** — deeper reasoning about update order and idempotency.
+* **Tasks & Macros Quickstart** — how to build task graphs quickly.
+* **Shooter Case Study & Examples Walkthrough** — maps concepts to real examples in `fw.tools.examples`.

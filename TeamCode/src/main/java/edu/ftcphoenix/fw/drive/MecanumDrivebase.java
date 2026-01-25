@@ -1,9 +1,11 @@
 package edu.ftcphoenix.fw.drive;
 
-import edu.ftcphoenix.fw.debug.DebugSink;
-import edu.ftcphoenix.fw.hal.PowerOutput;
-import edu.ftcphoenix.fw.util.LoopClock;
-import edu.ftcphoenix.fw.util.MathUtil;
+import java.util.Objects;
+
+import edu.ftcphoenix.fw.core.debug.DebugSink;
+import edu.ftcphoenix.fw.core.hal.PowerOutput;
+import edu.ftcphoenix.fw.core.math.MathUtil;
+import edu.ftcphoenix.fw.core.time.LoopClock;
 
 /**
  * Simple open-loop mecanum mixer.
@@ -16,24 +18,25 @@ import edu.ftcphoenix.fw.util.MathUtil;
  * viewed from above), with all inversion handled at the hardware level (e.g. via
  * FTC SDK {@code setDirection(REVERSE)} when constructing {@link PowerOutput}s).
  * In that configuration, the {@link DriveSignal} components have the following
- * robot-centric meaning:</p>
+ * robot-centric meaning, aligned with Phoenix pose conventions
+ * ({@code Pose2d}/{@code Pose3d}: +X forward, +Y left, yaw CCW-positive):</p>
  *
  * <ul>
  *   <li><b>axial &gt; 0</b>   &rarr; drive forward</li>
  *   <li><b>axial &lt; 0</b>   &rarr; drive backward</li>
- *   <li><b>lateral &gt; 0</b> &rarr; strafe right</li>
- *   <li><b>lateral &lt; 0</b> &rarr; strafe left</li>
- *   <li><b>omega &gt; 0</b>   &rarr; rotate clockwise (turn right, viewed from above)</li>
- *   <li><b>omega &lt; 0</b>   &rarr; rotate counter-clockwise (turn left)</li>
+ *   <li><b>lateral &gt; 0</b> &rarr; strafe left</li>
+ *   <li><b>lateral &lt; 0</b> &rarr; strafe right</li>
+ *   <li><b>omega &gt; 0</b>   &rarr; rotate counter-clockwise (turn left, viewed from above)</li>
+ *   <li><b>omega &lt; 0</b>   &rarr; rotate clockwise (turn right)</li>
  * </ul>
  *
  * <p>The internal mixer uses the standard mecanum equations:</p>
  *
  * <pre>
- * fl = axial + lateral + omega
- * fr = axial - lateral - omega
- * bl = axial - lateral + omega
- * br = axial + lateral - omega
+ * fl = axial - lateral - omega
+ * fr = axial + lateral + omega
+ * bl = axial + lateral - omega
+ * br = axial - lateral + omega
  * </pre>
  *
  * <h2>Normalization</h2>
@@ -45,43 +48,165 @@ import edu.ftcphoenix.fw.util.MathUtil;
  * clamping each wheel. A final clamp to [-1, +1] is applied for numerical safety.
  * </p>
  *
- * <p>
- * The {@link MecanumConfig} allows optional scaling of the three drive components
- * (axial, lateral, omega) <em>and</em> optional per-axis rate limiting of how
- * quickly those commands may change over time.
- * </p>
- *
  * <h2>Typical usage</h2>
  *
  * <pre>{@code
- * public final class PhoenixRobot {
- *     private final MecanumDrivebase drivebase;
- *     private final DriveSource driveSource;
+ * MecanumDrivebase.Config cfg = MecanumDrivebase.Config.defaults();
+ * cfg.maxOmega = 0.8;                 // example: slightly slower rotation
+ * cfg.maxLateralRatePerSec = 4.0;     // example: smoother strafing
  *
- *     public PhoenixRobot(HardwareMap hw, Gamepads pads) {
- *         this.drivebase = Drives.mecanum(hw);
- *         this.driveSource = GamepadDriveSource.teleOpMecanumStandard(pads);
- *     }
+ * MecanumDrivebase drive = new MecanumDrivebase(fl, fr, bl, br, cfg);
  *
- *     public void updateTeleOp(LoopClock clock) {
- *         // Get a drive command from the current drive source.
- *         DriveSignal signal = driveSource.get(clock).clamped();
- *
- *         // Apply to the drivebase.
- *         drivebase.drive(signal);
- *         drivebase.update(clock);
- *     }
- * }
+ * // In the main loop:
+ * drive.update(clock);        // update dt used for rate limiting
+ * drive.drive(signal);        // applies motor power immediately
  * }</pre>
  */
 public final class MecanumDrivebase {
+
+    /**
+     * Configuration for {@link MecanumDrivebase}.
+     *
+     * <p>This is a simple <strong>mutable data object</strong> following the
+     * Phoenix convention:</p>
+     *
+     * <ul>
+     *   <li>Start from {@link #defaults()}.</li>
+     *   <li>Override the fields you care about during robot initialization.</li>
+     *   <li>Pass the config into {@link MecanumDrivebase} at construction time.</li>
+     * </ul>
+     *
+     * <p><b>Important:</b> {@link MecanumDrivebase} makes a defensive copy of the
+     * config at construction time. Mutating a {@code Config} instance after passing
+     * it into a drivebase will not affect that already-created drivebase.</p>
+     */
+    public static final class Config {
+
+        // --------------------------------------------------------------------
+        // Per-axis scaling (high-level DriveSignal components)
+        // --------------------------------------------------------------------
+
+        /**
+         * Scale applied to {@link DriveSignal#axial} before mixing.
+         *
+         * <p>Default: {@code 1.0} (no scaling).</p>
+         */
+        public double maxAxial = 1.0;
+
+        /**
+         * Scale applied to {@link DriveSignal#lateral} before mixing.
+         *
+         * <p>Default: {@code 1.0} (no scaling).</p>
+         */
+        public double maxLateral = 1.0;
+
+        /**
+         * Scale applied to {@link DriveSignal#omega} before mixing.
+         *
+         * <p>Default: {@code 1.0} (no scaling).</p>
+         */
+        public double maxOmega = 1.0;
+
+        // --------------------------------------------------------------------
+        // Physical-speed mapping (used by drive(ChassisSpeeds))
+        // --------------------------------------------------------------------
+
+        /**
+         * Approximate maximum forward speed of the robot at full command, in inches/sec.
+         *
+         * <p>Used only when converting a {@link ChassisSpeeds} command into a normalized
+         * {@link DriveSignal}. This is a <b>best-effort mapping</b>, not closed-loop velocity
+         * control.</p>
+         */
+        public double maxVxInchesPerSec = 40.0;
+
+        /**
+         * Approximate maximum leftward strafe speed of the robot at full command, in inches/sec.
+         *
+         * <p>Used only when converting a {@link ChassisSpeeds} command into a normalized
+         * {@link DriveSignal}.</p>
+         */
+        public double maxVyInchesPerSec = 40.0;
+
+        /**
+         * Approximate maximum angular speed at full command, in rad/sec.
+         *
+         * <p>Used only when converting a {@link ChassisSpeeds} command into a normalized
+         * {@link DriveSignal}.</p>
+         */
+        public double maxOmegaRadPerSec = Math.toRadians(180.0);
+
+        // --------------------------------------------------------------------
+        // Optional per-axis rate limiting (advanced)
+        // --------------------------------------------------------------------
+
+        /**
+         * Maximum change in axial command per second (command units/sec).
+         *
+         * <p>Domain: any value &gt; 0 enables a limit; {@code <= 0} disables it.</p>
+         *
+         * <p>Default: {@code 0.0} (no limit).</p>
+         */
+        public double maxAxialRatePerSec = 0.0;
+
+        /**
+         * Maximum change in lateral command per second (command units/sec).
+         *
+         * <p>Domain: any value &gt; 0 enables a limit; {@code <= 0} disables it.</p>
+         *
+         * <p>
+         * Default: {@code 4.0}. A typical Phoenix tuning might set this to a small
+         * value like {@code 4.0} to smooth strafing.
+         * </p>
+         */
+        public double maxLateralRatePerSec = 4.0;
+
+        /**
+         * Maximum change in omega command per second (command units/sec).
+         *
+         * <p>Domain: any value &gt; 0 enables a limit; {@code <= 0} disables it.</p>
+         *
+         * <p>Default: {@code 0.0} (no limit).</p>
+         */
+        public double maxOmegaRatePerSec = 0.0;
+
+        private Config() {
+            // Defaults assigned in field initializers.
+        }
+
+        /**
+         * Create a new config instance with Phoenix defaults.
+         */
+        public static Config defaults() {
+            return new Config();
+        }
+
+        /**
+         * Create a deep copy of this config.
+         */
+        public Config copy() {
+            Config c = new Config();
+            c.maxAxial = this.maxAxial;
+            c.maxLateral = this.maxLateral;
+            c.maxOmega = this.maxOmega;
+
+            c.maxVxInchesPerSec = this.maxVxInchesPerSec;
+            c.maxVyInchesPerSec = this.maxVyInchesPerSec;
+            c.maxOmegaRadPerSec = this.maxOmegaRadPerSec;
+
+            c.maxAxialRatePerSec = this.maxAxialRatePerSec;
+            c.maxLateralRatePerSec = this.maxLateralRatePerSec;
+            c.maxOmegaRatePerSec = this.maxOmegaRatePerSec;
+            return c;
+        }
+    }
 
     private final PowerOutput fl;
     private final PowerOutput fr;
     private final PowerOutput bl;
     private final PowerOutput br;
 
-    private final MecanumConfig cfg;
+    private final Config cfg;
 
     // Last commanded drive components (after scaling and rate limiting).
     private double lastAxialCmd;
@@ -104,18 +229,70 @@ public final class MecanumDrivebase {
      * @param frPower power output for the front-right wheel (non-null)
      * @param blPower power output for the back-left wheel (non-null)
      * @param brPower power output for the back-right wheel (non-null)
-     * @param cfg     configuration for scaling and rate limiting (non-null)
+     * @param cfg     configuration for scaling and rate limiting (may be {@code null})
      */
     public MecanumDrivebase(PowerOutput flPower,
                             PowerOutput frPower,
                             PowerOutput blPower,
                             PowerOutput brPower,
-                            MecanumConfig cfg) {
+                            Config cfg) {
         this.fl = flPower;
         this.fr = frPower;
         this.bl = blPower;
         this.br = brPower;
-        this.cfg = cfg != null ? cfg : MecanumConfig.defaults();
+
+        // Defensive copy so callers can't change behavior by mutating cfg later.
+        this.cfg = (cfg != null ? cfg.copy() : Config.defaults());
+    }
+
+
+    /**
+     * Command the drivebase using a {@link ChassisSpeeds} velocity intent.
+     *
+     * <p>This is a <b>best-effort</b> mapping from physical units to a normalized
+     * {@link DriveSignal}. It does <em>not</em> perform closed-loop velocity control.
+     * Battery voltage, carpet, friction, and load will change the actual achieved speeds.</p>
+     *
+     * <p>All components are robot-centric, aligned with Phoenix pose conventions
+     * (+X forward, +Y left, yaw CCW-positive).</p>
+     *
+     * <p>Saturation policy: if any component would exceed its configured maximum, all
+     * components are scaled by the same factor so the command preserves its direction
+     * in (vx, vy, omega) space.</p>
+     *
+     * <p><b>Actuation timing:</b> this method ultimately calls {@link #drive(DriveSignal)},
+     * which <b>immediately</b> sends wheel power commands to the hardware outputs.</p>
+     *
+     * <p><b>Rate limiting:</b> if you enable rate limiting in {@link Config}, call
+     * {@link #update(LoopClock)} once per loop <b>before</b> calling this method so the
+     * current loop's {@code dtSec} is used.</p>
+     *
+     * @param speeds desired chassis speeds (robot-centric) (must not be {@code null})
+     * @throws IllegalStateException if any of the speed-mapping max values are <= 0
+     */
+    public void drive(ChassisSpeeds speeds) {
+        Objects.requireNonNull(speeds, "speeds");
+
+        double maxVx = cfg.maxVxInchesPerSec;
+        double maxVy = cfg.maxVyInchesPerSec;
+        double maxOmega = cfg.maxOmegaRadPerSec;
+
+        if (maxVx <= 0.0 || maxVy <= 0.0 || maxOmega <= 0.0) {
+            throw new IllegalStateException("Invalid speed mapping config: maxVxInchesPerSec, maxVyInchesPerSec, and maxOmegaRadPerSec must all be > 0");
+        }
+
+        // Convert physical units -> normalized command space.
+        double axial = speeds.vxRobotIps / maxVx;
+        double lateral = speeds.vyRobotIps / maxVy;
+        double omega = speeds.omegaRobotRadPerSec / maxOmega;
+
+        // Preserve-direction saturation in command space.
+        double maxMag = Math.max(1.0, Math.max(Math.abs(axial), Math.max(Math.abs(lateral), Math.abs(omega))));
+        axial /= maxMag;
+        lateral /= maxMag;
+        omega /= maxMag;
+
+        drive(new DriveSignal(axial, lateral, omega));
     }
 
     /**
@@ -125,21 +302,25 @@ public final class MecanumDrivebase {
      * This method:
      * </p>
      * <ol>
-     *   <li>Scales {@code axial}, {@code lateral}, {@code omega} by config limits.</li>
-     *   <li>Optionally rate-limits each component based on {@link #update(LoopClock)}.</li>
+     *   <li>Scales {@code axial}, {@code lateral}, {@code omega} by config scales.</li>
+     *   <li>Optionally rate-limits each component based on the most recent {@link #update(LoopClock)}.</li>
      *   <li>Computes mecanum wheel powers using the standard mix.</li>
      *   <li>Normalizes wheel powers if any magnitude exceeds 1.0.</li>
      *   <li>Clamps wheel powers to [-1, +1] and sends them to the hardware.</li>
      * </ol>
      *
-     * @param s drive command; if {@code null}, this is treated as a stop command
+     * <p><b>Actuation timing:</b> this method <b>immediately</b> sends wheel power commands
+     * to the hardware outputs (via {@link PowerOutput#setPower(double)}). It does not
+     * "latch" the command for a later update.</p>
+     *
+     * <p><b>Rate limiting:</b> if rate limiting is enabled in {@link Config}, call
+     * {@link #update(LoopClock)} once per loop <b>before</b> calling this method so the
+     * current loop's {@code dtSec} is used.</p>
+     *
+     * @param s drive command (must not be {@code null})
      */
     public void drive(DriveSignal s) {
-        if (s == null) {
-            // Treat null as a stop command for robustness.
-            stop();
-            return;
-        }
+        Objects.requireNonNull(s, "s");
 
         // 1) Apply per-axis scaling from the config.
         double desiredAxial = s.axial * cfg.maxAxial;
@@ -159,12 +340,12 @@ public final class MecanumDrivebase {
         // 3) Basic mecanum mixing with the (possibly rate-limited) components.
         //    Sign conventions (robot-centric):
         //      axial   > 0 -> forward
-        //      lateral > 0 -> right
-        //      omega   > 0 -> clockwise (turn right, viewed from above)
-        double flP = axialCmd + lateralCmd + omegaCmd;
-        double frP = axialCmd - lateralCmd - omegaCmd;
-        double blP = axialCmd - lateralCmd + omegaCmd;
-        double brP = axialCmd + lateralCmd - omegaCmd;
+        //      lateral > 0 -> left
+        //      omega   > 0 -> counter-clockwise (turn left, viewed from above)
+        double flP = axialCmd - lateralCmd - omegaCmd;
+        double frP = axialCmd + lateralCmd + omegaCmd;
+        double blP = axialCmd + lateralCmd - omegaCmd;
+        double brP = axialCmd - lateralCmd + omegaCmd;
 
         // 4) Normalize wheel powers if any exceeds |1.0| to preserve direction.
         double maxMag = Math.max(
@@ -222,8 +403,13 @@ public final class MecanumDrivebase {
      * Update loop timing information used for rate limiting.
      *
      * <p>
-     * Call this once per loop before calling {@link #drive(DriveSignal)} if
-     * you want rate limiting to be based on the most recent dt.
+     * This method only records loop timing ({@code dtSec}) for optional rate limiting.
+     * It does <b>not</b> command motors.
+     * </p>
+     *
+     * <p>
+     * Call this once per loop <b>before</b> calling {@link #drive(DriveSignal)} (or
+     * {@link #drive(ChassisSpeeds)}) if you want rate limiting to use the most recent dt.
      * </p>
      *
      * @param clock loop timing helper (may be {@code null})
@@ -236,8 +422,7 @@ public final class MecanumDrivebase {
     }
 
     /**
-     * Immediately stop all four drive outputs and reset last command
-     * bookkeeping.
+     * Immediately stop all four drive outputs and reset last command bookkeeping.
      */
     public void stop() {
         lastAxialCmd = 0.0;

@@ -7,14 +7,26 @@ import org.firstinspires.ftc.robotcore.external.Telemetry;
 import edu.ftcphoenix.fw.actuation.Actuators;
 import edu.ftcphoenix.fw.actuation.Plant;
 import edu.ftcphoenix.fw.actuation.PlantTasks;
+import edu.ftcphoenix.fw.core.debug.DebugSink;
+import edu.ftcphoenix.fw.core.math.InterpolatingTable1D;
+import edu.ftcphoenix.fw.core.math.MathUtil;
 import edu.ftcphoenix.fw.input.Gamepads;
 import edu.ftcphoenix.fw.task.Task;
 import edu.ftcphoenix.fw.task.Tasks;
-import edu.ftcphoenix.fw.util.InterpolatingTable1D;
-import edu.ftcphoenix.fw.util.MathUtil;
 
+/**
+ * Phoenix robot shooter subsystem.
+ *
+ * <p>This class wires the shooter-related {@link edu.ftcphoenix.fw.actuation.Plant}s
+ * and exposes small, non-blocking {@link Task} helpers for TeleOp and autonomous.
+ * Methods are named "instantX" to emphasize that they return tasks that can be
+ * scheduled without blocking the main loop.</p>
+ */
 public class Shooter {
 
+    /**
+     * Direction for the transfer (indexer) CR servos.
+     */
     public enum TransferDirection {
         FORWARD,
         BACKWARD
@@ -45,37 +57,41 @@ public class Shooter {
                     76.6, 1600,
                     83.4, 1600,
                     94.5, 1650,
-                    103.8, 1650,
-                    112.4, 1700,
-                    123.5, 1750,
-                    125.2, 1750,
-                    132.5, 1750,
-                    137.4, 1800,
-                    141.4, 1850,
-                    148.6, 1850
+                    102.5, 1625,
+                    105.5, 1650,
+                    113.3, 1650,
+                    117.8, 1685,
+                    121, 1700,
+                    125, 1700,
+                    130.2, 1700,
+                    139.4, 1750,
+                    150, 1800
             );
 
 
+    /**
+     * Construct the shooter subsystem and wire all associated hardware.
+     */
     public Shooter(HardwareMap hardwareMap, Telemetry telemetry, Gamepads gamepads) {
         plantPusher = Actuators.plant(hardwareMap)
                 .servo(RobotConfig.Shooter.nameServoPusher,
-                        RobotConfig.Shooter.invertServoPusher)
+                        RobotConfig.Shooter.directionServoPusher)
                 .position()
                 .build();
 
         plantTransfer = Actuators.plant(hardwareMap)
-                .crServoPair(RobotConfig.Shooter.nameCrServoTransferLeft,
-                        RobotConfig.Shooter.invertServoTransferLeft,
-                        RobotConfig.Shooter.nameCrServoTransferRight,
-                        RobotConfig.Shooter.invertServoTransferRight)
+                .crServo(RobotConfig.Shooter.nameCrServoTransferLeft,
+                        RobotConfig.Shooter.directionServoTransferLeft)
+                .andCrServo(RobotConfig.Shooter.nameCrServoTransferRight,
+                        RobotConfig.Shooter.directionServoTransferRight)
                 .power()
                 .build();
 
         plantShooter = Actuators.plant(hardwareMap)
-                .motorPair(RobotConfig.Shooter.nameMotorShooterLeft,
-                        RobotConfig.Shooter.invertMotorShooterLeft,
-                        RobotConfig.Shooter.nameMotorShooterRight,
-                        RobotConfig.Shooter.invertMotorShooterRight)
+                .motor(RobotConfig.Shooter.nameMotorShooterLeft,
+                        RobotConfig.Shooter.directionMotorShooterLeft)
+                .andMotor(RobotConfig.Shooter.nameMotorShooterRight,
+                        RobotConfig.Shooter.directionMotorShooterRight)
                 .velocity(50)
                 .build();
 
@@ -83,6 +99,13 @@ public class Shooter {
         velocity = RobotConfig.Shooter.velocityMin;
     }
 
+    /**
+     * Update the target shooter velocity based on an estimated distance.
+     *
+     * @param distance distance to target in inches
+     * @return a task that applies the new velocity immediately if the shooter is on;
+     * otherwise {@link Tasks#noop()}
+     */
     public Task instantSetVelocityByDist(double distance) {
         double velForDist = SHOOTER_VELOCITY_TABLE.interpolate(distance);
         this.velocity = MathUtil.clamp(velForDist,
@@ -96,6 +119,9 @@ public class Shooter {
         return Tasks.noop();
     }
 
+    /**
+     * Increase the configured shooter velocity by one increment.
+     */
     public Task instantIncreaseVelocity() {
         velocity += RobotConfig.Shooter.velocityIncrement;
         velocity = Math.floor(velocity / RobotConfig.Shooter.velocityIncrement) *
@@ -111,6 +137,9 @@ public class Shooter {
         return Tasks.noop();
     }
 
+    /**
+     * Decrease the configured shooter velocity by one increment.
+     */
     public Task instantDecreaseVelocity() {
         velocity -= RobotConfig.Shooter.velocityIncrement;
         velocity = Math.ceil(velocity / RobotConfig.Shooter.velocityIncrement) *
@@ -126,20 +155,39 @@ public class Shooter {
         return Tasks.noop();
     }
 
+    /**
+     * @return current configured shooter velocity (native units)
+     */
     public double getVelocity() {
         return velocity;
     }
 
+    /**
+     * @return whether the shooter motors are currently commanded on.
+     */
+    public boolean isShooterOn() {
+        return isShooterOn;
+    }
+
+    /**
+     * Start (or re-start) the shooter at the currently configured velocity.
+     */
     public Task instantStartShooter() {
         isShooterOn = true;
         return PlantTasks.setInstant(plantShooter, velocity);
     }
 
+    /**
+     * Stop the shooter motor(s).
+     */
     public Task instantStopShooter() {
         isShooterOn = false;
         return PlantTasks.setInstant(plantShooter, 0);
     }
 
+    /**
+     * Move the pusher servo to the "back" (retracted) position.
+     */
     public Task instantSetPusherBack() {
 //        return PlantTasks.holdFor(plantPusher,
 //                RobotConfig.Shooter.targetPusherBack,
@@ -148,6 +196,9 @@ public class Shooter {
                 RobotConfig.Shooter.targetPusherBack);
     }
 
+    /**
+     * Move the pusher servo to the "front" (extended) position.
+     */
     public Task instantSetPusherFront() {
 //        return PlantTasks.holdFor(plantPusher,
 //                RobotConfig.Shooter.targetPusherFront,
@@ -156,6 +207,9 @@ public class Shooter {
                 RobotConfig.Shooter.targetPusherFront);
     }
 
+    /**
+     * Start the transfer (indexer) in the requested direction.
+     */
     public Task instantStartTransfer(TransferDirection direction) {
         switch (direction) {
             case FORWARD:
@@ -167,7 +221,45 @@ public class Shooter {
         throw new IllegalArgumentException("Unknown direction provided!!!");
     }
 
+    /**
+     * Stop the transfer (indexer).
+     */
     public Task instantStopTransfer() {
         return PlantTasks.setInstant(plantTransfer, 0);
     }
+
+    /**
+     * Emergency stop for all shooter-related actuators.
+     */
+    public void stop() {
+        plantPusher.stop();
+        plantShooter.stop();
+        plantTransfer.stop();
+    }
+
+
+    /**
+     * Debug helper: emit shooter state and delegate to each plant.
+     */
+    public void debugDump(DebugSink dbg, String prefix) {
+        if (dbg == null) {
+            return;
+        }
+        String p = (prefix == null || prefix.isEmpty()) ? "shooter" : prefix;
+
+        dbg.addLine(p)
+                .addData(p + ".velocity", velocity)
+                .addData(p + ".isShooterOn", isShooterOn);
+
+        if (plantShooter != null) {
+            plantShooter.debugDump(dbg, p + ".plantShooter");
+        }
+        if (plantTransfer != null) {
+            plantTransfer.debugDump(dbg, p + ".plantTransfer");
+        }
+        if (plantPusher != null) {
+            plantPusher.debugDump(dbg, p + ".plantPusher");
+        }
+    }
+
 }

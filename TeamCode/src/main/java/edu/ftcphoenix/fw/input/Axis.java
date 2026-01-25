@@ -3,7 +3,7 @@ package edu.ftcphoenix.fw.input;
 import java.util.function.BooleanSupplier;
 import java.util.function.DoubleSupplier;
 
-import edu.ftcphoenix.fw.util.MathUtil;
+import edu.ftcphoenix.fw.core.math.MathUtil;
 
 /**
  * Continuous input in [-1..+1] or [0..1].
@@ -28,15 +28,17 @@ import edu.ftcphoenix.fw.util.MathUtil;
  *
  * <pre>{@code
  * Gamepads pads = Gamepads.create(gamepad1, gamepad2);
+ * LoopClock clock = new LoopClock();
  *
- * void loop(double dtSec) {
- *     pads.update(dtSec); // updates all buttons
+ * void loop(double runtimeSec) {
+ *     clock.update(runtimeSec);
+ *     pads.update(clock); // updates registered button edges (idempotent by clock.cycle())
  *
  *     Axis lx = pads.p1().leftX();
  *     Axis ly = pads.p1().leftY();
  *
  *     double strafe = lx.get();
- *     double forward = -ly.get(); // if you prefer up = +1 in your math
+ *     double forward = ly.get(); // Phoenix gamepad convention: pushing up is positive
  * }
  * }</pre>
  *
@@ -99,6 +101,17 @@ public interface Axis {
     }
 
     /**
+     * Return a new {@link Axis} with its sign inverted.
+     *
+     * <p>
+     * Equivalent to {@code scaled(-1.0)}.
+     * </p>
+     */
+    default Axis inverted() {
+        return scaled(-1.0);
+    }
+
+    /**
      * Apply a deadband to this axis, returning a new axis.
      *
      * <p>
@@ -108,6 +121,10 @@ public interface Axis {
      * <p>
      * This is useful for joystick center wobble or accidental small motions.
      * </p>
+     *
+     * <p>
+     * Note: This method treats the deadband as centered around 0.
+     * </p>
      */
     default Axis deadband(double deadband) {
         final Axis self = this;
@@ -116,6 +133,118 @@ public interface Axis {
         return () -> {
             double v = self.get();
             return (Math.abs(v) <= db) ? 0.0 : v;
+        };
+    }
+
+    /**
+     * Apply a deadband centered at 0 and renormalize the remaining range back to the
+     * provided {@code [min, max]}.
+     *
+     * <p>
+     * This is useful when you want to remove small inputs (e.g., stick drift) but still
+     * reach full scale at the extremes.
+     * </p>
+     *
+     * <p>
+     * The caller provides {@code min} and {@code max} explicitly so {@code Axis} does not
+     * need to assume any particular range.
+     * </p>
+     *
+     * <p>
+     * Behavior (deadband centered at 0):
+     * </p>
+     * <ul>
+     *   <li>If {@code |v| <= deadband} → 0</li>
+     *   <li>If {@code v > deadband} → linearly map {@code [deadband..max]} to {@code [0..max]}</li>
+     *   <li>If {@code v < -deadband} → linearly map {@code [min..-deadband]} to {@code [min..0]}</li>
+     * </ul>
+     */
+    default Axis deadbandNormalized(double deadband, double min, double max) {
+        final Axis self = this;
+        final double db = Math.abs(deadband);
+
+        return () -> {
+            double v = MathUtil.clamp(self.get(), min, max);
+
+            if (Math.abs(v) <= db) {
+                return 0.0;
+            }
+
+            // Positive side: [db..max] -> [0..max]
+            if (v > 0.0) {
+                if (max <= db) {
+                    return MathUtil.clamp(v, min, max);
+                }
+                double t = (v - db) / (max - db);   // db -> 0, max -> 1
+                double out = t * max;               // 0 -> 0, 1 -> max
+                return MathUtil.clamp(out, min, max);
+            }
+
+            // Negative side: [min..-db] -> [min..0]
+            if (min >= -db) {
+                return MathUtil.clamp(v, min, max);
+            }
+            double t = (v + db) / (min + db);       // -db -> 0, min -> 1 (denominator is negative)
+            double out = t * min;                   // 0 -> 0, 1 -> min
+            return MathUtil.clamp(out, min, max);
+        };
+    }
+
+    /**
+     * Shape this axis with the same "deadband → normalize → pow(expo)" behavior used by
+     * drive-stick shaping.
+     *
+     * <p>
+     * This method:
+     * </p>
+     * <ol>
+     *   <li>Clamps the raw value to {@code [min, max]}.</li>
+     *   <li>Applies a deadband centered at 0.</li>
+     *   <li>Normalizes the remaining magnitude to {@code [0, 1]} based on the corresponding side's
+     *       full-scale magnitude (positive side uses {@code max}, negative uses {@code -min}).</li>
+     *   <li>Applies {@code shaped = pow(norm, expo)} (with {@code expo < 1} treated as {@code 1}).</li>
+     *   <li>Scales back to the original side's full-scale range.</li>
+     * </ol>
+     *
+     * <p>
+     * The caller provides {@code min} and {@code max} explicitly so {@code Axis} does not assume
+     * a specific range like [-1, +1] or [0, 1].
+     * </p>
+     */
+    default Axis shaped(double deadband, double expo, double min, double max) {
+        final Axis self = this;
+        final double db = Math.abs(deadband);
+        final double e = Math.max(1.0, expo);
+
+        return () -> {
+            double v = MathUtil.clamp(self.get(), min, max);
+
+            if (Math.abs(v) <= db) {
+                return 0.0;
+            }
+
+            // Positive side shaping.
+            if (v > 0.0) {
+                double sideMax = max;
+                if (sideMax <= db) {
+                    return MathUtil.clamp(v, min, max);
+                }
+                double norm = (v - db) / (sideMax - db);         // db -> 0, max -> 1
+                norm = MathUtil.clamp(norm, 0.0, 1.0);
+                double shaped = Math.pow(norm, e) * sideMax;
+                return MathUtil.clamp(shaped, min, max);
+            }
+
+            // Negative side shaping.
+            double sideMag = -min; // magnitude of negative full-scale
+            if (sideMag <= db) {
+                return MathUtil.clamp(v, min, max);
+            }
+            double norm = ((-v) - db) / (sideMag - db);          // |v| in (db..sideMag] -> (0..1]
+            norm = MathUtil.clamp(norm, 0.0, 1.0);
+            double shapedMag = Math.pow(norm, e) * sideMag;
+            double shaped = -shapedMag;
+            return MathUtil.clamp(shaped, min, max);
         };
     }
 
@@ -150,184 +279,143 @@ public interface Axis {
         final Axis self = this;
         final BooleanSupplier raw;
         if (threshold >= 0.0) {
-            // Positive threshold: held when value >= threshold.
             raw = () -> self.get() >= threshold;
         } else {
-            // Negative threshold: held when value <= threshold.
             raw = () -> self.get() <= threshold;
         }
-        // Wrap in a stateful, registered Button with edge + level semantics.
         return Button.of(raw);
     }
 
     // ------------------------------------------------------------------------
-    // Factory helpers
+    // Factories
     // ------------------------------------------------------------------------
 
     /**
-     * Factory for an {@link Axis} backed by a {@link DoubleSupplier}.
-     *
-     * <p>
-     * This is the most generic way to adapt arbitrary numeric sources into
-     * the {@code Axis} interface.
-     * </p>
-     *
-     * <p>
-     * The supplied value is used directly; the factory does not clamp or scale.
-     * Calling code is responsible for choosing an appropriate range or applying
-     * transformations (e.g., via {@link #clamped(double, double)} or
-     * {@link #scaled(double)}).
-     * </p>
+     * Create an axis from a raw supplier.
      */
-    static Axis of(final DoubleSupplier supplier) {
-        if (supplier == null) {
-            throw new IllegalArgumentException("supplier is required");
-        }
-        return supplier::getAsDouble;
+    static Axis of(DoubleSupplier raw) {
+        return raw::getAsDouble;
     }
 
     /**
-     * Create an axis from a constant value.
+     * Create a signed axis from two buttons (negative and positive).
      *
-     * <p>
-     * This is rarely used in production code, but is handy for testing or
-     * temporarily wiring "always on" behavior.
-     * </p>
+     * <p>Returns:</p>
+     * <ul>
+     *   <li>-1 when {@code negative} is held and {@code positive} is not</li>
+     *   <li>+1 when {@code positive} is held and {@code negative} is not</li>
+     *   <li>0 when neither or both are held</li>
+     * </ul>
      */
-    static Axis constant(double value) {
-        return () -> value;
-    }
-
-    /**
-     * Create an axis in {0.0, 1.0} from a raw {@link BooleanSupplier}.
-     *
-     * <p>
-     * When the supplier returns {@code true}, the axis returns {@code 1.0}.
-     * Otherwise it returns {@code 0.0}.
-     * </p>
-     */
-    static Axis fromBooleanSupplier(final BooleanSupplier supplier) {
-        if (supplier == null) {
-            throw new IllegalArgumentException("supplier is required");
-        }
-        return () -> supplier.getAsBoolean() ? 1.0 : 0.0;
-    }
-
-    /**
-     * Create an axis in {0.0, 1.0} from a {@link Button}.
-     *
-     * <p>
-     * The returned axis uses {@link Button#isHeld()} (level semantics),
-     * <b>not</b> {@link Button#onPress()} / {@link Button#onRelease()}.
-     * </p>
-     *
-     * @param button source button; must not be {@code null}
-     * @return axis that is 1.0 when the button is held, 0.0 otherwise
-     */
-    static Axis fromButton(final Button button) {
-        if (button == null) {
-            throw new IllegalArgumentException("Button is required");
-        }
-        return new Axis() {
-            @Override
-            public double get() {
-                return button.isHeld() ? 1.0 : 0.0;
-            }
+    static Axis signedFromButtons(Button negative, Button positive) {
+        return () -> {
+            boolean neg = negative != null && negative.isHeld();
+            boolean pos = positive != null && positive.isHeld();
+            if (neg == pos) return 0.0;
+            return pos ? 1.0 : -1.0;
         };
     }
 
     /**
-     * Create an axis from a {@link BooleanSupplier}, returning 1.0 when the
-     * supplier is {@code true}, 0.0 when it is {@code false}.
+     * Create a [0..1] axis from a single button.
      *
-     * <p>
-     * This is a convenience alias for {@link #fromBooleanSupplier(BooleanSupplier)}.
-     * </p>
+     * <p>Returns 1 when held, otherwise 0.</p>
      */
-    static Axis fromBoolean(BooleanSupplier supplier) {
-        return fromBooleanSupplier(supplier);
+    static Axis fromButton(Button button) {
+        return () -> (button != null && button.isHeld()) ? 1.0 : 0.0;
     }
 
-    // ------------------------------------------------------------------------
-    // Combinators: build signed axes from positive axes / buttons
-    // ------------------------------------------------------------------------
-
     /**
-     * Build a signed axis in [-1, +1] from two "positive" axes (typically triggers).
+     * Generic difference combinator: {@code positive - negative}.
      *
      * <p>
-     * Intended usage is to combine a forward and backward trigger:
+     * This method makes no assumptions about ranges and does not clamp.
      * </p>
-     *
-     * <pre>{@code
-     * Axis forward = player.rightTrigger(); // [0,1]
-     * Axis back    = player.leftTrigger();  // [0,1]
-     *
-     * Axis axial = Axis.signedFromPositivePair(forward, back);
-     * }</pre>
-     *
-     * <p>
-     * Internally, both inputs are clamped to [0, 1] via
-     * {@link MathUtil#clamp01(double)} before subtraction, so accidental misuse
-     * (e.g., passing in a stick axis in [-1, +1]) is somewhat contained.
-     * </p>
-     *
-     * @param positive "forward" axis (e.g., right trigger)
-     * @param negative "backward" axis (e.g., left trigger)
-     * @return signed axis in [-1, +1] as (positive - negative)
      */
-    static Axis signedFromPositivePair(final Axis positive, final Axis negative) {
-        if (positive == null) {
-            throw new IllegalArgumentException("positive axis is required");
-        }
-        if (negative == null) {
-            throw new IllegalArgumentException("negative axis is required");
-        }
-
-        return new Axis() {
-            @Override
-            public double get() {
-                double pos = MathUtil.clamp01(positive.get());
-                double neg = MathUtil.clamp01(negative.get());
-                return pos - neg; // in [-1, +1]
-            }
+    static Axis difference(Axis negative, Axis positive) {
+        return () -> {
+            double neg = (negative != null) ? negative.get() : 0.0;
+            double pos = (positive != null) ? positive.get() : 0.0;
+            return pos - neg;
         };
     }
 
     /**
-     * Build a signed axis in [-1, +1] from two {@link Button}s.
+     * Create a normalized signed axis from two axes by specifying each axis's expected range.
      *
      * <p>
-     * This is analogous to {@link #signedFromPositivePair(Axis, Axis)} but
-     * uses buttons instead of continuous axes.
+     * Each input is normalized into {@code [0, 1]} using its provided {@code [min, max]} range,
+     * and the output is {@code posNorm - negNorm}, which is naturally in {@code [-1, +1]}.
      * </p>
      *
      * <p>
-     * When {@code positive} is held and {@code negative} is not, the axis is +1.0.<br>
-     * When {@code negative} is held and {@code positive} is not, the axis is -1.0.<br>
-     * When both are held, the axis is 0.0 (they cancel).<br>
-     * When neither is held, the axis is 0.0.
+     * This keeps range assumptions explicit while still producing a standard signed control axis.
      * </p>
-     *
-     * @param positive "forward" button
-     * @param negative "backward" button
-     * @return signed axis in [-1, +1] derived from the two buttons
      */
-    static Axis signedFromButtonsPair(final Button positive, final Button negative) {
-        if (negative == null) {
-            throw new IllegalArgumentException("negative button is required");
-        }
-        if (positive == null) {
-            throw new IllegalArgumentException("positive button is required");
-        }
+    static Axis signedNormalizedFromAxes(
+            Axis negativeAxis, double negativeMin, double negativeMax,
+            Axis positiveAxis, double positiveMin, double positiveMax
+    ) {
+        return () -> {
+            double negRaw = (negativeAxis != null) ? negativeAxis.get() : 0.0;
+            double posRaw = (positiveAxis != null) ? positiveAxis.get() : 0.0;
 
-        return new Axis() {
-            @Override
-            public double get() {
-                double pos = positive.isHeld() ? 1.0 : 0.0;
-                double neg = negative.isHeld() ? 1.0 : 0.0;
-                return pos - neg; // in [-1, +1]
-            }
+            double negDen = (negativeMax - negativeMin);
+            double posDen = (positiveMax - positiveMin);
+
+            double negNorm = (negDen == 0.0) ? 0.0 : (negRaw - negativeMin) / negDen;
+            double posNorm = (posDen == 0.0) ? 0.0 : (posRaw - positiveMin) / posDen;
+
+            negNorm = MathUtil.clamp(negNorm, 0.0, 1.0);
+            posNorm = MathUtil.clamp(posNorm, 0.0, 1.0);
+
+            return MathUtil.clamp(posNorm - negNorm, -1.0, 1.0);
+        };
+    }
+
+    /**
+     * Convenience helper for the common "two triggers → signed axis" use-case.
+     *
+     * <p>
+     * Assumes each trigger axis is approximately in {@code [0, 1]} and returns
+     * {@code positiveTrigger - negativeTrigger} (in {@code [-1, +1]}).
+     * </p>
+     */
+    static Axis signedFromTriggers(Axis negativeTrigger, Axis positiveTrigger) {
+        return signedNormalizedFromAxes(
+                negativeTrigger, 0.0, 1.0,
+                positiveTrigger, 0.0, 1.0
+        );
+    }
+
+    /**
+     * Create an axis that reports the 2D magnitude of ({@code x}, {@code y}): {@code sqrt(x^2 + y^2)}.
+     *
+     * <p>This is commonly used for "stick moved" / "stick idle" checks, radial deadbands,
+     * and any UI behavior that depends on how far a 2D control has moved.</p>
+     *
+     * <p>Null axes are treated as 0.</p>
+     */
+    static Axis magnitude(Axis x, Axis y) {
+        return () -> {
+            double xv = (x != null) ? x.get() : 0.0;
+            double yv = (y != null) ? y.get() : 0.0;
+            return Math.hypot(xv, yv);
+        };
+    }
+
+    /**
+     * Create an axis that reports the squared 2D magnitude of ({@code x}, {@code y}): {@code x^2 + y^2}.
+     *
+     * <p>Use this if you want to avoid a {@code sqrt} and you're comparing to a squared threshold.</p>
+     *
+     * <p>Null axes are treated as 0.</p>
+     */
+    static Axis magnitudeSquared(Axis x, Axis y) {
+        return () -> {
+            double xv = (x != null) ? x.get() : 0.0;
+            double yv = (y != null) ? y.get() : 0.0;
+            return xv * xv + yv * yv;
         };
     }
 }

@@ -4,58 +4,34 @@ import com.qualcomm.robotcore.hardware.Gamepad;
 
 import java.util.Objects;
 
+import edu.ftcphoenix.fw.core.debug.DebugSink;
+import edu.ftcphoenix.fw.core.time.LoopClock;
+
 /**
  * Convenience wrapper around two FTC gamepads (player 1 and player 2).
  *
- * <p>Typical usage:</p>
+ * <p>This class exposes:</p>
+ * <ul>
+ *   <li>Axes (sticks/triggers) via {@link GamepadDevice}.</li>
+ *   <li>Buttons via {@link Button}, including edge detection
+ *       ({@link Button#onPress()} / {@link Button#onRelease()}).</li>
+ * </ul>
+ *
+ * <h2>Per-cycle update rule</h2>
+ *
+ * <p>Button edge detection only works correctly when button state advances exactly once
+ * per OpMode loop cycle. Phoenix enforces this by requiring callers to update inputs
+ * using a shared {@link LoopClock}:</p>
  *
  * <pre>{@code
- * public class MyTeleOp extends LinearOpMode {
- *     private final LoopClock clock = new LoopClock();
- *     private Gamepads pads;
- *
- *     @Override
- *     public void runOpMode() {
- *         pads = Gamepads.create(gamepad1, gamepad2);
- *
- *         waitForStart();
- *         clock.reset();
- *
- *         while (opModeIsActive()) {
- *             double dtSec = clock.dtSec();
- *
- *             pads.update(dtSec);  // updates all registered buttons
- *
- *             // Axes:
- *             double driveX = pads.p1().leftX().get();
- *             double driveY = pads.p1().leftY().get();
- *
- *             // Buttons with edges:
- *             if (pads.p1().a().onPress()) {
- *                 // Runs once when A is pressed.
- *             }
- *
- *             if (pads.p1().rb().isHeld()) {
- *                 // Runs every loop while RB is down.
- *             }
- *
- *             // ... robot logic ...
- *         }
- *     }
- * }
+ * clock.update(getRuntime());
+ * gamepads.update(clock);   // advances all registered Buttons (idempotent by clock.cycle())
+ * bindings.update(clock);   // runs actions (also idempotent by clock.cycle())
  * }</pre>
  *
- * <h2>Update responsibilities</h2>
- *
- * <ul>
- *   <li>{@link GamepadDevice} constructs {@link Button} instances using
- *       {@link Button#of(java.util.function.BooleanSupplier)}, which
- *       automatically register with the global button registry.</li>
- *   <li>{@link #update(double)} calls {@link Button#updateAllRegistered()},
- *       which in turn calls {@link Button#update()} on every registered button.</li>
- *   <li>Robot code should call {@link #update(double)} exactly once per loop
- *       <b>before</b> any button queries (e.g. {@code onPress()}, {@code isHeld()}).</li>
- * </ul>
+ * <p>{@link #update(LoopClock)} delegates to {@link Button#updateAllRegistered(LoopClock)},
+ * which is idempotent by {@link LoopClock#cycle()}. If nested code accidentally calls update
+ * twice in the same cycle, the second call is a no-op (edges are not consumed).</p>
  */
 public final class Gamepads {
 
@@ -65,7 +41,8 @@ public final class Gamepads {
     /**
      * Create a {@link Gamepads} wrapper from two FTC {@link Gamepad} instances.
      *
-     * <p>This is the preferred entry point for TeleOp code.</p>
+     * @param gp1 FTC SDK gamepad1 (non-null)
+     * @param gp2 FTC SDK gamepad2 (non-null)
      */
     public static Gamepads create(Gamepad gp1, Gamepad gp2) {
         Objects.requireNonNull(gp1, "gp1 is required");
@@ -74,19 +51,16 @@ public final class Gamepads {
     }
 
     /**
-     * Alternate factory name for convenience / backwards-compatibility.
-     *
-     * <p>Equivalent to {@link #create(Gamepad, Gamepad)}.</p>
+     * Alternate factory name (same as {@link #create(Gamepad, Gamepad)}).
      */
     public static Gamepads of(Gamepad gp1, Gamepad gp2) {
         return create(gp1, gp2);
     }
 
     /**
-     * Construct from two already-wrapped {@link GamepadDevice}s.
+     * Construct from already-wrapped {@link GamepadDevice}s.
      *
-     * <p>This is mainly useful for testing or advanced composition; most code
-     * should use {@link #create(Gamepad, Gamepad)}.</p>
+     * <p>Mainly useful for tests or advanced composition.</p>
      */
     public Gamepads(GamepadDevice p1, GamepadDevice p2) {
         this.p1 = Objects.requireNonNull(p1, "p1 is required");
@@ -108,35 +82,46 @@ public final class Gamepads {
     }
 
     /**
-     * Update all registered buttons for this loop.
+     * Update all registered {@link Button}s for this loop cycle.
      *
-     * <p>Currently this simply forwards to {@link Button#updateAllRegistered()}.
-     * The {@code dtSec} parameter is included for future use (for example, if
-     * we later add time-based filters or smoothing to axes or higher-level
-     * input channels).</p>
+     * <p>Call once per OpMode loop cycle <b>before</b> reading edges via
+     * {@link Button#onPress()} / {@link Button#onRelease()}.</p>
      *
-     * <p><b>Call this exactly once per loop</b> before reading any button
-     * edges or hold states.</p>
+     * <p>This method is safe to call multiple times within the same cycle because
+     * {@link Button#updateAllRegistered(LoopClock)} is idempotent by
+     * {@link LoopClock#cycle()}.</p>
      *
-     * @param dtSec time since last loop in seconds (may be unused for now)
+     * @param clock loop clock (non-null; advanced once per OpMode loop cycle)
      */
-    public void update(double dtSec) {
-        // Update all known buttons (including those created by GamepadDevice
-        // and any other code that used Button.of(...) or Button.constant(...)).
-        Button.updateAllRegistered();
-
-        // If we ever add time-dependent processing for axes or more complex
-        // input channels, this is a natural place to pass dtSec through.
+    public void update(LoopClock clock) {
+        Objects.requireNonNull(clock, "clock is required");
+        Button.updateAllRegistered(clock);
     }
 
     /**
-     * Clear all registered buttons.
+     * Clear the global registry of all registered buttons.
      *
-     * <p>Framework code may call this at the start of an OpMode to ensure that
-     * no stale button state is carried over between runs. Most user code does
-     * not need to call this directly.</p>
+     * <p>Most robot code does not need this. It is primarily useful for framework
+     * lifecycle management to ensure no stale button objects persist across runs.</p>
      */
     public void clearButtons() {
         Button.clearRegistered();
     }
+
+
+    /**
+     * Debug helper: emit player 1 & player 2 input state.
+     *
+     * <p>This is useful when verifying axis sign conventions and button edge detection.</p>
+     */
+    public void debugDump(DebugSink dbg, String prefix) {
+        if (dbg == null) {
+            return;
+        }
+        String p = (prefix == null || prefix.isEmpty()) ? "gamepads" : prefix;
+        dbg.addLine(p);
+        p1.debugDump(dbg, p + ".p1");
+        p2.debugDump(dbg, p + ".p2");
+    }
+
 }

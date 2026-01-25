@@ -2,9 +2,9 @@ package edu.ftcphoenix.fw.actuation;
 
 import java.util.Objects;
 
+import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.task.Task;
 import edu.ftcphoenix.fw.task.TaskOutcome;
-import edu.ftcphoenix.fw.util.LoopClock;
 
 /**
  * Helper methods and builders for creating common {@link Task} patterns
@@ -182,7 +182,7 @@ public final class PlantTasks {
      * @param finalTarget target value to apply once the initial setpoint is
      *                    reached
      * @return a {@link Task} that moves to the setpoint and then sets
-     *         {@code finalTarget}
+     * {@code finalTarget}
      */
     public static Task moveToThen(final Plant plant,
                                   final double target,
@@ -428,6 +428,9 @@ public final class PlantTasks {
         Task build();
     }
 
+    /**
+     * How the task decides it is "done".
+     */
     private enum CompletionMode {
         INSTANT,
         WAIT_SETPOINT,
@@ -435,11 +438,18 @@ public final class PlantTasks {
         WAIT_SETPOINT_OR_TIMEOUT
     }
 
+    /**
+     * What the plant should do after the completion condition is met.
+     */
     private enum PostBehavior {
         HOLD,
         FINAL_TARGET
     }
 
+    /**
+     * Internal builder that captures the fluent configuration and produces a single
+     * immutable {@link TargetTask} instance.
+     */
     private static final class TargetTaskBuilder
             implements TargetTaskStart, TargetTaskPost, TargetTaskBuild {
 
@@ -458,6 +468,9 @@ public final class PlantTasks {
             this.initialTarget = initialTarget;
         }
 
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public TargetTaskPost waitForSetpoint() {
             if (!plant.hasFeedback()) {
@@ -471,6 +484,9 @@ public final class PlantTasks {
             return this;
         }
 
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public TargetTaskPost waitForSetpointOrTimeout(final double timeoutSec) {
             if (timeoutSec <= 0.0) {
@@ -488,6 +504,9 @@ public final class PlantTasks {
             return this;
         }
 
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public TargetTaskPost waitFor(final double seconds) {
             if (seconds < 0.0) {
@@ -500,6 +519,9 @@ public final class PlantTasks {
             return this;
         }
 
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public TargetTaskBuild instant() {
             this.completionMode = CompletionMode.INSTANT;
@@ -508,12 +530,18 @@ public final class PlantTasks {
             return this;
         }
 
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public TargetTaskBuild thenHold() {
             this.postBehavior = PostBehavior.HOLD;
             return this;
         }
 
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public TargetTaskBuild then(final double finalTarget) {
             this.postBehavior = PostBehavior.FINAL_TARGET;
@@ -521,6 +549,9 @@ public final class PlantTasks {
             return this;
         }
 
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public Task build() {
             return new TargetTask(
@@ -574,6 +605,9 @@ public final class PlantTasks {
             this.finalTarget = finalTarget;
         }
 
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public void start(final LoopClock clock) {
             if (started) {
@@ -601,6 +635,9 @@ public final class PlantTasks {
             }
         }
 
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public void update(final LoopClock clock) {
             if (!started || finished) {
@@ -650,11 +687,17 @@ public final class PlantTasks {
             }
         }
 
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public boolean isComplete() {
             return finished;
         }
 
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public TaskOutcome getOutcome() {
             return outcome;
@@ -674,6 +717,9 @@ public final class PlantTasks {
             // HOLD: do nothing; keep last target.
         }
 
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public String getDebugName() {
             return "PlantTask(target=" + initialTarget + ")";

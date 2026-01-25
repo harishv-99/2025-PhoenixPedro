@@ -1,0 +1,718 @@
+package edu.ftcphoenix.fw.tools.tester.calibration;
+
+import org.firstinspires.ftc.robotcore.external.Telemetry;
+import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
+import org.firstinspires.ftc.vision.apriltag.AprilTagGameDatabase;
+import org.firstinspires.ftc.vision.apriltag.AprilTagLibrary;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+
+import edu.ftcphoenix.fw.core.geometry.Pose3d;
+import edu.ftcphoenix.fw.field.TagLayout;
+import edu.ftcphoenix.fw.ftc.FtcGameTagLayout;
+import edu.ftcphoenix.fw.ftc.FtcVision;
+import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagObservation;
+import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
+import edu.ftcphoenix.fw.tools.tester.BaseTeleOpTester;
+import edu.ftcphoenix.fw.tools.tester.ui.SelectionMenu;
+
+/**
+ * Calibrates {@code robotToCameraPose} (camera mount extrinsics) using:
+ * <ul>
+ *   <li>Known AprilTag field layout (FTC game database by default), and</li>
+ *   <li>A manually-entered / adjustable known robot pose {@code fieldToRobotPose}.</li>
+ * </ul>
+ *
+ * <h2>Camera selection</h2>
+ * <p>
+ * If constructed without a camera name (or if the preferred camera cannot be initialized), this
+ * tester shows a camera picker listing configured webcams and lets you choose one before
+ * calibration begins.
+ * </p>
+ *
+ * <h2>Core math</h2>
+ * <pre>
+ * fieldToTagPose = fieldToRobotPose · robotToCameraPose · cameraToTagPose
+ * => robotToCameraPose = inv(fieldToRobotPose) · fieldToTagPose · inv(cameraToTagPose)
+ * </pre>
+ *
+ * <h2>Controls (gamepad1)</h2>
+ * <ul>
+ *   <li><b>PICKER (no camera chosen yet)</b>: Dpad Up/Down highlight, A choose, B refresh</li>
+ *   <li><b>CALIBRATE (camera chosen)</b>:
+ *     <ul>
+ *       <li>Y/X: increment/decrement tag ID</li>
+ *       <li>A: capture sample (average mount)</li>
+ *       <li>B: clear captured samples</li>
+ *       <li>Dpad: adjust known robot pose (XY)</li>
+ *       <li>LB/RB: adjust known robot yaw</li>
+ *       <li>START: fine/coarse step</li>
+ *       <li>BACK: return to camera picker (change camera)</li>
+ *     </ul>
+ *   </li>
+ * </ul>
+ */
+public final class CameraMountCalibrator extends BaseTeleOpTester {
+
+    // Defaults
+    private static final double DEFAULT_MAX_AGE_SEC = 0.35;
+    private static final int DEFAULT_TAG_ID = 1;
+
+    private static final Pose3d DEFAULT_P_FIELD_TO_ROBOT = Pose3d.zero();
+
+    // Injected configuration
+    private final String preferredCameraName;   // may be null/empty to trigger picker
+    private final TagLayout layoutOverride;     // may be null => FTC game db
+    private final AprilTagLibrary tagLibraryOverride; // optional; null -> use current game library
+    private final double maxAgeSec;
+
+    // Runtime state
+    private TagLayout layout;
+    private AprilTagSensor tagSensor;
+
+    private boolean visionReady = false;
+    private String selectedCameraName = null;
+    private String visionInitError = null;
+
+    private final SelectionMenu<String> cameraMenu =
+            new SelectionMenu<String>()
+                    .setTitle("Select Camera")
+                    .setHelp("Dpad: highlight | A: choose | B: refresh");
+
+    private int selectedTagId = DEFAULT_TAG_ID;
+    private Pose3d fieldToRobotPose = DEFAULT_P_FIELD_TO_ROBOT;
+    private boolean fineSteps = true;
+
+    // Input/UI mode
+    private boolean editMode = false;
+
+    private enum EditField {
+        TAG_ID("Tag ID"),
+        ROBOT_X("Robot X"),
+        ROBOT_Y("Robot Y"),
+        ROBOT_YAW("Robot Yaw");
+
+        final String label;
+
+        EditField(String label) {
+            this.label = label;
+        }
+    }
+
+    private EditField editField = EditField.ROBOT_X;
+
+    private Pose3d lastRobotToCameraSample = null;
+    private Pose3d lastObservedCameraToTag = null;
+    private Pose3d lastPredictedCameraToTag = null;
+
+    private final PoseAverager avg = new PoseAverager();
+
+    // Construction
+
+    /**
+     * Create a calibrator with default settings.
+     *
+     * <p>This constructor does not force a specific camera name. The tester will present a camera
+     * picker menu of configured webcams so you can choose one.</p>
+     */
+    public CameraMountCalibrator() {
+        this(null, null, DEFAULT_MAX_AGE_SEC);
+    }
+
+    /**
+     * Create a calibrator that prefers a specific camera name.
+     *
+     * <p>If {@code cameraName} is null/blank, the tester will fall back to the camera picker menu.</p>
+     *
+     * @param cameraName configured webcam name in the FTC Robot Configuration (nullable)
+     */
+    public CameraMountCalibrator(String cameraName) {
+        this(cameraName, null, DEFAULT_MAX_AGE_SEC);
+    }
+
+    /**
+     * Create a calibrator with full configuration control.
+     *
+     * @param cameraName     configured webcam name in the FTC Robot Configuration (nullable/blank to use picker)
+     * @param layoutOverride optional field {@link TagLayout}; if null, the current FTC game database is used
+     * @param maxAgeSec      maximum age (seconds) for tag observations before they are treated as stale
+     */
+    public CameraMountCalibrator(String cameraName, TagLayout layoutOverride, double maxAgeSec) {
+        this(cameraName, layoutOverride, null, maxAgeSec);
+    }
+
+    /**
+     * Creates a camera mount calibration tester with an optional tag layout + tag library override.
+     *
+     * <p>This is useful when calibrating in a non-game environment using a printed tag (custom ID/size),
+     * while still reusing Phoenix's calibrator flow.</p>
+     *
+     * @param cameraName         camera name in the hardware map (or {@code null} to pick at runtime)
+     * @param layoutOverride     optional tag layout to use instead of the current game layout
+     * @param tagLibraryOverride optional AprilTag library override (controls tag size/IDs for detection)
+     * @param maxAgeSec          maximum acceptable tag observation age in seconds
+     */
+    public CameraMountCalibrator(String cameraName,
+                                 TagLayout layoutOverride,
+                                 AprilTagLibrary tagLibraryOverride,
+                                 double maxAgeSec) {
+        this.preferredCameraName = cameraName;
+        this.layoutOverride = layoutOverride;
+        this.tagLibraryOverride = tagLibraryOverride;
+        this.maxAgeSec = maxAgeSec;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String name() {
+        return "Camera Mount Calibrator";
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void onInit() {
+        // Layout
+        this.layout = (layoutOverride != null)
+                ? layoutOverride
+                : new FtcGameTagLayout(AprilTagGameDatabase.getCurrentGameTagLibrary());
+
+        // Camera selection setup
+        selectedCameraName = (preferredCameraName == null || preferredCameraName.trim().isEmpty())
+                ? null
+                : preferredCameraName.trim();
+
+        refreshCameraList();
+
+        // Camera menu navigation is ONLY active before visionReady.
+        cameraMenu.bind(
+                bindings,
+                gamepads.p1().dpadUp(),
+                gamepads.p1().dpadDown(),
+                gamepads.p1().a(),
+                () -> !visionReady,
+                item -> {
+                    selectedCameraName = item.value;
+                    ensureVisionReady();
+                }
+        );
+
+        // B refreshes camera list before vision is ready; after that B clears samples.
+        bindings.onPress(gamepads.p1().b(), () -> {
+            if (!visionReady) {
+                refreshCameraList();
+            } else {
+                avg.clear();
+            }
+        });
+
+        // Capture sample (only when vision is ready)
+        bindings.onPress(gamepads.p1().a(), () -> {
+            if (!visionReady) return;
+            if (lastRobotToCameraSample != null) {
+                avg.add(lastRobotToCameraSample);
+            }
+        });
+
+        // Calibration controls (only when vision is ready)
+        bindings.onPress(gamepads.p1().y(), () -> {
+            if (!visionReady) return;
+            selectedTagId++;
+        });
+
+        bindings.onPress(gamepads.p1().x(), () -> {
+            if (!visionReady) return;
+            selectedTagId = Math.max(1, selectedTagId - 1);
+        });
+
+        bindings.onPress(gamepads.p1().start(), () -> {
+            if (!visionReady) return;
+            fineSteps = !fineSteps;
+        });
+
+        // Toggle edit mode (RS). Edit mode lets you select which variable you're changing
+        // instead of remembering which button maps to which axis.
+        bindings.onPress(gamepads.p1().rs(), () -> {
+            if (!visionReady) return;
+            editMode = !editMode;
+        });
+
+        // D-pad:
+        //  - QUICK mode: dpad X adjusts X, dpad Y adjusts Y (requested)
+        //  - EDIT mode: up/down selects a field, left/right changes its value
+        bindings.onPress(gamepads.p1().dpadUp(), () -> {
+            if (!visionReady) return;
+            if (editMode) {
+                cycleEditField(-1);
+            } else {
+                adjustRobotPose(0.0, +stepXY(), 0.0);
+            }
+        });
+        bindings.onPress(gamepads.p1().dpadDown(), () -> {
+            if (!visionReady) return;
+            if (editMode) {
+                cycleEditField(+1);
+            } else {
+                adjustRobotPose(0.0, -stepXY(), 0.0);
+            }
+        });
+
+        bindings.onPress(gamepads.p1().dpadLeft(), () -> {
+            if (!visionReady) return;
+            if (editMode) {
+                adjustEditField(-1);
+            } else {
+                adjustRobotPose(-stepXY(), 0.0, 0.0);
+            }
+        });
+        bindings.onPress(gamepads.p1().dpadRight(), () -> {
+            if (!visionReady) return;
+            if (editMode) {
+                adjustEditField(+1);
+            } else {
+                adjustRobotPose(+stepXY(), 0.0, 0.0);
+            }
+        });
+
+        // Yaw adjustment. In QUICK mode we keep the classic LB/RB mapping.
+        // In EDIT mode, bumpers behave like +/- on the selected field.
+        bindings.onPress(gamepads.p1().leftBumper(), () -> {
+            if (!visionReady) return;
+            if (editMode) {
+                adjustEditField(-1);
+            } else {
+                adjustRobotPose(0.0, 0.0, +stepYawRad());
+            }
+        });
+        bindings.onPress(gamepads.p1().rightBumper(), () -> {
+            if (!visionReady) return;
+            if (editMode) {
+                adjustEditField(+1);
+            } else {
+                adjustRobotPose(0.0, 0.0, -stepYawRad());
+            }
+        });
+
+        // If user provided a camera name, try to bring vision up immediately in INIT.
+        ensureVisionReady();
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean onBackPressed() {
+        if (!visionReady) {
+            return false;
+        }
+
+        // Return to the camera picker. This allows you to re-select the webcam without leaving
+        // the tester suite.
+        visionReady = false;
+        visionInitError = null;
+
+        editMode = false;
+        editField = EditField.ROBOT_X;
+
+        // IMPORTANT: Release the VisionPortal backing this sensor. If we don't, future camera
+        // selection attempts can fail with FTC SDK errors about “multiple vision portals”.
+        if (tagSensor != null) {
+            tagSensor.close();
+        }
+        tagSensor = null;
+
+        lastRobotToCameraSample = null;
+        lastObservedCameraToTag = null;
+        lastPredictedCameraToTag = null;
+
+        avg.clear();
+
+        // Rebuild menu entries and keep the last chosen camera highlighted.
+        refreshCameraList();
+
+        return true;
+    }
+
+    @Override
+    protected void onStop() {
+        // Ensure we release the camera resource when leaving the tester.
+        if (tagSensor != null) {
+            tagSensor.close();
+            tagSensor = null;
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void onInitLoop(double dtSec) {
+        if (!visionReady) {
+            renderCameraPicker();
+            return;
+        }
+
+        updateSolveAndTelemetry();
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void onLoop(double dtSec) {
+        if (!visionReady) {
+            renderCameraPicker();
+            return;
+        }
+
+        updateSolveAndTelemetry();
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Vision init / camera enumeration
+    // ---------------------------------------------------------------------------------------------
+
+    private void ensureVisionReady() {
+        if (visionReady) return;
+        if (selectedCameraName == null || selectedCameraName.isEmpty()) return;
+
+        try {
+            // Build AprilTag processor config. We intentionally do NOT set a camera mount here,
+            // because this tester is used to *calibrate* the robot->camera pose.
+            FtcVision.Config aprilCfg = FtcVision.Config.defaults()
+                    .withTagLibrary(tagLibraryOverride);
+
+            tagSensor = FtcVision.aprilTags(ctx.hw, selectedCameraName, aprilCfg);
+
+            // Layout selection happens in onInit(); do not rebuild it here.
+            visionReady = true;
+            visionInitError = null;
+        } catch (Exception e) {
+            tagSensor = null;
+            visionReady = false;
+            visionInitError = "Failed to start AprilTag camera: " + e.getMessage();
+        }
+    }
+
+
+    private void refreshCameraList() {
+        List<String> names = enumerateWebcamNames();
+
+        cameraMenu.clearItems();
+        for (String n : names) {
+            cameraMenu.addItem(n, n);
+        }
+
+        if (selectedCameraName != null && !selectedCameraName.isEmpty()) {
+            int idx = names.indexOf(selectedCameraName);
+            if (idx >= 0) {
+                cameraMenu.setSelectedIndex(idx);
+            }
+        }
+    }
+
+    private List<String> enumerateWebcamNames() {
+        List<String> out = new ArrayList<>();
+
+        List<WebcamName> webcams = ctx.hw.getAll(WebcamName.class);
+        for (WebcamName cam : webcams) {
+            Set<String> camNames = ctx.hw.getNamesOf(cam);
+            if (camNames == null || camNames.isEmpty()) continue;
+
+            List<String> sorted = new ArrayList<>(camNames);
+            Collections.sort(sorted);
+            out.add(sorted.get(0));
+        }
+
+        Collections.sort(out);
+        return out;
+    }
+
+    private void renderCameraPicker() {
+        Telemetry t = ctx.telemetry;
+        t.clearAll();
+
+        cameraMenu.render(t);
+
+        t.addLine("");
+        t.addLine("Chosen: " + (selectedCameraName == null ? "(none)" : selectedCameraName));
+        t.addLine("Press A to choose a camera and initialize vision.");
+        t.addLine("Press B to refresh camera list.");
+        t.addLine("Press BACK to exit to the tester menu.");
+
+        if (visionInitError != null) {
+            t.addLine("");
+            t.addLine("Vision init error:");
+            t.addLine(visionInitError);
+        }
+
+        t.update();
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Calibration solve + telemetry
+    // ---------------------------------------------------------------------------------------------
+
+    private void updateSolveAndTelemetry() {
+        AprilTagObservation obs = tagSensor.best(selectedTagId, maxAgeSec);
+        lastObservedCameraToTag = (obs.hasTarget) ? obs.cameraToTagPose : null;
+
+        lastRobotToCameraSample = null;
+        lastPredictedCameraToTag = null;
+
+        if (obs.hasTarget) {
+            TagLayout.TagPose tagPose = layout.get(obs.id);
+            if (tagPose != null) {
+                Pose3d fieldToTagPose = tagPose.fieldToTagPose();
+                Pose3d cameraToTagPose = obs.cameraToTagPose;
+
+                Pose3d robotToCameraPose = fieldToRobotPose.inverse()
+                        .then(fieldToTagPose)
+                        .then(cameraToTagPose.inverse());
+
+                lastRobotToCameraSample = robotToCameraPose;
+
+                Pose3d fieldToCameraPose = fieldToRobotPose.then(robotToCameraPose);
+                lastPredictedCameraToTag = fieldToCameraPose.inverse().then(fieldToTagPose);
+            }
+        }
+
+        renderCalibrationTelemetry();
+    }
+
+    private void renderCalibrationTelemetry() {
+        Telemetry t = ctx.telemetry;
+        t.clearAll();
+
+        t.addLine("=== Camera Mount Calibrator ===");
+        t.addLine(String.format(Locale.US,
+                "Camera=%s | TagId=%d | Mode=%s%s",
+                selectedCameraName,
+                selectedTagId,
+                editMode ? "EDIT" : "QUICK",
+                editMode ? (" (" + editField.label + ")") : ""
+        ));
+        t.addLine(String.format(Locale.US,
+                "Step=%s | XY=%.2f in | Yaw=%.1f° | MaxAge=%.0f ms",
+                fineSteps ? "FINE" : "COARSE",
+                stepXY(),
+                Math.toDegrees(stepYawRad()),
+                maxAgeSec * 1000.0
+        ));
+        t.addLine("Units: inches (angles shown in degrees)");
+        t.addLine("Field frame: FTC Field Coordinate System (origin=center, +Z up)");
+        t.addLine("FTC axes hint: stand at Red Wall center facing field: +X to your right, +Y away from Red Wall");
+        t.addLine("AprilTag note: observation uses SDK rawPose (native AprilTag/OpenCV) converted to Phoenix camera axes");
+        t.addLine("             (SDK ftcPose is a convenience reframe; don't mix with game database fieldOrientation)");
+        if (!editMode) {
+            t.addLine("Controls: Y/X tagId | A capture | B clear | dpad: X/Y translate | LB/RB yaw | START fine/coarse | RS edit");
+        } else {
+            t.addLine("Controls: dpad up/down field | dpad left/right +/- | LB/RB +/- | RS quick | START fine/coarse");
+        }
+        t.addLine("(BACK: camera picker)  (Hold robot still when sampling)");
+
+        // Show the known field pose of the selected tag (from the FTC game database or an override layout).
+        t.addLine("");
+        t.addLine("Selected tag pose from layout (fieldToTagPose):");
+        TagLayout.TagPose selectedTagPose = (layout != null) ? layout.get(selectedTagId) : null;
+        if (selectedTagPose == null) {
+            t.addLine("  (tag not present in layout)");
+        } else {
+            addPoseLine(t, "fieldToTagPose(layout)", selectedTagPose.fieldToTagPose());
+        }
+
+        t.addLine("");
+        t.addLine("Known robot pose (fieldToRobotPose):");
+        addPoseLine(t, "fieldToRobotPose", fieldToRobotPose);
+
+        t.addLine("");
+        t.addLine("Observation (cameraToTagPose):");
+        if (lastObservedCameraToTag == null) {
+            t.addLine("  No fresh detection for selected tag ID.");
+        } else {
+            addPoseLine(t, "cameraToTagPose(obs)", lastObservedCameraToTag);
+        }
+
+        t.addLine("");
+        t.addLine("Mount solve (robotToCameraPose):");
+        if (lastRobotToCameraSample == null) {
+            t.addLine("  Need: (1) fresh detection AND (2) this tag present in layout.");
+        } else {
+            addPoseLine(t, "robotToCameraPose(sample)", lastRobotToCameraSample);
+
+            double mountNorm = translationNormInches(lastRobotToCameraSample);
+            if (mountNorm > 36.0) {
+                t.addLine(String.format(Locale.US,
+                        "WARNING: mount translation is large (|t|=%.1f in). Check fieldToRobotPose + tag ID.",
+                        mountNorm
+                ));
+            }
+
+            if (lastPredictedCameraToTag != null && lastObservedCameraToTag != null) {
+                Pose3d predToObsPose = lastPredictedCameraToTag.inverse().then(lastObservedCameraToTag);
+                double trans = translationNormInches(predToObsPose);
+
+                t.addLine(String.format(Locale.US,
+                        "Residual: trans=%.2f in | yaw=%.2f° pitch=%.2f° roll=%.2f°",
+                        trans,
+                        Math.toDegrees(predToObsPose.yawRad),
+                        Math.toDegrees(predToObsPose.pitchRad),
+                        Math.toDegrees(predToObsPose.rollRad)
+                ));
+            }
+        }
+
+        t.addLine("");
+        t.addLine(String.format(Locale.US, "Captured samples: %d", avg.count()));
+
+        Pose3d mean = avg.meanOrNull();
+        if (mean == null) {
+            t.addLine("Average: (none yet) Press A a few times while holding still.");
+        } else {
+            t.addLine("Average mount (paste into CameraMountConfig.of / ofDegrees):");
+            addPoseLine(t, "robotToCameraPose(avg)", mean);
+
+            t.addLine(String.format(Locale.US,
+                    "CameraMountConfig.of(%.3f, %.3f, %.3f, %.6f, %.6f, %.6f)",
+                    mean.xInches, mean.yInches, mean.zInches,
+                    mean.yawRad, mean.pitchRad, mean.rollRad
+            ));
+
+            t.addLine(String.format(Locale.US,
+                    "CameraMountConfig.ofDegrees(%.3f, %.3f, %.3f, %.1f, %.1f, %.1f)",
+                    mean.xInches, mean.yInches, mean.zInches,
+                    Math.toDegrees(mean.yawRad), Math.toDegrees(mean.pitchRad), Math.toDegrees(mean.rollRad)
+            ));
+        }
+
+        t.update();
+    }
+
+    private static void addPoseLine(Telemetry t, String label, Pose3d p) {
+        t.addLine(String.format(Locale.US,
+                "  %s: x=%.2f y=%.2f z=%.2f | yaw=%.1f° pitch=%.1f° roll=%.1f°",
+                label,
+                p.xInches, p.yInches, p.zInches,
+                Math.toDegrees(p.yawRad),
+                Math.toDegrees(p.pitchRad),
+                Math.toDegrees(p.rollRad)
+        ));
+    }
+
+    private static double translationNormInches(Pose3d p) {
+        double dx = p.xInches;
+        double dy = p.yInches;
+        double dz = p.zInches;
+        return Math.sqrt(dx * dx + dy * dy + dz * dz);
+    }
+
+    // Robot pose adjustment
+    private double stepXY() {
+        return fineSteps ? 0.25 : 1.0;
+    }
+
+    private double stepYawRad() {
+        return Math.toRadians(fineSteps ? 0.5 : 2.0);
+    }
+
+    private void adjustRobotPose(double dxInches, double dyInches, double dyawRad) {
+        fieldToRobotPose = new Pose3d(
+                fieldToRobotPose.xInches + dxInches,
+                fieldToRobotPose.yInches + dyInches,
+                fieldToRobotPose.zInches,
+                fieldToRobotPose.yawRad + dyawRad,
+                fieldToRobotPose.pitchRad,
+                fieldToRobotPose.rollRad
+        );
+    }
+
+
+    // Edit-mode helpers
+    private void cycleEditField(int delta) {
+        EditField[] fields = EditField.values();
+        int idx = editField.ordinal();
+        int next = (idx + delta) % fields.length;
+        if (next < 0) next += fields.length;
+        editField = fields[next];
+    }
+
+    private void adjustEditField(int dir) {
+        switch (editField) {
+            case TAG_ID:
+                if (dir > 0) {
+                    selectedTagId++;
+                } else {
+                    selectedTagId = Math.max(1, selectedTagId - 1);
+                }
+                break;
+            case ROBOT_X:
+                adjustRobotPose(dir * stepXY(), 0.0, 0.0);
+                break;
+            case ROBOT_Y:
+                adjustRobotPose(0.0, dir * stepXY(), 0.0);
+                break;
+            case ROBOT_YAW:
+                adjustRobotPose(0.0, 0.0, dir * stepYawRad());
+                break;
+        }
+    }
+
+    // Averager
+    private static final class PoseAverager {
+        private int n = 0;
+
+        private double sumX = 0.0, sumY = 0.0, sumZ = 0.0;
+        private double sumSinYaw = 0.0, sumCosYaw = 0.0;
+        private double sumSinPitch = 0.0, sumCosPitch = 0.0;
+        private double sumSinRoll = 0.0, sumCosRoll = 0.0;
+
+        void clear() {
+            n = 0;
+            sumX = sumY = sumZ = 0.0;
+            sumSinYaw = sumCosYaw = 0.0;
+            sumSinPitch = sumCosPitch = 0.0;
+            sumSinRoll = sumCosRoll = 0.0;
+        }
+
+        int count() {
+            return n;
+        }
+
+        void add(Pose3d p) {
+            n++;
+            sumX += p.xInches;
+            sumY += p.yInches;
+            sumZ += p.zInches;
+
+            sumSinYaw += Math.sin(p.yawRad);
+            sumCosYaw += Math.cos(p.yawRad);
+
+            sumSinPitch += Math.sin(p.pitchRad);
+            sumCosPitch += Math.cos(p.pitchRad);
+
+            sumSinRoll += Math.sin(p.rollRad);
+            sumCosRoll += Math.cos(p.rollRad);
+        }
+
+        Pose3d meanOrNull() {
+            if (n <= 0) return null;
+
+            double x = sumX / n;
+            double y = sumY / n;
+            double z = sumZ / n;
+
+            double yaw = Math.atan2(sumSinYaw, sumCosYaw);
+            double pitch = Math.atan2(sumSinPitch, sumCosPitch);
+            double roll = Math.atan2(sumSinRoll, sumCosRoll);
+
+            return new Pose3d(x, y, z, yaw, pitch, roll);
+        }
+    }
+}

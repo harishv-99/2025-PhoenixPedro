@@ -3,7 +3,7 @@ package edu.ftcphoenix.fw.actuation;
 import java.util.Objects;
 import java.util.function.BooleanSupplier;
 
-import edu.ftcphoenix.fw.debug.DebugSink;
+import edu.ftcphoenix.fw.core.debug.DebugSink;
 
 /**
  * A {@link Plant} decorator that gates commands based on a boolean condition.
@@ -123,6 +123,9 @@ public final class InterlockPlant implements Plant {
         return desiredTarget;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void stop() {
         inner.stop();
@@ -146,6 +149,9 @@ public final class InterlockPlant implements Plant {
         inner.update(dtSec);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void reset() {
         inner.reset();
@@ -165,6 +171,18 @@ public final class InterlockPlant implements Plant {
         return inner.atSetpoint();
     }
 
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean hasFeedback() {
+        return inner.hasFeedback();
+    }
+
+
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void debugDump(DebugSink dbg, String prefix) {
         if (dbg == null) return;

@@ -15,6 +15,20 @@ Everything here is **non‑blocking** – there is no `sleep()` and no `while` l
 
 ---
 
+## Related: spatial predicates (zones, safety gating)
+
+Not every decision needs to be a task.
+
+If you want a simple safety gate like “enable shooting only when the robot is in the shooting zone”, use the **spatial predicate** layer:
+
+* `ConvexRegion2d` / `ConvexRegions2d` to describe the zone geometry (convex polygons, circles, AABBs)
+* `RobotGeometry2d` + `RobotZones2d` to define what “robot in zone” means (point-in-zone, footprint overlap, fully inside)
+* `ZoneLatch` to add hysteresis so the gate doesn’t chatter on a boundary
+
+These live in `edu.ftcphoenix.fw.spatial` and can be used in TeleOp, tasks, testers, or anywhere else.
+
+---
+
 ## 1. The big picture: Tasks drive everything
 
 Phoenix code is built around three ideas:
@@ -29,21 +43,30 @@ Typical flow in an OpMode:
 
 ```java
 public class MyTeleOp extends OpMode {
+    private final LoopClock clock = new LoopClock();
     private final TaskRunner runner = new TaskRunner();
 
     @Override
-    public void loop() {
-        LoopClock clock = ...; // however you track dtSec
+    public void start() {
+        clock.reset(getRuntime());
+    }
 
-        // 1) Update inputs / bindings.
-        bindings.update();
+    @Override
+    public void loop() {
+        // 0) Advance the loop clock once per cycle.
+        clock.update(getRuntime());
+
+        // 1) Update inputs / bindings (button edge detection happens here).
+        gamepads.update(clock);
+        bindings.update(clock);
 
         // 2) Advance tasks.
         runner.update(clock);
 
-        // 3) Let drive + plants use whatever targets the tasks set.
+        // 3) Apply the latest targets.
         drivebase.update(clock);
-        shooter.update(clock);
+        double dtSec = clock.dtSec();
+        shooter.update(dtSec);
         // ... etc.
     }
 }
@@ -114,7 +137,7 @@ Common factories (high‑level view):
 
 * **Instant behavior**
 
-    * `Tasks.instant(Runnable action)` – run once in `start(...)`, then complete.
+    * `Tasks.runOnce(Runnable action)` – run once in `start(...)`, then complete.
     * `Tasks.noop()` – do nothing and complete immediately.
 
 * **Time‑based waits**
@@ -124,6 +147,7 @@ Common factories (high‑level view):
 * **Condition‑based waits**
 
     * `Tasks.waitUntil(BooleanSupplier condition)` – wait until a boolean becomes true.
+    * `Tasks.waitUntil(BooleanSupplier condition, double timeoutSec)` – wait until true or time out.
 
 * **Composition**
 
@@ -173,7 +197,7 @@ These work with *both* feedback and non‑feedback plants (for example, power pl
     * Same as above, **but** the final target stays at `+1.0`.
     * Think: “run for at least this long, but keep that command afterward.”
 
-### 4.2 Feedback‑based move helpers (require feedback
+### 4.2 Feedback‑based move helpers (require feedback)
 
 These helpers rely on `plant.hasFeedback() == true` and `plant.atSetpoint()` being meaningful. They are designed for encoder‑backed motor plants (position or velocity) created via `Actuators.plant(...).motor(...).position(...)` or `.velocity(...)`.
 
@@ -294,7 +318,7 @@ bindings.onPress(shootButton, () -> {
 });
 ```
 
-The rest of your TeleOp loop just calls `bindings.update()` and `runner.update(clock)`.
+The rest of your TeleOp loop just calls `bindings.update(clock)` and `runner.update(clock)`.
 
 ---
 
@@ -380,4 +404,4 @@ A good rule of thumb:
 * The core task classes – `InstantTask`, `RunForSecondsTask`, `WaitUntilTask`, `SequenceTask`, `ParallelAllTask` – are there when you need lower‑level control.
 * TeleOp macros and Autonomous routines both use the same task patterns; only the triggers change (buttons vs. init/start).
 
-Once you are comfortable with these patterns, you can layer in more advanced pieces like vision, TagAim, and interpolated shooter speeds – they all compose naturally on top of the same Task/Plant/Drive structure.
+Once you are comfortable with these patterns, you can layer in more advanced pieces like vision, DriveGuidance (auto-aim / go-to), and interpolated shooter speeds – they all compose naturally on top of the same Task/Plant/Drive structure.

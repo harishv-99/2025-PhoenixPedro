@@ -1,317 +1,119 @@
 # Shooter Case Study & Examples Walkthrough
 
-This document walks through the **mecanum + shooter** examples in
-`edu.ftcphoenix.fw.examples` and explains how they build on each other:
+This document walks through the framework’s shooter examples (02–06) and explains *why* each step exists, using only real APIs from the Phoenix framework.
 
-1. Example 01 – `TeleOp_01_MecanumBasic`
-2. Example 02 – `TeleOp_02_ShooterBasic`
-3. Example 03 – `TeleOp_03_ShooterMacro`
-4. Example 04 – `TeleOp_04_ShooterInterpolated`
-5. Example 05 – `TeleOp_05_ShooterTagAimVision`
-6. Example 06 – `TeleOp_06_ShooterTagAimMacroVision`
+The examples live in `edu.ftcphoenix.fw.tools.examples.*`:
 
-All six examples share the same **loop shape**, and each adds a new idea:
-
-* Plants and Actuators
-* Bindings and Tasks
-* PlantTasks helpers and macros
-* Interpolated shooter speed vs distance
-* TagAim and vision‑based alignment
-
-The goal of this case study is to show how these pieces fit together using
-**real code from the examples**. When you’re writing your own robot code, the
-recommended order of tools is:
-
-1. Use the **factory helpers** first:
-
-    * `Tasks.*` for general tasks.
-    * `PlantTasks.*` for mechanism‑related tasks.
-    * `DriveTasks.*` for drive‑related tasks.
-2. Drop down to the core Task classes (`InstantTask`, `RunForSecondsTask`,
-   `SequenceTask`, `ParallelAllTask`, ...) only when you need extra
-   customization or when you’re building new helper factories.
+* **TeleOp_01_MecanumBasic** – baseline mecanum TeleOp (the foundation all later examples build on)
+* **TeleOp_02_ShooterBasic** – basic “modes” + plants
+* **TeleOp_03_ShooterMacro** – one-button macro using `TaskRunner` + `PlantTasks`
+* **TeleOp_04_ShooterInterpolated** – distance → velocity via `InterpolatingTable1D`
+* **TeleOp_05_ShooterTagAimVision** – AprilTag distance + DriveGuidance (manual drive + auto-omega)
+* **TeleOp_06_ShooterTagAimMacroVision** – combines DriveGuidance + vision distance + macro
 
 ---
 
-## 1. Shared loop shape
+## The common pattern across all shooter examples
 
-Every example uses the same high‑level loop:
+### 1) Wire hardware as `Plant`s (Actuators builder)
 
-```java
-@Override
-public void start() {
-    clock.reset(getRuntime());
-}
-
-@Override
-public void loop() {
-    // 1) Clock
-    clock.update(getRuntime());
-    double dtSec = clock.dtSec();
-
-    // 2) Inputs + bindings
-    gamepads.update(dtSec);
-    bindings.update(dtSec);
-
-    // 3) Macros (if any)
-    macroRunner.update(clock);   // used in Examples 03 & 06
-
-    // 4) Drive
-    DriveSignal driveCmd = stickDrive.get(clock).clamped();
-    drivebase.drive(driveCmd);
-    drivebase.update(clock);
-
-    // 5) Mechanism plants
-    shooter.update(dtSec);
-    transfer.update(dtSec);
-    pusher.update(dtSec);
-
-    // 6) Telemetry
-    sendTelemetry();
-}
-```
-
-Key points:
-
-* **Tasks/macros never directly drive motors.** They only call
-  `Plant.setTarget(...)` (and drive code calls `drivebase.drive(...)`).
-* The main loop is responsible for calling `update(...)` on everything
-  once per cycle.
-* You can drop in more tasks, more bindings, or more drive logic without
-  changing this loop shape.
-
-The rest of this walkthrough explains how each example adds behavior on
-top of this pattern.
-
----
-
-## 2. Example 01 – `TeleOp_01_MecanumBasic`
-
-**Goal:** drive a mecanum robot with gamepad sticks.
-
-This example introduces:
-
-* `Loops` and `LoopClock`.
-* `Gamepads` and `Bindings`.
-* `DriveSource` (`GamepadDriveSource`) to convert sticks → `DriveSignal`.
-* `MecanumDrivebase` created via `Drives.mecanum(...)`.
-
-There is **no shooter** yet. The important lesson is the shape of the loop
-and how the drivebase is updated independently of anything else.
-
----
-
-## 3. Example 02 – `TeleOp_02_ShooterBasic`
-
-**Goal:** add a shooter mechanism (shooter + transfer + pusher) using:
-
-* `Actuators.plant(...)` to turn hardware into `Plant`s.
-* `Bindings` to map buttons to shooter modes.
-
-### 3.1 Hardware assumptions
-
-* Drive: same mecanum configuration as Example 01.
-* Shooter motors: `"shooterLeftMotor"`, `"shooterRightMotor"`.
-* Transfer CR servos: `"transferLeftServo"`, `"transferRightServo"`.
-* Pusher servo: `"pusherServo"`.
-
-The example defines constants like:
+All shooter examples use `Actuators.plant(hardwareMap)` to build `Plant` instances:
 
 ```java
-private static final String HW_SHOOTER_LEFT  = "shooterLeftMotor";
-private static final String HW_SHOOTER_RIGHT = "shooterRightMotor";
+import edu.ftcphoenix.fw.core.hal.Direction;
 
-private static final String HW_TRANSFER_LEFT  = "transferLeftServo";
-private static final String HW_TRANSFER_RIGHT = "transferRightServo";
-
-private static final String HW_PUSHER = "pusherServo";
-```
-
-### 3.2 Creating plants with `Actuators.plant(...)`
-
-Shooter plants are created in a compact builder style. For example:
-
-```java
-// Shooter: two motors, velocity‑controlled pair.
-shooter = Actuators.plant(hardwareMap)
-        .motorPair(HW_SHOOTER_LEFT, false,
-                   HW_SHOOTER_RIGHT, true)
-        .velocity(SHOOTER_VELOCITY_TOLERANCE_NATIVE)
+Plant shooter = Actuators.plant(hardwareMap)
+        .motor("shooterLeftMotor", Direction.FORWARD)
+        .andMotor("shooterRightMotor", Direction.REVERSE)
+        .velocity(/*toleranceNative=*/100.0)
         .build();
 
-// Transfer: two CR servos, power‑controlled pair.
-transfer = Actuators.plant(hardwareMap)
-        .crServoPair(HW_TRANSFER_LEFT, false,
-                     HW_TRANSFER_RIGHT, true)
+Plant transfer = Actuators.plant(hardwareMap)
+        .crServo("transferLeftServo", Direction.FORWARD)
+        .andCrServo("transferRightServo", Direction.REVERSE)
         .power()
         .build();
 
-// Pusher: single positional servo, 0..1 position plant.
-pusher = Actuators.plant(hardwareMap)
-        .servo(HW_PUSHER, false)
-        .position()   // servo set‑and‑hold, no feedback
+Plant pusher = Actuators.plant(hardwareMap)
+        .servo("pusherServo", Direction.FORWARD)
+        .position()
         .build();
 ```
 
-Interpretation:
+Key idea: **plants only accept a scalar target** (`setTarget(...)`). Your loop (or a task) decides targets; the plant applies them when you call `update(dtSec)`.
 
-* `motorPair(...).velocity(...)` → encoder‑backed **velocity plant** with
-  feedback and a tolerance, so `hasFeedback() == true` and `atSetpoint()`
-  has meaning.
-* `crServoPair(...).power()` → open‑loop power plant (no feedback).
-* `servo(...).position()` → servo position plant; this is open‑loop
-  "set‑and‑hold" (no feedback), so `atSetpoint()` is always true.
+### 2) Use `LoopClock`, update inputs, then update bindings/tasks
 
-### 3.3 Shooter modes via `Bindings`
+The examples share this “spine”:
 
-Example 02 uses an `enum` for the shooter mode and a small state machine
-in the main loop to convert modes → plant targets.
+```java
+clock.update(getRuntime());
+double dtSec = clock.dtSec();
 
-Controls (Example 02):
+gamepads.update(clock);
+bindings.update(clock);        // if used
+macroRunner.update(clock);      // if used
 
-* Drive: same sticks + RB slow mode as Example 01.
-* P1 right bumper: toggle shooter on/off.
-* P1 A: LOAD (gentle transfer, pusher load position).
-* P1 B: SHOOT (faster transfer, pusher shoot position).
-* P1 X: RETRACT (stop transfer, retract pusher).
+// Decide targets...
 
-The important point is that **no tasks/macros** are used yet. Everything
-is purely “mode → plant target” based on the current button state.
+// Drive...
+
+// Plant updates...
+shooter.update(dtSec);
+transfer.update(dtSec);
+pusher.update(dtSec);
+```
+
+Notes:
+
+* `Bindings.update(clock)`, `TaskRunner.update(clock)`, and `TagTarget.update(clock)` are **idempotent by `clock.cycle()`**. Calling them twice in one loop cycle becomes a no-op (safety against accidental double-updates).
+* `MecanumDrivebase.update(clock)` exists to provide loop timing for optional rate limiting. Call `drivebase.update(clock)` **before** `drivebase.drive(cmd)` so the current loop’s `dt` is used (the examples follow this order). `drivebase.drive(...)` applies motor power **immediately**; `update(...)` does not move motors by itself.
 
 ---
 
-## 4. Example 03 – `TeleOp_03_ShooterMacro`
+## Example 02: Shooter Basic (modes + plants)
 
-**Goal:** build a "shoot one ball" macro using the Task system.
+**File:** `TeleOp_02_ShooterBasic`
 
-This example adds:
+### What it teaches
 
-* A `TaskRunner` for shooter macros.
-* `PlantTasks` helpers for common plant behaviors.
-* A single macro that spins up, feeds one ball, then spins down.
+* How to create `Plant`s for a shooter motor pair, transfer CR servo pair, and a pusher servo.
+* How to use `Bindings.onPress(...)` to change a *mode*, then apply targets from that mode every loop.
 
-### 4.1 Adding a TaskRunner for shooter macros
+### Structure
 
-The OpMode has a `TaskRunner` field:
+* Uses small enums (e.g., transfer mode and pusher mode).
+* Button presses change the enums.
+* Each loop converts enum → `setTarget(...)`.
 
-```java
-private final TaskRunner macroRunner = new TaskRunner();
-```
+### Controls note
 
-The main loop now has:
+This example keeps `teleOpMecanumStandard(...)`, so **RB remains slow mode**. To avoid a conflict, the shooter toggle is on **LB**.
 
-```java
-// --- 3) Macros (shooter/transfer/pusher) ---
-macroRunner.update(clock);
-```
+---
 
-Bindings connect buttons to macros:
+## Example 03: Shooter Macro (Tasks + PlantTasks)
 
-```java
-// Y: enqueue "shoot one ball" macro.
-bindings.onPress(
-        gamepads.p1().y(),
-        this::enqueueShootOneBallMacro
-);
+**File:** `TeleOp_03_ShooterMacro`
 
-// B: cancel macro and stop shooter.
-bindings.onPress(
-        gamepads.p1().b(),
-        this::cancelShootMacros
-);
-```
+### What it teaches
 
-Inside `enqueueShootOneBallMacro()` the code simply does:
+* A “macro” is just a `Task` that *changes plant targets over time*.
+* `TaskRunner` runs tasks sequentially, one at a time.
+* `PlantTasks` provides *ready-made tasks* for common plant patterns.
 
-```java
-private void enqueueShootOneBallMacro() {
-    macroRunner.enqueue(buildShootOneBallMacro());
-}
-```
+### The macro behavior
 
-### 4.2 Safe defaults when no macro is running
+When P1 **Y** is pressed:
 
-When no macro is active, the example applies a “safe idle” behavior
-for the shooter, transfer, and pusher.
+1. **Spin up** shooter to a target velocity and wait for `Plant.atSetpoint()` with a timeout.
+2. In parallel:
 
-Roughly:
+    * pulse transfer power for a short time
+    * step pusher through positions using timed holds
+3. **Spin down** shooter.
 
-```java
-if (!macroRunner.isBusy()) {
-    shooter.setTarget(0.0);
-    transfer.setTarget(0.0);
-    pusher.setTarget(PUSHER_POS_RETRACT);
-}
-```
-
-This ensures that if you cancel the macro (or it completes), the
-mechanism goes back to a known safe state.
-
-### 4.3 Using `PlantTasks` to build the shooter macro
-
-The heart of Example 03 is `buildShootOneBallMacro()`, which uses
-`PlantTasks` helpers to construct a macro from **small, reusable tasks**.
-
-```java
-private Task buildShootOneBallMacro() {
-    // Step 1: set shooter target and wait for atSetpoint() or timeout.
-    Task spinUp = PlantTasks.moveTo(
-            shooter,
-            SHOOTER_VELOCITY_NATIVE,
-            SHOOTER_SPINUP_TIMEOUT_SEC
-    );
-
-    // Step 2: feed one ball.
-    //   - Transfer runs at shoot power for TRANSFER_PULSE_SEC, then stops.
-    //   - Pusher steps through LOAD → SHOOT → RETRACT.
-    Task feedTransfer = PlantTasks.holdFor(
-            transfer,
-            TRANSFER_POWER_SHOOT,
-            TRANSFER_PULSE_SEC
-    );
-
-    Task pusherLoad = PlantTasks.holdFor(
-            pusher,
-            PUSHER_POS_LOAD,
-            PUSHER_STAGE_SEC
-    );
-
-    Task pusherShoot = PlantTasks.holdFor(
-            pusher,
-            PUSHER_POS_SHOOT,
-            PUSHER_STAGE_SEC
-    );
-
-    Task pusherRetract = PlantTasks.holdFor(
-            pusher,
-            PUSHER_POS_RETRACT,
-            PUSHER_STAGE_SEC
-    );
-
-    Task feedBoth = ParallelAllTask.of(
-            feedTransfer,
-            SequenceTask.of(pusherLoad, pusherShoot, pusherRetract)
-    );
-
-    // Step 3: hold shooter up to speed briefly before spinning down.
-    Task holdBeforeSpinDown = PlantTasks.holdFor(
-            shooter,
-            SHOOTER_VELOCITY_NATIVE,
-            SHOOTER_SPINDOWN_HOLD_SEC
-    );
-
-    Task spinDown = PlantTasks.setInstant(shooter, 0.0);
-
-    return SequenceTask.of(
-            spinUp,
-            feedBoth,
-            holdBeforeSpinDown,
-            spinDown
-    );
-}
-```
-
-You could rewrite this using only factories:
+### Real code pattern (from the example)
 
 ```java
 Task spinUp = PlantTasks.moveTo(
@@ -326,156 +128,197 @@ Task feedTransfer = PlantTasks.holdFor(
         TRANSFER_PULSE_SEC
 );
 
-Task feedBoth = Tasks.parallelAll(
-        feedTransfer,
-        Tasks.sequence(pusherLoad, pusherShoot, pusherRetract)
-);
+Task pusherLoad = PlantTasks.holdFor(pusher, PUSHER_POS_LOAD,  PUSHER_STAGE_SEC);
+Task pusherShoot = PlantTasks.holdForThen(pusher, PUSHER_POS_SHOOT, PUSHER_STAGE_SEC, PUSHER_POS_RETRACT);
 
-Task macro = Tasks.sequence(
-        spinUp,
-        feedBoth,
-        holdBeforeSpinDown,
-        PlantTasks.setInstant(shooter, 0.0)
-);
+Task feedPusher = SequenceTask.of(pusherLoad, pusherShoot);
+Task feedBoth   = ParallelAllTask.of(feedTransfer, feedPusher);
+
+Task spinDown = PlantTasks.setInstant(shooter, 0.0);
+
+Task macro = SequenceTask.of(spinUp, feedBoth, spinDown);
 ```
 
-In your own code, we recommend:
+### Two rules to remember
 
-* Prefer **`Tasks.sequence`** / **`Tasks.parallelAll`** and the
-  `PlantTasks` helpers for common patterns.
-* Use `SequenceTask.of` / `ParallelAllTask.of` mainly when you’re building
-  new helper factories or want very explicit control.
-
-Controls (Example 03):
-
-* Drive: same as Example 01.
-* P1 Y: enqueue the “shoot one ball” macro.
-* P1 B: cancel macro and stop shooter.
+* `PlantTasks.moveTo(...)` **requires a feedback-capable plant** (`plant.hasFeedback() == true`). That’s why the shooter is built as `.velocity(...)`.
+* Timed patterns like `holdFor(...)` / `holdForThen(...)` are perfect for servo plants (no feedback).
 
 ---
 
-## 5. Example 04 – `TeleOp_04_ShooterInterpolated`
+## Example 04: Shooter Interpolated (manual “distance”)
 
-**Goal:** choose shooter speed automatically based on distance.
+**File:** `TeleOp_04_ShooterInterpolated`
 
-This example introduces:
+### What it teaches
 
-* `InterpolatingTable1D` – a 1D lookup table with interpolation.
-* Manual distance selection via the D‑pad.
-* A single source of truth for mapping distance → shooter velocity.
+* How to represent calibration data as an `InterpolatingTable1D`.
+* How to separate **where distance comes from** (here: D-pad) from **how it’s used** (distance → velocity).
 
-### 5.1 The interpolation table
+### Real table API
 
-The code builds a table of `(distanceInches, shooterVelocity)` points:
+The table is constructed with sorted pairs:
 
 ```java
-private InterpolatingTable1D shooterTable;
+private static final InterpolatingTable1D SHOOTER_VELOCITY_TABLE =
+        InterpolatingTable1D.ofSortedPairs(
+                24.0, 170.0,
+                30.0, 180.0,
+                36.0, 195.0,
+                42.0, 210.0,
+                48.0, 225.0
+        );
+```
 
-private void initShooterTable() {
-    shooterTable = new InterpolatingTable1D();
-    shooterTable.put(24.0, 2100.0);  // near shot
-    shooterTable.put(36.0, 2200.0);  // mid shot
-    shooterTable.put(48.0, 2350.0);  // far shot
+Then in loop:
+
+```java
+double targetVel = SHOOTER_VELOCITY_TABLE.interpolate(distanceInches);
+shooter.setTarget(shooterEnabled ? targetVel : 0.0);
+```
+
+---
+
+## Example 05: Shooter + DriveGuidance Auto-Aim + Vision Distance
+
+**File:** `TeleOp_05_ShooterTagAimVision`
+
+### What it teaches
+
+* How to get AprilTag observations through the FTC adapter: `FtcVision.aprilTags(...)`.
+* How `TagTarget` tracks the “best” tag across loops with an age constraint.
+* How a `DriveGuidance` plan becomes a `DriveOverlay` that overrides only **omega** while a button is held.
+* How to compute shooter velocity from **tag distance** using the same interpolation-table idea from Example 04.
+
+### Wiring
+
+```java
+AprilTagSensor tagSensor = FtcVision.aprilTags(hardwareMap, "Webcam 1");
+TagTarget scoringTarget = new TagTarget(tagSensor, SCORING_TAG_IDS, MAX_TAG_AGE_SEC);
+
+CameraMountConfig cameraMount = CameraMountConfig.of(
+        /*xInches=*/6.0,
+        /*yInches=*/-3.0,
+        /*zInches=*/8.0,
+        /*yawRad=*/0.0,
+        /*pitchRad=*/0.0,
+        /*rollRad=*/0.0
+);
+
+DriveSource baseDrive = GamepadDriveSource.teleOpMecanumStandard(gamepads);
+
+// Convert TagTarget → generic robot-relative observation.
+ObservationSource2d scoringObs = ObservationSources.aprilTag(scoringTarget, cameraMount);
+
+DriveGuidancePlan aimPlan = DriveGuidance.plan()
+        .aimTo()
+            // Aim at the center of whichever scoring tag is currently observed.
+            .tagRelativePointInches(0.0, 0.0)
+            .doneAimTo()
+        .feedback()
+            .observation(scoringObs)
+            .doneFeedback()
+        .build();
+
+DriveSource driveWithAim = baseDrive.overlayWhen(
+        () -> gamepads.p1().leftBumper().isHeld(),
+        aimPlan.overlay(),
+        DriveOverlayMask.OMEGA_ONLY
+);
+```
+
+### Loop highlights
+
+* Call `scoringTarget.update(clock)` once per cycle.
+* Read `AprilTagObservation obs = scoringTarget.last()`.
+* Use `obs.cameraRangeInches()` and `obs.cameraBearingRad()`.
+
+This example also demonstrates computing **robot-centric bearing** that accounts for the camera offset:
+
+```java
+double robotBearingRad = obs.hasTarget
+        ? CameraMountLogic.robotBearingRad(obs, cameraMount)
+        : 0.0;
+```
+
+Shooter target decision:
+
+```java
+if (shooterEnabled && obs.hasTarget) {
+    double targetVel = SHOOTER_VELOCITY_TABLE.interpolate(obs.cameraRangeInches());
+    shooter.setTarget(targetVel);
+} else {
+    shooter.setTarget(0.0);
 }
 ```
 
-Later, the TeleOp picks a distance (from D‑pad input) and uses the table
-for the shooter target:
+---
+
+## Example 06: DriveGuidance Auto-Aim + Vision Distance + Macro
+
+**File:** `TeleOp_06_ShooterTagAimMacroVision` (auto-aim is now implemented with `DriveGuidance`)
+
+### What it teaches
+
+* How to combine Example 03 (macro) with Example 05 (vision distance).
+* How to *gate a macro* on “do we have a valid tag right now?”.
+
+### The key idea
+
+When P1 **Y** is pressed:
+
+1. Read the latest tag observation from `TagTarget`.
+2. If there is no tag: **don’t start the macro**.
+3. If there is a tag: compute shooter velocity from the table, then build the macro using that velocity.
+
+Real logic from the example:
 
 ```java
-double distanceInches = manualDistance;        // from D‑pad
-double shooterTarget  = shooterTable.interpolate(distanceInches);
-shooter.setTarget(shooterTarget);
+AprilTagObservation obs = scoringTarget.last();
+if (!obs.hasTarget) {
+    lastMacroStatus = "no tag: macro not started";
+    return;
+}
+
+double shooterTargetVel = SHOOTER_VELOCITY_TABLE.interpolate(obs.cameraRangeInches());
+Task macro = buildShootOneBallMacro(shooterTargetVel);
+macroRunner.clear();
+macroRunner.enqueue(macro);
 ```
 
-You can think of this as **decoupling**:
+### Macro composition (example’s version)
 
-* “How far away is the goal?”
-* “What shooter velocity do we want for that distance?”
+This example uses timed holds for each pusher stage:
 
-Once you have this table, you can plug in a different distance source
-without changing the mapping logic.
+```java
+Task pusherLoad    = PlantTasks.holdFor(pusher, PUSHER_POS_LOAD,    PUSHER_STAGE_SEC);
+Task pusherShoot   = PlantTasks.holdFor(pusher, PUSHER_POS_SHOOT,   PUSHER_STAGE_SEC);
+Task pusherRetract = PlantTasks.holdFor(pusher, PUSHER_POS_RETRACT, PUSHER_STAGE_SEC);
 
----
-
-## 6. Example 05 – `TeleOp_05_ShooterTagAimVision`
-
-**Goal:** use AprilTags to aim the robot at the goal and estimate distance.
-
-This example adds:
-
-* A vision pipeline that estimates robot pose from AprilTags.
-* A `TagAimDriveSource` that turns the AprilTag pose into drive signals to
-  center and align the robot.
-* A distance estimate from the same pose, which can be fed into the shooter
-  interpolation table.
-
-The key idea is that **drive aiming** is separated from **shooter control**:
-
-* Drive uses `TagAimDriveSource` to rotate/translate the robot so the tag
-  is centered and the robot is square to the goal.
-* Shooter uses the distance estimate to pick a velocity from `shooterTable`.
-
-Because both are just ordinary `DriveSource` / `Plant` users, they plug
-into the same loop shape as before.
+Task feedPusher = SequenceTask.of(pusherLoad, pusherShoot, pusherRetract);
+```
 
 ---
 
-## 7. Example 06 – `TeleOp_06_ShooterTagAimMacroVision`
+## Troubleshooting checklist when adapting these examples
 
-**Goal:** combine everything:
+* **Camera name**: examples use `"Webcam 1"`. Your Robot Configuration name must match.
+* **Tag IDs**: update `SCORING_TAG_IDS` for the real game tags you care about.
+* **Mount axes**: `CameraMountConfig.of(x, y, z, yaw, pitch, roll)` uses Phoenix framing:
 
-* Mecanum drive.
-* Vision‑based TagAim alignment.
-* Distance‑based shooter interpolation.
-* A shooter macro built with `PlantTasks` and `Tasks`.
+    * +X forward, +Y left, +Z up
+    * *Right* is negative Y.
+* **Feedback vs no feedback**:
 
-This OpMode looks a lot like Example 03, but:
-
-* Uses vision distance instead of manual distance.
-* Uses TagAim when a button is held to keep the robot aligned.
-* Reuses the same `buildShootOneBallMacro()` idea from Example 03.
-
-The message is that **Tasks + Plants + Drive sources compose cleanly**:
-
-* You can plug in TagAim where the drive signal is computed.
-* You can plug in interpolated shooter speeds where you set the shooter target.
-* You can reuse the same macros whether distance is manual or vision‑based.
+    * Use `PlantTasks.moveTo(...)` only for plants with feedback (motor velocity/position plants).
+    * Use timed holds for servos/CR servos.
 
 ---
 
-## 8. Recommended patterns going forward
+## What to do next
 
-When you build your own mechanisms and macros, this is the suggested
-approach:
+* If you like the structure of Example 06, the next extension is usually:
 
-1. **Model hardware as Plants** using `Actuators.plant(...)`.
-
-    * Use `motor(...)` / `motorPair(...)` + `.velocity(...)` or
-      `.position(tolerance)` for feedback‑capable plants.
-    * Use `servo(...)` + `.position()` or `crServo(...)` + `.power()` for
-      simpler open‑loop plants.
-2. **Use `PlantTasks` for common behaviors**:
-
-    * Time‑based holds: `holdFor(...)`, `holdForThen(...)`.
-    * Feedback‑based moves: `moveTo(...)`, `moveTo(..., timeout)`,
-      `moveToThen(...)`.
-    * Instant target changes: `setInstant(...)`.
-3. **Use `Tasks` factories to assemble macros**:
-
-    * `Tasks.sequence(...)` and `Tasks.parallelAll(...)`.
-    * `Tasks.waitForSeconds(...)`, `Tasks.waitUntil(...)`, `Tasks.instant(...)`.
-4. **Drop down to raw Task classes** (`InstantTask`, `RunForSecondsTask`,
-   `SequenceTask`, `ParallelAllTask`, ...) when you:
-
-    * Are building new helper factories.
-    * Need special behavior not covered by the factories yet.
-
-If your code starts to feel repetitive or complex at the Task level,
-that’s a sign you should extract a new helper into `PlantTasks`,
-`DriveTasks`, or your own `MyRobotTasks` class so the next student can
-call a single method instead of re‑creating the pattern.
-
-This shooter case study is meant to be a template: you can swap in your
-own mechanisms and goals, but keep the same building blocks and loop
-shape for predictable, non‑blocking robot code.
+    * “shoot N balls” (repeat the single-ball macro in a `SequenceTask`), and/or
+    * add a *min-range / max-range* check before starting the macro, and/or
+    * pass `cameraMount` into `FtcVision.aprilTags(..., cfg)` via `FtcVision.Config.defaults().withCameraMount(cameraMount)` if you want the FTC SDK’s robot-pose estimation path enabled (separate from DriveGuidance).

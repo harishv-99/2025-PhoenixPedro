@@ -2,7 +2,7 @@ package edu.ftcphoenix.fw.task;
 
 import java.util.Objects;
 
-import edu.ftcphoenix.fw.util.LoopClock;
+import edu.ftcphoenix.fw.core.time.LoopClock;
 
 /**
  * A {@link Task} that runs a single action once, immediately on
@@ -40,6 +40,9 @@ public final class InstantTask implements Task {
         this.action = Objects.requireNonNull(action, "action must not be null");
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void start(LoopClock clock) {
         // Idempotent start: only run the action once.
@@ -50,11 +53,17 @@ public final class InstantTask implements Task {
         finished = true;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void update(LoopClock clock) {
         // No periodic work; instant tasks finish in start().
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public boolean isComplete() {
         return finished;

@@ -2,104 +2,68 @@ package edu.ftcphoenix.fw.actuation;
 
 import com.qualcomm.robotcore.hardware.HardwareMap;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 
-import edu.ftcphoenix.fw.adapters.ftc.FtcHardware;
-import edu.ftcphoenix.fw.hal.PowerOutput;
-import edu.ftcphoenix.fw.hal.PositionOutput;
-import edu.ftcphoenix.fw.hal.VelocityOutput;
+import edu.ftcphoenix.fw.core.hal.Direction;
+import edu.ftcphoenix.fw.core.hal.PositionOutput;
+import edu.ftcphoenix.fw.core.hal.PowerOutput;
+import edu.ftcphoenix.fw.core.hal.VelocityOutput;
+import edu.ftcphoenix.fw.ftc.FtcHardware;
 
 /**
  * Beginner-friendly helpers for wiring FTC hardware into {@link Plant} instances.
  *
- * <p>The goal of {@code Actuators} is to let teams create plants in a
- * readable, staged style without having to know about {@link FtcHardware}
- * or the underlying HAL interfaces:</p>
+ * <p>The goal of {@code Actuators} is to let teams create plants in a readable,
+ * staged style without having to know about {@link FtcHardware} or the underlying
+ * HAL interfaces.</p>
+ *
+ * <h2>Examples</h2>
  *
  * <pre>{@code
- * // Shooter: dual-motor velocity plant with a rate limit.
+ * import static edu.ftcphoenix.fw.core.hal.Direction.*;
+ *
+ * // Shooter: two motors, velocity control.
  * Plant shooter = Actuators.plant(hardwareMap)
- *         .motorPair("shooterLeftMotor",  false,
- *                    "shooterRightMotor", true)
- *         .velocity()                 // uses a default tolerance
- *         .rateLimit(500.0)           // max delta in native units per second
- *         .build();
+ *     .motor("shooterLeft",  FORWARD)
+ *     .andMotor("shooterRight", REVERSE)
+ *         .scale(1.00)        // optional: last-added motor only (appears after you add a 2nd)
+ *     .velocity(50.0)
+ *     .rateLimit(500.0)
+ *     .build();
  *
- * // Transfer: dual CR servo power plant.
+ * // Transfer: two CR servos, open-loop power.
  * Plant transfer = Actuators.plant(hardwareMap)
- *         .crServoPair("transferLeftServo",  false,
- *                      "transferRightServo", true)
- *         .power()
- *         .build();
+ *     .crServo("transferLeft",  FORWARD)
+ *     .andCrServo("transferRight", REVERSE)
+ *     .power()
+ *     .build();
  *
- * // Pusher: positional servo.
+ * // Pusher: one positional servo.
  * Plant pusher = Actuators.plant(hardwareMap)
- *         .servo("pusherServo", false)
- *         .position()                 // servo set-and-hold (no feedback)
- *         .build();
+ *     .servo("pusher", FORWARD)
+ *     .position()
+ *     .build();
  * }</pre>
  *
- * <p>The builder has three conceptual stages:</p>
- *
- * <ol>
- *   <li><b>Pick hardware</b> – {@link HardwareStep}:
- *     <ul>
- *       <li>{@link HardwareStep#motor(String, boolean)}</li>
- *       <li>{@link HardwareStep#motorPair(String, boolean, String, boolean)}</li>
- *       <li>{@link HardwareStep#servo(String, boolean)}</li>
- *       <li>{@link HardwareStep#servoPair(String, boolean, String, boolean)}</li>
- *       <li>{@link HardwareStep#crServo(String, boolean)}</li>
- *       <li>{@link HardwareStep#crServoPair(String, boolean, String, boolean)}</li>
- *     </ul>
- *   </li>
- *   <li><b>Pick control type</b> – {@link ControlStep}:
- *     <ul>
- *       <li>{@link ControlStep#power()} for open-loop power (-1..+1).</li>
- *       <li>{@link ControlStep#velocity()} or
- *           {@link ControlStep#velocity(double)} for closed-loop velocity
- *           with default or explicit tolerance.</li>
- *       <li>{@link ControlStep#position()} or
- *           {@link ControlStep#position(double)} for positional control:
- *           <ul>
- *             <li>DC motors: encoder-backed, feedback-based position plants
- *                 with a tolerance in native units.</li>
- *             <li>Servos: open-loop "set-and-hold" plants without feedback.</li>
- *           </ul>
- *       </li>
- *     </ul>
- *   </li>
- *   <li><b>Modifiers + build</b> – {@link ModifiersStep}:
- *     <ul>
- *       <li>{@link ModifiersStep#rateLimit(double)} to limit how quickly
- *           the target may change.</li>
- *       <li>{@link ModifiersStep#build()} to get the final {@link Plant}.</li>
- *     </ul>
- *   </li>
- * </ol>
- *
- * <p>The intent is that <b>students</b> mostly interact with {@code Actuators}
- * and higher-level APIs like {@link PlantTasks}, while the {@link Plants}
- * class (and the HAL interfaces) remain an internal detail.</p>
+ * <p>Notably, method availability is restricted so IntelliSense only shows what
+ * makes sense at each stage:
+ * <ul>
+ *   <li>Servos only offer {@code position()} (no {@code power()} or {@code velocity()}).</li>
+ *   <li>CR servos only offer {@code power()}.</li>
+ *   <li>{@code scale()/bias()} only appear after you add a second actuator.</li>
+ * </ul>
  */
 public final class Actuators {
 
     /**
-     * Default tolerance for closed-loop motor position plants created via
-     * {@link ControlStep#position()} when used with DC motors.
-     *
-     * <p>This value is in native position units (for REV encoders, ticks).
-     * Teams with more advanced needs can use
-     * {@link ControlStep#position(double)} to override it.</p>
+     * Default tolerance for motor position plants (native units).
      */
     private static final double DEFAULT_MOTOR_POSITION_TOLERANCE_NATIVE = 10.0;
 
     /**
-     * Default tolerance for closed-loop motor velocity plants created via
-     * {@link ControlStep#velocity()}.
-     *
-     * <p>This value is in native velocity units (e.g. ticks per second).
-     * Teams that need a tighter or looser band can use
-     * {@link ControlStep#velocity(double)} to override it.</p>
+     * Default tolerance for motor velocity plants (native units).
      */
     private static final double DEFAULT_MOTOR_VELOCITY_TOLERANCE_NATIVE = 100.0;
 
@@ -108,487 +72,966 @@ public final class Actuators {
     }
 
     /**
-     * Entry point for the staged builder.
+     * Entry point for the {@link Actuators} staged builder.
      *
-     * @param hw FTC {@link HardwareMap}
-     * @return first step where you choose which hardware you want to control
+     * <p>This is the recommended way for students to wire FTC devices into a {@link Plant}
+     * without needing to know about {@link FtcHardware} or the HAL interfaces.</p>
+     *
+     * <p>Typical usage:</p>
+     *
+     * <pre>{@code
+     * import static edu.ftcphoenix.fw.core.hal.Direction.*;
+     *
+     * Plant intake = Actuators.plant(hardwareMap)
+     *     .motor("intakeMotor", FORWARD)
+     *     .power()
+     *     .build();
+     * }</pre>
+     *
+     * @param hw FTC {@link HardwareMap} used to look up configured devices
+     * @return the first stage of the builder (choose motor / servo / CR servo)
+     * @throws NullPointerException if {@code hw} is {@code null}
      */
     public static HardwareStep plant(HardwareMap hw) {
         return new HardwareStep(hw);
     }
 
     // =====================================================================
-    // BUILDER STEPS
+    // STAGE 1: PICK HARDWARE
     // =====================================================================
 
     /**
-     * Internal enumeration describing which kind of hardware this plant
-     * controls. This is used to route to the correct HAL adapters when
-     * the control type is chosen.
-     */
-    private enum HardwareKind {
-        NONE,
-        MOTOR,
-        MOTOR_PAIR,
-        SERVO,
-        SERVO_PAIR,
-        CR_SERVO,
-        CR_SERVO_PAIR
-    }
-
-    /**
-     * Stage 1: choose the hardware being controlled.
+     * Stage 1 of the builder: choose what kind of FTC actuator(s) you want to control.
      *
-     * <p>You call exactly one of the hardware selection methods. Each
-     * method returns a {@link ControlStep}, where you choose the control
-     * type (power / velocity / position).</p>
+     * <p>Once hardware is chosen, you move on to a stage where you select a control mode
+     * and then call {@link ModifiersStep#build()} to get the final {@link Plant}.</p>
      */
     public static final class HardwareStep {
-
         private final HardwareMap hw;
 
-        private HardwareKind hardwareKind = HardwareKind.NONE;
-
-        private String nameA;
-        private String nameB;
-        private boolean invertedA;
-        private boolean invertedB;
-
         private HardwareStep(HardwareMap hw) {
-            if (hw == null) {
-                throw new IllegalArgumentException("HardwareMap is required");
-            }
-            this.hw = hw;
-        }
-
-        private void ensureUnset() {
-            if (hardwareKind != HardwareKind.NONE) {
-                throw new IllegalStateException(
-                        "Hardware already selected for this builder: " + describeHardware());
-            }
+            this.hw = Objects.requireNonNull(hw, "HardwareMap is required");
         }
 
         /**
-         * Use a single DC motor as the underlying actuator.
+         * Begin wiring a DC motor-backed plant.
          *
-         * @param name     motor name in the FTC Robot Configuration
-         * @param inverted whether to invert the motor direction
-         * @return {@link ControlStep} to choose control type
+         * <p>This selects a motor by name from the FTC Robot Configuration and applies the
+         * requested {@link Direction} at the FTC SDK level. After this, the rest of the
+         * framework can treat positive values as "forward" for your mechanism.</p>
+         *
+         * <p>Next steps:</p>
+         * <ul>
+         *   <li>Optionally add more motors with {@link MotorSingleStep#andMotor(String, Direction)}.</li>
+         *   <li>Choose a control mode: {@link MotorSingleStep#power()},
+         *       {@link MotorSingleStep#velocity()}, or {@link MotorSingleStep#position()}.</li>
+         *   <li>Optionally add modifiers like {@link ModifiersStep#rateLimit(double)}.</li>
+         *   <li>Finish with {@link ModifiersStep#build()}.</li>
+         * </ul>
+         *
+         * @param name      configured device name in the FTC Robot Configuration
+         * @param direction logical direction for this motor channel
+         * @return the next stage of the builder for motors
+         * @throws NullPointerException if {@code name} or {@code direction} is {@code null}
          */
-        public ControlStep motor(String name, boolean inverted) {
-            ensureUnset();
-            this.hardwareKind = HardwareKind.MOTOR;
-            this.nameA = Objects.requireNonNull(name, "name");
-            this.invertedA = inverted;
-            return new ControlStep(hw, hardwareKind, nameA, invertedA, null, false);
+
+        public MotorSingleStep motor(String name, Direction direction) {
+            return new MotorBuilder(hw, name, direction);
         }
 
         /**
-         * Use a pair of DC motors as a single logical actuator.
+         * Begin wiring a positional servo plant.
          *
-         * <p>Both motors will receive the same command.</p>
+         * <p>Servo plants in Phoenix are "set-and-hold": when you call
+         * {@link Plant#setTarget(double)}, the servo is commanded immediately and the plant
+         * reports {@link Plant#atSetpoint()} as {@code true} (there is no position feedback
+         * from a standard FTC servo).</p>
          *
-         * @param nameA     first motor name
-         * @param invertedA invert flag for first motor
-         * @param nameB     second motor name
-         * @param invertedB invert flag for second motor
-         * @return {@link ControlStep} to choose control type
+         * <p>The target units for servo position are FTC-native {@code 0.0 .. 1.0}.</p>
+         *
+         * <p>Next steps:</p>
+         * <ul>
+         *   <li>Optionally add more servos with {@link ServoSingleStep#andServo(String, Direction)}.</li>
+         *   <li>Choose {@link ServoSingleStep#position()}.</li>
+         *   <li>Finish with {@link ModifiersStep#build()}.</li>
+         * </ul>
+         *
+         * @param name      configured device name in the FTC Robot Configuration
+         * @param direction logical direction for this servo channel
+         * @return the next stage of the builder for servos
+         * @throws NullPointerException if {@code name} or {@code direction} is {@code null}
          */
-        public ControlStep motorPair(String nameA,
-                                     boolean invertedA,
-                                     String nameB,
-                                     boolean invertedB) {
-            ensureUnset();
-            this.hardwareKind = HardwareKind.MOTOR_PAIR;
-            this.nameA = Objects.requireNonNull(nameA, "nameA");
-            this.nameB = Objects.requireNonNull(nameB, "nameB");
-            this.invertedA = invertedA;
-            this.invertedB = invertedB;
-            return new ControlStep(hw, hardwareKind, nameA, invertedA, nameB, invertedB);
+
+        public ServoSingleStep servo(String name, Direction direction) {
+            return new ServoBuilder(hw, name, direction);
         }
 
         /**
-         * Use a single positional servo as the underlying actuator.
+         * Begin wiring a continuous-rotation (CR) servo power plant.
          *
-         * <p>This selection supports {@link ControlStep#position()} and
-         * {@link ControlStep#position(double)}, but will throw if you attempt
-         * to use {@link ControlStep#power()} or
-         * {@link ControlStep#velocity()} / {@link ControlStep#velocity(double)}.</p>
+         * <p>CR servos are treated like small motors: the control mode is open-loop power
+         * via {@link CrServoSingleStep#power()}, with targets typically in {@code [-1.0, +1.0]}.</p>
          *
-         * @param name     servo name in the FTC Robot Configuration
-         * @param inverted whether to invert the logical direction
-         * @return {@link ControlStep} to choose control type
+         * <p>Next steps:</p>
+         * <ul>
+         *   <li>Optionally add more CR servos with {@link CrServoSingleStep#andCrServo(String, Direction)}.</li>
+         *   <li>Choose {@link CrServoSingleStep#power()}.</li>
+         *   <li>Finish with {@link ModifiersStep#build()}.</li>
+         * </ul>
+         *
+         * @param name      configured device name in the FTC Robot Configuration
+         * @param direction logical direction for this CR servo channel
+         * @return the next stage of the builder for CR servos
+         * @throws NullPointerException if {@code name} or {@code direction} is {@code null}
          */
-        public ControlStep servo(String name, boolean inverted) {
-            ensureUnset();
-            this.hardwareKind = HardwareKind.SERVO;
-            this.nameA = Objects.requireNonNull(name, "name");
-            this.invertedA = inverted;
-            return new ControlStep(hw, hardwareKind, nameA, invertedA, null, false);
-        }
 
-        /**
-         * Use a pair of positional servos as a single logical actuator.
-         *
-         * <p>Both servos will receive the same position command.</p>
-         *
-         * <p>This selection supports {@link ControlStep#position()} and
-         * {@link ControlStep#position(double)}, but will throw if you attempt
-         * to use {@link ControlStep#power()} or
-         * {@link ControlStep#velocity()} / {@link ControlStep#velocity(double)}.</p>
-         *
-         * @param nameA     first servo name
-         * @param invertedA invert flag for first servo
-         * @param nameB     second servo name
-         * @param invertedB invert flag for second servo
-         * @return {@link ControlStep} to choose control type
-         */
-        public ControlStep servoPair(String nameA,
-                                     boolean invertedA,
-                                     String nameB,
-                                     boolean invertedB) {
-            ensureUnset();
-            this.hardwareKind = HardwareKind.SERVO_PAIR;
-            this.nameA = Objects.requireNonNull(nameA, "nameA");
-            this.nameB = Objects.requireNonNull(nameB, "nameB");
-            this.invertedA = invertedA;
-            this.invertedB = invertedB;
-            return new ControlStep(hw, hardwareKind, nameA, invertedA, nameB, invertedB);
-        }
-
-        /**
-         * Use a single continuous-rotation (CR) servo as the underlying actuator.
-         *
-         * <p>This selection supports {@link ControlStep#power()}, but will
-         * throw if you attempt to use {@link ControlStep#velocity()} /
-         * {@link ControlStep#velocity(double)} or
-         * {@link ControlStep#position()} / {@link ControlStep#position(double)}.</p>
-         *
-         * @param name     CR servo name in the FTC Robot Configuration
-         * @param inverted whether to invert the logical direction
-         * @return {@link ControlStep} to choose control type
-         */
-        public ControlStep crServo(String name, boolean inverted) {
-            ensureUnset();
-            this.hardwareKind = HardwareKind.CR_SERVO;
-            this.nameA = Objects.requireNonNull(name, "name");
-            this.invertedA = inverted;
-            return new ControlStep(hw, hardwareKind, nameA, invertedA, null, false);
-        }
-
-        /**
-         * Use a pair of continuous-rotation (CR) servos as a single logical actuator.
-         *
-         * <p>Both CR servos will receive the same power command.</p>
-         *
-         * <p>This selection supports {@link ControlStep#power()}, but will
-         * throw if you attempt to use {@link ControlStep#velocity()} /
-         * {@link ControlStep#velocity(double)} or
-         * {@link ControlStep#position()} / {@link ControlStep#position(double)}.</p>
-         *
-         * @param nameA     first CR servo name
-         * @param invertedA invert flag for first CR servo
-         * @param nameB     second CR servo name
-         * @param invertedB invert flag for second CR servo
-         * @return {@link ControlStep} to choose control type
-         */
-        public ControlStep crServoPair(String nameA,
-                                       boolean invertedA,
-                                       String nameB,
-                                       boolean invertedB) {
-            ensureUnset();
-            this.hardwareKind = HardwareKind.CR_SERVO_PAIR;
-            this.nameA = Objects.requireNonNull(nameA, "nameA");
-            this.nameB = Objects.requireNonNull(nameB, "nameB");
-            this.invertedA = invertedA;
-            this.invertedB = invertedB;
-            return new ControlStep(hw, hardwareKind, nameA, invertedA, nameB, invertedB);
-        }
-
-        private String describeHardware() {
-            switch (hardwareKind) {
-                case MOTOR:
-                    return "motor('" + nameA + "')";
-                case MOTOR_PAIR:
-                    return "motorPair('" + nameA + "', '" + nameB + "')";
-                case SERVO:
-                    return "servo('" + nameA + "')";
-                case SERVO_PAIR:
-                    return "servoPair('" + nameA + "', '" + nameB + "')";
-                case CR_SERVO:
-                    return "crServo('" + nameA + "')";
-                case CR_SERVO_PAIR:
-                    return "crServoPair('" + nameA + "', '" + nameB + "')";
-                case NONE:
-                default:
-                    return "none";
-            }
+        public CrServoSingleStep crServo(String name, Direction direction) {
+            return new CrServoBuilder(hw, name, direction);
         }
     }
 
+    // =====================================================================
+    // COMMON: MODIFIERS + BUILD
+    // =====================================================================
+
     /**
-     * Stage 2: choose the control type (power / velocity / position)
-     * for the selected hardware.
+     * Final stage of the builder: optionally apply modifiers, then {@link #build()}.
      *
-     * <p>This stage combines the hardware choice from {@link HardwareStep}
-     * with a control mode, and constructs the underlying {@link Plant}
-     * using {@link Plants} helpers.</p>
+     * <p>Modifiers are small wrappers that change how the plant behaves without changing
+     * your robot code. For example, {@link #rateLimit(double)} wraps the plant in a
+     * {@link RateLimitedPlant} so targets cannot change faster than some limit.</p>
      */
-    public static final class ControlStep {
+    public interface ModifiersStep {
 
-        private final HardwareMap hw;
-        private final HardwareKind kind;
-        private final String nameA;
-        private final String nameB;
-        private final boolean invertedA;
-        private final boolean invertedB;
+        /**
+         * Apply a <b>symmetric</b> rate limit to target changes.
+         *
+         * <p>The limit is in "plant target units per second". That means:</p>
+         * <ul>
+         *   <li>Power plants: units are normalized power per second.</li>
+         *   <li>Velocity plants: units are native velocity units per second (e.g. ticks/sec²).</li>
+         *   <li>Position plants: units are native position units per second (e.g. ticks/sec).</li>
+         * </ul>
+         *
+         * @param maxDeltaPerSec maximum absolute change allowed per second (must be {@code >= 0})
+         * @return this stage for chaining
+         * @throws IllegalArgumentException if {@code maxDeltaPerSec < 0}
+         */
+        ModifiersStep rateLimit(double maxDeltaPerSec);
 
-        private ControlStep(HardwareMap hw,
-                            HardwareKind kind,
-                            String nameA,
-                            boolean invertedA,
-                            String nameB,
-                            boolean invertedB) {
-            this.hw = Objects.requireNonNull(hw, "hw");
-            this.kind = Objects.requireNonNull(kind, "kind");
-            this.nameA = nameA;
-            this.nameB = nameB;
-            this.invertedA = invertedA;
-            this.invertedB = invertedB;
+        /**
+         * Apply an <b>asymmetric</b> rate limit to target changes.
+         *
+         * <p>This is useful when you want a mechanism to ramp up slowly but ramp down quickly,
+         * or vice versa (for example, soft-start an intake but allow a rapid stop).</p>
+         *
+         * @param maxUpPerSec   maximum increase allowed per second (must be {@code >= 0})
+         * @param maxDownPerSec maximum decrease allowed per second (must be {@code >= 0})
+         * @return this stage for chaining
+         * @throws IllegalArgumentException if either argument is negative
+         */
+        ModifiersStep rateLimit(double maxUpPerSec, double maxDownPerSec);
+
+        /**
+         * Finish building and return the final {@link Plant}.
+         *
+         * @return the constructed plant
+         */
+        Plant build();
+    }
+
+    /**
+     * Implementation of {@link ModifiersStep}.
+     *
+     * <p>This stage wraps the current {@link Plant} and applies optional modifiers
+     * (like rate limiting) before returning the final plant via {@link #build()}.</p>
+     */
+    private static final class ModifiersStepImpl implements ModifiersStep {
+        private Plant plant;
+
+        ModifiersStepImpl(Plant plant) {
+            this.plant = Objects.requireNonNull(plant, "plant");
         }
 
         /**
-         * Choose open-loop power control for the selected hardware.
-         *
-         * <p>Valid hardware kinds:</p>
-         *
-         * <ul>
-         *   <li>{@link HardwareKind#MOTOR}</li>
-         *   <li>{@link HardwareKind#MOTOR_PAIR}</li>
-         *   <li>{@link HardwareKind#CR_SERVO}</li>
-         *   <li>{@link HardwareKind#CR_SERVO_PAIR}</li>
-         * </ul>
-         *
-         * @return {@link ModifiersStep} to apply modifiers and build
+         * {@inheritDoc}
          */
-        public ModifiersStep power() {
-            Plant plant;
-            switch (kind) {
-                case MOTOR: {
-                    PowerOutput out = FtcHardware.motorPower(hw, nameA, invertedA);
-                    plant = Plants.power(out);
-                    break;
-                }
-                case MOTOR_PAIR: {
-                    PowerOutput outA = FtcHardware.motorPower(hw, nameA, invertedA);
-                    PowerOutput outB = FtcHardware.motorPower(hw, nameB, invertedB);
-                    plant = Plants.powerPair(outA, outB);
-                    break;
-                }
-                case CR_SERVO: {
-                    PowerOutput out = FtcHardware.crServoPower(hw, nameA, invertedA);
-                    plant = Plants.power(out);
-                    break;
-                }
-                case CR_SERVO_PAIR: {
-                    PowerOutput outA = FtcHardware.crServoPower(hw, nameA, invertedA);
-                    PowerOutput outB = FtcHardware.crServoPower(hw, nameB, invertedB);
-                    plant = Plants.powerPair(outA, outB);
-                    break;
-                }
-                case SERVO:
-                case SERVO_PAIR:
-                default:
-                    throw new IllegalStateException(
-                            "power() is only valid for motor / motorPair / crServo / crServoPair");
-            }
-            return new ModifiersStep(plant);
+        @Override
+        public ModifiersStep rateLimit(double maxDeltaPerSec) {
+            plant = new RateLimitedPlant(plant, maxDeltaPerSec);
+            return this;
         }
 
-        // -----------------------------------------------------------------
-        // VELOCITY CONTROL
-        // -----------------------------------------------------------------
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public ModifiersStep rateLimit(double maxUpPerSec, double maxDownPerSec) {
+            plant = new RateLimitedPlant(plant, maxUpPerSec, maxDownPerSec);
+            return this;
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public Plant build() {
+            return plant;
+        }
+    }
+
+    // =====================================================================
+    // DC MOTOR BUILDER
+    // =====================================================================
+
+    /**
+     * Motor builder stage when exactly one motor has been selected.
+     *
+     * <p>At this stage, IntelliSense will not show tuning helpers like
+     * {@link MotorGroupAddedStep#scale(double)} or {@link MotorGroupAddedStep#bias(double)}
+     * because there is nothing to tune relative to (there is only one motor).</p>
+     */
+    public interface MotorSingleStep {
+
+        /**
+         * Add another motor to create a multi-motor mechanism (2+ motors).
+         *
+         * <p>The motor you add becomes the "last added" motor. Tuning methods such as
+         * {@link MotorGroupAddedStep#scale(double)} and {@link MotorGroupAddedStep#bias(double)}
+         * apply to that last added motor.</p>
+         *
+         * @param name      configured motor name in the FTC Robot Configuration
+         * @param direction logical direction for the motor
+         * @return a stage that allows tuning the motor you just added, adding more motors,
+         * or selecting a control mode
+         * @throws NullPointerException if {@code name} or {@code direction} is {@code null}
+         */
+        MotorGroupAddedStep andMotor(String name, Direction direction);
+
+        /**
+         * Choose open-loop power control for the motor(s).
+         *
+         * <p>Targets are normalized power, typically in {@code [-1.0, +1.0]}.</p>
+         *
+         * @return modifier stage for optional rate limiting and {@link ModifiersStep#build()}
+         */
+        ModifiersStep power();
 
         /**
          * Choose closed-loop velocity control with a default tolerance.
          *
-         * <p>This is equivalent to calling
-         * {@link #velocity(double)} with
-         * {@link #DEFAULT_MOTOR_VELOCITY_TOLERANCE_NATIVE}.</p>
+         * <p>The default tolerance is expressed in the motor's native velocity units
+         * (for REV encoders, typically ticks per second).</p>
          *
-         * @return {@link ModifiersStep} to apply modifiers and build
+         * @return modifier stage for optional rate limiting and {@link ModifiersStep#build()}
          */
+        ModifiersStep velocity();
+
+        /**
+         * Choose closed-loop velocity control with an explicit tolerance.
+         *
+         * <p>The tolerance is in the same native units reported by the motor velocity channel
+         * (for REV encoders, typically ticks per second).</p>
+         *
+         * @param toleranceNative allowable absolute error band used by {@link Plant#atSetpoint()}
+         * @return modifier stage for optional rate limiting and {@link ModifiersStep#build()}
+         * @throws IllegalArgumentException if {@code toleranceNative < 0}
+         */
+        ModifiersStep velocity(double toleranceNative);
+
+        /**
+         * Choose encoder-backed position control with a default tolerance.
+         *
+         * <p>The default tolerance is expressed in the motor's native position units
+         * (for REV encoders, ticks).</p>
+         *
+         * @return modifier stage for optional rate limiting and {@link ModifiersStep#build()}
+         */
+        ModifiersStep position();
+
+        /**
+         * Choose encoder-backed position control with an explicit tolerance.
+         *
+         * <p>The tolerance is in the motor's native position units (for REV encoders, ticks).</p>
+         *
+         * @param toleranceNative allowable absolute error band used by {@link Plant#atSetpoint()}
+         * @return modifier stage for optional rate limiting and {@link ModifiersStep#build()}
+         * @throws IllegalArgumentException if {@code toleranceNative < 0}
+         */
+        ModifiersStep position(double toleranceNative);
+    }
+
+    /**
+     * Motor builder stage once you have 2 or more motors selected.
+     *
+     * <p>At this stage you can keep adding motors with {@link #andMotor(String, Direction)}
+     * and then pick a control mode.</p>
+     */
+    public interface MotorGroupStep {
+
+        /**
+         * Add another motor to this motor group.
+         *
+         * <p>The motor you add becomes the "last added" motor and is the one affected by
+         * {@link MotorGroupAddedStep#scale(double)} and {@link MotorGroupAddedStep#bias(double)}.</p>
+         *
+         * @param name      configured motor name in the FTC Robot Configuration
+         * @param direction logical direction for the motor
+         * @return a stage that allows tuning the motor you just added
+         * @throws NullPointerException if {@code name} or {@code direction} is {@code null}
+         */
+        MotorGroupAddedStep andMotor(String name, Direction direction);
+
+        /**
+         * Choose open-loop power control for the motor group.
+         *
+         * @return modifier stage for optional rate limiting and {@link ModifiersStep#build()}
+         */
+        ModifiersStep power();
+
+        /**
+         * Choose closed-loop velocity control for the motor group with a default tolerance.
+         *
+         * @return modifier stage for optional rate limiting and {@link ModifiersStep#build()}
+         */
+        ModifiersStep velocity();
+
+        /**
+         * Choose closed-loop velocity control for the motor group with an explicit tolerance.
+         *
+         * @param toleranceNative allowable absolute error band used by {@link Plant#atSetpoint()}
+         * @return modifier stage for optional rate limiting and {@link ModifiersStep#build()}
+         * @throws IllegalArgumentException if {@code toleranceNative < 0}
+         */
+        ModifiersStep velocity(double toleranceNative);
+
+        /**
+         * Choose encoder-backed position control for the motor group with a default tolerance.
+         *
+         * @return modifier stage for optional rate limiting and {@link ModifiersStep#build()}
+         */
+        ModifiersStep position();
+
+        /**
+         * Choose encoder-backed position control for the motor group with an explicit tolerance.
+         *
+         * @param toleranceNative allowable absolute error band used by {@link Plant#atSetpoint()}
+         * @return modifier stage for optional rate limiting and {@link ModifiersStep#build()}
+         * @throws IllegalArgumentException if {@code toleranceNative < 0}
+         */
+        ModifiersStep position(double toleranceNative);
+    }
+
+    /**
+     * Returned immediately after adding a motor to a group.
+     *
+     * <p>This exists so IntelliSense can show tuning methods only when they make sense.
+     * The tuning methods ({@link #scale(double)}, {@link #bias(double)}, {@link #tune(double, double)})
+     * apply to the <b>last motor you added</b>.</p>
+     *
+     * <p>Tuning uses this linear mapping:</p>
+     *
+     * <pre>{@code
+     * childTarget = scale * groupTarget + bias
+     * }</pre>
+     *
+     * <p>Notes:</p>
+     * <ul>
+     *   <li>Use {@link Direction} for reversing. Prefer not to use negative {@code scale} unless
+     *       you have a very specific reason.</li>
+     *   <li>{@code bias} is a constant offset in the same units as the control mode you choose
+     *       (power / velocity / position). Keep it small and be aware of any saturation.</li>
+     * </ul>
+     */
+    public interface MotorGroupAddedStep extends MotorGroupStep {
+
+        /**
+         * Set a multiplicative scale applied to the <b>last-added motor</b>.
+         *
+         * <p>Default is {@code 1.0} (no scaling). Example: if the right motor runs a bit stronger,
+         * you can do {@code .andMotor("right", REVERSE).scale(0.98)} to command it 2% lower.</p>
+         *
+         * @param scale multiplier applied to the group target before it is sent to the last-added motor
+         * @return this stage for chaining
+         */
+        MotorGroupAddedStep scale(double scale);
+
+        /**
+         * Set an additive bias applied to the <b>last-added motor</b>.
+         *
+         * <p>Default is {@code 0.0}. Bias is applied <em>after</em> scaling:
+         * {@code childTarget = scale * groupTarget + bias}.</p>
+         *
+         * <p>Bias is in the same units as the control mode you choose later:</p>
+         * <ul>
+         *   <li>Power: normalized power offset.</li>
+         *   <li>Velocity: native velocity offset.</li>
+         *   <li>Position: native position offset.</li>
+         * </ul>
+         *
+         * @param bias constant offset applied to the last-added motor's target
+         * @return this stage for chaining
+         */
+        MotorGroupAddedStep bias(double bias);
+
+        /**
+         * Convenience method to set both {@link #scale(double)} and {@link #bias(double)} for
+         * the <b>last-added motor</b>.
+         *
+         * @param scale multiplier applied to the group target
+         * @param bias  constant offset applied after scaling
+         * @return this stage for chaining
+         */
+        MotorGroupAddedStep tune(double scale, double bias);
+    }
+
+    /**
+     * Internal builder that implements the motor stages.
+     *
+     * <p>We keep this private so students interact only with the staged interfaces.
+     * This class collects per-motor specs and constructs the final {@link Plant}.</p>
+     */
+    private static final class MotorBuilder implements MotorSingleStep, MotorGroupAddedStep {
+
+        /**
+         * Specification for one motor in a multi-motor group.
+         *
+         * <p>Scale/bias are applied to the group target when fanning out to individual motors.</p>
+         */
+        private static final class Spec {
+            final String name;
+            final Direction direction;
+            double scale = 1.0;
+            double bias = 0.0;
+
+            Spec(String name, Direction direction) {
+                this.name = Objects.requireNonNull(name, "name");
+                this.direction = Objects.requireNonNull(direction, "direction");
+            }
+        }
+
+        private final HardwareMap hw;
+        private final List<Spec> specs = new ArrayList<>();
+        private int lastIndex = 0;
+
+        MotorBuilder(HardwareMap hw, String name, Direction direction) {
+            this.hw = Objects.requireNonNull(hw, "hw");
+            specs.add(new Spec(name, direction));
+            lastIndex = 0;
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public MotorGroupAddedStep andMotor(String name, Direction direction) {
+            specs.add(new Spec(name, direction));
+            lastIndex = specs.size() - 1;
+            return this;
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public MotorGroupAddedStep scale(double scale) {
+            specs.get(lastIndex).scale = scale;
+            return this;
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public MotorGroupAddedStep bias(double bias) {
+            specs.get(lastIndex).bias = bias;
+            return this;
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public MotorGroupAddedStep tune(double scale, double bias) {
+            Spec s = specs.get(lastIndex);
+            s.scale = scale;
+            s.bias = bias;
+            return this;
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public ModifiersStep power() {
+            Plant plant = buildPowerPlant();
+            return new ModifiersStepImpl(plant);
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
         public ModifiersStep velocity() {
             return velocity(DEFAULT_MOTOR_VELOCITY_TOLERANCE_NATIVE);
         }
 
         /**
-         * Choose closed-loop velocity control for the selected hardware.
-         *
-         * <p>Valid hardware kinds:</p>
-         *
-         * <ul>
-         *   <li>{@link HardwareKind#MOTOR}</li>
-         *   <li>{@link HardwareKind#MOTOR_PAIR}</li>
-         * </ul>
-         *
-         * @param toleranceNative acceptable error band around the target, in native units
-         * @return {@link ModifiersStep} to apply modifiers and build
+         * {@inheritDoc}
          */
+        @Override
         public ModifiersStep velocity(double toleranceNative) {
-            Plant plant;
-            switch (kind) {
-                case MOTOR: {
-                    VelocityOutput out = FtcHardware.motorVelocity(hw, nameA, invertedA);
-                    plant = Plants.velocity(out, toleranceNative);
-                    break;
-                }
-                case MOTOR_PAIR: {
-                    VelocityOutput outA = FtcHardware.motorVelocity(hw, nameA, invertedA);
-                    VelocityOutput outB = FtcHardware.motorVelocity(hw, nameB, invertedB);
-                    plant = Plants.velocityPair(outA, outB, toleranceNative);
-                    break;
-                }
-                case SERVO:
-                case SERVO_PAIR:
-                case CR_SERVO:
-                case CR_SERVO_PAIR:
-                default:
-                    throw new IllegalStateException(
-                            "velocity() is only valid for motor / motorPair");
-            }
-            return new ModifiersStep(plant);
+            Plant plant = buildVelocityPlant(toleranceNative);
+            return new ModifiersStepImpl(plant);
         }
 
-        // -----------------------------------------------------------------
-        // POSITION CONTROL
-        // -----------------------------------------------------------------
-
         /**
-         * Choose positional control with a default motor tolerance.
-         *
-         * <p>For DC motors, this is equivalent to calling
-         * {@link #position(double)} with
-         * {@link #DEFAULT_MOTOR_POSITION_TOLERANCE_NATIVE}.</p>
-         *
-         * <p>For standard servos, the tolerance is not used because there is
-         * no feedback; the plant is open-loop "set-and-hold" and always
-         * considers itself at setpoint.</p>
-         *
-         * @return {@link ModifiersStep} to apply modifiers and build
+         * {@inheritDoc}
          */
+        @Override
         public ModifiersStep position() {
             return position(DEFAULT_MOTOR_POSITION_TOLERANCE_NATIVE);
         }
 
         /**
-         * Choose positional control for the selected hardware.
-         *
-         * <p>For DC motors, this creates a <b>feedback-based</b> position plant
-         * (using encoders via {@link FtcHardware#motorPosition}) with the given
-         * tolerance in native units, so that {@link Plant#atSetpoint()} and
-         * {@link Plant#hasFeedback()} behave as expected for "move to" style
-         * tasks.</p>
-         *
-         * <p>For standard servos, this creates an open-loop "set-and-hold"
-         * plant that simply commands the target (typically 0..1) and treats
-         * itself as always at setpoint; servos generally do not expose a
-         * measured position, so {@code toleranceNative} is ignored and
-         * {@link Plant#hasFeedback()} will be {@code false}.</p>
-         *
-         * <p>Valid hardware kinds:</p>
-         *
-         * <ul>
-         *   <li>{@link HardwareKind#MOTOR}</li>
-         *   <li>{@link HardwareKind#MOTOR_PAIR}</li>
-         *   <li>{@link HardwareKind#SERVO}</li>
-         *   <li>{@link HardwareKind#SERVO_PAIR}</li>
-         * </ul>
-         *
-         * @param toleranceNative acceptable error band (native units) for motors
-         * @return {@link ModifiersStep} to apply modifiers and build
+         * {@inheritDoc}
          */
+        @Override
         public ModifiersStep position(double toleranceNative) {
-            Plant plant;
-            switch (kind) {
-                case MOTOR: {
-                    PositionOutput out = FtcHardware.motorPosition(hw, nameA, invertedA);
-                    plant = Plants.motorPosition(out, toleranceNative);
-                    break;
-                }
-                case MOTOR_PAIR: {
-                    PositionOutput outA = FtcHardware.motorPosition(hw, nameA, invertedA);
-                    PositionOutput outB = FtcHardware.motorPosition(hw, nameB, invertedB);
-                    plant = Plants.motorPositionPair(outA, outB, toleranceNative);
-                    break;
-                }
-                case SERVO: {
-                    PositionOutput out = FtcHardware.servoPosition(hw, nameA, invertedA);
-                    plant = Plants.servoPosition(out);
-                    break;
-                }
-                case SERVO_PAIR: {
-                    PositionOutput outA = FtcHardware.servoPosition(hw, nameA, invertedA);
-                    PositionOutput outB = FtcHardware.servoPosition(hw, nameB, invertedB);
-                    plant = Plants.servoPositionPair(outA, outB);
-                    break;
-                }
-                case CR_SERVO:
-                case CR_SERVO_PAIR:
-                default:
-                    throw new IllegalStateException(
-                            "position() is only valid for motor / motorPair / servo / servoPair");
+            Plant plant = buildPositionPlant(toleranceNative);
+            return new ModifiersStepImpl(plant);
+        }
+
+        private Plant buildPowerPlant() {
+            if (specs.size() == 1) {
+                Spec s = specs.get(0);
+                PowerOutput out = FtcHardware.motorPower(hw, s.name, s.direction);
+                return Plants.power(out);
             }
-            return new ModifiersStep(plant);
+
+            MultiPlant.Builder mp = MultiPlant.builder();
+            for (Spec s : specs) {
+                PowerOutput out = FtcHardware.motorPower(hw, s.name, s.direction);
+                mp.add(Plants.power(out), s.scale, s.bias);
+            }
+            return mp.build();
+        }
+
+        private Plant buildVelocityPlant(double toleranceNative) {
+            if (specs.size() == 1) {
+                Spec s = specs.get(0);
+                VelocityOutput out = FtcHardware.motorVelocity(hw, s.name, s.direction);
+                return Plants.velocity(out, toleranceNative);
+            }
+
+            MultiPlant.Builder mp = MultiPlant.builder();
+            for (Spec s : specs) {
+                VelocityOutput out = FtcHardware.motorVelocity(hw, s.name, s.direction);
+                mp.add(Plants.velocity(out, toleranceNative), s.scale, s.bias);
+            }
+            return mp.build();
+        }
+
+        private Plant buildPositionPlant(double toleranceNative) {
+            if (specs.size() == 1) {
+                Spec s = specs.get(0);
+                PositionOutput out = FtcHardware.motorPosition(hw, s.name, s.direction);
+                return Plants.motorPosition(out, toleranceNative);
+            }
+
+            MultiPlant.Builder mp = MultiPlant.builder();
+            for (Spec s : specs) {
+                PositionOutput out = FtcHardware.motorPosition(hw, s.name, s.direction);
+                mp.add(Plants.motorPosition(out, toleranceNative), s.scale, s.bias);
+            }
+            return mp.build();
         }
     }
 
+    // =====================================================================
+    // SERVO BUILDER
+    // =====================================================================
+
     /**
-     * Stage 3: apply optional modifiers (such as rate limiting) and build
-     * the final {@link Plant}.
+     * Servo builder stage when exactly one positional servo has been selected.
      *
-     * <p>Every {@code ModifiersStep} starts with a base plant and wraps it
-     * in zero or more decorators.</p>
+     * <p>Servo plants only support {@link #position()} (standard FTC servos do not support
+     * velocity/encoder-style closed-loop control).</p>
      */
-    public static final class ModifiersStep {
+    public interface ServoSingleStep {
 
-        private Plant plant;
+        /**
+         * Add another positional servo to create a multi-servo mechanism (2+ servos).
+         *
+         * <p>The servo you add becomes the "last added" servo. Tuning methods such as
+         * {@link ServoGroupAddedStep#scale(double)} and {@link ServoGroupAddedStep#bias(double)}
+         * apply to that last added servo.</p>
+         *
+         * @param name      configured servo name in the FTC Robot Configuration
+         * @param direction logical direction for the servo channel
+         * @return a stage that allows tuning the servo you just added, adding more servos,
+         * or selecting {@link #position()}
+         * @throws NullPointerException if {@code name} or {@code direction} is {@code null}
+         */
+        ServoGroupAddedStep andServo(String name, Direction direction);
 
-        private ModifiersStep(Plant basePlant) {
-            if (basePlant == null) {
-                throw new IllegalArgumentException("basePlant is required");
+        /**
+         * Choose servo position control.
+         *
+         * <p>Targets are FTC-native servo positions in {@code 0.0 .. 1.0}.</p>
+         *
+         * @return modifier stage for optional rate limiting and {@link ModifiersStep#build()}
+         */
+        ModifiersStep position();
+    }
+
+    /**
+     * Servo builder stage once you have 2 or more positional servos selected.
+     */
+    public interface ServoGroupStep {
+
+        /**
+         * Add another positional servo to this servo group.
+         *
+         * @param name      configured servo name in the FTC Robot Configuration
+         * @param direction logical direction for the servo channel
+         * @return a stage that allows tuning the servo you just added
+         * @throws NullPointerException if {@code name} or {@code direction} is {@code null}
+         */
+        ServoGroupAddedStep andServo(String name, Direction direction);
+
+        /**
+         * Choose servo position control.
+         *
+         * @return modifier stage for optional rate limiting and {@link ModifiersStep#build()}
+         */
+        ModifiersStep position();
+    }
+
+    /**
+     * Returned immediately after adding a servo to a group.
+     *
+     * <p>Tuning methods apply to the <b>last servo you added</b> using the mapping:</p>
+     *
+     * <pre>{@code
+     * childTarget = scale * groupTarget + bias
+     * }</pre>
+     *
+     * <p>Bias and scale are in servo-position units. Typical uses are small corrections for
+     * mismatched linkage geometry. Prefer {@link Direction} for reversing.</p>
+     */
+    public interface ServoGroupAddedStep extends ServoGroupStep {
+
+        /**
+         * Set a multiplicative scale applied to the <b>last-added servo</b>.
+         *
+         * @param scale multiplier applied to the group target before it is sent to the last-added servo
+         * @return this stage for chaining
+         */
+        ServoGroupAddedStep scale(double scale);
+
+        /**
+         * Set an additive bias applied to the <b>last-added servo</b>.
+         *
+         * @param bias constant offset applied after scaling
+         * @return this stage for chaining
+         */
+        ServoGroupAddedStep bias(double bias);
+
+        /**
+         * Convenience method to set both {@link #scale(double)} and {@link #bias(double)} for
+         * the <b>last-added servo</b>.
+         *
+         * @param scale multiplier applied to the group target
+         * @param bias  constant offset applied after scaling
+         * @return this stage for chaining
+         */
+        ServoGroupAddedStep tune(double scale, double bias);
+    }
+
+    /**
+     * Internal builder that implements the servo stages.
+     */
+    private static final class ServoBuilder implements ServoSingleStep, ServoGroupAddedStep {
+
+        /**
+         * Specification for one servo in a multi-servo group.
+         */
+        private static final class Spec {
+            final String name;
+            final Direction direction;
+            double scale = 1.0;
+            double bias = 0.0;
+
+            Spec(String name, Direction direction) {
+                this.name = Objects.requireNonNull(name, "name");
+                this.direction = Objects.requireNonNull(direction, "direction");
             }
-            this.plant = basePlant;
+        }
+
+        private final HardwareMap hw;
+        private final List<Spec> specs = new ArrayList<>();
+        private int lastIndex = 0;
+
+        ServoBuilder(HardwareMap hw, String name, Direction direction) {
+            this.hw = Objects.requireNonNull(hw, "hw");
+            specs.add(new Spec(name, direction));
+            lastIndex = 0;
         }
 
         /**
-         * Wrap the current plant in a {@link RateLimitedPlant}.
-         *
-         * <p>This limits how quickly {@link Plant#setTarget(double)} can
-         * change the underlying command value.</p>
-         *
-         * @param maxDeltaPerSec maximum allowed change in the target value
-         *                       per second, in the same native units as the
-         *                       plant’s target
-         * @return this {@link ModifiersStep} for chaining
+         * {@inheritDoc}
          */
-        public ModifiersStep rateLimit(double maxDeltaPerSec) {
-            if (maxDeltaPerSec < 0.0) {
-                throw new IllegalArgumentException("maxDeltaPerSec must be non-negative");
-            }
-            if (maxDeltaPerSec > 0.0) {
-                this.plant = new RateLimitedPlant(plant, maxDeltaPerSec);
-            }
+        @Override
+        public ServoGroupAddedStep andServo(String name, Direction direction) {
+            specs.add(new Spec(name, direction));
+            lastIndex = specs.size() - 1;
             return this;
         }
 
         /**
-         * Finish the builder and return the configured {@link Plant}.
-         *
-         * @return the final plant instance
+         * {@inheritDoc}
          */
-        public Plant build() {
-            return plant;
+        @Override
+        public ServoGroupAddedStep scale(double scale) {
+            specs.get(lastIndex).scale = scale;
+            return this;
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public ServoGroupAddedStep bias(double bias) {
+            specs.get(lastIndex).bias = bias;
+            return this;
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public ServoGroupAddedStep tune(double scale, double bias) {
+            Spec s = specs.get(lastIndex);
+            s.scale = scale;
+            s.bias = bias;
+            return this;
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public ModifiersStep position() {
+            Plant plant = buildPositionPlant();
+            return new ModifiersStepImpl(plant);
+        }
+
+        private Plant buildPositionPlant() {
+            if (specs.size() == 1) {
+                Spec s = specs.get(0);
+                PositionOutput out = FtcHardware.servoPosition(hw, s.name, s.direction);
+                return Plants.servoPosition(out);
+            }
+
+            MultiPlant.Builder mp = MultiPlant.builder();
+            for (Spec s : specs) {
+                PositionOutput out = FtcHardware.servoPosition(hw, s.name, s.direction);
+                mp.add(Plants.servoPosition(out), s.scale, s.bias);
+            }
+            return mp.build();
+        }
+    }
+
+    // =====================================================================
+    // CR SERVO BUILDER
+    // =====================================================================
+
+    /**
+     * CR-servo builder stage when exactly one continuous-rotation (CR) servo has been selected.
+     *
+     * <p>CR servos are controlled with {@link #power()} (open-loop power), just like a motor.</p>
+     */
+    public interface CrServoSingleStep {
+
+        /**
+         * Add another CR servo to create a multi-CR-servo mechanism (2+ CR servos).
+         *
+         * <p>The CR servo you add becomes the "last added" actuator. Tuning methods such as
+         * {@link CrServoGroupAddedStep#scale(double)} and {@link CrServoGroupAddedStep#bias(double)}
+         * apply to that last added actuator.</p>
+         *
+         * @param name      configured CR servo name in the FTC Robot Configuration
+         * @param direction logical direction for the CR servo channel
+         * @return a stage that allows tuning the CR servo you just added, adding more, or selecting {@link #power()}
+         * @throws NullPointerException if {@code name} or {@code direction} is {@code null}
+         */
+        CrServoGroupAddedStep andCrServo(String name, Direction direction);
+
+        /**
+         * Choose open-loop power control.
+         *
+         * <p>Targets are normalized power, typically in {@code [-1.0, +1.0]}.</p>
+         *
+         * @return modifier stage for optional rate limiting and {@link ModifiersStep#build()}
+         */
+        ModifiersStep power();
+    }
+
+    /**
+     * CR-servo builder stage once you have 2 or more CR servos selected.
+     */
+    public interface CrServoGroupStep {
+
+        /**
+         * Add another CR servo to this group.
+         *
+         * @param name      configured CR servo name in the FTC Robot Configuration
+         * @param direction logical direction for the CR servo channel
+         * @return a stage that allows tuning the CR servo you just added
+         * @throws NullPointerException if {@code name} or {@code direction} is {@code null}
+         */
+        CrServoGroupAddedStep andCrServo(String name, Direction direction);
+
+        /**
+         * Choose open-loop power control for the CR servo group.
+         *
+         * @return modifier stage for optional rate limiting and {@link ModifiersStep#build()}
+         */
+        ModifiersStep power();
+    }
+
+    /**
+     * Returned immediately after adding a CR servo to a group.
+     *
+     * <p>Tuning methods apply to the <b>last CR servo you added</b> using the mapping:</p>
+     *
+     * <pre>{@code
+     * childTarget = scale * groupTarget + bias
+     * }</pre>
+     *
+     * <p>Bias and scale are in power units. Prefer {@link Direction} for reversing.</p>
+     */
+    public interface CrServoGroupAddedStep extends CrServoGroupStep {
+
+        /**
+         * Set a multiplicative scale applied to the <b>last-added CR servo</b>.
+         *
+         * @param scale multiplier applied to the group target before it is sent to the last-added actuator
+         * @return this stage for chaining
+         */
+        CrServoGroupAddedStep scale(double scale);
+
+        /**
+         * Set an additive bias applied to the <b>last-added CR servo</b>.
+         *
+         * @param bias constant offset applied after scaling
+         * @return this stage for chaining
+         */
+        CrServoGroupAddedStep bias(double bias);
+
+        /**
+         * Convenience method to set both {@link #scale(double)} and {@link #bias(double)} for
+         * the <b>last-added CR servo</b>.
+         *
+         * @param scale multiplier applied to the group target
+         * @param bias  constant offset applied after scaling
+         * @return this stage for chaining
+         */
+        CrServoGroupAddedStep tune(double scale, double bias);
+    }
+
+    /**
+     * Internal builder that implements the continuous-rotation servo (CR servo) stages.
+     */
+    private static final class CrServoBuilder implements CrServoSingleStep, CrServoGroupAddedStep {
+
+        /**
+         * Specification for one CR servo in a multi-servo group.
+         */
+        private static final class Spec {
+            final String name;
+            final Direction direction;
+            double scale = 1.0;
+            double bias = 0.0;
+
+            Spec(String name, Direction direction) {
+                this.name = Objects.requireNonNull(name, "name");
+                this.direction = Objects.requireNonNull(direction, "direction");
+            }
+        }
+
+        private final HardwareMap hw;
+        private final List<Spec> specs = new ArrayList<>();
+        private int lastIndex = 0;
+
+        CrServoBuilder(HardwareMap hw, String name, Direction direction) {
+            this.hw = Objects.requireNonNull(hw, "hw");
+            specs.add(new Spec(name, direction));
+            lastIndex = 0;
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public CrServoGroupAddedStep andCrServo(String name, Direction direction) {
+            specs.add(new Spec(name, direction));
+            lastIndex = specs.size() - 1;
+            return this;
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public CrServoGroupAddedStep scale(double scale) {
+            specs.get(lastIndex).scale = scale;
+            return this;
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public CrServoGroupAddedStep bias(double bias) {
+            specs.get(lastIndex).bias = bias;
+            return this;
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public CrServoGroupAddedStep tune(double scale, double bias) {
+            Spec s = specs.get(lastIndex);
+            s.scale = scale;
+            s.bias = bias;
+            return this;
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public ModifiersStep power() {
+            Plant plant = buildPowerPlant();
+            return new ModifiersStepImpl(plant);
+        }
+
+        private Plant buildPowerPlant() {
+            if (specs.size() == 1) {
+                Spec s = specs.get(0);
+                PowerOutput out = FtcHardware.crServoPower(hw, s.name, s.direction);
+                return Plants.power(out);
+            }
+
+            MultiPlant.Builder mp = MultiPlant.builder();
+            for (Spec s : specs) {
+                PowerOutput out = FtcHardware.crServoPower(hw, s.name, s.direction);
+                mp.add(Plants.power(out), s.scale, s.bias);
+            }
+            return mp.build();
         }
     }
 }

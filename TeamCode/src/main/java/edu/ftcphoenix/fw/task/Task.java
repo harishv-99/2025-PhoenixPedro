@@ -1,6 +1,7 @@
 package edu.ftcphoenix.fw.task;
 
-import edu.ftcphoenix.fw.util.LoopClock;
+import edu.ftcphoenix.fw.core.debug.DebugSink;
+import edu.ftcphoenix.fw.core.time.LoopClock;
 
 /**
  * A cooperative, stateful unit of work that is driven by the main robot loop.
@@ -76,4 +77,27 @@ public interface Task {
      * @return the current outcome for this task
      */
     TaskOutcome getOutcome();
+
+
+    /**
+     * Debug helper: emit a compact summary of this task.
+     *
+     * <p>This is intentionally lightweight and safe to call every loop. Tasks with meaningful internal
+     * state should override this method to provide richer telemetry.</p>
+     *
+     * @param dbg    debug sink (may be {@code null}; if null, no output is produced)
+     * @param prefix base key prefix, e.g. "auto.task"
+     */
+    default void debugDump(DebugSink dbg, String prefix) {
+        if (dbg == null) {
+            return;
+        }
+        String p = (prefix == null || prefix.isEmpty()) ? "task" : prefix;
+
+        dbg.addData(p + ".name", getDebugName())
+                .addData(p + ".class", getClass().getSimpleName())
+                .addData(p + ".complete", isComplete())
+                .addData(p + ".outcome", getOutcome());
+    }
+
 }

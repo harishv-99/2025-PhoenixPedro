@@ -3,8 +3,8 @@ package edu.ftcphoenix.fw.task;
 import java.util.ArrayList;
 import java.util.List;
 
-import edu.ftcphoenix.fw.debug.DebugSink;
-import edu.ftcphoenix.fw.util.LoopClock;
+import edu.ftcphoenix.fw.core.debug.DebugSink;
+import edu.ftcphoenix.fw.core.time.LoopClock;
 
 /**
  * Simple sequential task runner.
@@ -19,11 +19,25 @@ import edu.ftcphoenix.fw.util.LoopClock;
  *
  * <p>Tasks are assumed to be single-use: once a {@link Task} has completed
  * ({@link Task#isComplete()} returns true), it should not be enqueued again.</p>
+ *
+ * <h2>Per-cycle idempotency</h2>
+ * <p>{@link #update(LoopClock)} is idempotent by {@link LoopClock#cycle()}.</p>
+ *
+ * <p>This protects against accidental double-updates within a single OpMode loop cycle
+ * (for example, nested helpers that both call {@code runner.update(clock)}). Without
+ * idempotency, a double-update can cause tasks to advance twice as fast, timeouts to
+ * elapse early, or short tasks to be skipped unexpectedly.</p>
  */
 public final class TaskRunner {
 
     private final List<Task> queue = new ArrayList<>();
     private Task current = null;
+
+    /**
+     * Tracks which loop cycle we last updated for, to prevent tasks from being advanced
+     * multiple times in the same cycle.
+     */
+    private long lastUpdatedCycle = Long.MIN_VALUE;
 
     /**
      * Enqueue a task to be run after all currently queued tasks.
@@ -48,6 +62,7 @@ public final class TaskRunner {
     public void clear() {
         queue.clear();
         current = null;
+        lastUpdatedCycle = Long.MIN_VALUE;
     }
 
     /**
@@ -86,8 +101,23 @@ public final class TaskRunner {
      *       process, its {@link Task#update(LoopClock)} method is called
      *       exactly once.</li>
      * </ul>
+     *
+     * <p>This method is idempotent by {@link LoopClock#cycle()}: if called twice in the same
+     * loop cycle, the second call is a no-op.</p>
+     *
+     * @param clock loop clock (must not be {@code null})
      */
     public void update(LoopClock clock) {
+        if (clock == null) {
+            throw new IllegalArgumentException("clock must not be null");
+        }
+
+        long c = clock.cycle();
+        if (c == lastUpdatedCycle) {
+            return; // already updated this cycle
+        }
+        lastUpdatedCycle = c;
+
         // Ensure we have a current task that is not yet complete.
         while ((current == null || current.isComplete()) && !queue.isEmpty()) {
             current = queue.remove(0);
@@ -117,12 +147,25 @@ public final class TaskRunner {
         }
         String p = (prefix == null || prefix.isEmpty()) ? "tasks" : prefix;
 
-        dbg.addData(p + ".queueSize", queue.size())
-                .addData(p + ".hasCurrent", current != null);
+        dbg.addLine(p)
+                .addData(p + ".queueSize", queue.size())
+                .addData(p + ".hasCurrent", current != null)
+                .addData(p + ".lastUpdatedCycle", lastUpdatedCycle);
 
         if (current != null) {
-            dbg.addData(p + ".currentClass", current.getClass().getSimpleName())
-                    .addData(p + ".currentComplete", current.isComplete());
+            dbg.addData(p + ".currentName", current.getDebugName())
+                    .addData(p + ".currentClass", current.getClass().getSimpleName())
+                    .addData(p + ".currentComplete", current.isComplete())
+                    .addData(p + ".currentOutcome", current.getOutcome());
+
+            // Let the active task expose richer debug info if it wants.
+            current.debugDump(dbg, p + ".current");
+        }
+
+        if (!queue.isEmpty()) {
+            Task next = queue.get(0);
+            dbg.addData(p + ".nextName", next.getDebugName())
+                    .addData(p + ".nextClass", next.getClass().getSimpleName());
         }
     }
 }

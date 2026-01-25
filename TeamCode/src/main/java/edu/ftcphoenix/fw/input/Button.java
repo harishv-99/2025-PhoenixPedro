@@ -5,181 +5,141 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.BooleanSupplier;
 
+import edu.ftcphoenix.fw.core.time.LoopClock;
+
 /**
- * Logical button with built-in edge detection and a simple global registry.
+ * Logical button with built-in edge detection and a global registry.
  *
- * <p>This interface is designed for use in <b>polled</b> input code where the
- * framework calls {@link #updateAllRegistered()} once per loop (for example,
- * from {@code Gamepads.update(dtSec)}), and robot code then queries buttons
- * using:</p>
+ * <p>Phoenix uses a polled input model:</p>
+ * <ol>
+ *   <li>Create {@link Button} instances (typically via {@link #of(BooleanSupplier)}).</li>
+ *   <li>Once per OpMode loop, call {@link #updateAllRegistered(LoopClock)}.</li>
+ *   <li>Query buttons via {@link #onPress()}, {@link #onRelease()}, {@link #isHeld()}, and {@link #isToggled()}.</li>
+ * </ol>
  *
- * <pre>{@code
- * // TeleOp loop example:
- * pads.update(dtSec);  // internally calls Button.updateAllRegistered()
+ * <p>We implement edge detection inside Phoenix (instead of depending on any particular FTC SDK helper)
+ * so that <b>synthetic buttons</b> (for example: “trigger &gt; 0.5” treated as a button) can behave
+ * exactly the same way as physical buttons.</p>
  *
- * if (pads.p1().a().onPress()) {
- *     // Runs only on the FIRST loop where A goes up -> down.
- * }
- *
- * if (pads.p1().a().onRelease()) {
- *     // Runs only on the FIRST loop where A goes down -> up.
- * }
- *
- * if (pads.p1().a().isHeld()) {
- *     // Runs EVERY loop while A is down.
- * }
- * }</pre>
- *
- * <h2>Lifecycle / update model</h2>
- *
+ * <h2>Edge semantics</h2>
  * <ul>
- *   <li>Each {@link Button} tracks its previous and current value internally.</li>
- *   <li>Buttons created via {@link #of(BooleanSupplier)} are automatically
- *       <b>registered</b> in a global list when constructed.</li>
- *   <li>The framework should call {@link #updateAllRegistered()} exactly once
- *       per loop to advance the state of all registered buttons.</li>
- *   <li>Robot code is expected to only call the query methods:
- *     <ul>
- *       <li>{@link #onPress()} – rising edge.</li>
- *       <li>{@link #onRelease()} – falling edge.</li>
- *       <li>{@link #isHeld()} – level.</li>
- *     </ul>
- *   </li>
+ *   <li>{@link #onPress()} is true for exactly one loop on a rising edge.</li>
+ *   <li>{@link #onRelease()} is true for exactly one loop on a falling edge.</li>
+ *   <li>{@link #isHeld()} is true every loop while the button is down.</li>
+ *   <li>{@link #isToggled()} flips on each press and reports the current press-to-toggle state.</li>
  * </ul>
  *
- * <p>For gamepad-backed buttons, the typical wiring is:</p>
+ * <h2>Per-cycle idempotency</h2>
+ * <p>{@link #updateAllRegistered(LoopClock)} is <b>idempotent by</b> {@link LoopClock#cycle()}.
+ * If called twice in the same loop cycle, the second call is a no-op. This prevents accidental
+ * “double update” scenarios (nested menus, layered helpers) from consuming button edges.</p>
  *
- * <pre>{@code
- * class GamepadDevice {
- *     private final Gamepad gp;
- *
- *     public Button a() {
- *         // raw supplier reads FTC Gamepad field
- *         return Button.of(() -> gp.a);
- *     }
- * }
- *
- * class Gamepads {
- *     public void update(double dtSec) {
- *         Button.updateAllRegistered();
- *     }
- * }
- * }</pre>
- *
- * <p><b>Axis/combination note:</b> When converting a {@link Button} to an
- * axis (e.g., {@code Axis.fromButton(button)}), axis helpers should rely on
- * {@link #isHeld()} (the level view) rather than {@link #onPress()} or
- * {@link #onRelease()}.</p>
+ * <p>This requires that your robot code advances a single {@link LoopClock} exactly once per loop
+ * cycle and passes that clock to input/binding updates.</p>
  */
 public interface Button {
 
     /**
      * Advance this button's internal state by sampling the underlying raw value.
      *
-     * <p>This should be called exactly once per loop <b>before</b> any calls to
-     * {@link #onPress()}, {@link #onRelease()}, or {@link #isHeld()} for that
-     * loop.</p>
-     *
-     * <p>Most robot code never calls this directly. Instead, the framework calls
-     * {@link #updateAllRegistered()} once per loop (for example, from
-     * {@code Gamepads.update(dtSec)}), which forwards to {@link #update()} on
-     * all registered buttons.</p>
+     * <p>Most code should not call this directly. Instead, call
+     * {@link #updateAllRegistered(LoopClock)} once per loop.</p>
      */
     void update();
 
     /**
-     * Rising edge: returns {@code true} <b>only on the first loop</b> where the
-     * button transitions from "not held" to "held".
-     *
-     * <p>Use this for "trigger once per press" behavior.</p>
-     *
-     * <pre>{@code
-     * if (button.onPress()) {
-     *     // This body runs once per press.
-     * }
-     * }</pre>
+     * Rising edge: true only on the first loop where the button transitions
+     * from not-held to held.
      */
     boolean onPress();
 
     /**
-     * Falling edge: returns {@code true} <b>only on the first loop</b> where
-     * the button transitions from "held" to "not held".
-     *
-     * <p>Use this for "trigger once when released" behavior.</p>
+     * Falling edge: true only on the first loop where the button transitions
+     * from held to not-held.
      */
     boolean onRelease();
 
     /**
-     * Level: returns {@code true} on <b>every loop</b> while the button is
-     * currently held down.
-     *
-     * <p>This is the method you should use when you care about
-     * "is the button down right now?" semantics.</p>
+     * Level: true on every loop while the button is currently held.
      */
     boolean isHeld();
 
-    // ---------------------------------------------------------------------
+    /**
+     * Press-to-toggle state.
+     *
+     * <p>Each time the button is pressed (rising edge), this state flips between {@code false} and
+     * {@code true}. Phoenix defaults toggles to <em>off</em> ({@code false}).</p>
+     *
+     * <p>This is useful for “click to enable / click to disable” behavior, such as enabling a
+     * {@link edu.ftcphoenix.fw.drive.DriveOverlay} until you press the button again.</p>
+     *
+     * <h2>Usage (enable a drive overlay)</h2>
+     * <pre>{@code
+     * DriveSource drive = base.overlayWhen(
+     *         gamepads.p2().leftBumper()::isToggled, // press-to-toggle enable
+     *         aimPlan.overlay(),
+     *         DriveOverlayMask.OMEGA_ONLY
+     * );
+     * }</pre>
+     *
+     * <p><b>Important:</b> Toggle state updates during {@link #updateAllRegistered(LoopClock)}, so call
+     * your input update before reading {@link #isToggled()} in the same loop.</p>
+     *
+     * @return current toggle state (default {@code false})
+     */
+    boolean isToggled();
+
+    // ---------------------------------------------------------------------------------------------
     // Registry operations
-    // ---------------------------------------------------------------------
+    // ---------------------------------------------------------------------------------------------
 
     /**
-     * Register a button with the global registry so that it will be included in
-     * {@link #updateAllRegistered()}.
+     * Register a button so it participates in {@link #updateAllRegistered(LoopClock)}.
      *
-     * <p>Buttons created via {@link #of(BooleanSupplier)} are automatically
-     * registered. This method is mainly for advanced cases where you provide
-     * your own {@link Button} implementation but still want it to participate
-     * in global update handling.</p>
+     * <p>Buttons created via {@link #of(BooleanSupplier)} and {@link #constant(boolean)}
+     * are automatically registered.</p>
+     *
+     * <p>This method exists for advanced composition (for example: a custom {@link Button}
+     * implementation that still wants to participate in the global update).</p>
      */
     static void register(Button button) {
         Registry.register(button);
     }
 
     /**
-     * Advance the state of all registered buttons by sampling their underlying
-     * raw values.
+     * Update all registered buttons for this loop.
      *
-     * <p>Framework code should call this exactly once per loop. A typical place
-     * to do so is from {@code Gamepads.update(dtSec)}.</p>
+     * <p>Idempotent by {@link LoopClock#cycle()}.</p>
+     *
+     * @param clock loop clock (non-null, and advanced once per OpMode cycle)
      */
-    static void updateAllRegistered() {
-        Registry.updateAll();
+    static void updateAllRegistered(LoopClock clock) {
+        Registry.updateAll(clock);
     }
 
     /**
-     * Clear all registered buttons.
+     * Clear the global registry of all registered buttons.
      *
-     * <p>This is primarily intended for framework lifecycle management (e.g.,
-     * when starting a new OpMode). User code normally does not need to call
-     * this directly.</p>
+     * <p>Primarily intended for framework lifecycle management (e.g., when an OpMode
+     * starts fresh). Most user code should not call this directly.</p>
      */
     static void clearRegistered() {
         Registry.clear();
     }
 
-    // ---------------------------------------------------------------------
+    // ---------------------------------------------------------------------------------------------
     // Factory helpers
-    // ---------------------------------------------------------------------
+    // ---------------------------------------------------------------------------------------------
 
     /**
-     * Create a stateful {@link Button} from a raw boolean supplier and
-     * automatically register it with the global registry.
+     * Create a stateful {@link Button} from a raw boolean supplier and automatically
+     * register it with the global registry.
      *
-     * <p>The returned button:</p>
-     * <ul>
-     *   <li>Samples {@code raw.getAsBoolean()} in {@link #update()}.</li>
-     *   <li>Provides rising-edge semantics via {@link #onPress()}.</li>
-     *   <li>Provides falling-edge semantics via {@link #onRelease()}.</li>
-     *   <li>Provides level semantics via {@link #isHeld()}.</li>
-     * </ul>
+     * <p><b>Construction priming:</b> the returned button samples the raw supplier once
+     * at construction time to prime its internal state. This prevents a “phantom press”
+     * the first time you enter a menu/tester while the physical button is already held.</p>
      *
-     * <p>Typical usage (inside gamepad wrappers):</p>
-     *
-     * <pre>{@code
-     * public Button a() {
-     *     return Button.of(() -> gp.a);
-     * }
-     * }</pre>
+     * @param raw supplier providing the raw held state (non-null)
      */
     static Button of(BooleanSupplier raw) {
         StatefulButton b = new StatefulButton(raw);
@@ -190,8 +150,7 @@ public interface Button {
     /**
      * Convenience: create a button that is always held or always released.
      *
-     * <p>Edges never fire for constant buttons; {@link #onPress()} and
-     * {@link #onRelease()} always return {@code false}.</p>
+     * <p>Edges never fire for constant buttons, and {@link #isToggled()} will never change.</p>
      */
     static Button constant(boolean held) {
         StatefulButton b = new StatefulButton(() -> held);
@@ -199,79 +158,111 @@ public interface Button {
         return b;
     }
 
-    // ---------------------------------------------------------------------
+    // ---------------------------------------------------------------------------------------------
     // Default implementation used by factories
-    // ---------------------------------------------------------------------
+    // ---------------------------------------------------------------------------------------------
 
     /**
-     * Default stateful {@link Button} implementation used by
-     * {@link #of(BooleanSupplier)} and {@link #constant(boolean)}.
-     *
-     * <p>This class is public so that advanced users can construct and
-     * optionally register custom instances, but most code should rely on
-     * the static factories and gamepad wrappers.</p>
+     * Default stateful {@link Button} implementation used by {@link #of(BooleanSupplier)}
+     * and {@link #constant(boolean)}.
      */
     final class StatefulButton implements Button {
         private final BooleanSupplier raw;
         private boolean prev;
         private boolean curr;
+        private boolean toggled;
 
         /**
-         * @param raw supplier providing the raw "is down" value from hardware
-         *            or higher-level logic. Must be non-null.
+         * @param raw supplier providing the raw "is down" state (non-null)
          */
         public StatefulButton(BooleanSupplier raw) {
             this.raw = Objects.requireNonNull(raw, "raw supplier is required");
-            this.prev = false;
-            this.curr = false;
+
+            // Prime internal state from current raw value to avoid a phantom press
+            // on first update when entering a new screen while the button is already held.
+            boolean initial = this.raw.getAsBoolean();
+            this.prev = initial;
+            this.curr = initial;
+
+            // Toggles default "off".
+            this.toggled = false;
         }
 
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public void update() {
             prev = curr;
             curr = raw.getAsBoolean();
+
+            // Press-to-toggle flips on the same rising edge that drives onPress().
+            if (curr && !prev) {
+                toggled = !toggled;
+            }
         }
 
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public boolean onPress() {
             return curr && !prev;
         }
 
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public boolean onRelease() {
             return !curr && prev;
         }
 
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public boolean isHeld() {
             return curr;
         }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public boolean isToggled() {
+            return toggled;
+        }
     }
 
-    // ---------------------------------------------------------------------
-    // Internal registry implementation
-    // ---------------------------------------------------------------------
+    // ---------------------------------------------------------------------------------------------
+    // Internal registry
+    // ---------------------------------------------------------------------------------------------
 
     /**
-     * Simple global registry for buttons created via {@link #of(BooleanSupplier)}
-     * or {@link #constant(boolean)} (and any others explicitly registered via
-     * {@link #register(Button)}).
+     * Global registry for buttons created via the factories (and any others explicitly registered).
      *
-     * <p>This is intentionally minimal and package-private; all interaction
-     * should go through the static methods on {@link Button}.</p>
+     * <p>Registry updates are idempotent by {@link LoopClock#cycle()}.</p>
      */
     final class Registry {
         private static final List<Button> BUTTONS = new ArrayList<>();
+        private static long lastUpdatedCycle = Long.MIN_VALUE;
 
         private Registry() {
-            // no instances
         }
 
         static void register(Button button) {
             BUTTONS.add(Objects.requireNonNull(button, "button"));
         }
 
-        static void updateAll() {
+        static void updateAll(LoopClock clock) {
+            Objects.requireNonNull(clock, "clock");
+            long c = clock.cycle();
+            if (c == lastUpdatedCycle) {
+                return; // already updated this cycle
+            }
+            lastUpdatedCycle = c;
+
             for (Button b : BUTTONS) {
                 b.update();
             }
@@ -279,6 +270,7 @@ public interface Button {
 
         static void clear() {
             BUTTONS.clear();
+            lastUpdatedCycle = Long.MIN_VALUE;
         }
     }
 }

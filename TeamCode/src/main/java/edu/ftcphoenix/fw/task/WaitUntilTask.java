@@ -3,7 +3,8 @@ package edu.ftcphoenix.fw.task;
 import java.util.Objects;
 import java.util.function.BooleanSupplier;
 
-import edu.ftcphoenix.fw.util.LoopClock;
+import edu.ftcphoenix.fw.core.debug.DebugSink;
+import edu.ftcphoenix.fw.core.time.LoopClock;
 
 /**
  * A {@link Task} that runs until a condition becomes true, optionally
@@ -45,6 +46,9 @@ public final class WaitUntilTask implements Task {
     private boolean timedOut = false;
     private double elapsedSec = 0.0;
 
+    // Debug helper: the last observed condition value (sampled during update()).
+    private boolean lastCondition = false;
+
     /**
      * Create a wait-until task with no timeout.
      *
@@ -69,13 +73,20 @@ public final class WaitUntilTask implements Task {
         this.timeoutSec = timeoutSec;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void start(LoopClock clock) {
         finished = false;
         timedOut = false;
         elapsedSec = 0.0;
+        lastCondition = false;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void update(LoopClock clock) {
         if (finished) {
@@ -83,7 +94,9 @@ public final class WaitUntilTask implements Task {
         }
 
         // First check condition
-        if (condition.getAsBoolean()) {
+        boolean cond = condition.getAsBoolean();
+        lastCondition = cond;
+        if (cond) {
             finished = true;
             return;
         }
@@ -97,17 +110,41 @@ public final class WaitUntilTask implements Task {
         }
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public boolean isComplete() {
         return finished;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public TaskOutcome getOutcome() {
         if (!finished) {
             return TaskOutcome.NOT_DONE;
         }
         return timedOut ? TaskOutcome.TIMEOUT : TaskOutcome.SUCCESS;
+    }
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void debugDump(DebugSink dbg, String prefix) {
+        if (dbg == null) {
+            return;
+        }
+        String p = (prefix == null || prefix.isEmpty()) ? "waitUntil" : prefix;
+
+        dbg.addData(p + ".finished", finished)
+                .addData(p + ".timedOut", timedOut)
+                .addData(p + ".condition", lastCondition)
+                .addData(p + ".elapsedSec", elapsedSec)
+                .addData(p + ".timeoutSec", timeoutSec);
     }
 
     /**

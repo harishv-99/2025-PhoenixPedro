@@ -4,7 +4,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
 
-import edu.ftcphoenix.fw.util.LoopClock;
+import edu.ftcphoenix.fw.core.debug.DebugSink;
+import edu.ftcphoenix.fw.core.time.LoopClock;
 
 /**
  * A {@link Task} that runs a sequence of child tasks one after another.
@@ -106,6 +107,9 @@ public final class SequenceTask implements Task {
         return new SequenceTask(list);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void start(LoopClock clock) {
         started = true;
@@ -113,6 +117,9 @@ public final class SequenceTask implements Task {
         advanceToNextTask(clock);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void update(LoopClock clock) {
         if (!started) {
@@ -136,6 +143,9 @@ public final class SequenceTask implements Task {
         }
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public boolean isComplete() {
         // Finished when we've advanced past the last child.
@@ -175,6 +185,33 @@ public final class SequenceTask implements Task {
             }
         }
         return TaskOutcome.SUCCESS;
+    }
+
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void debugDump(DebugSink dbg, String prefix) {
+        if (dbg == null) {
+            return;
+        }
+        String p = (prefix == null || prefix.isEmpty()) ? "sequence" : prefix;
+
+        dbg.addData(p + ".started", started)
+                .addData(p + ".size", tasks.size())
+                .addData(p + ".index", index)
+                .addData(p + ".complete", isComplete())
+                .addData(p + ".outcome", getOutcome());
+
+        Task current = getCurrentTask();
+        if (current != null) {
+            dbg.addData(p + ".currentName", current.getDebugName())
+                    .addData(p + ".currentComplete", current.isComplete())
+                    .addData(p + ".currentOutcome", current.getOutcome());
+
+            current.debugDump(dbg, p + ".current");
+        }
     }
 
     /**
