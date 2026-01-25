@@ -25,10 +25,10 @@ public class Constants {
 
 
 
-        return new FollowerBuilder(followerConstants, hardwareMap)
-                .pinpointLocalizer(localizerConstants)
-                /* other builder steps */
-                .build();
+//        return new FollowerBuilder(followerConstants, hardwareMap)
+//                .pinpointLocalizer(localizerConstants)
+//                /* other builder steps */
+//                .build();
     }
     public static FollowerConstants weight = new FollowerConstants()
             .mass(9.616158);
@@ -42,7 +42,7 @@ public class Constants {
             .leftFrontMotorName("lf")
             .leftFrontMotorDirection(DcMotorSimple.Direction.FORWARD)
             .leftRearMotorDirection(DcMotorSimple.Direction.FORWARD)
-            .rightFrontMotorDirection(DcMotorSimple.Direction.REVERSE
+            .rightFrontMotorDirection(DcMotorSimple.Direction.REVERSE);
 
     ;public static PinpointConstants localizerConstants = new PinpointConstants()
             .forwardPodY(-5)
