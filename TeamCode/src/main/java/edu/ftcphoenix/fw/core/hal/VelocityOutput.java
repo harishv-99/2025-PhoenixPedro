@@ -61,7 +61,7 @@ public interface VelocityOutput {
      * is available.</p>
      *
      * @return measured velocity in native units, if available; otherwise
-     * an implementation-defined approximation
+     *         an implementation-defined approximation
      */
     double getMeasuredVelocity();
 

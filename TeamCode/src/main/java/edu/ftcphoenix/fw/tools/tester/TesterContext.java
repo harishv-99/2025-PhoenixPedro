@@ -29,19 +29,13 @@ public final class TesterContext {
      */
     public final HardwareMap hw;
 
-    /**
-     * FTC telemetry (typically the Driver Hub telemetry).
-     */
+    /** FTC telemetry (typically the Driver Hub telemetry). */
     public final Telemetry telemetry;
 
-    /**
-     * FTC gamepad 1.
-     */
+    /** FTC gamepad 1. */
     public final Gamepad gamepad1;
 
-    /**
-     * FTC gamepad 2.
-     */
+    /** FTC gamepad 2. */
     public final Gamepad gamepad2;
 
     /**
@@ -55,11 +49,11 @@ public final class TesterContext {
     /**
      * Create a tester context.
      *
-     * @param hw        FTC hardware map
+     * @param hw FTC hardware map
      * @param telemetry FTC telemetry sink
-     * @param gamepad1  FTC gamepad 1
-     * @param gamepad2  FTC gamepad 2
-     * @param clock     shared per-loop clock advanced by the tester runner
+     * @param gamepad1 FTC gamepad 1
+     * @param gamepad2 FTC gamepad 2
+     * @param clock shared per-loop clock advanced by the tester runner
      */
     public TesterContext(
             HardwareMap hw,

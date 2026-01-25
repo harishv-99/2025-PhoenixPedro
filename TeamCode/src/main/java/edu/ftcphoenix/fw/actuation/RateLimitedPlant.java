@@ -153,9 +153,7 @@ class RateLimitedPlant implements Plant {
     }
 
 
-    /**
-     * {@inheritDoc}
-     */
+    /** {@inheritDoc} */
     @Override
     public void update(double dtSec) {
         if (dtSec < 0.0) {
@@ -179,9 +177,7 @@ class RateLimitedPlant implements Plant {
         inner.update(dtSec);
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    /** {@inheritDoc} */
     @Override
     public void reset() {
         inner.reset();
@@ -190,9 +186,7 @@ class RateLimitedPlant implements Plant {
         this.desiredTarget = t;
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    /** {@inheritDoc} */
     @Override
     public boolean atSetpoint() {
         // Defer to the inner plant's definition of at-setpoint, based on the
@@ -200,18 +194,14 @@ class RateLimitedPlant implements Plant {
         return inner.atSetpoint();
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    /** {@inheritDoc} */
     @Override
     public boolean hasFeedback() {
         return inner.hasFeedback();
     }
 
 
-    /**
-     * {@inheritDoc}
-     */
+    /** {@inheritDoc} */
     @Override
     public void debugDump(DebugSink dbg, String prefix) {
         if (dbg == null) {

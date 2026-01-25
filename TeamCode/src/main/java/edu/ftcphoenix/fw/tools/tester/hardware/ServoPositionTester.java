@@ -80,9 +80,7 @@ public final class ServoPositionTester extends BaseTeleOpTester {
         return "Servo Position Tester";
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    /** {@inheritDoc} */
     @Override
     protected void onInit() {
         picker = new HardwareNamePicker(
@@ -134,9 +132,7 @@ public final class ServoPositionTester extends BaseTeleOpTester {
         });
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    /** {@inheritDoc} */
     @Override
     public boolean onBackPressed() {
         if (!ready) {
@@ -162,9 +158,7 @@ public final class ServoPositionTester extends BaseTeleOpTester {
         return true;
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    /** {@inheritDoc} */
     @Override
     protected void onInitLoop(double dtSec) {
         if (!ready) {
@@ -174,9 +168,7 @@ public final class ServoPositionTester extends BaseTeleOpTester {
         updateAndRender();
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    /** {@inheritDoc} */
     @Override
     protected void onLoop(double dtSec) {
         if (!ready) {
@@ -186,9 +178,7 @@ public final class ServoPositionTester extends BaseTeleOpTester {
         updateAndRender();
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    /** {@inheritDoc} */
     @Override
     protected void onStop() {
         // Leave servo at whatever it was last commanded to.

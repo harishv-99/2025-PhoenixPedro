@@ -69,7 +69,7 @@ public interface PositionOutput {
      * which simply returns {@link #getCommandedPosition()}.</p>
      *
      * @return measured position in native units, if available; otherwise
-     * the last commanded position
+     *         the last commanded position
      */
     default double getMeasuredPosition() {
         return getCommandedPosition();

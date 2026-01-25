@@ -91,10 +91,10 @@ public final class PoseEstimate {
      * Constructs a new {@code PoseEstimate}.
      *
      * @param fieldToRobotPose robot pose in the FTC field coordinate system (field→robot; 6DOF)
-     * @param hasPose          whether this represents a valid pose
-     * @param quality          quality score in [0.0, 1.0]
-     * @param ageSec           age of the estimate in seconds
-     * @param timestampSec     time at which the underlying measurement was taken
+     * @param hasPose      whether this represents a valid pose
+     * @param quality      quality score in [0.0, 1.0]
+     * @param ageSec       age of the estimate in seconds
+     * @param timestampSec time at which the underlying measurement was taken
      */
     public PoseEstimate(Pose3d fieldToRobotPose,
                         boolean hasPose,

@@ -127,7 +127,6 @@ public final class DriveSignal {
         this.lateral = lateral;
         this.omega = omega;
     }
-
     /**
      * Return a new signal with translation and rotation scaled independently.
      *

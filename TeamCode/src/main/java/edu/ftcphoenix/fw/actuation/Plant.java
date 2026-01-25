@@ -130,7 +130,7 @@ public interface Plant {
      * should also override this to return {@code true}.</p>
      *
      * @return {@code true} if this plant exposes a meaningful
-     * {@link #atSetpoint()} value; {@code false} otherwise
+     *         {@link #atSetpoint()} value; {@code false} otherwise
      */
     default boolean hasFeedback() {
         return false;

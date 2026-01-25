@@ -63,9 +63,7 @@ public abstract class BaseTeleOpTester implements TeleOpTester {
         onInit();
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    /** {@inheritDoc} */
     @Override
     public final void initLoop(double dtSec) {
         // Per-cycle systems first.
@@ -75,17 +73,13 @@ public abstract class BaseTeleOpTester implements TeleOpTester {
         onInitLoop(dtSec);
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    /** {@inheritDoc} */
     @Override
     public final void start() {
         onStart();
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    /** {@inheritDoc} */
     @Override
     public final void loop(double dtSec) {
         // Per-cycle systems first.
@@ -95,9 +89,7 @@ public abstract class BaseTeleOpTester implements TeleOpTester {
         onLoop(dtSec);
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    /** {@inheritDoc} */
     @Override
     public final void stop() {
         onStop();

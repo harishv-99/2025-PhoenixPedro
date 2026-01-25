@@ -53,17 +53,13 @@ public final class InstantTask implements Task {
         finished = true;
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    /** {@inheritDoc} */
     @Override
     public void update(LoopClock clock) {
         // No periodic work; instant tasks finish in start().
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    /** {@inheritDoc} */
     @Override
     public boolean isComplete() {
         return finished;

@@ -149,9 +149,7 @@ public final class InterlockPlant implements Plant {
         inner.update(dtSec);
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    /** {@inheritDoc} */
     @Override
     public void reset() {
         inner.reset();
@@ -171,18 +169,14 @@ public final class InterlockPlant implements Plant {
         return inner.atSetpoint();
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    /** {@inheritDoc} */
     @Override
     public boolean hasFeedback() {
         return inner.hasFeedback();
     }
 
 
-    /**
-     * {@inheritDoc}
-     */
+    /** {@inheritDoc} */
     @Override
     public void debugDump(DebugSink dbg, String prefix) {
         if (dbg == null) return;

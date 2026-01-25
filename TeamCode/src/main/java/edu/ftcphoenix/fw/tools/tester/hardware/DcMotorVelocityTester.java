@@ -102,9 +102,7 @@ public final class DcMotorVelocityTester extends BaseTeleOpTester {
         return "DcMotor Velocity Tester";
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    /** {@inheritDoc} */
     @Override
     protected void onInit() {
         picker = new HardwareNamePicker(
@@ -193,9 +191,7 @@ public final class DcMotorVelocityTester extends BaseTeleOpTester {
         });
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    /** {@inheritDoc} */
     @Override
     public boolean onBackPressed() {
         if (!ready) {
@@ -225,9 +221,7 @@ public final class DcMotorVelocityTester extends BaseTeleOpTester {
         return true;
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    /** {@inheritDoc} */
     @Override
     protected void onInitLoop(double dtSec) {
         if (!ready) {
@@ -237,9 +231,7 @@ public final class DcMotorVelocityTester extends BaseTeleOpTester {
         updateAndRender(dtSec);
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    /** {@inheritDoc} */
     @Override
     protected void onLoop(double dtSec) {
         if (!ready) {
@@ -249,9 +241,7 @@ public final class DcMotorVelocityTester extends BaseTeleOpTester {
         updateAndRender(dtSec);
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    /** {@inheritDoc} */
     @Override
     protected void onStop() {
         stopMotorNow();

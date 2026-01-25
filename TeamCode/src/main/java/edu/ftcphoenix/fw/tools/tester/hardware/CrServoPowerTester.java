@@ -78,9 +78,7 @@ public final class CrServoPowerTester extends BaseTeleOpTester {
         return "CRServo Power Tester";
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    /** {@inheritDoc} */
     @Override
     protected void onInit() {
         picker = new HardwareNamePicker(
@@ -123,9 +121,7 @@ public final class CrServoPowerTester extends BaseTeleOpTester {
         );
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    /** {@inheritDoc} */
     @Override
     public boolean onBackPressed() {
         if (!ready) {
@@ -148,9 +144,7 @@ public final class CrServoPowerTester extends BaseTeleOpTester {
         return true;
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    /** {@inheritDoc} */
     @Override
     protected void onInitLoop(double dtSec) {
         if (!ready) {
@@ -160,9 +154,7 @@ public final class CrServoPowerTester extends BaseTeleOpTester {
         updateAndRender();
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    /** {@inheritDoc} */
     @Override
     protected void onLoop(double dtSec) {
         if (!ready) {
@@ -172,9 +164,7 @@ public final class CrServoPowerTester extends BaseTeleOpTester {
         updateAndRender();
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    /** {@inheritDoc} */
     @Override
     protected void onStop() {
         applyPower(0.0);

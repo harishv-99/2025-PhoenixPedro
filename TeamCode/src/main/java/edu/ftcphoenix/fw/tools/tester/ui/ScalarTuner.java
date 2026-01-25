@@ -96,11 +96,11 @@ public final class ScalarTuner {
      * <p>A {@code ScalarTuner} is a small helper for TeleOp test screens where you want to adjust a
      * continuous target (like motor power or servo position) using gamepad buttons and/or an axis.</p>
      *
-     * @param label         display label used in telemetry (for example {@code "Power"} or {@code "Position"})
-     * @param min           minimum target value (inclusive)
-     * @param max           maximum target value (inclusive)
-     * @param fineStep      increment used in fine mode (absolute value)
-     * @param coarseStep    increment used in coarse mode (absolute value)
+     * @param label display label used in telemetry (for example {@code "Power"} or {@code "Position"})
+     * @param min minimum target value (inclusive)
+     * @param max maximum target value (inclusive)
+     * @param fineStep increment used in fine mode (absolute value)
+     * @param coarseStep increment used in coarse mode (absolute value)
      * @param initialTarget initial target value (will be clamped into {@code [min, max]})
      */
     public ScalarTuner(String label,
@@ -218,9 +218,9 @@ public final class ScalarTuner {
      * <p>If the axis magnitude exceeds {@code deadband}, the axis value (after mapping)
      * becomes the new target.</p>
      *
-     * @param axis     axis to read (for example {@code pads.p1().leftY()})
+     * @param axis axis to read (for example {@code pads.p1().leftY()})
      * @param deadband deadband applied to the raw axis
-     * @param axisMap  maps raw axis value to the tuner target domain (nullable; identity if null)
+     * @param axisMap maps raw axis value to the tuner target domain (nullable; identity if null)
      * @return this tuner for chaining
      */
     public ScalarTuner attachAxis(Axis axis, double deadband, DoubleUnaryOperator axisMap) {
@@ -395,14 +395,14 @@ public final class ScalarTuner {
      * <p>All actions are gated by {@code active}. Pass something like {@code () -> ready}
      * so menu inputs don't conflict with your test controls.</p>
      *
-     * @param bindings     bindings registry to attach to
+     * @param bindings bindings registry to attach to
      * @param enableToggle button that toggles enabled/disabled (nullable)
      * @param invertToggle button that toggles invert (nullable)
-     * @param fineToggle   button that toggles fine/coarse (nullable)
-     * @param incButton    button that increments the target (nullable)
-     * @param decButton    button that decrements the target (nullable)
-     * @param zeroButton   button that resets to the disabled value (nullable)
-     * @param active       optional gating predicate; if null, actions are always allowed
+     * @param fineToggle button that toggles fine/coarse (nullable)
+     * @param incButton button that increments the target (nullable)
+     * @param decButton button that decrements the target (nullable)
+     * @param zeroButton button that resets to the disabled value (nullable)
+     * @param active optional gating predicate; if null, actions are always allowed
      */
     public void bind(Bindings bindings,
                      Button enableToggle,

@@ -114,9 +114,28 @@ public final class DcMotorPositionTester extends BaseTeleOpTester {
         return "DcMotor Position Tester";
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    private static DcMotor.RunMode safeGetMode(DcMotor m) {
+        try {
+            return m.getMode();
+        } catch (Exception ignored) {
+            return null; }
+    }
+
+    private static DcMotor.Direction safeGetDir(DcMotor m) {
+        try {
+            return m.getDirection();
+        } catch (Exception ignored) {
+            return null; }
+    }
+
+    private static DcMotor.ZeroPowerBehavior safeGetZpb(DcMotor m) {
+        try {
+            return m.getZeroPowerBehavior();
+        } catch (Exception ignored) {
+            return null; }
+    }
+
+    /** {@inheritDoc} */
     @Override
     protected void onInit() {
         picker = new HardwareNamePicker(
@@ -217,9 +236,7 @@ public final class DcMotorPositionTester extends BaseTeleOpTester {
         });
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    /** {@inheritDoc} */
     @Override
     public boolean onBackPressed() {
         if (!ready) {
@@ -249,9 +266,11 @@ public final class DcMotorPositionTester extends BaseTeleOpTester {
         return true;
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    // ---------------------------------------------------------------------------------------------
+    // Internals
+    // ---------------------------------------------------------------------------------------------
+
+    /** {@inheritDoc} */
     @Override
     protected void onInitLoop(double dtSec) {
         if (!ready) {
@@ -261,9 +280,7 @@ public final class DcMotorPositionTester extends BaseTeleOpTester {
         updateAndRender(dtSec);
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    /** {@inheritDoc} */
     @Override
     protected void onLoop(double dtSec) {
         if (!ready) {
@@ -273,23 +290,35 @@ public final class DcMotorPositionTester extends BaseTeleOpTester {
         updateAndRender(dtSec);
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    private void applyRunToPosition() {
+        if (motor == null) return;
+
+        try {
+            motor.setTargetPosition(targetTicks.applied());
+            motor.setMode(DcMotor.RunMode.RUN_TO_POSITION);
+
+            // Only apply power while enabled; otherwise 0.
+            double pwr = power.applied();
+            motor.setPower(pwr);
+        } catch (Exception ignored) {
+            // Fail-safe if something breaks mid-run.
+            if (targetTicks.isEnabled()) {
+                targetTicks.toggleEnabled();
+            }
+            safeDisableMotor();
+        }
+    }
+
+    /** {@inheritDoc} */
     @Override
     protected void onStop() {
         // Safety: always stop power and restore original settings.
         try {
             if (motor != null) motor.setPower(0.0);
-        } catch (Exception ignored) {
-        }
+        } catch (Exception ignored) {}
 
         restoreOriginalSettings();
     }
-
-    // ---------------------------------------------------------------------------------------------
-    // Internals
-    // ---------------------------------------------------------------------------------------------
 
     private void tryResolveMotor(String name) {
         resolveError = null;
@@ -318,8 +347,7 @@ public final class DcMotorPositionTester extends BaseTeleOpTester {
         try {
             motor.setPower(0.0);
             motor.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
-        } catch (Exception ignored) {
-        }
+        } catch (Exception ignored) {}
 
         // Default targets
         targetTicks.setTarget(0);
@@ -342,30 +370,10 @@ public final class DcMotorPositionTester extends BaseTeleOpTester {
             // keep motor quiet while disabled
             try {
                 motor.setPower(0.0);
-            } catch (Exception ignored) {
-            }
+            } catch (Exception ignored) {}
         }
 
         renderTelemetry();
-    }
-
-    private void applyRunToPosition() {
-        if (motor == null) return;
-
-        try {
-            motor.setTargetPosition(targetTicks.applied());
-            motor.setMode(DcMotor.RunMode.RUN_TO_POSITION);
-
-            // Only apply power while enabled; otherwise 0.
-            double pwr = power.applied();
-            motor.setPower(pwr);
-        } catch (Exception ignored) {
-            // Fail-safe if something breaks mid-run.
-            if (targetTicks.isEnabled()) {
-                targetTicks.toggleEnabled();
-            }
-            safeDisableMotor();
-        }
     }
 
     private void safeDisableMotor() {
@@ -374,8 +382,7 @@ public final class DcMotorPositionTester extends BaseTeleOpTester {
                 motor.setPower(0.0);
                 motor.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
             }
-        } catch (Exception ignored) {
-        }
+        } catch (Exception ignored) {}
     }
 
     private void resetEncoderAndZeroTarget() {
@@ -385,8 +392,7 @@ public final class DcMotorPositionTester extends BaseTeleOpTester {
             motor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
             motor.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
             targetTicks.setTarget(0);
-        } catch (Exception ignored) {
-        }
+        } catch (Exception ignored) {}
     }
 
     private void toggleDirection() {
@@ -394,8 +400,7 @@ public final class DcMotorPositionTester extends BaseTeleOpTester {
         try {
             DcMotor.Direction d = motor.getDirection();
             motor.setDirection(d == DcMotor.Direction.FORWARD ? DcMotor.Direction.REVERSE : DcMotor.Direction.FORWARD);
-        } catch (Exception ignored) {
-        }
+        } catch (Exception ignored) {}
     }
 
     private void restoreOriginalSettings() {
@@ -416,32 +421,7 @@ public final class DcMotorPositionTester extends BaseTeleOpTester {
         }
         try {
             if (origMode != null) motor.setMode(origMode);
-        } catch (Exception ignored) {
-        }
-    }
-
-    private static DcMotor.RunMode safeGetMode(DcMotor m) {
-        try {
-            return m.getMode();
-        } catch (Exception ignored) {
-            return null;
-        }
-    }
-
-    private static DcMotor.Direction safeGetDir(DcMotor m) {
-        try {
-            return m.getDirection();
-        } catch (Exception ignored) {
-            return null;
-        }
-    }
-
-    private static DcMotor.ZeroPowerBehavior safeGetZpb(DcMotor m) {
-        try {
-            return m.getZeroPowerBehavior();
-        } catch (Exception ignored) {
-            return null;
-        }
+        } catch (Exception ignored) {}
     }
 
     private void renderPicker() {
@@ -503,8 +483,7 @@ public final class DcMotorPositionTester extends BaseTeleOpTester {
         }
         try {
             dir = motor.getDirection();
-        } catch (Exception ignored) {
-        }
+        } catch (Exception ignored) {}
 
         t.addLine("");
         t.addLine(String.format(Locale.US,
@@ -521,8 +500,7 @@ public final class DcMotorPositionTester extends BaseTeleOpTester {
         if (motorEx != null) {
             try {
                 t.addLine(String.format(Locale.US, "Velocity=%.1f ticks/s", motorEx.getVelocity()));
-            } catch (Exception ignored) {
-            }
+            } catch (Exception ignored) {}
         }
 
         t.addLine("");

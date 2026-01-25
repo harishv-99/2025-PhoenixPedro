@@ -23,6 +23,8 @@ import edu.ftcphoenix.fw.drive.DriveSource;
 import edu.ftcphoenix.fw.drive.MecanumDrivebase;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidance;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidancePlan;
+import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceQuery;
+import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceStatus;
 import edu.ftcphoenix.fw.drive.source.GamepadDriveSource;
 import edu.ftcphoenix.fw.field.TagLayout;
 import edu.ftcphoenix.fw.ftc.FtcDrives;
@@ -35,7 +37,6 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
 import edu.ftcphoenix.fw.sensing.observation.ObservationSource2d;
 import edu.ftcphoenix.fw.sensing.observation.ObservationSources;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
-import edu.ftcphoenix.fw.sensing.vision.CameraMountLogic;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagObservation;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.TagTarget;
@@ -76,6 +77,8 @@ public final class PhoenixRobot {
     private DriveGuidancePlan aimPlanBlue;
     private DriveGuidancePlan aimPlanRed;
     private DriveGuidancePlan.Tuning aimTuning;
+    private DriveGuidanceQuery aimQueryBlue;
+    private DriveGuidanceQuery aimQueryRed;
     private TagLayout gameTagLayout;
 
     // "Shoot brace" pose-lock: latch-on while the shooter is spinning and the driver is not
@@ -210,6 +213,11 @@ public final class PhoenixRobot {
                 .lossPolicy(DriveGuidancePlan.LossPolicy.PASS_THROUGH)
                 .doneFeedback()
                 .build();
+
+        // Queries: sample the exact same math used by the overlays (for telemetry & gating),
+        // without needing to re-derive bearings or worry about control frames.
+        aimQueryBlue = aimPlanBlue.query();
+        aimQueryRed = aimPlanRed.query();
 
         /*
          * FUTURE OPTION (leave commented out for now):
@@ -432,10 +440,16 @@ public final class PhoenixRobot {
         if (obs.hasTarget) {
             RobotConfig.AutoAim.AimOffset aimOffset = RobotConfig.AutoAim.aimOffsetForTag(obs.id);
 
-            // Bearing to the configured *aim point* (not the tag center).
-            double aimBearingRad = robotBearingToTagRelativePointRad(obs, aimOffset);
-            if (Double.isFinite(aimBearingRad)
-                    && Math.abs(aimBearingRad) <= (aimTuning.aimDeadbandRad * 5)) {
+            // Use the same guidance evaluation math as the overlay (no manual camera-mount math,
+            // and control frames are automatically applied).
+            DriveGuidanceStatus aimStatus = null;
+            if (obs.id == RobotConfig.AutoAim.BLUE_TARGET_TAG_ID && aimQueryBlue != null) {
+                aimStatus = aimQueryBlue.sample(clock, DriveOverlayMask.OMEGA_ONLY);
+            } else if (obs.id == RobotConfig.AutoAim.RED_TARGET_TAG_ID && aimQueryRed != null) {
+                aimStatus = aimQueryRed.sample(clock, DriveOverlayMask.OMEGA_ONLY);
+            }
+
+            if (aimStatus != null && aimStatus.omegaWithin(aimTuning.aimDeadbandRad * 5)) {
                 telemetry.addLine(">>> AIMED <<<");
             }
 
@@ -446,7 +460,12 @@ public final class PhoenixRobot {
                     "aimOffset(fwd,left)",
                     String.format("%.1f, %.1f", aimOffset.forwardInches, aimOffset.leftInches)
             );
-            telemetry.addData("bearingAimDeg", Math.toDegrees(aimBearingRad));
+            telemetry.addData(
+                    "omegaErrDeg",
+                    (aimStatus != null && aimStatus.hasOmegaError)
+                            ? Math.toDegrees(aimStatus.omegaErrorRad)
+                            : Double.NaN
+            );
 
             // Field metadata (comes from the FTC game database): where this tag is placed on the field.
             // This is useful for sanity-checking that you're targeting the right point.
@@ -464,39 +483,6 @@ public final class PhoenixRobot {
         }
 
         telemetry.update();
-    }
-
-    /**
-     * Computes the robot-frame bearing (radians) to a tag-relative aim point.
-     *
-     * <p>0 rad means the aim point is straight ahead of the robot, + is to the left, - is to the right.</p>
-     *
-     * <p>This mirrors how DriveGuidance resolves tag-relative points internally, but we do it here
-     * so telemetry can say “AIMED” based on the <b>corner point</b> instead of the tag center.</p>
-     */
-    private double robotBearingToTagRelativePointRad(
-            AprilTagObservation obs,
-            RobotConfig.AutoAim.AimOffset aimOffset
-    ) {
-        if (obs == null || !obs.hasTarget || obs.cameraToTagPose == null || aimOffset == null) {
-            return Double.NaN;
-        }
-        if (cameraMountConfig == null) {
-            return Double.NaN;
-        }
-
-        // Robot → tag (in robot frame)
-        Pose3d robotToTag = CameraMountLogic.robotToTagPose(cameraMountConfig, obs.cameraToTagPose);
-        Pose2d robotToTag2d = new Pose2d(robotToTag.xInches, robotToTag.yInches, robotToTag.yawRad);
-
-        // Robot → aim point (tag-relative offset rotated by the tag heading)
-        Pose2d robotToAimPoint = robotToTag2d.then(new Pose2d(
-                aimOffset.forwardInches,
-                aimOffset.leftInches,
-                0.0
-        ));
-
-        return Math.atan2(robotToAimPoint.yInches, robotToAimPoint.xInches);
     }
 
     /**

@@ -207,10 +207,10 @@ public final class TagTarget {
     /**
      * Check whether the current robot-centric bearing is within a tolerance.
      *
-     * @param cameraMount  robot→camera extrinsics (must not be {@code null})
+     * @param cameraMount robot→camera extrinsics (must not be {@code null})
      * @param toleranceRad tolerance in radians (must be {@code >= 0})
      * @return {@code true} if {@link #hasTarget()} and {@code |robotBearing| <= toleranceRad}
-     * @throws NullPointerException     if {@code cameraMount} is {@code null}
+     * @throws NullPointerException if {@code cameraMount} is {@code null}
      * @throws IllegalArgumentException if {@code toleranceRad} is negative
      */
     public boolean isRobotBearingWithin(CameraMountConfig cameraMount, double toleranceRad) {
@@ -273,7 +273,7 @@ public final class TagTarget {
      *
      * @param cameraMount robot→camera extrinsics (must not be {@code null})
      * @return a robot-relative observation; {@link TargetObservation2d#hasTarget} will be false if
-     * {@link #hasTarget()} is false
+     *         {@link #hasTarget()} is false
      */
     public TargetObservation2d toRobotObservation2d(CameraMountConfig cameraMount) {
         Objects.requireNonNull(cameraMount, "cameraMount is required");
@@ -283,7 +283,7 @@ public final class TagTarget {
     /**
      * Dump a snapshot of the current tracker state to a {@link DebugSink}.
      *
-     * @param dbg    debug sink; if {@code null}, this method does nothing
+     * @param dbg debug sink; if {@code null}, this method does nothing
      * @param prefix key prefix to use for debug fields; if null/empty, {@code "tagTarget"} is used
      */
     public void debugDump(DebugSink dbg, String prefix) {
@@ -316,8 +316,8 @@ public final class TagTarget {
     /**
      * Dump tracker state to a {@link DebugSink}, including robot-centric bearing if available.
      *
-     * @param dbg         debug sink; if {@code null}, this method does nothing
-     * @param prefix      key prefix to use for debug fields; if null/empty, {@code "tagTarget"} is used
+     * @param dbg debug sink; if {@code null}, this method does nothing
+     * @param prefix key prefix to use for debug fields; if null/empty, {@code "tagTarget"} is used
      * @param cameraMount robot→camera extrinsics used to compute robot-centric bearing (must not be {@code null})
      * @throws NullPointerException if {@code cameraMount} is {@code null}
      */

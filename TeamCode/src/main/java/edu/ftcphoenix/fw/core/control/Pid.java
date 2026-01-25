@@ -187,9 +187,7 @@ public final class Pid implements PidController {
         return output;
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    /** {@inheritDoc} */
     @Override
     public void reset() {
         integral = 0.0;

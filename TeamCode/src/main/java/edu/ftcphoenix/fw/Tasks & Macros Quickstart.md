@@ -24,6 +24,7 @@ If you want a simple safety gate like “enable shooting only when the robot is 
 * `ConvexRegion2d` / `ConvexRegions2d` to describe the zone geometry (convex polygons, circles, AABBs)
 * `RobotGeometry2d` + `RobotZones2d` to define what “robot in zone” means (point-in-zone, footprint overlap, fully inside)
 * `ZoneLatch` to add hysteresis so the gate doesn’t chatter on a boundary
+* `RobotHeadings2d` + `HeadingLatch` if you also want a direction/aim gate (“facing target?”)
 
 These live in `edu.ftcphoenix.fw.spatial` and can be used in TeleOp, tasks, testers, or anywhere else.
 

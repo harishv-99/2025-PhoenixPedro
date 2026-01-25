@@ -5,6 +5,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.field.TagLayout;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
 import edu.ftcphoenix.fw.sensing.observation.TargetObservation2d;
+import edu.ftcphoenix.fw.spatial.SpatialMath2d;
 
 /**
  * Spatial evaluation for {@link DriveGuidancePlan}.
@@ -92,7 +93,7 @@ final class DriveGuidanceEvaluator {
             boolean orientationOk = !needsOrientation || obs.hasOrientation();
 
             if (idMatches && hasPos && orientationOk && robotToAnchorPose != null) {
-                Pose2d robotToTarget = robotToAnchorPose.then(new Pose2d(tp.forwardInches, tp.leftInches, 0.0));
+                Pose2d robotToTarget = SpatialMath2d.anchorRelativePointInches(robotToAnchorPose, tp.forwardInches, tp.leftInches);
 
                 Pose2d robotToTFrame = plan.controlFrames.robotToTranslationFrame();
                 forwardErr = robotToTarget.xInches - robotToTFrame.xInches;
@@ -119,9 +120,10 @@ final class DriveGuidanceEvaluator {
 
             // If we have position, compute the true vector from the aim frame origin.
             if (idMatches && hasPos && orientationOk && robotToAnchorPose != null) {
-                Pose2d robotToPoint = robotToAnchorPose.then(new Pose2d(tp.forwardInches, tp.leftInches, 0.0));
+                Pose2d robotToPoint = SpatialMath2d.anchorRelativePointInches(robotToAnchorPose, tp.forwardInches, tp.leftInches);
                 Pose2d aimFrameToPoint = robotToAimFrame.inverse().then(robotToPoint);
-                omegaErr = Pose2d.wrapToPi(Math.atan2(aimFrameToPoint.yInches, aimFrameToPoint.xInches));
+                omegaErr = Pose2d.wrapToPi(
+                        SpatialMath2d.bearingRadOfVector(aimFrameToPoint.xInches, aimFrameToPoint.yInches));
                 canOmega = true;
             } else {
                 // Bearing-only fallback: only safe when the aim frame origin is the robot origin
@@ -228,7 +230,8 @@ final class DriveGuidanceEvaluator {
         } else if (fieldToAimPoint != null) {
             Pose2d fieldToAimFrame = fieldToRobot.then(plan.controlFrames.robotToAimFrame());
             Pose2d aimFrameToPoint = fieldToAimFrame.inverse().then(fieldToAimPoint);
-            omegaErr = Pose2d.wrapToPi(Math.atan2(aimFrameToPoint.yInches, aimFrameToPoint.xInches));
+            omegaErr = Pose2d.wrapToPi(
+                    SpatialMath2d.bearingRadOfVector(aimFrameToPoint.xInches, aimFrameToPoint.yInches));
             canOmega = true;
         }
 

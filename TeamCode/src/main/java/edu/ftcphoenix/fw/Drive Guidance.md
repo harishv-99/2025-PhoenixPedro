@@ -25,7 +25,8 @@ Phoenix keeps “where am I?” logic separate from “how do I drive?” logic.
 The three layers are:
 
 1) **Spatial math** (pure geometry): bearings, errors, frame transforms. See `edu.ftcphoenix.fw.spatial.SpatialMath2d`.
-2) **Spatial predicates** (yes/no decisions): zone membership and “safe” booleans, often with hysteresis. See `ConvexRegion2d` / `ConvexRegions2d`, `RobotZones2d`, and `ZoneLatch` in `edu.ftcphoenix.fw.spatial`.
+2) **Spatial predicates** (yes/no decisions): zone membership and “safe” booleans, often with hysteresis.
+   See `ConvexRegion2d` / `ConvexRegions2d`, `RobotZones2d`, `ZoneLatch`, `RobotHeadings2d`, and `HeadingLatch` in `edu.ftcphoenix.fw.spatial`.
 3) **Controllers** (produce commands): DriveGuidance overlays and drive tasks (e.g., `DriveGuidanceTask` / `GoToPoseTasks`) use errors from the math layer and turn them into drive outputs.
 
 ---
@@ -132,6 +133,25 @@ DriveSource drive = base.overlayWhen(
         plan.overlay(),
         DriveOverlayMask.OMEGA_ONLY
 );
+```
+
+### Query a plan's errors (without enabling the overlay)
+
+Sometimes you want the *same math* as a DriveGuidance assist, but you don't actually want to
+take control of the drivetrain.
+
+Use `DriveGuidanceQuery` / `DriveGuidanceStatus` via `plan.query()`:
+
+```java
+DriveGuidanceQuery q = plan.query();
+
+// Each loop:
+DriveGuidanceStatus s = q.sample(clock, DriveOverlayMask.OMEGA_ONLY);
+
+if (s != null && s.omegaWithin(Math.toRadians(2))) {
+    telemetry.addLine(">>> AIMED <<<");
+}
+telemetry.addData("omegaErrDeg", s != null ? Math.toDegrees(s.omegaErrorRad) : Double.NaN);
 ```
 
 ### Translate + aim: observed tag-relative point (vision-only)

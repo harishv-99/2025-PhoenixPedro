@@ -107,9 +107,7 @@ public final class FtcGameTagLayout implements TagLayout {
         return posesById.get(id);
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    /** {@inheritDoc} */
     @Override
     public Set<Integer> ids() {
         return ids;

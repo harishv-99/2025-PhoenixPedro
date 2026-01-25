@@ -99,9 +99,7 @@ public abstract class PhoenixTeleOpBase extends OpMode {
         telemetry.update();
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    /** {@inheritDoc} */
     @Override
     public final void start() {
         // Reset loop clock at the moment start() is called
@@ -109,9 +107,7 @@ public abstract class PhoenixTeleOpBase extends OpMode {
         onStartRobot();
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    /** {@inheritDoc} */
     @Override
     public final void loop() {
         // 1) Update timing (exactly once per OpMode cycle)
@@ -126,9 +122,7 @@ public abstract class PhoenixTeleOpBase extends OpMode {
         onLoopRobot(dtSec);
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    /** {@inheritDoc} */
     @Override
     public final void stop() {
         onStopRobot();

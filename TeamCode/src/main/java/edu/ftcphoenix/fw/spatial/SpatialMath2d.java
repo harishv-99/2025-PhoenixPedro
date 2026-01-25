@@ -33,6 +33,42 @@ public final class SpatialMath2d {
     }
 
     /**
+     * Bearing of a 2D vector using Phoenix conventions.
+     *
+     * <p>Convention recap:</p>
+     * <ul>
+     *   <li>+X / {@code forwardInches} is forward.</li>
+     *   <li>+Y / {@code leftInches} is left.</li>
+     *   <li>0 rad means straight ahead; + is left/CCW.</li>
+     * </ul>
+     */
+    public static double bearingRadOfVector(double forwardInches, double leftInches) {
+        return Math.atan2(leftInches, forwardInches);
+    }
+
+    /**
+     * Resolve a point expressed in an <b>anchor's</b> coordinate frame into the parent frame.
+     *
+     * <p>Example: if {@code robotToTag} is a pose from robot→tag, and you have a desired
+     * aim/approach point expressed in the tag frame (forward/left), this returns robot→point.</p>
+     */
+    public static Pose2d anchorRelativePointInches(Pose2d frameToAnchorPose,
+                                                   double anchorForwardInches,
+                                                   double anchorLeftInches) {
+        return frameToAnchorPose.then(new Pose2d(anchorForwardInches, anchorLeftInches, 0.0));
+    }
+
+    /**
+     * Convenience: bearing from the parent-frame origin to an anchor-relative point.
+     */
+    public static double bearingRadToAnchorRelativePoint(Pose2d frameToAnchorPose,
+                                                         double anchorForwardInches,
+                                                         double anchorLeftInches) {
+        Pose2d frameToPoint = anchorRelativePointInches(frameToAnchorPose, anchorForwardInches, anchorLeftInches);
+        return bearingRadOfVector(frameToPoint.xInches, frameToPoint.yInches);
+    }
+
+    /**
      * Signed bearing error needed for {@code fromHeadingRad} to point at ({@code x}, {@code y}).
      *
      * @return error in [-pi, +pi], where + means “rotate CCW”.

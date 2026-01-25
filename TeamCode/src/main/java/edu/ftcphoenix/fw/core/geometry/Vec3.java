@@ -140,9 +140,7 @@ public final class Vec3 {
         return "Vec3{" + "x=" + x + ", y=" + y + ", z=" + z + '}';
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    /** {@inheritDoc} */
     @Override
     public boolean equals(Object o) {
         if (!(o instanceof Vec3)) return false;
@@ -152,9 +150,7 @@ public final class Vec3 {
                 && Double.compare(z, other.z) == 0;
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    /** {@inheritDoc} */
     @Override
     public int hashCode() {
         return Objects.hash(x, y, z);

@@ -70,9 +70,7 @@ public abstract class FtcTeleOpTesterOpMode extends OpMode {
         telemetry.update();
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    /** {@inheritDoc} */
     @Override
     public final void init_loop() {
         if (tester == null) return;
@@ -81,9 +79,7 @@ public abstract class FtcTeleOpTesterOpMode extends OpMode {
         tester.initLoop(clock.dtSec());
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    /** {@inheritDoc} */
     @Override
     public final void start() {
         if (tester == null) return;
@@ -93,9 +89,7 @@ public abstract class FtcTeleOpTesterOpMode extends OpMode {
         tester.start();
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    /** {@inheritDoc} */
     @Override
     public final void loop() {
         if (tester == null) return;
@@ -104,9 +98,7 @@ public abstract class FtcTeleOpTesterOpMode extends OpMode {
         tester.loop(clock.dtSec());
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    /** {@inheritDoc} */
     @Override
     public final void stop() {
         if (tester == null) return;

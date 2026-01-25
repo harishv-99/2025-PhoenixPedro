@@ -64,11 +64,11 @@ public final class IntTuner {
      * <p>An {@code IntTuner} is a small helper for TeleOp test screens where you want to adjust an
      * integer target (like encoder ticks) using gamepad buttons/axes.</p>
      *
-     * @param label         display label used in telemetry (for example {@code "TargetTicks"})
-     * @param min           minimum target value (inclusive)
-     * @param max           maximum target value (inclusive)
-     * @param fineStep      increment used in fine mode (absolute value; must be {@code >= 1})
-     * @param coarseStep    increment used in coarse mode (absolute value; must be {@code >= 1})
+     * @param label display label used in telemetry (for example {@code "TargetTicks"})
+     * @param min minimum target value (inclusive)
+     * @param max maximum target value (inclusive)
+     * @param fineStep increment used in fine mode (absolute value; must be {@code >= 1})
+     * @param coarseStep increment used in coarse mode (absolute value; must be {@code >= 1})
      * @param initialTarget initial target value (will be clamped into {@code [min, max]})
      */
     public IntTuner(String label,
@@ -140,10 +140,10 @@ public final class IntTuner {
      * </ul>
      * so holding the stick moves the target smoothly.</p>
      *
-     * @param axis             axis to read (e.g., gamepads.p1().leftY())
-     * @param deadband         raw axis deadband
-     * @param fineRatePerSec   ticks/sec at full deflection in fine mode
-     * @param coarseRatePerSec ticks/sec at full deflection in coarse mode
+     * @param axis              axis to read (e.g., gamepads.p1().leftY())
+     * @param deadband          raw axis deadband
+     * @param fineRatePerSec    ticks/sec at full deflection in fine mode
+     * @param coarseRatePerSec  ticks/sec at full deflection in coarse mode
      */
     public IntTuner attachAxisNudge(Axis axis,
                                     double deadband,
@@ -262,7 +262,7 @@ public final class IntTuner {
     /**
      * Update the target from the attached axis nudge, if configured.
      *
-     * @param dtSec  time since last loop (seconds)
+     * @param dtSec time since last loop (seconds)
      * @param active optional gate; if provided and it returns {@code false}, axis nudge is ignored
      */
     public void updateFromAxis(double dtSec, BooleanSupplier active) {
@@ -303,13 +303,13 @@ public final class IntTuner {
      * <p>All actions are gated by {@code active}. Pass something like {@code () -> ready}
      * so menu inputs don't conflict with your test controls.</p>
      *
-     * @param bindings     bindings registry to attach to
+     * @param bindings bindings registry to attach to
      * @param enableToggle button that toggles enabled/disabled (nullable)
-     * @param fineToggle   button that toggles fine/coarse (nullable)
-     * @param incButton    button that increments the target (nullable)
-     * @param decButton    button that decrements the target (nullable)
-     * @param zeroButton   button that resets to the disabled value (nullable)
-     * @param active       optional gating predicate; if null, actions are always allowed
+     * @param fineToggle button that toggles fine/coarse (nullable)
+     * @param incButton button that increments the target (nullable)
+     * @param decButton button that decrements the target (nullable)
+     * @param zeroButton button that resets to the disabled value (nullable)
+     * @param active optional gating predicate; if null, actions are always allowed
      */
     public void bind(Bindings bindings,
                      Button enableToggle,

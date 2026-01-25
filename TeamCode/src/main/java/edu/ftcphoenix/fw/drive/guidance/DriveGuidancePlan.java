@@ -607,4 +607,18 @@ public final class DriveGuidancePlan {
     public DriveGuidanceTask task(edu.ftcphoenix.fw.drive.MecanumDrivebase drivebase, DriveGuidanceTask.Config cfg) {
         return new DriveGuidanceTask(drivebase, this, cfg);
     }
+
+    /**
+     * Build a {@link DriveGuidanceQuery} that can sample this plan's errors (and predicted drive command)
+     * without enabling an overlay.
+     *
+     * <p>This is useful for driver telemetry and safety gating:</p>
+     * <ul>
+     *   <li>"Only shoot when the aim error is small"</li>
+     *   <li>"Show the current omega error on telemetry"</li>
+     * </ul>
+     */
+    public DriveGuidanceQuery query() {
+        return new DriveGuidanceQuery(this);
+    }
 }
