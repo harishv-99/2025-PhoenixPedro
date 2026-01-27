@@ -32,8 +32,9 @@ public class Shooter {
         BACKWARD
     }
 
-    private Plant plantPusher;
-    private Plant plantTransfer;
+    private Plant plantIntake;
+    private Plant plantIntakeTransfer;
+    private Plant plantShooterTransfer;
     private Plant plantShooter;
 
     private double velocity;
@@ -73,25 +74,29 @@ public class Shooter {
      * Construct the shooter subsystem and wire all associated hardware.
      */
     public Shooter(HardwareMap hardwareMap, Telemetry telemetry, Gamepads gamepads) {
-        plantPusher = Actuators.plant(hardwareMap)
-                .servo(RobotConfig.Shooter.nameServoPusher,
-                        RobotConfig.Shooter.directionServoPusher)
-                .position()
+        plantIntake = Actuators.plant(hardwareMap)
+                .motor(RobotConfig.Shooter.nameMotorIntake,
+                    RobotConfig.Shooter.directionMotorIntake)
+                .power()
                 .build();
 
-        plantTransfer = Actuators.plant(hardwareMap)
-                .crServo(RobotConfig.Shooter.nameCrServoTransferLeft,
+        plantIntakeTransfer = Actuators.plant(hardwareMap)
+                .crServo(RobotConfig.Shooter.nameCrServoIntakeTransfer,
+                        RobotConfig.Shooter.directionServoIntakeTransfer)
+                .power()
+                .build();
+
+        plantShooterTransfer = Actuators.plant(hardwareMap)
+                .crServo(RobotConfig.Shooter.nameCrServoTransferServoLeft,
                         RobotConfig.Shooter.directionServoTransferLeft)
-                .andCrServo(RobotConfig.Shooter.nameCrServoTransferRight,
+                .andCrServo(RobotConfig.Shooter.nameCrServoTransferServoRight,
                         RobotConfig.Shooter.directionServoTransferRight)
                 .power()
                 .build();
 
         plantShooter = Actuators.plant(hardwareMap)
-                .motor(RobotConfig.Shooter.nameMotorShooterLeft,
-                        RobotConfig.Shooter.directionMotorShooterLeft)
-                .andMotor(RobotConfig.Shooter.nameMotorShooterRight,
-                        RobotConfig.Shooter.directionMotorShooterRight)
+                .motor(RobotConfig.Shooter.nameMotorShooter,
+                        RobotConfig.Shooter.directionMotorShooter)
                 .velocity(50)
                 .build();
 
@@ -186,25 +191,27 @@ public class Shooter {
     }
 
     /**
-     * Move the pusher servo to the "back" (retracted) position.
+     * Start the intake (indexer) in the requested direction.
      */
-    public Task instantSetPusherBack() {
-//        return PlantTasks.holdFor(plantPusher,
-//                RobotConfig.Shooter.targetPusherBack,
-//                0.5);
-        return PlantTasks.setInstant(plantPusher,
-                RobotConfig.Shooter.targetPusherBack);
+    public Task instantStartIntake(TransferDirection direction) {
+        switch (direction) {
+            case FORWARD:
+                return Tasks.sequence(PlantTasks.setInstant(plantIntake, 0.5),
+                        PlantTasks.setInstant(plantIntakeTransfer, 1));
+            case BACKWARD:
+                return Tasks.sequence(PlantTasks.setInstant(plantIntake, -0.5),
+                        PlantTasks.setInstant(plantIntakeTransfer, -1));
+        }
+
+        throw new IllegalArgumentException("Unknown direction provided!!!");
     }
 
     /**
-     * Move the pusher servo to the "front" (extended) position.
+     * Stop the intake (indexer)
      */
-    public Task instantSetPusherFront() {
-//        return PlantTasks.holdFor(plantPusher,
-//                RobotConfig.Shooter.targetPusherFront,
-//                0.5);
-        return PlantTasks.setInstant(plantPusher,
-                RobotConfig.Shooter.targetPusherFront);
+    public Task instantStopIntake() {
+        return Tasks.sequence(PlantTasks.setInstant(plantIntake, 0),
+                PlantTasks.setInstant(plantIntakeTransfer, 0));
     }
 
     /**
@@ -213,9 +220,9 @@ public class Shooter {
     public Task instantStartTransfer(TransferDirection direction) {
         switch (direction) {
             case FORWARD:
-                return PlantTasks.setInstant(plantTransfer, 1);
+                return PlantTasks.setInstant(plantShooterTransfer, 1);
             case BACKWARD:
-                return PlantTasks.setInstant(plantTransfer, -1);
+                return PlantTasks.setInstant(plantShooterTransfer, -1);
         }
 
         throw new IllegalArgumentException("Unknown direction provided!!!");
@@ -225,16 +232,17 @@ public class Shooter {
      * Stop the transfer (indexer).
      */
     public Task instantStopTransfer() {
-        return PlantTasks.setInstant(plantTransfer, 0);
+        return PlantTasks.setInstant(plantShooterTransfer, 0);
     }
 
     /**
      * Emergency stop for all shooter-related actuators.
      */
     public void stop() {
-        plantPusher.stop();
+        plantIntake.stop();
+        plantIntakeTransfer.stop();
         plantShooter.stop();
-        plantTransfer.stop();
+        plantShooterTransfer.stop();
     }
 
 
@@ -254,11 +262,14 @@ public class Shooter {
         if (plantShooter != null) {
             plantShooter.debugDump(dbg, p + ".plantShooter");
         }
-        if (plantTransfer != null) {
-            plantTransfer.debugDump(dbg, p + ".plantTransfer");
+        if (plantIntakeTransfer != null) {
+            plantIntakeTransfer.debugDump(dbg, p + ".plantIntakeTransfer");
         }
-        if (plantPusher != null) {
-            plantPusher.debugDump(dbg, p + ".plantPusher");
+        if (plantIntake != null) {
+            plantIntake.debugDump(dbg, p + ".plantIntake");
+        }
+        if(plantShooterTransfer != null) {
+            plantShooterTransfer.debugDump(dbg, p + ".plantShooterTransfer");
         }
     }
 
