@@ -337,13 +337,15 @@ public final class PhoenixRobot {
         createBindings();
     }
 
+
     private void createBindings() {
         // Most bindings in TeleOp simply enqueue a Task. TaskBindings removes the
         // repeated "() -> runner.enqueue(... )" boilerplate.
         TaskBindings tb = TaskBindings.of(bindings, taskRunnerTeleOp);
 
-        tb.onPress(gamepads.p2().y(), shooter::instantSetPusherFront);
-        tb.onPress(gamepads.p2().a(), shooter::instantSetPusherBack);
+        tb.onPress(gamepads.p2().y(),
+                () -> shooter.instantStartIntake(Shooter.TransferDirection.FORWARD));
+        tb.onPress(gamepads.p2().a(), shooter::instantStopIntake);
 
         // Hold to run transfer; release to stop.
         tb.onPressAndRelease(

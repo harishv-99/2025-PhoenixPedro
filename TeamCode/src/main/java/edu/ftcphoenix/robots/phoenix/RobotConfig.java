@@ -23,17 +23,17 @@ public class RobotConfig {
      * Drivetrain hardware mapping (motor names + directions).
      */
     public static class DriveTrain {
-        public static final String nameMotorFrontLeft = "frontLeftMotor";
-        public static final Direction directionMotorFrontLeft = Direction.REVERSE;
+        public static final String nameMotorFrontLeft = "frontleftMotor";
+        public static final Direction directionMotorFrontLeft = Direction.FORWARD;
 
-        public static final String nameMotorFrontRight = "frontRightMotor";
-        public static final Direction directionMotorFrontRight = Direction.REVERSE;
+        public static final String nameMotorFrontRight = "frontrightMotor";
+        public static final Direction directionMotorFrontRight = Direction.FORWARD;
 
-        public static final String nameMotorBackLeft = "backLeftMotor";
+        public static final String nameMotorBackLeft = "backleftMotor";
         public static final Direction directionMotorBackLeft = Direction.FORWARD;
 
-        public static final String nameMotorBackRight = "backRightMotor";
-        public static final Direction directionMotorBackRight = Direction.REVERSE;
+        public static final String nameMotorBackRight = "backrightMotor";
+        public static final Direction directionMotorBackRight = Direction.FORWARD;
 
         /**
          * If true, set drivetrain motors to BRAKE when commanded power is 0.
@@ -69,20 +69,24 @@ public class RobotConfig {
      * (e.g., ticks/sec), because Phoenix plants operate in native units by design.</p>
      */
     public static class Shooter {
-        public static final String nameServoPusher = "pusher";
-        public static final Direction directionServoPusher = Direction.FORWARD;
+        // Intake Motor
+        public static final String nameMotorIntake = "intakeMotor";
+        public static final Direction directionMotorIntake = Direction.REVERSE;
 
-        public static final String nameCrServoTransferLeft = "transferLeft";
+        // Intake transfer Cr Servo
+        public static final String nameCrServoIntakeTransfer = "intakeTransferCRServo";
+        public static final Direction directionServoIntakeTransfer = Direction.REVERSE;
+
+        // Shooter transfer left Cr Servo
+        public static final String nameCrServoTransferServoLeft = "transferservoLeft";
         public static final Direction directionServoTransferLeft = Direction.REVERSE;
 
-        public static final String nameCrServoTransferRight = "transferRight";
+        // Shooter transfer right Cr Servo
+        public static final String nameCrServoTransferServoRight = "transferservoRight";
         public static final Direction directionServoTransferRight = Direction.FORWARD;
 
-        public static final String nameMotorShooterLeft = "shooterLeft";
-        public static final Direction directionMotorShooterLeft = Direction.FORWARD;
-
-        public static final String nameMotorShooterRight = "shooterRight";
-        public static final Direction directionMotorShooterRight = Direction.FORWARD;
+        public static final String nameMotorShooter = "shooterMotor";
+        public static final Direction directionMotorShooter = Direction.FORWARD;
 
         public static final double velocityMin = 1500;
         public static final double velocityMax = 1900;
@@ -161,7 +165,7 @@ public class RobotConfig {
          */
         public static PinpointPoseEstimator.Config pinpoint =
                 PinpointPoseEstimator.Config.defaults()
-                        .withHardwareMapName("odo")
+                        .withHardwareMapName("pinPoint")
                         .withOffsets(0.0, 0.0)
                         .withForwardPodDirection(GoBildaPinpointDriver.EncoderDirection.REVERSED)
                         .withStrafePodDirection(GoBildaPinpointDriver.EncoderDirection.FORWARD);
