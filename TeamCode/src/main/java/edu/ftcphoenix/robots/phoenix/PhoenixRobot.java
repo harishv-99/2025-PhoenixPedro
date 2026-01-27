@@ -23,8 +23,8 @@ import edu.ftcphoenix.fw.drive.DriveSource;
 import edu.ftcphoenix.fw.drive.MecanumDrivebase;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidance;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidancePlan;
-import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceSpec;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceQuery;
+import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceSpec;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceStatus;
 import edu.ftcphoenix.fw.drive.source.GamepadDriveSource;
 import edu.ftcphoenix.fw.field.TagLayout;
@@ -432,6 +432,8 @@ public final class PhoenixRobot {
 
         // --- 5) Telemetry / debug ---
         telemetry.addData("shooter velocity", shooter.getVelocity());
+        telemetry.addData("shooter atSetpoint", shooter.isShooterAtSetpoint());
+        telemetry.addData("shooter ready", shooter.isShooterReady(clock));
         telemetry.addData("shootBrace", shootBraceLatch.get());
         if (pinpoint != null) {
             telemetry.addData("pose", pinpoint.getEstimate());

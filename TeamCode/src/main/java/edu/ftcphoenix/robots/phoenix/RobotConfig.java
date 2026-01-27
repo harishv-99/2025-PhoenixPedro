@@ -88,6 +88,22 @@ public class RobotConfig {
         public static final double velocityMax = 1900;
         public static final double velocityIncrement = 25;
 
+        /**
+         * Shooter velocity tolerance in native units used by {@code Plant.atSetpoint()}.
+         *
+         * <p>Note: for single-wheel shooters, consistency often improves more from a stable-ready
+         * latch (see {@link #readyStableSec}) than from tightening this tolerance too aggressively.</p>
+         */
+        public static final double velocityToleranceNative = 50;
+
+        /**
+         * Time that the shooter must remain "at setpoint" before we consider it ready.
+         *
+         * <p>This guards against brief flicker where {@code atSetpoint()} is true for only a
+         * single loop due to noise or a disturbance.</p>
+         */
+        public static final double readyStableSec = 0.15;
+
         public static final double targetPusherBack = 0.2;
         public static final double targetPusherFront = 1.0;
     }

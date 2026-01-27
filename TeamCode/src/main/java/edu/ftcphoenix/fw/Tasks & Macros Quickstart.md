@@ -246,6 +246,26 @@ These helpers rely on `plant.hasFeedback() == true` and `plant.atSetpoint()` bei
 
 > If you accidentally call `moveTo...` on an open‑loop plant (for example, a simple servo position plant), `PlantTasks` will throw an exception at runtime to make the bug obvious.
 
+* **Move to setpoint (stable-ready) and hold**
+
+  Flywheels and velocity plants can sometimes flicker “at setpoint” for a single loop.
+  If you want a more robust notion of readiness, use the stable variant:
+
+  ```java
+  Task spinUpStable = PlantTasks.moveToStable(
+      shooterPlant,
+      SHOOTER_VELOCITY_NATIVE,
+      0.15 // stableSec (seconds atSetpoint() must remain true)
+  );
+  ```
+
+  Behavior:
+
+    * On start: set shooter target once.
+    * Task only completes after `atSetpoint()` has been true continuously for `stableSec`.
+
+  There is also a timeout overload: `moveToStable(plant, target, stableSec, timeoutSec)`.
+
 ### 4.3 Instant target helper
 
 Sometimes you just want to set a plant target once and be done:

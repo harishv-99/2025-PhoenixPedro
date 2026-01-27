@@ -2,6 +2,7 @@ package edu.ftcphoenix.fw.actuation;
 
 import java.util.Objects;
 
+import edu.ftcphoenix.fw.core.control.DebounceLatch;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.task.Task;
 import edu.ftcphoenix.fw.task.TaskOutcome;
@@ -76,6 +77,64 @@ public final class PlantTasks {
         ensureFeedbackPlantForMove(plant, "moveTo(plant, target)");
         return configureTask(plant, target)
                 .waitForSetpoint()
+                .thenHold()
+                .build();
+    }
+
+    /**
+     * Create a {@link Task} that:
+     * <ol>
+     *   <li>Sets the plant's target once at start.</li>
+     *   <li>Finishes only after {@link Plant#atSetpoint()} has remained {@code true}
+     *       continuously for {@code stableSec} seconds.</li>
+     *   <li>Leaves the plant holding that target.</li>
+     * </ol>
+     *
+     * <p>This is a more robust variant of {@link #moveTo(Plant, double)} for mechanisms
+     * where an instantaneous "at setpoint" can be noisy or momentary (common for flywheels
+     * and velocity control).</p>
+     *
+     * <p><b>Only use this with feedback-capable plants</b> where
+     * {@link Plant#hasFeedback()} returns {@code true}.</p>
+     *
+     * @param plant     plant to command (must be feedback-capable)
+     * @param target    target setpoint
+     * @param stableSec seconds {@code atSetpoint()} must remain true; must be {@code >= 0}
+     */
+    public static Task moveToStable(final Plant plant,
+                                    final double target,
+                                    final double stableSec) {
+        Objects.requireNonNull(plant, "plant is required");
+        ensureFeedbackPlantForMove(plant, "moveToStable(plant, target, stableSec)");
+        if (stableSec < 0.0) {
+            throw new IllegalArgumentException("stableSec must be >= 0, got " + stableSec);
+        }
+        return configureTask(plant, target)
+                .waitForSetpointStable(stableSec)
+                .thenHold()
+                .build();
+    }
+
+    /**
+     * Like {@link #moveToStable(Plant, double, double)}, but with a timeout.
+     *
+     * <p>If the timeout elapses before the setpoint is stably reached, the
+     * task's {@link Task#getOutcome()} will report {@link TaskOutcome#TIMEOUT}.</p>
+     */
+    public static Task moveToStable(final Plant plant,
+                                    final double target,
+                                    final double stableSec,
+                                    final double timeoutSec) {
+        Objects.requireNonNull(plant, "plant is required");
+        ensureFeedbackPlantForMove(plant, "moveToStable(plant, target, stableSec, timeoutSec)");
+        if (stableSec < 0.0) {
+            throw new IllegalArgumentException("stableSec must be >= 0, got " + stableSec);
+        }
+        if (timeoutSec <= 0.0) {
+            throw new IllegalArgumentException("timeoutSec must be > 0, got " + timeoutSec);
+        }
+        return configureTask(plant, target)
+                .waitForSetpointStableOrTimeout(stableSec, timeoutSec)
                 .thenHold()
                 .build();
     }
@@ -380,6 +439,29 @@ public final class PlantTasks {
         TargetTaskPost waitForSetpointOrTimeout(double timeoutSec);
 
         /**
+         * Complete only after {@link Plant#atSetpoint()} has remained {@code true}
+         * continuously for {@code stableSec} seconds.
+         *
+         * <p>This is useful for mechanisms where {@code atSetpoint()} can flicker briefly
+         * (common for flywheels and velocity control) and you want a more robust notion
+         * of "ready".</p>
+         *
+         * <p>This requires a feedback-capable plant where
+         * {@link Plant#hasFeedback()} returns {@code true}.</p>
+         *
+         * @param stableSec seconds {@code atSetpoint()} must remain true; must be {@code >= 0}
+         */
+        TargetTaskPost waitForSetpointStable(double stableSec);
+
+        /**
+         * Like {@link #waitForSetpointStable(double)}, but with a timeout.
+         *
+         * @param stableSec  seconds {@code atSetpoint()} must remain true; must be {@code >= 0}
+         * @param timeoutSec timeout in seconds; must be {@code > 0}
+         */
+        TargetTaskPost waitForSetpointStableOrTimeout(double stableSec, double timeoutSec);
+
+        /**
          * Complete after a fixed amount of time has elapsed.
          *
          * @param seconds duration in seconds; must be {@code >= 0}
@@ -434,8 +516,10 @@ public final class PlantTasks {
     private enum CompletionMode {
         INSTANT,
         WAIT_SETPOINT,
+        WAIT_SETPOINT_STABLE,
         WAIT_TIME,
-        WAIT_SETPOINT_OR_TIMEOUT
+        WAIT_SETPOINT_OR_TIMEOUT,
+        WAIT_SETPOINT_STABLE_OR_TIMEOUT
     }
 
     /**
@@ -459,6 +543,7 @@ public final class PlantTasks {
         private CompletionMode completionMode = CompletionMode.INSTANT;
         private double waitSeconds = 0.0;
         private double timeoutSec = 0.0;
+        private double stableSec = 0.0;
 
         private PostBehavior postBehavior = PostBehavior.HOLD;
         private double finalTarget = 0.0;
@@ -481,6 +566,7 @@ public final class PlantTasks {
             this.completionMode = CompletionMode.WAIT_SETPOINT;
             this.waitSeconds = 0.0;
             this.timeoutSec = 0.0;
+            this.stableSec = 0.0;
             return this;
         }
 
@@ -501,6 +587,54 @@ public final class PlantTasks {
             this.completionMode = CompletionMode.WAIT_SETPOINT_OR_TIMEOUT;
             this.waitSeconds = 0.0;
             this.timeoutSec = timeoutSec;
+            this.stableSec = 0.0;
+            return this;
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public TargetTaskPost waitForSetpointStable(final double stableSec) {
+            if (stableSec < 0.0) {
+                throw new IllegalArgumentException(
+                        "stableSec must be >= 0, got " + stableSec);
+            }
+            if (!plant.hasFeedback()) {
+                throw new IllegalStateException(
+                        "TargetTaskStart.waitForSetpointStable(...) requires a feedback-capable plant "
+                                + "(plant.hasFeedback() == true).");
+            }
+            this.completionMode = CompletionMode.WAIT_SETPOINT_STABLE;
+            this.waitSeconds = 0.0;
+            this.timeoutSec = 0.0;
+            this.stableSec = stableSec;
+            return this;
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public TargetTaskPost waitForSetpointStableOrTimeout(final double stableSec,
+                                                             final double timeoutSec) {
+            if (stableSec < 0.0) {
+                throw new IllegalArgumentException(
+                        "stableSec must be >= 0, got " + stableSec);
+            }
+            if (timeoutSec <= 0.0) {
+                throw new IllegalArgumentException(
+                        "timeoutSec must be > 0, got " + timeoutSec);
+            }
+            if (!plant.hasFeedback()) {
+                throw new IllegalStateException(
+                        "TargetTaskStart.waitForSetpointStableOrTimeout(...) requires a feedback-capable plant "
+                                + "(plant.hasFeedback() == true).");
+            }
+            this.completionMode = CompletionMode.WAIT_SETPOINT_STABLE_OR_TIMEOUT;
+            this.waitSeconds = 0.0;
+            this.timeoutSec = timeoutSec;
+            this.stableSec = stableSec;
             return this;
         }
 
@@ -516,6 +650,7 @@ public final class PlantTasks {
             this.completionMode = CompletionMode.WAIT_TIME;
             this.waitSeconds = seconds;
             this.timeoutSec = 0.0;
+            this.stableSec = 0.0;
             return this;
         }
 
@@ -527,6 +662,7 @@ public final class PlantTasks {
             this.completionMode = CompletionMode.INSTANT;
             this.waitSeconds = 0.0;
             this.timeoutSec = 0.0;
+            this.stableSec = 0.0;
             return this;
         }
 
@@ -560,6 +696,7 @@ public final class PlantTasks {
                     completionMode,
                     waitSeconds,
                     timeoutSec,
+                    stableSec,
                     postBehavior,
                     finalTarget
             );
@@ -578,6 +715,7 @@ public final class PlantTasks {
 
         private final double waitSeconds;
         private final double timeoutSec;
+        private final double stableSec;
 
         private final PostBehavior postBehavior;
         private final double finalTarget;
@@ -589,11 +727,14 @@ public final class PlantTasks {
         private double elapsedSec = 0.0;
         private double remainingSec = 0.0;
 
+        private final DebounceLatch setpointStableLatch;
+
         TargetTask(final Plant plant,
                    final double initialTarget,
                    final CompletionMode completionMode,
                    final double waitSeconds,
                    final double timeoutSec,
+                   final double stableSec,
                    final PostBehavior postBehavior,
                    final double finalTarget) {
             this.plant = plant;
@@ -601,8 +742,17 @@ public final class PlantTasks {
             this.completionMode = completionMode;
             this.waitSeconds = waitSeconds;
             this.timeoutSec = timeoutSec;
+            this.stableSec = stableSec;
             this.postBehavior = postBehavior;
             this.finalTarget = finalTarget;
+
+            // Only allocate the latch for stable setpoint modes.
+            if (completionMode == CompletionMode.WAIT_SETPOINT_STABLE
+                    || completionMode == CompletionMode.WAIT_SETPOINT_STABLE_OR_TIMEOUT) {
+                this.setpointStableLatch = DebounceLatch.onAfterOffImmediately(stableSec);
+            } else {
+                this.setpointStableLatch = null;
+            }
         }
 
         /**
@@ -621,6 +771,11 @@ public final class PlantTasks {
             outcome = TaskOutcome.UNKNOWN;
 
             plant.setTarget(initialTarget);
+
+            if (setpointStableLatch != null) {
+                // Start "not ready" and require stable time at setpoint before completing.
+                setpointStableLatch.reset(false);
+            }
 
             // Edge case: INSTANT completion finishes immediately.
             if (completionMode == CompletionMode.INSTANT) {
@@ -671,8 +826,25 @@ public final class PlantTasks {
                     }
                     break;
 
+                case WAIT_SETPOINT_STABLE:
+                    if (setpointStableLatch != null && setpointStableLatch.update(clock, plant.atSetpoint())) {
+                        finished = true;
+                        outcome = TaskOutcome.SUCCESS;
+                    }
+                    break;
+
                 case WAIT_SETPOINT_OR_TIMEOUT:
                     if (plant.atSetpoint()) {
+                        finished = true;
+                        outcome = TaskOutcome.SUCCESS;
+                    } else if (elapsedSec >= timeoutSec) {
+                        finished = true;
+                        outcome = TaskOutcome.TIMEOUT;
+                    }
+                    break;
+
+                case WAIT_SETPOINT_STABLE_OR_TIMEOUT:
+                    if (setpointStableLatch != null && setpointStableLatch.update(clock, plant.atSetpoint())) {
                         finished = true;
                         outcome = TaskOutcome.SUCCESS;
                     } else if (elapsedSec >= timeoutSec) {

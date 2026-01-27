@@ -7,9 +7,11 @@ import org.firstinspires.ftc.robotcore.external.Telemetry;
 import edu.ftcphoenix.fw.actuation.Actuators;
 import edu.ftcphoenix.fw.actuation.Plant;
 import edu.ftcphoenix.fw.actuation.PlantTasks;
+import edu.ftcphoenix.fw.core.control.DebounceLatch;
 import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.math.InterpolatingTable1D;
 import edu.ftcphoenix.fw.core.math.MathUtil;
+import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.input.Gamepads;
 import edu.ftcphoenix.fw.task.Task;
 import edu.ftcphoenix.fw.task.Tasks;
@@ -35,6 +37,13 @@ public class Shooter {
     private Plant plantPusher;
     private Plant plantTransfer;
     private Plant plantShooter;
+
+    /**
+     * Shooter "ready" latch: requires atSetpoint() to be continuously true for
+     * {@link RobotConfig.Shooter#readyStableSec} seconds before we report ready.
+     */
+    private final DebounceLatch readyLatch =
+            DebounceLatch.onAfterOffImmediately(RobotConfig.Shooter.readyStableSec);
 
     private double velocity;
     private boolean isShooterOn;
@@ -92,7 +101,7 @@ public class Shooter {
                         RobotConfig.Shooter.directionMotorShooterLeft)
                 .andMotor(RobotConfig.Shooter.nameMotorShooterRight,
                         RobotConfig.Shooter.directionMotorShooterRight)
-                .velocity(50)
+                .velocity(RobotConfig.Shooter.velocityToleranceNative)
                 .build();
 
         isShooterOn = false;
@@ -174,6 +183,7 @@ public class Shooter {
      */
     public Task instantStartShooter() {
         isShooterOn = true;
+        readyLatch.reset(false);
         return PlantTasks.setInstant(plantShooter, velocity);
     }
 
@@ -182,7 +192,26 @@ public class Shooter {
      */
     public Task instantStopShooter() {
         isShooterOn = false;
+        readyLatch.reset(false);
         return PlantTasks.setInstant(plantShooter, 0);
+    }
+
+    /**
+     * @return true if the shooter is commanded on AND the shooter plant reports {@link Plant#atSetpoint()}.
+     */
+    public boolean isShooterAtSetpoint() {
+        return isShooterOn && plantShooter != null && plantShooter.atSetpoint();
+    }
+
+    /**
+     * Shooter "ready" check suitable for gating a feeder.
+     *
+     * <p>Returns true only after the shooter has remained at setpoint continuously for
+     * {@link RobotConfig.Shooter#readyStableSec} seconds. When the shooter is turned off,
+     * readiness is forced false.</p>
+     */
+    public boolean isShooterReady(LoopClock clock) {
+        return readyLatch.update(clock, isShooterAtSetpoint());
     }
 
     /**
@@ -249,7 +278,11 @@ public class Shooter {
 
         dbg.addLine(p)
                 .addData(p + ".velocity", velocity)
-                .addData(p + ".isShooterOn", isShooterOn);
+                .addData(p + ".isShooterOn", isShooterOn)
+                .addData(p + ".atSetpoint", isShooterAtSetpoint())
+                .addData(p + ".ready", readyLatch.get());
+
+        readyLatch.debugDump(dbg, p + ".readyLatch");
 
         if (plantShooter != null) {
             plantShooter.debugDump(dbg, p + ".plantShooter");
