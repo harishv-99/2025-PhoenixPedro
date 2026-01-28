@@ -86,6 +86,53 @@ public interface Source<T> {
     }
 
     /**
+     * Memoize this source for the current {@link LoopClock#cycle()}.
+     *
+     * <p>The returned source samples the upstream source at most once per cycle and returns the cached
+     * value for any additional reads in that same cycle. This is the simplest way to enforce Phoenix's
+     * "one loop, one heartbeat" rule for values that may be expensive to compute or may change if read
+     * multiple times.</p>
+     *
+     * <p>Use this at <b>boundaries</b> (raw hardware reads, shared sensor signals, derived values used in
+     * multiple places) to guarantee consistent results within a loop.</p>
+     */
+    default Source<T> memoized() {
+        Source<T> self = this;
+        return new Source<T>() {
+            private long lastCycle = Long.MIN_VALUE;
+            private T last = null;
+
+            @Override
+            public T get(LoopClock clock) {
+                long cyc = clock.cycle();
+                if (cyc == lastCycle) {
+                    return last;
+                }
+                lastCycle = cyc;
+                last = Objects.requireNonNull(self.get(clock), "memoized source returned null");
+                return last;
+            }
+
+            @Override
+            public void reset() {
+                self.reset();
+                lastCycle = Long.MIN_VALUE;
+                last = null;
+            }
+
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) {
+                    return;
+                }
+                String p = (prefix == null || prefix.isEmpty()) ? "memo" : prefix;
+                dbg.addData(p + ".class", "MemoizedSource");
+                self.debugDump(dbg, p + ".src");
+            }
+        };
+    }
+
+    /**
      * Create a constant source.
      */
     static <T> Source<T> constant(final T value) {

@@ -33,6 +33,48 @@ public interface ScalarSource extends Source<Double> {
         return getAsDouble(clock);
     }
 
+
+    /**
+     * Memoize this scalar for the current {@link LoopClock#cycle()}.
+     *
+     * <p>The returned source samples the upstream source at most once per cycle and returns the cached
+     * value for any additional reads in that same cycle. Prefer using this for raw hardware reads
+     * (distance sensors, encoders) or any derived value consumed by multiple subsystems.</p>
+     */
+    default ScalarSource memoized() {
+        ScalarSource self = this;
+        return new ScalarSource() {
+            private long lastCycle = Long.MIN_VALUE;
+            private double last = 0.0;
+
+            @Override
+            public double getAsDouble(LoopClock clock) {
+                long cyc = clock.cycle();
+                if (cyc == lastCycle) {
+                    return last;
+                }
+                lastCycle = cyc;
+                last = self.getAsDouble(clock);
+                return last;
+            }
+
+            @Override
+            public void reset() {
+                self.reset();
+                lastCycle = Long.MIN_VALUE;
+                last = 0.0;
+            }
+
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) return;
+                String p = (prefix == null || prefix.isEmpty()) ? "memo" : prefix;
+                dbg.addData(p + ".class", "MemoizedScalar");
+                self.debugDump(dbg, p + ".src");
+            }
+        };
+    }
+
     // ---------------------------------------------------------------------------------------------
     // Common scalar transforms
     // ---------------------------------------------------------------------------------------------

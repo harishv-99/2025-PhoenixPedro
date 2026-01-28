@@ -27,6 +27,50 @@ public interface BooleanSource extends Source<Boolean> {
     }
 
     // ---------------------------------------------------------------------------------------------
+    // Memoization
+    // ---------------------------------------------------------------------------------------------
+
+    /**
+     * Memoize this boolean for the current {@link LoopClock#cycle()}.
+     *
+     * <p>The returned source samples the upstream source at most once per cycle and returns the cached
+     * value for any additional reads in that same cycle.</p>
+     */
+    default BooleanSource memoized() {
+        BooleanSource self = this;
+        return new BooleanSource() {
+            private long lastCycle = Long.MIN_VALUE;
+            private boolean last = false;
+
+            @Override
+            public boolean getAsBoolean(LoopClock clock) {
+                long cyc = clock.cycle();
+                if (cyc == lastCycle) {
+                    return last;
+                }
+                lastCycle = cyc;
+                last = self.getAsBoolean(clock);
+                return last;
+            }
+
+            @Override
+            public void reset() {
+                self.reset();
+                lastCycle = Long.MIN_VALUE;
+                last = false;
+            }
+
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) return;
+                String p = (prefix == null || prefix.isEmpty()) ? "memo" : prefix;
+                dbg.addData(p + ".class", "MemoizedBoolean");
+                self.debugDump(dbg, p + ".src");
+            }
+        };
+    }
+
+    // ---------------------------------------------------------------------------------------------
     // Common transforms
     // ---------------------------------------------------------------------------------------------
 
@@ -114,7 +158,6 @@ public interface BooleanSource extends Source<Boolean> {
         };
     }
 
-
     // ---------------------------------------------------------------------------------------------
     // State-aware filters
     // ---------------------------------------------------------------------------------------------
@@ -178,6 +221,181 @@ public interface BooleanSource extends Source<Boolean> {
             }
         };
     }
+
+    // ---------------------------------------------------------------------------------------------
+    // Edge helpers
+    // ---------------------------------------------------------------------------------------------
+
+    /**
+     * A one-loop pulse that is true only when this source transitions false -> true.
+     *
+     * <p>On the first sample after reset/construction, this returns false (no spurious edge).
+     * Sample every loop for best results.</p>
+     */
+    default BooleanSource risingEdge() {
+        BooleanSource self = this;
+        return new BooleanSource() {
+            private long lastCycle = Long.MIN_VALUE;
+            private boolean initialized = false;
+            private boolean prev = false;
+            private boolean last = false;
+
+            @Override
+            public boolean getAsBoolean(LoopClock clock) {
+                long cyc = clock.cycle();
+                if (cyc == lastCycle) {
+                    return last;
+                }
+                lastCycle = cyc;
+
+                boolean cur = self.getAsBoolean(clock);
+                if (!initialized) {
+                    initialized = true;
+                    prev = cur;
+                    last = false;
+                    return false;
+                }
+
+                last = cur && !prev;
+                prev = cur;
+                return last;
+            }
+
+            @Override
+            public void reset() {
+                self.reset();
+                lastCycle = Long.MIN_VALUE;
+                initialized = false;
+                prev = false;
+                last = false;
+            }
+
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) return;
+                String p = (prefix == null || prefix.isEmpty()) ? "rise" : prefix;
+                dbg.addData(p + ".class", "RisingEdge");
+                self.debugDump(dbg, p + ".src");
+            }
+        };
+    }
+
+    /**
+     * A one-loop pulse that is true only when this source transitions true -> false.
+     *
+     * <p>On the first sample after reset/construction, this returns false (no spurious edge).
+     * Sample every loop for best results.</p>
+     */
+    default BooleanSource fallingEdge() {
+        BooleanSource self = this;
+        return new BooleanSource() {
+            private long lastCycle = Long.MIN_VALUE;
+            private boolean initialized = false;
+            private boolean prev = false;
+            private boolean last = false;
+
+            @Override
+            public boolean getAsBoolean(LoopClock clock) {
+                long cyc = clock.cycle();
+                if (cyc == lastCycle) {
+                    return last;
+                }
+                lastCycle = cyc;
+
+                boolean cur = self.getAsBoolean(clock);
+                if (!initialized) {
+                    initialized = true;
+                    prev = cur;
+                    last = false;
+                    return false;
+                }
+
+                last = !cur && prev;
+                prev = cur;
+                return last;
+            }
+
+            @Override
+            public void reset() {
+                self.reset();
+                lastCycle = Long.MIN_VALUE;
+                initialized = false;
+                prev = false;
+                last = false;
+            }
+
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) return;
+                String p = (prefix == null || prefix.isEmpty()) ? "fall" : prefix;
+                dbg.addData(p + ".class", "FallingEdge");
+                self.debugDump(dbg, p + ".src");
+            }
+        };
+    }
+
+    /**
+     * Toggle state each time this source has a rising edge.
+     */
+    default BooleanSource toggled() {
+        return toggled(false);
+    }
+
+    /**
+     * Toggle state each time this source has a rising edge.
+     *
+     * @param initialState initial output state
+     */
+    default BooleanSource toggled(boolean initialState) {
+        BooleanSource self = this;
+        return new BooleanSource() {
+            private long lastCycle = Long.MIN_VALUE;
+            private boolean initialized = false;
+            private boolean prev = false;
+            private boolean state = initialState;
+
+            @Override
+            public boolean getAsBoolean(LoopClock clock) {
+                long cyc = clock.cycle();
+                if (cyc == lastCycle) {
+                    return state;
+                }
+                lastCycle = cyc;
+
+                boolean cur = self.getAsBoolean(clock);
+                if (!initialized) {
+                    initialized = true;
+                    prev = cur;
+                    return state;
+                }
+
+                if (cur && !prev) {
+                    state = !state;
+                }
+                prev = cur;
+                return state;
+            }
+
+            @Override
+            public void reset() {
+                self.reset();
+                lastCycle = Long.MIN_VALUE;
+                initialized = false;
+                prev = false;
+                state = initialState;
+            }
+
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) return;
+                String p = (prefix == null || prefix.isEmpty()) ? "toggle" : prefix;
+                dbg.addData(p + ".class", "ToggledBoolean")
+                        .addData(p + ".state", state);
+                self.debugDump(dbg, p + ".src");
+            }
+        };
+    }
+
     // ---------------------------------------------------------------------------------------------
     // Factories
     // ---------------------------------------------------------------------------------------------

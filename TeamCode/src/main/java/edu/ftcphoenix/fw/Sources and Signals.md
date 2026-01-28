@@ -78,6 +78,60 @@ Common transforms:
 
 ---
 
+## Memoization
+
+Phoenix assumes a single loop heartbeat. In real code, it is easy to accidentally read the same
+sensor or derived value multiple times in one loop (especially when it is used in multiple subsystems).
+
+`Source.memoized()` (and the specialized `ScalarSource.memoized()` / `BooleanSource.memoized()`) solves
+that by caching a source's value **per loop cycle**:
+
+```java
+ScalarSource gateDistanceCm = ScalarSource.of(distanceSensor::getDistanceCm).memoized();
+BooleanSource ballAtGate = gateDistanceCm.hysteresisBelow(6.0, 7.0).debouncedOnOff(0.05, 0.05);
+```
+
+When you call `ballAtGate.getAsBoolean(clock)` multiple times in the same loop, it will not re-sample
+the underlying distance sensor more than once (as long as you memoize at the boundary).
+
+Rule of thumb:
+
+- Memoize **raw hardware reads** (distance sensor, encoders, vision measurements).
+- Memoize **shared derived signals** that are consumed in multiple places (e.g. `aimLocked`, `shooterReadyStable`).
+
+---
+
+## Boolean edges and toggles
+
+Many robot behaviors are event-driven: a button press, a ball passing a sensor, a target becoming ready.
+`BooleanSource` provides generic helpers so this logic is expressed the same way for gamepads and sensors:
+
+- `risingEdge()` — true for **one loop** when the input transitions `false → true`
+- `fallingEdge()` — true for **one loop** when the input transitions `true → false`
+- `toggled()` — a stateful boolean that flips on each rising edge (useful for mode toggles)
+
+Example (shoot only when ready and aim locked):
+
+```java
+// Example: shoot only while (a) trigger held, (b) aim locked, (c) shooter at speed.
+
+BooleanSource shootHeld = gamepads.p2().rightTrigger().above(0.2);
+
+// Your own error source (absolute heading error in degrees).
+ScalarSource headingErrorAbsDeg = ScalarSource.of(() -> Math.abs(rawHeadingErrorDeg));
+BooleanSource aimLocked = headingErrorAbsDeg.hysteresisBelow(2.0, 3.0).debouncedOn(0.10);
+
+// Shooter-ready can be any boolean you compute; debouncedOn makes it stable.
+BooleanSource shooterReadyStable = BooleanSource.of(shooterPlant::atSetpoint).debouncedOn(0.15);
+
+BooleanSource fireAllowed = shootHeld.and(aimLocked).and(shooterReadyStable);
+BooleanSource startFiring = fireAllowed.risingEdge();
+```
+
+The same edge/toggle tools apply to sensors (ball entering/leaving a gate sensor) without special cases.
+
+---
+
 ## Debounce and hysteresis
 
 Two extremely common forms of signal conditioning are provided as reusable, generic components:
