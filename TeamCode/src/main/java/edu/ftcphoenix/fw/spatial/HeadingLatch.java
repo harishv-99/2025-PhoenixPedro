@@ -2,7 +2,7 @@ package edu.ftcphoenix.fw.spatial;
 
 import java.util.Objects;
 
-import edu.ftcphoenix.fw.core.control.HysteresisLatch;
+import edu.ftcphoenix.fw.core.control.HysteresisBoolean;
 import edu.ftcphoenix.fw.core.geometry.Pose2d;
 
 /**
@@ -14,7 +14,7 @@ import edu.ftcphoenix.fw.core.geometry.Pose2d;
  *   <li>{@link HeadingLatch} turns a heading error signal into a stable boolean “facing target?”</li>
  * </ul>
  *
- * <p>It uses {@link HysteresisLatch} to avoid chatter when the heading error hovers around a threshold.</p>
+ * <p>It uses {@link HysteresisBoolean} to avoid chatter when the heading error hovers around a threshold.</p>
  *
  * <p><b>Thresholds:</b></p>
  * <ul>
@@ -27,7 +27,7 @@ import edu.ftcphoenix.fw.core.geometry.Pose2d;
 public final class HeadingLatch {
 
     private final RobotHeading2d heading;
-    private final HysteresisLatch latch;
+    private final HysteresisBoolean latch;
 
     /**
      * Create a latch using the provided heading error rule.
@@ -38,7 +38,7 @@ public final class HeadingLatch {
      */
     public HeadingLatch(RobotHeading2d heading, double enterTolRad, double exitTolRad) {
         this.heading = Objects.requireNonNull(heading, "heading");
-        this.latch = HysteresisLatch.onWhenBelowOffWhenAbove(enterTolRad, exitTolRad);
+        this.latch = HysteresisBoolean.onWhenBelowOffWhenAbove(enterTolRad, exitTolRad);
     }
 
     /**

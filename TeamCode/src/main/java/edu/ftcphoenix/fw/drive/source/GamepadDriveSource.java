@@ -1,10 +1,10 @@
 package edu.ftcphoenix.fw.drive.source;
 
 import edu.ftcphoenix.fw.core.debug.DebugSink;
+import edu.ftcphoenix.fw.core.source.ScalarSource;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.drive.DriveSignal;
 import edu.ftcphoenix.fw.drive.DriveSource;
-import edu.ftcphoenix.fw.input.Axis;
 import edu.ftcphoenix.fw.input.Button;
 import edu.ftcphoenix.fw.input.GamepadDevice;
 import edu.ftcphoenix.fw.input.Gamepads;
@@ -57,7 +57,7 @@ import edu.ftcphoenix.fw.input.Gamepads;
  *
  * <h2>Note on shaping</h2>
  * <p>
- * Stick shaping uses {@link Axis#shaped(double, double, double, double)} with min/max
+ * Stick shaping uses {@link ScalarSource#shaped(double, double, double, double)} with min/max
  * of {@code [-1, +1]} because this class is mapping gamepad sticks.
  * </p>
  */
@@ -132,18 +132,23 @@ public final class GamepadDriveSource implements DriveSource {
     }
 
     // Raw axes (sampled for debug).
-    private final Axis axisLateralRaw; // raw +right (typical)
-    private final Axis axisAxialRaw;   // +forward (per GamepadDevice)
-    private final Axis axisOmegaRaw;   // raw +clockwise (typical)
+    private final ScalarSource axisLateralRaw; // raw +right (typical)
+    private final ScalarSource axisAxialRaw;   // +forward (per GamepadDevice)
+    private final ScalarSource axisOmegaRaw;   // raw +clockwise (typical)
 
     // Shaped axes in Phoenix DriveSignal conventions.
-    private final Axis axisAxialCmd;
-    private final Axis axisLateralCmd; // +left
-    private final Axis axisOmegaCmd;   // +CCW
+    private final ScalarSource axisAxialCmd;
+    private final ScalarSource axisLateralCmd; // +left
+    private final ScalarSource axisOmegaCmd;   // +CCW
 
     private final Config cfg;
 
     private DriveSignal lastSignal = DriveSignal.zero();
+
+    // Cached raw axis samples from the most recent get(clock) call (for debug).
+    private double lastLateralRaw = 0.0;
+    private double lastAxialRaw = 0.0;
+    private double lastOmegaRaw = 0.0;
 
     // ------------------------------------------------------------------------
     // Recommended entry points
@@ -215,7 +220,7 @@ public final class GamepadDriveSource implements DriveSource {
      * dpad buttons (converted to axes) or triggers, but still reuse the same shaping and scaling
      * logic as normal stick drive.</p>
      */
-    public static DriveSource fromAxes(Axis lateralRaw, Axis axialRaw, Axis omegaRaw, Config cfg) {
+    public static DriveSource fromAxes(ScalarSource lateralRaw, ScalarSource axialRaw, ScalarSource omegaRaw, Config cfg) {
         return new GamepadDriveSource(lateralRaw, axialRaw, omegaRaw, cfg);
     }
 
@@ -235,9 +240,9 @@ public final class GamepadDriveSource implements DriveSource {
      * @param axisOmegaRaw   raw omega axis (typically +clockwise / turn-right)
      * @param cfg            stick shaping configuration (defensively copied)
      */
-    public GamepadDriveSource(Axis axisLateralRaw,
-                              Axis axisAxialRaw,
-                              Axis axisOmegaRaw,
+    public GamepadDriveSource(ScalarSource axisLateralRaw,
+                              ScalarSource axisAxialRaw,
+                              ScalarSource axisOmegaRaw,
                               Config cfg) {
         if (axisLateralRaw == null) {
             throw new IllegalArgumentException("axisLateralRaw is required");
@@ -262,16 +267,16 @@ public final class GamepadDriveSource implements DriveSource {
         // Notes on sign:
         // - DriveSignal.lateral is +left, but stick X raw is +right → invert.
         // - DriveSignal.omega is +CCW, but stick X raw is +clockwise → invert.
-        Axis axial = this.axisAxialRaw
+        ScalarSource axial = this.axisAxialRaw
                 .shaped(this.cfg.deadband, this.cfg.translateExpo, -1.0, 1.0)
                 .scaled(this.cfg.translateScale);
 
-        Axis lateralLeft = this.axisLateralRaw
+        ScalarSource lateralLeft = this.axisLateralRaw
                 .shaped(this.cfg.deadband, this.cfg.translateExpo, -1.0, 1.0)
                 .scaled(this.cfg.translateScale)
                 .inverted();
 
-        Axis omegaCcw = this.axisOmegaRaw
+        ScalarSource omegaCcw = this.axisOmegaRaw
                 .shaped(this.cfg.deadband, this.cfg.rotateExpo, -1.0, 1.0)
                 .scaled(this.cfg.rotateScale)
                 .inverted();
@@ -290,14 +295,21 @@ public final class GamepadDriveSource implements DriveSource {
      */
     @Override
     public DriveSignal get(LoopClock clock) {
-        double ax = axisAxialCmd.get();
-        double lat = axisLateralCmd.get();
-        double om = axisOmegaCmd.get();
+        // Sample raw axes for debug. These are the calibrated (but unshaped) values from GamepadDevice.
+        lastLateralRaw = axisLateralRaw.getAsDouble(clock);
+        lastAxialRaw = axisAxialRaw.getAsDouble(clock);
+        lastOmegaRaw = axisOmegaRaw.getAsDouble(clock);
+
+        // Sample shaped command axes.
+        double ax = axisAxialCmd.getAsDouble(clock);
+        double lat = axisLateralCmd.getAsDouble(clock);
+        double om = axisOmegaCmd.getAsDouble(clock);
 
         DriveSignal out = new DriveSignal(ax, lat, om);
         lastSignal = out;
         return out;
     }
+
 
     // ------------------------------------------------------------------------
     // Debug support
@@ -305,6 +317,9 @@ public final class GamepadDriveSource implements DriveSource {
 
     /**
      * Dump internal state to a {@link DebugSink}.
+     *
+     * <p>Because {@link ScalarSource} requires a {@link LoopClock} to sample, this method reports
+     * the most recent raw values cached during {@link #get(LoopClock)}.</p>
      *
      * @param dbg    debug sink to write to (may be {@code null})
      * @param prefix key prefix for all entries (may be {@code null} or empty)
@@ -317,9 +332,9 @@ public final class GamepadDriveSource implements DriveSource {
 
         dbg.addLine(p + ": GamepadDriveSource");
 
-        dbg.addData(p + ".axis.lateral.raw", axisLateralRaw.get());
-        dbg.addData(p + ".axis.axial.raw", axisAxialRaw.get());
-        dbg.addData(p + ".axis.omega.raw", axisOmegaRaw.get());
+        dbg.addData(p + ".axis.lateral.raw", lastLateralRaw);
+        dbg.addData(p + ".axis.axial.raw", lastAxialRaw);
+        dbg.addData(p + ".axis.omega.raw", lastOmegaRaw);
 
         dbg.addData(p + ".last.axial", lastSignal.axial);
         dbg.addData(p + ".last.lateral", lastSignal.lateral);

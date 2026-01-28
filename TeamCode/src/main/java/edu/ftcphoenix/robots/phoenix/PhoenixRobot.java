@@ -11,7 +11,7 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.function.BooleanSupplier;
 
-import edu.ftcphoenix.fw.core.control.HysteresisLatch;
+import edu.ftcphoenix.fw.core.control.HysteresisBoolean;
 import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.geometry.Pose2d;
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
@@ -88,8 +88,8 @@ public final class PhoenixRobot {
     private static final double SHOOT_BRACE_ENTER_MAG = 0.06;
     private static final double SHOOT_BRACE_EXIT_MAG = 0.10;
 
-    private final HysteresisLatch shootBraceLatch =
-            HysteresisLatch.onWhenBelowOffWhenAbove(SHOOT_BRACE_ENTER_MAG, SHOOT_BRACE_EXIT_MAG);
+    private final HysteresisBoolean shootBraceLatch =
+            HysteresisBoolean.onWhenBelowOffWhenAbove(SHOOT_BRACE_ENTER_MAG, SHOOT_BRACE_EXIT_MAG);
 
 
     // ----------------------------------------------------------------------
@@ -337,15 +337,13 @@ public final class PhoenixRobot {
         createBindings();
     }
 
-
     private void createBindings() {
         // Most bindings in TeleOp simply enqueue a Task. TaskBindings removes the
         // repeated "() -> runner.enqueue(... )" boilerplate.
         TaskBindings tb = TaskBindings.of(bindings, taskRunnerTeleOp);
 
-        tb.onPress(gamepads.p2().y(),
-                () -> shooter.instantStartIntake(Shooter.TransferDirection.FORWARD));
-        tb.onPress(gamepads.p2().a(), shooter::instantStopIntake);
+        tb.onPress(gamepads.p2().y(), shooter::instantSetPusherFront);
+        tb.onPress(gamepads.p2().a(), shooter::instantSetPusherBack);
 
         // Hold to run transfer; release to stop.
         tb.onPressAndRelease(
@@ -506,7 +504,7 @@ public final class PhoenixRobot {
 
         // Treat the driver stick as "idle" only after it is clearly near center, and stay idle
         // until the stick is clearly moved again (hysteresis avoids chatter).
-        double mag = gamepads.p1().leftStickMagnitude().get();
+        double mag = gamepads.p1().leftStickMagnitude().getAsDouble(clock);
         shootBraceLatch.update(mag);
     }
 

@@ -208,7 +208,7 @@ public final class ServoPositionTester extends BaseTeleOpTester {
     }
 
     private void updateAndRender() {
-        position.updateFromAxis(() -> ready);
+        position.updateFromAxis(clock, () -> ready);
 
         double applied = position.applied();
         if (servo != null) {

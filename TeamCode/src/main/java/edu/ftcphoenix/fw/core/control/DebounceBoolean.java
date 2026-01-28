@@ -7,12 +7,12 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * A small, reusable time-based latch ("debouncer") that turns a potentially chattery boolean
  * signal into a stable boolean.
  *
- * <p>This is the <b>time-domain</b> analogue of {@link HysteresisLatch}:</p>
+ * <p>This is the <b>time-domain</b> analogue of {@link HysteresisBoolean}:</p>
  *
  * <ul>
- *   <li>{@link HysteresisLatch} uses two <i>thresholds</i> (enter/exit) to avoid chatter around
+ *   <li>{@link HysteresisBoolean} uses two <i>thresholds</i> (enter/exit) to avoid chatter around
  *       a numeric boundary.</li>
- *   <li>{@code DebounceLatch} uses two <i>durations</i> (on/off delays) to avoid chatter across
+ *   <li>{@code DebounceBoolean} uses two <i>durations</i> (on/off delays) to avoid chatter across
  *       a boolean boundary.</li>
  * </ul>
  *
@@ -43,7 +43,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * If called twice in the same loop cycle, the second call is a no-op (it will not double-count
  * time).</p>
  */
-public final class DebounceLatch {
+public final class DebounceBoolean {
 
     private final double onDelaySec;
     private final double offDelaySec;
@@ -59,7 +59,7 @@ public final class DebounceLatch {
     // Idempotence by clock.cycle().
     private long lastCycle = Long.MIN_VALUE;
 
-    private DebounceLatch(double onDelaySec, double offDelaySec, boolean initialState) {
+    private DebounceBoolean(double onDelaySec, double offDelaySec, boolean initialState) {
         if (!Double.isFinite(onDelaySec) || !Double.isFinite(offDelaySec)) {
             throw new IllegalArgumentException("delays must be finite");
         }
@@ -78,15 +78,15 @@ public final class DebounceLatch {
      * Create a latch that turns ON only after {@code onDelaySec} seconds of continuous true,
      * and turns OFF immediately when the raw input becomes false.
      */
-    public static DebounceLatch onAfterOffImmediately(double onDelaySec) {
-        return new DebounceLatch(onDelaySec, 0.0, false);
+    public static DebounceBoolean onAfterOffImmediately(double onDelaySec) {
+        return new DebounceBoolean(onDelaySec, 0.0, false);
     }
 
     /**
      * Create a latch with explicit ON and OFF delays.
      */
-    public static DebounceLatch onAfterOffAfter(double onDelaySec, double offDelaySec) {
-        return new DebounceLatch(onDelaySec, offDelaySec, false);
+    public static DebounceBoolean onAfterOffAfter(double onDelaySec, double offDelaySec) {
+        return new DebounceBoolean(onDelaySec, offDelaySec, false);
     }
 
     /**
@@ -195,7 +195,7 @@ public final class DebounceLatch {
             return;
         }
         String p = (prefix == null || prefix.isEmpty()) ? "debounce" : prefix;
-        dbg.addLine(p + ": DebounceLatch")
+        dbg.addLine(p + ": DebounceBoolean")
                 .addData(p + ".onDelaySec", onDelaySec)
                 .addData(p + ".offDelaySec", offDelaySec)
                 .addData(p + ".state", state)

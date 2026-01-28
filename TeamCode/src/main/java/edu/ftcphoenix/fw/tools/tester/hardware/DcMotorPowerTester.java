@@ -213,7 +213,7 @@ public final class DcMotorPowerTester extends BaseTeleOpTester {
     }
 
     private void updateAndRender() {
-        power.updateFromAxis(() -> ready);
+        power.updateFromAxis(clock, () -> ready);
 
         double applied = power.applied();
         applyPower(applied);

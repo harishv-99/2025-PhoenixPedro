@@ -5,15 +5,17 @@ import com.qualcomm.robotcore.hardware.Gamepad;
 import java.lang.reflect.Field;
 
 import edu.ftcphoenix.fw.core.debug.DebugSink;
+import edu.ftcphoenix.fw.core.source.ScalarSource;
+
 
 /**
  * Thin wrapper around an FTC {@link Gamepad} that exposes:
  * <ul>
- *     <li>Axes ({@link Axis}) for sticks and triggers.</li>
+ *     <li>Axes ({@link ScalarSource}) for sticks and triggers.</li>
  *     <li>Buttons ({@link Button}) for digital inputs (with edge detection).</li>
  * </ul>
  *
- * <h2>Axis conventions</h2>
+ * <h2>ScalarSource conventions</h2>
  * Axes use a <b>human-friendly</b> convention:
  * <ul>
  *     <li><b>leftX</b>:  -1.0 = full left,  +1.0 = full right</li>
@@ -29,7 +31,7 @@ import edu.ftcphoenix.fw.core.debug.DebugSink;
  * <b>"up" is always positive</b> in Phoenix code. X-axis values are passed through as-is.
  * </p>
  *
- * <h2>Axis calibration, rescaling, and deadband</h2>
+ * <h2>ScalarSource calibration, rescaling, and deadband</h2>
  * <p>
  * Some gamepads do not return an exact 0.0 when the sticks are released, or may drift
  * slightly over time. {@code GamepadDevice} supports two layers of error correction:
@@ -117,16 +119,16 @@ public final class GamepadDevice {
     private double axisDeadband = DEFAULT_AXIS_DEADBAND;
 
     // Axes
-    private final Axis leftX;
-    private final Axis leftY;
-    private final Axis rightX;
-    private final Axis rightY;
-    private final Axis leftTrigger;
-    private final Axis rightTrigger;
+    private final ScalarSource leftX;
+    private final ScalarSource leftY;
+    private final ScalarSource rightX;
+    private final ScalarSource rightY;
+    private final ScalarSource leftTrigger;
+    private final ScalarSource rightTrigger;
 
     // Common 2D stick helpers
-    private final Axis leftStickMagnitude;
-    private final Axis rightStickMagnitude;
+    private final ScalarSource leftStickMagnitude;
+    private final ScalarSource rightStickMagnitude;
 
     // Buttons
     private final Button a;
@@ -163,17 +165,17 @@ public final class GamepadDevice {
 
         // Axes: build them in terms of raw + calibration + deadband.
         // X passes through, Y is inverted so that "up" is positive.
-        this.leftX = Axis.of(() -> applyDeadband(calibratedStick(rawLeftX(), leftXCenter)));
-        this.leftY = Axis.of(() -> applyDeadband(calibratedStick(rawLeftY(), leftYCenter)));
-        this.rightX = Axis.of(() -> applyDeadband(calibratedStick(rawRightX(), rightXCenter)));
-        this.rightY = Axis.of(() -> applyDeadband(calibratedStick(rawRightY(), rightYCenter)));
+        this.leftX = ScalarSource.of(() -> applyDeadband(calibratedStick(rawLeftX(), leftXCenter)));
+        this.leftY = ScalarSource.of(() -> applyDeadband(calibratedStick(rawLeftY(), leftYCenter)));
+        this.rightX = ScalarSource.of(() -> applyDeadband(calibratedStick(rawRightX(), rightXCenter)));
+        this.rightY = ScalarSource.of(() -> applyDeadband(calibratedStick(rawRightY(), rightYCenter)));
 
-        this.leftTrigger = Axis.of(() -> applyDeadband(calibratedTrigger(rawLeftTrigger(), leftTriggerCenter)));
-        this.rightTrigger = Axis.of(() -> applyDeadband(calibratedTrigger(rawRightTrigger(), rightTriggerCenter)));
+        this.leftTrigger = ScalarSource.of(() -> applyDeadband(calibratedTrigger(rawLeftTrigger(), leftTriggerCenter)));
+        this.rightTrigger = ScalarSource.of(() -> applyDeadband(calibratedTrigger(rawRightTrigger(), rightTriggerCenter)));
 
         // 2D stick magnitudes (after calibration + deadband).
-        this.leftStickMagnitude = Axis.magnitude(this.leftX, this.leftY);
-        this.rightStickMagnitude = Axis.magnitude(this.rightX, this.rightY);
+        this.leftStickMagnitude = ScalarSource.magnitude(this.leftX, this.leftY);
+        this.rightStickMagnitude = ScalarSource.magnitude(this.rightX, this.rightY);
 
         // Buttons
         this.a = Button.of(() -> gp.a);
@@ -314,56 +316,56 @@ public final class GamepadDevice {
     /**
      * Left stick X axis: -1.0 = full left, +1.0 = full right.
      */
-    public Axis leftX() {
+    public ScalarSource leftX() {
         return leftX;
     }
 
     /**
      * Left stick Y axis: -1.0 = full down, +1.0 = full up (Phoenix convention).
      */
-    public Axis leftY() {
+    public ScalarSource leftY() {
         return leftY;
     }
 
     /**
      * Right stick X axis: -1.0 = full left, +1.0 = full right.
      */
-    public Axis rightX() {
+    public ScalarSource rightX() {
         return rightX;
     }
 
     /**
      * Right stick Y axis: -1.0 = full down, +1.0 = full up (Phoenix convention).
      */
-    public Axis rightY() {
+    public ScalarSource rightY() {
         return rightY;
     }
 
     /**
      * Magnitude of the left stick vector (x,y) after calibration and deadband: {@code hypot(leftX, leftY)}.
      */
-    public Axis leftStickMagnitude() {
+    public ScalarSource leftStickMagnitude() {
         return leftStickMagnitude;
     }
 
     /**
      * Magnitude of the right stick vector (x,y) after calibration and deadband: {@code hypot(rightX, rightY)}.
      */
-    public Axis rightStickMagnitude() {
+    public ScalarSource rightStickMagnitude() {
         return rightStickMagnitude;
     }
 
     /**
      * Left trigger axis: 0.0 = released, 1.0 = fully pressed (after calibration and deadband).
      */
-    public Axis leftTrigger() {
+    public ScalarSource leftTrigger() {
         return leftTrigger;
     }
 
     /**
      * Right trigger axis: 0.0 = released, 1.0 = fully pressed (after calibration and deadband).
      */
-    public Axis rightTrigger() {
+    public ScalarSource rightTrigger() {
         return rightTrigger;
     }
 

@@ -31,7 +31,7 @@ import edu.ftcphoenix.fw.core.debug.DebugSink;
  *
  * <p>If {@code value} is not finite (NaN/inf), {@link #update(double)} leaves the state unchanged.</p>
  */
-public final class HysteresisLatch {
+public final class HysteresisBoolean {
 
     /**
      * Hysteresis mode.
@@ -54,7 +54,7 @@ public final class HysteresisLatch {
 
     private boolean state;
 
-    private HysteresisLatch(Mode mode, double enterThreshold, double exitThreshold, boolean initialState) {
+    private HysteresisBoolean(Mode mode, double enterThreshold, double exitThreshold, boolean initialState) {
         if (mode == null) {
             throw new IllegalArgumentException("mode is required");
         }
@@ -85,8 +85,8 @@ public final class HysteresisLatch {
      *
      * <p>This is commonly used for "idle" / "near zero" checks.</p>
      */
-    public static HysteresisLatch onWhenBelowOffWhenAbove(double enterThreshold, double exitThreshold) {
-        return new HysteresisLatch(Mode.ON_WHEN_BELOW_OFF_WHEN_ABOVE, enterThreshold, exitThreshold, false);
+    public static HysteresisBoolean onWhenBelowOffWhenAbove(double enterThreshold, double exitThreshold) {
+        return new HysteresisBoolean(Mode.ON_WHEN_BELOW_OFF_WHEN_ABOVE, enterThreshold, exitThreshold, false);
     }
 
     /**
@@ -95,8 +95,8 @@ public final class HysteresisLatch {
      *
      * <p>This is commonly used for "valid when high" checks (quality, voltage, etc.).</p>
      */
-    public static HysteresisLatch onWhenAboveOffWhenBelow(double enterThreshold, double exitThreshold) {
-        return new HysteresisLatch(Mode.ON_WHEN_ABOVE_OFF_WHEN_BELOW, enterThreshold, exitThreshold, false);
+    public static HysteresisBoolean onWhenAboveOffWhenBelow(double enterThreshold, double exitThreshold) {
+        return new HysteresisBoolean(Mode.ON_WHEN_ABOVE_OFF_WHEN_BELOW, enterThreshold, exitThreshold, false);
     }
 
     /**
@@ -189,7 +189,7 @@ public final class HysteresisLatch {
             return;
         }
         String p = (prefix == null || prefix.isEmpty()) ? "hys" : prefix;
-        dbg.addLine(p + ": HysteresisLatch")
+        dbg.addLine(p + ": HysteresisBoolean")
                 .addData(p + ".mode", mode.toString())
                 .addData(p + ".enter", enterThreshold)
                 .addData(p + ".exit", exitThreshold)

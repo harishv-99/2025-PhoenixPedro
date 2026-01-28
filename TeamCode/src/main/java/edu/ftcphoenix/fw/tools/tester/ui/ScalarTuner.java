@@ -7,7 +7,8 @@ import java.util.function.BooleanSupplier;
 import java.util.function.DoubleUnaryOperator;
 
 import edu.ftcphoenix.fw.core.math.MathUtil;
-import edu.ftcphoenix.fw.input.Axis;
+import edu.ftcphoenix.fw.core.source.ScalarSource;
+import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.input.Button;
 import edu.ftcphoenix.fw.input.binding.Bindings;
 
@@ -83,7 +84,7 @@ public final class ScalarTuner {
     private double lastApplied;
 
     // Optional axis override (e.g., stick or trigger)
-    private Axis axis = null;
+    private ScalarSource axis = null;
     private double axisDeadband = 0.08;
     private DoubleUnaryOperator axisMap = v -> v; // raw axis -> target range
 
@@ -223,7 +224,7 @@ public final class ScalarTuner {
      * @param axisMap maps raw axis value to the tuner target domain (nullable; identity if null)
      * @return this tuner for chaining
      */
-    public ScalarTuner attachAxis(Axis axis, double deadband, DoubleUnaryOperator axisMap) {
+    public ScalarTuner attachAxis(ScalarSource axis, double deadband, DoubleUnaryOperator axisMap) {
         this.axis = axis;
         this.axisDeadband = Math.abs(deadband);
         this.axisMap = (axisMap == null) ? (v -> v) : axisMap;
@@ -348,11 +349,11 @@ public final class ScalarTuner {
      *
      * @param active optional gate; if provided and it returns {@code false}, the axis override is ignored
      */
-    public void updateFromAxis(BooleanSupplier active) {
+    public void updateFromAxis(LoopClock clock, BooleanSupplier active) {
         if (axis == null) return;
         if (active != null && !active.getAsBoolean()) return;
 
-        double raw = axis.get();
+        double raw = axis.getAsDouble(clock);
         if (Math.abs(raw) <= axisDeadband) return;
 
         double mapped = axisMap.applyAsDouble(raw);

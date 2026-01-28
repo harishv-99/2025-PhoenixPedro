@@ -362,7 +362,7 @@ public final class DcMotorPositionTester extends BaseTeleOpTester {
 
     private void updateAndRender(double dtSec) {
         // Allow stick to nudge target continuously (even while enabled).
-        targetTicks.updateFromAxis(dtSec, () -> ready);
+        targetTicks.updateFromAxis(clock, () -> ready);
 
         if (targetTicks.isEnabled()) {
             applyRunToPosition();

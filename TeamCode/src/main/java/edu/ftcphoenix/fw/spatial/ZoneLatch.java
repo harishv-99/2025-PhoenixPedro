@@ -2,7 +2,7 @@ package edu.ftcphoenix.fw.spatial;
 
 import java.util.Objects;
 
-import edu.ftcphoenix.fw.core.control.HysteresisLatch;
+import edu.ftcphoenix.fw.core.control.HysteresisBoolean;
 import edu.ftcphoenix.fw.core.geometry.Pose2d;
 
 /**
@@ -15,7 +15,7 @@ import edu.ftcphoenix.fw.core.geometry.Pose2d;
 public final class ZoneLatch {
 
     private final RobotZone2d zone;
-    private final HysteresisLatch latch;
+    private final HysteresisBoolean latch;
 
     /**
      * Creates a zone latch using signed-distance hysteresis.
@@ -33,7 +33,7 @@ public final class ZoneLatch {
      */
     public ZoneLatch(RobotZone2d zone, double enterDistanceInches, double exitDistanceInches) {
         this.zone = Objects.requireNonNull(zone, "zone");
-        this.latch = HysteresisLatch.onWhenAboveOffWhenBelow(enterDistanceInches, exitDistanceInches);
+        this.latch = HysteresisBoolean.onWhenAboveOffWhenBelow(enterDistanceInches, exitDistanceInches);
     }
 
     /**

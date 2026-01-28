@@ -14,7 +14,7 @@ Phoenix is organized by **robot concepts**, not by FTC SDK details.
 
 Most robot code should only need imports from these packages:
 
-* `edu.ftcphoenix.fw.input` — gamepad wrappers (`Gamepads`, `GamepadDevice`, `Axis`, `Button`).
+* `edu.ftcphoenix.fw.input` — gamepad wrappers (`Gamepads`, `GamepadDevice`, `ScalarSource`, `Button`).
 * `edu.ftcphoenix.fw.input.binding` — `Bindings`: map button edges to actions.
 * `edu.ftcphoenix.fw.task` — `Task`, `TaskRunner`, `Tasks`: non-blocking macros over time.
 * `edu.ftcphoenix.fw.actuation` — `Plant`, `Actuators`, `PlantTasks`: mechanisms you command with numeric targets.
@@ -109,7 +109,7 @@ Think of Phoenix as a few thin layers you stack:
     * Owns the loop and decides what updates when.
 2. **Input** (`fw.input`)
 
-    * `Gamepads`, `GamepadDevice`, `Axis`, `Button`.
+    * `Gamepads`, `GamepadDevice`, `ScalarSource`, `Button`.
     * `Button` supports edge detection (`onPress`/`onRelease`), <i>and</i> a built-in
       press-to-toggle state via `Button.isToggled()` (useful when enabling drive overlays).
 3. **Bindings** (`fw.input.binding`)

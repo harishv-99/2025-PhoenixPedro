@@ -6,7 +6,8 @@ import java.util.Locale;
 import java.util.function.BooleanSupplier;
 
 import edu.ftcphoenix.fw.core.math.MathUtil;
-import edu.ftcphoenix.fw.input.Axis;
+import edu.ftcphoenix.fw.core.source.ScalarSource;
+import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.input.Button;
 import edu.ftcphoenix.fw.input.binding.Bindings;
 
@@ -48,7 +49,7 @@ public final class IntTuner {
     private int disabledValue;
 
     // Optional axis nudge
-    private Axis axis = null;
+    private ScalarSource axis = null;
     private double axisDeadband = 0.08;
 
     // ticks/sec at full deflection for fine vs coarse
@@ -145,7 +146,7 @@ public final class IntTuner {
      * @param fineRatePerSec    ticks/sec at full deflection in fine mode
      * @param coarseRatePerSec  ticks/sec at full deflection in coarse mode
      */
-    public IntTuner attachAxisNudge(Axis axis,
+    public IntTuner attachAxisNudge(ScalarSource axis,
                                     double deadband,
                                     double fineRatePerSec,
                                     double coarseRatePerSec) {
@@ -265,11 +266,13 @@ public final class IntTuner {
      * @param dtSec time since last loop (seconds)
      * @param active optional gate; if provided and it returns {@code false}, axis nudge is ignored
      */
-    public void updateFromAxis(double dtSec, BooleanSupplier active) {
+    public void updateFromAxis(LoopClock clock, BooleanSupplier active) {
         if (axis == null) return;
         if (active != null && !active.getAsBoolean()) return;
+        double dtSec = (clock != null) ? clock.dtSec() : 0.0;
 
-        double raw = axis.get();
+
+        double raw = axis.getAsDouble(clock);
         if (Math.abs(raw) <= axisDeadband) {
             axisCarry = 0.0;
             return;

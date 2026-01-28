@@ -291,7 +291,7 @@ public final class DcMotorVelocityTester extends BaseTeleOpTester {
 
     private void updateAndRender(double dtSec) {
         // Stick nudge always updates target, even if disabled.
-        targetVelTps.updateFromAxis(dtSec, () -> ready);
+        targetVelTps.updateFromAxis(clock, () -> ready);
 
         if (targetVelTps.isEnabled()) {
             applyVelocity(targetVelTps.applied());

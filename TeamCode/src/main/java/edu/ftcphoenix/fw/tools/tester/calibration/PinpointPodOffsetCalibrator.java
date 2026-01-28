@@ -508,7 +508,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
             omega = Math.signum(cfg.targetTurnRad) * cfg.autoOmegaCmd;
         } else {
             // Driver-friendly: stick right should turn right (omega negative).
-            omega = -gamepads.p1().rightX().get() * cfg.manualOmegaScale;
+            omega = -gamepads.p1().rightX().getAsDouble(ctx.clock) * cfg.manualOmegaScale;
         }
 
         drive.update(ctx.clock);
@@ -553,8 +553,8 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         }
 
         // Allow the driver to translate (no rotation) to bring the robot back to the starting spot.
-        double axial = gamepads.p1().leftY().get() * cfg.recenterTranslationScale;
-        double lateral = -gamepads.p1().leftX().get() * cfg.recenterTranslationScale;
+        double axial = gamepads.p1().leftY().getAsDouble(ctx.clock) * cfg.recenterTranslationScale;
+        double lateral = -gamepads.p1().leftX().getAsDouble(ctx.clock) * cfg.recenterTranslationScale;
 
         drive.update(ctx.clock);
         drive.drive(new DriveSignal(axial, lateral, 0.0));

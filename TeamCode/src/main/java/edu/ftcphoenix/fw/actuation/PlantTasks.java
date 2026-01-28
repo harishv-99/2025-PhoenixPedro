@@ -2,7 +2,7 @@ package edu.ftcphoenix.fw.actuation;
 
 import java.util.Objects;
 
-import edu.ftcphoenix.fw.core.control.DebounceLatch;
+import edu.ftcphoenix.fw.core.control.DebounceBoolean;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.task.Task;
 import edu.ftcphoenix.fw.task.TaskOutcome;
@@ -727,7 +727,7 @@ public final class PlantTasks {
         private double elapsedSec = 0.0;
         private double remainingSec = 0.0;
 
-        private final DebounceLatch setpointStableLatch;
+        private final DebounceBoolean setpointStableLatch;
 
         TargetTask(final Plant plant,
                    final double initialTarget,
@@ -749,7 +749,7 @@ public final class PlantTasks {
             // Only allocate the latch for stable setpoint modes.
             if (completionMode == CompletionMode.WAIT_SETPOINT_STABLE
                     || completionMode == CompletionMode.WAIT_SETPOINT_STABLE_OR_TIMEOUT) {
-                this.setpointStableLatch = DebounceLatch.onAfterOffImmediately(stableSec);
+                this.setpointStableLatch = DebounceBoolean.onAfterOffImmediately(stableSec);
             } else {
                 this.setpointStableLatch = null;
             }
