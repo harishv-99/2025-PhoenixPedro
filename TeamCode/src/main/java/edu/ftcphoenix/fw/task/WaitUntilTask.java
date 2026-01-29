@@ -1,45 +1,33 @@
 package edu.ftcphoenix.fw.task;
 
 import java.util.Objects;
-import java.util.function.BooleanSupplier;
 
 import edu.ftcphoenix.fw.core.debug.DebugSink;
+import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 
 /**
- * A {@link Task} that runs until a condition becomes true, optionally
- * with an optional timeout.
+ * A {@link Task} that runs until a condition becomes true, optionally with a timeout.
+ *
+ * <p>This is the "wait until X" primitive for Phoenix tasks. It is intentionally expressed in terms
+ * of {@link BooleanSource} (not a raw {@code BooleanSupplier}) so it composes naturally with
+ * Phoenix's clocked signal pipeline (debounce, hysteresis, memoization, edges, etc.).</p>
  *
  * <p>Typical usage:
  * <pre>{@code
  * TaskRunner runner = new TaskRunner();
  *
- * // Wait until a sensor reports ready
- * runner.enqueue(new WaitUntilTask(() -> sensorReady()));
+ * // Wait until a sensor gate is ready.
+ * BooleanSource ready = BooleanSource.of(() -> sensorReady());
+ * runner.enqueue(new WaitUntilTask(ready));
  *
- * // Or: wait until ready, but give up after 2 seconds
- * runner.enqueue(new WaitUntilTask(() -> sensorReady(), 2.0));
+ * // Or: wait until ready, but give up after 2 seconds.
+ * runner.enqueue(new WaitUntilTask(ready, 2.0));
  * }</pre>
- *
- * <p>Behavior:</p>
- * <ul>
- *   <li>On {@link #start(LoopClock)}, the internal timer and flags are reset.</li>
- *   <li>On each {@link #update(LoopClock)}, the condition is checked first:
- *     <ul>
- *       <li>If it returns {@code true}, the task completes successfully.</li>
- *       <li>Otherwise, if a finite timeout is configured and elapsed time
- *           reaches the timeout, the task completes with {@link #isTimedOut()}
- *           returning {@code true} and {@link #getOutcome()} returning
- *           {@link TaskOutcome#TIMEOUT}.</li>
- *     </ul>
- *   </li>
- *   <li>{@link #isComplete()} returns {@code true} once either the condition
- *       is satisfied or a timeout occurs.</li>
- * </ul>
  */
 public final class WaitUntilTask implements Task {
 
-    private final BooleanSupplier condition;
+    private final BooleanSource condition;
     private final double timeoutSec;
 
     private boolean finished = false;
@@ -51,21 +39,18 @@ public final class WaitUntilTask implements Task {
 
     /**
      * Create a wait-until task with no timeout.
-     *
-     * @param condition condition to wait for; task completes when this returns true
      */
-    public WaitUntilTask(BooleanSupplier condition) {
+    public WaitUntilTask(BooleanSource condition) {
         this(condition, Double.POSITIVE_INFINITY);
     }
 
     /**
      * Create a wait-until task with a timeout.
      *
-     * @param condition  condition to wait for; task completes when this returns true,
-     *                   or when {@code timeoutSec} elapses
+     * @param condition  condition to wait for; task completes when this becomes true
      * @param timeoutSec timeout in seconds; must be &gt;= 0.0
      */
-    public WaitUntilTask(BooleanSupplier condition, double timeoutSec) {
+    public WaitUntilTask(BooleanSource condition, double timeoutSec) {
         this.condition = Objects.requireNonNull(condition, "condition is required");
         if (timeoutSec < 0.0) {
             throw new IllegalArgumentException("timeoutSec must be >= 0, got " + timeoutSec);
@@ -73,9 +58,6 @@ public final class WaitUntilTask implements Task {
         this.timeoutSec = timeoutSec;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void start(LoopClock clock) {
         finished = false;
@@ -84,9 +66,6 @@ public final class WaitUntilTask implements Task {
         lastCondition = false;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void update(LoopClock clock) {
         if (finished) {
@@ -94,7 +73,7 @@ public final class WaitUntilTask implements Task {
         }
 
         // First check condition
-        boolean cond = condition.getAsBoolean();
+        boolean cond = condition.getAsBoolean(clock);
         lastCondition = cond;
         if (cond) {
             finished = true;
@@ -110,17 +89,11 @@ public final class WaitUntilTask implements Task {
         }
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public boolean isComplete() {
         return finished;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public TaskOutcome getOutcome() {
         if (!finished) {
@@ -129,10 +102,6 @@ public final class WaitUntilTask implements Task {
         return timedOut ? TaskOutcome.TIMEOUT : TaskOutcome.SUCCESS;
     }
 
-
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void debugDump(DebugSink dbg, String prefix) {
         if (dbg == null) {
@@ -145,6 +114,8 @@ public final class WaitUntilTask implements Task {
                 .addData(p + ".condition", lastCondition)
                 .addData(p + ".elapsedSec", elapsedSec)
                 .addData(p + ".timeoutSec", timeoutSec);
+
+        condition.debugDump(dbg, p + ".cond");
     }
 
     /**

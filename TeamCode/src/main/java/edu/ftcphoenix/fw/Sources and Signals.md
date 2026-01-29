@@ -115,7 +115,10 @@ sensor or derived value multiple times in one loop (especially when it is used i
 that by caching a source's value **per loop cycle**:
 
 ```java
-ScalarSource gateDistanceCm = ScalarSource.of(distanceSensor::getDistanceCm).memoized();
+import edu.ftcphoenix.fw.ftc.FtcSensors;
+
+// For FTC hardware sensors, prefer the boundary adapters in fw.ftc.
+ScalarSource gateDistanceCm = FtcSensors.distanceCm(distanceSensor);
 BooleanSource ballAtGate = gateDistanceCm.hysteresisBelow(6.0, 7.0).debouncedOnOff(0.05, 0.05);
 ```
 

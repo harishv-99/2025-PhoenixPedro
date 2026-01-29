@@ -392,7 +392,48 @@ A good rule of thumb:
 
 ---
 
-## 8. Common gotchas
+## 8. Output tasks and queues
+
+Sometimes you want **continuous logic** (e.g. staging balls, holding a gate, keeping a mechanism ready)
+*and* short **pulses** (feed one ball, spit out wrong color, etc.).
+
+If both pieces of code directly write `plant.setTarget(...)`, they will fight.
+
+Phoenix provides a clean, single-writer pattern:
+
+- **`OutputTask`** — a `Task` that produces a scalar output (`getOutput()`).
+- **`OutputTaskRunner`** — runs `OutputTask`s sequentially and exposes the active output as a `ScalarSource`.
+
+That lets your subsystem loop decide the final plant target in one place:
+
+```java
+OutputTaskRunner feederQueue = new OutputTaskRunner(0.0);
+
+// In init: define sensor gates as BooleanSource / ScalarSource.
+BooleanSource fireAllowed = shooterReady.and(aimLocked).and(ballAtGate);
+
+// Enqueue a feed-one task when the driver requests a shot:
+feederQueue.enqueue(OutputTasks.gatedUntil(
+        "feedOne",
+        fireAllowed,
+        ballAtGate.fallingEdge(),
+        0.90,
+        0.05,
+        0.30
+));
+
+// In your loop:
+feederQueue.update(clock);
+double base = 0.0;
+double finalTarget = feederQueue.hasActiveTask() ? feederQueue.getAsDouble(clock) : base;
+transferShooterPlant.setTarget(finalTarget);
+```
+
+For the full design rationale and more examples, see **`Output Tasks & Queues.md`**.
+
+---
+
+## 9. Common gotchas
 
 * **Do not block** inside `Task.start(...)` or `Task.update(...)`.
 
@@ -415,7 +456,7 @@ A good rule of thumb:
 
 ---
 
-## 9. Summary
+## 10. Summary
 
 * **`Task`** is the basic unit of non‑blocking behavior over time.
 * **`TaskRunner`** manages a queue of tasks and advances them with `update(clock)`.

@@ -37,7 +37,6 @@ These exist so the student-facing packages stay small and consistent:
 * `edu.ftcphoenix.fw.core.*` — shared plumbing: time, math, geometry, control, debug, and the HAL.
 * `edu.ftcphoenix.fw.ftc.*` — the **FTC SDK boundary** (hardware adapters, frame conversions, FTC vision plumbing). Most teams only touch a couple entrypoints like `FtcDrives`.
 * `edu.ftcphoenix.fw.tools.*` — testers and examples you can copy.
-* `edu.ftcphoenix.fw.legacy.*` — intentionally retained older base classes (not recommended for new code).
 
 One important gotcha with FTC vision:
 

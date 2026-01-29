@@ -3,6 +3,7 @@ package edu.ftcphoenix.fw.task;
 import java.util.Objects;
 import java.util.function.BooleanSupplier;
 
+import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 
 /**
@@ -108,13 +109,22 @@ public final class Tasks {
      * Create a {@link Task} that waits until a condition becomes {@code true}.
      *
      * <p>This wraps {@link WaitUntilTask} with no timeout. If the condition
-     * can get stuck, prefer {@link #waitUntil(BooleanSupplier, double)} or
+     * can get stuck, prefer {@link #waitUntil(BooleanSource, double)} or
      * construct a {@link WaitUntilTask} directly with a timeout.</p>
      *
      * @param condition condition to wait for
      */
-    public static Task waitUntil(BooleanSupplier condition) {
+    public static Task waitUntil(BooleanSource condition) {
         return new WaitUntilTask(condition);
+    }
+
+    /**
+     * Convenience overload: wrap a raw BooleanSupplier into a BooleanSource.
+     *
+     * <p>Prefer using a BooleanSource directly for sensor gates and debounced/hysteresis signals.
+     */
+    public static Task waitUntil(BooleanSupplier condition) {
+        return waitUntil(BooleanSource.of(condition));
     }
 
     /**
@@ -129,8 +139,15 @@ public final class Tasks {
      * @param condition  condition to wait for; must not be {@code null}
      * @param timeoutSec timeout in seconds; must be {@code >= 0.0}
      */
-    public static Task waitUntil(BooleanSupplier condition, double timeoutSec) {
+    public static Task waitUntil(BooleanSource condition, double timeoutSec) {
         return new WaitUntilTask(condition, timeoutSec);
+    }
+
+    /**
+     * Convenience overload: wrap a raw BooleanSupplier into a BooleanSource.
+     */
+    public static Task waitUntil(BooleanSupplier condition, double timeoutSec) {
+        return waitUntil(BooleanSource.of(condition), timeoutSec);
     }
 
     /**

@@ -2,6 +2,8 @@ package edu.ftcphoenix.fw.core.source;
 
 import java.util.Objects;
 import java.util.function.Function;
+import java.util.function.Predicate;
+import java.util.function.ToDoubleFunction;
 
 import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.time.LoopClock;
@@ -80,6 +82,69 @@ public interface Source<T> {
                 }
                 String p = (prefix == null || prefix.isEmpty()) ? "map" : prefix;
                 dbg.addData(p + ".class", "MappedSource");
+                self.debugDump(dbg, p + ".src");
+            }
+        };
+    }
+
+    /**
+     * Map this source into a {@link BooleanSource} using a predicate.
+     *
+     * <p>This is a convenience for the common pattern "I have a value object source and I want
+     * a boolean gate derived from it" (example: a color reading -> isGreen?).</p>
+     */
+    default BooleanSource mapToBoolean(Predicate<? super T> predicate) {
+        Objects.requireNonNull(predicate, "predicate");
+        Source<T> self = this;
+
+        return new BooleanSource() {
+            @Override
+            public boolean getAsBoolean(LoopClock clock) {
+                return predicate.test(self.get(clock));
+            }
+
+            @Override
+            public void reset() {
+                self.reset();
+            }
+
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) {
+                    return;
+                }
+                String p = (prefix == null || prefix.isEmpty()) ? "mapBool" : prefix;
+                dbg.addData(p + ".class", "MappedBoolean");
+                self.debugDump(dbg, p + ".src");
+            }
+        };
+    }
+
+    /**
+     * Map this source into a {@link ScalarSource} using a {@link ToDoubleFunction}.
+     */
+    default ScalarSource mapToDouble(ToDoubleFunction<? super T> fn) {
+        Objects.requireNonNull(fn, "fn");
+        Source<T> self = this;
+
+        return new ScalarSource() {
+            @Override
+            public double getAsDouble(LoopClock clock) {
+                return fn.applyAsDouble(self.get(clock));
+            }
+
+            @Override
+            public void reset() {
+                self.reset();
+            }
+
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) {
+                    return;
+                }
+                String p = (prefix == null || prefix.isEmpty()) ? "mapScalar" : prefix;
+                dbg.addData(p + ".class", "MappedScalar");
                 self.debugDump(dbg, p + ".src");
             }
         };

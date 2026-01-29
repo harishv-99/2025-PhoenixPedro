@@ -88,6 +88,23 @@ public final class TaskRunner {
     }
 
     /**
+     * @return the current task instance, or {@code null} if none has been started.
+     *
+     * <p>This is intentionally exposed for advanced integrations (for example, output-producing
+     * task queues) that need to inspect the active task. Most robot code should not need this.
+     */
+    public Task currentTaskOrNull() {
+        return current;
+    }
+
+    /**
+     * @return the next queued task (FIFO head), or {@code null} if the queue is empty.
+     */
+    public Task nextQueuedTaskOrNull() {
+        return queue.isEmpty() ? null : queue.get(0);
+    }
+
+    /**
      * Update the task runner and the current task.
      *
      * <p>Semantics:

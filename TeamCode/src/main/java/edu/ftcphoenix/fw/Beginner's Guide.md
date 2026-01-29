@@ -32,7 +32,6 @@ Everything else exists to keep those packages clean:
 * `edu.ftcphoenix.fw.core.*` is framework plumbing (math/geometry/control/time/HAL).
 * `edu.ftcphoenix.fw.ftc.*` is the FTC SDK boundary (hardware + vision adapters).
 * `edu.ftcphoenix.fw.tools.*` contains testers and copyable examples.
-* `edu.ftcphoenix.fw.legacy.*` contains intentionally-retained old base classes.
 
 If you’re curious *why* the packages are arranged this way, see **Framework Overview → Package structure**.
 
