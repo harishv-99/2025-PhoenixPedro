@@ -78,6 +78,34 @@ Common transforms:
 
 ---
 
+## Plants as sources
+
+Plants are "sinks" you command, but it is often useful to treat a plant's state as a signal:
+
+- **Is this mechanism at its target?** (`Plant.atSetpoint()`) → a `BooleanSource`
+- **What target is currently commanded?** (`Plant.getTarget()`) → a `ScalarSource`
+
+Phoenix provides a tiny, obvious adapter class: `PlantSources`.
+
+```java
+import edu.ftcphoenix.fw.actuation.PlantSources;
+
+BooleanSource shooterAtSetpoint = PlantSources.atSetpoint(shooterPlant);
+BooleanSource shooterReadyStable = shooterAtSetpoint.debouncedOn(0.15);
+
+ScalarSource shooterTarget = PlantSources.target(shooterPlant);
+BooleanSource feedbackCapable = PlantSources.hasFeedback(shooterPlant);
+```
+
+Notes:
+
+- `PlantSources.atSetpoint(...)` is **memoized per loop cycle** so the plant is sampled at most once
+  per `LoopClock.cycle()`.
+- `PlantSources.target(...)` is **not memoized** by default so you can still observe changes within
+  a loop (useful while migrating toward single-writer ownership).
+
+---
+
 ## Memoization
 
 Phoenix assumes a single loop heartbeat. In real code, it is easy to accidentally read the same
@@ -122,7 +150,8 @@ ScalarSource headingErrorAbsDeg = ScalarSource.of(() -> Math.abs(rawHeadingError
 BooleanSource aimLocked = headingErrorAbsDeg.hysteresisBelow(2.0, 3.0).debouncedOn(0.10);
 
 // Shooter-ready can be any boolean you compute; debouncedOn makes it stable.
-BooleanSource shooterReadyStable = BooleanSource.of(shooterPlant::atSetpoint).debouncedOn(0.15);
+// For plants, prefer the tiny adapter helpers from PlantSources.
+BooleanSource shooterReadyStable = PlantSources.atSetpoint(shooterPlant).debouncedOn(0.15);
 
 BooleanSource fireAllowed = shootHeld.and(aimLocked).and(shooterReadyStable);
 BooleanSource startFiring = fireAllowed.risingEdge();

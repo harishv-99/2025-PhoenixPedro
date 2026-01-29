@@ -71,9 +71,9 @@ public interface ScalarSource extends Source<Double> {
                 String p = (prefix == null || prefix.isEmpty()) ? "memo" : prefix;
                 dbg.addData(p + ".class", "MemoizedScalar");
                 self.debugDump(dbg, p + ".src");
-            }
-        };
-    }
+        }
+    };
+}
 
     // ---------------------------------------------------------------------------------------------
     // Common scalar transforms
