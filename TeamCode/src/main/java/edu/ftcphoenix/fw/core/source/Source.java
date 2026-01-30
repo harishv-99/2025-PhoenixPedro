@@ -88,6 +88,110 @@ public interface Source<T> {
     }
 
     /**
+     * Hold the last valid value for up to {@code maxHoldSec} seconds.
+     *
+     * <p>This is a generic "anti-flicker" helper for value-object sources. A common pattern is a
+     * noisy classifier that sometimes outputs an "unknown" value; holding the last non-unknown
+     * value for a short time makes downstream logic much more stable.</p>
+     *
+     * <p>Unlike some time-based filters, this implementation uses {@link LoopClock#nowSec()} so it
+     * still behaves correctly even if the source is not sampled every loop.</p>
+     *
+     * <p>When the input becomes invalid:
+     * <ul>
+     *   <li>If the last valid value is newer than {@code maxHoldSec}, the last valid value is returned.</li>
+     *   <li>Otherwise, {@code fallback} is returned.</li>
+     * </ul>
+     * </p>
+     *
+     * <p>Contract:
+     * <ul>
+     *   <li>The upstream source must never return {@code null}.</li>
+     *   <li>{@code fallback} must be non-null.</li>
+     * </ul>
+     * </p>
+     *
+     * @param isValid    predicate that defines which values are considered valid
+     * @param maxHoldSec maximum age of the held value in seconds; must be {@code >= 0}
+     * @param fallback   value returned when no valid value is available (or the hold has expired)
+     */
+    default Source<T> holdLastValid(Predicate<? super T> isValid, double maxHoldSec, T fallback) {
+        Objects.requireNonNull(isValid, "isValid");
+        Objects.requireNonNull(fallback, "fallback");
+        if (maxHoldSec < 0.0) {
+            throw new IllegalArgumentException("maxHoldSec must be >= 0, got " + maxHoldSec);
+        }
+
+        Source<T> self = this;
+        return new Source<T>() {
+            private long lastCycle = Long.MIN_VALUE;
+            private T lastOut = fallback;
+
+            private T lastValid = fallback;
+            private boolean hasValid = false;
+            private double lastValidSec = Double.NEGATIVE_INFINITY;
+            /**
+             * The last time {@link #get(LoopClock)} was sampled (for debug only).
+             */
+            private double lastSampleSec = Double.NEGATIVE_INFINITY;
+
+            @Override
+            public T get(LoopClock clock) {
+                long cyc = clock.cycle();
+                if (cyc == lastCycle) {
+                    return lastOut;
+                }
+                lastCycle = cyc;
+
+                T cur = Objects.requireNonNull(self.get(clock), "source returned null");
+                double now = clock.nowSec();
+                lastSampleSec = now;
+
+                if (isValid.test(cur)) {
+                    hasValid = true;
+                    lastValid = cur;
+                    lastValidSec = now;
+                    lastOut = cur;
+                    return lastOut;
+                }
+
+                if (hasValid && (now - lastValidSec) <= maxHoldSec) {
+                    lastOut = lastValid;
+                    return lastOut;
+                }
+
+                lastOut = fallback;
+                return lastOut;
+            }
+
+            @Override
+            public void reset() {
+                self.reset();
+                lastCycle = Long.MIN_VALUE;
+                lastOut = fallback;
+                hasValid = false;
+                lastValid = fallback;
+                lastValidSec = Double.NEGATIVE_INFINITY;
+                lastSampleSec = Double.NEGATIVE_INFINITY;
+            }
+
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) {
+                    return;
+                }
+                String p = (prefix == null || prefix.isEmpty()) ? "holdLastValid" : prefix;
+                double ageSec = hasValid ? Math.max(0.0, lastSampleSec - lastValidSec) : Double.POSITIVE_INFINITY;
+                dbg.addData(p + ".class", "HoldLastValid")
+                        .addData(p + ".maxHoldSec", maxHoldSec)
+                        .addData(p + ".hasValid", hasValid)
+                        .addData(p + ".lastValidAgeSec", ageSec);
+                self.debugDump(dbg, p + ".src");
+            }
+        };
+    }
+
+    /**
      * Map this source into a {@link BooleanSource} using a predicate.
      *
      * <p>This is a convenience for the common pattern "I have a value object source and I want

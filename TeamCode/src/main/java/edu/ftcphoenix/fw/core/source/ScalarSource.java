@@ -1,6 +1,7 @@
 package edu.ftcphoenix.fw.core.source;
 
 import java.util.Objects;
+import java.util.function.DoublePredicate;
 import java.util.function.DoubleSupplier;
 
 import edu.ftcphoenix.fw.core.control.HysteresisBoolean;
@@ -71,9 +72,108 @@ public interface ScalarSource extends Source<Double> {
                 String p = (prefix == null || prefix.isEmpty()) ? "memo" : prefix;
                 dbg.addData(p + ".class", "MemoizedScalar");
                 self.debugDump(dbg, p + ".src");
+            }
+        };
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Hold / stability helpers
+    // ---------------------------------------------------------------------------------------------
+
+    /**
+     * Hold the last valid value for up to {@code maxHoldSec} seconds.
+     *
+     * <p>This is a scalar specialization of {@link Source#holdLastValid(java.util.function.Predicate, double, Object)}
+     * that avoids boxing and provides a common "sensor validity" tool for automation.</p>
+     *
+     * <p>Implementation uses {@link LoopClock#nowSec()} so the max hold is enforced even if this
+     * source is not sampled every loop.</p>
+     *
+     * @param isValid    predicate that defines which samples are valid
+     * @param maxHoldSec maximum age of the held value in seconds; must be {@code >= 0}
+     * @param fallback   value returned when no valid value is available (or the hold has expired)
+     */
+    default ScalarSource holdLastValid(DoublePredicate isValid, double maxHoldSec, double fallback) {
+        Objects.requireNonNull(isValid, "isValid");
+        if (maxHoldSec < 0.0) {
+            throw new IllegalArgumentException("maxHoldSec must be >= 0, got " + maxHoldSec);
         }
-    };
-}
+
+        ScalarSource self = this;
+        return new ScalarSource() {
+            private long lastCycle = Long.MIN_VALUE;
+            private double lastOut = fallback;
+
+            private double lastValid = fallback;
+            private boolean hasValid = false;
+            private double lastValidSec = Double.NEGATIVE_INFINITY;
+            /** The last time {@link #getAsDouble(LoopClock)} was sampled (for debug only). */
+            private double lastSampleSec = Double.NEGATIVE_INFINITY;
+
+            @Override
+            public double getAsDouble(LoopClock clock) {
+                long cyc = clock.cycle();
+                if (cyc == lastCycle) {
+                    return lastOut;
+                }
+                lastCycle = cyc;
+
+                double cur = self.getAsDouble(clock);
+                double now = clock.nowSec();
+                lastSampleSec = now;
+
+                if (isValid.test(cur)) {
+                    hasValid = true;
+                    lastValid = cur;
+                    lastValidSec = now;
+                    lastOut = cur;
+                    return lastOut;
+                }
+
+                if (hasValid && (now - lastValidSec) <= maxHoldSec) {
+                    lastOut = lastValid;
+                    return lastOut;
+                }
+
+                lastOut = fallback;
+                return lastOut;
+            }
+
+            @Override
+            public void reset() {
+                self.reset();
+                lastCycle = Long.MIN_VALUE;
+                lastOut = fallback;
+                hasValid = false;
+                lastValid = fallback;
+                lastValidSec = Double.NEGATIVE_INFINITY;
+                lastSampleSec = Double.NEGATIVE_INFINITY;
+            }
+
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) return;
+                String p = (prefix == null || prefix.isEmpty()) ? "holdLastValid" : prefix;
+                double ageSec = hasValid ? Math.max(0.0, lastSampleSec - lastValidSec) : Double.POSITIVE_INFINITY;
+                dbg.addData(p + ".class", "HoldLastValidScalar")
+                        .addData(p + ".maxHoldSec", maxHoldSec)
+                        .addData(p + ".hasValid", hasValid)
+                        .addData(p + ".lastValidAgeSec", ageSec)
+                        .addData(p + ".fallback", fallback);
+                self.debugDump(dbg, p + ".src");
+            }
+        };
+    }
+
+    /**
+     * Hold the last finite value for up to {@code maxHoldSec} seconds.
+     *
+     * <p>This is a convenient way to deal with sources that may occasionally return NaN/Inf
+     * (for example, a vision measurement that sometimes fails to solve).</p>
+     */
+    default ScalarSource holdLastFinite(double maxHoldSec, double fallback) {
+        return holdLastValid(Double::isFinite, maxHoldSec, fallback);
+    }
 
     // ---------------------------------------------------------------------------------------------
     // Common scalar transforms

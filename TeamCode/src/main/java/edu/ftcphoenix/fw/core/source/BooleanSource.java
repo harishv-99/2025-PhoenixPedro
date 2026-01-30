@@ -334,6 +334,113 @@ public interface BooleanSource extends Source<Boolean> {
         };
     }
 
+    // ---------------------------------------------------------------------------------------------
+    // Selection helpers
+    // ---------------------------------------------------------------------------------------------
+
+    /**
+     * Select between two sources based on this boolean.
+     *
+     * <p>If this boolean is true, {@code whenTrue} is sampled; otherwise {@code whenFalse} is
+     * sampled. This is a small but very useful building block for "manual vs auto" selection and
+     * priority rules.</p>
+     */
+    default <T> Source<T> choose(Source<T> whenTrue, Source<T> whenFalse) {
+        Objects.requireNonNull(whenTrue, "whenTrue");
+        Objects.requireNonNull(whenFalse, "whenFalse");
+        BooleanSource cond = this;
+
+        return new Source<T>() {
+            @Override
+            public T get(LoopClock clock) {
+                return cond.getAsBoolean(clock) ? whenTrue.get(clock) : whenFalse.get(clock);
+            }
+
+            @Override
+            public void reset() {
+                cond.reset();
+                whenTrue.reset();
+                whenFalse.reset();
+            }
+
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) return;
+                String p = (prefix == null || prefix.isEmpty()) ? "choose" : prefix;
+                dbg.addData(p + ".class", "ChooseSource");
+                cond.debugDump(dbg, p + ".cond");
+                whenTrue.debugDump(dbg, p + ".true");
+                whenFalse.debugDump(dbg, p + ".false");
+            }
+        };
+    }
+
+    /**
+     * Select between two scalars based on this boolean.
+     */
+    default ScalarSource choose(ScalarSource whenTrue, ScalarSource whenFalse) {
+        Objects.requireNonNull(whenTrue, "whenTrue");
+        Objects.requireNonNull(whenFalse, "whenFalse");
+        BooleanSource cond = this;
+
+        return new ScalarSource() {
+            @Override
+            public double getAsDouble(LoopClock clock) {
+                return cond.getAsBoolean(clock) ? whenTrue.getAsDouble(clock) : whenFalse.getAsDouble(clock);
+            }
+
+            @Override
+            public void reset() {
+                cond.reset();
+                whenTrue.reset();
+                whenFalse.reset();
+            }
+
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) return;
+                String p = (prefix == null || prefix.isEmpty()) ? "chooseScalar" : prefix;
+                dbg.addData(p + ".class", "ChooseScalar");
+                cond.debugDump(dbg, p + ".cond");
+                whenTrue.debugDump(dbg, p + ".true");
+                whenFalse.debugDump(dbg, p + ".false");
+            }
+        };
+    }
+
+    /**
+     * Select between two booleans based on this boolean.
+     */
+    default BooleanSource choose(BooleanSource whenTrue, BooleanSource whenFalse) {
+        Objects.requireNonNull(whenTrue, "whenTrue");
+        Objects.requireNonNull(whenFalse, "whenFalse");
+        BooleanSource cond = this;
+
+        return new BooleanSource() {
+            @Override
+            public boolean getAsBoolean(LoopClock clock) {
+                return cond.getAsBoolean(clock) ? whenTrue.getAsBoolean(clock) : whenFalse.getAsBoolean(clock);
+            }
+
+            @Override
+            public void reset() {
+                cond.reset();
+                whenTrue.reset();
+                whenFalse.reset();
+            }
+
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) return;
+                String p = (prefix == null || prefix.isEmpty()) ? "chooseBool" : prefix;
+                dbg.addData(p + ".class", "ChooseBoolean");
+                cond.debugDump(dbg, p + ".cond");
+                whenTrue.debugDump(dbg, p + ".true");
+                whenFalse.debugDump(dbg, p + ".false");
+            }
+        };
+    }
+
     /**
      * Toggle state each time this source has a rising edge.
      */

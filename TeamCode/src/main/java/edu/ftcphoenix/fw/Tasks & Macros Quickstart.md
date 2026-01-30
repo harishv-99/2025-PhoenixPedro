@@ -413,7 +413,7 @@ OutputTaskRunner feederQueue = new OutputTaskRunner(0.0);
 BooleanSource fireAllowed = shooterReady.and(aimLocked).and(ballAtGate);
 
 // Enqueue a feed-one task when the driver requests a shot:
-feederQueue.enqueue(OutputTasks.gatedUntil(
+feederQueue.enqueue(Tasks.gatedOutputUntil(
         "feedOne",
         fireAllowed,
         ballAtGate.fallingEdge(),

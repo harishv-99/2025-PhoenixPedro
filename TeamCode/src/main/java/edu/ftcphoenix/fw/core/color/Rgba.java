@@ -19,19 +19,13 @@ public final class Rgba {
      */
     public final int r;
 
-    /**
-     * Green channel, in sensor native units.
-     */
+    /** Green channel, in sensor native units. */
     public final int g;
 
-    /**
-     * Blue channel, in sensor native units.
-     */
+    /** Blue channel, in sensor native units. */
     public final int b;
 
-    /**
-     * Alpha / clear channel (if available), in sensor native units.
-     */
+    /** Alpha / clear channel (if available), in sensor native units. */
     public final int a;
 
     /**
@@ -51,9 +45,7 @@ public final class Rgba {
         return new Rgba(r, g, b, 0);
     }
 
-    /**
-     * @return r + g + b as a double (avoids int overflow surprises).
-     */
+    /** @return r + g + b as a double (avoids int overflow surprises). */
     public double sumRgb() {
         return (double) r + (double) g + (double) b;
     }

@@ -56,7 +56,7 @@ It also implements `ScalarSource`, so you can treat its output like any other si
 OutputTaskRunner feederQueue = new OutputTaskRunner(0.0); // idle output
 
 // Later: enqueue a pulse
-feederQueue.enqueue(OutputTasks.outputForSeconds("feed", 0.9, 0.12));
+feederQueue.enqueue(Tasks.outputForSeconds("feed", 0.9, 0.12));
 
 // In your loop
 feederQueue.update(clock);
@@ -122,7 +122,7 @@ BooleanSource ballAtGate = gateDistanceCm
 // "done" when the ball leaves the gate
 BooleanSource ballLeftGate = ballAtGate.fallingEdge();
 
-OutputTask feedOne = OutputTasks.gatedUntil(
+OutputTask feedOne = Tasks.gatedOutputUntil(
         "feedOne",
         fireAllowed.and(ballAtGate),   // startWhen
         ballLeftGate,                  // doneWhen
@@ -137,7 +137,7 @@ feederQueue.enqueue(feedOne);
 ### Sensorless fallback (no done condition)
 
 ```java
-OutputTask feedPulse = OutputTasks.outputForSeconds("feedPulse", 0.9, 0.12);
+OutputTask feedPulse = Tasks.outputForSeconds("feedPulse", 0.9, 0.12);
 feederQueue.enqueue(feedPulse);
 ```
 
@@ -156,7 +156,7 @@ And auton can request shots by enqueueing the same `OutputTask`s your TeleOp aut
 
 ---
 
-## 7. When to use PlantTasks vs OutputTasks
+## 7. When to use PlantTasks vs Output tasks
 
 Use **PlantTasks** when:
 

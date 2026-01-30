@@ -164,6 +164,55 @@ The same edge/toggle tools apply to sensors (ball entering/leaving a gate sensor
 
 ---
 
+## Selection and hold-last patterns
+
+Two patterns show up constantly in real robots:
+
+1. **Manual vs auto selection** ("use the driver's value unless auto-aim is enabled")
+2. **Noisy classification** ("sometimes my sensor says UNKNOWN; keep the last good value briefly")
+
+Phoenix makes both patterns explicit and composable.
+
+### Selection: `choose(...)`
+
+`BooleanSource.choose(...)` selects between two other sources based on the boolean's value.
+
+Example: use an auto-aim computed shooter speed only when aim is locked; otherwise use a manual
+driver-set speed.
+
+```java
+BooleanSource useAuto = aimLocked.debouncedOn(0.10);
+
+ScalarSource manualRps = ScalarSource.of(() -> 32.0);
+ScalarSource autoRps = distanceIn.mapToDouble(d -> lookupShooterRps(d));
+
+ScalarSource shooterTargetRps = useAuto.choose(autoRps, manualRps);
+```
+
+### Hold last valid: `holdLastValid(...)`
+
+For value-object sources (like a color classification), it is common to get short bursts of
+invalid output. `holdLastValid(...)` keeps the last valid value for a time window.
+
+Example (ball color classification):
+
+```java
+Source<BallColor> rawColor = ...;  // produced by your classifier
+
+// Hold the last non-UNKNOWN classification for up to 0.25 seconds.
+Source<BallColor> colorStable = rawColor.holdLastValid(c -> c != BallColor.UNKNOWN, 0.25, BallColor.UNKNOWN);
+```
+
+There is also a scalar specialization:
+
+```java
+// Hold the last finite measurement for 0.2s; otherwise return NaN.
+ScalarSource visionDistanceIn = ...;
+ScalarSource distanceStable = visionDistanceIn.holdLastFinite(0.2, Double.NaN);
+```
+
+---
+
 ## Debounce and hysteresis
 
 Two extremely common forms of signal conditioning are provided as reusable, generic components:

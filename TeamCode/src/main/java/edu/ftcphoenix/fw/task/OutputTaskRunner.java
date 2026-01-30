@@ -15,7 +15,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * OutputTaskRunner feederQueue = new OutputTaskRunner(0.0);
  *
  * // Enqueue a "feed one" pulse or any other output-producing task.
- * feederQueue.enqueue(OutputTasks.outputForSeconds("feed", 0.9, 0.12));
+ * feederQueue.enqueue(Tasks.outputForSeconds("feed", 0.9, 0.12));
  *
  * // In your loop:
  * feederQueue.update(clock);            // idempotent by clock.cycle()

@@ -4,6 +4,7 @@ import java.util.Objects;
 import java.util.function.BooleanSupplier;
 
 import edu.ftcphoenix.fw.core.source.BooleanSource;
+import edu.ftcphoenix.fw.core.source.ScalarSource;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 
 /**
@@ -158,6 +159,101 @@ public final class Tasks {
      */
     public static Task runOnce(Runnable action) {
         return new InstantTask(Objects.requireNonNull(action, "action is required"));
+    }
+
+    // ---------------------------------------------------------------------
+    // Output tasks & queues
+    // ---------------------------------------------------------------------
+
+    /**
+     * Create a new {@link OutputTaskRunner} with the given idle output.
+     *
+     * <p>Output queues are intended to be applied to a Plant (or other output sink) from your
+     * subsystem loop. The queue itself is a {@link edu.ftcphoenix.fw.core.source.ScalarSource}.</p>
+     *
+     * @param idleOutput value returned when no output task is active
+     */
+    public static OutputTaskRunner outputQueue(double idleOutput) {
+        return new OutputTaskRunner(idleOutput);
+    }
+
+    /**
+     * Convenience: create an {@link OutputTaskRunner} with idle output = 0.
+     */
+    public static OutputTaskRunner outputQueue() {
+        return new OutputTaskRunner(0.0);
+    }
+
+    /**
+     * Output a constant value for a fixed duration.
+     */
+    public static OutputTask outputForSeconds(String name, double output, double durationSec) {
+        return new OutputForSecondsTask(name, output, durationSec);
+    }
+
+    /**
+     * Alias for {@link #outputForSeconds(String, double, double)}.
+     */
+    public static OutputTask outputPulse(String name, double output, double durationSec) {
+        return outputForSeconds(name, output, durationSec);
+    }
+
+    /**
+     * Wait for {@code startWhen}, then output {@code runOutput} until {@code doneWhen} is satisfied
+     * (and {@code minRunSec} has elapsed), or until {@code maxRunSec} elapses.
+     */
+    public static OutputTask gatedOutputUntil(String name,
+                                              BooleanSource startWhen,
+                                              BooleanSource doneWhen,
+                                              ScalarSource runOutput,
+                                              double idleOutput,
+                                              double minRunSec,
+                                              double maxRunSec,
+                                              double cooldownSec) {
+
+        Objects.requireNonNull(startWhen, "startWhen");
+        Objects.requireNonNull(doneWhen, "doneWhen");
+        Objects.requireNonNull(runOutput, "runOutput");
+
+        return new GatedOutputUntilTask(name, startWhen, doneWhen, runOutput, idleOutput, minRunSec, maxRunSec, cooldownSec);
+    }
+
+    /**
+     * Convenience overload for constant run output and common defaults.
+     */
+    public static OutputTask gatedOutputUntil(String name,
+                                              BooleanSource startWhen,
+                                              BooleanSource doneWhen,
+                                              double runOutput,
+                                              double minRunSec,
+                                              double maxRunSec) {
+
+        return gatedOutputUntil(name,
+                startWhen,
+                doneWhen,
+                ScalarSource.constant(runOutput),
+                0.0,
+                minRunSec,
+                maxRunSec,
+                0.0);
+    }
+
+    /**
+     * Convenience overload: output while a condition is true, up to a timeout.
+     */
+    public static OutputTask outputUntil(String name,
+                                         BooleanSource doneWhen,
+                                         double runOutput,
+                                         double maxRunSec) {
+
+        return gatedOutputUntil(name,
+                BooleanSource.constant(true),
+                doneWhen,
+                ScalarSource.constant(runOutput),
+                0.0,
+                0.0,
+                maxRunSec,
+                0.0);
     }
 
     // ---------------------------------------------------------------------
