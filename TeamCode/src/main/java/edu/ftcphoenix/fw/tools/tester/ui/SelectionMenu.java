@@ -8,7 +8,7 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
 import edu.ftcphoenix.fw.core.math.MathUtil;
-import edu.ftcphoenix.fw.input.Button;
+import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.input.binding.Bindings;
 
 /**
@@ -19,10 +19,10 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
  *   <li>Maintains a list of items and a selected index.</li>
  *   <li>Wrap-around navigation supported (default on).</li>
  *   <li>Renders the list + selected item + optional help text.</li>
- *   <li>Binds navigation to {@link Bindings} using Phoenix {@link Button} edge detection.</li>
+ *   <li>Binds navigation to {@link Bindings} using Phoenix {@link BooleanSource} edge detection.</li>
  * </ul>
  *
- * <p><b>Important:</b> Use the {@link #bind(Bindings, Button, Button, Button, BooleanSupplier, Consumer)}
+ * <p><b>Important:</b> Use the {@link #bind(Bindings, BooleanSource, BooleanSource, BooleanSource, BooleanSupplier, Consumer)}
  * overload to gate input handling (e.g., only respond while a menu is active).</p>
  *
  * @param <T> value stored for each item (e.g., a factory, a device name, an enum)
@@ -227,9 +227,9 @@ public final class SelectionMenu<T> {
      * use the overload that takes an {@code enabled} predicate.</p>
      */
     public void bind(Bindings bindings,
-                     Button upButton,
-                     Button downButton,
-                     Button selectButton,
+                     BooleanSource upButton,
+                     BooleanSource downButton,
+                     BooleanSource selectButton,
                      Consumer<Item<T>> onSelect) {
         bind(bindings, upButton, downButton, selectButton, () -> true, onSelect);
     }
@@ -240,24 +240,24 @@ public final class SelectionMenu<T> {
      * @param enabled if false, the menu ignores all bound inputs
      */
     public void bind(Bindings bindings,
-                     Button upButton,
-                     Button downButton,
-                     Button selectButton,
+                     BooleanSource upButton,
+                     BooleanSource downButton,
+                     BooleanSource selectButton,
                      BooleanSupplier enabled,
                      Consumer<Item<T>> onSelect) {
 
-        bindings.onPress(upButton, () -> {
+        bindings.onRise(upButton, () -> {
             if (!enabled.getAsBoolean()) return;
             up();
         });
 
-        bindings.onPress(downButton, () -> {
+        bindings.onRise(downButton, () -> {
             if (!enabled.getAsBoolean()) return;
             down();
         });
 
         if (selectButton != null && onSelect != null) {
-            bindings.onPress(selectButton, () -> {
+            bindings.onRise(selectButton, () -> {
                 if (!enabled.getAsBoolean()) return;
                 Item<T> item = selectedItemOrNull();
                 if (item != null) {

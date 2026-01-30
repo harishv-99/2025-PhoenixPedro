@@ -26,14 +26,10 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
  * <h2>Update order</h2>
  * <p>Each {@code initLoop()} / {@code loop()} call executes in this order:</p>
  * <ol>
- *   <li>{@code gamepads.update(clock)} – advances global button edge state (idempotent by cycle)</li>
  *   <li>{@code bindings.update(clock)} – fires binding actions (idempotent per Bindings instance)</li>
  *   <li>{@code onInitLoop(dtSec)} or {@code onLoop(dtSec)} – tester-specific logic</li>
  * </ol>
  *
- * <p>Because {@code Button.updateAllRegistered(clock)} is idempotent by cycle, it is safe for both a
- * suite and the active tester to call {@code gamepads.update(clock)} in the same cycle: only the first
- * call actually advances button state; subsequent calls are no-ops.</p>
  */
 public abstract class BaseTeleOpTester implements TeleOpTester {
 
@@ -57,7 +53,7 @@ public abstract class BaseTeleOpTester implements TeleOpTester {
         this.ctx = ctx;
         this.clock = ctx.clock;
 
-        // Each tester gets a Gamepads wrapper; button edge tracking is global and idempotent by cycle.
+        // Each tester gets its own Gamepads wrapper.
         this.gamepads = Gamepads.create(ctx.gamepad1, ctx.gamepad2);
 
         onInit();
@@ -67,7 +63,6 @@ public abstract class BaseTeleOpTester implements TeleOpTester {
     @Override
     public final void initLoop(double dtSec) {
         // Per-cycle systems first.
-        gamepads.update(clock);
         bindings.update(clock);
 
         onInitLoop(dtSec);
@@ -83,7 +78,6 @@ public abstract class BaseTeleOpTester implements TeleOpTester {
     @Override
     public final void loop(double dtSec) {
         // Per-cycle systems first.
-        gamepads.update(clock);
         bindings.update(clock);
 
         onLoop(dtSec);

@@ -292,7 +292,7 @@ public final class DriveGuidance {
          *
          * <pre>{@code
          * DriveSource drive = baseDrive.overlayWhen(
-         *     gamepads.p2().leftBumper()::isHeld,
+         *     gamepads.p2().leftBumper(),
          *     plan.overlay(),
          *     DriveOverlayMask.OMEGA_ONLY);
          * }</pre>

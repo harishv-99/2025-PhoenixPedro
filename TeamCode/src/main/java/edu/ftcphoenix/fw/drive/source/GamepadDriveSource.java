@@ -1,11 +1,11 @@
 package edu.ftcphoenix.fw.drive.source;
 
 import edu.ftcphoenix.fw.core.debug.DebugSink;
+import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.source.ScalarSource;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.drive.DriveSignal;
 import edu.ftcphoenix.fw.drive.DriveSource;
-import edu.ftcphoenix.fw.input.Button;
 import edu.ftcphoenix.fw.input.GamepadDevice;
 import edu.ftcphoenix.fw.input.Gamepads;
 
@@ -52,7 +52,7 @@ import edu.ftcphoenix.fw.input.Gamepads;
  * // Or: explicit config (for custom shaping) plus a slow-mode wrapper.
  * GamepadDriveSource.Config cfg = GamepadDriveSource.Config.defaults();
  * DriveSource driveCustom = GamepadDriveSource.teleOpMecanum(pads, cfg)
- *         .scaledWhen(() -> pads.p1().rightBumper().isHeld(), 0.35, 0.20);
+ *         .scaledWhen(pads.p1().rightBumper(), 0.35, 0.20);
  * }</pre>
  *
  * <h2>Note on shaping</h2>
@@ -178,7 +178,7 @@ public final class GamepadDriveSource implements DriveSource {
      *
      * <p>
      * Most teams should start with {@link Config#defaults()}. If you want slow mode,
-     * apply it externally using {@link DriveSource#scaledWhen(java.util.function.BooleanSupplier, double, double)}.
+     * apply it externally using {@link DriveSource#scaledWhen(edu.ftcphoenix.fw.core.source.BooleanSource, double, double)}.
      * </p>
      */
     public static DriveSource teleOpMecanum(Gamepads pads, Config cfg) {
@@ -208,9 +208,9 @@ public final class GamepadDriveSource implements DriveSource {
         if (pads == null) {
             throw new IllegalArgumentException("Gamepads is required");
         }
-        Button rb = pads.p1().rightBumper();
+        BooleanSource rb = pads.p1().rightBumper();
         return teleOpMecanum(pads)
-                .scaledWhen(rb::isHeld, 0.35, 0.20);
+                .scaledWhen(rb, 0.35, 0.20);
     }
 
     /**

@@ -50,7 +50,7 @@ The examples share this “spine”:
 clock.update(getRuntime());
 double dtSec = clock.dtSec();
 
-gamepads.update(clock);
+// Gamepad axes/buttons are Sources; they are sampled when you call get(...).
 bindings.update(clock);        // if used
 macroRunner.update(clock);      // if used
 
@@ -78,7 +78,7 @@ Notes:
 ### What it teaches
 
 * How to create `Plant`s for a shooter motor pair, transfer CR servo pair, and a pusher servo.
-* How to use `Bindings.onPress(...)` to change a *mode*, then apply targets from that mode every loop.
+* How to use `Bindings.onRise(...)` to change a *mode*, then apply targets from that mode every loop.
 
 ### Structure
 

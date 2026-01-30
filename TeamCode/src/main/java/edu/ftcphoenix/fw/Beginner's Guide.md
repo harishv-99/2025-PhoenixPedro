@@ -125,7 +125,7 @@ public class PhoenixTeleOp extends OpMode {
         clock.update(getRuntime());
 
         // 2) Inputs + bindings (edge detection lives here)
-        gamepads.update(clock);
+        // Gamepad axes/buttons are Sources; they are sampled when you call get(...).
         bindings.update(clock);
 
         // 3) Macros (non-blocking tasks)
@@ -351,7 +351,7 @@ private Task buildShootOneDiscMacro() {
 }
 
 private void initBindings() {
-    bindings.onPress(gamepads.p1().y(), () -> {
+    bindings.onRise(gamepads.p1().y(), () -> {
         // Build a fresh task each time (tasks are single-use).
         macroRunner.enqueue(buildShootOneDiscMacro());
     });

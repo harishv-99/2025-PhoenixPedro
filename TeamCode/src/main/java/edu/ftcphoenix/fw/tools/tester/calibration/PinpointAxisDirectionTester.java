@@ -102,10 +102,10 @@ public final class PinpointAxisDirectionTester extends BaseTeleOpTester {
         pinpoint = new PinpointPoseEstimator(ctx.hw, cfg.pinpoint);
 
         // Controls.
-        bindings.onPress(gamepads.p1().x(), this::resetAndClear);
-        bindings.onPress(gamepads.p1().a(), () -> toggleSample(Mode.SAMPLE_FORWARD));
-        bindings.onPress(gamepads.p1().y(), () -> toggleSample(Mode.SAMPLE_LEFT));
-        bindings.onPress(gamepads.p1().b(), () -> toggleSample(Mode.SAMPLE_ROTATE));
+        bindings.onRise(gamepads.p1().x(), this::resetAndClear);
+        bindings.onRise(gamepads.p1().a(), () -> toggleSample(Mode.SAMPLE_FORWARD));
+        bindings.onRise(gamepads.p1().y(), () -> toggleSample(Mode.SAMPLE_LEFT));
+        bindings.onRise(gamepads.p1().b(), () -> toggleSample(Mode.SAMPLE_ROTATE));
 
         resetAndClear();
     }

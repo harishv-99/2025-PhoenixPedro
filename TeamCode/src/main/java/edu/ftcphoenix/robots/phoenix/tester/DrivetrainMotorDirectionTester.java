@@ -83,19 +83,19 @@ public final class DrivetrainMotorDirectionTester extends BaseTeleOpTester {
                 .build();
 
         // Keep the same button mapping/behavior: hold button -> run that motor, release -> stop.
-        bindings.whileHeld(gamepads.p1().x(),
+        bindings.whileTrue(gamepads.p1().x(),
                 () -> plantFL.setTarget(TEST_POWER),
                 () -> plantFL.setTarget(0.0));
 
-        bindings.whileHeld(gamepads.p1().y(),
+        bindings.whileTrue(gamepads.p1().y(),
                 () -> plantFR.setTarget(TEST_POWER),
                 () -> plantFR.setTarget(0.0));
 
-        bindings.whileHeld(gamepads.p1().a(),
+        bindings.whileTrue(gamepads.p1().a(),
                 () -> plantBL.setTarget(TEST_POWER),
                 () -> plantBL.setTarget(0.0));
 
-        bindings.whileHeld(gamepads.p1().b(),
+        bindings.whileTrue(gamepads.p1().b(),
                 () -> plantBR.setTarget(TEST_POWER),
                 () -> plantBR.setTarget(0.0));
 
@@ -150,10 +150,10 @@ public final class DrivetrainMotorDirectionTester extends BaseTeleOpTester {
     }
 
     private boolean anyHeld() {
-        return gamepads.p1().x().isHeld()
-                || gamepads.p1().y().isHeld()
-                || gamepads.p1().a().isHeld()
-                || gamepads.p1().b().isHeld();
+        return gamepads.p1().x().getAsBoolean(clock)
+                || gamepads.p1().y().getAsBoolean(clock)
+                || gamepads.p1().a().getAsBoolean(clock)
+                || gamepads.p1().b().getAsBoolean(clock);
     }
 
     private void stopAll() {

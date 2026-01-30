@@ -142,7 +142,7 @@ public final class DcMotorVelocityTester extends BaseTeleOpTester {
         );
 
         // A: toggle enabled with side-effects.
-        bindings.onPress(gamepads.p1().a(), () -> {
+        bindings.onRise(gamepads.p1().a(), () -> {
             if (!ready) return;
             targetVelTps.toggleEnabled();
 
@@ -152,35 +152,35 @@ public final class DcMotorVelocityTester extends BaseTeleOpTester {
         });
 
         // X: toggle motor direction.
-        bindings.onPress(gamepads.p1().x(), () -> {
+        bindings.onRise(gamepads.p1().x(), () -> {
             if (!ready) return;
             toggleDirection();
         });
 
         // START: fine/coarse
-        bindings.onPress(gamepads.p1().start(), () -> {
+        bindings.onRise(gamepads.p1().start(), () -> {
             if (!ready) return;
             targetVelTps.toggleFine();
         });
 
         // Dpad up/down: velocity steps (only when ready)
-        bindings.onPress(gamepads.p1().dpadUp(), () -> {
+        bindings.onRise(gamepads.p1().dpadUp(), () -> {
             if (!ready) return;
             targetVelTps.inc();
         });
-        bindings.onPress(gamepads.p1().dpadDown(), () -> {
+        bindings.onRise(gamepads.p1().dpadDown(), () -> {
             if (!ready) return;
             targetVelTps.dec();
         });
 
         // Y: zero target velocity (keep enabled state as-is)
-        bindings.onPress(gamepads.p1().y(), () -> {
+        bindings.onRise(gamepads.p1().y(), () -> {
             if (!ready) return;
             targetVelTps.setTarget(0);
         });
 
         // B: stop (disable + target=0)
-        bindings.onPress(gamepads.p1().b(), () -> {
+        bindings.onRise(gamepads.p1().b(), () -> {
             if (!ready) return;
 
             targetVelTps.setTarget(0);

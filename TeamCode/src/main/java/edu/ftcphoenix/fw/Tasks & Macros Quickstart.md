@@ -57,8 +57,8 @@ public class MyTeleOp extends OpMode {
         // 0) Advance the loop clock once per cycle.
         clock.update(getRuntime());
 
-        // 1) Update inputs / bindings (button edge detection happens here).
-        gamepads.update(clock);
+        // 1) Update bindings.
+        // Gamepad axes/buttons are Sources; they are sampled when you call get(...).
         bindings.update(clock);
 
         // 2) Advance tasks.
@@ -334,7 +334,7 @@ private Task createShootOneDiscMacro() {
 Bind a button to enqueue this macro:
 
 ```java
-bindings.onPress(shootButton, () -> {
+bindings.onRise(shootButton, () -> {
     runner.enqueue(createShootOneDiscMacro());
 });
 ```

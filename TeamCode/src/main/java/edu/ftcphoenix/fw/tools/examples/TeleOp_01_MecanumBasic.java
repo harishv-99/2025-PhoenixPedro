@@ -85,7 +85,7 @@ public final class TeleOp_01_MecanumBasic extends OpMode {
         clock.update(getRuntime());
 
         // --- 2) Inputs ---
-        gamepads.update(clock);
+        // Gamepad axes/buttons are Sources; they are sampled when you call get(...).
 
         // --- 3) Logic: sticks -> drive signal ---
         DriveSignal cmd = stickDrive.get(clock).clamped();

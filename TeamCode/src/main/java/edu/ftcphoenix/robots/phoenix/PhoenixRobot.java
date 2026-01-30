@@ -9,12 +9,12 @@ import org.firstinspires.ftc.vision.apriltag.AprilTagGameDatabase;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
-import java.util.function.BooleanSupplier;
 
 import edu.ftcphoenix.fw.core.control.HysteresisBoolean;
 import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.geometry.Pose2d;
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
+import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.drive.DriveOverlayMask;
 import edu.ftcphoenix.fw.drive.DriveOverlayStack;
@@ -292,8 +292,8 @@ public final class PhoenixRobot {
         // Enable condition for the guidance overlay.
         //
         // Hold-to-enable is the simplest for drivers. If you prefer a toggle (press once to
-        // enable, press again to disable), use: gamepads.p2().leftBumper()::isToggled
-        BooleanSupplier autoAimEnabled = gamepads.p2().leftBumper()::isHeld;
+        // enable, press again to disable), use: gamepads.p2().leftBumper().toggled()
+        BooleanSource autoAimEnabled = gamepads.p2().leftBumper();
 
         // Stack multiple overlays without nested overlayWhen(...) calls.
         //
@@ -301,7 +301,7 @@ public final class PhoenixRobot {
         driveWithAim = DriveOverlayStack.on(stickDrive)
                 .add(
                         "shootBrace",
-                        shootBraceLatch::get,
+                        BooleanSource.of(shootBraceLatch::get),
                         DriveGuidance.poseLock(
                                 pinpoint,
                                 DriveGuidancePlan.Tuning.defaults()
@@ -312,17 +312,19 @@ public final class PhoenixRobot {
                 )
                 .add(
                         "autoAimBlue",
-                        () -> autoAimEnabled.getAsBoolean()
-                                && scoringTarget.last().hasTarget
-                                && scoringTarget.last().id == RobotConfig.AutoAim.BLUE_TARGET_TAG_ID,
+                        autoAimEnabled.and(BooleanSource.of(() -> {
+                            AprilTagObservation obs = scoringTarget.last();
+                            return obs.hasTarget && obs.id == RobotConfig.AutoAim.BLUE_TARGET_TAG_ID;
+                        })),
                         aimPlanBlue.overlay(),
                         DriveOverlayMask.OMEGA_ONLY
                 )
                 .add(
                         "autoAimRed",
-                        () -> autoAimEnabled.getAsBoolean()
-                                && scoringTarget.last().hasTarget
-                                && scoringTarget.last().id == RobotConfig.AutoAim.RED_TARGET_TAG_ID,
+                        autoAimEnabled.and(BooleanSource.of(() -> {
+                            AprilTagObservation obs = scoringTarget.last();
+                            return obs.hasTarget && obs.id == RobotConfig.AutoAim.RED_TARGET_TAG_ID;
+                        })),
                         aimPlanRed.overlay(),
                         DriveOverlayMask.OMEGA_ONLY
                 )
@@ -342,24 +344,24 @@ public final class PhoenixRobot {
         // repeated "() -> runner.enqueue(... )" boilerplate.
         TaskBindings tb = TaskBindings.of(bindings, taskRunnerTeleOp);
 
-        tb.onPress(gamepads.p2().y(), shooter::instantSetPusherFront);
-        tb.onPress(gamepads.p2().a(), shooter::instantSetPusherBack);
+        tb.onRise(gamepads.p2().y(), shooter::instantSetPusherFront);
+        tb.onRise(gamepads.p2().a(), shooter::instantSetPusherBack);
 
         // Hold to run transfer; release to stop.
-        tb.onPressAndRelease(
+        tb.onRiseAndFall(
                 gamepads.p2().b(),
                 () -> shooter.instantStartTransfer(Shooter.TransferDirection.FORWARD),
                 shooter::instantStopTransfer
         );
 
-        tb.onPressAndRelease(
+        tb.onRiseAndFall(
                 gamepads.p2().x(),
                 () -> shooter.instantStartTransfer(Shooter.TransferDirection.BACKWARD),
                 shooter::instantStopTransfer
         );
 
         // While held: continuously update shooter velocity based on the latest tag range.
-        tb.whileHeld(gamepads.p2().leftBumper(), () -> {
+        tb.whileTrue(gamepads.p2().leftBumper(), () -> {
             AprilTagObservation obs = scoringTarget.last();
             return obs.hasTarget
                     ? shooter.instantSetVelocityByDist(obs.cameraRangeInches())
@@ -368,8 +370,8 @@ public final class PhoenixRobot {
 
         tb.onToggle(gamepads.p2().rightBumper(), shooter::instantStartShooter, shooter::instantStopShooter);
 
-        tb.onPress(gamepads.p2().dpadUp(), shooter::instantIncreaseVelocity);
-        tb.onPress(gamepads.p2().dpadDown(), shooter::instantDecreaseVelocity);
+        tb.onRise(gamepads.p2().dpadUp(), shooter::instantIncreaseVelocity);
+        tb.onRise(gamepads.p2().dpadDown(), shooter::instantDecreaseVelocity);
     }
 
     /**
@@ -399,7 +401,7 @@ public final class PhoenixRobot {
      */
     public void updateTeleOp() {
         // --- 2) Inputs + bindings ---
-        gamepads.update(clock);
+        // Gamepad axes/buttons are Sources; they are sampled when you call get(...).
 
         // Update tracked tag once per loop.
         scoringTarget.update(clock);
@@ -497,7 +499,7 @@ public final class PhoenixRobot {
     private void updateShootBraceEnabled() {
         // Only brace while the aiming driver (P2) is actively holding the aim button.
         // This avoids surprise "fighting the driver" behavior during normal driving.
-        if (!gamepads.p2().leftBumper().isHeld()) {
+        if (!gamepads.p2().leftBumper().getAsBoolean(clock)) {
             shootBraceLatch.reset(false);
             return;
         }

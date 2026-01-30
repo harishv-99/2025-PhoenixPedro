@@ -1,9 +1,9 @@
 package edu.ftcphoenix.fw.drive;
 
 import java.util.Objects;
-import java.util.function.BooleanSupplier;
 
 import edu.ftcphoenix.fw.core.debug.DebugSink;
+import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 
 /**
@@ -34,10 +34,10 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * many small concrete classes.</p>
  *
  * <ul>
- *   <li>{@link #scaledWhen(BooleanSupplier, double, double)} – conditional slow mode with
+ *   <li>{@link #scaledWhen(BooleanSource, double, double)} – conditional slow mode with
  *       separate translation vs rotation scaling.</li>
  *   <li>{@link #scaled(double, double)} – unconditional scaling (useful for always-on “microdrive”).</li>
- *   <li>{@link #overlayWhen(BooleanSupplier, DriveOverlay, DriveOverlayMask)} – conditionally
+ *   <li>{@link #overlayWhen(BooleanSource, DriveOverlay, DriveOverlayMask)} – conditionally
  *       apply a {@link DriveOverlay} to override one or more components of this source.</li>
  *   <li>{@link #overlayStack()} – build a readable stack of multiple overlays.</li>
  *   <li>{@link #blendedWith(DriveSource, double)} – blend this source with another using
@@ -77,6 +77,8 @@ public interface DriveSource {
             return;
         }
         String p = (prefix == null || prefix.isEmpty()) ? "drive" : prefix;
+        // Default: record the implementing class name.
+        // Concrete sources are encouraged to override this to include additional details.
         dbg.addData(p + ".class", getClass().getSimpleName());
     }
 
@@ -102,7 +104,7 @@ public interface DriveSource {
      * <pre>{@code
      * DriveSource manual = GamepadDriveSource.teleOpMecanum(gamepads);
      * DriveSource slowable = manual.scaledWhen(
-     *         () -> gamepads.p1().rightBumper().isPressed(),
+     *         gamepads.p1().rightBumper(),
      *         0.35,  // translation scale
      *         0.20); // omega scale
      * }</pre>
@@ -112,7 +114,7 @@ public interface DriveSource {
      * @param omegaScale       scale factor for omega (often in (0, 1])
      * @return wrapped {@link DriveSource} that conditionally scales output
      */
-    default DriveSource scaledWhen(BooleanSupplier when, double translationScale, double omegaScale) {
+    default DriveSource scaledWhen(BooleanSource when, double translationScale, double omegaScale) {
         Objects.requireNonNull(when, "when must not be null");
 
         // If both scales are 1.0, no need to wrap.
@@ -131,7 +133,7 @@ public interface DriveSource {
             @Override
             public DriveSignal get(LoopClock clock) {
                 lastBase = self.get(clock);
-                lastEnabled = when.getAsBoolean();
+                lastEnabled = when.getAsBoolean(clock);
                 lastOut = lastEnabled ? lastBase.scaled(translationScale, omegaScale) : lastBase;
                 return lastOut;
             }
@@ -148,6 +150,7 @@ public interface DriveSource {
                         .addData(p + ".scaledWhen.omegaScale", omegaScale)
                         .addData(p + ".scaledWhen.lastBase", lastBase)
                         .addData(p + ".scaledWhen.lastOut", lastOut);
+                when.debugDump(dbg, p + ".scaledWhen.when");
                 self.debugDump(dbg, p + ".source");
             }
         };
@@ -156,7 +159,7 @@ public interface DriveSource {
     /**
      * Return a new {@link DriveSource} that always scales translation and rotation.
      *
-     * <p>This is the unconditional sibling of {@link #scaledWhen(BooleanSupplier, double, double)}.
+     * <p>This is the unconditional sibling of {@link #scaledWhen(BooleanSource, double, double)}.
      * It's useful for building “always slow” sources such as:</p>
      *
      * <ul>
@@ -217,12 +220,12 @@ public interface DriveSource {
      * DriveSource manual = GamepadDriveSource.teleOpMecanum(pads);
      * DriveOverlay aim = DriveGuidance.plan()...build().overlay();
      * DriveSource assisted = manual.overlayWhen(
-     *         () -> pads.p1().x().isPressed(),
+     *         pads.p1().x(),
      *         aim,
      *         DriveOverlayMask.OMEGA_ONLY);
      * }</pre>
      */
-    default DriveSource overlayWhen(BooleanSupplier when, DriveOverlay overlay, DriveOverlayMask requestedMask) {
+    default DriveSource overlayWhen(BooleanSource when, DriveOverlay overlay, DriveOverlayMask requestedMask) {
         Objects.requireNonNull(when, "when must not be null");
         Objects.requireNonNull(overlay, "overlay must not be null");
         Objects.requireNonNull(requestedMask, "requestedMask must not be null");
@@ -236,7 +239,7 @@ public interface DriveSource {
             public DriveSignal get(LoopClock clock) {
                 DriveSignal base = self.get(clock);
 
-                boolean enabled = when.getAsBoolean();
+                boolean enabled = when.getAsBoolean(clock);
 
                 if (!enabled) {
                     if (lastEnabled) {
@@ -275,9 +278,10 @@ public interface DriveSource {
                     return;
                 }
                 String p = (prefix == null || prefix.isEmpty()) ? "drive" : prefix;
-                dbg.addData(p + ".class", getClass().getSimpleName());
+                dbg.addData(p + ".class", "OverlayWhenDriveSource");
                 dbg.addData(p + ".overlay.enabled", lastEnabled);
                 dbg.addData(p + ".overlay.requestedMask", requestedMask.toString());
+                when.debugDump(dbg, p + ".overlay.when");
                 overlay.debugDump(dbg, p + ".overlay");
                 self.debugDump(dbg, p + ".base");
             }
@@ -287,14 +291,14 @@ public interface DriveSource {
     /**
      * Convenience overload: requested mask defaults to {@link DriveOverlayMask#ALL}.
      */
-    default DriveSource overlayWhen(BooleanSupplier when, DriveOverlay overlay) {
+    default DriveSource overlayWhen(BooleanSource when, DriveOverlay overlay) {
         return overlayWhen(when, overlay, DriveOverlayMask.ALL);
     }
 
     /**
      * Convenience overload: adapt a {@link DriveSource} into an overlay with the given mask.
      */
-    default DriveSource overlayWhen(BooleanSupplier when, DriveSource override, DriveOverlayMask requestedMask) {
+    default DriveSource overlayWhen(BooleanSource when, DriveSource override, DriveOverlayMask requestedMask) {
         return overlayWhen(when, DriveOverlays.fromDriveSource(override, requestedMask), requestedMask);
     }
 
@@ -302,7 +306,7 @@ public interface DriveSource {
      * Start building an overlay stack on top of this drive source.
      *
      * <p>This is the recommended way to apply <em>multiple</em> overlays without nesting
-     * {@link #overlayWhen(BooleanSupplier, DriveOverlay, DriveOverlayMask)} calls.</p>
+     * {@link #overlayWhen(BooleanSource, DriveOverlay, DriveOverlayMask)} calls.</p>
      */
     default DriveOverlayStack.Builder overlayStack() {
         return DriveOverlayStack.on(this);

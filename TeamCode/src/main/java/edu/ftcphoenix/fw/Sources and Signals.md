@@ -17,7 +17,7 @@ This document introduces the framework's generic, composable building blocks for
 Historically we had:
 
 * "continuous" inputs as `Axis`
-* "discrete" inputs as `Button`
+* "discrete" inputs as `BooleanSource`
 * special-purpose latches for stability / hysteresis
 
 That worked, but it created two recurring problems:

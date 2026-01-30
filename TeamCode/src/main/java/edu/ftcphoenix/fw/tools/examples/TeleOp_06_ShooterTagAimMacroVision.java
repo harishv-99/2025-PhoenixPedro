@@ -260,7 +260,7 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
 
         // Apply the plan as an overlay: the driver keeps translation, and the overlay owns omega.
         driveWithAim = baseDrive.overlayWhen(
-                () -> gamepads.p1().leftBumper().isHeld(),
+                gamepads.p1().leftBumper(),
                 aimPlan.overlay(),
                 DriveOverlayMask.OMEGA_ONLY
         );
@@ -292,13 +292,13 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
         // 5) Bindings: macro controls.
 
         // Y → start "shoot one ball" macro using current tag distance.
-        bindings.onPress(
+        bindings.onRise(
                 gamepads.p1().y(),
                 this::startShootOneBallMacro
         );
 
         // B → cancel macro and stop mechanism.
-        bindings.onPress(
+        bindings.onRise(
                 gamepads.p1().b(),
                 this::cancelShootMacros
         );
@@ -332,10 +332,10 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
         double dtSec = clock.dtSec();
 
         // ------------------------------------------------------------------
-        // 2) Sense (inputs & sensors)
+        // 2) Sense (sensors)
         // ------------------------------------------------------------------
-        gamepads.update(clock);        // controller state
-        scoringTarget.update(clock);   // AprilTags via TagTarget  (UPDATED)
+        // Gamepad axes/buttons are Sources; they are sampled when you call get(...).
+        scoringTarget.update(clock);   // AprilTags via TagTarget
 
         // ------------------------------------------------------------------
         // 3) Decide (high-level logic)
@@ -376,7 +376,7 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
 
         // --- Required telemetry (driver-facing) ---
         telemetry.addLine("FW Example 06: Shooter Guidance Macro Vision");
-        telemetry.addData("aim.active", gamepads.p1().leftBumper().isHeld());
+        telemetry.addData("aim.active", gamepads.p1().leftBumper().getAsBoolean(clock));
         telemetry.addData("tag.hasTarget", lastHasTarget);
         telemetry.addData("tag.id", lastTagId);
         telemetry.addData("tag.rangeIn", lastTagRangeInches);

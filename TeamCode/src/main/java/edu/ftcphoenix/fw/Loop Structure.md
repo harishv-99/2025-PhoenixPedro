@@ -26,7 +26,7 @@ This keeps behavior predictable and makes it much easier to reason about timing.
 
 Phoenix’s preferred ordering is:
 
-> **Clock → Inputs → Bindings → Tasks → Drive → Plants → Telemetry**
+> **Clock → Sensors → Bindings → Tasks → Drive → Plants → Telemetry**
 
 ### 2.1 Why this order?
 
@@ -35,10 +35,12 @@ Phoenix’s preferred ordering is:
 * Many subsystems depend on `dtSec()` and `cycle()`.
 * Updating the clock once defines “this loop cycle” for every component.
 
-**Inputs before Bindings**
+**Sensors before Bindings**
 
-* Button edges (`onPress()`, `onRelease()`) are computed during input update.
-* Bindings should read those edges after they’ve been refreshed.
+* If bindings depend on sensor signals (distance thresholds, vision targets, etc.), update those sensors first.
+* Gamepad axes/buttons are exposed as {@code ScalarSource}/{@code BooleanSource} and are sampled when you call {@code get(...)}.
+* Edge/toggle trackers (e.g., {@code risingEdge()}, {@code toggled()}) must be sampled each loop to avoid missing transitions.
+  {@code Bindings.update(clock)} does that sampling for the bindings you register.
 
 **Bindings before Tasks**
 
@@ -76,10 +78,11 @@ public void loop() {
     // 1) Clock
     clock.update(getRuntime());
 
-    // 2) Inputs
-    gamepads.update(clock);
+    // 2) Sensors (optional)
+    // scoringTarget.update(clock);
 
     // 3) Bindings (may enqueue macros)
+    // Gamepad axes/buttons are Sources; they are sampled when you call get(...).
     bindings.update(clock);
 
     // 4) Tasks / macros
@@ -118,13 +121,19 @@ That means:
 
 * If the component was already updated during the current cycle, additional calls do nothing.
 
-### 4.1 Buttons are globally polled once per cycle
+### 4.1 Sources, edges, and memoization are cycle-idempotent
 
-Buttons use a global registry and an update gate:
+Phoenix uses {@link edu.ftcphoenix.fw.core.time.LoopClock#cycle()} to make many source wrappers safe to read multiple times in the same loop.
 
-* `Button.updateAllRegistered(clock)` updates edge state once per cycle.
+Examples:
 
-`Gamepads.update(clock)` calls this for you.
+* `ScalarSource.memoized()` / `BooleanSource.memoized()`
+* `BooleanSource.risingEdge()` / `fallingEdge()`
+* `BooleanSource.toggled()`
+
+These wrappers only advance once per cycle <em>when sampled</em>. If you never sample an edge/toggle source during a cycle, it cannot observe that transition.
+
+For buttons, the most common way to ensure sampling is to register a binding and call `Bindings.update(clock)` every loop.
 
 ### 4.2 Bindings are idempotent
 
@@ -225,9 +234,13 @@ Good:
 
 * use `PlantTasks.moveTo(...)` or `Tasks.waitUntil(...)` and run it in a `TaskRunner`.
 
-### Mistake: consuming button edges in two places
+### Mistake: missing edges by not sampling
 
-If you call `Button.updateAllRegistered(clock)` manually *and* also call `gamepads.update(clock)`, that’s okay because it’s idempotent — but you should still treat `gamepads.update(clock)` as the canonical input update.
+Edge/toggle trackers like `risingEdge()` and `toggled()` only advance when they are sampled.
+
+If you create a `BooleanSource` edge/toggle and then <em>don’t read it every loop</em>, you can miss transitions that happened in between.
+
+Fix: make sure edge/toggle sources are sampled once per loop (e.g., by wiring them into `Bindings.update(clock)`, a drive pipeline, or telemetry that runs every loop).
 
 ### Mistake: double-running task updates
 
@@ -245,6 +258,6 @@ Phoenix’s loop structure is intentionally boring:
 
 Stick to:
 
-> Clock → Inputs → Bindings → Tasks → Drive → Plants → Telemetry
+> Clock → Sensors → Bindings → Tasks → Drive → Plants → Telemetry
 
 and the rest of the framework will behave predictably.

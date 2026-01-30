@@ -5,33 +5,24 @@ import com.qualcomm.robotcore.hardware.Gamepad;
 import java.util.Objects;
 
 import edu.ftcphoenix.fw.core.debug.DebugSink;
-import edu.ftcphoenix.fw.core.time.LoopClock;
 
 /**
  * Convenience wrapper around two FTC gamepads (player 1 and player 2).
  *
- * <p>This class exposes:</p>
+ * <p>This class is intentionally thin. It exists so callers can pass a single object through
+ * constructors and keep a consistent "p1 / p2" naming convention.</p>
+ *
+ * <h2>Inputs are Sources</h2>
+ * <p>{@link GamepadDevice} exposes:</p>
  * <ul>
- *   <li>Axes (sticks/triggers) via {@link GamepadDevice}.</li>
- *   <li>Buttons via {@link Button}, including edge detection
- *       ({@link Button#onPress()} / {@link Button#onRelease()}).</li>
+ *   <li>axes as {@link edu.ftcphoenix.fw.core.source.ScalarSource}, and</li>
+ *   <li>buttons as {@link edu.ftcphoenix.fw.core.source.BooleanSource}.</li>
  * </ul>
  *
- * <h2>Per-cycle update rule</h2>
- *
- * <p>Button edge detection only works correctly when button state advances exactly once
- * per OpMode loop cycle. Phoenix enforces this by requiring callers to update inputs
- * using a shared {@link LoopClock}:</p>
- *
- * <pre>{@code
- * clock.update(getRuntime());
- * gamepads.update(clock);   // advances all registered Buttons (idempotent by clock.cycle())
- * bindings.update(clock);   // runs actions (also idempotent by clock.cycle())
- * }</pre>
- *
- * <p>{@link #update(LoopClock)} delegates to {@link Button#updateAllRegistered(LoopClock)},
- * which is idempotent by {@link LoopClock#cycle()}. If nested code accidentally calls update
- * twice in the same cycle, the second call is a no-op (edges are not consumed).</p>
+ * <p>There is <b>no global update step</b> for button edges. If you need edges, use
+ * {@link edu.ftcphoenix.fw.core.source.BooleanSource#risingEdge()} /
+ * {@link edu.ftcphoenix.fw.core.source.BooleanSource#fallingEdge()} (or use
+ * {@link edu.ftcphoenix.fw.input.binding.Bindings} which does this for you).</p>
  */
 public final class Gamepads {
 
@@ -82,37 +73,7 @@ public final class Gamepads {
     }
 
     /**
-     * Update all registered {@link Button}s for this loop cycle.
-     *
-     * <p>Call once per OpMode loop cycle <b>before</b> reading edges via
-     * {@link Button#onPress()} / {@link Button#onRelease()}.</p>
-     *
-     * <p>This method is safe to call multiple times within the same cycle because
-     * {@link Button#updateAllRegistered(LoopClock)} is idempotent by
-     * {@link LoopClock#cycle()}.</p>
-     *
-     * @param clock loop clock (non-null; advanced once per OpMode loop cycle)
-     */
-    public void update(LoopClock clock) {
-        Objects.requireNonNull(clock, "clock is required");
-        Button.updateAllRegistered(clock);
-    }
-
-    /**
-     * Clear the global registry of all registered buttons.
-     *
-     * <p>Most robot code does not need this. It is primarily useful for framework
-     * lifecycle management to ensure no stale button objects persist across runs.</p>
-     */
-    public void clearButtons() {
-        Button.clearRegistered();
-    }
-
-
-    /**
-     * Debug helper: emit player 1 & player 2 input state.
-     *
-     * <p>This is useful when verifying axis sign conventions and button edge detection.</p>
+     * Debug helper: emit player 1 & player 2 axis calibration state.
      */
     public void debugDump(DebugSink dbg, String prefix) {
         if (dbg == null) {
@@ -123,5 +84,4 @@ public final class Gamepads {
         p1.debugDump(dbg, p + ".p1");
         p2.debugDump(dbg, p + ".p2");
     }
-
 }

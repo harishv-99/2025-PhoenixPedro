@@ -393,15 +393,14 @@ Phoenix expects:
 
 Why the cycle id matters:
 
-* Button edge detection, bindings, task runners, and similar systems need a clear definition of “one loop cycle.”
+* Edge/toggle sources, bindings, task runners, and similar systems need a clear definition of “one loop cycle.”
 * Phoenix uses `LoopClock.cycle()` as that identity.
 
 Several core systems are **idempotent by cycle**:
 
-* `Button.updateAllRegistered(clock)`
-* `Gamepads.update(clock)`
 * `Bindings.update(clock)`
 * `TaskRunner.update(clock)`
+* Stateful source wrappers like `memoized()`, `risingEdge()`, and `toggled()` (idempotent when sampled with the same clock/cycle)
 
 Idempotency prevents subtle bugs when code is layered (menus, testers, helpers) and multiple layers try to “helpfully” update the same system.
 
@@ -473,14 +472,14 @@ Convert “driver intuition” at the boundaries (for example, in `GamepadDriveS
 
 A typical OpMode loop follows this shape:
 
-> Clock → Inputs → Bindings → Tasks → Drive → Plants → Telemetry
+> Clock → Sensors → Bindings → Tasks → Drive → Plants → Telemetry
 
 In code (conceptually):
 
 ```java
 clock.update(getRuntime());
 
-gamepads.update(clock);
+// Gamepad axes/buttons are Sources; they are sampled when you call get(...).
 bindings.update(clock);
 
 macroRunner.update(clock);

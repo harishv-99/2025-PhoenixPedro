@@ -3,11 +3,11 @@ package edu.ftcphoenix.fw.task;
 import java.util.Objects;
 import java.util.function.Supplier;
 
-import edu.ftcphoenix.fw.input.Button;
+import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.input.binding.Bindings;
 
 /**
- * Convenience wrapper that binds {@link Button} events to {@link TaskRunner} enqueues.
+ * Convenience wrapper that binds {@link BooleanSource} events to {@link TaskRunner} enqueues.
  *
  * <p>This is a thin adapter around {@link Bindings} + {@link TaskRunner}. It exists
  * purely to make robot code more readable when most bindings just "enqueue a task".</p>
@@ -19,9 +19,9 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
  * TaskRunner runner = new TaskRunner();
  * TaskBindings tb = TaskBindings.of(bindings, runner);
  *
- * tb.onPress(gamepads.p2().y(), shooter::instantStartShooter);
+ * tb.onRise(gamepads.p2().y(), shooter::instantStartShooter);
  * tb.onToggle(gamepads.p2().rightBumper(), shooter::instantStartShooter, shooter::instantStopShooter);
- * tb.onPressAndRelease(gamepads.p2().b(),
+ * tb.onRiseAndFall(gamepads.p2().b(),
  *         () -> shooter.instantStartTransfer(Shooter.TransferDirection.FORWARD),
  *         shooter::instantStopTransfer);
  * }</pre>
@@ -47,56 +47,55 @@ public final class TaskBindings {
     }
 
     /**
-     * Enqueue a task on the rising edge of the button.
+     * Enqueue a task when the signal rises (false → true).
      */
-    public void onPress(Button button, Supplier<Task> taskFactory) {
-        Objects.requireNonNull(button, "button is required");
+    public void onRise(BooleanSource signal, Supplier<Task> taskFactory) {
+        Objects.requireNonNull(signal, "signal is required");
         Objects.requireNonNull(taskFactory, "taskFactory is required");
-        bindings.onPress(button, () -> runner.enqueue(taskFactory.get()));
+        bindings.onRise(signal, () -> runner.enqueue(taskFactory.get()));
     }
 
     /**
-     * Enqueue a task on the falling edge of the button.
+     * Enqueue a task when the signal falls (true → false).
      */
-    public void onRelease(Button button, Supplier<Task> taskFactory) {
-        Objects.requireNonNull(button, "button is required");
+    public void onFall(BooleanSource signal, Supplier<Task> taskFactory) {
+        Objects.requireNonNull(signal, "signal is required");
         Objects.requireNonNull(taskFactory, "taskFactory is required");
-        bindings.onRelease(button, () -> runner.enqueue(taskFactory.get()));
+        bindings.onFall(signal, () -> runner.enqueue(taskFactory.get()));
     }
 
     /**
-     * Common pattern: run one task once when the button is pressed, and a second
-     * task once when it is released.
+     * Common pattern: enqueue one task on rise and another on fall.
      */
-    public void onPressAndRelease(Button button, Supplier<Task> onPress, Supplier<Task> onRelease) {
-        Objects.requireNonNull(button, "button is required");
-        Objects.requireNonNull(onPress, "onPress is required");
-        Objects.requireNonNull(onRelease, "onRelease is required");
-        bindings.onPressAndRelease(
-                button,
-                () -> runner.enqueue(onPress.get()),
-                () -> runner.enqueue(onRelease.get())
+    public void onRiseAndFall(BooleanSource signal, Supplier<Task> onRise, Supplier<Task> onFall) {
+        Objects.requireNonNull(signal, "signal is required");
+        Objects.requireNonNull(onRise, "onRise is required");
+        Objects.requireNonNull(onFall, "onFall is required");
+        bindings.onRiseAndFall(
+                signal,
+                () -> runner.enqueue(onRise.get()),
+                () -> runner.enqueue(onFall.get())
         );
     }
 
     /**
-     * Enqueue a task every loop while the button is held.
+     * Enqueue a task every loop while the signal is true.
      *
      * <p>This is best used for <b>instant</b> tasks (set a target, update a mode, etc.).
      * If the returned task takes time, repeatedly enqueuing a new instance each loop will
      * create a backlog in the runner.</p>
      */
-    public void whileHeld(Button button, Supplier<Task> taskFactory) {
-        Objects.requireNonNull(button, "button is required");
+    public void whileTrue(BooleanSource signal, Supplier<Task> taskFactory) {
+        Objects.requireNonNull(signal, "signal is required");
         Objects.requireNonNull(taskFactory, "taskFactory is required");
-        bindings.whileHeld(button, () -> runner.enqueue(taskFactory.get()));
+        bindings.whileTrue(signal, () -> runner.enqueue(taskFactory.get()));
     }
 
     /**
      * Toggle: when the button is pressed, enqueue {@code onEnable} if the toggle is now on,
      * otherwise enqueue {@code onDisable}.
      */
-    public void onToggle(Button button, Supplier<Task> onEnable, Supplier<Task> onDisable) {
+    public void onToggle(BooleanSource button, Supplier<Task> onEnable, Supplier<Task> onDisable) {
         Objects.requireNonNull(button, "button is required");
         Objects.requireNonNull(onEnable, "onEnable is required");
         Objects.requireNonNull(onDisable, "onDisable is required");

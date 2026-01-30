@@ -152,7 +152,7 @@ public final class TesterSuite extends BaseTeleOpTester {
         // BACK is treated as navigation:
         //   1) Offer it to the active tester (for multi-step tester UIs).
         //   2) If not handled, stop the tester and return to the menu.
-        bindings.onPress(gamepads.p1().back(), () -> {
+        bindings.onRise(gamepads.p1().back(), () -> {
             if (inMenu) return;
 
             if (active != null && active.onBackPressed()) {
@@ -179,7 +179,7 @@ public final class TesterSuite extends BaseTeleOpTester {
         }
 
         if (active != null) {
-            dispatchActiveInitLoop(dtSec);
+            active.initLoop(dtSec);
             return;
         }
 
@@ -210,7 +210,7 @@ public final class TesterSuite extends BaseTeleOpTester {
         }
 
         if (active != null) {
-            dispatchActiveLoop(dtSec);
+            active.loop(dtSec);
             return;
         }
 
@@ -225,39 +225,6 @@ public final class TesterSuite extends BaseTeleOpTester {
     @Override
     protected void onStop() {
         stopActive();
-    }
-
-    /**
-     * Dispatch INIT-loop callbacks to the active tester without double-updating global button state.
-     *
-     * <p>Both {@link TesterSuite} and most testers extend {@link BaseTeleOpTester}, which performs
-     * {@code gamepads.update()} / {@code bindings.update()} in their {@code initLoop()} and {@code loop()}.
-     * When nested (suite calling into a tester), calling {@code active.initLoop()} would cause a second
-     * button update in the same OpMode cycle, wiping out edge events (e.g. Dpad/A presses).
-     */
-    private void dispatchActiveInitLoop(double dtSec) {
-        if (active instanceof BaseTeleOpTester) {
-            BaseTeleOpTester bt = (BaseTeleOpTester) active;
-            // Global buttons were already updated by the suite's BaseTeleOpTester.
-            // We still need to update the active tester's Bindings so its actions can fire.
-            bt.bindings.update(clock);
-            bt.onInitLoop(dtSec);
-        } else {
-            active.initLoop(dtSec);
-        }
-    }
-
-    /**
-     * Dispatch RUN-loop callbacks to the active tester without double-updating global button state.
-     */
-    private void dispatchActiveLoop(double dtSec) {
-        if (active instanceof BaseTeleOpTester) {
-            BaseTeleOpTester bt = (BaseTeleOpTester) active;
-            bt.bindings.update(clock);
-            bt.onLoop(dtSec);
-        } else {
-            active.loop(dtSec);
-        }
     }
 
     // ---------------------------------------------------------------------------------------------

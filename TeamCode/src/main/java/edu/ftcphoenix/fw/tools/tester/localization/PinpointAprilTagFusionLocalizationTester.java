@@ -148,7 +148,7 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
         );
 
         // B: refresh picker OR toggle vision fusion.
-        bindings.onPress(gamepads.p1().b(), () -> {
+        bindings.onRise(gamepads.p1().b(), () -> {
             if (!ready) {
                 cameraPicker.refresh();
             } else if (fusedEstimator != null) {
@@ -157,13 +157,13 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
         });
 
         // START: toggle tag tracking mode.
-        bindings.onPress(gamepads.p1().start(), () -> {
+        bindings.onRise(gamepads.p1().start(), () -> {
             if (!ready) return;
             trackAny = !trackAny;
             rebuildTargetAndEstimators();
         });
 
-        bindings.onPress(gamepads.p1().y(), () -> {
+        bindings.onRise(gamepads.p1().y(), () -> {
             if (!ready) return;
             selectedTagId++;
             if (!trackAny) {
@@ -171,7 +171,7 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
             }
         });
 
-        bindings.onPress(gamepads.p1().x(), () -> {
+        bindings.onRise(gamepads.p1().x(), () -> {
             if (!ready) return;
             selectedTagId = Math.max(1, selectedTagId - 1);
             if (!trackAny) {
@@ -180,7 +180,7 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
         });
 
         // A: snap fused pose to current vision estimate.
-        bindings.onPress(gamepads.p1().a(), () -> {
+        bindings.onRise(gamepads.p1().a(), () -> {
             if (!ready || fusedEstimator == null || visionEstimator == null) return;
             PoseEstimate v = visionEstimator.getEstimate();
             if (v != null && v.hasPose) {
@@ -190,7 +190,7 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
         });
 
         // RB: reset fused pose to 0,0,0.
-        bindings.onPress(gamepads.p1().rightBumper(), () -> {
+        bindings.onRise(gamepads.p1().rightBumper(), () -> {
             if (!ready || fusedEstimator == null) return;
             fusedEstimator.setPose(Pose2d.zero());
         });

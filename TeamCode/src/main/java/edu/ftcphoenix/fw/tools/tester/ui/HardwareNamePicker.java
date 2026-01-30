@@ -11,7 +11,7 @@ import java.util.SortedSet;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
-import edu.ftcphoenix.fw.input.Button;
+import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.input.binding.Bindings;
 
 /**
@@ -143,10 +143,10 @@ public final class HardwareNamePicker {
      * @param onChoose optional callback invoked when a name is chosen
      */
     public void bind(Bindings bindings,
-                     Button up,
-                     Button down,
-                     Button choose,
-                     Button refresh,
+                     BooleanSource up,
+                     BooleanSource down,
+                     BooleanSource choose,
+                     BooleanSource refresh,
                      BooleanSupplier enabled,
                      Consumer<String> onChoose) {
 
@@ -158,7 +158,7 @@ public final class HardwareNamePicker {
         });
 
         if (refresh != null) {
-            bindings.onPress(refresh, () -> {
+            bindings.onRise(refresh, () -> {
                 if (!enabled.getAsBoolean()) return;
                 refresh();
             });

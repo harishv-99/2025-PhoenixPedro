@@ -294,7 +294,7 @@ public final class TeleOp_02_ShooterBasic extends OpMode {
         );
 
         // A = LOAD: gentle transfer + pusher in load position.
-        bindings.onPress(
+        bindings.onRise(
                 gamepads.p1().a(),
                 () -> {
                     transferMode = TransferMode.LOAD;
@@ -303,7 +303,7 @@ public final class TeleOp_02_ShooterBasic extends OpMode {
         );
 
         // B = SHOOT: faster transfer + pusher in shoot position.
-        bindings.onPress(
+        bindings.onRise(
                 gamepads.p1().b(),
                 () -> {
                     transferMode = TransferMode.SHOOT;
@@ -312,7 +312,7 @@ public final class TeleOp_02_ShooterBasic extends OpMode {
         );
 
         // X = RETRACT: stop transfer + retract pusher.
-        bindings.onPress(
+        bindings.onRise(
                 gamepads.p1().x(),
                 () -> {
                     transferMode = TransferMode.OFF;
@@ -346,8 +346,8 @@ public final class TeleOp_02_ShooterBasic extends OpMode {
         clock.update(getRuntime());
         double dtSec = clock.dtSec();
 
-        // --- 2) Inputs (gamepads + bindings) ---
-        gamepads.update(clock);
+        // --- 2) Inputs (bindings) ---
+        // Gamepad axes/buttons are Sources; they are sampled when you call get(...).
         bindings.update(clock);
 
         // --- 3) Drive logic: sticks → drive signal ---

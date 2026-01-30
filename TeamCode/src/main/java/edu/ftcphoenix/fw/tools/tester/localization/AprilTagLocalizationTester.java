@@ -207,7 +207,7 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
         );
 
         // B: refresh camera list (picker) OR clear samples (run).
-        bindings.onPress(gamepads.p1().b(), () -> {
+        bindings.onRise(gamepads.p1().b(), () -> {
             if (!visionReady) {
                 cameraPicker.refresh();
             } else {
@@ -216,14 +216,14 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
         });
 
         // START: toggle tracking mode (ANY vs SINGLE)
-        bindings.onPress(gamepads.p1().start(), () -> {
+        bindings.onRise(gamepads.p1().start(), () -> {
             if (!visionReady) return;
             trackAny = !trackAny;
             rebuildTargetAndEstimator();
         });
 
         // Tag ID selection (used in SINGLE mode)
-        bindings.onPress(gamepads.p1().y(), () -> {
+        bindings.onRise(gamepads.p1().y(), () -> {
             if (!visionReady) return;
             selectedTagId++;
             if (!trackAny) {
@@ -231,7 +231,7 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
             }
         });
 
-        bindings.onPress(gamepads.p1().x(), () -> {
+        bindings.onRise(gamepads.p1().x(), () -> {
             if (!visionReady) return;
             selectedTagId = Math.max(1, selectedTagId - 1);
             if (!trackAny) {
@@ -240,7 +240,7 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
         });
 
         // A: capture sample (only when we have a pose)
-        bindings.onPress(gamepads.p1().a(), () -> {
+        bindings.onRise(gamepads.p1().a(), () -> {
             if (!visionReady) return;
             if (poseEstimator == null) return;
 

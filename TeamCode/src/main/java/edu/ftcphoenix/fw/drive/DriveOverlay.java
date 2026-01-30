@@ -15,7 +15,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * </ul>
  *
  * <h2>How an overlay is applied</h2>
- * <p>An overlay is typically applied using {@link DriveSource#overlayWhen(java.util.function.BooleanSupplier, DriveOverlay, DriveOverlayMask)}.</p>
+ * <p>An overlay is typically applied using {@link DriveSource#overlayWhen(edu.ftcphoenix.fw.core.source.BooleanSource, DriveOverlay, DriveOverlayMask)}.</p>
  * The base {@link DriveSource} continues to run each loop. When enabled, the overlay produces a
  * {@link DriveOverlayOutput} containing:</p>
  * <ul>

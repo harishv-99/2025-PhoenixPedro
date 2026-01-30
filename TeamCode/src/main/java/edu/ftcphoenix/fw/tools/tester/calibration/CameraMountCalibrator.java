@@ -205,7 +205,7 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
         );
 
         // B refreshes camera list before vision is ready; after that B clears samples.
-        bindings.onPress(gamepads.p1().b(), () -> {
+        bindings.onRise(gamepads.p1().b(), () -> {
             if (!visionReady) {
                 refreshCameraList();
             } else {
@@ -214,7 +214,7 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
         });
 
         // Capture sample (only when vision is ready)
-        bindings.onPress(gamepads.p1().a(), () -> {
+        bindings.onRise(gamepads.p1().a(), () -> {
             if (!visionReady) return;
             if (lastRobotToCameraSample != null) {
                 avg.add(lastRobotToCameraSample);
@@ -222,24 +222,24 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
         });
 
         // Calibration controls (only when vision is ready)
-        bindings.onPress(gamepads.p1().y(), () -> {
+        bindings.onRise(gamepads.p1().y(), () -> {
             if (!visionReady) return;
             selectedTagId++;
         });
 
-        bindings.onPress(gamepads.p1().x(), () -> {
+        bindings.onRise(gamepads.p1().x(), () -> {
             if (!visionReady) return;
             selectedTagId = Math.max(1, selectedTagId - 1);
         });
 
-        bindings.onPress(gamepads.p1().start(), () -> {
+        bindings.onRise(gamepads.p1().start(), () -> {
             if (!visionReady) return;
             fineSteps = !fineSteps;
         });
 
         // Toggle edit mode (RS). Edit mode lets you select which variable you're changing
         // instead of remembering which button maps to which axis.
-        bindings.onPress(gamepads.p1().rs(), () -> {
+        bindings.onRise(gamepads.p1().rs(), () -> {
             if (!visionReady) return;
             editMode = !editMode;
         });
@@ -247,7 +247,7 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
         // D-pad:
         //  - QUICK mode: dpad X adjusts X, dpad Y adjusts Y (requested)
         //  - EDIT mode: up/down selects a field, left/right changes its value
-        bindings.onPress(gamepads.p1().dpadUp(), () -> {
+        bindings.onRise(gamepads.p1().dpadUp(), () -> {
             if (!visionReady) return;
             if (editMode) {
                 cycleEditField(-1);
@@ -255,7 +255,7 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
                 adjustRobotPose(0.0, +stepXY(), 0.0);
             }
         });
-        bindings.onPress(gamepads.p1().dpadDown(), () -> {
+        bindings.onRise(gamepads.p1().dpadDown(), () -> {
             if (!visionReady) return;
             if (editMode) {
                 cycleEditField(+1);
@@ -264,7 +264,7 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
             }
         });
 
-        bindings.onPress(gamepads.p1().dpadLeft(), () -> {
+        bindings.onRise(gamepads.p1().dpadLeft(), () -> {
             if (!visionReady) return;
             if (editMode) {
                 adjustEditField(-1);
@@ -272,7 +272,7 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
                 adjustRobotPose(-stepXY(), 0.0, 0.0);
             }
         });
-        bindings.onPress(gamepads.p1().dpadRight(), () -> {
+        bindings.onRise(gamepads.p1().dpadRight(), () -> {
             if (!visionReady) return;
             if (editMode) {
                 adjustEditField(+1);
@@ -283,7 +283,7 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
 
         // Yaw adjustment. In QUICK mode we keep the classic LB/RB mapping.
         // In EDIT mode, bumpers behave like +/- on the selected field.
-        bindings.onPress(gamepads.p1().leftBumper(), () -> {
+        bindings.onRise(gamepads.p1().leftBumper(), () -> {
             if (!visionReady) return;
             if (editMode) {
                 adjustEditField(-1);
@@ -291,7 +291,7 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
                 adjustRobotPose(0.0, 0.0, +stepYawRad());
             }
         });
-        bindings.onPress(gamepads.p1().rightBumper(), () -> {
+        bindings.onRise(gamepads.p1().rightBumper(), () -> {
             if (!visionReady) return;
             if (editMode) {
                 adjustEditField(+1);

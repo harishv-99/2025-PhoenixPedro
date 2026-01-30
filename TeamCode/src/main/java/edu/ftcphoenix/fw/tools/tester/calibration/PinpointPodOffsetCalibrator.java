@@ -392,10 +392,10 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         }
 
         // Controls
-        bindings.onPress(gamepads.p1().x(), this::resetAndClear);
-        bindings.onPress(gamepads.p1().a(), this::onAPress);
-        bindings.onPress(gamepads.p1().y(), this::onYPress);
-        bindings.onPress(gamepads.p1().b(), this::abortSample);
+        bindings.onRise(gamepads.p1().x(), this::resetAndClear);
+        bindings.onRise(gamepads.p1().a(), this::onAPress);
+        bindings.onRise(gamepads.p1().y(), this::onYPress);
+        bindings.onRise(gamepads.p1().b(), this::abortSample);
 
         // Start in a clean state
         resetAndClear();

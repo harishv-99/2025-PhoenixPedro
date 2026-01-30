@@ -14,7 +14,7 @@ Phoenix is organized by **robot concepts**, not by FTC SDK details.
 
 Most robot code should only need imports from these packages:
 
-* `edu.ftcphoenix.fw.input` — gamepad wrappers (`Gamepads`, `GamepadDevice`, `ScalarSource`, `Button`).
+* `edu.ftcphoenix.fw.input` — gamepad wrappers (`Gamepads`, `GamepadDevice`) that expose axes as `ScalarSource` and buttons as `BooleanSource`.
 * `edu.ftcphoenix.fw.input.binding` — `Bindings`: map button edges to actions.
 * `edu.ftcphoenix.fw.task` — `Task`, `TaskRunner`, `Tasks`: non-blocking macros over time.
 * `edu.ftcphoenix.fw.actuation` — `Plant`, `Actuators`, `PlantTasks`: mechanisms you command with numeric targets.
@@ -108,9 +108,9 @@ Think of Phoenix as a few thin layers you stack:
     * Owns the loop and decides what updates when.
 2. **Input** (`fw.input`)
 
-    * `Gamepads`, `GamepadDevice`, `ScalarSource`, `Button`.
-    * `Button` supports edge detection (`onPress`/`onRelease`), <i>and</i> a built-in
-      press-to-toggle state via `Button.isToggled()` (useful when enabling drive overlays).
+    * `Gamepads`, `GamepadDevice`, `ScalarSource`, `BooleanSource`.
+    * `BooleanSource` supports edge detection (`risingEdge`/`fallingEdge`) and press-to-toggle state
+      via `BooleanSource.toggled()` (useful when enabling drive overlays).
 3. **Bindings** (`fw.input.binding`)
 
     * `Bindings` turns button edges into actions (often: enqueue a macro).
@@ -143,10 +143,8 @@ Think of Phoenix as a few thin layers you stack:
 
 Several Phoenix systems are **idempotent by `clock.cycle()`** (safe if accidentally called twice in the same loop), including:
 
-* `Gamepads.update(clock)`
 * `Bindings.update(clock)`
 * `TaskRunner.update(clock)`
-* `Button.updateAllRegistered(clock)`
 
 This prevents bugs like “button press fired twice” or “tasks advanced twice” when helper code gets layered.
 
@@ -302,13 +300,11 @@ private Task buildShootOneDiscMacro(Plant shooter, Plant transfer) {
 
 ### `Gamepads`
 
-`Gamepads` wraps FTC `gamepad1` / `gamepad2` and exposes calibrated axes and edge-tracked buttons.
+`Gamepads` wraps FTC `gamepad1` / `gamepad2` and exposes calibrated axes (`ScalarSource`) and
+buttons (`BooleanSource`).
 
-Call **once per loop**:
-
-```java
-gamepads.update(clock);
-```
+There is **no global update step** for gamepads. Sources are sampled when you call `get(...)`.
+If you need edges/toggles, use `risingEdge()` / `fallingEdge()` / `toggled()` (or use `Bindings`).
 
 ### `Bindings`
 
@@ -323,12 +319,12 @@ import edu.ftcphoenix.fw.task.TaskRunner;
 Bindings bindings = new Bindings();
 TaskRunner macros = new TaskRunner();
 
-bindings.onPress(gamepads.p1().y(), () ->
+bindings.onRise(gamepads.p1().y(), () ->
         macros.enqueue(buildShootOneDiscMacro(shooter, transfer))
 );
 ```
 
-Call **once per loop** (after `gamepads.update(clock)`):
+Call **once per loop**:
 
 ```java
 bindings.update(clock);
@@ -351,21 +347,19 @@ public void loop() {
     // 1) Clock
     clock.update(getRuntime());
 
-    // 2) Inputs
-    gamepads.update(clock);
-
-    // 3) Bindings (may enqueue macros)
+    // 2) Bindings (may enqueue macros)
+    // Gamepad axes/buttons are Sources; they are sampled when you call get(...).
     bindings.update(clock);
 
-    // 4) Tasks / macros
+    // 3) Tasks / macros
     macroRunner.update(clock);
 
-    // 5) Drive
+    // 4) Drive
     DriveSignal cmd = driveSource.get(clock).clamped();
     drivebase.update(clock);   // call before drive(...) if you want current-dt rate limiting
     drivebase.drive(cmd);
 
-    // 6) Mechanisms
+    // 5) Mechanisms
     double dtSec = clock.dtSec();
     shooter.update(dtSec);
     transfer.update(dtSec);

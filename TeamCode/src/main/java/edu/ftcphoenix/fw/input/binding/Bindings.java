@@ -6,26 +6,31 @@ import java.util.Objects;
 import java.util.function.Consumer;
 
 import edu.ftcphoenix.fw.core.debug.DebugSink;
+import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.time.LoopClock;
-import edu.ftcphoenix.fw.input.Button;
 
 /**
- * Binding manager that maps {@link Button} state to higher-level behavior.
+ * Binding manager that maps {@link BooleanSource} inputs to higher-level behavior.
  *
- * <p>Phoenix uses a polled input model:</p>
- * <ol>
- *   <li>Once per loop: update inputs (which advances button edge state).</li>
- *   <li>Once per loop: update bindings (which runs actions based on button state).</li>
- * </ol>
+ * <p>Phoenix uses a polled input model: call {@link #update(LoopClock)} once per loop cycle to
+ * evaluate bindings and run actions.</p>
  *
  * <h2>Per-cycle idempotency</h2>
  * <p>{@link #update(LoopClock)} is <b>idempotent by {@link LoopClock#cycle()}</b>.
- * If called twice in the same loop cycle, the second call is a no-op. This prevents
- * nested or layered code from double-firing actions.</p>
+ * If called twice in the same loop cycle, the second call is a no-op. This prevents nested
+ * code (e.g., a tester suite calling into a tester) from double-firing actions.</p>
  *
- * <p><b>Important:</b> Call {@code Gamepads.update(clock)} (or {@code Button.updateAllRegistered(clock)})
- * <em>before</em> calling {@link #update(LoopClock)}, so {@link Button#onPress()} /
- * {@link Button#onRelease()} reflect the current cycle.</p>
+ * <h2>Edges and toggles</h2>
+ * <p>Bindings are built on {@link BooleanSource} combinators:</p>
+ * <ul>
+ *   <li>{@link BooleanSource#risingEdge()} for “rise” actions (false → true)</li>
+ *   <li>{@link BooleanSource#fallingEdge()} for “fall” actions (true → false)</li>
+ *   <li>{@link BooleanSource#toggled()} for toggle state</li>
+ * </ul>
+ *
+ * <p><b>Important:</b> Like any edge/toggle tracker, these sources must be sampled each loop
+ * to avoid missing transitions. {@link Bindings#update(LoopClock)} performs that sampling for
+ * the bindings you register here.</p>
  */
 public final class Bindings {
 
@@ -34,62 +39,64 @@ public final class Bindings {
     // ---------------------------------------------------------------------------------------------
 
     /**
-     * Simple (button, action) pair for rising-edge press actions.
+     * Simple (edgeSource, action) pair for rising-edge actions.
      */
-    private static final class PressBinding {
-        final Button button;
+    private static final class RiseBinding {
+        final BooleanSource onRise;
         final Runnable action;
 
-        PressBinding(Button button, Runnable action) {
-            this.button = button;
+        RiseBinding(BooleanSource onRise, Runnable action) {
+            this.onRise = onRise;
             this.action = action;
         }
     }
 
     /**
-     * Simple (button, action) pair for falling-edge release actions.
+     * Simple (edgeSource, action) pair for falling-edge actions.
      */
-    private static final class ReleaseBinding {
-        final Button button;
+    private static final class FallBinding {
+        final BooleanSource onFall;
         final Runnable action;
 
-        ReleaseBinding(Button button, Runnable action) {
-            this.button = button;
+        FallBinding(BooleanSource onFall, Runnable action) {
+            this.onFall = onFall;
             this.action = action;
         }
     }
 
     /**
-     * Binding that runs an action every loop while held and optionally once on release.
+     * Binding that runs an action every loop while true and optionally once on fall.
      */
-    private static final class WhileHeldBinding {
-        final Button button;
-        final Runnable whileHeld;
-        final Runnable onRelease; // may be null
+    private static final class WhileTrueBinding {
+        final BooleanSource signal;
+        final Runnable whileTrue;
+        final BooleanSource onFall; // falling edge
+        final Runnable onFallAction; // may be null
 
-        WhileHeldBinding(Button button, Runnable whileHeld, Runnable onRelease) {
-            this.button = button;
-            this.whileHeld = whileHeld;
-            this.onRelease = onRelease;
+        WhileTrueBinding(BooleanSource signal, Runnable whileTrue, BooleanSource onFall, Runnable onFallAction) {
+            this.signal = signal;
+            this.whileTrue = whileTrue;
+            this.onFall = onFall;
+            this.onFallAction = onFallAction;
         }
     }
 
     /**
-     * Binding that reports a per-button toggle state to a consumer.
+     * Binding that reports a toggle state to a consumer.
      *
-     * <p>The toggle state is owned by the {@link Button} itself and flips on each rising edge.
-     * This means the same physical button press produces the same toggle state everywhere you read it.
-     *
-     * <p>For example: if you pass {@code button::isToggled} as a {@code BooleanSupplier} to enable a
-     * {@link edu.ftcphoenix.fw.drive.DriveOverlay}, and you also create a binding with
-     * {@link Bindings#onToggle(Button, Consumer)}, both will observe the same on/off value.</p>
+     * <p>Toggle state is owned by the {@link BooleanSource} created with {@link BooleanSource#toggled()}.
+     * If you need the same toggle state in multiple places (e.g., as an enable gate <em>and</em> as a binding),
+     * create the toggled source once and share it.</p>
      */
     private static final class ToggleBinding {
-        final Button button;
+        final BooleanSource toggled;
         final Consumer<Boolean> consumer;
 
-        ToggleBinding(Button button, Consumer<Boolean> consumer) {
-            this.button = button;
+        boolean initialized = false;
+        boolean lastState = false;
+
+        ToggleBinding(BooleanSource toggled, Consumer<Boolean> consumer) {
+            this.toggled = toggled;
             this.consumer = consumer;
         }
     }
@@ -98,246 +105,181 @@ public final class Bindings {
     // Binding storage
     // ---------------------------------------------------------------------------------------------
 
-    private final List<PressBinding> pressBindings = new ArrayList<>();
-    private final List<ReleaseBinding> releaseBindings = new ArrayList<>();
-    private final List<WhileHeldBinding> whileHeldBindings = new ArrayList<>();
+    private final List<RiseBinding> riseBindings = new ArrayList<>();
+    private final List<FallBinding> fallBindings = new ArrayList<>();
+    private final List<WhileTrueBinding> whileTrueBindings = new ArrayList<>();
     private final List<ToggleBinding> toggleBindings = new ArrayList<>();
 
     /**
-     * Tracks which loop cycle we last updated for, to prevent double-firing actions
-     * if update() is accidentally called more than once per loop cycle.
+     * Tracks which loop cycle we last updated for, to prevent double-firing actions.
      */
     private long lastUpdatedCycle = Long.MIN_VALUE;
 
     /**
-     * Register an action to run once whenever the given button is pressed (rising edge).
+     * Register an action to run once whenever the given signal rises (false → true).
      *
-     * @param button button to monitor (non-null)
-     * @param action action to run once per press (non-null)
+     * <p>For a gamepad button, “rise” corresponds to “pressed”.</p>
+     *
+     * @param signal boolean signal to monitor (non-null)
+     * @param action action to run once per rising edge (non-null)
      */
-    public void onPress(Button button, Runnable action) {
-        pressBindings.add(new PressBinding(
-                Objects.requireNonNull(button, "button is required"),
-                Objects.requireNonNull(action, "action is required")
-        ));
+    public void onRise(BooleanSource signal, Runnable action) {
+        Objects.requireNonNull(signal, "signal is required");
+        Objects.requireNonNull(action, "action is required");
+        riseBindings.add(new RiseBinding(signal.risingEdge(), action));
     }
 
     /**
-     * Register an action to run once whenever the given button is released (falling edge).
+     * Register an action to run once whenever the given signal falls (true → false).
      *
-     * <p>This is the mirror of {@link #onPress(Button, Runnable)} and is useful for
-     * "start on press, stop on release" patterns without having to run code every loop
-     * while the button is held.</p>
+     * <p>For a gamepad button, “fall” corresponds to “released”.</p>
      *
-     * @param button button to monitor (non-null)
-     * @param action action to run once per release (non-null)
+     * @param signal boolean signal to monitor (non-null)
+     * @param action action to run once per falling edge (non-null)
      */
-    public void onRelease(Button button, Runnable action) {
-        releaseBindings.add(new ReleaseBinding(
-                Objects.requireNonNull(button, "button is required"),
-                Objects.requireNonNull(action, "action is required")
-        ));
+    public void onFall(BooleanSource signal, Runnable action) {
+        Objects.requireNonNull(signal, "signal is required");
+        Objects.requireNonNull(action, "action is required");
+        fallBindings.add(new FallBinding(signal.fallingEdge(), action));
     }
 
     /**
-     * Register a "press-and-release" binding: run one action once when the button is pressed,
-     * and a second action once when it is released.
+     * Common pattern: run one action on rise (false → true) and another on fall (true → false).
      *
-     * <p>This is a semantic convenience for the common pattern:
-     * "start something on press, stop it on release" without having to run code every loop
-     * while the button is held.</p>
-     *
-     * <p>Internally this is equivalent to registering both an {@link #onPress(Button, Runnable)}
-     * and an {@link #onRelease(Button, Runnable)} on the same button.</p>
+     * <p>For a gamepad button, rise = pressed and fall = released.</p>
      */
-    public void onPressAndRelease(Button button, Runnable onPress, Runnable onRelease) {
-        Objects.requireNonNull(button, "button is required");
-        onPress(button, Objects.requireNonNull(onPress, "onPress is required"));
-        onRelease(button, Objects.requireNonNull(onRelease, "onRelease is required"));
+    public void onRiseAndFall(BooleanSource signal, Runnable onRise, Runnable onFall) {
+        Objects.requireNonNull(signal, "signal is required");
+        Objects.requireNonNull(onRise, "onRise is required");
+        Objects.requireNonNull(onFall, "onFall is required");
+        onRise(signal, onRise);
+        onFall(signal, onFall);
     }
 
     /**
-     * Register an action to run once per loop while the given button is held.
+     * Register an action to run every loop while the signal is true.
      *
-     * @param button    button to monitor (non-null)
-     * @param whileHeld action to run every loop while held (non-null)
+     * <p>For a gamepad button, this corresponds to “while held”.</p>
      */
-    public void whileHeld(Button button, Runnable whileHeld) {
-        whileHeld(button, whileHeld, null);
+    public void whileTrue(BooleanSource signal, Runnable whileTrue) {
+        whileTrue(signal, whileTrue, null);
     }
 
     /**
-     * Register actions to run while a button is held, and once when it is released.
-     *
-     * <ul>
-     *   <li>If {@link Button#isHeld()} is true, {@code whileHeld} is executed.</li>
-     *   <li>If {@link Button#onRelease()} is true and {@code onRelease} is non-null,
-     *       {@code onRelease} is executed once.</li>
-     * </ul>
-     *
-     * @param button    button to monitor (non-null)
-     * @param whileHeld action to run every loop while held (non-null)
-     * @param onRelease action to run once on release (may be null)
+     * Register an action to run every loop while true and another action once on fall.
      */
-    public void whileHeld(Button button, Runnable whileHeld, Runnable onRelease) {
-        whileHeldBindings.add(new WhileHeldBinding(
-                Objects.requireNonNull(button, "button is required"),
-                Objects.requireNonNull(whileHeld, "whileHeld action is required"),
-                onRelease
-        ));
+    public void whileTrue(BooleanSource signal, Runnable whileTrue, Runnable onFall) {
+        Objects.requireNonNull(signal, "signal is required");
+        Objects.requireNonNull(whileTrue, "whileTrue is required");
+        BooleanSource falling = signal.fallingEdge();
+        whileTrueBindings.add(new WhileTrueBinding(signal, whileTrue, falling, onFall));
     }
 
     /**
-     * Register a toggle: flip a boolean each time the button is pressed (rising edge) and
-     * deliver the <em>new</em> value to the consumer.
-     *
-     * <p>This method is the “action” sibling of reading {@link Button#isToggled()}:</p>
-     * <ul>
-     *   <li>When you need a {@code BooleanSupplier} (for example: to enable a
-     *       {@link edu.ftcphoenix.fw.drive.DriveOverlay}), pass {@code button::isToggled}.</li>
-     *   <li>When you want to run code on each toggle edge, use {@code Bindings.onToggle(...)}.</li>
-     * </ul>
-     *
-     * <p>The toggle state is owned by the button, so the same physical button press toggles
-     * the same shared on/off value everywhere.</p>
-     *
-     * @param button   button to monitor (non-null)
-     * @param consumer consumer that receives the new toggle state (non-null)
+     * Register a toggle binding: each time the button is pressed, toggle state flips and
+     * the appropriate callback runs.
      */
-    public void onToggle(Button button, Consumer<Boolean> consumer) {
-        toggleBindings.add(new ToggleBinding(
-                Objects.requireNonNull(button, "button is required"),
-                Objects.requireNonNull(consumer, "consumer is required")
-        ));
-    }
-
-    /**
-     * Register a toggle with split actions: when the button is pressed, call {@code onEnable}
-     * if the toggle is now on, otherwise call {@code onDisable}.
-     *
-     * <p>This is a convenience overload of {@link #onToggle(Button, Consumer)}.</p>
-     *
-     * @param button    button to monitor (non-null)
-     * @param onEnable  action to run when the toggle becomes enabled (non-null)
-     * @param onDisable action to run when the toggle becomes disabled (non-null)
-     */
-    public void onToggle(Button button, Runnable onEnable, Runnable onDisable) {
-        Objects.requireNonNull(button, "button is required");
-        Objects.requireNonNull(onEnable, "onEnable is required");
-        Objects.requireNonNull(onDisable, "onDisable is required");
-
-        onToggle(button, isOn -> {
-            if (isOn) {
-                onEnable.run();
-            } else {
-                onDisable.run();
-            }
+    public void onToggle(BooleanSource button, Runnable onEnabled, Runnable onDisabled) {
+        Objects.requireNonNull(onEnabled, "onEnabled is required");
+        Objects.requireNonNull(onDisabled, "onDisabled is required");
+        onToggle(button, enabled -> {
+            if (enabled) onEnabled.run();
+            else onDisabled.run();
         });
     }
 
     /**
-     * Remove all registered bindings from this instance.
-     *
-     * <p>This does not unregister any {@link Button}s from the global registry.</p>
+     * Register a toggle binding: each time the button is pressed, toggle state flips and the
+     * consumer is invoked with the new state.
      */
-    public void clear() {
-        pressBindings.clear();
-        releaseBindings.clear();
-        whileHeldBindings.clear();
-        toggleBindings.clear();
-        lastUpdatedCycle = Long.MIN_VALUE;
+    public void onToggle(BooleanSource button, Consumer<Boolean> consumer) {
+        Objects.requireNonNull(button, "button is required");
+        Objects.requireNonNull(consumer, "consumer is required");
+        toggleBindings.add(new ToggleBinding(button.toggled(), consumer));
     }
 
     /**
-     * Poll all registered bindings and trigger their actions as appropriate.
+     * Run all registered bindings for the current loop.
      *
-     * <p>Idempotent by {@link LoopClock#cycle()}.</p>
-     *
-     * @param clock loop clock (non-null; advanced once per OpMode loop cycle)
+     * <p>This method is safe to call multiple times in the same cycle: only the first call does work.</p>
      */
     public void update(LoopClock clock) {
         Objects.requireNonNull(clock, "clock is required");
 
-        long c = clock.cycle();
-        if (c == lastUpdatedCycle) {
-            return; // already updated this cycle
+        long cyc = clock.cycle();
+        if (cyc == lastUpdatedCycle) {
+            return;
         }
-        lastUpdatedCycle = c;
+        lastUpdatedCycle = cyc;
 
-        // One-shot press bindings
-        for (int i = 0; i < pressBindings.size(); i++) {
-            PressBinding b = pressBindings.get(i);
-            if (b.button.onPress()) {
+        // Rise
+        for (int i = 0; i < riseBindings.size(); i++) {
+            RiseBinding b = riseBindings.get(i);
+            if (b.onRise.getAsBoolean(clock)) {
                 b.action.run();
             }
         }
 
-        // One-shot release bindings
-        for (int i = 0; i < releaseBindings.size(); i++) {
-            ReleaseBinding b = releaseBindings.get(i);
-            if (b.button.onRelease()) {
+        // Fall
+        for (int i = 0; i < fallBindings.size(); i++) {
+            FallBinding b = fallBindings.get(i);
+            if (b.onFall.getAsBoolean(clock)) {
                 b.action.run();
             }
         }
 
-        // While-held bindings
-        for (int i = 0; i < whileHeldBindings.size(); i++) {
-            WhileHeldBinding b = whileHeldBindings.get(i);
-
-            if (b.button.isHeld()) {
-                b.whileHeld.run();
+        // While true + optional fall callback
+        for (int i = 0; i < whileTrueBindings.size(); i++) {
+            WhileTrueBinding b = whileTrueBindings.get(i);
+            if (b.signal.getAsBoolean(clock)) {
+                b.whileTrue.run();
             }
-
-            if (b.onRelease != null && b.button.onRelease()) {
-                b.onRelease.run();
+            if (b.onFallAction != null && b.onFall.getAsBoolean(clock)) {
+                b.onFallAction.run();
             }
         }
 
-        // Toggle bindings
+        // Toggle
         for (int i = 0; i < toggleBindings.size(); i++) {
             ToggleBinding b = toggleBindings.get(i);
-            if (b.button.onPress()) {
-                b.consumer.accept(b.button.isToggled());
+            boolean cur = b.toggled.getAsBoolean(clock);
+            if (!b.initialized) {
+                b.initialized = true;
+                b.lastState = cur;
+                continue;
+            }
+            if (cur != b.lastState) {
+                b.lastState = cur;
+                b.consumer.accept(cur);
             }
         }
     }
 
-
     /**
-     * Debug helper: emit binding counts and the current state of toggle/while-held bindings.
-     *
-     * <p>Bindings are intentionally "fire and forget" (they store actions), so this debug output is
-     * mainly about verifying button wiring and toggle/edge behavior.</p>
+     * Emit a compact summary of the current binding configuration.
      */
     public void debugDump(DebugSink dbg, String prefix) {
         if (dbg == null) {
             return;
         }
         String p = (prefix == null || prefix.isEmpty()) ? "bindings" : prefix;
-
-        dbg.addLine(p)
-                .addData(p + ".pressCount", pressBindings.size())
-                .addData(p + ".releaseCount", releaseBindings.size())
-                .addData(p + ".whileHeldCount", whileHeldBindings.size())
-                .addData(p + ".toggleCount", toggleBindings.size())
-                .addData(p + ".lastUpdatedCycle", lastUpdatedCycle);
-
-        for (int i = 0; i < whileHeldBindings.size(); i++) {
-            WhileHeldBinding b = whileHeldBindings.get(i);
-            String bp = p + ".whileHeld" + i;
-            dbg.addData(bp + ".held", b.button.isHeld())
-                    .addData(bp + ".onPress", b.button.onPress())
-                    .addData(bp + ".onRelease", b.button.onRelease())
-                    .addData(bp + ".hasOnReleaseAction", b.onRelease != null);
-        }
-
-        for (int i = 0; i < toggleBindings.size(); i++) {
-            ToggleBinding b = toggleBindings.get(i);
-            String tp = p + ".toggle" + i;
-            dbg.addData(tp + ".toggled", b.button.isToggled())
-                    .addData(tp + ".held", b.button.isHeld())
-                    .addData(tp + ".onPress", b.button.onPress());
-        }
+        dbg.addData(p + ".class", "Bindings");
+        dbg.addData(p + ".rise", riseBindings.size());
+        dbg.addData(p + ".fall", fallBindings.size());
+        dbg.addData(p + ".whileTrue", whileTrueBindings.size());
+        dbg.addData(p + ".toggle", toggleBindings.size());
     }
 
+    /**
+     * Clear all registered bindings.
+     *
+     * <p>This is mainly useful in testing utilities that rebuild bindings dynamically.</p>
+     */
+    public void clear() {
+        riseBindings.clear();
+        fallBindings.clear();
+        whileTrueBindings.clear();
+        toggleBindings.clear();
+        lastUpdatedCycle = Long.MIN_VALUE;
+    }
 }

@@ -126,7 +126,7 @@ public final class ServoPositionTester extends BaseTeleOpTester {
         );
 
         // B: center
-        bindings.onPress(gamepads.p1().b(), () -> {
+        bindings.onRise(gamepads.p1().b(), () -> {
             if (!ready) return;
             position.setTarget(0.5);
         });

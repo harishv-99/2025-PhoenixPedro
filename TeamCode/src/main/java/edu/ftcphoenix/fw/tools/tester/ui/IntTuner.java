@@ -6,9 +6,9 @@ import java.util.Locale;
 import java.util.function.BooleanSupplier;
 
 import edu.ftcphoenix.fw.core.math.MathUtil;
+import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.source.ScalarSource;
 import edu.ftcphoenix.fw.core.time.LoopClock;
-import edu.ftcphoenix.fw.input.Button;
 import edu.ftcphoenix.fw.input.binding.Bindings;
 
 /**
@@ -315,45 +315,45 @@ public final class IntTuner {
      * @param active optional gating predicate; if null, actions are always allowed
      */
     public void bind(Bindings bindings,
-                     Button enableToggle,
-                     Button fineToggle,
-                     Button incButton,
-                     Button decButton,
-                     Button zeroButton,
+                     BooleanSource enableToggle,
+                     BooleanSource fineToggle,
+                     BooleanSource incButton,
+                     BooleanSource decButton,
+                     BooleanSource zeroButton,
                      BooleanSupplier active) {
 
         BooleanSupplier ok = (active == null) ? () -> true : active;
 
         if (enableToggle != null) {
-            bindings.onPress(enableToggle, () -> {
+            bindings.onRise(enableToggle, () -> {
                 if (!ok.getAsBoolean()) return;
                 toggleEnabled();
             });
         }
 
         if (fineToggle != null) {
-            bindings.onPress(fineToggle, () -> {
+            bindings.onRise(fineToggle, () -> {
                 if (!ok.getAsBoolean()) return;
                 toggleFine();
             });
         }
 
         if (incButton != null) {
-            bindings.onPress(incButton, () -> {
+            bindings.onRise(incButton, () -> {
                 if (!ok.getAsBoolean()) return;
                 inc();
             });
         }
 
         if (decButton != null) {
-            bindings.onPress(decButton, () -> {
+            bindings.onRise(decButton, () -> {
                 if (!ok.getAsBoolean()) return;
                 dec();
             });
         }
 
         if (zeroButton != null) {
-            bindings.onPress(zeroButton, () -> {
+            bindings.onRise(zeroButton, () -> {
                 if (!ok.getAsBoolean()) return;
                 zero();
             });

@@ -202,7 +202,7 @@ public final class TeleOp_05_ShooterTagAimVision extends OpMode {
 
         // Apply the plan as an overlay: the driver keeps translation, and the overlay owns omega.
         driveWithAim = baseDrive.overlayWhen(
-                () -> gamepads.p1().leftBumper().isHeld(),
+                gamepads.p1().leftBumper(),
                 aimPlan.overlay(),
                 DriveOverlayMask.OMEGA_ONLY
         );
@@ -247,8 +247,8 @@ public final class TeleOp_05_ShooterTagAimVision extends OpMode {
         clock.update(getRuntime());
         double dtSec = clock.dtSec();
 
-        // 2) Sense (inputs & sensors)
-        gamepads.update(clock);
+        // 2) Sense (sensors)
+        // Gamepad axes/buttons are Sources; they are sampled when you call get(...).
         scoringTarget.update(clock);      // TagTarget → AprilTagSensor.best(...)
 
         // 3) Decide (high-level logic)
@@ -295,7 +295,7 @@ public final class TeleOp_05_ShooterTagAimVision extends OpMode {
 
         // --- Required telemetry (driver-facing) ---
         telemetry.addLine("FW Example 05: Shooter DriveGuidance Vision");
-        telemetry.addData("aim.active", gamepads.p1().leftBumper().isHeld());
+        telemetry.addData("aim.active", gamepads.p1().leftBumper().getAsBoolean(clock));
         telemetry.addData("tag.hasTarget", lastHasTarget);
         telemetry.addData("tag.id", lastTagId);
         telemetry.addData("tag.rangeIn", lastTagRangeInches);

@@ -2,16 +2,16 @@ package edu.ftcphoenix.fw.drive;
 
 import java.util.ArrayList;
 import java.util.Objects;
-import java.util.function.BooleanSupplier;
 
 import edu.ftcphoenix.fw.core.debug.DebugSink;
+import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 
 /**
  * Builder for stacking multiple {@link DriveOverlay}s on top of a base {@link DriveSource}.
  *
  * <p>Phoenix drive overlays are intentionally small and composable, but writing nested
- * {@link DriveSource#overlayWhen(BooleanSupplier, DriveOverlay, DriveOverlayMask)} calls can get
+ * {@link DriveSource#overlayWhen(BooleanSource, DriveOverlay, DriveOverlayMask)} calls can get
  * noisy as you add more assists. {@code DriveOverlayStack} provides a structured, readable way to
  * apply many overlays in one place.</p>
  *
@@ -33,10 +33,10 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * <h2>Example</h2>
  * <pre>{@code
  * DriveSource drive = DriveOverlayStack.on(stickDrive)
- *     .add("shootBrace", () -> shootBraceEnabled,
+ *     .add("shootBrace", BooleanSource.of(() -> shootBraceEnabled),
  *          DriveGuidance.poseLock(poseEstimator),
  *          DriveOverlayMask.TRANSLATION_ONLY)
- *     .add("autoAim", gamepads.p2().leftBumper()::isHeld,
+ *     .add("autoAim", gamepads.p2().leftBumper(),
  *          aimPlan.overlay(),
  *          DriveOverlayMask.OMEGA_ONLY)
  *     .build();
@@ -75,7 +75,7 @@ public final class DriveOverlayStack {
          * @param requestedMask requested override mask (non-null, not {@link DriveOverlayMask#NONE})
          */
         public Builder add(String name,
-                           BooleanSupplier enabledWhen,
+                           BooleanSource enabledWhen,
                            DriveOverlay overlay,
                            DriveOverlayMask requestedMask) {
             if (name == null || name.trim().isEmpty()) {
@@ -94,7 +94,7 @@ public final class DriveOverlayStack {
         /**
          * Add an unnamed overlay layer. A stable auto-generated name will be used for debug.
          */
-        public Builder add(BooleanSupplier enabledWhen,
+        public Builder add(BooleanSource enabledWhen,
                            DriveOverlay overlay,
                            DriveOverlayMask requestedMask) {
             String name = "overlay" + layers.size();
@@ -105,7 +105,7 @@ public final class DriveOverlayStack {
          * Convenience overload: requested mask defaults to {@link DriveOverlayMask#ALL}.
          */
         public Builder add(String name,
-                           BooleanSupplier enabledWhen,
+                           BooleanSource enabledWhen,
                            DriveOverlay overlay) {
             return add(name, enabledWhen, overlay, DriveOverlayMask.ALL);
         }
@@ -113,7 +113,7 @@ public final class DriveOverlayStack {
         /**
          * Convenience overload: requested mask defaults to {@link DriveOverlayMask#ALL}.
          */
-        public Builder add(BooleanSupplier enabledWhen,
+        public Builder add(BooleanSource enabledWhen,
                            DriveOverlay overlay) {
             return add(enabledWhen, overlay, DriveOverlayMask.ALL);
         }
@@ -137,7 +137,7 @@ public final class DriveOverlayStack {
      */
     private static final class Layer {
         final String name;
-        final BooleanSupplier enabledWhen;
+        final BooleanSource enabledWhen;
         final DriveOverlay overlay;
         final DriveOverlayMask requestedMask;
 
@@ -147,7 +147,7 @@ public final class DriveOverlayStack {
         DriveOverlayMask lastEffectiveMask = DriveOverlayMask.NONE;
 
         Layer(String name,
-              BooleanSupplier enabledWhen,
+              BooleanSource enabledWhen,
               DriveOverlay overlay,
               DriveOverlayMask requestedMask) {
             this.name = name;
@@ -180,7 +180,7 @@ public final class DriveOverlayStack {
             for (int i = 0; i < layers.length; i++) {
                 Layer layer = layers[i];
 
-                boolean enabled = layer.enabledWhen.getAsBoolean();
+                boolean enabled = layer.enabledWhen.getAsBoolean(clock);
 
                 if (!enabled) {
                     if (layer.lastEnabled) {
@@ -241,6 +241,7 @@ public final class DriveOverlayStack {
                 dbg.addData(lp + ".requestedMask", layer.requestedMask.toString());
                 dbg.addData(lp + ".effectiveMask", layer.lastEffectiveMask.toString());
                 dbg.addData(lp + ".lastOut", layer.lastOut);
+                layer.enabledWhen.debugDump(dbg, lp + ".enabledWhen");
                 layer.overlay.debugDump(dbg, lp + ".overlay");
             }
         }

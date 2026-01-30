@@ -256,13 +256,13 @@ public final class TeleOp_03_ShooterMacro extends OpMode {
         // === 4) Bindings: hook buttons to macro actions ===
 
         // Y → start "shoot one ball" macro.
-        bindings.onPress(
+        bindings.onRise(
                 gamepads.p1().y(),
                 this::startShootOneBallMacro
         );
 
         // B → cancel macros and stop mechanism.
-        bindings.onPress(
+        bindings.onRise(
                 gamepads.p1().b(),
                 this::cancelShootMacros
         );
@@ -292,8 +292,8 @@ public final class TeleOp_03_ShooterMacro extends OpMode {
         clock.update(getRuntime());
         double dtSec = clock.dtSec();
 
-        // --- 2) Inputs + bindings ---
-        gamepads.update(clock);
+        // --- 2) Inputs (bindings) ---
+        // Gamepad axes/buttons are Sources; they are sampled when you call get(...).
         bindings.update(clock);
 
         // --- 3) Macros (shooter/transfer/pusher) ---

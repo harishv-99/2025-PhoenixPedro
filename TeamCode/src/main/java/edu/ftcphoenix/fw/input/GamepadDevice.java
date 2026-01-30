@@ -5,6 +5,7 @@ import com.qualcomm.robotcore.hardware.Gamepad;
 import java.lang.reflect.Field;
 
 import edu.ftcphoenix.fw.core.debug.DebugSink;
+import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.source.ScalarSource;
 
 
@@ -12,7 +13,7 @@ import edu.ftcphoenix.fw.core.source.ScalarSource;
  * Thin wrapper around an FTC {@link Gamepad} that exposes:
  * <ul>
  *     <li>Axes ({@link ScalarSource}) for sticks and triggers.</li>
- *     <li>Buttons ({@link Button}) for digital inputs (with edge detection).</li>
+ *     <li>Buttons ({@link BooleanSource}) for digital inputs.</li>
  * </ul>
  *
  * <h2>ScalarSource conventions</h2>
@@ -131,24 +132,24 @@ public final class GamepadDevice {
     private final ScalarSource rightStickMagnitude;
 
     // Buttons
-    private final Button a;
-    private final Button b;
-    private final Button x;
-    private final Button y;
-    private final Button leftBumper;
-    private final Button rightBumper;
-    private final Button dpadUp;
-    private final Button dpadDown;
-    private final Button dpadLeft;
-    private final Button dpadRight;
+    private final BooleanSource a;
+    private final BooleanSource b;
+    private final BooleanSource x;
+    private final BooleanSource y;
+    private final BooleanSource leftBumper;
+    private final BooleanSource rightBumper;
+    private final BooleanSource dpadUp;
+    private final BooleanSource dpadDown;
+    private final BooleanSource dpadLeft;
+    private final BooleanSource dpadRight;
 
     // Stick click buttons
-    private final Button leftStickButton;
-    private final Button rightStickButton;
+    private final BooleanSource leftStickButton;
+    private final BooleanSource rightStickButton;
 
     // Menu/system buttons (controller dependent naming)
-    private final Button back;
-    private final Button start;
+    private final BooleanSource back;
+    private final BooleanSource start;
 
     /**
      * Create a {@link GamepadDevice} wrapper around an FTC {@link Gamepad}.
@@ -178,26 +179,26 @@ public final class GamepadDevice {
         this.rightStickMagnitude = ScalarSource.magnitude(this.rightX, this.rightY);
 
         // Buttons
-        this.a = Button.of(() -> gp.a);
-        this.b = Button.of(() -> gp.b);
-        this.x = Button.of(() -> gp.x);
-        this.y = Button.of(() -> gp.y);
+        this.a = BooleanSource.of(() -> gp.a);
+        this.b = BooleanSource.of(() -> gp.b);
+        this.x = BooleanSource.of(() -> gp.x);
+        this.y = BooleanSource.of(() -> gp.y);
 
-        this.leftBumper = Button.of(() -> gp.left_bumper);
-        this.rightBumper = Button.of(() -> gp.right_bumper);
+        this.leftBumper = BooleanSource.of(() -> gp.left_bumper);
+        this.rightBumper = BooleanSource.of(() -> gp.right_bumper);
 
-        this.dpadUp = Button.of(() -> gp.dpad_up);
-        this.dpadDown = Button.of(() -> gp.dpad_down);
-        this.dpadLeft = Button.of(() -> gp.dpad_left);
-        this.dpadRight = Button.of(() -> gp.dpad_right);
+        this.dpadUp = BooleanSource.of(() -> gp.dpad_up);
+        this.dpadDown = BooleanSource.of(() -> gp.dpad_down);
+        this.dpadLeft = BooleanSource.of(() -> gp.dpad_left);
+        this.dpadRight = BooleanSource.of(() -> gp.dpad_right);
 
         // Stick click buttons
-        this.leftStickButton = Button.of(() -> gp.left_stick_button);
-        this.rightStickButton = Button.of(() -> gp.right_stick_button);
+        this.leftStickButton = BooleanSource.of(() -> gp.left_stick_button);
+        this.rightStickButton = BooleanSource.of(() -> gp.right_stick_button);
 
         // Menu/system buttons (controller-dependent naming across SDK/controller mappings)
-        this.back = Button.of(() -> readBooleanAny(gp, F_BACK, F_SHARE));
-        this.start = Button.of(() -> readBooleanAny(gp, F_START, F_OPTIONS));
+        this.back = BooleanSource.of(() -> readBooleanAny(gp, F_BACK, F_SHARE));
+        this.start = BooleanSource.of(() -> readBooleanAny(gp, F_START, F_OPTIONS));
 
         // Automatically treat the current stick/trigger positions as neutral and
         // configure scaling so we still reach the full logical range.
@@ -376,128 +377,128 @@ public final class GamepadDevice {
     /**
      * The A button.
      *
-     * @return a {@link Button} with edge detection
+     * @return a {@link BooleanSource} with edge detection
      */
-    public Button a() {
+    public BooleanSource a() {
         return a;
     }
 
     /**
      * The B button.
      *
-     * @return a {@link Button} with edge detection
+     * @return a {@link BooleanSource} with edge detection
      */
-    public Button b() {
+    public BooleanSource b() {
         return b;
     }
 
     /**
      * The X button.
      *
-     * @return a {@link Button} with edge detection
+     * @return a {@link BooleanSource} with edge detection
      */
-    public Button x() {
+    public BooleanSource x() {
         return x;
     }
 
     /**
      * The Y button.
      *
-     * @return a {@link Button} with edge detection
+     * @return a {@link BooleanSource} with edge detection
      */
-    public Button y() {
+    public BooleanSource y() {
         return y;
     }
 
     /**
      * Left bumper.
      */
-    public Button leftBumper() {
+    public BooleanSource leftBumper() {
         return leftBumper;
     }
 
     /**
      * Right bumper.
      */
-    public Button rightBumper() {
+    public BooleanSource rightBumper() {
         return rightBumper;
     }
 
     /**
      * Alias for {@link #leftBumper()} to match common “LB/RB” naming in examples.
      */
-    public Button lb() {
+    public BooleanSource lb() {
         return leftBumper;
     }
 
     /**
      * Alias for {@link #rightBumper()} to match common “LB/RB” naming in examples.
      */
-    public Button rb() {
+    public BooleanSource rb() {
         return rightBumper;
     }
 
     /**
      * D-pad up.
      *
-     * @return a {@link Button} with edge detection
+     * @return a {@link BooleanSource} with edge detection
      */
-    public Button dpadUp() {
+    public BooleanSource dpadUp() {
         return dpadUp;
     }
 
     /**
      * D-pad down.
      *
-     * @return a {@link Button} with edge detection
+     * @return a {@link BooleanSource} with edge detection
      */
-    public Button dpadDown() {
+    public BooleanSource dpadDown() {
         return dpadDown;
     }
 
     /**
      * D-pad left.
      *
-     * @return a {@link Button} with edge detection
+     * @return a {@link BooleanSource} with edge detection
      */
-    public Button dpadLeft() {
+    public BooleanSource dpadLeft() {
         return dpadLeft;
     }
 
     /**
      * D-pad right.
      *
-     * @return a {@link Button} with edge detection
+     * @return a {@link BooleanSource} with edge detection
      */
-    public Button dpadRight() {
+    public BooleanSource dpadRight() {
         return dpadRight;
     }
 
     /**
      * Left stick button (press the left stick).
      */
-    public Button leftStickButton() {
+    public BooleanSource leftStickButton() {
         return leftStickButton;
     }
 
     /**
      * Right stick button (press the right stick).
      */
-    public Button rightStickButton() {
+    public BooleanSource rightStickButton() {
         return rightStickButton;
     }
 
     /**
      * Alias for {@link #leftStickButton()} (common "LS" naming).
      */
-    public Button ls() {
+    public BooleanSource ls() {
         return leftStickButton;
     }
 
     /**
      * Alias for {@link #rightStickButton()} (common "RS" naming).
      */
-    public Button rs() {
+    public BooleanSource rs() {
         return rightStickButton;
     }
 
@@ -505,7 +506,7 @@ public final class GamepadDevice {
      * Back / View / Share (controller dependent).
      * <p>On PlayStation-style mappings this typically corresponds to “Share”.</p>
      */
-    public Button back() {
+    public BooleanSource back() {
         return back;
     }
 
@@ -513,7 +514,7 @@ public final class GamepadDevice {
      * Start / Options (controller dependent).
      * <p>On PlayStation-style mappings this typically corresponds to “Options”.</p>
      */
-    public Button start() {
+    public BooleanSource start() {
         return start;
     }
 

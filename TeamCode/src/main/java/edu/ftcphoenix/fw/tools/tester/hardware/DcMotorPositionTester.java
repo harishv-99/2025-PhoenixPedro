@@ -172,7 +172,7 @@ public final class DcMotorPositionTester extends BaseTeleOpTester {
         );
 
         // A toggles RUN_TO_POSITION enable (only when ready)
-        bindings.onPress(gamepads.p1().a(), () -> {
+        bindings.onRise(gamepads.p1().a(), () -> {
             if (!ready) return;
             targetTicks.toggleEnabled();
 
@@ -183,46 +183,46 @@ public final class DcMotorPositionTester extends BaseTeleOpTester {
         });
 
         // X toggles motor direction (hardware-level)
-        bindings.onPress(gamepads.p1().x(), () -> {
+        bindings.onRise(gamepads.p1().x(), () -> {
             if (!ready) return;
             toggleDirection();
         });
 
         // START toggles fine/coarse for BOTH tuners (so UI feels consistent)
-        bindings.onPress(gamepads.p1().start(), () -> {
+        bindings.onRise(gamepads.p1().start(), () -> {
             if (!ready) return;
             targetTicks.toggleFine();
             power.toggleFine();
         });
 
         // Target inc/dec (dpad up/down) — only when ready
-        bindings.onPress(gamepads.p1().dpadUp(), () -> {
+        bindings.onRise(gamepads.p1().dpadUp(), () -> {
             if (!ready) return;
             targetTicks.inc();
         });
-        bindings.onPress(gamepads.p1().dpadDown(), () -> {
+        bindings.onRise(gamepads.p1().dpadDown(), () -> {
             if (!ready) return;
             targetTicks.dec();
         });
 
         // Power inc/dec (dpad right/left) — only when ready
-        bindings.onPress(gamepads.p1().dpadRight(), () -> {
+        bindings.onRise(gamepads.p1().dpadRight(), () -> {
             if (!ready) return;
             power.inc();
         });
-        bindings.onPress(gamepads.p1().dpadLeft(), () -> {
+        bindings.onRise(gamepads.p1().dpadLeft(), () -> {
             if (!ready) return;
             power.dec();
         });
 
         // Reset encoder
-        bindings.onPress(gamepads.p1().y(), () -> {
+        bindings.onRise(gamepads.p1().y(), () -> {
             if (!ready) return;
             resetEncoderAndZeroTarget();
         });
 
         // Hard stop
-        bindings.onPress(gamepads.p1().b(), () -> {
+        bindings.onRise(gamepads.p1().b(), () -> {
             if (!ready) return;
 
             // Disable if enabled

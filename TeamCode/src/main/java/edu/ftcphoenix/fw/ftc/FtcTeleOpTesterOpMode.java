@@ -3,7 +3,6 @@ package edu.ftcphoenix.fw.ftc;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 
 import edu.ftcphoenix.fw.core.time.LoopClock;
-import edu.ftcphoenix.fw.input.Button;
 import edu.ftcphoenix.fw.tools.tester.TeleOpTester;
 import edu.ftcphoenix.fw.tools.tester.TesterContext;
 import edu.ftcphoenix.fw.tools.tester.TesterSuite;
@@ -48,8 +47,6 @@ public abstract class FtcTeleOpTesterOpMode extends OpMode {
      */
     @Override
     public final void init() {
-        // Fresh start: avoid stale registered Buttons from previous runs.
-        Button.clearRegistered();
 
         // Start dt tracking immediately so tester init/init_loop can rely on a "started" clock.
         clock.reset(getRuntime());

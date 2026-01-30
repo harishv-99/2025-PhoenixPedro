@@ -221,7 +221,7 @@ public final class TeleOp_04_ShooterInterpolated extends OpMode {
         );
 
         // D-pad UP: increase "distance".
-        bindings.onPress(
+        bindings.onRise(
                 gamepads.p1().dpadUp(),
                 () -> distanceInches = MathUtil.clamp(distanceInches + STEP_DISTANCE_INCHES,
                         MIN_DISTANCE_INCHES,
@@ -229,7 +229,7 @@ public final class TeleOp_04_ShooterInterpolated extends OpMode {
         );
 
         // D-pad DOWN: decrease "distance".
-        bindings.onPress(
+        bindings.onRise(
                 gamepads.p1().dpadDown(),
                 () -> distanceInches = MathUtil.clamp(distanceInches - STEP_DISTANCE_INCHES,
                         MIN_DISTANCE_INCHES,
@@ -261,8 +261,8 @@ public final class TeleOp_04_ShooterInterpolated extends OpMode {
         clock.update(getRuntime());
         double dtSec = clock.dtSec();
 
-        // --- 2) Inputs + bindings ---
-        gamepads.update(clock);
+        // --- 2) Inputs (bindings) ---
+        // Gamepad axes/buttons are Sources; they are sampled when you call get(...).
         bindings.update(clock);
 
         // --- 3) Drive: always manual ---
