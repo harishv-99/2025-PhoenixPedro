@@ -1,12 +1,16 @@
 package edu.ftcphoenix.fw.ftc;
 
+import com.qualcomm.robotcore.hardware.AnalogInput;
 import com.qualcomm.robotcore.hardware.ColorSensor;
+import com.qualcomm.robotcore.hardware.DigitalChannel;
 import com.qualcomm.robotcore.hardware.DistanceSensor;
 import com.qualcomm.robotcore.hardware.HardwareMap;
+import com.qualcomm.robotcore.hardware.TouchSensor;
 
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 
 import edu.ftcphoenix.fw.core.color.Rgba;
+import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.source.ScalarSource;
 import edu.ftcphoenix.fw.core.source.Source;
 import edu.ftcphoenix.fw.core.time.LoopClock;
@@ -120,5 +124,120 @@ public final class FtcSensors {
             throw new IllegalArgumentException("name is required");
         }
         return rgba(hw.get(ColorSensor.class, name));
+    }
+
+    // ------------------------------------------------------------------------------------------------
+    // Touch sensors
+    // ------------------------------------------------------------------------------------------------
+
+    /**
+     * True when the touch sensor is pressed.
+     */
+    public static BooleanSource touchPressed(TouchSensor sensor) {
+        if (sensor == null) {
+            throw new IllegalArgumentException("sensor is required");
+        }
+        return BooleanSource.of(sensor::isPressed).memoized();
+    }
+
+    /**
+     * True when a named {@link TouchSensor} is pressed.
+     */
+    public static BooleanSource touchPressed(HardwareMap hw, String name) {
+        if (hw == null) {
+            throw new IllegalArgumentException("HardwareMap is required");
+        }
+        if (name == null) {
+            throw new IllegalArgumentException("name is required");
+        }
+        return touchPressed(hw.get(TouchSensor.class, name));
+    }
+
+    // ------------------------------------------------------------------------------------------------
+    // Digital inputs
+    // ------------------------------------------------------------------------------------------------
+
+    private static DigitalChannel requireDigitalInput(DigitalChannel ch) {
+        if (ch == null) {
+            throw new IllegalArgumentException("digital channel is required");
+        }
+        // Be explicit: this is an input adapter.
+        ch.setMode(DigitalChannel.Mode.INPUT);
+        return ch;
+    }
+
+    /**
+     * Raw digital input state.
+     *
+     * <p>FTC {@link DigitalChannel#getState()} returns {@code true} when the pin is HIGH.
+     * Some sensors are wired <b>active-low</b> (LOW means "active"), so be deliberate about
+     * whether you want {@link #digitalHigh(DigitalChannel)} or {@link #digitalLow(DigitalChannel)}.</p>
+     */
+    public static BooleanSource digitalHigh(DigitalChannel channel) {
+        DigitalChannel ch = requireDigitalInput(channel);
+        return BooleanSource.of(ch::getState).memoized();
+    }
+
+    /**
+     * Raw digital input state, inverted.
+     *
+     * <p>This returns true when the pin is LOW (active-low sensors).</p>
+     */
+    public static BooleanSource digitalLow(DigitalChannel channel) {
+        DigitalChannel ch = requireDigitalInput(channel);
+        return BooleanSource.of(() -> !ch.getState()).memoized();
+    }
+
+    /**
+     * Raw digital HIGH state from a named {@link DigitalChannel}.
+     */
+    public static BooleanSource digitalHigh(HardwareMap hw, String name) {
+        if (hw == null) {
+            throw new IllegalArgumentException("HardwareMap is required");
+        }
+        if (name == null) {
+            throw new IllegalArgumentException("name is required");
+        }
+        return digitalHigh(hw.get(DigitalChannel.class, name));
+    }
+
+    /**
+     * Raw digital LOW state from a named {@link DigitalChannel}.
+     */
+    public static BooleanSource digitalLow(HardwareMap hw, String name) {
+        if (hw == null) {
+            throw new IllegalArgumentException("HardwareMap is required");
+        }
+        if (name == null) {
+            throw new IllegalArgumentException("name is required");
+        }
+        return digitalLow(hw.get(DigitalChannel.class, name));
+    }
+
+    // ------------------------------------------------------------------------------------------------
+    // Analog inputs
+    // ------------------------------------------------------------------------------------------------
+
+    /**
+     * Analog voltage in the sensor's native unit (Volts).
+     */
+    public static ScalarSource analogVoltage(AnalogInput input) {
+        if (input == null) {
+            throw new IllegalArgumentException("input is required");
+        }
+        return ScalarSource.of(input::getVoltage).memoized();
+    }
+
+    /**
+     * Analog voltage from a named {@link AnalogInput}.
+     */
+    public static ScalarSource analogVoltage(HardwareMap hw, String name) {
+        if (hw == null) {
+            throw new IllegalArgumentException("HardwareMap is required");
+        }
+        if (name == null) {
+            throw new IllegalArgumentException("name is required");
+        }
+        return analogVoltage(hw.get(AnalogInput.class, name));
     }
 }
