@@ -411,21 +411,27 @@ OutputTaskRunner feederQueue = new OutputTaskRunner(0.0);
 
 // In init: define sensor gates as BooleanSource / ScalarSource.
 BooleanSource fireAllowed = shooterReady.and(aimLocked).and(ballAtGate);
-
-// Enqueue a feed-one task when the driver requests a shot:
-feederQueue.enqueue(Tasks.gatedOutputUntil(
-        "feedOne",
-        fireAllowed,
-        ballAtGate.fallingEdge(),
-        0.90,
-        0.05,
-        0.30
-));
+BooleanSource requestShoot = gamepads.p2().rightTrigger().above(0.50);
+BooleanSource ballLeftGate = ballAtGate.fallingEdge();
 
 // In your loop:
-feederQueue.update(clock);
+// Keep one "feedOne" buffered while the driver requests shooting.
+// The task waits in WAIT until fireAllowed is true.
+feederQueue.repeatWhileTrue(
+        clock,
+        requestShoot,
+        1,
+        () -> Tasks.gatedOutputUntil(
+                "feedOne",
+                fireAllowed,
+                ballLeftGate,
+                0.90,
+                0.05,
+                0.30
+        )
+);
 double base = 0.0;
-double finalTarget = feederQueue.hasActiveTask() ? feederQueue.getAsDouble(clock) : base;
+double finalTarget = feederQueue.activeSource().getAsBoolean(clock) ? feederQueue.getAsDouble(clock) : base;
 transferShooterPlant.setTarget(finalTarget);
 ```
 

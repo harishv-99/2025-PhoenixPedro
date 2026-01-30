@@ -192,13 +192,6 @@ public final class Tasks {
     }
 
     /**
-     * Alias for {@link #outputForSeconds(String, double, double)}.
-     */
-    public static OutputTask outputPulse(String name, double output, double durationSec) {
-        return outputForSeconds(name, output, durationSec);
-    }
-
-    /**
      * Wait for {@code startWhen}, then output {@code runOutput} until {@code doneWhen} is satisfied
      * (and {@code minRunSec} has elapsed), or until {@code maxRunSec} elapses.
      */

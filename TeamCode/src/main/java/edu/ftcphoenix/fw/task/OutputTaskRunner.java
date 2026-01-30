@@ -4,6 +4,7 @@ import java.util.Objects;
 import java.util.function.Supplier;
 
 import edu.ftcphoenix.fw.core.debug.DebugSink;
+import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.source.ScalarSource;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 
@@ -137,6 +138,66 @@ public final class OutputTaskRunner implements ScalarSource {
     }
 
     /**
+     * Repeat an output-producing action while a request signal is true.
+     *
+     * <p>This is the common TeleOp pattern:</p>
+     * <ul>
+     *   <li>Driver holds a trigger to request repeated shots / repeats.</li>
+     *   <li>You keep exactly N tasks buffered so repeats happen quickly but you don't "queue spam".</li>
+     *   <li>When the request is released, the queue is cleared immediately.</li>
+     * </ul>
+     *
+     * <p>Typical usage for "repeat while held" shooting:</p>
+     * <pre>{@code
+     * // Request signal: held trigger.
+     * BooleanSource requestShoot = gamepads.p2().rightTrigger().above(0.50);
+     *
+     * // Task factory: each task waits for readiness and then feeds one shot.
+     * Supplier<OutputTask> feedOneFactory = () -> Tasks.gatedOutputUntil(
+     *         "feedOne",
+     *         canShootNow,
+     *         ballLeftGate,
+     *         0.90,
+     *         0.05,
+     *         0.30
+     * );
+     *
+     * feederQueue.repeatWhileTrue(clock, requestShoot, 1, feedOneFactory);
+     * }
+     * </pre>
+     *
+     * <p><b>Design note:</b> {@code whileTrue} should usually be a <em>request</em> signal
+     * (driver intent), not a readiness gate. Readiness should live inside the produced task
+     * (for example as {@code startWhen}). That way, the task can wait safely without producing
+     * output, and your code keeps one buffered "feedOne" ready to run the moment sensors allow.</p>
+     *
+     * @param clock       loop clock (required)
+     * @param whileTrue   request signal; when false, the queue is cleared (required)
+     * @param backlog     number of tasks to keep buffered while requested (>= 0)
+     * @param taskFactory factory that produces a <b>new</b> task instance each time (required)
+     */
+    public void repeatWhileTrue(
+            LoopClock clock,
+            BooleanSource whileTrue,
+            int backlog,
+            Supplier<? extends OutputTask> taskFactory
+    ) {
+        Objects.requireNonNull(clock, "clock");
+        Objects.requireNonNull(whileTrue, "whileTrue");
+        Objects.requireNonNull(taskFactory, "taskFactory");
+        if (backlog < 0) {
+            throw new IllegalArgumentException("backlog must be >= 0, got " + backlog);
+        }
+
+        if (!whileTrue.getAsBoolean(clock)) {
+            clear();
+            return;
+        }
+
+        ensureBacklog(clock, backlog, taskFactory);
+    }
+
+    /**
      * @return true if there is no current task and no queued tasks.
      */
     public boolean isIdle() {
@@ -155,6 +216,58 @@ public final class OutputTaskRunner implements ScalarSource {
      */
     public boolean hasActiveTask() {
         return runner.hasActiveTask();
+    }
+
+    /**
+     * A {@link BooleanSource} view of {@link #hasActiveTask()}.
+     *
+     * <p>This is useful for building clean, declarative output selection rules:
+     * "if the queue is active, use queue output; otherwise use base output".
+     * Because this is a {@code BooleanSource}, you can combine it with other signals
+     * and use {@link BooleanSource#choose(edu.ftcphoenix.fw.core.source.ScalarSource, edu.ftcphoenix.fw.core.source.ScalarSource)}.
+     * </p>
+     *
+     * <p>The returned source calls {@link #update(LoopClock)} and memoizes by
+     * {@link LoopClock#cycle()} so it stays consistent within a loop.</p>
+     */
+    public BooleanSource activeSource() {
+        OutputTaskRunner self = this;
+        return new BooleanSource() {
+            private long lastCycle = Long.MIN_VALUE;
+            private boolean last = false;
+
+            @Override
+            public boolean getAsBoolean(LoopClock clock) {
+                long cyc = clock.cycle();
+                if (cyc == lastCycle) {
+                    return last;
+                }
+                lastCycle = cyc;
+
+                // Ensure the queue state is current.
+                self.update(clock);
+                last = self.hasActiveTask();
+                return last;
+            }
+
+            @Override
+            public void reset() {
+                self.reset();
+                lastCycle = Long.MIN_VALUE;
+                last = false;
+            }
+
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) {
+                    return;
+                }
+                String p = (prefix == null || prefix.isEmpty()) ? "active" : prefix;
+                dbg.addData(p + ".class", "OutputQueueActive")
+                        .addData(p + ".active", last);
+                self.debugDump(dbg, p + ".queue");
+            }
+        };
     }
 
     /**

@@ -85,7 +85,8 @@ feederQueue.update(clock);
 double base = 0.0; // e.g. staging logic
 
 // 3) Apply a priority rule
-boolean overrideActive = feederQueue.hasActiveTask();
+// (You can use hasActiveTask(), or the signal-friendly activeSource() helper.)
+boolean overrideActive = feederQueue.activeSource().getAsBoolean(clock);
 double finalTarget = overrideActive ? feederQueue.getAsDouble(clock) : base;
 
 transferShooterPlant.setTarget(finalTarget);
@@ -145,25 +146,21 @@ To shoot quickly while maintaining accuracy, a common pattern is:
 Phoenix provides a small helper on {@code OutputTaskRunner}:
 
 ```java
-BooleanSource shootHeld = gamepads.p2().rightTrigger().above(0.50);
+BooleanSource requestShoot = gamepads.p2().rightTrigger().above(0.50);
 
-BooleanSource canShootNow = shootHeld
-        .and(fireAllowed)
-        .and(ballAtGate);
+// Readiness lives inside the task. That way, the task can sit in WAIT without output,
+// and you still keep one "feedOne" buffered and ready to run.
+BooleanSource canShootNow = fireAllowed.and(ballAtGate);
+BooleanSource ballLeftGate = ballAtGate.fallingEdge();
 
-// Safety: if the driver releases shoot, cancel any in-flight feed.
-if (!shootHeld.getAsBoolean(clock)) {
-    feederQueue.clear();
-}
-
-// Keep one feed task buffered while we are allowed to shoot.
-feederQueue.ensureBacklog(
+feederQueue.repeatWhileTrue(
         clock,
-        canShootNow.getAsBoolean(clock) ? 1 : 0,
+        requestShoot,
+        1, // keep exactly one task buffered
         () -> Tasks.gatedOutputUntil(
                 "feedOne",
-                canShootNow,                 // startWhen
-                ballLeftGate,                // doneWhen
+                canShootNow,   // startWhen
+                ballLeftGate,  // doneWhen
                 0.90,
                 0.05,
                 0.30
