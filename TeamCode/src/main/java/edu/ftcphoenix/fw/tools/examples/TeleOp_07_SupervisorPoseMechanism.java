@@ -1,0 +1,198 @@
+package edu.ftcphoenix.fw.tools.examples;
+
+import com.qualcomm.robotcore.eventloop.opmode.Disabled;
+import com.qualcomm.robotcore.eventloop.opmode.OpMode;
+import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+
+import edu.ftcphoenix.fw.actuation.Actuators;
+import edu.ftcphoenix.fw.actuation.Plant;
+import edu.ftcphoenix.fw.core.hal.Direction;
+import edu.ftcphoenix.fw.core.source.ScalarSource;
+import edu.ftcphoenix.fw.core.time.LoopClock;
+import edu.ftcphoenix.fw.input.Gamepads;
+import edu.ftcphoenix.fw.input.binding.Bindings;
+import edu.ftcphoenix.fw.task.OutputTaskRunner;
+import edu.ftcphoenix.fw.task.Tasks;
+
+/**
+ * <h1>Example 07: Supervisor + Subsystem (Discrete Poses)</h1>
+ *
+ * <p>This example demonstrates the recommended Phoenix architecture when you have a mechanism that
+ * supports a small set of valid positions (poses).</p>
+ *
+ * <p>It shows two ideas:</p>
+ * <ul>
+ *   <li><b>Pose requests are state</b>: last request wins, no queue needed.</li>
+ *   <li><b>Temporary overrides use an OutputTaskRunner</b>: a short pulse can override the base pose.</li>
+ * </ul>
+ *
+ * <h2>Controls</h2>
+ * <ul>
+ *   <li>P1 A: request INTAKE pose</li>
+ *   <li>P1 B: request SCORE pose</li>
+ *   <li>P1 Y: request STOW pose</li>
+ *   <li>P1 X: pulse OPEN for 0.20s (override)</li>
+ * </ul>
+ *
+ * <p>Hardware assumed:</p>
+ * <ul>
+ *   <li>One positional servo: {@value #HW_WRIST}</li>
+ * </ul>
+ */
+@TeleOp(name = "FW Ex 07: Supervisor Pose", group = "Framework Examples")
+@Disabled
+public final class TeleOp_07_SupervisorPoseMechanism extends OpMode {
+
+    private static final String HW_WRIST = "wristServo";
+
+    // Example servo positions (0..1). Tune these for your robot.
+    private static final double POS_STOW = 0.10;
+    private static final double POS_INTAKE = 0.45;
+    private static final double POS_SCORE = 0.80;
+    private static final double POS_OPEN = 0.95;
+
+    private final LoopClock clock = new LoopClock();
+
+    private Gamepads gamepads;
+    private final Bindings bindings = new Bindings();
+
+    private WristSubsystem wrist;
+    private WristSupervisor supervisor;
+
+    @Override
+    public void init() {
+        gamepads = Gamepads.create(gamepad1, gamepad2);
+
+        Plant wristPlant = Actuators.plant(hardwareMap)
+                .servo(HW_WRIST, Direction.FORWARD)
+                .position()
+                .build();
+
+        wrist = new WristSubsystem(wristPlant);
+        supervisor = new WristSupervisor(wrist);
+
+        // Pattern A: bindings call supervisor intent methods.
+        bindings.onRise(gamepads.p1().a(), supervisor::requestIntake);
+        bindings.onRise(gamepads.p1().b(), supervisor::requestScore);
+        bindings.onRise(gamepads.p1().y(), supervisor::requestStow);
+
+        // A temporary override: pulse open for 0.20 seconds.
+        bindings.onRise(gamepads.p1().x(), supervisor::pulseOpen);
+    }
+
+    @Override
+    public void loop() {
+        clock.update(getRuntime());
+
+        bindings.update(clock);
+
+        // In more complex robots, supervisors may have periodic update logic.
+        supervisor.update(clock);
+
+        // Subsystem is the single writer for its plant.
+        wrist.update(clock);
+
+        telemetry.addData("wrist.pose", wrist.desiredPose());
+        telemetry.addData("wrist.queueActive", wrist.overrideActive(clock));
+        telemetry.update();
+    }
+
+    // ----------------------------------------------------------------------
+    // Subsystem: owns hardware + single-writer target application
+    // ----------------------------------------------------------------------
+
+    private static final class WristSubsystem {
+        enum Pose {STOW, INTAKE, SCORE}
+
+        private final Plant plant;
+        private Pose desiredPose = Pose.STOW;
+
+        // Optional: temporary overrides (pulses, jogs, etc.)
+        private final OutputTaskRunner overrides = Tasks.outputQueue(0.0);
+
+        WristSubsystem(Plant plant) {
+            this.plant = plant;
+        }
+
+        Pose desiredPose() {
+            return desiredPose;
+        }
+
+        void requestPose(Pose pose) {
+            desiredPose = pose;
+        }
+
+        void enqueueOverride(double target, double seconds) {
+            overrides.enqueue(Tasks.outputForSeconds("wristOverride", target, seconds));
+        }
+
+        boolean overrideActive(LoopClock clock) {
+            return overrides.activeSource().getAsBoolean(clock);
+        }
+
+        void update(LoopClock clock) {
+            // 1) Update override queue.
+            overrides.update(clock);
+
+            // 2) Base target from desired pose.
+            double baseTarget = poseTarget(desiredPose);
+
+            // 3) Arbitration: override wins while active, otherwise base.
+            ScalarSource base = ScalarSource.constant(baseTarget);
+            ScalarSource finalTarget = overrides.activeSource().choose(overrides, base);
+
+            // 4) Apply to plant.
+            plant.setTarget(finalTarget.getAsDouble(clock));
+            plant.update(clock.dtSec());
+        }
+
+        private double poseTarget(Pose pose) {
+            switch (pose) {
+                case STOW:
+                    return POS_STOW;
+                case INTAKE:
+                    return POS_INTAKE;
+                case SCORE:
+                    return POS_SCORE;
+                default:
+                    return POS_STOW;
+            }
+        }
+    }
+
+    // ----------------------------------------------------------------------
+    // Supervisor: policy + intent translation
+    // ----------------------------------------------------------------------
+
+    private static final class WristSupervisor {
+        private final WristSubsystem wrist;
+
+        WristSupervisor(WristSubsystem wrist) {
+            this.wrist = wrist;
+        }
+
+        void requestStow() {
+            wrist.requestPose(WristSubsystem.Pose.STOW);
+        }
+
+        void requestIntake() {
+            wrist.requestPose(WristSubsystem.Pose.INTAKE);
+        }
+
+        void requestScore() {
+            wrist.requestPose(WristSubsystem.Pose.SCORE);
+        }
+
+        void pulseOpen() {
+            wrist.enqueueOverride(POS_OPEN, 0.20);
+        }
+
+        void update(LoopClock clock) {
+            // For this simple mechanism, there is no periodic supervisor logic.
+            // More complex supervisors might:
+            //  - consume RequestCounters
+            //  - manage cooldowns
+            //  - enqueue tasks based on sensor signals
+        }
+    }
+}
