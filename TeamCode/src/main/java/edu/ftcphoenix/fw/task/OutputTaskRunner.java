@@ -162,34 +162,34 @@ public final class OutputTaskRunner implements ScalarSource {
      *         0.30
      * );
      *
-     * feederQueue.repeatWhileTrue(clock, requestShoot, 1, feedOneFactory);
+     * feederQueue.whileTrue(clock, requestShoot, 1, feedOneFactory);
      * }
      * </pre>
      *
-     * <p><b>Design note:</b> {@code whileTrue} should usually be a <em>request</em> signal
+     * <p><b>Design note:</b> {@code request} should usually be a <em>request</em> signal
      * (driver intent), not a readiness gate. Readiness should live inside the produced task
      * (for example as {@code startWhen}). That way, the task can wait safely without producing
      * output, and your code keeps one buffered "feedOne" ready to run the moment sensors allow.</p>
      *
      * @param clock       loop clock (required)
-     * @param whileTrue   request signal; when false, the queue is cleared (required)
+     * @param request     request signal; when false, the queue is cleared (required)
      * @param backlog     number of tasks to keep buffered while requested (>= 0)
      * @param taskFactory factory that produces a <b>new</b> task instance each time (required)
      */
-    public void repeatWhileTrue(
+    public void whileTrue(
             LoopClock clock,
-            BooleanSource whileTrue,
+            BooleanSource request,
             int backlog,
             Supplier<? extends OutputTask> taskFactory
     ) {
         Objects.requireNonNull(clock, "clock");
-        Objects.requireNonNull(whileTrue, "whileTrue");
+        Objects.requireNonNull(request, "request");
         Objects.requireNonNull(taskFactory, "taskFactory");
         if (backlog < 0) {
             throw new IllegalArgumentException("backlog must be >= 0, got " + backlog);
         }
 
-        if (!whileTrue.getAsBoolean(clock)) {
+        if (!request.getAsBoolean(clock)) {
             clear();
             return;
         }

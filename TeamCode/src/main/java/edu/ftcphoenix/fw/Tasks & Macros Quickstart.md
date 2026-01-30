@@ -417,7 +417,7 @@ BooleanSource ballLeftGate = ballAtGate.fallingEdge();
 // In your loop:
 // Keep one "feedOne" buffered while the driver requests shooting.
 // The task waits in WAIT until fireAllowed is true.
-feederQueue.repeatWhileTrue(
+feederQueue.whileTrue(
         clock,
         requestShoot,
         1,

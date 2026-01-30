@@ -153,7 +153,7 @@ BooleanSource requestShoot = gamepads.p2().rightTrigger().above(0.50);
 BooleanSource canShootNow = fireAllowed.and(ballAtGate);
 BooleanSource ballLeftGate = ballAtGate.fallingEdge();
 
-feederQueue.repeatWhileTrue(
+feederQueue.whileTrue(
         clock,
         requestShoot,
         1, // keep exactly one task buffered
