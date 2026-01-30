@@ -189,6 +189,24 @@ DriveGuidanceStatus s = q.sample(loopClock);
 boolean okToShoot = s.translationWithin(3.0) && s.omegaWithin(Math.toRadians(3));
 ```
 
+### Query as Sources (debounce / hysteresis friendly)
+
+If you want "aimed" to be a first-class Phoenix signal (so you can debounce it, log it, and reuse it
+in TeleOp and auton), wrap the query with {@link edu.ftcphoenix.fw.drive.guidance.DriveGuidanceSources}:
+
+```java
+DriveGuidanceQuery aimQuery = plan.query();
+Source<DriveGuidanceStatus> aimStatus = DriveGuidanceSources.status(aimQuery);
+
+// Example: require aim to be stable for 0.10s before shooting.
+BooleanSource aimed = DriveGuidanceSources.omegaWithin(aimQuery, Math.toRadians(3))
+        .debouncedOn(0.10)
+        .memoized();
+
+// You can still read raw errors for telemetry.
+ScalarSource omegaErr = DriveGuidanceSources.omegaErrorRad(aimQuery);
+```
+
 ---
 
 ## Manual queries

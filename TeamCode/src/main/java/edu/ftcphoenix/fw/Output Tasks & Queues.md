@@ -134,6 +134,46 @@ OutputTask feedOne = Tasks.gatedOutputUntil(
 feederQueue.enqueue(feedOne);
 ```
 
+### Fast repeat shooting: keep one "feed" buffered while held
+
+To shoot quickly while maintaining accuracy, a common pattern is:
+
+1. driver holds a trigger to request shots
+2. you <b>only feed</b> when (a) aimed and (b) shooter is stably at speed and (c) a ball is present
+3. you keep exactly <b>one</b> feed task buffered so the next shot starts immediately
+
+Phoenix provides a small helper on {@code OutputTaskRunner}:
+
+```java
+BooleanSource shootHeld = gamepads.p2().rightTrigger().above(0.50);
+
+BooleanSource canShootNow = shootHeld
+        .and(fireAllowed)
+        .and(ballAtGate);
+
+// Safety: if the driver releases shoot, cancel any in-flight feed.
+if (!shootHeld.getAsBoolean(clock)) {
+    feederQueue.clear();
+}
+
+// Keep one feed task buffered while we are allowed to shoot.
+feederQueue.ensureBacklog(
+        clock,
+        canShootNow.getAsBoolean(clock) ? 1 : 0,
+        () -> Tasks.gatedOutputUntil(
+                "feedOne",
+                canShootNow,                 // startWhen
+                ballLeftGate,                // doneWhen
+                0.90,
+                0.05,
+                0.30
+        )
+);
+```
+
+This keeps your loop logic small and prevents "queue spam" (hundreds of pulses queued up)
+when a trigger is held.
+
 ### Sensorless fallback (no done condition)
 
 ```java
