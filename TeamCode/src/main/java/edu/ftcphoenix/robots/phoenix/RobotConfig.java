@@ -69,14 +69,22 @@ public class RobotConfig {
      * (e.g., ticks/sec), because Phoenix plants operate in native units by design.</p>
      */
     public static class Shooter {
-        public static final String nameServoPusher = "pusher";
-        public static final Direction directionServoPusher = Direction.FORWARD;
+        // --- Feed path ---
+        // Phoenix's ball system has a few simple "stages".
+        // If your robot doesn't have a particular stage yet, you can remove it from this config
+        // and from the Shooter subsystem.
 
-        public static final String nameCrServoTransferLeft = "transferLeft";
-        public static final Direction directionServoTransferLeft = Direction.REVERSE;
+        public static final String nameCrServoIntakeTransfer = "intakeTransfer";
+        public static final Direction directionCrServoIntakeTransfer = Direction.FORWARD;
 
-        public static final String nameCrServoTransferRight = "transferRight";
-        public static final Direction directionServoTransferRight = Direction.FORWARD;
+        public static final String nameMotorTransfer = "transferMotor";
+        public static final Direction directionMotorTransfer = Direction.FORWARD;
+
+        public static final String nameCrServoShooterTransfer = "shooterTransfer";
+        public static final Direction directionCrServoShooterTransfer = Direction.FORWARD;
+
+        // --- Flywheel shooter ---
+        // Two motors are common; if you only have one, delete the second motor wiring in Shooter.java.
 
         public static final String nameMotorShooterLeft = "shooterLeft";
         public static final Direction directionMotorShooterLeft = Direction.FORWARD;
@@ -104,8 +112,46 @@ public class RobotConfig {
          */
         public static final double readyStableSec = 0.15;
 
-        public static final double targetPusherBack = 0.2;
-        public static final double targetPusherFront = 1.0;
+        // --- Ball capacity + sensorless feed tuning ---
+        // Capacity is used by the "shoot all" macro. Until sensors are connected, we approximate
+        // each shot with a time-based feed pulse.
+
+        public static final int ballCapacity = 3;
+
+        /**
+         * Output used for feeding when a macro wants to run the feed path.
+         *
+         * <p>This is a <b>scalar</b> so you can treat it as power (0..1) for DC motors / CR servos.
+         * Tune directions in the actuator wiring, not by making this negative.</p>
+         */
+        public static final double feedPower = 1.0;
+
+        /**
+         * Time to run the feed path for one ball (sensorless approximation).
+         */
+        public static final double feedPulseSec = 0.25;
+
+        /**
+         * Optional pause between feed pulses.
+         *
+         * <p>This can help the flywheel recover between balls when you don't have sensors yet.</p>
+         */
+        public static final double feedCooldownSec = 0.10;
+
+        /**
+         * Manual max power for the intake-transfer stage (scaled by the trigger axis).
+         */
+        public static final double manualIntakeTransferMaxPower = 1.0;
+
+        /**
+         * Manual power for the transfer motor when its backup control is held.
+         */
+        public static final double manualTransferMotorPower = 1.0;
+
+        /**
+         * Manual power for the shooter-transfer stage when its backup control is held.
+         */
+        public static final double manualShooterTransferPower = 1.0;
     }
 
 

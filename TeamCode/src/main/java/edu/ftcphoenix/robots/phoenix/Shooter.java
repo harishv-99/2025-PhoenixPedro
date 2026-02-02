@@ -6,293 +6,283 @@ import org.firstinspires.ftc.robotcore.external.Telemetry;
 
 import edu.ftcphoenix.fw.actuation.Actuators;
 import edu.ftcphoenix.fw.actuation.Plant;
-import edu.ftcphoenix.fw.actuation.PlantTasks;
 import edu.ftcphoenix.fw.core.control.DebounceBoolean;
-import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.math.InterpolatingTable1D;
-import edu.ftcphoenix.fw.core.math.MathUtil;
+import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.time.LoopClock;
-import edu.ftcphoenix.fw.input.Gamepads;
-import edu.ftcphoenix.fw.task.Task;
+import edu.ftcphoenix.fw.task.OutputTaskRunner;
 import edu.ftcphoenix.fw.task.Tasks;
 
 /**
- * Phoenix robot shooter subsystem.
+ * Phoenix shooter + ball path subsystem.
  *
- * <p>This class wires the shooter-related {@link edu.ftcphoenix.fw.actuation.Plant}s
- * and exposes small, non-blocking {@link Task} helpers for TeleOp and autonomous.
- * Methods are named "instantX" to emphasize that they return tasks that can be
- * scheduled without blocking the main loop.</p>
+ * <p>This subsystem demonstrates the recommended pattern:
+ * <ul>
+ *   <li><b>Single writer:</b> this class is the only place that calls {@link Plant#setTarget(double)}.</li>
+ *   <li><b>Manual intent is state:</b> variables such as "manualShooterEnabled".</li>
+ *   <li><b>Automation is queued:</b> temporary overrides (shoot-all feed pulses) live in an
+ *       {@link OutputTaskRunner} and override the manual feed path while active.</li>
+ * </ul>
+ *
+ * <p>The corresponding {@link ShooterSupervisor} owns the policy and macro logic.
  */
-public class Shooter {
+public final class Shooter {
+
+    // ---------------------------------------------------------------------
+    // Calibration
+    // ---------------------------------------------------------------------
 
     /**
-     * Direction for the transfer (indexer) CR servos.
+     * Distance → flywheel velocity mapping for Phoenix.
+     *
+     * <p>Values are in inches → native velocity units. These are placeholders; tune for your robot.</p>
      */
-    public enum TransferDirection {
-        FORWARD,
-        BACKWARD
-    }
+    private static final InterpolatingTable1D SHOOTER_VELOCITY_TABLE = InterpolatingTable1D.ofSortedPairs(
+            24, 1600,
+            36, 1700,
+            48, 1750,
+            60, 1800,
+            72, 1875
+    );
 
-    private Plant plantPusher;
-    private Plant plantTransfer;
-    private Plant plantShooter;
+    // ---------------------------------------------------------------------
+    // Hardware plants
+    // ---------------------------------------------------------------------
+
+    private final Plant plantIntakeTransfer;
+    private final Plant plantTransferMotor;
+    private final Plant plantShooterTransfer;
+    private final Plant plantFlywheel;
+
+    // ---------------------------------------------------------------------
+    // Manual state (backup controls)
+    // ---------------------------------------------------------------------
+
+    private double manualIntakeTransferPower = 0.0;
+    private double manualTransferMotorPower = 0.0;
+    private double manualShooterTransferPower = 0.0;
+
+    private boolean manualShooterEnabled = false;
+    private double manualShooterVelocity = RobotConfig.Shooter.velocityMin;
+
+    // ---------------------------------------------------------------------
+    // Macro state (set by ShooterSupervisor)
+    // ---------------------------------------------------------------------
+
+    private boolean macroShooterEnabled = false;
+    private double macroShooterVelocity = RobotConfig.Shooter.velocityMin;
 
     /**
-     * Shooter "ready" latch: requires atSetpoint() to be continuously true for
-     * {@link RobotConfig.Shooter#readyStableSec} seconds before we report ready.
+     * Feed path override queue.
+     *
+     * <p>When a feed macro is running, this output overrides the manual feed powers.</p>
      */
-    private final DebounceBoolean readyLatch =
-            DebounceBoolean.onAfterOffImmediately(RobotConfig.Shooter.readyStableSec);
-
-    private double velocity;
-    private boolean isShooterOn;
-
-    // ----------------------------------------------------------------------
-    // Calibration table: distance (in) → shooter velocity (native units)
-    // ----------------------------------------------------------------------
+    private final OutputTaskRunner feedQueue = Tasks.outputQueue(0.0);
 
     /**
-     * Shooter velocity table built from sorted (distance, velocity) pairs.
+     * Debounced "ready" latch for the flywheel.
      */
-    private static final InterpolatingTable1D SHOOTER_VELOCITY_TABLE =
-            InterpolatingTable1D.ofSortedPairs(
-                    42, 0,
-                    45.8, 1600,
-                    47, 1600,
-                    49.9, 1550,
-                    56.6, 1550,
-                    66.5, 1550,
-                    76.6, 1600,
-                    83.4, 1600,
-                    94.5, 1650,
-                    102.5, 1625,
-                    105.5, 1650,
-                    113.3, 1650,
-                    117.8, 1685,
-                    121, 1700,
-                    125, 1700,
-                    130.2, 1700,
-                    139.4, 1750,
-                    150, 1800
-            );
+    private final DebounceBoolean readyLatch = DebounceBoolean.onAfterOffImmediately(RobotConfig.Shooter.readyStableSec);
 
+    // Cached for telemetry/debug (computed in update())
+    private double flywheelTargetNative = 0.0;
 
-    /**
-     * Construct the shooter subsystem and wire all associated hardware.
-     */
-    public Shooter(HardwareMap hardwareMap, Telemetry telemetry, Gamepads gamepads) {
-        plantPusher = Actuators.plant(hardwareMap)
-                .servo(RobotConfig.Shooter.nameServoPusher,
-                        RobotConfig.Shooter.directionServoPusher)
-                .position()
-                .build();
+    private final Telemetry telemetry;
 
-        plantTransfer = Actuators.plant(hardwareMap)
-                .crServo(RobotConfig.Shooter.nameCrServoTransferLeft,
-                        RobotConfig.Shooter.directionServoTransferLeft)
-                .andCrServo(RobotConfig.Shooter.nameCrServoTransferRight,
-                        RobotConfig.Shooter.directionServoTransferRight)
+    public Shooter(HardwareMap hardwareMap, Telemetry telemetry) {
+        this.telemetry = telemetry;
+
+        // --- Feed path ---
+        plantIntakeTransfer = Actuators.plant(hardwareMap)
+                .crServo(RobotConfig.Shooter.nameCrServoIntakeTransfer, RobotConfig.Shooter.directionCrServoIntakeTransfer)
                 .power()
                 .build();
 
-        plantShooter = Actuators.plant(hardwareMap)
-                .motor(RobotConfig.Shooter.nameMotorShooterLeft,
-                        RobotConfig.Shooter.directionMotorShooterLeft)
-                .andMotor(RobotConfig.Shooter.nameMotorShooterRight,
-                        RobotConfig.Shooter.directionMotorShooterRight)
-                .velocity(RobotConfig.Shooter.velocityToleranceNative)
+        plantTransferMotor = Actuators.plant(hardwareMap)
+                .motor(RobotConfig.Shooter.nameMotorTransfer, RobotConfig.Shooter.directionMotorTransfer)
+                .power()
                 .build();
 
-        isShooterOn = false;
-        velocity = RobotConfig.Shooter.velocityMin;
+        plantShooterTransfer = Actuators.plant(hardwareMap)
+                .crServo(RobotConfig.Shooter.nameCrServoShooterTransfer, RobotConfig.Shooter.directionCrServoShooterTransfer)
+                .power()
+                .build();
+
+        // --- Flywheel ---
+        plantFlywheel = Actuators.plant(hardwareMap)
+                .motor(RobotConfig.Shooter.nameMotorShooterLeft, RobotConfig.Shooter.directionMotorShooterLeft)
+                .andMotor(RobotConfig.Shooter.nameMotorShooterRight, RobotConfig.Shooter.directionMotorShooterRight)
+                .velocity(RobotConfig.Shooter.velocityToleranceNative)
+                .build();
+    }
+
+    // ---------------------------------------------------------------------
+    // Supervisor-facing API
+    // ---------------------------------------------------------------------
+
+    public OutputTaskRunner feedQueue() {
+        return feedQueue;
+    }
+
+    public void clearFeedQueue() {
+        feedQueue.clear();
+    }
+
+    public void setMacroShooterEnabled(boolean enabled) {
+        macroShooterEnabled = enabled;
+        if (!enabled) {
+            // Reset macro velocity to something sane so it doesn't hold stale values.
+            macroShooterVelocity = manualShooterVelocity;
+        }
+    }
+
+    public boolean macroShooterEnabled() {
+        return macroShooterEnabled;
+    }
+
+    public void setMacroShooterVelocity(double velocityNative) {
+        macroShooterVelocity = clampVelocity(velocityNative);
+    }
+
+    public double velocityForRangeInches(double rangeInches) {
+        return clampVelocity(SHOOTER_VELOCITY_TABLE.interpolate(rangeInches));
     }
 
     /**
-     * Update the target shooter velocity based on an estimated distance.
+     * Debounced flywheel-ready signal.
      *
-     * @param distance distance to target in inches
-     * @return a task that applies the new velocity immediately if the shooter is on;
-     * otherwise {@link Tasks#noop()}
+     * <p>This is designed to be used as a gate in {@link edu.ftcphoenix.fw.task.GatedOutputUntilTask}.
+     * The returned source is safe to sample multiple times per loop.</p>
      */
-    public Task instantSetVelocityByDist(double distance) {
-        double velForDist = SHOOTER_VELOCITY_TABLE.interpolate(distance);
-        this.velocity = MathUtil.clamp(velForDist,
-                RobotConfig.Shooter.velocityMin,
-                RobotConfig.Shooter.velocityMax);
-
-        if (isShooterOn) {
-            return instantStartShooter();
-        }
-
-        return Tasks.noop();
+    public BooleanSource flywheelReady() {
+        return new BooleanSource() {
+            @Override
+            public boolean getAsBoolean(LoopClock clock) {
+                boolean enabled = Math.abs(flywheelTargetNative) > 1e-6;
+                boolean at = enabled && plantFlywheel.atSetpoint();
+                return readyLatch.update(clock, at);
+            }
+        };
     }
 
-    /**
-     * Increase the configured shooter velocity by one increment.
-     */
-    public Task instantIncreaseVelocity() {
-        velocity += RobotConfig.Shooter.velocityIncrement;
-        velocity = Math.floor(velocity / RobotConfig.Shooter.velocityIncrement) *
-                RobotConfig.Shooter.velocityIncrement;
-        velocity = MathUtil.clamp(velocity,
-                RobotConfig.Shooter.velocityMin,
-                RobotConfig.Shooter.velocityMax);
+    // ---------------------------------------------------------------------
+    // Manual (backup) API
+    // ---------------------------------------------------------------------
 
-        if (isShooterOn) {
-            return instantStartShooter();
-        }
-
-        return Tasks.noop();
+    public void setManualIntakeTransferPower(double power) {
+        manualIntakeTransferPower = clampPower(power);
     }
 
-    /**
-     * Decrease the configured shooter velocity by one increment.
-     */
-    public Task instantDecreaseVelocity() {
-        velocity -= RobotConfig.Shooter.velocityIncrement;
-        velocity = Math.ceil(velocity / RobotConfig.Shooter.velocityIncrement) *
-                RobotConfig.Shooter.velocityIncrement;
-        velocity = MathUtil.clamp(velocity,
-                RobotConfig.Shooter.velocityMin,
-                RobotConfig.Shooter.velocityMax);
-
-        if (isShooterOn) {
-            return instantStartShooter();
-        }
-
-        return Tasks.noop();
+    public void setManualTransferMotorPower(double power) {
+        manualTransferMotorPower = clampPower(power);
     }
 
-    /**
-     * @return current configured shooter velocity (native units)
-     */
-    public double getVelocity() {
-        return velocity;
+    public void setManualShooterTransferPower(double power) {
+        manualShooterTransferPower = clampPower(power);
     }
 
-    /**
-     * @return whether the shooter motors are currently commanded on.
-     */
-    public boolean isShooterOn() {
-        return isShooterOn;
+    public void setManualShooterEnabled(boolean enabled) {
+        manualShooterEnabled = enabled;
     }
 
-    /**
-     * Start (or re-start) the shooter at the currently configured velocity.
-     */
-    public Task instantStartShooter() {
-        isShooterOn = true;
-        readyLatch.reset(false);
-        return PlantTasks.setInstant(plantShooter, velocity);
+    public boolean manualShooterEnabled() {
+        return manualShooterEnabled;
     }
 
-    /**
-     * Stop the shooter motor(s).
-     */
-    public Task instantStopShooter() {
-        isShooterOn = false;
-        readyLatch.reset(false);
-        return PlantTasks.setInstant(plantShooter, 0);
+    public void increaseManualVelocity() {
+        setManualShooterVelocity(manualShooterVelocity + RobotConfig.Shooter.velocityIncrement);
     }
 
-    /**
-     * @return true if the shooter is commanded on AND the shooter plant reports {@link Plant#atSetpoint()}.
-     */
-    public boolean isShooterAtSetpoint() {
-        return isShooterOn && plantShooter != null && plantShooter.atSetpoint();
+    public void decreaseManualVelocity() {
+        setManualShooterVelocity(manualShooterVelocity - RobotConfig.Shooter.velocityIncrement);
     }
 
-    /**
-     * Shooter "ready" check suitable for gating a feeder.
-     *
-     * <p>Returns true only after the shooter has remained at setpoint continuously for
-     * {@link RobotConfig.Shooter#readyStableSec} seconds. When the shooter is turned off,
-     * readiness is forced false.</p>
-     */
-    public boolean isShooterReady(LoopClock clock) {
-        return readyLatch.update(clock, isShooterAtSetpoint());
+    public void setManualShooterVelocity(double velocityNative) {
+        manualShooterVelocity = clampVelocity(velocityNative);
     }
 
-    /**
-     * Move the pusher servo to the "back" (retracted) position.
-     */
-    public Task instantSetPusherBack() {
-//        return PlantTasks.holdFor(plantPusher,
-//                RobotConfig.Shooter.targetPusherBack,
-//                0.5);
-        return PlantTasks.setInstant(plantPusher,
-                RobotConfig.Shooter.targetPusherBack);
+    public double manualShooterVelocity() {
+        return manualShooterVelocity;
     }
 
-    /**
-     * Move the pusher servo to the "front" (extended) position.
-     */
-    public Task instantSetPusherFront() {
-//        return PlantTasks.holdFor(plantPusher,
-//                RobotConfig.Shooter.targetPusherFront,
-//                0.5);
-        return PlantTasks.setInstant(plantPusher,
-                RobotConfig.Shooter.targetPusherFront);
+    // ---------------------------------------------------------------------
+    // Loop update + safety
+    // ---------------------------------------------------------------------
+
+    public void update(LoopClock clock) {
+        // 1) Compute + apply flywheel target BEFORE updating the feed queue.
+        //    Feed tasks use plantFlywheel.atSetpoint(), which is relative to the latest setTarget.
+        flywheelTargetNative = macroShooterEnabled
+                ? macroShooterVelocity
+                : (manualShooterEnabled ? manualShooterVelocity : 0.0);
+
+        plantFlywheel.setTarget(flywheelTargetNative);
+        plantFlywheel.update(clock.dtSec());
+
+        // 2) Update the feed macro queue.
+        feedQueue.update(clock);
+
+        boolean feedOverrideActive = feedQueue.hasActiveTask();
+        double feedOverride = feedQueue.getAsDouble(clock);
+
+        double intakeTarget = feedOverrideActive ? feedOverride : manualIntakeTransferPower;
+        double transferTarget = feedOverrideActive ? feedOverride : manualTransferMotorPower;
+        double shooterTransferTarget = feedOverrideActive ? feedOverride : manualShooterTransferPower;
+
+        plantIntakeTransfer.setTarget(intakeTarget);
+        plantTransferMotor.setTarget(transferTarget);
+        plantShooterTransfer.setTarget(shooterTransferTarget);
+
+        plantIntakeTransfer.update(clock.dtSec());
+        plantTransferMotor.update(clock.dtSec());
+        plantShooterTransfer.update(clock.dtSec());
     }
 
-    /**
-     * Start the transfer (indexer) in the requested direction.
-     */
-    public Task instantStartTransfer(TransferDirection direction) {
-        switch (direction) {
-            case FORWARD:
-                return PlantTasks.setInstant(plantTransfer, 1);
-            case BACKWARD:
-                return PlantTasks.setInstant(plantTransfer, -1);
-        }
-
-        throw new IllegalArgumentException("Unknown direction provided!!!");
-    }
-
-    /**
-     * Stop the transfer (indexer).
-     */
-    public Task instantStopTransfer() {
-        return PlantTasks.setInstant(plantTransfer, 0);
-    }
-
-    /**
-     * Emergency stop for all shooter-related actuators.
-     */
     public void stop() {
-        plantPusher.stop();
-        plantShooter.stop();
-        plantTransfer.stop();
+        macroShooterEnabled = false;
+        manualShooterEnabled = false;
+
+        manualIntakeTransferPower = 0.0;
+        manualTransferMotorPower = 0.0;
+        manualShooterTransferPower = 0.0;
+
+        feedQueue.clear();
+
+        plantFlywheel.stop();
+        plantIntakeTransfer.stop();
+        plantTransferMotor.stop();
+        plantShooterTransfer.stop();
     }
 
-
-    /**
-     * Debug helper: emit shooter state and delegate to each plant.
-     */
-    public void debugDump(DebugSink dbg, String prefix) {
-        if (dbg == null) {
+    public void telemetryDump(LoopClock clock, String prefix) {
+        if (telemetry == null) {
             return;
         }
         String p = (prefix == null || prefix.isEmpty()) ? "shooter" : prefix;
 
-        dbg.addLine(p)
-                .addData(p + ".velocity", velocity)
-                .addData(p + ".isShooterOn", isShooterOn)
-                .addData(p + ".atSetpoint", isShooterAtSetpoint())
-                .addData(p + ".ready", readyLatch.get());
-
-        readyLatch.debugDump(dbg, p + ".readyLatch");
-
-        if (plantShooter != null) {
-            plantShooter.debugDump(dbg, p + ".plantShooter");
-        }
-        if (plantTransfer != null) {
-            plantTransfer.debugDump(dbg, p + ".plantTransfer");
-        }
-        if (plantPusher != null) {
-            plantPusher.debugDump(dbg, p + ".plantPusher");
-        }
+        telemetry.addData(p + ".flywheelTarget", flywheelTargetNative);
+        telemetry.addData(p + ".flywheelAtSetpoint", plantFlywheel.atSetpoint());
+        telemetry.addData(p + ".ready", flywheelReady().getAsBoolean(clock));
+        telemetry.addData(p + ".macroEnabled", macroShooterEnabled);
+        telemetry.addData(p + ".manualEnabled", manualShooterEnabled);
+        telemetry.addData(p + ".feedBacklog", feedQueue.backlogCount());
+        telemetry.addData(p + ".feedQueued", feedQueue.queuedCount());
+        telemetry.addData(p + ".feedActive", feedQueue.hasActiveTask());
     }
 
+    // ---------------------------------------------------------------------
+    // Helpers
+    // ---------------------------------------------------------------------
+
+    private static double clampPower(double p) {
+        if (p > 1.0) return 1.0;
+        if (p < -1.0) return -1.0;
+        return p;
+    }
+
+    private static double clampVelocity(double v) {
+        if (v > RobotConfig.Shooter.velocityMax) return RobotConfig.Shooter.velocityMax;
+        if (v < RobotConfig.Shooter.velocityMin) return RobotConfig.Shooter.velocityMin;
+        return v;
+    }
 }

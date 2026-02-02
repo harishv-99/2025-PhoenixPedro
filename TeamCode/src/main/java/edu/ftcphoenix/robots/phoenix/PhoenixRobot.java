@@ -41,9 +41,6 @@ import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagObservation;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.TagTarget;
-import edu.ftcphoenix.fw.task.TaskBindings;
-import edu.ftcphoenix.fw.task.TaskRunner;
-import edu.ftcphoenix.fw.task.Tasks;
 
 /**
  * Central robot class for Phoenix-based robots.
@@ -53,7 +50,7 @@ import edu.ftcphoenix.fw.task.Tasks;
  *
  * <h2>Responsibilities</h2>
  * <ul>
- *   <li>Wire all hardware once (drive, intake, transfer, shooter, pusher, vision).</li>
+ *   <li>Wire all hardware once (drive, ball path, shooter, vision).</li>
  *   <li>Define gamepad mappings in one place via {@link Bindings}.</li>
  *   <li>Own shared logic: auto-aim, shooter velocity, macros, autos.</li>
  *   <li>Expose simple entry points for TeleOp and Auto.</li>
@@ -65,13 +62,14 @@ public final class PhoenixRobot {
     private final Telemetry telemetry;
     private final Gamepads gamepads;
     private final Bindings bindings = new Bindings();
-    private final TaskRunner taskRunnerTeleOp = new TaskRunner();
     private final DebugSink dbg;
     private Shooter shooter;
+    private ShooterSupervisor shooterSupervisor;
     private MecanumDrivebase drivebase;
     private PinpointPoseEstimator pinpoint;
     private DriveSource stickDrive;
     private DriveSource driveWithAim;
+    private BooleanSource shootAllHeld = BooleanSource.constant(false);
     private CameraMountConfig cameraMountConfig;
     private AprilTagSensor tagSensor;
     private TagTarget scoringTarget;
@@ -146,7 +144,7 @@ public final class PhoenixRobot {
         // PoseLock will actively correct position, but BRAKE helps reduce "coast".
         FtcDrives.setDriveBrake(hardwareMap, mecanumWiring, RobotConfig.DriveTrain.zeroPowerBrake);
 
-        shooter = new Shooter(hardwareMap, telemetry, gamepads);
+        shooter = new Shooter(hardwareMap, telemetry);
 
         // --- Use the standard TeleOp stick mapping for mecanum.
         stickDrive = GamepadDriveSource.teleOpMecanumSlowRb(gamepads);
@@ -168,7 +166,13 @@ public final class PhoenixRobot {
         // Track scoring tags with a freshness window.
         scoringTarget = new TagTarget(tagSensor, SCORING_TAG_IDS, 0.5);
 
-        // --- Drive guidance (replaces TagAim): hold P2 LB to auto-aim omega at the best scoring tag.
+        // P2 Right Trigger is our "shoot all" macro. It also acts as the auto-aim enable.
+        shootAllHeld = gamepads.p2().rightTrigger().above(0.5);
+
+        // Supervisor: owns "shoot all" policy + sensorless timing.
+        shooterSupervisor = new ShooterSupervisor(shooter, gamepads.p2(), scoringTarget);
+
+        // --- Drive guidance (replaces TagAim): hold P2 RT to auto-aim omega at the best scoring tag.
         // Use the framework's helper so robot code stays simple.
         // (This updates the TagTarget each loop and converts the latest AprilTag measurement into a
         // robot-relative planar observation used by DriveGuidance.)
@@ -293,7 +297,7 @@ public final class PhoenixRobot {
         //
         // Hold-to-enable is the simplest for drivers. If you prefer a toggle (press once to
         // enable, press again to disable), use: gamepads.p2().leftBumper().toggled()
-        BooleanSource autoAimEnabled = gamepads.p2().leftBumper();
+        BooleanSource autoAimEnabled = shootAllHeld;
 
         // Stack multiple overlays without nested overlayWhen(...) calls.
         //
@@ -330,9 +334,12 @@ public final class PhoenixRobot {
                 )
                 .build();
 
-        telemetry.addLine("Phoenix TeleOp with AutoAim");
-        telemetry.addLine("Left stick: drive, Right stick: turn, RB: slow mode");
-        telemetry.addLine("P2 LB: auto-aim + lock translation (shoot brace)");
+        telemetry.addLine("Phoenix TeleOp (Supervisor + OutputTasks)");
+        telemetry.addLine("P1: Left stick=drive, Right stick=turn, RB=slow mode");
+        telemetry.addLine("P2: RT=auto-aim + shoot all (3 balls)");
+        telemetry.addLine("P2: LT=intake transfer, LB=transfer motor, RB=shooter transfer (manual backups)");
+        telemetry.addLine("P2: A=toggle flywheel, DPad Up/Down=velocity");
+        telemetry.addLine("P2: X=unjam (reverse all feeds)");
         telemetry.update();
 
         // Create bindings
@@ -340,38 +347,18 @@ public final class PhoenixRobot {
     }
 
     private void createBindings() {
-        // Most bindings in TeleOp simply enqueue a Task. TaskBindings removes the
-        // repeated "() -> runner.enqueue(... )" boilerplate.
-        TaskBindings tb = TaskBindings.of(bindings, taskRunnerTeleOp);
+        // --- Primary macro ---
+        // Hold P2 RT: auto-aim + "shoot all". Release to cancel.
+        bindings.onRise(shootAllHeld, shooterSupervisor::requestShootAll);
+        bindings.onFall(shootAllHeld, shooterSupervisor::cancelShootAll);
 
-        tb.onRise(gamepads.p2().y(), shooter::instantSetPusherFront);
-        tb.onRise(gamepads.p2().a(), shooter::instantSetPusherBack);
+        // --- Manual backups ---
+        // Toggle flywheel on/off (the macro uses its own overlay).
+        bindings.onToggle(gamepads.p2().a(), shooter::setManualShooterEnabled);
 
-        // Hold to run transfer; release to stop.
-        tb.onRiseAndFall(
-                gamepads.p2().b(),
-                () -> shooter.instantStartTransfer(Shooter.TransferDirection.FORWARD),
-                shooter::instantStopTransfer
-        );
-
-        tb.onRiseAndFall(
-                gamepads.p2().x(),
-                () -> shooter.instantStartTransfer(Shooter.TransferDirection.BACKWARD),
-                shooter::instantStopTransfer
-        );
-
-        // While held: continuously update shooter velocity based on the latest tag range.
-        tb.whileTrue(gamepads.p2().leftBumper(), () -> {
-            AprilTagObservation obs = scoringTarget.last();
-            return obs.hasTarget
-                    ? shooter.instantSetVelocityByDist(obs.cameraRangeInches())
-                    : Tasks.noop();
-        });
-
-        tb.onToggle(gamepads.p2().rightBumper(), shooter::instantStartShooter, shooter::instantStopShooter);
-
-        tb.onRise(gamepads.p2().dpadUp(), shooter::instantIncreaseVelocity);
-        tb.onRise(gamepads.p2().dpadDown(), shooter::instantDecreaseVelocity);
+        // D-pad: tweak manual flywheel velocity.
+        bindings.onRise(gamepads.p2().dpadUp(), shooter::increaseManualVelocity);
+        bindings.onRise(gamepads.p2().dpadDown(), shooter::decreaseManualVelocity);
     }
 
     /**
@@ -416,26 +403,20 @@ public final class PhoenixRobot {
         // --- Shoot-brace latch (pose lock translation only) ---
         updateShootBraceEnabled();
 
+        // --- 3) Supervisors / mechanisms ---
+        shooterSupervisor.update(clock);
 
-        // --- 3) TeleOp Macros ---
-        taskRunnerTeleOp.update(clock);
-
-        // When no macro is active, hold a safe default state.
-        if (!taskRunnerTeleOp.hasActiveTask()) {
-        }
-
-        // --- 4) Drive: guidance overlay (P2 LB may override omega) ---
+        // --- 4) Drive: guidance overlay (P2 RT may override omega) ---
         DriveSignal cmd = driveWithAim.get(clock).clamped();
         drivebase.update(clock);
         drivebase.drive(cmd);
 
-        // --- 4) Other mechanisms ---
+        // --- 5) Other mechanisms ---
+        shooter.update(clock);
 
-
-        // --- 5) Telemetry / debug ---
-        telemetry.addData("shooter velocity", shooter.getVelocity());
-        telemetry.addData("shooter atSetpoint", shooter.isShooterAtSetpoint());
-        telemetry.addData("shooter ready", shooter.isShooterReady(clock));
+        // --- 6) Telemetry / debug ---
+        shooter.telemetryDump(clock, "shooter");
+        telemetry.addData("shootAll.active", shooterSupervisor.isShootAllActive());
         telemetry.addData("shootBrace", shootBraceLatch.get());
         if (pinpoint != null) {
             telemetry.addData("pose", pinpoint.getEstimate());
@@ -491,15 +472,16 @@ public final class PhoenixRobot {
     }
 
     /**
-     * Latches pose-lock while P2 is holding auto-aim (LB) and the driver is not commanding translation.
+     * Latches translation pose-lock while the aiming driver is holding the "shoot all" trigger
+     * (auto-aim) and the driver is not commanding translation.
      *
-     * <p>This makes "hold LB" a single driver action for: aim + brace + shoot.</p>
+     * <p>This makes "hold RT" a single driver action for: aim + brace + shoot.</p>
      * <p>Hysteresis prevents chatter when sticks hover near center.</p>
      */
     private void updateShootBraceEnabled() {
-        // Only brace while the aiming driver (P2) is actively holding the aim button.
+        // Only brace while P2 is actively holding the auto-aim trigger.
         // This avoids surprise "fighting the driver" behavior during normal driving.
-        if (!gamepads.p2().leftBumper().getAsBoolean(clock)) {
+        if (!shootAllHeld.getAsBoolean(clock)) {
             shootBraceLatch.reset(false);
             return;
         }
@@ -516,6 +498,9 @@ public final class PhoenixRobot {
      */
     public void stopAny() {
         drivebase.stop();
+        if (shooter != null) {
+            shooter.stop();
+        }
     }
 
     /**

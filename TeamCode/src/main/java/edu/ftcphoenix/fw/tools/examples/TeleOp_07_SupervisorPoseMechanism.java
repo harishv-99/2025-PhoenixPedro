@@ -83,7 +83,6 @@ public final class TeleOp_07_SupervisorPoseMechanism extends OpMode {
     @Override
     public void loop() {
         clock.update(getRuntime());
-
         bindings.update(clock);
 
         // In more complex robots, supervisors may have periodic update logic.
