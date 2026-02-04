@@ -69,7 +69,7 @@ public final class PhoenixRobot {
     private PinpointPoseEstimator pinpoint;
     private DriveSource stickDrive;
     private DriveSource driveWithAim;
-    private BooleanSource shootAllHeld = BooleanSource.constant(false);
+    private BooleanSource shootHeld = BooleanSource.constant(false);
     private CameraMountConfig cameraMountConfig;
     private AprilTagSensor tagSensor;
     private TagTarget scoringTarget;
@@ -166,13 +166,13 @@ public final class PhoenixRobot {
         // Track scoring tags with a freshness window.
         scoringTarget = new TagTarget(tagSensor, SCORING_TAG_IDS, 0.5);
 
-        // P2 Right Trigger is our "shoot all" macro. It also acts as the auto-aim enable.
-        shootAllHeld = gamepads.p2().rightTrigger().above(0.5);
+        // Shooter supervisor: owns shoot policy + sensorless timing.
+        // Gamepad bindings update the supervisor state; we expose that state as a BooleanSource
+        // so it can also enable auto-aim and shoot-brace.
+        shooterSupervisor = new ShooterSupervisor(shooter, scoringTarget);
+        shootHeld = BooleanSource.of(shooterSupervisor::isShootHeld);
 
-        // Supervisor: owns "shoot all" policy + sensorless timing.
-        shooterSupervisor = new ShooterSupervisor(shooter, gamepads.p2(), scoringTarget);
-
-        // --- Drive guidance (replaces TagAim): hold P2 RT to auto-aim omega at the best scoring tag.
+        // --- Drive guidance (replaces TagAim): hold P2 B to auto-aim omega at the best scoring tag.
         // Use the framework's helper so robot code stays simple.
         // (This updates the TagTarget each loop and converts the latest AprilTag measurement into a
         // robot-relative planar observation used by DriveGuidance.)
@@ -297,7 +297,7 @@ public final class PhoenixRobot {
         //
         // Hold-to-enable is the simplest for drivers. If you prefer a toggle (press once to
         // enable, press again to disable), use: gamepads.p2().leftBumper().toggled()
-        BooleanSource autoAimEnabled = shootAllHeld;
+        BooleanSource autoAimEnabled = shootHeld;
 
         // Stack multiple overlays without nested overlayWhen(...) calls.
         //
@@ -336,10 +336,10 @@ public final class PhoenixRobot {
 
         telemetry.addLine("Phoenix TeleOp (Supervisor + OutputTasks)");
         telemetry.addLine("P1: Left stick=drive, Right stick=turn, RB=slow mode");
-        telemetry.addLine("P2: RT=auto-aim + shoot all (3 balls)");
-        telemetry.addLine("P2: LT=intake transfer, LB=transfer motor, RB=shooter transfer (manual backups)");
-        telemetry.addLine("P2: A=toggle flywheel, DPad Up/Down=velocity");
-        telemetry.addLine("P2: X=unjam (reverse all feeds)");
+        telemetry.addLine("P2: A=toggle intake");
+        telemetry.addLine("P2: B=shoot (tap for one, hold to keep shooting)");
+        telemetry.addLine("P2: X= eject / unjam (hold; reverse feeds)");
+        telemetry.addLine("P2: DPad Up/Down=shooter velocity (fallback when no tag)");
         telemetry.update();
 
         // Create bindings
@@ -347,16 +347,33 @@ public final class PhoenixRobot {
     }
 
     private void createBindings() {
-        // --- Primary macro ---
-        // Hold P2 RT: auto-aim + "shoot all". Release to cancel.
-        bindings.onRise(shootAllHeld, shooterSupervisor::requestShootAll);
-        bindings.onFall(shootAllHeld, shooterSupervisor::cancelShootAll);
+        // -------------------------
+        // Gamepad 2: shooter + intake
+        // -------------------------
 
-        // --- Manual backups ---
-        // Toggle flywheel on/off (the macro uses its own overlay).
-        bindings.onToggle(gamepads.p2().a(), shooter::setManualShooterEnabled);
+        // A: toggle intake
+        bindings.onRise(gamepads.p2().a(), shooterSupervisor::toggleIntake);
 
-        // D-pad: tweak manual flywheel velocity.
+        // B: shoot
+        // - tap: queue one shot
+        // - hold: keep shooting (supervisor keeps a 1-shot backlog buffered)
+        bindings.onRiseAndFall(
+                gamepads.p2().b(),
+                () -> {
+                    shooterSupervisor.setShootHeld(true);
+                    shooterSupervisor.requestShootOne();
+                },
+                () -> shooterSupervisor.setShootHeld(false)
+        );
+
+        // X: eject / unjam (hold)
+        bindings.onRiseAndFall(
+                gamepads.p2().x(),
+                () -> shooterSupervisor.setEjectHeld(true),
+                () -> shooterSupervisor.setEjectHeld(false)
+        );
+
+        // D-pad: tweak manual (fallback) flywheel velocity (used when no tag is visible).
         bindings.onRise(gamepads.p2().dpadUp(), shooter::increaseManualVelocity);
         bindings.onRise(gamepads.p2().dpadDown(), shooter::decreaseManualVelocity);
     }
@@ -406,7 +423,7 @@ public final class PhoenixRobot {
         // --- 3) Supervisors / mechanisms ---
         shooterSupervisor.update(clock);
 
-        // --- 4) Drive: guidance overlay (P2 RT may override omega) ---
+        // --- 4) Drive: guidance overlay (P2 B may override omega) ---
         DriveSignal cmd = driveWithAim.get(clock).clamped();
         drivebase.update(clock);
         drivebase.drive(cmd);
@@ -416,7 +433,8 @@ public final class PhoenixRobot {
 
         // --- 6) Telemetry / debug ---
         shooter.telemetryDump(clock, "shooter");
-        telemetry.addData("shootAll.active", shooterSupervisor.isShootAllActive());
+        telemetry.addData("intake.enabled", shooterSupervisor.intakeEnabled());
+        telemetry.addData("shoot.btn", shootHeld.getAsBoolean(clock));
         telemetry.addData("shootBrace", shootBraceLatch.get());
         if (pinpoint != null) {
             telemetry.addData("pose", pinpoint.getEstimate());
@@ -472,16 +490,16 @@ public final class PhoenixRobot {
     }
 
     /**
-     * Latches translation pose-lock while the aiming driver is holding the "shoot all" trigger
+     * Latches translation pose-lock while the aiming driver is holding the shoot trigger
      * (auto-aim) and the driver is not commanding translation.
      *
-     * <p>This makes "hold RT" a single driver action for: aim + brace + shoot.</p>
+     * <p>This makes "hold B" a single driver action for: aim + brace + shoot.</p>
      * <p>Hysteresis prevents chatter when sticks hover near center.</p>
      */
     private void updateShootBraceEnabled() {
         // Only brace while P2 is actively holding the auto-aim trigger.
         // This avoids surprise "fighting the driver" behavior during normal driving.
-        if (!shootAllHeld.getAsBoolean(clock)) {
+        if (!shootHeld.getAsBoolean(clock)) {
             shootBraceLatch.reset(false);
             return;
         }

@@ -69,89 +69,126 @@ public class RobotConfig {
      * (e.g., ticks/sec), because Phoenix plants operate in native units by design.</p>
      */
     public static class Shooter {
-        // --- Feed path ---
-        // Phoenix's ball system has a few simple "stages".
-        // If your robot doesn't have a particular stage yet, you can remove it from this config
-        // and from the Shooter subsystem.
 
+        // ------------------------------------------------------------------
+        // Hardware mapping (match your FTC Robot Configuration)
+        // ------------------------------------------------------------------
+
+        /**
+         * Intake wheels motor (pulls balls into the robot).
+         */
+        public static final String nameMotorIntake = "intakeMotor";
+        public static final Direction directionMotorIntake = Direction.FORWARD;
+
+        /**
+         * Intake-to-storage transfer (continuous rotation servo).
+         */
         public static final String nameCrServoIntakeTransfer = "intakeTransfer";
         public static final Direction directionCrServoIntakeTransfer = Direction.FORWARD;
 
-        public static final String nameMotorTransfer = "transferMotor";
-        public static final Direction directionMotorTransfer = Direction.FORWARD;
+        /**
+         * Shooter transfer (two continuous rotation servos).
+         */
+        public static final String nameCrServoShooterTransferLeft = "shooterTransferLeft";
+        public static final Direction directionCrServoShooterTransferLeft = Direction.FORWARD;
 
-        public static final String nameCrServoShooterTransfer = "shooterTransfer";
-        public static final Direction directionCrServoShooterTransfer = Direction.FORWARD;
+        public static final String nameCrServoShooterTransferRight = "shooterTransferRight";
+        public static final Direction directionCrServoShooterTransferRight = Direction.FORWARD;
 
-        // --- Flywheel shooter ---
-        // Two motors are common; if you only have one, delete the second motor wiring in Shooter.java.
+        // ------------------------------------------------------------------
+        // Servo mismatch hack
+        // ------------------------------------------------------------------
 
-        public static final String nameMotorShooterLeft = "shooterLeft";
-        public static final Direction directionMotorShooterLeft = Direction.FORWARD;
+        /**
+         * Scale applied to the LEFT shooter-transfer CR servo.
+         *
+         * <p>We currently have mismatched servo models: one "speed" servo and one "super speed" servo.
+         * The super speed servo should usually get <b>less</b> power so both sides move balls at a similar speed.
+         *
+         * <p>This is implemented using {@link edu.ftcphoenix.fw.actuation.Actuators} multi-CR-servo scaling.
+         */
+        public static final double shooterTransferLeftScale = 0.65;
 
-        public static final String nameMotorShooterRight = "shooterRight";
-        public static final Direction directionMotorShooterRight = Direction.FORWARD;
+        /**
+         * Optional additive bias for the LEFT shooter-transfer servo (usually 0).
+         */
+        public static final double shooterTransferLeftBias = 0.0;
+
+        // ------------------------------------------------------------------
+        // Shooter wheel (single motor, velocity control)
+        // ------------------------------------------------------------------
+
+        public static final String nameMotorShooterWheel = "shooterWheel";
+        public static final Direction directionMotorShooterWheel = Direction.FORWARD;
 
         public static final double velocityMin = 1500;
         public static final double velocityMax = 1900;
         public static final double velocityIncrement = 25;
 
-        /**
-         * Shooter velocity tolerance in native units used by {@code Plant.atSetpoint()}.
-         *
-         * <p>Note: for single-wheel shooters, consistency often improves more from a stable-ready
-         * latch (see {@link #readyStableSec}) than from tightening this tolerance too aggressively.</p>
-         */
+        /** Tolerance for {@code Plant.atSetpoint()} in native velocity units. */
         public static final double velocityToleranceNative = 50;
 
-        /**
-         * Time that the shooter must remain "at setpoint" before we consider it ready.
-         *
-         * <p>This guards against brief flicker where {@code atSetpoint()} is true for only a
-         * single loop due to noise or a disturbance.</p>
-         */
+        /** Debounce time for the shooter "ready" latch. */
         public static final double readyStableSec = 0.15;
 
-        // --- Ball capacity + sensorless feed tuning ---
-        // Capacity is used by the "shoot all" macro. Until sensors are connected, we approximate
-        // each shot with a time-based feed pulse.
-
-        public static final int ballCapacity = 3;
+        // ------------------------------------------------------------------
+        // TeleOp behavior tuning
+        // ------------------------------------------------------------------
 
         /**
-         * Output used for feeding when a macro wants to run the feed path.
-         *
-         * <p>This is a <b>scalar</b> so you can treat it as power (0..1) for DC motors / CR servos.
-         * Tune directions in the actuator wiring, not by making this negative.</p>
+         * Base power while intaking.
          */
-        public static final double feedPower = 1.0;
+        public static final double intakeMotorPower = 1.0;
+        public static final double intakeTransferPower = 1.0;
 
         /**
-         * Time to run the feed path for one ball (sensorless approximation).
+         * While intaking, spin the shooter transfer <b>backwards</b> to keep balls from reaching the wheel.
          */
-        public static final double feedPulseSec = 0.25;
+        public static final double intakeShooterTransferHoldBackPower = 0.5;
 
         /**
-         * Optional pause between feed pulses.
-         *
-         * <p>This can help the flywheel recover between balls when you don't have sensors yet.</p>
+         * Base power while ejecting/unjamming (reverse direction).
          */
-        public static final double feedCooldownSec = 0.10;
+        public static final double ejectMotorPower = 1.0;
+        public static final double ejectTransferPower = 1.0;
+        public static final double ejectShooterTransferPower = 1.0;
+
+        // ------------------------------------------------------------------
+        // Shooting (one-ball pulses)
+        // ------------------------------------------------------------------
+
+        /** Output from the feed queue while a "shoot one" pulse is active. */
+        public static final double shootFeedPower = 1.0;
+
+        /** Time to run the feed path to advance approximately one ball. */
+        public static final double shootFeedPulseSec = 0.22;
 
         /**
-         * Manual max power for the intake-transfer stage (scaled by the trigger axis).
+         * Optional pause between shots (helps flywheel recover for accuracy).
          */
-        public static final double manualIntakeTransferMaxPower = 1.0;
+        public static final double shootFeedCooldownSec = 0.06;
 
         /**
-         * Manual power for the transfer motor when its backup control is held.
+         * Keep the flywheel spinning briefly after the last shot request for faster follow-ups.
          */
-        public static final double manualTransferMotorPower = 1.0;
+        public static final double flywheelKeepAliveSec = 0.75;
+
+        // ------------------------------------------------------------------
+        // Feed distribution (macro output scaling per stage)
+        // ------------------------------------------------------------------
 
         /**
-         * Manual power for the shooter-transfer stage when its backup control is held.
+         * Scale applied to feed-queue output for the intake motor during shooting pulses.
          */
-        public static final double manualShooterTransferPower = 1.0;
+        public static final double feedScaleIntakeMotor = 1.0;
+
+        /**
+         * Scale applied to feed-queue output for the intake transfer servo during shooting pulses.
+         */
+        public static final double feedScaleIntakeTransfer = 1.0;
+
+        /** Scale applied to feed-queue output for the shooter transfer during shooting pulses. */
+        public static final double feedScaleShooterTransfer = 1.0;
     }
 
 

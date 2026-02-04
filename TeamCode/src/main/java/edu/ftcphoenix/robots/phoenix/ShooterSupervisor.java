@@ -5,7 +5,6 @@ import java.util.Objects;
 import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.source.ScalarSource;
 import edu.ftcphoenix.fw.core.time.LoopClock;
-import edu.ftcphoenix.fw.input.GamepadDevice;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.TagTarget;
 import edu.ftcphoenix.fw.task.OutputTask;
 import edu.ftcphoenix.fw.task.Tasks;
@@ -13,142 +12,221 @@ import edu.ftcphoenix.fw.task.Tasks;
 /**
  * Policy/supervisor layer for the Phoenix shooter + ball path.
  *
- * <p>Responsibilities:
+ * <p><b>Key idea:</b> this class owns the "rules" (intake vs shoot vs eject priority) and builds
+ * timed/gated feed tasks, but it does <b>not</b> read the gamepad directly.
+ *
+ * <p>{@link PhoenixRobot} owns gamepad bindings and calls the small "intent" methods here.
+ * That keeps <b>all button mappings in one place</b> (less confusing for students) while still
+ * keeping shooter logic out of the already-large robot container.
+ *
+ * <p>Gamepad 2 controls (wired in {@link PhoenixRobot#createBindings()}):
  * <ul>
- *   <li>Read driver intent for manual backups (individual plants).</li>
- *   <li>Own the "shoot all" macro (currently sensorless / time-based).</li>
- *   <li>Pick flywheel velocity based on AprilTag range when available.</li>
+ *   <li><b>A</b>: toggle intake</li>
+ *   <li><b>B</b>: shoot (tap for one, hold to keep shooting)</li>
+ *   <li><b>X</b>: eject / unjam (hold; reverses intake + transfers)</li>
+ * </ul>
+ *
+ * <p>Important behavior notes:
+ * <ul>
+ *   <li>While <b>intaking</b>, we spin the shooter transfer <b>backwards</b> to prevent balls from
+ *       reaching the shooter wheel and launching.</li>
+ *   <li>Shooter transfer uses two mismatched CR servos; the <b>left</b> servo can be power-scaled in
+ *       {@link RobotConfig.Shooter#shooterTransferLeftScale} so both sides move balls similarly.</li>
  * </ul>
  */
 public final class ShooterSupervisor {
 
     private final Shooter shooter;
-    private final GamepadDevice gp2;
     private final TagTarget scoringTarget;
 
-    private boolean shootAllRequested = false;
-    private boolean shootAllCancelRequested = false;
-    private boolean shootAllActive = false;
+    // ---------------------------------------------------------------------
+    // Latched state (set by bindings)
+    // ---------------------------------------------------------------------
 
-    public ShooterSupervisor(Shooter shooter, GamepadDevice gp2, TagTarget scoringTarget) {
+    private boolean intakeEnabled = false;
+    private boolean ejectHeld = false;
+    private boolean shootHeld = false;
+
+    // Edge-like request flag: set on a press, consumed in update().
+    private boolean shootOneRequested = false;
+
+    // Keep flywheel running briefly after the last shoot request.
+    private double keepFlywheelUntilSec = 0.0;
+
+    public ShooterSupervisor(Shooter shooter, TagTarget scoringTarget) {
         this.shooter = Objects.requireNonNull(shooter, "shooter");
-        this.gp2 = Objects.requireNonNull(gp2, "gp2");
         this.scoringTarget = Objects.requireNonNull(scoringTarget, "scoringTarget");
     }
 
-    /**
-     * Edge-triggered by a binding (e.g. P2 RT rising edge).
-     */
-    public void requestShootAll() {
-        shootAllRequested = true;
+    // ---------------------------------------------------------------------
+    // Intent API (called from bindings)
+    // ---------------------------------------------------------------------
+
+    public boolean intakeEnabled() {
+        return intakeEnabled;
     }
 
-    /**
-     * Edge-triggered by a binding (e.g. P2 RT falling edge).
-     */
-    public void cancelShootAll() {
-        shootAllCancelRequested = true;
+    public boolean isShootHeld() {
+        return shootHeld;
     }
 
-    public boolean isShootAllActive() {
-        return shootAllActive;
+    public void toggleIntake() {
+        intakeEnabled = !intakeEnabled;
+
+        // If we just enabled intake, cancel shooting so we don't feed into the wheel.
+        if (intakeEnabled) {
+            shootHeld = false;
+            stopShooting();
+        }
     }
 
+    public void setShootHeld(boolean held) {
+        this.shootHeld = held;
+
+        // If the driver released the shoot button, don't force-stop the flywheel immediately;
+        // keep-alive logic handles a short grace period for fast follow-ups.
+    }
+
+    public void requestShootOne() {
+        shootOneRequested = true;
+
+        // If we're starting a shoot request, intake should not "win" over it.
+        // (We keep intakeEnabled latched so it resumes after shooting.)
+    }
+
+    public void setEjectHeld(boolean held) {
+        ejectHeld = held;
+        if (held) {
+            // Eject is an override. Stop shooting so we don't accidentally launch.
+            shootHeld = false;
+            stopShooting();
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Loop
+    // ---------------------------------------------------------------------
+
     /**
-     * Call once per loop. Applies manual backups and manages the macro lifecycle.
+     * Call once per loop.
      */
     public void update(LoopClock clock) {
 
-        // --- Manual backups (base layer) ---
-        // These remain available even if sensors are missing.
-        updateManualFeed(clock);
+        // -----------------------------------------------------------------
+        // Overrides: Eject has highest priority.
+        // -----------------------------------------------------------------
 
-        // --- Macro state machine ---
-        if (shootAllCancelRequested) {
-            shootAllCancelRequested = false;
-            stopMacro();
+        if (ejectHeld) {
+            // Keep shooter disabled while eject is held.
+            stopShooting();
+            applyEject();
+            return;
         }
 
-        if (shootAllRequested) {
-            shootAllRequested = false;
-            startMacro(clock);
+        // -----------------------------------------------------------------
+        // Shooting: tap queues one; hold keeps one queued at all times.
+        // -----------------------------------------------------------------
+
+        if (shootOneRequested) {
+            shootOneRequested = false;
+            shooter.feedQueue().enqueue(shootOneTask(clock));
         }
 
-        if (shootAllActive) {
+        if (shootHeld) {
+            // Keep one "shoot one" task buffered so shots happen as quickly as possible.
+            shooter.feedQueue().ensureBacklog(clock, 1, () -> shootOneTask(clock));
+        }
+
+        boolean shotsBuffered = shooter.feedQueue().backlogCount() > 0;
+
+        // If we're intaking (and not currently shooting), don't keep the flywheel alive.
+        if (intakeEnabled && !shootHeld && !shotsBuffered) {
+            keepFlywheelUntilSec = 0.0;
+        }
+
+        boolean keepAlive = clock.nowSec() < keepFlywheelUntilSec;
+        boolean flywheelShouldRun = shootHeld || shotsBuffered || keepAlive;
+
+        if (flywheelShouldRun) {
+            shooter.setMacroShooterEnabled(true);
             updateMacroVelocity(clock);
-
-            // End condition: feed queue is empty (macro has fed N balls).
-            if (shooter.feedQueue().isIdle()) {
-                stopMacro();
-            }
+        } else {
+            shooter.setMacroShooterEnabled(false);
         }
-    }
 
-    private void updateManualFeed(LoopClock clock) {
-        // Emergency unjam: hold X to reverse everything.
-        if (gp2.x().getAsBoolean(clock)) {
-            shooter.setManualIntakeTransferPower(-RobotConfig.Shooter.feedPower);
-            shooter.setManualTransferMotorPower(-RobotConfig.Shooter.feedPower);
-            shooter.setManualShooterTransferPower(-RobotConfig.Shooter.feedPower);
+        // If shots are buffered (or the shoot button is held), keep manual feed targets at 0
+        // so the queued feed task has clean control of the path.
+        if (shootHeld || shotsBuffered) {
+            applyIdleFeeds();
             return;
         }
 
-        // Force-feed forward: hold B to run all three feed stages forward.
-        if (gp2.b().getAsBoolean(clock)) {
-            shooter.setManualIntakeTransferPower(RobotConfig.Shooter.feedPower);
-            shooter.setManualTransferMotorPower(RobotConfig.Shooter.feedPower);
-            shooter.setManualShooterTransferPower(RobotConfig.Shooter.feedPower);
-            return;
+        // -----------------------------------------------------------------
+        // Idle / Intake state
+        // -----------------------------------------------------------------
+
+        if (intakeEnabled) {
+            applyIntake();
+        } else {
+            applyIdleFeeds();
         }
-
-        // Otherwise, allow individual plant control.
-        shooter.setManualIntakeTransferPower(
-                gp2.leftTrigger().getAsDouble(clock) * RobotConfig.Shooter.manualIntakeTransferMaxPower
-        );
-
-        shooter.setManualTransferMotorPower(
-                gp2.leftBumper().getAsBoolean(clock) ? RobotConfig.Shooter.manualTransferMotorPower : 0.0
-        );
-
-        shooter.setManualShooterTransferPower(
-                gp2.rightBumper().getAsBoolean(clock) ? RobotConfig.Shooter.manualShooterTransferPower : 0.0
-        );
     }
 
-    private void startMacro(LoopClock clock) {
-        shootAllActive = true;
+    // ---------------------------------------------------------------------
+    // Tasks + helpers
+    // ---------------------------------------------------------------------
 
-        shooter.clearFeedQueue();
+    /**
+     * Build a single "shoot one" feed task.
+     *
+     * <p>Each shot waits for flywheel-ready, then feeds for a fixed pulse time.
+     * The queue machinery keeps exactly one buffered task while the driver holds shoot.
+     */
+    private OutputTask shootOneTask(LoopClock clock) {
+        keepFlywheelUntilSec = Math.max(
+                keepFlywheelUntilSec,
+                clock.nowSec() + RobotConfig.Shooter.flywheelKeepAliveSec
+        );
 
-        // Flywheel: macro overrides manual flywheel while active.
-        shooter.setMacroShooterEnabled(true);
-        updateMacroVelocity(clock);
-
-        // Feed "N balls" (sensorless): each feed pulse waits for flywheel-ready,
-        // runs for feedPulseSec, then cools down for feedCooldownSec.
         BooleanSource startWhen = shooter.flywheelReady();
         BooleanSource doneWhen = BooleanSource.constant(true);
 
-        for (int i = 0; i < RobotConfig.Shooter.ballCapacity; i++) {
-            String name = "shootAll.feed[" + i + "]";
-            OutputTask feedOne = Tasks.gatedOutputUntil(
-                    name,
-                    startWhen,
-                    doneWhen,
-                    ScalarSource.constant(RobotConfig.Shooter.feedPower),
-                    0.0,
-                    RobotConfig.Shooter.feedPulseSec,
-                    RobotConfig.Shooter.feedPulseSec + 1.0,
-                    RobotConfig.Shooter.feedCooldownSec
-            );
-            shooter.feedQueue().enqueue(feedOne);
-        }
+        return Tasks.gatedOutputUntil(
+                "shootOne",
+                startWhen,
+                doneWhen,
+                ScalarSource.constant(RobotConfig.Shooter.shootFeedPower),
+                0.0,
+                RobotConfig.Shooter.shootFeedPulseSec,
+                RobotConfig.Shooter.shootFeedPulseSec + 1.0,
+                RobotConfig.Shooter.shootFeedCooldownSec
+        );
     }
 
-    private void stopMacro() {
-        shootAllActive = false;
+    private void stopShooting() {
+        keepFlywheelUntilSec = 0.0;
         shooter.clearFeedQueue();
         shooter.setMacroShooterEnabled(false);
+    }
+
+    private void applyIntake() {
+        shooter.setManualIntakeMotorPower(RobotConfig.Shooter.intakeMotorPower);
+        shooter.setManualIntakeTransferPower(RobotConfig.Shooter.intakeTransferPower);
+
+        // Hold balls back from the shooter wheel.
+        shooter.setManualShooterTransferPower(-RobotConfig.Shooter.intakeShooterTransferHoldBackPower);
+    }
+
+    private void applyEject() {
+        shooter.setManualIntakeMotorPower(-RobotConfig.Shooter.ejectMotorPower);
+        shooter.setManualIntakeTransferPower(-RobotConfig.Shooter.ejectTransferPower);
+        shooter.setManualShooterTransferPower(-RobotConfig.Shooter.ejectShooterTransferPower);
+    }
+
+    private void applyIdleFeeds() {
+        shooter.setManualIntakeMotorPower(0.0);
+        shooter.setManualIntakeTransferPower(0.0);
+        shooter.setManualShooterTransferPower(0.0);
     }
 
     private void updateMacroVelocity(LoopClock clock) {

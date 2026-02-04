@@ -16,11 +16,19 @@ import edu.ftcphoenix.fw.task.Tasks;
 /**
  * Phoenix shooter + ball path subsystem.
  *
- * <p>This subsystem demonstrates the recommended pattern:
+ * <p>Hardware for this robot:
+ * <ul>
+ *   <li>Intake wheels: 1 motor</li>
+ *   <li>Intake transfer: 1 CR servo</li>
+ *   <li>Shooter transfer: 2 CR servos (left/right)</li>
+ *   <li>Shooter wheel: 1 motor (velocity control)</li>
+ * </ul>
+ *
+ * <p>Design pattern:
  * <ul>
  *   <li><b>Single writer:</b> this class is the only place that calls {@link Plant#setTarget(double)}.</li>
- *   <li><b>Manual intent is state:</b> variables such as "manualShooterEnabled".</li>
- *   <li><b>Automation is queued:</b> temporary overrides (shoot-all feed pulses) live in an
+ *   <li><b>Manual intent is state:</b> variables such as manual feed powers.</li>
+ *   <li><b>Automation is queued:</b> temporary overrides (shoot pulses) live in an
  *       {@link OutputTaskRunner} and override the manual feed path while active.</li>
  * </ul>
  *
@@ -33,9 +41,9 @@ public final class Shooter {
     // ---------------------------------------------------------------------
 
     /**
-     * Distance → flywheel velocity mapping for Phoenix.
+     * Distance → flywheel velocity mapping.
      *
-     * <p>Values are in inches → native velocity units. These are placeholders; tune for your robot.</p>
+     * <p>Values are in inches → native velocity units. Tune for your robot.</p>
      */
     private static final InterpolatingTable1D SHOOTER_VELOCITY_TABLE = InterpolatingTable1D.ofSortedPairs(
             24, 1600,
@@ -49,8 +57,8 @@ public final class Shooter {
     // Hardware plants
     // ---------------------------------------------------------------------
 
+    private final Plant plantIntakeMotor;
     private final Plant plantIntakeTransfer;
-    private final Plant plantTransferMotor;
     private final Plant plantShooterTransfer;
     private final Plant plantFlywheel;
 
@@ -58,8 +66,8 @@ public final class Shooter {
     // Manual state (backup controls)
     // ---------------------------------------------------------------------
 
+    private double manualIntakeMotorPower = 0.0;
     private double manualIntakeTransferPower = 0.0;
-    private double manualTransferMotorPower = 0.0;
     private double manualShooterTransferPower = 0.0;
 
     private boolean manualShooterEnabled = false;
@@ -75,9 +83,9 @@ public final class Shooter {
     /**
      * Feed path override queue.
      *
-     * <p>When a feed macro is running, this output overrides the manual feed powers.</p>
+     * <p>While a feed macro is running, this output overrides the manual feed powers.</p>
      */
-    private final OutputTaskRunner feedQueue = Tasks.outputQueue(0.0);
+    private final OutputTaskRunner feedQueue = Tasks.outputQueue();
 
     /**
      * Debounced "ready" latch for the flywheel.
@@ -92,26 +100,30 @@ public final class Shooter {
     public Shooter(HardwareMap hardwareMap, Telemetry telemetry) {
         this.telemetry = telemetry;
 
-        // --- Feed path ---
+        // Intake wheels (motor).
+        plantIntakeMotor = Actuators.plant(hardwareMap)
+                .motor(RobotConfig.Shooter.nameMotorIntake, RobotConfig.Shooter.directionMotorIntake)
+                .power()
+                .build();
+
+        // Intake transfer (CR servo).
         plantIntakeTransfer = Actuators.plant(hardwareMap)
                 .crServo(RobotConfig.Shooter.nameCrServoIntakeTransfer, RobotConfig.Shooter.directionCrServoIntakeTransfer)
                 .power()
                 .build();
 
-        plantTransferMotor = Actuators.plant(hardwareMap)
-                .motor(RobotConfig.Shooter.nameMotorTransfer, RobotConfig.Shooter.directionMotorTransfer)
-                .power()
-                .build();
-
+        // Shooter transfer (two CR servos). Apply scaling/bias to the *last added* servo (left).
         plantShooterTransfer = Actuators.plant(hardwareMap)
-                .crServo(RobotConfig.Shooter.nameCrServoShooterTransfer, RobotConfig.Shooter.directionCrServoShooterTransfer)
+                .crServo(RobotConfig.Shooter.nameCrServoShooterTransferRight, RobotConfig.Shooter.directionCrServoShooterTransferRight)
+                .andCrServo(RobotConfig.Shooter.nameCrServoShooterTransferLeft, RobotConfig.Shooter.directionCrServoShooterTransferLeft)
+                .scale(RobotConfig.Shooter.shooterTransferLeftScale)
+                .bias(RobotConfig.Shooter.shooterTransferLeftBias)
                 .power()
                 .build();
 
-        // --- Flywheel ---
+        // Flywheel (single motor, velocity control).
         plantFlywheel = Actuators.plant(hardwareMap)
-                .motor(RobotConfig.Shooter.nameMotorShooterLeft, RobotConfig.Shooter.directionMotorShooterLeft)
-                .andMotor(RobotConfig.Shooter.nameMotorShooterRight, RobotConfig.Shooter.directionMotorShooterRight)
+                .motor(RobotConfig.Shooter.nameMotorShooterWheel, RobotConfig.Shooter.directionMotorShooterWheel)
                 .velocity(RobotConfig.Shooter.velocityToleranceNative)
                 .build();
     }
@@ -151,7 +163,7 @@ public final class Shooter {
     /**
      * Debounced flywheel-ready signal.
      *
-     * <p>This is designed to be used as a gate in {@link edu.ftcphoenix.fw.task.GatedOutputUntilTask}.
+     * <p>Designed to be used as a gate in {@link edu.ftcphoenix.fw.task.GatedOutputUntilTask}.
      * The returned source is safe to sample multiple times per loop.</p>
      */
     public BooleanSource flywheelReady() {
@@ -169,12 +181,12 @@ public final class Shooter {
     // Manual (backup) API
     // ---------------------------------------------------------------------
 
-    public void setManualIntakeTransferPower(double power) {
-        manualIntakeTransferPower = clampPower(power);
+    public void setManualIntakeMotorPower(double power) {
+        manualIntakeMotorPower = clampPower(power);
     }
 
-    public void setManualTransferMotorPower(double power) {
-        manualTransferMotorPower = clampPower(power);
+    public void setManualIntakeTransferPower(double power) {
+        manualIntakeTransferPower = clampPower(power);
     }
 
     public void setManualShooterTransferPower(double power) {
@@ -225,16 +237,24 @@ public final class Shooter {
         boolean feedOverrideActive = feedQueue.hasActiveTask();
         double feedOverride = feedQueue.getAsDouble(clock);
 
-        double intakeTarget = feedOverrideActive ? feedOverride : manualIntakeTransferPower;
-        double transferTarget = feedOverrideActive ? feedOverride : manualTransferMotorPower;
-        double shooterTransferTarget = feedOverrideActive ? feedOverride : manualShooterTransferPower;
+        double intakeMotorTarget = feedOverrideActive
+                ? feedOverride * RobotConfig.Shooter.feedScaleIntakeMotor
+                : manualIntakeMotorPower;
 
-        plantIntakeTransfer.setTarget(intakeTarget);
-        plantTransferMotor.setTarget(transferTarget);
+        double intakeTransferTarget = feedOverrideActive
+                ? feedOverride * RobotConfig.Shooter.feedScaleIntakeTransfer
+                : manualIntakeTransferPower;
+
+        double shooterTransferTarget = feedOverrideActive
+                ? feedOverride * RobotConfig.Shooter.feedScaleShooterTransfer
+                : manualShooterTransferPower;
+
+        plantIntakeMotor.setTarget(intakeMotorTarget);
+        plantIntakeTransfer.setTarget(intakeTransferTarget);
         plantShooterTransfer.setTarget(shooterTransferTarget);
 
+        plantIntakeMotor.update(clock.dtSec());
         plantIntakeTransfer.update(clock.dtSec());
-        plantTransferMotor.update(clock.dtSec());
         plantShooterTransfer.update(clock.dtSec());
     }
 
@@ -242,15 +262,15 @@ public final class Shooter {
         macroShooterEnabled = false;
         manualShooterEnabled = false;
 
+        manualIntakeMotorPower = 0.0;
         manualIntakeTransferPower = 0.0;
-        manualTransferMotorPower = 0.0;
         manualShooterTransferPower = 0.0;
 
         feedQueue.clear();
 
         plantFlywheel.stop();
+        plantIntakeMotor.stop();
         plantIntakeTransfer.stop();
-        plantTransferMotor.stop();
         plantShooterTransfer.stop();
     }
 
