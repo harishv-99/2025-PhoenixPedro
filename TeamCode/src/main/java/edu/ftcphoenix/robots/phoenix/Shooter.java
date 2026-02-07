@@ -48,11 +48,24 @@ public final class Shooter {
      * <p>Values are in inches → native velocity units. Tune for your robot.</p>
      */
     private static final InterpolatingTable1D SHOOTER_VELOCITY_TABLE = InterpolatingTable1D.ofSortedPairs(
-            24, 1600,
-            36, 1700,
-            48, 1750,
-            60, 1800,
-            72, 1875
+            28.06, 1505.6,
+            36.52, 1427.4,
+            42.3, 1424.35,
+            50.3, 1450,
+            56.5, 1484.7,
+            61.7, 1509.95,
+            62.9, 1542.93,
+            65.8, 1535.7,
+            74.2, 1575,
+            79.5, 1600,
+            83.4, 1625,
+            93.6, 1700,
+            96.6, 1700,
+            103.2, 1775,
+            104.7, 1800,
+            109.2, 1800,
+            112, 1875,
+            130, 1875
     );
 
     // ---------------------------------------------------------------------
@@ -108,6 +121,11 @@ public final class Shooter {
     // Cached for telemetry/debug (computed in update())
     private double flywheelTargetNative = 0.0;
     private double flywheelMeasuredNative = 0.0;
+
+    // Absolute value + simple accel estimate (computed in update())
+    private double flywheelMeasuredAbs = 0.0;
+    private double flywheelMeasuredAccelAbs = 0.0;
+    private double prevFlywheelMeasuredAbs = 0.0;
 
     private final Telemetry telemetry;
 
@@ -165,10 +183,23 @@ public final class Shooter {
                 }
 
                 double target = Math.abs(flywheelTargetNative);
-                double measured = Math.abs(flywheelMeasuredNative);
+                double measured = flywheelMeasuredAbs;
 
                 boolean enabled = target > 1e-6;
-                boolean at = enabled && Math.abs(measured - target) <= RobotConfig.Shooter.velocityToleranceNative;
+
+                // Asymmetric ready band:
+                //  - allow being a bit low (underspeed) while recovering
+                //  - be stricter on overspeed to avoid shooting while the wheel is still "springing back"
+                double err = measured - target;
+                boolean withinBand = enabled
+                        && err >= -RobotConfig.Shooter.velocityToleranceBelowNative
+                        && err <= RobotConfig.Shooter.velocityToleranceAboveNative;
+
+                // Optional stability gate: don't call it ready while the speed is changing quickly.
+                boolean accelOk = RobotConfig.Shooter.velocityMaxAccelNativePerSec2 <= 0.0
+                        || flywheelMeasuredAccelAbs <= RobotConfig.Shooter.velocityMaxAccelNativePerSec2;
+
+                boolean at = withinBand && accelOk;
 
                 last = readyLatch.update(clock, at);
                 return last;
@@ -230,8 +261,15 @@ public final class Shooter {
     /**
      * Debounced flywheel-ready signal.
      *
-     * <p>We treat the flywheel as "ready" when its measured speed is within
-     * {@code ±velocityToleranceNative} of the currently commanded target.</p>
+     * <p>We treat the flywheel as "ready" when its measured speed is inside an
+     * <b>asymmetric band</b> around the target:</p>
+     * <ul>
+     *   <li>underspeed allowed: {@link RobotConfig.Shooter#velocityToleranceBelowNative}</li>
+     *   <li>overspeed allowed: {@link RobotConfig.Shooter#velocityToleranceAboveNative}</li>
+     * </ul>
+     *
+     * <p>Additionally, we can require the wheel to be "settled" by limiting
+     * {@code |dV/dt|} using {@link RobotConfig.Shooter#velocityMaxAccelNativePerSec2}.</p>
      *
      * <p>This gate is intentionally a little forgiving (tolerance + debounce) so we don't
      * "wait for perfection" before feeding a ball.</p>
@@ -270,6 +308,17 @@ public final class Shooter {
 
         // Cache measured velocity for readiness + telemetry.
         flywheelMeasuredNative = flywheelMotor.getVelocity();
+
+        // Track abs + a simple |dV/dt| estimate so our ready gate can avoid feeding during
+        // the "spring back" overshoot after a shot.
+        flywheelMeasuredAbs = Math.abs(flywheelMeasuredNative);
+        double dt = clock.dtSec();
+        if (dt > 1e-6 && Double.isFinite(dt)) {
+            flywheelMeasuredAccelAbs = Math.abs((flywheelMeasuredAbs - prevFlywheelMeasuredAbs) / dt);
+        } else {
+            flywheelMeasuredAccelAbs = 0.0;
+        }
+        prevFlywheelMeasuredAbs = flywheelMeasuredAbs;
 
         // 2) Update the feed macro queue.
         feedQueue.update(clock);
@@ -327,6 +376,10 @@ public final class Shooter {
         telemetry.addData(p + ".flywheelErr", err);
         telemetry.addData(p + ".flywheelErrAbs", Math.abs(err));
         telemetry.addData(p + ".flywheelTol", RobotConfig.Shooter.velocityToleranceNative);
+        telemetry.addData(p + ".flywheelTolBelow", RobotConfig.Shooter.velocityToleranceBelowNative);
+        telemetry.addData(p + ".flywheelTolAbove", RobotConfig.Shooter.velocityToleranceAboveNative);
+        telemetry.addData(p + ".flywheelAccelAbs", flywheelMeasuredAccelAbs);
+        telemetry.addData(p + ".flywheelAccelMax", RobotConfig.Shooter.velocityMaxAccelNativePerSec2);
         telemetry.addData(p + ".flywheelAtSetpoint", plantFlywheel.atSetpoint());
         telemetry.addData(p + ".ready", flywheelReady().getAsBoolean(clock));
 

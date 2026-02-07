@@ -128,6 +128,31 @@ public class RobotConfig {
         /** Tolerance for {@code Plant.atSetpoint()} in native velocity units. */
         public static final double velocityToleranceNative = 50;
 
+        /**
+         * Shooter-ready tolerance BELOW the target speed.
+         *
+         * <p>This is the "underspeed" allowance. Leaving this a bit larger helps avoid getting stuck
+         * when the wheel is recovering from a shot.</p>
+         */
+        public static final double velocityToleranceBelowNative = 50;
+
+        /**
+         * Shooter-ready tolerance ABOVE the target speed.
+         *
+         * <p>This is the "overspeed" allowance. Keeping this smaller than
+         * {@link #velocityToleranceBelowNative} helps avoid feeding a ball while the wheel is still
+         * overshooting upward (which can make shots go long).</p>
+         */
+        public static final double velocityToleranceAboveNative = 20;
+
+        /**
+         * Maximum allowed |dV/dt| (native units per second^2) for the wheel to be considered "settled".
+         *
+         * <p>This prevents feeding while the wheel is rapidly accelerating upward after a previous shot.
+         * Set to {@code <= 0} to disable the acceleration gate.</p>
+         */
+        public static final double velocityMaxAccelNativePerSec2 = 700;
+
         /** Debounce time for the shooter "ready" latch. */
         public static final double readyStableSec = 0.15;
 
@@ -352,7 +377,7 @@ public class RobotConfig {
         /**
          * P gain for auto-aim omega (unitless DriveSignal command per radian of error).
          */
-        public static final double AIM_KP = 2.0;
+        public static final double AIM_KP = 1.5;
 
         /**
          * Max turn command for auto-aim (0..1-ish DriveSignal units).
@@ -372,7 +397,7 @@ public class RobotConfig {
          */
         // Default to the same tolerance as the aim controller. If you ever find yourself
         // "practically aimed" but the gate won't go true, bump this up to ~0.5–0.75.
-        public static final double AIM_READY_TOLERANCE_DEG = AIM_TOLERANCE_DEG;
+        public static final double AIM_READY_TOLERANCE_DEG = AIM_TOLERANCE_DEG * 20;
 
         /**
          * Debounce time for the aim-ready gate (seconds).
