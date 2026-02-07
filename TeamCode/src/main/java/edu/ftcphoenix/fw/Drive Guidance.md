@@ -127,6 +127,7 @@ DriveGuidancePlan plan = DriveGuidance.plan(spec)
                 DriveGuidancePlan.Tuning.defaults()
                         .withTranslateKp(0.06)
                         .withAimKp(2.0)
+                        .withMinOmegaCmd(0.05)  // optional: helps overcome turn stiction
         )
         .build();
 ```

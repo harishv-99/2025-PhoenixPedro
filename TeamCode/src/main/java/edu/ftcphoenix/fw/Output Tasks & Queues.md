@@ -166,6 +166,11 @@ feederQueue.whileTrue(
                 0.30
         )
 );
+
+// Note: whileTrue(...) only manages the backlog (it enqueues/clears).
+// Your loop still needs to advance the queue each cycle by calling:
+//   feederQueue.update(clock)
+// or by sampling its output via feederQueue.getAsDouble(clock).
 ```
 
 This keeps your loop logic small and prevents "queue spam" (hundreds of pulses queued up)

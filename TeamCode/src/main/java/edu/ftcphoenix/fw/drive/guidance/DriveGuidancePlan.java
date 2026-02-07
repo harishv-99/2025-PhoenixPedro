@@ -48,6 +48,7 @@ public final class DriveGuidancePlan {
      * <ul>
      *   <li>{@code maxTranslateCmd}: 0.3–0.8</li>
      *   <li>{@code maxOmegaCmd}: 0.3–1.0</li>
+     *   <li>{@code minOmegaCmd}: 0.00–0.10 (0 disables; helps overcome drivetrain stiction)</li>
      *   <li>{@code aimDeadbandRad}: 0.5°–2° (convert to radians with {@code Math.toRadians(...)})</li>
      * </ul>
      */
@@ -74,6 +75,18 @@ public final class DriveGuidancePlan {
         public final double maxOmegaCmd;
 
         /**
+         * Minimum omega command magnitude (0..1-ish) when outside the aim deadband.
+         *
+         * <p>This is a small "stiction bust" term: many drivetrains won't physically move
+         * for very small turn commands due to static friction and motor deadband. When
+         * {@code minOmegaCmd > 0}, the controller will output at least this magnitude
+         * (with the correct sign) any time the aim error is outside {@link #aimDeadbandRad}.
+         *
+         * <p>Typical values: 0.03–0.10. Leave at 0 to disable.</p>
+         */
+        public final double minOmegaCmd;
+
+        /**
          * Deadband for aim (radians): errors smaller than this output 0 omega.
          */
         public final double aimDeadbandRad;
@@ -82,11 +95,13 @@ public final class DriveGuidancePlan {
                       double maxTranslateCmd,
                       double kPAim,
                       double maxOmegaCmd,
+                      double minOmegaCmd,
                       double aimDeadbandRad) {
             this.kPTranslate = kPTranslate;
             this.maxTranslateCmd = maxTranslateCmd;
             this.kPAim = kPAim;
             this.maxOmegaCmd = maxOmegaCmd;
+            this.minOmegaCmd = minOmegaCmd;
             this.aimDeadbandRad = aimDeadbandRad;
         }
 
@@ -96,7 +111,7 @@ public final class DriveGuidancePlan {
          * <p>Higher values make the robot drive toward the translation target more aggressively.</p>
          */
         public Tuning withTranslateKp(double kPTranslate) {
-            return new Tuning(kPTranslate, maxTranslateCmd, kPAim, maxOmegaCmd, aimDeadbandRad);
+            return new Tuning(kPTranslate, maxTranslateCmd, kPAim, maxOmegaCmd, minOmegaCmd, aimDeadbandRad);
         }
 
         /**
@@ -105,7 +120,7 @@ public final class DriveGuidancePlan {
          * <p>This caps how fast the assist can drive the robot in X/Y (typical range: 0..1).</p>
          */
         public Tuning withMaxTranslateCmd(double maxTranslateCmd) {
-            return new Tuning(kPTranslate, maxTranslateCmd, kPAim, maxOmegaCmd, aimDeadbandRad);
+            return new Tuning(kPTranslate, maxTranslateCmd, kPAim, maxOmegaCmd, minOmegaCmd, aimDeadbandRad);
         }
 
         /**
@@ -114,7 +129,7 @@ public final class DriveGuidancePlan {
          * <p>Higher values make the robot turn toward the aim target more aggressively.</p>
          */
         public Tuning withAimKp(double kPAim) {
-            return new Tuning(kPTranslate, maxTranslateCmd, kPAim, maxOmegaCmd, aimDeadbandRad);
+            return new Tuning(kPTranslate, maxTranslateCmd, kPAim, maxOmegaCmd, minOmegaCmd, aimDeadbandRad);
         }
 
         /**
@@ -123,7 +138,18 @@ public final class DriveGuidancePlan {
          * <p>This caps how fast the assist can turn the robot (typical range: 0..1).</p>
          */
         public Tuning withMaxOmegaCmd(double maxOmegaCmd) {
-            return new Tuning(kPTranslate, maxTranslateCmd, kPAim, maxOmegaCmd, aimDeadbandRad);
+            return new Tuning(kPTranslate, maxTranslateCmd, kPAim, maxOmegaCmd, minOmegaCmd, aimDeadbandRad);
+        }
+
+        /**
+         * Return a copy of this tuning with a different minimum omega (turn) command.
+         *
+         * <p>When {@code minOmegaCmd > 0}, DriveGuidance will output at least this magnitude
+         * any time the aim error is outside the aim deadband. This helps overcome static
+         * friction so the robot doesn't "give up" while still slightly mis-aimed.</p>
+         */
+        public Tuning withMinOmegaCmd(double minOmegaCmd) {
+            return new Tuning(kPTranslate, maxTranslateCmd, kPAim, maxOmegaCmd, minOmegaCmd, aimDeadbandRad);
         }
 
         /**
@@ -132,7 +158,7 @@ public final class DriveGuidancePlan {
          * <p>If the aim error magnitude is smaller than this, DriveGuidance outputs 0 turn command.</p>
          */
         public Tuning withAimDeadbandRad(double aimDeadbandRad) {
-            return new Tuning(kPTranslate, maxTranslateCmd, kPAim, maxOmegaCmd, aimDeadbandRad);
+            return new Tuning(kPTranslate, maxTranslateCmd, kPAim, maxOmegaCmd, minOmegaCmd, aimDeadbandRad);
         }
 
         /**
@@ -151,6 +177,7 @@ public final class DriveGuidancePlan {
                     0.60,                 // maxTranslateCmd
                     2.50,                 // kPAim
                     0.80,                 // maxOmegaCmd
+                    0.00,                 // minOmegaCmd
                     Math.toRadians(1.0)   // aimDeadbandRad
             );
         }

@@ -40,6 +40,16 @@ final class DriveGuidanceControllers {
             return 0.0;
         }
         double om = tuning.kPAim * bearingErrorRad;
+
+        // Stiction assist: if we want to turn (outside deadband) but the computed command is
+        // extremely small, bump it to a minimum magnitude so the drivetrain actually moves.
+        // This is especially important for "tight" aim deadbands where kP*error can fall
+        // below motor/controller deadbands.
+        double min = tuning.minOmegaCmd;
+        if (min > 0.0 && Double.isFinite(min) && Math.abs(om) < min) {
+            om = Math.signum(om) * min;
+        }
+
         return MathUtil.clamp(om, -tuning.maxOmegaCmd, +tuning.maxOmegaCmd);
     }
 }

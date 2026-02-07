@@ -43,10 +43,6 @@ public final class OutputTaskRunner implements ScalarSource {
     private long lastOutputCycle = Long.MIN_VALUE;
     private double lastOutput = 0.0;
 
-    // Idempotence guard for ensureBacklog(...).
-    private long lastEnsureCycle = Long.MIN_VALUE;
-    private int lastEnsuredBacklog = 0;
-
     /**
      * Create a queue with a fixed idle output.
      *
@@ -71,9 +67,6 @@ public final class OutputTaskRunner implements ScalarSource {
         runner.clear();
         lastOutputCycle = Long.MIN_VALUE;
         lastOutput = idleOutput;
-
-        lastEnsureCycle = Long.MIN_VALUE;
-        lastEnsuredBacklog = 0;
     }
 
     /**
@@ -93,8 +86,19 @@ public final class OutputTaskRunner implements ScalarSource {
      * if a driver holds a trigger, you can keep a single feed pulse buffered so the next shot
      * starts immediately when the previous one ends.</p>
      *
-     * <p>Idempotent by {@link LoopClock#cycle()}. If called multiple times in a cycle,
-     * the queue is only extended up to the <em>maximum</em> requested backlog in that cycle.</p>
+     * <p><b>Ordering note:</b> this method <em>does not</em> advance the queue.
+     * It only enqueues new tasks if backlog is low.
+     *
+     * <p>This is intentional: callers should control when {@link #update(LoopClock)} happens so
+     * task progression doesn't occur "accidentally" in a helper like this. That matters when the
+     * queued tasks depend on other subsystem state (for example a shooter feed task that waits on
+     * {@code Plant.atSetpoint()} after the shooter flywheel target is updated for the current loop).
+     *
+     * <p>If you need {@code desiredBacklog} to reflect tasks that might complete in the current
+     * loop, call {@link #update(LoopClock)} earlier in the cycle before calling this method.</p>
+     *
+     * <p>Safe to call multiple times. This method only enqueues tasks when the current
+     * backlog is below {@code desiredBacklog}.</p>
      *
      * <p><b>Important:</b> tasks are assumed to be single-use, so {@code taskFactory} must produce
      * a <em>new</em> {@link OutputTask} instance each time it is called.</p>
@@ -110,20 +114,6 @@ public final class OutputTaskRunner implements ScalarSource {
             throw new IllegalArgumentException("desiredBacklog must be >= 0, got " + desiredBacklog);
         }
 
-        long cyc = clock.cycle();
-        if (cyc != lastEnsureCycle) {
-            lastEnsureCycle = cyc;
-            lastEnsuredBacklog = 0;
-        }
-
-        // Only ever grow the ensured backlog within a cycle.
-        if (desiredBacklog <= lastEnsuredBacklog) {
-            return;
-        }
-
-        // Make sure our view of 'active' is current.
-        update(clock);
-
         int backlog = backlogCount();
         while (backlog < desiredBacklog) {
             OutputTask t = taskFactory.get();
@@ -133,8 +123,6 @@ public final class OutputTaskRunner implements ScalarSource {
             enqueue(t);
             backlog++;
         }
-
-        lastEnsuredBacklog = desiredBacklog;
     }
 
     /**

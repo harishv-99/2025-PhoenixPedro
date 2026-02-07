@@ -21,9 +21,12 @@ import edu.ftcphoenix.fw.task.Tasks;
  *
  * <p>Gamepad 2 controls (wired in {@link PhoenixRobot#createBindings()}):
  * <ul>
+ *   <li><b>RB</b>: toggle shooter flywheel on/off (spins at the currently selected velocity)</li>
+ *   <li><b>LB</b>: auto-aim assist (handled in drive overlay) + sets velocity from the range lookup table</li>
+ *   <li><b>B</b>: shoot (hold to keep shooting; release cancels all shoot commands)</li>
  *   <li><b>A</b>: toggle intake</li>
- *   <li><b>B</b>: shoot (tap for one, hold to keep shooting)</li>
  *   <li><b>X</b>: eject / unjam (hold; reverses intake + transfers)</li>
+ *   <li><b>DPad</b>: adjust selected shooter velocity (fine-tune after auto-set)</li>
  * </ul>
  *
  * <p>Important behavior notes:
@@ -38,6 +41,8 @@ public final class ShooterSupervisor {
 
     private final Shooter shooter;
     private final TagTarget scoringTarget;
+    private final BooleanSource aimOkToShoot;
+    private final BooleanSource shootOverride;
 
     // ---------------------------------------------------------------------
     // Latched state (set by bindings)
@@ -47,15 +52,36 @@ public final class ShooterSupervisor {
     private boolean ejectHeld = false;
     private boolean shootHeld = false;
 
-    // Edge-like request flag: set on a press, consumed in update().
-    private boolean shootOneRequested = false;
+    /**
+     * Flywheel toggle (P2 right bumper).
+     */
+    private boolean flywheelEnabled = false;
 
-    // Keep flywheel running briefly after the last shoot request.
-    private double keepFlywheelUntilSec = 0.0;
-
-    public ShooterSupervisor(Shooter shooter, TagTarget scoringTarget) {
+    /**
+     * Create a shooter supervisor.
+     *
+     * @param shooter       shooter subsystem
+     * @param scoringTarget AprilTag target tracker used for range lookup
+     * @param aimOkToShoot  gate that returns true when it is OK to shoot (aim-ready OR override)
+     * @param shootOverride driver override signal (held). Used for emergency bypass of ready gates.
+     */
+    public ShooterSupervisor(Shooter shooter,
+                             TagTarget scoringTarget,
+                             BooleanSource aimOkToShoot,
+                             BooleanSource shootOverride) {
         this.shooter = Objects.requireNonNull(shooter, "shooter");
         this.scoringTarget = Objects.requireNonNull(scoringTarget, "scoringTarget");
+        this.aimOkToShoot = Objects.requireNonNull(aimOkToShoot, "aimOkToShoot").memoized();
+        this.shootOverride = Objects.requireNonNull(shootOverride, "shootOverride").memoized();
+    }
+
+    /**
+     * Returns true if we are in an active shooting attempt.
+     *
+     * <p>This includes "waiting" (spinning/aiming) and "feeding" (a queued feed pulse).
+     */
+    public boolean isShootActive() {
+        return shootHeld || shooter.feedQueue().backlogCount() > 0;
     }
 
     // ---------------------------------------------------------------------
@@ -66,41 +92,65 @@ public final class ShooterSupervisor {
         return intakeEnabled;
     }
 
+    public boolean flywheelEnabled() {
+        return flywheelEnabled;
+    }
+
     public boolean isShootHeld() {
         return shootHeld;
+    }
+
+    public void toggleFlywheel() {
+        flywheelEnabled = !flywheelEnabled;
+
+        // If the driver turned the flywheel off, stop any in-progress feed immediately.
+        if (!flywheelEnabled) {
+            shooter.clearFeedQueue();
+        }
     }
 
     public void toggleIntake() {
         intakeEnabled = !intakeEnabled;
 
-        // If we just enabled intake, cancel shooting so we don't feed into the wheel.
+        // If we just enabled intake, clear any pending shots so we don't accidentally advance a ball.
         if (intakeEnabled) {
-            shootHeld = false;
-            stopShooting();
+            shooter.clearFeedQueue();
         }
     }
 
+    /**
+     * Shoot is hold-to-shoot.
+     *
+     * <p>Releasing the button cancels all queued/active shoot feed tasks immediately.</p>
+     */
     public void setShootHeld(boolean held) {
         this.shootHeld = held;
 
-        // If the driver released the shoot button, don't force-stop the flywheel immediately;
-        // keep-alive logic handles a short grace period for fast follow-ups.
-    }
-
-    public void requestShootOne() {
-        shootOneRequested = true;
-
-        // If we're starting a shoot request, intake should not "win" over it.
-        // (We keep intakeEnabled latched so it resumes after shooting.)
+        if (!held) {
+            shooter.clearFeedQueue();
+        }
     }
 
     public void setEjectHeld(boolean held) {
         ejectHeld = held;
         if (held) {
-            // Eject is an override. Stop shooting so we don't accidentally launch.
-            shootHeld = false;
-            stopShooting();
+            // Eject is an override. Stop feeding so we don't accidentally launch.
+            shooter.clearFeedQueue();
         }
+    }
+
+    /**
+     * Capture an auto-set velocity from the current AprilTag range.
+     *
+     * <p>This is designed to be called on the <b>rising edge</b> of the auto-aim button.
+     * The driver can still fine-tune the selected velocity afterward using D-pad.</p>
+     */
+    public void captureVelocityFromTarget() {
+        if (!scoringTarget.hasTarget()) {
+            return;
+        }
+        double rangeInches = scoringTarget.lineOfSightRangeInches();
+        shooter.setSelectedVelocity(shooter.velocityForRangeInches(rangeInches));
     }
 
     // ---------------------------------------------------------------------
@@ -112,47 +162,31 @@ public final class ShooterSupervisor {
      */
     public void update(LoopClock clock) {
 
+        // Always command the flywheel state (with safety overrides).
+        // We preserve the driver's toggle, but suppress the flywheel while ejecting.
+        shooter.setFlywheelEnabled(flywheelEnabled && !ejectHeld);
+
         // -----------------------------------------------------------------
         // Overrides: Eject has highest priority.
         // -----------------------------------------------------------------
 
         if (ejectHeld) {
-            // Keep shooter disabled while eject is held.
-            stopShooting();
             applyEject();
             return;
         }
 
         // -----------------------------------------------------------------
-        // Shooting: tap queues one; hold keeps one queued at all times.
+        // Shooting: hold-to-shoot keeps 1 shot buffered.
         // -----------------------------------------------------------------
 
-        if (shootOneRequested) {
-            shootOneRequested = false;
-            shooter.feedQueue().enqueue(shootOneTask(clock));
-        }
-
-        if (shootHeld) {
-            // Keep one "shoot one" task buffered so shots happen as quickly as possible.
-            shooter.feedQueue().ensureBacklog(clock, 1, () -> shootOneTask(clock));
+        if (!shootHeld) {
+            // Safety: if the driver isn't holding shoot, there should be no queued/active shoot tasks.
+            shooter.clearFeedQueue();
+        } else {
+            shooter.feedQueue().ensureBacklog(clock, 1, this::shootOneTask);
         }
 
         boolean shotsBuffered = shooter.feedQueue().backlogCount() > 0;
-
-        // If we're intaking (and not currently shooting), don't keep the flywheel alive.
-        if (intakeEnabled && !shootHeld && !shotsBuffered) {
-            keepFlywheelUntilSec = 0.0;
-        }
-
-        boolean keepAlive = clock.nowSec() < keepFlywheelUntilSec;
-        boolean flywheelShouldRun = shootHeld || shotsBuffered || keepAlive;
-
-        if (flywheelShouldRun) {
-            shooter.setMacroShooterEnabled(true);
-            updateMacroVelocity(clock);
-        } else {
-            shooter.setMacroShooterEnabled(false);
-        }
 
         // If shots are buffered (or the shoot button is held), keep manual feed targets at 0
         // so the queued feed task has clean control of the path.
@@ -180,15 +214,19 @@ public final class ShooterSupervisor {
      * Build a single "shoot one" feed task.
      *
      * <p>Each shot waits for flywheel-ready, then feeds for a fixed pulse time.
-     * The queue machinery keeps exactly one buffered task while the driver holds shoot.
+     * While the driver holds shoot, the queue keeps exactly one buffered task.</p>
      */
-    private OutputTask shootOneTask(LoopClock clock) {
-        keepFlywheelUntilSec = Math.max(
-                keepFlywheelUntilSec,
-                clock.nowSec() + RobotConfig.Shooter.flywheelKeepAliveSec
-        );
-
-        BooleanSource startWhen = shooter.flywheelReady();
+    private OutputTask shootOneTask() {
+        // Only feed once we are "ready".
+        //
+        // Normal mode: require flywheel-ready AND aim-ok.
+        //
+        // Emergency override mode:
+        //  - If the driver holds the override button while shooting, we bypass the ready checks.
+        //  - Safety: we still require the flywheel to be ENABLED so we don't feed into a stopped wheel.
+        BooleanSource flywheelArmed = BooleanSource.of(shooter::flywheelEnabled);
+        BooleanSource flywheelOkToFeed = shooter.flywheelReady().or(shootOverride.and(flywheelArmed));
+        BooleanSource startWhen = flywheelOkToFeed.and(aimOkToShoot);
         BooleanSource doneWhen = BooleanSource.constant(true);
 
         return Tasks.gatedOutputUntil(
@@ -201,12 +239,6 @@ public final class ShooterSupervisor {
                 RobotConfig.Shooter.shootFeedPulseSec + 1.0,
                 RobotConfig.Shooter.shootFeedCooldownSec
         );
-    }
-
-    private void stopShooting() {
-        keepFlywheelUntilSec = 0.0;
-        shooter.clearFeedQueue();
-        shooter.setMacroShooterEnabled(false);
     }
 
     private void applyIntake() {
@@ -227,15 +259,5 @@ public final class ShooterSupervisor {
         shooter.setManualIntakeMotorPower(0.0);
         shooter.setManualIntakeTransferPower(0.0);
         shooter.setManualShooterTransferPower(0.0);
-    }
-
-    private void updateMacroVelocity(LoopClock clock) {
-        if (scoringTarget.hasTarget()) {
-            double rangeInches = scoringTarget.lineOfSightRangeInches();
-            shooter.setMacroShooterVelocity(shooter.velocityForRangeInches(rangeInches));
-        } else {
-            // No tag: fall back to whatever the driver dialed in.
-            shooter.setMacroShooterVelocity(shooter.manualShooterVelocity());
-        }
     }
 }

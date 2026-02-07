@@ -69,7 +69,11 @@ public final class PhoenixRobot {
     private PinpointPoseEstimator pinpoint;
     private DriveSource stickDrive;
     private DriveSource driveWithAim;
-    private BooleanSource shootHeld = BooleanSource.constant(false);
+    // Two different "shoot" signals:
+    //  - shootButtonHeld: raw driver intent (only true while the button is held)
+    //  - shootActive: true while a shot is being attempted (waiting + feeding)
+    private BooleanSource shootButtonHeld = BooleanSource.constant(false);
+    private BooleanSource shootActive = BooleanSource.constant(false);
     private CameraMountConfig cameraMountConfig;
     private AprilTagSensor tagSensor;
     private TagTarget scoringTarget;
@@ -78,6 +82,9 @@ public final class PhoenixRobot {
     private DriveGuidancePlan.Tuning aimTuning;
     private DriveGuidanceQuery aimQueryBlue;
     private DriveGuidanceQuery aimQueryRed;
+    private BooleanSource aimReady = BooleanSource.constant(true);
+    private BooleanSource aimOverride = BooleanSource.constant(false);
+    private BooleanSource aimOkToShoot = BooleanSource.constant(true);
     private TagLayout gameTagLayout;
 
     // "Shoot brace" pose-lock: latch-on while the shooter is spinning and the driver is not
@@ -166,13 +173,7 @@ public final class PhoenixRobot {
         // Track scoring tags with a freshness window.
         scoringTarget = new TagTarget(tagSensor, SCORING_TAG_IDS, 0.5);
 
-        // Shooter supervisor: owns shoot policy + sensorless timing.
-        // Gamepad bindings update the supervisor state; we expose that state as a BooleanSource
-        // so it can also enable auto-aim and shoot-brace.
-        shooterSupervisor = new ShooterSupervisor(shooter, scoringTarget);
-        shootHeld = BooleanSource.of(shooterSupervisor::isShootHeld);
-
-        // --- Drive guidance (replaces TagAim): hold P2 B to auto-aim omega at the best scoring tag.
+        // --- Drive guidance (replaces TagAim): hold P2 LB to auto-aim omega at the best scoring tag.
         // Use the framework's helper so robot code stays simple.
         // (This updates the TagTarget each loop and converts the latest AprilTag measurement into a
         // robot-relative planar observation used by DriveGuidance.)
@@ -180,8 +181,10 @@ public final class PhoenixRobot {
 
         // Tuning for the auto-aim assist. Start with defaults and tweak only what you need.
         aimTuning = DriveGuidancePlan.Tuning.defaults()
-                .withAimKp(2.0)            // how strongly we turn toward the target
-                .withAimDeadbandDeg(0.25); // stop turning when we're within this many degrees
+                .withAimKp(RobotConfig.AutoAim.AIM_KP)                           // turn strength
+                .withMaxOmegaCmd(RobotConfig.AutoAim.AIM_MAX_OMEGA_CMD)          // cap turn speed
+                .withMinOmegaCmd(RobotConfig.AutoAim.AIM_MIN_OMEGA_CMD)          // stiction assist
+                .withAimDeadbandDeg(RobotConfig.AutoAim.AIM_TOLERANCE_DEG);      // "aimed" tolerance
 
         // --- Auto-aim plans ---
         // Instead of aiming at the AprilTag center, aim at a *tag-relative point* that you pick
@@ -223,6 +226,68 @@ public final class PhoenixRobot {
         // without needing to re-derive bearings or worry about control frames.
         aimQueryBlue = aimPlanBlue.query();
         aimQueryRed = aimPlanRed.query();
+
+        // "Aimed" gate: safe to feed a ball only when we're facing the scoring target.
+        //
+        // Design choice:
+        //  - If no tag is visible, we allow shooting (manual aiming + manual velocity fallback).
+        //  - If a tag is visible, require omega error to be within a configurable tolerance.
+        //
+        // NOTE:
+        // We intentionally allow the "aim ready" tolerance to be a bit looser than the
+        // DriveGuidance deadband so we don't get stuck waiting on the last fraction of a degree.
+        final double aimReadyTolRad = Math.toRadians(RobotConfig.AutoAim.AIM_READY_TOLERANCE_DEG);
+        BooleanSource rawAimReady = new BooleanSource() {
+            private long lastCycle = Long.MIN_VALUE;
+            private boolean last = true;
+
+            @Override
+            public boolean getAsBoolean(LoopClock clock) {
+                long cyc = clock.cycle();
+                if (cyc == lastCycle) {
+                    return last;
+                }
+                lastCycle = cyc;
+
+                if (!scoringTarget.hasTarget()) {
+                    last = true;
+                    return last;
+                }
+
+                AprilTagObservation obs = scoringTarget.last();
+                DriveGuidanceStatus status;
+                if (obs.id == RobotConfig.AutoAim.BLUE_TARGET_TAG_ID) {
+                    status = aimQueryBlue.sample(clock, DriveOverlayMask.OMEGA_ONLY);
+                } else if (obs.id == RobotConfig.AutoAim.RED_TARGET_TAG_ID) {
+                    status = aimQueryRed.sample(clock, DriveOverlayMask.OMEGA_ONLY);
+                } else {
+                    // Defensive fallback: unknown tag id. Treat "aimed" as
+                    // "robot-bearing near 0" (tag center).
+                    last = scoringTarget.isRobotBearingWithin(cameraMountConfig, aimReadyTolRad);
+                    return last;
+                }
+
+                last = status != null && status.omegaWithin(aimReadyTolRad);
+                return last;
+            }
+        };
+
+        // Debounce aim readiness very slightly so we don't fire on a single noisy frame.
+        aimReady = rawAimReady.debouncedOn(RobotConfig.AutoAim.AIM_READY_DEBOUNCE_SEC);
+
+        // Shooter supervisor: owns shoot policy + sensorless timing.
+        // Gamepad bindings update the supervisor state; we expose that state as BooleanSources so it
+        // can also enable auto-aim and shoot-brace.
+        //
+        // Optional emergency override: hold P2 Y while shooting to bypass the ready gates.
+        //
+        // Safety: we still require the flywheel to be enabled so we don't feed into a stopped wheel.
+        aimOverride = gamepads.p2().y();
+        aimOkToShoot = aimReady.or(aimOverride);
+
+        shooterSupervisor = new ShooterSupervisor(shooter, scoringTarget, aimOkToShoot, aimOverride);
+        shootButtonHeld = BooleanSource.of(shooterSupervisor::isShootHeld);
+        shootActive = BooleanSource.of(shooterSupervisor::isShootActive);
 
         /*
          * FUTURE OPTION (leave commented out for now):
@@ -297,7 +362,8 @@ public final class PhoenixRobot {
         //
         // Hold-to-enable is the simplest for drivers. If you prefer a toggle (press once to
         // enable, press again to disable), use: gamepads.p2().leftBumper().toggled()
-        BooleanSource autoAimEnabled = shootHeld;
+        // Auto-aim assist is explicitly driver-controlled (P2 left bumper).
+        BooleanSource autoAimEnabled = gamepads.p2().leftBumper();
 
         // Stack multiple overlays without nested overlayWhen(...) calls.
         //
@@ -336,10 +402,13 @@ public final class PhoenixRobot {
 
         telemetry.addLine("Phoenix TeleOp (Supervisor + OutputTasks)");
         telemetry.addLine("P1: Left stick=drive, Right stick=turn, RB=slow mode");
+        telemetry.addLine("P2: RB=toggle shooter flywheel (spins at selected velocity)");
+        telemetry.addLine("P2: LB=auto aim + set velocity from AprilTag range");
+        telemetry.addLine("P2: B=shoot (hold; release cancels)");
+        telemetry.addLine("P2: Y=override shoot gates (hold; if flywheel ON, forces feed even if not ready)");
         telemetry.addLine("P2: A=toggle intake");
-        telemetry.addLine("P2: B=shoot (tap for one, hold to keep shooting)");
         telemetry.addLine("P2: X= eject / unjam (hold; reverse feeds)");
-        telemetry.addLine("P2: DPad Up/Down=shooter velocity (fallback when no tag)");
+        telemetry.addLine("P2: DPad Up/Down=adjust selected velocity");
         telemetry.update();
 
         // Create bindings
@@ -354,15 +423,16 @@ public final class PhoenixRobot {
         // A: toggle intake
         bindings.onRise(gamepads.p2().a(), shooterSupervisor::toggleIntake);
 
-        // B: shoot
-        // - tap: queue one shot
-        // - hold: keep shooting (supervisor keeps a 1-shot backlog buffered)
+        // RB: toggle flywheel on/off
+        bindings.onRise(gamepads.p2().rightBumper(), shooterSupervisor::toggleFlywheel);
+
+        // LB: auto-aim assist button (drive overlay) + set velocity from tag range on press
+        bindings.onRise(gamepads.p2().leftBumper(), shooterSupervisor::captureVelocityFromTarget);
+
+        // B: shoot (hold-to-shoot; release cancels any queued/active feed task)
         bindings.onRiseAndFall(
                 gamepads.p2().b(),
-                () -> {
-                    shooterSupervisor.setShootHeld(true);
-                    shooterSupervisor.requestShootOne();
-                },
+                () -> shooterSupervisor.setShootHeld(true),
                 () -> shooterSupervisor.setShootHeld(false)
         );
 
@@ -373,9 +443,9 @@ public final class PhoenixRobot {
                 () -> shooterSupervisor.setEjectHeld(false)
         );
 
-        // D-pad: tweak manual (fallback) flywheel velocity (used when no tag is visible).
-        bindings.onRise(gamepads.p2().dpadUp(), shooter::increaseManualVelocity);
-        bindings.onRise(gamepads.p2().dpadDown(), shooter::decreaseManualVelocity);
+        // D-pad: tweak the selected flywheel velocity (fine-tune after auto-set).
+        bindings.onRise(gamepads.p2().dpadUp(), shooter::increaseSelectedVelocity);
+        bindings.onRise(gamepads.p2().dpadDown(), shooter::decreaseSelectedVelocity);
     }
 
     /**
@@ -434,7 +504,12 @@ public final class PhoenixRobot {
         // --- 6) Telemetry / debug ---
         shooter.telemetryDump(clock, "shooter");
         telemetry.addData("intake.enabled", shooterSupervisor.intakeEnabled());
-        telemetry.addData("shoot.btn", shootHeld.getAsBoolean(clock));
+        telemetry.addData("flywheel.toggle", shooterSupervisor.flywheelEnabled());
+        telemetry.addData("shoot.btn", shootButtonHeld.getAsBoolean(clock));
+        telemetry.addData("shoot.active", shootActive.getAsBoolean(clock));
+        telemetry.addData("aim.ready", aimReady.getAsBoolean(clock));
+        telemetry.addData("aim.okToShoot", aimOkToShoot.getAsBoolean(clock));
+        telemetry.addData("aim.override", aimOverride.getAsBoolean(clock));
         telemetry.addData("shootBrace", shootBraceLatch.get());
         if (pinpoint != null) {
             telemetry.addData("pose", pinpoint.getEstimate());
@@ -453,8 +528,10 @@ public final class PhoenixRobot {
                 aimStatus = aimQueryRed.sample(clock, DriveOverlayMask.OMEGA_ONLY);
             }
 
-            if (aimStatus != null && aimStatus.omegaWithin(aimTuning.aimDeadbandRad * 5)) {
-                telemetry.addLine(">>> AIMED <<<");
+            if (aimReady.getAsBoolean(clock)) {
+                telemetry.addLine(">>> AIM READY <<<");
+            } else if (aimOverride.getAsBoolean(clock)) {
+                telemetry.addLine(">>> AIM OVERRIDE <<<");
             }
 
             telemetry.addData("tagId", obs.id);
@@ -470,6 +547,9 @@ public final class PhoenixRobot {
                             ? Math.toDegrees(aimStatus.omegaErrorRad)
                             : Double.NaN
             );
+
+            telemetry.addData("aim.tolDeg", RobotConfig.AutoAim.AIM_TOLERANCE_DEG);
+            telemetry.addData("aim.readyTolDeg", RobotConfig.AutoAim.AIM_READY_TOLERANCE_DEG);
 
             // Field metadata (comes from the FTC game database): where this tag is placed on the field.
             // This is useful for sanity-checking that you're targeting the right point.
@@ -490,16 +570,16 @@ public final class PhoenixRobot {
     }
 
     /**
-     * Latches translation pose-lock while the aiming driver is holding the shoot trigger
-     * (auto-aim) and the driver is not commanding translation.
+     * Latches translation pose-lock while an active shooting sequence is in progress
+     * <em>and</em> the driver is not commanding translation.
      *
-     * <p>This makes "hold B" a single driver action for: aim + brace + shoot.</p>
+     * <p>This makes "hold B" feel like a single driver action for: aim + brace + shoot.</p>
      * <p>Hysteresis prevents chatter when sticks hover near center.</p>
      */
     private void updateShootBraceEnabled() {
-        // Only brace while P2 is actively holding the auto-aim trigger.
-        // This avoids surprise "fighting the driver" behavior during normal driving.
-        if (!shootHeld.getAsBoolean(clock)) {
+        // Only brace while an active shooting sequence is in progress.
+        // (Bracing releases immediately when the shoot button is released.)
+        if (!shootActive.getAsBoolean(clock)) {
             shootBraceLatch.reset(false);
             return;
         }

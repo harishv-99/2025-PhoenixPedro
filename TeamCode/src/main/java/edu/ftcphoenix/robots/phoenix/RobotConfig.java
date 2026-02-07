@@ -24,16 +24,16 @@ public class RobotConfig {
      */
     public static class DriveTrain {
         public static final String nameMotorFrontLeft = "frontLeftMotor";
-        public static final Direction directionMotorFrontLeft = Direction.REVERSE;
+        public static final Direction directionMotorFrontLeft = Direction.FORWARD;
 
         public static final String nameMotorFrontRight = "frontRightMotor";
-        public static final Direction directionMotorFrontRight = Direction.REVERSE;
+        public static final Direction directionMotorFrontRight = Direction.FORWARD;
 
         public static final String nameMotorBackLeft = "backLeftMotor";
         public static final Direction directionMotorBackLeft = Direction.FORWARD;
 
         public static final String nameMotorBackRight = "backRightMotor";
-        public static final Direction directionMotorBackRight = Direction.REVERSE;
+        public static final Direction directionMotorBackRight = Direction.FORWARD;
 
         /**
          * If true, set drivetrain motors to BRAKE when commanded power is 0.
@@ -78,19 +78,19 @@ public class RobotConfig {
          * Intake wheels motor (pulls balls into the robot).
          */
         public static final String nameMotorIntake = "intakeMotor";
-        public static final Direction directionMotorIntake = Direction.FORWARD;
+        public static final Direction directionMotorIntake = Direction.REVERSE;
 
         /**
          * Intake-to-storage transfer (continuous rotation servo).
          */
         public static final String nameCrServoIntakeTransfer = "intakeTransfer";
-        public static final Direction directionCrServoIntakeTransfer = Direction.FORWARD;
+        public static final Direction directionCrServoIntakeTransfer = Direction.REVERSE;
 
         /**
          * Shooter transfer (two continuous rotation servos).
          */
         public static final String nameCrServoShooterTransferLeft = "shooterTransferLeft";
-        public static final Direction directionCrServoShooterTransferLeft = Direction.FORWARD;
+        public static final Direction directionCrServoShooterTransferLeft = Direction.REVERSE;
 
         public static final String nameCrServoShooterTransferRight = "shooterTransferRight";
         public static final Direction directionCrServoShooterTransferRight = Direction.FORWARD;
@@ -118,11 +118,11 @@ public class RobotConfig {
         // Shooter wheel (single motor, velocity control)
         // ------------------------------------------------------------------
 
-        public static final String nameMotorShooterWheel = "shooterWheel";
+        public static final String nameMotorShooterWheel = "shooterMotor";
         public static final Direction directionMotorShooterWheel = Direction.FORWARD;
 
-        public static final double velocityMin = 1500;
-        public static final double velocityMax = 1900;
+        public static final double velocityMin = 700;
+        public static final double velocityMax = 2000;
         public static final double velocityIncrement = 25;
 
         /** Tolerance for {@code Plant.atSetpoint()} in native velocity units. */
@@ -217,12 +217,12 @@ public class RobotConfig {
          * localization/aiming, calibrate and update this value.</p>
          */
         public static final CameraMountConfig cameraMount = CameraMountConfig.ofDegrees(
-                5.095,
-                -2.969,
-                5.816,
-                0.5,
+                9.97,
+                -1.80,
+                13.68,
+                1.9,
                 -18.2,
-                2.9);
+                -1.7);
     }
 
     /**
@@ -244,9 +244,9 @@ public class RobotConfig {
          */
         public static PinpointPoseEstimator.Config pinpoint =
                 PinpointPoseEstimator.Config.defaults()
-                        .withHardwareMapName("odo")
+                        .withHardwareMapName("pinPoint")
                         .withOffsets(0.0, 0.0)
-                        .withForwardPodDirection(GoBildaPinpointDriver.EncoderDirection.REVERSED)
+                        .withForwardPodDirection(GoBildaPinpointDriver.EncoderDirection.FORWARD)
                         .withStrafePodDirection(GoBildaPinpointDriver.EncoderDirection.FORWARD);
 
         // Advanced options (uncomment if needed):
@@ -336,6 +336,55 @@ public class RobotConfig {
         // (These match the IDs used in PhoenixRobot.SCORING_TAG_IDS today.)
         public static final int BLUE_TARGET_TAG_ID = 20;
         public static final int RED_TARGET_TAG_ID = 24;
+
+        // ------------------------------------------------------------------
+        // TeleOp auto-aim tuning
+        // ------------------------------------------------------------------
+
+        /**
+         * How tight the robot must be aligned (in degrees) to be considered "aimed".
+         *
+         * <p>This is also used as the DriveGuidance aim deadband: the assist will output
+         * 0 turn command once the error is within this angle.</p>
+         */
+        public static final double AIM_TOLERANCE_DEG = 0.25;
+
+        /**
+         * P gain for auto-aim omega (unitless DriveSignal command per radian of error).
+         */
+        public static final double AIM_KP = 2.0;
+
+        /**
+         * Max turn command for auto-aim (0..1-ish DriveSignal units).
+         */
+        public static final double AIM_MAX_OMEGA_CMD = 0.80;
+
+        /**
+         * Ready-to-shoot tolerance (degrees).
+         *
+         * <p>This is used only for the <b>"aim ready"</b> gate that decides whether we are
+         * allowed to feed a ball.
+         *
+         * <p>It is intentionally allowed to be a bit looser than {@link #AIM_TOLERANCE_DEG} so we
+         * don't get stuck waiting for a perfect last fraction of a degree. Auto-aim will still
+         * try to converge inside {@link #AIM_TOLERANCE_DEG}, but we consider it "good enough"
+         * to shoot once we're within this value.
+         */
+        // Default to the same tolerance as the aim controller. If you ever find yourself
+        // "practically aimed" but the gate won't go true, bump this up to ~0.5–0.75.
+        public static final double AIM_READY_TOLERANCE_DEG = AIM_TOLERANCE_DEG;
+
+        /**
+         * Debounce time for the aim-ready gate (seconds).
+         */
+        public static final double AIM_READY_DEBOUNCE_SEC = 0.05;
+
+        /**
+         * Minimum turn command for auto-aim when outside the deadband.
+         *
+         * <p>Helps overcome drivetrain stiction so the robot doesn't "stall" while still slightly off.
+         */
+        public static final double AIM_MIN_OMEGA_CMD = 0.05;
 
         /**
          * Where to aim relative to the BLUE target tag.

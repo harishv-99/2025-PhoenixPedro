@@ -1,5 +1,6 @@
 package edu.ftcphoenix.robots.phoenix;
 
+import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 
 import org.firstinspires.ftc.robotcore.external.Telemetry;
@@ -26,13 +27,14 @@ import edu.ftcphoenix.fw.task.Tasks;
  *
  * <p>Design pattern:
  * <ul>
- *   <li><b>Single writer:</b> this class is the only place that calls {@link Plant#setTarget(double)}.</li>
- *   <li><b>Manual intent is state:</b> variables such as manual feed powers.</li>
- *   <li><b>Automation is queued:</b> temporary overrides (shoot pulses) live in an
+ *   <li><b>Single writer:</b> this class is the only place that commands the hardware plants.</li>
+ *   <li><b>Selected velocity lives here:</b> driver D-pad and auto-aim both update the same
+ *       {@link #selectedVelocityNative}.</li>
+ *   <li><b>Flywheel enable is latched externally:</b> the supervisor toggles
+ *       {@link #flywheelEnabled} (P2 right bumper).</li>
+ *   <li><b>Automation is queued:</b> temporary feed overrides (shoot pulses) live in an
  *       {@link OutputTaskRunner} and override the manual feed path while active.</li>
  * </ul>
- *
- * <p>The corresponding {@link ShooterSupervisor} owns the policy and macro logic.
  */
 public final class Shooter {
 
@@ -62,23 +64,23 @@ public final class Shooter {
     private final Plant plantShooterTransfer;
     private final Plant plantFlywheel;
 
+    // We read measured velocity directly for the "ready" gate.
+    private final DcMotorEx flywheelMotor;
+
     // ---------------------------------------------------------------------
-    // Manual state (backup controls)
+    // Manual state (base outputs when no feed macro is active)
     // ---------------------------------------------------------------------
 
     private double manualIntakeMotorPower = 0.0;
     private double manualIntakeTransferPower = 0.0;
     private double manualShooterTransferPower = 0.0;
 
-    private boolean manualShooterEnabled = false;
-    private double manualShooterVelocity = RobotConfig.Shooter.velocityMin;
-
     // ---------------------------------------------------------------------
-    // Macro state (set by ShooterSupervisor)
+    // Flywheel state (selected velocity + enable)
     // ---------------------------------------------------------------------
 
-    private boolean macroShooterEnabled = false;
-    private double macroShooterVelocity = RobotConfig.Shooter.velocityMin;
+    private boolean flywheelEnabled = false;
+    private double selectedVelocityNative = RobotConfig.Shooter.velocityMin;
 
     /**
      * Feed path override queue.
@@ -90,15 +92,30 @@ public final class Shooter {
     /**
      * Debounced "ready" latch for the flywheel.
      */
-    private final DebounceBoolean readyLatch = DebounceBoolean.onAfterOffImmediately(RobotConfig.Shooter.readyStableSec);
+    private final DebounceBoolean readyLatch =
+            DebounceBoolean.onAfterOffImmediately(RobotConfig.Shooter.readyStableSec);
+
+    /**
+     * Flywheel-ready source (idempotent by cycle).
+     *
+     * <p>Important: this source updates {@link #readyLatch}. If we created a new BooleanSource
+     * each time {@link #flywheelReady()} was called, multiple callers in the same loop could
+     * accidentally advance the debounce timer more than once per cycle. This single, cached source
+     * avoids that class of bug.</p>
+     */
+    private final BooleanSource flywheelReadySource;
 
     // Cached for telemetry/debug (computed in update())
     private double flywheelTargetNative = 0.0;
+    private double flywheelMeasuredNative = 0.0;
 
     private final Telemetry telemetry;
 
     public Shooter(HardwareMap hardwareMap, Telemetry telemetry) {
         this.telemetry = telemetry;
+
+        // Keep a direct handle to the flywheel motor so we can read measured velocity.
+        flywheelMotor = hardwareMap.get(DcMotorEx.class, RobotConfig.Shooter.nameMotorShooterWheel);
 
         // Intake wheels (motor).
         plantIntakeMotor = Actuators.plant(hardwareMap)
@@ -126,6 +143,44 @@ public final class Shooter {
                 .motor(RobotConfig.Shooter.nameMotorShooterWheel, RobotConfig.Shooter.directionMotorShooterWheel)
                 .velocity(RobotConfig.Shooter.velocityToleranceNative)
                 .build();
+
+        // Ready gate source (safe to sample multiple times per loop).
+        flywheelReadySource = new BooleanSource() {
+            private long lastCycle = Long.MIN_VALUE;
+            private boolean last = false;
+
+            @Override
+            public boolean getAsBoolean(LoopClock clock) {
+                long cyc = clock.cycle();
+                if (cyc == lastCycle) {
+                    return last;
+                }
+                lastCycle = cyc;
+
+                // If the flywheel is disabled, we're never "ready".
+                if (!flywheelEnabled) {
+                    last = false;
+                    readyLatch.reset(false);
+                    return false;
+                }
+
+                double target = Math.abs(flywheelTargetNative);
+                double measured = Math.abs(flywheelMeasuredNative);
+
+                boolean enabled = target > 1e-6;
+                boolean at = enabled && Math.abs(measured - target) <= RobotConfig.Shooter.velocityToleranceNative;
+
+                last = readyLatch.update(clock, at);
+                return last;
+            }
+
+            @Override
+            public void reset() {
+                lastCycle = Long.MIN_VALUE;
+                last = false;
+                readyLatch.reset(false);
+            }
+        };
     }
 
     // ---------------------------------------------------------------------
@@ -140,20 +195,32 @@ public final class Shooter {
         feedQueue.clear();
     }
 
-    public void setMacroShooterEnabled(boolean enabled) {
-        macroShooterEnabled = enabled;
+    public void setFlywheelEnabled(boolean enabled) {
+        flywheelEnabled = enabled;
         if (!enabled) {
-            // Reset macro velocity to something sane so it doesn't hold stale values.
-            macroShooterVelocity = manualShooterVelocity;
+            // Prevent the ready latch from staying true after we turn the wheel off.
+            flywheelReadySource.reset();
         }
     }
 
-    public boolean macroShooterEnabled() {
-        return macroShooterEnabled;
+    public boolean flywheelEnabled() {
+        return flywheelEnabled;
     }
 
-    public void setMacroShooterVelocity(double velocityNative) {
-        macroShooterVelocity = clampVelocity(velocityNative);
+    public void setSelectedVelocity(double velocityNative) {
+        selectedVelocityNative = clampVelocity(velocityNative);
+    }
+
+    public double selectedVelocity() {
+        return selectedVelocityNative;
+    }
+
+    public void increaseSelectedVelocity() {
+        setSelectedVelocity(selectedVelocityNative + RobotConfig.Shooter.velocityIncrement);
+    }
+
+    public void decreaseSelectedVelocity() {
+        setSelectedVelocity(selectedVelocityNative - RobotConfig.Shooter.velocityIncrement);
     }
 
     public double velocityForRangeInches(double rangeInches) {
@@ -163,22 +230,18 @@ public final class Shooter {
     /**
      * Debounced flywheel-ready signal.
      *
-     * <p>Designed to be used as a gate in {@link edu.ftcphoenix.fw.task.GatedOutputUntilTask}.
-     * The returned source is safe to sample multiple times per loop.</p>
+     * <p>We treat the flywheel as "ready" when its measured speed is within
+     * {@code ±velocityToleranceNative} of the currently commanded target.</p>
+     *
+     * <p>This gate is intentionally a little forgiving (tolerance + debounce) so we don't
+     * "wait for perfection" before feeding a ball.</p>
      */
     public BooleanSource flywheelReady() {
-        return new BooleanSource() {
-            @Override
-            public boolean getAsBoolean(LoopClock clock) {
-                boolean enabled = Math.abs(flywheelTargetNative) > 1e-6;
-                boolean at = enabled && plantFlywheel.atSetpoint();
-                return readyLatch.update(clock, at);
-            }
-        };
+        return flywheelReadySource;
     }
 
     // ---------------------------------------------------------------------
-    // Manual (backup) API
+    // Manual feed (base) API
     // ---------------------------------------------------------------------
 
     public void setManualIntakeMotorPower(double power) {
@@ -193,43 +256,20 @@ public final class Shooter {
         manualShooterTransferPower = clampPower(power);
     }
 
-    public void setManualShooterEnabled(boolean enabled) {
-        manualShooterEnabled = enabled;
-    }
-
-    public boolean manualShooterEnabled() {
-        return manualShooterEnabled;
-    }
-
-    public void increaseManualVelocity() {
-        setManualShooterVelocity(manualShooterVelocity + RobotConfig.Shooter.velocityIncrement);
-    }
-
-    public void decreaseManualVelocity() {
-        setManualShooterVelocity(manualShooterVelocity - RobotConfig.Shooter.velocityIncrement);
-    }
-
-    public void setManualShooterVelocity(double velocityNative) {
-        manualShooterVelocity = clampVelocity(velocityNative);
-    }
-
-    public double manualShooterVelocity() {
-        return manualShooterVelocity;
-    }
-
     // ---------------------------------------------------------------------
     // Loop update + safety
     // ---------------------------------------------------------------------
 
     public void update(LoopClock clock) {
         // 1) Compute + apply flywheel target BEFORE updating the feed queue.
-        //    Feed tasks use plantFlywheel.atSetpoint(), which is relative to the latest setTarget.
-        flywheelTargetNative = macroShooterEnabled
-                ? macroShooterVelocity
-                : (manualShooterEnabled ? manualShooterVelocity : 0.0);
+        //    Feed tasks gate on flywheelReady(), which uses the latest target + measured value.
+        flywheelTargetNative = flywheelEnabled ? selectedVelocityNative : 0.0;
 
         plantFlywheel.setTarget(flywheelTargetNative);
         plantFlywheel.update(clock.dtSec());
+
+        // Cache measured velocity for readiness + telemetry.
+        flywheelMeasuredNative = flywheelMotor.getVelocity();
 
         // 2) Update the feed macro queue.
         feedQueue.update(clock);
@@ -259,8 +299,7 @@ public final class Shooter {
     }
 
     public void stop() {
-        macroShooterEnabled = false;
-        manualShooterEnabled = false;
+        flywheelEnabled = false;
 
         manualIntakeMotorPower = 0.0;
         manualIntakeTransferPower = 0.0;
@@ -280,14 +319,21 @@ public final class Shooter {
         }
         String p = (prefix == null || prefix.isEmpty()) ? "shooter" : prefix;
 
+        telemetry.addData(p + ".flywheelEnabled", flywheelEnabled);
+        telemetry.addData(p + ".selectedVel", selectedVelocityNative);
         telemetry.addData(p + ".flywheelTarget", flywheelTargetNative);
+        telemetry.addData(p + ".flywheelMeasured", flywheelMeasuredNative);
+        double err = flywheelMeasuredNative - flywheelTargetNative;
+        telemetry.addData(p + ".flywheelErr", err);
+        telemetry.addData(p + ".flywheelErrAbs", Math.abs(err));
+        telemetry.addData(p + ".flywheelTol", RobotConfig.Shooter.velocityToleranceNative);
         telemetry.addData(p + ".flywheelAtSetpoint", plantFlywheel.atSetpoint());
         telemetry.addData(p + ".ready", flywheelReady().getAsBoolean(clock));
-        telemetry.addData(p + ".macroEnabled", macroShooterEnabled);
-        telemetry.addData(p + ".manualEnabled", manualShooterEnabled);
+
         telemetry.addData(p + ".feedBacklog", feedQueue.backlogCount());
         telemetry.addData(p + ".feedQueued", feedQueue.queuedCount());
         telemetry.addData(p + ".feedActive", feedQueue.hasActiveTask());
+        telemetry.addData(p + ".feedOut", feedQueue.getAsDouble(clock));
     }
 
     // ---------------------------------------------------------------------
