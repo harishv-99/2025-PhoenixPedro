@@ -122,8 +122,15 @@ public final class Shooter {
     private double flywheelTargetNative = 0.0;
     private double flywheelMeasuredNative = 0.0;
 
-    // Absolute value + simple accel estimate (computed in update())
+    // Absolute value + a simple signed accel estimate (computed in update()).
+    //
+    // Why signed accel?
+    //  - Positive accel means the wheel is speeding up (often happens right after a shot).
+    //  - Negative accel means the wheel is slowing down.
+    //
+    // We use this to predict the flywheel speed at *ball contact time* for rapid-fire.
     private double flywheelMeasuredAbs = 0.0;
+    private double flywheelMeasuredAccel = 0.0;
     private double flywheelMeasuredAccelAbs = 0.0;
     private double prevFlywheelMeasuredAbs = 0.0;
 
@@ -134,6 +141,28 @@ public final class Shooter {
 
         // Keep a direct handle to the flywheel motor so we can read measured velocity.
         flywheelMotor = hardwareMap.get(DcMotorEx.class, RobotConfig.Shooter.nameMotorShooterWheel);
+
+        // Optional: apply motor-controller velocity PIDF tuning.
+        //
+        // This is off by default so we don't overwrite a tune that already works for your
+        // robot. If enabled, this lets you tune closed-loop response (dip/overshoot) without
+        // changing code elsewhere.
+        if (RobotConfig.Shooter.applyFlywheelVelocityPIDF) {
+            try {
+                flywheelMotor.setVelocityPIDFCoefficients(
+                        RobotConfig.Shooter.flywheelVelKp,
+                        RobotConfig.Shooter.flywheelVelKi,
+                        RobotConfig.Shooter.flywheelVelKd,
+                        RobotConfig.Shooter.flywheelVelKf
+                );
+            } catch (RuntimeException e) {
+                // If the hardware/SDK doesn't support this (or throws for another reason),
+                // keep the robot running with the default controller tuning.
+                if (telemetry != null) {
+                    telemetry.addLine("WARN: flywheel PIDF not applied: " + e.getMessage());
+                }
+            }
+        }
 
         // Intake wheels (motor).
         plantIntakeMotor = Actuators.plant(hardwareMap)
@@ -187,19 +216,34 @@ public final class Shooter {
 
                 boolean enabled = target > 1e-6;
 
-                // Asymmetric ready band:
-                //  - allow being a bit low (underspeed) while recovering
-                //  - be stricter on overspeed to avoid shooting while the wheel is still "springing back"
-                double err = measured - target;
+                // Rapid-fire "ready" gate:
+                //
+                // The ball does NOT touch the flywheel the instant we turn on the feed servos.
+                // There is a short mechanical delay (transfer path latency).
+                //
+                // If we only check "ready" at the instant feeding starts, the next ball can
+                // arrive while the wheel is still accelerating upward (overshoot) or before it
+                // has recovered (undershoot).
+                //
+                // Instead, predict the flywheel speed at contact time using the current
+                // signed acceleration estimate and a configurable lead time.
+                double leadSec = RobotConfig.Shooter.readyPredictLeadSec;
+                if (leadSec < 0.0) {
+                    leadSec = 0.0;
+                }
+
+                double predicted = measured + flywheelMeasuredAccel * leadSec;
+                if (predicted < 0.0) {
+                    predicted = 0.0;
+                }
+
+                double errAtContact = predicted - target;
+
                 boolean withinBand = enabled
-                        && err >= -RobotConfig.Shooter.velocityToleranceBelowNative
-                        && err <= RobotConfig.Shooter.velocityToleranceAboveNative;
+                        && errAtContact >= -RobotConfig.Shooter.velocityToleranceBelowNative
+                        && errAtContact <= RobotConfig.Shooter.velocityToleranceAboveNative;
 
-                // Optional stability gate: don't call it ready while the speed is changing quickly.
-                boolean accelOk = RobotConfig.Shooter.velocityMaxAccelNativePerSec2 <= 0.0
-                        || flywheelMeasuredAccelAbs <= RobotConfig.Shooter.velocityMaxAccelNativePerSec2;
-
-                boolean at = withinBand && accelOk;
+                boolean at = withinBand;
 
                 last = readyLatch.update(clock, at);
                 return last;
@@ -261,15 +305,17 @@ public final class Shooter {
     /**
      * Debounced flywheel-ready signal.
      *
-     * <p>We treat the flywheel as "ready" when its measured speed is inside an
-     * <b>asymmetric band</b> around the target:</p>
+     * <p>We treat the flywheel as "ready" when the predicted flywheel speed at
+     * <b>ball contact time</b> is inside a configurable band around the target.</p>
      * <ul>
      *   <li>underspeed allowed: {@link RobotConfig.Shooter#velocityToleranceBelowNative}</li>
      *   <li>overspeed allowed: {@link RobotConfig.Shooter#velocityToleranceAboveNative}</li>
      * </ul>
      *
-     * <p>Additionally, we can require the wheel to be "settled" by limiting
-     * {@code |dV/dt|} using {@link RobotConfig.Shooter#velocityMaxAccelNativePerSec2}.</p>
+     * <p>Prediction is based on the current signed acceleration estimate and
+     * {@link RobotConfig.Shooter#readyPredictLeadSec}. This is what makes rapid-fire consistent:
+     * we schedule the feed so the wheel is correct <em>when the ball arrives</em>, not only when
+     * the feed command begins.</p>
      *
      * <p>This gate is intentionally a little forgiving (tolerance + debounce) so we don't
      * "wait for perfection" before feeding a ball.</p>
@@ -309,13 +355,14 @@ public final class Shooter {
         // Cache measured velocity for readiness + telemetry.
         flywheelMeasuredNative = flywheelMotor.getVelocity();
 
-        // Track abs + a simple |dV/dt| estimate so our ready gate can avoid feeding during
-        // the "spring back" overshoot after a shot.
+        // Track abs + a simple dV/dt estimate so our ready gate can predict contact speed.
         flywheelMeasuredAbs = Math.abs(flywheelMeasuredNative);
         double dt = clock.dtSec();
         if (dt > 1e-6 && Double.isFinite(dt)) {
-            flywheelMeasuredAccelAbs = Math.abs((flywheelMeasuredAbs - prevFlywheelMeasuredAbs) / dt);
+            flywheelMeasuredAccel = (flywheelMeasuredAbs - prevFlywheelMeasuredAbs) / dt;
+            flywheelMeasuredAccelAbs = Math.abs(flywheelMeasuredAccel);
         } else {
+            flywheelMeasuredAccel = 0.0;
             flywheelMeasuredAccelAbs = 0.0;
         }
         prevFlywheelMeasuredAbs = flywheelMeasuredAbs;
@@ -369,6 +416,7 @@ public final class Shooter {
         String p = (prefix == null || prefix.isEmpty()) ? "shooter" : prefix;
 
         telemetry.addData(p + ".flywheelEnabled", flywheelEnabled);
+        telemetry.addData(p + ".pidfEnabled", RobotConfig.Shooter.applyFlywheelVelocityPIDF);
         telemetry.addData(p + ".selectedVel", selectedVelocityNative);
         telemetry.addData(p + ".flywheelTarget", flywheelTargetNative);
         telemetry.addData(p + ".flywheelMeasured", flywheelMeasuredNative);
@@ -378,8 +426,18 @@ public final class Shooter {
         telemetry.addData(p + ".flywheelTol", RobotConfig.Shooter.velocityToleranceNative);
         telemetry.addData(p + ".flywheelTolBelow", RobotConfig.Shooter.velocityToleranceBelowNative);
         telemetry.addData(p + ".flywheelTolAbove", RobotConfig.Shooter.velocityToleranceAboveNative);
+        telemetry.addData(p + ".flywheelAccel", flywheelMeasuredAccel);
         telemetry.addData(p + ".flywheelAccelAbs", flywheelMeasuredAccelAbs);
-        telemetry.addData(p + ".flywheelAccelMax", RobotConfig.Shooter.velocityMaxAccelNativePerSec2);
+
+        double leadSec = RobotConfig.Shooter.readyPredictLeadSec;
+        double targetAbs = Math.abs(flywheelTargetNative);
+        double predAbs = flywheelMeasuredAbs + flywheelMeasuredAccel * Math.max(0.0, leadSec);
+        if (predAbs < 0.0) {
+            predAbs = 0.0;
+        }
+        telemetry.addData(p + ".readyLeadSec", leadSec);
+        telemetry.addData(p + ".flywheelPredAbs", predAbs);
+        telemetry.addData(p + ".flywheelPredErr", predAbs - targetAbs);
         telemetry.addData(p + ".flywheelAtSetpoint", plantFlywheel.atSetpoint());
         telemetry.addData(p + ".ready", flywheelReady().getAsBoolean(clock));
 

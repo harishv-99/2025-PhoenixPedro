@@ -78,7 +78,7 @@ public class RobotConfig {
          * Intake wheels motor (pulls balls into the robot).
          */
         public static final String nameMotorIntake = "intakeMotor";
-        public static final Direction directionMotorIntake = Direction.REVERSE;
+        public static final Direction directionMotorIntake = Direction.FORWARD;
 
         /**
          * Intake-to-storage transfer (continuous rotation servo).
@@ -128,6 +128,32 @@ public class RobotConfig {
         /** Tolerance for {@code Plant.atSetpoint()} in native velocity units. */
         public static final double velocityToleranceNative = 50;
 
+        // ------------------------------------------------------------------
+        // Optional: tune the motor controller's built-in velocity PIDF
+        // ------------------------------------------------------------------
+
+        /**
+         * If true, apply the PIDF coefficients below to the shooter wheel motor.
+         *
+         * <p>Why this exists:
+         * <ul>
+         *   <li>The rapid-fire ready gate keeps timing consistent.</li>
+         *   <li>Better PIDF tuning reduces dip/overshoot so you can shoot faster.</li>
+         * </ul>
+         *
+         * <p>Default is false so we do not accidentally overwrite a working tune.
+         */
+        public static final boolean applyFlywheelVelocityPIDF = false;
+
+        /** Velocity loop P gain (native motor controller). */
+        public static final double flywheelVelKp = 0.0;
+        /** Velocity loop I gain (native motor controller). */
+        public static final double flywheelVelKi = 0.0;
+        /** Velocity loop D gain (native motor controller). */
+        public static final double flywheelVelKd = 0.0;
+        /** Velocity loop F gain / feedforward (native motor controller). */
+        public static final double flywheelVelKf = 0.0;
+
         /**
          * Shooter-ready tolerance BELOW the target speed.
          *
@@ -143,18 +169,35 @@ public class RobotConfig {
          * {@link #velocityToleranceBelowNative} helps avoid feeding a ball while the wheel is still
          * overshooting upward (which can make shots go long).</p>
          */
-        public static final double velocityToleranceAboveNative = 20;
+        public static final double velocityToleranceAboveNative = 50;
 
         /**
-         * Maximum allowed |dV/dt| (native units per second^2) for the wheel to be considered "settled".
+         * Feed-to-flywheel contact lead time (seconds).
          *
-         * <p>This prevents feeding while the wheel is rapidly accelerating upward after a previous shot.
-         * Set to {@code <= 0} to disable the acceleration gate.</p>
+         * <p>When you start the feed motors/servos, the ball does <b>not</b> instantly touch the
+         * flywheel. There is a short mechanical delay as the ball travels through the transfer
+         * path and reaches the wheel.
+         *
+         * <p>We use this value to decide whether the flywheel will be at the right speed
+         * <em>when the ball contacts</em>, not necessarily at the exact instant the feed command
+         * turns on. This is the key to consistent rapid-fire:
+         * <ul>
+         *   <li>If the 2nd ball tends to <b>overshoot</b>, this value is usually too small.
+         *       Increase it to start feeding a little earlier.</li>
+         *   <li>If the 2nd ball tends to <b>undershoot</b>, this value is usually too large.
+         *       Decrease it to start feeding a little later.</li>
+         * </ul>
          */
-        public static final double velocityMaxAccelNativePerSec2 = 700;
+        public static final double readyPredictLeadSec = 0.10;
 
-        /** Debounce time for the shooter "ready" latch. */
-        public static final double readyStableSec = 0.15;
+        /**
+         * Debounce time for the shooter "ready" latch.
+         *
+         * <p>Smaller = faster bursts, but more sensitive to sensor noise.</p>
+         */
+        // Note: with prediction, the "ready" window can be brief while the wheel is
+        // accelerating quickly. A short debounce (1–3 loops) catches that window.
+        public static final double readyStableSec = 0.03;
 
         // ------------------------------------------------------------------
         // TeleOp behavior tuning
@@ -395,9 +438,11 @@ public class RobotConfig {
          * try to converge inside {@link #AIM_TOLERANCE_DEG}, but we consider it "good enough"
          * to shoot once we're within this value.
          */
-        // Default to the same tolerance as the aim controller. If you ever find yourself
-        // "practically aimed" but the gate won't go true, bump this up to ~0.5–0.75.
-        public static final double AIM_READY_TOLERANCE_DEG = AIM_TOLERANCE_DEG * 20;
+        // Default to slightly looser than the aim controller.
+        // If you ever find yourself "practically aimed" but the gate won't go true, bump this
+        // up a bit (example: 0.75–1.0). If you want higher accuracy, set it equal to
+        // AIM_TOLERANCE_DEG.
+        public static final double AIM_READY_TOLERANCE_DEG = AIM_TOLERANCE_DEG * 2.0;
 
         /**
          * Debounce time for the aim-ready gate (seconds).
