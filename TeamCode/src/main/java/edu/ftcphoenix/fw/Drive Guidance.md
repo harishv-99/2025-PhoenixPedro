@@ -14,6 +14,8 @@ This doc also covers a parallel, lighter-weight set of APIs for answering questi
 
 …without needing any DriveGuidance plan at all.
 
+DriveGuidance remains a **drive-specific public API**. Phoenix may eventually extract a lower-level shared spatial query layer, but the framework intentionally waits until a second real non-drive consumer proves out that API. For now, the public abstraction stays simple: if you want Phoenix to generate **drive** commands from spatial errors, use DriveGuidance.
+
 ---
 
 ## Spec vs Plan
@@ -40,8 +42,10 @@ An **executable** bundle:
 Plans are what you attach to:
 
 - a TeleOp overlay: `plan.overlay()`
-- a task: `plan.task(...)`
+- a task: `plan.task(...)` (against any `DriveCommandSink`, not only `MecanumDrivebase`)
 - a query sampler: `plan.query()`
+
+Because tasks target `DriveCommandSink`, a Road Runner or Pedro adapter can present the smallest Phoenix-owned seam needed for guidance tasks and cancellation without forcing Phoenix to duplicate the route library itself.
 
 ---
 

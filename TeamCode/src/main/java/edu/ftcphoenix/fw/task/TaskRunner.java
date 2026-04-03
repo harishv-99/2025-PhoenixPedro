@@ -9,12 +9,12 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
 /**
  * Simple sequential task runner.
  *
- * <p>Responsibilities:
+ * <p>Responsibilities:</p>
  * <ul>
  *   <li>Maintain a queue of {@link Task} instances.</li>
  *   <li>Start tasks one at a time in FIFO order.</li>
  *   <li>Update the current task each loop until it reports complete.</li>
- *   <li>Expose a small API to enqueue/clear tasks and query idle status.</li>
+ *   <li>Expose a small API to enqueue, cancel, clear, and inspect tasks.</li>
  * </ul>
  *
  * <p>Tasks are assumed to be single-use: once a {@link Task} has completed
@@ -27,6 +27,19 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * (for example, nested helpers that both call {@code runner.update(clock)}). Without
  * idempotency, a double-update can cause tasks to advance twice as fast, timeouts to
  * elapse early, or short tasks to be skipped unexpectedly.</p>
+ *
+ * <h2>Typical usage</h2>
+ * <pre>{@code
+ * TaskRunner runner = new TaskRunner();
+ * runner.enqueue(Tasks.waitSeconds(0.2));
+ * runner.enqueue(Tasks.instant(intake::start));
+ *
+ * // In the loop:
+ * runner.update(clock);
+ *
+ * // If driver input or safety logic needs to abort automation:
+ * runner.clearAndCancel();
+ * }</pre>
  */
 public final class TaskRunner {
 
@@ -34,8 +47,8 @@ public final class TaskRunner {
     private Task current = null;
 
     /**
-     * Tracks which loop cycle we last updated for, to prevent tasks from being advanced
-     * multiple times in the same cycle.
+     * Tracks which loop cycle we last updated for, to prevent tasks from being advanced multiple
+     * times in the same cycle.
      */
     private long lastUpdatedCycle = Long.MIN_VALUE;
 
@@ -52,16 +65,46 @@ public final class TaskRunner {
     }
 
     /**
-     * Clear the queue and forget any current task.
+     * Clear the queue and forget any current task without invoking cancellation hooks.
      *
-     * <p>Note: this does not call any special "cancel" logic on the current task;
-     * it simply drops all references. The task's own code is responsible for
-     * ensuring that this is safe (e.g., leaving actuators in a reasonable state
-     * when {@link Task#update(LoopClock)} is no longer called).</p>
+     * <p>This is mainly a legacy "drop everything immediately" helper. Prefer
+     * {@link #clearAndCancel()} when aborting automation so the active task can release hardware,
+     * stop child tasks, and report {@link TaskOutcome#CANCELLED} cleanly.</p>
      */
     public void clear() {
         queue.clear();
         current = null;
+        lastUpdatedCycle = Long.MIN_VALUE;
+    }
+
+    /**
+     * Cancel the active task, if any, while leaving queued tasks intact.
+     *
+     * <p>This is useful when the caller wants to stop the current action but keep later queued
+     * work available for retry or reuse.</p>
+     *
+     * @return {@code true} if a task was active and received {@link Task#cancel()}; otherwise
+     * {@code false}
+     */
+    public boolean cancelCurrent() {
+        if (current == null) {
+            return false;
+        }
+        current.cancel();
+        current = null;
+        lastUpdatedCycle = Long.MIN_VALUE;
+        return true;
+    }
+
+    /**
+     * Cancel the active task (if any) and clear queued tasks.
+     *
+     * <p>This is the safest general-purpose abort helper for TeleOp takeovers, safety interlocks,
+     * and route interruptions.</p>
+     */
+    public void clearAndCancel() {
+        cancelCurrent();
+        queue.clear();
         lastUpdatedCycle = Long.MIN_VALUE;
     }
 
@@ -73,8 +116,7 @@ public final class TaskRunner {
     }
 
     /**
-     * @return the number of tasks remaining in the queue (not counting the
-     * current task, if any).
+     * @return the number of tasks remaining in the queue (not counting the current task, if any).
      */
     public int queuedCount() {
         return queue.size();
@@ -90,8 +132,8 @@ public final class TaskRunner {
     /**
      * @return the current task instance, or {@code null} if none has been started.
      *
-     * <p>This is intentionally exposed for advanced integrations (for example, output-producing
-     * task queues) that need to inspect the active task. Most robot code should not need this.
+     * <p>This is intentionally exposed for advanced integrations that need to inspect the active
+     * task. Most robot code should not need this.</p>
      */
     public Task currentTaskOrNull() {
         return current;
@@ -107,20 +149,18 @@ public final class TaskRunner {
     /**
      * Update the task runner and the current task.
      *
-     * <p>Semantics:
+     * <p>Semantics:</p>
      * <ul>
-     *   <li>If there is no current task, or the current task is complete,
-     *       the runner will pull the next task from the queue and call its
-     *       {@link Task#start(LoopClock)} method.</li>
-     *   <li>If the task completes immediately in {@code start()}, the runner
-     *       will advance to the next queued task (if any) before returning.</li>
-     *   <li>If there is an active (not complete) current task after this
-     *       process, its {@link Task#update(LoopClock)} method is called
-     *       exactly once.</li>
+     *   <li>If there is no current task, or the current task is complete, the runner will pull the
+     *       next task from the queue and call its {@link Task#start(LoopClock)} method.</li>
+     *   <li>If the task completes immediately in {@code start()}, the runner will advance to the
+     *       next queued task (if any) before returning.</li>
+     *   <li>If there is an active (not complete) current task after this process, its
+     *       {@link Task#update(LoopClock)} method is called exactly once.</li>
      * </ul>
      *
-     * <p>This method is idempotent by {@link LoopClock#cycle()}: if called twice in the same
-     * loop cycle, the second call is a no-op.</p>
+     * <p>This method is idempotent by {@link LoopClock#cycle()}: if called twice in the same loop
+     * cycle, the second call is a no-op.</p>
      *
      * @param clock loop clock (must not be {@code null})
      */
@@ -131,22 +171,18 @@ public final class TaskRunner {
 
         long c = clock.cycle();
         if (c == lastUpdatedCycle) {
-            return; // already updated this cycle
+            return;
         }
         lastUpdatedCycle = c;
 
-        // Ensure we have a current task that is not yet complete.
         while ((current == null || current.isComplete()) && !queue.isEmpty()) {
             current = queue.remove(0);
             current.start(clock);
-
-            // If the task completed immediately in start(), loop to pick another.
             if (current.isComplete()) {
                 current = null;
             }
         }
 
-        // If we now have an active task, update it.
         if (current != null && !current.isComplete()) {
             current.update(clock);
         }
@@ -156,7 +192,7 @@ public final class TaskRunner {
      * Emit a compact summary of queue + current task for debugging.
      *
      * @param dbg    debug sink (may be {@code null}; if null, no output is produced)
-     * @param prefix base key prefix, e.g. "tasks"
+     * @param prefix base key prefix, e.g. {@code "tasks"}
      */
     public void debugDump(DebugSink dbg, String prefix) {
         if (dbg == null) {
@@ -174,15 +210,14 @@ public final class TaskRunner {
                     .addData(p + ".currentClass", current.getClass().getSimpleName())
                     .addData(p + ".currentComplete", current.isComplete())
                     .addData(p + ".currentOutcome", current.getOutcome());
-
-            // Let the active task expose richer debug info if it wants.
             current.debugDump(dbg, p + ".current");
         }
 
         if (!queue.isEmpty()) {
             Task next = queue.get(0);
             dbg.addData(p + ".nextName", next.getDebugName())
-                    .addData(p + ".nextClass", next.getClass().getSimpleName());
+                    .addData(p + ".nextClass", next.getClass().getSimpleName())
+                    .addData(p + ".queuedCount", queue.size());
         }
     }
 }

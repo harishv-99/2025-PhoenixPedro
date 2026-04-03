@@ -5,8 +5,8 @@ import java.util.Objects;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 
 /**
- * A {@link Task} that runs a single action once, immediately on
- * {@link #start(LoopClock)}, and then completes.
+ * A {@link Task} that runs a single action once, immediately on {@link #start(LoopClock)}, and
+ * then completes.
  *
  * <p>Typical usage:</p>
  * <pre>{@code
@@ -17,22 +17,25 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * <p>Semantics:</p>
  * <ul>
  *   <li>The provided {@link Runnable} is guaranteed to run at most once.</li>
- *   <li>If {@link #start(LoopClock)} is called multiple times (e.g. due to user
- *       error), the action will only run on the first call.</li>
- *   <li>{@link #update(LoopClock)} does nothing; the task is considered complete
- *       as soon as the action has been run.</li>
- *   <li>{@link #getOutcome()} reports {@link TaskOutcome#NOT_DONE} while the task
- *       has not yet run, and {@link TaskOutcome#SUCCESS} once the action has run.</li>
+ *   <li>If {@link #start(LoopClock)} is called multiple times due to user error, the action still
+ *       only runs on the first call.</li>
+ *   <li>{@link #update(LoopClock)} does nothing; the task is considered complete as soon as the
+ *       action has been run.</li>
+ *   <li>If {@link #cancel()} is called before the task starts, the action is skipped and the task
+ *       reports {@link TaskOutcome#CANCELLED}.</li>
+ *   <li>{@link #getOutcome()} reports {@link TaskOutcome#NOT_DONE} before the action has run,
+ *       {@link TaskOutcome#SUCCESS} after a normal run, and
+ *       {@link TaskOutcome#CANCELLED} after an early cancellation.</li>
  * </ul>
  */
 public final class InstantTask implements Task {
 
     private final Runnable action;
     private boolean finished = false;
+    private boolean cancelled = false;
 
     /**
-     * Creates an {@code InstantTask} that runs the given action once when
-     * the task starts.
+     * Creates an {@code InstantTask} that runs the given action once when the task starts.
      *
      * @param action action to run once; must not be {@code null}
      */
@@ -45,18 +48,30 @@ public final class InstantTask implements Task {
      */
     @Override
     public void start(LoopClock clock) {
-        // Idempotent start: only run the action once.
         if (finished) {
             return;
         }
         action.run();
         finished = true;
+        cancelled = false;
     }
 
     /** {@inheritDoc} */
     @Override
     public void update(LoopClock clock) {
         // No periodic work; instant tasks finish in start().
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void cancel() {
+        if (finished) {
+            return;
+        }
+        finished = true;
+        cancelled = true;
     }
 
     /** {@inheritDoc} */
@@ -68,12 +83,16 @@ public final class InstantTask implements Task {
     /**
      * Outcome semantics for an instant task:
      * <ul>
-     *   <li>Before the action has been run: {@link TaskOutcome#NOT_DONE}.</li>
-     *   <li>After the action has been run: {@link TaskOutcome#SUCCESS}.</li>
+     *   <li>Before the task has run or been cancelled: {@link TaskOutcome#NOT_DONE}.</li>
+     *   <li>After normal execution: {@link TaskOutcome#SUCCESS}.</li>
+     *   <li>After cancellation before execution: {@link TaskOutcome#CANCELLED}.</li>
      * </ul>
      */
     @Override
     public TaskOutcome getOutcome() {
-        return finished ? TaskOutcome.SUCCESS : TaskOutcome.NOT_DONE;
+        if (!finished) {
+            return TaskOutcome.NOT_DONE;
+        }
+        return cancelled ? TaskOutcome.CANCELLED : TaskOutcome.SUCCESS;
     }
 }

@@ -14,6 +14,17 @@ If you're brand new, read these first:
 - **Loop Structure.md**
 - **Sources and Signals.md**
 - **Output Tasks & Queues.md**
+- **Behavior Lanes.md**
+
+A useful companion is **Behavior Lanes.md**. Before adding structure, decide which lane the behavior belongs to:
+
+- local setpoint (`Plant`)
+- scalar regulation (`ScalarSource` + controller + `Plant`)
+- event/classification supervision (`BooleanSource` / `Source<T>` + supervisor/task)
+- spatial guidance (`DriveGuidance` today)
+- external route integration (Road Runner / Pedro wrapped behind Phoenix seams)
+
+That decision keeps subsystems smaller and stops drive-specific abstractions from leaking into every mechanism.
 
 ---
 
@@ -64,6 +75,7 @@ A supervisor is responsible for:
 - owning small state: cooldowns, request counters, state machines
 - translating driver intent and sensor signals into actions
 - enqueueing `OutputTask`s to subsystem queues when appropriate
+- optionally exposing one small **status snapshot** for telemetry/debug, so callers do not need to understand several internal booleans and queue details
 
 A supervisor usually **does not write plant targets directly**.
 It decides *what should happen*, and the subsystem decides *what the final target is*.

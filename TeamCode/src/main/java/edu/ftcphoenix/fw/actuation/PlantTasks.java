@@ -863,6 +863,19 @@ public final class PlantTasks {
          * {@inheritDoc}
          */
         @Override
+        public void cancel() {
+            if (!started || finished) {
+                return;
+            }
+            finished = true;
+            outcome = TaskOutcome.CANCELLED;
+            applyPostBehavior();
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
         public boolean isComplete() {
             return finished;
         }

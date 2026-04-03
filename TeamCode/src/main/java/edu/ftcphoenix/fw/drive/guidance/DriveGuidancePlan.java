@@ -2,9 +2,9 @@ package edu.ftcphoenix.fw.drive.guidance;
 
 import java.util.Objects;
 
+import edu.ftcphoenix.fw.drive.DriveCommandSink;
 import edu.ftcphoenix.fw.drive.DriveOverlay;
 import edu.ftcphoenix.fw.drive.DriveOverlayMask;
-import edu.ftcphoenix.fw.drive.MecanumDrivebase;
 
 /**
  * Immutable <b>executable</b> configuration for DriveGuidance.
@@ -218,8 +218,23 @@ public final class DriveGuidancePlan {
 
     /**
      * Build a {@link DriveGuidanceTask} that executes this plan as an autonomous-style task.
+     *
+     * <p>This is the task counterpart to {@link #overlay()}: the same plan and tuning are reused,
+     * but the output is sent directly to a {@link DriveCommandSink} until the task reaches its
+     * tolerance or timeout.</p>
+     *
+     * <p>Typical usage:</p>
+     * <pre>{@code
+     * DriveGuidancePlan plan = DriveGuidance.plan()
+     *         .translateTo().fieldPointInches(48, 24).doneTranslateTo()
+     *         .feedback().fieldPose(poseEstimator).doneFeedback()
+     *         .tuning(DriveGuidancePlan.Tuning.defaults())
+     *         .build();
+     *
+     * runner.enqueue(plan.task(drivebase, new DriveGuidanceTask.Config()));
+     * }</pre>
      */
-    public DriveGuidanceTask task(MecanumDrivebase drivebase, DriveGuidanceTask.Config cfg) {
+    public DriveGuidanceTask task(DriveCommandSink drivebase, DriveGuidanceTask.Config cfg) {
         return new DriveGuidanceTask(drivebase, this, cfg);
     }
 

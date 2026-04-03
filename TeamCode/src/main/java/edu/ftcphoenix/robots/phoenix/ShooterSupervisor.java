@@ -2,6 +2,7 @@ package edu.ftcphoenix.robots.phoenix;
 
 import java.util.Objects;
 
+import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.source.ScalarSource;
 import edu.ftcphoenix.fw.core.time.LoopClock;
@@ -10,34 +11,83 @@ import edu.ftcphoenix.fw.task.OutputTask;
 import edu.ftcphoenix.fw.task.Tasks;
 
 /**
- * Policy/supervisor layer for the Phoenix shooter + ball path.
+ * Policy/supervisor layer for the Phoenix shooter + feed path.
  *
- * <p><b>Key idea:</b> this class owns the "rules" (intake vs shoot vs eject priority) and builds
- * timed/gated feed tasks, but it does <b>not</b> read the gamepad directly.
- *
- * <p>{@link PhoenixRobot} owns gamepad bindings and calls the small "intent" methods here.
- * That keeps <b>all button mappings in one place</b> (less confusing for students) while still
- * keeping shooter logic out of the already-large robot container.
- *
- * <p>Gamepad 2 controls (wired in {@link PhoenixRobot#createBindings()}):
+ * <p>This class is the lane-3 piece of the shooter stack:</p>
  * <ul>
- *   <li><b>RB</b>: toggle shooter flywheel on/off (spins at the currently selected velocity)</li>
- *   <li><b>LB</b>: auto-aim assist (handled in drive overlay) + sets velocity from the range lookup table</li>
- *   <li><b>B</b>: shoot (hold to keep shooting; release cancels all shoot commands)</li>
- *   <li><b>A</b>: toggle intake</li>
- *   <li><b>X</b>: eject / unjam (hold; reverses intake + transfers)</li>
- *   <li><b>DPad</b>: adjust selected shooter velocity (fine-tune after auto-set)</li>
+ *   <li>{@link Shooter} owns the lane-1 actuator details (plants, local setpoints, feed queue).</li>
+ *   <li>{@link ShooterSupervisor} owns the event-driven policy: intake vs shoot vs eject priority,
+ *       "hold to shoot" behavior, and feed-task creation.</li>
+ *   <li>{@link PhoenixRobot} owns button bindings and forwards high-level driver intent here.</li>
  * </ul>
  *
- * <p>Important behavior notes:
- * <ul>
- *   <li>While <b>intaking</b>, we spin the shooter transfer <b>backwards</b> to prevent balls from
- *       reaching the shooter wheel and launching.</li>
- *   <li>Shooter transfer uses two mismatched CR servos; the <b>left</b> servo can be power-scaled in
- *       {@link RobotConfig.Shooter#shooterTransferLeftScale} so both sides move balls similarly.</li>
- * </ul>
+ * <p><b>Key idea:</b> this class does <b>not</b> read the gamepad directly. That keeps button
+ * mappings in one place while still keeping shooter logic out of the robot container.</p>
+ *
+ * <p>Typical usage from a robot container:</p>
+ * <pre>{@code
+ * ShooterSupervisor supervisor = new ShooterSupervisor(shooter, scoringTarget, aimOkToShoot, aimOverride);
+ *
+ * bindings.onRise(gamepads.p2().a(), supervisor::toggleIntake);
+ * bindings.onRise(gamepads.p2().rightBumper(), supervisor::toggleFlywheel);
+ * bindings.onRiseAndFall(gamepads.p2().b(),
+ *         () -> supervisor.setShootHeld(true),
+ *         () -> supervisor.setShootHeld(false));
+ *
+ * // In the loop:
+ * supervisor.update(clock);
+ * ShooterSupervisor.Status status = supervisor.status();
+ * }</pre>
  */
 public final class ShooterSupervisor {
+
+    /**
+     * Immutable snapshot for telemetry and debugging.
+     *
+     * <p>The intent is that robot code can ask the supervisor for one compact status object instead
+     * of having to understand several internal booleans and queue details.</p>
+     */
+    public static final class Status {
+        public final boolean intakeEnabled;
+        public final boolean ejectHeld;
+        public final boolean shootHeld;
+        public final boolean flywheelToggleEnabled;
+        public final boolean shootActive;
+        public final int feedBacklog;
+        public final String mode;
+
+        private Status(boolean intakeEnabled,
+                       boolean ejectHeld,
+                       boolean shootHeld,
+                       boolean flywheelToggleEnabled,
+                       boolean shootActive,
+                       int feedBacklog,
+                       String mode) {
+            this.intakeEnabled = intakeEnabled;
+            this.ejectHeld = ejectHeld;
+            this.shootHeld = shootHeld;
+            this.flywheelToggleEnabled = flywheelToggleEnabled;
+            this.shootActive = shootActive;
+            this.feedBacklog = feedBacklog;
+            this.mode = mode;
+        }
+    }
+
+    /**
+     * Internal feed-path modes used to keep priority logic readable.
+     */
+    private enum FeedMode {
+        IDLE("IDLE"),
+        INTAKE("INTAKE"),
+        EJECT("EJECT"),
+        SHOOT("SHOOT");
+
+        final String debugName;
+
+        FeedMode(String debugName) {
+            this.debugName = debugName;
+        }
+    }
 
     private final Shooter shooter;
     private final TagTarget scoringTarget;
@@ -78,10 +128,10 @@ public final class ShooterSupervisor {
     /**
      * Returns true if we are in an active shooting attempt.
      *
-     * <p>This includes "waiting" (spinning/aiming) and "feeding" (a queued feed pulse).
+     * <p>This includes both "waiting" (spinning/aiming) and "feeding" (a queued feed pulse).</p>
      */
     public boolean isShootActive() {
-        return shootHeld || shooter.feedQueue().backlogCount() > 0;
+        return status().shootActive;
     }
 
     // ---------------------------------------------------------------------
@@ -103,18 +153,16 @@ public final class ShooterSupervisor {
     public void toggleFlywheel() {
         flywheelEnabled = !flywheelEnabled;
 
-        // If the driver turned the flywheel off, stop any in-progress feed immediately.
         if (!flywheelEnabled) {
-            shooter.clearFeedQueue();
+            clearPendingShots();
         }
     }
 
     public void toggleIntake() {
         intakeEnabled = !intakeEnabled;
 
-        // If we just enabled intake, clear any pending shots so we don't accidentally advance a ball.
         if (intakeEnabled) {
-            shooter.clearFeedQueue();
+            clearPendingShots();
         }
     }
 
@@ -124,26 +172,25 @@ public final class ShooterSupervisor {
      * <p>Releasing the button cancels all queued/active shoot feed tasks immediately.</p>
      */
     public void setShootHeld(boolean held) {
-        this.shootHeld = held;
+        shootHeld = held;
 
         if (!held) {
-            shooter.clearFeedQueue();
+            clearPendingShots();
         }
     }
 
     public void setEjectHeld(boolean held) {
         ejectHeld = held;
         if (held) {
-            // Eject is an override. Stop feeding so we don't accidentally launch.
-            shooter.clearFeedQueue();
+            clearPendingShots();
         }
     }
 
     /**
      * Capture an auto-set velocity from the current AprilTag range.
      *
-     * <p>This is designed to be called on the <b>rising edge</b> of the auto-aim button.
-     * The driver can still fine-tune the selected velocity afterward using D-pad.</p>
+     * <p>This is designed to be called on the <b>rising edge</b> of the auto-aim button. The
+     * driver can still fine-tune the selected velocity afterward using D-pad.</p>
      */
     public void captureVelocityFromTarget() {
         if (!scoringTarget.hasTarget()) {
@@ -151,6 +198,45 @@ public final class ShooterSupervisor {
         }
         double rangeInches = scoringTarget.lineOfSightRangeInches();
         shooter.setSelectedVelocity(shooter.velocityForRangeInches(rangeInches));
+    }
+
+    /**
+     * Return a compact snapshot of the current supervisor state.
+     *
+     * <p>This is the preferred way for robot code to inspect shooter policy state for telemetry,
+     * debugging, and higher-level coordination.</p>
+     */
+    public Status status() {
+        int backlog = shooter.feedQueue().backlogCount();
+        FeedMode mode = selectFeedMode(backlog);
+        boolean shootActive = shootHeld || backlog > 0;
+        return new Status(
+                intakeEnabled,
+                ejectHeld,
+                shootHeld,
+                flywheelEnabled,
+                shootActive,
+                backlog,
+                mode.debugName
+        );
+    }
+
+    /**
+     * Emit a compact debug summary of the current state.
+     */
+    public void debugDump(DebugSink dbg, String prefix) {
+        if (dbg == null) {
+            return;
+        }
+        String p = (prefix == null || prefix.isEmpty()) ? "shooterSup" : prefix;
+        Status s = status();
+        dbg.addData(p + ".mode", s.mode)
+                .addData(p + ".intakeEnabled", s.intakeEnabled)
+                .addData(p + ".ejectHeld", s.ejectHeld)
+                .addData(p + ".shootHeld", s.shootHeld)
+                .addData(p + ".flywheelToggleEnabled", s.flywheelToggleEnabled)
+                .addData(p + ".shootActive", s.shootActive)
+                .addData(p + ".feedBacklog", s.feedBacklog);
     }
 
     // ---------------------------------------------------------------------
@@ -162,47 +248,35 @@ public final class ShooterSupervisor {
      */
     public void update(LoopClock clock) {
 
-        // Always command the flywheel state (with safety overrides).
-        // We preserve the driver's toggle, but suppress the flywheel while ejecting.
+        // Always command the flywheel state. We preserve the driver's toggle, but suppress the
+        // flywheel while ejecting.
         shooter.setFlywheelEnabled(flywheelEnabled && !ejectHeld);
 
-        // -----------------------------------------------------------------
-        // Overrides: Eject has highest priority.
-        // -----------------------------------------------------------------
-
-        if (ejectHeld) {
-            applyEject();
-            return;
+        // Releasing shoot should immediately drop any buffered feed tasks before we decide what the
+        // rest of this loop should do (for example, resume intake).
+        if (!shootHeld && shooter.feedQueue().backlogCount() > 0) {
+            clearPendingShots();
         }
 
-        // -----------------------------------------------------------------
-        // Shooting: hold-to-shoot keeps 1 shot buffered.
-        // -----------------------------------------------------------------
+        FeedMode mode = selectFeedMode(shooter.feedQueue().backlogCount());
 
-        if (!shootHeld) {
-            // Safety: if the driver isn't holding shoot, there should be no queued/active shoot tasks.
-            shooter.clearFeedQueue();
-        } else {
-            shooter.feedQueue().ensureBacklog(clock, 1, this::shootOneTask);
-        }
+        switch (mode) {
+            case EJECT:
+                applyEject();
+                return;
 
-        boolean shotsBuffered = shooter.feedQueue().backlogCount() > 0;
+            case SHOOT:
+                shooter.feedQueue().ensureBacklog(clock, 1, this::shootOneTask);
+                applyIdleFeeds();
+                return;
 
-        // If shots are buffered (or the shoot button is held), keep manual feed targets at 0
-        // so the queued feed task has clean control of the path.
-        if (shootHeld || shotsBuffered) {
-            applyIdleFeeds();
-            return;
-        }
+            case INTAKE:
+                applyIntake();
+                return;
 
-        // -----------------------------------------------------------------
-        // Idle / Intake state
-        // -----------------------------------------------------------------
-
-        if (intakeEnabled) {
-            applyIntake();
-        } else {
-            applyIdleFeeds();
+            case IDLE:
+            default:
+                applyIdleFeeds();
         }
     }
 
@@ -213,8 +287,8 @@ public final class ShooterSupervisor {
     /**
      * Build a single "shoot one" feed task.
      *
-     * <p>Each shot waits for flywheel-ready, then feeds for a fixed pulse time.
-     * While the driver holds shoot, the queue keeps exactly one buffered task.</p>
+     * <p>Each shot waits for flywheel-ready, then feeds for a fixed pulse time. While the driver
+     * holds shoot, the queue keeps exactly one buffered task.</p>
      */
     private OutputTask shootOneTask() {
         // Only feed once we are "ready".
@@ -223,7 +297,8 @@ public final class ShooterSupervisor {
         //
         // Emergency override mode:
         //  - If the driver holds the override button while shooting, we bypass the ready checks.
-        //  - Safety: we still require the flywheel to be ENABLED so we don't feed into a stopped wheel.
+        //  - Safety: we still require the flywheel to be ENABLED so we don't feed into a stopped
+        //    wheel.
         BooleanSource flywheelArmed = BooleanSource.of(shooter::flywheelEnabled);
         BooleanSource flywheelOkToFeed = shooter.flywheelReady().or(shootOverride.and(flywheelArmed));
         BooleanSource startWhen = flywheelOkToFeed.and(aimOkToShoot);
@@ -239,6 +314,23 @@ public final class ShooterSupervisor {
                 RobotConfig.Shooter.shootFeedPulseSec + 1.0,
                 RobotConfig.Shooter.shootFeedCooldownSec
         );
+    }
+
+    private FeedMode selectFeedMode(int backlog) {
+        if (ejectHeld) {
+            return FeedMode.EJECT;
+        }
+        if (shootHeld || backlog > 0) {
+            return FeedMode.SHOOT;
+        }
+        if (intakeEnabled) {
+            return FeedMode.INTAKE;
+        }
+        return FeedMode.IDLE;
+    }
+
+    private void clearPendingShots() {
+        shooter.clearFeedQueue();
     }
 
     private void applyIntake() {

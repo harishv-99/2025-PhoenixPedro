@@ -374,7 +374,7 @@ public final class TeleOp_03_ShooterMacro extends OpMode {
         }
 
         Task macro = buildShootOneBallMacro();
-        macroRunner.clear();
+        macroRunner.clearAndCancel();
         macroRunner.enqueue(macro);
     }
 
@@ -382,7 +382,7 @@ public final class TeleOp_03_ShooterMacro extends OpMode {
      * Cancel any running/queued shooting macros and stop the mechanism.
      */
     private void cancelShootMacros() {
-        macroRunner.clear();
+        macroRunner.clearAndCancel();
         shooter.setTarget(0.0);
         transfer.setTarget(0.0);
         pusher.setTarget(PUSHER_POS_RETRACT);

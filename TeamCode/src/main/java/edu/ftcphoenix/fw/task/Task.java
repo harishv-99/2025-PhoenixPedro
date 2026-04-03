@@ -8,25 +8,37 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *
  * <p>Typical lifecycle:</p>
  * <ol>
- *   <li>{@link #start(LoopClock)} is called once when the task is first
- *       scheduled.</li>
- *   <li>{@link #update(LoopClock)} is called every loop while
- *       {@link #isComplete()} returns {@code false}.</li>
- *   <li>Once {@link #isComplete()} returns {@code true}, the task is
- *       considered finished and will no longer receive updates.</li>
+ *   <li>{@link #start(LoopClock)} is called once when the task is first scheduled.</li>
+ *   <li>{@link #update(LoopClock)} is called every loop while {@link #isComplete()} returns
+ *       {@code false}.</li>
+ *   <li>Optional early-exit: {@link #cancel()} may be called when the owning code wants to stop the
+ *       task before normal completion.</li>
+ *   <li>Once {@link #isComplete()} returns {@code true}, the task is considered finished and will
+ *       no longer receive updates.</li>
  * </ol>
  *
- * <p>Tasks are intended to be used with a runner such as
- * {@code TaskRunner}, which will manage calling {@code start()},
- * {@code update()} and checking {@code isComplete()} each iteration.</p>
+ * <p>Tasks are intended to be used with a runner such as {@link TaskRunner}, which manages calling
+ * {@code start()}, {@code update()}, and checking {@code isComplete()} each iteration.</p>
+ *
+ * <p>Typical usage:</p>
+ * <pre>{@code
+ * Task task = Tasks.sequence(
+ *         Tasks.waitUntil(driverReady),
+ *         Tasks.runForSeconds(0.4, shooter::startFeed, shooter::stopFeed)
+ * );
+ *
+ * runner.enqueue(task);
+ * // later in the loop...
+ * runner.update(clock);
+ * }</pre>
  */
 public interface Task {
 
     /**
      * Called once when the task is first started.
      *
-     * <p>Implementations should perform any initialization here, including
-     * capturing the initial time from {@link LoopClock} if needed.</p>
+     * <p>Implementations should perform any initialization here, including capturing the initial
+     * time from {@link LoopClock} if needed.</p>
      *
      * @param clock loop timing information for the current iteration
      */
@@ -35,23 +47,37 @@ public interface Task {
     /**
      * Called once per loop while the task is running.
      *
-     * <p>Implementations should advance their internal state based on the
-     * information in {@link LoopClock}, and may mark themselves complete
-     * by causing {@link #isComplete()} to return {@code true}.</p>
+     * <p>Implementations should advance their internal state based on the information in
+     * {@link LoopClock}, and may mark themselves complete by causing {@link #isComplete()} to
+     * return {@code true}.</p>
      *
      * @param clock loop timing information for the current iteration
      */
     void update(LoopClock clock);
 
     /**
-     * @return {@code true} once the task has finished and no longer needs to
-     * receive {@link #update(LoopClock)} calls.
+     * Optional early-stop hook.
+     *
+     * <p>The default implementation is a no-op, which is appropriate for tasks that do not own any
+     * temporary external state beyond what their normal completion path already handles.</p>
+     *
+     * <p>Tasks that command hardware, own child tasks, or need to report a cancellation outcome
+     * should override this method. A cancellation implementation should be safe to call even if the
+     * task has already completed.</p>
+     */
+    default void cancel() {
+        // default no-op
+    }
+
+    /**
+     * @return {@code true} once the task has finished and no longer needs to receive
+     *         {@link #update(LoopClock)} calls.
      */
     boolean isComplete();
 
     /**
-     * @return a short human-readable label for debugging. The default
-     * implementation returns the simple class name.
+     * @return a short human-readable label for debugging. The default implementation returns the
+     *         simple class name.
      */
     default String getDebugName() {
         return getClass().getSimpleName();
@@ -60,33 +86,31 @@ public interface Task {
     /**
      * Returns the outcome of this task, if it exposes one.
      *
-     * <p>The default implementation returns {@link TaskOutcome#UNKNOWN},
-     * which is appropriate for simple tasks that do not distinguish between
-     * different terminal states.</p>
+     * <p>The default implementation returns {@link TaskOutcome#UNKNOWN}, which is appropriate for
+     * simple tasks that do not distinguish between different terminal states.</p>
      *
-     * <p>Tasks that care about outcomes (for example, that may finish with
-     * success vs timeout) should override this method and follow this
-     * convention:</p>
+     * <p>Tasks that care about outcomes (for example, that may finish with success vs timeout vs
+     * cancellation) should override this method and follow this convention:</p>
      * <ul>
-     *   <li>While the task is still running (before {@link #isComplete()}
-     *       becomes {@code true}), return {@link TaskOutcome#NOT_DONE}.</li>
+     *   <li>While the task is still running (before {@link #isComplete()} becomes {@code true}),
+     *       return {@link TaskOutcome#NOT_DONE}.</li>
      *   <li>Once the task has completed, return a terminal value such as
-     *       {@link TaskOutcome#SUCCESS} or {@link TaskOutcome#TIMEOUT}.</li>
+     *       {@link TaskOutcome#SUCCESS}, {@link TaskOutcome#TIMEOUT}, or
+     *       {@link TaskOutcome#CANCELLED}.</li>
      * </ul>
      *
      * @return the current outcome for this task
      */
     TaskOutcome getOutcome();
 
-
     /**
      * Debug helper: emit a compact summary of this task.
      *
-     * <p>This is intentionally lightweight and safe to call every loop. Tasks with meaningful internal
-     * state should override this method to provide richer telemetry.</p>
+     * <p>This is intentionally lightweight and safe to call every loop. Tasks with meaningful
+     * internal state should override this method to provide richer telemetry.</p>
      *
      * @param dbg    debug sink (may be {@code null}; if null, no output is produced)
-     * @param prefix base key prefix, e.g. "auto.task"
+     * @param prefix base key prefix, e.g. {@code "auto.task"}
      */
     default void debugDump(DebugSink dbg, String prefix) {
         if (dbg == null) {
@@ -99,5 +123,4 @@ public interface Task {
                 .addData(p + ".complete", isComplete())
                 .addData(p + ".outcome", getOutcome());
     }
-
 }

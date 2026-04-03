@@ -4,6 +4,8 @@ Phoenix is a small FTC framework that helps you structure robot code around a cl
 
 The big idea is: **advance a single `LoopClock` once per OpMode cycle**, then run everything else (inputs, bindings, tasks, drive, mechanisms) off that clock.
 
+A useful companion to this document is **Behavior Lanes.md**. It explains when a problem is best modeled as a local setpoint, scalar regulation loop, event/classification supervisor, spatial guidance problem, or external route integration seam.
+
 ---
 
 ## Package structure
@@ -18,7 +20,7 @@ Most robot code should only need imports from these packages:
 * `edu.ftcphoenix.fw.input.binding` — `Bindings`: map button edges to actions.
 * `edu.ftcphoenix.fw.task` — `Task`, `TaskRunner`, `Tasks`: non-blocking macros over time.
 * `edu.ftcphoenix.fw.actuation` — `Plant`, `Actuators`, `PlantTasks`: mechanisms you command with numeric targets.
-* `edu.ftcphoenix.fw.drive` — `DriveSignal`, `DriveSource`, `MecanumDrivebase` (FTC-independent drive logic).
+* `edu.ftcphoenix.fw.drive` — `DriveSignal`, `DriveSource`, `DriveCommandSink`, `MecanumDrivebase` (FTC-independent drive logic).
 * `edu.ftcphoenix.fw.ftc` — FTC entrypoints/adapters (e.g. `FtcDrives` for drivetrain wiring).
 * `edu.ftcphoenix.fw.sensing` — sensor-facing wrappers (vision, odometry, etc.).
 * `edu.ftcphoenix.fw.localization` — pose estimation (AprilTags, odometry, fusion).
@@ -119,7 +121,7 @@ Think of Phoenix as a few thin layers you stack:
     * `Task`, `TaskRunner`, `Tasks`, `PlantTasks`, `DriveTasks`.
 5. **Drive behavior** (`fw.drive` + `fw.drive.source` + `fw.drive.guidance`)
 
-    * `DriveSource` produces a `DriveSignal` (stick drive, driver assist overlays, etc.).
+    * `DriveSource` (a specialized `Source<DriveSignal>`) produces a `DriveSignal` each loop (stick drive, driver assist overlays, etc.).
 6. **Actuation**
 
     * Drivebase: `MecanumDrivebase`.
@@ -219,13 +221,15 @@ A `DriveSignal` is **robot-centric** and follows Phoenix pose conventions:
 
 ### `DriveSource` (where commands come from)
 
-A `DriveSource` produces a `DriveSignal` each loop:
+A `DriveSource` is the drive-specific specialization of `Source<DriveSignal>` and produces a `DriveSignal` each loop:
 
 * Manual TeleOp: `GamepadDriveSource`
 * Assisted aiming / guidance: `DriveGuidance` (build a plan) + {@code DriveSource.overlayWhen(...) }
 * Autonomous logic: anything implementing `DriveSource`
 
 `DriveSource` also supports composition helpers (like scaling and blending) via default methods.
+
+When code only needs a place to *send* drive commands, Phoenix now uses the smaller `DriveCommandSink` seam. `MecanumDrivebase` implements that interface, but route adapters can implement it too.
 
 ### `MecanumDrivebase` + `FtcDrives`
 
@@ -267,13 +271,15 @@ A `Task` is non-blocking work that progresses over multiple loop cycles.
 
 A `TaskRunner` runs tasks **sequentially** (FIFO): start one task, update it each cycle until it completes, then move to the next.
 
+If you want to abort automation, prefer `clearAndCancel()` over `clear()`. `clear()` forgets the current task without calling its cancellation hook; `clearAndCancel()` lets the task stop outputs cleanly and reports `TaskOutcome.CANCELLED`.
+
 ### Factories: `Tasks`, `PlantTasks`, `DriveTasks`
 
 Phoenix gives you factories so your code reads like intent:
 
 * `Tasks` — general composition (`sequence`, `parallelAll`, `waitForSeconds`, `waitUntil`, `runOnce`, …)
 * `PlantTasks` — patterns that command a `Plant` (`setInstant`, `holdFor`, `moveTo`, …)
-* `DriveTasks` — simple patterns that command a `MecanumDrivebase` (`driveForSeconds`, `stop`, …)
+* `DriveTasks` — simple patterns that command a `DriveCommandSink` (`driveForSeconds`, `stop`, …)
 * `DriveGuidanceTasks` — execute a `DriveGuidancePlan` as a Task (autonomous-style guidance)
 * `GoToPoseTasks` — convenience wrappers for common go-to-pose behaviors (`goToPoseFieldRelative`, `goToPoseTagRelative`, …)
 

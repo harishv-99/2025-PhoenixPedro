@@ -62,7 +62,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * drive.drive(signal);        // applies motor power immediately
  * }</pre>
  */
-public final class MecanumDrivebase {
+public final class MecanumDrivebase implements DriveCommandSink {
 
     /**
      * Configuration for {@link MecanumDrivebase}.
@@ -319,6 +319,7 @@ public final class MecanumDrivebase {
      *
      * @param s drive command (must not be {@code null})
      */
+    @Override
     public void drive(DriveSignal s) {
         Objects.requireNonNull(s, "s");
 
@@ -414,6 +415,7 @@ public final class MecanumDrivebase {
      *
      * @param clock loop timing helper (may be {@code null})
      */
+    @Override
     public void update(LoopClock clock) {
         if (clock == null) {
             return;
@@ -424,6 +426,7 @@ public final class MecanumDrivebase {
     /**
      * Immediately stop all four drive outputs and reset last command bookkeeping.
      */
+    @Override
     public void stop() {
         lastAxialCmd = 0.0;
         lastLateralCmd = 0.0;

@@ -167,7 +167,8 @@ feederQueue.whileTrue(
         )
 );
 
-// Note: whileTrue(...) only manages the backlog (it enqueues/clears).
+// Note: whileTrue(...) only manages the backlog. When the request goes false it uses clearAndCancel()
+// so the active output task can stop cleanly before the queue is emptied.
 // Your loop still needs to advance the queue each cycle by calling:
 //   feederQueue.update(clock)
 // or by sampling its output via feederQueue.getAsDouble(clock).
@@ -195,6 +196,19 @@ Task waitForReady = Tasks.waitUntil(fireAllowed, 2.0);
 ```
 
 And auton can request shots by enqueueing the same `OutputTask`s your TeleOp automation uses.
+
+---
+
+## 6.5 Aborting an output queue
+
+When a driver lets go of a trigger, changes mode, or an autonomous step is interrupted, prefer:
+
+```java
+feederQueue.clearAndCancel();
+```
+
+Use plain `clear()` only when you intentionally want to forget queue state without invoking
+task cancellation hooks. Most robot code should reach for `clearAndCancel()`.
 
 ---
 

@@ -282,7 +282,7 @@ if (!obs.hasTarget) {
 
 double shooterTargetVel = SHOOTER_VELOCITY_TABLE.interpolate(obs.cameraRangeInches());
 Task macro = buildShootOneBallMacro(shooterTargetVel);
-macroRunner.clear();
+macroRunner.clearAndCancel();
 macroRunner.enqueue(macro);
 ```
 

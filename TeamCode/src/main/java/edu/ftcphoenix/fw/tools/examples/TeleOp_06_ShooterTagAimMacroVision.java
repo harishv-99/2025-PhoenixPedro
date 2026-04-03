@@ -450,7 +450,7 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
         lastMacroStatus = "shoot1: range=" + obs.cameraRangeInches();
 
         Task macro = buildShootOneBallMacro(shooterTargetVel);
-        macroRunner.clear();
+        macroRunner.clearAndCancel();
         macroRunner.enqueue(macro);
     }
 
@@ -458,7 +458,7 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
      * Cancel any running/queued shooting macros and stop the mechanism.
      */
     private void cancelShootMacros() {
-        macroRunner.clear();
+        macroRunner.clearAndCancel();
         shooter.setTarget(0.0);
         transfer.setTarget(0.0);
         pusher.setTarget(PUSHER_POS_RETRACT);

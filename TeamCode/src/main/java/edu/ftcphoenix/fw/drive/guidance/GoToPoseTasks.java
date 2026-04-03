@@ -3,7 +3,7 @@ package edu.ftcphoenix.fw.drive.guidance;
 import java.util.Objects;
 
 import edu.ftcphoenix.fw.core.geometry.Pose2d;
-import edu.ftcphoenix.fw.drive.MecanumDrivebase;
+import edu.ftcphoenix.fw.drive.DriveCommandSink;
 import edu.ftcphoenix.fw.field.TagLayout;
 import edu.ftcphoenix.fw.localization.PoseEstimator;
 import edu.ftcphoenix.fw.task.Task;
@@ -26,7 +26,7 @@ public final class GoToPoseTasks {
      */
     public static Task goToPoseFieldRelative(
             PoseEstimator poseEstimator,
-            MecanumDrivebase drivebase,
+            DriveCommandSink drivebase,
             Pose2d targetFieldPose,
             DriveGuidancePlan.Tuning tuning,
             DriveGuidanceTask.Config taskCfg) {
@@ -60,7 +60,7 @@ public final class GoToPoseTasks {
      */
     public static Task goToPoseTagRelative(
             PoseEstimator poseEstimator,
-            MecanumDrivebase drivebase,
+            DriveCommandSink drivebase,
             TagLayout tagLayout,
             int tagId,
             double forwardInches,
@@ -97,7 +97,7 @@ public final class GoToPoseTasks {
      */
     public static Task holdPositionAndAimFieldHeading(
             PoseEstimator poseEstimator,
-            MecanumDrivebase drivebase,
+            DriveCommandSink drivebase,
             double targetFieldHeadingRad,
             DriveGuidancePlan.Tuning tuning,
             DriveGuidanceTask.Config taskCfg) {
@@ -128,7 +128,7 @@ public final class GoToPoseTasks {
      */
     public static Task aimOnlyFieldHeading(
             PoseEstimator poseEstimator,
-            MecanumDrivebase drivebase,
+            DriveCommandSink drivebase,
             double targetFieldHeadingRad,
             DriveGuidancePlan.Tuning tuning,
             DriveGuidanceTask.Config taskCfg) {

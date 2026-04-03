@@ -15,9 +15,11 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * behaviors. It is designed to work with or without sensors:</p>
  *
  * <ul>
- *   <li><b>Sensor-based</b>: set {@code doneWhen} to a real condition (e.g. "ball left gate").</li>
- *   <li><b>Sensorless fallback</b>: set {@code doneWhen} to {@code BooleanSource.constant(false)} and
- *       use {@code maxRunSec} to stop after a fixed time.</li>
+ *   <li><b>Sensor-based</b>: set {@code doneWhen} to a real condition such as
+ *       "piece left the gate" or "touch sensor released".</li>
+ *   <li><b>Sensorless fallback</b>: set {@code doneWhen} to
+ *       {@code BooleanSource.constant(false)} and rely on {@code maxRunSec} to stop after a fixed
+ *       time.</li>
  * </ul>
  *
  * <h2>Phases</h2>
@@ -27,6 +29,11 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *       minimum run time has elapsed, or until the maximum run time elapses.</li>
  *   <li><b>COOLDOWN</b> (optional): output {@code idleOutput} for {@code cooldownSec} seconds.</li>
  * </ol>
+ *
+ * <h2>Cancellation</h2>
+ * <p>{@link #cancel()} immediately transitions the task to DONE, restores {@code idleOutput}, and
+ * reports {@link TaskOutcome#CANCELLED}. This makes it safe to clear queued output tasks during
+ * driver override, mechanism shutdown, or mode transitions.</p>
  */
 public final class GatedOutputUntilTask implements OutputTask {
 
@@ -50,9 +57,7 @@ public final class GatedOutputUntilTask implements OutputTask {
     private Phase phase = Phase.WAIT;
     private double runElapsedSec = 0.0;
     private double cooldownElapsedSec = 0.0;
-
     private double currentOutput = 0.0;
-
     private TaskOutcome finalOutcome = TaskOutcome.NOT_DONE;
 
     /**
@@ -60,12 +65,12 @@ public final class GatedOutputUntilTask implements OutputTask {
      *
      * @param name        debug label
      * @param startWhen   gate condition to begin RUN
-     * @param doneWhen    completion condition (evaluated during RUN)
+     * @param doneWhen    completion condition evaluated during RUN
      * @param runOutput   output while RUNning
-     * @param idleOutput  output while waiting/cooldown
-     * @param minRunSec   minimum run time in seconds (>= 0)
-     * @param maxRunSec   maximum run time in seconds (>= minRunSec)
-     * @param cooldownSec cooldown time in seconds after completion (>= 0)
+     * @param idleOutput  output while waiting or cooling down
+     * @param minRunSec   minimum run time in seconds, must be {@code >= 0}
+     * @param maxRunSec   maximum run time in seconds, must be {@code >= minRunSec}
+     * @param cooldownSec cooldown time in seconds after completion, must be {@code >= 0}
      */
     public GatedOutputUntilTask(String name,
                                 BooleanSource startWhen,
@@ -75,11 +80,9 @@ public final class GatedOutputUntilTask implements OutputTask {
                                 double minRunSec,
                                 double maxRunSec,
                                 double cooldownSec) {
-
         Objects.requireNonNull(startWhen, "startWhen is required");
         Objects.requireNonNull(doneWhen, "doneWhen is required");
         Objects.requireNonNull(runOutput, "runOutput is required");
-
         if (minRunSec < 0.0) {
             throw new IllegalArgumentException("minRunSec must be >= 0, got " + minRunSec);
         }
@@ -98,7 +101,6 @@ public final class GatedOutputUntilTask implements OutputTask {
         this.minRunSec = minRunSec;
         this.maxRunSec = maxRunSec;
         this.cooldownSec = cooldownSec;
-
         this.currentOutput = idleOutput;
     }
 
@@ -121,13 +123,10 @@ public final class GatedOutputUntilTask implements OutputTask {
                     runElapsedSec = 0.0;
                 }
                 break;
-
             case RUN:
                 runElapsedSec += clock.dtSec();
                 currentOutput = runOutput.getAsDouble(clock);
-
                 boolean done = doneWhen.getAsBoolean(clock);
-
                 if (done && runElapsedSec >= minRunSec) {
                     finalOutcome = TaskOutcome.SUCCESS;
                     if (cooldownSec > 0.0) {
@@ -140,7 +139,6 @@ public final class GatedOutputUntilTask implements OutputTask {
                     }
                     break;
                 }
-
                 if (runElapsedSec >= maxRunSec) {
                     finalOutcome = TaskOutcome.TIMEOUT;
                     if (cooldownSec > 0.0) {
@@ -153,7 +151,6 @@ public final class GatedOutputUntilTask implements OutputTask {
                     }
                 }
                 break;
-
             case COOLDOWN:
                 currentOutput = idleOutput;
                 cooldownElapsedSec += clock.dtSec();
@@ -161,12 +158,21 @@ public final class GatedOutputUntilTask implements OutputTask {
                     phase = Phase.DONE;
                 }
                 break;
-
             case DONE:
             default:
                 currentOutput = idleOutput;
                 break;
         }
+    }
+
+    @Override
+    public void cancel() {
+        if (phase == Phase.DONE) {
+            return;
+        }
+        phase = Phase.DONE;
+        currentOutput = idleOutput;
+        finalOutcome = TaskOutcome.CANCELLED;
     }
 
     @Override
@@ -198,7 +204,6 @@ public final class GatedOutputUntilTask implements OutputTask {
             return;
         }
         String p = (prefix == null || prefix.isEmpty()) ? "gatedOutput" : prefix;
-
         dbg.addData(p + ".name", name)
                 .addData(p + ".phase", phase)
                 .addData(p + ".output", currentOutput)
@@ -209,8 +214,6 @@ public final class GatedOutputUntilTask implements OutputTask {
                 .addData(p + ".cooldownSec", cooldownSec)
                 .addData(p + ".complete", isComplete())
                 .addData(p + ".outcome", getOutcome());
-
-        // These debug dumps are intentionally structural and do not resample the sources.
         startWhen.debugDump(dbg, p + ".startWhen");
         doneWhen.debugDump(dbg, p + ".doneWhen");
         runOutput.debugDump(dbg, p + ".runOutput");

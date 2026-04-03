@@ -269,7 +269,7 @@ public final class Shooter {
     }
 
     public void clearFeedQueue() {
-        feedQueue.clear();
+        feedQueue.clearAndCancel();
     }
 
     public void setFlywheelEnabled(boolean enabled) {
@@ -403,7 +403,7 @@ public final class Shooter {
         manualIntakeTransferPower = 0.0;
         manualShooterTransferPower = 0.0;
 
-        feedQueue.clear();
+        feedQueue.clearAndCancel();
 
         plantFlywheel.stop();
         plantIntakeMotor.stop();

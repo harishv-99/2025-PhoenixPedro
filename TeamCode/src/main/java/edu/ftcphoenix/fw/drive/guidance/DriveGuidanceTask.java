@@ -4,18 +4,30 @@ import java.util.Objects;
 
 import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.time.LoopClock;
+import edu.ftcphoenix.fw.drive.DriveCommandSink;
 import edu.ftcphoenix.fw.drive.DriveOverlayMask;
-import edu.ftcphoenix.fw.drive.MecanumDrivebase;
 import edu.ftcphoenix.fw.task.Task;
 import edu.ftcphoenix.fw.task.TaskOutcome;
 
 /**
  * Executes a {@link DriveGuidancePlan} as an autonomous {@link Task}.
  *
- * <p>This is the task counterpart to {@link DriveGuidancePlan#overlay()}.
- * Both modes share the same underlying evaluation/controller engine (see
- * {@link DriveGuidanceCore}), so behavior stays consistent between teleop-assist
- * and autonomous execution.</p>
+ * <p>This is the task counterpart to {@link DriveGuidancePlan#overlay()}. Both modes share the
+ * same underlying evaluation/controller engine (see {@link DriveGuidanceCore}), so behavior stays
+ * consistent between TeleOp assist and autonomous execution.</p>
+ *
+ * <p>Typical usage:</p>
+ * <pre>{@code
+ * DriveGuidanceTask.Config cfg = new DriveGuidanceTask.Config();
+ * cfg.positionTolInches = 1.0;
+ * cfg.headingTolRad = Math.toRadians(4.0);
+ *
+ * Task autoAlign = plan.task(drivebase, cfg);
+ * runner.enqueue(autoAlign);
+ * }</pre>
+ *
+ * <p>The task can be interrupted cleanly via {@link #cancel()} or by calling
+ * {@link edu.ftcphoenix.fw.task.TaskRunner#clearAndCancel()} on the owning runner.</p>
  */
 public final class DriveGuidanceTask implements Task {
 
@@ -53,7 +65,7 @@ public final class DriveGuidanceTask implements Task {
     }
 
     private final String debugName;
-    private final MecanumDrivebase drivebase;
+    private final DriveCommandSink drivebase;
     private final DriveGuidancePlan plan;
     private final Config cfg;
 
@@ -70,7 +82,7 @@ public final class DriveGuidanceTask implements Task {
     private double lastOmegaErrorRad = Double.NaN;
 
     public DriveGuidanceTask(String debugName,
-                             MecanumDrivebase drivebase,
+                             DriveCommandSink drivebase,
                              DriveGuidancePlan plan,
                              Config cfg) {
         this.debugName = (debugName != null && !debugName.isEmpty()) ? debugName : "DriveGuidanceTask";
@@ -80,7 +92,7 @@ public final class DriveGuidanceTask implements Task {
         this.core = new DriveGuidanceCore(plan);
     }
 
-    public DriveGuidanceTask(MecanumDrivebase drivebase,
+    public DriveGuidanceTask(DriveCommandSink drivebase,
                              DriveGuidancePlan plan,
                              Config cfg) {
         this("DriveGuidanceTask", drivebase, plan, cfg);
@@ -167,6 +179,16 @@ public final class DriveGuidanceTask implements Task {
             complete = true;
             outcome = TaskOutcome.SUCCESS;
         }
+    }
+
+    @Override
+    public void cancel() {
+        if (complete) {
+            return;
+        }
+        drivebase.stop();
+        complete = true;
+        outcome = TaskOutcome.CANCELLED;
     }
 
     @Override

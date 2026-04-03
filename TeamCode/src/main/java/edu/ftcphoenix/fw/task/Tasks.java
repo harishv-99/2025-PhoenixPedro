@@ -326,6 +326,9 @@ public final class Tasks {
             /** {@inheritDoc} */
             @Override
             public void start(LoopClock clock) {
+                phase = BranchPhase.MOVE;
+                current = move;
+                branchOutcome = TaskOutcome.UNKNOWN;
                 current.start(clock);
             }
 
@@ -348,11 +351,16 @@ public final class Tasks {
                         TaskOutcome moveOutcome = move.getOutcome();
                         if (moveOutcome == TaskOutcome.TIMEOUT) {
                             current = onTimeout;
+                            current.start(clock);
+                            phase = BranchPhase.BRANCH;
+                        } else if (moveOutcome == TaskOutcome.CANCELLED) {
+                            branchOutcome = TaskOutcome.CANCELLED;
+                            phase = BranchPhase.DONE;
                         } else {
                             current = onSuccess;
+                            current.start(clock);
+                            phase = BranchPhase.BRANCH;
                         }
-                        current.start(clock);
-                        phase = BranchPhase.BRANCH;
                         break;
 
                     case BRANCH:
@@ -364,6 +372,21 @@ public final class Tasks {
                     default:
                         break;
                 }
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public void cancel() {
+                if (phase == BranchPhase.DONE) {
+                    return;
+                }
+                if (current != null && !current.isComplete()) {
+                    current.cancel();
+                }
+                branchOutcome = TaskOutcome.CANCELLED;
+                phase = BranchPhase.DONE;
             }
 
             /** {@inheritDoc} */

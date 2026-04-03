@@ -33,6 +33,8 @@ That worked, but it created two recurring problems:
 That makes stateful filters (debounce, hysteresis, rate limiting, etc.) straightforward and keeps
 logic consistent with the one-heartbeat loop.
 
+One important specialization: `DriveSource` is now explicitly the drive-specific form of `Source<DriveSignal>`. That keeps the mental model consistent — drive sources are not a separate universe, just a domain-specific source type with some helpful composition methods.
+
 ---
 
 ## The core interfaces

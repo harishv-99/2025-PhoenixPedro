@@ -4,6 +4,7 @@ import java.util.Objects;
 
 import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.source.BooleanSource;
+import edu.ftcphoenix.fw.core.source.Source;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 
 /**
@@ -11,6 +12,10 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *
  * <p>A {@link DriveSource} takes in the current loop timing (via {@link LoopClock}) and produces a
  * {@link DriveSignal} each loop.</p>
+ *
+ * <p>Conceptually this is Phoenix's drive-specific specialization of {@link Source}: the general
+ * source model still applies, but drive gets extra composition helpers because chassis command
+ * arbitration is common across many robots.</p>
  *
  * <p>Typical implementations include:</p>
  * <ul>
@@ -44,7 +49,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *       {@link DriveSignal#lerp(DriveSignal, double)}.</li>
  * </ul>
  */
-public interface DriveSource {
+public interface DriveSource extends Source<DriveSignal> {
 
     /**
      * Produce a drive signal for the current loop.
@@ -56,6 +61,7 @@ public interface DriveSource {
      *              rate limiting, or controller updates
      * @return drive command for this loop (never null)
      */
+    @Override
     DriveSignal get(LoopClock clock);
 
     /**

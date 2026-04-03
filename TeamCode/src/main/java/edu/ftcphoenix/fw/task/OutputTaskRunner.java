@@ -61,10 +61,31 @@ public final class OutputTaskRunner implements ScalarSource {
     }
 
     /**
-     * Clear the queue and forget the current task.
+     * Clear the queue and forget the current task without invoking cancellation hooks.
+     *
+     * <p>Prefer {@link #clearAndCancel()} when aborting automation.</p>
      */
     public void clear() {
         runner.clear();
+        lastOutputCycle = Long.MIN_VALUE;
+        lastOutput = idleOutput;
+    }
+
+    /**
+     * Cancel the active task, if any, and keep queued tasks intact.
+     */
+    public boolean cancelCurrent() {
+        boolean cancelled = runner.cancelCurrent();
+        lastOutputCycle = Long.MIN_VALUE;
+        lastOutput = idleOutput;
+        return cancelled;
+    }
+
+    /**
+     * Cancel the active task (if any) and clear queued tasks.
+     */
+    public void clearAndCancel() {
+        runner.clearAndCancel();
         lastOutputCycle = Long.MIN_VALUE;
         lastOutput = idleOutput;
     }
@@ -178,7 +199,7 @@ public final class OutputTaskRunner implements ScalarSource {
         }
 
         if (!request.getAsBoolean(clock)) {
-            clear();
+            clearAndCancel();
             return;
         }
 
@@ -309,7 +330,7 @@ public final class OutputTaskRunner implements ScalarSource {
 
     @Override
     public void reset() {
-        clear();
+        clearAndCancel();
     }
 
     @Override

@@ -43,18 +43,20 @@ import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.TagTarget;
 
 /**
- * Central robot class for Phoenix-based robots.
+ * Central robot container / composition root for the Phoenix robot.
  *
- * <p>Beginners should mostly edit <b>this file</b>. TeleOp and Auto OpModes are
- * kept very thin and simply delegate into the methods here.</p>
- *
- * <h2>Responsibilities</h2>
+ * <p>TeleOp and Auto OpModes stay intentionally thin and delegate into this class. The goal is not
+ * for {@code PhoenixRobot} to own every mechanism detail, but to wire the major lanes together in
+ * one readable place:</p>
  * <ul>
- *   <li>Wire all hardware once (drive, ball path, shooter, vision).</li>
- *   <li>Define gamepad mappings in one place via {@link Bindings}.</li>
- *   <li>Own shared logic: auto-aim, shooter velocity, macros, autos.</li>
- *   <li>Expose simple entry points for TeleOp and Auto.</li>
+ *   <li><b>Lane 1:</b> local actuator subsystems such as {@link Shooter} and the drivetrain.</li>
+ *   <li><b>Lane 3:</b> event-driven supervision and bindings via {@link ShooterSupervisor} and
+ *       {@link Bindings}.</li>
+ *   <li><b>Lane 4:</b> drive guidance / auto-aim overlays and AprilTag-backed gating.</li>
  * </ul>
+ *
+ * <p>That keeps the public robot surface small: OpModes mostly call the lifecycle methods here,
+ * while the robot internals remain split into subsystem, supervisor, and guidance responsibilities.</p>
  */
 public final class PhoenixRobot {
     private final LoopClock clock = new LoopClock();
@@ -69,11 +71,6 @@ public final class PhoenixRobot {
     private PinpointPoseEstimator pinpoint;
     private DriveSource stickDrive;
     private DriveSource driveWithAim;
-    // Two different "shoot" signals:
-    //  - shootButtonHeld: raw driver intent (only true while the button is held)
-    //  - shootActive: true while a shot is being attempted (waiting + feeding)
-    private BooleanSource shootButtonHeld = BooleanSource.constant(false);
-    private BooleanSource shootActive = BooleanSource.constant(false);
     private CameraMountConfig cameraMountConfig;
     private AprilTagSensor tagSensor;
     private TagTarget scoringTarget;
@@ -286,8 +283,6 @@ public final class PhoenixRobot {
         aimOkToShoot = aimReady.or(aimOverride);
 
         shooterSupervisor = new ShooterSupervisor(shooter, scoringTarget, aimOkToShoot, aimOverride);
-        shootButtonHeld = BooleanSource.of(shooterSupervisor::isShootHeld);
-        shootActive = BooleanSource.of(shooterSupervisor::isShootActive);
 
         /*
          * FUTURE OPTION (leave commented out for now):
@@ -474,39 +469,41 @@ public final class PhoenixRobot {
      * Periodic update for TeleOp.
      */
     public void updateTeleOp() {
-        // --- 2) Inputs + bindings ---
-        // Gamepad axes/buttons are Sources; they are sampled when you call get(...).
-
-        // Update tracked tag once per loop.
+        // --- Lane 3: perception + bindings ---
         scoringTarget.update(clock);
-
         bindings.update(clock);
 
-        // --- Odometry update (needed for pose lock) ---
+        // --- Lane 4 support: odometry for pose lock / field-aware debug ---
         if (pinpoint != null) {
             pinpoint.update(clock);
         }
 
-        // --- Shoot-brace latch (pose lock translation only) ---
-        updateShootBraceEnabled();
-
-        // --- 3) Supervisors / mechanisms ---
+        // --- Lane 3: shooter supervision over lane-1 mechanism outputs ---
         shooterSupervisor.update(clock);
+        ShooterSupervisor.Status shooterStatus = shooterSupervisor.status();
 
-        // --- 4) Drive: guidance overlay (P2 B may override omega) ---
+        // --- Lane 4: drive assist / arbitration ---
+        updateShootBraceEnabled(shooterStatus);
         DriveSignal cmd = driveWithAim.get(clock).clamped();
         drivebase.update(clock);
         drivebase.drive(cmd);
 
-        // --- 5) Other mechanisms ---
+        // --- Lane 1: subsystem plant updates ---
         shooter.update(clock);
 
-        // --- 6) Telemetry / debug ---
+        // --- Driver telemetry / debug ---
+        emitTeleOpTelemetry(shooterStatus);
+    }
+
+    private void emitTeleOpTelemetry(ShooterSupervisor.Status shooterStatus) {
         shooter.telemetryDump(clock, "shooter");
-        telemetry.addData("intake.enabled", shooterSupervisor.intakeEnabled());
-        telemetry.addData("flywheel.toggle", shooterSupervisor.flywheelEnabled());
-        telemetry.addData("shoot.btn", shootButtonHeld.getAsBoolean(clock));
-        telemetry.addData("shoot.active", shootActive.getAsBoolean(clock));
+        telemetry.addData("shoot.mode", shooterStatus.mode);
+        telemetry.addData("feed.backlog", shooterStatus.feedBacklog);
+        telemetry.addData("intake.enabled", shooterStatus.intakeEnabled);
+        telemetry.addData("eject.held", shooterStatus.ejectHeld);
+        telemetry.addData("flywheel.toggle", shooterStatus.flywheelToggleEnabled);
+        telemetry.addData("shoot.btn", shooterStatus.shootHeld);
+        telemetry.addData("shoot.active", shooterStatus.shootActive);
         telemetry.addData("aim.ready", aimReady.getAsBoolean(clock));
         telemetry.addData("aim.okToShoot", aimOkToShoot.getAsBoolean(clock));
         telemetry.addData("aim.override", aimOverride.getAsBoolean(clock));
@@ -515,58 +512,68 @@ public final class PhoenixRobot {
             telemetry.addData("pose", pinpoint.getEstimate());
         }
 //        driveWithAim.debugDump(dbg, "drive");
+
+        DriveGuidanceStatus aimStatus = sampleCurrentAimStatus();
         AprilTagObservation obs = scoringTarget.last();
         if (obs.hasTarget) {
-            RobotConfig.AutoAim.AimOffset aimOffset = RobotConfig.AutoAim.aimOffsetForTag(obs.id);
-
-            // Use the same guidance evaluation math as the overlay (no manual camera-mount math,
-            // and control frames are automatically applied).
-            DriveGuidanceStatus aimStatus = null;
-            if (obs.id == RobotConfig.AutoAim.BLUE_TARGET_TAG_ID && aimQueryBlue != null) {
-                aimStatus = aimQueryBlue.sample(clock, DriveOverlayMask.OMEGA_ONLY);
-            } else if (obs.id == RobotConfig.AutoAim.RED_TARGET_TAG_ID && aimQueryRed != null) {
-                aimStatus = aimQueryRed.sample(clock, DriveOverlayMask.OMEGA_ONLY);
-            }
-
-            if (aimReady.getAsBoolean(clock)) {
-                telemetry.addLine(">>> AIM READY <<<");
-            } else if (aimOverride.getAsBoolean(clock)) {
-                telemetry.addLine(">>> AIM OVERRIDE <<<");
-            }
-
-            telemetry.addData("tagId", obs.id);
-            telemetry.addData("distIn", obs.cameraRangeInches());
-            telemetry.addData("bearingTagDeg", Math.toDegrees(obs.cameraBearingRad()));
-            telemetry.addData(
-                    "aimOffset(fwd,left)",
-                    String.format("%.1f, %.1f", aimOffset.forwardInches, aimOffset.leftInches)
-            );
-            telemetry.addData(
-                    "omegaErrDeg",
-                    (aimStatus != null && aimStatus.hasOmegaError)
-                            ? Math.toDegrees(aimStatus.omegaErrorRad)
-                            : Double.NaN
-            );
-
-            telemetry.addData("aim.tolDeg", RobotConfig.AutoAim.AIM_TOLERANCE_DEG);
-            telemetry.addData("aim.readyTolDeg", RobotConfig.AutoAim.AIM_READY_TOLERANCE_DEG);
-
-            // Field metadata (comes from the FTC game database): where this tag is placed on the field.
-            // This is useful for sanity-checking that you're targeting the right point.
-            if (gameTagLayout != null && gameTagLayout.has(obs.id)) {
-                Pose3d fieldToTag = gameTagLayout.require(obs.id).fieldToTagPose();
-                Pose2d fieldToAimPoint = new Pose2d(
-                        fieldToTag.xInches,
-                        fieldToTag.yInches,
-                        fieldToTag.yawRad
-                ).then(new Pose2d(aimOffset.forwardInches, aimOffset.leftInches, 0.0));
-
-                telemetry.addData("field.tag", fieldToTag);
-                telemetry.addData("field.aim", fieldToAimPoint);
-            }
+            emitCurrentTargetTelemetry(obs, aimStatus);
         }
 
         telemetry.update();
+    }
+
+    private DriveGuidanceStatus sampleCurrentAimStatus() {
+        AprilTagObservation obs = scoringTarget.last();
+        if (!obs.hasTarget) {
+            return null;
+        }
+
+        if (obs.id == RobotConfig.AutoAim.BLUE_TARGET_TAG_ID && aimQueryBlue != null) {
+            return aimQueryBlue.sample(clock, DriveOverlayMask.OMEGA_ONLY);
+        }
+        if (obs.id == RobotConfig.AutoAim.RED_TARGET_TAG_ID && aimQueryRed != null) {
+            return aimQueryRed.sample(clock, DriveOverlayMask.OMEGA_ONLY);
+        }
+        return null;
+    }
+
+    private void emitCurrentTargetTelemetry(AprilTagObservation obs, DriveGuidanceStatus aimStatus) {
+        RobotConfig.AutoAim.AimOffset aimOffset = RobotConfig.AutoAim.aimOffsetForTag(obs.id);
+
+        if (aimReady.getAsBoolean(clock)) {
+            telemetry.addLine(">>> AIM READY <<<");
+        } else if (aimOverride.getAsBoolean(clock)) {
+            telemetry.addLine(">>> AIM OVERRIDE <<<");
+        }
+
+        telemetry.addData("tagId", obs.id);
+        telemetry.addData("distIn", obs.cameraRangeInches());
+        telemetry.addData("bearingTagDeg", Math.toDegrees(obs.cameraBearingRad()));
+        telemetry.addData(
+                "aimOffset(fwd,left)",
+                String.format("%.1f, %.1f", aimOffset.forwardInches, aimOffset.leftInches)
+        );
+        telemetry.addData(
+                "omegaErrDeg",
+                (aimStatus != null && aimStatus.hasOmegaError)
+                        ? Math.toDegrees(aimStatus.omegaErrorRad)
+                        : Double.NaN
+        );
+
+        telemetry.addData("aim.tolDeg", RobotConfig.AutoAim.AIM_TOLERANCE_DEG);
+        telemetry.addData("aim.readyTolDeg", RobotConfig.AutoAim.AIM_READY_TOLERANCE_DEG);
+
+        if (gameTagLayout != null && gameTagLayout.has(obs.id)) {
+            Pose3d fieldToTag = gameTagLayout.require(obs.id).fieldToTagPose();
+            Pose2d fieldToAimPoint = new Pose2d(
+                    fieldToTag.xInches,
+                    fieldToTag.yInches,
+                    fieldToTag.yawRad
+            ).then(new Pose2d(aimOffset.forwardInches, aimOffset.leftInches, 0.0));
+
+            telemetry.addData("field.tag", fieldToTag);
+            telemetry.addData("field.aim", fieldToAimPoint);
+        }
     }
 
     /**
@@ -576,20 +583,15 @@ public final class PhoenixRobot {
      * <p>This makes "hold B" feel like a single driver action for: aim + brace + shoot.</p>
      * <p>Hysteresis prevents chatter when sticks hover near center.</p>
      */
-    private void updateShootBraceEnabled() {
-        // Only brace while an active shooting sequence is in progress.
-        // (Bracing releases immediately when the shoot button is released.)
-        if (!shootActive.getAsBoolean(clock)) {
+    private void updateShootBraceEnabled(ShooterSupervisor.Status shooterStatus) {
+        if (shooterStatus == null || !shooterStatus.shootActive) {
             shootBraceLatch.reset(false);
             return;
         }
 
-        // Treat the driver stick as "idle" only after it is clearly near center, and stay idle
-        // until the stick is clearly moved again (hysteresis avoids chatter).
         double mag = gamepads.p1().leftStickMagnitude().getAsDouble(clock);
         shootBraceLatch.update(mag);
     }
-
 
     /**
      * Stop hook shared by all OpModes.
