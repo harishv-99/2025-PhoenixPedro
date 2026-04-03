@@ -6,6 +6,8 @@ Drive Guidance is Phoenix’s structured way to help you:
 - **Run the same motion as a Task** (e.g., “go to this pose in auto”).
 - **Query the same spatial logic** for gating and telemetry (e.g., “only shoot when aimed”).
 
+See also [`Recommended Robot Design`](<../design/Recommended Robot Design.md>) for how drive guidance fits into the larger TeleOp + Auto robot architecture.
+
 This doc also covers a parallel, lighter-weight set of APIs for answering questions like:
 
 - “Is the robot (partially) in the shooting zone?”

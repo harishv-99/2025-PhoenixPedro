@@ -30,7 +30,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * liftPlant.update(clock.dtSec());
  * }</pre>
  *
- * <p>This is lane-2 behavior from {@code Behavior Lanes.md}: one measured scalar is regulated
+ * <p>This is Phoenix's lane-2 scalar-regulation pattern: one measured scalar is regulated
  * toward a setpoint. It is intentionally separate from event-driven supervision and from spatial
  * guidance.</p>
  */

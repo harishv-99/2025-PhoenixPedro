@@ -1,7 +1,9 @@
-# Phoenix Notes
+# Maintainer Notes
 
 This document is for mentors and framework maintainers.
 Most students should not need anything here to write robot code.
+
+For the student-facing architecture, start with [`Framework Overview`](<../getting-started/Framework Overview.md>) and [`Recommended Robot Design`](<../design/Recommended Robot Design.md>).
 
 ---
 

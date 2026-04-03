@@ -1,5 +1,7 @@
 # Tasks & Macros Quickstart
 
+This guide explains Phoenix tasks in isolation. For how tasks fit into shared TeleOp + Auto robot design, also read [`Recommended Robot Design`](<Recommended Robot Design.md>) and [`Supervisors & Pipelines`](<Supervisors & Pipelines.md>).
+
 This guide explains how to use **Tasks** in the Phoenix framework to build non‑blocking behaviors:
 
 * TeleOp **macros** (e.g., shooting sequences).
@@ -444,7 +446,7 @@ double finalTarget = feederQueue.activeSource().getAsBoolean(clock) ? feederQueu
 transferShooterPlant.setTarget(finalTarget);
 ```
 
-For the full design rationale and more examples, see **`Output Tasks & Queues.md`**.
+For the full design rationale and more examples, see [`Output Tasks & Queues`](<Output Tasks & Queues.md>) and [`Recommended Robot Design`](<Recommended Robot Design.md>).
 
 ---
 

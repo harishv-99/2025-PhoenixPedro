@@ -4,7 +4,9 @@ Phoenix is a small FTC framework that helps you structure robot code around a cl
 
 The big idea is: **advance a single `LoopClock` once per OpMode cycle**, then run everything else (inputs, bindings, tasks, drive, mechanisms) off that clock.
 
-A useful companion to this document is **Behavior Lanes.md**. It explains when a problem is best modeled as a local setpoint, scalar regulation loop, event/classification supervisor, spatial guidance problem, or external route integration seam.
+A useful companion to this document is [`Recommended Robot Design`](<../design/Recommended Robot Design.md>). It explains how Phoenix expects TeleOp and Auto to share subsystem APIs, and how to choose the right internal behavior lane for a mechanism.
+
+See the repository [`README`](<../../README.md>) for the full documentation map and suggested reading paths.
 
 ---
 
@@ -29,8 +31,7 @@ Most robot code should only need imports from these packages:
 Within `drive/`, subpackages are intentionally parallel and predictable:
 
 * `drive.source` — “where drive commands come from” (gamepad, autonomous logic).
-* `drive.guidance` — driver-assist building blocks (auto-aim, “go-to point”, pose lock, etc.).
-* `drive.control` — closed-loop drive behaviors/controllers/tasks (go-to-pose, heading controllers).
+* `drive.guidance` — driver-assist and closed-loop drive behavior helpers (auto-aim, go-to-point, pose lock, task wrappers).
 
 ### Packages that are intentionally “behind the scenes”
 
@@ -379,8 +380,9 @@ public void loop() {
 
 ## Where to go next
 
-* **Beginner’s Guide** — first setup + “how to write a Phoenix OpMode”.
-* **Framework Principles** — the rules-of-thumb Phoenix expects you to follow.
-* **Loop Structure** — deeper reasoning about update order and idempotency.
-* **Tasks & Macros Quickstart** — how to build task graphs quickly.
-* **Shooter Case Study & Examples Walkthrough** — maps concepts to real examples in `fw.tools.examples`.
+* [`Beginner’s Guide`](<Beginner's Guide.md>) — first setup + “how to write a Phoenix OpMode”.
+* [`Recommended Robot Design`](<../design/Recommended Robot Design.md>) — how TeleOp and Auto should share intents, status, supervisors, and lanes.
+* [`Framework Principles`](<../../Framework Principles.md>) — the rules of thumb Phoenix expects you to follow.
+* [`Loop Structure`](<../core-concepts/Loop Structure.md>) — deeper reasoning about update order and idempotency.
+* [`Tasks & Macros Quickstart`](<../design/Tasks & Macros Quickstart.md>) — how to build task graphs quickly.
+* [`Shooter Case Study & Examples Walkthrough`](<../examples/Shooter Case Study & Examples Walkthrough.md>) — maps concepts to real examples in `fw.tools.examples`.

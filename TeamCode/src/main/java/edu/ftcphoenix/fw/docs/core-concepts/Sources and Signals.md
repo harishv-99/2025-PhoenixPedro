@@ -1,6 +1,6 @@
 # Sources & Signals
 
-Phoenix uses a *single loop heartbeat* (see `Loop Structure.md`). A lot of robot logic is really
+Phoenix uses a *single loop heartbeat* (see [`Loop Structure`](<Loop Structure.md>)). A lot of robot logic is really
 just "read some signals, transform them, and drive plants".
 
 This document introduces the framework's generic, composable building blocks for those signals:

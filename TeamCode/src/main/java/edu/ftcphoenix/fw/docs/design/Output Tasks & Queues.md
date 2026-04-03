@@ -7,6 +7,9 @@ Phoenix has two common ways to express "behavior over time":
 
 This document describes option (2), which is the recommended pattern when you want:
 
+For the broader robot-design context, read [`Recommended Robot Design`](<Recommended Robot Design.md>) and [`Supervisors & Pipelines`](<Supervisors & Pipelines.md>).
+
+
 - sensor‑gated, reactive automation in **TeleOp** (intake/shooter pipelines, staged feeding)
 - the *same* logic to work in **autonomous** without duplicating sensor rules
 - to avoid multiple pieces of code "fighting" by writing targets to the same Plant

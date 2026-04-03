@@ -4,9 +4,9 @@ This document explains the design principles behind the Phoenix framework: **why
 
 If you want to *get running* first, read:
 
-1. **Beginner’s Guide** – loop shape + how to wire Plants.
-2. **Tasks & Macros Quickstart** – how to build macros using factory helpers.
-3. **Shooter Case Study & Examples Walkthrough** – a complete example tied to real code.
+1. [`Beginner’s Guide`](<docs/getting-started/Beginner's Guide.md>) – loop shape + how to wire Plants.
+2. [`Tasks & Macros Quickstart`](<docs/design/Tasks & Macros Quickstart.md>) – how to build macros using factory helpers.
+3. [`Shooter Case Study & Examples Walkthrough`](<docs/examples/Shooter Case Study & Examples Walkthrough.md>) – a complete example tied to real code.
 
 ---
 
@@ -491,7 +491,7 @@ shooter.update(clock.dtSec());
 transfer.update(clock.dtSec());
 ```
 
-The **Loop Structure** document dives deeper into why this order matters.
+The [`Loop Structure`](<docs/core-concepts/Loop Structure.md>) guide dives deeper into why this order matters.
 
 ---
 

@@ -3,7 +3,7 @@
 Phoenix is designed so student code can stay simple **and** scale to advanced
 automation without turning into "spaghetti".
 
-This document explains the recommended architecture for:
+This document explains the implementation-side architecture for:
 
 - **Subsystems** (hardware + one place that writes plant targets)
 - **Supervisors** (policy + orchestration, usually built from signals and tasks)
@@ -11,12 +11,12 @@ This document explains the recommended architecture for:
 
 If you're brand new, read these first:
 
-- **Loop Structure.md**
-- **Sources and Signals.md**
-- **Output Tasks & Queues.md**
-- **Behavior Lanes.md**
+- [`Loop Structure`](<../core-concepts/Loop Structure.md>)
+- [`Sources and Signals`](<../core-concepts/Sources and Signals.md>)
+- [`Recommended Robot Design`](<Recommended Robot Design.md>)
+- [`Output Tasks & Queues`](<Output Tasks & Queues.md>)
 
-A useful companion is **Behavior Lanes.md**. Before adding structure, decide which lane the behavior belongs to:
+A useful companion is [`Recommended Robot Design`](<Recommended Robot Design.md>). Before adding structure, decide which lane the behavior belongs to:
 
 - local setpoint (`Plant`)
 - scalar regulation (`ScalarSource` + controller + `Plant`)

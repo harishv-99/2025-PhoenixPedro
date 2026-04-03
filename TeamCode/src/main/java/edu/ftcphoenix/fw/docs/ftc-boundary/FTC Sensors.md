@@ -1,5 +1,7 @@
 # FTC Sensors
 
+Use this guide alongside [`Recommended Robot Design`](<../design/Recommended Robot Design.md>) when deciding whether a sensor belongs in a local control loop, an event/classification supervisor, or a spatial-guidance stack.
+
 This guide explains the recommended way to read FTC sensors in Phoenix.
 
 Phoenix keeps FTC SDK specifics in the **boundary layer** (`edu.ftcphoenix.fw.ftc`).

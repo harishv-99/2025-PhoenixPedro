@@ -33,7 +33,7 @@ Everything else exists to keep those packages clean:
 * `edu.ftcphoenix.fw.ftc.*` is the FTC SDK boundary (hardware + vision adapters).
 * `edu.ftcphoenix.fw.tools.*` contains testers and copyable examples.
 
-If you’re curious *why* the packages are arranged this way, see **Framework Overview → Package structure**.
+If you’re curious *why* the packages are arranged this way, see [`Framework Overview`](<Framework Overview.md>) → Package structure.
 
 ---
 
@@ -399,6 +399,7 @@ The raw task classes (`InstantTask`, `RunForSecondsTask`, `WaitUntilTask`,
 
 Next steps:
 
-* Read **Tasks & Macros Quickstart** for deeper task patterns.
-* Read **Shooter Case Study & Examples Walkthrough** for an end-to-end example.
+* Read [`Recommended Robot Design`](<../design/Recommended Robot Design.md>) for the shared TeleOp + Auto interaction model.
+* Read [`Tasks & Macros Quickstart`](<../design/Tasks & Macros Quickstart.md>) for deeper task patterns.
+* Read [`Shooter Case Study & Examples Walkthrough`](<../examples/Shooter Case Study & Examples Walkthrough.md>) for an end-to-end example.
 * Explore other examples (drive, tag aim, vision) — they all follow the same loop shape.
