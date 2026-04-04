@@ -166,14 +166,15 @@ The same edge/toggle tools apply to sensors (ball entering/leaving a gate sensor
 
 ---
 
-## Selection and hold-last patterns
+## Selection, accumulation, and hold-last patterns
 
-Two patterns show up constantly in real robots:
+Three patterns show up constantly in real robots:
 
 1. **Manual vs auto selection** ("use the driver's value unless auto-aim is enabled")
-2. **Noisy classification** ("sometimes my sensor says UNKNOWN; keep the last good value briefly")
+2. **Window-local memory** ("remember what I saw during this slot / observation window until a reset event")
+3. **Noisy classification** ("sometimes my sensor says UNKNOWN; keep the last good value briefly")
 
-Phoenix makes both patterns explicit and composable.
+Phoenix makes all three patterns explicit and composable.
 
 ### Selection: `choose(...)`
 
@@ -190,6 +191,53 @@ ScalarSource autoRps = distanceIn.mapToDouble(d -> lookupShooterRps(d));
 
 ScalarSource shooterTargetRps = useAuto.choose(autoRps, manualRps);
 ```
+
+### Accumulate within a reset-defined window: `accumulate(...)` / `accumulateUntil(...)`
+
+Sometimes the right memory model is **not** time-based. Instead, you want to keep folding samples
+into a remembered state until some explicit boundary signal says "start a new window."
+
+Examples:
+
+* remember a game-piece color while one slot passes under a sensor
+* keep the strongest classification seen while an object crosses an observation zone
+* fuse repeated noisy samples until an encoder or separator pulse marks the next object
+
+Phoenix provides two related helpers:
+
+* `accumulate(step, initial)` — keep state until robot code explicitly calls `reset()`
+* `accumulateUntil(reset, step, initial)` — same idea, but reset automatically when a boolean signal is true
+
+Example (slot-local color memory):
+
+```java
+enum BallColor { GREEN, PURPLE, UNKNOWN }
+enum SlotColor { EMPTY, GREEN, PURPLE, UNKNOWN }
+
+Source<BallColor> sampleNow = ...;           // your per-loop fused classification
+BooleanSource newSlotPulse = ...;            // one-loop pulse from encoder logic
+
+Source<SlotColor> slotColor = sampleNow.accumulateUntil(
+        newSlotPulse,
+        (held, cur) -> updateSlotColor(held, cur),
+        SlotColor.EMPTY
+);
+```
+
+If your own observer object already defines the window lifecycle, use `accumulate(...)` and call
+`reset()` at the start of each window:
+
+```java
+Source<SlotColor> slotColor = sampleNow.accumulate(
+        (held, cur) -> updateSlotColor(held, cur),
+        SlotColor.EMPTY
+);
+
+// startSlot():
+slotColor.reset();
+```
+
+Use this when the reset condition is a **mechanical / logical boundary**, not a timeout.
 
 ### Hold last valid: `holdLastValid(...)`
 

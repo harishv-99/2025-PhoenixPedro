@@ -44,13 +44,22 @@ Phoenix is designed around a few core goals:
     * Use `GamepadDriveSource` today, add a `DriveGuidance` overlay tomorrow.
     * Keep the same shooter macro while changing how distance is estimated.
 
+5. **SOLID where practical**
 
-5. **One loop, one heartbeat**
+   Phoenix should adhere to SOLID programming principles to the extent practical.
+
+   * Prefer cohesive abstractions with a single clear job.
+   * Prefer interface segregation and dependency inversion when they make code easier to understand, test, and compose.
+   * Do **not** split APIs into tiny capability interfaces just to satisfy SOLID mechanically if that makes the common path harder to learn or use.
+   * Lifecycle hooks on core interfaces are acceptable when they are genuinely part of the same abstraction. For normal runtime behavior, prefer explicit signals / events in the source graph over out-of-band imperative calls when practical.
+
+
+6. **One loop, one heartbeat**
 
    Phoenix assumes a single loop heartbeat (`LoopClock`) that everything else uses.
    This enables robust button edge detection, predictable task timing, and consistent rate limiting.
 
-6. **Docs are part of the API**
+7. **Docs are part of the API**
 
    Phoenix treats documentation as a first-class feature: Javadocs should be “mouse-over quality,”
    and the Markdown guides should stay in sync with the real APIs and examples.
@@ -85,12 +94,12 @@ Phoenix is designed around a few core goals:
    * Driver-facing / “required for normal operation” telemetry (mode, safety warnings, high-level state the drivers rely on) should **not** depend on the debug pipeline.
      In FTC OpModes, print that information via the FTC `Telemetry` API directly (or via a dedicated always-on status channel).
 
-7. **Fail fast with actionable errors**
+8. **Fail fast with actionable errors**
 
    When something is misconfigured, Phoenix should throw early (often at build-time) with an
    error message that tells a student what to change. Avoid silent no-ops.
 
-8. **Principle-driven evolution (breaking changes are OK)**
+9. **Principle-driven evolution (breaking changes are OK)**
 
    Phoenix optimizes for a coherent, principle-driven API surface — not strict backwards compatibility.
 

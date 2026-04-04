@@ -53,7 +53,15 @@ Notes:
 
 ## Color sensors
 
-Color sensors are exposed as a `Source<Rgba>` (a small framework-owned value object).
+Phoenix supports two useful ways to read FTC color sensors:
+
+* `FtcSensors.rgba(...)` → raw `Source<Rgba>` channel counts in sensor-native units
+* `FtcSensors.normalizedRgba(...)` → normalized `Source<NormalizedRgba>` values (usually `0..1`)
+
+For simple close-range classification, **normalized colors are usually the better starting point**
+because they behave more consistently across lighting changes and sensor gain.
+
+### Raw channels
 
 ```java
 import com.qualcomm.robotcore.hardware.ColorSensor;
@@ -67,8 +75,6 @@ ColorSensor loaderColor = hardwareMap.get(ColorSensor.class, "loaderColor");
 // Memoized per loop by default.
 Source<Rgba> rgba = FtcSensors.rgba(loaderColor);
 
-// Example: compute a simple "green-ish" boolean gate.
-// (Real classification is usually done with tuned ratios / thresholds.)
 BooleanSource looksGreen = rgba
         .mapToBoolean(c -> c.gRatio() > 0.45 && c.rRatio() < 0.35)
         .debouncedOnOff(0.05, 0.05);
@@ -77,6 +83,63 @@ BooleanSource looksGreen = rgba
 `Rgba` intentionally does not assume a specific numeric range for channel values. Many sensors
 report 0–255, but others report larger values. Phoenix encourages **ratio-based** logic (e.g.
 `gRatio()`), which tends to transfer better between sensors.
+
+### Normalized channels (recommended for classification)
+
+```java
+import com.qualcomm.robotcore.hardware.NormalizedColorSensor;
+import edu.ftcphoenix.fw.core.color.NormalizedRgba;
+import edu.ftcphoenix.fw.core.source.Source;
+import edu.ftcphoenix.fw.ftc.FtcSensors;
+
+enum BallColor { RED, GREEN, PURPLE, UNKNOWN }
+
+NormalizedColorSensor loaderColor = hardwareMap.get(NormalizedColorSensor.class, "loaderColor");
+loaderColor.setGain(6.0f);   // tune on your robot
+
+Source<NormalizedRgba> color = FtcSensors.normalizedRgba(loaderColor);
+
+Source<BallColor> rawBallColor = color.map(c -> {
+    // Reject dim / weak-color readings before trusting classification.
+    if (c.a < 0.06 || c.chroma() < 0.08) return BallColor.UNKNOWN;
+
+    if (c.rRatio() > 0.48 && c.gRatio() < 0.28 && c.bRatio() < 0.28) return BallColor.RED;
+    if (c.gRatio() > 0.45 && c.rRatio() < 0.32 && c.bRatio() < 0.28) return BallColor.GREEN;
+    if (c.gRatio() < 0.26 && c.rRatio() > 0.28 && c.bRatio() > 0.28) return BallColor.PURPLE;
+    return BallColor.UNKNOWN;
+});
+```
+
+Notes:
+
+* Prefer **ratios + confidence gates** over hue-only logic.
+* For object classification, only trust the reading when the object is **close enough** or the
+  brightness / alpha channel is strong enough.
+* If your sensor supports a built-in light or gain, set those during initialization; `FtcSensors`
+  only adapts the reading into Phoenix sources.
+
+### Reset-driven slot / window memory
+
+Sometimes the sensor should classify what it sees **right now**, but your robot should remember that
+result until a separate boundary event begins the next observation window. For example, an encoder
+pulse might mark the start of the next spinner slot. That memory belongs in `Source<T>`
+composition, not inside `FtcSensors`.
+
+```java
+enum SlotColor { EMPTY, GREEN, PURPLE, UNKNOWN }
+
+BooleanSource slotBoundaryPulse = encoderSlotBoundaryPulse;
+
+Source<SlotColor> slotColor = rawBallColor.accumulateUntil(
+        slotBoundaryPulse,
+        MyRobot::updateSlotColor,
+        SlotColor.EMPTY
+);
+```
+
+This keeps the FTC boundary adapter focused on **reading the sensor**, while the robot-specific
+reducer controls which samples should win, merge, or be ignored.
+
 
 ---
 
@@ -88,9 +151,10 @@ Phoenix separates:
 2. **Signal conditioning** (debounce/hysteresis/memo/edges) → Sources (`ScalarSource`, `BooleanSource`)
 3. **Robot policy** (what to do with colors / balls) → your robot code
 
-For more advanced cases (specific ball colors, rejecting wrong colors, etc.), Phoenix can provide
-generic helpers (filters, hold-last-valid patterns, action queues), but the *meaning* of colors
-and the thresholds are typically robot-specific.
+For more advanced cases (specific ball colors, rejecting wrong colors, slot-local memory, etc.),
+Phoenix can provide generic helpers (filters, hold-last-valid patterns, reset-driven accumulation,
+action queues), but the *meaning* of colors, reset boundaries, and thresholds are typically
+robot-specific.
 
 ---
 

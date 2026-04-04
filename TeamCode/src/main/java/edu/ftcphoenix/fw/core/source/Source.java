@@ -1,6 +1,7 @@
 package edu.ftcphoenix.fw.core.source;
 
 import java.util.Objects;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.ToDoubleFunction;
@@ -82,6 +83,147 @@ public interface Source<T> {
                 }
                 String p = (prefix == null || prefix.isEmpty()) ? "map" : prefix;
                 dbg.addData(p + ".class", "MappedSource");
+                self.debugDump(dbg, p + ".src");
+            }
+        };
+    }
+
+    /**
+     * Accumulate source samples into a state value, advancing at most once per loop cycle.
+     *
+     * <p>This is Phoenix's generic "remember across samples" primitive for value-object sources.
+     * It is useful when you want to keep state across multiple readings until some higher-level
+     * code explicitly calls {@link #reset()} on the returned source.</p>
+     *
+     * <p>Common uses include window-local classification, agreement / conflict reduction across
+     * noisy samples, and small supervisor state machines where the accumulated state is still best
+     * modeled as a source.</p>
+     *
+     * <p>Contract:
+     * <ul>
+     *   <li>The upstream source must never return {@code null}.</li>
+     *   <li>{@code initial} must be non-null.</li>
+     *   <li>{@code step} must return a non-null state.</li>
+     * </ul>
+     * </p>
+     *
+     * <p>The accumulator state should usually behave like a small immutable value object or enum.
+     * Mutable state objects can work, but they make it easier to accidentally mutate the returned
+     * state from outside the source graph.</p>
+     *
+     * @param step    reducer called as {@code step(previousState, currentSample)}
+     * @param initial initial state, restored on {@link Source#reset()}
+     * @param <U>     accumulated state type
+     */
+    default <U> Source<U> accumulate(BiFunction<? super U, ? super T, ? extends U> step, U initial) {
+        Objects.requireNonNull(step, "step");
+        Objects.requireNonNull(initial, "initial");
+
+        Source<T> self = this;
+        return new Source<U>() {
+            private long lastCycle = Long.MIN_VALUE;
+            private U state = initial;
+
+            @Override
+            public U get(LoopClock clock) {
+                long cyc = clock.cycle();
+                if (cyc == lastCycle) {
+                    return state;
+                }
+                lastCycle = cyc;
+
+                T cur = Objects.requireNonNull(self.get(clock), "source returned null");
+                state = Objects.requireNonNull(step.apply(state, cur), "step returned null");
+                return state;
+            }
+
+            @Override
+            public void reset() {
+                self.reset();
+                lastCycle = Long.MIN_VALUE;
+                state = initial;
+            }
+
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) {
+                    return;
+                }
+                String p = (prefix == null || prefix.isEmpty()) ? "accumulate" : prefix;
+                dbg.addData(p + ".class", "AccumulatedSource")
+                        .addData(p + ".state", state);
+                self.debugDump(dbg, p + ".src");
+            }
+        };
+    }
+
+    /**
+     * Accumulate source samples into a state value and reset that state whenever {@code reset}
+     * is true for the current loop.
+     *
+     * <p>This is the reset-by-event sibling of {@link #accumulate(BiFunction, Object)}. It is a
+     * good fit for "remember within a window" logic such as slot-local classification, one-piece
+     * observation windows, and other cases where the memory should be cleared by an explicit
+     * boundary signal instead of a timer.</p>
+     *
+     * <p>Reset semantics: when {@code reset} is true, the internal state is first set back to
+     * {@code initial}, then the current sample is folded into that fresh state during the same
+     * loop. This lets the first sample of a new window participate immediately.</p>
+     *
+     * <p>When both {@code reset} and the upstream source are derived from the same sensor graph,
+     * prefer memoizing the shared boundary reads so both paths observe the same per-loop sample.</p>
+     *
+     * @param reset   one-loop or level-style reset signal; when true the accumulator is cleared
+     * @param step    reducer called as {@code step(previousState, currentSample)}
+     * @param initial initial state used after reset and on construction
+     * @param <U>     accumulated state type
+     */
+    default <U> Source<U> accumulateUntil(BooleanSource reset,
+                                          BiFunction<? super U, ? super T, ? extends U> step,
+                                          U initial) {
+        Objects.requireNonNull(reset, "reset");
+        Objects.requireNonNull(step, "step");
+        Objects.requireNonNull(initial, "initial");
+
+        Source<T> self = this;
+        return new Source<U>() {
+            private long lastCycle = Long.MIN_VALUE;
+            private U state = initial;
+
+            @Override
+            public U get(LoopClock clock) {
+                long cyc = clock.cycle();
+                if (cyc == lastCycle) {
+                    return state;
+                }
+                lastCycle = cyc;
+
+                if (reset.getAsBoolean(clock)) {
+                    state = initial;
+                }
+
+                T cur = Objects.requireNonNull(self.get(clock), "source returned null");
+                state = Objects.requireNonNull(step.apply(state, cur), "step returned null");
+                return state;
+            }
+
+            @Override
+            public void reset() {
+                self.reset();
+                reset.reset();
+                lastCycle = Long.MIN_VALUE;
+                state = initial;
+            }
+
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) {
+                    return;
+                }
+                String p = (prefix == null || prefix.isEmpty()) ? "accumulateUntil" : prefix;
+                dbg.addData(p + ".class", "AccumulatedUntilSource")
+                        .addData(p + ".state", state);
+                reset.debugDump(dbg, p + ".reset");
                 self.debugDump(dbg, p + ".src");
             }
         };
@@ -297,6 +439,31 @@ public interface Source<T> {
                 String p = (prefix == null || prefix.isEmpty()) ? "memo" : prefix;
                 dbg.addData(p + ".class", "MemoizedSource");
                 self.debugDump(dbg, p + ".src");
+            }
+        };
+    }
+
+    /**
+     * Create a source from a function of the current {@link LoopClock}.
+     *
+     * <p>This is the generic sibling of {@link ScalarSource#of(java.util.function.DoubleSupplier)}
+     * and {@link BooleanSource#of(java.util.function.BooleanSupplier)}. It is useful when you want
+     * to create a small derived source inline, especially one that depends on other sources sampled
+     * with the same clock.</p>
+     */
+    static <T> Source<T> of(Function<? super LoopClock, ? extends T> fn) {
+        Objects.requireNonNull(fn, "fn");
+        return new Source<T>() {
+            @Override
+            public T get(LoopClock clock) {
+                return Objects.requireNonNull(fn.apply(clock), "raw source returned null");
+            }
+
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) return;
+                String p = (prefix == null || prefix.isEmpty()) ? "raw" : prefix;
+                dbg.addData(p + ".class", "RawSource");
             }
         };
     }

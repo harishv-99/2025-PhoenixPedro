@@ -5,10 +5,13 @@ import com.qualcomm.robotcore.hardware.ColorSensor;
 import com.qualcomm.robotcore.hardware.DigitalChannel;
 import com.qualcomm.robotcore.hardware.DistanceSensor;
 import com.qualcomm.robotcore.hardware.HardwareMap;
+import com.qualcomm.robotcore.hardware.NormalizedColorSensor;
+import com.qualcomm.robotcore.hardware.NormalizedRGBA;
 import com.qualcomm.robotcore.hardware.TouchSensor;
 
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 
+import edu.ftcphoenix.fw.core.color.NormalizedRgba;
 import edu.ftcphoenix.fw.core.color.Rgba;
 import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.source.ScalarSource;
@@ -124,6 +127,39 @@ public final class FtcSensors {
             throw new IllegalArgumentException("name is required");
         }
         return rgba(hw.get(ColorSensor.class, name));
+    }
+
+    /**
+     * Normalized RGBA channels from an FTC {@link NormalizedColorSensor}.
+     *
+     * <p>This is usually the better starting point for color classification because the FTC SDK
+     * normalizes the reading into a stable range (typically {@code 0..1}) and supports sensor gain.
+     * The alpha channel is commonly useful as an overall brightness / confidence signal.</p>
+     */
+    public static Source<NormalizedRgba> normalizedRgba(NormalizedColorSensor sensor) {
+        if (sensor == null) {
+            throw new IllegalArgumentException("sensor is required");
+        }
+        return new Source<NormalizedRgba>() {
+            @Override
+            public NormalizedRgba get(LoopClock clock) {
+                NormalizedRGBA c = sensor.getNormalizedColors();
+                return new NormalizedRgba(c.red, c.green, c.blue, c.alpha);
+            }
+        }.memoized();
+    }
+
+    /**
+     * Normalized RGBA channels from a named FTC {@link NormalizedColorSensor}.
+     */
+    public static Source<NormalizedRgba> normalizedRgba(HardwareMap hw, String name) {
+        if (hw == null) {
+            throw new IllegalArgumentException("HardwareMap is required");
+        }
+        if (name == null) {
+            throw new IllegalArgumentException("name is required");
+        }
+        return normalizedRgba(hw.get(NormalizedColorSensor.class, name));
     }
 
     // ------------------------------------------------------------------------------------------------

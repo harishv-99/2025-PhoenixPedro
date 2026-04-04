@@ -123,6 +123,10 @@ Examples:
 These sensors are telling you that something happened, not "how far away" you are. Treat them as
 signals that a supervisor or task reacts to.
 
+If the signal needs memory across an explicit window (for example, keep a slot classification until
+an encoder boundary pulse), keep that memory as a `Source` using `accumulateUntil(...)` rather than
+teaching the FTC boundary adapter about your mechanism.
+
 ### Lane 4: spatial relation guidance
 
 Examples:
