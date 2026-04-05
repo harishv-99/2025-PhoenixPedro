@@ -170,7 +170,7 @@ feederQueue.whileTrue(
         )
 );
 
-// Note: whileTrue(...) only manages the backlog. When the request goes false it uses clearAndCancel()
+// Note: whileTrue(...) only manages the backlog. When the request goes false it uses cancelAndClear()
 // so the active output task can stop cleanly before the queue is emptied.
 // Your loop still needs to advance the queue each cycle by calling:
 //   feederQueue.update(clock)
@@ -207,11 +207,17 @@ And auton can request shots by enqueueing the same `OutputTask`s your TeleOp aut
 When a driver lets go of a trigger, changes mode, or an autonomous step is interrupted, prefer:
 
 ```java
-feederQueue.clearAndCancel();
+feederQueue.cancelAndClear();
 ```
 
 Use plain `clear()` only when you intentionally want to forget queue state without invoking
-task cancellation hooks. Most robot code should reach for `clearAndCancel()`.
+task cancellation hooks. Most robot code should reach for `cancelAndClear()`.
+
+Typical abort situations:
+
+- the driver released the trigger that requested repeated pulses
+- the robot switched modes and a queued pulse is no longer safe
+- a supervisor detected that the mechanism is jammed and wants the active task to stop cleanly
 
 ---
 

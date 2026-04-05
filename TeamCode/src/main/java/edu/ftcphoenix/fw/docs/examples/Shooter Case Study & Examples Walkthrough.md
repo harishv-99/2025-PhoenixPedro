@@ -186,8 +186,9 @@ shooter.setTarget(shooterEnabled ? targetVel : 0.0);
 ### What it teaches
 
 * How to get AprilTag observations through the FTC adapter: `FtcVision.aprilTags(...)`.
-* How `TagTarget` tracks the “best” tag across loops with an age constraint.
+* How `TagTarget` tracks the “best” tag across loops with an age constraint for shooter-distance logic.
 * How a `DriveGuidance` plan becomes a `DriveOverlay` that overrides only **omega** while a button is held.
+* How to express aiming as a semantic reference resolved from live AprilTags.
 * How to compute shooter velocity from **tag distance** using the same interpolation-table idea from Example 04.
 
 ### Wiring
@@ -207,16 +208,15 @@ CameraMountConfig cameraMount = CameraMountConfig.of(
 
 DriveSource baseDrive = GamepadDriveSource.teleOpMecanumStandard(gamepads);
 
-// Convert TagTarget → generic robot-relative observation.
-ObservationSource2d scoringObs = ObservationSources.aprilTag(scoringTarget, cameraMount);
+ReferencePoint2d scoringRef = References.relativeToTagsPoint(SCORING_TAG_IDS, 0.0, 0.0);
 
 DriveGuidancePlan aimPlan = DriveGuidance.plan()
         .aimTo()
             // Aim at the center of whichever scoring tag is currently observed.
-            .tagRelativePointInches(0.0, 0.0)
+            .referencePoint(scoringRef)
             .doneAimTo()
         .feedback()
-            .observation(scoringObs)
+            .aprilTags(tagSensor, cameraMount, MAX_TAG_AGE_SEC)
             .doneFeedback()
         .build();
 
@@ -226,6 +226,23 @@ DriveSource driveWithAim = baseDrive.overlayWhen(
         DriveOverlayMask.OMEGA_ONLY
 );
 ```
+
+This example is intentionally **reference-first**: the plan talks about a semantic scoring point,
+not about a tag-specific public target type. If a later version of the robot also has a useful field
+pose estimate and a fixed tag layout, the same reference can be reused with:
+
+```java
+.feedback()
+    .aprilTags(tagSensor, cameraMount, MAX_TAG_AGE_SEC)
+    .fieldPose(poseEstimator, 0.25, 0.0)
+    .fixedTagLayout(tagLayout)
+    .gates(18.0, 30.0, 0.15)
+    .preferAprilTagsForOmega(true)
+    .doneFeedback()
+```
+
+That keeps the reference definition the same while adding localizer fallback and close-range visual
+refinement.
 
 ### Loop highlights
 
@@ -282,7 +299,7 @@ if (!obs.hasTarget) {
 
 double shooterTargetVel = SHOOTER_VELOCITY_TABLE.interpolate(obs.cameraRangeInches());
 Task macro = buildShootOneBallMacro(shooterTargetVel);
-macroRunner.clearAndCancel();
+macroRunner.cancelAndClear();
 macroRunner.enqueue(macro);
 ```
 

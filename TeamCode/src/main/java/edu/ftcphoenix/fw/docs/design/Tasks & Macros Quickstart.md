@@ -120,9 +120,17 @@ You almost never subclass `TaskRunner`. You just feed it tasks.
 Two queue-management methods matter in practice:
 
 * `clear()` — forget the current task and queued tasks immediately without calling task cancellation hooks.
-* `clearAndCancel()` — ask the active task to stop cleanly, then clear the queue.
+* `cancelAndClear()` — ask the active task to stop cleanly, then clear the queue.
 
-For driver override, mode switches, and route interruption, prefer `clearAndCancel()`.
+For driver override, mode switches, and route interruption, prefer `cancelAndClear()`.
+
+Example:
+
+```java
+bindings.onRise(gamepads.p1().b(), runner::cancelAndClear);
+```
+
+That calls the task's cooperative cancellation path first, then forgets any queued follow-up work.
 
 ---
 
@@ -413,7 +421,7 @@ If both pieces of code directly write `plant.setTarget(...)`, they will fight.
 Phoenix provides a clean, single-writer pattern:
 
 - **`OutputTask`** — a `Task` that produces a scalar output (`getOutput()`).
-- **`OutputTaskRunner`** — runs `OutputTask`s sequentially and exposes the active output as a `ScalarSource`. Use `clearAndCancel()` when you need to abort the active output task cleanly.
+- **`OutputTaskRunner`** — runs `OutputTask`s sequentially and exposes the active output as a `ScalarSource`. Use `cancelAndClear()` when you need to abort the active output task cleanly. This is the right default for feed queues, pulse queues, and “repeat while held” helpers because it lets the current task stop cooperatively before the queue is cleared.
 
 That lets your subsystem loop decide the final plant target in one place:
 
@@ -476,7 +484,7 @@ For the full design rationale and more examples, see [`Output Tasks & Queues`](<
 ## 10. Summary
 
 * **`Task`** is the basic unit of non‑blocking behavior over time.
-* **`TaskRunner`** manages a queue of tasks and advances them with `update(clock)`. Use `clearAndCancel()` when you want cooperative interruption instead of abrupt forgetting.
+* **`TaskRunner`** manages a queue of tasks and advances them with `update(clock)`. Use `cancelAndClear()` when you want cooperative interruption instead of abrupt forgetting.
 * **`Tasks` factories** (`instant`, `waitForSeconds`, `waitUntil`, `sequence`, `parallelAll`, `noop`, ...) are the main building blocks you should reach for first.
 * **`PlantTasks`** provide common mechanism patterns: time‑based holds and feedback‑based moves.
 * **`DriveTasks`** provide simple drive‑related building blocks.

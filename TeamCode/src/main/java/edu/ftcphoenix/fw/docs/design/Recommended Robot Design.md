@@ -648,7 +648,7 @@ public final class IntakeSupervisor {
     }
 
     public void cancelTransientActions() {
-        intake.feedQueue().clearAndCancel();
+        intake.feedQueue().cancelAndClear();
     }
 
     public void update(LoopClock clock) {
@@ -776,6 +776,10 @@ Auto usually wants either:
 
 - a Phoenix `DriveGuidanceTask`, or
 - a route-library adapter task (Road Runner / Pedro / other)
+
+When you do use `DriveGuidanceTask`, prefer semantic references over tag-specific public targets.
+For example, define “slot 4 face” or “speaker aim point” once, then let guidance solve that
+reference from field pose, live AprilTags, or both.
 
 Conceptually:
 

@@ -468,9 +468,8 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
         lastPredictedCameraToTag = null;
 
         if (obs.hasTarget) {
-            TagLayout.TagPose tagPose = layout.get(obs.id);
-            if (tagPose != null) {
-                Pose3d fieldToTagPose = tagPose.fieldToTagPose();
+            Pose3d fieldToTagPose = layout.getFieldToTagPose(obs.id);
+            if (fieldToTagPose != null) {
                 Pose3d cameraToTagPose = obs.cameraToTagPose;
 
                 Pose3d robotToCameraPose = fieldToRobotPose.inverse()
@@ -521,11 +520,11 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
         // Show the known field pose of the selected tag (from the FTC game database or an override layout).
         t.addLine("");
         t.addLine("Selected tag pose from layout (fieldToTagPose):");
-        TagLayout.TagPose selectedTagPose = (layout != null) ? layout.get(selectedTagId) : null;
+        Pose3d selectedTagPose = (layout != null) ? layout.getFieldToTagPose(selectedTagId) : null;
         if (selectedTagPose == null) {
             t.addLine("  (tag not present in layout)");
         } else {
-            addPoseLine(t, "fieldToTagPose(layout)", selectedTagPose.fieldToTagPose());
+            addPoseLine(t, "fieldToTagPose(layout)", selectedTagPose);
         }
 
         t.addLine("");

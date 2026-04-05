@@ -3,7 +3,6 @@ package edu.ftcphoenix.fw.field;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 
 import edu.ftcphoenix.fw.core.debug.DebugSink;
@@ -12,32 +11,27 @@ import edu.ftcphoenix.fw.core.geometry.Pose3d;
 /**
  * Simple in-memory implementation of {@link TagLayout}.
  *
- * <p>Use this when you want to provide your own tag placements (for example, for a
- * custom field, practice setup, or unit tests), or when you want a small layout
- * without depending on an FTC-provided database.</p>
+ * <p>{@link SimpleTagLayout} is the easiest way to author a handful of fixed tags for tests,
+ * practice fields, calibration tools, or custom off-season games. It is intentionally mutable so
+ * setup code can read fluently, while consumers still view it through the immutable
+ * {@link TagLayout} interface.</p>
  *
- * <h2>Frame and units</h2>
+ * <h2>Common usage</h2>
  *
- * <p>All tag poses stored here are <b>field-centric</b> in the FTC field frame:</p>
- * <ul>
- *   <li>Origin: center of the field on the floor</li>
- *   <li>+Z: up from the floor</li>
- *   <li>Distances: inches</li>
- *   <li>Angles: radians</li>
- * </ul>
+ * <pre>{@code
+ * TagLayout layout = new SimpleTagLayout()
+ *         .add(5, 48.0, 0.0, 18.0, Math.PI, 0.0, 0.0)
+ *         .add(6, 48.0, 24.0, 18.0, Math.PI, 0.0, 0.0);
  *
- * <h2>Rotation conventions</h2>
+ * Pose3d fieldToTag5 = layout.requireFieldToTagPose(5);
+ * }</pre>
  *
- * <p>Orientation matches {@link Pose3d}:</p>
- * <ul>
- *   <li><b>yaw</b> is rotation about +Z</li>
- *   <li><b>pitch</b> is rotation about +Y</li>
- *   <li><b>roll</b> is rotation about +X</li>
- * </ul>
+ * <p>Like all {@link TagLayout} implementations, poses are stored as full 6DOF {@link Pose3d}
+ * values in FTC field coordinates.</p>
  */
 public final class SimpleTagLayout implements TagLayout {
 
-    private final Map<Integer, TagPose> byId = new HashMap<>();
+    private final Map<Integer, Pose3d> byId = new HashMap<>();
 
     /**
      * Creates an empty layout.
@@ -46,69 +40,52 @@ public final class SimpleTagLayout implements TagLayout {
     }
 
     /**
-     * Create a layout pre-populated with the provided tag poses.
-     *
-     * @param tags tag poses to add (may be empty; null elements not allowed)
-     * @return new {@link SimpleTagLayout}
+     * {@inheritDoc}
      */
-    public static SimpleTagLayout of(TagPose... tags) {
-        SimpleTagLayout layout = new SimpleTagLayout();
-        if (tags != null) {
-            for (TagPose t : tags) {
-                layout.add(t);
-            }
-        }
-        return layout;
+    @Override
+    public Pose3d getFieldToTagPose(int id) {
+        return byId.get(id);
     }
 
     /**
      * {@inheritDoc}
      */
     @Override
-    public TagPose get(int id) {
-        return byId.get(id);
-    }
-
-    /** {@inheritDoc} */
-    @Override
     public Set<Integer> ids() {
         return Collections.unmodifiableSet(byId.keySet());
     }
 
     /**
-     * Add (or replace) a tag pose by object.
+     * Adds or replaces a tag placement using a pre-built pose object.
      *
-     * @param tagPose tag pose to store (non-null)
-     * @return {@code this} for chaining
+     * @param id AprilTag numeric ID code (must be non-negative)
+     * @param fieldToTagPose tag pose in the FTC field frame
+     * @return {@code this} for fluent setup code
      */
-    public SimpleTagLayout add(TagPose tagPose) {
-        Objects.requireNonNull(tagPose, "tagPose");
-        byId.put(tagPose.id, tagPose);
+    public SimpleTagLayout addPose(int id, Pose3d fieldToTagPose) {
+        if (id < 0) {
+            throw new IllegalArgumentException("id must be non-negative");
+        }
+        if (fieldToTagPose == null) {
+            throw new IllegalArgumentException("fieldToTagPose must not be null");
+        }
+        byId.put(id, fieldToTagPose);
         return this;
     }
 
     /**
-     * Add (or replace) a tag pose by pose object.
+     * Adds or replaces a tag placement from the standard six pose values.
      *
-     * @param id         AprilTag numeric ID code
-     * @param fieldToTag tag center pose expressed in the FTC field frame (non-null)
-     * @return {@code this} for chaining
-     */
-    public SimpleTagLayout addPose(int id, Pose3d fieldToTag) {
-        return add(TagPose.ofPose(id, fieldToTag));
-    }
-
-    /**
-     * Add (or replace) a tag pose by specifying translation and yaw/pitch/roll.
+     * <p>This is a convenience wrapper around {@link #addPose(int, Pose3d)}.</p>
      *
-     * @param id       AprilTag numeric ID code
-     * @param xInches  tag center X in the FTC field frame (inches)
-     * @param yInches  tag center Y in the FTC field frame (inches)
-     * @param zInches  tag center Z (height above floor) in the FTC field frame (inches)
-     * @param yawRad   tag yaw about +Z in the FTC field frame (radians)
-     * @param pitchRad tag pitch about +Y in the FTC field frame (radians)
-     * @param rollRad  tag roll about +X in the FTC field frame (radians)
-     * @return {@code this} for chaining
+     * @param id AprilTag numeric ID code
+     * @param xInches tag center X in the FTC field frame
+     * @param yInches tag center Y in the FTC field frame
+     * @param zInches tag center Z (height) in the FTC field frame
+     * @param yawRad tag yaw in the FTC field frame
+     * @param pitchRad tag pitch in the FTC field frame
+     * @param rollRad tag roll in the FTC field frame
+     * @return {@code this} for fluent setup code
      */
     public SimpleTagLayout add(
             int id,
@@ -119,40 +96,38 @@ public final class SimpleTagLayout implements TagLayout {
             double pitchRad,
             double rollRad
     ) {
-        return add(TagPose.of(id, xInches, yInches, zInches, yawRad, pitchRad, rollRad));
+        return addPose(id, new Pose3d(xInches, yInches, zInches, yawRad, pitchRad, rollRad));
     }
 
     /**
-     * Remove a tag from the layout.
+     * Removes a tag from the layout.
      *
      * @param id AprilTag numeric ID code
-     * @return {@code true} if a tag was removed; {@code false} if it was not present
+     * @return {@code true} if a tag was present and removed
      */
     public boolean remove(int id) {
         return byId.remove(id) != null;
     }
 
     /**
-     * Remove all tags from the layout.
+     * Removes all tags from the layout.
      */
     public void clear() {
         byId.clear();
     }
 
     /**
-     * Number of tags currently in the layout.
+     * @return number of tag entries currently stored
      */
     public int size() {
         return byId.size();
     }
 
     /**
-     * Debug-dump all tag poses in this layout.
+     * Emits a stable debug dump of the layout contents.
      *
-     * <p>Framework convention: this is a no-op when {@code dbg == null}.</p>
-     *
-     * @param dbg    debug sink (may be null)
-     * @param prefix prefix for keys (may be null/empty)
+     * <p>This is useful when validating a practice-field setup or confirming that a converted FTC
+     * game layout contains the IDs you expect.</p>
      */
     public void debugDump(DebugSink dbg, String prefix) {
         if (dbg == null) {
@@ -164,14 +139,13 @@ public final class SimpleTagLayout implements TagLayout {
         dbg.addData(p + ".count", byId.size());
         dbg.addData(p + ".ids", ids().toString());
 
-        // Dump each pose with stable key names.
         for (Integer id : ids()) {
-            TagPose t = byId.get(id);
-            if (t == null) continue;
+            Pose3d pose = byId.get(id);
+            if (pose == null) {
+                continue;
+            }
 
             String k = p + ".tag[" + id + "]";
-            Pose3d pose = t.fieldToTagPose();
-
             dbg.addData(k + ".xInches", pose.xInches);
             dbg.addData(k + ".yInches", pose.yInches);
             dbg.addData(k + ".zInches", pose.zInches);
@@ -181,7 +155,6 @@ public final class SimpleTagLayout implements TagLayout {
         }
     }
 
-    /** {@inheritDoc} */
     @Override
     public String toString() {
         return "SimpleTagLayout{ids=" + ids() + "}";

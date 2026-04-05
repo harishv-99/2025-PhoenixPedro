@@ -19,69 +19,42 @@ import edu.ftcphoenix.fw.core.geometry.Pose3d;
 import edu.ftcphoenix.fw.field.TagLayout;
 
 /**
- * A {@link TagLayout} backed by the FTC SDK's {@link AprilTagLibrary}.
+ * {@link TagLayout} backed by the FTC SDK's {@link AprilTagLibrary}.
  *
- * <p>This adapter converts FTC {@link AprilTagMetadata} entries into Phoenix {@link TagPose}
- * objects using the optional metadata fields:</p>
+ * <p>This is the normal bridge from FTC game metadata into Phoenix field-landmark metadata. It
+ * reads every tag from the supplied library, converts the FTC pose/orientation representation into
+ * Phoenix {@link Pose3d}, and stores the result as immutable field metadata.</p>
  *
- * <ul>
- *   <li>{@link AprilTagMetadata#fieldPosition} ({@link VectorF})</li>
- *   <li>{@link AprilTagMetadata#fieldOrientation} ({@link Quaternion})</li>
- * </ul>
+ * <h2>Typical usage</h2>
  *
- * <p>The FTC SDK states these optional fields are expressed in the FTC Field Coordinate System.
- * Phoenix adopts the same field frame in {@link TagLayout}.</p>
+ * <pre>{@code
+ * TagLayout layout = new FtcGameTagLayout(AprilTagGameDatabase.getCurrentGameTagLibrary());
  *
- * <h2>Units</h2>
- * <p>
- * FTC metadata includes a {@link AprilTagMetadata#distanceUnit}. Phoenix stores all field distances
- * in inches, so values are converted as needed.
- * </p>
+ * Pose3d fieldToTag5 = layout.requireFieldToTagPose(5);
+ * }</pre>
  *
- * <h2>Orientation</h2>
- * <p>
- * Phoenix stores tag orientation as yaw/pitch/roll in a {@link Pose3d}, consistent with
- * {@link Mat3#fromYawPitchRoll(double, double, double)} and {@link Mat3#toYawPitchRoll(Mat3)}.
- * The FTC quaternion is converted to a rotation matrix and then converted to yaw/pitch/roll.
- * </p>
- *
- * <h2>Performance</h2>
- * <p>
- * This class snapshots the library contents once in the constructor, building an immutable map
- * of tag ID to {@link TagPose}. This avoids per-loop allocations and ensures that
- * {@link #get(int)} is a simple map lookup.
- * </p>
- *
- * <h2>Missing field metadata</h2>
- * <p>
- * If a tag exists in the FTC library but does not provide {@code fieldPosition} or
- * {@code fieldOrientation}, it is omitted from this layout (i.e., {@link #get(int)} returns
- * {@code null}).
- * </p>
+ * <p>Most robot code should treat this as static setup-time data and inject it anywhere field-fixed
+ * AprilTag metadata is needed (localizers, guidance, calibration tools, etc.).</p>
  */
 public final class FtcGameTagLayout implements TagLayout {
 
     private final AprilTagLibrary library;
-    private final Map<Integer, TagPose> posesById;
+    private final Map<Integer, Pose3d> posesById;
     private final Set<Integer> ids;
 
     /**
-     * Creates a Phoenix {@link TagLayout} backed by an FTC {@link AprilTagLibrary}.
+     * Converts an FTC SDK AprilTag library into immutable Phoenix field metadata.
      *
-     * <p>Only tags that provide the optional FTC metadata fields
-     * {@link AprilTagMetadata#fieldPosition} and {@link AprilTagMetadata#fieldOrientation}
-     * are included.</p>
-     *
-     * @param library FTC AprilTag library (non-null)
+     * @param library FTC SDK library containing field tag metadata
      */
     public FtcGameTagLayout(AprilTagLibrary library) {
         this.library = Objects.requireNonNull(library, "library");
 
-        Map<Integer, TagPose> tmp = new HashMap<>();
+        Map<Integer, Pose3d> tmp = new HashMap<>();
         for (AprilTagMetadata meta : library.getAllTags()) {
-            TagPose pose = toTagPose(meta);
+            Pose3d pose = toFieldToTagPose(meta);
             if (pose != null) {
-                tmp.put(pose.id, pose);
+                tmp.put(meta.id, pose);
             }
         }
 
@@ -90,10 +63,10 @@ public final class FtcGameTagLayout implements TagLayout {
     }
 
     /**
-     * Returns the underlying FTC library used to build this layout.
+     * Returns the underlying FTC SDK library.
      *
-     * <p>Exposed for debugging / telemetry (e.g., printing tag names or sizes) without forcing
-     * FTC SDK types into core {@code fw.field} APIs.</p>
+     * <p>This is mainly useful for advanced tools that want the original FTC metadata in addition
+     * to the Phoenix-converted poses.</p>
      */
     public AprilTagLibrary getLibrary() {
         return library;
@@ -103,21 +76,20 @@ public final class FtcGameTagLayout implements TagLayout {
      * {@inheritDoc}
      */
     @Override
-    public TagPose get(int id) {
+    public Pose3d getFieldToTagPose(int id) {
         return posesById.get(id);
     }
 
-    /** {@inheritDoc} */
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public Set<Integer> ids() {
         return ids;
     }
 
     /**
-     * Emit debug information about this tag layout.
-     *
-     * @param dbg    debug sink to write to; if {@code null}, this method does nothing
-     * @param prefix key prefix to use; if {@code null} or empty, {@code "tagLayout"} is used
+     * Emits a compact summary of the converted library.
      */
     public void debugDump(DebugSink dbg, String prefix) {
         if (dbg == null) {
@@ -131,7 +103,12 @@ public final class FtcGameTagLayout implements TagLayout {
         dbg.addData(p + ".library.class", library.getClass().getSimpleName());
     }
 
-    private static TagPose toTagPose(AprilTagMetadata meta) {
+    /**
+     * Converts a single FTC SDK tag metadata record into a Phoenix {@code field -> tag} pose.
+     *
+     * <p>Returns {@code null} when the FTC metadata is incomplete or malformed.</p>
+     */
+    private static Pose3d toFieldToTagPose(AprilTagMetadata meta) {
         if (meta == null) {
             return null;
         }
@@ -142,7 +119,6 @@ public final class FtcGameTagLayout implements TagLayout {
             return null;
         }
 
-        // Defensive: VectorF is expected to have 3 entries (x, y, z).
         final double xRaw;
         final double yRaw;
         final double zRaw;
@@ -155,30 +131,20 @@ public final class FtcGameTagLayout implements TagLayout {
         }
 
         DistanceUnit unit = (meta.distanceUnit != null) ? meta.distanceUnit : DistanceUnit.INCH;
-
-        // Phoenix stores all field distances in inches.
         double xInches = unit.toInches(xRaw);
         double yInches = unit.toInches(yRaw);
         double zInches = unit.toInches(zRaw);
 
-        // Convert quaternion -> rotation matrix -> yaw/pitch/roll.
         Mat3 rFieldToTag = rotationFromQuaternion(q);
         Mat3.YawPitchRoll ypr = Mat3.toYawPitchRoll(rFieldToTag);
 
-        Pose3d fieldToTag = new Pose3d(xInches, yInches, zInches, ypr.yawRad, ypr.pitchRad, ypr.rollRad);
-        return TagPose.ofPose(meta.id, fieldToTag);
+        return new Pose3d(xInches, yInches, zInches, ypr.yawRad, ypr.pitchRad, ypr.rollRad);
     }
 
     /**
-     * Convert an FTC quaternion (w,x,y,z) to a rotation matrix.
-     *
-     * <p>This uses the standard right-handed unit quaternion to DCM conversion.</p>
-     *
-     * @param q quaternion
-     * @return rotation matrix
+     * Converts an FTC SDK quaternion into a Phoenix rotation matrix.
      */
     private static Mat3 rotationFromQuaternion(Quaternion q) {
-        // FTC Quaternion components are (w, x, y, z).
         double w = q.w;
         double x = q.x;
         double y = q.y;

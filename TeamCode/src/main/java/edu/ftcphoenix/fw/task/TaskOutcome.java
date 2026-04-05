@@ -40,7 +40,7 @@ public enum TaskOutcome {
 
     /**
      * The task was stopped early through {@link Task#cancel()} or by a runner-level cancellation
-     * helper such as {@link TaskRunner#clearAndCancel()}.
+     * helper such as {@link TaskRunner#cancelAndClear()}.
      */
     CANCELLED
 }

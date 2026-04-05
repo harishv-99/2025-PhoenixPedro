@@ -22,14 +22,14 @@ import edu.ftcphoenix.fw.drive.DriveSource;
 import edu.ftcphoenix.fw.drive.MecanumDrivebase;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidance;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidancePlan;
+import edu.ftcphoenix.fw.drive.guidance.ReferencePoint2d;
+import edu.ftcphoenix.fw.drive.guidance.References;
 import edu.ftcphoenix.fw.drive.source.GamepadDriveSource;
 import edu.ftcphoenix.fw.ftc.FtcDrives;
 import edu.ftcphoenix.fw.ftc.FtcTelemetryDebugSink;
 import edu.ftcphoenix.fw.ftc.FtcVision;
 import edu.ftcphoenix.fw.input.Gamepads;
 import edu.ftcphoenix.fw.input.binding.Bindings;
-import edu.ftcphoenix.fw.sensing.observation.ObservationSource2d;
-import edu.ftcphoenix.fw.sensing.observation.ObservationSources;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagObservation;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
@@ -248,13 +248,13 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
         );
 
         // Wrap baseDrive with an auto-aim overlay: hold left bumper to auto-aim omega.
-        ObservationSource2d scoringObs = ObservationSources.aprilTag(scoringTarget, cameraMount);
+        ReferencePoint2d scoringRef = References.relativeToTagsPoint(SCORING_TAG_IDS, 0.0, 0.0);
         DriveGuidancePlan aimPlan = DriveGuidance.plan()
                 .aimTo()
-                .tagCenter()
+                .referencePoint(scoringRef)
                 .doneAimTo()
                 .feedback()
-                .observation(scoringObs)
+                .aprilTags(tagSensor, cameraMount, MAX_TAG_AGE_SEC)
                 .doneFeedback()
                 .build();
 
@@ -450,7 +450,7 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
         lastMacroStatus = "shoot1: range=" + obs.cameraRangeInches();
 
         Task macro = buildShootOneBallMacro(shooterTargetVel);
-        macroRunner.clearAndCancel();
+        macroRunner.cancelAndClear();
         macroRunner.enqueue(macro);
     }
 
@@ -458,7 +458,7 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
      * Cancel any running/queued shooting macros and stop the mechanism.
      */
     private void cancelShootMacros() {
-        macroRunner.clearAndCancel();
+        macroRunner.cancelAndClear();
         shooter.setTarget(0.0);
         transfer.setTarget(0.0);
         pusher.setTarget(PUSHER_POS_RETRACT);

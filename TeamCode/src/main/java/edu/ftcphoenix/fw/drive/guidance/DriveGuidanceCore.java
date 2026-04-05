@@ -7,19 +7,21 @@ import edu.ftcphoenix.fw.drive.DriveOverlayOutput;
 import edu.ftcphoenix.fw.drive.DriveSignal;
 
 /**
- * Shared "engine" used by both {@link DriveGuidanceOverlay} (teleop overlays) and
- * {@link DriveGuidanceTask} (autonomous tasks).
+ * Shared runtime engine used by {@link DriveGuidanceOverlay}, {@link DriveGuidanceTask}, and
+ * {@link DriveGuidanceQuery}.
  *
- * <p>This class exists to remove duplication: the hard part of DriveGuidance isn't the wrapper
- * (overlay vs task), it's the evaluation + feedback selection + blending + loss policy. Keeping
- * that logic in one place makes robot code easier to write and keeps behavior consistent.</p>
+ * <p>{@link DriveGuidanceEvaluator} solves the raw spatial errors, then this class applies
+ * controller tuning, adaptive source selection, hysteresis, and blend timing to produce the final
+ * {@link DriveSignal} / {@link DriveOverlayMask} pair for the current loop.</p>
  */
 final class DriveGuidanceCore {
 
     private final DriveGuidancePlan plan;
     private final DriveGuidanceEvaluator evaluator;
 
-    private boolean obsInRangeForTranslation;
+    // Adaptive-takeover state. Translation uses range hysteresis; omega can either follow the
+    // same takeover decision or always prefer AprilTags when configured to do so.
+    private boolean aprilTagsInRangeForTranslation;
     private double blendTTranslate;
     private double blendTOmega;
 
@@ -33,8 +35,11 @@ final class DriveGuidanceCore {
         this.lastStep = Step.noCommand("init");
     }
 
+    /**
+     * Resets adaptive state when the owning overlay/task/query becomes active.
+     */
     void onEnable() {
-        obsInRangeForTranslation = false;
+        aprilTagsInRangeForTranslation = false;
         blendTTranslate = 0.0;
         blendTOmega = 0.0;
         evaluator.onEnable();
@@ -42,6 +47,13 @@ final class DriveGuidanceCore {
         lastStep = Step.noCommand("enabled");
     }
 
+    /**
+     * Evaluates one loop of guidance for the requested channels.
+     *
+     * <p>This method asks the evaluator for both candidate solve lanes (field pose and/or live
+     * AprilTags), applies adaptive source selection when both are present, then converts the chosen
+     * errors into final drive commands via the already-configured controller tuning.</p>
+     */
     Step step(LoopClock clock, DriveOverlayMask requested) {
         DriveGuidanceSpec.Feedback fb = plan.spec.feedback;
 
@@ -51,94 +63,84 @@ final class DriveGuidanceCore {
             return lastStep;
         }
 
-        // Compute candidate solutions.
         CandidateSolution field = fb.hasFieldPose()
                 ? toCandidate(evaluator.solveWithFieldPose())
                 : CandidateSolution.invalid();
 
-        CandidateSolution obs = fb.hasObservation()
-                ? toCandidate(evaluator.solveWithObservation(clock))
+        CandidateSolution aprilTags = fb.hasAprilTags()
+                ? toCandidate(evaluator.solveWithAprilTags(clock))
                 : CandidateSolution.invalid();
 
+        // Simple single-lane mode: use whichever solve path exists.
         if (!fb.isAdaptive()) {
-            CandidateSolution chosen = fb.hasObservation() ? obs : field;
-            lastMode = fb.hasObservation() ? "observation" : "fieldPose";
+            CandidateSolution chosen = fb.hasAprilTags() ? aprilTags : field;
+            lastMode = fb.hasAprilTags() ? "aprilTags" : "fieldPose";
 
             Step out = applyLossPolicy(chosen, requested, fb.lossPolicy, lastMode);
             lastStep = out;
             return out;
         }
 
-        // Adaptive: choose per DOF.
+        // Adaptive mode: both field pose and AprilTags are available. Translation takeover uses
+        // range hysteresis. Omega can either follow the same choice or always prefer AprilTags.
         DriveGuidanceSpec.Gates gates = (fb.gates != null) ? fb.gates : DriveGuidanceSpec.Gates.defaults();
 
         boolean wantTranslation = requested.overridesTranslation();
         boolean wantOmega = requested.overridesOmega();
 
-        // --- Translation source selection
-        boolean hasObsT = obs.valid && obs.canTranslate && obs.hasRangeInches;
+        boolean hasAprilTagsT = aprilTags.valid && aprilTags.canTranslate && aprilTags.hasRangeInches;
         boolean hasFieldT = field.valid && field.canTranslate;
 
-        if (!hasObsT) {
-            obsInRangeForTranslation = false;
-        } else {
-            // Hysteresis on observed range.
-            if (!obsInRangeForTranslation) {
-                if (obs.rangeInches <= gates.enterRangeInches) {
-                    obsInRangeForTranslation = true;
-                }
-            } else {
-                if (obs.rangeInches >= gates.exitRangeInches) {
-                    obsInRangeForTranslation = false;
-                }
+        if (!hasAprilTagsT) {
+            aprilTagsInRangeForTranslation = false;
+        } else if (!aprilTagsInRangeForTranslation) {
+            if (aprilTags.rangeInches <= gates.enterRangeInches) {
+                aprilTagsInRangeForTranslation = true;
             }
+        } else if (aprilTags.rangeInches >= gates.exitRangeInches) {
+            aprilTagsInRangeForTranslation = false;
         }
 
-        boolean chooseObsForTranslation;
+        boolean chooseAprilTagsForTranslation;
         if (!wantTranslation) {
-            chooseObsForTranslation = false;
-        } else if (!hasFieldT && hasObsT) {
-            chooseObsForTranslation = true;
-        } else if (hasFieldT && hasObsT) {
-            chooseObsForTranslation = obsInRangeForTranslation;
+            chooseAprilTagsForTranslation = false;
+        } else if (!hasFieldT && hasAprilTagsT) {
+            chooseAprilTagsForTranslation = true;
+        } else if (hasFieldT && hasAprilTagsT) {
+            chooseAprilTagsForTranslation = aprilTagsInRangeForTranslation;
         } else {
-            chooseObsForTranslation = false;
+            chooseAprilTagsForTranslation = false;
         }
 
-        // --- Omega source selection
-        boolean hasObsO = obs.valid && obs.canOmega;
+        boolean hasAprilTagsO = aprilTags.valid && aprilTags.canOmega;
         boolean hasFieldO = field.valid && field.canOmega;
 
-        boolean chooseObsForOmega;
+        boolean chooseAprilTagsForOmega;
         if (!wantOmega) {
-            chooseObsForOmega = false;
-        } else if (!hasFieldO && hasObsO) {
-            chooseObsForOmega = true;
-        } else if (fb.preferObservationForOmega) {
-            chooseObsForOmega = hasObsO;
-        } else if (hasFieldO && hasObsO) {
-            // If not preferring observation, keep omega tied to translation choice when possible.
-            chooseObsForOmega = chooseObsForTranslation;
+            chooseAprilTagsForOmega = false;
+        } else if (!hasFieldO && hasAprilTagsO) {
+            chooseAprilTagsForOmega = true;
+        } else if (fb.preferAprilTagsForOmega) {
+            chooseAprilTagsForOmega = hasAprilTagsO;
+        } else if (hasFieldO && hasAprilTagsO) {
+            chooseAprilTagsForOmega = chooseAprilTagsForTranslation;
         } else {
-            chooseObsForOmega = false;
+            chooseAprilTagsForOmega = false;
         }
 
-        // --- Blend to smooth source switching
         double dt = clock.dtSec();
         double blendSec = Math.max(0.0, gates.takeoverBlendSec);
         double step = (blendSec <= 0.0) ? 1.0 : MathUtil.clamp(dt / blendSec, 0.0, 1.0);
 
-        blendTTranslate = updateBlend(blendTTranslate, chooseObsForTranslation, step);
-        blendTOmega = updateBlend(blendTOmega, chooseObsForOmega, step);
+        blendTTranslate = updateBlend(blendTTranslate, chooseAprilTagsForTranslation, step);
+        blendTOmega = updateBlend(blendTOmega, chooseAprilTagsForOmega, step);
 
-        // Compose final command.
         double axial = 0.0;
         double lateral = 0.0;
         double omega = 0.0;
 
         DriveOverlayMask mask = DriveOverlayMask.NONE;
 
-        // Effective errors corresponding to the commanded DOFs.
         boolean hasTransErr = false;
         double forwardErr = 0.0;
         double leftErr = 0.0;
@@ -147,21 +149,21 @@ final class DriveGuidanceCore {
         double omegaErr = 0.0;
 
         if (wantTranslation) {
-            if (hasFieldT && hasObsT) {
-                axial = MathUtil.lerp(field.signal.axial, obs.signal.axial, blendTTranslate);
-                lateral = MathUtil.lerp(field.signal.lateral, obs.signal.lateral, blendTTranslate);
+            if (hasFieldT && hasAprilTagsT) {
+                axial = MathUtil.lerp(field.signal.axial, aprilTags.signal.axial, blendTTranslate);
+                lateral = MathUtil.lerp(field.signal.lateral, aprilTags.signal.lateral, blendTTranslate);
                 mask = mask.withTranslation(true);
 
-                forwardErr = MathUtil.lerp(field.forwardErrorIn, obs.forwardErrorIn, blendTTranslate);
-                leftErr = MathUtil.lerp(field.leftErrorIn, obs.leftErrorIn, blendTTranslate);
+                forwardErr = MathUtil.lerp(field.forwardErrorIn, aprilTags.forwardErrorIn, blendTTranslate);
+                leftErr = MathUtil.lerp(field.leftErrorIn, aprilTags.leftErrorIn, blendTTranslate);
                 hasTransErr = true;
-            } else if (hasObsT) {
-                axial = obs.signal.axial;
-                lateral = obs.signal.lateral;
+            } else if (hasAprilTagsT) {
+                axial = aprilTags.signal.axial;
+                lateral = aprilTags.signal.lateral;
                 mask = mask.withTranslation(true);
 
-                forwardErr = obs.forwardErrorIn;
-                leftErr = obs.leftErrorIn;
+                forwardErr = aprilTags.forwardErrorIn;
+                leftErr = aprilTags.leftErrorIn;
                 hasTransErr = true;
             } else if (hasFieldT) {
                 axial = field.signal.axial;
@@ -175,17 +177,17 @@ final class DriveGuidanceCore {
         }
 
         if (wantOmega) {
-            if (hasFieldO && hasObsO) {
-                omega = MathUtil.lerp(field.signal.omega, obs.signal.omega, blendTOmega);
+            if (hasFieldO && hasAprilTagsO) {
+                omega = MathUtil.lerp(field.signal.omega, aprilTags.signal.omega, blendTOmega);
                 mask = mask.withOmega(true);
 
-                omegaErr = lerpAngleError(field.omegaErrorRad, obs.omegaErrorRad, blendTOmega);
+                omegaErr = lerpAngleError(field.omegaErrorRad, aprilTags.omegaErrorRad, blendTOmega);
                 hasOmegaErr = true;
-            } else if (hasObsO) {
-                omega = obs.signal.omega;
+            } else if (hasAprilTagsO) {
+                omega = aprilTags.signal.omega;
                 mask = mask.withOmega(true);
 
-                omegaErr = obs.omegaErrorRad;
+                omegaErr = aprilTags.omegaErrorRad;
                 hasOmegaErr = true;
             } else if (hasFieldO) {
                 omega = field.signal.omega;
@@ -204,8 +206,8 @@ final class DriveGuidanceCore {
                     new DriveOverlayOutput(new DriveSignal(axial, lateral, omega), mask),
                     "adaptive",
                     field,
-                    obs,
-                    obsInRangeForTranslation,
+                    aprilTags,
+                    aprilTagsInRangeForTranslation,
                     blendTTranslate,
                     blendTOmega,
                     hasTransErr,
@@ -221,16 +223,22 @@ final class DriveGuidanceCore {
         return out;
     }
 
+    /**
+     * Returns the last high-level mode string for status/debug output.
+     */
     String lastMode() {
         return lastMode;
     }
 
+    /**
+     * Returns the most recent step result.
+     */
     Step lastStep() {
         return lastStep;
     }
 
-    boolean obsInRangeForTranslation() {
-        return obsInRangeForTranslation;
+    boolean aprilTagsInRangeForTranslation() {
+        return aprilTagsInRangeForTranslation;
     }
 
     double blendTTranslate() {
@@ -241,17 +249,9 @@ final class DriveGuidanceCore {
         return blendTOmega;
     }
 
-    int lastObservedTagId() {
-        return evaluator.lastObservedTagId();
-    }
-
     edu.ftcphoenix.fw.core.geometry.Pose2d fieldToTranslationFrameAnchor() {
         return evaluator.fieldToTranslationFrameAnchor();
     }
-
-    // ------------------------------------------------------------------------
-    // Candidate conversion
-    // ------------------------------------------------------------------------
 
     private CandidateSolution toCandidate(DriveGuidanceEvaluator.Solution sol) {
         if (sol == null || !sol.valid) {
@@ -284,12 +284,8 @@ final class DriveGuidanceCore {
         );
     }
 
-    // ------------------------------------------------------------------------
-    // Helpers
-    // ------------------------------------------------------------------------
-
-    private static double updateBlend(double current, boolean chooseObs, double step) {
-        if (chooseObs) {
+    private static double updateBlend(double current, boolean chooseAprilTags, double step) {
+        if (chooseAprilTags) {
             return Math.min(1.0, current + step);
         }
         return Math.max(0.0, current - step);
@@ -326,7 +322,6 @@ final class DriveGuidanceCore {
             }
         }
 
-        // If we couldn't produce any usable command this loop.
         if (policy == DriveGuidanceSpec.LossPolicy.ZERO_OUTPUT) {
             return new Step(
                     new DriveOverlayOutput(DriveSignal.zero(), requested),
@@ -347,21 +342,11 @@ final class DriveGuidanceCore {
         return Step.noCommand(mode + ":passThrough");
     }
 
-    /**
-     * Interpolate an angle-like error in radians via the shortest-path difference.
-     */
     private static double lerpAngleError(double aRad, double bRad, double t) {
         double delta = MathUtil.wrapToPi(bRad - aRad);
         return MathUtil.wrapToPi(aRad + t * delta);
     }
 
-    // ------------------------------------------------------------------------
-    // Data bundles
-    // ------------------------------------------------------------------------
-
-    /**
-     * Per-source candidate solution.
-     */
     static final class CandidateSolution {
         final boolean valid;
         final DriveSignal signal;
@@ -406,17 +391,14 @@ final class DriveGuidanceCore {
         }
     }
 
-    /**
-     * Output of a single core step.
-     */
     static final class Step {
         final DriveOverlayOutput out;
         final String mode;
 
         final CandidateSolution field;
-        final CandidateSolution obs;
+        final CandidateSolution aprilTags;
 
-        final boolean obsInRangeForTranslation;
+        final boolean aprilTagsInRangeForTranslation;
         final double blendTTranslate;
         final double blendTOmega;
 
@@ -430,8 +412,8 @@ final class DriveGuidanceCore {
         Step(DriveOverlayOutput out,
              String mode,
              CandidateSolution field,
-             CandidateSolution obs,
-             boolean obsInRangeForTranslation,
+             CandidateSolution aprilTags,
+             boolean aprilTagsInRangeForTranslation,
              double blendTTranslate,
              double blendTOmega,
              boolean hasTranslationError,
@@ -442,8 +424,8 @@ final class DriveGuidanceCore {
             this.out = out;
             this.mode = mode;
             this.field = field;
-            this.obs = obs;
-            this.obsInRangeForTranslation = obsInRangeForTranslation;
+            this.aprilTags = aprilTags;
+            this.aprilTagsInRangeForTranslation = aprilTagsInRangeForTranslation;
             this.blendTTranslate = blendTTranslate;
             this.blendTOmega = blendTOmega;
             this.hasTranslationError = hasTranslationError;

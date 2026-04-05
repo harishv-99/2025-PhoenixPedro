@@ -476,8 +476,7 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
             t.addLine("  inLayout=" + inLayout);
 
             if (inLayout) {
-                TagLayout.TagPose tag = layout.require(obs.id);
-                Pose3d ft = tag.fieldToTagPose();
+                Pose3d ft = layout.requireFieldToTagPose(obs.id);
                 t.addLine(String.format(Locale.US,
                         "  fieldToTag: x=%.1f y=%.1f z=%.1f | yaw=%.1f°",
                         ft.xInches, ft.yInches, ft.zInches,

@@ -8,7 +8,6 @@ import edu.ftcphoenix.fw.core.geometry.Pose3d;
 import edu.ftcphoenix.fw.core.math.MathUtil;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.field.TagLayout;
-import edu.ftcphoenix.fw.field.TagLayout.TagPose;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
 import edu.ftcphoenix.fw.localization.PoseEstimator;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
@@ -176,12 +175,10 @@ public final class TagOnlyPoseEstimator implements PoseEstimator {
             }
 
             // Known placement for this tag in the field frame.
-            TagPose tag = layout.require(obs.id);
-
             // Compute pose using the full transform chain:
             //   fieldToRobotPose = fieldToTagPose ∘ (robotToCameraPose ∘ cameraToTagPose)^(-1)
             // This captures lateral offsets correctly and sets us up for odometry/tag fusion later.
-            final Pose3d fieldToTagPose = tag.fieldToTagPose();
+            final Pose3d fieldToTagPose = layout.requireFieldToTagPose(obs.id);
             final Pose3d robotToCameraPose = cfg.cameraMount.robotToCameraPose();
             final Pose3d cameraToTagPose = obs.cameraToTagPose;
 

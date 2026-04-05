@@ -264,12 +264,25 @@ public final class Shooter {
     // Supervisor-facing API
     // ---------------------------------------------------------------------
 
+    /**
+     * Exposes the queued feed-output lane used by supervisors and driver-intent wiring.
+     *
+     * <p>The returned runner is still owned by {@link Shooter}; callers should treat it as the
+     * official way to enqueue or inspect temporary feed overrides rather than commanding the feed
+     * plants directly.</p>
+     */
     public OutputTaskRunner feedQueue() {
         return feedQueue;
     }
 
+    /**
+     * Cooperatively aborts the current feed task and clears any queued follow-up feed tasks.
+     *
+     * <p>This intentionally uses {@link OutputTaskRunner#cancelAndClear()} rather than {@code clear()}
+     * so the active task gets its normal cancellation path before the queue is forgotten.</p>
+     */
     public void clearFeedQueue() {
-        feedQueue.clearAndCancel();
+        feedQueue.cancelAndClear();
     }
 
     public void setFlywheelEnabled(boolean enabled) {
@@ -403,7 +416,7 @@ public final class Shooter {
         manualIntakeTransferPower = 0.0;
         manualShooterTransferPower = 0.0;
 
-        feedQueue.clearAndCancel();
+        feedQueue.cancelAndClear();
 
         plantFlywheel.stop();
         plantIntakeMotor.stop();

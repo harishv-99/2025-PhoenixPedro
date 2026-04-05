@@ -74,15 +74,23 @@ public final class GoToPoseTasks {
         Objects.requireNonNull(tagLayout, "tagLayout");
         Objects.requireNonNull(tuning, "tuning");
 
+        ReferenceFrame2d target = References.relativeToTagFrame(
+                tagId,
+                forwardInches,
+                leftInches,
+                Math.PI + headingOffsetRad
+        );
+
         DriveGuidancePlan plan = DriveGuidance.plan()
                 .translateTo()
-                .tagRelativePointInches(tagId, forwardInches, leftInches)
+                .referenceFrameOrigin(target)
                 .doneTranslateTo()
                 .aimTo()
-                .tagFaceTagRad(tagId, headingOffsetRad)
+                .referenceFrameHeading(target)
                 .doneAimTo()
                 .feedback()
-                .fieldPose(poseEstimator, tagLayout)
+                .fieldPose(poseEstimator)
+                .fixedTagLayout(tagLayout)
                 .doneFeedback()
                 .tuning(tuning)
                 .build();

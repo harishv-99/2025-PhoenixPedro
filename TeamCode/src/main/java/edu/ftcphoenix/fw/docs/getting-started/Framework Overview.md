@@ -230,6 +230,29 @@ A `DriveSource` is the drive-specific specialization of `Source<DriveSignal>` an
 
 `DriveSource` also supports composition helpers (like scaling and blending) via default methods.
 
+A common beginner-to-intermediate pattern is:
+
+```java
+ReferencePoint2d speakerAim = References.relativeToTagPoint(5, 0.0, 0.0);
+
+DriveGuidancePlan aimPlan = DriveGuidance.plan()
+        .aimTo()
+            .referencePoint(speakerAim)
+            .doneAimTo()
+        .feedback()
+            .aprilTags(tagSensor, cameraMount, 0.25)
+            .doneFeedback()
+        .build();
+
+DriveSource driveWithAim = baseDrive.overlayWhen(
+        gamepads.p1().leftBumper(),
+        aimPlan.overlay(),
+        DriveOverlayMask.OMEGA_ONLY
+);
+```
+
+That keeps normal stick translation while guidance owns omega.
+
 When code only needs a place to *send* drive commands, Phoenix now uses the smaller `DriveCommandSink` seam. `MecanumDrivebase` implements that interface, but route adapters can implement it too.
 
 ### `MecanumDrivebase` + `FtcDrives`
@@ -262,6 +285,11 @@ Phoenix tries to keep “spatial logic” reusable by splitting it into three la
 If you only want to ask “is the robot in the zone?” or “is the robot aimed?”, use layer (2). If you
 want the framework to *drive*, use layer (3).
 
+Reference-first guidance is the intended mental model: define the meaningful point or frame once,
+then let feedback lanes solve it from field pose, live AprilTags, or both. For example, a
+field-fixed scoring frame can be driven from odometry alone, or refined by visible fixed tags when
+you also provide `fixedTagLayout(...)`.
+
 ---
 
 ## Tasks and macros
@@ -272,7 +300,7 @@ A `Task` is non-blocking work that progresses over multiple loop cycles.
 
 A `TaskRunner` runs tasks **sequentially** (FIFO): start one task, update it each cycle until it completes, then move to the next.
 
-If you want to abort automation, prefer `clearAndCancel()` over `clear()`. `clear()` forgets the current task without calling its cancellation hook; `clearAndCancel()` lets the task stop outputs cleanly and reports `TaskOutcome.CANCELLED`.
+If you want to abort automation, prefer `cancelAndClear()` over `clear()`. `clear()` forgets the current task without calling its cancellation hook; `cancelAndClear()` lets the task stop outputs cleanly and reports `TaskOutcome.CANCELLED`.
 
 ### Factories: `Tasks`, `PlantTasks`, `DriveTasks`
 

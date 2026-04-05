@@ -5,77 +5,77 @@ import edu.ftcphoenix.fw.drive.DriveOverlayMask;
 import edu.ftcphoenix.fw.drive.DriveSignal;
 
 /**
- * Read-only snapshot of the most recent DriveGuidance evaluation.
+ * Read-only snapshot of the most recent {@link DriveGuidance} evaluation.
  *
- * <p>This is intentionally <b>controller-neutral</b>: it exposes the computed guidance command
- * (if any) and the associated errors, so other code can:</p>
- * <ul>
- *   <li>gate mechanisms (“only shoot when aimed”)</li>
- *   <li>report driver telemetry (“omega error = ...”)</li>
- *   <li>write tasks that share the same math as overlays</li>
- * </ul>
- *
- * <p>It is produced by {@link DriveGuidanceQuery}, and internally by the same engine used by
- * {@link DriveGuidancePlan#overlay()} and {@link DriveGuidancePlan#task(...)}.</p>
+ * <p>{@link DriveGuidanceStatus} is shared by overlays, tasks, and queries so teams can inspect
+ * exactly the same solved errors and commands regardless of how the plan is being used.</p>
  */
 public final class DriveGuidanceStatus {
 
     /**
-     * The guidance mode used on the last evaluation ("obs", "field", "adaptive").
+     * Human-readable mode string used for debugging. Examples: {@code "fieldPose"},
+     * {@code "aprilTags"}, or {@code "adaptive"}.
      */
     public final String mode;
 
     /**
-     * Mask produced for the last output. If this is {@link DriveOverlayMask#NONE}, the guidance
-     * system could not compute a safe command on that loop.
+     * Which drive channels guidance actively overrode this step.
      */
     public final DriveOverlayMask mask;
 
     /**
-     * Guidance command (robot-centric). Meaningful only for the DOFs claimed by {@link #mask}.
+     * Final command produced by guidance for the requested channels.
      */
     public final DriveSignal signal;
 
     /**
-     * True if translation error was computed.
+     * Whether a translation error was successfully solved this step.
      */
     public final boolean hasTranslationError;
 
     /**
-     * Translation error in the translation control frame (+X forward, +Y left), inches.
+     * Forward translation error in the translation control frame, inches.
      */
     public final double forwardErrorIn;
+
+    /**
+     * Left translation error in the translation control frame, inches.
+     */
     public final double leftErrorIn;
 
     /**
-     * True if omega (heading/bearing) error was computed.
+     * Whether an aim / omega error was successfully solved this step.
      */
     public final boolean hasOmegaError;
 
     /**
-     * Signed omega error in radians (wrapped to [-pi, +pi]).
+     * Omega error in radians. Positive means rotate CCW.
      */
     public final double omegaErrorRad;
 
     /**
-     * Whether the observation was considered "in range" for translation takeover.
+     * Whether the live AprilTag path was considered “in range” for translation takeover.
+     *
+     * <p>This only matters when adaptive feedback is configured.</p>
      */
-    public final boolean obsInRangeForTranslation;
+    public final boolean aprilTagsInRangeForTranslation;
 
     /**
-     * Blend factors (0..1) used by adaptive guidance (for debug/telemetry).
+     * Blend factor used for translation between field-pose and AprilTag commands.
+     *
+     * <p>{@code 0} means pure field-pose command. {@code 1} means pure AprilTag command.</p>
      */
     public final double blendTTranslate;
+
+    /**
+     * Blend factor used for omega between field-pose and AprilTag commands.
+     */
     public final double blendTOmega;
 
     /**
-     * Last observed tag id (or -1 if none).
-     */
-    public final int lastObservedTagId;
-
-    /**
      * Anchor pose (field frame) captured for {@link DriveGuidanceSpec.RobotRelativePoint} targets.
-     * May be null if not applicable.
+     *
+     * <p>This is {@code null} unless the plan uses a robot-relative translation target.</p>
      */
     public final Pose2d fieldToTranslationFrameAnchor;
 
@@ -87,10 +87,9 @@ public final class DriveGuidanceStatus {
                         double leftErrorIn,
                         boolean hasOmegaError,
                         double omegaErrorRad,
-                        boolean obsInRangeForTranslation,
+                        boolean aprilTagsInRangeForTranslation,
                         double blendTTranslate,
                         double blendTOmega,
-                        int lastObservedTagId,
                         Pose2d fieldToTranslationFrameAnchor) {
         this.mode = mode;
         this.mask = mask;
@@ -100,22 +99,27 @@ public final class DriveGuidanceStatus {
         this.leftErrorIn = leftErrorIn;
         this.hasOmegaError = hasOmegaError;
         this.omegaErrorRad = omegaErrorRad;
-        this.obsInRangeForTranslation = obsInRangeForTranslation;
+        this.aprilTagsInRangeForTranslation = aprilTagsInRangeForTranslation;
         this.blendTTranslate = blendTTranslate;
         this.blendTOmega = blendTOmega;
-        this.lastObservedTagId = lastObservedTagId;
         this.fieldToTranslationFrameAnchor = fieldToTranslationFrameAnchor;
     }
 
     /**
-     * @return magnitude of translation error (inches) or NaN if unavailable
+     * Computes the planar magnitude of the translation error.
+     *
+     * @return Euclidean translation error in inches, or {@link Double#NaN} if no translation error
+     *         was available
      */
     public double translationErrorMagInches() {
         return hasTranslationError ? Math.hypot(forwardErrorIn, leftErrorIn) : Double.NaN;
     }
 
     /**
-     * @return true if translation error magnitude is available and <= tolInches
+     * Convenience helper for “close enough?” checks on translation.
+     *
+     * @param tolInches allowed translation magnitude
+     * @return whether the solved translation error magnitude is within tolerance
      */
     public boolean translationWithin(double tolInches) {
         double mag = translationErrorMagInches();
@@ -123,7 +127,10 @@ public final class DriveGuidanceStatus {
     }
 
     /**
-     * @return true if omega error is available and |error| <= tolRad
+     * Convenience helper for “aimed enough?” checks on omega.
+     *
+     * @param tolRad allowed absolute omega error
+     * @return whether the solved omega error is within tolerance
      */
     public boolean omegaWithin(double tolRad) {
         return hasOmegaError && Double.isFinite(omegaErrorRad) && Math.abs(omegaErrorRad) <= tolRad;
@@ -134,7 +141,6 @@ public final class DriveGuidanceStatus {
         DriveOverlayMask mask = (step != null && step.out != null) ? step.out.mask : DriveOverlayMask.NONE;
         DriveSignal signal = (step != null && step.out != null) ? step.out.signal : DriveSignal.zero();
 
-        int lastTag = (core != null) ? core.lastObservedTagId() : -1;
         Pose2d anchor = (core != null) ? core.fieldToTranslationFrameAnchor() : null;
 
         boolean hasT = (step != null) && step.hasTranslationError;
@@ -149,10 +155,9 @@ public final class DriveGuidanceStatus {
                 hasT ? step.leftErrorIn : Double.NaN,
                 hasO,
                 hasO ? step.omegaErrorRad : Double.NaN,
-                (step != null) && step.obsInRangeForTranslation,
+                (step != null) && step.aprilTagsInRangeForTranslation,
                 (step != null) ? step.blendTTranslate : Double.NaN,
                 (step != null) ? step.blendTOmega : Double.NaN,
-                lastTag,
                 anchor
         );
     }

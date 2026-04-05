@@ -38,7 +38,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * runner.update(clock);
  *
  * // If driver input or safety logic needs to abort automation:
- * runner.clearAndCancel();
+ * runner.cancelAndClear();
  * }</pre>
  */
 public final class TaskRunner {
@@ -68,7 +68,7 @@ public final class TaskRunner {
      * Clear the queue and forget any current task without invoking cancellation hooks.
      *
      * <p>This is mainly a legacy "drop everything immediately" helper. Prefer
-     * {@link #clearAndCancel()} when aborting automation so the active task can release hardware,
+     * {@link #cancelAndClear()} when aborting automation so the active task can release hardware,
      * stop child tasks, and report {@link TaskOutcome#CANCELLED} cleanly.</p>
      */
     public void clear() {
@@ -102,7 +102,7 @@ public final class TaskRunner {
      * <p>This is the safest general-purpose abort helper for TeleOp takeovers, safety interlocks,
      * and route interruptions.</p>
      */
-    public void clearAndCancel() {
+    public void cancelAndClear() {
         cancelCurrent();
         queue.clear();
         lastUpdatedCycle = Long.MIN_VALUE;

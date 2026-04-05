@@ -18,7 +18,7 @@ import edu.ftcphoenix.fw.drive.DriveOverlayMask;
  * </ul>
  *
  * <p><b>Important:</b> this object is stateful. It tracks the same internal state as an overlay
- * (robot-relative translation anchors, adaptive blending, last-observed tag id, etc.).
+ * (robot-relative translation anchors, adaptive blending, AprilTag takeover state, etc.).
  * Create one instance and reuse it across loop iterations.</p>
  */
 public final class DriveGuidanceQuery {

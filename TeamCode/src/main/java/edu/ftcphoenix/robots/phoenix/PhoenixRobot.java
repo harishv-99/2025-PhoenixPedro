@@ -26,6 +26,7 @@ import edu.ftcphoenix.fw.drive.guidance.DriveGuidancePlan;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceQuery;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceSpec;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceStatus;
+import edu.ftcphoenix.fw.drive.guidance.References;
 import edu.ftcphoenix.fw.drive.source.GamepadDriveSource;
 import edu.ftcphoenix.fw.field.TagLayout;
 import edu.ftcphoenix.fw.ftc.FtcDrives;
@@ -35,8 +36,6 @@ import edu.ftcphoenix.fw.ftc.FtcVision;
 import edu.ftcphoenix.fw.ftc.localization.PinpointPoseEstimator;
 import edu.ftcphoenix.fw.input.Gamepads;
 import edu.ftcphoenix.fw.input.binding.Bindings;
-import edu.ftcphoenix.fw.sensing.observation.ObservationSource2d;
-import edu.ftcphoenix.fw.sensing.observation.ObservationSources;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagObservation;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
@@ -170,11 +169,14 @@ public final class PhoenixRobot {
         // Track scoring tags with a freshness window.
         scoringTarget = new TagTarget(tagSensor, SCORING_TAG_IDS, 0.5);
 
-        // --- Drive guidance (replaces TagAim): hold P2 LB to auto-aim omega at the best scoring tag.
-        // Use the framework's helper so robot code stays simple.
-        // (This updates the TagTarget each loop and converts the latest AprilTag measurement into a
-        // robot-relative planar observation used by DriveGuidance.)
-        ObservationSource2d obs2d = ObservationSources.aprilTag(scoringTarget, cameraMountConfig);
+        // --- Drive guidance (replaces TagAim): hold P2 LB to auto-aim omega at the current
+        // scoring point.
+        //
+        // The important framework shift is that DriveGuidance now speaks in terms of semantic
+        // references rather than tag-specific public target nouns. We still author these aim
+        // references relative to the scoring tags, but the plans themselves simply say
+        // "aim at this reference point". Guidance then decides whether that reference is solved
+        // directly from live AprilTags, from field pose, or from both lanes in adaptive mode.
 
         // Tuning for the auto-aim assist. Start with defaults and tweak only what you need.
         aimTuning = DriveGuidancePlan.Tuning.defaults()
@@ -193,28 +195,28 @@ public final class PhoenixRobot {
 
         aimPlanBlue = DriveGuidance.plan()
                 .aimTo()
-                .tagRelativePointInches(
+                .referencePoint(References.relativeToTagPoint(
                         RobotConfig.AutoAim.BLUE_TARGET_TAG_ID,
                         blueOffset.forwardInches,
-                        blueOffset.leftInches)
+                        blueOffset.leftInches))
                 .doneAimTo()
                 .tuning(aimTuning)
                 .feedback()
-                .observation(obs2d, 0.50, 0.0)
+                .aprilTags(tagSensor, cameraMountConfig, 0.50)
                 .lossPolicy(DriveGuidanceSpec.LossPolicy.PASS_THROUGH)
                 .doneFeedback()
                 .build();
 
         aimPlanRed = DriveGuidance.plan()
                 .aimTo()
-                .tagRelativePointInches(
+                .referencePoint(References.relativeToTagPoint(
                         RobotConfig.AutoAim.RED_TARGET_TAG_ID,
                         redOffset.forwardInches,
-                        redOffset.leftInches)
+                        redOffset.leftInches))
                 .doneAimTo()
                 .tuning(aimTuning)
                 .feedback()
-                .observation(obs2d, 0.50, 0.0)
+                .aprilTags(tagSensor, cameraMountConfig, 0.50)
                 .lossPolicy(DriveGuidanceSpec.LossPolicy.PASS_THROUGH)
                 .doneFeedback()
                 .build();
@@ -285,73 +287,34 @@ public final class PhoenixRobot {
         shooterSupervisor = new ShooterSupervisor(shooter, scoringTarget, aimOkToShoot, aimOverride);
 
         /*
-         * FUTURE OPTION (leave commented out for now):
-         * Combine AprilTag observation + odometry pose estimator for targeting.
+         * FUTURE OPTION:
+         * If TeleOp maintains a real field pose (for example via a fused estimator rather than a
+         * zeroed-on-enable odometry origin), these same tag-relative references can also use
+         * fieldPose(...) + fixedTagLayout(...) as a fallback when a fixed scoring tag drops out of
+         * view. Keep the reference definitions the same; just add the extra feedback lanes.
          *
-         * Why:
-         *  - If the tag blinks out of view for a moment, fieldPose(...) can keep aim stable.
-         *  - You can aim at a tag-relative point in *field coordinates* (using gameTagLayout).
+         * Conceptually:
          *
-         * How:
-         *  - Provide BOTH observation(...) and fieldPose(...)
-         *  - Provide a TagLayout (we already built gameTagLayout above)
-         *  - Optionally configure gates(...) so Phoenix blends between sources based on range
+         *   aimPlanBlue = DriveGuidance.plan()
+         *           .aimTo()
+         *               .referencePoint(References.relativeToTagPoint(
+         *                       RobotConfig.AutoAim.BLUE_TARGET_TAG_ID,
+         *                       blueOffset.forwardInches,
+         *                       blueOffset.leftInches))
+         *               .doneAimTo()
+         *           .feedback()
+         *               .aprilTags(tagSensor, cameraMountConfig, 0.50)
+         *               .fieldPose(fusedPoseEstimator, 0.25, 0.0)
+         *               .fixedTagLayout(gameTagLayout)
+         *               .gates(72.0, 84.0, 0.25)
+         *               .preferAprilTagsForOmega(true)
+         *               .lossPolicy(DriveGuidanceSpec.LossPolicy.PASS_THROUGH)
+         *               .doneFeedback()
+         *           .build();
+         *
+         * That keeps the semantic reference exactly the same while adding localizer fallback and
+         * close-range visual refinement.
          */
-        /*
-         * If you eventually want true <b>fusion</b> (odometry corrected by tags) instead of
-         * “use odometry when the tag isn't visible”, you can build a fused PoseEstimator and
-         * pass that into fieldPose(...):
-         *
-         *   edu.ftcphoenix.fw.localization.apriltag.TagOnlyPoseEstimator visionPose =
-         *       new edu.ftcphoenix.fw.localization.apriltag.TagOnlyPoseEstimator(
-         *           scoringTarget,
-         *           gameTagLayout,
-         *           cameraMountConfig
-         *       );
-         *
-         *   edu.ftcphoenix.fw.localization.fusion.OdometryTagFusionPoseEstimator fusedPose =
-         *       new edu.ftcphoenix.fw.localization.fusion.OdometryTagFusionPoseEstimator(
-         *           pinpoint,
-         *           visionPose
-         *       );
-         *
-         * IMPORTANT:
-         *   - You still must call scoringTarget.update(clock) before fusedPose.update(clock)
-         *   - In updateTeleOp(), update fusedPose instead of (or in addition to) pinpoint
-         */
-//        aimPlanBlue = DriveGuidance.plan()
-//                .aimTo()
-//                .tagRelativePointInches(
-//                        RobotConfig.AutoAim.BLUE_TARGET_TAG_ID,
-//                        blueOffset.forwardInches,
-//                        blueOffset.leftInches)
-//                .doneAimTo()
-//                .tuning(aimTuning)
-//                .feedback()
-//                .observation(obs2d, 0.50, 0.0)
-//                .fieldPose(pinpoint, gameTagLayout, 0.25, 0.0)
-//                .gates(72.0, 84.0, 0.25) // enterRange, exitRange, blendSeconds (example numbers)
-//                .preferObservationForOmegaWhenValid(true)
-//                .lossPolicy(DriveGuidanceSpec.LossPolicy.PASS_THROUGH)
-//                .doneFeedback()
-//                .build();
-//
-//        aimPlanRed = DriveGuidance.plan()
-//                .aimTo()
-//                .tagRelativePointInches(
-//                        RobotConfig.AutoAim.RED_TARGET_TAG_ID,
-//                        redOffset.forwardInches,
-//                        redOffset.leftInches)
-//                .doneAimTo()
-//                .tuning(aimTuning)
-//                .feedback()
-//                .observation(obs2d, 0.50, 0.0)
-//                .fieldPose(pinpoint, gameTagLayout, 0.25, 0.0)
-//                .gates(72.0, 84.0, 0.25)
-//                .preferObservationForOmegaWhenValid(true)
-//                .lossPolicy(DriveGuidanceSpec.LossPolicy.PASS_THROUGH)
-//                .doneFeedback()
-//                .build();
 
         // Enable condition for the guidance overlay.
         //
@@ -564,7 +527,7 @@ public final class PhoenixRobot {
         telemetry.addData("aim.readyTolDeg", RobotConfig.AutoAim.AIM_READY_TOLERANCE_DEG);
 
         if (gameTagLayout != null && gameTagLayout.has(obs.id)) {
-            Pose3d fieldToTag = gameTagLayout.require(obs.id).fieldToTagPose();
+            Pose3d fieldToTag = gameTagLayout.requireFieldToTagPose(obs.id);
             Pose2d fieldToAimPoint = new Pose2d(
                     fieldToTag.xInches,
                     fieldToTag.yInches,

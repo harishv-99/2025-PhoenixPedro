@@ -50,11 +50,10 @@ final class DriveGuidanceOverlay implements DriveOverlay {
             dbg.addData(prefix + ".omegaErrorRad", step.omegaErrorRad);
         }
 
-        dbg.addData(prefix + ".obsInRangeForTranslation", step.obsInRangeForTranslation);
+        dbg.addData(prefix + ".aprilTagsInRangeForTranslation", step.aprilTagsInRangeForTranslation);
         dbg.addData(prefix + ".blendTTranslate", step.blendTTranslate);
         dbg.addData(prefix + ".blendTOmega", step.blendTOmega);
 
-        dbg.addData(prefix + ".lastObservedTagId", core.lastObservedTagId());
         Pose2d anchor = core.fieldToTranslationFrameAnchor();
         if (anchor != null) {
             dbg.addData(prefix + ".translationAnchorX", anchor.xInches);

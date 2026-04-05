@@ -5,54 +5,57 @@ import java.util.Objects;
 import edu.ftcphoenix.fw.drive.DriveOverlayMask;
 import edu.ftcphoenix.fw.field.TagLayout;
 import edu.ftcphoenix.fw.localization.PoseEstimator;
-import edu.ftcphoenix.fw.sensing.observation.ObservationSource2d;
+import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
+import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
 
 /**
- * Controller-neutral configuration for “driver guidance”.
+ * Controller-neutral configuration for {@link DriveGuidance}.
  *
- * <p>A {@link DriveGuidanceSpec} describes:</p>
- * <ul>
- *   <li><b>What you want to do</b>: translate, aim, or both.</li>
- *   <li><b>Where the target is defined</b>: field coordinates, relative to an anchor (e.g. AprilTag),
- *       or relative to the robot at the moment guidance becomes enabled.</li>
- *   <li><b>Which point on the robot is being controlled</b>: robot center or an off-center mechanism.</li>
- *   <li><b>What feedback sources are available</b>: observation, field pose, or an adaptive combination.</li>
- * </ul>
+ * <p>A {@link DriveGuidanceSpec} answers four questions:</p>
+ * <ol>
+ *   <li><b>What is the robot trying to do?</b> translate, aim, or both</li>
+ *   <li><b>How is the goal expressed?</b> field point / heading, robot-relative nudge, or semantic
+ *       reference point / frame</li>
+ *   <li><b>Which point on the robot is controlled?</b> the robot center or an offset mechanism frame</li>
+ *   <li><b>Which feedback paths are available?</b> field pose, live AprilTags, or both</li>
+ * </ol>
  *
- * <p>Unlike {@link DriveGuidancePlan}, a spec contains <b>no controller tuning</b> and does not produce
- * drive commands by itself. Specs are meant to be reusable across overlays, tasks, and query-only
- * telemetry/gating.</p>
- *
- * <p>To execute a spec, combine it with {@link DriveGuidancePlan.Tuning} to form a plan via
- * {@link DriveGuidance#plan(DriveGuidanceSpec)}.</p>
+ * <p>A spec intentionally contains <strong>no controller tuning</strong>. That keeps “what I want”
+ * reusable across TeleOp overlays, autonomous tasks, and readiness queries.</p>
  */
 public final class DriveGuidanceSpec {
 
-    // ------------------------------------------------------------------------
-    // Targets
-    // ------------------------------------------------------------------------
-
     /**
-     * Marker interface for translation targets.
+     * Marker for translation targets.
      */
     public interface TranslationTarget {
         // Marker.
     }
 
     /**
-     * Marker interface for aim targets.
+     * Marker for aim targets.
      */
     public interface AimTarget {
         // Marker.
     }
 
     /**
-     * Target point defined in <b>field</b> coordinates.
+     * Field point target used for translation or point-at aiming.
      */
     public static final class FieldPoint implements TranslationTarget, AimTarget {
+        /**
+         * Field X coordinate in inches.
+         */
         public final double xInches;
+        /**
+         * Field Y coordinate in inches.
+         */
         public final double yInches;
 
+        /**
+         * @param xInches field X coordinate in inches
+         * @param yInches field Y coordinate in inches
+         */
         public FieldPoint(double xInches, double yInches) {
             this.xInches = xInches;
             this.yInches = yInches;
@@ -60,337 +63,372 @@ public final class DriveGuidanceSpec {
     }
 
     /**
-     * A point defined relative to an AprilTag’s reference frame.
-     *
-     * <p>Coordinates follow Phoenix conventions in the tag frame:</p>
-     * <ul>
-     *   <li>{@code forwardInches} is +X (forward/out from the tag),</li>
-     *   <li>{@code leftInches} is +Y (left when looking in +X).</li>
-     * </ul>
-     */
-    public static final class TagRelativePoint implements TranslationTarget, AimTarget {
-
-        /**
-         * Tag ID used to resolve this point in a {@link TagLayout}.
-         *
-         * <p>Use {@code -1} to mean “whichever tag is currently observed”. This is useful for
-         * vision-first specs that start with observation and may optionally add a field pose
-         * estimator later.</p>
-         */
-        public final int tagId;
-
-        public final double forwardInches;
-        public final double leftInches;
-
-        public TagRelativePoint(int tagId, double forwardInches, double leftInches) {
-            this.tagId = tagId;
-            this.forwardInches = forwardInches;
-            this.leftInches = leftInches;
-        }
-    }
-
-    /**
-     * Aim target that requests an <b>absolute field heading</b>.
-     *
-     * <p>This is the “turn to heading” sibling of {@link FieldPoint} / {@link TagRelativePoint} aiming.
-     * Instead of aiming at a point, guidance will rotate the robot until the aim control
-     * frame's heading matches {@link #fieldHeadingRad}.</p>
-     *
-     * <p><b>Important:</b> This target requires {@link Feedback#hasFieldPose()} because it needs a
-     * current robot heading estimate in the field frame. It cannot be solved from observation-only
-     * feedback.</p>
+     * Absolute field heading target.
      */
     public static final class FieldHeading implements AimTarget {
-
-        /**
-         * Desired heading in the field frame, in radians.
-         */
+        /** Desired heading in field coordinates, radians. */
         public final double fieldHeadingRad;
 
+        /**
+         * @param fieldHeadingRad desired field heading in radians
+         */
         public FieldHeading(double fieldHeadingRad) {
             this.fieldHeadingRad = fieldHeadingRad;
         }
     }
 
     /**
-     * Aim target that resolves to an <b>absolute field heading</b> derived from a specific AprilTag.
+     * Robot-relative movement captured from the translation control frame when guidance enables.
      *
-     * <p>This is useful when you want to align with a tag's orientation (or face a tag plane)
-     * rather than “look at” a point.</p>
-     *
-     * <p><b>Requires:</b> field-pose feedback with a {@link TagLayout}.</p>
-     */
-    public static final class TagHeading implements AimTarget {
-
-        /**
-         * Tag ID used to resolve this heading in a {@link TagLayout}.
-         */
-        public final int tagId;
-
-        /**
-         * Heading offset added to the tag's yaw to form the desired field heading.
-         */
-        public final double headingOffsetRad;
-
-        public TagHeading(int tagId, double headingOffsetRad) {
-            this.tagId = tagId;
-            this.headingOffsetRad = headingOffsetRad;
-        }
-    }
-
-    /**
-     * Translation target defined <b>relative to the robot</b> when guidance becomes enabled.
-     *
-     * <p>This is intended for “nudge” style behaviors such as:</p>
-     * <ul>
-     *   <li>drive forward 6 inches from wherever you are,</li>
-     *   <li>strafe left 3 inches,</li>
-     *   <li>micro-adjust an intake position without thinking in field coordinates.</li>
-     * </ul>
-     *
-     * <p>Each time guidance is enabled, Phoenix captures the current field pose of the
-     * <b>translation control frame</b> (see {@link ControlFrames#robotToTranslationFrame()}).
-     * The requested offset is applied in that frame to produce a fixed field target point.</p>
-     *
-     * <p><b>Requires:</b> field pose feedback (odometry / localization). Observation-only feedback
-     * cannot measure robot displacement, so this target cannot be solved from vision alone.</p>
+     * <p>Use this for “move forward 6 inches from wherever I enabled the plan”. The anchor pose is
+     * captured once on enable and exposed in {@link DriveGuidanceStatus#fieldToTranslationFrameAnchor}
+     * for debugging.</p>
      */
     public static final class RobotRelativePoint implements TranslationTarget {
-
-        /**
-         * Forward offset in inches (+X in the robot/translation frame).
-         */
+        /** Forward offset in the translation control frame, inches. */
         public final double forwardInches;
-
-        /**
-         * Left offset in inches (+Y in the robot/translation frame).
-         */
+        /** Left offset in the translation control frame, inches. */
         public final double leftInches;
 
+        /**
+         * @param forwardInches forward offset in inches
+         * @param leftInches left offset in inches
+         */
         public RobotRelativePoint(double forwardInches, double leftInches) {
             this.forwardInches = forwardInches;
             this.leftInches = leftInches;
         }
     }
 
-    // ------------------------------------------------------------------------
-    // Feedback
-    // ------------------------------------------------------------------------
+    /**
+     * Semantic reference point target.
+     *
+     * <p>Guidance resolves the point either directly from live AprilTags or indirectly from field
+     * pose, depending on the configured feedback and the kind of reference.</p>
+     */
+    public static final class ReferencePointTarget implements TranslationTarget, AimTarget {
+        /**
+         * Semantic point reference to resolve.
+         */
+        public final ReferencePoint2d reference;
+
+        /**
+         * @param reference semantic point reference, never {@code null}
+         */
+        public ReferencePointTarget(ReferencePoint2d reference) {
+            this.reference = Objects.requireNonNull(reference, "reference");
+        }
+    }
 
     /**
-     * Behavior when guidance cannot produce a valid command.
+     * Uses the origin point of a semantic reference frame.
+     */
+    public static final class ReferenceFrameOriginTarget implements TranslationTarget, AimTarget {
+        /**
+         * Semantic frame whose origin should be used.
+         */
+        public final ReferenceFrame2d reference;
+
+        /**
+         * @param reference semantic frame reference, never {@code null}
+         */
+        public ReferenceFrameOriginTarget(ReferenceFrame2d reference) {
+            this.reference = Objects.requireNonNull(reference, "reference");
+        }
+    }
+
+    /**
+     * Uses an offset expressed in a semantic reference frame.
+     *
+     * <p>Example: “drive 6 inches in front of the backdrop frame origin” or “aim at a point 4
+     * inches to the left of this frame”.</p>
+     */
+    public static final class ReferenceFrameOffsetTarget implements TranslationTarget, AimTarget {
+        /**
+         * Semantic frame whose axes define the offset.
+         */
+        public final ReferenceFrame2d reference;
+        /**
+         * Forward offset in the reference frame, inches.
+         */
+        public final double forwardInches;
+        /**
+         * Left offset in the reference frame, inches.
+         */
+        public final double leftInches;
+
+        /**
+         * @param reference     semantic frame reference, never {@code null}
+         * @param forwardInches forward offset in the frame, inches
+         * @param leftInches    left offset in the frame, inches
+         */
+        public ReferenceFrameOffsetTarget(ReferenceFrame2d reference,
+                                          double forwardInches,
+                                          double leftInches) {
+            this.reference = Objects.requireNonNull(reference, "reference");
+            this.forwardInches = forwardInches;
+            this.leftInches = leftInches;
+        }
+    }
+
+    /**
+     * Aligns the aim control frame to a semantic reference frame heading.
+     */
+    public static final class ReferenceFrameHeadingTarget implements AimTarget {
+        /**
+         * Semantic frame whose heading should be matched.
+         */
+        public final ReferenceFrame2d reference;
+        /**
+         * Additional heading offset applied after resolving the frame heading.
+         */
+        public final double headingOffsetRad;
+
+        /**
+         * @param reference        semantic frame reference, never {@code null}
+         * @param headingOffsetRad extra offset added to the resolved frame heading, radians
+         */
+        public ReferenceFrameHeadingTarget(ReferenceFrame2d reference, double headingOffsetRad) {
+            this.reference = Objects.requireNonNull(reference, "reference");
+            this.headingOffsetRad = headingOffsetRad;
+        }
+    }
+
+    /**
+     * Behavior when guidance cannot produce a valid command from the available feedback.
      */
     public enum LossPolicy {
         /**
-         * Do not override any DOF when guidance is invalid.
-         *
-         * <p>This is the recommended default for TeleOp assist.</p>
+         * Leave the base drive command untouched for the channels guidance cannot solve.
          */
         PASS_THROUGH,
-
         /**
-         * Override the requested DOFs with zero commands when guidance is invalid.
-         *
-         * <p>This “hard stops” the robot in those DOFs and can feel surprising in TeleOp.
-         * Use intentionally.</p>
+         * Explicitly output zero for the channels guidance cannot solve.
          */
         ZERO_OUTPUT
     }
 
     /**
-     * Feedback configuration for driver guidance.
+     * Feedback configuration for guidance.
+     *
+     * <p>The three knobs are intentionally separate:</p>
+     * <ul>
+     *   <li>{@link AprilTags} = live sensing from the camera</li>
+     *   <li>{@link FieldPose} = estimated robot pose in field coordinates</li>
+     *   <li>{@link TagLayout} = static field metadata for fixed tags</li>
+     * </ul>
+     *
+     * <p>This separation is what lets guidance reason about the same semantic reference using
+     * either live visual geometry or the localizer, without requiring duplicate target
+     * definitions.</p>
      */
     public static final class Feedback {
-
         /**
-         * Observation feedback (may be null).
+         * Live AprilTag sensing path, or {@code null} when unavailable.
          */
-        public final Observation observation;
-
+        public final AprilTags aprilTags;
         /**
-         * Field pose feedback (may be null).
+         * Field-pose feedback path, or {@code null} when unavailable.
          */
         public final FieldPose fieldPose;
-
         /**
-         * Auto-selection gates (used only when both sources are present).
+         * Fixed AprilTag field metadata, or {@code null} when unavailable.
+         */
+        public final TagLayout fixedTagLayout;
+        /**
+         * Adaptive-takeover hysteresis and blend config, or {@code null} for defaults.
          */
         public final Gates gates;
-
         /**
-         * If true, use observation for omega whenever it is valid, even if translation uses field pose.
+         * Whether omega should prefer AprilTags whenever that path is valid.
          */
-        public final boolean preferObservationForOmega;
-
-        /**
-         * Loss behavior when no valid command can be produced.
-         */
+        public final boolean preferAprilTagsForOmega;
+        /** Behavior when no valid command can be produced. */
         public final LossPolicy lossPolicy;
 
-        private Feedback(Observation observation,
+        private Feedback(AprilTags aprilTags,
                          FieldPose fieldPose,
+                         TagLayout fixedTagLayout,
                          Gates gates,
-                         boolean preferObservationForOmega,
+                         boolean preferAprilTagsForOmega,
                          LossPolicy lossPolicy) {
-            this.observation = observation;
+            this.aprilTags = aprilTags;
             this.fieldPose = fieldPose;
+            this.fixedTagLayout = fixedTagLayout;
             this.gates = gates;
-            this.preferObservationForOmega = preferObservationForOmega;
+            this.preferAprilTagsForOmega = preferAprilTagsForOmega;
             this.lossPolicy = lossPolicy;
         }
 
         /**
-         * Create a feedback configuration.
+         * Validates and creates a feedback bundle.
          *
-         * <p>If both observation and field pose are provided, Phoenix uses adaptive selection.
-         * If gates are null, {@link Gates#defaults()} will be used.</p>
+         * <p>At least one active feedback path is required. When both AprilTags and field pose are
+         * present, guidance becomes adaptive and will use {@link Gates#defaults()} when no custom
+         * gate config is supplied.</p>
          */
-        public static Feedback create(Observation observation,
+        public static Feedback create(AprilTags aprilTags,
                                       FieldPose fieldPose,
+                                      TagLayout fixedTagLayout,
                                       Gates gates,
-                                      boolean preferObservationForOmega,
+                                      boolean preferAprilTagsForOmega,
                                       LossPolicy lossPolicy) {
-            if (observation == null && fieldPose == null) {
-                throw new IllegalArgumentException("feedback requires observation and/or fieldPose");
+            if (aprilTags == null && fieldPose == null) {
+                throw new IllegalArgumentException("feedback requires aprilTags and/or fieldPose");
             }
 
             Gates g = gates;
-            if (observation != null && fieldPose != null && g == null) {
+            if (aprilTags != null && fieldPose != null && g == null) {
                 g = Gates.defaults();
             }
 
             LossPolicy lp = (lossPolicy != null) ? lossPolicy : LossPolicy.PASS_THROUGH;
-            return new Feedback(observation, fieldPose, g, preferObservationForOmega, lp);
+            return new Feedback(aprilTags, fieldPose, fixedTagLayout, g, preferAprilTagsForOmega, lp);
         }
 
         /**
-         * @return true if this feedback config includes an observation source.
+         * @return whether a live AprilTag feedback path is configured
          */
-        public boolean hasObservation() {
-            return observation != null;
+        public boolean hasAprilTags() {
+            return aprilTags != null;
         }
 
         /**
-         * @return true if this feedback config includes a field pose estimator.
+         * @return whether a field-pose feedback path is configured
          */
         public boolean hasFieldPose() {
             return fieldPose != null;
         }
 
         /**
-         * @return true if the overlay will adaptively choose between sources (both are present).
+         * @return whether fixed tag field metadata is available
+         */
+        public boolean hasFixedTagLayout() {
+            return fixedTagLayout != null;
+        }
+
+        /**
+         * @return whether both AprilTags and field pose are available, enabling adaptive selection
          */
         public boolean isAdaptive() {
-            return hasObservation() && hasFieldPose();
-        }
-
-        /**
-         * Convenience: return the configured {@link TagLayout} if (and only if) field pose feedback is present.
-         */
-        public TagLayout tagLayoutOrNull() {
-            return fieldPose != null ? fieldPose.tagLayout : null;
+            return hasAprilTags() && hasFieldPose();
         }
     }
 
     /**
-     * Observation feedback parameters.
+     * Live AprilTag sensing path used directly by guidance.
      */
-    public static final class Observation {
-
+    public static final class AprilTags {
+        /**
+         * Default freshness bound for visual observations.
+         */
         public static final double DEFAULT_MAX_AGE_SEC = 0.50;
-        public static final double DEFAULT_MIN_QUALITY = 0.10;
-
-        public final ObservationSource2d source;
 
         /**
-         * Maximum age (seconds) for an observation to be considered valid.
+         * Sensor that provides the current best AprilTag observations.
+         */
+        public final AprilTagSensor sensor;
+        /**
+         * Robot→camera extrinsics used to convert camera measurements into robot geometry.
+         */
+        public final CameraMountConfig cameraMount;
+        /**
+         * Maximum allowed observation age in seconds.
          */
         public final double maxAgeSec;
 
         /**
-         * Minimum quality (0..1) for an observation to be considered valid.
+         * Creates a visual feedback path with default freshness bounds.
          */
-        public final double minQuality;
-
-        public Observation(ObservationSource2d source) {
-            this(source, DEFAULT_MAX_AGE_SEC, DEFAULT_MIN_QUALITY);
+        public AprilTags(AprilTagSensor sensor, CameraMountConfig cameraMount) {
+            this(sensor, cameraMount, DEFAULT_MAX_AGE_SEC);
         }
 
-        public Observation(ObservationSource2d source, double maxAgeSec, double minQuality) {
-            this.source = Objects.requireNonNull(source, "source");
+        /**
+         * @param sensor      live AprilTag sensor
+         * @param cameraMount robot→camera extrinsics
+         * @param maxAgeSec   maximum accepted observation age in seconds
+         */
+        public AprilTags(AprilTagSensor sensor, CameraMountConfig cameraMount, double maxAgeSec) {
+            this.sensor = Objects.requireNonNull(sensor, "sensor");
+            this.cameraMount = Objects.requireNonNull(cameraMount, "cameraMount");
             this.maxAgeSec = maxAgeSec;
-            this.minQuality = minQuality;
         }
     }
 
     /**
-     * Field pose feedback parameters.
+     * Field-pose feedback parameters.
+     *
+     * <p>This is usually a fused localizer or odometry-backed estimator. Guidance treats it as a
+     * source of {@code field -> robot} rather than as a direct AprilTag observation path.</p>
      */
     public static final class FieldPose {
-
+        /** Default maximum allowed estimate age. */
         public static final double DEFAULT_MAX_AGE_SEC = 0.50;
+        /** Default minimum quality required to use a pose estimate. */
         public static final double DEFAULT_MIN_QUALITY = 0.10;
 
+        /** Pose estimator that yields {@code field -> robot}. */
         public final PoseEstimator poseEstimator;
-
-        /**
-         * Optional tag layout (required for tag-relative targets when using field pose).
-         */
-        public final TagLayout tagLayout;
-
-        /**
-         * Maximum age (seconds) for a pose estimate to be considered valid.
-         */
+        /** Maximum allowed estimate age in seconds. */
         public final double maxAgeSec;
-
         /**
-         * Minimum quality (0..1) for a pose estimate to be considered valid.
+         * Minimum required estimate quality.
          */
         public final double minQuality;
 
+        /**
+         * Creates a field-pose feedback path with Phoenix defaults.
+         */
         public FieldPose(PoseEstimator poseEstimator) {
-            this(poseEstimator, null, DEFAULT_MAX_AGE_SEC, DEFAULT_MIN_QUALITY);
+            this(poseEstimator, DEFAULT_MAX_AGE_SEC, DEFAULT_MIN_QUALITY);
         }
 
-        public FieldPose(PoseEstimator poseEstimator, TagLayout tagLayout) {
-            this(poseEstimator, tagLayout, DEFAULT_MAX_AGE_SEC, DEFAULT_MIN_QUALITY);
-        }
-
-        public FieldPose(PoseEstimator poseEstimator,
-                         TagLayout tagLayout,
-                         double maxAgeSec,
-                         double minQuality) {
+        /**
+         * @param poseEstimator field-pose estimator
+         * @param maxAgeSec maximum allowed estimate age in seconds
+         * @param minQuality minimum required estimate quality
+         */
+        public FieldPose(PoseEstimator poseEstimator, double maxAgeSec, double minQuality) {
             this.poseEstimator = Objects.requireNonNull(poseEstimator, "poseEstimator");
-            this.tagLayout = tagLayout;
             this.maxAgeSec = maxAgeSec;
             this.minQuality = minQuality;
         }
     }
 
     /**
-     * Hysteresis + blending parameters for adaptive feedback selection.
+     * Hysteresis + blending parameters for adaptive source selection.
+     *
+     * <p>These values only matter when both AprilTags and field pose are configured. Translation
+     * takeover uses range hysteresis; omega can either track that same takeover or always prefer
+     * AprilTags when valid.</p>
      */
     public static final class Gates {
-
+        /**
+         * Default range at which AprilTags take over translation.
+         */
         public static final double DEFAULT_ENTER_RANGE_IN = 9.0;
+        /** Default range at which translation falls back to field pose. */
         public static final double DEFAULT_EXIT_RANGE_IN = 12.0;
+        /** Default blend duration when switching between solve paths. */
         public static final double DEFAULT_TAKEOVER_BLEND_SEC = 0.15;
 
-        /**
-         * Switch to observation when the observed range (inches) is &lt;= this value.
-         */
+        /** Translation-takeover entry threshold. */
         public final double enterRangeInches;
-
         /**
-         * Switch back to field pose when the observed range (inches) is &gt;= this value.
+         * Translation-takeover exit threshold.
          */
         public final double exitRangeInches;
-
         /**
-         * Blend time (seconds) when switching sources. 0 for instantaneous.
+         * Seconds to blend between field-pose and AprilTag commands.
          */
         public final double takeoverBlendSec;
 
+        /**
+         * @param enterRangeInches entry threshold for AprilTag takeover
+         * @param exitRangeInches exit threshold for AprilTag takeover
+         * @param takeoverBlendSec blend duration, seconds
+         */
         public Gates(double enterRangeInches, double exitRangeInches, double takeoverBlendSec) {
             this.enterRangeInches = enterRangeInches;
             this.exitRangeInches = exitRangeInches;
@@ -398,20 +436,22 @@ public final class DriveGuidanceSpec {
         }
 
         /**
-         * Reasonable defaults for typical “approach then fine align” driver assist.
+         * @return Phoenix default adaptive-takeover gates
          */
         public static Gates defaults() {
             return new Gates(DEFAULT_ENTER_RANGE_IN, DEFAULT_EXIT_RANGE_IN, DEFAULT_TAKEOVER_BLEND_SEC);
         }
     }
 
-    // ------------------------------------------------------------------------
-    // Spec data
-    // ------------------------------------------------------------------------
-
-    public final TranslationTarget translationTarget; // may be null
-    public final AimTarget aimTarget;                 // may be null
+    /**
+     * Translation target, or {@code null} if this spec only aims.
+     */
+    public final TranslationTarget translationTarget;
+    /** Aim target, or {@code null} if this spec only translates. */
+    public final AimTarget aimTarget;
+    /** Control frames defining which point on the robot is being driven/aimed. */
     public final ControlFrames controlFrames;
+    /** Feedback configuration used to solve the targets. */
     public final Feedback feedback;
 
     DriveGuidanceSpec(TranslationTarget translationTarget,
@@ -425,7 +465,9 @@ public final class DriveGuidanceSpec {
     }
 
     /**
-     * @return the natural (requested) mask implied by the configured targets.
+     * Returns the overlay mask implied by the configured targets.
+     *
+     * @return {@link DriveOverlayMask#ALL}, translation-only, omega-only, or none
      */
     public DriveOverlayMask requestedMask() {
         boolean t = translationTarget != null;
@@ -443,7 +485,10 @@ public final class DriveGuidanceSpec {
     }
 
     /**
-     * Alias for {@link #requestedMask()}.
+     * Suggested overlay mask for callers that want the obvious default behavior.
+     *
+     * <p>Today this is identical to {@link #requestedMask()}, but it remains a separate method so
+     * the public meaning stays clear.</p>
      */
     public DriveOverlayMask suggestedMask() {
         return requestedMask();

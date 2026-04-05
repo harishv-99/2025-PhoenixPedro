@@ -27,7 +27,7 @@ import edu.ftcphoenix.fw.task.TaskOutcome;
  * }</pre>
  *
  * <p>The task can be interrupted cleanly via {@link #cancel()} or by calling
- * {@link edu.ftcphoenix.fw.task.TaskRunner#clearAndCancel()} on the owning runner.</p>
+ * {@link edu.ftcphoenix.fw.task.TaskRunner#cancelAndClear()} on the owning runner.</p>
  */
 public final class DriveGuidanceTask implements Task {
 
@@ -223,10 +223,9 @@ public final class DriveGuidanceTask implements Task {
         }
 
         // Helpful if you want to tune takeover.
-        dbg.addData(p + ".obsInRangeForTranslation", core.obsInRangeForTranslation());
+        dbg.addData(p + ".aprilTagsInRangeForTranslation", core.aprilTagsInRangeForTranslation());
         dbg.addData(p + ".blendTTranslate", core.blendTTranslate());
         dbg.addData(p + ".blendTOmega", core.blendTOmega());
 
-        dbg.addData(p + ".lastObservedTagId", core.lastObservedTagId());
     }
 }
