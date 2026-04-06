@@ -2,7 +2,7 @@
 
 This file tracks Phoenix-specific follow-up work now that TeleOp uses the fused Pinpoint + AprilTag localizer, the framework owns the fixed-tag policy, both localization + guidance can share the same fixed-tag field-pose solver policy, and the robot-specific testers can mirror the production AprilTag tuning.
 
-The current framework pass also upgraded fusion to deduplicate repeated AprilTag frames by measurement timestamp and to replay odometry forward from the accepted frame time when latency compensation is available.
+The current framework pass also upgraded fusion to deduplicate repeated AprilTag frames by measurement timestamp, to replay odometry forward from the accepted frame time when latency compensation is available, to reject contradictory multi-tag frames when too little accepted weight agrees, and to age down stale AprilTag-localizer quality instead of treating every still-allowed frame as equally trustworthy.
 
 ---
 
@@ -19,9 +19,11 @@ The current framework pass also upgraded fusion to deduplicate repeated AprilTag
 
 4. Verify on the real robot that the new field-plausibility gate is permissive enough near walls/corners but still catches impossible AprilTag solves.
 
-5. Check the fusion tester's replay / projected / duplicate counters on the real field and make sure the camera pipeline is delivering fresh AprilTag frames at the expected cadence.
+5. Field-test the new multi-tag consensus threshold and AprilTag freshness-quality decay on the real field. In particular, confirm that contradictory frames are rejected and that still-useful slightly stale frames do not become too weak too early.
 
-6. Keep scoring-tag selection intentionally limited to the fixed goal tags used for localization fallback.
+6. Check the fusion tester's replay / projected / duplicate counters on the real field and make sure the camera pipeline is delivering fresh AprilTag frames at the expected cadence.
+
+7. Keep scoring-tag selection intentionally limited to the fixed goal tags used for localization fallback.
 
 ---
 

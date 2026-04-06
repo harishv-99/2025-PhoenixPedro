@@ -43,6 +43,11 @@ import edu.ftcphoenix.fw.localization.PoseResetter;
  * multiple robot loops while its age increases. This estimator only evaluates a given vision
  * measurement timestamp once, so a single stale frame cannot keep "pulling" the fused pose over
  * several loops.</p>
+ *
+ * <p><b>Reported fused quality:</b> the short-term confidence boost given after an accepted vision
+ * correction now scales with the accepted vision measurement's own quality instead of treating
+ * every fresh correction as equally trustworthy. Manual {@link #setPose(Pose2d)} anchors clear
+ * that recent-vision hold so resets do not masquerade as fresh camera corrections.</p>
  */
 public class OdometryTagFusionPoseEstimator implements PoseEstimator, PoseResetter {
 
@@ -232,6 +237,7 @@ public class OdometryTagFusionPoseEstimator implements PoseEstimator, PoseResett
     // Debug/telemetry helpers.
     private double lastVisionAcceptedSec = Double.NaN;
     private double lastAcceptedVisionMeasurementTimestampSec = Double.NaN;
+    private double lastAcceptedVisionQuality = Double.NaN;
     private double lastEvaluatedVisionTimestampSec = Double.NaN;
     private Pose3d lastVisionPose = Pose3d.zero();
     private Pose3d lastLatencyCompensatedVisionPose = Pose3d.zero();
@@ -293,6 +299,13 @@ public class OdometryTagFusionPoseEstimator implements PoseEstimator, PoseResett
      */
     public double getLastAcceptedVisionMeasurementTimestampSec() {
         return lastAcceptedVisionMeasurementTimestampSec;
+    }
+
+    /**
+     * Quality of the most recently accepted vision measurement, or NaN if never.
+     */
+    public double getLastAcceptedVisionQuality() {
+        return lastAcceptedVisionQuality;
     }
 
     /**
@@ -395,6 +408,7 @@ public class OdometryTagFusionPoseEstimator implements PoseEstimator, PoseResett
                     lastReplayReferencePose = visionPose;
                     lastVisionAcceptedSec = nowSec;
                     lastAcceptedVisionMeasurementTimestampSec = visEst.timestampSec;
+                    lastAcceptedVisionQuality = MathUtil.clamp(visEst.quality, 0.0, 1.0);
                     lastVisionUsedReplay = false;
                     acceptedVisionCount++;
                     projectedVisionCount++;
@@ -441,10 +455,13 @@ public class OdometryTagFusionPoseEstimator implements PoseEstimator, PoseResett
                 ? MathUtil.clamp(odomEst.quality, 0.0, 1.0)
                 : 0.0;
 
-        if (!Double.isNaN(lastVisionAcceptedSec)) {
+        if (!Double.isNaN(lastVisionAcceptedSec)
+                && !Double.isNaN(lastAcceptedVisionQuality)
+                && cfg.visionConfidenceHoldSec > TIMESTAMP_EPS_SEC) {
             double age = nowSec - lastVisionAcceptedSec;
             if (age >= 0.0 && age < cfg.visionConfidenceHoldSec) {
-                double boost = 1.0 - (age / cfg.visionConfidenceHoldSec);
+                double holdScale = 1.0 - (age / cfg.visionConfidenceHoldSec);
+                double boost = MathUtil.clamp01(lastAcceptedVisionQuality * holdScale);
                 quality = MathUtil.clamp(Math.max(quality, boost), 0.0, 1.0);
             }
         }
@@ -475,6 +492,9 @@ public class OdometryTagFusionPoseEstimator implements PoseEstimator, PoseResett
 
         fusedPose = new Pose3d(pose.xInches, pose.yInches, 0.0, MathUtil.wrapToPi(pose.headingRad), 0.0, 0.0);
         initialized = true;
+        lastVisionAcceptedSec = Double.NaN;
+        lastAcceptedVisionMeasurementTimestampSec = Double.NaN;
+        lastAcceptedVisionQuality = Double.NaN;
 
         Pose3d currentOdomPose = null;
         PoseEstimate odomEst = odometry.getEstimate();
@@ -613,6 +633,7 @@ public class OdometryTagFusionPoseEstimator implements PoseEstimator, PoseResett
         fusedPose = correctedPoseNow;
         lastVisionAcceptedSec = nowSec;
         lastAcceptedVisionMeasurementTimestampSec = visEst.timestampSec;
+        lastAcceptedVisionQuality = q;
         lastVisionUsedReplay = usedReplay;
         acceptedVisionCount++;
         if (usedReplay) {
@@ -847,6 +868,7 @@ public class OdometryTagFusionPoseEstimator implements PoseEstimator, PoseResett
                 .addData(p + ".projectedVisionCount", projectedVisionCount)
                 .addData(p + ".lastVisionAcceptedSec", lastVisionAcceptedSec)
                 .addData(p + ".lastAcceptedVisionMeasurementTimestampSec", lastAcceptedVisionMeasurementTimestampSec)
+                .addData(p + ".lastAcceptedVisionQuality", lastAcceptedVisionQuality)
                 .addData(p + ".lastEvaluatedVisionTimestampSec", lastEvaluatedVisionTimestampSec)
                 .addData(p + ".cfg.maxVisionAgeSec", cfg.maxVisionAgeSec)
                 .addData(p + ".cfg.minVisionQuality", cfg.minVisionQuality)

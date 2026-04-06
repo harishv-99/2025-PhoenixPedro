@@ -17,6 +17,7 @@ import edu.ftcphoenix.fw.ftc.FtcTagLayoutDebug;
 import edu.ftcphoenix.fw.ftc.FtcTelemetryDebugSink;
 import edu.ftcphoenix.fw.ftc.FtcVision;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
+import edu.ftcphoenix.fw.localization.apriltag.FixedTagFieldPoseSolver;
 import edu.ftcphoenix.fw.localization.apriltag.TagOnlyPoseEstimator;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagObservation;
@@ -460,11 +461,16 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
                 ? selectionResult.selectedObservation
                 : AprilTagObservation.noTarget(Double.POSITIVE_INFINITY);
         PoseEstimate est = poseEstimator.getEstimate();
+        FixedTagFieldPoseSolver.Result solve = poseEstimator.getLastSolveResult();
+        double freshnessQualityScale = poseEstimator.getLastFreshnessQualityScale();
 
-        renderTelemetry(obs, est);
+        renderTelemetry(obs, est, solve, freshnessQualityScale);
     }
 
-    private void renderTelemetry(AprilTagObservation obs, PoseEstimate est) {
+    private void renderTelemetry(AprilTagObservation obs,
+                                 PoseEstimate est,
+                                 FixedTagFieldPoseSolver.Result solve,
+                                 double freshnessQualityScale) {
         Telemetry t = ctx.telemetry;
         t.clearAll();
 
@@ -528,6 +534,13 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
 
         t.addLine("");
         t.addLine("Pose estimate (TagOnlyPoseEstimator):");
+        t.addLine(String.format(Locale.US,
+                "  solve: cand=%d | accepted=%d | acceptedWeight=%.2f | freshnessScale=%.2f",
+                solve.candidateCount,
+                solve.acceptedCount,
+                solve.acceptedWeightFraction,
+                freshnessQualityScale
+        ));
         if (!est.hasPose || est.fieldToRobotPose == null) {
             t.addLine("  (no pose) Need: fresh detection for a tag present in the field layout.");
         } else {

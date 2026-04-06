@@ -28,12 +28,17 @@ It exists so season-specific fixes and the next maintainership steps do not get 
 - Fixed a fusion reliability bug by rebasing the odometry baseline after accepted vision corrections are pushed back into odometry.
 - Upgraded fusion to deduplicate repeated camera frames by measurement timestamp and to apply accepted vision corrections at the frame timestamp before replaying odometry forward.
 - Added fail-fast validation for fusion latency-compensation history length and surfaced replay/projected/duplicate counters in the fusion tester.
+- Added a multi-tag consensus-weight gate so contradictory frames can be rejected instead of letting a lone surviving tag masquerade as a trustworthy multi-tag solve.
+- Made AprilTag-only localizer quality decay as detections age toward the freshness limit instead of treating every still-allowed frame as equally trustworthy.
+- Made fused-localizer quality boost scale with the quality of the last accepted AprilTag correction instead of blindly boosting every fresh correction to the same confidence.
+- Cleared the fusion localizer's "recent vision correction" hold on manual pose anchors so resets/snap-to-pose actions do not pretend a fresh camera correction just occurred.
 
 ---
 
 ## Near-term follow-ups
 
 1. When Phoenix is updated for a new FTC season, extend `FtcGameTagLayout.officialGameFieldFixed(...)` with the new season's fixed-tag policy instead of letting robot code paper over the difference.
+2. Field-test the new multi-tag consensus threshold and AprilTag freshness-quality decay on a real FTC field to confirm the defaults are strict enough to reject contradictions without becoming annoyingly conservative.
 
 ---
 

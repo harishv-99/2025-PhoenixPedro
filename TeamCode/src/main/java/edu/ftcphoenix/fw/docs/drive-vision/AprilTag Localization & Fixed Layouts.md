@@ -79,6 +79,7 @@ Phoenix's AprilTag localizer uses a shared solver:
 - prefer the FTC SDK's per-detection robot pose when it agrees with Phoenix's explicit geometry and remains plausible
 - choose a consensus seed
 - reject outliers
+- when multiple fixed tags are present, require a configurable majority of candidate weight to agree before returning a pose
 - compute one fused field pose and a quality score
 
 The framework uses that same solver in both:
@@ -88,9 +89,10 @@ The framework uses that same solver in both:
 
 That keeps guidance and localization from drifting into two subtly different AprilTag policies.
 
-The solver's quality score also now reflects how much of the visible candidate set actually agreed
-with the final consensus, so a solve that survives only by throwing away most of the frame is not
-reported as confidently as a solve where multiple tags agree.
+The solver's quality score also reflects how much of the visible candidate set actually agreed
+with the final consensus, and the solver can now reject a contradictory multi-tag frame outright if
+too little of the candidate weight survives the consensus gate. That keeps a lone surviving tag
+from masquerading as a trustworthy multi-tag solve when the rest of the frame strongly disagrees.
 
 ---
 
@@ -120,6 +122,11 @@ DriveGuidancePlan plan = DriveGuidance.plan()
 That is the intended way to keep the AprilTag-only localizer and the guidance AprilTag bridge aligned without passing camera-mount-only fields into unrelated APIs.
 
 The guidance API also normalizes its solver-config input defensively at the boundary, so even if a caller accidentally passes a richer config subtype, only the shared fixed-tag solver fields are retained.
+
+One intentional split remains:
+
+- the shared solver config owns multi-tag weighting / consensus / plausibility policy
+- `TagOnlyPoseEstimator.Config` adds localizer-specific concepts such as the camera mount and how strongly pose quality decays as a detections frame ages toward its freshness limit
 
 ---
 
@@ -188,11 +195,17 @@ fusionCfg.odomHistorySec = 1.0;   // must cover maxVisionAgeSec when latency com
 PoseEstimator fused = new OdometryTagFusionPoseEstimator(pinpoint, tagLocalizer, fusionCfg);
 ```
 
+`TagOnlyPoseEstimator` also now ages its own quality down as the detections frame approaches
+`maxDetectionAgeSec`, so a barely-fresh frame can still be used when appropriate without looking as
+trustworthy as a brand-new multi-tag solve.
+
 Notes:
 
 - `odomHistorySec` should be at least `maxVisionAgeSec`; the config now validates this fail-fast.
 - replay only uses measurements newer than the current replay base (initialization, manual reset, or last accepted correction).
 - if exact replay is unavailable, the estimator falls back to a simpler projected-now correction rather than silently re-applying the same stale frame every loop.
+- the fused estimator's reported quality now respects the quality of the most recently accepted AprilTag correction instead of giving every fresh correction the same confidence boost.
+- manual `setPose(...)` calls are treated as manual anchors, so they clear the "recent accepted vision" hold rather than pretending that a real camera correction just happened.
 - if the fused pose is pushed back into odometry, the replay base and odometry history are rebased at that corrected pose.
 
 ---

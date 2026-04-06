@@ -392,6 +392,7 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
         t.addData("Vision Path", "%d replay / %d projected",
                 fusedEstimator.getReplayedVisionCount(),
                 fusedEstimator.getProjectedVisionCount());
+        t.addData("Last Vision Q", "%.2f", fusedEstimator.getLastAcceptedVisionQuality());
         t.addData("Vision Skip", "%d dup / %d old",
                 fusedEstimator.getSkippedDuplicateVisionCount(),
                 fusedEstimator.getSkippedOutOfOrderVisionCount());

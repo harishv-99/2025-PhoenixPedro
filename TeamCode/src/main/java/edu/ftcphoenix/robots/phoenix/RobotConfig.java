@@ -350,7 +350,9 @@ public class RobotConfig {
             // exclusion lists here.
 
             // AprilTag-only solve: use all visible fixed tags, weight closer / more centered tags,
-            // and allow the FTC SDK robotPose when it agrees with Phoenix's explicit geometry.
+            // insist that contradictory multi-tag frames still have a majority of accepted weight,
+            // age down stale-but-still-allowed frames, and allow the FTC SDK robotPose when it
+            // agrees with Phoenix's explicit geometry.
             aprilTags.maxAbsBearingRad = 0.0;
             aprilTags.preferObservationFieldPose = true;
             aprilTags.observationFieldPoseMaxDeltaInches = 8.0;
@@ -359,6 +361,8 @@ public class RobotConfig {
             aprilTags.minObservationWeight = 0.05;
             aprilTags.outlierPositionGateInches = 18.0;
             aprilTags.outlierHeadingGateRad = Math.toRadians(25.0);
+            aprilTags.minAcceptedWeightFractionWhenMultipleCandidates = 0.50;
+            aprilTags.qualityScaleAtMaxDetectionAge = 0.25;
             aprilTags.plausibleFieldRegion = FtcFieldRegions.fullField();
             aprilTags.maxOutsidePlausibleFieldRegionInches = 3.0;
 
