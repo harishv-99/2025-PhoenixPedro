@@ -9,6 +9,7 @@ import edu.ftcphoenix.fw.core.geometry.Pose3d;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.field.TagLayout;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
+import edu.ftcphoenix.fw.localization.apriltag.FixedTagFieldPoseSolver;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountLogic;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagDetections;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagObservation;
@@ -96,9 +97,12 @@ final class DriveGuidanceEvaluator {
         }
 
         PoseEstimate est = cfg.poseEstimator.getEstimate();
+        double estAgeSec = (est != null)
+                ? Math.max(est.ageSec, clock.nowSec() - est.timestampSec)
+                : Double.POSITIVE_INFINITY;
         boolean valid = est != null
                 && est.hasPose
-                && est.ageSec <= cfg.maxAgeSec
+                && estAgeSec <= cfg.maxAgeSec
                 && est.quality >= cfg.minQuality;
         if (!valid) {
             return Solution.invalid();
@@ -383,8 +387,11 @@ final class DriveGuidanceEvaluator {
     }
 
     /**
-     * Estimates a temporary field-centric robot pose by averaging all fresh observations whose IDs
-     * appear in the supplied fixed AprilTag layout.
+     * Estimates a temporary field-centric robot pose from all fresh fixed-tag observations visible
+     * in the current frame.
+     *
+     * <p>This intentionally reuses the same weighted multi-tag solver as the AprilTag-only
+     * localizer so the guidance lane and the localization lane do not diverge.</p>
      */
     private LiveFieldPose estimateFieldPoseFromAprilTags(LoopClock clock,
                                                          DriveGuidanceSpec.AprilTags cfg,
@@ -402,38 +409,17 @@ final class DriveGuidanceEvaluator {
             return null;
         }
 
-        double sumX = 0.0;
-        double sumY = 0.0;
-        double sumSin = 0.0;
-        double sumCos = 0.0;
-        double sumRange = 0.0;
-        int count = 0;
-
-        for (AprilTagObservation obs : observations) {
-            if (obs == null || !obs.hasTarget) {
-                continue;
-            }
-            Pose3d fieldToTag = layout.getFieldToTagPose(obs.id);
-            if (fieldToTag == null) {
-                continue;
-            }
-            Pose3d robotToTag = cfg.cameraMount.robotToCameraPose().then(obs.cameraToTagPose);
-            Pose2d fieldToRobot = fieldToTag.then(robotToTag.inverse()).toPose2d();
-
-            sumX += fieldToRobot.xInches;
-            sumY += fieldToRobot.yInches;
-            sumSin += Math.sin(fieldToRobot.headingRad);
-            sumCos += Math.cos(fieldToRobot.headingRad);
-            sumRange += obs.cameraRangeInches();
-            count++;
-        }
-
-        if (count <= 0) {
+        FixedTagFieldPoseSolver.Result solve = FixedTagFieldPoseSolver.solve(
+                observations,
+                layout,
+                cfg.cameraMount,
+                FixedTagFieldPoseSolver.Config.defaults()
+        );
+        if (!solve.hasPose) {
             return null;
         }
 
-        Pose2d averaged = new Pose2d(sumX / count, sumY / count, Math.atan2(sumSin / count, sumCos / count));
-        return new LiveFieldPose(averaged, sumRange / count);
+        return new LiveFieldPose(solve.toPose2d(), solve.rangeInches);
     }
 
     /**

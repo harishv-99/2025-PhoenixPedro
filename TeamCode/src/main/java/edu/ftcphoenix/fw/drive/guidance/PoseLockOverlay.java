@@ -61,7 +61,8 @@ final class PoseLockOverlay implements DriveOverlay {
         }
 
         // Basic age/quality gating.
-        if (est.ageSec > DriveGuidanceSpec.Localization.DEFAULT_MAX_AGE_SEC
+        double ageSec = Math.max(est.ageSec, clock.nowSec() - est.timestampSec);
+        if (ageSec > DriveGuidanceSpec.Localization.DEFAULT_MAX_AGE_SEC
                 || est.quality < DriveGuidanceSpec.Localization.DEFAULT_MIN_QUALITY) {
             lastOut = DriveOverlayOutput.zero();
             return lastOut;

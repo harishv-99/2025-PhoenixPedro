@@ -2,7 +2,6 @@ package edu.ftcphoenix.fw.tools.tester.calibration;
 
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
-import org.firstinspires.ftc.vision.apriltag.AprilTagGameDatabase;
 import org.firstinspires.ftc.vision.apriltag.AprilTagLibrary;
 
 import java.util.ArrayList;
@@ -182,7 +181,7 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
         // Layout
         this.layout = (layoutOverride != null)
                 ? layoutOverride
-                : new FtcGameTagLayout(AprilTagGameDatabase.getCurrentGameTagLibrary());
+                : FtcGameTagLayout.currentGameFieldFixed();
 
         // Camera selection setup
         selectedCameraName = (preferredCameraName == null || preferredCameraName.trim().isEmpty())

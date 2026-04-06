@@ -1,7 +1,6 @@
 package edu.ftcphoenix.fw.tools.tester.calibration;
 
 import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
-import org.firstinspires.ftc.vision.apriltag.AprilTagGameDatabase;
 import org.firstinspires.ftc.vision.apriltag.AprilTagLibrary;
 
 import java.util.Locale;
@@ -374,7 +373,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
 
             layout = (cfg.tagLayout != null)
                     ? cfg.tagLayout
-                    : new FtcGameTagLayout(AprilTagGameDatabase.getCurrentGameTagLibrary());
+                    : FtcGameTagLayout.currentGameFieldFixed();
 
             selectedCameraName = cfg.preferredCameraName;
             if (selectedCameraName == null) {

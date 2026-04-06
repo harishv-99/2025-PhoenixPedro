@@ -10,6 +10,12 @@ import edu.ftcphoenix.fw.core.geometry.Pose3d;
  * <p>This is <strong>field metadata</strong>, not a sensor output. A {@link TagLayout} answers one
  * question: for a given AprilTag ID, where is that tag mounted in the FTC field frame?</p>
  *
+ * <p><b>Important:</b> this interface is only for tags that are safe to treat as
+ * <em>fixed field landmarks</em>. If a season includes AprilTags that are useful for identification
+ * or aiming but whose exact placement can vary from match to match, those tags should remain
+ * available through raw detection/selection, but they must be omitted from the {@link TagLayout}
+ * used by localization or AprilTag→field-pose solving.</p>
+ *
  * <h2>What lives here</h2>
  * <ul>
  *   <li><b>AprilTag ID</b> — the numeric ID reported by the vision pipeline.</li>

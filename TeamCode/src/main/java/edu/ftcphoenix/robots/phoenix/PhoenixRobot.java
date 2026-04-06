@@ -4,7 +4,6 @@ import com.qualcomm.robotcore.hardware.Gamepad;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 
 import org.firstinspires.ftc.robotcore.external.Telemetry;
-import org.firstinspires.ftc.vision.apriltag.AprilTagGameDatabase;
 
 import java.util.Collections;
 import java.util.HashSet;
@@ -36,6 +35,8 @@ import edu.ftcphoenix.fw.ftc.FtcVision;
 import edu.ftcphoenix.fw.ftc.localization.PinpointPoseEstimator;
 import edu.ftcphoenix.fw.input.Gamepads;
 import edu.ftcphoenix.fw.input.binding.Bindings;
+import edu.ftcphoenix.fw.localization.apriltag.TagOnlyPoseEstimator;
+import edu.ftcphoenix.fw.localization.fusion.OdometryTagFusionPoseEstimator;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagObservation;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
@@ -71,6 +72,8 @@ public final class PhoenixRobot {
     private ShooterSupervisor shooterSupervisor;
     private MecanumDrivebase drivebase;
     private PinpointPoseEstimator pinpoint;
+    private TagOnlyPoseEstimator tagLocalizer;
+    private OdometryTagFusionPoseEstimator fusedLocalizer;
     private DriveSource stickDrive;
     private DriveSource driveWithAim;
     private CameraMountConfig cameraMountConfig;
@@ -158,14 +161,25 @@ public final class PhoenixRobot {
         // autonomous / fusion later.
         pinpoint = new PinpointPoseEstimator(hardwareMap, RobotConfig.Localization.pinpoint);
 
-        // --- Vision ---
+        // --- Vision + localization ---
         cameraMountConfig = RobotConfig.Vision.cameraMount;
-        tagSensor = FtcVision.aprilTags(hardwareMap, RobotConfig.Vision.nameWebcam);
+        FtcVision.Config visionCfg = FtcVision.Config.defaults()
+                .withCameraMount(cameraMountConfig);
+        tagSensor = FtcVision.aprilTags(hardwareMap, RobotConfig.Vision.nameWebcam, visionCfg);
 
-        // Use the FTC-provided tag layout metadata (field coordinates + tag heading).
-        // This is optional for pure “vision-only” aiming, but it becomes important when you
-        // later add odometry / field-pose aware targeting.
-        gameTagLayout = new FtcGameTagLayout(AprilTagGameDatabase.getCurrentGameTagLibrary());
+        // Use the framework's official-game fixed-field layout for localization/guidance.
+        // Raw detections still see all FTC tags; only field-pose math is restricted to the tags
+        // whose placement is actually deterministic.
+        gameTagLayout = FtcGameTagLayout.currentGameFieldFixed();
+
+        TagOnlyPoseEstimator.Config tagLocalizerCfg = RobotConfig.Localization.aprilTags.copy()
+                .withCameraMount(cameraMountConfig);
+        tagLocalizer = new TagOnlyPoseEstimator(tagSensor, gameTagLayout, tagLocalizerCfg);
+        fusedLocalizer = new OdometryTagFusionPoseEstimator(
+                pinpoint,
+                tagLocalizer,
+                RobotConfig.Localization.pinpointAprilTagFusion.copy()
+        );
 
         // Auto-aim assist is explicitly driver-controlled (P2 left bumper). The selector
         // previews while idle, then latches the best visible scoring tag while the driver holds aim.
@@ -203,14 +217,20 @@ public final class PhoenixRobot {
                 .withMinOmegaCmd(RobotConfig.AutoAim.AIM_MIN_OMEGA_CMD)
                 .withAimDeadbandRad(Math.toRadians(RobotConfig.AutoAim.AIM_TOLERANCE_DEG));
 
+        // Auto-aim remains a selected-tag reference, but the solve lane is now adaptive:
+        // live tags are preferred when visible, and the fused localizer keeps the same selected
+        // tag geometry alive when the goal tag temporarily drops out of view.
         aimPlan = DriveGuidance.plan()
                 .aimTo()
                 .point(References.relativeToSelectedTagPoint(scoringSelection, aimOffsetsByTag))
                 .doneAimTo()
                 .tuning(aimTuning)
                 .resolveWith()
-                .aprilTagsOnly()
+                .adaptive()
                 .aprilTags(tagSensor, cameraMountConfig, 0.50)
+                .localization(fusedLocalizer)
+                .fixedAprilTagLayout(gameTagLayout)
+                .omegaPolicy(DriveGuidanceSpec.OmegaPolicy.PREFER_APRIL_TAGS_WHEN_VALID)
                 .onLoss(DriveGuidanceSpec.LossPolicy.PASS_THROUGH)
                 .doneResolveWith()
                 .build();
@@ -221,8 +241,9 @@ public final class PhoenixRobot {
         // "Aimed" gate: safe to feed a ball only when we're facing the scoring target.
         //
         // Design choice:
-        //  - If no tag is visible, we allow shooting (manual aiming + manual velocity fallback).
-        //  - If a tag is visible, require omega error to be within a configurable tolerance.
+        //  - If guidance can solve the selected target (from live tags or fused localization),
+        //    require omega error to be within a configurable tolerance.
+        //  - If guidance cannot solve this loop, allow manual aiming / manual velocity fallback.
         //
         // NOTE:
         // We intentionally allow the "aim ready" tolerance to be a bit looser than the
@@ -243,16 +264,16 @@ public final class PhoenixRobot {
                 }
                 lastCycle = cyc;
 
-                TagSelectionResult sel = scoringSelection.get(clock);
-                if (!sel.hasFreshSelectedObservation) {
-                    last = true;
-                    return last;
-                }
-
                 DriveGuidanceStatus status = aimQuery != null
                         ? aimQuery.sample(clock, DriveOverlayMask.OMEGA_ONLY)
                         : null;
-                last = status != null && status.omegaWithin(aimReadyTolRad);
+                if (status != null && status.hasOmegaError) {
+                    last = status.omegaWithin(aimReadyTolRad);
+                    return last;
+                }
+
+                // No solvable aim state this loop: allow manual fallback rather than blocking feed.
+                last = true;
                 return last;
             }
         };
@@ -272,36 +293,6 @@ public final class PhoenixRobot {
 
         shooterSupervisor = new ShooterSupervisor(shooter, scoringSelection, aimOkToShoot, aimOverride);
 
-        /*
-         * FUTURE OPTION:
-         * If TeleOp maintains a real field pose (for example via a fused estimator rather than a
-         * zeroed-on-enable odometry origin), these same tag-relative references can also use
-         * resolveWith().localization(...) + fixedAprilTagLayout(...) as a fallback when a fixed scoring tag drops out of
-         * view. Keep the reference definitions the same; just add the extra feedback lanes.
-         *
-         * Conceptually:
-         *
-         *   aimPlanBlue = DriveGuidance.plan()
-         *           .aimTo()
-         *               .point(References.relativeToTagPoint(
-         *                       RobotConfig.AutoAim.BLUE_TARGET_TAG_ID,
-         *                       blueOffset.forwardInches,
-         *                       blueOffset.leftInches))
-         *               .doneAimTo()
-         *           .resolveWith()
-         *               .aprilTags(tagSensor, cameraMountConfig, 0.50)
-         *               .localization(fusedPoseEstimator, 0.25, 0.0)
-         *               .fixedAprilTagLayout(gameTagLayout)
-         *               .translationTakeover(72.0, 84.0, 0.25)
-         *               .omegaPolicy(DriveGuidanceSpec.OmegaPolicy.PREFER_APRIL_TAGS_WHEN_VALID)
-         *               .onLoss(DriveGuidanceSpec.LossPolicy.PASS_THROUGH)
-         *               .doneResolveWith()
-         *           .build();
-         *
-         * That keeps the semantic reference exactly the same while adding localizer fallback and
-         * close-range visual refinement.
-         */
-
         // Enable condition for the guidance overlay.
         //
         // Stack multiple overlays without nested overlayWhen(...) calls.
@@ -312,7 +303,7 @@ public final class PhoenixRobot {
                         "shootBrace",
                         BooleanSource.of(shootBraceLatch::get),
                         DriveGuidance.poseLock(
-                                pinpoint,
+                                fusedLocalizer,
                                 DriveGuidancePlan.Tuning.defaults()
                                         .withTranslateKp(0.08)
                                         .withMaxTranslateCmd(0.35)
@@ -341,7 +332,6 @@ public final class PhoenixRobot {
         // Create bindings
         createBindings();
     }
-
     private void createBindings() {
         // -------------------------
         // Gamepad 2: shooter + intake
@@ -404,8 +394,10 @@ public final class PhoenixRobot {
         // --- Lane 3: perception + bindings ---
         bindings.update(clock);
 
-        // --- Lane 4 support: odometry for pose lock / field-aware debug ---
-        if (pinpoint != null) {
+        // --- Lane 4 support: fused field pose for pose lock / guidance fallback / debug ---
+        if (fusedLocalizer != null) {
+            fusedLocalizer.update(clock);
+        } else if (pinpoint != null) {
             pinpoint.update(clock);
         }
 
@@ -439,33 +431,37 @@ public final class PhoenixRobot {
         telemetry.addData("aim.okToShoot", aimOkToShoot.getAsBoolean(clock));
         telemetry.addData("aim.override", aimOverride.getAsBoolean(clock));
         telemetry.addData("shootBrace", shootBraceLatch.get());
+        if (fusedLocalizer != null) {
+            telemetry.addData("pose.fused", fusedLocalizer.getEstimate());
+        }
         if (pinpoint != null) {
-            telemetry.addData("pose", pinpoint.getEstimate());
+            telemetry.addData("pose.odom", pinpoint.getEstimate());
         }
 //        driveWithAim.debugDump(dbg, "drive");
 
         DriveGuidanceStatus aimStatus = sampleCurrentAimStatus();
         TagSelectionResult sel = scoringSelection.get(clock);
-        AprilTagObservation obs = sel.hasFreshSelectedObservation
-                ? sel.selectedObservation
-                : AprilTagObservation.noTarget(Double.POSITIVE_INFINITY);
-        if (obs.hasTarget) {
-            emitCurrentTargetTelemetry(obs, aimStatus);
+        if (sel.hasSelection) {
+            AprilTagObservation obs = sel.hasFreshSelectedObservation
+                    ? sel.selectedObservation
+                    : AprilTagObservation.noTarget(Double.POSITIVE_INFINITY);
+            emitCurrentTargetTelemetry(sel.selectedTagId, obs, sel.hasFreshSelectedObservation, aimStatus);
         }
 
         telemetry.update();
     }
 
     private DriveGuidanceStatus sampleCurrentAimStatus() {
-        TagSelectionResult sel = scoringSelection.get(clock);
-        if (!sel.hasFreshSelectedObservation || aimQuery == null) {
-            return null;
-        }
-        return aimQuery.sample(clock, DriveOverlayMask.OMEGA_ONLY);
+        return aimQuery != null
+                ? aimQuery.sample(clock, DriveOverlayMask.OMEGA_ONLY)
+                : null;
     }
 
-    private void emitCurrentTargetTelemetry(AprilTagObservation obs, DriveGuidanceStatus aimStatus) {
-        RobotConfig.AutoAim.AimOffset aimOffset = RobotConfig.AutoAim.aimOffsetForTag(obs.id);
+    private void emitCurrentTargetTelemetry(int tagId,
+                                            AprilTagObservation obs,
+                                            boolean tagVisible,
+                                            DriveGuidanceStatus aimStatus) {
+        RobotConfig.AutoAim.AimOffset aimOffset = RobotConfig.AutoAim.aimOffsetForTag(tagId);
 
         if (aimReady.getAsBoolean(clock)) {
             telemetry.addLine(">>> AIM READY <<<");
@@ -473,9 +469,10 @@ public final class PhoenixRobot {
             telemetry.addLine(">>> AIM OVERRIDE <<<");
         }
 
-        telemetry.addData("tagId", obs.id);
-        telemetry.addData("distIn", obs.cameraRangeInches());
-        telemetry.addData("bearingTagDeg", Math.toDegrees(obs.cameraBearingRad()));
+        telemetry.addData("tagId", tagId);
+        telemetry.addData("tag.visible", tagVisible);
+        telemetry.addData("distIn", tagVisible ? obs.cameraRangeInches() : Double.NaN);
+        telemetry.addData("bearingTagDeg", tagVisible ? Math.toDegrees(obs.cameraBearingRad()) : Double.NaN);
         telemetry.addData(
                 "aimOffset(fwd,left)",
                 String.format("%.1f, %.1f", aimOffset.forwardInches, aimOffset.leftInches)
@@ -487,11 +484,17 @@ public final class PhoenixRobot {
                         : Double.NaN
         );
 
+        telemetry.addData(
+                "aim.source",
+                (aimStatus != null && aimStatus.hasOmegaError)
+                        ? aimStatus.omegaSource
+                        : DriveGuidanceStatus.ChannelSource.NONE
+        );
         telemetry.addData("aim.tolDeg", RobotConfig.AutoAim.AIM_TOLERANCE_DEG);
         telemetry.addData("aim.readyTolDeg", RobotConfig.AutoAim.AIM_READY_TOLERANCE_DEG);
 
-        if (gameTagLayout != null && gameTagLayout.has(obs.id)) {
-            Pose3d fieldToTag = gameTagLayout.requireFieldToTagPose(obs.id);
+        if (gameTagLayout != null && gameTagLayout.has(tagId)) {
+            Pose3d fieldToTag = gameTagLayout.requireFieldToTagPose(tagId);
             Pose2d fieldToAimPoint = new Pose2d(
                     fieldToTag.xInches,
                     fieldToTag.yInches,
@@ -539,5 +542,7 @@ public final class PhoenixRobot {
             tagSensor.close();
             tagSensor = null;
         }
+        tagLocalizer = null;
+        fusedLocalizer = null;
     }
 }

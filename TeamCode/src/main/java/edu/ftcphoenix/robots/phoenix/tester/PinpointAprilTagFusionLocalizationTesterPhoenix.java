@@ -42,7 +42,8 @@ public final class PinpointAprilTagFusionLocalizationTesterPhoenix {
                     return new PinpointAprilTagFusionLocalizationTester(
                             RobotConfig.Vision.nameWebcam,
                             RobotConfig.Vision.cameraMount,
-                            cfg
+                            cfg,
+                            RobotConfig.Localization.pinpointAprilTagFusion.copy()
                     );
                 }
         );

@@ -2,7 +2,6 @@ package edu.ftcphoenix.fw.tools.tester.localization;
 
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
-import org.firstinspires.ftc.vision.apriltag.AprilTagGameDatabase;
 import org.firstinspires.ftc.vision.apriltag.AprilTagLibrary;
 
 import java.util.Collections;
@@ -294,10 +293,10 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
             // Odometry
             odomEstimator = new PinpointPoseEstimator(ctx.hw, pinpointCfg);
 
-            // Field layout (current game)
+            // Field layout (current game fixed-field subset)
             layout = (layoutOverride != null)
                     ? layoutOverride
-                    : new FtcGameTagLayout(AprilTagGameDatabase.getCurrentGameTagLibrary());
+                    : FtcGameTagLayout.currentGameFieldFixed();
 
             rebuildSelectionAndEstimators();
 

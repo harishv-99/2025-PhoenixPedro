@@ -2,7 +2,6 @@ package edu.ftcphoenix.fw.tools.tester.localization;
 
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
-import org.firstinspires.ftc.vision.apriltag.AprilTagGameDatabase;
 import org.firstinspires.ftc.vision.apriltag.AprilTagLibrary;
 
 import java.util.Collections;
@@ -38,7 +37,7 @@ import edu.ftcphoenix.fw.tools.tester.ui.HardwareNamePicker;
  *
  * <p>Internally this tester shares one raw {@link AprilTagSensor} across a selector (for telemetry) and
  * {@link TagOnlyPoseEstimator} (for pose solving) with the official
- * FTC game tag layout from {@link AprilTagGameDatabase#getCurrentGameTagLibrary()}.</p>
+ * framework's default field-fixed FTC game tag layout via {@link FtcGameTagLayout#currentGameFieldFixed()}.</p>
  *
  * <h2>Camera mount calibration</h2>
  * <p>
@@ -172,11 +171,11 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
      */
     @Override
     protected void onInit() {
-        // Field layout: default to the FTC SDK's official current-game tag library, unless overridden.
+        // Field layout: default to the framework's official current-game fixed-field layout, unless overridden.
         if (layoutOverride != null) {
             layout = layoutOverride;
         } else {
-            layout = new FtcGameTagLayout(AprilTagGameDatabase.getCurrentGameTagLibrary());
+            layout = FtcGameTagLayout.currentGameFieldFixed();
         }
 
         // Camera selection

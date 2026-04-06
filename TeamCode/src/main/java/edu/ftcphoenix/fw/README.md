@@ -55,6 +55,7 @@ If you are new to Phoenix, read in this order:
 
 - [`Framework Principles.md`](<Framework Principles.md>)
 - [`docs/maintainers/Maintainer Notes.md`](<docs/maintainers/Maintainer Notes.md>)
+- [`docs/maintainers/AprilTag Localization Follow-Ups.md`](<docs/maintainers/AprilTag Localization Follow-Ups.md>)
 - [`docs/getting-started/Framework Overview.md`](<docs/getting-started/Framework Overview.md>)
 
 ## Documentation structure

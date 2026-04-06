@@ -1,20 +1,15 @@
 package edu.ftcphoenix.fw.localization.apriltag;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Objects;
 
 import edu.ftcphoenix.fw.core.debug.DebugSink;
-import edu.ftcphoenix.fw.core.geometry.Pose2d;
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
-import edu.ftcphoenix.fw.core.math.MathUtil;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.field.TagLayout;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
 import edu.ftcphoenix.fw.localization.PoseEstimator;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagDetections;
-import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagObservation;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
 
 /**
@@ -28,23 +23,20 @@ import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
  *   <li><b>localization</b> may still use <em>all</em> visible fixed tags to reduce noise.</li>
  * </ul>
  *
- * <p>The implementation is deliberately simple and predictable for early-season use:
- * each valid fixed-tag observation is converted into a field-centric robot pose estimate using the
- * rigid-transform chain {@code fieldToTag ∘ (robotToCamera ∘ cameraToTag)^(-1)}. The resulting
- * planar poses are then averaged across the current camera frame.</p>
+ * <p>Internally the estimator delegates the actual multi-tag solve to
+ * {@link FixedTagFieldPoseSolver}. That shared solver applies weighting, optional SDK-pose use,
+ * and outlier rejection so localization and guidance's temporary AprilTag field-pose bridge stay
+ * behaviorally aligned.</p>
  */
 public final class TagOnlyPoseEstimator implements PoseEstimator {
 
     /** Configuration parameters for {@link TagOnlyPoseEstimator}. */
-    public static final class Config {
-        /** Optional maximum absolute bearing (radians) for an observation to be trusted. */
-        public double maxAbsBearingRad = 0.0;
-
+    public static final class Config extends FixedTagFieldPoseSolver.Config {
         /** Camera mount extrinsics in the robot frame. */
         public CameraMountConfig cameraMount = CameraMountConfig.identity();
 
         private Config() {
-            // Defaults assigned in field initializers.
+            // Defaults assigned in field initializers and base class fields.
         }
 
         /**
@@ -66,9 +58,19 @@ public final class TagOnlyPoseEstimator implements PoseEstimator {
         /**
          * Returns a shallow copy of this config.
          */
+        @Override
         public Config copy() {
             Config c = new Config();
             c.maxAbsBearingRad = this.maxAbsBearingRad;
+            c.preferObservationFieldPose = this.preferObservationFieldPose;
+            c.observationFieldPoseMaxDeltaInches = this.observationFieldPoseMaxDeltaInches;
+            c.observationFieldPoseMaxDeltaHeadingRad = this.observationFieldPoseMaxDeltaHeadingRad;
+            c.rangeSoftnessInches = this.rangeSoftnessInches;
+            c.minObservationWeight = this.minObservationWeight;
+            c.outlierPositionGateInches = this.outlierPositionGateInches;
+            c.outlierHeadingGateRad = this.outlierHeadingGateRad;
+            c.consistencyPositionScaleInches = this.consistencyPositionScaleInches;
+            c.consistencyHeadingScaleRad = this.consistencyHeadingScaleRad;
             c.cameraMount = this.cameraMount;
             return c;
         }
@@ -80,11 +82,11 @@ public final class TagOnlyPoseEstimator implements PoseEstimator {
 
     private PoseEstimate lastEstimate;
     private AprilTagDetections lastDetections = AprilTagDetections.none();
-    private final List<AprilTagObservation> lastAccepted = new ArrayList<AprilTagObservation>();
+    private FixedTagFieldPoseSolver.Result lastSolve = FixedTagFieldPoseSolver.Result.none();
 
     /**
-     * Creates a simple AprilTag-only pose estimator that may use multiple visible fixed tags from
-     * the same frame.
+     * Creates an AprilTag-only pose estimator that may use multiple visible fixed tags from the
+     * same frame.
      */
     public TagOnlyPoseEstimator(AprilTagSensor tags, TagLayout layout, Config cfg) {
         this.tags = Objects.requireNonNull(tags, "tags");
@@ -103,58 +105,30 @@ public final class TagOnlyPoseEstimator implements PoseEstimator {
     public void update(LoopClock clock) {
         Objects.requireNonNull(clock, "clock");
         final double nowSec = clock.nowSec();
-        lastAccepted.clear();
         lastDetections = tags.get(clock);
+        lastSolve = FixedTagFieldPoseSolver.Result.none();
 
         if (lastDetections == null || !lastDetections.isFresh(Double.POSITIVE_INFINITY)) {
             lastEstimate = PoseEstimate.noPose(nowSec);
             return;
         }
 
-        double sumX = 0.0;
-        double sumY = 0.0;
-        double sumSinYaw = 0.0;
-        double sumCosYaw = 0.0;
-        int count = 0;
+        lastSolve = FixedTagFieldPoseSolver.solve(
+                lastDetections.observations,
+                layout,
+                cfg.cameraMount,
+                cfg
+        );
 
-        for (AprilTagObservation obs : lastDetections.observations) {
-            if (obs == null || !obs.hasTarget || !layout.has(obs.id)) {
-                continue;
-            }
-
-            double bearingRad = obs.cameraBearingRad();
-            if (cfg.maxAbsBearingRad > 0.0 && Math.abs(bearingRad) > cfg.maxAbsBearingRad) {
-                continue;
-            }
-
-            Pose3d fieldToTagPose = layout.requireFieldToTagPose(obs.id);
-            Pose3d robotToCameraPose = cfg.cameraMount.robotToCameraPose();
-            Pose3d robotToTagPose = robotToCameraPose.then(obs.cameraToTagPose);
-            Pose3d fieldToRobot6DofPose = fieldToTagPose.then(robotToTagPose.inverse());
-
-            double yawRad = Pose2d.wrapToPi(fieldToRobot6DofPose.yawRad);
-            sumX += fieldToRobot6DofPose.xInches;
-            sumY += fieldToRobot6DofPose.yInches;
-            sumSinYaw += Math.sin(yawRad);
-            sumCosYaw += Math.cos(yawRad);
-            lastAccepted.add(obs);
-            count++;
-        }
-
-        if (count <= 0) {
+        if (!lastSolve.hasPose) {
             lastEstimate = PoseEstimate.noPose(nowSec);
             return;
         }
 
-        double avgX = sumX / count;
-        double avgY = sumY / count;
-        double avgYaw = Math.atan2(sumSinYaw / count, sumCosYaw / count);
-        Pose3d fieldToRobotPose = new Pose3d(avgX, avgY, 0.0, avgYaw, 0.0, 0.0);
-
         double ageSec = lastDetections.ageSec;
         double timestampSec = nowSec - ageSec;
-        double quality = Math.min(1.0, count / 3.0);
-        lastEstimate = new PoseEstimate(fieldToRobotPose, true, quality, ageSec, timestampSec);
+        Pose3d fieldToRobotPose = lastSolve.fieldToRobotPose;
+        lastEstimate = new PoseEstimate(fieldToRobotPose, true, lastSolve.quality, ageSec, timestampSec);
     }
 
     /**
@@ -177,7 +151,10 @@ public final class TagOnlyPoseEstimator implements PoseEstimator {
         dbg.addData(p + ".class", getClass().getSimpleName())
                 .addData(p + ".detections.ageSec", lastDetections.ageSec)
                 .addData(p + ".detections.count", lastDetections.observations.size())
-                .addData(p + ".accepted.count", lastAccepted.size())
+                .addData(p + ".solve.candidates", lastSolve.candidateCount)
+                .addData(p + ".solve.accepted", lastSolve.acceptedCount)
+                .addData(p + ".solve.totalWeight", lastSolve.totalWeight)
+                .addData(p + ".solve.rangeInches", lastSolve.rangeInches)
                 .addData(p + ".hasPose", lastEstimate.hasPose)
                 .addData(p + ".quality", lastEstimate.quality)
                 .addData(p + ".timestampSec", lastEstimate.timestampSec);
@@ -186,16 +163,22 @@ public final class TagOnlyPoseEstimator implements PoseEstimator {
             Pose3d est = lastEstimate.fieldToRobotPose;
             dbg.addData(p + ".fieldToRobotPose.xInches", est.xInches)
                     .addData(p + ".fieldToRobotPose.yInches", est.yInches)
-                    .addData(p + ".fieldToRobotPose.yawRad", est.yawRad);
+                    .addData(p + ".fieldToRobotPose.zInches", est.zInches)
+                    .addData(p + ".fieldToRobotPose.yawRad", est.yawRad)
+                    .addData(p + ".fieldToRobotPose.pitchRad", est.pitchRad)
+                    .addData(p + ".fieldToRobotPose.rollRad", est.rollRad);
         }
 
-        for (int i = 0; i < lastAccepted.size(); i++) {
-            AprilTagObservation obs = lastAccepted.get(i);
+        for (int i = 0; i < lastSolve.acceptedContributions.size(); i++) {
+            FixedTagFieldPoseSolver.Contribution c = lastSolve.acceptedContributions.get(i);
             String q = p + ".accepted[" + i + "]";
-            dbg.addData(q + ".id", obs.id)
-                    .addData(q + ".ageSec", obs.ageSec)
-                    .addData(q + ".cameraBearingRad", obs.cameraBearingRad())
-                    .addData(q + ".cameraRangeInches", obs.cameraRangeInches());
+            dbg.addData(q + ".id", c.observation.id)
+                    .addData(q + ".ageSec", c.observation.ageSec)
+                    .addData(q + ".weight", c.weight)
+                    .addData(q + ".usedObservationFieldPose", c.usedObservationFieldPose)
+                    .addData(q + ".cameraBearingRad", c.observation.cameraBearingRad())
+                    .addData(q + ".cameraRangeInches", c.observation.cameraRangeInches())
+                    .addData(q + ".fieldToRobotPose", c.fieldToRobotPose);
         }
     }
 }

@@ -5,6 +5,8 @@ Most students should not need anything here to write robot code.
 
 For the student-facing architecture, start with [`Framework Overview`](<../getting-started/Framework Overview.md>) and [`Recommended Robot Design`](<../design/Recommended Robot Design.md>).
 
+For current AprilTag/localization follow-up work, also see [`AprilTag Localization Follow-Ups`](<AprilTag Localization Follow-Ups.md>).
+
 ---
 
 ## 1. Advanced notes

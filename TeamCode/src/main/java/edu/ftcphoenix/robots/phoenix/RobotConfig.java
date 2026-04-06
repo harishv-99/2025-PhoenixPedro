@@ -5,6 +5,8 @@ import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver;
 import edu.ftcphoenix.fw.core.hal.Direction;
 import edu.ftcphoenix.fw.ftc.FtcDrives;
 import edu.ftcphoenix.fw.ftc.localization.PinpointPoseEstimator;
+import edu.ftcphoenix.fw.localization.apriltag.TagOnlyPoseEstimator;
+import edu.ftcphoenix.fw.localization.fusion.OdometryTagFusionPoseEstimator;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 
 /**
@@ -317,7 +319,22 @@ public class RobotConfig {
                         .withForwardPodDirection(GoBildaPinpointDriver.EncoderDirection.FORWARD)
                         .withStrafePodDirection(GoBildaPinpointDriver.EncoderDirection.FORWARD);
 
-        // Advanced options (uncomment if needed):
+        /**
+         * AprilTag-only global pose solve used as the vision lane for localization fusion.
+         *
+         * <p>The camera mount itself still lives in {@link Vision#cameraMount}; robot code should
+         * copy this config and attach the calibrated mount at the call site.</p>
+         */
+        public static TagOnlyPoseEstimator.Config aprilTags =
+                TagOnlyPoseEstimator.Config.defaults();
+
+        /**
+         * Fusion tuning for Pinpoint odometry corrected by AprilTag global pose measurements.
+         */
+        public static OdometryTagFusionPoseEstimator.Config pinpointAprilTagFusion =
+                OdometryTagFusionPoseEstimator.Config.defaults();
+
+        // Advanced options / default tuning:
         static {
             // pinpoint.withEncoderPods(GoBildaPinpointDriver.GoBildaOdometryPods.goBILDA_4_BAR_POD);
             // pinpoint.withCustomEncoderResolutionTicksPerInch(null);
@@ -325,6 +342,30 @@ public class RobotConfig {
             // pinpoint.withResetOnInit(true);
             // pinpoint.withResetWaitMs(300);
             // pinpoint.withQuality(0.75);
+
+            // The framework's FtcGameTagLayout.currentGameFieldFixed() now owns the official
+            // current-game fixed-tag policy, so robot code no longer carries season-specific
+            // exclusion lists here.
+
+            // AprilTag-only solve: use all visible fixed tags, weight closer / more centered tags,
+            // and allow the FTC SDK robotPose when it agrees with Phoenix's explicit geometry.
+            aprilTags.maxAbsBearingRad = 0.0;
+            aprilTags.preferObservationFieldPose = true;
+            aprilTags.observationFieldPoseMaxDeltaInches = 8.0;
+            aprilTags.observationFieldPoseMaxDeltaHeadingRad = Math.toRadians(12.0);
+            aprilTags.rangeSoftnessInches = 36.0;
+            aprilTags.minObservationWeight = 0.05;
+            aprilTags.outlierPositionGateInches = 18.0;
+            aprilTags.outlierHeadingGateRad = Math.toRadians(25.0);
+
+            // Fusion: trust Pinpoint for smooth motion, but let fresh AprilTag solves gently pull
+            // the robot back toward the field truth when they are plausible.
+            pinpointAprilTagFusion.maxVisionAgeSec = 0.35;
+            pinpointAprilTagFusion.minVisionQuality = 0.10;
+            pinpointAprilTagFusion.visionPositionGain = 0.25;
+            pinpointAprilTagFusion.visionHeadingGain = 0.35;
+            pinpointAprilTagFusion.maxVisionPositionJumpIn = 24.0;
+            pinpointAprilTagFusion.maxVisionHeadingJumpRad = Math.toRadians(60.0);
         }
     }
 

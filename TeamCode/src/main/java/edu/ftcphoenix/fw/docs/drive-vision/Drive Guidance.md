@@ -211,6 +211,11 @@ One sensor instance may be safely shared across:
 - localization,
 - and guidance.
 
+When Phoenix combines multiple fixed tags into a temporary field pose (for localization or for
+Drive Guidance's AprilTag→field-pose bridge), it treats that as a **solve over raw detections**,
+not as a new kind of reference. Closer and more centered tags contribute more than far / oblique
+ones, and obvious outliers can be rejected before the final average is formed.
+
 ### 4.2 Tag selection
 
 A `TagSelectionSource` answers:
@@ -302,7 +307,9 @@ DriveGuidancePlan aimAtTag = DriveGuidance.plan()
         .build();
 ```
 
-Field-fixed references can also be solved in the AprilTags lane when you provide `fixedAprilTagLayout(...)`.
+Field-fixed references can also be solved in the AprilTags lane when you provide `fixedAprilTagLayout(...)`. That layout should contain only tags whose field placement is truly fixed; season objects whose exact placement can vary match-to-match should stay available to raw detection/selection, but should be excluded from localization and AprilTag→field-pose solving.
+
+For official FTC games, the framework helper `FtcGameTagLayout.currentGameFieldFixed()` is the intended way to build that layout. It keeps the "what counts as field-fixed?" decision in one framework-level place so guidance, localization, and testers all agree.
 
 ### 5.3 Adaptive
 
