@@ -11,6 +11,7 @@ import edu.ftcphoenix.fw.core.math.MathUtil;
 import edu.ftcphoenix.fw.field.TagLayout;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagObservation;
+import edu.ftcphoenix.fw.spatial.Region2d;
 
 /**
  * Shared helper that estimates a field-centric robot pose from one camera frame containing one or
@@ -95,6 +96,24 @@ public final class FixedTagFieldPoseSolver {
         public double consistencyHeadingScaleRad = Math.toRadians(8.0);
 
         /**
+         * Optional region describing where the robot is plausibly allowed to be on the field.
+         *
+         * <p>When non-null, obviously impossible AprilTag field solves may be rejected before they
+         * reach the localizer or guidance lane. This is a lightweight reliability gate rather than
+         * a full collision / rules model.</p>
+         */
+        public Region2d plausibleFieldRegion = null;
+
+        /**
+         * How far outside {@link #plausibleFieldRegion} a pose may drift before it is rejected.
+         *
+         * <p>Zero means the pose must lie inside the region (or exactly on its boundary). A small
+         * positive tolerance is often useful because AprilTag measurements have some noise and the
+         * robot center may briefly solve a hair outside the legal floor footprint.</p>
+         */
+        public double maxOutsidePlausibleFieldRegionInches = 0.0;
+
+        /**
          * Creates a fresh config with Phoenix defaults.
          */
         public static Config defaults() {
@@ -102,20 +121,91 @@ public final class FixedTagFieldPoseSolver {
         }
 
         /**
-         * Returns a shallow copy of this config.
+         * Returns a shallow copy of this config, preserving the concrete config type.
          */
         public Config copy() {
             Config c = new Config();
-            c.maxAbsBearingRad = this.maxAbsBearingRad;
-            c.preferObservationFieldPose = this.preferObservationFieldPose;
-            c.observationFieldPoseMaxDeltaInches = this.observationFieldPoseMaxDeltaInches;
-            c.observationFieldPoseMaxDeltaHeadingRad = this.observationFieldPoseMaxDeltaHeadingRad;
-            c.rangeSoftnessInches = this.rangeSoftnessInches;
-            c.minObservationWeight = this.minObservationWeight;
-            c.outlierPositionGateInches = this.outlierPositionGateInches;
-            c.outlierHeadingGateRad = this.outlierHeadingGateRad;
-            c.consistencyPositionScaleInches = this.consistencyPositionScaleInches;
-            c.consistencyHeadingScaleRad = this.consistencyHeadingScaleRad;
+            copyBaseFieldsInto(c);
+            return c;
+        }
+
+        /**
+         * Returns a normalized base-config copy of {@code source}.
+         *
+         * <p>This is the right helper when a caller only wants the shared field-pose-solver
+         * settings and does <em>not</em> want any subclass-specific fields to leak across an API
+         * boundary.</p>
+         */
+        public static Config copyOf(Config source) {
+            Config c = new Config();
+            if (source != null) {
+                source.copyBaseFieldsInto(c);
+            }
+            return c;
+        }
+
+        /**
+         * Returns a validated normalized base-config copy of {@code source}.
+         *
+         * <p>Use this at API boundaries that accept {@link Config} but only want the shared
+         * field-pose-solver settings. Any subclass-specific fields on {@code source} are ignored
+         * intentionally so callers cannot accidentally smuggle unrelated config through the wrong
+         * API.</p>
+         */
+        public static Config normalizedValidatedCopyOf(Config source, String context) {
+            Config c = copyOf(source);
+            c.validate(context);
+            return c;
+        }
+
+        /**
+         * Copies the shared solver fields into {@code target}.
+         *
+         * <p>Subclasses may reuse this when implementing their own typed {@code copy()} methods.
+         * The target must be non-null.</p>
+         */
+        protected final void copyBaseFieldsInto(Config target) {
+            Objects.requireNonNull(target, "target");
+            target.maxAbsBearingRad = this.maxAbsBearingRad;
+            target.preferObservationFieldPose = this.preferObservationFieldPose;
+            target.observationFieldPoseMaxDeltaInches = this.observationFieldPoseMaxDeltaInches;
+            target.observationFieldPoseMaxDeltaHeadingRad = this.observationFieldPoseMaxDeltaHeadingRad;
+            target.rangeSoftnessInches = this.rangeSoftnessInches;
+            target.minObservationWeight = this.minObservationWeight;
+            target.outlierPositionGateInches = this.outlierPositionGateInches;
+            target.outlierHeadingGateRad = this.outlierHeadingGateRad;
+            target.consistencyPositionScaleInches = this.consistencyPositionScaleInches;
+            target.consistencyHeadingScaleRad = this.consistencyHeadingScaleRad;
+            target.plausibleFieldRegion = this.plausibleFieldRegion;
+            target.maxOutsidePlausibleFieldRegionInches = this.maxOutsidePlausibleFieldRegionInches;
+        }
+
+        /**
+         * Validates this config and throws an actionable error when a value is not usable.
+         */
+        public void validate(String context) {
+            String p = (context != null && !context.trim().isEmpty())
+                    ? context.trim()
+                    : "FixedTagFieldPoseSolver.Config";
+
+            requireFiniteNonNegative(maxAbsBearingRad, p + ".maxAbsBearingRad");
+            requireFinitePositive(observationFieldPoseMaxDeltaInches, p + ".observationFieldPoseMaxDeltaInches");
+            requireFinitePositive(observationFieldPoseMaxDeltaHeadingRad, p + ".observationFieldPoseMaxDeltaHeadingRad");
+            requireFinitePositive(rangeSoftnessInches, p + ".rangeSoftnessInches");
+            requireFiniteInRange(minObservationWeight, 0.0, 1.0, p + ".minObservationWeight");
+            requireFinitePositive(outlierPositionGateInches, p + ".outlierPositionGateInches");
+            requireFinitePositive(outlierHeadingGateRad, p + ".outlierHeadingGateRad");
+            requireFinitePositive(consistencyPositionScaleInches, p + ".consistencyPositionScaleInches");
+            requireFinitePositive(consistencyHeadingScaleRad, p + ".consistencyHeadingScaleRad");
+            requireFiniteNonNegative(maxOutsidePlausibleFieldRegionInches, p + ".maxOutsidePlausibleFieldRegionInches");
+        }
+
+        /**
+         * Returns a shallow validated copy of this config.
+         */
+        public Config validatedCopy(String context) {
+            Config c = copy();
+            c.validate(context);
             return c;
         }
     }
@@ -150,6 +240,8 @@ public final class FixedTagFieldPoseSolver {
         public final double quality;
         public final int candidateCount;
         public final int acceptedCount;
+        public final double acceptedFraction;
+        public final double acceptedWeightFraction;
         public final double totalWeight;
         public final List<Contribution> acceptedContributions;
 
@@ -159,6 +251,8 @@ public final class FixedTagFieldPoseSolver {
                        double quality,
                        int candidateCount,
                        int acceptedCount,
+                       double acceptedFraction,
+                       double acceptedWeightFraction,
                        double totalWeight,
                        List<Contribution> acceptedContributions) {
             this.hasPose = hasPose;
@@ -167,6 +261,8 @@ public final class FixedTagFieldPoseSolver {
             this.quality = quality;
             this.candidateCount = candidateCount;
             this.acceptedCount = acceptedCount;
+            this.acceptedFraction = acceptedFraction;
+            this.acceptedWeightFraction = acceptedWeightFraction;
             this.totalWeight = totalWeight;
             this.acceptedContributions = acceptedContributions;
         }
@@ -182,6 +278,8 @@ public final class FixedTagFieldPoseSolver {
                     0.0,
                     0,
                     0,
+                    0.0,
+                    0.0,
                     0.0,
                     Collections.<Contribution>emptyList()
             );
@@ -229,16 +327,19 @@ public final class FixedTagFieldPoseSolver {
         Objects.requireNonNull(layout, "layout");
         CameraMountConfig mount = (cameraMount != null) ? cameraMount : CameraMountConfig.identity();
         Config solveCfg = (cfg != null) ? cfg : Config.defaults();
+        solveCfg.validate("FixedTagFieldPoseSolver.solve");
 
         if (observations.isEmpty() || layout.ids().isEmpty()) {
             return Result.none();
         }
 
         ArrayList<Candidate> candidates = new ArrayList<Candidate>(observations.size());
+        double totalCandidateWeight = 0.0;
         for (AprilTagObservation obs : observations) {
             Candidate c = candidateFor(obs, layout, mount, solveCfg);
             if (c != null) {
                 candidates.add(c);
+                totalCandidateWeight += c.weight;
             }
         }
 
@@ -261,7 +362,7 @@ public final class FixedTagFieldPoseSolver {
             accepted.add(seed);
         }
 
-        return combineAccepted(candidates.size(), accepted, solveCfg);
+        return combineAccepted(candidates.size(), totalCandidateWeight, accepted, solveCfg);
     }
 
     private static Candidate candidateFor(AprilTagObservation obs,
@@ -297,6 +398,16 @@ public final class FixedTagFieldPoseSolver {
 
         if (chosenPose == null || !isFinitePose(chosenPose)) {
             return null;
+        }
+
+        if (!isPosePlausible(chosenPose, cfg)) {
+            if (usedObservationFieldPose && geometryPose != null && isFinitePose(geometryPose)
+                    && isPosePlausible(geometryPose, cfg)) {
+                chosenPose = geometryPose;
+                usedObservationFieldPose = false;
+            } else {
+                return null;
+            }
         }
 
         double weight = observationWeight(obs, cfg);
@@ -392,6 +503,7 @@ public final class FixedTagFieldPoseSolver {
     }
 
     private static Result combineAccepted(int candidateCount,
+                                          double totalCandidateWeight,
                                           List<Candidate> accepted,
                                           Config cfg) {
         if (accepted == null || accepted.isEmpty()) {
@@ -438,6 +550,10 @@ public final class FixedTagFieldPoseSolver {
                 Math.atan2(sumSinRoll, sumCosRoll)
         );
 
+        if (!isPosePlausible(solvedPose, cfg)) {
+            return Result.none();
+        }
+
         Pose2d solved2d = solvedPose.toPose2d();
         double residualPos = 0.0;
         double residualHeading = 0.0;
@@ -449,13 +565,20 @@ public final class FixedTagFieldPoseSolver {
 
         double avgWeight = MathUtil.clamp01(sumW / accepted.size());
         double countScore = MathUtil.clamp01(((double) accepted.size()) / 3.0);
+        double acceptedFraction = MathUtil.clamp01(((double) accepted.size()) / Math.max(1.0, candidateCount));
+        double acceptedWeightFraction = (Double.isFinite(totalCandidateWeight) && totalCandidateWeight > 1e-9)
+                ? MathUtil.clamp01(sumW / totalCandidateWeight)
+                : 1.0;
         double posConsistency = 1.0 - MathUtil.clamp01(residualPos / positiveOr(cfg.consistencyPositionScaleInches, 6.0));
         double headingConsistency = 1.0 - MathUtil.clamp01(residualHeading / positiveOr(cfg.consistencyHeadingScaleRad, Math.toRadians(8.0)));
         double consistency = 0.5 * (posConsistency + headingConsistency);
         double quality = MathUtil.clamp01(
                 (0.35 + 0.65 * avgWeight)
                         * (0.5 + 0.5 * countScore)
+                        * (0.40 + 0.60 * acceptedFraction)
+                        * (0.30 + 0.70 * acceptedWeightFraction)
                         * (0.5 + 0.5 * consistency)
+                        * plausibleRegionQualityScale(solved2d, cfg)
         );
 
         ArrayList<Contribution> contributions = new ArrayList<Contribution>(accepted.size());
@@ -475,9 +598,36 @@ public final class FixedTagFieldPoseSolver {
                 quality,
                 candidateCount,
                 accepted.size(),
+                acceptedFraction,
+                acceptedWeightFraction,
                 sumW,
                 Collections.unmodifiableList(contributions)
         );
+    }
+
+    private static boolean isPosePlausible(Pose3d pose, Config cfg) {
+        if (pose == null || cfg == null || cfg.plausibleFieldRegion == null) {
+            return true;
+        }
+        Pose2d p = pose.toPose2d();
+        double signedDistance = cfg.plausibleFieldRegion.signedDistanceInches(p);
+        double maxOutside = nonNegativeOr(cfg.maxOutsidePlausibleFieldRegionInches, 0.0);
+        return signedDistance >= -maxOutside;
+    }
+
+    private static double plausibleRegionQualityScale(Pose2d pose, Config cfg) {
+        if (pose == null || cfg == null || cfg.plausibleFieldRegion == null) {
+            return 1.0;
+        }
+        double signedDistance = cfg.plausibleFieldRegion.signedDistanceInches(pose);
+        if (signedDistance >= 0.0) {
+            return 1.0;
+        }
+        double maxOutside = nonNegativeOr(cfg.maxOutsidePlausibleFieldRegionInches, 0.0);
+        if (maxOutside <= 1e-9) {
+            return 0.0;
+        }
+        return MathUtil.clamp01(1.0 - ((-signedDistance) / maxOutside));
     }
 
     private static boolean isFinitePose(Pose3d pose) {
@@ -490,7 +640,30 @@ public final class FixedTagFieldPoseSolver {
                 && Double.isFinite(pose.rollRad);
     }
 
+    private static double nonNegativeOr(double value, double fallback) {
+        return (Double.isFinite(value) && value >= 0.0) ? value : fallback;
+    }
+
+    private static void requireFinitePositive(double value, String name) {
+        if (!Double.isFinite(value) || value <= 1e-9) {
+            throw new IllegalArgumentException(name + " must be finite and > 0");
+        }
+    }
+
+    private static void requireFiniteNonNegative(double value, String name) {
+        if (!Double.isFinite(value) || value < 0.0) {
+            throw new IllegalArgumentException(name + " must be finite and >= 0");
+        }
+    }
+
+    private static void requireFiniteInRange(double value, double min, double max, String name) {
+        if (!Double.isFinite(value) || value < min || value > max) {
+            throw new IllegalArgumentException(name + " must be finite and in [" + min + ", " + max + "]");
+        }
+    }
+
     private static double positiveOr(double value, double fallback) {
         return (Double.isFinite(value) && value > 1e-9) ? value : fallback;
     }
 }
+

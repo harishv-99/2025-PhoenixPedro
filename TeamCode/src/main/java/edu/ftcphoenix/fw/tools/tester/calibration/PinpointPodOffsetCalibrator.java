@@ -13,6 +13,8 @@ import edu.ftcphoenix.fw.drive.MecanumDrivebase;
 import edu.ftcphoenix.fw.field.TagLayout;
 import edu.ftcphoenix.fw.ftc.FtcDrives;
 import edu.ftcphoenix.fw.ftc.FtcGameTagLayout;
+import edu.ftcphoenix.fw.ftc.FtcTagLayoutDebug;
+import edu.ftcphoenix.fw.ftc.FtcTelemetryDebugSink;
 import edu.ftcphoenix.fw.ftc.FtcVision;
 import edu.ftcphoenix.fw.ftc.localization.PinpointPoseEstimator;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
@@ -178,7 +180,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         public CameraMountConfig cameraMount = null;
 
         /**
-         * Tag layout. If null and AprilTag assist is enabled, defaults to current game layout.
+         * Tag layout. If null and AprilTag assist is enabled, defaults to the framework-owned current-game fixed layout.
          */
         public TagLayout tagLayout = null;
 
@@ -895,6 +897,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
             ctx.telemetry.addData("Tag assist", true);
             ctx.telemetry.addData("Webcam", cam);
             ctx.telemetry.addData("Tag pose", latestTagPose != null ? latestTagPose.toString() : "<none>");
+            FtcTagLayoutDebug.dumpSummary(layout, new FtcTelemetryDebugSink(ctx.telemetry), "layout");
             if (initPhase && cameraPicker != null && selectedCameraName == null) {
                 ctx.telemetry.addLine();
                 cameraPicker.render(ctx.telemetry);

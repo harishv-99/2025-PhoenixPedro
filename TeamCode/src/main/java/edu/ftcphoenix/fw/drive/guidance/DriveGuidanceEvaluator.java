@@ -413,7 +413,7 @@ final class DriveGuidanceEvaluator {
                 observations,
                 layout,
                 cfg.cameraMount,
-                FixedTagFieldPoseSolver.Config.defaults()
+                cfg.fieldPoseSolverConfig
         );
         if (!solve.hasPose) {
             return null;

@@ -4,6 +4,7 @@ import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver;
 
 import edu.ftcphoenix.fw.core.hal.Direction;
 import edu.ftcphoenix.fw.ftc.FtcDrives;
+import edu.ftcphoenix.fw.ftc.FtcFieldRegions;
 import edu.ftcphoenix.fw.ftc.localization.PinpointPoseEstimator;
 import edu.ftcphoenix.fw.localization.apriltag.TagOnlyPoseEstimator;
 import edu.ftcphoenix.fw.localization.fusion.OdometryTagFusionPoseEstimator;
@@ -323,7 +324,8 @@ public class RobotConfig {
          * AprilTag-only global pose solve used as the vision lane for localization fusion.
          *
          * <p>The camera mount itself still lives in {@link Vision#cameraMount}; robot code should
-         * copy this config and attach the calibrated mount at the call site.</p>
+         * copy this config and attach the calibrated mount at the call site. The Phoenix AprilTag
+         * localization testers also consume this config so practice tools match production tuning.</p>
          */
         public static TagOnlyPoseEstimator.Config aprilTags =
                 TagOnlyPoseEstimator.Config.defaults();
@@ -357,6 +359,8 @@ public class RobotConfig {
             aprilTags.minObservationWeight = 0.05;
             aprilTags.outlierPositionGateInches = 18.0;
             aprilTags.outlierHeadingGateRad = Math.toRadians(25.0);
+            aprilTags.plausibleFieldRegion = FtcFieldRegions.fullField();
+            aprilTags.maxOutsidePlausibleFieldRegionInches = 3.0;
 
             // Fusion: trust Pinpoint for smooth motion, but let fresh AprilTag solves gently pull
             // the robot back toward the field truth when they are plausible.

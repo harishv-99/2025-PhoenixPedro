@@ -192,6 +192,12 @@ public final class FtcVision {
          * <p>When {@code null}, Phoenix defaults to
          * {@link AprilTagGameDatabase#getCurrentGameTagLibrary()}.
          * Set this when you are using custom-printed tags (different IDs and/or sizes).</p>
+         *
+         * <p><b>Important:</b> this only tells the detector which tags exist and what their
+         * physical sizes are. It does <em>not</em> define which tags are safe to treat as
+         * field-fixed landmarks for localization or Drive Guidance. That policy lives in
+         * {@link edu.ftcphoenix.fw.field.TagLayout} (for official FTC games, usually
+         * {@link FtcGameTagLayout#currentGameFieldFixed()}).</p>
          */
         public AprilTagLibrary tagLibrary = null;
 
@@ -274,6 +280,10 @@ public final class FtcVision {
      * <p>The returned {@link AprilTagSensor} instance performs ID filtering
      * and age checks, and converts FTC's pose information into Phoenix framing
      * using {@link FtcFrames}.</p>
+     *
+     * <p>The FTC {@link AprilTagLibrary} configured here is detector metadata, not a fixed-field
+     * localization layout. Callers that later want AprilTag-based field pose solving must still
+     * supply a {@link edu.ftcphoenix.fw.field.TagLayout} containing only truly fixed tags.</p>
      *
      * @param hw         robot {@link HardwareMap}
      * @param cameraName hardware configuration name of the webcam

@@ -7,6 +7,8 @@ For the student-facing architecture, start with [`Framework Overview`](<../getti
 
 For current AprilTag/localization follow-up work, also see [`AprilTag Localization Follow-Ups`](<AprilTag Localization Follow-Ups.md>).
 
+For the fixed-tag policy itself — detector library vs field-fixed layout, selected-tag localization rules, and season bring-up guidance — see [`AprilTag Localization & Fixed Layouts`](<../drive-vision/AprilTag Localization & Fixed Layouts.md>).
+
 ---
 
 ## 1. Advanced notes
@@ -39,7 +41,25 @@ When it helps clarity, use plant wrappers:
 - `RateLimitedPlant` to smooth target changes
 - `InterlockPlant` to enforce simple safety rules
 
-### 1.3 FTC boundary rule (for maintainers)
+### 1.3 AprilTag policy layering
+
+Keep these three layers distinct when maintaining the framework:
+
+- **`AprilTagLibrary`** = detector metadata (which tags the processor recognizes)
+- **`TagLayout`** = field-fixed metadata (which tags Phoenix trusts for localization / field-pose solving)
+- **subset layouts** = role-specific views over an already-fixed layout
+
+That separation is deliberate.
+
+It lets Phoenix:
+
+- detect more tags than it localizes against,
+- keep official-season fixed/non-fixed policy in one framework-owned place,
+- and let one robot behavior use a smaller fixed-tag subset without copying tag poses or re-implementing tag filtering logic.
+
+When a new FTC season arrives, the framework should absorb the policy update in `FtcGameTagLayout` instead of making robot code rediscover which IDs are safe to trust.
+
+### 1.4 FTC boundary rule (for maintainers)
 
 As a best practice, keep FTC SDK types (`com.qualcomm.*`) inside:
 

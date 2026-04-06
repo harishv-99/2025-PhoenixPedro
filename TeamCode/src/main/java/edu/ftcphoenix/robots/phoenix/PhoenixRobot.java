@@ -28,6 +28,7 @@ import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceStatus;
 import edu.ftcphoenix.fw.drive.guidance.References;
 import edu.ftcphoenix.fw.drive.source.GamepadDriveSource;
 import edu.ftcphoenix.fw.field.TagLayout;
+import edu.ftcphoenix.fw.field.TagLayouts;
 import edu.ftcphoenix.fw.ftc.FtcDrives;
 import edu.ftcphoenix.fw.ftc.FtcGameTagLayout;
 import edu.ftcphoenix.fw.ftc.FtcTelemetryDebugSink;
@@ -171,6 +172,14 @@ public final class PhoenixRobot {
         // Raw detections still see all FTC tags; only field-pose math is restricted to the tags
         // whose placement is actually deterministic.
         gameTagLayout = FtcGameTagLayout.currentGameFieldFixed();
+        // Auto-aim only needs the fixed scoring tags. Using a subset view keeps the fixed-tag
+        // policy framework-owned while making the selected-tag localization contract explicit:
+        // every candidate scoring tag is present in this layout.
+        TagLayout scoringTagLayout = TagLayouts.subsetOrSame(
+                gameTagLayout,
+                SCORING_TAG_IDS,
+                "Phoenix scoring fixed-tag layout"
+        );
 
         TagOnlyPoseEstimator.Config tagLocalizerCfg = RobotConfig.Localization.aprilTags.copy()
                 .withCameraMount(cameraMountConfig);
@@ -228,8 +237,9 @@ public final class PhoenixRobot {
                 .resolveWith()
                 .adaptive()
                 .aprilTags(tagSensor, cameraMountConfig, 0.50)
+                .aprilTagFieldPoseConfig(RobotConfig.Localization.aprilTags.toSolverConfig())
                 .localization(fusedLocalizer)
-                .fixedAprilTagLayout(gameTagLayout)
+                .fixedAprilTagLayout(scoringTagLayout)
                 .omegaPolicy(DriveGuidanceSpec.OmegaPolicy.PREFER_APRIL_TAGS_WHEN_VALID)
                 .onLoss(DriveGuidanceSpec.LossPolicy.PASS_THROUGH)
                 .doneResolveWith()

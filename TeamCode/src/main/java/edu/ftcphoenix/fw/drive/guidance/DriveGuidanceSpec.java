@@ -5,6 +5,7 @@ import java.util.Objects;
 import edu.ftcphoenix.fw.drive.DriveOverlayMask;
 import edu.ftcphoenix.fw.field.TagLayout;
 import edu.ftcphoenix.fw.localization.PoseEstimator;
+import edu.ftcphoenix.fw.localization.apriltag.FixedTagFieldPoseSolver;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
 
@@ -154,25 +155,52 @@ public final class DriveGuidanceSpec {
         public final AprilTagSensor sensor;
         public final CameraMountConfig cameraMount;
         public final double maxAgeSec;
+        public final FixedTagFieldPoseSolver.Config fieldPoseSolverConfig;
 
         /**
-         * Creates a live AprilTag solve lane using the default freshness window.
+         * Creates a live AprilTag solve lane using the default freshness window and default
+         * multi-tag field-pose solver configuration.
          */
         public AprilTags(AprilTagSensor sensor, CameraMountConfig cameraMount) {
-            this(sensor, cameraMount, DEFAULT_MAX_AGE_SEC);
+            this(sensor, cameraMount, DEFAULT_MAX_AGE_SEC, FixedTagFieldPoseSolver.Config.defaults());
         }
 
         /**
-         * Creates a live AprilTag solve lane.
+         * Creates a live AprilTag solve lane using an explicit freshness window and the default
+         * multi-tag field-pose solver configuration.
          *
          * @param sensor shared AprilTag detections source
          * @param cameraMount camera extrinsics in the robot frame
          * @param maxAgeSec maximum accepted detection age in seconds
          */
         public AprilTags(AprilTagSensor sensor, CameraMountConfig cameraMount, double maxAgeSec) {
+            this(sensor, cameraMount, maxAgeSec, FixedTagFieldPoseSolver.Config.defaults());
+        }
+
+        /**
+         * Creates a live AprilTag solve lane.
+         *
+         * @param sensor                shared AprilTag detections source
+         * @param cameraMount           camera extrinsics in the robot frame
+         * @param maxAgeSec             maximum accepted detection age in seconds
+         * @param fieldPoseSolverConfig shared multi-tag field-pose solver configuration used when
+         *                              guidance temporarily promotes fixed tags into a field pose;
+         *                              normalized to the shared base solver config at this API
+         *                              boundary so subtype-only extras do not leak through
+         */
+        public AprilTags(AprilTagSensor sensor,
+                         CameraMountConfig cameraMount,
+                         double maxAgeSec,
+                         FixedTagFieldPoseSolver.Config fieldPoseSolverConfig) {
             this.sensor = Objects.requireNonNull(sensor, "sensor");
             this.cameraMount = Objects.requireNonNull(cameraMount, "cameraMount");
             this.maxAgeSec = maxAgeSec;
+            this.fieldPoseSolverConfig = fieldPoseSolverConfig != null
+                    ? FixedTagFieldPoseSolver.Config.normalizedValidatedCopyOf(
+                    fieldPoseSolverConfig,
+                    "DriveGuidanceSpec.AprilTags.fieldPoseSolverConfig"
+            )
+                    : FixedTagFieldPoseSolver.Config.defaults();
         }
     }
 

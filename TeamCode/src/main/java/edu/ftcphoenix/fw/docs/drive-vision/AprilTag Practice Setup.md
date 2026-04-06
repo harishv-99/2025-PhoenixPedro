@@ -2,10 +2,15 @@
 
 Phoenix supports AprilTag-based localization in two ways:
 
-- **Current game layout** (FTC-provided tag IDs, sizes, and field poses)
+- **Current official game policy** via `FtcGameTagLayout.currentGameFieldFixed()`
 - **Custom practice layout** (e.g. one printed tag taped to a wall)
 
-This note shows how to configure the framework for the custom case.
+Important distinction:
+
+- the FTC `AprilTagLibrary` is detection metadata (IDs, tag size, FTC-known metadata)
+- the Phoenix `TagLayout` is the set of tags your solver is allowed to treat as fixed field landmarks
+
+This note shows how to configure the framework for the custom case. For the full framework policy, see [`AprilTag Localization & Fixed Layouts`](<AprilTag Localization & Fixed Layouts.md>).
 
 ## 1) Print a tag and know its size
 

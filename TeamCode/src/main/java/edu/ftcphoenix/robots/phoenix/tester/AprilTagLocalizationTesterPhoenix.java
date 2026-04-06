@@ -52,7 +52,11 @@ public final class AprilTagLocalizationTesterPhoenix {
                 "Uses RobotConfig.Vision defaults; " + mountStatus,
                 () -> new AprilTagLocalizationTester(
                         RobotConfig.Vision.nameWebcam,
-                        RobotConfig.Vision.cameraMount
+                        RobotConfig.Vision.cameraMount,
+                        null,
+                        null,
+                        RobotConfig.Localization.aprilTags.copy(),
+                        RobotConfig.Localization.aprilTags.maxDetectionAgeSec
                 )
         );
     }

@@ -67,7 +67,11 @@ public final class PhoenixCalibrationWalkthrough {
                 "Sanity-check tag detection and field pose (needs camera mount).",
                 () -> new AprilTagLocalizationTester(
                         RobotConfig.Vision.nameWebcam,
-                        RobotConfig.Vision.cameraMount
+                        RobotConfig.Vision.cameraMount,
+                        null,
+                        null,
+                        RobotConfig.Localization.aprilTags.copy(),
+                        RobotConfig.Localization.aprilTags.maxDetectionAgeSec
                 )
         );
 
@@ -115,7 +119,11 @@ public final class PhoenixCalibrationWalkthrough {
                     return new PinpointAprilTagFusionLocalizationTester(
                             RobotConfig.Vision.nameWebcam,
                             RobotConfig.Vision.cameraMount,
-                            cfg
+                            cfg,
+                            RobotConfig.Localization.pinpointAprilTagFusion.copy(),
+                            null,
+                            null,
+                            RobotConfig.Localization.aprilTags.copy()
                     );
                 }
         );

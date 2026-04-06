@@ -42,8 +42,10 @@ import edu.ftcphoenix.fw.core.geometry.Pose3d;
  *
  * <p>Most robot code does not implement {@link TagLayout} directly. Teams usually use either:</p>
  * <ul>
- *   <li>{@link edu.ftcphoenix.fw.ftc.FtcGameTagLayout} for official FTC game layouts, or</li>
- *   <li>{@link SimpleTagLayout} for tests, practice setups, or custom calibration rigs.</li>
+ *   <li>{@link edu.ftcphoenix.fw.ftc.FtcGameTagLayout} for official FTC game layouts,</li>
+ *   <li>{@link SimpleTagLayout} for tests, practice setups, or custom calibration rigs, or</li>
+ *   <li>{@link TagLayouts#subset(TagLayout, java.util.Set)} when one behavior should only see a
+ *       curated fixed-tag subset without duplicating the underlying metadata.</li>
  * </ul>
  *
  * <p>Example:</p>

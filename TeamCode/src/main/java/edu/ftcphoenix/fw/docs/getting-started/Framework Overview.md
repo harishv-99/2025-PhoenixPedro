@@ -28,6 +28,8 @@ Most robot code should only need imports from these packages:
 * `edu.ftcphoenix.fw.localization` — pose estimation (AprilTags, odometry, fusion).
 * `edu.ftcphoenix.fw.field` — field metadata (tag layouts, constants).
 
+For the AprilTag-specific policy around fixed vs detectable tags, see [`AprilTag Localization & Fixed Layouts`](<../drive-vision/AprilTag Localization & Fixed Layouts.md>).
+
 Within `drive/`, subpackages are intentionally parallel and predictable:
 
 * `drive.source` — “where drive commands come from” (gamepad, autonomous logic).
@@ -68,10 +70,16 @@ For field-centric work, Phoenix uses the **FTC Field Coordinate System**:
 * +Z up
 * Stand at the **Red Wall center** facing the field: +X is to your right, +Y is away from the Red Wall
 
-AprilTags add an extra complication: FTC exposes *multiple* pose frames.
+AprilTags add two separate complications: FTC exposes *multiple pose frames*, and the detector's
+SDK library is not the same thing as Phoenix's fixed-field layout.
 
-* **Game database / layout** (`AprilTagGameDatabase` → `TagLayout`)
-  * Tag poses come from FTC metadata (`fieldPosition` + `fieldOrientation`).
+* **Detector library** (`AprilTagLibrary`)
+  * Tells the processor which tags exist and how big they are.
+  * May include tags that are useful to detect but are not safe localization landmarks.
+* **Field-fixed layout** (`TagLayout`)
+  * Tells Phoenix which tag IDs may be trusted as fixed field landmarks.
+  * Tag poses usually come from FTC metadata (`fieldPosition` + `fieldOrientation`), but the
+    framework curates the fixed subset explicitly.
 * **Detections** (`AprilTagDetection`)
   * `rawPose` is the **native AprilTag/OpenCV camera frame** (+X right, +Y down, +Z forward).
   * `ftcPose` is a **convenience re-frame** (+X right, +Y forward, +Z up) with yaw/pitch/roll labels.
@@ -87,6 +95,11 @@ Implementation pointers:
 * `fw.ftc.FtcFrames` documents the basis transforms and exposes the conversion matrices.
 * `fw.ftc.FtcVision` builds `AprilTagObservation.cameraToTagPose` from `rawPose` and converts it into
   Phoenix camera axes (+X forward, +Y left, +Z up).
+* `fw.ftc.FtcGameTagLayout.currentGameFieldFixed()` builds the framework-owned official fixed-tag
+  layout for the current FTC season.
+
+For the full library-vs-layout explanation, see
+[`AprilTag Localization & Fixed Layouts`](<../drive-vision/AprilTag Localization & Fixed Layouts.md>).
 
 Tester naming conventions (telemetry menus):
 

@@ -36,6 +36,7 @@ If you are new to Phoenix, read in this order:
 ### I am building drive assists, auto-aim, or route integration
 
 - [`docs/drive-vision/Drive Guidance.md`](<docs/drive-vision/Drive Guidance.md>)
+- [`docs/drive-vision/AprilTag Localization & Fixed Layouts.md`](<docs/drive-vision/AprilTag Localization & Fixed Layouts.md>)
 - [`docs/design/Recommended Robot Design.md`](<docs/design/Recommended Robot Design.md>)
 - [`docs/core-concepts/Sources and Signals.md`](<docs/core-concepts/Sources and Signals.md>)
 - [`docs/core-concepts/Loop Structure.md`](<docs/core-concepts/Loop Structure.md>)
@@ -44,6 +45,7 @@ If you are new to Phoenix, read in this order:
 
 - [`docs/ftc-boundary/FTC Sensors.md`](<docs/ftc-boundary/FTC Sensors.md>)
 - [`docs/drive-vision/AprilTag Practice Setup.md`](<docs/drive-vision/AprilTag Practice Setup.md>)
+- [`docs/drive-vision/AprilTag Localization & Fixed Layouts.md`](<docs/drive-vision/AprilTag Localization & Fixed Layouts.md>)
 - [`docs/drive-vision/Drive Guidance.md`](<docs/drive-vision/Drive Guidance.md>)
 
 ### I want a concrete end-to-end example
@@ -56,6 +58,7 @@ If you are new to Phoenix, read in this order:
 - [`Framework Principles.md`](<Framework Principles.md>)
 - [`docs/maintainers/Maintainer Notes.md`](<docs/maintainers/Maintainer Notes.md>)
 - [`docs/maintainers/AprilTag Localization Follow-Ups.md`](<docs/maintainers/AprilTag Localization Follow-Ups.md>)
+- [`docs/drive-vision/AprilTag Localization & Fixed Layouts.md`](<docs/drive-vision/AprilTag Localization & Fixed Layouts.md>)
 - [`docs/getting-started/Framework Overview.md`](<docs/getting-started/Framework Overview.md>)
 
 ## Documentation structure
@@ -67,7 +70,7 @@ If you are new to Phoenix, read in this order:
 - `docs/core-concepts/`
   - loop semantics and source/signal composition
 - `docs/drive-vision/`
-  - drive guidance and AprilTag practice setup
+  - drive guidance, AprilTag localization policy, and practice setup
 - `docs/ftc-boundary/`
   - FTC-boundary sensor notes and recommendations
 - `docs/examples/`

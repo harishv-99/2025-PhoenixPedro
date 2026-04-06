@@ -177,6 +177,11 @@ public final class References {
     /**
      * Creates a point relative to the tag currently selected by {@code selection}, using one
      * common offset for every candidate tag.
+     *
+     * <p>When this reference is later promoted through localization, Phoenix currently requires
+     * every candidate ID exposed by {@code selection} to be present in the fixed layout. That
+     * keeps the reference's localization capability stable instead of depending on which tag
+     * happened to be selected this cycle.</p>
      */
     public static ReferencePoint2d relativeToSelectedTagPoint(TagSelectionSource selection,
                                                               double forwardInches,
@@ -200,6 +205,10 @@ public final class References {
     /**
      * Creates a frame relative to the tag currently selected by {@code selection}, using one
      * common offset / heading for every candidate tag.
+     *
+     * <p>Like {@link #relativeToSelectedTagPoint(TagSelectionSource, double, double)},
+     * localization fallback currently requires every candidate ID exposed by {@code selection} to
+     * exist in the fixed layout.</p>
      */
     public static ReferenceFrame2d relativeToSelectedTagFrame(TagSelectionSource selection,
                                                               double forwardInches,
@@ -276,6 +285,14 @@ public final class References {
         return allCandidateTagsAreFixed(candidateTagIds(ref), layout);
     }
 
+    static Set<Integer> missingCandidateTagIds(ReferencePoint2d ref, TagLayout layout) {
+        return missingCandidateTagIds(candidateTagIds(ref), layout);
+    }
+
+    static Set<Integer> missingCandidateTagIds(ReferenceFrame2d ref, TagLayout layout) {
+        return missingCandidateTagIds(candidateTagIds(ref), layout);
+    }
+
     private static boolean allCandidateTagsAreFixed(Set<Integer> ids, TagLayout layout) {
         if (ids.isEmpty() || layout == null) {
             return false;
@@ -286,6 +303,25 @@ public final class References {
             }
         }
         return true;
+    }
+
+    private static Set<Integer> missingCandidateTagIds(Set<Integer> ids, TagLayout layout) {
+        if (ids.isEmpty()) {
+            return Collections.emptySet();
+        }
+
+        LinkedHashSet<Integer> missing = new LinkedHashSet<Integer>();
+        for (Integer id : ids) {
+            if (id == null) {
+                continue;
+            }
+            if (layout == null || !layout.has(id)) {
+                missing.add(id);
+            }
+        }
+        return missing.isEmpty()
+                ? Collections.<Integer>emptySet()
+                : Collections.unmodifiableSet(missing);
     }
 
     static Pose2d tryResolveFieldPoint(ReferencePoint2d ref, TagLayout layout, LoopClock clock) {

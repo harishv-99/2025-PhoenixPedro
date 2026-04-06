@@ -10,6 +10,11 @@ import org.firstinspires.ftc.vision.apriltag.AprilTagLibrary;
  * <p>This is mainly useful for <b>custom printed tags</b> (practice fields, classroom demos, etc.) where you
  * may not have access to an official field layout but you still want the vision pipeline to know the
  * correct tag <b>size</b>.</p>
+ *
+ * <p><b>Important distinction:</b> an {@link AprilTagLibrary} answers "which tags can the detector
+ * recognize, and how big are they?". It does <em>not</em> answer "which tags are fixed field
+ * landmarks for localization?". That second question belongs to
+ * {@link edu.ftcphoenix.fw.field.TagLayout}.</p>
  */
 public final class FtcAprilTags {
 
@@ -19,6 +24,10 @@ public final class FtcAprilTags {
 
     /**
      * Returns the SDK's "current game" AprilTag library.
+     *
+     * <p>This is the detector library, not a fixed-field localization layout. For official FTC
+     * field-pose solving, prefer {@link FtcGameTagLayout#currentGameFieldFixed()} so Phoenix can
+     * exclude any tags that are detectable but not trustworthy as fixed landmarks.</p>
      */
     public static AprilTagLibrary currentGameLibrary() {
         return AprilTagGameDatabase.getCurrentGameTagLibrary();

@@ -13,6 +13,8 @@ import edu.ftcphoenix.fw.core.geometry.Pose3d;
 import edu.ftcphoenix.fw.core.math.MathUtil;
 import edu.ftcphoenix.fw.field.TagLayout;
 import edu.ftcphoenix.fw.ftc.FtcGameTagLayout;
+import edu.ftcphoenix.fw.ftc.FtcTagLayoutDebug;
+import edu.ftcphoenix.fw.ftc.FtcTelemetryDebugSink;
 import edu.ftcphoenix.fw.ftc.FtcVision;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
 import edu.ftcphoenix.fw.localization.apriltag.TagOnlyPoseEstimator;
@@ -81,6 +83,7 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
     private final double maxAgeSec;
     private final TagLayout layoutOverride;
     private final AprilTagLibrary tagLibraryOverride;
+    private final TagOnlyPoseEstimator.Config poseEstimatorConfigOverride;
 
     private TagLayout layout;
 
@@ -105,7 +108,7 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
      * <p>A camera picker will be shown so you can choose a configured webcam.</p>
      */
     public AprilTagLocalizationTester() {
-        this(null, null, null, null, DEFAULT_MAX_AGE_SEC);
+        this(null, null, null, null, null, DEFAULT_MAX_AGE_SEC);
     }
 
     /**
@@ -118,7 +121,7 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
      * @param cameraMount robot→camera extrinsics (nullable; if null, identity is used)
      */
     public AprilTagLocalizationTester(String cameraName, CameraMountConfig cameraMount) {
-        this(cameraName, cameraMount, null, null, DEFAULT_MAX_AGE_SEC);
+        this(cameraName, cameraMount, null, null, null, DEFAULT_MAX_AGE_SEC);
     }
 
     /**
@@ -131,7 +134,7 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
     public AprilTagLocalizationTester(String cameraName,
                                       CameraMountConfig cameraMount,
                                       double maxAgeSec) {
-        this(cameraName, cameraMount, null, null, maxAgeSec);
+        this(cameraName, cameraMount, null, null, null, maxAgeSec);
     }
 
     /**
@@ -139,19 +142,30 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
      *
      * @param cameraName         configured webcam name in the FTC Robot Configuration (nullable)
      * @param cameraMount        robot→camera extrinsics (nullable; if null, identity is used)
-     * @param layoutOverride     optional tag layout override (nullable; if null, current game layout is used)
-     * @param tagLibraryOverride optional tag library override (nullable; if null, current game library is used)
-     * @param maxAgeSec          maximum allowed tag frame age in seconds (must be non-negative)
+     * @param layoutOverride            optional tag layout override (nullable; if null, the framework's current-game fixed layout is used)
+     * @param tagLibraryOverride        optional tag library override (nullable; if null, current game library is used)
+     * @param poseEstimatorConfigOverride optional AprilTag-localizer config override; when provided,
+     *                                   the tester uses it instead of generic defaults so the math
+     *                                   can match production robot tuning more closely. Its
+     *                                   {@code maxDetectionAgeSec} also becomes the effective age
+     *                                   gate used by both selection and localization.
+     * @param maxAgeSec                 fallback maximum allowed tag frame age in seconds (must be
+     *                                   non-negative) used when no estimator-config override is
+     *                                   supplied
      */
     public AprilTagLocalizationTester(String cameraName,
                                       CameraMountConfig cameraMount,
                                       TagLayout layoutOverride,
                                       AprilTagLibrary tagLibraryOverride,
+                                      TagOnlyPoseEstimator.Config poseEstimatorConfigOverride,
                                       double maxAgeSec) {
         this.preferredCameraName = cameraName;
         this.cameraMount = (cameraMount != null) ? cameraMount : CameraMountConfig.identity();
         this.layoutOverride = layoutOverride;
         this.tagLibraryOverride = tagLibraryOverride;
+        this.poseEstimatorConfigOverride = poseEstimatorConfigOverride != null
+                ? poseEstimatorConfigOverride.copy()
+                : null;
         if (maxAgeSec < 0.0) {
             throw new IllegalArgumentException("maxAgeSec must be non-negative");
         }
@@ -366,21 +380,31 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
             trackAny = false;
         }
 
+        double effectiveMaxAgeSec = effectiveMaxAgeSec();
+
         selection = TagSelections.from(tagSensor)
                 .among(ids)
-                .freshWithin(maxAgeSec)
+                .freshWithin(effectiveMaxAgeSec)
                 .choose(TagSelectionPolicies.closestRange())
                 .continuous()
                 .build();
 
-        TagOnlyPoseEstimator.Config cfg = TagOnlyPoseEstimator.Config.defaults()
-                .withCameraMount(cameraMount);
+        TagOnlyPoseEstimator.Config cfg = (poseEstimatorConfigOverride != null)
+                ? poseEstimatorConfigOverride.copy()
+                : TagOnlyPoseEstimator.Config.defaults().withMaxDetectionAgeSec(effectiveMaxAgeSec);
+        cfg.withCameraMount(cameraMount);
         cfg.maxAbsBearingRad = 0.0;
 
         poseEstimator = new TagOnlyPoseEstimator(tagSensor, layout, cfg);
 
         // Reset sampling when the core solve parameters change.
         samples.clear();
+    }
+
+    private double effectiveMaxAgeSec() {
+        return (poseEstimatorConfigOverride != null)
+                ? poseEstimatorConfigOverride.maxDetectionAgeSec
+                : maxAgeSec;
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -448,11 +472,19 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
         t.addLine(String.format(Locale.US,
                 "Camera=%s | MaxAge=%.0f ms | Track=%s",
                 selectedCameraName,
-                maxAgeSec * 1000.0,
+                effectiveMaxAgeSec() * 1000.0,
                 trackAny ? "ANY" : ("SINGLE id=" + selectedTagId)
         ));
 
         t.addLine("Controls: START trackMode | Y/X tagId | A sample | B clear | BACK camera picker");
+
+
+        if (layout instanceof FtcGameTagLayout) {
+            FtcGameTagLayout ftcLayout = (FtcGameTagLayout) layout;
+            t.addLine("Layout policy: " + ftcLayout.policySummaryLine());
+        } else if (layout != null) {
+            t.addLine("Layout ids: " + layout.ids());
+        }
 
         if (isLikelyIdentity(cameraMount)) {
             t.addLine("");
@@ -510,6 +542,10 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
                     est.ageSec * 1000.0
             ));
         }
+
+        t.addLine("");
+        t.addLine("Layout summary:");
+        FtcTagLayoutDebug.dumpSummary(layout, new FtcTelemetryDebugSink(t), "layout");
 
         // Optional: compare against FTC SDK's robot pose (only available when the SDK computed it).
         if (obs.hasFieldToRobotPose()) {

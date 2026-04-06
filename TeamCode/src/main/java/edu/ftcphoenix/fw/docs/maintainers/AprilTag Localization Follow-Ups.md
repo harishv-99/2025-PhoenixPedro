@@ -9,24 +9,29 @@ It exists so season-specific fixes and the next maintainership steps do not get 
 ## Landed in the current pass
 
 - Added a shared multi-tag fixed-field pose solver so AprilTag-only localization and the drive-guidance AprilTag→field-pose bridge use the same math.
+- Added an optional field-plausibility region gate so obviously impossible AprilTag field solves can be rejected consistently.
+- Surfaced the live guidance lane's fixed-tag field-pose solver config through DriveGuidance so guidance can share the same tuning / plausibility policy as localization.
+- Added framework-owned subset-tag-layout helpers for role-specific fixed-tag whitelists without robot-side metadata duplication.
+- Added config validation / fail-fast checks for the shared fixed-tag field-pose solver and the FTC full-field helper.
+- Made the shared solver fall back to Phoenix geometry when an otherwise-acceptable FTC SDK robot pose is implausible.
+- Added `TagOnlyPoseEstimator.Config.toSolverConfig()` so guidance can share solver tuning without smuggling camera-mount-only fields into unrelated APIs.
 - Switched Phoenix TeleOp to use Pinpoint + AprilTag fusion for pose lock and selected-tag localization fallback.
 - Moved official-game fixed-tag knowledge into the framework via `FtcGameTagLayout.currentGameFieldFixed()`.
 - Removed the need for robot code to carry season-specific "exclude these IDs from localization" logic.
 - Updated framework tools that previously converted the entire FTC SDK game library into a field-fixed `TagLayout`.
+- Updated the localization testers so they can use the same AprilTag-localizer config as production robot code.
+- Added public documentation for fixed-tag layout policy, shared solver tuning, plausibility gating, and selected-tag localization semantics.
+- Documented and preserved the ancillary/sample-tag normalization used by `FtcGameTagLayout.currentGameFieldFixed()` when the FTC SDK current-game library is broader than the official field policy.
+- Consolidated overlapping AprilTag design notes around one canonical fixed-layout/localization guide to reduce documentation drift.
+- Normalized AprilTag field-pose solver config at the guidance API boundary so subtype-only config cannot leak across unrelated APIs.
+- Added a shared `FtcTagLayoutDebug.dumpSummary(...)` helper and surfaced the layout policy summary in AprilTag testers/calibrators.
+- Fixed a fusion reliability bug by rebasing the odometry baseline after accepted vision corrections are pushed back into odometry.
 
 ---
 
 ## Near-term follow-ups
 
-1. Surface `FixedTagFieldPoseSolver.Config` through `DriveGuidanceSpec.AprilTags` / the guidance builder so guidance's temporary field-pose bridge and the AprilTag-only localizer can share one explicit tuning source instead of one side using helper defaults.
-
-2. Add a small always-on maintainer/tester view that prints:
-   - source FTC library IDs
-   - fixed IDs included in the layout
-   - excluded IDs
-   This will make season bring-up and future manual checks faster.
-
-3. When Phoenix is updated for a new FTC season, extend `FtcGameTagLayout.officialGameFieldFixed(...)` with the new season's fixed-tag policy instead of letting robot code paper over the difference.
+1. When Phoenix is updated for a new FTC season, extend `FtcGameTagLayout.officialGameFieldFixed(...)` with the new season's fixed-tag policy instead of letting robot code paper over the difference.
 
 ---
 
@@ -38,12 +43,6 @@ It exists so season-specific fixes and the next maintainership steps do not get 
 2. Better per-observation weighting:
    if FTC exposes richer confidence signals (ambiguity, reprojection error, tag area/corner fit), fold them into the fixed-tag pose solver.
 
-3. Hard field plausibility gates:
-   reject impossible field poses outside the playable footprint or clearly inconsistent with the field geometry.
-
-4. Role-specific fixed-tag layouts / whitelists:
-   allow clean mode-specific subsets without duplicating robot-side filtering logic.
-
-5. Mixed candidate-set design review:
+3. Mixed candidate-set design review:
    today selected-tag references only promote through localization when all candidate IDs are field-fixed.
    If a real use case appears, consider a principled runtime policy that allows localization only when the currently selected tag is fixed.

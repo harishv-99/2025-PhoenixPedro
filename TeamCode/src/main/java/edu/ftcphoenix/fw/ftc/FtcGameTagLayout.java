@@ -7,12 +7,16 @@ import org.firstinspires.ftc.vision.apriltag.AprilTagGameDatabase;
 import org.firstinspires.ftc.vision.apriltag.AprilTagLibrary;
 import org.firstinspires.ftc.vision.apriltag.AprilTagMetadata;
 
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeSet;
 
 import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.geometry.Mat3;
@@ -38,33 +42,99 @@ import edu.ftcphoenix.fw.field.TagLayout;
  */
 public final class FtcGameTagLayout implements TagLayout {
 
-    private static final Set<Integer> DECODE_2025_2026_LIBRARY_IDS =
-            immutableIds(20, 21, 22, 23, 24);
+    /**
+     * Known ancillary FTC SDK sample-tag IDs that may be present in broad/default libraries.
+     *
+     * <p>These tags are useful for detector bring-up and sample OpModes, but they are not part of
+     * an official game's field-fixed layout policy.</p>
+     */
+    private static final Set<Integer> KNOWN_ANCILLARY_LIBRARY_IDS = immutableIds(583, 584, 585, 586);
 
-    private static final Set<Integer> DECODE_2025_2026_FIXED_FIELD_IDS =
-            immutableIds(20, 24);
+    private static final OfficialGamePolicy DECODE_2025_2026 = new OfficialGamePolicy(
+            "DECODE 2025-2026",
+            immutableIds(20, 21, 22, 23, 24),
+            immutableIds(20, 24)
+    );
+
+    private static final List<OfficialGamePolicy> OFFICIAL_GAME_POLICIES = Collections.unmodifiableList(
+            Arrays.asList(DECODE_2025_2026)
+    );
+
+    private static final class OfficialGamePolicy {
+        final String seasonName;
+        final Set<Integer> officialGameIds;
+        final Set<Integer> fixedFieldIds;
+        final Set<Integer> nonFixedGameIds;
+
+        OfficialGamePolicy(String seasonName,
+                           Set<Integer> officialGameIds,
+                           Set<Integer> fixedFieldIds) {
+            this.seasonName = Objects.requireNonNull(seasonName, "seasonName").trim();
+            this.officialGameIds = orderedImmutableIds(Objects.requireNonNull(officialGameIds, "officialGameIds"));
+            this.fixedFieldIds = orderedImmutableIds(Objects.requireNonNull(fixedFieldIds, "fixedFieldIds"));
+
+            if (!this.officialGameIds.containsAll(this.fixedFieldIds)) {
+                throw new IllegalArgumentException(
+                        "Official game fixed-field IDs must be a subset of official game IDs"
+                );
+            }
+            this.nonFixedGameIds = orderedImmutableIds(difference(this.officialGameIds, this.fixedFieldIds));
+        }
+
+        boolean matchesNormalizedLibrary(Set<Integer> normalizedLibraryIds) {
+            return officialGameIds.equals(normalizedLibraryIds);
+        }
+
+        String sourceDescription() {
+            return "official FTC game (" + seasonName + " fixed-field tags)";
+        }
+    }
 
     private final AprilTagLibrary library;
     private final Map<Integer, Pose3d> posesById;
     private final Set<Integer> ids;
     private final Set<Integer> libraryIds;
     private final Set<Integer> excludedIds;
+    private final Set<Integer> officialGameIds;
+    private final Set<Integer> nonFixedGameIds;
+    private final Set<Integer> ancillaryLibraryIds;
     private final String sourceDescription;
 
     private FtcGameTagLayout(AprilTagLibrary library,
                              Set<Integer> includedIds,
+                             Set<Integer> officialGameIds,
+                             Set<Integer> nonFixedGameIds,
+                             Set<Integer> ancillaryLibraryIds,
                              String sourceDescription) {
         this.library = Objects.requireNonNull(library, "library");
         this.sourceDescription = (sourceDescription != null && !sourceDescription.trim().isEmpty())
                 ? sourceDescription.trim()
                 : "unspecified";
 
-        Set<Integer> requested = (includedIds != null)
-                ? Collections.unmodifiableSet(new HashSet<Integer>(includedIds))
-                : Collections.<Integer>emptySet();
-
         Set<Integer> sourceIds = allLibraryIds(library);
+        Set<Integer> requested = orderedImmutableIds(includedIds);
+        Set<Integer> officialIds = orderedImmutableIds(officialGameIds);
+        Set<Integer> nonFixedIds = orderedImmutableIds(nonFixedGameIds);
+        Set<Integer> ancillaryIds = orderedImmutableIds(ancillaryLibraryIds);
+
         validateRequestedIds(requested, sourceIds);
+        validateRequestedIds(officialIds, sourceIds);
+        validateRequestedIds(nonFixedIds, sourceIds);
+        validateRequestedIds(ancillaryIds, sourceIds);
+
+        if (!officialIds.containsAll(nonFixedIds)) {
+            throw new IllegalArgumentException(
+                    "nonFixedGameIds must be a subset of officialGameIds"
+            );
+        }
+
+        HashSet<Integer> overlap = new HashSet<Integer>(officialIds);
+        overlap.retainAll(ancillaryIds);
+        if (!overlap.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "Official game IDs and ancillary library IDs must be disjoint, overlap=" + overlap
+            );
+        }
 
         Map<Integer, Pose3d> tmp = new HashMap<Integer, Pose3d>();
         for (AprilTagMetadata meta : library.getAllTags()) {
@@ -76,12 +146,13 @@ public final class FtcGameTagLayout implements TagLayout {
         }
 
         this.posesById = Collections.unmodifiableMap(tmp);
-        this.ids = Collections.unmodifiableSet(new HashSet<Integer>(tmp.keySet()));
-        this.libraryIds = Collections.unmodifiableSet(new HashSet<Integer>(sourceIds));
+        this.ids = orderedImmutableIds(tmp.keySet());
+        this.libraryIds = orderedImmutableIds(sourceIds);
+        this.officialGameIds = officialIds;
+        this.nonFixedGameIds = nonFixedIds;
+        this.ancillaryLibraryIds = ancillaryIds;
 
-        HashSet<Integer> excluded = new HashSet<Integer>(sourceIds);
-        excluded.removeAll(this.ids);
-        this.excludedIds = Collections.unmodifiableSet(excluded);
+        this.excludedIds = orderedImmutableIds(difference(sourceIds, this.ids));
     }
 
     /**
@@ -92,6 +163,11 @@ public final class FtcGameTagLayout implements TagLayout {
      * treating every SDK tag as fixed. If FIRST changes the current game and Phoenix has not yet
      * been updated with the season's fixed-tag policy, the error message will tell the maintainer
      * exactly what to do.</p>
+     *
+     * <p>The FTC SDK's current-game library may also include ancillary/sample tags used by SDK
+     * examples. Those are normalized away before the official-game signature is matched so the
+     * framework does not break just because the detector library is broader than the fixed-field
+     * layout policy.</p>
      */
     public static FtcGameTagLayout currentGameFieldFixed() {
         return officialGameFieldFixed(AprilTagGameDatabase.getCurrentGameTagLibrary());
@@ -102,25 +178,34 @@ public final class FtcGameTagLayout implements TagLayout {
      * season knowledge.
      *
      * <p>Use this when you intentionally pass an archived official game library. If Phoenix does
-     * not recognize the library's ID signature yet, this method throws with an actionable message
-     * instead of guessing.</p>
+     * not recognize the library's normalized game-ID signature yet, this method throws with an
+     * actionable message instead of guessing.</p>
      */
     public static FtcGameTagLayout officialGameFieldFixed(AprilTagLibrary library) {
         Objects.requireNonNull(library, "library");
-        Set<Integer> libraryIds = allLibraryIds(library);
+        Set<Integer> rawLibraryIds = allLibraryIds(library);
+        Set<Integer> ancillaryIds = orderedImmutableIds(intersection(rawLibraryIds, KNOWN_ANCILLARY_LIBRARY_IDS));
+        Set<Integer> normalizedGameIds = orderedImmutableIds(difference(rawLibraryIds, ancillaryIds));
 
-        if (libraryIds.equals(DECODE_2025_2026_LIBRARY_IDS)) {
-            return fromLibraryFixedIds(
-                    library,
-                    DECODE_2025_2026_FIXED_FIELD_IDS,
-                    "official FTC game (DECODE 2025-2026 fixed-field tags)"
-            );
+        for (OfficialGamePolicy policy : OFFICIAL_GAME_POLICIES) {
+            if (policy.matchesNormalizedLibrary(normalizedGameIds)) {
+                return new FtcGameTagLayout(
+                        library,
+                        policy.fixedFieldIds,
+                        policy.officialGameIds,
+                        policy.nonFixedGameIds,
+                        ancillaryIds,
+                        policy.sourceDescription()
+                );
+            }
         }
 
         throw new IllegalArgumentException(
                 "Phoenix does not have a built-in fixed-tag policy for FTC game library ids="
-                        + libraryIds
-                        + ". Use FtcGameTagLayout.fromLibraryFixedIds(...) for an explicit layout,"
+                        + rawLibraryIds
+                        + " (normalizedGameIds=" + normalizedGameIds
+                        + ", ancillaryIds=" + ancillaryIds
+                        + "). Use FtcGameTagLayout.fromLibraryFixedIds(...) for an explicit layout,"
                         + " or update FtcGameTagLayout.officialGameFieldFixed(...) for this season."
         );
     }
@@ -141,7 +226,14 @@ public final class FtcGameTagLayout implements TagLayout {
                                                        Set<Integer> fixedIds,
                                                        String sourceDescription) {
         Objects.requireNonNull(fixedIds, "fixedIds");
-        return new FtcGameTagLayout(library, fixedIds, sourceDescription);
+        return new FtcGameTagLayout(
+                library,
+                fixedIds,
+                Collections.<Integer>emptySet(),
+                Collections.<Integer>emptySet(),
+                Collections.<Integer>emptySet(),
+                sourceDescription
+        );
     }
 
     /**
@@ -153,7 +245,14 @@ public final class FtcGameTagLayout implements TagLayout {
      */
     public static FtcGameTagLayout fromLibraryAllTags(AprilTagLibrary library) {
         Objects.requireNonNull(library, "library");
-        return new FtcGameTagLayout(library, allLibraryIds(library), "all tags from supplied library");
+        return new FtcGameTagLayout(
+                library,
+                allLibraryIds(library),
+                Collections.<Integer>emptySet(),
+                Collections.<Integer>emptySet(),
+                Collections.<Integer>emptySet(),
+                "all tags from supplied library"
+        );
     }
 
     /**
@@ -177,11 +276,46 @@ public final class FtcGameTagLayout implements TagLayout {
     /**
      * Returns source-library IDs that were intentionally excluded from this fixed-field layout.
      *
-     * <p>For official FTC games, these are usually tags whose placement is not deterministic enough
-     * to trust for localization.</p>
+     * <p>This union may include both:</p>
+     * <ul>
+     *   <li>official game IDs that Phoenix intentionally does not trust as fixed landmarks, and</li>
+     *   <li>ancillary SDK IDs that are present in the detector library but are not part of the
+     *       official field layout policy.</li>
+     * </ul>
      */
     public Set<Integer> excludedIds() {
         return excludedIds;
+    }
+
+    /**
+     * Returns whether this layout was created by a recognized official-game fixed-tag policy.
+     */
+    public boolean hasOfficialGamePolicy() {
+        return !officialGameIds.isEmpty();
+    }
+
+    /**
+     * Returns recognized official-game IDs from the source library, if this layout came from an
+     * official-game policy. Otherwise returns an empty set.
+     */
+    public Set<Integer> officialGameIds() {
+        return officialGameIds;
+    }
+
+    /**
+     * Returns recognized official-game IDs that Phoenix intentionally excludes from the fixed-field
+     * layout because they are not stable enough for localization / field-pose solving.
+     */
+    public Set<Integer> nonFixedGameIds() {
+        return nonFixedGameIds;
+    }
+
+    /**
+     * Returns ancillary source-library IDs (for example SDK sample tags) that were ignored while
+     * matching the official-game policy.
+     */
+    public Set<Integer> ancillaryLibraryIds() {
+        return ancillaryLibraryIds;
     }
 
     /**
@@ -189,6 +323,22 @@ public final class FtcGameTagLayout implements TagLayout {
      */
     public String sourceDescription() {
         return sourceDescription;
+    }
+
+    /**
+     * Returns a compact human-readable summary of the fixed-tag policy used by this layout.
+     */
+    public String policySummaryLine() {
+        if (!hasOfficialGamePolicy()) {
+            return sourceDescription
+                    + " | fixed=" + ids
+                    + (excludedIds.isEmpty() ? "" : " | excluded=" + excludedIds);
+        }
+
+        return sourceDescription
+                + " | fixed=" + ids
+                + " | nonFixedGame=" + nonFixedGameIds
+                + (ancillaryLibraryIds.isEmpty() ? "" : " | ancillary=" + ancillaryLibraryIds);
     }
 
     /**
@@ -223,6 +373,12 @@ public final class FtcGameTagLayout implements TagLayout {
         dbg.addData(p + ".sourceTagCount", libraryIds.size());
         dbg.addData(p + ".sourceIds", libraryIds.toString());
         dbg.addData(p + ".excludedIds", excludedIds.toString());
+        dbg.addData(p + ".hasOfficialGamePolicy", hasOfficialGamePolicy());
+        if (hasOfficialGamePolicy()) {
+            dbg.addData(p + ".officialGameIds", officialGameIds.toString());
+            dbg.addData(p + ".nonFixedGameIds", nonFixedGameIds.toString());
+            dbg.addData(p + ".ancillaryLibraryIds", ancillaryLibraryIds.toString());
+        }
         dbg.addData(p + ".library.class", library.getClass().getSimpleName());
     }
 
@@ -289,7 +445,7 @@ public final class FtcGameTagLayout implements TagLayout {
                 ids.add(meta.id);
             }
         }
-        return Collections.unmodifiableSet(ids);
+        return orderedImmutableIds(ids);
     }
 
     private static Set<Integer> immutableIds(int... ids) {
@@ -299,7 +455,39 @@ public final class FtcGameTagLayout implements TagLayout {
                 set.add(id);
             }
         }
-        return Collections.unmodifiableSet(set);
+        return orderedImmutableIds(set);
+    }
+
+    private static Set<Integer> orderedImmutableIds(Set<Integer> ids) {
+        TreeSet<Integer> sorted = new TreeSet<Integer>();
+        if (ids != null) {
+            sorted.addAll(ids);
+        }
+        return Collections.unmodifiableSet(new LinkedHashSet<Integer>(sorted));
+    }
+
+    private static Set<Integer> difference(Set<Integer> a, Set<Integer> b) {
+        HashSet<Integer> out = new HashSet<Integer>();
+        if (a != null) {
+            out.addAll(a);
+        }
+        if (b != null) {
+            out.removeAll(b);
+        }
+        return out;
+    }
+
+    private static Set<Integer> intersection(Set<Integer> a, Set<Integer> b) {
+        HashSet<Integer> out = new HashSet<Integer>();
+        if (a != null) {
+            out.addAll(a);
+        }
+        if (b == null) {
+            out.clear();
+            return out;
+        }
+        out.retainAll(b);
+        return out;
     }
 
     /**
@@ -351,6 +539,8 @@ public final class FtcGameTagLayout implements TagLayout {
                 + "sourceDescription='" + sourceDescription + '\''
                 + ", fixedIds=" + ids
                 + ", excludedIds=" + excludedIds
+                + (hasOfficialGamePolicy() ? ", nonFixedGameIds=" + nonFixedGameIds : "")
+                + (ancillaryLibraryIds.isEmpty() ? "" : ", ancillaryLibraryIds=" + ancillaryLibraryIds)
                 + '}';
     }
 }

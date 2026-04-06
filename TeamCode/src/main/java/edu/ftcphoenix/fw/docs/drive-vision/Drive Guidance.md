@@ -177,6 +177,11 @@ ReferencePoint2d basketAim = References.relativeToSelectedTagPoint(basketSelecti
 
 The reference object itself is still immutable. It resolves through the selector's current selected tag at evaluation time.
 
+For localization fallback, Phoenix is intentionally conservative: a selected-tag reference only
+promotes through localization when the selector's <em>entire candidate set</em> is present in the
+fixed layout. That keeps the reference's capabilities stable instead of flickering based on which
+tag happened to be selected this loop.
+
 ### 3.5 Per-tag offsets with one selector
 
 This is useful when different tags represent the same semantic goal but need different geometry.
@@ -288,7 +293,7 @@ Localization-only can also solve:
 - field-fixed references,
 - robot-relative translation anchors,
 - single fixed-tag-relative references **when** `fixedAprilTagLayout(...)` is provided,
-- selected-tag-relative references **after** a selected tag exists and that tag is known in the fixed layout.
+- selected-tag-relative references only when the selector's candidate IDs all live in the fixed layout and a selected tag currently exists.
 
 ### 5.2 AprilTags only
 
@@ -310,6 +315,22 @@ DriveGuidancePlan aimAtTag = DriveGuidance.plan()
 Field-fixed references can also be solved in the AprilTags lane when you provide `fixedAprilTagLayout(...)`. That layout should contain only tags whose field placement is truly fixed; season objects whose exact placement can vary match-to-match should stay available to raw detection/selection, but should be excluded from localization and AprilTag→field-pose solving.
 
 For official FTC games, the framework helper `FtcGameTagLayout.currentGameFieldFixed()` is the intended way to build that layout. It keeps the "what counts as field-fixed?" decision in one framework-level place so guidance, localization, and testers all agree.
+
+That helper may normalize away known SDK ancillary/sample tags before matching the official-game policy, so the fixed layout stays stable even if the detector library is broader than the field-fixed subset.
+
+If you are unsure why Phoenix separates the detector library from the fixed layout, or how to use
+role-specific fixed-tag subsets, read
+[`AprilTag Localization & Fixed Layouts`](<AprilTag Localization & Fixed Layouts.md>).
+
+When the AprilTags lane temporarily needs a field pose from those fixed tags, you can explicitly share the same solver tuning used by your AprilTag localizer:
+
+```java
+.aprilTagFieldPoseConfig(tagOnlyPoseConfig.toSolverConfig())
+```
+
+That is the recommended way to keep guidance's temporary AprilTag field-pose bridge aligned with your multi-tag localizer, including plausibility gating.
+
+Phoenix also normalizes that config at the guidance API boundary, so only the shared field-pose solver settings are kept even if a richer config subtype is passed accidentally.
 
 ### 5.3 Adaptive
 
@@ -353,6 +374,7 @@ Examples of build-time failures:
 - `aprilTagsOnly()` with no `aprilTags(...)`
 - `adaptive()` without both lanes
 - selected-tag or fixed-tag references in localization mode with no `fixedAprilTagLayout(...)`
+- selected-tag references in localization mode when the selector may choose IDs outside the fixed layout
 - field-fixed references in AprilTags-only mode with no `fixedAprilTagLayout(...)`
 - adaptive-only knobs configured in a single-lane plan
 

@@ -43,7 +43,10 @@ public final class PinpointAprilTagFusionLocalizationTesterPhoenix {
                             RobotConfig.Vision.nameWebcam,
                             RobotConfig.Vision.cameraMount,
                             cfg,
-                            RobotConfig.Localization.pinpointAprilTagFusion.copy()
+                            RobotConfig.Localization.pinpointAprilTagFusion.copy(),
+                            null,
+                            null,
+                            RobotConfig.Localization.aprilTags.copy()
                     );
                 }
         );

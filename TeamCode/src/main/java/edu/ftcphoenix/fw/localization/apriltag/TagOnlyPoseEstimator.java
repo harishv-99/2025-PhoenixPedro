@@ -11,6 +11,7 @@ import edu.ftcphoenix.fw.localization.PoseEstimator;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagDetections;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
+import edu.ftcphoenix.fw.spatial.Region2d;
 
 /**
  * {@link PoseEstimator} that derives a field-centric robot pose estimate from one or more fresh
@@ -32,6 +33,15 @@ public final class TagOnlyPoseEstimator implements PoseEstimator {
 
     /** Configuration parameters for {@link TagOnlyPoseEstimator}. */
     public static final class Config extends FixedTagFieldPoseSolver.Config {
+        /**
+         * Maximum age (seconds) of the underlying detections frame accepted by this estimator.
+         *
+         * <p>This is the AprilTag-localization counterpart to guidance's live-tag freshness gate:
+         * stale frames should not continue to produce a "global" robot pose just because the
+         * detections object is still non-null. Values must be finite and >= 0.</p>
+         */
+        public double maxDetectionAgeSec = 0.50;
+
         /** Camera mount extrinsics in the robot frame. */
         public CameraMountConfig cameraMount = CameraMountConfig.identity();
 
@@ -56,21 +66,86 @@ public final class TagOnlyPoseEstimator implements PoseEstimator {
         }
 
         /**
+         * Sets the maximum accepted detections-frame age in seconds.
+         *
+         * <p>The value must be finite and >= 0.</p>
+         */
+        public Config withMaxDetectionAgeSec(double maxDetectionAgeSec) {
+            this.maxDetectionAgeSec = maxDetectionAgeSec;
+            return this;
+        }
+
+        /**
+         * Sets an optional field-region plausibility gate for AprilTag global pose solves.
+         */
+        public Config withPlausibleFieldRegion(Region2d region) {
+            this.plausibleFieldRegion = region;
+            return this;
+        }
+
+        /**
+         * Sets how far outside the plausible field region a solve may drift before it is rejected.
+         */
+        public Config withMaxOutsidePlausibleFieldRegionInches(double maxOutsideInches) {
+            this.maxOutsidePlausibleFieldRegionInches = maxOutsideInches;
+            return this;
+        }
+
+        /**
+         * Returns a pure {@link FixedTagFieldPoseSolver.Config} snapshot of the shared solver
+         * settings contained in this config.
+         *
+         * <p>Use this when one robot wants AprilTag-only localization and Drive Guidance's
+         * temporary AprilTag field-pose bridge to share the same weighting / plausibility policy
+         * without leaking TagOnly-specific settings such as {@link #cameraMount} or
+         * {@link #maxDetectionAgeSec} into the guidance API.</p>
+         */
+        public FixedTagFieldPoseSolver.Config toSolverConfig() {
+            return FixedTagFieldPoseSolver.Config.normalizedValidatedCopyOf(
+                    this,
+                    "TagOnlyPoseEstimator.Config.toSolverConfig"
+            );
+        }
+
+        /**
+         * Backward-friendly alias for {@link #toSolverConfig()}.
+         */
+        public FixedTagFieldPoseSolver.Config solverConfig() {
+            return toSolverConfig();
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public void validate(String context) {
+            super.validate(context);
+            String p = (context != null && !context.trim().isEmpty())
+                    ? context.trim()
+                    : "TagOnlyPoseEstimator.Config";
+            if (!Double.isFinite(maxDetectionAgeSec) || maxDetectionAgeSec < 0.0) {
+                throw new IllegalArgumentException(p + ".maxDetectionAgeSec must be finite and >= 0");
+            }
+        }
+
+        /**
+         * Returns a shallow validated copy of this config.
+         */
+        @Override
+        public Config validatedCopy(String context) {
+            Config c = copy();
+            c.validate(context);
+            return c;
+        }
+
+        /**
          * Returns a shallow copy of this config.
          */
         @Override
         public Config copy() {
             Config c = new Config();
-            c.maxAbsBearingRad = this.maxAbsBearingRad;
-            c.preferObservationFieldPose = this.preferObservationFieldPose;
-            c.observationFieldPoseMaxDeltaInches = this.observationFieldPoseMaxDeltaInches;
-            c.observationFieldPoseMaxDeltaHeadingRad = this.observationFieldPoseMaxDeltaHeadingRad;
-            c.rangeSoftnessInches = this.rangeSoftnessInches;
-            c.minObservationWeight = this.minObservationWeight;
-            c.outlierPositionGateInches = this.outlierPositionGateInches;
-            c.outlierHeadingGateRad = this.outlierHeadingGateRad;
-            c.consistencyPositionScaleInches = this.consistencyPositionScaleInches;
-            c.consistencyHeadingScaleRad = this.consistencyHeadingScaleRad;
+            copyBaseFieldsInto(c);
+            c.maxDetectionAgeSec = this.maxDetectionAgeSec;
             c.cameraMount = this.cameraMount;
             return c;
         }
@@ -91,7 +166,7 @@ public final class TagOnlyPoseEstimator implements PoseEstimator {
     public TagOnlyPoseEstimator(AprilTagSensor tags, TagLayout layout, Config cfg) {
         this.tags = Objects.requireNonNull(tags, "tags");
         this.layout = Objects.requireNonNull(layout, "layout");
-        this.cfg = (cfg != null) ? cfg : Config.defaults();
+        this.cfg = (cfg != null) ? cfg.validatedCopy("TagOnlyPoseEstimator.Config") : Config.defaults();
         if (this.cfg.cameraMount == null) {
             this.cfg.cameraMount = CameraMountConfig.identity();
         }
@@ -108,13 +183,23 @@ public final class TagOnlyPoseEstimator implements PoseEstimator {
         lastDetections = tags.get(clock);
         lastSolve = FixedTagFieldPoseSolver.Result.none();
 
-        if (lastDetections == null || !lastDetections.isFresh(Double.POSITIVE_INFINITY)) {
+        if (lastDetections == null || !lastDetections.isFresh(cfg.maxDetectionAgeSec)) {
+            lastEstimate = PoseEstimate.noPose(nowSec);
+            return;
+        }
+
+        AprilTagDetections freshDetections = AprilTagDetections.of(
+                lastDetections.ageSec,
+                lastDetections.freshMatching(layout.ids(), cfg.maxDetectionAgeSec)
+        );
+
+        if (freshDetections.observations.isEmpty()) {
             lastEstimate = PoseEstimate.noPose(nowSec);
             return;
         }
 
         lastSolve = FixedTagFieldPoseSolver.solve(
-                lastDetections.observations,
+                freshDetections.observations,
                 layout,
                 cfg.cameraMount,
                 cfg
@@ -125,7 +210,7 @@ public final class TagOnlyPoseEstimator implements PoseEstimator {
             return;
         }
 
-        double ageSec = lastDetections.ageSec;
+        double ageSec = freshDetections.ageSec;
         double timestampSec = nowSec - ageSec;
         Pose3d fieldToRobotPose = lastSolve.fieldToRobotPose;
         lastEstimate = new PoseEstimate(fieldToRobotPose, true, lastSolve.quality, ageSec, timestampSec);
@@ -151,8 +236,11 @@ public final class TagOnlyPoseEstimator implements PoseEstimator {
         dbg.addData(p + ".class", getClass().getSimpleName())
                 .addData(p + ".detections.ageSec", lastDetections.ageSec)
                 .addData(p + ".detections.count", lastDetections.observations.size())
+                .addData(p + ".cfg.maxDetectionAgeSec", cfg.maxDetectionAgeSec)
                 .addData(p + ".solve.candidates", lastSolve.candidateCount)
                 .addData(p + ".solve.accepted", lastSolve.acceptedCount)
+                .addData(p + ".solve.acceptedFraction", lastSolve.acceptedFraction)
+                .addData(p + ".solve.acceptedWeightFraction", lastSolve.acceptedWeightFraction)
                 .addData(p + ".solve.totalWeight", lastSolve.totalWeight)
                 .addData(p + ".solve.rangeInches", lastSolve.rangeInches)
                 .addData(p + ".hasPose", lastEstimate.hasPose)

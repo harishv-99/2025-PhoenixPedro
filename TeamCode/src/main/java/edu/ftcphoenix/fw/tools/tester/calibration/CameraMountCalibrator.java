@@ -13,6 +13,8 @@ import java.util.Set;
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
 import edu.ftcphoenix.fw.field.TagLayout;
 import edu.ftcphoenix.fw.ftc.FtcGameTagLayout;
+import edu.ftcphoenix.fw.ftc.FtcTagLayoutDebug;
+import edu.ftcphoenix.fw.ftc.FtcTelemetryDebugSink;
 import edu.ftcphoenix.fw.ftc.FtcVision;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagObservation;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
@@ -22,7 +24,7 @@ import edu.ftcphoenix.fw.tools.tester.ui.SelectionMenu;
 /**
  * Calibrates {@code robotToCameraPose} (camera mount extrinsics) using:
  * <ul>
- *   <li>Known AprilTag field layout (FTC game database by default), and</li>
+ *   <li>Known AprilTag field layout (framework-owned current-game fixed layout by default), and</li>
  *   <li>A manually-entered / adjustable known robot pose {@code fieldToRobotPose}.</li>
  * </ul>
  *
@@ -65,7 +67,7 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
 
     // Injected configuration
     private final String preferredCameraName;   // may be null/empty to trigger picker
-    private final TagLayout layoutOverride;     // may be null => FTC game db
+    private final TagLayout layoutOverride;     // may be null => framework current-game fixed layout
     private final AprilTagLibrary tagLibraryOverride; // optional; null -> use current game library
     private final double maxAgeSec;
 
@@ -137,7 +139,7 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
      * Create a calibrator with full configuration control.
      *
      * @param cameraName     configured webcam name in the FTC Robot Configuration (nullable/blank to use picker)
-     * @param layoutOverride optional field {@link TagLayout}; if null, the current FTC game database is used
+     * @param layoutOverride optional field {@link TagLayout}; if null, the framework's current-game fixed layout is used
      * @param maxAgeSec      maximum age (seconds) for tag observations before they are treated as stale
      */
     public CameraMountCalibrator(String cameraName, TagLayout layoutOverride, double maxAgeSec) {
@@ -151,7 +153,7 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
      * while still reusing Phoenix's calibrator flow.</p>
      *
      * @param cameraName         camera name in the hardware map (or {@code null} to pick at runtime)
-     * @param layoutOverride     optional tag layout to use instead of the current game layout
+     * @param layoutOverride     optional tag layout to use instead of the framework current-game fixed layout
      * @param tagLibraryOverride optional AprilTag library override (controls tag size/IDs for detection)
      * @param maxAgeSec          maximum acceptable tag observation age in seconds
      */
@@ -516,7 +518,7 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
         }
         t.addLine("(BACK: camera picker)  (Hold robot still when sampling)");
 
-        // Show the known field pose of the selected tag (from the FTC game database or an override layout).
+        // Show the known field pose of the selected tag (from the fixed layout or an override layout).
         t.addLine("");
         t.addLine("Selected tag pose from layout (fieldToTagPose):");
         Pose3d selectedTagPose = (layout != null) ? layout.getFieldToTagPose(selectedTagId) : null;
@@ -525,6 +527,7 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
         } else {
             addPoseLine(t, "fieldToTagPose(layout)", selectedTagPose);
         }
+        FtcTagLayoutDebug.dumpSummary(layout, new FtcTelemetryDebugSink(t), "layout");
 
         t.addLine("");
         t.addLine("Known robot pose (fieldToRobotPose):");
