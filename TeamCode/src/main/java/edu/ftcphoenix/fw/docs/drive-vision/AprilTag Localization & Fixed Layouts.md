@@ -164,7 +164,40 @@ Notes:
 
 ---
 
-## 7. Selected-tag references and localization
+## 7. Pinpoint + AprilTag fusion and latency compensation
+
+When a robot uses odometry plus AprilTag global solves, Phoenix's fusion localizer now does two related reliability jobs:
+
+- deduplicate repeated camera frames by measurement timestamp
+- when history is available, apply the AprilTag correction at the frame timestamp and replay odometry forward to the current loop
+
+That is more trustworthy than repeatedly blending the same delayed frame against “now”.
+
+Typical pattern:
+
+```java
+TagOnlyPoseEstimator.Config tagCfg = RobotConfig.Localization.aprilTags.copy()
+        .withCameraMount(cameraMount);
+
+TagOnlyPoseEstimator tagLocalizer = new TagOnlyPoseEstimator(tags, fixedLayout, tagCfg);
+
+OdometryTagFusionPoseEstimator.Config fusionCfg = RobotConfig.Localization.pinpointAprilTagFusion.copy();
+fusionCfg.maxVisionAgeSec = 0.35;
+fusionCfg.odomHistorySec = 1.0;   // must cover maxVisionAgeSec when latency compensation is enabled
+
+PoseEstimator fused = new OdometryTagFusionPoseEstimator(pinpoint, tagLocalizer, fusionCfg);
+```
+
+Notes:
+
+- `odomHistorySec` should be at least `maxVisionAgeSec`; the config now validates this fail-fast.
+- replay only uses measurements newer than the current replay base (initialization, manual reset, or last accepted correction).
+- if exact replay is unavailable, the estimator falls back to a simpler projected-now correction rather than silently re-applying the same stale frame every loop.
+- if the fused pose is pushed back into odometry, the replay base and odometry history are rebased at that corrected pose.
+
+---
+
+## 8. Selected-tag references and localization
 
 Selected-tag references are still **single-tag semantic references**.
 
@@ -188,7 +221,7 @@ A future runtime policy could allow localization whenever the **currently select
 
 ---
 
-## 8. Testers and calibration tools
+## 9. Testers and calibration tools
 
 The localization testers now support using the same AprilTag-localizer config as production robot code.
 
@@ -206,7 +239,7 @@ IDs intentionally excluded from the fixed layout.
 
 ---
 
-## 9. Reliability checklist
+## 10. Reliability checklist
 
 If AprilTag localization feels worse than expected, check these in order:
 
@@ -217,12 +250,14 @@ If AprilTag localization feels worse than expected, check these in order:
 5. whether the plausibility gate is too strict or too loose
 6. whether the guidance bridge and localizer are actually sharing the same solver tuning
 7. whether the fused localizer is rebasing odometry correctly after accepted vision corrections
+8. whether `odomHistorySec` is large enough for the accepted vision age when latency compensation is enabled
+9. whether the fusion tester is reporting lots of duplicate / out-of-order vision frames
 
 Those basics usually matter more than fancy estimator math.
 
 ---
 
-## 10. Season bring-up checklist for maintainers
+## 11. Season bring-up checklist for maintainers
 
 When FIRST publishes a new game:
 

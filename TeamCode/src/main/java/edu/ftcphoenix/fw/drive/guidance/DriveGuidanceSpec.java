@@ -180,9 +180,9 @@ public final class DriveGuidanceSpec {
         /**
          * Creates a live AprilTag solve lane.
          *
-         * @param sensor                shared AprilTag detections source
-         * @param cameraMount           camera extrinsics in the robot frame
-         * @param maxAgeSec             maximum accepted detection age in seconds
+         * @param sensor shared AprilTag detections source
+         * @param cameraMount camera extrinsics in the robot frame
+         * @param maxAgeSec maximum accepted detection age in seconds
          * @param fieldPoseSolverConfig shared multi-tag field-pose solver configuration used when
          *                              guidance temporarily promotes fixed tags into a field pose;
          *                              normalized to the shared base solver config at this API

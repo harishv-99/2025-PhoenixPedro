@@ -31,7 +31,7 @@ public final class SubsetTagLayout implements TagLayout {
      * Creates a subset view over {@code base}.
      *
      * @param base backing layout containing the original field metadata
-     * @param ids  IDs to expose through this view; every ID must already exist in {@code base}
+     * @param ids IDs to expose through this view; every ID must already exist in {@code base}
      */
     public SubsetTagLayout(TagLayout base, Set<Integer> ids) {
         this(base, ids, "subset");
@@ -40,8 +40,8 @@ public final class SubsetTagLayout implements TagLayout {
     /**
      * Creates a subset view over {@code base} with a human-readable description.
      *
-     * @param base        backing layout containing the original field metadata
-     * @param ids         IDs to expose through this view; every ID must already exist in {@code base}
+     * @param base backing layout containing the original field metadata
+     * @param ids IDs to expose through this view; every ID must already exist in {@code base}
      * @param description short label used in debug dumps and {@link #toString()}
      */
     public SubsetTagLayout(TagLayout base, Set<Integer> ids, String description) {

@@ -363,13 +363,17 @@ public class RobotConfig {
             aprilTags.maxOutsidePlausibleFieldRegionInches = 3.0;
 
             // Fusion: trust Pinpoint for smooth motion, but let fresh AprilTag solves gently pull
-            // the robot back toward the field truth when they are plausible.
+            // the robot back toward the field truth when they are plausible. Keep enough odometry
+            // history for latency compensation so accepted AprilTag frames can be corrected at their
+            // measurement timestamp and replayed forward to "now".
             pinpointAprilTagFusion.maxVisionAgeSec = 0.35;
             pinpointAprilTagFusion.minVisionQuality = 0.10;
             pinpointAprilTagFusion.visionPositionGain = 0.25;
             pinpointAprilTagFusion.visionHeadingGain = 0.35;
             pinpointAprilTagFusion.maxVisionPositionJumpIn = 24.0;
             pinpointAprilTagFusion.maxVisionHeadingJumpRad = Math.toRadians(60.0);
+            pinpointAprilTagFusion.enableLatencyCompensation = true;
+            pinpointAprilTagFusion.odomHistorySec = 1.0;
         }
     }
 

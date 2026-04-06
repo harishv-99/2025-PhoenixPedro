@@ -389,6 +389,12 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
         t.addData("Vision Enabled", fusedEstimator.isVisionEnabled());
         t.addData("Vision MaxAge", "%.0f ms", effectiveVisionMaxAgeSec() * 1000.0);
         t.addData("Vision Accept", "%d ok / %d rej", fusedEstimator.getAcceptedVisionCount(), fusedEstimator.getRejectedVisionCount());
+        t.addData("Vision Path", "%d replay / %d projected",
+                fusedEstimator.getReplayedVisionCount(),
+                fusedEstimator.getProjectedVisionCount());
+        t.addData("Vision Skip", "%d dup / %d old",
+                fusedEstimator.getSkippedDuplicateVisionCount(),
+                fusedEstimator.getSkippedOutOfOrderVisionCount());
         if (layout instanceof FtcGameTagLayout) {
             FtcGameTagLayout ftcLayout = (FtcGameTagLayout) layout;
             t.addData("Layout Policy", ftcLayout.policySummaryLine());

@@ -2,6 +2,8 @@
 
 This file tracks Phoenix-specific follow-up work now that TeleOp uses the fused Pinpoint + AprilTag localizer, the framework owns the fixed-tag policy, both localization + guidance can share the same fixed-tag field-pose solver policy, and the robot-specific testers can mirror the production AprilTag tuning.
 
+The current framework pass also upgraded fusion to deduplicate repeated AprilTag frames by measurement timestamp and to replay odometry forward from the accepted frame time when latency compensation is available.
+
 ---
 
 ## Near-term
@@ -10,14 +12,16 @@ This file tracks Phoenix-specific follow-up work now that TeleOp uses the fused 
    validate the multi-tag solve on the real DECODE field after camera-mount calibration.
 
 2. Field-test and retune `RobotConfig.Localization.pinpointAprilTagFusion`:
-   confirm the correction gains feel stable during normal TeleOp driving and after brief vision dropouts now that the framework rebases odometry correctly after accepted vision corrections.
+   confirm the correction gains feel stable during normal TeleOp driving and after brief vision dropouts now that the framework rebases odometry correctly after accepted vision corrections, deduplicates repeated frames, and replays odometry from the accepted frame timestamp.
 
 3. Retune `shootBrace` / pose-lock gains with the fused localizer:
    the brace overlay now depends on the fused pose rather than odometry alone.
 
 4. Verify on the real robot that the new field-plausibility gate is permissive enough near walls/corners but still catches impossible AprilTag solves.
 
-5. Keep scoring-tag selection intentionally limited to the fixed goal tags used for localization fallback.
+5. Check the fusion tester's replay / projected / duplicate counters on the real field and make sure the camera pipeline is delivering fresh AprilTag frames at the expected cadence.
+
+6. Keep scoring-tag selection intentionally limited to the fixed goal tags used for localization fallback.
 
 ---
 

@@ -26,6 +26,8 @@ It exists so season-specific fixes and the next maintainership steps do not get 
 - Normalized AprilTag field-pose solver config at the guidance API boundary so subtype-only config cannot leak across unrelated APIs.
 - Added a shared `FtcTagLayoutDebug.dumpSummary(...)` helper and surfaced the layout policy summary in AprilTag testers/calibrators.
 - Fixed a fusion reliability bug by rebasing the odometry baseline after accepted vision corrections are pushed back into odometry.
+- Upgraded fusion to deduplicate repeated camera frames by measurement timestamp and to apply accepted vision corrections at the frame timestamp before replaying odometry forward.
+- Added fail-fast validation for fusion latency-compensation history length and surfaced replay/projected/duplicate counters in the fusion tester.
 
 ---
 
@@ -37,12 +39,12 @@ It exists so season-specific fixes and the next maintainership steps do not get 
 
 ## Longer-term upgrades worth considering
 
-1. Latency-compensated fusion:
-   apply AprilTag corrections at the measurement timestamp and replay odometry forward, rather than only correcting the current fused state.
-
-2. Better per-observation weighting:
+1. Better per-observation weighting:
    if FTC exposes richer confidence signals (ambiguity, reprojection error, tag area/corner fit), fold them into the fixed-tag pose solver.
 
-3. Mixed candidate-set design review:
+2. Mixed candidate-set design review:
    today selected-tag references only promote through localization when all candidate IDs are field-fixed.
    If a real use case appears, consider a principled runtime policy that allows localization only when the currently selected tag is fixed.
+
+3. Deeper fusion evolution only if field data justifies it:
+   for example, explicit out-of-order vision buffering, velocity-aware replay, or a fuller state-estimator path.

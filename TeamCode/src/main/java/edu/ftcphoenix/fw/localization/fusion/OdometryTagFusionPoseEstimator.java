@@ -25,9 +25,9 @@ import edu.ftcphoenix.fw.localization.PoseResetter;
  *   <li>Simple, predictable behavior (no Kalman filter tuning to start).</li>
  *   <li>Works well even when tags disappear near the scoring target (odometry carries you).</li>
  *   <li>Allows gentle "snap-back" corrections when tags reappear.</li>
- *   <li>Optionally projects fresh vision measurements forward through recent odometry so camera
- *       latency hurts less than a naive "compare an old frame directly against the current pose"
- *       scheme.</li>
+ *   <li>Optionally applies fresh vision measurements at their measurement timestamp and then
+ *       replays odometry forward so camera latency hurts less than a naive "compare an old frame
+ *       directly against the current pose" scheme.</li>
  * </ul>
  *
  * <p><b>Loop ordering:</b> this estimator calls {@link PoseEstimator#update(LoopClock)} on its
@@ -38,8 +38,15 @@ import edu.ftcphoenix.fw.localization.PoseResetter;
  * back into an underlying odometry localizer that supports {@link PoseResetter}, it also rebases
  * its stored odometry baseline to that corrected pose. Without that rebase, the next odometry
  * delta would accidentally re-apply the reset jump and double-count the correction.</p>
+ *
+ * <p><b>Duplicate vision frames:</b> camera pipelines often expose the same processed frame across
+ * multiple robot loops while its age increases. This estimator only evaluates a given vision
+ * measurement timestamp once, so a single stale frame cannot keep "pulling" the fused pose over
+ * several loops.</p>
  */
 public class OdometryTagFusionPoseEstimator implements PoseEstimator, PoseResetter {
+
+    private static final double TIMESTAMP_EPS_SEC = 1e-6;
 
     /**
      * Configuration for the fusion behavior.
@@ -91,17 +98,22 @@ public class OdometryTagFusionPoseEstimator implements PoseEstimator, PoseResett
         public double visionConfidenceHoldSec = 0.75;
 
         /**
-         * If true, accepted vision measurements are projected forward through recent odometry using
-         * their measurement timestamp before the correction is applied.
+         * If true, accepted vision measurements are corrected at their measurement timestamp and the
+         * stored odometry motion since that timestamp is replayed forward to now.
          *
-         * <p>This is a lightweight form of latency compensation. It is intentionally simpler than a
-         * full state estimator, but it substantially reduces the tendency for delayed camera frames
-         * to "drag" the fused pose backward while the robot is still moving.</p>
+         * <p>This is a lightweight, deterministic form of latency compensation. It intentionally
+         * avoids a full state-estimator stack while still fixing the most common AprilTag fusion
+         * failure mode: an old camera frame dragging the fused pose backward while the robot keeps
+         * moving.</p>
          */
         public boolean enableLatencyCompensation = true;
 
         /**
          * How much recent odometry history (seconds) to retain for latency compensation.
+         *
+         * <p>When latency compensation is enabled, this should be at least as large as
+         * {@link #maxVisionAgeSec} so every still-acceptable vision frame can be replayed through
+         * odometry history.</p>
          */
         public double odomHistorySec = 1.0;
 
@@ -114,6 +126,55 @@ public class OdometryTagFusionPoseEstimator implements PoseEstimator, PoseResett
          */
         public static Config defaults() {
             return new Config();
+        }
+
+        /**
+         * Validates this config and throws an actionable error when it is inconsistent.
+         */
+        public void validate(String context) {
+            String p = (context != null && !context.trim().isEmpty())
+                    ? context.trim()
+                    : "OdometryTagFusionPoseEstimator.Config";
+
+            if (!Double.isFinite(maxVisionAgeSec) || maxVisionAgeSec < 0.0) {
+                throw new IllegalArgumentException(p + ".maxVisionAgeSec must be finite and >= 0");
+            }
+            if (!Double.isFinite(minVisionQuality) || minVisionQuality < 0.0 || minVisionQuality > 1.0) {
+                throw new IllegalArgumentException(p + ".minVisionQuality must be finite and within [0, 1]");
+            }
+            if (!Double.isFinite(visionPositionGain) || visionPositionGain < 0.0) {
+                throw new IllegalArgumentException(p + ".visionPositionGain must be finite and >= 0");
+            }
+            if (!Double.isFinite(visionHeadingGain) || visionHeadingGain < 0.0) {
+                throw new IllegalArgumentException(p + ".visionHeadingGain must be finite and >= 0");
+            }
+            if (!Double.isFinite(maxVisionPositionJumpIn) || maxVisionPositionJumpIn < 0.0) {
+                throw new IllegalArgumentException(p + ".maxVisionPositionJumpIn must be finite and >= 0");
+            }
+            if (!Double.isFinite(maxVisionHeadingJumpRad) || maxVisionHeadingJumpRad < 0.0) {
+                throw new IllegalArgumentException(p + ".maxVisionHeadingJumpRad must be finite and >= 0");
+            }
+            if (!Double.isFinite(visionConfidenceHoldSec) || visionConfidenceHoldSec < 0.0) {
+                throw new IllegalArgumentException(p + ".visionConfidenceHoldSec must be finite and >= 0");
+            }
+            if (!Double.isFinite(odomHistorySec) || odomHistorySec < 0.0) {
+                throw new IllegalArgumentException(p + ".odomHistorySec must be finite and >= 0");
+            }
+            if (enableLatencyCompensation && odomHistorySec + TIMESTAMP_EPS_SEC < maxVisionAgeSec) {
+                throw new IllegalArgumentException(
+                        p + ".odomHistorySec must be >= maxVisionAgeSec when latency compensation is enabled"
+                                + " (increase odomHistorySec or reduce maxVisionAgeSec)"
+                );
+            }
+        }
+
+        /**
+         * Returns a validated copy of this config.
+         */
+        public Config validatedCopy(String context) {
+            Config c = copy();
+            c.validate(context);
+            return c;
         }
 
         /**
@@ -159,12 +220,29 @@ public class OdometryTagFusionPoseEstimator implements PoseEstimator, PoseResett
     private PoseEstimate lastEstimate = PoseEstimate.noPose(0.0);
     private final Deque<OdomSample> odomHistory = new ArrayDeque<OdomSample>();
 
+    // Replay base: the most recent moment at which the fused pose was explicitly anchored
+    // (initialization, manual reset, or accepted vision correction). Between replay bases, fused
+    // motion is purely odometry-driven, so reconstructing the fused pose at a measurement timestamp
+    // is just "base fused pose" composed with the odometry delta from base->measurement.
+    private boolean replayBaseValid = false;
+    private double replayBaseTimestampSec = Double.NaN;
+    private Pose3d replayBaseFusedPose = Pose3d.zero();
+    private Pose3d replayBaseOdomPose = Pose3d.zero();
+
     // Debug/telemetry helpers.
     private double lastVisionAcceptedSec = Double.NaN;
+    private double lastAcceptedVisionMeasurementTimestampSec = Double.NaN;
+    private double lastEvaluatedVisionTimestampSec = Double.NaN;
     private Pose3d lastVisionPose = Pose3d.zero();
     private Pose3d lastLatencyCompensatedVisionPose = Pose3d.zero();
+    private Pose3d lastReplayReferencePose = Pose3d.zero();
+    private boolean lastVisionUsedReplay = false;
     private int acceptedVisionCount = 0;
     private int rejectedVisionCount = 0;
+    private int skippedDuplicateVisionCount = 0;
+    private int skippedOutOfOrderVisionCount = 0;
+    private int replayedVisionCount = 0;
+    private int projectedVisionCount = 0;
 
     /**
      * Creates a fusion estimator with the default fusion configuration.
@@ -185,7 +263,8 @@ public class OdometryTagFusionPoseEstimator implements PoseEstimator, PoseResett
         }
         this.odometry = odometry;
         this.vision = vision;
-        this.cfg = cfg != null ? cfg : Config.defaults();
+        Config base = (cfg != null) ? cfg : Config.defaults();
+        this.cfg = base.validatedCopy("OdometryTagFusionPoseEstimator.Config");
     }
 
     /**
@@ -210,10 +289,25 @@ public class OdometryTagFusionPoseEstimator implements PoseEstimator, PoseResett
     }
 
     /**
-     * Last accepted vision pose (planarized).
+     * Measurement timestamp of the most recently accepted vision frame, or NaN if never.
+     */
+    public double getLastAcceptedVisionMeasurementTimestampSec() {
+        return lastAcceptedVisionMeasurementTimestampSec;
+    }
+
+    /**
+     * Last accepted vision pose at the frame's own measurement timestamp (planarized).
      */
     public Pose3d getLastVisionPose() {
         return lastVisionPose;
+    }
+
+    /**
+     * Returns whether the most recently accepted correction used measurement-time replay instead of
+     * a simple now-frame projection fallback.
+     */
+    public boolean wasLastVisionCorrectionReplay() {
+        return lastVisionUsedReplay;
     }
 
     /**
@@ -224,10 +318,39 @@ public class OdometryTagFusionPoseEstimator implements PoseEstimator, PoseResett
     }
 
     /**
-     * Returns the total number of rejected vision corrections.
+     * Returns the total number of newly-observed vision measurements that were rejected.
      */
     public int getRejectedVisionCount() {
         return rejectedVisionCount;
+    }
+
+    /**
+     * Returns how many duplicate frame timestamps were skipped instead of re-applying the same
+     * vision measurement multiple loops in a row.
+     */
+    public int getSkippedDuplicateVisionCount() {
+        return skippedDuplicateVisionCount;
+    }
+
+    /**
+     * Returns how many older-than-last-evaluated vision timestamps were skipped.
+     */
+    public int getSkippedOutOfOrderVisionCount() {
+        return skippedOutOfOrderVisionCount;
+    }
+
+    /**
+     * Returns how many accepted corrections used measurement-time replay.
+     */
+    public int getReplayedVisionCount() {
+        return replayedVisionCount;
+    }
+
+    /**
+     * Returns how many accepted corrections fell back to a simple now-frame projection.
+     */
+    public int getProjectedVisionCount() {
+        return projectedVisionCount;
     }
 
     /**
@@ -246,47 +369,51 @@ public class OdometryTagFusionPoseEstimator implements PoseEstimator, PoseResett
         final Pose3d currentOdomPose = (odomEst != null && odomEst.hasPose)
                 ? planarize(odomEst.fieldToRobotPose)
                 : null;
+        final double currentOdomTimestampSec = estimateTimestampOr(odomEst, nowSec);
 
         if (currentOdomPose != null) {
-            recordOdomSample(nowSec, currentOdomPose);
+            recordOdomSample(currentOdomTimestampSec, currentOdomPose);
         }
+
+        boolean evaluatedVisionThisLoop = false;
 
         // If we are not initialized yet, pick an initial pose.
         if (!initialized) {
-            if (visionEnabled && cfg.enableInitializeFromVision && isVisionAcceptable(visEst, nowSec)) {
-                fusedPose = planarize(visEst.fieldToRobotPose);
-                initialized = true;
+            boolean initializedFromVision = false;
+            if (visionEnabled && cfg.enableInitializeFromVision && shouldEvaluateVisionMeasurement(visEst)) {
+                evaluatedVisionThisLoop = true;
+                if (isVisionAcceptable(visEst, nowSec)) {
+                    Pose3d visionPose = planarize(visEst.fieldToRobotPose);
+                    Pose3d initialPose = cfg.enableLatencyCompensation
+                            ? projectVisionPoseToNow(visionPose, visEst.timestampSec, currentOdomPose)
+                            : visionPose;
 
-                // Align odometry if possible.
-                boolean pushedToOdometry = false;
-                if (cfg.enablePushFusedPoseToOdometry && odometry instanceof PoseResetter) {
-                    ((PoseResetter) odometry).setPose(fusedPose.toPose2d());
-                    pushedToOdometry = true;
-                }
+                    fusedPose = initialPose;
+                    initialized = true;
+                    lastVisionPose = visionPose;
+                    lastLatencyCompensatedVisionPose = initialPose;
+                    lastReplayReferencePose = visionPose;
+                    lastVisionAcceptedSec = nowSec;
+                    lastAcceptedVisionMeasurementTimestampSec = visEst.timestampSec;
+                    lastVisionUsedReplay = false;
+                    acceptedVisionCount++;
+                    projectedVisionCount++;
 
-                // Establish baseline odom pose for deltas.
-                if (pushedToOdometry) {
-                    // The odometry estimate was just reset to the fused pose, so future deltas
-                    // must start from that corrected baseline rather than the pre-reset sample.
-                    lastOdomPose = fusedPose;
-                } else if (currentOdomPose != null) {
-                    lastOdomPose = currentOdomPose;
+                    boolean pushedToOdometry = pushFusedPoseToOdometry();
+                    rebaseAfterPoseChange(nowSec, currentOdomPose, pushedToOdometry);
+                    initializedFromVision = true;
                 } else {
-                    lastOdomPose = fusedPose;
+                    rejectedVisionCount++;
                 }
+            }
 
-                resetOdomHistory(nowSec, lastOdomPose);
-
-                lastVisionAcceptedSec = nowSec;
-                lastVisionPose = fusedPose;
-                lastLatencyCompensatedVisionPose = fusedPose;
-                acceptedVisionCount++;
-            } else if (currentOdomPose != null) {
+            if (!initialized && currentOdomPose != null) {
                 fusedPose = currentOdomPose;
                 initialized = true;
                 lastOdomPose = fusedPose;
                 resetOdomHistory(nowSec, fusedPose);
-            } else {
+                setReplayBase(nowSec, fusedPose, fusedPose);
+            } else if (!initialized && !initializedFromVision) {
                 // No pose from either source yet.
                 lastEstimate = PoseEstimate.noPose(nowSec);
                 return;
@@ -301,53 +428,11 @@ public class OdometryTagFusionPoseEstimator implements PoseEstimator, PoseResett
         }
 
         // Apply vision correction if available.
-        if (visionEnabled && isVisionAcceptable(visEst, nowSec)) {
-            Pose3d visionPose = planarize(visEst.fieldToRobotPose);
-            Pose3d visionPoseAtNow = cfg.enableLatencyCompensation
-                    ? projectVisionPoseToNow(visionPose, visEst.timestampSec, nowSec, currentOdomPose)
-                    : visionPose;
-
-            lastLatencyCompensatedVisionPose = visionPoseAtNow;
-
-            double dx = visionPoseAtNow.xInches - fusedPose.xInches;
-            double dy = visionPoseAtNow.yInches - fusedPose.yInches;
-            double dPos = Math.hypot(dx, dy);
-
-            double dHeading = MathUtil.wrapToPi(visionPoseAtNow.yawRad - fusedPose.yawRad);
-
-            boolean jumpOk = dPos <= cfg.maxVisionPositionJumpIn
-                    && Math.abs(dHeading) <= cfg.maxVisionHeadingJumpRad;
-
-            if (jumpOk) {
-                double q = MathUtil.clamp(visEst.quality, 0.0, 1.0);
-                double posGain = MathUtil.clamp(cfg.visionPositionGain * q, 0.0, 1.0);
-                double headingGain = MathUtil.clamp(cfg.visionHeadingGain * q, 0.0, 1.0);
-
-                fusedPose = new Pose3d(
-                        fusedPose.xInches + dx * posGain,
-                        fusedPose.yInches + dy * posGain,
-                        0.0,
-                        MathUtil.wrapToPi(fusedPose.yawRad + dHeading * headingGain),
-                        0.0,
-                        0.0);
-
-                // Keep the odometry aligned if possible.
-                if (cfg.enablePushFusedPoseToOdometry && odometry instanceof PoseResetter) {
-                    ((PoseResetter) odometry).setPose(fusedPose.toPose2d());
-
-                    // The underlying odometry state now matches the corrected fused pose, so the
-                    // next odometry delta must be measured relative to that corrected baseline.
-                    lastOdomPose = fusedPose;
-                }
-
-                resetOdomHistory(nowSec, lastOdomPose);
-
-                lastVisionAcceptedSec = nowSec;
-                lastVisionPose = visionPose;
-                lastLatencyCompensatedVisionPose = visionPoseAtNow;
-                acceptedVisionCount++;
-            } else {
+        if (visionEnabled && !evaluatedVisionThisLoop && shouldEvaluateVisionMeasurement(visEst)) {
+            if (!isVisionAcceptable(visEst, nowSec)) {
                 rejectedVisionCount++;
+            } else {
+                maybeApplyVisionCorrection(visEst, currentOdomPose, nowSec);
             }
         }
 
@@ -391,45 +476,226 @@ public class OdometryTagFusionPoseEstimator implements PoseEstimator, PoseResett
         fusedPose = new Pose3d(pose.xInches, pose.yInches, 0.0, MathUtil.wrapToPi(pose.headingRad), 0.0, 0.0);
         initialized = true;
 
-        if (cfg.enablePushFusedPoseToOdometry && odometry instanceof PoseResetter) {
-            ((PoseResetter) odometry).setPose(pose);
-
-            // We just forced odometry to the fused pose, so future deltas must start from there.
-            lastOdomPose = fusedPose;
-        } else {
-            // Baseline odometry delta from its current pose when we did not push a reset.
-            PoseEstimate odomEst = odometry.getEstimate();
-            if (odomEst != null && odomEst.hasPose) {
-                lastOdomPose = planarize(odomEst.fieldToRobotPose);
-            } else {
-                lastOdomPose = fusedPose;
-            }
+        Pose3d currentOdomPose = null;
+        PoseEstimate odomEst = odometry.getEstimate();
+        if (odomEst != null && odomEst.hasPose) {
+            currentOdomPose = planarize(odomEst.fieldToRobotPose);
         }
 
-        resetOdomHistory(nowSec, lastOdomPose);
+        boolean pushedToOdometry = pushFusedPoseToOdometry();
+        rebaseAfterPoseChange(nowSec, currentOdomPose, pushedToOdometry);
+    }
+
+    private boolean shouldEvaluateVisionMeasurement(PoseEstimate visEst) {
+        if (visEst == null || !visEst.hasPose) {
+            return false;
+        }
+        double ts = visEst.timestampSec;
+        if (!Double.isFinite(ts)) {
+            return false;
+        }
+        if (Double.isNaN(lastEvaluatedVisionTimestampSec)) {
+            lastEvaluatedVisionTimestampSec = ts;
+            return true;
+        }
+        if (ts > lastEvaluatedVisionTimestampSec + TIMESTAMP_EPS_SEC) {
+            lastEvaluatedVisionTimestampSec = ts;
+            return true;
+        }
+        if (Math.abs(ts - lastEvaluatedVisionTimestampSec) <= TIMESTAMP_EPS_SEC) {
+            skippedDuplicateVisionCount++;
+        } else {
+            skippedOutOfOrderVisionCount++;
+        }
+        return false;
     }
 
     private boolean isVisionAcceptable(PoseEstimate visEst, double nowSec) {
         if (visEst == null || !visEst.hasPose || visEst.fieldToRobotPose == null) {
             return false;
         }
+        if (!Double.isFinite(visEst.timestampSec)) {
+            return false;
+        }
+        if (visEst.timestampSec > nowSec + TIMESTAMP_EPS_SEC) {
+            return false;
+        }
 
         // Freshness gate.
         if (cfg.maxVisionAgeSec > 0.0) {
             double age = nowSec - visEst.timestampSec;
-            if (age > cfg.maxVisionAgeSec) {
+            if (!Double.isFinite(age) || age < -TIMESTAMP_EPS_SEC || age > cfg.maxVisionAgeSec) {
                 return false;
             }
         }
 
         // Quality gate.
-        if (visEst.quality < cfg.minVisionQuality) {
+        if (!Double.isFinite(visEst.quality) || visEst.quality < cfg.minVisionQuality) {
             return false;
         }
 
         // NaN gate.
         Pose3d p = visEst.fieldToRobotPose;
         return !(Double.isNaN(p.xInches) || Double.isNaN(p.yInches) || Double.isNaN(p.yawRad));
+    }
+
+    private void maybeApplyVisionCorrection(PoseEstimate visEst, Pose3d currentOdomPose, double nowSec) {
+        Pose3d visionPoseAtMeasurement = planarize(visEst.fieldToRobotPose);
+        Pose3d compensatedVisionPoseAtNow = cfg.enableLatencyCompensation
+                ? projectVisionPoseToNow(visionPoseAtMeasurement, visEst.timestampSec, currentOdomPose)
+                : visionPoseAtMeasurement;
+
+        lastVisionPose = visionPoseAtMeasurement;
+        lastLatencyCompensatedVisionPose = compensatedVisionPoseAtNow;
+
+        if (cfg.enableLatencyCompensation
+                && replayBaseValid
+                && Double.isFinite(replayBaseTimestampSec)
+                && visEst.timestampSec + TIMESTAMP_EPS_SEC < replayBaseTimestampSec) {
+            // This frame predates the most recent accepted correction/reset base. Re-applying it
+            // would drag the estimator back across a newer anchor, so reject it.
+            lastReplayReferencePose = replayBaseFusedPose;
+            lastVisionUsedReplay = false;
+            rejectedVisionCount++;
+            return;
+        }
+
+        final double q = MathUtil.clamp(visEst.quality, 0.0, 1.0);
+        final double posGain = MathUtil.clamp(cfg.visionPositionGain * q, 0.0, 1.0);
+        final double headingGain = MathUtil.clamp(cfg.visionHeadingGain * q, 0.0, 1.0);
+
+        Pose3d correctedPoseNow = null;
+        boolean usedReplay = false;
+
+        if (cfg.enableLatencyCompensation && currentOdomPose != null) {
+            Pose3d odomAtMeasurement = interpolateOdomPose(visEst.timestampSec);
+            if (odomAtMeasurement != null) {
+                Pose3d fusedAtMeasurement = reconstructFusedPoseAt(visEst.timestampSec, odomAtMeasurement);
+                if (fusedAtMeasurement != null) {
+                    Pose3d odomDeltaSinceMeasurement = odomAtMeasurement.inverse().then(currentOdomPose);
+                    lastReplayReferencePose = fusedAtMeasurement;
+
+                    if (isVisionJumpAcceptable(fusedAtMeasurement, visionPoseAtMeasurement)) {
+                        Pose3d correctedAtMeasurement = blendToward(
+                                fusedAtMeasurement,
+                                visionPoseAtMeasurement,
+                                posGain,
+                                headingGain
+                        );
+                        correctedPoseNow = planarize(correctedAtMeasurement.then(odomDeltaSinceMeasurement));
+                        usedReplay = true;
+                    } else {
+                        lastVisionUsedReplay = true;
+                        rejectedVisionCount++;
+                        return;
+                    }
+                }
+            }
+        }
+
+        if (correctedPoseNow == null) {
+            lastReplayReferencePose = fusedPose;
+
+            if (!isVisionJumpAcceptable(fusedPose, compensatedVisionPoseAtNow)) {
+                lastVisionUsedReplay = false;
+                rejectedVisionCount++;
+                return;
+            }
+
+            correctedPoseNow = blendToward(
+                    fusedPose,
+                    compensatedVisionPoseAtNow,
+                    posGain,
+                    headingGain
+            );
+        }
+
+        fusedPose = correctedPoseNow;
+        lastVisionAcceptedSec = nowSec;
+        lastAcceptedVisionMeasurementTimestampSec = visEst.timestampSec;
+        lastVisionUsedReplay = usedReplay;
+        acceptedVisionCount++;
+        if (usedReplay) {
+            replayedVisionCount++;
+        } else {
+            projectedVisionCount++;
+        }
+
+        boolean pushedToOdometry = pushFusedPoseToOdometry();
+        rebaseAfterPoseChange(nowSec, currentOdomPose, pushedToOdometry);
+    }
+
+    private boolean isVisionJumpAcceptable(Pose3d referencePose, Pose3d targetPose) {
+        if (referencePose == null || targetPose == null) {
+            return false;
+        }
+        double dx = targetPose.xInches - referencePose.xInches;
+        double dy = targetPose.yInches - referencePose.yInches;
+        double dPos = Math.hypot(dx, dy);
+        double dHeading = MathUtil.wrapToPi(targetPose.yawRad - referencePose.yawRad);
+        return dPos <= cfg.maxVisionPositionJumpIn
+                && Math.abs(dHeading) <= cfg.maxVisionHeadingJumpRad;
+    }
+
+    private static Pose3d blendToward(Pose3d from, Pose3d to, double posGain, double headingGain) {
+        double dx = to.xInches - from.xInches;
+        double dy = to.yInches - from.yInches;
+        double dHeading = MathUtil.wrapToPi(to.yawRad - from.yawRad);
+        return new Pose3d(
+                from.xInches + dx * posGain,
+                from.yInches + dy * posGain,
+                0.0,
+                MathUtil.wrapToPi(from.yawRad + dHeading * headingGain),
+                0.0,
+                0.0
+        );
+    }
+
+    private boolean pushFusedPoseToOdometry() {
+        if (cfg.enablePushFusedPoseToOdometry && odometry instanceof PoseResetter) {
+            ((PoseResetter) odometry).setPose(fusedPose.toPose2d());
+            return true;
+        }
+        return false;
+    }
+
+    private void rebaseAfterPoseChange(double nowSec, Pose3d currentOdomPose, boolean pushedToOdometry) {
+        Pose3d baseOdomPose;
+        if (pushedToOdometry) {
+            lastOdomPose = fusedPose;
+            baseOdomPose = fusedPose;
+        } else if (currentOdomPose != null) {
+            lastOdomPose = currentOdomPose;
+            baseOdomPose = currentOdomPose;
+        } else {
+            lastOdomPose = fusedPose;
+            baseOdomPose = fusedPose;
+        }
+
+        resetOdomHistory(nowSec, baseOdomPose);
+        setReplayBase(nowSec, fusedPose, baseOdomPose);
+    }
+
+    private void setReplayBase(double timestampSec, Pose3d fusedPoseAtBase, Pose3d odomPoseAtBase) {
+        replayBaseValid = Double.isFinite(timestampSec) && fusedPoseAtBase != null && odomPoseAtBase != null;
+        replayBaseTimestampSec = replayBaseValid ? timestampSec : Double.NaN;
+        replayBaseFusedPose = replayBaseValid ? planarize(fusedPoseAtBase) : Pose3d.zero();
+        replayBaseOdomPose = replayBaseValid ? planarize(odomPoseAtBase) : Pose3d.zero();
+    }
+
+    private Pose3d reconstructFusedPoseAt(double timestampSec, Pose3d odomPoseAtTimestamp) {
+        if (!replayBaseValid || odomPoseAtTimestamp == null) {
+            return null;
+        }
+        if (!Double.isFinite(timestampSec) || !Double.isFinite(replayBaseTimestampSec)) {
+            return null;
+        }
+        if (timestampSec + TIMESTAMP_EPS_SEC < replayBaseTimestampSec) {
+            return null;
+        }
+
+        Pose3d odomDeltaFromBase = replayBaseOdomPose.inverse().then(odomPoseAtTimestamp);
+        return planarize(replayBaseFusedPose.then(odomDeltaFromBase));
     }
 
     private static Pose3d planarize(Pose3d pose) {
@@ -445,6 +711,13 @@ public class OdometryTagFusionPoseEstimator implements PoseEstimator, PoseResett
                 0.0);
     }
 
+    private static double estimateTimestampOr(PoseEstimate est, double fallbackNowSec) {
+        if (est != null && Double.isFinite(est.timestampSec)) {
+            return est.timestampSec;
+        }
+        return fallbackNowSec;
+    }
+
     private void recordOdomSample(double timestampSec, Pose3d odomPose) {
         if (!Double.isFinite(timestampSec) || odomPose == null) {
             return;
@@ -455,7 +728,7 @@ public class OdometryTagFusionPoseEstimator implements PoseEstimator, PoseResett
             odomHistory.clear();
         }
 
-        odomHistory.addLast(new OdomSample(timestampSec, odomPose));
+        odomHistory.addLast(new OdomSample(timestampSec, planarize(odomPose)));
         pruneOdomHistory(timestampSec);
     }
 
@@ -481,18 +754,17 @@ public class OdometryTagFusionPoseEstimator implements PoseEstimator, PoseResett
     private void resetOdomHistory(double timestampSec, Pose3d pose) {
         odomHistory.clear();
         if (Double.isFinite(timestampSec) && pose != null) {
-            odomHistory.addLast(new OdomSample(timestampSec, pose));
+            odomHistory.addLast(new OdomSample(timestampSec, planarize(pose)));
         }
     }
 
     private Pose3d projectVisionPoseToNow(Pose3d visionPoseAtMeasurement,
                                           double measurementTimestampSec,
-                                          double nowSec,
                                           Pose3d currentOdomPose) {
         if (visionPoseAtMeasurement == null || currentOdomPose == null) {
             return visionPoseAtMeasurement;
         }
-        if (!Double.isFinite(measurementTimestampSec) || measurementTimestampSec >= nowSec) {
+        if (!Double.isFinite(measurementTimestampSec)) {
             return visionPoseAtMeasurement;
         }
 
@@ -555,7 +827,6 @@ public class OdometryTagFusionPoseEstimator implements PoseEstimator, PoseResett
         );
     }
 
-
     /**
      * Debug helper: emit current fusion state and recent vision gating statistics.
      */
@@ -570,7 +841,13 @@ public class OdometryTagFusionPoseEstimator implements PoseEstimator, PoseResett
                 .addData(p + ".visionEnabled", visionEnabled)
                 .addData(p + ".acceptedVisionCount", acceptedVisionCount)
                 .addData(p + ".rejectedVisionCount", rejectedVisionCount)
+                .addData(p + ".skippedDuplicateVisionCount", skippedDuplicateVisionCount)
+                .addData(p + ".skippedOutOfOrderVisionCount", skippedOutOfOrderVisionCount)
+                .addData(p + ".replayedVisionCount", replayedVisionCount)
+                .addData(p + ".projectedVisionCount", projectedVisionCount)
                 .addData(p + ".lastVisionAcceptedSec", lastVisionAcceptedSec)
+                .addData(p + ".lastAcceptedVisionMeasurementTimestampSec", lastAcceptedVisionMeasurementTimestampSec)
+                .addData(p + ".lastEvaluatedVisionTimestampSec", lastEvaluatedVisionTimestampSec)
                 .addData(p + ".cfg.maxVisionAgeSec", cfg.maxVisionAgeSec)
                 .addData(p + ".cfg.minVisionQuality", cfg.minVisionQuality)
                 .addData(p + ".cfg.visionPositionGain", cfg.visionPositionGain)
@@ -586,6 +863,12 @@ public class OdometryTagFusionPoseEstimator implements PoseEstimator, PoseResett
                 .addData(p + ".lastOdomPose", lastOdomPose)
                 .addData(p + ".lastVisionPose", lastVisionPose)
                 .addData(p + ".lastLatencyCompensatedVisionPose", lastLatencyCompensatedVisionPose)
+                .addData(p + ".lastReplayReferencePose", lastReplayReferencePose)
+                .addData(p + ".lastVisionUsedReplay", lastVisionUsedReplay)
+                .addData(p + ".replayBaseValid", replayBaseValid)
+                .addData(p + ".replayBaseTimestampSec", replayBaseTimestampSec)
+                .addData(p + ".replayBaseFusedPose", replayBaseFusedPose)
+                .addData(p + ".replayBaseOdomPose", replayBaseOdomPose)
                 .addData(p + ".odomHistorySize", odomHistory.size())
                 .addData(p + ".lastEstimate", lastEstimate);
 
