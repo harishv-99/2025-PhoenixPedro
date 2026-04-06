@@ -136,6 +136,9 @@ public interface DriveSource extends Source<DriveSignal> {
             private DriveSignal lastBase = DriveSignal.zero();
             private DriveSignal lastOut = DriveSignal.zero();
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public DriveSignal get(LoopClock clock) {
                 lastBase = self.get(clock);
@@ -144,6 +147,9 @@ public interface DriveSource extends Source<DriveSignal> {
                 return lastOut;
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) {
@@ -184,6 +190,9 @@ public interface DriveSource extends Source<DriveSignal> {
             private DriveSignal lastBase = DriveSignal.zero();
             private DriveSignal lastOut = DriveSignal.zero();
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public DriveSignal get(LoopClock clock) {
                 lastBase = self.get(clock);
@@ -191,6 +200,9 @@ public interface DriveSource extends Source<DriveSignal> {
                 return lastOut;
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) {
@@ -241,6 +253,9 @@ public interface DriveSource extends Source<DriveSignal> {
         return new DriveSource() {
             private boolean lastEnabled = false;
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public DriveSignal get(LoopClock clock) {
                 DriveSignal base = self.get(clock);
@@ -278,6 +293,9 @@ public interface DriveSource extends Source<DriveSignal> {
                 return new DriveSignal(axial, lateral, omega);
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) {
@@ -347,6 +365,9 @@ public interface DriveSource extends Source<DriveSignal> {
             private DriveSignal lastB = DriveSignal.zero();
             private DriveSignal lastOut = DriveSignal.zero();
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public DriveSignal get(LoopClock clock) {
                 lastA = self.get(clock);
@@ -355,6 +376,9 @@ public interface DriveSource extends Source<DriveSignal> {
                 return lastOut;
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) {

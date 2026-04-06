@@ -461,7 +461,7 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
     // ---------------------------------------------------------------------------------------------
 
     private void updateSolveAndTelemetry() {
-        AprilTagObservation obs = tagSensor.best(selectedTagId, maxAgeSec);
+        AprilTagObservation obs = tagSensor.get(ctx.clock).forId(selectedTagId, maxAgeSec);
         lastObservedCameraToTag = (obs.hasTarget) ? obs.cameraToTagPose : null;
 
         lastRobotToCameraSample = null;

@@ -104,6 +104,9 @@ public final class GatedOutputUntilTask implements OutputTask {
         this.currentOutput = idleOutput;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void start(LoopClock clock) {
         phase = Phase.WAIT;
@@ -113,6 +116,9 @@ public final class GatedOutputUntilTask implements OutputTask {
         finalOutcome = TaskOutcome.NOT_DONE;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void update(LoopClock clock) {
         switch (phase) {
@@ -165,6 +171,9 @@ public final class GatedOutputUntilTask implements OutputTask {
         }
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void cancel() {
         if (phase == Phase.DONE) {
@@ -175,11 +184,17 @@ public final class GatedOutputUntilTask implements OutputTask {
         finalOutcome = TaskOutcome.CANCELLED;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public boolean isComplete() {
         return phase == Phase.DONE;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public TaskOutcome getOutcome() {
         if (!isComplete()) {
@@ -188,16 +203,25 @@ public final class GatedOutputUntilTask implements OutputTask {
         return finalOutcome;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public String getDebugName() {
         return name;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public double getOutput() {
         return currentOutput;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void debugDump(DebugSink dbg, String prefix) {
         if (dbg == null) {

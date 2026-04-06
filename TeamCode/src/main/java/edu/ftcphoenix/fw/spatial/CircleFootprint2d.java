@@ -15,10 +15,16 @@ public final class CircleFootprint2d implements RobotFootprint2d {
      */
     public final double radiusInches;
 
+    /**
+     * Creates a circular robot footprint with the supplied radius in inches.
+     */
     public CircleFootprint2d(double radiusInches) {
         this.radiusInches = Math.max(0.0, radiusInches);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public String toString() {
         return "CircleFootprint2d{" +

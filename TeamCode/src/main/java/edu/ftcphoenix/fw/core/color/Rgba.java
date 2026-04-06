@@ -74,6 +74,9 @@ public final class Rgba {
         return (s <= 0.0) ? 0.0 : ((double) b / s);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public String toString() {
         return "Rgba(r=" + r + ", g=" + g + ", b=" + b + ", a=" + a + ")";

@@ -25,11 +25,17 @@ public final class DriveOverlays {
         Objects.requireNonNull(mask, "mask");
 
         return new DriveOverlay() {
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public DriveOverlayOutput get(LoopClock clock) {
                 return new DriveOverlayOutput(source.get(clock), mask);
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) {

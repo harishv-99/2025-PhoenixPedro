@@ -34,6 +34,9 @@ final class PoseLockOverlay implements DriveOverlay {
         this.tuning = Objects.requireNonNull(tuning, "tuning");
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void onEnable(LoopClock clock) {
         PoseEstimate est = poseEstimator.getEstimate();
@@ -44,6 +47,9 @@ final class PoseLockOverlay implements DriveOverlay {
         }
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public DriveOverlayOutput get(LoopClock clock) {
         PoseEstimate est = poseEstimator.getEstimate();
@@ -55,8 +61,8 @@ final class PoseLockOverlay implements DriveOverlay {
         }
 
         // Basic age/quality gating.
-        if (est.ageSec > DriveGuidanceSpec.FieldPose.DEFAULT_MAX_AGE_SEC
-                || est.quality < DriveGuidanceSpec.FieldPose.DEFAULT_MIN_QUALITY) {
+        if (est.ageSec > DriveGuidanceSpec.Localization.DEFAULT_MAX_AGE_SEC
+                || est.quality < DriveGuidanceSpec.Localization.DEFAULT_MIN_QUALITY) {
             lastOut = DriveOverlayOutput.zero();
             return lastOut;
         }
@@ -82,6 +88,9 @@ final class PoseLockOverlay implements DriveOverlay {
         return lastOut;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void debugDump(DebugSink dbg, String prefix) {
         if (dbg == null) {

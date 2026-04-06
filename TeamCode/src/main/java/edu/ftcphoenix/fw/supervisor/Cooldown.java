@@ -80,11 +80,17 @@ public final class Cooldown implements BooleanSource {
         return clock.nowSec() >= readyAtSec;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void reset() {
         readyAtSec = Double.NEGATIVE_INFINITY;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void debugDump(DebugSink dbg, String prefix) {
         if (dbg == null) {
@@ -99,6 +105,9 @@ public final class Cooldown implements BooleanSource {
         // Consumers that want remaining time should call remainingSec(clock) explicitly.
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public String toString() {
         return "Cooldown{" + "cooldownSec=" + cooldownSec + ", readyAtSec=" + readyAtSec + "}";

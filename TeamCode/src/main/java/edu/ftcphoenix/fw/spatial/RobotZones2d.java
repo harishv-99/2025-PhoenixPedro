@@ -122,6 +122,9 @@ public final class RobotZones2d {
             this.region = Objects.requireNonNull(region, "region");
         }
 
+        /**
+         * Chooses the robot geometry used by the next builder stage.
+         */
         public ForRobot robot(RobotGeometry2d robot) {
             return new ForRobot(region, robot);
         }

@@ -55,6 +55,9 @@ public final class DriveOverlayOutput {
         return new DriveOverlayOutput(signal.clamped(), mask);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public String toString() {
         return "DriveOverlayOutput{" +

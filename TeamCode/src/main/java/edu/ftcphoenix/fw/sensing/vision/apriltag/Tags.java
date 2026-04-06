@@ -9,9 +9,10 @@ import edu.ftcphoenix.fw.ftc.FtcVision;
 /**
  * High-level helpers for working with AprilTags in robot code.
  *
- * <p>This class plays a similar role to {@code FtcDrives} and the plant factories in
- * {@code Actuators}: it provides a small number of static factory methods that hide the
- * FTC SDK details and return framework-friendly interfaces.</p>
+ * <p>The returned {@link AprilTagSensor} is a Phoenix {@code Source<AprilTagDetections>}:
+ * each loop it yields the latest immutable snapshot of all AprilTag detections from one processed
+ * camera frame. The sensor itself is responsible for cycle-idempotent memoization, so multiple
+ * consumers (telemetry, selection, localization, guidance) may safely share one sensor instance.</p>
  *
  * <h2>Beginner usage</h2>
  *
@@ -21,19 +22,18 @@ import edu.ftcphoenix.fw.ftc.FtcVision;
  *
  *     @Override
  *     public void init() {
- *         // Wire up AprilTags using a named webcam from the hardware map.
  *         tags = Tags.aprilTags(hardwareMap, "Webcam 1");
  *     }
  *
  *     @Override
  *     public void loop() {
- *         // Get the closest tag in this set, if the camera frame is no older than 0.3 sec.
- *         AprilTagObservation obs = tags.best(Set.of(1, 2, 3), 0.3);
- *         if (obs.hasTarget) {
- *             telemetry.addData("Tag ID", obs.id);
- *             telemetry.addData("Range (in)", obs.cameraRangeInches());
- *             telemetry.addData("Bearing (deg)", Math.toDegrees(obs.cameraBearingRad()));
- *             // Note: bearing > 0 means the tag is to the LEFT of the camera forward axis.
+ *         LoopClock clock = ...;
+ *         AprilTagDetections dets = tags.get(clock);
+ *         for (AprilTagObservation obs : dets.freshObservations(0.3)) {
+ *             telemetry.addData("Tag " + obs.id,
+ *                     String.format("range=%.1f in bearing=%.1f deg",
+ *                             obs.cameraRangeInches(),
+ *                             Math.toDegrees(obs.cameraBearingRad())));
  *         }
  *     }
  * }
@@ -48,16 +48,8 @@ public final class Tags {
     /**
      * Create an {@link AprilTagSensor} backed by the FTC SDK AprilTag pipeline, using a webcam.
      *
-     * <p>The returned sensor reports observations in <b>Phoenix framing</b>:
-     * +X forward, +Y left, +Z up. Bearing and range are derived from the observation's
-     * {@code cameraToTagPose} pose.</p>
-     *
-     * @param hw         hardware map from the current OpMode
-     * @param cameraName hardware configuration name of the webcam
-     * @return a ready-to-use {@link AprilTagSensor}
-     * @throws IllegalArgumentException if {@code hw} or {@code cameraName}
-     *                                  are {@code null}, or if the named
-     *                                  camera cannot be found
+     * <p>The returned sensor reports observations in <b>Phoenix framing</b>: +X forward, +Y left,
+     * +Z up. Bearing and range are derived from each observation's {@code cameraToTagPose} pose.</p>
      */
     public static AprilTagSensor aprilTags(HardwareMap hw, String cameraName) {
         Objects.requireNonNull(hw, "hardwareMap is required");

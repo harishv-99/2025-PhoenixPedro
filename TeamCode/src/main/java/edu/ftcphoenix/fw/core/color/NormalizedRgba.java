@@ -104,6 +104,9 @@ public final class NormalizedRgba {
         return (s <= 0.0) ? 0.0 : (b / s);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public String toString() {
         return "NormalizedRgba(r=" + r + ", g=" + g + ", b=" + b + ", a=" + a + ")";

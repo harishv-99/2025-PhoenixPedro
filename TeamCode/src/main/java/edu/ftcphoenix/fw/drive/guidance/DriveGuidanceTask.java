@@ -81,6 +81,9 @@ public final class DriveGuidanceTask implements Task {
     private double lastTranslationErrorIn = Double.NaN;
     private double lastOmegaErrorRad = Double.NaN;
 
+    /**
+     * Creates a named autonomous task that executes the supplied guidance plan.
+     */
     public DriveGuidanceTask(String debugName,
                              DriveCommandSink drivebase,
                              DriveGuidancePlan plan,
@@ -92,17 +95,26 @@ public final class DriveGuidanceTask implements Task {
         this.core = new DriveGuidanceCore(plan);
     }
 
+    /**
+     * Creates an autonomous guidance task with a default debug name.
+     */
     public DriveGuidanceTask(DriveCommandSink drivebase,
                              DriveGuidancePlan plan,
                              Config cfg) {
         this("DriveGuidanceTask", drivebase, plan, cfg);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public String getDebugName() {
         return debugName;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void start(LoopClock clock) {
         started = true;
@@ -118,6 +130,9 @@ public final class DriveGuidanceTask implements Task {
         drivebase.stop();
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void update(LoopClock clock) {
         if (complete) {
@@ -181,6 +196,9 @@ public final class DriveGuidanceTask implements Task {
         }
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void cancel() {
         if (complete) {
@@ -191,16 +209,25 @@ public final class DriveGuidanceTask implements Task {
         outcome = TaskOutcome.CANCELLED;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public boolean isComplete() {
         return complete;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public TaskOutcome getOutcome() {
         return outcome;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void debugDump(DebugSink dbg, String prefix) {
         Task.super.debugDump(dbg, prefix);

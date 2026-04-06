@@ -109,6 +109,9 @@ public final class FtcSensors {
             throw new IllegalArgumentException("sensor is required");
         }
         return new Source<Rgba>() {
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public Rgba get(LoopClock clock) {
                 return new Rgba(sensor.red(), sensor.green(), sensor.blue(), sensor.alpha());
@@ -141,6 +144,9 @@ public final class FtcSensors {
             throw new IllegalArgumentException("sensor is required");
         }
         return new Source<NormalizedRgba>() {
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public NormalizedRgba get(LoopClock clock) {
                 NormalizedRGBA c = sensor.getNormalizedColors();

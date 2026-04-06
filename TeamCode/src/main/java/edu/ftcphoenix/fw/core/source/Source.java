@@ -66,16 +66,25 @@ public interface Source<T> {
         Objects.requireNonNull(fn, "fn");
         Source<T> self = this;
         return new Source<U>() {
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public U get(LoopClock clock) {
                 return Objects.requireNonNull(fn.apply(self.get(clock)), "mapped source returned null");
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void reset() {
                 self.reset();
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) {
@@ -124,6 +133,9 @@ public interface Source<T> {
             private long lastCycle = Long.MIN_VALUE;
             private U state = initial;
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public U get(LoopClock clock) {
                 long cyc = clock.cycle();
@@ -137,6 +149,9 @@ public interface Source<T> {
                 return state;
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void reset() {
                 self.reset();
@@ -144,6 +159,9 @@ public interface Source<T> {
                 state = initial;
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) {
@@ -190,6 +208,9 @@ public interface Source<T> {
             private long lastCycle = Long.MIN_VALUE;
             private U state = initial;
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public U get(LoopClock clock) {
                 long cyc = clock.cycle();
@@ -207,6 +228,9 @@ public interface Source<T> {
                 return state;
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void reset() {
                 self.reset();
@@ -215,6 +239,9 @@ public interface Source<T> {
                 state = initial;
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) {
@@ -277,6 +304,9 @@ public interface Source<T> {
              */
             private double lastSampleSec = Double.NEGATIVE_INFINITY;
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public T get(LoopClock clock) {
                 long cyc = clock.cycle();
@@ -306,6 +336,9 @@ public interface Source<T> {
                 return lastOut;
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void reset() {
                 self.reset();
@@ -317,6 +350,9 @@ public interface Source<T> {
                 lastSampleSec = Double.NEGATIVE_INFINITY;
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) {
@@ -344,16 +380,25 @@ public interface Source<T> {
         Source<T> self = this;
 
         return new BooleanSource() {
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public boolean getAsBoolean(LoopClock clock) {
                 return predicate.test(self.get(clock));
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void reset() {
                 self.reset();
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) {
@@ -374,16 +419,25 @@ public interface Source<T> {
         Source<T> self = this;
 
         return new ScalarSource() {
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public double getAsDouble(LoopClock clock) {
                 return fn.applyAsDouble(self.get(clock));
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void reset() {
                 self.reset();
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) {
@@ -413,6 +467,9 @@ public interface Source<T> {
             private long lastCycle = Long.MIN_VALUE;
             private T last = null;
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public T get(LoopClock clock) {
                 long cyc = clock.cycle();
@@ -424,6 +481,9 @@ public interface Source<T> {
                 return last;
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void reset() {
                 self.reset();
@@ -431,6 +491,9 @@ public interface Source<T> {
                 last = null;
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) {
@@ -454,11 +517,17 @@ public interface Source<T> {
     static <T> Source<T> of(Function<? super LoopClock, ? extends T> fn) {
         Objects.requireNonNull(fn, "fn");
         return new Source<T>() {
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public T get(LoopClock clock) {
                 return Objects.requireNonNull(fn.apply(clock), "raw source returned null");
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) return;
@@ -474,11 +543,17 @@ public interface Source<T> {
     static <T> Source<T> constant(final T value) {
         Objects.requireNonNull(value, "value");
         return new Source<T>() {
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public T get(LoopClock clock) {
                 return value;
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) return;

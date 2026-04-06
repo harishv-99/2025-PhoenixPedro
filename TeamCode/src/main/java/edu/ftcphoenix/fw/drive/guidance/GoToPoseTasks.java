@@ -13,7 +13,7 @@ import edu.ftcphoenix.fw.task.Task;
  * {@link DriveGuidancePlan} infrastructure.
  *
  * <p>This keeps the “go to pose” concept (very common in autonomous) while reusing
- * the same aim/translate/feedback/tuning machinery as TeleOp DriveGuidance overlays.</p>
+ * the same aim/translate/resolveWith/tuning machinery as TeleOp DriveGuidance overlays.</p>
  */
 public final class GoToPoseTasks {
 
@@ -43,9 +43,10 @@ public final class GoToPoseTasks {
                 .aimTo()
                 .fieldHeadingRad(targetFieldPose.headingRad)
                 .doneAimTo()
-                .feedback()
-                .fieldPose(poseEstimator)
-                .doneFeedback()
+                .resolveWith()
+                .localizationOnly()
+                .localization(poseEstimator)
+                .doneResolveWith()
                 .tuning(tuning)
                 .build();
 
@@ -83,15 +84,16 @@ public final class GoToPoseTasks {
 
         DriveGuidancePlan plan = DriveGuidance.plan()
                 .translateTo()
-                .referenceFrameOrigin(target)
+                .point(References.framePoint(target))
                 .doneTranslateTo()
                 .aimTo()
-                .referenceFrameHeading(target)
+                .frameHeading(target)
                 .doneAimTo()
-                .feedback()
-                .fieldPose(poseEstimator)
-                .fixedTagLayout(tagLayout)
-                .doneFeedback()
+                .resolveWith()
+                .localizationOnly()
+                .localization(poseEstimator)
+                .fixedAprilTagLayout(tagLayout)
+                .doneResolveWith()
                 .tuning(tuning)
                 .build();
 
@@ -122,9 +124,10 @@ public final class GoToPoseTasks {
                 .aimTo()
                 .fieldHeadingRad(targetFieldHeadingRad)
                 .doneAimTo()
-                .feedback()
-                .fieldPose(poseEstimator)
-                .doneFeedback()
+                .resolveWith()
+                .localizationOnly()
+                .localization(poseEstimator)
+                .doneResolveWith()
                 .tuning(tuning)
                 .build();
 
@@ -149,9 +152,10 @@ public final class GoToPoseTasks {
                 .aimTo()
                 .fieldHeadingRad(targetFieldHeadingRad)
                 .doneAimTo()
-                .feedback()
-                .fieldPose(poseEstimator)
-                .doneFeedback()
+                .resolveWith()
+                .localizationOnly()
+                .localization(poseEstimator)
+                .doneResolveWith()
                 .tuning(tuning)
                 .build();
 

@@ -20,7 +20,6 @@ import edu.ftcphoenix.fw.localization.PoseEstimate;
 import edu.ftcphoenix.fw.localization.apriltag.TagOnlyPoseEstimator;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
-import edu.ftcphoenix.fw.sensing.vision.apriltag.TagTarget;
 import edu.ftcphoenix.fw.tools.tester.BaseTeleOpTester;
 import edu.ftcphoenix.fw.tools.tester.ui.HardwareNamePicker;
 
@@ -247,7 +246,6 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
     private String selectedCameraName;
     private TagLayout layout;
     private AprilTagSensor tagSensor;
-    private TagTarget tagTarget;
     private TagOnlyPoseEstimator tagEstimator;
     private String aprilTagAssistNotice;
 
@@ -327,14 +325,23 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
     private boolean lastHadTagStart = false;
     private boolean lastHadTagEnd = false;
 
+    /**
+     * Creates the calibrator with the default configuration.
+     */
     public PinpointPodOffsetCalibrator() {
         this(Config.defaults());
     }
 
+    /**
+     * Creates the calibrator with an explicit configuration bundle.
+     */
     public PinpointPodOffsetCalibrator(Config cfg) {
         this.cfg = (cfg != null) ? cfg : Config.defaults();
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public String name() {
         return "Pinpoint: Pod Offset Calibrator";
@@ -851,19 +858,16 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         }
 
         tagSensor = FtcVision.aprilTags(ctx.hw, selectedCameraName, vCfg);
-        tagTarget = new TagTarget(tagSensor, layout.ids(), cfg.maxTagAgeSec);
-
         TagOnlyPoseEstimator.Config estCfg = TagOnlyPoseEstimator.Config.defaults()
                 .withCameraMount(cfg.cameraMount);
-        tagEstimator = new TagOnlyPoseEstimator(tagTarget, layout, estCfg);
+        tagEstimator = new TagOnlyPoseEstimator(tagSensor, layout, estCfg);
     }
 
     private void updateSensors() {
         pinpoint.update(ctx.clock);
         latestPinpointPose = pinpoint.getEstimate().toPose2d();
 
-        if (tagTarget != null && tagEstimator != null) {
-            tagTarget.update(ctx.clock);
+        if (tagSensor != null && tagEstimator != null) {
             tagEstimator.update(ctx.clock);
 
             PoseEstimate tagEst = tagEstimator.getEstimate();
@@ -1084,12 +1088,18 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         private double prevRad = 0.0;
         private double unwrappedRad = 0.0;
 
+        /**
+         * Resets the unwrapped heading tracker to a new starting angle.
+         */
         public void reset(double initialRad) {
             initialized = true;
             prevRad = initialRad;
             unwrappedRad = initialRad;
         }
 
+        /**
+         * Incorporates one wrapped heading sample into the unwrapped heading tracker.
+         */
         public void update(double currentRad) {
             if (!initialized) {
                 reset(currentRad);
@@ -1100,6 +1110,9 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
             prevRad = currentRad;
         }
 
+        /**
+         * Returns the current unwrapped heading in radians.
+         */
         public double getUnwrappedRad() {
             return unwrappedRad;
         }

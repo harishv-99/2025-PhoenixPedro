@@ -389,6 +389,9 @@ public final class PinpointPoseEstimator implements PoseEstimator, PoseResetter 
         return odo;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void update(LoopClock clock) {
         odo.update();
@@ -415,6 +418,9 @@ public final class PinpointPoseEstimator implements PoseEstimator, PoseResetter 
         lastEstimate = new PoseEstimate(pose, true, cfg.quality, 0.0, nowSec);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public PoseEstimate getEstimate() {
         return lastEstimate;
@@ -434,6 +440,9 @@ public final class PinpointPoseEstimator implements PoseEstimator, PoseResetter 
         odo.recalibrateIMU();
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void setPose(Pose2d pose) {
         if (pose == null) {

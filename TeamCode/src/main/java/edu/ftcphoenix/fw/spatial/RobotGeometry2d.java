@@ -102,23 +102,35 @@ public final class RobotGeometry2d {
         private RobotFootprint2d footprint;
         private final Map<String, Pose2d> points = new HashMap<String, Pose2d>();
 
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public BuildStep rectangleFootprint(double lengthInches, double widthInches) {
             this.footprint = new RectangleFootprint2d(lengthInches, widthInches);
             return this;
         }
 
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public BuildStep circleFootprint(double radiusInches) {
             this.footprint = new CircleFootprint2d(radiusInches);
             return this;
         }
 
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public BuildStep point(String name, double forwardInches, double leftInches) {
             return point(name, new Pose2d(forwardInches, leftInches, 0.0));
         }
 
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public BuildStep point(String name, Pose2d robotToPoint) {
             Objects.requireNonNull(name, "name");
@@ -127,6 +139,9 @@ public final class RobotGeometry2d {
             return this;
         }
 
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public RobotGeometry2d build() {
             if (footprint == null) {

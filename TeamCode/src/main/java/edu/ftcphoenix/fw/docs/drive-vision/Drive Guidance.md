@@ -1,600 +1,519 @@
 # Drive Guidance
 
-Drive Guidance is Phoenix’s structured way to:
+Drive Guidance is Phoenix's reference-first drive assist and autonomous motion system.
 
-- **create TeleOp assists** such as “aim while I still drive”
-- **run the same movement as a Task** in autonomous
-- **query the exact same solved errors** for “ready to shoot?” gating and telemetry
+It is built around one idea:
 
-It is intentionally the drive-specific public API for spatial control. Phoenix may eventually extract a
-more general spatial query layer, but only after a second real non-drive consumer proves out that API.
+> **Author the meaningful geometry once, then choose how guidance is allowed to solve it.**
 
-See also [`Recommended Robot Design`](<../design/Recommended Robot Design.md>) for how guidance fits
-into the larger TeleOp + Auto robot architecture.
+That leads to a clean split:
 
----
+- **References** describe geometry: field points, field frames, single-tag-relative points/frames, or selected-tag-relative points/frames.
+- **Resolve lanes** describe solving: localization, live AprilTags, or explicit adaptive use of both.
+- **Loss behavior** describes output policy when the requested channel cannot be solved this loop.
 
-## 1. Spec vs Plan
+This document reflects the current API:
 
-Drive Guidance intentionally has **two** objects.
-
-### `DriveGuidanceSpec`
-
-A controller-neutral description of:
-
-- the targets (`translateTo`, `aimTo`, or both)
-- the control frames (which point on the robot is controlled)
-- the available feedback lanes (field pose, live AprilTags, or both)
-
-A spec says **what** you want.  
-It contains **no tuning**.
-
-### `DriveGuidancePlan`
-
-An executable bundle:
-
-- `DriveGuidanceSpec` (**what**) +
-- `DriveGuidancePlan.Tuning` (**how aggressively to drive the error to zero**)
-
-A plan is what you actually use from robot code:
-
-- `plan.overlay()` for TeleOp assist
-- `plan.task(...)` for autonomous execution
-- `plan.query()` for readiness checks and telemetry
-
-That split is valuable because one semantic target can often be reused with different tuning in
-TeleOp and Auto.
+- `resolveWith()` replaces the older `feedback()` naming.
+- `fixedAprilTagLayout(...)` replaces `fixedTagLayout(...)`.
+- `onLoss(...)` replaces `lossPolicy(...)`.
+- Guidance APIs use **radians only**.
+- Raw multi-tag references were removed. Multi-tag intent now goes through an explicit `TagSelectionSource`.
 
 ---
 
-## 2. The mental model: references, feedback, guidance
+## 1. Core principles
 
-Drive Guidance is easiest to understand if you keep three ideas separate.
+### 1.1 Geometry first
 
-#### 2.1 References = where the meaningful thing is
-
-A **reference** is just geometry.
+A reference is about **what location/heading is meaningful**, not about which sensor will be used.
 
 Examples:
 
-- “the speaker aim point”
-- “slot 4 on the backdrop”
-- “the face of tag 5”
-- “a point 6 inches in front of tag 7”
+- `References.fieldPoint(...)`
+- `References.fieldFrame(...)`
+- `References.relativeToTagPoint(tagId, ...)`
+- `References.relativeToSelectedTagPoint(selection, ...)`
 
-A reference does **not** say what the robot should do. Guidance can later:
+The exact same reference can be:
 
-- translate to it
-- aim at it
-- align to its heading
-- ask whether the robot is close enough to it
+- translated to,
+- aimed at,
+- sampled by a query,
+- or reused in multiple plans.
 
-#### 2.2 Feedback = what the robot knows right now
+### 1.2 One tag at a time
 
-Guidance can solve the same reference from different feedback lanes:
+References never mean “many tags at once.” A reference is always resolved through **one active tag** at evaluation time.
 
-- **field pose** (`fieldPose(...)`)
-- **live AprilTags** (`aprilTags(...)`)
-- **fixed tag layout metadata** (`fixedTagLayout(...)`)
+That tag may come from:
 
-Those are intentionally separate because they mean different things:
+- a fixed tag ID authored directly in the reference, or
+- a shared `TagSelectionSource`.
 
-- `fieldPose(...)` = estimated `field -> robot`
-- `aprilTags(...)` = current camera observations
-- `fixedTagLayout(...)` = static field metadata about which tags are fixed landmarks
+This keeps the geometry model simple and inspectable.
 
-#### 2.3 Guidance = turn the solved error into commands
+### 1.3 Raw detections and selection are different layers
 
-Once guidance knows where the reference is relative to the robot, it can compute:
+`AprilTagSensor` now returns **all detections from one frame** as `AprilTagDetections`.
 
-- translation error
-- omega / aim error
-- final drive commands
+That raw boundary is intentionally separate from selection:
 
-That same solve is reused by overlays, tasks, and queries.
+- **detections** are for localization / estimation / telemetry,
+- **selection** is for “which tag are we currently talking about?”
+
+### 1.4 Selection is shared
+
+When a robot means the same semantic target family in multiple places, it should build **one selector** and reuse it for:
+
+- drive guidance,
+- telemetry,
+- shooter logic,
+- gating,
+- and mechanism decisions.
+
+That avoids duplicated “best tag” logic.
+
+### 1.5 Solve lanes are explicit
+
+The solve mode should be obvious at the call site:
+
+- `localizationOnly()`
+- `aprilTagsOnly()`
+- `adaptive()`
+
+Mixed-lane behavior is powerful, so it should read as deliberate.
+
+### 1.6 `onLoss(...)` is runtime output behavior
+
+If guidance cannot solve the requested channel this loop:
+
+- `PASS_THROUGH` leaves that channel to the base source (great for TeleOp overlays)
+- `ZERO_OUTPUT` actively commands zero on that channel
+
+Loss behavior is separate from both geometry and selection.
 
 ---
 
-## 3. Reference types
+## 2. The builder shape
 
-The public API exposes two semantic reference shapes:
+```java
+DriveGuidance.plan() / DriveGuidance.spec()
+    .translateTo()
+        .fieldPointInches(...)
+        .robotRelativePointInches(...)
+        .point(ReferencePoint2d)
+        .doneTranslateTo()
 
-- `ReferencePoint2d`
-- `ReferenceFrame2d`
+    .aimTo()
+        .fieldPointInches(...)
+        .fieldHeadingRad(...)
+        .point(ReferencePoint2d)
+        .frameHeading(ReferenceFrame2d)
+        .frameHeading(ReferenceFrame2d, headingOffsetRad)
+        .doneAimTo()
 
-Create them with `References`.
+    .resolveWith()
+        .localizationOnly() / .aprilTagsOnly() / .adaptive()
+        .localization(...)
+        .aprilTags(...)
+        .fixedAprilTagLayout(...)
+        .translationTakeover(...)
+        .omegaPolicy(...)
+        .onLoss(...)
+        .doneResolveWith()
 
-#### 3.1 Field-fixed references
+    .controlFrames(...)
+    .tuning(...)      // plan only
+    .build()
+```
 
-Use these when the meaningful thing is naturally a field location.
+### Why is `.aimTo()` not flattened?
+
+Because `aimTo()` still has more than one real family inside it:
+
+- aim at a point,
+- or match a heading.
+
+Keeping the outer “channel selector” (`translateTo`, `aimTo`, `resolveWith`) and the inner “how” choice makes the structure parallel and readable.
+
+---
+
+## 3. References
+
+### 3.1 Field-fixed references
 
 ```java
 ReferencePoint2d speakerAim = References.fieldPoint(48.0, 24.0);
-ReferenceFrame2d backdropFace = References.fieldFrame(48.0, 24.0, Math.PI);
+ReferenceFrame2d slotFace = References.fieldFrame(60.0, -18.0, Math.PI);
 ```
 
-A field-fixed frame has:
-
-- an origin point `(x, y)`
-- a heading
-
-That heading is the heading of the **reference frame**, not automatically the robot’s desired
-heading. Guidance decides how to use it depending on which target builder method you choose.
-
-#### 3.2 Tag-relative references
-
-Use these when the meaningful thing is naturally described relative to a tag.
+### 3.2 Single-tag-relative references
 
 ```java
 ReferencePoint2d tagCenter = References.relativeToTagPoint(5, 0.0, 0.0);
-
-ReferenceFrame2d tagFace = References.relativeToTagFrame(
-        5,
-        /*forward=*/ 6.0,
-        /*left=*/ 0.0,
-        /*headingRad=*/ Math.PI
-);
+ReferenceFrame2d slotApproach = References.relativeToTagFrame(5, -6.0, 0.0, Math.PI);
 ```
 
-For a tag-relative frame:
+### 3.3 Points derived from frames
 
-- `forward`, `left` define the frame origin in the tag frame
-- `headingRad` defines the orientation of the **reference frame’s `+X` axis** in the tag frame
+`References` now owns the geometry helpers that turn frames into points.
 
-#### 3.3 What does `headingRad = 0` mean?
+```java
+ReferenceFrame2d slotFace = References.fieldFrame(60.0, -18.0, Math.PI);
+ReferencePoint2d settlePoint = References.framePoint(slotFace, -6.0, 0.0);
+```
 
-For `References.relativeToTagFrame(tagId, forward, left, headingRad)`:
+That keeps frame-origin/frame-offset point construction in one place instead of duplicating it in the builder.
 
-- `0` → the reference frame’s `+X` is aligned with the tag’s `+X`
-- `+π/2` → the reference frame’s `+X` points tag-left
-- `π` → the reference frame’s `+X` points back toward the tag
+### 3.4 Selected-tag-relative references
 
-Phoenix’s tag-frame convention here is:
+For multi-tag workflows, build a shared selector and author the reference relative to that selector.
 
-- `+X` = out from the tag face
-- `+Y` = left when looking in `+X`
+```java
+TagSelectionSource basketSelection = ...;
+ReferencePoint2d basketAim = References.relativeToSelectedTagPoint(basketSelection, 0.0, 0.0);
+```
 
-That heading describes the **reference frame**, not automatically the robot. Later you may choose to:
+The reference object itself is still immutable. It resolves through the selector's current selected tag at evaluation time.
 
-- aim at the frame origin
-- translate to an offset in that frame
-- align the robot to the frame heading
-- align to the frame heading plus another offset
+### 3.5 Per-tag offsets with one selector
+
+This is useful when different tags represent the same semantic goal but need different geometry.
+
+```java
+Map<Integer, References.TagPointOffset> offsets = new LinkedHashMap<Integer, References.TagPointOffset>();
+offsets.put(20, References.pointOffset(-8.0,  5.5));
+offsets.put(24, References.pointOffset(-8.0, -5.5));
+
+ReferencePoint2d basketAim = References.relativeToSelectedTagPoint(basketSelection, offsets);
+```
+
+This is the right tool for “same scoring concept, mirrored tag geometry.”
 
 ---
 
-## 4. Targets you can express in a plan
+## 4. Raw AprilTag detections and selection
 
-A plan can contain any combination of translation and aim targets.
+### 4.1 Raw detections
 
-### 4.1 Translation targets
-
-```java
-.translateTo()
-    .fieldPointInches(x, y)
-    .robotRelativePointInches(forward, left)
-    .referencePoint(pointRef)
-    .referenceFrameOrigin(frameRef)
-    .referenceFrameOffsetInches(frameRef, forward, left)
-    .doneTranslateTo()
-```
-
-### How to think about them
-
-- `fieldPointInches(...)`  
-  Go to this field-fixed point.
-
-- `robotRelativePointInches(...)`  
-  Capture an anchor when the plan enables, then move by that delta.
-
-- `referencePoint(...)`  
-  Go to the semantic point.
-
-- `referenceFrameOrigin(...)`  
-  Go to the origin point of the semantic frame.
-
-- `referenceFrameOffsetInches(frame, fwd, left)`  
-  Go to a point expressed in the frame’s coordinates.
-
-That last one is especially useful for close-range alignment. Example:
+`AprilTagSensor` is a memoized `Source<AprilTagDetections>`.
 
 ```java
-ReferenceFrame2d slotFace = References.fieldFrame(48.0, 24.0, Math.PI);
-
-.translateTo()
-    .referenceFrameOffsetInches(slotFace, -6.0, 0.0)
-    .doneTranslateTo()
+AprilTagSensor tags = Tags.aprilTags(hardwareMap, "Webcam 1");
+AprilTagDetections dets = tags.get(clock);
 ```
 
-This means: go to a point **6 inches behind the frame’s `+X` axis direction**.
+One sensor instance may be safely shared across:
+
+- telemetry,
+- selection,
+- localization,
+- and guidance.
+
+### 4.2 Tag selection
+
+A `TagSelectionSource` answers:
+
+- which tag would win now?
+- which tag is currently selected?
+- is that selection latched?
+- is the selected tag still freshly visible?
+- why did it win?
+
+```java
+TagSelectionSource basketSelection =
+        TagSelections.from(tags)
+                .among(BASKET_TAG_IDS)
+                .freshWithin(0.25)
+                .choose(TagSelectionPolicies.smallestAbsRobotBearing(cameraMount))
+                .stickyWhen(gamepads.p2().leftBumper())
+                .reacquireAfterLoss(0.20)
+                .build();
+```
+
+### 4.3 Preview vs selection
+
+Selectors intentionally expose two ideas:
+
+- **preview**: which tag would win right now?
+- **selection**: which tag are we currently committed to?
+
+That matters for TeleOp:
+
+- preview while the driver is lining up,
+- latch when aim-assist is enabled,
+- optionally reacquire after a real loss.
+
+### 4.4 When to use sticky selection
+
+**TeleOp assist:**
+
+- preview while idle
+- sticky while the aim button is held
+- maybe reacquire after a short loss timeout
+
+**Autonomous:**
+
+- usually latch once at task start or selector reset
+- avoid bouncing between tags mid-maneuver
 
 ---
 
-### 4.2 Aim targets
+## 5. `resolveWith()`
+
+### 5.1 Localization only
+
+Use this when the target is solvable from a field pose estimate.
 
 ```java
-.aimTo()
-    .fieldPointInches(x, y)
-    .fieldHeadingRad(h)
-    .referencePoint(pointRef)
-    .referenceFrameOrigin(frameRef)
-    .referenceFrameOffsetInches(frameRef, forward, left)
-    .referenceFrameHeading(frameRef)
-    .referenceFrameHeading(frameRef, offsetRad)
-    .doneAimTo()
-```
-
-### How to think about them
-
-- `fieldPointInches(...)`  
-  Turn to face that field point.
-
-- `fieldHeadingRad(...)`  
-  Match that absolute field heading.
-
-- `referencePoint(...)`  
-  Turn to face the semantic point.
-
-- `referenceFrameOrigin(...)`  
-  Turn to face the origin of the frame.
-
-- `referenceFrameOffsetInches(...)`  
-  Turn to face an offset point in the frame.
-
-- `referenceFrameHeading(frame)`  
-  Match the heading of the frame.
-
-- `referenceFrameHeading(frame, offset)`  
-  Match the frame heading plus an additional offset.
-
-Example:
-
-```java
-ReferenceFrame2d backdropFace = References.fieldFrame(48.0, 24.0, Math.PI);
-
-.aimTo()
-    .referenceFrameHeading(backdropFace)
-    .doneAimTo()
-```
-
-This means: align the robot’s aim frame to the backdrop frame heading.
-
----
-
-## 5. Feedback lanes
-
-A plan can use any combination of these lanes:
-
-```java
-.feedback()
-    .fieldPose(poseEstimator)
-    .aprilTags(tagSensor, cameraMount, 0.25)
-    .fixedTagLayout(tagLayout)
-    .gates(18.0, 30.0, 0.15)
-    .preferAprilTagsForOmega(true)
-    .lossPolicy(DriveGuidanceSpec.LossPolicy.PASS_THROUGH)
-    .doneFeedback()
-```
-
-### 5.1 `fieldPose(...)`
-
-Use this when you have a localizer or estimator that yields `field -> robot`.
-
-This is usually the simplest way to solve field-fixed references.
-
-### 5.2 `aprilTags(...)`
-
-Use this when you want guidance to solve directly from the current AprilTag observation.
-
-This lane does **not** require a localizer.
-
-It is especially useful for:
-
-- close-range final alignment
-- simple auto-aim
-- setups where odometry is weak or unavailable
-
-### 5.3 `fixedTagLayout(...)`
-
-This is static field metadata, not a live sensor.
-
-It enables two important behaviors:
-
-1. **Field-fixed references from AprilTags**  
-   If the robot sees a fixed tag and knows where that tag lives on the field, guidance can derive a
-   temporary live field pose and solve a field-fixed reference even without a fused localizer.
-
-2. **Localizer fallback for fixed tag-relative references**  
-   If you authored a reference relative to a single fixed tag, guidance can promote it into field
-   coordinates and keep solving it from the localizer even after the camera loses sight of the tag.
-
-That means you do **not** have to define the same semantic reference twice.
-
-### Example: define once as tag-relative, still get localizer fallback
-
-```java
-ReferenceFrame2d slotApproach = References.relativeToTagFrame(
-        5,
-        /*forward=*/ 6.0,
-        /*left=*/ 0.0,
-        /*headingRad=*/ Math.PI
-);
-
-DriveGuidancePlan plan = DriveGuidance.plan()
-        .translateTo()
-            .referenceFrameOrigin(slotApproach)
-            .doneTranslateTo()
-        .aimTo()
-            .referenceFrameHeading(slotApproach)
-            .doneAimTo()
-        .feedback()
-            .fieldPose(poseEstimator)
-            .aprilTags(tagSensor, cameraMount, 0.25)
-            .fixedTagLayout(tagLayout)   // tag 5 is known fixed metadata here
-            .doneFeedback()
-        .build();
-```
-
-If tag 5 is visible, guidance can solve directly from AprilTags.  
-If tag 5 is blocked, guidance can still solve the same reference from field pose because it can
-promote `tag 5 -> reference` into `field -> reference`.
-
----
-
-## 6. Adaptive guidance
-
-When both `fieldPose(...)` and `aprilTags(...)` are configured, guidance becomes **adaptive**.
-
-That means:
-
-- translation may use field pose far away, then switch toward live AprilTags near the target
-- omega may either follow that same switch, or always prefer AprilTags when valid
-
-### Knobs
-
-```java
-.gates(enterRangeInches, exitRangeInches, takeoverBlendSec)
-.preferAprilTagsForOmega(true)
-```
-
-The default intended mental model is:
-
-- broad move from the localizer
-- close-in refinement from live vision
-
-This is usually the right starting point for TeleOp assists and final scoring alignment.
-
----
-
-## 7. Building specs and plans
-
-### 7.1 Build a spec first
-
-Use this when you want to reuse the same semantic target with different tunings.
-
-```java
-ReferenceFrame2d scoringFrame = References.fieldFrame(48.0, 24.0, Math.PI);
-
-DriveGuidanceSpec spec = DriveGuidance.spec()
-        .translateTo()
-            .referenceFrameOffsetInches(scoringFrame, -6.0, 0.0)
-            .doneTranslateTo()
-        .aimTo()
-            .referenceFrameHeading(scoringFrame)
-            .doneAimTo()
-        .feedback()
-            .fieldPose(poseEstimator)
-            .aprilTags(tagSensor, cameraMount, 0.25)
-            .fixedTagLayout(tagLayout)
-            .doneFeedback()
-        .build();
-```
-
-Then build plans from the same spec:
-
-```java
-DriveGuidancePlan teleOpPlan = DriveGuidance.plan(spec)
-        .tuning(DriveGuidancePlan.Tuning.defaults()
-                .withTranslateKp(0.04)
-                .withAimKp(1.6))
-        .build();
-
-DriveGuidancePlan autoPlan = DriveGuidance.plan(spec)
-        .tuning(DriveGuidancePlan.Tuning.defaults()
-                .withTranslateKp(0.08)
-                .withAimKp(2.2))
-        .build();
-```
-
-### 7.2 Build a plan in one shot
-
-Use this when you do not need to reuse the spec separately.
-
-```java
-ReferencePoint2d scoringAim = References.relativeToTagPoint(5, 0.0, 0.0);
-
-DriveGuidancePlan aimPlan = DriveGuidance.plan()
-        .aimTo()
-            .referencePoint(scoringAim)
-            .doneAimTo()
-        .feedback()
-            .aprilTags(tagSensor, cameraMount, 0.25)
-            .lossPolicy(DriveGuidanceSpec.LossPolicy.PASS_THROUGH)
-            .doneFeedback()
-        .build();
-```
-
----
-
-## 8. Using a plan
-
-### 8.1 TeleOp overlay
-
-```java
-DriveSource driveWithAim = baseDrive.overlayWhen(
-        gamepads.p1().leftBumper(),
-        aimPlan.overlay(),
-        DriveOverlayMask.OMEGA_ONLY
-);
-```
-
-That means the driver keeps translation while guidance owns omega.
-
-### 8.2 Autonomous task
-
-```java
-DriveGuidanceTask.Config cfg = new DriveGuidanceTask.Config();
-cfg.timeoutSec = 2.0;
-cfg.positionTolInches = 1.0;
-cfg.headingTolRad = Math.toRadians(2.0);
-
-Task alignTask = plan.task(drivebase, cfg);
-```
-
-This is why the reference model matters: autonomous code uses the same semantic targets and
-the same solve logic as TeleOp.
-
-### 8.3 Query / gating
-
-```java
-DriveGuidanceQuery q = plan.query();
-q.reset();
-
-DriveGuidanceStatus s = q.sample(clock);
-boolean okToScore =
-        s.translationWithin(2.0)
-        && s.omegaWithin(Math.toRadians(3.0));
-```
-
-Because the query reuses the same guidance engine, your gating logic stays aligned with what the
-overlay or task would actually command.
-
----
-
-## 9. Practical patterns
-
-### 9.1 Auto-aim only
-
-```java
-ReferencePoint2d speakerAim = References.relativeToTagPoint(5, 0.0, 0.0);
-
-DriveGuidancePlan aimPlan = DriveGuidance.plan()
-        .aimTo()
-            .referencePoint(speakerAim)
-            .doneAimTo()
-        .feedback()
-            .aprilTags(tagSensor, cameraMount, 0.25)
-            .doneFeedback()
-        .build();
-```
-
-Use this when the driver still owns translation.
-
-### 9.2 Final settle at a frame
-
-```java
-ReferenceFrame2d slotFace = References.fieldFrame(48.0, 24.0, Math.PI);
-
-DriveGuidancePlan settle = DriveGuidance.plan()
-        .translateTo()
-            .referenceFrameOffsetInches(slotFace, -6.0, 0.0)
-            .doneTranslateTo()
-        .aimTo()
-            .referenceFrameHeading(slotFace)
-            .doneAimTo()
-        .feedback()
-            .fieldPose(poseEstimator)
-            .aprilTags(tagSensor, cameraMount, 0.25)
-            .fixedTagLayout(tagLayout)
-            .doneFeedback()
-        .build();
-```
-
-Use this for “last few inches” scoring alignment.
-
-### 9.3 Hold position and only turn
-
-```java
-DriveGuidancePlan braceAndAim = DriveGuidance.plan()
-        .translateTo()
-            .robotRelativePointInches(0.0, 0.0)
-            .doneTranslateTo()
+DriveGuidancePlan holdHeading = DriveGuidance.plan()
         .aimTo()
             .fieldHeadingRad(Math.PI / 2.0)
             .doneAimTo()
-        .feedback()
-            .fieldPose(poseEstimator)
-            .doneFeedback()
+        .resolveWith()
+            .localizationOnly()
+            .localization(poseEstimator)
+            .doneResolveWith()
         .build();
 ```
 
-The robot captures its position when the plan enables, then only tries to keep that spot while
-turning to the heading.
+Localization-only can also solve:
+
+- field-fixed references,
+- robot-relative translation anchors,
+- single fixed-tag-relative references **when** `fixedAprilTagLayout(...)` is provided,
+- selected-tag-relative references **after** a selected tag exists and that tag is known in the fixed layout.
+
+### 5.2 AprilTags only
+
+Use this when the target should be solved directly from fresh live tag observations.
+
+```java
+DriveGuidancePlan aimAtTag = DriveGuidance.plan()
+        .aimTo()
+            .point(References.relativeToTagPoint(5, 0.0, 0.0))
+            .doneAimTo()
+        .resolveWith()
+            .aprilTagsOnly()
+            .aprilTags(tags, cameraMount, 0.25)
+            .onLoss(DriveGuidanceSpec.LossPolicy.PASS_THROUGH)
+            .doneResolveWith()
+        .build();
+```
+
+Field-fixed references can also be solved in the AprilTags lane when you provide `fixedAprilTagLayout(...)`.
+
+### 5.3 Adaptive
+
+Use this when both lanes are intentionally available and you want the arbitration to be explicit.
+
+```java
+DriveGuidancePlan adaptiveAlign = DriveGuidance.plan()
+        .translateTo()
+            .point(References.framePoint(slotFace, -6.0, 0.0))
+            .doneTranslateTo()
+        .aimTo()
+            .frameHeading(slotFace)
+            .doneAimTo()
+        .resolveWith()
+            .adaptive()
+            .localization(fusedPoseEstimator, 0.25, 0.0)
+            .aprilTags(tags, cameraMount, 0.25)
+            .fixedAprilTagLayout(gameTagLayout)
+            .translationTakeover(72.0, 84.0, 0.25)
+            .omegaPolicy(DriveGuidanceSpec.OmegaPolicy.PREFER_APRIL_TAGS_WHEN_VALID)
+            .onLoss(DriveGuidanceSpec.LossPolicy.PASS_THROUGH)
+            .doneResolveWith()
+        .build();
+```
+
+Adaptive mode must be structurally meaningful:
+
+- both lanes must be configured,
+- every requested channel must be solvable by at least one lane,
+- and at least one requested channel should genuinely be dual-capable.
 
 ---
 
-## 10. When to use Drive Guidance vs lighter spatial tools
+## 6. Early validation rules
 
-Use **Drive Guidance** when you want Phoenix to generate drive commands.
+Drive Guidance now validates more of the geometry/solver mismatch at build time.
 
-Use lighter-weight spatial tools when you only need a yes/no or scalar answer, such as:
+Examples of build-time failures:
 
-- “am I inside the zone?”
-- “is the intake point inside the region?”
-- “am I aimed enough to shoot?”
+- `localizationOnly()` with no `localization(...)`
+- `aprilTagsOnly()` with no `aprilTags(...)`
+- `adaptive()` without both lanes
+- selected-tag or fixed-tag references in localization mode with no `fixedAprilTagLayout(...)`
+- field-fixed references in AprilTags-only mode with no `fixedAprilTagLayout(...)`
+- adaptive-only knobs configured in a single-lane plan
 
-That keeps the system clean:
-
-1. spatial math
-2. spatial predicates
-3. controllers
-
-Drive Guidance lives in layer (3).
+At runtime, dynamic loss is reported through status instead of exploding control flow.
 
 ---
 
-## 11. Debugging tips
+## 7. Status, queries, and telemetry
 
-When guidance does not behave as expected, check these in order:
+`DriveGuidanceQuery` samples the exact same solver/controller math used by the overlay or task.
 
-1. **Reference authoring**  
-   Is the semantic point/frame what you intended?
+```java
+DriveGuidanceStatus status = aimPlan.query().sample(clock, DriveOverlayMask.OMEGA_ONLY);
+```
 
-2. **Feedback lane availability**  
-   Did you actually configure the lane the target needs?
-   - field-fixed references typically want `fieldPose(...)`, or `aprilTags(...) + fixedTagLayout(...)`
-   - tag-relative references want `aprilTags(...)`
-   - single fixed tag-relative references can also fall back through `fieldPose(...) + fixedTagLayout(...)`
+Useful status fields include:
 
-3. **Tag-relative frame heading meaning**  
-   Remember: `0` means the frame’s `+X` aligns with the tag’s `+X` (out from the face).
+- `translationSource`
+- `omegaSource`
+- `translationSelection`
+- `aimSelection`
+- `translationErrorInches`
+- `omegaErrorRad`
 
-4. **Query status**  
-   Sample `DriveGuidanceStatus` and inspect:
-   - `mode`
-   - `hasTranslationError`
-   - `hasOmegaError`
-   - `translationErrorMagInches()`
-   - `omegaErrorRad`
-   - `aprilTagsInRangeForTranslation`
-   - blend factors
+This makes it easy to answer questions like:
 
-Those values usually make the chosen solve path obvious.
+- are we aimed enough?
+- which tag is guidance currently using?
+- is that selected tag still visible?
+- are we running from localization or live AprilTags right now?
+
+Example telemetry:
+
+```java
+DriveGuidanceStatus status = aimQuery.sample(clock, DriveOverlayMask.OMEGA_ONLY);
+TagSelectionResult sel = status != null ? status.aimSelection : TagSelectionResult.none(Collections.<Integer>emptySet());
+
+telemetry.addData("aim.ready", status != null && status.omegaWithin(0.03));
+telemetry.addData("aim.tag", sel.hasSelection ? sel.selectedTagId : "none");
+telemetry.addData("aim.visibleNow", sel.hasFreshSelectedObservation);
+telemetry.addData("aim.reason", sel.reason);
+```
 
 ---
 
-## 12. Summary
+## 8. Common use-cases
 
-The most important habit is this:
+### 8.1 Aim at a single fixed AprilTag center in TeleOp
 
-> Define the meaningful thing once as a semantic reference, then let guidance decide whether to
-> solve it from field pose, live AprilTags, or both.
+```java
+DriveGuidancePlan aimPlan = DriveGuidance.plan()
+        .aimTo()
+            .point(References.relativeToTagPoint(5, 0.0, 0.0))
+            .doneAimTo()
+        .resolveWith()
+            .aprilTagsOnly()
+            .aprilTags(tags, cameraMount, 0.25)
+            .onLoss(DriveGuidanceSpec.LossPolicy.PASS_THROUGH)
+            .doneResolveWith()
+        .build();
+```
 
-That keeps:
+### 8.2 Aim at whichever scoring tag the robot is most directly facing
 
-- TeleOp assist
-- autonomous movement
-- readiness gating
-- telemetry
+```java
+TagSelectionSource scoringSelection =
+        TagSelections.from(tags)
+                .among(SCORING_TAG_IDS)
+                .freshWithin(0.25)
+                .choose(TagSelectionPolicies.smallestAbsRobotBearing(cameraMount))
+                .stickyWhen(gamepads.p2().leftBumper())
+                .build();
 
-all speaking the same language.
+DriveGuidancePlan aimPlan = DriveGuidance.plan()
+        .aimTo()
+            .point(References.relativeToSelectedTagPoint(scoringSelection, 0.0, 0.0))
+            .doneAimTo()
+        .resolveWith()
+            .aprilTagsOnly()
+            .aprilTags(tags, cameraMount, 0.25)
+            .onLoss(DriveGuidanceSpec.LossPolicy.PASS_THROUGH)
+            .doneResolveWith()
+        .build();
+```
+
+### 8.3 Same selector, different offset by tag ID
+
+```java
+Map<Integer, References.TagPointOffset> offsets = new LinkedHashMap<Integer, References.TagPointOffset>();
+offsets.put(20, References.pointOffset(-8.0,  5.5));
+offsets.put(24, References.pointOffset(-8.0, -5.5));
+
+ReferencePoint2d basketAim = References.relativeToSelectedTagPoint(scoringSelection, offsets);
+```
+
+### 8.4 Tag-relative autonomous solved from localization
+
+```java
+ReferenceFrame2d slotApproach = References.relativeToTagFrame(5, -6.0, 0.0, Math.PI);
+
+DriveGuidancePlan plan = DriveGuidance.plan()
+        .translateTo()
+            .point(References.framePoint(slotApproach))
+            .doneTranslateTo()
+        .aimTo()
+            .frameHeading(slotApproach)
+            .doneAimTo()
+        .resolveWith()
+            .localizationOnly()
+            .localization(poseEstimator)
+            .fixedAprilTagLayout(gameTagLayout)
+            .doneResolveWith()
+        .build();
+```
+
+### 8.5 Selected-tag guidance with localization fallback after acquisition
+
+```java
+DriveGuidancePlan plan = DriveGuidance.plan()
+        .aimTo()
+            .point(References.relativeToSelectedTagPoint(scoringSelection, offsets))
+            .doneAimTo()
+        .resolveWith()
+            .adaptive()
+            .localization(fusedPoseEstimator, 0.25, 0.0)
+            .aprilTags(tags, cameraMount, 0.25)
+            .fixedAprilTagLayout(gameTagLayout)
+            .onLoss(DriveGuidanceSpec.LossPolicy.PASS_THROUGH)
+            .doneResolveWith()
+        .build();
+```
+
+This is the important mental model:
+
+- the selected tag identity can remain sticky,
+- live AprilTag solving can temporarily disappear,
+- localization can keep solving relative to the same selected tag.
+
+---
+
+## 9. Practical guidance
+
+### Prefer one shared selector per semantic target family
+
+If the robot has one concept of “basket target,” build one selector and reuse it.
+
+### Keep references semantic
+
+Prefer `References.framePoint(...)`, `References.relativeToTagPoint(...)`, and selected-tag references over sprinkling raw offsets and special cases across robot code.
+
+### Use radians at the API boundary
+
+Phoenix guidance APIs are radians-only. Convert degrees only when reading human-facing config or emitting telemetry.
+
+### Keep `onLoss(PASS_THROUGH)` for TeleOp overlays unless you have a reason not to
+
+That gives the driver smooth manual fallback whenever the assist cannot solve the requested channel.
+
+---
+
+## 10. Summary
+
+Drive Guidance is easiest to reason about when you keep these three questions separate:
+
+1. **What is the geometry?** → references
+2. **How may guidance solve it?** → `resolveWith()`
+3. **What should output do on a bad loop?** → `onLoss(...)`
+
+And for AprilTag-heavy robots, add one more:
+
+4. **Which tag are we currently talking about?** → shared `TagSelectionSource`

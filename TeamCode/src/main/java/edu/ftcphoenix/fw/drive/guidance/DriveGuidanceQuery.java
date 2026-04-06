@@ -29,6 +29,12 @@ public final class DriveGuidanceQuery {
     private boolean enabled = false;
     private DriveGuidanceStatus last = null;
 
+    /**
+     * Creates a query wrapper for the supplied immutable guidance plan.
+     *
+     * <p>The query owns its own {@link DriveGuidanceCore} instance so repeated samples use the
+     * exact same solver/controller path as overlays and tasks without sharing runtime state.</p>
+     */
     public DriveGuidanceQuery(DriveGuidancePlan plan) {
         this.plan = Objects.requireNonNull(plan, "plan");
         this.core = new DriveGuidanceCore(plan);

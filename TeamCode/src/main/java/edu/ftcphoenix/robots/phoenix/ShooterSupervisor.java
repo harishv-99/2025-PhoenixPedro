@@ -6,7 +6,9 @@ import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.source.ScalarSource;
 import edu.ftcphoenix.fw.core.time.LoopClock;
-import edu.ftcphoenix.fw.sensing.vision.apriltag.TagTarget;
+import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagObservation;
+import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelectionResult;
+import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelectionSource;
 import edu.ftcphoenix.fw.task.OutputTask;
 import edu.ftcphoenix.fw.task.Tasks;
 
@@ -26,7 +28,7 @@ import edu.ftcphoenix.fw.task.Tasks;
  *
  * <p>Typical usage from a robot container:</p>
  * <pre>{@code
- * ShooterSupervisor supervisor = new ShooterSupervisor(shooter, scoringTarget, aimOkToShoot, aimOverride);
+ * ShooterSupervisor supervisor = new ShooterSupervisor(shooter, scoringSelection, aimOkToShoot, aimOverride);
  *
  * bindings.onRise(gamepads.p2().a(), supervisor::toggleIntake);
  * bindings.onRise(gamepads.p2().rightBumper(), supervisor::toggleFlywheel);
@@ -90,7 +92,7 @@ public final class ShooterSupervisor {
     }
 
     private final Shooter shooter;
-    private final TagTarget scoringTarget;
+    private final TagSelectionSource scoringSelection;
     private final BooleanSource aimOkToShoot;
     private final BooleanSource shootOverride;
 
@@ -111,16 +113,16 @@ public final class ShooterSupervisor {
      * Create a shooter supervisor.
      *
      * @param shooter       shooter subsystem
-     * @param scoringTarget AprilTag target tracker used for range lookup
+     * @param scoringSelection shared selected-tag source used for range lookup
      * @param aimOkToShoot  gate that returns true when it is OK to shoot (aim-ready OR override)
      * @param shootOverride driver override signal (held). Used for emergency bypass of ready gates.
      */
     public ShooterSupervisor(Shooter shooter,
-                             TagTarget scoringTarget,
+                             TagSelectionSource scoringSelection,
                              BooleanSource aimOkToShoot,
                              BooleanSource shootOverride) {
         this.shooter = Objects.requireNonNull(shooter, "shooter");
-        this.scoringTarget = Objects.requireNonNull(scoringTarget, "scoringTarget");
+        this.scoringSelection = Objects.requireNonNull(scoringSelection, "scoringSelection");
         this.aimOkToShoot = Objects.requireNonNull(aimOkToShoot, "aimOkToShoot").memoized();
         this.shootOverride = Objects.requireNonNull(shootOverride, "shootOverride").memoized();
     }
@@ -138,18 +140,30 @@ public final class ShooterSupervisor {
     // Intent API (called from bindings)
     // ---------------------------------------------------------------------
 
+    /**
+     * Returns whether intake mode is currently enabled.
+     */
     public boolean intakeEnabled() {
         return intakeEnabled;
     }
 
+    /**
+     * Returns whether the flywheel toggle is currently enabled.
+     */
     public boolean flywheelEnabled() {
         return flywheelEnabled;
     }
 
+    /**
+     * Returns whether the operator is currently holding the shoot request.
+     */
     public boolean isShootHeld() {
         return shootHeld;
     }
 
+    /**
+     * Toggles the flywheel enable latch.
+     */
     public void toggleFlywheel() {
         flywheelEnabled = !flywheelEnabled;
 
@@ -158,6 +172,9 @@ public final class ShooterSupervisor {
         }
     }
 
+    /**
+     * Toggles the intake enable latch.
+     */
     public void toggleIntake() {
         intakeEnabled = !intakeEnabled;
 
@@ -179,6 +196,9 @@ public final class ShooterSupervisor {
         }
     }
 
+    /**
+     * Sets whether eject mode is currently being requested.
+     */
     public void setEjectHeld(boolean held) {
         ejectHeld = held;
         if (held) {
@@ -192,11 +212,15 @@ public final class ShooterSupervisor {
      * <p>This is designed to be called on the <b>rising edge</b> of the auto-aim button. The
      * driver can still fine-tune the selected velocity afterward using D-pad.</p>
      */
-    public void captureVelocityFromTarget() {
-        if (!scoringTarget.hasTarget()) {
+    public void captureVelocityFromTarget(LoopClock clock) {
+        TagSelectionResult sel = scoringSelection.get(clock);
+        AprilTagObservation obs = sel.hasFreshSelectedObservation
+                ? sel.selectedObservation
+                : AprilTagObservation.noTarget(Double.POSITIVE_INFINITY);
+        if (!obs.hasTarget) {
             return;
         }
-        double rangeInches = scoringTarget.lineOfSightRangeInches();
+        double rangeInches = obs.cameraRangeInches();
         shooter.setSelectedVelocity(shooter.velocityForRangeInches(rangeInches));
     }
 

@@ -4,9 +4,8 @@ package edu.ftcphoenix.fw.drive.guidance;
  * Semantic 2D reference point for {@link DriveGuidance}.
  *
  * <p>A reference point answers only one question: <em>where is the meaningful point?</em> It does
- * <strong>not</strong> say what the robot should do there. Guidance may translate to the point,
- * aim at the point, use it as part of a readiness query, or ignore it entirely until some other
- * system asks for it.</p>
+ * <strong>not</strong> say how that point will be solved. The same immutable reference may be
+ * translated to, aimed at, checked by a query, or ignored until some other system asks for it.</p>
  *
  * <h2>Common usage</h2>
  *
@@ -15,16 +14,18 @@ package edu.ftcphoenix.fw.drive.guidance;
  *
  * DriveGuidancePlan aimPlan = DriveGuidance.plan()
  *         .aimTo()
- *             .referencePoint(speakerAim)
+ *             .point(speakerAim)
  *             .doneAimTo()
- *         .feedback()
- *             .fieldPose(poseEstimator)
- *             .doneFeedback()
+ *         .resolveWith()
+ *             .localizationOnly()
+ *             .localization(poseEstimator)
+ *             .doneResolveWith()
  *         .build();
  * }</pre>
  *
- * <p>Reference points can be authored in field coordinates or relative to a tag through
- * {@link References} factory helpers.</p>
+ * <p>References can be authored in field coordinates, relative to one fixed AprilTag ID, or
+ * relative to a shared {@code TagSelectionSource}. The point object itself remains immutable;
+ * selected-tag references resolve through the selector's current state at evaluation time.</p>
  *
  * @see ReferenceFrame2d when the reference also has a meaningful local orientation
  * @see References

@@ -56,6 +56,9 @@ public final class PinpointAxisDirectionTester extends BaseTeleOpTester {
         private Config() {
         }
 
+        /**
+         * Returns a new config initialized with the tester defaults.
+         */
         public static Config defaults() {
             return new Config();
         }
@@ -84,14 +87,23 @@ public final class PinpointAxisDirectionTester extends BaseTeleOpTester {
     private SampleResult leftResult = null;
     private SampleResult rotateResult = null;
 
+    /**
+     * Creates the tester with the default configuration.
+     */
     public PinpointAxisDirectionTester() {
         this(Config.defaults());
     }
 
+    /**
+     * Creates the tester with an explicit configuration bundle.
+     */
     public PinpointAxisDirectionTester(Config cfg) {
         this.cfg = (cfg != null) ? cfg : Config.defaults();
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public String name() {
         return "Pinpoint: Axis Direction Check";
@@ -378,12 +390,18 @@ public final class PinpointAxisDirectionTester extends BaseTeleOpTester {
         private double prevRad = 0.0;
         private double unwrappedRad = 0.0;
 
+        /**
+         * Resets the unwrapped heading tracker to a new starting angle.
+         */
         public void reset(double initialRad) {
             initialized = true;
             prevRad = initialRad;
             unwrappedRad = initialRad;
         }
 
+        /**
+         * Incorporates one wrapped heading sample into the unwrapped heading tracker.
+         */
         public void update(double currentRad) {
             if (!initialized) {
                 reset(currentRad);
@@ -394,6 +412,9 @@ public final class PinpointAxisDirectionTester extends BaseTeleOpTester {
             prevRad = currentRad;
         }
 
+        /**
+         * Returns the current unwrapped heading in radians.
+         */
         public double getUnwrappedRad() {
             return unwrappedRad;
         }

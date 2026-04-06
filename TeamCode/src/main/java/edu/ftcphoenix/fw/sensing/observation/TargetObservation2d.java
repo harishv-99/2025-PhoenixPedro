@@ -214,6 +214,9 @@ public final class TargetObservation2d {
         return hasTarget && targetId >= 0;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public String toString() {
         if (!hasTarget) {

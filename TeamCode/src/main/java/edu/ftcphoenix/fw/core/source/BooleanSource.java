@@ -42,6 +42,9 @@ public interface BooleanSource extends Source<Boolean> {
             private long lastCycle = Long.MIN_VALUE;
             private boolean last = false;
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public boolean getAsBoolean(LoopClock clock) {
                 long cyc = clock.cycle();
@@ -53,6 +56,9 @@ public interface BooleanSource extends Source<Boolean> {
                 return last;
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void reset() {
                 self.reset();
@@ -60,6 +66,9 @@ public interface BooleanSource extends Source<Boolean> {
                 last = false;
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) return;
@@ -80,16 +89,25 @@ public interface BooleanSource extends Source<Boolean> {
     default BooleanSource not() {
         BooleanSource self = this;
         return new BooleanSource() {
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public boolean getAsBoolean(LoopClock clock) {
                 return !self.getAsBoolean(clock);
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void reset() {
                 self.reset();
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) return;
@@ -107,17 +125,26 @@ public interface BooleanSource extends Source<Boolean> {
         Objects.requireNonNull(other, "other");
         BooleanSource self = this;
         return new BooleanSource() {
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public boolean getAsBoolean(LoopClock clock) {
                 return self.getAsBoolean(clock) && other.getAsBoolean(clock);
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void reset() {
                 self.reset();
                 other.reset();
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) return;
@@ -136,17 +163,26 @@ public interface BooleanSource extends Source<Boolean> {
         Objects.requireNonNull(other, "other");
         BooleanSource self = this;
         return new BooleanSource() {
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public boolean getAsBoolean(LoopClock clock) {
                 return self.getAsBoolean(clock) || other.getAsBoolean(clock);
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void reset() {
                 self.reset();
                 other.reset();
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) return;
@@ -192,6 +228,9 @@ public interface BooleanSource extends Source<Boolean> {
             private long lastCycle = Long.MIN_VALUE;
             private boolean last = false;
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public boolean getAsBoolean(LoopClock clock) {
                 long cyc = clock.cycle();
@@ -203,6 +242,9 @@ public interface BooleanSource extends Source<Boolean> {
                 return last;
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void reset() {
                 self.reset();
@@ -211,6 +253,9 @@ public interface BooleanSource extends Source<Boolean> {
                 last = false;
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) return;
@@ -240,6 +285,9 @@ public interface BooleanSource extends Source<Boolean> {
             private boolean prev = false;
             private boolean last = false;
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public boolean getAsBoolean(LoopClock clock) {
                 long cyc = clock.cycle();
@@ -261,6 +309,9 @@ public interface BooleanSource extends Source<Boolean> {
                 return last;
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void reset() {
                 self.reset();
@@ -270,6 +321,9 @@ public interface BooleanSource extends Source<Boolean> {
                 last = false;
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) return;
@@ -294,6 +348,9 @@ public interface BooleanSource extends Source<Boolean> {
             private boolean prev = false;
             private boolean last = false;
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public boolean getAsBoolean(LoopClock clock) {
                 long cyc = clock.cycle();
@@ -315,6 +372,9 @@ public interface BooleanSource extends Source<Boolean> {
                 return last;
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void reset() {
                 self.reset();
@@ -324,6 +384,9 @@ public interface BooleanSource extends Source<Boolean> {
                 last = false;
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) return;
@@ -351,11 +414,17 @@ public interface BooleanSource extends Source<Boolean> {
         BooleanSource cond = this;
 
         return new Source<T>() {
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public T get(LoopClock clock) {
                 return cond.getAsBoolean(clock) ? whenTrue.get(clock) : whenFalse.get(clock);
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void reset() {
                 cond.reset();
@@ -363,6 +432,9 @@ public interface BooleanSource extends Source<Boolean> {
                 whenFalse.reset();
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) return;
@@ -384,11 +456,17 @@ public interface BooleanSource extends Source<Boolean> {
         BooleanSource cond = this;
 
         return new ScalarSource() {
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public double getAsDouble(LoopClock clock) {
                 return cond.getAsBoolean(clock) ? whenTrue.getAsDouble(clock) : whenFalse.getAsDouble(clock);
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void reset() {
                 cond.reset();
@@ -396,6 +474,9 @@ public interface BooleanSource extends Source<Boolean> {
                 whenFalse.reset();
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) return;
@@ -417,11 +498,17 @@ public interface BooleanSource extends Source<Boolean> {
         BooleanSource cond = this;
 
         return new BooleanSource() {
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public boolean getAsBoolean(LoopClock clock) {
                 return cond.getAsBoolean(clock) ? whenTrue.getAsBoolean(clock) : whenFalse.getAsBoolean(clock);
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void reset() {
                 cond.reset();
@@ -429,6 +516,9 @@ public interface BooleanSource extends Source<Boolean> {
                 whenFalse.reset();
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) return;
@@ -461,6 +551,9 @@ public interface BooleanSource extends Source<Boolean> {
             private boolean prev = false;
             private boolean state = initialState;
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public boolean getAsBoolean(LoopClock clock) {
                 long cyc = clock.cycle();
@@ -483,6 +576,9 @@ public interface BooleanSource extends Source<Boolean> {
                 return state;
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void reset() {
                 self.reset();
@@ -492,6 +588,9 @@ public interface BooleanSource extends Source<Boolean> {
                 state = initialState;
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) return;
@@ -516,11 +615,17 @@ public interface BooleanSource extends Source<Boolean> {
     static BooleanSource of(BooleanSupplier raw) {
         Objects.requireNonNull(raw, "raw");
         return new BooleanSource() {
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public boolean getAsBoolean(LoopClock clock) {
                 return raw.getAsBoolean();
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) return;
@@ -535,11 +640,17 @@ public interface BooleanSource extends Source<Boolean> {
      */
     static BooleanSource constant(boolean value) {
         return new BooleanSource() {
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public boolean getAsBoolean(LoopClock clock) {
                 return value;
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) return;

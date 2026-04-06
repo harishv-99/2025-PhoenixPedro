@@ -20,7 +20,10 @@ import edu.ftcphoenix.fw.localization.apriltag.TagOnlyPoseEstimator;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagObservation;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
-import edu.ftcphoenix.fw.sensing.vision.apriltag.TagTarget;
+import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelectionPolicies;
+import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelectionResult;
+import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelectionSource;
+import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelections;
 import edu.ftcphoenix.fw.tools.tester.BaseTeleOpTester;
 import edu.ftcphoenix.fw.tools.tester.ui.HardwareNamePicker;
 
@@ -33,8 +36,8 @@ import edu.ftcphoenix.fw.tools.tester.ui.HardwareNamePicker;
  *   <li><b>Does our derived field pose ({@code fieldToRobotPose}) look reasonable?</b></li>
  * </ul>
  *
- * <p>Internally this tester uses {@link TagTarget} (best-tag selection) and
- * {@link TagOnlyPoseEstimator} (single-tag field pose solve) with the official
+ * <p>Internally this tester shares one raw {@link AprilTagSensor} across a selector (for telemetry) and
+ * {@link TagOnlyPoseEstimator} (for pose solving) with the official
  * FTC game tag layout from {@link AprilTagGameDatabase#getCurrentGameTagLibrary()}.</p>
  *
  * <h2>Camera mount calibration</h2>
@@ -89,7 +92,7 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
     private String visionInitError = null;
 
     private AprilTagSensor tagSensor;
-    private TagTarget target;
+    private TagSelectionSource selection;
     private TagOnlyPoseEstimator poseEstimator;
 
     private boolean trackAny = true;
@@ -219,7 +222,7 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
         bindings.onRise(gamepads.p1().start(), () -> {
             if (!visionReady) return;
             trackAny = !trackAny;
-            rebuildTargetAndEstimator();
+            rebuildSelectionAndEstimator();
         });
 
         // Tag ID selection (used in SINGLE mode)
@@ -227,7 +230,7 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
             if (!visionReady) return;
             selectedTagId++;
             if (!trackAny) {
-                rebuildTargetAndEstimator();
+                rebuildSelectionAndEstimator();
             }
         });
 
@@ -235,7 +238,7 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
             if (!visionReady) return;
             selectedTagId = Math.max(1, selectedTagId - 1);
             if (!trackAny) {
-                rebuildTargetAndEstimator();
+                rebuildSelectionAndEstimator();
             }
         });
 
@@ -298,7 +301,7 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
             tagSensor.close();
         }
         tagSensor = null;
-        target = null;
+        selection = null;
         poseEstimator = null;
 
         samples.clear();
@@ -341,7 +344,7 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
             tagSensor = FtcVision.aprilTags(ctx.hw, selectedCameraName, cfg);
             visionReady = true;
 
-            rebuildTargetAndEstimator();
+            rebuildSelectionAndEstimator();
         } catch (Exception ex) {
             visionReady = false;
             tagSensor = null;
@@ -349,7 +352,7 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
         }
     }
 
-    private void rebuildTargetAndEstimator() {
+    private void rebuildSelectionAndEstimator() {
         if (!visionReady || tagSensor == null || layout == null) {
             return;
         }
@@ -364,13 +367,18 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
             trackAny = false;
         }
 
-        target = new TagTarget(tagSensor, ids, maxAgeSec);
+        selection = TagSelections.from(tagSensor)
+                .among(ids)
+                .freshWithin(maxAgeSec)
+                .choose(TagSelectionPolicies.closestRange())
+                .continuous()
+                .build();
 
         TagOnlyPoseEstimator.Config cfg = TagOnlyPoseEstimator.Config.defaults()
                 .withCameraMount(cameraMount);
         cfg.maxAbsBearingRad = 0.0;
 
-        poseEstimator = new TagOnlyPoseEstimator(target, layout, cfg);
+        poseEstimator = new TagOnlyPoseEstimator(tagSensor, layout, cfg);
 
         // Reset sampling when the core solve parameters change.
         samples.clear();
@@ -413,19 +421,21 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
 
     private void updateAndRender() {
         // Defensive: if something failed during init, try rebuilding once instead of crashing.
-        if (target == null || poseEstimator == null) {
-            rebuildTargetAndEstimator();
+        if (selection == null || poseEstimator == null) {
+            rebuildSelectionAndEstimator();
         }
-        if (target == null || poseEstimator == null) {
-            renderInternalError("Localization pipeline not initialized (target/estimator is null)");
+        if (selection == null || poseEstimator == null) {
+            renderInternalError("Localization pipeline not initialized (selection/estimator is null)");
             return;
         }
 
         // Update tracked tag + pose solve.
-        target.update(clock);
         poseEstimator.update(clock);
 
-        AprilTagObservation obs = target.last();
+        TagSelectionResult selectionResult = selection.get(clock);
+        AprilTagObservation obs = selectionResult.hasFreshSelectedObservation
+                ? selectionResult.selectedObservation
+                : AprilTagObservation.noTarget(Double.POSITIVE_INFINITY);
         PoseEstimate est = poseEstimator.getEstimate();
 
         renderTelemetry(obs, est);

@@ -65,6 +65,9 @@ public final class ScalarControllers {
             private double lastError = 0.0;
             private double lastOutput = 0.0;
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public double getAsDouble(LoopClock clock) {
                 long cyc = clock.cycle();
@@ -80,6 +83,9 @@ public final class ScalarControllers {
                 return lastOutput;
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void reset() {
                 setpoint.reset();
@@ -92,6 +98,9 @@ public final class ScalarControllers {
                 lastOutput = 0.0;
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) {

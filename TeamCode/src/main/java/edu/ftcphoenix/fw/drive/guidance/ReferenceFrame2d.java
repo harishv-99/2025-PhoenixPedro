@@ -6,10 +6,10 @@ package edu.ftcphoenix.fw.drive.guidance;
  * <p>A reference frame is an origin point plus an oriented local basis. Guidance can use that
  * information in several different ways:</p>
  * <ul>
- *   <li>drive to the frame origin</li>
+ *   <li>drive to the frame origin (via {@link References#framePoint(ReferenceFrame2d)})</li>
  *   <li>drive to an offset expressed in the frame</li>
  *   <li>align the robot to the frame heading</li>
- *   <li>aim at the origin or an offset point while still using the frame heading separately</li>
+ *   <li>aim at a point derived from the frame while using the frame heading separately</li>
  * </ul>
  *
  * <h2>Tag-relative heading meaning</h2>
@@ -36,16 +36,21 @@ package edu.ftcphoenix.fw.drive.guidance;
  *
  * DriveGuidancePlan scoreAlign = DriveGuidance.plan()
  *         .translateTo()
- *             .referenceFrameOffsetInches(backdropFace, -6.0, 0.0)
+ *             .point(References.framePoint(backdropFace, -6.0, 0.0))
  *             .doneTranslateTo()
  *         .aimTo()
- *             .referenceFrameHeading(backdropFace)
+ *             .frameHeading(backdropFace)
  *             .doneAimTo()
- *         .feedback()
- *             .fieldPose(poseEstimator)
- *             .doneFeedback()
+ *         .resolveWith()
+ *             .localizationOnly()
+ *             .localization(poseEstimator)
+ *             .doneResolveWith()
  *         .build();
  * }</pre>
+ *
+ * <p>Selected-tag frame references are still immutable reference objects. Their origin/heading are
+ * resolved through the current selected tag at evaluation time rather than being snapshotted when
+ * the frame is constructed.</p>
  *
  * @see ReferencePoint2d when only a point is meaningful
  * @see References

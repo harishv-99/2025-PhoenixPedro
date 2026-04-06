@@ -26,8 +26,7 @@ import edu.ftcphoenix.fw.localization.PoseResetter;
  *
  * <p><b>Loop ordering:</b> this estimator calls {@link PoseEstimator#update(LoopClock)} on its
  * sources inside its own {@link #update(LoopClock)}. If your vision estimator depends on some other
- * sensor being updated first (e.g. a TagTarget that caches camera observations), that dependency
- * must still be updated before calling {@link #update(LoopClock)} on this class.</p>
+ * sensor graph being updated first, that dependency must still be updated before calling {@link #update(LoopClock)} on this class. AprilTag sensors and selectors in Phoenix are cycle-idempotent sources, so sharing one instance across consumers remains safe.</p>
  */
 public class OdometryTagFusionPoseEstimator implements PoseEstimator, PoseResetter {
 
@@ -127,10 +126,16 @@ public class OdometryTagFusionPoseEstimator implements PoseEstimator, PoseResett
     private int acceptedVisionCount = 0;
     private int rejectedVisionCount = 0;
 
+    /**
+     * Creates a fusion estimator with the default fusion configuration.
+     */
     public OdometryTagFusionPoseEstimator(PoseEstimator odometry, PoseEstimator vision) {
         this(odometry, vision, Config.defaults());
     }
 
+    /**
+     * Creates a fusion estimator that combines odometry with a separate vision estimator.
+     */
     public OdometryTagFusionPoseEstimator(PoseEstimator odometry, PoseEstimator vision, Config cfg) {
         if (odometry == null) {
             throw new IllegalArgumentException("odometry must not be null");
@@ -150,6 +155,9 @@ public class OdometryTagFusionPoseEstimator implements PoseEstimator, PoseResett
         this.visionEnabled = enabled;
     }
 
+    /**
+     * Returns whether the vision lane is currently enabled for fusion.
+     */
     public boolean isVisionEnabled() {
         return visionEnabled;
     }
@@ -168,14 +176,23 @@ public class OdometryTagFusionPoseEstimator implements PoseEstimator, PoseResett
         return lastVisionPose;
     }
 
+    /**
+     * Returns the total number of accepted vision corrections.
+     */
     public int getAcceptedVisionCount() {
         return acceptedVisionCount;
     }
 
+    /**
+     * Returns the total number of rejected vision corrections.
+     */
     public int getRejectedVisionCount() {
         return rejectedVisionCount;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void update(LoopClock clock) {
         final double nowSec = clock != null ? clock.nowSec() : 0.0;
@@ -282,11 +299,17 @@ public class OdometryTagFusionPoseEstimator implements PoseEstimator, PoseResett
         lastEstimate = new PoseEstimate(fusedPose, true, quality, 0.0, nowSec);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public PoseEstimate getEstimate() {
         return lastEstimate;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void setPose(Pose2d pose) {
         if (pose == null) {

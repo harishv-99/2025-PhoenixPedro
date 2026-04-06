@@ -172,6 +172,9 @@ public final class DriveOverlayStack {
             this.layers = Objects.requireNonNull(layers, "layers");
         }
 
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public DriveSignal get(LoopClock clock) {
             DriveSignal cmd = base.get(clock);
@@ -220,6 +223,9 @@ public final class DriveOverlayStack {
             return cmd;
         }
 
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public void debugDump(DebugSink dbg, String prefix) {
             if (dbg == null) {
@@ -246,6 +252,9 @@ public final class DriveOverlayStack {
             }
         }
 
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public String toString() {
             return "DriveOverlayStack{" + "layers=" + layers.length + ", base=" + base + "}";

@@ -16,12 +16,18 @@ public final class DriveGuidanceTasks {
         // utility
     }
 
+    /**
+     * Creates a guidance task with a default debug name.
+     */
     public static Task driveGuidance(DriveCommandSink drivebase,
                                      DriveGuidancePlan plan,
                                      DriveGuidanceTask.Config cfg) {
         return new DriveGuidanceTask(drivebase, plan, cfg);
     }
 
+    /**
+     * Creates a guidance task with an explicit debug name.
+     */
     public static Task driveGuidance(String debugName,
                                      DriveCommandSink drivebase,
                                      DriveGuidancePlan plan,

@@ -48,6 +48,9 @@ public final class TeleOp_08_LiftExternalSensorControl extends OpMode {
 
     private double desiredHeight = HEIGHT_LOW_IN;
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void init() {
         gamepads = Gamepads.create(gamepad1, gamepad2);
@@ -60,6 +63,9 @@ public final class TeleOp_08_LiftExternalSensorControl extends OpMode {
         ScalarSource potVoltage = FtcSensors.analogVoltage(hardwareMap, HW_LIFT_POT);
 
         liftHeightIn = new ScalarSource() {
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public double getAsDouble(LoopClock clock) {
                 double volts = potVoltage.getAsDouble(clock);
@@ -70,6 +76,9 @@ public final class TeleOp_08_LiftExternalSensorControl extends OpMode {
         };
 
         desiredHeightIn = new ScalarSource() {
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public double getAsDouble(LoopClock clock) {
                 return desiredHeight;
@@ -86,6 +95,9 @@ public final class TeleOp_08_LiftExternalSensorControl extends OpMode {
         bindings.onRise(gamepads.p1().y(), () -> desiredHeight = HEIGHT_HIGH_IN);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void loop() {
         clock.update(getRuntime());
@@ -101,6 +113,9 @@ public final class TeleOp_08_LiftExternalSensorControl extends OpMode {
         telemetry.update();
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void stop() {
         liftPowerPlant.stop();

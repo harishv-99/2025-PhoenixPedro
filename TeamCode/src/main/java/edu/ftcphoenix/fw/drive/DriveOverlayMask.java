@@ -134,6 +134,9 @@ public final class DriveOverlayMask {
         );
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public String toString() {
         return "DriveOverlayMask{" +
@@ -143,6 +146,9 @@ public final class DriveOverlayMask {
                 '}';
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public boolean equals(Object o) {
         if (!(o instanceof DriveOverlayMask)) return false;
@@ -152,6 +158,9 @@ public final class DriveOverlayMask {
                 && this.omega == other.omega;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public int hashCode() {
         int bits = 7;

@@ -13,6 +13,9 @@ public final class PinpointAprilTagFusionLocalizationTesterPhoenix {
     private PinpointAprilTagFusionLocalizationTesterPhoenix() {
     }
 
+    /**
+     * Registers the Phoenix-specific fusion-localization tester with the supplied tester suite.
+     */
     public static void register(TesterSuite suite) {
         if (suite == null) return;
 

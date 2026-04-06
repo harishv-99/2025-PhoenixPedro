@@ -30,6 +30,11 @@ public final class AxisAlignedBoxRegion2d implements ConvexRegion2d {
      */
     public final double maxYInches;
 
+    /**
+     * Creates an axis-aligned box region from two X bounds and two Y bounds.
+     *
+     * <p>The constructor tolerates either ordering and normalizes the stored min/max values.</p>
+     */
     public AxisAlignedBoxRegion2d(double minXInches, double maxXInches, double minYInches, double maxYInches) {
         this.minXInches = Math.min(minXInches, maxXInches);
         this.maxXInches = Math.max(minXInches, maxXInches);
@@ -37,6 +42,9 @@ public final class AxisAlignedBoxRegion2d implements ConvexRegion2d {
         this.maxYInches = Math.max(minYInches, maxYInches);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public double signedDistanceInches(double xInches, double yInches) {
         // If inside, return +min distance to a wall.
@@ -56,6 +64,9 @@ public final class AxisAlignedBoxRegion2d implements ConvexRegion2d {
         return -dist;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public String toString() {
         return "AxisAlignedBoxRegion2d{" +

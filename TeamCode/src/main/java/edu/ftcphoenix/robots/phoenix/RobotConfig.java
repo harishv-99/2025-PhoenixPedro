@@ -505,6 +505,9 @@ public class RobotConfig {
             public final double forwardInches;
             public final double leftInches;
 
+            /**
+             * Creates an aim offset in tag-local forward/left inches.
+             */
             public AimOffset(double forwardInches, double leftInches) {
                 this.forwardInches = forwardInches;
                 this.leftInches = leftInches;

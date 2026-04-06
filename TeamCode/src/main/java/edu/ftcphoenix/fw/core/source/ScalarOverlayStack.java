@@ -138,6 +138,9 @@ public final class ScalarOverlayStack {
             this.layers = Objects.requireNonNull(layers, "layers");
         }
 
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public double getAsDouble(LoopClock clock) {
             long cyc = clock.cycle();
@@ -168,6 +171,9 @@ public final class ScalarOverlayStack {
             return out;
         }
 
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public void reset() {
             base.reset();
@@ -184,6 +190,9 @@ public final class ScalarOverlayStack {
             lastOut = 0.0;
         }
 
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public void debugDump(DebugSink dbg, String prefix) {
             if (dbg == null) {
@@ -208,6 +217,9 @@ public final class ScalarOverlayStack {
             }
         }
 
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public String toString() {
             return "ScalarOverlayStack{" + "layers=" + layers.length + ", base=" + base + "}";

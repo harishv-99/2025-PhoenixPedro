@@ -245,6 +245,9 @@ public final class OutputTaskRunner implements ScalarSource {
             private long lastCycle = Long.MIN_VALUE;
             private boolean last = false;
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public boolean getAsBoolean(LoopClock clock) {
                 long cyc = clock.cycle();
@@ -259,6 +262,9 @@ public final class OutputTaskRunner implements ScalarSource {
                 return last;
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void reset() {
                 self.reset();
@@ -266,6 +272,9 @@ public final class OutputTaskRunner implements ScalarSource {
                 last = false;
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) {
@@ -328,11 +337,17 @@ public final class OutputTaskRunner implements ScalarSource {
         return output(clock);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void reset() {
         cancelAndClear();
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void debugDump(DebugSink dbg, String prefix) {
         if (dbg == null) {

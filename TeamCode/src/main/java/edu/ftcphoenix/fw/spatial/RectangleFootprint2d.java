@@ -23,6 +23,9 @@ public final class RectangleFootprint2d implements RobotFootprint2d {
      */
     public final double widthInches;
 
+    /**
+     * Creates a rectangular robot footprint centered at the robot origin.
+     */
     public RectangleFootprint2d(double lengthInches, double widthInches) {
         this.lengthInches = Math.max(0.0, lengthInches);
         this.widthInches = Math.max(0.0, widthInches);
@@ -89,6 +92,9 @@ public final class RectangleFootprint2d implements RobotFootprint2d {
         return pts;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public String toString() {
         return "RectangleFootprint2d{" +

@@ -22,6 +22,7 @@ import edu.ftcphoenix.fw.drive.DriveSource;
 import edu.ftcphoenix.fw.drive.MecanumDrivebase;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidance;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidancePlan;
+import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceSpec;
 import edu.ftcphoenix.fw.drive.guidance.ReferencePoint2d;
 import edu.ftcphoenix.fw.drive.guidance.References;
 import edu.ftcphoenix.fw.drive.source.GamepadDriveSource;
@@ -31,9 +32,13 @@ import edu.ftcphoenix.fw.ftc.FtcVision;
 import edu.ftcphoenix.fw.input.Gamepads;
 import edu.ftcphoenix.fw.input.binding.Bindings;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
+import edu.ftcphoenix.fw.sensing.vision.CameraMountLogic;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagObservation;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
-import edu.ftcphoenix.fw.sensing.vision.apriltag.TagTarget;
+import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelectionPolicies;
+import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelectionResult;
+import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelectionSource;
+import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelections;
 import edu.ftcphoenix.fw.task.ParallelAllTask;
 import edu.ftcphoenix.fw.task.SequenceTask;
 import edu.ftcphoenix.fw.task.Task;
@@ -75,7 +80,7 @@ import edu.ftcphoenix.fw.task.TaskRunner;
  *     <ul>
  *       <li>P1 Y: run “shoot one ball” macro:
  *         <ol>
- *           <li>Read current tag distance from {@link TagTarget}.</li>
+ *           <li>Read current tag distance from the shared {@link TagSelectionSource}.</li>
  *           <li>Look up shooter velocity from {@link #SHOOTER_VELOCITY_TABLE}.</li>
  *           <li>Spin up shooter and wait for atSetpoint (with timeout).</li>
  *           <li>Feed one ball using transfer + pusher in parallel.</li>
@@ -182,7 +187,7 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
     private DriveSource driveWithAim;
 
     private AprilTagSensor tagSensor;
-    private TagTarget scoringTarget;
+    private TagSelectionSource scoringSelection;
 
     private CameraMountConfig cameraMount;
 
@@ -231,9 +236,6 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
         // Robot Configuration.
         tagSensor = FtcVision.aprilTags(hardwareMap, "Webcam 1");
 
-        // Track scoring tags with a freshness window.
-        scoringTarget = new TagTarget(tagSensor, SCORING_TAG_IDS, MAX_TAG_AGE_SEC);
-
         // 3b) Camera mount: robot→camera extrinsics (Phoenix axes: +X forward, +Y left, +Z up).
         //
         // IMPORTANT: Update these values for your robot.
@@ -247,15 +249,24 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
                 /*rollRad=*/0.0
         );
 
+        scoringSelection = TagSelections.from(tagSensor)
+                .among(SCORING_TAG_IDS)
+                .freshWithin(MAX_TAG_AGE_SEC)
+                .choose(TagSelectionPolicies.smallestAbsRobotBearing(cameraMount))
+                .stickyWhen(gamepads.p1().leftBumper())
+                .build();
+
         // Wrap baseDrive with an auto-aim overlay: hold left bumper to auto-aim omega.
-        ReferencePoint2d scoringRef = References.relativeToTagsPoint(SCORING_TAG_IDS, 0.0, 0.0);
+        ReferencePoint2d scoringRef = References.relativeToSelectedTagPoint(scoringSelection, 0.0, 0.0);
         DriveGuidancePlan aimPlan = DriveGuidance.plan()
                 .aimTo()
-                .referencePoint(scoringRef)
+                .point(scoringRef)
                 .doneAimTo()
-                .feedback()
+                .resolveWith()
+                .aprilTagsOnly()
                 .aprilTags(tagSensor, cameraMount, MAX_TAG_AGE_SEC)
-                .doneFeedback()
+                .onLoss(DriveGuidanceSpec.LossPolicy.PASS_THROUGH)
+                .doneResolveWith()
                 .build();
 
         // Apply the plan as an overlay: the driver keeps translation, and the overlay owns omega.
@@ -335,7 +346,6 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
         // 2) Sense (sensors)
         // ------------------------------------------------------------------
         // Gamepad axes/buttons are Sources; they are sampled when you call get(...).
-        scoringTarget.update(clock);   // AprilTags via TagTarget
 
         // ------------------------------------------------------------------
         // 3) Decide (high-level logic)
@@ -345,6 +355,19 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
 
         // High-level task/macro logic (sets plant targets over time).
         macroRunner.update(clock);
+
+        TagSelectionResult selection = scoringSelection.get(clock);
+        AprilTagObservation obs = selection.hasFreshSelectedObservation
+                ? selection.selectedObservation
+                : AprilTagObservation.noTarget(Double.POSITIVE_INFINITY);
+        lastHasTarget = obs.hasTarget;
+        lastTagRangeInches = obs.cameraRangeInches();
+        lastCameraBearingRad = obs.cameraBearingRad();
+        lastRobotBearingRad = obs.hasTarget
+                ? CameraMountLogic.robotBearingRad(obs, cameraMount)
+                : 0.0;
+        lastTagAgeSec = obs.ageSec;
+        lastTagId = obs.id;
 
         // When no macro is active, choose safe default targets.
         if (!macroRunner.hasActiveTask()) {
@@ -396,7 +419,7 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
             gamepads.debugDump(dbg, "pads");
             bindings.debugDump(dbg, "bindings");
 
-            scoringTarget.debugDump(dbg, "tag", cameraMount);
+            scoringSelection.debugDump(dbg, "tagSelection");
 
             macroRunner.debugDump(dbg, "macro");
 
@@ -439,7 +462,10 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
             return;
         }
 
-        AprilTagObservation obs = scoringTarget.last();
+        TagSelectionResult selection = scoringSelection.get(clock);
+        AprilTagObservation obs = selection.hasFreshSelectedObservation
+                ? selection.selectedObservation
+                : AprilTagObservation.noTarget(Double.POSITIVE_INFINITY);
         if (!obs.hasTarget) {
             lastMacroStatus = "no tag: macro not started";
             return;

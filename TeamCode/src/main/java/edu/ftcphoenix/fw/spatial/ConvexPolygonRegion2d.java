@@ -78,6 +78,9 @@ public final class ConvexPolygonRegion2d implements ConvexRegion2d {
         }
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public double signedDistanceInches(double xInches, double yInches) {
         // Half-plane distances for inside test.
@@ -180,6 +183,9 @@ public final class ConvexPolygonRegion2d implements ConvexRegion2d {
         return dx * dx + dy * dy;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public String toString() {
         StringBuilder sb = new StringBuilder("ConvexPolygonRegion2d{");

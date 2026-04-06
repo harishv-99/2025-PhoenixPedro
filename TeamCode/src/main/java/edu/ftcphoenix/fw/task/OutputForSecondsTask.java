@@ -94,16 +94,25 @@ public final class OutputForSecondsTask implements OutputTask {
         return cancelled ? TaskOutcome.CANCELLED : TaskOutcome.SUCCESS;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public String getDebugName() {
         return name;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public double getOutput() {
         return output;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void debugDump(DebugSink dbg, String prefix) {
         if (dbg == null) {

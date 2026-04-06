@@ -1,8 +1,11 @@
 package edu.ftcphoenix.fw.drive.guidance;
 
+import java.util.Collections;
+
 import edu.ftcphoenix.fw.core.geometry.Pose2d;
 import edu.ftcphoenix.fw.drive.DriveOverlayMask;
 import edu.ftcphoenix.fw.drive.DriveSignal;
+import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelectionResult;
 
 /**
  * Read-only snapshot of the most recent {@link DriveGuidance} evaluation.
@@ -12,71 +15,33 @@ import edu.ftcphoenix.fw.drive.DriveSignal;
  */
 public final class DriveGuidanceStatus {
 
-    /**
-     * Human-readable mode string used for debugging. Examples: {@code "fieldPose"},
-     * {@code "aprilTags"}, or {@code "adaptive"}.
-     */
+    public enum ChannelSource {
+        NONE,
+        LOCALIZATION,
+        APRIL_TAGS,
+        BLENDED
+    }
+
     public final String mode;
-
-    /**
-     * Which drive channels guidance actively overrode this step.
-     */
     public final DriveOverlayMask mask;
-
-    /**
-     * Final command produced by guidance for the requested channels.
-     */
     public final DriveSignal signal;
 
-    /**
-     * Whether a translation error was successfully solved this step.
-     */
     public final boolean hasTranslationError;
-
-    /**
-     * Forward translation error in the translation control frame, inches.
-     */
     public final double forwardErrorIn;
-
-    /**
-     * Left translation error in the translation control frame, inches.
-     */
     public final double leftErrorIn;
 
-    /**
-     * Whether an aim / omega error was successfully solved this step.
-     */
     public final boolean hasOmegaError;
-
-    /**
-     * Omega error in radians. Positive means rotate CCW.
-     */
     public final double omegaErrorRad;
 
-    /**
-     * Whether the live AprilTag path was considered “in range” for translation takeover.
-     *
-     * <p>This only matters when adaptive feedback is configured.</p>
-     */
+    public final ChannelSource translationSource;
+    public final ChannelSource omegaSource;
+
+    public final TagSelectionResult translationSelection;
+    public final TagSelectionResult aimSelection;
+
     public final boolean aprilTagsInRangeForTranslation;
-
-    /**
-     * Blend factor used for translation between field-pose and AprilTag commands.
-     *
-     * <p>{@code 0} means pure field-pose command. {@code 1} means pure AprilTag command.</p>
-     */
     public final double blendTTranslate;
-
-    /**
-     * Blend factor used for omega between field-pose and AprilTag commands.
-     */
     public final double blendTOmega;
-
-    /**
-     * Anchor pose (field frame) captured for {@link DriveGuidanceSpec.RobotRelativePoint} targets.
-     *
-     * <p>This is {@code null} unless the plan uses a robot-relative translation target.</p>
-     */
     public final Pose2d fieldToTranslationFrameAnchor;
 
     DriveGuidanceStatus(String mode,
@@ -87,6 +52,10 @@ public final class DriveGuidanceStatus {
                         double leftErrorIn,
                         boolean hasOmegaError,
                         double omegaErrorRad,
+                        ChannelSource translationSource,
+                        ChannelSource omegaSource,
+                        TagSelectionResult translationSelection,
+                        TagSelectionResult aimSelection,
                         boolean aprilTagsInRangeForTranslation,
                         double blendTTranslate,
                         double blendTOmega,
@@ -99,6 +68,14 @@ public final class DriveGuidanceStatus {
         this.leftErrorIn = leftErrorIn;
         this.hasOmegaError = hasOmegaError;
         this.omegaErrorRad = omegaErrorRad;
+        this.translationSource = translationSource;
+        this.omegaSource = omegaSource;
+        this.translationSelection = translationSelection != null
+                ? translationSelection
+                : TagSelectionResult.none(Collections.<Integer>emptySet());
+        this.aimSelection = aimSelection != null
+                ? aimSelection
+                : TagSelectionResult.none(Collections.<Integer>emptySet());
         this.aprilTagsInRangeForTranslation = aprilTagsInRangeForTranslation;
         this.blendTTranslate = blendTTranslate;
         this.blendTOmega = blendTOmega;
@@ -106,20 +83,16 @@ public final class DriveGuidanceStatus {
     }
 
     /**
-     * Computes the planar magnitude of the translation error.
-     *
-     * @return Euclidean translation error in inches, or {@link Double#NaN} if no translation error
-     *         was available
+     * Returns the planar magnitude of the current translation error in inches, or {@link Double#NaN}
+     * when translation was not solved this loop.
      */
     public double translationErrorMagInches() {
         return hasTranslationError ? Math.hypot(forwardErrorIn, leftErrorIn) : Double.NaN;
     }
 
     /**
-     * Convenience helper for “close enough?” checks on translation.
-     *
-     * @param tolInches allowed translation magnitude
-     * @return whether the solved translation error magnitude is within tolerance
+     * Returns {@code true} when the current translation error magnitude is within the supplied
+     * tolerance.
      */
     public boolean translationWithin(double tolInches) {
         double mag = translationErrorMagInches();
@@ -127,10 +100,7 @@ public final class DriveGuidanceStatus {
     }
 
     /**
-     * Convenience helper for “aimed enough?” checks on omega.
-     *
-     * @param tolRad allowed absolute omega error
-     * @return whether the solved omega error is within tolerance
+     * Returns {@code true} when the current omega error magnitude is within the supplied tolerance.
      */
     public boolean omegaWithin(double tolRad) {
         return hasOmegaError && Double.isFinite(omegaErrorRad) && Math.abs(omegaErrorRad) <= tolRad;
@@ -155,10 +125,56 @@ public final class DriveGuidanceStatus {
                 hasT ? step.leftErrorIn : Double.NaN,
                 hasO,
                 hasO ? step.omegaErrorRad : Double.NaN,
+                translationSource(step),
+                omegaSource(step),
+                step != null ? step.translationSelection : null,
+                step != null ? step.aimSelection : null,
                 (step != null) && step.aprilTagsInRangeForTranslation,
                 (step != null) ? step.blendTTranslate : Double.NaN,
                 (step != null) ? step.blendTOmega : Double.NaN,
                 anchor
         );
+    }
+
+    private static ChannelSource translationSource(DriveGuidanceCore.Step step) {
+        if (step == null || !step.hasTranslationError) {
+            return ChannelSource.NONE;
+        }
+        boolean hasLocalization = step.localization != null && step.localization.valid && step.localization.canTranslate;
+        boolean hasAprilTags = step.aprilTags != null && step.aprilTags.valid && step.aprilTags.canTranslate;
+        if (hasLocalization && hasAprilTags) {
+            if (step.blendTTranslate <= 0.0) {
+                return ChannelSource.LOCALIZATION;
+            }
+            if (step.blendTTranslate >= 1.0) {
+                return ChannelSource.APRIL_TAGS;
+            }
+            return ChannelSource.BLENDED;
+        }
+        if (hasAprilTags) {
+            return ChannelSource.APRIL_TAGS;
+        }
+        return hasLocalization ? ChannelSource.LOCALIZATION : ChannelSource.NONE;
+    }
+
+    private static ChannelSource omegaSource(DriveGuidanceCore.Step step) {
+        if (step == null || !step.hasOmegaError) {
+            return ChannelSource.NONE;
+        }
+        boolean hasLocalization = step.localization != null && step.localization.valid && step.localization.canOmega;
+        boolean hasAprilTags = step.aprilTags != null && step.aprilTags.valid && step.aprilTags.canOmega;
+        if (hasLocalization && hasAprilTags) {
+            if (step.blendTOmega <= 0.0) {
+                return ChannelSource.LOCALIZATION;
+            }
+            if (step.blendTOmega >= 1.0) {
+                return ChannelSource.APRIL_TAGS;
+            }
+            return ChannelSource.BLENDED;
+        }
+        if (hasAprilTags) {
+            return ChannelSource.APRIL_TAGS;
+        }
+        return hasLocalization ? ChannelSource.LOCALIZATION : ChannelSource.NONE;
     }
 }

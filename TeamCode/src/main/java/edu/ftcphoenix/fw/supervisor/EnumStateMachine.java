@@ -93,11 +93,17 @@ public final class EnumStateMachine<S extends Enum<S>> {
         Objects.requireNonNull(s, "s");
         EnumStateMachine<S> self = this;
         return new BooleanSource() {
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public boolean getAsBoolean(LoopClock clock) {
                 return self.is(s);
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) {
@@ -124,6 +130,9 @@ public final class EnumStateMachine<S extends Enum<S>> {
                 .addData(p + ".enteredSec", enteredSec);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public String toString() {
         return "EnumStateMachine{" + "state=" + state + ", enteredSec=" + enteredSec + "}";

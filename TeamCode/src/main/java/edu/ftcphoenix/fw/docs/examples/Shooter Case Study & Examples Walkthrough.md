@@ -1,341 +1,258 @@
 # Shooter Case Study & Examples Walkthrough
 
-This document walks through the framework’s shooter examples (02–06) and explains *why* each step exists, using only real APIs from the Phoenix framework.
+This walkthrough explains the current shooter + auto-aim examples using the selector-based AprilTag model.
 
-The examples live in `edu.ftcphoenix.fw.tools.examples.*`:
+It covers the two example OpModes:
 
-* **TeleOp_01_MecanumBasic** – baseline mecanum TeleOp (the foundation all later examples build on)
-* **TeleOp_02_ShooterBasic** – basic “modes” + plants
-* **TeleOp_03_ShooterMacro** – one-button macro using `TaskRunner` + `PlantTasks`
-* **TeleOp_04_ShooterInterpolated** – distance → velocity via `InterpolatingTable1D`
-* **TeleOp_05_ShooterTagAimVision** – AprilTag distance + DriveGuidance (manual drive + auto-omega)
-* **TeleOp_06_ShooterTagAimMacroVision** – combines DriveGuidance + vision distance + macro
+- `TeleOp_05_ShooterTagAimVision`
+- `TeleOp_06_ShooterTagAimMacroVision`
 
----
+The most important update is this:
 
-## The common pattern across all shooter examples
-
-### 1) Wire hardware as `Plant`s (Actuators builder)
-
-All shooter examples use `Actuators.plant(hardwareMap)` to build `Plant` instances:
-
-```java
-import edu.ftcphoenix.fw.core.hal.Direction;
-
-Plant shooter = Actuators.plant(hardwareMap)
-        .motor("shooterLeftMotor", Direction.FORWARD)
-        .andMotor("shooterRightMotor", Direction.REVERSE)
-        .velocity(/*toleranceNative=*/100.0)
-        .build();
-
-Plant transfer = Actuators.plant(hardwareMap)
-        .crServo("transferLeftServo", Direction.FORWARD)
-        .andCrServo("transferRightServo", Direction.REVERSE)
-        .power()
-        .build();
-
-Plant pusher = Actuators.plant(hardwareMap)
-        .servo("pusherServo", Direction.FORWARD)
-        .position()
-        .build();
-```
-
-Key idea: **plants only accept a scalar target** (`setTarget(...)`). Your loop (or a task) decides targets; the plant applies them when you call `update(dtSec)`.
-
-### 2) Use `LoopClock`, update inputs, then update bindings/tasks
-
-The examples share this “spine”:
-
-```java
-clock.update(getRuntime());
-double dtSec = clock.dtSec();
-
-// Gamepad axes/buttons are Sources; they are sampled when you call get(...).
-bindings.update(clock);        // if used
-macroRunner.update(clock);      // if used
-
-// Decide targets...
-
-// Drive...
-
-// Plant updates...
-shooter.update(dtSec);
-transfer.update(dtSec);
-pusher.update(dtSec);
-```
-
-Notes:
-
-* `Bindings.update(clock)`, `TaskRunner.update(clock)`, and `TagTarget.update(clock)` are **idempotent by `clock.cycle()`**. Calling them twice in one loop cycle becomes a no-op (safety against accidental double-updates).
-* `MecanumDrivebase.update(clock)` exists to provide loop timing for optional rate limiting. Call `drivebase.update(clock)` **before** `drivebase.drive(cmd)` so the current loop’s `dt` is used (the examples follow this order). `drivebase.drive(...)` applies motor power **immediately**; `update(...)` does not move motors by itself.
+> **the robot no longer relies on a hidden “best tag” helper.**
+>
+> Instead, raw camera detections stay available, and a shared `TagSelectionSource` is used anywhere the code needs one semantic answer to “which scoring tag do we mean right now?”
 
 ---
 
-## Example 02: Shooter Basic (modes + plants)
+## 1. The architecture in one sentence
 
-**File:** `TeleOp_02_ShooterBasic`
+The examples share one selector across:
 
-### What it teaches
+- drive auto-aim,
+- telemetry,
+- and shooter velocity-from-range logic.
 
-* How to create `Plant`s for a shooter motor pair, transfer CR servo pair, and a pusher servo.
-* How to use `Bindings.onRise(...)` to change a *mode*, then apply targets from that mode every loop.
-
-### Structure
-
-* Uses small enums (e.g., transfer mode and pusher mode).
-* Button presses change the enums.
-* Each loop converts enum → `setTarget(...)`.
-
-### Controls note
-
-This example keeps `teleOpMecanumStandard(...)`, so **RB remains slow mode**. To avoid a conflict, the shooter toggle is on **LB**.
+That keeps all three systems talking about the same tag.
 
 ---
 
-## Example 03: Shooter Macro (Tasks + PlantTasks)
+## 2. Why selection is separate from detections
 
-**File:** `TeleOp_03_ShooterMacro`
+The AprilTag camera boundary returns raw `AprilTagDetections` from one processed frame.
 
-### What it teaches
+That is useful because:
 
-* A “macro” is just a `Task` that *changes plant targets over time*.
-* `TaskRunner` runs tasks sequentially, one at a time.
-* `PlantTasks` provides *ready-made tasks* for common plant patterns.
+- localization can use multiple fixed tags from the same frame,
+- telemetry can show all visible IDs,
+- selection can still choose one tag for aim-assist.
 
-### The macro behavior
-
-When P1 **Y** is pressed:
-
-1. **Spin up** shooter to a target velocity and wait for `Plant.atSetpoint()` with a timeout.
-2. In parallel:
-
-    * pulse transfer power for a short time
-    * step pusher through positions using timed holds
-3. **Spin down** shooter.
-
-### Real code pattern (from the example)
+The examples then build a selector like this:
 
 ```java
-Task spinUp = PlantTasks.moveTo(
-        shooter,
-        SHOOTER_VELOCITY_NATIVE,
-        SHOOTER_SPINUP_TIMEOUT_SEC
-);
-
-Task feedTransfer = PlantTasks.holdFor(
-        transfer,
-        TRANSFER_POWER_SHOOT,
-        TRANSFER_PULSE_SEC
-);
-
-Task pusherLoad = PlantTasks.holdFor(pusher, PUSHER_POS_LOAD,  PUSHER_STAGE_SEC);
-Task pusherShoot = PlantTasks.holdForThen(pusher, PUSHER_POS_SHOOT, PUSHER_STAGE_SEC, PUSHER_POS_RETRACT);
-
-Task feedPusher = SequenceTask.of(pusherLoad, pusherShoot);
-Task feedBoth   = ParallelAllTask.of(feedTransfer, feedPusher);
-
-Task spinDown = PlantTasks.setInstant(shooter, 0.0);
-
-Task macro = SequenceTask.of(spinUp, feedBoth, spinDown);
+TagSelectionSource scoringSelection =
+        TagSelections.from(tagSensor)
+                .among(SCORING_TAG_IDS)
+                .freshWithin(MAX_TAG_AGE_SEC)
+                .choose(TagSelectionPolicies.smallestAbsRobotBearing(cameraMount))
+                .stickyWhen(gamepads.p1().leftBumper())
+                .build();
 ```
 
-### Two rules to remember
+That means:
 
-* `PlantTasks.moveTo(...)` **requires a feedback-capable plant** (`plant.hasFeedback() == true`). That’s why the shooter is built as `.velocity(...)`.
-* Timed patterns like `holdFor(...)` / `holdForThen(...)` are perfect for servo plants (no feedback).
+- before the driver holds aim, the selector previews the likely winner,
+- when aim is enabled, the selector latches the tag the robot is most directly facing,
+- aim, shooter range, and telemetry all reuse that one decision.
 
 ---
 
-## Example 04: Shooter Interpolated (manual “distance”)
+## 3. Example 05: shooter + aim assist + vision distance
 
-**File:** `TeleOp_04_ShooterInterpolated`
+### 3.1 What it demonstrates
 
-### What it teaches
+Example 05 is intentionally simple:
 
-* How to represent calibration data as an `InterpolatingTable1D`.
-* How to separate **where distance comes from** (here: D-pad) from **how it’s used** (distance → velocity).
+- the driver still translates manually,
+- the guidance overlay owns only omega,
+- shooter velocity comes from the selected tag range.
 
-### Real table API
-
-The table is constructed with sorted pairs:
-
-```java
-private static final InterpolatingTable1D SHOOTER_VELOCITY_TABLE =
-        InterpolatingTable1D.ofSortedPairs(
-                24.0, 170.0,
-                30.0, 180.0,
-                36.0, 195.0,
-                42.0, 210.0,
-                48.0, 225.0
-        );
-```
-
-Then in loop:
+### 3.2 The guidance plan
 
 ```java
-double targetVel = SHOOTER_VELOCITY_TABLE.interpolate(distanceInches);
-shooter.setTarget(shooterEnabled ? targetVel : 0.0);
-```
-
----
-
-## Example 05: Shooter + DriveGuidance Auto-Aim + Vision Distance
-
-**File:** `TeleOp_05_ShooterTagAimVision`
-
-### What it teaches
-
-* How to get AprilTag observations through the FTC adapter: `FtcVision.aprilTags(...)`.
-* How `TagTarget` tracks the “best” tag across loops with an age constraint for shooter-distance logic.
-* How a `DriveGuidance` plan becomes a `DriveOverlay` that overrides only **omega** while a button is held.
-* How to express aiming as a semantic reference resolved from live AprilTags.
-* How to compute shooter velocity from **tag distance** using the same interpolation-table idea from Example 04.
-
-### Wiring
-
-```java
-AprilTagSensor tagSensor = FtcVision.aprilTags(hardwareMap, "Webcam 1");
-TagTarget scoringTarget = new TagTarget(tagSensor, SCORING_TAG_IDS, MAX_TAG_AGE_SEC);
-
-CameraMountConfig cameraMount = CameraMountConfig.of(
-        /*xInches=*/6.0,
-        /*yInches=*/-3.0,
-        /*zInches=*/8.0,
-        /*yawRad=*/0.0,
-        /*pitchRad=*/0.0,
-        /*rollRad=*/0.0
-);
-
-DriveSource baseDrive = GamepadDriveSource.teleOpMecanumStandard(gamepads);
-
-ReferencePoint2d scoringRef = References.relativeToTagsPoint(SCORING_TAG_IDS, 0.0, 0.0);
+ReferencePoint2d scoringRef = References.relativeToSelectedTagPoint(scoringSelection, 0.0, 0.0);
 
 DriveGuidancePlan aimPlan = DriveGuidance.plan()
         .aimTo()
-            // Aim at the center of whichever scoring tag is currently observed.
-            .referencePoint(scoringRef)
+            .point(scoringRef)
             .doneAimTo()
-        .feedback()
+        .resolveWith()
+            .aprilTagsOnly()
             .aprilTags(tagSensor, cameraMount, MAX_TAG_AGE_SEC)
-            .doneFeedback()
+            .onLoss(DriveGuidanceSpec.LossPolicy.PASS_THROUGH)
+            .doneResolveWith()
         .build();
-
-DriveSource driveWithAim = baseDrive.overlayWhen(
-        () -> gamepads.p1().leftBumper().isHeld(),
-        aimPlan.overlay(),
-        DriveOverlayMask.OMEGA_ONLY
-);
 ```
 
-This example is intentionally **reference-first**: the plan talks about a semantic scoring point,
-not about a tag-specific public target type. If a later version of the robot also has a useful field
-pose estimate and a fixed tag layout, the same reference can be reused with:
+That reads honestly:
+
+- geometry: aim at the selected scoring tag center
+- solving: use live AprilTags only
+- loss behavior: if the solve disappears, let manual omega pass through
+
+### 3.3 Why `PASS_THROUGH` matters
+
+This is a TeleOp overlay, so if the tag disappears briefly:
+
+- the driver still keeps manual control,
+- the overlay does not freeze the robot,
+- the assist just stops overriding omega until it can solve again.
+
+### 3.4 Shooter velocity from the same selection
+
+Instead of doing a separate camera lookup, the example reads the fresh selected observation:
 
 ```java
-.feedback()
-    .aprilTags(tagSensor, cameraMount, MAX_TAG_AGE_SEC)
-    .fieldPose(poseEstimator, 0.25, 0.0)
-    .fixedTagLayout(tagLayout)
-    .gates(18.0, 30.0, 0.15)
-    .preferAprilTagsForOmega(true)
-    .doneFeedback()
+TagSelectionResult selection = scoringSelection.get(clock);
+AprilTagObservation obs = selection.hasFreshSelectedObservation
+        ? selection.selectedObservation
+        : AprilTagObservation.noTarget(Double.POSITIVE_INFINITY);
 ```
 
-That keeps the reference definition the same while adding localizer fallback and close-range visual
-refinement.
-
-### Loop highlights
-
-* Call `scoringTarget.update(clock)` once per cycle.
-* Read `AprilTagObservation obs = scoringTarget.last()`.
-* Use `obs.cameraRangeInches()` and `obs.cameraBearingRad()`.
-
-This example also demonstrates computing **robot-centric bearing** that accounts for the camera offset:
-
-```java
-double robotBearingRad = obs.hasTarget
-        ? CameraMountLogic.robotBearingRad(obs, cameraMount)
-        : 0.0;
-```
-
-Shooter target decision:
-
-```java
-if (shooterEnabled && obs.hasTarget) {
-    double targetVel = SHOOTER_VELOCITY_TABLE.interpolate(obs.cameraRangeInches());
-    shooter.setTarget(targetVel);
-} else {
-    shooter.setTarget(0.0);
-}
-```
+That avoids duplicated “which tag?” logic.
 
 ---
 
-## Example 06: DriveGuidance Auto-Aim + Vision Distance + Macro
+## 4. Example 06: macro + aim assist + vision distance
 
-**File:** `TeleOp_06_ShooterTagAimMacroVision` (auto-aim is now implemented with `DriveGuidance`)
+Example 06 adds one more idea: a non-blocking shooting macro.
 
-### What it teaches
+The macro still uses the same shared selection source.
 
-* How to combine Example 03 (macro) with Example 05 (vision distance).
-* How to *gate a macro* on “do we have a valid tag right now?”.
+When the driver presses the macro button:
 
-### The key idea
+1. read the currently selected fresh observation,
+2. choose shooter velocity from the range table,
+3. enqueue the macro task sequence.
 
-When P1 **Y** is pressed:
+That keeps the decision boundary clean:
 
-1. Read the latest tag observation from `TagTarget`.
-2. If there is no tag: **don’t start the macro**.
-3. If there is a tag: compute shooter velocity from the table, then build the macro using that velocity.
-
-Real logic from the example:
-
-```java
-AprilTagObservation obs = scoringTarget.last();
-if (!obs.hasTarget) {
-    lastMacroStatus = "no tag: macro not started";
-    return;
-}
-
-double shooterTargetVel = SHOOTER_VELOCITY_TABLE.interpolate(obs.cameraRangeInches());
-Task macro = buildShootOneBallMacro(shooterTargetVel);
-macroRunner.cancelAndClear();
-macroRunner.enqueue(macro);
-```
-
-### Macro composition (example’s version)
-
-This example uses timed holds for each pusher stage:
-
-```java
-Task pusherLoad    = PlantTasks.holdFor(pusher, PUSHER_POS_LOAD,    PUSHER_STAGE_SEC);
-Task pusherShoot   = PlantTasks.holdFor(pusher, PUSHER_POS_SHOOT,   PUSHER_STAGE_SEC);
-Task pusherRetract = PlantTasks.holdFor(pusher, PUSHER_POS_RETRACT, PUSHER_STAGE_SEC);
-
-Task feedPusher = SequenceTask.of(pusherLoad, pusherShoot, pusherRetract);
-```
+- **selection** decides which tag is relevant,
+- **shooter calibration** decides what velocity matches the range,
+- **tasks** decide the feed sequence over time.
 
 ---
 
-## Troubleshooting checklist when adapting these examples
+## 5. Why sticky selection matters for drivers
 
-* **Camera name**: examples use `"Webcam 1"`. Your Robot Configuration name must match.
-* **Tag IDs**: update `SCORING_TAG_IDS` for the real game tags you care about.
-* **Mount axes**: `CameraMountConfig.of(x, y, z, yaw, pitch, roll)` uses Phoenix framing:
+Without stickiness, aim assist can flap between two tags while the robot sweeps across the field.
 
-    * +X forward, +Y left, +Z up
-    * *Right* is negative Y.
-* **Feedback vs no feedback**:
+With sticky selection:
 
-    * Use `PlantTasks.moveTo(...)` only for plants with feedback (motor velocity/position plants).
-    * Use timed holds for servos/CR servos.
+- the driver points generally toward the target family,
+- presses/holds aim,
+- the robot commits to one tag,
+- and keeps using that same tag while the assist stays active.
+
+That makes the robot feel intentional instead of “twitchy.”
 
 ---
 
-## What to do next
+## 6. Per-tag offsets for mirrored goals
 
-* If you like the structure of Example 06, the next extension is usually:
+Sometimes the semantic goal is “the basket behind whichever scoring tag is relevant,” but the correct lateral offset differs by tag ID.
 
-    * “shoot N balls” (repeat the single-ball macro in a `SequenceTask`), and/or
-    * add a *min-range / max-range* check before starting the macro, and/or
-    * pass `cameraMount` into `FtcVision.aprilTags(..., cfg)` via `FtcVision.Config.defaults().withCameraMount(cameraMount)` if you want the FTC SDK’s robot-pose estimation path enabled (separate from DriveGuidance).
+That is why selected-tag references support per-tag maps:
+
+```java
+Map<Integer, References.TagPointOffset> offsets = new LinkedHashMap<Integer, References.TagPointOffset>();
+offsets.put(20, References.pointOffset(-8.0,  5.5));
+offsets.put(24, References.pointOffset(-8.0, -5.5));
+
+ReferencePoint2d basketAim = References.relativeToSelectedTagPoint(scoringSelection, offsets);
+```
+
+This is cleaner than splitting the whole behavior into one plan per tag just to swap the offset.
+
+---
+
+## 7. Telemetry you should actually show
+
+The examples should surface the selection state directly to the driver:
+
+- selected tag ID
+- whether the selected tag is still freshly visible
+- range
+- bearing
+- aim-ready state
+
+A good minimal telemetry set is:
+
+```java
+TagSelectionResult sel = scoringSelection.get(clock);
+telemetry.addData("tag.selected", sel.hasSelection ? sel.selectedTagId : "none");
+telemetry.addData("tag.visibleNow", sel.hasFreshSelectedObservation);
+telemetry.addData("tag.reason", sel.reason);
+telemetry.addData("aim.ready", aimReady.getAsBoolean(clock));
+```
+
+That tells the driver and tuner the same thing the robot is actually using.
+
+---
+
+## 8. Idempotence and loop behavior
+
+These examples still rely on Phoenix's one-loop heartbeat model.
+
+Important consequence:
+
+- `Bindings.update(clock)` is cycle-idempotent
+- `TaskRunner.update(clock)` is cycle-idempotent
+- `AprilTagSensor.get(clock)` is cycle-idempotent
+- `TagSelectionSource.get(clock)` is cycle-idempotent
+
+So you can safely share the same selector across drive logic, shooter logic, and telemetry in one loop.
+
+---
+
+## 9. What changed from the older design
+
+Older versions often used a helper that silently picked the “best” tag.
+
+The current design deliberately avoids that hidden policy.
+
+Now the robot code states:
+
+- where detections come from,
+- which selection policy is used,
+- when the tag becomes sticky,
+- and how guidance behaves on loss.
+
+That makes the examples easier to understand and much easier to debug.
+
+---
+
+## 10. Extension ideas
+
+These examples are a good base for several future directions:
+
+### Add localization fallback to aim assist
+
+If the robot maintains a trusted field pose estimate, the same selected-tag reference can use:
+
+```java
+.resolveWith()
+    .adaptive()
+    .localization(fusedPoseEstimator, 0.25, 0.0)
+    .aprilTags(tagSensor, cameraMount, 0.25)
+    .fixedAprilTagLayout(gameTagLayout)
+```
+
+That allows the robot to keep solving the same selected-tag-relative target even when the camera is briefly blocked.
+
+### Use the selector for shooter gating
+
+You can require:
+
+- a selection exists,
+- the selected observation is fresh,
+- and guidance reports `omegaWithin(...)`
+
+before feeding.
+
+### Replace the selection policy
+
+For some robots, `smallestAbsRobotBearing(cameraMount)` feels best.
+For others, `closestRange()` or `priorityOrder(...)` is more appropriate.
+
+The selector abstraction makes that choice explicit.

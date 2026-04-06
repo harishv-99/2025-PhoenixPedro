@@ -48,6 +48,9 @@ public interface ScalarSource extends Source<Double> {
             private long lastCycle = Long.MIN_VALUE;
             private double last = 0.0;
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public double getAsDouble(LoopClock clock) {
                 long cyc = clock.cycle();
@@ -59,6 +62,9 @@ public interface ScalarSource extends Source<Double> {
                 return last;
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void reset() {
                 self.reset();
@@ -66,6 +72,9 @@ public interface ScalarSource extends Source<Double> {
                 last = 0.0;
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) return;
@@ -110,6 +119,9 @@ public interface ScalarSource extends Source<Double> {
             /** The last time {@link #getAsDouble(LoopClock)} was sampled (for debug only). */
             private double lastSampleSec = Double.NEGATIVE_INFINITY;
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public double getAsDouble(LoopClock clock) {
                 long cyc = clock.cycle();
@@ -139,6 +151,9 @@ public interface ScalarSource extends Source<Double> {
                 return lastOut;
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void reset() {
                 self.reset();
@@ -150,6 +165,9 @@ public interface ScalarSource extends Source<Double> {
                 lastSampleSec = Double.NEGATIVE_INFINITY;
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) return;
@@ -185,16 +203,25 @@ public interface ScalarSource extends Source<Double> {
     default ScalarSource clamped(double min, double max) {
         ScalarSource self = this;
         return new ScalarSource() {
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public double getAsDouble(LoopClock clock) {
                 return MathUtil.clamp(self.getAsDouble(clock), min, max);
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void reset() {
                 self.reset();
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) return;
@@ -213,16 +240,25 @@ public interface ScalarSource extends Source<Double> {
     default ScalarSource scaled(double factor) {
         ScalarSource self = this;
         return new ScalarSource() {
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public double getAsDouble(LoopClock clock) {
                 return self.getAsDouble(clock) * factor;
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void reset() {
                 self.reset();
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) return;
@@ -248,16 +284,25 @@ public interface ScalarSource extends Source<Double> {
         ScalarSource self = this;
         double db = Math.abs(deadband);
         return new ScalarSource() {
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public double getAsDouble(LoopClock clock) {
                 return MathUtil.deadband(self.getAsDouble(clock), db);
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void reset() {
                 self.reset();
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) return;
@@ -279,6 +324,9 @@ public interface ScalarSource extends Source<Double> {
         final double db = Math.abs(deadband);
 
         return new ScalarSource() {
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public double getAsDouble(LoopClock clock) {
                 double v = MathUtil.clamp(self.getAsDouble(clock), min, max);
@@ -306,11 +354,17 @@ public interface ScalarSource extends Source<Double> {
                 return MathUtil.clamp(out, min, max);
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void reset() {
                 self.reset();
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) return;
@@ -335,6 +389,9 @@ public interface ScalarSource extends Source<Double> {
         final double e = Math.max(1.0, expo);
 
         return new ScalarSource() {
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public double getAsDouble(LoopClock clock) {
                 double v = MathUtil.clamp(self.getAsDouble(clock), min, max);
@@ -367,11 +424,17 @@ public interface ScalarSource extends Source<Double> {
                 return MathUtil.clamp(shaped, min, max);
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void reset() {
                 self.reset();
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) return;
@@ -397,16 +460,25 @@ public interface ScalarSource extends Source<Double> {
     default BooleanSource above(double threshold) {
         ScalarSource self = this;
         return new BooleanSource() {
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public boolean getAsBoolean(LoopClock clock) {
                 return self.getAsDouble(clock) > threshold;
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void reset() {
                 self.reset();
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) return;
@@ -424,16 +496,25 @@ public interface ScalarSource extends Source<Double> {
     default BooleanSource below(double threshold) {
         ScalarSource self = this;
         return new BooleanSource() {
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public boolean getAsBoolean(LoopClock clock) {
                 return self.getAsDouble(clock) < threshold;
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void reset() {
                 self.reset();
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) return;
@@ -458,6 +539,9 @@ public interface ScalarSource extends Source<Double> {
             private long lastCycle = Long.MIN_VALUE;
             private boolean last = false;
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public boolean getAsBoolean(LoopClock clock) {
                 long cyc = clock.cycle();
@@ -469,6 +553,9 @@ public interface ScalarSource extends Source<Double> {
                 return last;
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void reset() {
                 self.reset();
@@ -477,6 +564,9 @@ public interface ScalarSource extends Source<Double> {
                 last = false;
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) return;
@@ -501,6 +591,9 @@ public interface ScalarSource extends Source<Double> {
             private long lastCycle = Long.MIN_VALUE;
             private boolean last = false;
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public boolean getAsBoolean(LoopClock clock) {
                 long cyc = clock.cycle();
@@ -512,6 +605,9 @@ public interface ScalarSource extends Source<Double> {
                 return last;
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void reset() {
                 self.reset();
@@ -520,6 +616,9 @@ public interface ScalarSource extends Source<Double> {
                 last = false;
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) return;
@@ -544,11 +643,17 @@ public interface ScalarSource extends Source<Double> {
     static ScalarSource of(DoubleSupplier raw) {
         Objects.requireNonNull(raw, "raw");
         return new ScalarSource() {
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public double getAsDouble(LoopClock clock) {
                 return raw.getAsDouble();
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) return;
@@ -563,11 +668,17 @@ public interface ScalarSource extends Source<Double> {
      */
     static ScalarSource constant(double value) {
         return new ScalarSource() {
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public double getAsDouble(LoopClock clock) {
                 return value;
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) return;
@@ -585,6 +696,9 @@ public interface ScalarSource extends Source<Double> {
      */
     static ScalarSource magnitude(ScalarSource x, ScalarSource y) {
         return new ScalarSource() {
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public double getAsDouble(LoopClock clock) {
                 double xv = (x != null) ? x.getAsDouble(clock) : 0.0;
@@ -592,12 +706,18 @@ public interface ScalarSource extends Source<Double> {
                 return Math.hypot(xv, yv);
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void reset() {
                 if (x != null) x.reset();
                 if (y != null) y.reset();
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) return;
@@ -616,6 +736,9 @@ public interface ScalarSource extends Source<Double> {
      */
     static ScalarSource magnitudeSquared(ScalarSource x, ScalarSource y) {
         return new ScalarSource() {
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public double getAsDouble(LoopClock clock) {
                 double xv = (x != null) ? x.getAsDouble(clock) : 0.0;
@@ -623,12 +746,18 @@ public interface ScalarSource extends Source<Double> {
                 return xv * xv + yv * yv;
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void reset() {
                 if (x != null) x.reset();
                 if (y != null) y.reset();
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) return;

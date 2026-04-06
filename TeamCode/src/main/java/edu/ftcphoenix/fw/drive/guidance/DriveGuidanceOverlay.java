@@ -19,18 +19,27 @@ final class DriveGuidanceOverlay implements DriveOverlay {
         this.core = new DriveGuidanceCore(plan);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void onEnable(LoopClock clock) {
         // Reset adaptive state so first output after enable is predictable.
         core.onEnable();
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public DriveOverlayOutput get(LoopClock clock) {
         DriveGuidanceCore.Step step = core.step(clock, plan.requestedMask());
         return step.out;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void debugDump(DebugSink dbg, String prefix) {
         if (dbg == null) return;

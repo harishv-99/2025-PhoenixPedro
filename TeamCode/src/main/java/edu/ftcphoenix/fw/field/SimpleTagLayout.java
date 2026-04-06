@@ -155,6 +155,9 @@ public final class SimpleTagLayout implements TagLayout {
         }
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public String toString() {
         return "SimpleTagLayout{ids=" + ids() + "}";

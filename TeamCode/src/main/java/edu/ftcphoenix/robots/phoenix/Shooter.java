@@ -138,6 +138,10 @@ public final class Shooter {
 
     private final Telemetry telemetry;
 
+    /**
+     * Creates the Phoenix shooter subsystem and initializes its plants, queueing helpers, and
+     * flywheel-ready gate.
+     */
     public Shooter(HardwareMap hardwareMap, Telemetry telemetry) {
         this.telemetry = telemetry;
 
@@ -198,6 +202,9 @@ public final class Shooter {
             private long lastCycle = Long.MIN_VALUE;
             private boolean last = false;
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public boolean getAsBoolean(LoopClock clock) {
                 long cyc = clock.cycle();
@@ -251,6 +258,9 @@ public final class Shooter {
                 return last;
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void reset() {
                 lastCycle = Long.MIN_VALUE;
@@ -285,6 +295,9 @@ public final class Shooter {
         feedQueue.cancelAndClear();
     }
 
+    /**
+     * Enables or disables flywheel spin-up.
+     */
     public void setFlywheelEnabled(boolean enabled) {
         flywheelEnabled = enabled;
         if (!enabled) {
@@ -293,26 +306,44 @@ public final class Shooter {
         }
     }
 
+    /**
+     * Returns whether the flywheel is currently enabled.
+     */
     public boolean flywheelEnabled() {
         return flywheelEnabled;
     }
 
+    /**
+     * Sets the operator-selected flywheel target velocity in native motor units.
+     */
     public void setSelectedVelocity(double velocityNative) {
         selectedVelocityNative = clampVelocity(velocityNative);
     }
 
+    /**
+     * Returns the operator-selected flywheel target velocity in native motor units.
+     */
     public double selectedVelocity() {
         return selectedVelocityNative;
     }
 
+    /**
+     * Nudges the selected velocity upward by the configured increment.
+     */
     public void increaseSelectedVelocity() {
         setSelectedVelocity(selectedVelocityNative + RobotConfig.Shooter.velocityIncrement);
     }
 
+    /**
+     * Nudges the selected velocity downward by the configured increment.
+     */
     public void decreaseSelectedVelocity() {
         setSelectedVelocity(selectedVelocityNative - RobotConfig.Shooter.velocityIncrement);
     }
 
+    /**
+     * Looks up the recommended flywheel velocity for the supplied camera range in inches.
+     */
     public double velocityForRangeInches(double rangeInches) {
         return clampVelocity(SHOOTER_VELOCITY_TABLE.interpolate(rangeInches));
     }
@@ -343,14 +374,23 @@ public final class Shooter {
     // Manual feed (base) API
     // ---------------------------------------------------------------------
 
+    /**
+     * Overrides the intake motor power for the current loop.
+     */
     public void setManualIntakeMotorPower(double power) {
         manualIntakeMotorPower = clampPower(power);
     }
 
+    /**
+     * Overrides the intake transfer power for the current loop.
+     */
     public void setManualIntakeTransferPower(double power) {
         manualIntakeTransferPower = clampPower(power);
     }
 
+    /**
+     * Overrides the shooter transfer power for the current loop.
+     */
     public void setManualShooterTransferPower(double power) {
         manualShooterTransferPower = clampPower(power);
     }
@@ -359,6 +399,10 @@ public final class Shooter {
     // Loop update + safety
     // ---------------------------------------------------------------------
 
+    /**
+     * Updates flywheel control, queued feed tasks, and all commanded actuator outputs for the
+     * current loop.
+     */
     public void update(LoopClock clock) {
         // 1) Compute + apply flywheel target BEFORE updating the feed queue.
         //    Feed tasks gate on flywheelReady(), which uses the latest target + measured value.
@@ -409,6 +453,9 @@ public final class Shooter {
         plantShooterTransfer.update(clock.dtSec());
     }
 
+    /**
+     * Stops all shooter outputs and clears transient loop state.
+     */
     public void stop() {
         flywheelEnabled = false;
 
@@ -424,6 +471,9 @@ public final class Shooter {
         plantShooterTransfer.stop();
     }
 
+    /**
+     * Emits a detailed telemetry snapshot for shooter tuning and debugging.
+     */
     public void telemetryDump(LoopClock clock, String prefix) {
         if (telemetry == null) {
             return;

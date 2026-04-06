@@ -23,6 +23,7 @@ import edu.ftcphoenix.fw.drive.guidance.DriveGuidance;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidancePlan;
 import edu.ftcphoenix.fw.drive.guidance.ReferencePoint2d;
 import edu.ftcphoenix.fw.drive.guidance.References;
+import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceSpec;
 import edu.ftcphoenix.fw.drive.source.GamepadDriveSource;
 import edu.ftcphoenix.fw.ftc.FtcDrives;
 import edu.ftcphoenix.fw.ftc.FtcTelemetryDebugSink;
@@ -33,7 +34,10 @@ import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountLogic;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagObservation;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
-import edu.ftcphoenix.fw.sensing.vision.apriltag.TagTarget;
+import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelectionPolicies;
+import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelectionResult;
+import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelectionSource;
+import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelections;
 
 /**
  * <h1>Example 05: Shooter + DriveGuidance Auto-Aim + Vision Distance</h1>
@@ -43,7 +47,7 @@ import edu.ftcphoenix.fw.sensing.vision.apriltag.TagTarget;
  * <ol>
  *   <li><b>Mecanum drive</b> using {@link FtcDrives#mecanum} +
  *       {@link GamepadDriveSource} (same as Example 01).</li>
- *   <li><b>Tag-based auto-aim</b> using {@link DriveGuidance} (as a {@link edu.ftcphoenix.fw.drive.DriveOverlay}):
+ *   <li><b>Tag-based auto-aim</b> using {@link DriveGuidance} (as a {@link edu.ftcphoenix.fw.drive.DriveOverlay}) plus a shared {@link TagSelectionSource}:
  *     <ul>
  *       <li>Hold a button to override omega and face a scoring AprilTag.</li>
  *       <li>Axial/lateral motion still come from the driver.</li>
@@ -52,7 +56,8 @@ import edu.ftcphoenix.fw.sensing.vision.apriltag.TagTarget;
  *   <li><b>Shooter velocity from AprilTag distance</b>:
  *     <ul>
  *       <li>Use an {@link AprilTagSensor} created by {@link FtcVision#aprilTags}.</li>
- *       <li>Read {@link AprilTagObservation#cameraRangeInches()}.</li>
+ *       <li>Share a {@link TagSelectionSource} so aiming, telemetry, and shooter range all agree on the tag choice.</li>
+ *       <li>Read {@link AprilTagObservation#cameraRangeInches()} from the selector's fresh selected observation.</li>
  *       <li>Use an {@link InterpolatingTable1D} to map
  *           {@code distance → shooter velocity} (native units).</li>
  *     </ul>
@@ -129,7 +134,7 @@ public final class TeleOp_05_ShooterTagAimVision extends OpMode {
     private DriveSource driveWithAim;
 
     private AprilTagSensor tagSensor;
-    private TagTarget scoringTarget;
+    private TagSelectionSource scoringSelection;
 
     private CameraMountConfig cameraMount;
 
@@ -169,9 +174,6 @@ public final class TeleOp_05_ShooterTagAimVision extends OpMode {
         // NOTE: Replace "Webcam 1" with your actual camera name in the Robot Configuration.
         tagSensor = FtcVision.aprilTags(hardwareMap, "Webcam 1");
 
-        // Track scoring tags with a freshness window.
-        scoringTarget = new TagTarget(tagSensor, SCORING_TAG_IDS, MAX_TAG_AGE_SEC);
-
         // 3b) Camera mount: robot→camera extrinsics (Phoenix axes: +X forward, +Y left, +Z up).
         //
         // IMPORTANT: Update these values for your robot.
@@ -185,18 +187,28 @@ public final class TeleOp_05_ShooterTagAimVision extends OpMode {
                 /*rollRad=*/0.0
         );
 
+        // Shared tag selection: preview continuously, then latch the best visible scoring tag
+        // while the driver holds aim assist.
+        scoringSelection = TagSelections.from(tagSensor)
+                .among(SCORING_TAG_IDS)
+                .freshWithin(MAX_TAG_AGE_SEC)
+                .choose(TagSelectionPolicies.smallestAbsRobotBearing(cameraMount))
+                .stickyWhen(gamepads.p1().leftBumper())
+                .build();
+
         // Build a vision-only auto-aim plan and overlay it on top of stick driving.
-        //
-        // The semantic reference is “the center of whichever scoring tag is currently visible.”
-        ReferencePoint2d scoringRef = References.relativeToTagsPoint(SCORING_TAG_IDS, 0.0, 0.0);
+        // The semantic reference is “the center of the currently selected scoring tag.”
+        ReferencePoint2d scoringRef = References.relativeToSelectedTagPoint(scoringSelection, 0.0, 0.0);
 
         DriveGuidancePlan aimPlan = DriveGuidance.plan()
                 .aimTo()
-                .referencePoint(scoringRef)
+                .point(scoringRef)
                 .doneAimTo()
-                .feedback()
+                .resolveWith()
+                .aprilTagsOnly()
                 .aprilTags(tagSensor, cameraMount, MAX_TAG_AGE_SEC)
-                .doneFeedback()
+                .onLoss(DriveGuidanceSpec.LossPolicy.PASS_THROUGH)
+                .doneResolveWith()
                 .build();
 
         // Apply the plan as an overlay: the driver keeps translation, and the overlay owns omega.
@@ -248,7 +260,6 @@ public final class TeleOp_05_ShooterTagAimVision extends OpMode {
 
         // 2) Sense (sensors)
         // Gamepad axes/buttons are Sources; they are sampled when you call get(...).
-        scoringTarget.update(clock);      // TagTarget → AprilTagSensor.best(...)
 
         // 3) Decide (high-level logic)
 
@@ -256,7 +267,10 @@ public final class TeleOp_05_ShooterTagAimVision extends OpMode {
         bindings.update(clock);
 
         // Vision-based shooter target decision
-        AprilTagObservation obs = scoringTarget.last();
+        TagSelectionResult selection = scoringSelection.get(clock);
+        AprilTagObservation obs = selection.hasFreshSelectedObservation
+                ? selection.selectedObservation
+                : AprilTagObservation.noTarget(Double.POSITIVE_INFINITY);
         lastHasTarget = obs.hasTarget;
         lastTagRangeInches = obs.cameraRangeInches();
         lastCameraBearingRad = obs.cameraBearingRad();
@@ -312,7 +326,7 @@ public final class TeleOp_05_ShooterTagAimVision extends OpMode {
             gamepads.debugDump(dbg, "pads");
             bindings.debugDump(dbg, "bindings");
 
-            scoringTarget.debugDump(dbg, "tag", cameraMount);
+            scoringSelection.debugDump(dbg, "tagSelection");
             shooter.debugDump(dbg, "shooter");
 
             driveWithAim.debugDump(dbg, "driveSrc");

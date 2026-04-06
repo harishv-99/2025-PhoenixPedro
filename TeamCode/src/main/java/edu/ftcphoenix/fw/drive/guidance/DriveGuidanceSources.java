@@ -53,6 +53,9 @@ public final class DriveGuidanceSources {
             private long lastCycle = Long.MIN_VALUE;
             private DriveGuidanceStatus last = null;
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public DriveGuidanceStatus get(LoopClock clock) {
                 long cyc = clock.cycle();
@@ -64,6 +67,9 @@ public final class DriveGuidanceSources {
                 return last;
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void reset() {
                 query.reset();
@@ -71,6 +77,9 @@ public final class DriveGuidanceSources {
                 last = null;
             }
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) return;

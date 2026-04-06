@@ -237,11 +237,13 @@ ReferencePoint2d speakerAim = References.relativeToTagPoint(5, 0.0, 0.0);
 
 DriveGuidancePlan aimPlan = DriveGuidance.plan()
         .aimTo()
-            .referencePoint(speakerAim)
+            .point(speakerAim)
             .doneAimTo()
-        .feedback()
+        .resolveWith()
+            .aprilTagsOnly()
             .aprilTags(tagSensor, cameraMount, 0.25)
-            .doneFeedback()
+            .onLoss(DriveGuidanceSpec.LossPolicy.PASS_THROUGH)
+            .doneResolveWith()
         .build();
 
 DriveSource driveWithAim = baseDrive.overlayWhen(
@@ -288,7 +290,7 @@ want the framework to *drive*, use layer (3).
 Reference-first guidance is the intended mental model: define the meaningful point or frame once,
 then let feedback lanes solve it from field pose, live AprilTags, or both. For example, a
 field-fixed scoring frame can be driven from odometry alone, or refined by visible fixed tags when
-you also provide `fixedTagLayout(...)`.
+you also provide `fixedAprilTagLayout(...)`.
 
 ---
 

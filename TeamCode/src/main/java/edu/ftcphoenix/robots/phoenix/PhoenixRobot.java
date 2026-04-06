@@ -39,7 +39,10 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagObservation;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
-import edu.ftcphoenix.fw.sensing.vision.apriltag.TagTarget;
+import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelectionPolicies;
+import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelectionResult;
+import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelectionSource;
+import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelections;
 
 /**
  * Central robot container / composition root for the Phoenix robot.
@@ -72,12 +75,10 @@ public final class PhoenixRobot {
     private DriveSource driveWithAim;
     private CameraMountConfig cameraMountConfig;
     private AprilTagSensor tagSensor;
-    private TagTarget scoringTarget;
-    private DriveGuidancePlan aimPlanBlue;
-    private DriveGuidancePlan aimPlanRed;
+    private TagSelectionSource scoringSelection;
+    private DriveGuidancePlan aimPlan;
     private DriveGuidancePlan.Tuning aimTuning;
-    private DriveGuidanceQuery aimQueryBlue;
-    private DriveGuidanceQuery aimQueryRed;
+    private DriveGuidanceQuery aimQuery;
     private BooleanSource aimReady = BooleanSource.constant(true);
     private BooleanSource aimOverride = BooleanSource.constant(false);
     private BooleanSource aimOkToShoot = BooleanSource.constant(true);
@@ -166,65 +167,56 @@ public final class PhoenixRobot {
         // later add odometry / field-pose aware targeting.
         gameTagLayout = new FtcGameTagLayout(AprilTagGameDatabase.getCurrentGameTagLibrary());
 
-        // Track scoring tags with a freshness window.
-        scoringTarget = new TagTarget(tagSensor, SCORING_TAG_IDS, 0.5);
+        // Auto-aim assist is explicitly driver-controlled (P2 left bumper). The selector
+        // previews while idle, then latches the best visible scoring tag while the driver holds aim.
+        BooleanSource autoAimEnabled = gamepads.p2().leftBumper();
 
-        // --- Drive guidance (replaces TagAim): hold P2 LB to auto-aim omega at the current
-        // scoring point.
-        //
-        // The important framework shift is that DriveGuidance now speaks in terms of semantic
-        // references rather than tag-specific public target nouns. We still author these aim
-        // references relative to the scoring tags, but the plans themselves simply say
-        // "aim at this reference point". Guidance then decides whether that reference is solved
-        // directly from live AprilTags, from field pose, or from both lanes in adaptive mode.
-
-        // Tuning for the auto-aim assist. Start with defaults and tweak only what you need.
-        aimTuning = DriveGuidancePlan.Tuning.defaults()
-                .withAimKp(RobotConfig.AutoAim.AIM_KP)                           // turn strength
-                .withMaxOmegaCmd(RobotConfig.AutoAim.AIM_MAX_OMEGA_CMD)          // cap turn speed
-                .withMinOmegaCmd(RobotConfig.AutoAim.AIM_MIN_OMEGA_CMD)          // stiction assist
-                .withAimDeadbandDeg(RobotConfig.AutoAim.AIM_TOLERANCE_DEG);      // "aimed" tolerance
-
-        // --- Auto-aim plans ---
-        // Instead of aiming at the AprilTag center, aim at a *tag-relative point* that you pick
-        // (example: a basket corner). Each tag ID can have a different offset.
-        //
-        // Offsets are in the tag frame: +forward is out of the tag, +left is left when looking out.
+        // --- Drive guidance (selected-tag auto-aim) ---
+        // Semantic references stay geometry-first: one immutable reference, solved through the
+        // shared selector's current selected tag. Different IDs may still use different offsets.
         RobotConfig.AutoAim.AimOffset blueOffset = RobotConfig.AutoAim.BLUE_AIM_OFFSET;
         RobotConfig.AutoAim.AimOffset redOffset = RobotConfig.AutoAim.RED_AIM_OFFSET;
 
-        aimPlanBlue = DriveGuidance.plan()
-                .aimTo()
-                .referencePoint(References.relativeToTagPoint(
-                        RobotConfig.AutoAim.BLUE_TARGET_TAG_ID,
-                        blueOffset.forwardInches,
-                        blueOffset.leftInches))
-                .doneAimTo()
-                .tuning(aimTuning)
-                .feedback()
-                .aprilTags(tagSensor, cameraMountConfig, 0.50)
-                .lossPolicy(DriveGuidanceSpec.LossPolicy.PASS_THROUGH)
-                .doneFeedback()
+        java.util.Map<Integer, References.TagPointOffset> aimOffsetsByTag =
+                new java.util.LinkedHashMap<Integer, References.TagPointOffset>();
+        aimOffsetsByTag.put(
+                RobotConfig.AutoAim.BLUE_TARGET_TAG_ID,
+                References.pointOffset(blueOffset.forwardInches, blueOffset.leftInches)
+        );
+        aimOffsetsByTag.put(
+                RobotConfig.AutoAim.RED_TARGET_TAG_ID,
+                References.pointOffset(redOffset.forwardInches, redOffset.leftInches)
+        );
+
+        scoringSelection = TagSelections.from(tagSensor)
+                .among(SCORING_TAG_IDS)
+                .freshWithin(0.50)
+                .choose(TagSelectionPolicies.smallestAbsRobotBearing(cameraMountConfig))
+                .stickyWhen(autoAimEnabled)
+                .reacquireAfterLoss(0.20)
                 .build();
 
-        aimPlanRed = DriveGuidance.plan()
+        // Tuning for the auto-aim assist. Keep all guidance APIs in radians.
+        aimTuning = DriveGuidancePlan.Tuning.defaults()
+                .withAimKp(RobotConfig.AutoAim.AIM_KP)
+                .withMaxOmegaCmd(RobotConfig.AutoAim.AIM_MAX_OMEGA_CMD)
+                .withMinOmegaCmd(RobotConfig.AutoAim.AIM_MIN_OMEGA_CMD)
+                .withAimDeadbandRad(Math.toRadians(RobotConfig.AutoAim.AIM_TOLERANCE_DEG));
+
+        aimPlan = DriveGuidance.plan()
                 .aimTo()
-                .referencePoint(References.relativeToTagPoint(
-                        RobotConfig.AutoAim.RED_TARGET_TAG_ID,
-                        redOffset.forwardInches,
-                        redOffset.leftInches))
+                .point(References.relativeToSelectedTagPoint(scoringSelection, aimOffsetsByTag))
                 .doneAimTo()
                 .tuning(aimTuning)
-                .feedback()
+                .resolveWith()
+                .aprilTagsOnly()
                 .aprilTags(tagSensor, cameraMountConfig, 0.50)
-                .lossPolicy(DriveGuidanceSpec.LossPolicy.PASS_THROUGH)
-                .doneFeedback()
+                .onLoss(DriveGuidanceSpec.LossPolicy.PASS_THROUGH)
+                .doneResolveWith()
                 .build();
 
-        // Queries: sample the exact same math used by the overlays (for telemetry & gating),
-        // without needing to re-derive bearings or worry about control frames.
-        aimQueryBlue = aimPlanBlue.query();
-        aimQueryRed = aimPlanRed.query();
+        // Query: sample the exact same math used by the overlay (for telemetry & gating).
+        aimQuery = aimPlan.query();
 
         // "Aimed" gate: safe to feed a ball only when we're facing the scoring target.
         //
@@ -240,6 +232,9 @@ public final class PhoenixRobot {
             private long lastCycle = Long.MIN_VALUE;
             private boolean last = true;
 
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public boolean getAsBoolean(LoopClock clock) {
                 long cyc = clock.cycle();
@@ -248,24 +243,15 @@ public final class PhoenixRobot {
                 }
                 lastCycle = cyc;
 
-                if (!scoringTarget.hasTarget()) {
+                TagSelectionResult sel = scoringSelection.get(clock);
+                if (!sel.hasFreshSelectedObservation) {
                     last = true;
                     return last;
                 }
 
-                AprilTagObservation obs = scoringTarget.last();
-                DriveGuidanceStatus status;
-                if (obs.id == RobotConfig.AutoAim.BLUE_TARGET_TAG_ID) {
-                    status = aimQueryBlue.sample(clock, DriveOverlayMask.OMEGA_ONLY);
-                } else if (obs.id == RobotConfig.AutoAim.RED_TARGET_TAG_ID) {
-                    status = aimQueryRed.sample(clock, DriveOverlayMask.OMEGA_ONLY);
-                } else {
-                    // Defensive fallback: unknown tag id. Treat "aimed" as
-                    // "robot-bearing near 0" (tag center).
-                    last = scoringTarget.isRobotBearingWithin(cameraMountConfig, aimReadyTolRad);
-                    return last;
-                }
-
+                DriveGuidanceStatus status = aimQuery != null
+                        ? aimQuery.sample(clock, DriveOverlayMask.OMEGA_ONLY)
+                        : null;
                 last = status != null && status.omegaWithin(aimReadyTolRad);
                 return last;
             }
@@ -284,32 +270,32 @@ public final class PhoenixRobot {
         aimOverride = gamepads.p2().y();
         aimOkToShoot = aimReady.or(aimOverride);
 
-        shooterSupervisor = new ShooterSupervisor(shooter, scoringTarget, aimOkToShoot, aimOverride);
+        shooterSupervisor = new ShooterSupervisor(shooter, scoringSelection, aimOkToShoot, aimOverride);
 
         /*
          * FUTURE OPTION:
          * If TeleOp maintains a real field pose (for example via a fused estimator rather than a
          * zeroed-on-enable odometry origin), these same tag-relative references can also use
-         * fieldPose(...) + fixedTagLayout(...) as a fallback when a fixed scoring tag drops out of
+         * resolveWith().localization(...) + fixedAprilTagLayout(...) as a fallback when a fixed scoring tag drops out of
          * view. Keep the reference definitions the same; just add the extra feedback lanes.
          *
          * Conceptually:
          *
          *   aimPlanBlue = DriveGuidance.plan()
          *           .aimTo()
-         *               .referencePoint(References.relativeToTagPoint(
+         *               .point(References.relativeToTagPoint(
          *                       RobotConfig.AutoAim.BLUE_TARGET_TAG_ID,
          *                       blueOffset.forwardInches,
          *                       blueOffset.leftInches))
          *               .doneAimTo()
-         *           .feedback()
+         *           .resolveWith()
          *               .aprilTags(tagSensor, cameraMountConfig, 0.50)
-         *               .fieldPose(fusedPoseEstimator, 0.25, 0.0)
-         *               .fixedTagLayout(gameTagLayout)
-         *               .gates(72.0, 84.0, 0.25)
-         *               .preferAprilTagsForOmega(true)
-         *               .lossPolicy(DriveGuidanceSpec.LossPolicy.PASS_THROUGH)
-         *               .doneFeedback()
+         *               .localization(fusedPoseEstimator, 0.25, 0.0)
+         *               .fixedAprilTagLayout(gameTagLayout)
+         *               .translationTakeover(72.0, 84.0, 0.25)
+         *               .omegaPolicy(DriveGuidanceSpec.OmegaPolicy.PREFER_APRIL_TAGS_WHEN_VALID)
+         *               .onLoss(DriveGuidanceSpec.LossPolicy.PASS_THROUGH)
+         *               .doneResolveWith()
          *           .build();
          *
          * That keeps the semantic reference exactly the same while adding localizer fallback and
@@ -318,11 +304,6 @@ public final class PhoenixRobot {
 
         // Enable condition for the guidance overlay.
         //
-        // Hold-to-enable is the simplest for drivers. If you prefer a toggle (press once to
-        // enable, press again to disable), use: gamepads.p2().leftBumper().toggled()
-        // Auto-aim assist is explicitly driver-controlled (P2 left bumper).
-        BooleanSource autoAimEnabled = gamepads.p2().leftBumper();
-
         // Stack multiple overlays without nested overlayWhen(...) calls.
         //
         // Order matters only when two enabled overlays claim the same DOF (the last layer wins).
@@ -339,21 +320,9 @@ public final class PhoenixRobot {
                         DriveOverlayMask.TRANSLATION_ONLY
                 )
                 .add(
-                        "autoAimBlue",
-                        autoAimEnabled.and(BooleanSource.of(() -> {
-                            AprilTagObservation obs = scoringTarget.last();
-                            return obs.hasTarget && obs.id == RobotConfig.AutoAim.BLUE_TARGET_TAG_ID;
-                        })),
-                        aimPlanBlue.overlay(),
-                        DriveOverlayMask.OMEGA_ONLY
-                )
-                .add(
-                        "autoAimRed",
-                        autoAimEnabled.and(BooleanSource.of(() -> {
-                            AprilTagObservation obs = scoringTarget.last();
-                            return obs.hasTarget && obs.id == RobotConfig.AutoAim.RED_TARGET_TAG_ID;
-                        })),
-                        aimPlanRed.overlay(),
+                        "autoAim",
+                        autoAimEnabled,
+                        aimPlan.overlay(),
                         DriveOverlayMask.OMEGA_ONLY
                 )
                 .build();
@@ -385,7 +354,7 @@ public final class PhoenixRobot {
         bindings.onRise(gamepads.p2().rightBumper(), shooterSupervisor::toggleFlywheel);
 
         // LB: auto-aim assist button (drive overlay) + set velocity from tag range on press
-        bindings.onRise(gamepads.p2().leftBumper(), shooterSupervisor::captureVelocityFromTarget);
+        bindings.onRise(gamepads.p2().leftBumper(), () -> shooterSupervisor.captureVelocityFromTarget(clock));
 
         // B: shoot (hold-to-shoot; release cancels any queued/active feed task)
         bindings.onRiseAndFall(
@@ -433,7 +402,6 @@ public final class PhoenixRobot {
      */
     public void updateTeleOp() {
         // --- Lane 3: perception + bindings ---
-        scoringTarget.update(clock);
         bindings.update(clock);
 
         // --- Lane 4 support: odometry for pose lock / field-aware debug ---
@@ -477,7 +445,10 @@ public final class PhoenixRobot {
 //        driveWithAim.debugDump(dbg, "drive");
 
         DriveGuidanceStatus aimStatus = sampleCurrentAimStatus();
-        AprilTagObservation obs = scoringTarget.last();
+        TagSelectionResult sel = scoringSelection.get(clock);
+        AprilTagObservation obs = sel.hasFreshSelectedObservation
+                ? sel.selectedObservation
+                : AprilTagObservation.noTarget(Double.POSITIVE_INFINITY);
         if (obs.hasTarget) {
             emitCurrentTargetTelemetry(obs, aimStatus);
         }
@@ -486,18 +457,11 @@ public final class PhoenixRobot {
     }
 
     private DriveGuidanceStatus sampleCurrentAimStatus() {
-        AprilTagObservation obs = scoringTarget.last();
-        if (!obs.hasTarget) {
+        TagSelectionResult sel = scoringSelection.get(clock);
+        if (!sel.hasFreshSelectedObservation || aimQuery == null) {
             return null;
         }
-
-        if (obs.id == RobotConfig.AutoAim.BLUE_TARGET_TAG_ID && aimQueryBlue != null) {
-            return aimQueryBlue.sample(clock, DriveOverlayMask.OMEGA_ONLY);
-        }
-        if (obs.id == RobotConfig.AutoAim.RED_TARGET_TAG_ID && aimQueryRed != null) {
-            return aimQueryRed.sample(clock, DriveOverlayMask.OMEGA_ONLY);
-        }
-        return null;
+        return aimQuery.sample(clock, DriveOverlayMask.OMEGA_ONLY);
     }
 
     private void emitCurrentTargetTelemetry(AprilTagObservation obs, DriveGuidanceStatus aimStatus) {

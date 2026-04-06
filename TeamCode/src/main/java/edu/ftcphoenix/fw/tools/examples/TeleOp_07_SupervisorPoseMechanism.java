@@ -59,6 +59,9 @@ public final class TeleOp_07_SupervisorPoseMechanism extends OpMode {
     private WristSubsystem wrist;
     private WristSupervisor supervisor;
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void init() {
         gamepads = Gamepads.create(gamepad1, gamepad2);
@@ -80,6 +83,9 @@ public final class TeleOp_07_SupervisorPoseMechanism extends OpMode {
         bindings.onRise(gamepads.p1().x(), supervisor::pulseOpen);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void loop() {
         clock.update(getRuntime());

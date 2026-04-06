@@ -22,12 +22,18 @@ public final class CircleRegion2d implements ConvexRegion2d {
      */
     public final double radiusInches;
 
+    /**
+     * Creates a circular region centered at the supplied field coordinates.
+     */
     public CircleRegion2d(double centerXInches, double centerYInches, double radiusInches) {
         this.centerXInches = centerXInches;
         this.centerYInches = centerYInches;
         this.radiusInches = Math.max(0.0, radiusInches);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public double signedDistanceInches(double xInches, double yInches) {
         double dx = xInches - centerXInches;
@@ -36,6 +42,9 @@ public final class CircleRegion2d implements ConvexRegion2d {
         return radiusInches - r;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public String toString() {
         return "CircleRegion2d{" +

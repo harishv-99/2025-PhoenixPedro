@@ -17,10 +17,8 @@ import org.firstinspires.ftc.vision.apriltag.AprilTagLibrary;
 import org.firstinspires.ftc.vision.apriltag.AprilTagPoseRaw;
 import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
 
-import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
-import java.util.Set;
 
 import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.geometry.Mat3;
@@ -433,6 +431,9 @@ public final class FtcVision {
     /**
      * Internal implementation of {@link AprilTagSensor} backed by a
      * {@link VisionPortal} and {@link AprilTagProcessor}.
+     *
+     * <p>The sensor is memoized by {@link edu.ftcphoenix.fw.core.time.LoopClock#cycle()} so all
+     * callers within one Phoenix loop observe the same raw detections snapshot.</p>
      */
     static final class PortalAprilTagSensor implements AprilTagSensor {
 
@@ -440,6 +441,10 @@ public final class FtcVision {
         private boolean closed = false;
 
         private final AprilTagProcessor processor;
+
+        private long lastCycle = Long.MIN_VALUE;
+        private edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagDetections lastDetections =
+                edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagDetections.none();
 
         PortalAprilTagSensor(VisionPortal portal, AprilTagProcessor processor) {
             this.portal = Objects.requireNonNull(portal, "portal");
@@ -464,144 +469,71 @@ public final class FtcVision {
         }
 
         /**
-         * {@inheritDoc}
+         * Returns the raw detections snapshot for the current Phoenix loop.
+         *
+         * <p>This method is idempotent by {@link edu.ftcphoenix.fw.core.time.LoopClock#cycle()} so
+         * guidance, localization, telemetry, and tag selection can all share the same sensor
+         * instance without accidentally reading different frames.</p>
          */
         @Override
-        public AprilTagObservation bestAny(double maxAgeSec) {
-            return selectBest(null, maxAgeSec);
-        }
-
-        /**
-         * {@inheritDoc}
-         */
-        @Override
-        public AprilTagObservation best(Set<Integer> idsOfInterest, double maxAgeSec) {
-            Objects.requireNonNull(idsOfInterest, "idsOfInterest");
-            if (idsOfInterest.isEmpty()) {
-                return AprilTagObservation.noTarget(Double.POSITIVE_INFINITY);
+        public edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagDetections get(edu.ftcphoenix.fw.core.time.LoopClock clock) {
+            Objects.requireNonNull(clock, "clock");
+            long cyc = clock.cycle();
+            if (cyc == lastCycle) {
+                return lastDetections;
             }
-            return selectBest(idsOfInterest, maxAgeSec);
+            lastCycle = cyc;
+            lastDetections = readDetections();
+            return lastDetections;
         }
 
         /**
          * {@inheritDoc}
          */
         @Override
-        public AprilTagObservation best(int id, double maxAgeSec) {
-            return best(Collections.singleton(id), maxAgeSec);
-        }
-
-        /**
-         * {@inheritDoc}
-         */
-        @Override
-        public boolean hasFreshAny(double maxAgeSec) {
-            AprilTagObservation obs = bestAny(maxAgeSec);
-            return obs.isFresh(maxAgeSec);
-        }
-
-        /**
-         * {@inheritDoc}
-         */
-        @Override
-        public boolean hasFresh(Set<Integer> idsOfInterest, double maxAgeSec) {
-            AprilTagObservation obs = best(idsOfInterest, maxAgeSec);
-            return obs.isFresh(maxAgeSec);
-        }
-
-        /**
-         * {@inheritDoc}
-         */
-        @Override
-        public boolean hasFresh(int id, double maxAgeSec) {
-            AprilTagObservation obs = best(id, maxAgeSec);
-            return obs.isFresh(maxAgeSec);
+        public void reset() {
+            lastCycle = Long.MIN_VALUE;
+            lastDetections = edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagDetections.none();
         }
 
         /**
          * Framework-style debug dump (optional helper; not part of {@link AprilTagSensor}).
          *
-         * @param dbg       debug sink (may be {@code null})
-         * @param prefix    key prefix (may be {@code null} or empty)
-         * @param maxAgeSec freshness window used for the shown "bestAny"
+         * @param dbg    debug sink (may be {@code null})
+         * @param prefix key prefix (may be {@code null} or empty)
          */
-        public void debugDump(DebugSink dbg, String prefix, double maxAgeSec) {
+        public void debugDump(DebugSink dbg, String prefix) {
             if (dbg == null) {
                 return;
             }
             String p = (prefix == null || prefix.isEmpty()) ? "ftcVision.tags" : prefix;
 
-            List<AprilTagDetection> detections = processor.getDetections();
-            int n = (detections == null) ? 0 : detections.size();
-
+            edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagDetections dets = lastDetections;
             dbg.addLine(p + ": PortalAprilTagSensor");
-            dbg.addData(p + ".detections.count", n);
-            dbg.addData(p + ".maxAgeSec", maxAgeSec);
-
-            AprilTagObservation obs = bestAny(maxAgeSec);
-            dbg.addData(p + ".bestAny.hasTarget", obs.hasTarget);
-            dbg.addData(p + ".bestAny.id", obs.id);
-            dbg.addData(p + ".bestAny.ageSec", obs.ageSec);
-            dbg.addData(p + ".bestAny.cameraBearingRad", obs.cameraBearingRad());
-            dbg.addData(p + ".bestAny.cameraRangeInches", obs.cameraRangeInches());
+            dbg.addData(p + ".detections.count", dets.observations.size());
+            dbg.addData(p + ".detections.ageSec", dets.ageSec);
+            dbg.addData(p + ".detections.visibleIds", dets.visibleIds(Double.POSITIVE_INFINITY).toString());
         }
 
         /**
-         * Core selection logic shared by the {@code best*} methods.
-         *
-         * <p>This method:</p>
-         * <ol>
-         *   <li>Fetches the current list of detections from the processor.</li>
-         *   <li>If there are no detections, returns {@link AprilTagObservation#noTarget(double)}.</li>
-         *   <li>Computes the age of each detection based on {@link System#nanoTime()} and
-         *       {@link AprilTagDetection#frameAcquisitionNanoTime}.</li>
-         *   <li>Rejects any detection older than {@code maxAgeSec}.</li>
-         *   <li>Optionally filters by {@code idsOrNull}.</li>
-         *   <li>Ignores detections without pose data.</li>
-         *   <li>Among remaining detections, chooses the one with the smallest range
-         *       (closest tag in 3D line-of-sight distance).</li>
-         * </ol>
-         *
-         * @param idsOrNull set of IDs to accept, or {@code null} for "any"
-         * @param maxAgeSec maximum acceptable age (seconds)
+         * Converts the current FTC detections list into one immutable per-frame Phoenix snapshot.
          */
-        private AprilTagObservation selectBest(Set<Integer> idsOrNull, double maxAgeSec) {
-            if (maxAgeSec < 0.0) {
-                return AprilTagObservation.noTarget(Double.POSITIVE_INFINITY);
-            }
-
+        private edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagDetections readDetections() {
             List<AprilTagDetection> detections = processor.getDetections();
             if (detections == null || detections.isEmpty()) {
-                return AprilTagObservation.noTarget(Double.POSITIVE_INFINITY);
+                return edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagDetections.none(Double.POSITIVE_INFINITY);
             }
 
             long nowNanos = System.nanoTime();
-
-            AprilTagDetection bestDet = null;
-            Pose3d bestCameraToTagPose = null;
-            double bestRangeInches = Double.POSITIVE_INFINITY;
-            double bestAgeSec = Double.POSITIVE_INFINITY;
+            java.util.ArrayList<AprilTagObservation> out = new java.util.ArrayList<AprilTagObservation>(detections.size());
+            double snapshotAgeSec = Double.POSITIVE_INFINITY;
 
             for (AprilTagDetection det : detections) {
                 if (det == null) {
                     continue;
                 }
 
-                if (idsOrNull != null && !idsOrNull.contains(det.id)) {
-                    continue;
-                }
-
                 // We need pose values to build cameraToTagPose.
-                //
-                // FTC SDK exposes two different AprilTag pose representations:
-                //   - rawPose: AprilTag/OpenCV native camera frame (+X right, +Y down, +Z forward)
-                //   - ftcPose: FTC "robot-friendly" frame (+X right, +Y forward, +Z up)
-                //
-                // Phoenix uses rawPose for geometry math because it stays consistent with
-                // FTC's tag metadata (fieldPosition/fieldOrientation) and the AprilTag
-                // library's published coordinate conventions.
-                //
-                // We keep ftcPose as a fallback for older SDKs or unusual configurations.
                 if (det.rawPose == null && det.ftcPose == null) {
                     continue;
                 }
@@ -610,24 +542,15 @@ public final class FtcVision {
                 double ageSec = (frameTime == 0L)
                         ? 0.0
                         : (nowNanos - frameTime) / NANOS_PER_SECOND;
-
-                if (ageSec > maxAgeSec) {
-                    continue;
+                if (ageSec < snapshotAgeSec) {
+                    snapshotAgeSec = ageSec;
                 }
 
-                // Convert FTC detection pose -> Phoenix cameraToTagPose.
                 Pose3d cameraToTagPose = (det.rawPose != null)
                         ? cameraToTagFromRawPose(det.rawPose)
                         : null;
 
-                // Fallback: use ftcPose if rawPose isn't present.
                 if (cameraToTagPose == null && det.ftcPose != null) {
-                    // IMPORTANT FTC NOTE:
-                    // - AprilTagPoseFtc angles are reported in DEGREES.
-                    // - FTC names the axes differently than Phoenix's Pose3d convention:
-                    //     * FTC:   pitch = rotation about +X, roll = rotation about +Y, yaw = rotation about +Z
-                    //     * Phoenix Pose3d: roll = rotation about +X, pitch = rotation about +Y, yaw = rotation about +Z
-                    //   So we must swap pitch/roll when constructing a Pose3d.
                     Pose3d ftcCamToTag = new Pose3d(
                             det.ftcPose.x,
                             det.ftcPose.y,
@@ -636,7 +559,6 @@ public final class FtcVision {
                             Math.toRadians(det.ftcPose.roll),
                             Math.toRadians(det.ftcPose.pitch)
                     );
-
                     cameraToTagPose = FtcFrames.toPhoenixFromFtcDetectionFrame(ftcCamToTag);
                 }
 
@@ -644,49 +566,34 @@ public final class FtcVision {
                     continue;
                 }
 
-                // Choose the closest (3D range). We compute from cameraToTagPose to avoid relying on
-                // any additional FTC convenience fields.
-                double r = Math.sqrt(
-                        cameraToTagPose.xInches * cameraToTagPose.xInches
-                                + cameraToTagPose.yInches * cameraToTagPose.yInches
-                                + cameraToTagPose.zInches * cameraToTagPose.zInches
-                );
+                Pose3d fieldToRobotPose = null;
+                if (det.robotPose != null) {
+                    Position pos = det.robotPose.getPosition();
+                    YawPitchRollAngles ypr = det.robotPose.getOrientation();
 
-                if (r < bestRangeInches) {
-                    bestRangeInches = r;
-                    bestDet = det;
-                    bestAgeSec = ageSec;
-                    bestCameraToTagPose = cameraToTagPose;
+                    fieldToRobotPose = new Pose3d(
+                            pos.x,
+                            pos.y,
+                            pos.z,
+                            ypr.getYaw(AngleUnit.RADIANS),
+                            ypr.getPitch(AngleUnit.RADIANS),
+                            ypr.getRoll(AngleUnit.RADIANS)
+                    );
                 }
+
+                AprilTagObservation obs = (fieldToRobotPose != null)
+                        ? AprilTagObservation.target(det.id, cameraToTagPose, fieldToRobotPose, ageSec)
+                        : AprilTagObservation.target(det.id, cameraToTagPose, ageSec);
+                out.add(obs);
             }
 
-            if (bestDet == null || bestCameraToTagPose == null) {
-                return AprilTagObservation.noTarget(Double.POSITIVE_INFINITY);
+            if (out.isEmpty()) {
+                return edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagDetections.none(snapshotAgeSec);
             }
-
-            // If the FTC SDK produced a global robot pose (requires a configured camera mount),
-            // surface it as an optional fieldToRobotPose measurement.
-            //
-            // The SDK's robotPose is expressed in the FTC Field Coordinate System for the
-            // current season. Phoenix uses that same field frame for all field-centric poses
-            // (field-to-robot, field-to-tag), so no axis conversion is performed here.
-            if (bestDet.robotPose != null) {
-                Position pos = bestDet.robotPose.getPosition();
-                YawPitchRollAngles ypr = bestDet.robotPose.getOrientation();
-
-                Pose3d fieldToRobotPose = new Pose3d(
-                        pos.x,
-                        pos.y,
-                        pos.z,
-                        ypr.getYaw(AngleUnit.RADIANS),
-                        ypr.getPitch(AngleUnit.RADIANS),
-                        ypr.getRoll(AngleUnit.RADIANS)
-                );
-
-                return AprilTagObservation.target(bestDet.id, bestCameraToTagPose, fieldToRobotPose, bestAgeSec);
+            if (!Double.isFinite(snapshotAgeSec)) {
+                snapshotAgeSec = 0.0;
             }
-
-            return AprilTagObservation.target(bestDet.id, bestCameraToTagPose, bestAgeSec);
+            return edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagDetections.of(snapshotAgeSec, out);
         }
     }
 

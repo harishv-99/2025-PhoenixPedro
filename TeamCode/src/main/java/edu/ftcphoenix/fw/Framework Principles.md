@@ -558,7 +558,7 @@ Javadocs aren’t “nice to have” — they are part of the API.
 
 Phoenix frequently teaches through its exceptions.
 
-- Prefer errors like: “field heading targets require fieldPose(...) feedback” over generic
+- Prefer errors like: “field heading targets require resolveWith().localization(...) or resolveWith().aprilTags(...)” over generic
   `NullPointerException` / “invalid state.”
 - If a configuration can never work, throw **at build time** rather than silently producing
   “no output” at runtime.

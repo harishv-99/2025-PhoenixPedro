@@ -91,6 +91,16 @@ public final class DriveGuidancePlan {
          */
         public final double aimDeadbandRad;
 
+        /**
+         * Creates a full tuning bundle.
+         *
+         * @param kPTranslate     translation proportional gain in command-per-inch
+         * @param maxTranslateCmd max translation command magnitude
+         * @param kPAim           aim proportional gain in command-per-radian
+         * @param maxOmegaCmd     max omega command magnitude
+         * @param minOmegaCmd     minimum omega magnitude outside the deadband
+         * @param aimDeadbandRad  aim deadband in radians
+         */
         public Tuning(double kPTranslate,
                       double maxTranslateCmd,
                       double kPAim,
@@ -161,12 +171,6 @@ public final class DriveGuidancePlan {
             return new Tuning(kPTranslate, maxTranslateCmd, kPAim, maxOmegaCmd, minOmegaCmd, aimDeadbandRad);
         }
 
-        /**
-         * Convenience overload: set the aim deadband in degrees.
-         */
-        public Tuning withAimDeadbandDeg(double aimDeadbandDeg) {
-            return withAimDeadbandRad(Math.toRadians(aimDeadbandDeg));
-        }
 
         /**
          * Reasonable defaults for typical TeleOp assist.
@@ -227,7 +231,7 @@ public final class DriveGuidancePlan {
      * <pre>{@code
      * DriveGuidancePlan plan = DriveGuidance.plan()
      *         .translateTo().fieldPointInches(48, 24).doneTranslateTo()
-     *         .feedback().fieldPose(poseEstimator).doneFeedback()
+     *         .resolveWith().localizationOnly().localization(poseEstimator).doneResolveWith()
      *         .tuning(DriveGuidancePlan.Tuning.defaults())
      *         .build();
      *

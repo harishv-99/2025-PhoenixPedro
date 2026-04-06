@@ -92,16 +92,25 @@ public final class RequestCounter implements BooleanSource {
         return maxCount;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public boolean getAsBoolean(LoopClock clock) {
         return count > 0;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void reset() {
         clear();
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void debugDump(DebugSink dbg, String prefix) {
         if (dbg == null) {
@@ -114,6 +123,9 @@ public final class RequestCounter implements BooleanSource {
                 .addData(p + ".hasRequest", count > 0);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public String toString() {
         return "RequestCounter{" + "count=" + count + ", maxCount=" + maxCount + "}";
