@@ -108,7 +108,6 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
 
     private Pose3d lastRobotToCameraSample = null;
     private Pose3d lastObservedCameraToTag = null;
-    private Pose3d lastPredictedCameraToTag = null;
 
     private final PoseAverager avg = new PoseAverager();
 
@@ -184,6 +183,10 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
         this.layout = (layoutOverride != null)
                 ? layoutOverride
                 : FtcGameTagLayout.currentGameFieldFixed();
+
+        if (layout != null && !layout.ids().isEmpty()) {
+            selectedTagId = layout.ids().iterator().next();
+        }
 
         // Camera selection setup
         selectedCameraName = (preferredCameraName == null || preferredCameraName.trim().isEmpty())
@@ -331,7 +334,6 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
 
         lastRobotToCameraSample = null;
         lastObservedCameraToTag = null;
-        lastPredictedCameraToTag = null;
 
         avg.clear();
 
@@ -466,7 +468,6 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
         lastObservedCameraToTag = (obs.hasTarget) ? obs.cameraToTagPose : null;
 
         lastRobotToCameraSample = null;
-        lastPredictedCameraToTag = null;
 
         if (obs.hasTarget) {
             Pose3d fieldToTagPose = layout.getFieldToTagPose(obs.id);
@@ -479,8 +480,6 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
 
                 lastRobotToCameraSample = robotToCameraPose;
 
-                Pose3d fieldToCameraPose = fieldToRobotPose.then(robotToCameraPose);
-                lastPredictedCameraToTag = fieldToCameraPose.inverse().then(fieldToTagPose);
             }
         }
 
@@ -542,6 +541,8 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
         }
 
         t.addLine("");
+        Pose3d mean = avg.meanOrNull();
+
         t.addLine("Mount solve (robotToCameraPose):");
         if (lastRobotToCameraSample == null) {
             t.addLine("  Need: (1) fresh detection AND (2) this tag present in layout.");
@@ -556,24 +557,49 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
                 ));
             }
 
-            if (lastPredictedCameraToTag != null && lastObservedCameraToTag != null) {
-                Pose3d predToObsPose = lastPredictedCameraToTag.inverse().then(lastObservedCameraToTag);
-                double trans = translationNormInches(predToObsPose);
+            if (mean != null) {
+                Pose3d avgToSamplePose = mean.inverse().then(lastRobotToCameraSample);
+                double sampleDeltaTrans = translationDistanceInches(mean, lastRobotToCameraSample);
+                t.addLine(String.format(Locale.US,
+                        "Sample vs avg mount: trans=%.2f in | yaw=%.2f° pitch=%.2f° roll=%.2f°",
+                        sampleDeltaTrans,
+                        Math.toDegrees(avgToSamplePose.yawRad),
+                        Math.toDegrees(avgToSamplePose.pitchRad),
+                        Math.toDegrees(avgToSamplePose.rollRad)
+                ));
+            }
+
+            if (mean != null && selectedTagPose != null && lastObservedCameraToTag != null) {
+                // Compare the live observation against the captured-average mount, not against the
+                // just-solved sample. Using the same sample on both sides is a tautology and hides
+                // bad robot-pose inputs, bad tag-size metadata, and other setup mistakes.
+                Pose3d avgPredictedCameraToTag = fieldToRobotPose.then(mean).inverse().then(selectedTagPose);
+                Pose3d avgPredToObsPose = avgPredictedCameraToTag.inverse().then(lastObservedCameraToTag);
+                double trans = translationNormInches(avgPredToObsPose);
+                double observedRange = translationNormInches(lastObservedCameraToTag);
+                double predictedRange = translationNormInches(avgPredictedCameraToTag);
 
                 t.addLine(String.format(Locale.US,
-                        "Residual: trans=%.2f in | yaw=%.2f° pitch=%.2f° roll=%.2f°",
+                        "Avg residual: trans=%.2f in | yaw=%.2f° pitch=%.2f° roll=%.2f°",
                         trans,
-                        Math.toDegrees(predToObsPose.yawRad),
-                        Math.toDegrees(predToObsPose.pitchRad),
-                        Math.toDegrees(predToObsPose.rollRad)
+                        Math.toDegrees(avgPredToObsPose.yawRad),
+                        Math.toDegrees(avgPredToObsPose.pitchRad),
+                        Math.toDegrees(avgPredToObsPose.rollRad)
                 ));
+                t.addLine(String.format(Locale.US,
+                        "Range check: obs=%.2f in | avgPred=%.2f in | Δ=%.2f in",
+                        observedRange,
+                        predictedRange,
+                        observedRange - predictedRange
+                ));
+            } else if (mean == null) {
+                t.addLine("Residual check: capture at least one sample to compare against an averaged mount.");
             }
         }
 
         t.addLine("");
         t.addLine(String.format(Locale.US, "Captured samples: %d", avg.count()));
 
-        Pose3d mean = avg.meanOrNull();
         if (mean == null) {
             t.addLine("Average: (none yet) Press A a few times while holding still.");
         } else {
@@ -605,6 +631,13 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
                 Math.toDegrees(p.pitchRad),
                 Math.toDegrees(p.rollRad)
         ));
+    }
+
+    private static double translationDistanceInches(Pose3d a, Pose3d b) {
+        double dx = b.xInches - a.xInches;
+        double dy = b.yInches - a.yInches;
+        double dz = b.zInches - a.zInches;
+        return Math.sqrt(dx * dx + dy * dy + dz * dz);
     }
 
     private static double translationNormInches(Pose3d p) {
