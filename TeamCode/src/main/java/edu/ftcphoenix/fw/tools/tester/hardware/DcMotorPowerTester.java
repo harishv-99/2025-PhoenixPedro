@@ -5,8 +5,6 @@ import com.qualcomm.robotcore.hardware.DcMotorEx;
 
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 
-import java.util.Locale;
-
 import edu.ftcphoenix.fw.tools.tester.BaseTeleOpTester;
 import edu.ftcphoenix.fw.tools.tester.ui.HardwareNamePicker;
 import edu.ftcphoenix.fw.tools.tester.ui.ScalarTuner;
@@ -251,30 +249,34 @@ public final class DcMotorPowerTester extends BaseTeleOpTester {
 
         t.addLine("=== DcMotor Power Tester ===");
         t.addLine("Motor: " + motorName);
-        power.render(t);
-
-        t.addLine("");
-        t.addLine("Controls: A enable | X invert | START step | dpad +/- | stickY override | B zero | BACK change motor");
+        t.addData("Enable [A]", power.isEnabled() ? "ON" : "OFF");
+        t.addData("Invert [X]", power.isInverted() ? "ON" : "OFF");
+        t.addData("Step [START]", "%s (%.2f)", power.isFine() ? "FINE" : "COARSE", power.step());
+        t.addData("Power target [Dpad U/D | LeftStickY]", "%.2f", power.target());
+        t.addData("Power applied", "%.2f", appliedPower);
+        t.addData("Zero [B]", "target -> 0.00");
 
         if (motor != null) {
             try {
-                t.addLine(String.format(Locale.US, "CurrentPos=%d ticks", motor.getCurrentPosition()));
+                t.addData("Current position", "%d ticks", motor.getCurrentPosition());
             } catch (Exception ignored) {
             }
 
             if (motorEx != null) {
                 try {
-                    t.addLine(String.format(Locale.US, "Velocity=%.1f ticks/s", motorEx.getVelocity()));
+                    t.addData("Velocity", "%.1f ticks/s", motorEx.getVelocity());
                 } catch (Exception ignored) {
                 }
             }
 
             try {
-                t.addLine(String.format(Locale.US, "Motor.getPower()=%.2f", motor.getPower()));
+                t.addData("Motor.getPower()", "%.2f", motor.getPower());
             } catch (Exception ignored) {
             }
         }
 
+        t.addLine("");
+        t.addLine("BACK: return to the motor picker.");
         t.update();
     }
 }

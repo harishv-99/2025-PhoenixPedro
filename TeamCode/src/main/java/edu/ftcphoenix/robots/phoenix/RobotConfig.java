@@ -441,15 +441,12 @@ public class RobotConfig {
     }
 
     /**
-     * Calibration status and guidance.
+     * Explicit human acknowledgements for calibration steps that cannot be inferred from config.
      *
-     * <p>Many Phoenix testers can optionally use other subsystems to improve results (example:
-     * Pinpoint pod offset calibration can use AprilTag assistance). To keep that knowledge
-     * out of scattered tester classes, we centralize the "what's calibrated" flags here so
-     * menus/testers can choose sensible defaults and display helpful warnings.</p>
-     *
-     * <p>Some flags are auto-detectable (camera mount != identity), while others need an explicit
-     * acknowledgement after you run a sanity-check style tester.</p>
+     * <p>The framework tester helpers now own the common heuristics (for example, whether a camera
+     * mount still looks like an identity placeholder or whether Pinpoint offsets still look like
+     * 0 / 0). This section therefore stays intentionally small: it only holds the Phoenix-specific
+     * "yes, a human checked this" flags.</p>
      */
     public static final class Calibration {
 
@@ -457,41 +454,16 @@ public class RobotConfig {
         }
 
         /**
-         * True once {@link Vision#cameraMount} has been solved and pasted from the
-         * <i>Calib: Camera Mount</i> tester output.
-         */
-        public static boolean cameraMountCalibrated() {
-            return Vision.cameraMount != null && !Vision.cameraMount.equals(CameraMountConfig.identity());
-        }
-
-        /**
-         * Set to true after running the <i>Robot Calib: Pinpoint Axis Check</i> tester and confirming
-         * the forward/strafe directions are correct.
+         * Set to true after running the <i>Calib: Pinpoint Axis Check</i> tester and confirming the
+         * forward/strafe directions are correct.
          */
         public static final boolean pinpointAxesVerified = true;
 
         /**
-         * Set to true after you run the <i>Robot Calib: Pinpoint Pod Offsets</i> calibrator and copy
-         * the recommended offsets into {@link Localization#pinpoint}.
+         * Set to true after you run the <i>Calib: Pinpoint Pod Offsets</i> tester and copy the
+         * recommended offsets into {@link Localization#pinpoint}.
          */
         public static final boolean pinpointPodOffsetsCalibrated = false;
-
-        /**
-         * Returns true if Pinpoint pod offsets look non-default (best-effort heuristic).
-         * Prefer {@link #pinpointPodOffsetsCalibrated} for an explicit signal.
-         */
-        public static boolean pinpointPodOffsetsNonDefault() {
-            double fx = Localization.pinpoint.forwardPodOffsetLeftInches;
-            double sy = Localization.pinpoint.strafePodOffsetForwardInches;
-            return Math.abs(fx) > 1e-6 || Math.abs(sy) > 1e-6;
-        }
-
-        /**
-         * Convenience: whether it's reasonable to enable AprilTag assistance where supported.
-         */
-        public static boolean canUseAprilTagAssist() {
-            return cameraMountCalibrated();
-        }
     }
 
     /**

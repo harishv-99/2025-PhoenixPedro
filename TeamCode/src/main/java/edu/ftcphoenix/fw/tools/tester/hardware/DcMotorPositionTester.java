@@ -5,8 +5,6 @@ import com.qualcomm.robotcore.hardware.DcMotorEx;
 
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 
-import java.util.Locale;
-
 import edu.ftcphoenix.fw.tools.tester.BaseTeleOpTester;
 import edu.ftcphoenix.fw.tools.tester.ui.HardwareNamePicker;
 import edu.ftcphoenix.fw.tools.tester.ui.IntTuner;
@@ -450,24 +448,21 @@ public final class DcMotorPositionTester extends BaseTeleOpTester {
 
         t.addLine("=== DcMotor Position Tester ===");
         t.addLine("Motor: " + motorName);
-
-        t.addLine(String.format(Locale.US,
-                "Enabled=%s | Step=%s (targetStep=%d ticks, powerStep=%.2f) | StickNudge=%s",
-                targetTicks.isEnabled() ? "ON" : "OFF",
+        t.addData("Enable [A]", targetTicks.isEnabled() ? "RUN_TO_POSITION ON" : "OFF");
+        t.addData("Direction [X]", String.valueOf(safeGetDir(motor)));
+        t.addData("Step [START]", "%s (target=%d ticks, power=%.2f)",
                 targetTicks.isFine() ? "FINE" : "COARSE",
                 targetTicks.step(),
-                power.step(),
-                "RightStickY"
-        ));
-
-        t.addLine("");
-        targetTicks.render(t);
-        power.render(t);
+                power.step());
+        t.addData("Target ticks [Dpad U/D | RightStickY]", "%d", targetTicks.target());
+        t.addData("Applied target", "%d", targetTicks.applied());
+        t.addData("Power [Dpad L/R]", "%.2f", power.target());
+        t.addData("Reset encoder [Y]", "target -> 0");
+        t.addData("Stop [B]", "disable + power 0");
 
         int cur = 0;
         boolean busy = false;
         DcMotor.RunMode mode = null;
-        DcMotor.Direction dir = null;
 
         try {
             cur = motor.getCurrentPosition();
@@ -481,31 +476,22 @@ public final class DcMotorPositionTester extends BaseTeleOpTester {
             mode = motor.getMode();
         } catch (Exception ignored) {
         }
-        try {
-            dir = motor.getDirection();
-        } catch (Exception ignored) {}
 
         t.addLine("");
-        t.addLine(String.format(Locale.US,
-                "Current=%d | Error=%d",
-                cur, (targetTicks.target() - cur)
-        ));
-        t.addLine(String.format(Locale.US,
-                "Mode=%s | Dir=%s | Busy=%s",
-                String.valueOf(mode),
-                String.valueOf(dir),
-                busy ? "YES" : "NO"
-        ));
+        t.addData("Current position", "%d", cur);
+        t.addData("Position error", "%d", targetTicks.target() - cur);
+        t.addData("Mode", String.valueOf(mode));
+        t.addData("Busy", busy ? "YES" : "NO");
 
         if (motorEx != null) {
             try {
-                t.addLine(String.format(Locale.US, "Velocity=%.1f ticks/s", motorEx.getVelocity()));
-            } catch (Exception ignored) {}
+                t.addData("Velocity", "%.1f ticks/s", motorEx.getVelocity());
+            } catch (Exception ignored) {
+            }
         }
 
         t.addLine("");
-        t.addLine("Controls: A enable | X dir | START fine/coarse | dpad U/D target | dpad L/R power | RStickY nudge | Y reset | B stop | BACK picker");
-
+        t.addLine("BACK: return to the motor picker.");
         t.update();
     }
 }

@@ -491,31 +491,34 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
         t.clearAll();
 
         t.addLine("=== Camera Mount Calibrator ===");
-        t.addLine(String.format(Locale.US,
-                "Camera=%s | TagId=%d | Mode=%s%s",
-                selectedCameraName,
-                selectedTagId,
-                editMode ? "EDIT" : "QUICK",
-                editMode ? (" (" + editField.label + ")") : ""
-        ));
-        t.addLine(String.format(Locale.US,
-                "Step=%s | XY=%.2f in | Yaw=%.1f° | MaxAge=%.0f ms",
+        t.addData("Camera", selectedCameraName);
+        t.addData("Mode [RS]", editMode ? "EDIT" : "QUICK");
+        if (editMode) {
+            t.addData("Selected field [Dpad U/D]", editField.label);
+        }
+        t.addData("Step [START]", "%s (XY %.2f in | Yaw %.1f°)",
                 fineSteps ? "FINE" : "COARSE",
                 stepXY(),
-                Math.toDegrees(stepYawRad()),
-                maxAgeSec * 1000.0
-        ));
+                Math.toDegrees(stepYawRad()));
+        t.addData(editableFieldLabel(EditField.TAG_ID, "Y/X"), "%d", selectedTagId);
+        t.addData(editableFieldLabel(EditField.ROBOT_X, "Dpad L/R"), "%.2f in", fieldToRobotPose.xInches);
+        t.addData(editableFieldLabel(EditField.ROBOT_Y, "Dpad U/D"), "%.2f in", fieldToRobotPose.yInches);
+        t.addData(editableFieldLabel(EditField.ROBOT_YAW, "LB/RB"), "%.1f°", Math.toDegrees(fieldToRobotPose.yawRad));
+        t.addData("Samples [A capture | B clear]", avg.count());
+        t.addData("MaxAge", "%.0f ms", maxAgeSec * 1000.0);
+
+        t.addLine("");
         t.addLine("Units: inches (angles shown in degrees)");
         t.addLine("Field frame: FTC Field Coordinate System (origin=center, +Z up)");
         t.addLine("FTC axes hint: stand at Red Wall center facing field: +X to your right, +Y away from Red Wall");
         t.addLine("AprilTag note: observation uses SDK rawPose (native AprilTag/OpenCV) converted to Phoenix camera axes");
         t.addLine("             (SDK ftcPose is a convenience reframe; don't mix with game database fieldOrientation)");
         if (!editMode) {
-            t.addLine("Controls: Y/X tagId | A capture | B clear | dpad: X/Y translate | LB/RB yaw | START fine/coarse | RS edit");
+            t.addLine("Quick controls: tag [Y/X] | robot X [Dpad L/R] | robot Y [Dpad U/D] | yaw [LB/RB]");
         } else {
-            t.addLine("Controls: dpad up/down field | dpad left/right +/- | LB/RB +/- | RS quick | START fine/coarse");
+            t.addLine("Edit controls: Dpad U/D chooses the field; Dpad L/R or LB/RB changes the selected value.");
         }
-        t.addLine("(BACK: camera picker)  (Hold robot still when sampling)");
+        t.addLine("BACK: return to the camera picker. Hold the robot still while capturing.");
 
         // Show the known field pose of the selected tag (from the fixed layout or an override layout).
         t.addLine("");
@@ -620,6 +623,14 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
         }
 
         t.update();
+    }
+
+    private String editableFieldLabel(EditField field, String quickControl) {
+        if (!editMode) {
+            return field.label + " [" + quickControl + "]";
+        }
+        return (editField == field ? "> " : "  ") + field.label
+                + (editField == field ? " [Dpad L/R or LB/RB]" : "");
     }
 
     private static void addPoseLine(Telemetry t, String label, Pose3d p) {

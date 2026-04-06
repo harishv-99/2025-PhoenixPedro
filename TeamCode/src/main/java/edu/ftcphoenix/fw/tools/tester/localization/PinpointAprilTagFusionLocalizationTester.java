@@ -5,7 +5,6 @@ import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
 import org.firstinspires.ftc.vision.apriltag.AprilTagLibrary;
 
 import java.util.Collections;
-import java.util.Locale;
 import java.util.Set;
 
 import edu.ftcphoenix.fw.core.geometry.Pose2d;
@@ -53,7 +52,8 @@ import edu.ftcphoenix.fw.tools.tester.ui.HardwareNamePicker;
  *   <li><b>RUN</b>:
  *     <ul>
  *       <li>START: toggle tracking mode (ANY tag in layout vs SINGLE chosen ID)</li>
- *       <li>Y/X: increment/decrement the chosen tag ID (used in SINGLE mode)</li>
+ *       <li>Dpad Left/Right: decrement/increment the chosen tag ID (used in SINGLE mode)</li>
+ *       <li>Y/X: alias for tag ID decrement/increment</li>
  *       <li>A: snap estimator pose to the current vision pose (when available)</li>
  *       <li>B: toggle vision fusion on/off</li>
  *       <li>RB: set estimator pose to (0,0,0)</li>
@@ -206,7 +206,7 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
                                                      AprilTagLibrary tagLibraryOverride,
                                                      TagOnlyPoseEstimator.Config visionEstimatorConfigOverride) {
         this.preferredCameraName = preferredCameraName;
-        this.cameraMount = cameraMount;
+        this.cameraMount = cameraMount != null ? cameraMount : CameraMountConfig.identity();
         this.pinpointCfg = pinpointCfg != null ? pinpointCfg : PinpointPoseEstimator.Config.defaults();
         this.estimatorMode = estimatorMode != null ? estimatorMode : EstimatorMode.FUSION;
         this.fusionCfg = fusionCfg != null ? fusionCfg : OdometryTagFusionPoseEstimator.Config.defaults();
@@ -274,20 +274,23 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
             rebuildSelectionAndEstimators();
         });
 
+        // Tag ID selection (used in SINGLE mode). Dpad Left/Right are the primary controls;
+        // Y/X remain as aliases so older muscle memory still works.
+        bindings.onRise(gamepads.p1().dpadRight(), () -> {
+            if (!ready) return;
+            incrementSelectedTagId();
+        });
+        bindings.onRise(gamepads.p1().dpadLeft(), () -> {
+            if (!ready) return;
+            decrementSelectedTagId();
+        });
         bindings.onRise(gamepads.p1().y(), () -> {
             if (!ready) return;
-            selectedTagId++;
-            if (!trackAny) {
-                rebuildSelectionAndEstimators();
-            }
+            incrementSelectedTagId();
         });
-
         bindings.onRise(gamepads.p1().x(), () -> {
             if (!ready) return;
-            selectedTagId = Math.max(1, selectedTagId - 1);
-            if (!trackAny) {
-                rebuildSelectionAndEstimators();
-            }
+            decrementSelectedTagId();
         });
 
         // A: snap estimator pose to current vision estimate.
@@ -358,13 +361,21 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
 
     private void renderPicker() {
         Telemetry t = ctx.telemetry;
-        t.addLine("--- " + name() + " ---");
+        t.clearAll();
+        t.addLine("=== " + name() + " ===");
+
         if (initError != null) {
             t.addLine("Init error:");
             t.addLine(initError);
-            t.addLine();
+            t.addLine("");
         }
+
         cameraPicker.render(t);
+        t.addLine("");
+        t.addLine("Chosen: " + (selectedCameraName == null ? "(none)" : selectedCameraName));
+        t.addLine("Press A to choose a camera and initialize vision.");
+        t.addLine("Press B to refresh camera list.");
+        t.addLine("Press BACK to exit to the tester menu.");
         t.update();
     }
 
@@ -440,7 +451,40 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
                 : DEFAULT_MAX_AGE_SEC;
     }
 
+    private void incrementSelectedTagId() {
+        selectedTagId++;
+        if (!trackAny) {
+            rebuildSelectionAndEstimators();
+        }
+    }
+
+    private void decrementSelectedTagId() {
+        selectedTagId = Math.max(1, selectedTagId - 1);
+        if (!trackAny) {
+            rebuildSelectionAndEstimators();
+        }
+    }
+
+    private void renderInternalError(String message) {
+        Telemetry t = ctx.telemetry;
+        t.clearAll();
+        t.addLine("=== " + name() + " ===");
+        t.addLine("ERROR: " + message);
+        t.addLine("");
+        t.addLine("Try: BACK -> camera picker, then choose a camera again.");
+        t.addLine("If the problem persists, verify your camera configuration and wiring.");
+        t.update();
+    }
+
     private void updateAndRender() {
+        if (selection == null || visionEstimator == null || globalEstimator == null) {
+            rebuildSelectionAndEstimators();
+        }
+        if (selection == null || visionEstimator == null || globalEstimator == null) {
+            renderInternalError("Localization pipeline not initialized (selection/estimator is null)");
+            return;
+        }
+
         globalEstimator.update(clock);
 
         PoseEstimate odom = odomEstimator.getEstimate();
@@ -448,83 +492,99 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
         PoseEstimate global = globalEstimator.getEstimate();
         VisionCorrectionStats stats = globalEstimator.getVisionCorrectionStats();
 
-        Telemetry t = ctx.telemetry;
-        t.addLine("--- " + name() + " ---");
-        t.addLine("Controls: START any/single | X/Y tag id | A snap-to-vision | B vision on/off | RB zero | BACK picker");
-        t.addLine();
-
-        if (isLikelyIdentity(cameraMount)) {
-            t.addLine("NOTE: CameraMountConfig looks uncalibrated (identity). Run 'Calib: Camera Mount'.");
-        }
-        if (isLikelyDefaultPinpointOffsets(pinpointCfg)) {
-            t.addLine("NOTE: Pinpoint pod offsets look default (0/0). Run 'Calib: Pinpoint Pod Offsets'.");
-        }
-        if (isLikelyIdentity(cameraMount) || isLikelyDefaultPinpointOffsets(pinpointCfg)) {
-            t.addLine("NOTE: Both fusion and EKF estimators depend on accurate camera extrinsics and odometry offsets.");
-            t.addLine();
-        }
-
-        t.addData("Camera", selectedCameraName);
-        t.addData("Estimator", estimatorMode);
-        t.addData("Mode", trackAny ? "ANY" : ("SINGLE (id=" + selectedTagId + ")"));
-        t.addData("Vision Enabled", globalEstimator.isVisionEnabled());
-        t.addData("Vision MaxAge", "%.0f ms", effectiveVisionMaxAgeSec() * 1000.0);
-        t.addData("Vision Accept", "%d ok / %d rej", stats.acceptedVisionCount, stats.rejectedVisionCount);
-        t.addData("Vision Path", "%d replay / %d projected", stats.replayedVisionCount, stats.projectedVisionCount);
-        t.addData("Vision Skip", "%d dup / %d old", stats.skippedDuplicateVisionCount, stats.skippedOutOfOrderVisionCount);
-        if (layout instanceof FtcGameTagLayout) {
-            FtcGameTagLayout ftcLayout = (FtcGameTagLayout) layout;
-            t.addData("Layout Policy", ftcLayout.policySummaryLine());
-        } else if (layout != null) {
-            t.addData("Layout IDs", layout.ids());
-        }
-
         TagSelectionResult selectionResult = selection.get(clock);
         AprilTagObservation obs = selectionResult.hasFreshSelectedObservation
                 ? selectionResult.selectedObservation
                 : AprilTagObservation.noTarget(Double.POSITIVE_INFINITY);
-        if (obs == null || !obs.hasTarget) {
-            t.addData("Last Tag", "(none)");
-        } else {
-            t.addData("Last Tag", "id=%d age=%.0fms", obs.id, obs.ageSec * 1000.0);
-            t.addData("Tag Range", "%.1f in", obs.cameraRangeInches());
-            t.addData("Tag Bearing", "%.1f deg", Math.toDegrees(obs.cameraBearingRad()));
+
+        Telemetry t = ctx.telemetry;
+        t.clearAll();
+        t.addLine("=== " + name() + " ===");
+        t.addData("Camera", selectedCameraName);
+        t.addData("Estimator", estimatorMode);
+        t.addData("Track [START]", trackAny ? "ANY" : "SINGLE");
+        t.addData("Tag ID [Dpad L/R or Y/X]", selectedTagId);
+        t.addData("Vision [B]", globalEstimator.isVisionEnabled() ? "ENABLED" : "DISABLED");
+        t.addData("Snap to vision [A]", (vis != null && vis.hasPose) ? "READY" : "waiting for tag pose");
+        t.addData("Zero pose [RB]", "field pose -> (0,0,0)");
+        t.addData("Vision MaxAge", "%.0f ms", effectiveVisionMaxAgeSec() * 1000.0);
+
+        if (layout instanceof FtcGameTagLayout) {
+            FtcGameTagLayout ftcLayout = (FtcGameTagLayout) layout;
+            t.addData("Layout policy", ftcLayout.policySummaryLine());
+        } else if (layout != null) {
+            t.addData("Layout ids", layout.ids());
         }
 
-        t.addLine();
+        if (isLikelyIdentity(cameraMount)) {
+            t.addLine("");
+            t.addLine("NOTE: CameraMountConfig still looks like the identity placeholder.");
+            t.addLine("Run 'Calib: Camera Mount' before judging global localization quality.");
+        }
+        if (isLikelyDefaultPinpointOffsets(pinpointCfg)) {
+            t.addLine("");
+            t.addLine("NOTE: Pinpoint pod offsets still look like the default 0 / 0 values.");
+            t.addLine("Run 'Calib: Pinpoint Pod Offsets' before trusting the fused pose.");
+        }
 
-        renderPose(t, "Odom", odom);
-        renderPose(t, "Vision", vis);
-        renderPose(t, estimatorMode == EstimatorMode.EKF ? "EKF" : "Fused", global);
+        t.addLine("");
+        t.addLine("Selected tag:");
+        if (obs == null || !obs.hasTarget) {
+            t.addLine("  No fresh selected-tag observation.");
+            t.addLine("  Tips: check lighting, focus, layout coverage, and tag visibility.");
+        } else {
+            t.addData("  Tag id", obs.id);
+            t.addData("  Age", "%.0f ms", obs.ageSec * 1000.0);
+            t.addData("  Range", "%.1f in", obs.cameraRangeInches());
+            t.addData("  Bearing", "%.1f°", Math.toDegrees(obs.cameraBearingRad()));
+            t.addData("  cameraToTag", "fwd=%.1f in | left=%.1f in | up=%.1f in",
+                    obs.cameraForwardInches(),
+                    obs.cameraLeftInches(),
+                    obs.cameraUpInches());
+        }
+
+        t.addLine("");
+        t.addLine("Pose estimates:");
+        renderPose(t, "  Odom", odom);
+        renderPose(t, "  Vision", vis);
+        renderPose(t, estimatorMode == EstimatorMode.EKF ? "  EKF" : "  Fused", global);
 
         if (global != null && global.hasPose && global.fieldToRobotPose != null) {
             Pose3d p = global.fieldToRobotPose;
-            t.addLine();
-            t.addLine(String.format(Locale.US,
-                    "%s (x,y,h)= (%.1f, %.1f, %.1fdeg)",
-                    estimatorMode == EstimatorMode.EKF ? "EKF" : "Fused",
-                    p.xInches, p.yInches, Math.toDegrees(p.yawRad)));
+            t.addData("  Global summary", "x=%.1f y=%.1f | yaw=%.1f°",
+                    p.xInches,
+                    p.yInches,
+                    Math.toDegrees(p.yawRad));
         }
+
+        t.addLine("");
+        t.addLine("Vision correction stats:");
+        t.addData("  Accept / reject", "%d / %d", stats.acceptedVisionCount, stats.rejectedVisionCount);
+        t.addData("  Replay / projected", "%d / %d", stats.replayedVisionCount, stats.projectedVisionCount);
+        t.addData("  Skip dup / old", "%d / %d", stats.skippedDuplicateVisionCount, stats.skippedOutOfOrderVisionCount);
 
         if (globalEstimator instanceof OdometryTagEkfPoseEstimator) {
             OdometryTagEkfPoseEstimator ekf = (OdometryTagEkfPoseEstimator) globalEstimator;
-            t.addLine();
-            t.addData("EKF Std", "pos=%.2f in, head=%.2f deg",
+            t.addLine("");
+            t.addLine("EKF diagnostics:");
+            t.addData("  EKF Std", "pos=%.2f in | head=%.2f°",
                     ekf.getPositionStdIn(),
                     Math.toDegrees(ekf.getHeadingStdRad()));
-            t.addData("EKF Innov", "pos=%.2f in, head=%.2f deg, maha=%.2f",
+            t.addData("  EKF Innov", "pos=%.2f in | head=%.2f° | maha=%.2f",
                     ekf.getLastInnovationPositionIn(),
                     Math.toDegrees(ekf.getLastInnovationHeadingRad()),
                     ekf.getLastInnovationMahalanobisSq());
-            t.addData("EKF Meas σ", "pos=%.2f in, head=%.2f deg",
+            t.addData("  EKF Meas σ", "pos=%.2f in | head=%.2f°",
                     ekf.getLastMeasurementPositionStdIn(),
                     Math.toDegrees(ekf.getLastMeasurementHeadingStdRad()));
         }
 
-        t.addLine();
+        t.addLine("");
         t.addLine("Layout summary:");
         FtcTagLayoutDebug.dumpSummary(layout, new FtcTelemetryDebugSink(t), "layout");
 
+        t.addLine("");
+        t.addLine("BACK: return to the camera picker.");
         t.update();
     }
 

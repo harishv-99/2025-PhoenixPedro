@@ -880,11 +880,18 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
     }
 
     private void renderTelemetry(boolean initPhase) {
-        ctx.telemetry.addLine(name());
+        ctx.telemetry.clearAll();
+        ctx.telemetry.addLine("=== " + name() + " ===");
 
-        // Quick status
+        // Quick status + primary controls.
         ctx.telemetry.addData("Phase", phase);
-        ctx.telemetry.addData("Auto sample", autoSample);
+        ctx.telemetry.addData("Manual sample [A]", phase == Phase.IDLE ? "start / stop" : (autoSample ? "not active" : "press A to finish / skip"));
+        ctx.telemetry.addData("Auto sample [Y]", drive != null ? (autoSample ? "ACTIVE" : "start 180° turn") : "unavailable (no drive)");
+        ctx.telemetry.addData("Abort [B]", isSampleActive() ? "cancel current sample" : "idle");
+        ctx.telemetry.addData("Reset [X]", "zero pose + clear results");
+        if (drive != null) {
+            ctx.telemetry.addData("Rotate [RightStickX]", phase == Phase.ROTATING && !autoSample ? "manual turn now" : "available in manual sample");
+        }
 
         if (phase == Phase.SEARCH_TAG_START || phase == Phase.SEARCH_TAG_END) {
             double turned = Math.abs(tagSearchUnwrapper.getUnwrappedRad() - tagSearchStartUnwrappedRad);
@@ -957,52 +964,53 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         }
         switch (phase) {
             case IDLE:
-                ctx.telemetry.addLine("Controls: X reset | A manual sample | Y auto sample | B abort");
+                ctx.telemetry.addLine("Manual sample [A]: rotate in place, then press A again to compute.");
+                ctx.telemetry.addLine("Auto sample [Y]: rotate automatically to the target heading when drive wiring exists.");
                 if (drive == null) {
-                    ctx.telemetry.addLine("(No drive configured) You will rotate the robot by hand.");
+                    ctx.telemetry.addLine("(No drive configured) Manual samples are by hand only.");
                 }
                 if (cfg.enableAprilTagAssist) {
-                    ctx.telemetry.addLine("Tip: if a known-pose tag is visible, the tester will align Pinpoint to it.");
+                    ctx.telemetry.addLine("Tip: if a known-pose tag is visible, the tester can align Pinpoint to it.");
                 }
                 break;
 
             case SEARCH_TAG_START:
-                ctx.telemetry.addLine("Searching for a known-pose tag...");
-                ctx.telemetry.addLine("A: skip (start without tags) | B: abort");
+                ctx.telemetry.addLine("Searching for a known-pose tag before starting the sample...");
+                ctx.telemetry.addLine("Skip assist [A] | Abort [B]");
                 break;
 
             case ROTATING:
                 if (autoSample) {
                     if (cfg.enableAprilTagAssist && cfg.autoComputeAfterAutoSample) {
-                        ctx.telemetry.addLine("Auto rotating... will stop at target and auto-compute (B abort)");
+                        ctx.telemetry.addLine("Auto sample [Y] is rotating now and will auto-compute at the end.");
                     } else {
-                        ctx.telemetry.addLine("Auto rotating... (B abort)");
+                        ctx.telemetry.addLine("Auto sample [Y] is rotating now. Abort [B] if needed.");
                     }
                 } else {
                     if (drive != null) {
-                        ctx.telemetry.addLine("Rotate now: right stick X. Press A when done.");
+                        ctx.telemetry.addLine("Manual rotate [RightStickX], then finish [A].");
                     } else {
-                        ctx.telemetry.addLine("Rotate the robot by hand. Press A when done.");
+                        ctx.telemetry.addLine("Rotate the robot by hand, then finish [A].");
                     }
                 }
                 if (autoSample && cfg.enableAprilTagAssist && cfg.autoComputeAfterAutoSample) {
-                    ctx.telemetry.addLine("Tip: with tag assist, results compute automatically after the turn.");
+                    ctx.telemetry.addLine("Tip: with tag assist, results can compute automatically after the turn.");
                 } else if (cfg.enablePostRotateRecenter) {
-                    ctx.telemetry.addLine("After you stop rotation: you can recenter, then press A to compute.");
+                    ctx.telemetry.addLine("After rotation you can recenter, then finish [A] to compute.");
                 } else {
-                    ctx.telemetry.addLine("Press A to compute immediately when rotation is complete.");
+                    ctx.telemetry.addLine("Finish [A] computes immediately when rotation is complete.");
                 }
                 break;
 
             case SEARCH_TAG_END:
                 ctx.telemetry.addLine("Trying to reacquire a tag pose for the end of the sample...");
-                ctx.telemetry.addLine("A: skip | B: abort");
+                ctx.telemetry.addLine("Skip assist [A] | Abort [B]");
                 break;
 
             case POST_RECENTER:
-                ctx.telemetry.addLine("Recenter (optional): translate back to the starting spot, then press A.");
+                ctx.telemetry.addLine("Recenter (optional): translate back to the starting spot, then finish [A].");
                 if (drive != null) {
-                    ctx.telemetry.addLine("Left stick: translate (no rotate)");
+                    ctx.telemetry.addLine("Translate [LeftStick] with no rotation.");
                 } else {
                     ctx.telemetry.addLine("(No drive configured) You can physically reposition the robot.");
                 }

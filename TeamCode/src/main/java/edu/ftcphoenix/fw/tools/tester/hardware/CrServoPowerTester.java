@@ -4,8 +4,6 @@ import com.qualcomm.robotcore.hardware.CRServo;
 
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 
-import java.util.Locale;
-
 import edu.ftcphoenix.fw.tools.tester.BaseTeleOpTester;
 import edu.ftcphoenix.fw.tools.tester.ui.HardwareNamePicker;
 import edu.ftcphoenix.fw.tools.tester.ui.ScalarTuner;
@@ -226,19 +224,15 @@ public final class CrServoPowerTester extends BaseTeleOpTester {
 
         t.addLine("=== CRServo Power Tester ===");
         t.addLine("CRServo: " + servoName);
-
-        power.render(t);
+        t.addData("Enable [A]", power.isEnabled() ? "ON" : "OFF");
+        t.addData("Invert [X]", power.isInverted() ? "ON" : "OFF");
+        t.addData("Step [START]", "%s (%.2f)", power.isFine() ? "FINE" : "COARSE", power.step());
+        t.addData("Power target [Dpad U/D | LeftStickY]", "%.2f", power.target());
+        t.addData("Power applied", "%.2f", appliedPower);
+        t.addData("Zero [B]", "target -> 0.00");
 
         t.addLine("");
-        t.addLine("Controls: A enable | X invert | START step | dpad +/- | stickY override | B zero | BACK picker");
-
-        if (servo != null) {
-            try {
-                t.addLine(String.format(Locale.US, "Applied=%.2f", appliedPower));
-            } catch (Exception ignored) {
-            }
-        }
-
+        t.addLine("BACK: return to the CRServo picker.");
         t.update();
     }
 }

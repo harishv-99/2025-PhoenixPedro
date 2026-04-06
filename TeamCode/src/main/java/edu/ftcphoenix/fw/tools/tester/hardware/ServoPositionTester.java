@@ -4,8 +4,6 @@ import com.qualcomm.robotcore.hardware.Servo;
 
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 
-import java.util.Locale;
-
 import edu.ftcphoenix.fw.tools.tester.BaseTeleOpTester;
 import edu.ftcphoenix.fw.tools.tester.ui.HardwareNamePicker;
 import edu.ftcphoenix.fw.tools.tester.ui.ScalarTuner;
@@ -244,19 +242,22 @@ public final class ServoPositionTester extends BaseTeleOpTester {
 
         t.addLine("=== Servo Position Tester ===");
         t.addLine("Servo: " + servoName);
-
-        position.render(t);
-
-        t.addLine(String.format(Locale.US, "AppliedNow=%.3f", applied));
-        t.addLine("Controls: A enable | X invert | START step | dpad +/- | stickY override | B center | BACK picker");
+        t.addData("Enable [A]", position.isEnabled() ? "ON" : "OFF (hold last)");
+        t.addData("Invert [X]", position.isInverted() ? "ON" : "OFF");
+        t.addData("Step [START]", "%s (%.3f)", position.isFine() ? "FINE" : "COARSE", position.step());
+        t.addData("Position target [Dpad U/D | LeftStickY]", "%.3f", position.target());
+        t.addData("Center [B]", "target -> 0.500");
+        t.addData("Applied now", "%.3f", applied);
 
         if (servo != null) {
             try {
-                t.addLine(String.format(Locale.US, "Servo.getPosition()=%.3f", servo.getPosition()));
+                t.addData("Servo.getPosition()", "%.3f", servo.getPosition());
             } catch (Exception ignored) {
             }
         }
 
+        t.addLine("");
+        t.addLine("BACK: return to the servo picker.");
         t.update();
     }
 }

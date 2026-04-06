@@ -45,6 +45,15 @@ These exist so the student-facing packages stay small and consistent:
 * `edu.ftcphoenix.fw.ftc.*` — the **FTC SDK boundary** (hardware adapters, frame conversions, FTC vision plumbing). Most teams only touch a couple entrypoints like `FtcDrives`.
 * `edu.ftcphoenix.fw.tools.*` — testers and examples you can copy.
 
+### Tester menus and calibration flows
+
+The tester framework is now organized around two complementary ideas:
+
+- **category suites**, where each tester has one natural home
+- **guided walkthroughs**, where a robot can present a recommended bring-up order for students
+
+If you are trying to bring up a fresh robot, start with [`Robot Calibration Tutorials`](<../testing-calibration/Robot Calibration Tutorials.md>) and [`Guided Calibration Walkthroughs`](<../testing-calibration/Guided Calibration Walkthroughs.md>). Those docs explain both the student-facing calibration flow and the framework helpers used to build robot-specific walkthrough menus.
+
 One important gotcha with FTC vision:
 
 * Anything backed by a `VisionPortal` **owns the camera**. When you are done with a vision tester/OpMode,

@@ -5,7 +5,6 @@ import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
 import org.firstinspires.ftc.vision.apriltag.AprilTagLibrary;
 
 import java.util.Collections;
-import java.util.Locale;
 import java.util.Set;
 
 import edu.ftcphoenix.fw.core.geometry.Pose2d;
@@ -60,7 +59,8 @@ import edu.ftcphoenix.fw.tools.tester.ui.HardwareNamePicker;
  *   <li><b>RUN (camera chosen)</b>:
  *     <ul>
  *       <li>START: toggle tracking mode (ANY tag in layout vs SINGLE chosen ID)</li>
- *       <li>Y/X: increment/decrement the chosen tag ID (used in SINGLE mode)</li>
+ *       <li>Dpad Left/Right: decrement/increment the chosen tag ID (used in SINGLE mode)</li>
+ *       <li>Y/X: alias for tag ID decrement/increment</li>
  *       <li>A: capture a pose sample (used to assess stability/jitter)</li>
  *       <li>B: clear captured samples</li>
  *       <li>BACK: return to camera picker (change camera)</li>
@@ -238,21 +238,23 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
             rebuildSelectionAndEstimator();
         });
 
-        // Tag ID selection (used in SINGLE mode)
+        // Tag ID selection (used in SINGLE mode). Dpad Left/Right are the primary controls;
+        // Y/X remain as aliases so older muscle memory still works.
+        bindings.onRise(gamepads.p1().dpadRight(), () -> {
+            if (!visionReady) return;
+            incrementSelectedTagId();
+        });
+        bindings.onRise(gamepads.p1().dpadLeft(), () -> {
+            if (!visionReady) return;
+            decrementSelectedTagId();
+        });
         bindings.onRise(gamepads.p1().y(), () -> {
             if (!visionReady) return;
-            selectedTagId++;
-            if (!trackAny) {
-                rebuildSelectionAndEstimator();
-            }
+            incrementSelectedTagId();
         });
-
         bindings.onRise(gamepads.p1().x(), () -> {
             if (!visionReady) return;
-            selectedTagId = Math.max(1, selectedTagId - 1);
-            if (!trackAny) {
-                rebuildSelectionAndEstimator();
-            }
+            decrementSelectedTagId();
         });
 
         // A: capture sample (only when we have a pose)
@@ -421,6 +423,7 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
         t.addLine("Chosen: " + (selectedCameraName == null ? "(none)" : selectedCameraName));
         t.addLine("Press A to choose a camera and initialize vision.");
         t.addLine("Press B to refresh camera list.");
+        t.addLine("Press BACK to exit to the tester menu.");
 
         if (visionInitError != null) {
             t.addLine("");
@@ -469,27 +472,23 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
         t.clearAll();
 
         t.addLine("=== AprilTag Localization ===");
-        t.addLine(String.format(Locale.US,
-                "Camera=%s | MaxAge=%.0f ms | Track=%s",
-                selectedCameraName,
-                effectiveMaxAgeSec() * 1000.0,
-                trackAny ? "ANY" : ("SINGLE id=" + selectedTagId)
-        ));
-
-        t.addLine("Controls: START trackMode | Y/X tagId | A sample | B clear | BACK camera picker");
-
+        t.addData("Camera", selectedCameraName);
+        t.addData("Track [START]", trackAny ? "ANY" : "SINGLE");
+        t.addData("Tag ID [Dpad L/R or Y/X]", selectedTagId);
+        t.addData("Samples [A capture | B clear]", samples.count());
+        t.addData("MaxAge", "%.0f ms", effectiveMaxAgeSec() * 1000.0);
 
         if (layout instanceof FtcGameTagLayout) {
             FtcGameTagLayout ftcLayout = (FtcGameTagLayout) layout;
-            t.addLine("Layout policy: " + ftcLayout.policySummaryLine());
+            t.addData("Layout policy", ftcLayout.policySummaryLine());
         } else if (layout != null) {
-            t.addLine("Layout ids: " + layout.ids());
+            t.addData("Layout ids", layout.ids());
         }
 
         if (isLikelyIdentity(cameraMount)) {
             t.addLine("");
-            t.addLine("NOTE: CameraMountConfig looks like identity (0,0,0,0,0,0).");
-            t.addLine("      Run 'Calib: Camera Mount' and update your RobotConfig for better accuracy.");
+            t.addLine("NOTE: CameraMountConfig still looks like the identity placeholder.");
+            t.addLine("Run 'Calib: Camera Mount' and update your RobotConfig for better accuracy.");
         }
 
         t.addLine("");
@@ -499,30 +498,23 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
             t.addLine("  No fresh tag detection.");
             t.addLine("  Tips: check lighting, focus, camera stream, and tag visibility.");
         } else {
-            t.addLine(String.format(Locale.US,
-                    "  id=%d | age=%.0f ms | range=%.1f in | bearing=%.1f°",
-                    obs.id,
-                    obs.ageSec * 1000.0,
-                    obs.cameraRangeInches(),
-                    Math.toDegrees(obs.cameraBearingRad())
-            ));
-            t.addLine(String.format(Locale.US,
-                    "  cameraToTag: forward=%.1f in | left=%.1f in | up=%.1f in",
+            t.addData("  Tag id", obs.id);
+            t.addData("  Age", "%.0f ms", obs.ageSec * 1000.0);
+            t.addData("  Range", "%.1f in", obs.cameraRangeInches());
+            t.addData("  Bearing", "%.1f°", Math.toDegrees(obs.cameraBearingRad()));
+            t.addData("  cameraToTag", "fwd=%.1f in | left=%.1f in | up=%.1f in",
                     obs.cameraForwardInches(),
                     obs.cameraLeftInches(),
-                    obs.cameraUpInches()
-            ));
+                    obs.cameraUpInches());
 
             boolean inLayout = (layout != null && layout.has(obs.id));
-            t.addLine("  inLayout=" + inLayout);
+            t.addData("  In layout", inLayout);
 
             if (inLayout) {
                 Pose3d ft = layout.requireFieldToTagPose(obs.id);
-                t.addLine(String.format(Locale.US,
-                        "  fieldToTag: x=%.1f y=%.1f z=%.1f | yaw=%.1f°",
+                t.addData("  fieldToTag", "x=%.1f y=%.1f z=%.1f | yaw=%.1f°",
                         ft.xInches, ft.yInches, ft.zInches,
-                        Math.toDegrees(ft.yawRad)
-                ));
+                        Math.toDegrees(ft.yawRad));
             }
         }
 
@@ -532,15 +524,10 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
             t.addLine("  (no pose) Need: fresh detection for a tag present in the field layout.");
         } else {
             Pose3d p = est.fieldToRobotPose;
-            t.addLine(String.format(Locale.US,
-                    "  fieldToRobot: x=%.1f y=%.1f | yaw=%.1f°",
-                    p.xInches, p.yInches, Math.toDegrees(p.yawRad)
-            ));
-            t.addLine(String.format(Locale.US,
-                    "  timestamp=%.3f s | age=%.0f ms",
-                    est.timestampSec,
-                    est.ageSec * 1000.0
-            ));
+            t.addData("  fieldToRobot", "x=%.1f y=%.1f | yaw=%.1f°",
+                    p.xInches, p.yInches, Math.toDegrees(p.yawRad));
+            t.addData("  Pose time", "%.3f s", est.timestampSec);
+            t.addData("  Pose age", "%.0f ms", est.ageSec * 1000.0);
         }
 
         t.addLine("");
@@ -562,10 +549,8 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
                     0.0
             );
 
-            t.addLine(String.format(Locale.US,
-                    "  fieldToRobot(sdk): x=%.1f y=%.1f | yaw=%.1f°",
-                    sdkPlanar.xInches, sdkPlanar.yInches, Math.toDegrees(sdkPlanar.yawRad)
-            ));
+            t.addData("  SDK fieldToRobot", "x=%.1f y=%.1f | yaw=%.1f°",
+                    sdkPlanar.xInches, sdkPlanar.yInches, Math.toDegrees(sdkPlanar.yawRad));
 
             if (est.hasPose && est.fieldToRobotPose != null) {
                 Pose3d p = est.fieldToRobotPose;
@@ -575,40 +560,45 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
                 double dxy = Math.hypot(dx, dy);
                 double dYawRad = MathUtil.wrapToPi(p.yawRad - sdkPlanar.yawRad);
 
-                t.addLine(String.format(Locale.US,
-                        "  delta (est - sdk): dXY=%.2f in | dYaw=%.2f°",
+                t.addData("  Est - SDK", "dXY=%.2f in | dYaw=%.2f°",
                         dxy,
-                        Math.toDegrees(dYawRad)
-                ));
+                        Math.toDegrees(dYawRad));
             }
         }
 
         t.addLine("");
-        t.addLine("Sampling (press A to capture):");
+        t.addLine("Sampling:");
         if (samples.count() <= 0) {
-            t.addLine("  Samples: 0  (Press A while the robot is still)");
+            t.addLine("  Samples [A]: 0  (capture while the robot is still)");
         } else {
-            t.addLine(String.format(Locale.US,
-                    "  Samples: %d",
-                    samples.count()
-            ));
-
-            t.addLine(String.format(Locale.US,
-                    "  mean: x=%.1f y=%.1f | yaw=%.1f°",
+            t.addData("  Samples [A]", samples.count());
+            t.addData("  Mean", "x=%.1f y=%.1f | yaw=%.1f°",
                     samples.meanX(),
                     samples.meanY(),
-                    Math.toDegrees(samples.meanYawRad())
-            ));
-
-            t.addLine(String.format(Locale.US,
-                    "  std : x=%.2f y=%.2f | yaw=%.2f°",
+                    Math.toDegrees(samples.meanYawRad()));
+            t.addData("  Std dev", "x=%.2f y=%.2f | yaw=%.2f°",
                     samples.stdX(),
                     samples.stdY(),
-                    Math.toDegrees(samples.circularStdYawRad())
-            ));
+                    Math.toDegrees(samples.circularStdYawRad()));
         }
 
+        t.addLine("");
+        t.addLine("BACK: return to the camera picker.");
         t.update();
+    }
+
+    private void incrementSelectedTagId() {
+        selectedTagId++;
+        if (!trackAny) {
+            rebuildSelectionAndEstimator();
+        }
+    }
+
+    private void decrementSelectedTagId() {
+        selectedTagId = Math.max(1, selectedTagId - 1);
+        if (!trackAny) {
+            rebuildSelectionAndEstimator();
+        }
     }
 
     private static boolean isLikelyIdentity(CameraMountConfig m) {

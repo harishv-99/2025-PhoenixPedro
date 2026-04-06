@@ -81,3 +81,12 @@ That includes:
 - `CameraMountCalibrator`
 
 If you want to run outside a full game field, pass your custom `layout` and `lib` into the tester's constructor/config.
+
+
+## 5) Related calibration docs
+
+If you are using this practice setup as part of a full robot bring-up, also read:
+
+- [`Robot Calibration Tutorials`](<../testing-calibration/Robot Calibration Tutorials.md>)
+- [`Robot Calibration Tutorials → Camera mount`](<../testing-calibration/Robot Calibration Tutorials.md#camera-mount>)
+- [`Robot Calibration Tutorials → AprilTag-only localization check`](<../testing-calibration/Robot Calibration Tutorials.md#apriltag-only-localization-check>)

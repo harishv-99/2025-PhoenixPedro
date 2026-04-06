@@ -248,13 +248,17 @@ public final class PinpointAxisDirectionTester extends BaseTeleOpTester {
         telemHeader("Pinpoint Axis Direction Check");
 
         ctx.telemetry.addLine("Phoenix pose convention: +X forward, +Y left, heading CCW+.");
-        ctx.telemetry.addLine("Do each sample by hand, then press the same button again to stop.");
+        ctx.telemetry.addLine("Push the robot by hand, then press the same key again to stop that sample.");
         ctx.telemetry.addLine("");
 
-        ctx.telemetry.addData("mode", mode);
-        ctx.telemetry.addData("pose.x(in)", fmt(pose.xInches));
-        ctx.telemetry.addData("pose.y(in)", fmt(pose.yInches));
-        ctx.telemetry.addData("pose.heading(deg)", fmt(Math.toDegrees(pose.headingRad)));
+        ctx.telemetry.addData("Mode", mode);
+        ctx.telemetry.addData("Pose X", "%s in", fmt(pose.xInches));
+        ctx.telemetry.addData("Pose Y", "%s in", fmt(pose.yInches));
+        ctx.telemetry.addData("Pose heading", "%s deg", fmt(Math.toDegrees(pose.headingRad)));
+        ctx.telemetry.addData("Forward sample [A]", mode == Mode.SAMPLE_FORWARD ? "ACTIVE" : "start / stop");
+        ctx.telemetry.addData("Left sample [Y]", mode == Mode.SAMPLE_LEFT ? "ACTIVE" : "start / stop");
+        ctx.telemetry.addData("Rotate sample [B]", mode == Mode.SAMPLE_ROTATE ? "ACTIVE" : "start / stop CCW");
+        ctx.telemetry.addData("Reset [X]", "zero pose + clear results");
         ctx.telemetry.addLine("");
 
         // Current config snapshot.
@@ -292,12 +296,12 @@ public final class PinpointAxisDirectionTester extends BaseTeleOpTester {
         renderRotate();
 
         ctx.telemetry.addLine("");
-        ctx.telemetry.addLine("Controls: X reset | A forward | Y left | B rotate CCW");
+        ctx.telemetry.addLine("Controls: Forward [A] | Left [Y] | Rotate CCW [B] | Reset [X]");
         telemUpdate();
     }
 
     private void renderForward() {
-        ctx.telemetry.addLine("Forward sample (A): push robot forward");
+        ctx.telemetry.addLine("Forward sample [A]: push robot forward");
         if (forwardResult == null) {
             ctx.telemetry.addLine("  (no sample yet)");
             return;
@@ -320,7 +324,7 @@ public final class PinpointAxisDirectionTester extends BaseTeleOpTester {
     }
 
     private void renderLeft() {
-        ctx.telemetry.addLine("Left sample (Y): push robot left");
+        ctx.telemetry.addLine("Left sample [Y]: push robot left");
         if (leftResult == null) {
             ctx.telemetry.addLine("  (no sample yet)");
             return;
@@ -343,7 +347,7 @@ public final class PinpointAxisDirectionTester extends BaseTeleOpTester {
     }
 
     private void renderRotate() {
-        ctx.telemetry.addLine("Rotate sample (B): rotate robot CCW");
+        ctx.telemetry.addLine("Rotate sample [B]: rotate robot CCW");
         if (rotateResult == null) {
             ctx.telemetry.addLine("  (no sample yet)");
             return;

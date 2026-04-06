@@ -5,8 +5,6 @@ import com.qualcomm.robotcore.hardware.DcMotorEx;
 
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 
-import java.util.Locale;
-
 import edu.ftcphoenix.fw.tools.tester.BaseTeleOpTester;
 import edu.ftcphoenix.fw.tools.tester.ui.HardwareNamePicker;
 import edu.ftcphoenix.fw.tools.tester.ui.IntTuner;
@@ -411,28 +409,21 @@ public final class DcMotorVelocityTester extends BaseTeleOpTester {
 
         t.addLine("=== DcMotor Velocity Tester ===");
         t.addLine("Motor: " + motorName);
-
-        t.addLine(String.format(Locale.US,
-                "Enabled=%s | Step=%s (step=%d tps) | StickNudge=%s",
-                targetVelTps.isEnabled() ? "ON" : "OFF",
+        t.addData("Enable [A]", targetVelTps.isEnabled() ? "RUN_USING_ENCODER ON" : "OFF");
+        t.addData("Direction [X]", String.valueOf(safeGetDir(motor)));
+        t.addData("Step [START]", "%s (%d tps)",
                 targetVelTps.isFine() ? "FINE" : "COARSE",
-                targetVelTps.step(),
-                "RightStickY"
-        ));
-
-        t.addLine("");
-        targetVelTps.render(t);
+                targetVelTps.step());
+        t.addData("Target vel [Dpad U/D | RightStickY]", "%d tps", targetVelTps.target());
+        t.addData("Applied target", "%d tps", targetVelTps.applied());
+        t.addData("Zero target [Y]", "target -> 0 tps");
+        t.addData("Stop [B]", "disable + velocity 0");
 
         double measured = 0.0;
         DcMotor.RunMode mode = null;
-        DcMotor.Direction dir = null;
 
         try {
             mode = motor.getMode();
-        } catch (Exception ignored) {
-        }
-        try {
-            dir = motor.getDirection();
         } catch (Exception ignored) {
         }
         try {
@@ -441,20 +432,12 @@ public final class DcMotorVelocityTester extends BaseTeleOpTester {
         }
 
         t.addLine("");
-        t.addLine(String.format(Locale.US,
-                "MeasuredVel=%.1f tps | Error=%.1f tps",
-                measured,
-                (targetVelTps.target() - measured)
-        ));
-        t.addLine(String.format(Locale.US,
-                "Mode=%s | Dir=%s",
-                String.valueOf(mode),
-                String.valueOf(dir)
-        ));
+        t.addData("Measured velocity", "%.1f tps", measured);
+        t.addData("Velocity error", "%.1f tps", targetVelTps.target() - measured);
+        t.addData("Mode", String.valueOf(mode));
 
         t.addLine("");
-        t.addLine("Controls: A enable | X dir | START fine/coarse | dpad U/D target | RStickY nudge | Y zero target | B stop | BACK picker");
-
+        t.addLine("BACK: return to the motor picker.");
         t.update();
     }
 }

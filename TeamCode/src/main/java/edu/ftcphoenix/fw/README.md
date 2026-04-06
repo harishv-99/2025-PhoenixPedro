@@ -48,6 +48,13 @@ If you are new to Phoenix, read in this order:
 - [`docs/drive-vision/AprilTag Localization & Fixed Layouts.md`](<docs/drive-vision/AprilTag Localization & Fixed Layouts.md>)
 - [`docs/drive-vision/Drive Guidance.md`](<docs/drive-vision/Drive Guidance.md>)
 
+### I want to bring up and calibrate a robot from scratch
+
+- [`docs/testing-calibration/Robot Calibration Tutorials.md`](<docs/testing-calibration/Robot Calibration Tutorials.md>)
+- [`docs/testing-calibration/Guided Calibration Walkthroughs.md`](<docs/testing-calibration/Guided Calibration Walkthroughs.md>)
+- [`docs/drive-vision/AprilTag Localization & Fixed Layouts.md`](<docs/drive-vision/AprilTag Localization & Fixed Layouts.md>)
+- [`docs/ftc-boundary/FTC Sensors.md`](<docs/ftc-boundary/FTC Sensors.md>)
+
 ### I want a concrete end-to-end example
 
 - [`docs/examples/Shooter Case Study & Examples Walkthrough.md`](<docs/examples/Shooter Case Study & Examples Walkthrough.md>)
@@ -71,6 +78,8 @@ If you are new to Phoenix, read in this order:
   - loop semantics and source/signal composition
 - `docs/drive-vision/`
   - drive guidance, AprilTag localization policy, and practice setup
+- `docs/testing-calibration/`
+  - ordered calibration tutorials and walkthrough-builder guidance
 - `docs/ftc-boundary/`
   - FTC-boundary sensor notes and recommendations
 - `docs/examples/`

@@ -9,16 +9,11 @@ import edu.ftcphoenix.fw.tools.tester.hardware.ServoPositionTester;
 import edu.ftcphoenix.fw.tools.tester.localization.AprilTagLocalizationTester;
 
 /**
- * Registers the standard Phoenix framework testers into a {@link TesterSuite}.
+ * Registers the standard Phoenix framework testers into organized menu groups.
  *
- * <p>This is preferred over inheritance: create a suite, call {@link #register(TesterSuite)},
- * then optionally add robot-specific testers that use your RobotConfig.</p>
- *
- * <pre>
- * TesterSuite suite = new TesterSuite();
- * StandardTesters.register(suite);
- * suite.add("Intake Motor", () -> new DcMotorPowerTester(cfg.intakeMotorName()));
- * </pre>
+ * <p>Guided walkthrough menus may intentionally duplicate a few entries, but the framework testers
+ * themselves should still have one obvious "home" in the menu tree. That keeps the top-level menu
+ * compact even as more testers are added over time.</p>
  */
 public final class StandardTesters {
 
@@ -26,26 +21,68 @@ public final class StandardTesters {
     }
 
     /**
-     * Adds the standard framework testers to the given suite.
+     * Adds the framework tester groups to the supplied top-level suite.
      */
     public static void register(TesterSuite suite) {
         if (suite == null) return;
 
-        // Calibration
+        suite.add(
+                "Framework: Calibration & Localization",
+                "Framework-owned camera-mount and AprilTag localization tools.",
+                StandardTesters::createCalibrationAndLocalizationSuite
+        );
+
+        suite.add(
+                "Framework: Hardware Testers",
+                "Generic DcMotor / Servo / CRServo bring-up tools.",
+                StandardTesters::createHardwareSuite
+        );
+    }
+
+    /**
+     * Creates a standalone suite containing the organized framework tester groups.
+     */
+    public static TesterSuite createSuite() {
+        TesterSuite suite = new TesterSuite()
+                .setTitle("Framework Tester Menu")
+                .setHelp("Choose a tester group. BACK returns to the previous menu.");
+        register(suite);
+        return suite;
+    }
+
+    /**
+     * Framework camera-mount and localization tools.
+     */
+    public static TesterSuite createCalibrationAndLocalizationSuite() {
+        TesterSuite suite = new TesterSuite()
+                .setTitle("Framework Calibration & Localization")
+                .setHelp("Camera mount and AprilTag bring-up tools.")
+                .setMaxVisibleItems(8);
+
         suite.add(
                 "Calib: Camera Mount",
-                "Solve robotToCameraPose using known robot pose + tag layout. Includes camera picker.",
+                "Solve robotToCameraPose using known robot pose + fixed tag layout. Includes camera picker.",
                 CameraMountCalibrator::new
         );
 
-        // Localization
         suite.add(
                 "Loc: AprilTag Localization",
-                "Verify AprilTag detections + compute fieldToRobot pose (includes camera picker).",
+                "Verify AprilTag detections and the field pose solve. Includes camera picker.",
                 AprilTagLocalizationTester::new
         );
 
-        // Hardware - Motors
+        return suite;
+    }
+
+    /**
+     * Framework hardware bring-up tools.
+     */
+    public static TesterSuite createHardwareSuite() {
+        TesterSuite suite = new TesterSuite()
+                .setTitle("Framework Hardware Testers")
+                .setHelp("Generic hardware sanity-check tools.")
+                .setMaxVisibleItems(8);
+
         suite.add(
                 "HW: DcMotor Power",
                 "Open-loop motor power test (enable, invert, step, stick override).",
@@ -64,7 +101,6 @@ public final class StandardTesters {
                 DcMotorVelocityTester::new
         );
 
-        // Hardware - Servos
         suite.add(
                 "HW: CRServo Power",
                 "Continuous rotation servo power test (enable, invert, step, stick override).",
@@ -76,14 +112,7 @@ public final class StandardTesters {
                 "Standard servo position test (enable=hold, invert, step, stick override).",
                 ServoPositionTester::new
         );
-    }
 
-    /**
-     * Convenience: creates a new suite with standard testers already registered.
-     */
-    public static TesterSuite createSuite() {
-        TesterSuite suite = new TesterSuite();
-        register(suite);
         return suite;
     }
 }

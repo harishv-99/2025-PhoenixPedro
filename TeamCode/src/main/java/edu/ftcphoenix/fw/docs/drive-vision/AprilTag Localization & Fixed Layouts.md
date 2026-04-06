@@ -281,6 +281,13 @@ If you want that same summary elsewhere, use `FtcTagLayoutDebug.dumpSummary(...)
 framework-owned view of the included IDs and, when available, the source FTC library IDs plus the
 IDs intentionally excluded from the fixed layout.
 
+For the step-by-step human workflow around these tools, see:
+
+- [`Robot Calibration Tutorials`](<../testing-calibration/Robot Calibration Tutorials.md>) for the full ordered path
+- [`Robot Calibration Tutorials → Camera mount`](<../testing-calibration/Robot Calibration Tutorials.md#camera-mount>)
+- [`Robot Calibration Tutorials → AprilTag-only localization check`](<../testing-calibration/Robot Calibration Tutorials.md#apriltag-only-localization-check>)
+- [`Guided Calibration Walkthroughs`](<../testing-calibration/Guided Calibration Walkthroughs.md>) for how robot projects should present those steps in tester menus
+
 ---
 
 ## 11. Reliability checklist
