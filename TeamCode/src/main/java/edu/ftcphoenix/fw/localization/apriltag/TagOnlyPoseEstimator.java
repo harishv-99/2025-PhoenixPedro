@@ -4,7 +4,6 @@ import java.util.Objects;
 
 import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
-import edu.ftcphoenix.fw.core.math.MathUtil;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.field.TagLayout;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
@@ -28,8 +27,7 @@ import edu.ftcphoenix.fw.spatial.Region2d;
  * <p>Internally the estimator delegates the actual multi-tag solve to
  * {@link FixedTagFieldPoseSolver}. That shared solver applies weighting, optional SDK-pose use,
  * and outlier rejection so localization and guidance's temporary AprilTag field-pose bridge stay
- * behaviorally aligned. This estimator then turns the solve into a {@link PoseEstimate} and may
- * age the reported quality down as the detections frame approaches the configured freshness limit.</p>
+ * behaviorally aligned.</p>
  */
 public final class TagOnlyPoseEstimator implements PoseEstimator {
 
@@ -46,15 +44,6 @@ public final class TagOnlyPoseEstimator implements PoseEstimator {
 
         /** Camera mount extrinsics in the robot frame. */
         public CameraMountConfig cameraMount = CameraMountConfig.identity();
-
-        /**
-         * Quality scale applied when a detections frame has reached {@link #maxDetectionAgeSec}.
-         *
-         * <p>The final AprilTag-localizer quality linearly interpolates from {@code 1.0} for a
-         * fresh frame to this value at the maximum accepted age. Set to {@code 1.0} to disable
-         * freshness-based quality decay.</p>
-         */
-        public double qualityScaleAtMaxDetectionAge = 0.25;
 
         private Config() {
             // Defaults assigned in field initializers and base class fields.
@@ -103,17 +92,6 @@ public final class TagOnlyPoseEstimator implements PoseEstimator {
         }
 
         /**
-         * Sets the quality scale applied when a detections frame reaches the maximum accepted age.
-         *
-         * <p>The value must lie in {@code [0, 1]}. Use {@code 1.0} to disable freshness-based
-         * quality decay.</p>
-         */
-        public Config withQualityScaleAtMaxDetectionAge(double qualityScaleAtMaxDetectionAge) {
-            this.qualityScaleAtMaxDetectionAge = qualityScaleAtMaxDetectionAge;
-            return this;
-        }
-
-        /**
          * Returns a pure {@link FixedTagFieldPoseSolver.Config} snapshot of the shared solver
          * settings contained in this config.
          *
@@ -148,13 +126,6 @@ public final class TagOnlyPoseEstimator implements PoseEstimator {
             if (!Double.isFinite(maxDetectionAgeSec) || maxDetectionAgeSec < 0.0) {
                 throw new IllegalArgumentException(p + ".maxDetectionAgeSec must be finite and >= 0");
             }
-            if (!Double.isFinite(qualityScaleAtMaxDetectionAge)
-                    || qualityScaleAtMaxDetectionAge < 0.0
-                    || qualityScaleAtMaxDetectionAge > 1.0) {
-                throw new IllegalArgumentException(
-                        p + ".qualityScaleAtMaxDetectionAge must be finite and within [0, 1]"
-                );
-            }
         }
 
         /**
@@ -176,7 +147,6 @@ public final class TagOnlyPoseEstimator implements PoseEstimator {
             copyBaseFieldsInto(c);
             c.maxDetectionAgeSec = this.maxDetectionAgeSec;
             c.cameraMount = this.cameraMount;
-            c.qualityScaleAtMaxDetectionAge = this.qualityScaleAtMaxDetectionAge;
             return c;
         }
     }
@@ -188,7 +158,6 @@ public final class TagOnlyPoseEstimator implements PoseEstimator {
     private PoseEstimate lastEstimate;
     private AprilTagDetections lastDetections = AprilTagDetections.none();
     private FixedTagFieldPoseSolver.Result lastSolve = FixedTagFieldPoseSolver.Result.none();
-    private double lastFreshnessQualityScale = 0.0;
 
     /**
      * Creates an AprilTag-only pose estimator that may use multiple visible fixed tags from the
@@ -197,8 +166,7 @@ public final class TagOnlyPoseEstimator implements PoseEstimator {
     public TagOnlyPoseEstimator(AprilTagSensor tags, TagLayout layout, Config cfg) {
         this.tags = Objects.requireNonNull(tags, "tags");
         this.layout = Objects.requireNonNull(layout, "layout");
-        Config base = (cfg != null) ? cfg : Config.defaults();
-        this.cfg = base.validatedCopy("TagOnlyPoseEstimator.Config");
+        this.cfg = (cfg != null) ? cfg.validatedCopy("TagOnlyPoseEstimator.Config") : Config.defaults();
         if (this.cfg.cameraMount == null) {
             this.cfg.cameraMount = CameraMountConfig.identity();
         }
@@ -214,7 +182,6 @@ public final class TagOnlyPoseEstimator implements PoseEstimator {
         final double nowSec = clock.nowSec();
         lastDetections = tags.get(clock);
         lastSolve = FixedTagFieldPoseSolver.Result.none();
-        lastFreshnessQualityScale = 0.0;
 
         if (lastDetections == null || !lastDetections.isFresh(cfg.maxDetectionAgeSec)) {
             lastEstimate = PoseEstimate.noPose(nowSec);
@@ -246,34 +213,7 @@ public final class TagOnlyPoseEstimator implements PoseEstimator {
         double ageSec = freshDetections.ageSec;
         double timestampSec = nowSec - ageSec;
         Pose3d fieldToRobotPose = lastSolve.fieldToRobotPose;
-        lastFreshnessQualityScale = freshnessQualityScale(ageSec);
-        double finalQuality = MathUtil.clamp01(lastSolve.quality * lastFreshnessQualityScale);
-        lastEstimate = new PoseEstimate(fieldToRobotPose, true, finalQuality, ageSec, timestampSec);
-    }
-
-    private double freshnessQualityScale(double ageSec) {
-        if (!Double.isFinite(ageSec)) {
-            return 0.0;
-        }
-        if (cfg.maxDetectionAgeSec <= 1e-9) {
-            return 1.0;
-        }
-        double t = MathUtil.clamp01(ageSec / cfg.maxDetectionAgeSec);
-        return MathUtil.lerp(1.0, cfg.qualityScaleAtMaxDetectionAge, t);
-    }
-
-    /**
-     * Returns the immutable shared-solver result from the most recent update.
-     */
-    public FixedTagFieldPoseSolver.Result getLastSolveResult() {
-        return lastSolve;
-    }
-
-    /**
-     * Returns the freshness-based quality scale applied on the most recent update.
-     */
-    public double getLastFreshnessQualityScale() {
-        return lastFreshnessQualityScale;
+        lastEstimate = new PoseEstimate(fieldToRobotPose, true, lastSolve.quality, ageSec, timestampSec);
     }
 
     /**
@@ -303,8 +243,6 @@ public final class TagOnlyPoseEstimator implements PoseEstimator {
                 .addData(p + ".solve.acceptedWeightFraction", lastSolve.acceptedWeightFraction)
                 .addData(p + ".solve.totalWeight", lastSolve.totalWeight)
                 .addData(p + ".solve.rangeInches", lastSolve.rangeInches)
-                .addData(p + ".cfg.qualityScaleAtMaxDetectionAge", cfg.qualityScaleAtMaxDetectionAge)
-                .addData(p + ".freshnessQualityScale", lastFreshnessQualityScale)
                 .addData(p + ".hasPose", lastEstimate.hasPose)
                 .addData(p + ".quality", lastEstimate.quality)
                 .addData(p + ".timestampSec", lastEstimate.timestampSec);

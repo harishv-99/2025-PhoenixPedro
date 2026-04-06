@@ -28,17 +28,15 @@ It exists so season-specific fixes and the next maintainership steps do not get 
 - Fixed a fusion reliability bug by rebasing the odometry baseline after accepted vision corrections are pushed back into odometry.
 - Upgraded fusion to deduplicate repeated camera frames by measurement timestamp and to apply accepted vision corrections at the frame timestamp before replaying odometry forward.
 - Added fail-fast validation for fusion latency-compensation history length and surfaced replay/projected/duplicate counters in the fusion tester.
-- Added a multi-tag consensus-weight gate so contradictory frames can be rejected instead of letting a lone surviving tag masquerade as a trustworthy multi-tag solve.
-- Made AprilTag-only localizer quality decay as detections age toward the freshness limit instead of treating every still-allowed frame as equally trustworthy.
-- Made fused-localizer quality boost scale with the quality of the last accepted AprilTag correction instead of blindly boosting every fresh correction to the same confidence.
-- Cleared the fusion localizer's "recent vision correction" hold on manual pose anchors so resets/snap-to-pose actions do not pretend a fresh camera correction just occurred.
+- Added a shared `VisionCorrectionPoseEstimator` contract so robot code and testers can swap between the lightweight fusion localizer and an optional EKF-style localizer without type-specific glue.
+- Added `OdometryTagEkfPoseEstimator` as an optional covariance-aware global localizer with documented calibration requirements, innovation gating, and measurement-time replay.
+- Extended the Pinpoint + AprilTag localization tester so teams can compare the default fusion estimator against the optional EKF estimator on the same calibrated inputs.
 
 ---
 
 ## Near-term follow-ups
 
 1. When Phoenix is updated for a new FTC season, extend `FtcGameTagLayout.officialGameFieldFixed(...)` with the new season's fixed-tag policy instead of letting robot code paper over the difference.
-2. Field-test the new multi-tag consensus threshold and AprilTag freshness-quality decay on a real FTC field to confirm the defaults are strict enough to reject contradictions without becoming annoyingly conservative.
 
 ---
 
@@ -51,5 +49,8 @@ It exists so season-specific fixes and the next maintainership steps do not get 
    today selected-tag references only promote through localization when all candidate IDs are field-fixed.
    If a real use case appears, consider a principled runtime policy that allows localization only when the currently selected tag is fixed.
 
-3. Deeper fusion evolution only if field data justifies it:
-   for example, explicit out-of-order vision buffering, velocity-aware replay, or a fuller state-estimator path.
+3. Field-validate the optional EKF estimator before recommending it broadly:
+   compare it against the simpler fusion estimator on real FTC fields and keep the advanced path opt-in until the tuning/docs feel mature.
+
+4. Better uncertainty inputs if field data justifies it:
+   for example, richer per-observation confidence from AprilTag detection quality, or velocity-aware process-noise tuning.

@@ -6,16 +6,19 @@ import edu.ftcphoenix.fw.tools.tester.localization.PinpointAprilTagFusionLocaliz
 import edu.ftcphoenix.robots.phoenix.RobotConfig;
 
 /**
- * Phoenix robot-specific wrapper for the default lightweight fusion flavor of
+ * Phoenix robot-specific wrapper for the optional EKF flavor of
  * {@link PinpointAprilTagFusionLocalizationTester}.
+ *
+ * <p>This tester is intentionally separate from the default fusion tester so teams can compare the
+ * two localizers side by side without changing production robot config first.</p>
  */
-public final class PinpointAprilTagFusionLocalizationTesterPhoenix {
+public final class PinpointAprilTagEkfLocalizationTesterPhoenix {
 
-    private PinpointAprilTagFusionLocalizationTesterPhoenix() {
+    private PinpointAprilTagEkfLocalizationTesterPhoenix() {
     }
 
     /**
-     * Registers the Phoenix-specific fusion-localization tester with the supplied tester suite.
+     * Registers the Phoenix-specific EKF localization tester with the supplied tester suite.
      */
     public static void register(TesterSuite suite) {
         if (suite == null) return;
@@ -35,16 +38,17 @@ public final class PinpointAprilTagFusionLocalizationTesterPhoenix {
                 : "offsets: NOT CALIBRATED";
 
         suite.add(
-                "Loc: Pinpoint + AprilTag Fusion (Robot)",
-                "Default global localizer; " + mountStatus + ", " + axesStatus + ", " + offsetsStatus,
+                "Loc: Pinpoint + AprilTag EKF (Robot)",
+                "Optional advanced estimator; " + mountStatus + ", " + axesStatus + ", " + offsetsStatus,
                 () -> {
                     PinpointPoseEstimator.Config cfg = RobotConfig.Localization.pinpoint;
-
-                    return new PinpointAprilTagFusionLocalizationTester(
+                    return PinpointAprilTagFusionLocalizationTester.ekf(
                             RobotConfig.Vision.nameWebcam,
                             RobotConfig.Vision.cameraMount,
                             cfg,
-                            RobotConfig.Localization.pinpointAprilTagFusion.copy(),
+                            RobotConfig.Localization.pinpointAprilTagEkf.validatedCopy(
+                                    "RobotConfig.Localization.pinpointAprilTagEkf"
+                            ),
                             null,
                             null,
                             RobotConfig.Localization.aprilTags.copy()

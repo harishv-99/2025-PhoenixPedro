@@ -1,8 +1,8 @@
 # Phoenix Localization Follow-Ups
 
-This file tracks Phoenix-specific follow-up work now that TeleOp uses the fused Pinpoint + AprilTag localizer, the framework owns the fixed-tag policy, both localization + guidance can share the same fixed-tag field-pose solver policy, and the robot-specific testers can mirror the production AprilTag tuning.
+This file tracks Phoenix-specific follow-up work now that TeleOp uses a configurable Pinpoint + AprilTag global localizer, the framework owns the fixed-tag policy, both localization + guidance can share the same fixed-tag field-pose solver policy, and the robot-specific testers can mirror the production AprilTag tuning.
 
-The current framework pass also upgraded fusion to deduplicate repeated AprilTag frames by measurement timestamp, to replay odometry forward from the accepted frame time when latency compensation is available, to reject contradictory multi-tag frames when too little accepted weight agrees, and to age down stale AprilTag-localizer quality instead of treating every still-allowed frame as equally trustworthy.
+The current framework pass also upgraded fusion to deduplicate repeated AprilTag frames by measurement timestamp and to replay odometry forward from the accepted frame time when latency compensation is available, and it added an optional EKF-style estimator that Phoenix can evaluate without replacing the simpler fusion default.
 
 ---
 
@@ -19,9 +19,9 @@ The current framework pass also upgraded fusion to deduplicate repeated AprilTag
 
 4. Verify on the real robot that the new field-plausibility gate is permissive enough near walls/corners but still catches impossible AprilTag solves.
 
-5. Field-test the new multi-tag consensus threshold and AprilTag freshness-quality decay on the real field. In particular, confirm that contradictory frames are rejected and that still-useful slightly stale frames do not become too weak too early.
+5. Check the fusion/EKF tester replay / projected / duplicate counters on the real field and make sure the camera pipeline is delivering fresh AprilTag frames at the expected cadence.
 
-6. Check the fusion tester's replay / projected / duplicate counters on the real field and make sure the camera pipeline is delivering fresh AprilTag frames at the expected cadence.
+6. Compare `RobotConfig.Localization.pinpointAprilTagFusion` against `RobotConfig.Localization.pinpointAprilTagEkf` on the real field before changing `globalEstimatorMode`; keep the simpler fusion path as the production baseline until the EKF clearly earns it.
 
 7. Keep scoring-tag selection intentionally limited to the fixed goal tags used for localization fallback.
 
@@ -31,6 +31,6 @@ The current framework pass also upgraded fusion to deduplicate repeated AprilTag
 
 1. Add driver-facing telemetry for aim source / localization source only if the drivers find it genuinely useful in matches.
 
-2. Share the fused localizer container across TeleOp and Auto initialization so both modes rely on one pose stack.
+2. Share the global localizer container across TeleOp and Auto initialization so both modes rely on one pose stack.
 
 3. Revisit automatic vision-based velocity capture once more range-to-shot data is collected from the real field.

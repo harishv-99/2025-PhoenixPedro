@@ -37,7 +37,9 @@ import edu.ftcphoenix.fw.ftc.localization.PinpointPoseEstimator;
 import edu.ftcphoenix.fw.input.Gamepads;
 import edu.ftcphoenix.fw.input.binding.Bindings;
 import edu.ftcphoenix.fw.localization.apriltag.TagOnlyPoseEstimator;
+import edu.ftcphoenix.fw.localization.fusion.OdometryTagEkfPoseEstimator;
 import edu.ftcphoenix.fw.localization.fusion.OdometryTagFusionPoseEstimator;
+import edu.ftcphoenix.fw.localization.fusion.VisionCorrectionPoseEstimator;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagObservation;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
@@ -74,7 +76,7 @@ public final class PhoenixRobot {
     private MecanumDrivebase drivebase;
     private PinpointPoseEstimator pinpoint;
     private TagOnlyPoseEstimator tagLocalizer;
-    private OdometryTagFusionPoseEstimator fusedLocalizer;
+    private VisionCorrectionPoseEstimator globalLocalizer;
     private DriveSource stickDrive;
     private DriveSource driveWithAim;
     private CameraMountConfig cameraMountConfig;
@@ -184,11 +186,7 @@ public final class PhoenixRobot {
         TagOnlyPoseEstimator.Config tagLocalizerCfg = RobotConfig.Localization.aprilTags.copy()
                 .withCameraMount(cameraMountConfig);
         tagLocalizer = new TagOnlyPoseEstimator(tagSensor, gameTagLayout, tagLocalizerCfg);
-        fusedLocalizer = new OdometryTagFusionPoseEstimator(
-                pinpoint,
-                tagLocalizer,
-                RobotConfig.Localization.pinpointAprilTagFusion.copy()
-        );
+        globalLocalizer = createGlobalLocalizer(pinpoint, tagLocalizer);
 
         // Auto-aim assist is explicitly driver-controlled (P2 left bumper). The selector
         // previews while idle, then latches the best visible scoring tag while the driver holds aim.
@@ -227,8 +225,8 @@ public final class PhoenixRobot {
                 .withAimDeadbandRad(Math.toRadians(RobotConfig.AutoAim.AIM_TOLERANCE_DEG));
 
         // Auto-aim remains a selected-tag reference, but the solve lane is now adaptive:
-        // live tags are preferred when visible, and the fused localizer keeps the same selected
-        // tag geometry alive when the goal tag temporarily drops out of view.
+        // live tags are preferred when visible, and the current global localizer keeps the same
+        // selected tag geometry alive when the goal tag temporarily drops out of view.
         aimPlan = DriveGuidance.plan()
                 .aimTo()
                 .point(References.relativeToSelectedTagPoint(scoringSelection, aimOffsetsByTag))
@@ -238,7 +236,7 @@ public final class PhoenixRobot {
                 .adaptive()
                 .aprilTags(tagSensor, cameraMountConfig, 0.50)
                 .aprilTagFieldPoseConfig(RobotConfig.Localization.aprilTags.toSolverConfig())
-                .localization(fusedLocalizer)
+                .localization(globalLocalizer)
                 .fixedAprilTagLayout(scoringTagLayout)
                 .omegaPolicy(DriveGuidanceSpec.OmegaPolicy.PREFER_APRIL_TAGS_WHEN_VALID)
                 .onLoss(DriveGuidanceSpec.LossPolicy.PASS_THROUGH)
@@ -251,7 +249,7 @@ public final class PhoenixRobot {
         // "Aimed" gate: safe to feed a ball only when we're facing the scoring target.
         //
         // Design choice:
-        //  - If guidance can solve the selected target (from live tags or fused localization),
+        //  - If guidance can solve the selected target (from live tags or global localization),
         //    require omega error to be within a configurable tolerance.
         //  - If guidance cannot solve this loop, allow manual aiming / manual velocity fallback.
         //
@@ -313,7 +311,7 @@ public final class PhoenixRobot {
                         "shootBrace",
                         BooleanSource.of(shootBraceLatch::get),
                         DriveGuidance.poseLock(
-                                fusedLocalizer,
+                                globalLocalizer,
                                 DriveGuidancePlan.Tuning.defaults()
                                         .withTranslateKp(0.08)
                                         .withMaxTranslateCmd(0.35)
@@ -342,6 +340,35 @@ public final class PhoenixRobot {
         // Create bindings
         createBindings();
     }
+    /**
+     * Creates the configured global localizer without forcing Phoenix to choose the advanced
+     * estimator path by default.
+     *
+     * <p>We keep the selection in robot config so testers and TeleOp can compare the lightweight
+     * fusion implementation against the optional EKF-style implementation using the same
+     * calibrated Pinpoint and AprilTag inputs.</p>
+     */
+    private VisionCorrectionPoseEstimator createGlobalLocalizer(PinpointPoseEstimator odom,
+                                                                TagOnlyPoseEstimator vision) {
+        RobotConfig.Localization.GlobalEstimatorMode mode = RobotConfig.Localization.globalEstimatorMode;
+        if (mode == RobotConfig.Localization.GlobalEstimatorMode.EKF) {
+            return new OdometryTagEkfPoseEstimator(
+                    odom,
+                    vision,
+                    RobotConfig.Localization.pinpointAprilTagEkf.validatedCopy(
+                            "RobotConfig.Localization.pinpointAprilTagEkf"
+                    )
+            );
+        }
+        return new OdometryTagFusionPoseEstimator(
+                odom,
+                vision,
+                RobotConfig.Localization.pinpointAprilTagFusion.validatedCopy(
+                        "RobotConfig.Localization.pinpointAprilTagFusion"
+                )
+        );
+    }
+
     private void createBindings() {
         // -------------------------
         // Gamepad 2: shooter + intake
@@ -404,9 +431,9 @@ public final class PhoenixRobot {
         // --- Lane 3: perception + bindings ---
         bindings.update(clock);
 
-        // --- Lane 4 support: fused field pose for pose lock / guidance fallback / debug ---
-        if (fusedLocalizer != null) {
-            fusedLocalizer.update(clock);
+        // --- Lane 4 support: global field pose for pose lock / guidance fallback / debug ---
+        if (globalLocalizer != null) {
+            globalLocalizer.update(clock);
         } else if (pinpoint != null) {
             pinpoint.update(clock);
         }
@@ -441,8 +468,9 @@ public final class PhoenixRobot {
         telemetry.addData("aim.okToShoot", aimOkToShoot.getAsBoolean(clock));
         telemetry.addData("aim.override", aimOverride.getAsBoolean(clock));
         telemetry.addData("shootBrace", shootBraceLatch.get());
-        if (fusedLocalizer != null) {
-            telemetry.addData("pose.fused", fusedLocalizer.getEstimate());
+        if (globalLocalizer != null) {
+            telemetry.addData("pose.global", globalLocalizer.getEstimate());
+            telemetry.addData("pose.global.mode", RobotConfig.Localization.globalEstimatorMode);
         }
         if (pinpoint != null) {
             telemetry.addData("pose.odom", pinpoint.getEstimate());
@@ -553,6 +581,6 @@ public final class PhoenixRobot {
             tagSensor = null;
         }
         tagLocalizer = null;
-        fusedLocalizer = null;
+        globalLocalizer = null;
     }
 }

@@ -79,7 +79,6 @@ Phoenix's AprilTag localizer uses a shared solver:
 - prefer the FTC SDK's per-detection robot pose when it agrees with Phoenix's explicit geometry and remains plausible
 - choose a consensus seed
 - reject outliers
-- when multiple fixed tags are present, require a configurable majority of candidate weight to agree before returning a pose
 - compute one fused field pose and a quality score
 
 The framework uses that same solver in both:
@@ -89,10 +88,9 @@ The framework uses that same solver in both:
 
 That keeps guidance and localization from drifting into two subtly different AprilTag policies.
 
-The solver's quality score also reflects how much of the visible candidate set actually agreed
-with the final consensus, and the solver can now reject a contradictory multi-tag frame outright if
-too little of the candidate weight survives the consensus gate. That keeps a lone surviving tag
-from masquerading as a trustworthy multi-tag solve when the rest of the frame strongly disagrees.
+The solver's quality score also now reflects how much of the visible candidate set actually agreed
+with the final consensus, so a solve that survives only by throwing away most of the frame is not
+reported as confidently as a solve where multiple tags agree.
 
 ---
 
@@ -122,11 +120,6 @@ DriveGuidancePlan plan = DriveGuidance.plan()
 That is the intended way to keep the AprilTag-only localizer and the guidance AprilTag bridge aligned without passing camera-mount-only fields into unrelated APIs.
 
 The guidance API also normalizes its solver-config input defensively at the boundary, so even if a caller accidentally passes a richer config subtype, only the shared fixed-tag solver fields are retained.
-
-One intentional split remains:
-
-- the shared solver config owns multi-tag weighting / consensus / plausibility policy
-- `TagOnlyPoseEstimator.Config` adds localizer-specific concepts such as the camera mount and how strongly pose quality decays as a detections frame ages toward its freshness limit
 
 ---
 
@@ -195,22 +188,60 @@ fusionCfg.odomHistorySec = 1.0;   // must cover maxVisionAgeSec when latency com
 PoseEstimator fused = new OdometryTagFusionPoseEstimator(pinpoint, tagLocalizer, fusionCfg);
 ```
 
-`TagOnlyPoseEstimator` also now ages its own quality down as the detections frame approaches
-`maxDetectionAgeSec`, so a barely-fresh frame can still be used when appropriate without looking as
-trustworthy as a brand-new multi-tag solve.
-
 Notes:
 
 - `odomHistorySec` should be at least `maxVisionAgeSec`; the config now validates this fail-fast.
 - replay only uses measurements newer than the current replay base (initialization, manual reset, or last accepted correction).
 - if exact replay is unavailable, the estimator falls back to a simpler projected-now correction rather than silently re-applying the same stale frame every loop.
-- the fused estimator's reported quality now respects the quality of the most recently accepted AprilTag correction instead of giving every fresh correction the same confidence boost.
-- manual `setPose(...)` calls are treated as manual anchors, so they clear the "recent accepted vision" hold rather than pretending that a real camera correction just happened.
 - if the fused pose is pushed back into odometry, the replay base and odometry history are rebased at that corrected pose.
 
 ---
 
-## 8. Selected-tag references and localization
+## 8. Optional EKF-style global localization
+
+The framework now also ships an optional covariance-aware localizer:
+
+```java
+TagOnlyPoseEstimator.Config tagCfg = RobotConfig.Localization.aprilTags.copy()
+        .withCameraMount(cameraMount);
+
+TagOnlyPoseEstimator tagLocalizer = new TagOnlyPoseEstimator(tags, fixedLayout, tagCfg);
+
+OdometryTagEkfPoseEstimator.Config ekfCfg = RobotConfig.Localization.pinpointAprilTagEkf.copy();
+ekfCfg.maxVisionAgeSec = 0.35;
+ekfCfg.odomHistorySec = 1.0;
+
+VisionCorrectionPoseEstimator ekf =
+        new OdometryTagEkfPoseEstimator(pinpoint, tagLocalizer, ekfCfg);
+```
+
+This estimator is intentionally **optional**. The framework and Phoenix still keep
+`OdometryTagFusionPoseEstimator` as the simpler baseline because:
+
+- it is easier to tune and debug
+- it is more transparent when calibration is still rough
+- it gives teams a stable comparison point while evaluating the EKF
+
+What the EKF adds:
+
+- covariance-aware trust balancing between odometry and vision
+- principled innovation gating on contradictory measurements
+- a tracked uncertainty estimate that can be turned into downstream quality/readiness signals
+- the same measurement-time replay idea used by the fusion localizer, but integrated into the estimator update path
+
+Calibration guidance:
+
+- do **not** enable the EKF until `robot -> camera` extrinsics are calibrated
+- verify odometry axis directions before tuning covariance terms
+- measure Pinpoint pod offsets instead of leaving them at default 0/0
+- keep the fixed-tag layout honest; the EKF is still only as good as the landmarks it is allowed to trust
+
+A manual `setPose(...)` call is treated as an explicit pose anchor. The EKF resets its covariance to
+`manualPosePositionStdIn` / `manualPoseHeadingStdRad` instead of pretending the new pose is perfectly known.
+
+---
+
+## 9. Selected-tag references and localization
 
 Selected-tag references are still **single-tag semantic references**.
 
@@ -234,7 +265,7 @@ A future runtime policy could allow localization whenever the **currently select
 
 ---
 
-## 9. Testers and calibration tools
+## 10. Testers and calibration tools
 
 The localization testers now support using the same AprilTag-localizer config as production robot code.
 
@@ -252,7 +283,7 @@ IDs intentionally excluded from the fixed layout.
 
 ---
 
-## 10. Reliability checklist
+## 11. Reliability checklist
 
 If AprilTag localization feels worse than expected, check these in order:
 
@@ -264,13 +295,14 @@ If AprilTag localization feels worse than expected, check these in order:
 6. whether the guidance bridge and localizer are actually sharing the same solver tuning
 7. whether the fused localizer is rebasing odometry correctly after accepted vision corrections
 8. whether `odomHistorySec` is large enough for the accepted vision age when latency compensation is enabled
-9. whether the fusion tester is reporting lots of duplicate / out-of-order vision frames
+9. whether the fusion/EKF tester is reporting lots of duplicate / out-of-order vision frames
+10. whether the optional EKF has been enabled before calibration is trustworthy enough to support it
 
 Those basics usually matter more than fancy estimator math.
 
 ---
 
-## 11. Season bring-up checklist for maintainers
+## 12. Season bring-up checklist for maintainers
 
 When FIRST publishes a new game:
 

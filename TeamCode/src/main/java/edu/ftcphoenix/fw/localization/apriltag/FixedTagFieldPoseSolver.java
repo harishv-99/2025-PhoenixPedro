@@ -27,7 +27,6 @@ import edu.ftcphoenix.fw.spatial.Region2d;
  *   <li>Use all visible fixed tags from one frame when that helps.</li>
  *   <li>Prefer closer / more centered tags rather than equally trusting every detection.</li>
  *   <li>Reject obvious outliers before averaging.</li>
- *   <li>Optionally reject contradictory multi-tag frames when too little candidate weight agrees.</li>
  *   <li>Allow FTC SDK {@code robotPose} observations when available, but fall back to Phoenix's
  *       explicit geometry chain when they disagree or are unavailable.</li>
  * </ul>
@@ -95,16 +94,6 @@ public final class FixedTagFieldPoseSolver {
          * score.
          */
         public double consistencyHeadingScaleRad = Math.toRadians(8.0);
-
-        /**
-         * When a frame contains multiple candidate fixed tags, require at least this fraction of
-         * the total candidate weight to survive consensus / outlier gating before a pose is
-         * returned.
-         *
-         * <p>This is a lightweight reliability guard against contradictory multi-tag frames.
-         * Single-candidate frames are unaffected. Set to {@code 0} to disable the gate.</p>
-         */
-        public double minAcceptedWeightFractionWhenMultipleCandidates = 0.50;
 
         /**
          * Optional region describing where the robot is plausibly allowed to be on the field.
@@ -187,7 +176,6 @@ public final class FixedTagFieldPoseSolver {
             target.outlierHeadingGateRad = this.outlierHeadingGateRad;
             target.consistencyPositionScaleInches = this.consistencyPositionScaleInches;
             target.consistencyHeadingScaleRad = this.consistencyHeadingScaleRad;
-            target.minAcceptedWeightFractionWhenMultipleCandidates = this.minAcceptedWeightFractionWhenMultipleCandidates;
             target.plausibleFieldRegion = this.plausibleFieldRegion;
             target.maxOutsidePlausibleFieldRegionInches = this.maxOutsidePlausibleFieldRegionInches;
         }
@@ -209,12 +197,6 @@ public final class FixedTagFieldPoseSolver {
             requireFinitePositive(outlierHeadingGateRad, p + ".outlierHeadingGateRad");
             requireFinitePositive(consistencyPositionScaleInches, p + ".consistencyPositionScaleInches");
             requireFinitePositive(consistencyHeadingScaleRad, p + ".consistencyHeadingScaleRad");
-            requireFiniteInRange(
-                    minAcceptedWeightFractionWhenMultipleCandidates,
-                    0.0,
-                    1.0,
-                    p + ".minAcceptedWeightFractionWhenMultipleCandidates"
-            );
             requireFiniteNonNegative(maxOutsidePlausibleFieldRegionInches, p + ".maxOutsidePlausibleFieldRegionInches");
         }
 
@@ -587,17 +569,6 @@ public final class FixedTagFieldPoseSolver {
         double acceptedWeightFraction = (Double.isFinite(totalCandidateWeight) && totalCandidateWeight > 1e-9)
                 ? MathUtil.clamp01(sumW / totalCandidateWeight)
                 : 1.0;
-
-        if (candidateCount > 1) {
-            double minAcceptedWeightFraction = nonNegativeOr(
-                    cfg.minAcceptedWeightFractionWhenMultipleCandidates,
-                    0.50
-            );
-            if (acceptedWeightFraction + 1e-9 < minAcceptedWeightFraction) {
-                return Result.none();
-            }
-        }
-
         double posConsistency = 1.0 - MathUtil.clamp01(residualPos / positiveOr(cfg.consistencyPositionScaleInches, 6.0));
         double headingConsistency = 1.0 - MathUtil.clamp01(residualHeading / positiveOr(cfg.consistencyHeadingScaleRad, Math.toRadians(8.0)));
         double consistency = 0.5 * (posConsistency + headingConsistency);

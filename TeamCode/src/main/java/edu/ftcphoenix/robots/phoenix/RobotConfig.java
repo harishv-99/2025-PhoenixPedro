@@ -7,6 +7,7 @@ import edu.ftcphoenix.fw.ftc.FtcDrives;
 import edu.ftcphoenix.fw.ftc.FtcFieldRegions;
 import edu.ftcphoenix.fw.ftc.localization.PinpointPoseEstimator;
 import edu.ftcphoenix.fw.localization.apriltag.TagOnlyPoseEstimator;
+import edu.ftcphoenix.fw.localization.fusion.OdometryTagEkfPoseEstimator;
 import edu.ftcphoenix.fw.localization.fusion.OdometryTagFusionPoseEstimator;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 
@@ -299,7 +300,8 @@ public class RobotConfig {
     /**
      * Localization-related configuration.
      *
-     * <p>Phase 1: Pinpoint + AprilTag fusion requires the Pinpoint device name and offsets.
+     * <p>Phoenix supports both the default lightweight Pinpoint + AprilTag fusion path and an
+     * optional EKF-style estimator. Both require the Pinpoint device name and offsets.
      * Offsets use the Pinpoint convention (matching the goBILDA docs):</p>
      * <ul>
      *   <li><b>forwardPodOffsetLeftInches</b>: how far LEFT of your tracking point the forward (X) pod is (+left, -right)</li>
@@ -307,6 +309,21 @@ public class RobotConfig {
      * </ul>
      */
     public static class Localization {
+
+        /** Selects which optional odometry+AprilTag global localizer Phoenix should instantiate. */
+        public enum GlobalEstimatorMode {
+            /** Simpler complementary fusion with latency-compensated replay. Default for Phoenix. */
+            FUSION,
+            /** Optional EKF-style estimator with covariance-aware vision updates. */
+            EKF
+        }
+
+        /**
+         * Phoenix currently keeps the lightweight fusion estimator as the default because it is
+         * easier to tune and debug. Switch this to {@link GlobalEstimatorMode#EKF} only after the
+         * camera mount, Pinpoint directions, and pod offsets are calibrated and field-validated.
+         */
+        public static GlobalEstimatorMode globalEstimatorMode = GlobalEstimatorMode.FUSION;
 
         /**
          * goBILDA Pinpoint configuration.
@@ -331,10 +348,30 @@ public class RobotConfig {
                 TagOnlyPoseEstimator.Config.defaults();
 
         /**
-         * Fusion tuning for Pinpoint odometry corrected by AprilTag global pose measurements.
+         * Lightweight complementary fusion tuning for Pinpoint odometry corrected by AprilTag
+         * global pose measurements. This remains Phoenix's default global estimator.
          */
         public static OdometryTagFusionPoseEstimator.Config pinpointAprilTagFusion =
                 OdometryTagFusionPoseEstimator.Config.defaults();
+
+        /**
+         * Optional EKF-style global estimator tuned for the same Pinpoint+AprilTag pipeline.
+         *
+         * <p><b>Calibration requirements matter more here than with the simpler fusion localizer.</b>
+         * Before enabling {@link GlobalEstimatorMode#EKF}, make sure all of the following are true:</p>
+         * <ul>
+         *   <li>{@link Vision#cameraMount} has been solved and pasted from the camera-mount calibrator.</li>
+         *   <li>{@link #pinpoint} uses the correct Pinpoint axis directions.</li>
+         *   <li>{@link #pinpoint} pod offsets have been measured instead of left at default 0/0.</li>
+         *   <li>The FTC fixed-tag layout policy matches the game pieces being treated as landmarks.</li>
+         * </ul>
+         *
+         * <p>The EKF can produce smoother and more principled covariance-aware estimates, but poor
+         * calibration will make it confidently wrong. Keep the fusion estimator as a comparison
+         * baseline while tuning.</p>
+         */
+        public static OdometryTagEkfPoseEstimator.Config pinpointAprilTagEkf =
+                OdometryTagEkfPoseEstimator.Config.defaults();
 
         // Advanced options / default tuning:
         static {
@@ -350,9 +387,7 @@ public class RobotConfig {
             // exclusion lists here.
 
             // AprilTag-only solve: use all visible fixed tags, weight closer / more centered tags,
-            // insist that contradictory multi-tag frames still have a majority of accepted weight,
-            // age down stale-but-still-allowed frames, and allow the FTC SDK robotPose when it
-            // agrees with Phoenix's explicit geometry.
+            // and allow the FTC SDK robotPose when it agrees with Phoenix's explicit geometry.
             aprilTags.maxAbsBearingRad = 0.0;
             aprilTags.preferObservationFieldPose = true;
             aprilTags.observationFieldPoseMaxDeltaInches = 8.0;
@@ -361,8 +396,6 @@ public class RobotConfig {
             aprilTags.minObservationWeight = 0.05;
             aprilTags.outlierPositionGateInches = 18.0;
             aprilTags.outlierHeadingGateRad = Math.toRadians(25.0);
-            aprilTags.minAcceptedWeightFractionWhenMultipleCandidates = 0.50;
-            aprilTags.qualityScaleAtMaxDetectionAge = 0.25;
             aprilTags.plausibleFieldRegion = FtcFieldRegions.fullField();
             aprilTags.maxOutsidePlausibleFieldRegionInches = 3.0;
 
@@ -378,6 +411,32 @@ public class RobotConfig {
             pinpointAprilTagFusion.maxVisionHeadingJumpRad = Math.toRadians(60.0);
             pinpointAprilTagFusion.enableLatencyCompensation = true;
             pinpointAprilTagFusion.odomHistorySec = 1.0;
+
+            // Optional EKF: use the same freshness gates as the fusion estimator, but keep explicit
+            // covariance knobs so Phoenix can compare the two implementations on real hardware.
+            pinpointAprilTagEkf.maxVisionAgeSec = 0.35;
+            pinpointAprilTagEkf.minVisionQuality = 0.10;
+            pinpointAprilTagEkf.maxVisionPositionInnovationIn = 24.0;
+            pinpointAprilTagEkf.maxVisionHeadingInnovationRad = Math.toRadians(60.0);
+            pinpointAprilTagEkf.maxVisionMahalanobisSq = 14.0;
+            pinpointAprilTagEkf.enableLatencyCompensation = true;
+            pinpointAprilTagEkf.odomHistorySec = 1.0;
+            pinpointAprilTagEkf.initialPositionStdIn = 6.0;
+            pinpointAprilTagEkf.initialHeadingStdRad = Math.toRadians(12.0);
+            pinpointAprilTagEkf.manualPosePositionStdIn = 3.0;
+            pinpointAprilTagEkf.manualPoseHeadingStdRad = Math.toRadians(6.0);
+            pinpointAprilTagEkf.odomProcessPositionStdFloorIn = 0.20;
+            pinpointAprilTagEkf.odomProcessPositionStdPerIn = 0.03;
+            pinpointAprilTagEkf.odomProcessPositionStdPerRad = 0.55;
+            pinpointAprilTagEkf.odomProcessHeadingStdFloorRad = Math.toRadians(0.35);
+            pinpointAprilTagEkf.odomProcessHeadingStdPerIn = Math.toRadians(0.06);
+            pinpointAprilTagEkf.odomProcessHeadingStdPerRad = 0.06;
+            pinpointAprilTagEkf.visionPositionStdFloorIn = 1.75;
+            pinpointAprilTagEkf.visionPositionStdScaleIn = 6.0;
+            pinpointAprilTagEkf.visionHeadingStdFloorRad = Math.toRadians(3.0);
+            pinpointAprilTagEkf.visionHeadingStdScaleRad = Math.toRadians(10.0);
+            pinpointAprilTagEkf.qualityPositionStdScaleIn = 18.0;
+            pinpointAprilTagEkf.qualityHeadingStdScaleRad = Math.toRadians(30.0);
         }
     }
 

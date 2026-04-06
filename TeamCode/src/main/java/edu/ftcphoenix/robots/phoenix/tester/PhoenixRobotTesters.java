@@ -33,6 +33,7 @@ public final class PhoenixRobotTesters {
         PinpointPodOffsetCalibratorPhoenix.register(suite);
         AprilTagLocalizationTesterPhoenix.register(suite);
         PinpointAprilTagFusionLocalizationTesterPhoenix.register(suite);
+        PinpointAprilTagEkfLocalizationTesterPhoenix.register(suite);
 
         // Robot-specific hardware sanity checks.
         DrivetrainMotorDirectionTester.register(suite);

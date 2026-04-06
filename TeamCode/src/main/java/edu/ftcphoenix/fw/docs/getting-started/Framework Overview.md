@@ -25,10 +25,12 @@ Most robot code should only need imports from these packages:
 * `edu.ftcphoenix.fw.drive` — `DriveSignal`, `DriveSource`, `DriveCommandSink`, `MecanumDrivebase` (FTC-independent drive logic).
 * `edu.ftcphoenix.fw.ftc` — FTC entrypoints/adapters (e.g. `FtcDrives` for drivetrain wiring).
 * `edu.ftcphoenix.fw.sensing` — sensor-facing wrappers (vision, odometry, etc.).
-* `edu.ftcphoenix.fw.localization` — pose estimation (AprilTags, odometry, fusion).
+* `edu.ftcphoenix.fw.localization` — pose estimation (AprilTags, odometry, lightweight fusion, optional EKF-style fusion).
 * `edu.ftcphoenix.fw.field` — field metadata (tag layouts, constants).
 
 For the AprilTag-specific policy around fixed vs detectable tags, see [`AprilTag Localization & Fixed Layouts`](<../drive-vision/AprilTag Localization & Fixed Layouts.md>).
+
+For odometry + AprilTag global localization specifically, the framework now exposes a shared `VisionCorrectionPoseEstimator` contract with both a simpler gain-based fusion implementation and an optional covariance-aware EKF-style implementation. The advanced estimator is intentionally opt-in; the simpler localizer remains the default starting point.
 
 Within `drive/`, subpackages are intentionally parallel and predictable:
 

@@ -43,7 +43,7 @@ public final class PhoenixCalibrationWalkthrough {
         TesterSuite suite = new TesterSuite()
                 .setTitle("Phoenix Calibration Walkthrough")
                 .setHelp("Run steps in order. A: enter step | BACK: go back")
-                .setMaxVisibleItems(7);
+                .setMaxVisibleItems(8);
 
         int idx = 0;
 
@@ -113,14 +113,36 @@ public final class PhoenixCalibrationWalkthrough {
         final int stepFusion = idx++;
         suite.add(
                 "5) Loc: Pinpoint + AprilTag Fusion",
-                "Verify fused global pose (needs Pinpoint offsets + camera mount).",
+                "Verify the default global pose estimator (needs Pinpoint offsets + camera mount).",
                 () -> {
                     PinpointPoseEstimator.Config cfg = RobotConfig.Localization.pinpoint;
                     return new PinpointAprilTagFusionLocalizationTester(
                             RobotConfig.Vision.nameWebcam,
                             RobotConfig.Vision.cameraMount,
                             cfg,
-                            RobotConfig.Localization.pinpointAprilTagFusion.copy(),
+                            RobotConfig.Localization.pinpointAprilTagFusion.validatedCopy(
+                                    "RobotConfig.Localization.pinpointAprilTagFusion"
+                            ),
+                            null,
+                            null,
+                            RobotConfig.Localization.aprilTags.copy()
+                    );
+                }
+        );
+
+        final int stepEkf = idx++;
+        suite.add(
+                "6) Loc: Pinpoint + AprilTag EKF (Optional)",
+                "Compare the optional covariance-aware estimator after the default fusion path looks good.",
+                () -> {
+                    PinpointPoseEstimator.Config cfg = RobotConfig.Localization.pinpoint;
+                    return PinpointAprilTagFusionLocalizationTester.ekf(
+                            RobotConfig.Vision.nameWebcam,
+                            RobotConfig.Vision.cameraMount,
+                            cfg,
+                            RobotConfig.Localization.pinpointAprilTagEkf.validatedCopy(
+                                    "RobotConfig.Localization.pinpointAprilTagEkf"
+                            ),
                             null,
                             null,
                             RobotConfig.Localization.aprilTags.copy()
