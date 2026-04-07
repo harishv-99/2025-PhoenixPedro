@@ -186,7 +186,7 @@ Phoenix drive is split into two parts:
 
 A `DriveSource` converts “intent” into a robot-centric `DriveSignal`:
 
-* manual TeleOp: `GamepadDriveSource.teleOpMecanumStandard(pads)`
+* manual TeleOp: `new GamepadDriveSource(driver.leftX(), driver.leftY(), driver.rightX(), GamepadDriveSource.Config.defaults())`
 * assisted drive: `DriveGuidance` overlays (auto-aim, go-to-point, pose lock, etc.)
 * autonomous logic: any custom `DriveSource`
 

@@ -105,7 +105,12 @@ public class PhoenixTeleOp extends OpMode {
 
         // Drive
         drivebase = FtcDrives.mecanum(hardwareMap);
-        driveSource = GamepadDriveSource.teleOpMecanumStandard(gamepads);
+        driveSource = new GamepadDriveSource(
+                gamepads.p1().leftX(),
+                gamepads.p1().leftY(),
+                gamepads.p1().rightX(),
+                GamepadDriveSource.Config.defaults()
+        ).scaledWhen(gamepads.p1().rightBumper(), 0.35, 0.20);
 
         // Mechanism plants
         initShooterPlants();
@@ -160,6 +165,20 @@ public class PhoenixTeleOp extends OpMode {
 Keep this loop shape in mind:
 
 > **Clock → Inputs → Bindings → Tasks → Drive → Plants → Telemetry**
+
+
+### A principle that becomes important as robots get bigger
+
+When your robot grows past a tiny example, do not hide button choices inside low-level framework primitives.
+Keep the layers separated:
+
+- **framework primitives** map signals, mix drive, estimate pose, or talk to hardware
+- **framework lanes** own stable hardware/resource graphs like mecanum drive or localization
+- **robot controls** choose sticks, buttons, slow mode, and driver/operator semantics
+- **robot policy** decides game-specific behavior like aiming, scoring, and macros
+
+That separation keeps the framework reusable year to year and keeps each robot's control scheme obvious in one place.
+For the full philosophy, see [`Framework Lanes & Robot Controls`](<../design/Framework Lanes & Robot Controls.md>).
 
 ---
 

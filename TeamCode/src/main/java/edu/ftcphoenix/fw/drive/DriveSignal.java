@@ -52,9 +52,14 @@ import edu.ftcphoenix.fw.core.math.MathUtil;
  *     private final DriveSource driveSource;
  *
  *     public PhoenixRobot(HardwareMap hw, Gamepads pads) {
+ *         GamepadDevice driver = pads.p1();
  *         this.drivebase = FtcDrives.mecanum(hw);
- *         // Choose one of the GamepadDriveSource factories.
- *         this.driveSource = GamepadDriveSource.teleOpMecanum(pads);
+ *         this.driveSource = new GamepadDriveSource(
+ *                 driver.leftX(),
+ *                 driver.leftY(),
+ *                 driver.rightX(),
+ *                 GamepadDriveSource.Config.defaults()
+ *         );
  *     }
  *
  *     public void updateTeleOp(LoopClock clock) {

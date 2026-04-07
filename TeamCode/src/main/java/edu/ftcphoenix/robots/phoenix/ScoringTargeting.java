@@ -92,15 +92,15 @@ public final class ScoringTargeting {
     /**
      * Creates the shared Phoenix scoring-targeting service.
      *
-     * @param config                     auto-aim configuration snapshot copied for local ownership
+     * @param config auto-aim configuration snapshot copied for local ownership
      * @param aprilTagLocalizationConfig AprilTag field-pose solve config used by the guidance plan
-     * @param tagSensor                  shared AprilTag sensor used for selection and guidance
-     * @param cameraMountConfig          fixed camera extrinsics for the current robot profile
-     * @param globalLocalizer            current global pose-estimator lane used by adaptive guidance
-     * @param gameTagLayout              fixed field tag layout for the current game
-     * @param autoAimEnabled             driver enable source that activates sticky target selection and the aim overlay
-     * @param aimOverrideInput           driver override source that bypasses aim readiness gates when held
-     * @param shotVelocityModel          range-to-velocity model used for fresh target-based shot suggestions
+     * @param tagSensor shared AprilTag sensor used for selection and guidance
+     * @param cameraMountConfig fixed camera extrinsics for the current robot profile
+     * @param globalLocalizer current global pose-estimator lane used by adaptive guidance
+     * @param gameTagLayout fixed field tag layout for the current game
+     * @param autoAimEnabled driver enable source that activates sticky target selection and the aim overlay
+     * @param aimOverrideInput driver override source that bypasses aim readiness gates when held
+     * @param shotVelocityModel range-to-velocity model used for fresh target-based shot suggestions
      */
     public ScoringTargeting(PhoenixProfile.AutoAimConfig config,
                             TagOnlyPoseEstimator.Config aprilTagLocalizationConfig,
@@ -277,7 +277,7 @@ public final class ScoringTargeting {
     /**
      * Returns a target-derived velocity suggestion when a fresh selected observation exists.
      *
-     * @param clock                  shared loop clock for the active OpMode cycle
+     * @param clock shared loop clock for the active OpMode cycle
      * @param fallbackVelocityNative value to return when no fresh range observation is available
      * @return fresh target-derived velocity recommendation, or {@code fallbackVelocityNative} when unavailable
      */

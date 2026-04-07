@@ -1,25 +1,28 @@
 package edu.ftcphoenix.fw.drive.source;
 
 import edu.ftcphoenix.fw.core.debug.DebugSink;
-import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.source.ScalarSource;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.drive.DriveSignal;
 import edu.ftcphoenix.fw.drive.DriveSource;
-import edu.ftcphoenix.fw.input.GamepadDevice;
-import edu.ftcphoenix.fw.input.Gamepads;
 
 /**
- * {@link DriveSource} that maps gamepad inputs to a robot-centric {@link DriveSignal}
- * for TeleOp driving (e.g., mecanum).
+ * {@link DriveSource} that maps explicit gamepad-style axes to a robot-centric {@link DriveSignal}
+ * for TeleOp driving (for example, mecanum).
  *
  * <h2>What this class is responsible for</h2>
  * <ul>
- *   <li>Mapping gamepad axes to drive intent (axial / lateral / omega).</li>
+ *   <li>Mapping <em>explicitly supplied axes</em> to drive intent (axial / lateral / omega).</li>
  *   <li>Stick shaping (deadband + exponent) and scaling (max translate / max omega).</li>
- *   <li><em>Slow mode</em> is handled externally using {@link DriveSource#scaledWhen} so it can be
- *       applied consistently to any {@link DriveSource} (not just stick drive).</li>
+ *   <li>Nothing about button choices, driver slots, or slow-mode policy.</li>
  * </ul>
+ *
+ * <p>
+ * That last point is intentional. The framework treats button bindings and operator semantics as
+ * robot-owned policy, not as part of this primitive. A future robot may use different gamepads,
+ * different axes, split-driver control, trigger-based turning, or non-gamepad sources entirely.
+ * {@code GamepadDriveSource} should still be reusable in all of those cases.
+ * </p>
  *
  * <h2>Phoenix sign conventions</h2>
  * <p>{@link DriveSignal} uses Phoenix conventions:</p>
@@ -30,35 +33,37 @@ import edu.ftcphoenix.fw.input.Gamepads;
  * </ul>
  *
  * <p>
- * Standard FTC stick intuition is typically “stick right means right / clockwise”.
- * This class preserves that driver intuition by converting signs at the boundary:
+ * Standard FTC stick intuition is typically “stick right means right / clockwise”. This class
+ * preserves that driver intuition by converting signs at the boundary:
  * </p>
  * <ul>
- *   <li>Left stick X: raw +right becomes {@code lateral < 0} (right strafe) → inverted</li>
- *   <li>Right stick X: raw +clockwise becomes {@code omega < 0} (clockwise) → inverted</li>
+ *   <li>lateral raw +right becomes {@code lateral < 0} (right strafe) → inverted</li>
+ *   <li>omega raw +clockwise becomes {@code omega < 0} (clockwise) → inverted</li>
  * </ul>
  *
  * <h2>Recommended usage</h2>
  *
  * <pre>{@code
- * Gamepads pads = Gamepads.create(gamepad1, gamepad2);
- *
- * // Default mapping + shaping, no slow-mode (avoids button conflicts by default).
- * DriveSource drive = GamepadDriveSource.teleOpMecanum(pads);
- *
- * // Default mapping + shaping + slow mode on RB (with practical default slow scales).
- * DriveSource driveSlow = GamepadDriveSource.teleOpMecanumSlowRb(pads);
- *
- * // Or: explicit config (for custom shaping) plus a slow-mode wrapper.
+ * GamepadDevice driver = gamepads.p1();
  * GamepadDriveSource.Config cfg = GamepadDriveSource.Config.defaults();
- * DriveSource driveCustom = GamepadDriveSource.teleOpMecanum(pads, cfg)
- *         .scaledWhen(pads.p1().rightBumper(), 0.35, 0.20);
+ *
+ * DriveSource manual = new GamepadDriveSource(
+ *         driver.leftX(),
+ *         driver.leftY(),
+ *         driver.rightX(),
+ *         cfg
+ * ).scaledWhen(driver.rightBumper(), 0.35, 0.20);
  * }</pre>
+ *
+ * <p>
+ * The important part is that the robot code explicitly chooses the axes and any slow-mode button.
+ * This class only performs axis-to-command mapping.
+ * </p>
  *
  * <h2>Note on shaping</h2>
  * <p>
- * Stick shaping uses {@link ScalarSource#shaped(double, double, double, double)} with min/max
- * of {@code [-1, +1]} because this class is mapping gamepad sticks.
+ * Stick shaping uses {@link ScalarSource#shaped(double, double, double, double)} with min/max of
+ * {@code [-1, +1]} because this class is mapping normalized controller-style axes.
  * </p>
  */
 public final class GamepadDriveSource implements DriveSource {
@@ -67,8 +72,8 @@ public final class GamepadDriveSource implements DriveSource {
      * Configuration for TeleOp stick shaping.
      *
      * <p>
-     * This is a mutable data object. {@link GamepadDriveSource} makes a defensive copy
-     * when constructed.
+     * This is a mutable data object. {@link GamepadDriveSource} makes a defensive copy when it is
+     * constructed.
      * </p>
      */
     public static final class Config {
@@ -77,8 +82,8 @@ public final class GamepadDriveSource implements DriveSource {
          * Symmetric deadband radius in [0, 1]. Default: 0.05.
          *
          * <p>
-         * Values with {@code |v| <= deadband} are treated as 0. Values outside the deadband
-         * are normalized before the exponent is applied.
+         * Values with {@code |v| <= deadband} are treated as 0. Values outside the deadband are
+         * normalized before the exponent is applied.
          * </p>
          */
         public double deadband = 0.05;
@@ -96,12 +101,12 @@ public final class GamepadDriveSource implements DriveSource {
         public double rotateExpo = 1.5;
 
         /**
-         * Max translation scale (applied after shaping). Default: 1.0.
+         * Max translation scale applied after shaping. Default: 1.0.
          */
         public double translateScale = 1.0;
 
         /**
-         * Max rotation scale (applied after shaping). Default: 1.0.
+         * Max rotation scale applied after shaping. Default: 1.0.
          */
         public double rotateScale = 1.0;
 
@@ -110,14 +115,18 @@ public final class GamepadDriveSource implements DriveSource {
         }
 
         /**
-         * Default shaping (Phoenix defaults).
+         * Creates a config populated with Phoenix defaults.
+         *
+         * @return new mutable config initialized to the framework defaults
          */
         public static Config defaults() {
             return new Config();
         }
 
         /**
-         * Deep copy of this config.
+         * Creates a deep copy of this config.
+         *
+         * @return copied config whose fields can be edited independently
          */
         public Config copy() {
             Config c = new Config();
@@ -126,14 +135,13 @@ public final class GamepadDriveSource implements DriveSource {
             c.rotateExpo = this.rotateExpo;
             c.translateScale = this.translateScale;
             c.rotateScale = this.rotateScale;
-
             return c;
         }
     }
 
     // Raw axes (sampled for debug).
     private final ScalarSource axisLateralRaw; // raw +right (typical)
-    private final ScalarSource axisAxialRaw;   // +forward (per GamepadDevice)
+    private final ScalarSource axisAxialRaw;   // +forward in robot-driving intuition
     private final ScalarSource axisOmegaRaw;   // raw +clockwise (typical)
 
     // Shaped axes in Phoenix DriveSignal conventions.
@@ -150,95 +158,13 @@ public final class GamepadDriveSource implements DriveSource {
     private double lastAxialRaw = 0.0;
     private double lastOmegaRaw = 0.0;
 
-    // ------------------------------------------------------------------------
-    // Recommended entry points
-    // ------------------------------------------------------------------------
-
-    /**
-     * Mecanum TeleOp mapping using Phoenix defaults (no slow mode).
-     *
-     * <p>
-     * Mapping:
-     * <ul>
-     *   <li>P1 left stick Y → axial</li>
-     *   <li>P1 left stick X → lateral</li>
-     *   <li>P1 right stick X → omega</li>
-     * </ul>
-     * </p>
-     */
-    public static DriveSource teleOpMecanum(Gamepads pads) {
-        if (pads == null) {
-            throw new IllegalArgumentException("Gamepads is required");
-        }
-        return teleOpMecanum(pads, Config.defaults());
-    }
-
-    /**
-     * Mecanum TeleOp mapping with custom config (stick shaping only).
-     *
-     * <p>
-     * Most teams should start with {@link Config#defaults()}. If you want slow mode,
-     * apply it externally using {@link DriveSource#scaledWhen(edu.ftcphoenix.fw.core.source.BooleanSource, double, double)}.
-     * </p>
-     */
-    public static DriveSource teleOpMecanum(Gamepads pads, Config cfg) {
-        if (pads == null) {
-            throw new IllegalArgumentException("Gamepads is required");
-        }
-        if (cfg == null) {
-            throw new IllegalArgumentException("GamepadDriveSource.Config is required");
-        }
-
-        GamepadDevice p1 = pads.p1();
-        return new GamepadDriveSource(
-                p1.leftX(),
-                p1.leftY(),
-                p1.rightX(),
-                cfg
-        );
-    }
-
-    /**
-     * Convenience factory: {@link #teleOpMecanum(Gamepads)} plus slow mode on P1 RB.
-     *
-     * <p>This method exists purely as a beginner-friendly starting point. Internally it is just
-     * {@code teleOpMecanum(pads).scaledWhen(RB, 0.35, 0.20)}.</p>
-     */
-    public static DriveSource teleOpMecanumSlowRb(Gamepads pads) {
-        if (pads == null) {
-            throw new IllegalArgumentException("Gamepads is required");
-        }
-        BooleanSource rb = pads.p1().rightBumper();
-        return teleOpMecanum(pads)
-                .scaledWhen(rb, 0.35, 0.20);
-    }
-
-    /**
-     * Convenience: create a drive source from arbitrary axes.
-     *
-     * <p>This is handy for “microdrive” or “nudge” control where you want to drive using
-     * dpad buttons (converted to axes) or triggers, but still reuse the same shaping and scaling
-     * logic as normal stick drive.</p>
-     */
-    public static DriveSource fromAxes(ScalarSource lateralRaw, ScalarSource axialRaw, ScalarSource omegaRaw, Config cfg) {
-        return new GamepadDriveSource(lateralRaw, axialRaw, omegaRaw, cfg);
-    }
-
-    // ------------------------------------------------------------------------
-    // Construction
-    // ------------------------------------------------------------------------
-
     /**
      * Core constructor: map three raw axes into a drive signal using {@link Config}.
      *
-     * <p>
-     * Most callers should use one of the {@code teleOpMecanum(...)} helpers.
-     * </p>
-     *
      * @param axisLateralRaw raw lateral axis (typically +right)
-     * @param axisAxialRaw   axial axis (+forward per {@link GamepadDevice})
-     * @param axisOmegaRaw   raw omega axis (typically +clockwise / turn-right)
-     * @param cfg            stick shaping configuration (defensively copied)
+     * @param axisAxialRaw axial axis (typically +forward)
+     * @param axisOmegaRaw raw omega axis (typically +clockwise / turn-right)
+     * @param cfg stick-shaping configuration; defensively copied
      */
     public GamepadDriveSource(ScalarSource axisLateralRaw,
                               ScalarSource axisAxialRaw,
@@ -265,8 +191,8 @@ public final class GamepadDriveSource implements DriveSource {
         // Build shaped command axes (pre-built wrappers, no per-loop allocation).
         //
         // Notes on sign:
-        // - DriveSignal.lateral is +left, but stick X raw is +right → invert.
-        // - DriveSignal.omega is +CCW, but stick X raw is +clockwise → invert.
+        // - DriveSignal.lateral is +left, but stick X raw is usually +right → invert.
+        // - DriveSignal.omega is +CCW, but stick turn raw is usually +clockwise → invert.
         ScalarSource axial = this.axisAxialRaw
                 .shaped(this.cfg.deadband, this.cfg.translateExpo, -1.0, 1.0)
                 .scaled(this.cfg.translateScale);
@@ -286,16 +212,16 @@ public final class GamepadDriveSource implements DriveSource {
         this.axisOmegaCmd = omegaCcw;
     }
 
-    // ------------------------------------------------------------------------
-    // DriveSource implementation
-    // ------------------------------------------------------------------------
-
     /**
-     * {@inheritDoc}
+     * Samples the explicit axes and returns the current robot-centric drive command.
+     *
+     * @param clock shared loop clock used to sample the underlying sources
+     * @return current robot-centric drive signal after shaping, scaling, and sign conversion
      */
     @Override
     public DriveSignal get(LoopClock clock) {
-        // Sample raw axes for debug. These are the calibrated (but unshaped) values from GamepadDevice.
+        // Sample raw axes for debug. These are the calibrated (but unshaped) values from the
+        // upstream sources.
         lastLateralRaw = axisLateralRaw.getAsDouble(clock);
         lastAxialRaw = axisAxialRaw.getAsDouble(clock);
         lastOmegaRaw = axisOmegaRaw.getAsDouble(clock);
@@ -310,19 +236,16 @@ public final class GamepadDriveSource implements DriveSource {
         return out;
     }
 
-
-    // ------------------------------------------------------------------------
-    // Debug support
-    // ------------------------------------------------------------------------
-
     /**
-     * Dump internal state to a {@link DebugSink}.
+     * Dumps internal state to a {@link DebugSink}.
      *
-     * <p>Because {@link ScalarSource} requires a {@link LoopClock} to sample, this method reports
-     * the most recent raw values cached during {@link #get(LoopClock)}.</p>
+     * <p>
+     * Because {@link ScalarSource} requires a {@link LoopClock} to sample, this method reports the
+     * most recent raw values cached during {@link #get(LoopClock)}.
+     * </p>
      *
-     * @param dbg    debug sink to write to (may be {@code null})
-     * @param prefix key prefix for all entries (may be {@code null} or empty)
+     * @param dbg debug sink to write to; ignored when {@code null}
+     * @param prefix key prefix for all entries; may be {@code null} or empty
      */
     public void debugDump(DebugSink dbg, String prefix) {
         if (dbg == null) {
@@ -348,7 +271,9 @@ public final class GamepadDriveSource implements DriveSource {
     }
 
     /**
-     * Last computed command from this source.
+     * Returns the most recently computed drive command.
+     *
+     * @return last command produced by {@link #get(LoopClock)}; initially {@link DriveSignal#zero()}
      */
     public DriveSignal getLastSignal() {
         return lastSignal;

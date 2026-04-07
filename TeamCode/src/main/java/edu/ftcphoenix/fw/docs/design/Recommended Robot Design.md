@@ -1,5 +1,29 @@
 # Recommended Robot Design
 
+## Recommended top-level split
+
+For larger robots, use this ownership pattern:
+
+- **framework lanes** for stable FTC-side systems that recur year to year
+  - example: `FtcMecanumDriveLane`
+  - example: `FtcLocalizationLane`
+- **robot-owned controls** for all TeleOp input semantics
+  - driver sticks
+  - slow mode
+  - auto-aim enable/override
+  - scoring buttons and edge/toggle behavior
+- **robot-owned policy/services** for game-specific logic
+  - targeting
+  - supervisors
+  - shot models
+  - telemetry presenters
+
+A good composition root wires those owners together, but does not absorb their responsibilities.
+
+### Why this matters
+
+This keeps stable framework code reusable across seasons without turning the framework into a giant base robot class. It also keeps each robot's control scheme and game logic easy to find, instead of scattering it across convenience helpers and subsystem constructors.
+
 This document describes Phoenix's recommended design for robot code that will be shared between
 TeleOp and Auto.
 
@@ -764,8 +788,12 @@ okay.
 TeleOp drive usually wants a continuous manual `DriveSource`:
 
 ```java
-DriveSource manual = GamepadDriveSource.teleOpMecanum(pads)
-        .scaledWhen(pads.p1().rightBumper(), 0.35, 0.20);
+DriveSource manual = new GamepadDriveSource(
+        pads.p1().leftX(),
+        pads.p1().leftY(),
+        pads.p1().rightX(),
+        GamepadDriveSource.Config.defaults()
+).scaledWhen(pads.p1().rightBumper(), 0.35, 0.20);
 ```
 
 That manual source may then be wrapped with overlays or assist logic.

@@ -108,9 +108,15 @@ public interface DriveSource extends Source<DriveSignal> {
      *
      * <p>Example:</p>
      * <pre>{@code
-     * DriveSource manual = GamepadDriveSource.teleOpMecanum(gamepads);
+     * GamepadDevice driver = gamepads.p1();
+     * DriveSource manual = new GamepadDriveSource(
+     *         driver.leftX(),
+     *         driver.leftY(),
+     *         driver.rightX(),
+     *         GamepadDriveSource.Config.defaults()
+     * );
      * DriveSource slowable = manual.scaledWhen(
-     *         gamepads.p1().rightBumper(),
+     *         driver.rightBumper(),
      *         0.35,  // translation scale
      *         0.20); // omega scale
      * }</pre>
@@ -235,10 +241,16 @@ public interface DriveSource extends Source<DriveSignal> {
      *
      * <p>Example: auto-aim overrides rotation while holding a button:</p>
      * <pre>{@code
-     * DriveSource manual = GamepadDriveSource.teleOpMecanum(pads);
+     * GamepadDevice driver = pads.p1();
+     * DriveSource manual = new GamepadDriveSource(
+     *         driver.leftX(),
+     *         driver.leftY(),
+     *         driver.rightX(),
+     *         GamepadDriveSource.Config.defaults()
+     * );
      * DriveOverlay aim = DriveGuidance.plan()...build().overlay();
      * DriveSource assisted = manual.overlayWhen(
-     *         pads.p1().x(),
+     *         driver.x(),
      *         aim,
      *         DriveOverlayMask.OMEGA_ONLY);
      * }</pre>

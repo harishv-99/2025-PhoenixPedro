@@ -21,9 +21,9 @@ import edu.ftcphoenix.fw.drive.DriveSource;
 import edu.ftcphoenix.fw.drive.MecanumDrivebase;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidance;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidancePlan;
+import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceSpec;
 import edu.ftcphoenix.fw.drive.guidance.ReferencePoint2d;
 import edu.ftcphoenix.fw.drive.guidance.References;
-import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceSpec;
 import edu.ftcphoenix.fw.drive.source.GamepadDriveSource;
 import edu.ftcphoenix.fw.ftc.FtcDrives;
 import edu.ftcphoenix.fw.ftc.FtcTelemetryDebugSink;
@@ -46,7 +46,7 @@ import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelections;
  *
  * <ol>
  *   <li><b>Mecanum drive</b> using {@link FtcDrives#mecanum} +
- *       {@link GamepadDriveSource} (same as Example 01).</li>
+ *       {@link GamepadDriveSource} with explicit axis wiring and a robot-owned slow-mode wrapper (same as Example 01).</li>
  *   <li><b>Tag-based auto-aim</b> using {@link DriveGuidance} (as a {@link edu.ftcphoenix.fw.drive.DriveOverlay}) plus a shared {@link TagSelectionSource}:
  *     <ul>
  *       <li>Hold a button to override omega and face a scoring AprilTag.</li>
@@ -167,7 +167,12 @@ public final class TeleOp_05_ShooterTagAimVision extends OpMode {
 
         // 2) Drive wiring: mecanum + sticks.
         drivebase = FtcDrives.mecanum(hardwareMap);
-        baseDrive = GamepadDriveSource.teleOpMecanumSlowRb(gamepads);
+        baseDrive = new GamepadDriveSource(
+                gamepads.p1().leftX(),
+                gamepads.p1().leftY(),
+                gamepads.p1().rightX(),
+                GamepadDriveSource.Config.defaults()
+        ).scaledWhen(gamepads.p1().rightBumper(), 0.35, 0.20);
 
         // 3) Tag sensor: real FTC VisionPortal + AprilTagProcessor adapter.
         //

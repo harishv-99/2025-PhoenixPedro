@@ -4,20 +4,28 @@ This is the Phoenix-specific version of the framework calibration path.
 
 Use it when you are bringing up a fresh Phoenix robot and want the exact menu names and `PhoenixProfile` fields to touch.
 
-## Architecture notes for the stage-1 and stage-2 refactors
+## Architecture notes for the framework-lane refactor
 
-The stage-1 cleanup intentionally split a few responsibilities that used to live together:
+Phoenix now follows the framework split more explicitly:
 
-- `PhoenixProfile` owns robot configuration instead of the old `RobotConfig` static bag.
+- `PhoenixProfile` owns one thin robot profile built on top of framework-lane configs.
+- `PhoenixProfile.drive` is a direct `FtcMecanumDriveLane.Config`.
+- `PhoenixProfile.localization` is a direct `FtcLocalizationLane.Config`.
+- `PhoenixTeleOpControls` owns **all** TeleOp input semantics, including the drive sticks and slow mode.
 - `PhoenixRobot` is the composition root and loop owner.
-- `PhoenixTeleOpBindings` owns button-edge and toggle semantics.
 - `ShooterSupervisor` owns scoring policy and intent-level commands.
 - `PhoenixTelemetryPresenter` owns driver-facing telemetry formatting.
 - `ScoringTargeting` owns selected-tag policy, cached auto-aim status, and range-based shot suggestions.
-- `PhoenixProfile.autoAim.scoringTargets` is now the target catalog; adding a scoring tag should usually be a profile edit, not a robot-code branch.
-- The range-to-velocity interpolation table now lives with targeting configuration instead of inside `Shooter`.
+- `PhoenixProfile.autoAim.scoringTargets` is the target catalog; adding a scoring tag should usually be a profile edit, not a robot-code branch.
+- The range-to-velocity interpolation table lives with targeting configuration instead of inside `Shooter`.
 
-That split matters during bring-up because tester fixes and robot fixes should usually go to the owner of the behavior, not to an unrelated helper.
+That split matters during bring-up because fixes should land in the owner of the behavior:
+
+- drivetrain wiring / brake / drive tuning → `PhoenixProfile.drive`
+- camera mount / AprilTag tuning / fusion tuning → `PhoenixProfile.localization`
+- button semantics / manual drive behavior → `PhoenixTeleOpControls`
+- scoring gating / requests / feed policy → `ShooterSupervisor`
+- mechanism actuation → `Shooter`
 
 ## Where to start in the tester menu
 
@@ -44,7 +52,11 @@ Confirm each wheel would drive the robot forward when the tester says it should.
 
 ### Fix in code
 
-Use the Phoenix drivetrain motor wiring/config, not a tester workaround, to correct any reversed motor.
+Use the Phoenix drive-lane wiring config, not a tester workaround, to correct any reversed motor:
+
+```java
+PhoenixProfile.current().drive.wiring
+```
 
 ### Tester implementation note
 
@@ -63,14 +75,14 @@ Solve Phoenix's webcam pose relative to the robot.
 ### Paste result into
 
 ```java
-PhoenixProfile.current().vision.cameraMount
+PhoenixProfile.current().localization.cameraMount
 ```
 
 The tester prints `CameraMountConfig.of(...)` and `CameraMountConfig.ofDegrees(...)`. Paste one of those directly.
 
 ### Phoenix notes
 
-- the preferred camera is `PhoenixProfile.current().vision.nameWebcam`
+- the preferred camera is `PhoenixProfile.current().localization.webcamName`
 - the walkthrough status turns `OK` once the camera mount no longer looks like the identity placeholder
 
 ## Step 3: AprilTag-only localization sanity check
@@ -95,8 +107,8 @@ Verify that Phoenix's preferred camera, fixed-tag layout policy, and AprilTag-on
 This tester reuses:
 
 ```java
-PhoenixProfile.current().vision.nameWebcam
-PhoenixProfile.current().vision.cameraMount
+PhoenixProfile.current().localization.webcamName
+PhoenixProfile.current().localization.cameraMount
 PhoenixProfile.current().localization.aprilTags
 ```
 
@@ -189,8 +201,8 @@ Validate Phoenix's default global localizer in the conditions that matter for re
 ```java
 PhoenixProfile.current().localization.pinpoint
 PhoenixProfile.current().localization.aprilTags
-PhoenixProfile.current().localization.pinpointAprilTagFusion
-PhoenixProfile.current().vision.cameraMount
+PhoenixProfile.current().localization.odometryTagFusion
+PhoenixProfile.current().localization.cameraMount
 ```
 
 ## Step 7: optional EKF comparison
@@ -213,7 +225,7 @@ Compare the optional covariance-aware estimator against the default fusion path.
 ### Config involved
 
 ```java
-PhoenixProfile.current().localization.pinpointAprilTagEkf
+PhoenixProfile.current().localization.odometryTagEkf
 PhoenixProfile.current().localization.globalEstimatorMode
 ```
 
@@ -231,5 +243,6 @@ Use the tester to compare behavior first. Only then consider changing the robot'
 
 ## Related framework docs
 
+- [`docs/design/Framework Lanes & Robot Controls.md`](<docs/design/Framework Lanes & Robot Controls.md>)
 - [`docs/testing-calibration/Robot Calibration Tutorials.md`](<docs/testing-calibration/Robot Calibration Tutorials.md>)
 - [`docs/testing-calibration/Guided Calibration Walkthroughs.md`](<docs/testing-calibration/Guided Calibration Walkthroughs.md>)

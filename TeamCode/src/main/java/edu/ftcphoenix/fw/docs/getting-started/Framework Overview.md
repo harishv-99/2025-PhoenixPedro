@@ -126,6 +126,18 @@ Two rules of thumb:
 
 ---
 
+## Framework lanes vs robot controls
+
+Phoenix now distinguishes between three different kinds of ownership that often got blurred together in older FTC code:
+
+- **primitives**: small reusable building blocks like `GamepadDriveSource`, `MecanumDrivebase`, `AprilTagSensor`, and `PinpointPoseEstimator`
+- **framework lanes**: stable reusable owners built from primitives, such as `FtcMecanumDriveLane` and `FtcLocalizationLane`
+- **robot-owned controls/policy**: button semantics, scoring logic, auto-aim rules, and telemetry presentation
+
+That split is deliberate. A framework primitive should not decide that "right bumper means slow mode" any more than an estimator should decide which scoring target matters this year. Stable hardware/resource ownership belongs in reusable framework lanes. Operator semantics and game strategy belong in robot code.
+
+See [`Framework Lanes & Robot Controls`](<../design/Framework Lanes & Robot Controls.md>) and [`Recommended Robot Design`](<../design/Recommended Robot Design.md>) for the concrete robot-side structure.
+
 ## The layers (top → bottom)
 
 Think of Phoenix as a few thin layers you stack:
@@ -293,7 +305,12 @@ import edu.ftcphoenix.fw.input.Gamepads;
 Gamepads pads = Gamepads.create(gamepad1, gamepad2);
 
 MecanumDrivebase drivebase = FtcDrives.mecanum(hardwareMap);
-DriveSource drive = GamepadDriveSource.teleOpMecanumStandard(pads);
+DriveSource drive = new GamepadDriveSource(
+        pads.p1().leftX(),
+        pads.p1().leftY(),
+        pads.p1().rightX(),
+        GamepadDriveSource.Config.defaults()
+).scaledWhen(pads.p1().rightBumper(), 0.35, 0.20);
 ```
 
 **Rate limiting note:** `MecanumDrivebase` can rate-limit components using the most recent `dtSec`. Call `drivebase.update(clock)` once per loop. If you want rate limiting to use the *current* loop’s `dt`, call `update(clock)` **before** `drive(...)`.

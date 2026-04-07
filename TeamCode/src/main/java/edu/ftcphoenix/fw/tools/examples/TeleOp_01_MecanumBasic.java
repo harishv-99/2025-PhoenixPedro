@@ -65,7 +65,12 @@ public final class TeleOp_01_MecanumBasic extends OpMode {
         drivebase = FtcDrives.mecanum(hardwareMap);
 
         // Standard TeleOp stick mapping (includes slow-mode button).
-        stickDrive = GamepadDriveSource.teleOpMecanumSlowRb(gamepads);
+        stickDrive = new GamepadDriveSource(
+                gamepads.p1().leftX(),
+                gamepads.p1().leftY(),
+                gamepads.p1().rightX(),
+                GamepadDriveSource.Config.defaults()
+        ).scaledWhen(gamepads.p1().rightBumper(), 0.35, 0.20);
     }
 
     /**

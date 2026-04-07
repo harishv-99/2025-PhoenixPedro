@@ -31,21 +31,21 @@ public final class TargetingStatus {
     /**
      * Creates an immutable targeting snapshot.
      *
-     * @param autoAimEnabled          whether the driver's auto-aim enable is currently active
-     * @param aimReady                whether the current aim solution is within the configured ready tolerance
-     * @param aimOkToShoot            whether current targeting policy allows feeding a shot
-     * @param aimOverride             whether the driver is overriding targeting gates this loop
-     * @param aimToleranceDeg         configured guidance deadband for the aim plan, in degrees
-     * @param aimReadyToleranceDeg    configured looser tolerance used by the shoot gate, in degrees
-     * @param selection               selected-tag snapshot for the current loop
-     * @param aimStatus               current drive-guidance query status for omega-only auto-aim
-     * @param targetLabel             human-readable label for the selected target family
-     * @param aimOffsetForwardInches  tag-local forward aim offset in inches
-     * @param aimOffsetLeftInches     tag-local left aim offset in inches
-     * @param hasSuggestedVelocity    whether a fresh target observation produced a valid shot suggestion
+     * @param autoAimEnabled whether the driver's auto-aim enable is currently active
+     * @param aimReady whether the current aim solution is within the configured ready tolerance
+     * @param aimOkToShoot whether current targeting policy allows feeding a shot
+     * @param aimOverride whether the driver is overriding targeting gates this loop
+     * @param aimToleranceDeg configured guidance deadband for the aim plan, in degrees
+     * @param aimReadyToleranceDeg configured looser tolerance used by the shoot gate, in degrees
+     * @param selection selected-tag snapshot for the current loop
+     * @param aimStatus current drive-guidance query status for omega-only auto-aim
+     * @param targetLabel human-readable label for the selected target family
+     * @param aimOffsetForwardInches tag-local forward aim offset in inches
+     * @param aimOffsetLeftInches tag-local left aim offset in inches
+     * @param hasSuggestedVelocity whether a fresh target observation produced a valid shot suggestion
      * @param suggestedVelocityNative suggested flywheel velocity in native units
-     * @param fieldToSelectedTag      fixed field pose of the selected tag, or {@code null} if unavailable
-     * @param fieldToAimPoint         fixed field pose of the selected target aim point, or {@code null} if unavailable
+     * @param fieldToSelectedTag fixed field pose of the selected tag, or {@code null} if unavailable
+     * @param fieldToAimPoint fixed field pose of the selected target aim point, or {@code null} if unavailable
      */
     public TargetingStatus(boolean autoAimEnabled,
                            boolean aimReady,

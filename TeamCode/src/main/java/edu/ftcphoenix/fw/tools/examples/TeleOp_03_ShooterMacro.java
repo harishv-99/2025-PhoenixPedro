@@ -227,7 +227,12 @@ public final class TeleOp_03_ShooterMacro extends OpMode {
 
         // === 2) Drive wiring (same pattern as Examples 01–02) ===
         drivebase = FtcDrives.mecanum(hardwareMap);
-        stickDrive = GamepadDriveSource.teleOpMecanumSlowRb(gamepads);
+        stickDrive = new GamepadDriveSource(
+                gamepads.p1().leftX(),
+                gamepads.p1().leftY(),
+                gamepads.p1().rightX(),
+                GamepadDriveSource.Config.defaults()
+        ).scaledWhen(gamepads.p1().rightBumper(), 0.35, 0.20);
 
         // === 3) Mechanism wiring using Actuators ===
 

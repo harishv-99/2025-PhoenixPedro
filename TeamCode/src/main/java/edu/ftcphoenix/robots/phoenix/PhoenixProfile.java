@@ -10,40 +10,53 @@ import java.util.Set;
 
 import edu.ftcphoenix.fw.core.hal.Direction;
 import edu.ftcphoenix.fw.core.math.InterpolatingTable1D;
-import edu.ftcphoenix.fw.drive.MecanumDrivebase;
-import edu.ftcphoenix.fw.ftc.FtcDrives;
+import edu.ftcphoenix.fw.drive.source.GamepadDriveSource;
 import edu.ftcphoenix.fw.ftc.FtcFieldRegions;
-import edu.ftcphoenix.fw.ftc.localization.PinpointPoseEstimator;
-import edu.ftcphoenix.fw.localization.apriltag.TagOnlyPoseEstimator;
-import edu.ftcphoenix.fw.localization.fusion.OdometryTagEkfPoseEstimator;
-import edu.ftcphoenix.fw.localization.fusion.OdometryTagFusionPoseEstimator;
+import edu.ftcphoenix.fw.ftc.drive.FtcMecanumDriveLane;
+import edu.ftcphoenix.fw.ftc.localization.FtcLocalizationLane;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 
 /**
  * Phoenix robot profile.
  *
- * <p>This replaces the old static {@code RobotConfig} bag with one explicit profile object that
- * the robot container can own, copy, and pass into collaborators. The profile still keeps the
- * familiar robot-side editing experience: device names and tuning values live in one place, but the
- * rest of the code now depends on an instance instead of global statics.</p>
+ * <p>
+ * Phoenix now treats the stable year-to-year framework lanes as first-class config owners.
+ * Drive hardware is configured directly with {@link FtcMecanumDriveLane.Config}. Localization is
+ * configured directly with {@link FtcLocalizationLane.Config}. Robot-specific policy still lives
+ * here too, but it is layered on top of those reusable framework owners instead of rebuilding their
+ * wiring in Phoenix every season.
+ * </p>
+ *
+ * <p>
+ * The result is a thinner robot profile:
+ * </p>
+ * <ul>
+ *   <li>framework-owned lanes: drive + localization</li>
+ *   <li>robot-owned controls: TeleOp stick shaping / slow-mode tuning</li>
+ *   <li>robot-owned mechanisms and strategy: shooter + targeting + calibration acknowledgements</li>
+ * </ul>
  */
 public final class PhoenixProfile {
 
     private static final PhoenixProfile CURRENT = defaults();
 
     /**
-     * Drivetrain hardware + drivebase tuning.
+     * Stable drivetrain hardware/lifecycle configuration owned by the framework drive lane.
      */
-    public DriveTrainConfig driveTrain = new DriveTrainConfig();
+    public FtcMecanumDriveLane.Config drive = defaultDriveConfig();
+
+    /**
+     * Stable localization hardware/lifecycle configuration owned by the framework localization lane.
+     */
+    public FtcLocalizationLane.Config localization = defaultLocalizationConfig();
+
+    /**
+     * TeleOp control-layer tuning owned by Phoenix's robot-specific controls object.
+     */
+    public TeleOpControlsConfig controls = new TeleOpControlsConfig();
 
     /** Shooter hardware + scoring-path tuning. */
     public ShooterConfig shooter = new ShooterConfig();
-
-    /** Vision hardware and camera extrinsics. */
-    public VisionConfig vision = new VisionConfig();
-
-    /** Localization configs shared by TeleOp and testers. */
-    public LocalizationConfig localization = new LocalizationConfig();
 
     /** Human-acknowledged calibration checkpoints. */
     public CalibrationConfig calibration = new CalibrationConfig();
@@ -52,7 +65,7 @@ public final class PhoenixProfile {
     public AutoAimConfig autoAim = new AutoAimConfig();
 
     /**
-     * Creates a Phoenix profile initialized with the default checked-in values.
+     * Creates a Phoenix profile initialized with the checked-in defaults.
      */
     public PhoenixProfile() {
     }
@@ -60,8 +73,10 @@ public final class PhoenixProfile {
     /**
      * Returns the current checked-in Phoenix profile.
      *
-     * <p>Robot code should usually pass {@link #copy()} into long-lived owners so runtime code does
-     * not accidentally depend on mutable global state.</p>
+     * <p>
+     * Robot code should usually pass {@link #copy()} into long-lived owners so runtime logic does
+     * not accidentally depend on mutable global state.
+     * </p>
      *
      * @return shared checked-in Phoenix profile instance
      */
@@ -72,7 +87,7 @@ public final class PhoenixProfile {
     /**
      * Creates a new profile instance populated with Phoenix defaults.
      *
-     * @return new mutable profile instance with default Phoenix settings
+     * @return new mutable profile instance with Phoenix's checked-in defaults
      */
     public static PhoenixProfile defaults() {
         return new PhoenixProfile();
@@ -85,80 +100,168 @@ public final class PhoenixProfile {
      */
     public PhoenixProfile copy() {
         PhoenixProfile copy = new PhoenixProfile();
-        copy.driveTrain = this.driveTrain.copy();
-        copy.shooter = this.shooter.copy();
-        copy.vision = this.vision.copy();
+        copy.drive = this.drive.copy();
         copy.localization = this.localization.copy();
+        copy.controls = this.controls.copy();
+        copy.shooter = this.shooter.copy();
         copy.calibration = this.calibration.copy();
         copy.autoAim = this.autoAim.copy();
         return copy;
     }
 
     /**
-     * Drivetrain hardware mapping and drivebase configuration.
+     * Phoenix TeleOp control-layer configuration.
+     *
+     * <p>
+     * This config intentionally holds only control-layer tuning. Physical button identities and
+     * control semantics still live in {@code PhoenixTeleOpControls}, because those choices are part
+     * of the robot's control policy rather than generic framework configuration.
+     * </p>
      */
-    public static final class DriveTrainConfig {
-        public String nameMotorFrontLeft = "frontLeftMotor";
-        public Direction directionMotorFrontLeft = Direction.FORWARD;
-
-        public String nameMotorFrontRight = "frontRightMotor";
-        public Direction directionMotorFrontRight = Direction.FORWARD;
-
-        public String nameMotorBackLeft = "backLeftMotor";
-        public Direction directionMotorBackLeft = Direction.FORWARD;
-
-        public String nameMotorBackRight = "backRightMotor";
-        public Direction directionMotorBackRight = Direction.FORWARD;
-
-        /** If true, set drivetrain motors to BRAKE when commanded power is 0. */
-        public boolean zeroPowerBrake = true;
-
-        /** Open-loop drivebase tuning. */
-        public MecanumDrivebase.Config drivebase = MecanumDrivebase.Config.defaults();
+    public static final class TeleOpControlsConfig {
 
         /**
-         * Creates a drivetrain config initialized with Phoenix defaults.
+         * Drive-stick shaping and slow-mode tuning for the manual drive source.
          */
-        public DriveTrainConfig() {
+        public DriveControlsConfig drive = new DriveControlsConfig();
+
+        /**
+         * Creates a TeleOp controls config initialized with Phoenix defaults.
+         */
+        public TeleOpControlsConfig() {
         }
 
         /**
-         * Builds the mecanum hardware-wiring config expected by the framework helpers.
+         * Creates a deep copy of this TeleOp controls config.
          *
-         * @return wiring config containing the configured motor names and directions
+         * @return copied controls config
          */
-        public FtcDrives.MecanumWiringConfig mecanumWiring() {
-            FtcDrives.MecanumWiringConfig w = FtcDrives.MecanumWiringConfig.defaults();
-            w.frontLeftName = nameMotorFrontLeft;
-            w.frontLeftDirection = directionMotorFrontLeft;
-            w.frontRightName = nameMotorFrontRight;
-            w.frontRightDirection = directionMotorFrontRight;
-            w.backLeftName = nameMotorBackLeft;
-            w.backLeftDirection = directionMotorBackLeft;
-            w.backRightName = nameMotorBackRight;
-            w.backRightDirection = directionMotorBackRight;
-            return w;
-        }
-
-        /**
-         * Creates a deep copy of this drivetrain config.
-         *
-         * @return copied drivetrain config
-         */
-        public DriveTrainConfig copy() {
-            DriveTrainConfig c = new DriveTrainConfig();
-            c.nameMotorFrontLeft = this.nameMotorFrontLeft;
-            c.directionMotorFrontLeft = this.directionMotorFrontLeft;
-            c.nameMotorFrontRight = this.nameMotorFrontRight;
-            c.directionMotorFrontRight = this.directionMotorFrontRight;
-            c.nameMotorBackLeft = this.nameMotorBackLeft;
-            c.directionMotorBackLeft = this.directionMotorBackLeft;
-            c.nameMotorBackRight = this.nameMotorBackRight;
-            c.directionMotorBackRight = this.directionMotorBackRight;
-            c.zeroPowerBrake = this.zeroPowerBrake;
-            c.drivebase = this.drivebase.copy();
+        public TeleOpControlsConfig copy() {
+            TeleOpControlsConfig c = new TeleOpControlsConfig();
+            c.drive = this.drive.copy();
             return c;
         }
+
+        /**
+         * Drive-control tuning owned by the robot controls layer.
+         */
+        public static final class DriveControlsConfig {
+
+            /**
+             * Stick shaping and scaling for the base manual drive source before any slow-mode wrapper.
+             */
+            public GamepadDriveSource.Config manualDrive = GamepadDriveSource.Config.defaults();
+
+            /**
+             * Translation scale applied while the Phoenix slow-mode button is held.
+             */
+            public double slowTranslateScale = 0.35;
+
+            /**
+             * Rotation scale applied while the Phoenix slow-mode button is held.
+             */
+            public double slowOmegaScale = 0.20;
+
+            /**
+             * Creates a drive-controls config initialized with Phoenix defaults.
+             */
+            public DriveControlsConfig() {
+            }
+
+            /**
+             * Creates a deep copy of this drive-controls config.
+             *
+             * @return copied drive-controls config
+             */
+            public DriveControlsConfig copy() {
+                DriveControlsConfig c = new DriveControlsConfig();
+                c.manualDrive = this.manualDrive.copy();
+                c.slowTranslateScale = this.slowTranslateScale;
+                c.slowOmegaScale = this.slowOmegaScale;
+                return c;
+            }
+        }
+    }
+
+    private static FtcMecanumDriveLane.Config defaultDriveConfig() {
+        FtcMecanumDriveLane.Config cfg = FtcMecanumDriveLane.Config.defaults();
+        cfg.wiring.frontLeftName = "frontLeftMotor";
+        cfg.wiring.frontLeftDirection = Direction.FORWARD;
+        cfg.wiring.frontRightName = "frontRightMotor";
+        cfg.wiring.frontRightDirection = Direction.FORWARD;
+        cfg.wiring.backLeftName = "backLeftMotor";
+        cfg.wiring.backLeftDirection = Direction.FORWARD;
+        cfg.wiring.backRightName = "backRightMotor";
+        cfg.wiring.backRightDirection = Direction.FORWARD;
+        cfg.zeroPowerBrake = true;
+        return cfg;
+    }
+
+    private static FtcLocalizationLane.Config defaultLocalizationConfig() {
+        FtcLocalizationLane.Config cfg = FtcLocalizationLane.Config.defaults();
+        cfg.webcamName = "Webcam 1";
+        cfg.cameraMount = CameraMountConfig.ofDegrees(
+                9.97,
+                -1.80,
+                13.68,
+                1.9,
+                -18.2,
+                -1.7
+        );
+
+        cfg.globalEstimatorMode = FtcLocalizationLane.GlobalEstimatorMode.FUSION;
+
+        cfg.pinpoint = cfg.pinpoint
+                .withHardwareMapName("pinPoint")
+                .withOffsets(0.0, 0.0)
+                .withForwardPodDirection(GoBildaPinpointDriver.EncoderDirection.FORWARD)
+                .withStrafePodDirection(GoBildaPinpointDriver.EncoderDirection.FORWARD);
+
+        cfg.aprilTags.maxAbsBearingRad = 0.0;
+        cfg.aprilTags.preferObservationFieldPose = true;
+        cfg.aprilTags.observationFieldPoseMaxDeltaInches = 8.0;
+        cfg.aprilTags.observationFieldPoseMaxDeltaHeadingRad = Math.toRadians(12.0);
+        cfg.aprilTags.rangeSoftnessInches = 36.0;
+        cfg.aprilTags.minObservationWeight = 0.05;
+        cfg.aprilTags.outlierPositionGateInches = 18.0;
+        cfg.aprilTags.outlierHeadingGateRad = Math.toRadians(25.0);
+        cfg.aprilTags.plausibleFieldRegion = FtcFieldRegions.fullField();
+        cfg.aprilTags.maxOutsidePlausibleFieldRegionInches = 3.0;
+
+        cfg.odometryTagFusion.maxVisionAgeSec = 0.35;
+        cfg.odometryTagFusion.minVisionQuality = 0.10;
+        cfg.odometryTagFusion.visionPositionGain = 0.25;
+        cfg.odometryTagFusion.visionHeadingGain = 0.35;
+        cfg.odometryTagFusion.maxVisionPositionJumpIn = 24.0;
+        cfg.odometryTagFusion.maxVisionHeadingJumpRad = Math.toRadians(60.0);
+        cfg.odometryTagFusion.enableLatencyCompensation = true;
+        cfg.odometryTagFusion.odomHistorySec = 1.0;
+
+        cfg.odometryTagEkf.maxVisionAgeSec = 0.35;
+        cfg.odometryTagEkf.minVisionQuality = 0.10;
+        cfg.odometryTagEkf.maxVisionPositionInnovationIn = 24.0;
+        cfg.odometryTagEkf.maxVisionHeadingInnovationRad = Math.toRadians(60.0);
+        cfg.odometryTagEkf.maxVisionMahalanobisSq = 14.0;
+        cfg.odometryTagEkf.enableLatencyCompensation = true;
+        cfg.odometryTagEkf.odomHistorySec = 1.0;
+        cfg.odometryTagEkf.initialPositionStdIn = 6.0;
+        cfg.odometryTagEkf.initialHeadingStdRad = Math.toRadians(12.0);
+        cfg.odometryTagEkf.manualPosePositionStdIn = 3.0;
+        cfg.odometryTagEkf.manualPoseHeadingStdRad = Math.toRadians(6.0);
+        cfg.odometryTagEkf.odomProcessPositionStdFloorIn = 0.20;
+        cfg.odometryTagEkf.odomProcessPositionStdPerIn = 0.03;
+        cfg.odometryTagEkf.odomProcessPositionStdPerRad = 0.55;
+        cfg.odometryTagEkf.odomProcessHeadingStdFloorRad = Math.toRadians(0.35);
+        cfg.odometryTagEkf.odomProcessHeadingStdPerIn = Math.toRadians(0.06);
+        cfg.odometryTagEkf.odomProcessHeadingStdPerRad = 0.06;
+        cfg.odometryTagEkf.visionPositionStdFloorIn = 1.75;
+        cfg.odometryTagEkf.visionPositionStdScaleIn = 6.0;
+        cfg.odometryTagEkf.visionHeadingStdFloorRad = Math.toRadians(3.0);
+        cfg.odometryTagEkf.visionHeadingStdScaleRad = Math.toRadians(10.0);
+        cfg.odometryTagEkf.qualityPositionStdScaleIn = 18.0;
+        cfg.odometryTagEkf.qualityHeadingStdScaleRad = Math.toRadians(30.0);
+
+        return cfg;
     }
 
     /**
@@ -268,132 +371,6 @@ public final class PhoenixProfile {
             c.feedScaleIntakeMotor = this.feedScaleIntakeMotor;
             c.feedScaleIntakeTransfer = this.feedScaleIntakeTransfer;
             c.feedScaleShooterTransfer = this.feedScaleShooterTransfer;
-            return c;
-        }
-    }
-
-    /**
-     * Vision-related profile values.
-     */
-    public static final class VisionConfig {
-        public String nameWebcam = "Webcam 1";
-
-        public CameraMountConfig cameraMount = CameraMountConfig.ofDegrees(
-                9.97,
-                -1.80,
-                13.68,
-                1.9,
-                -18.2,
-                -1.7
-        );
-
-        /**
-         * Creates a vision config initialized with Phoenix defaults.
-         */
-        public VisionConfig() {
-        }
-
-        /**
-         * Creates a copy of this vision config.
-         *
-         * @return copied vision config
-         */
-        public VisionConfig copy() {
-            VisionConfig c = new VisionConfig();
-            c.nameWebcam = this.nameWebcam;
-            c.cameraMount = this.cameraMount;
-            return c;
-        }
-    }
-
-    /**
-     * Localization-related configs shared by the robot and testers.
-     */
-    public static final class LocalizationConfig {
-        /**
-         * Selects which global pose estimator Phoenix should use at runtime.
-         */
-        public enum GlobalEstimatorMode {
-            FUSION,
-            EKF
-        }
-
-        public GlobalEstimatorMode globalEstimatorMode = GlobalEstimatorMode.FUSION;
-
-        public PinpointPoseEstimator.Config pinpoint =
-                PinpointPoseEstimator.Config.defaults()
-                        .withHardwareMapName("pinPoint")
-                        .withOffsets(0.0, 0.0)
-                        .withForwardPodDirection(GoBildaPinpointDriver.EncoderDirection.FORWARD)
-                        .withStrafePodDirection(GoBildaPinpointDriver.EncoderDirection.FORWARD);
-
-        public TagOnlyPoseEstimator.Config aprilTags = TagOnlyPoseEstimator.Config.defaults();
-        public OdometryTagFusionPoseEstimator.Config pinpointAprilTagFusion =
-                OdometryTagFusionPoseEstimator.Config.defaults();
-        public OdometryTagEkfPoseEstimator.Config pinpointAprilTagEkf =
-                OdometryTagEkfPoseEstimator.Config.defaults();
-
-        /**
-         * Creates a localization config initialized with Phoenix defaults.
-         */
-        public LocalizationConfig() {
-            aprilTags.maxAbsBearingRad = 0.0;
-            aprilTags.preferObservationFieldPose = true;
-            aprilTags.observationFieldPoseMaxDeltaInches = 8.0;
-            aprilTags.observationFieldPoseMaxDeltaHeadingRad = Math.toRadians(12.0);
-            aprilTags.rangeSoftnessInches = 36.0;
-            aprilTags.minObservationWeight = 0.05;
-            aprilTags.outlierPositionGateInches = 18.0;
-            aprilTags.outlierHeadingGateRad = Math.toRadians(25.0);
-            aprilTags.plausibleFieldRegion = FtcFieldRegions.fullField();
-            aprilTags.maxOutsidePlausibleFieldRegionInches = 3.0;
-
-            pinpointAprilTagFusion.maxVisionAgeSec = 0.35;
-            pinpointAprilTagFusion.minVisionQuality = 0.10;
-            pinpointAprilTagFusion.visionPositionGain = 0.25;
-            pinpointAprilTagFusion.visionHeadingGain = 0.35;
-            pinpointAprilTagFusion.maxVisionPositionJumpIn = 24.0;
-            pinpointAprilTagFusion.maxVisionHeadingJumpRad = Math.toRadians(60.0);
-            pinpointAprilTagFusion.enableLatencyCompensation = true;
-            pinpointAprilTagFusion.odomHistorySec = 1.0;
-
-            pinpointAprilTagEkf.maxVisionAgeSec = 0.35;
-            pinpointAprilTagEkf.minVisionQuality = 0.10;
-            pinpointAprilTagEkf.maxVisionPositionInnovationIn = 24.0;
-            pinpointAprilTagEkf.maxVisionHeadingInnovationRad = Math.toRadians(60.0);
-            pinpointAprilTagEkf.maxVisionMahalanobisSq = 14.0;
-            pinpointAprilTagEkf.enableLatencyCompensation = true;
-            pinpointAprilTagEkf.odomHistorySec = 1.0;
-            pinpointAprilTagEkf.initialPositionStdIn = 6.0;
-            pinpointAprilTagEkf.initialHeadingStdRad = Math.toRadians(12.0);
-            pinpointAprilTagEkf.manualPosePositionStdIn = 3.0;
-            pinpointAprilTagEkf.manualPoseHeadingStdRad = Math.toRadians(6.0);
-            pinpointAprilTagEkf.odomProcessPositionStdFloorIn = 0.20;
-            pinpointAprilTagEkf.odomProcessPositionStdPerIn = 0.03;
-            pinpointAprilTagEkf.odomProcessPositionStdPerRad = 0.55;
-            pinpointAprilTagEkf.odomProcessHeadingStdFloorRad = Math.toRadians(0.35);
-            pinpointAprilTagEkf.odomProcessHeadingStdPerIn = Math.toRadians(0.06);
-            pinpointAprilTagEkf.odomProcessHeadingStdPerRad = 0.06;
-            pinpointAprilTagEkf.visionPositionStdFloorIn = 1.75;
-            pinpointAprilTagEkf.visionPositionStdScaleIn = 6.0;
-            pinpointAprilTagEkf.visionHeadingStdFloorRad = Math.toRadians(3.0);
-            pinpointAprilTagEkf.visionHeadingStdScaleRad = Math.toRadians(10.0);
-            pinpointAprilTagEkf.qualityPositionStdScaleIn = 18.0;
-            pinpointAprilTagEkf.qualityHeadingStdScaleRad = Math.toRadians(30.0);
-        }
-
-        /**
-         * Creates a deep copy of this localization config.
-         *
-         * @return copied localization config
-         */
-        public LocalizationConfig copy() {
-            LocalizationConfig c = new LocalizationConfig();
-            c.globalEstimatorMode = this.globalEstimatorMode;
-            c.pinpoint = this.pinpoint.copy();
-            c.aprilTags = this.aprilTags.copy();
-            c.pinpointAprilTagFusion = this.pinpointAprilTagFusion.copy();
-            c.pinpointAprilTagEkf = this.pinpointAprilTagEkf.copy();
             return c;
         }
     }
@@ -597,8 +574,8 @@ public final class PhoenixProfile {
             /**
              * Creates a scoring-target profile.
              *
-             * @param tagId     AprilTag id that identifies the scoring target
-             * @param label     human-readable label for telemetry and documentation
+             * @param tagId AprilTag id that identifies the scoring target
+             * @param label human-readable label for telemetry and documentation
              * @param aimOffset tag-local point offset used for auto-aim geometry
              */
             public ScoringTarget(int tagId, String label, AimOffset aimOffset) {

@@ -2,6 +2,7 @@ package edu.ftcphoenix.robots.phoenix.tester;
 
 import edu.ftcphoenix.fw.actuation.Actuators;
 import edu.ftcphoenix.fw.actuation.Plant;
+import edu.ftcphoenix.fw.ftc.drive.FtcMecanumDriveLane;
 import edu.ftcphoenix.fw.tools.tester.BaseTeleOpTester;
 import edu.ftcphoenix.fw.tools.tester.TesterSuite;
 import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
@@ -9,8 +10,10 @@ import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
 /**
  * Robot-specific tester for verifying drivetrain motor direction.
  *
- * <p>Hold a button to run one drivetrain motor forward at a fixed power. This helps confirm the
- * wiring + inversion flags in {@link PhoenixProfile.DriveTrainConfig}.</p>
+ * <p>
+ * Hold a button to run one drivetrain motor forward at a fixed power. This helps confirm the
+ * wiring + inversion flags in {@link FtcMecanumDriveLane.Config}.
+ * </p>
  */
 public final class DrivetrainMotorDirectionTester extends BaseTeleOpTester {
 
@@ -33,7 +36,9 @@ public final class DrivetrainMotorDirectionTester extends BaseTeleOpTester {
      * @param suite suite to receive the menu entry; ignored when {@code null}
      */
     public static void register(TesterSuite suite) {
-        if (suite == null) return;
+        if (suite == null) {
+            return;
+        }
 
         suite.add(
                 "HW: Drivetrain Motor Direction (Robot)",
@@ -54,25 +59,25 @@ public final class DrivetrainMotorDirectionTester extends BaseTeleOpTester {
 
     @Override
     protected void onInit() {
-        PhoenixProfile.DriveTrainConfig drive = PhoenixProfile.current().driveTrain;
+        FtcMecanumDriveLane.Config drive = PhoenixProfile.current().drive;
 
         plantFL = Actuators.plant(ctx.hw)
-                .motor(drive.nameMotorFrontLeft, drive.directionMotorFrontLeft)
+                .motor(drive.wiring.frontLeftName, drive.wiring.frontLeftDirection)
                 .power()
                 .build();
 
         plantFR = Actuators.plant(ctx.hw)
-                .motor(drive.nameMotorFrontRight, drive.directionMotorFrontRight)
+                .motor(drive.wiring.frontRightName, drive.wiring.frontRightDirection)
                 .power()
                 .build();
 
         plantBL = Actuators.plant(ctx.hw)
-                .motor(drive.nameMotorBackLeft, drive.directionMotorBackLeft)
+                .motor(drive.wiring.backLeftName, drive.wiring.backLeftDirection)
                 .power()
                 .build();
 
         plantBR = Actuators.plant(ctx.hw)
-                .motor(drive.nameMotorBackRight, drive.directionMotorBackRight)
+                .motor(drive.wiring.backRightName, drive.wiring.backRightDirection)
                 .power()
                 .build();
 
