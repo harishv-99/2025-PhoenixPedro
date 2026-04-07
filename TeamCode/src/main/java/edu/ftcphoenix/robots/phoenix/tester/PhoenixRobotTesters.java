@@ -10,22 +10,24 @@ import edu.ftcphoenix.fw.tools.tester.calibration.PinpointAxisDirectionTester;
 import edu.ftcphoenix.fw.tools.tester.calibration.PinpointPodOffsetCalibrator;
 import edu.ftcphoenix.fw.tools.tester.localization.AprilTagLocalizationTester;
 import edu.ftcphoenix.fw.tools.tester.localization.PinpointAprilTagFusionLocalizationTester;
-import edu.ftcphoenix.robots.phoenix.RobotConfig;
+import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
 
 /**
  * Central home for Phoenix robot-specific tester wiring.
- *
- * <p>The goal is to keep the robot-specific layer thin: the framework owns the tester logic, while
- * this class only supplies Phoenix's config objects, preferred camera names, and explicit
- * calibration-status flags.</p>
  */
 public final class PhoenixRobotTesters {
 
     private PhoenixRobotTesters() {
     }
 
+    private static PhoenixProfile profile() {
+        return PhoenixProfile.current();
+    }
+
     /**
-     * Adds Phoenix tester groups to the supplied top-level suite.
+     * Registers the Phoenix-specific tester groups in the supplied suite.
+     *
+     * @param suite suite that should receive the Phoenix tester entries; ignored when {@code null}
      */
     public static void register(TesterSuite suite) {
         if (suite == null) return;
@@ -50,7 +52,9 @@ public final class PhoenixRobotTesters {
     }
 
     /**
-     * Creates the Phoenix robot-specific hardware suite.
+     * Builds the Phoenix hardware bring-up submenu.
+     *
+     * @return tester suite containing robot-specific hardware sanity checks
      */
     public static TesterSuite createHardwareSuite() {
         TesterSuite suite = new TesterSuite()
@@ -68,7 +72,9 @@ public final class PhoenixRobotTesters {
     }
 
     /**
-     * Creates the Phoenix robot-specific calibration/localization suite.
+     * Builds the Phoenix calibration and localization submenu.
+     *
+     * @return tester suite containing Phoenix-configured calibration and localization tools
      */
     public static TesterSuite createCalibrationAndLocalizationSuite() {
         TesterSuite suite = new TesterSuite()
@@ -121,124 +127,145 @@ public final class PhoenixRobotTesters {
     }
 
     /**
-     * Framework tester with Phoenix's preferred camera pre-selected.
+     * Creates the Phoenix camera-mount calibration tester.
+     *
+     * @return tester configured to solve Phoenix's webcam mount pose
      */
     public static TeleOpTester cameraMountCalibrator() {
-        return new CameraMountCalibrator(RobotConfig.Vision.nameWebcam);
+        return new CameraMountCalibrator(profile().vision.nameWebcam);
     }
 
     /**
-     * Framework tester configured with Phoenix vision defaults.
+     * Creates the Phoenix AprilTag-only localization tester.
+     *
+     * @return tester configured with Phoenix's webcam, mount, and AprilTag-localizer defaults
      */
     public static TeleOpTester aprilTagLocalization() {
+        PhoenixProfile p = profile();
         return new AprilTagLocalizationTester(
-                RobotConfig.Vision.nameWebcam,
-                RobotConfig.Vision.cameraMount,
+                p.vision.nameWebcam,
+                p.vision.cameraMount,
                 null,
                 null,
-                RobotConfig.Localization.aprilTags.copy(),
-                RobotConfig.Localization.aprilTags.maxDetectionAgeSec
+                p.localization.aprilTags.copy(),
+                p.localization.aprilTags.maxDetectionAgeSec
         );
     }
 
     /**
-     * Framework tester configured with Phoenix Pinpoint defaults.
+     * Creates the Pinpoint axis-direction tester using the current Phoenix profile.
+     *
+     * @return tester that verifies forward/left/heading sign conventions for Pinpoint
      */
     public static TeleOpTester pinpointAxisCheck() {
         PinpointAxisDirectionTester.Config cfg = PinpointAxisDirectionTester.Config.defaults();
-        cfg.pinpoint = RobotConfig.Localization.pinpoint;
+        cfg.pinpoint = profile().localization.pinpoint.copy();
         return new PinpointAxisDirectionTester(cfg);
     }
 
     /**
-     * Framework tester configured with Phoenix Pinpoint, drivetrain, and optional AprilTag assist.
+     * Creates the Pinpoint pod-offset calibration tester using the current Phoenix profile.
+     *
+     * @return tester configured for Phoenix drivetrain wiring, Pinpoint config, and optional
+     *         AprilTag assist when the camera mount is already trustworthy
      */
     public static TeleOpTester pinpointPodOffsets() {
+        PhoenixProfile p = profile();
         PinpointPodOffsetCalibrator.Config cfg = PinpointPodOffsetCalibrator.Config.defaults();
-        cfg.pinpoint = RobotConfig.Localization.pinpoint;
-        cfg.mecanumWiring = RobotConfig.DriveTrain.mecanumWiring();
-
-        // IMPORTANT: don't use a full 360° turn here.
-        // After a full turn, the ideal drift is ~0 so the solve becomes ill-conditioned and very
-        // sensitive to noise. ~180° provides a much stronger signal.
+        cfg.pinpoint = p.localization.pinpoint.copy();
+        cfg.mecanumWiring = p.driveTrain.mecanumWiring();
         cfg.targetTurnRad = Math.PI;
-
-        cfg.enableAprilTagAssist = CalibrationChecks.canUseAprilTagAssist(RobotConfig.Vision.cameraMount);
+        cfg.enableAprilTagAssist = CalibrationChecks.canUseAprilTagAssist(p.vision.cameraMount);
         cfg.autoComputeAfterAutoSample = true;
-        cfg.preferredCameraName = RobotConfig.Vision.nameWebcam;
-        cfg.cameraMount = RobotConfig.Vision.cameraMount;
-
+        cfg.preferredCameraName = p.vision.nameWebcam;
+        cfg.cameraMount = p.vision.cameraMount;
         return new PinpointPodOffsetCalibrator(cfg);
     }
 
     /**
-     * Phoenix's default lightweight fusion localizer tester.
+     * Creates the default Phoenix global-localization tester based on odometry and AprilTag fusion.
+     *
+     * @return tester configured with Phoenix's default fusion estimator settings
      */
     public static TeleOpTester pinpointAprilTagFusion() {
-        PinpointPoseEstimator.Config cfg = RobotConfig.Localization.pinpoint;
-
+        PhoenixProfile p = profile();
+        PinpointPoseEstimator.Config cfg = p.localization.pinpoint.copy();
         return new PinpointAprilTagFusionLocalizationTester(
-                RobotConfig.Vision.nameWebcam,
-                RobotConfig.Vision.cameraMount,
+                p.vision.nameWebcam,
+                p.vision.cameraMount,
                 cfg,
-                RobotConfig.Localization.pinpointAprilTagFusion.copy(),
+                p.localization.pinpointAprilTagFusion.copy(),
                 null,
                 null,
-                RobotConfig.Localization.aprilTags.copy()
+                p.localization.aprilTags.copy()
         );
     }
 
     /**
-     * Phoenix's optional EKF-style localizer tester.
+     * Creates the optional Phoenix EKF-based global-localization tester.
+     *
+     * @return tester configured to compare the optional EKF path against the default fusion path
      */
     public static TeleOpTester pinpointAprilTagEkf() {
-        PinpointPoseEstimator.Config cfg = RobotConfig.Localization.pinpoint;
+        PhoenixProfile p = profile();
+        PinpointPoseEstimator.Config cfg = p.localization.pinpoint.copy();
         return PinpointAprilTagFusionLocalizationTester.ekf(
-                RobotConfig.Vision.nameWebcam,
-                RobotConfig.Vision.cameraMount,
+                p.vision.nameWebcam,
+                p.vision.cameraMount,
                 cfg,
-                RobotConfig.Localization.pinpointAprilTagEkf.validatedCopy(
-                        "RobotConfig.Localization.pinpointAprilTagEkf"
+                p.localization.pinpointAprilTagEkf.validatedCopy(
+                        "PhoenixProfile.current().localization.pinpointAprilTagEkf"
                 ),
                 null,
                 null,
-                RobotConfig.Localization.aprilTags.copy()
+                p.localization.aprilTags.copy()
         );
     }
 
     /**
-     * Phoenix-specific drivetrain direction sanity-check tester.
+     * Creates the Phoenix drivetrain motor-direction tester.
+     *
+     * @return tester that runs one drivetrain motor at a time to verify direction wiring
      */
     public static TeleOpTester drivetrainMotorDirection() {
         return new DrivetrainMotorDirectionTester();
     }
 
     /**
-     * Camera-mount status derived from the current Phoenix config.
+     * Computes the current camera-mount calibration status.
+     *
+     * @return status indicating whether the configured Phoenix camera mount looks solved
      */
     public static CalibrationStatus cameraMountStatus() {
-        return CalibrationChecks.cameraMount(RobotConfig.Vision.cameraMount);
+        return CalibrationChecks.cameraMount(profile().vision.cameraMount);
     }
 
     /**
-     * Pinpoint-axis status derived from the current Phoenix config.
+     * Computes the current Pinpoint-axis verification status.
+     *
+     * @return status indicating whether Phoenix has acknowledged correct Pinpoint axis directions
      */
     public static CalibrationStatus pinpointAxesStatus() {
-        return CalibrationChecks.pinpointAxes(RobotConfig.Calibration.pinpointAxesVerified);
+        return CalibrationChecks.pinpointAxes(profile().calibration.pinpointAxesVerified);
     }
 
     /**
-     * Pinpoint pod-offset status derived from the current Phoenix config.
+     * Computes the current Pinpoint-offset calibration status.
+     *
+     * @return status indicating whether Phoenix has calibrated and acknowledged Pinpoint pod offsets
      */
     public static CalibrationStatus pinpointOffsetsStatus() {
+        PhoenixProfile p = profile();
         return CalibrationChecks.pinpointOffsets(
-                RobotConfig.Localization.pinpoint,
-                RobotConfig.Calibration.pinpointPodOffsetsCalibrated
+                p.localization.pinpoint,
+                p.calibration.pinpointPodOffsetsCalibrated
         );
     }
 
     /**
-     * Readiness for running the global-localization comparison testers.
+     * Computes whether the prerequisites for validating the global localizer are satisfied.
+     *
+     * @return complete status when camera mount, Pinpoint axes, and Pinpoint offsets all look ready
      */
     public static CalibrationStatus globalLocalizationStatus() {
         CalibrationStatus mount = cameraMountStatus();
@@ -253,7 +280,9 @@ public final class PhoenixRobotTesters {
     }
 
     /**
-     * Short prerequisite summary for localizer-comparison testers.
+     * Summarizes the prerequisite calibration statuses in one compact string.
+     *
+     * @return string of the form {@code mount=..., axes=..., offsets=...}
      */
     public static String prerequisiteSummary() {
         return "mount=" + cameraMountStatus().menuTag()

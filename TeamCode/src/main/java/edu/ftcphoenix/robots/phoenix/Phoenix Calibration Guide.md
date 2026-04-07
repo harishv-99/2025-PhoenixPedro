@@ -2,7 +2,19 @@
 
 This is the Phoenix-specific version of the framework calibration path.
 
-Use it when you are bringing up a fresh Phoenix robot and want the exact menu names and `RobotConfig` fields to touch.
+Use it when you are bringing up a fresh Phoenix robot and want the exact menu names and `PhoenixProfile` fields to touch.
+
+## Architecture notes for the stage-1 refactor
+
+The stage-1 cleanup intentionally split a few responsibilities that used to live together:
+
+- `PhoenixProfile` owns robot configuration instead of the old `RobotConfig` static bag.
+- `PhoenixRobot` is the composition root and loop owner.
+- `PhoenixTeleOpBindings` owns button-edge and toggle semantics.
+- `ShooterSupervisor` owns scoring policy and intent-level commands.
+- `PhoenixTelemetryPresenter` owns driver-facing telemetry formatting.
+
+That split matters during bring-up because tester fixes and robot fixes should usually go to the owner of the behavior, not to an unrelated helper.
 
 ## Where to start in the tester menu
 
@@ -31,6 +43,10 @@ Confirm each wheel would drive the robot forward when the tester says it should.
 
 Use the Phoenix drivetrain motor wiring/config, not a tester workaround, to correct any reversed motor.
 
+### Tester implementation note
+
+`DrivetrainMotorDirectionTester` is a `BaseTeleOpTester`, so telemetry should go through `ctx.telemetry` or the base helpers (`telemHeader`, `telemHint`, `telemUpdate`) rather than an OpMode field named `telemetry`.
+
 ## Step 2: camera mount
 
 ### Menu entry
@@ -44,14 +60,14 @@ Solve Phoenix's webcam pose relative to the robot.
 ### Paste result into
 
 ```java
-RobotConfig.Vision.cameraMount
+PhoenixProfile.current().vision.cameraMount
 ```
 
 The tester prints `CameraMountConfig.of(...)` and `CameraMountConfig.ofDegrees(...)`. Paste one of those directly.
 
 ### Phoenix notes
 
-- the preferred camera is `RobotConfig.Vision.nameWebcam`
+- the preferred camera is `PhoenixProfile.current().vision.nameWebcam`
 - the walkthrough status turns `OK` once the camera mount no longer looks like the identity placeholder
 
 ## Step 3: AprilTag-only localization sanity check
@@ -76,9 +92,9 @@ Verify that Phoenix's preferred camera, fixed-tag layout policy, and AprilTag-on
 This tester reuses:
 
 ```java
-RobotConfig.Vision.nameWebcam
-RobotConfig.Vision.cameraMount
-RobotConfig.Localization.aprilTags
+PhoenixProfile.current().vision.nameWebcam
+PhoenixProfile.current().vision.cameraMount
+PhoenixProfile.current().localization.aprilTags
 ```
 
 So the practice tool should match production localization math more closely.
@@ -102,7 +118,7 @@ Verify:
 Adjust:
 
 ```java
-RobotConfig.Localization.pinpoint
+PhoenixProfile.current().localization.pinpoint
 ```
 
 Specifically, correct pod direction fields before continuing.
@@ -112,7 +128,7 @@ Specifically, correct pod direction fields before continuing.
 After you have rerun the tester and accepted the result, set:
 
 ```java
-RobotConfig.Calibration.pinpointAxesVerified = true
+PhoenixProfile.current().calibration.pinpointAxesVerified = true
 ```
 
 ## Step 5: Pinpoint pod offsets
@@ -128,7 +144,7 @@ Estimate the Pinpoint offsets that remove fake translation during rotation.
 ### Paste result into
 
 ```java
-RobotConfig.Localization.pinpoint
+PhoenixProfile.current().localization.pinpoint
 ```
 
 The tester prints the recommended:
@@ -142,7 +158,7 @@ The tester prints the recommended:
 After copying the numbers and rerunning once to confirm they are stable, set:
 
 ```java
-RobotConfig.Calibration.pinpointPodOffsetsCalibrated = true
+PhoenixProfile.current().calibration.pinpointPodOffsetsCalibrated = true
 ```
 
 ### Phoenix notes
@@ -168,10 +184,10 @@ Validate Phoenix's default global localizer in the conditions that matter for re
 ### Config involved
 
 ```java
-RobotConfig.Localization.pinpoint
-RobotConfig.Localization.aprilTags
-RobotConfig.Localization.pinpointAprilTagFusion
-RobotConfig.Vision.cameraMount
+PhoenixProfile.current().localization.pinpoint
+PhoenixProfile.current().localization.aprilTags
+PhoenixProfile.current().localization.pinpointAprilTagFusion
+PhoenixProfile.current().vision.cameraMount
 ```
 
 ## Step 7: optional EKF comparison
@@ -194,8 +210,8 @@ Compare the optional covariance-aware estimator against the default fusion path.
 ### Config involved
 
 ```java
-RobotConfig.Localization.pinpointAprilTagEkf
-RobotConfig.Localization.globalEstimatorMode
+PhoenixProfile.current().localization.pinpointAprilTagEkf
+PhoenixProfile.current().localization.globalEstimatorMode
 ```
 
 Use the tester to compare behavior first. Only then consider changing the robot's default estimator mode.

@@ -4,23 +4,13 @@ import edu.ftcphoenix.fw.actuation.Actuators;
 import edu.ftcphoenix.fw.actuation.Plant;
 import edu.ftcphoenix.fw.tools.tester.BaseTeleOpTester;
 import edu.ftcphoenix.fw.tools.tester.TesterSuite;
-import edu.ftcphoenix.robots.phoenix.RobotConfig;
+import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
 
 /**
  * Robot-specific tester for verifying drivetrain motor direction.
  *
- * <p>Hold a button to run one drivetrain motor forward at a fixed power.
- * This helps confirm the wiring + inversion flags in {@link RobotConfig.DriveTrain}.</p>
- *
- * <h2>Controls (gamepad1)</h2>
- * <ul>
- *   <li>X: front-left motor</li>
- *   <li>Y: front-right motor</li>
- *   <li>A: back-left motor</li>
- *   <li>B: back-right motor</li>
- * </ul>
- *
- * <p><b>Expected behavior:</b> each motor should spin such that the wheel would drive the robot forward.</p>
+ * <p>Hold a button to run one drivetrain motor forward at a fixed power. This helps confirm the
+ * wiring + inversion flags in {@link PhoenixProfile.DriveTrainConfig}.</p>
  */
 public final class DrivetrainMotorDirectionTester extends BaseTeleOpTester {
 
@@ -32,13 +22,15 @@ public final class DrivetrainMotorDirectionTester extends BaseTeleOpTester {
     private Plant plantBR;
 
     /**
-     * Register this tester into a suite (robot-side).
+     * Creates the tester instance.
+     */
+    public DrivetrainMotorDirectionTester() {
+    }
+
+    /**
+     * Registers this tester in a tester suite.
      *
-     * <p>Typical usage in your robot OpMode:
-     * <pre>{@code
-     * TesterSuite suite = StandardTesters.createSuite();
-     * DrivetrainMotorDirectionTester.register(suite);
-     * }</pre>
+     * @param suite suite to receive the menu entry; ignored when {@code null}
      */
     public static void register(TesterSuite suite) {
         if (suite == null) return;
@@ -51,7 +43,9 @@ public final class DrivetrainMotorDirectionTester extends BaseTeleOpTester {
     }
 
     /**
-     * {@inheritDoc}
+     * Returns the display name shown by the tester framework.
+     *
+     * @return short user-facing tester name
      */
     @Override
     public String name() {
@@ -60,32 +54,28 @@ public final class DrivetrainMotorDirectionTester extends BaseTeleOpTester {
 
     @Override
     protected void onInit() {
-        // Build drivetrain motor plants (open-loop power).
+        PhoenixProfile.DriveTrainConfig drive = PhoenixProfile.current().driveTrain;
+
         plantFL = Actuators.plant(ctx.hw)
-                .motor(RobotConfig.DriveTrain.nameMotorFrontLeft,
-                        RobotConfig.DriveTrain.directionMotorFrontLeft)
+                .motor(drive.nameMotorFrontLeft, drive.directionMotorFrontLeft)
                 .power()
                 .build();
 
         plantFR = Actuators.plant(ctx.hw)
-                .motor(RobotConfig.DriveTrain.nameMotorFrontRight,
-                        RobotConfig.DriveTrain.directionMotorFrontRight)
+                .motor(drive.nameMotorFrontRight, drive.directionMotorFrontRight)
                 .power()
                 .build();
 
         plantBL = Actuators.plant(ctx.hw)
-                .motor(RobotConfig.DriveTrain.nameMotorBackLeft,
-                        RobotConfig.DriveTrain.directionMotorBackLeft)
+                .motor(drive.nameMotorBackLeft, drive.directionMotorBackLeft)
                 .power()
                 .build();
 
         plantBR = Actuators.plant(ctx.hw)
-                .motor(RobotConfig.DriveTrain.nameMotorBackRight,
-                        RobotConfig.DriveTrain.directionMotorBackRight)
+                .motor(drive.nameMotorBackRight, drive.directionMotorBackRight)
                 .power()
                 .build();
 
-        // Keep the same button mapping/behavior: hold button -> run that motor, release -> stop.
         bindings.whileTrue(gamepads.p1().x(),
                 () -> plantFL.setTarget(TEST_POWER),
                 () -> plantFL.setTarget(0.0));
@@ -102,7 +92,6 @@ public final class DrivetrainMotorDirectionTester extends BaseTeleOpTester {
                 () -> plantBR.setTarget(TEST_POWER),
                 () -> plantBR.setTarget(0.0));
 
-        // Safety default.
         stopAll();
     }
 
@@ -119,50 +108,27 @@ public final class DrivetrainMotorDirectionTester extends BaseTeleOpTester {
     @Override
     protected void onStop() {
         stopAll();
-
-        // One last update to ensure hardware receives stop commands.
-        if (plantFL != null) plantFL.update(0.0);
-        if (plantFR != null) plantFR.update(0.0);
-        if (plantBL != null) plantBL.update(0.0);
-        if (plantBR != null) plantBR.update(0.0);
     }
 
-    // ---------------------------------------------------------------------------------------------
-    // Internals
-    // ---------------------------------------------------------------------------------------------
-
     private void updateAndRender(double dtSec) {
-        // If nothing is held, force a safe default (helps if a binding ever gets skipped).
-        if (!anyHeld()) {
-            stopAll();
-        }
-
-        // Update plants.
         plantFL.update(dtSec);
         plantFR.update(dtSec);
         plantBL.update(dtSec);
         plantBR.update(dtSec);
 
-        // Telemetry / instructions.
-        ctx.telemetry.addLine("Test drivetrain motor direction (each should drive robot forward):");
-        ctx.telemetry.addLine("  X = front-left");
-        ctx.telemetry.addLine("  Y = front-right");
-        ctx.telemetry.addLine("  A = back-left");
-        ctx.telemetry.addLine("  B = back-right");
-        ctx.telemetry.update();
-    }
-
-    private boolean anyHeld() {
-        return gamepads.p1().x().getAsBoolean(clock)
-                || gamepads.p1().y().getAsBoolean(clock)
-                || gamepads.p1().a().getAsBoolean(clock)
-                || gamepads.p1().b().getAsBoolean(clock);
+        telemHeader("Drivetrain Motor Direction");
+        telemHint("Hold X/Y/A/B to run one drivetrain motor forward.");
+        ctx.telemetry.addData("FL", gamepads.p1().x().getAsBoolean(clock) ? TEST_POWER : 0.0);
+        ctx.telemetry.addData("FR", gamepads.p1().y().getAsBoolean(clock) ? TEST_POWER : 0.0);
+        ctx.telemetry.addData("BL", gamepads.p1().a().getAsBoolean(clock) ? TEST_POWER : 0.0);
+        ctx.telemetry.addData("BR", gamepads.p1().b().getAsBoolean(clock) ? TEST_POWER : 0.0);
+        telemUpdate();
     }
 
     private void stopAll() {
-        if (plantFL != null) plantFL.setTarget(0.0);
-        if (plantFR != null) plantFR.setTarget(0.0);
-        if (plantBL != null) plantBL.setTarget(0.0);
-        if (plantBR != null) plantBR.setTarget(0.0);
+        if (plantFL != null) plantFL.stop();
+        if (plantFR != null) plantFR.stop();
+        if (plantBL != null) plantBL.stop();
+        if (plantBR != null) plantBR.stop();
     }
 }

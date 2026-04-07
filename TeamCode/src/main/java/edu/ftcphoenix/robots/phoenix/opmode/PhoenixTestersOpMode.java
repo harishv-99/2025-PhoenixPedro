@@ -14,6 +14,17 @@ import edu.ftcphoenix.robots.phoenix.tester.PhoenixRobotTesters;
 @TeleOp(name = "Phoenix: Testers", group = "Phoenix")
 public final class PhoenixTestersOpMode extends FtcTeleOpTesterOpMode {
 
+    /**
+     * Creates the FTC OpMode instance.
+     */
+    public PhoenixTestersOpMode() {
+    }
+
+    /**
+     * Builds the top-level tester menu shown in the Driver Station.
+     *
+     * @return tester root containing Phoenix-specific tools followed by the shared framework tools
+     */
     @Override
     protected TeleOpTester createTester() {
         TesterSuite suite = new TesterSuite()

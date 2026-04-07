@@ -5,11 +5,6 @@ import edu.ftcphoenix.fw.tools.tester.calibration.CalibrationWalkthroughBuilder;
 
 /**
  * Guided, step-by-step Phoenix bring-up sequence.
- *
- * <p>This intentionally reuses the same underlying testers that live in the normal Phoenix menu
- * categories. The walkthrough is the only place where duplication is deliberate: it gives students
- * one recommended path, while the category menus remain the single natural home for browsing all
- * individual testers.</p>
  */
 public final class PhoenixCalibrationWalkthrough {
 
@@ -17,7 +12,9 @@ public final class PhoenixCalibrationWalkthrough {
     }
 
     /**
-     * Build the guided walkthrough suite.
+     * Builds the recommended Phoenix calibration walkthrough.
+     *
+     * @return tester suite containing the ordered bring-up flow for Phoenix
      */
     public static TesterSuite createSuite() {
         CalibrationWalkthroughBuilder guide = new CalibrationWalkthroughBuilder("Phoenix Calibration Walkthrough")
@@ -32,7 +29,7 @@ public final class PhoenixCalibrationWalkthrough {
 
         guide.addStep(
                 "Calib: Camera Mount",
-                "Solve RobotConfig.Vision.cameraMount and paste the printed CameraMountConfig.ofDegrees(...) value.",
+                "Solve PhoenixProfile.current().vision.cameraMount and paste the printed CameraMountConfig.ofDegrees(...) value.",
                 PhoenixRobotTesters::cameraMountStatus,
                 PhoenixRobotTesters::cameraMountCalibrator
         );

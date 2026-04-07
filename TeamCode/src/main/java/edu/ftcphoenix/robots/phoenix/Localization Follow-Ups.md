@@ -4,14 +4,25 @@ This file tracks Phoenix-specific follow-up work now that TeleOp uses a configur
 
 The current framework pass also upgraded fusion to deduplicate repeated AprilTag frames by measurement timestamp and to replay odometry forward from the accepted frame time when latency compensation is available, and it added an optional EKF-style estimator that Phoenix can evaluate without replacing the simpler fusion default.
 
+## Documentation notes
+
+Stage 1 also moved a few responsibilities into clearer owners:
+
+- `PhoenixProfile` now owns robot config.
+- `PhoenixRobot` owns composition and loop order.
+- `PhoenixTelemetryPresenter` owns driver-facing telemetry formatting.
+- `PhoenixRobotTesters` owns robot-specific tester composition.
+
+Keep those owners documented as later localization work moves into dedicated services so mouseover docs and markdown docs stay aligned with the code boundaries.
+
 ---
 
 ## Near-term
 
-1. Field-test and retune `RobotConfig.Localization.aprilTags`:
+1. Field-test and retune `PhoenixProfile.current().localization.aprilTags`:
    validate the multi-tag solve on the real DECODE field after camera-mount calibration.
 
-2. Field-test and retune `RobotConfig.Localization.pinpointAprilTagFusion`:
+2. Field-test and retune `PhoenixProfile.current().localization.pinpointAprilTagFusion`:
    confirm the correction gains feel stable during normal TeleOp driving and after brief vision dropouts now that the framework rebases odometry correctly after accepted vision corrections, deduplicates repeated frames, and replays odometry from the accepted frame timestamp.
 
 3. Retune `shootBrace` / pose-lock gains with the fused localizer:
@@ -21,7 +32,7 @@ The current framework pass also upgraded fusion to deduplicate repeated AprilTag
 
 5. Check the fusion/EKF tester replay / projected / duplicate counters on the real field and make sure the camera pipeline is delivering fresh AprilTag frames at the expected cadence.
 
-6. Compare `RobotConfig.Localization.pinpointAprilTagFusion` against `RobotConfig.Localization.pinpointAprilTagEkf` on the real field before changing `globalEstimatorMode`; keep the simpler fusion path as the production baseline until the EKF clearly earns it.
+6. Compare `PhoenixProfile.current().localization.pinpointAprilTagFusion` against `PhoenixProfile.current().localization.pinpointAprilTagEkf` on the real field before changing `PhoenixProfile.current().localization.globalEstimatorMode`; keep the simpler fusion path as the production baseline until the EKF clearly earns it.
 
 7. Keep scoring-tag selection intentionally limited to the fixed goal tags used for localization fallback.
 
