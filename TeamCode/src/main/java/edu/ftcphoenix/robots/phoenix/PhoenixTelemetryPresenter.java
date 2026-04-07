@@ -36,12 +36,14 @@ public final class PhoenixTelemetryPresenter {
      * @param shooter shooter subsystem status snapshot for the current loop
      * @param scoring scoring supervisor status snapshot for the current loop
      * @param targeting scoring-targeting status snapshot for the current loop
+     * @param driveAssist drive-assist status snapshot for the current loop
      * @param globalPose current fused/global pose estimate, or {@code null} if unavailable
      * @param odomPose current odometry-only pose estimate, or {@code null} if unavailable
      */
     public void emitTeleOp(ShooterStatus shooter,
                            ScoringStatus scoring,
                            TargetingStatus targeting,
+                           DriveAssistStatus driveAssist,
                            PoseEstimate globalPose,
                            PoseEstimate odomPose) {
         if (telemetry == null) {
@@ -60,6 +62,7 @@ public final class PhoenixTelemetryPresenter {
         telemetry.addData("aim.okToShoot", targeting.aimOkToShoot);
         telemetry.addData("aim.override", targeting.aimOverride);
         telemetry.addData("aim.enabled", targeting.autoAimEnabled);
+        emitDriveAssistTelemetry(driveAssist);
 
         if (globalPose != null) {
             telemetry.addData("pose.global", globalPose);
@@ -99,6 +102,17 @@ public final class PhoenixTelemetryPresenter {
         telemetry.addData(p + ".feedQueued", shooter.feedQueued);
         telemetry.addData(p + ".feedActive", shooter.feedActive);
         telemetry.addData(p + ".feedOut", shooter.feedOutput);
+    }
+
+
+    private void emitDriveAssistTelemetry(DriveAssistStatus driveAssist) {
+        if (driveAssist == null) {
+            return;
+        }
+        telemetry.addData("drive.autoAimRequested", driveAssist.autoAimRequested);
+        telemetry.addData("drive.shootBraceEligible", driveAssist.shootBraceEligible);
+        telemetry.addData("drive.shootBraceEnabled", driveAssist.shootBraceEnabled);
+        telemetry.addData("drive.manualTranslateMag", driveAssist.manualTranslateMagnitude);
     }
 
     private void emitTargetTelemetry(TargetingStatus targeting) {

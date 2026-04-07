@@ -7,14 +7,9 @@ import org.firstinspires.ftc.robotcore.external.Telemetry;
 
 import java.util.Objects;
 
-import edu.ftcphoenix.fw.core.control.HysteresisBoolean;
 import edu.ftcphoenix.fw.core.time.LoopClock;
-import edu.ftcphoenix.fw.drive.DriveOverlayMask;
-import edu.ftcphoenix.fw.drive.DriveOverlayStack;
 import edu.ftcphoenix.fw.drive.DriveSignal;
 import edu.ftcphoenix.fw.drive.DriveSource;
-import edu.ftcphoenix.fw.drive.guidance.DriveGuidance;
-import edu.ftcphoenix.fw.drive.guidance.DriveGuidancePlan;
 import edu.ftcphoenix.fw.ftc.drive.FtcMecanumDriveLane;
 import edu.ftcphoenix.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane;
 import edu.ftcphoenix.fw.ftc.vision.FtcAprilTagVisionLane;
@@ -33,6 +28,7 @@ import edu.ftcphoenix.fw.localization.PoseEstimate;
  *   <li>{@link FtcOdometryAprilTagLocalizationLane} owns stable localization strategy and pose production.</li>
  *   <li>{@link PhoenixTeleOpControls} owns all TeleOp input semantics, including drive controls.</li>
  *   <li>{@link ScoringTargeting} owns target selection, aim status, and shot suggestions.</li>
+ *   <li>{@link PhoenixDriveAssistService} owns robot-specific drive-assist policy layered on top of manual drive.</li>
  *   <li>{@link ShooterSupervisor} owns scoring policy.</li>
  *   <li>{@link Shooter} remains the single writer to the scoring-path plants.</li>
  *   <li>{@link PhoenixTelemetryPresenter} owns driver-facing telemetry formatting.</li>
@@ -45,7 +41,6 @@ public final class PhoenixRobot {
     private final Telemetry telemetry;
     private final Gamepads gamepads;
     private final PhoenixProfile profile;
-    private final HysteresisBoolean shootBraceLatch;
     private final PhoenixTelemetryPresenter telemetryPresenter;
 
     private FtcMecanumDriveLane drive;
@@ -55,7 +50,8 @@ public final class PhoenixRobot {
     private ShooterSupervisor shooterSupervisor;
     private ScoringTargeting scoringTargeting;
     private PhoenixTeleOpControls teleOpControls;
-    private DriveSource driveWithAim;
+    private PhoenixDriveAssistService driveAssists;
+    private DriveSource teleOpDriveSource;
 
     /**
      * Creates a Phoenix robot container using the shared checked-in Phoenix profile.
@@ -90,10 +86,6 @@ public final class PhoenixRobot {
         this.telemetry = Objects.requireNonNull(telemetry, "telemetry");
         this.gamepads = Gamepads.create(gamepad1, gamepad2);
         this.profile = Objects.requireNonNull(profile, "profile").copy();
-        this.shootBraceLatch = HysteresisBoolean.onWhenBelowOffWhenAbove(
-                this.profile.autoAim.shootBraceEnterMagnitude,
-                this.profile.autoAim.shootBraceExitMagnitude
-        );
         this.telemetryPresenter = new PhoenixTelemetryPresenter(telemetry, this.profile);
     }
 
@@ -165,25 +157,15 @@ public final class PhoenixRobot {
                 }
         );
 
-        driveWithAim = DriveOverlayStack.on(teleOpControls.manualDriveSource())
-                .add(
-                        "shootBrace",
-                        edu.ftcphoenix.fw.core.source.BooleanSource.of(shootBraceLatch::get),
-                        DriveGuidance.poseLock(
-                                localization.globalEstimator(),
-                                DriveGuidancePlan.Tuning.defaults()
-                                        .withTranslateKp(profile.autoAim.shootBraceTranslateKp)
-                                        .withMaxTranslateCmd(profile.autoAim.shootBraceMaxTranslateCmd)
-                        ),
-                        DriveOverlayMask.TRANSLATION_ONLY
-                )
-                .add(
-                        "autoAim",
-                        teleOpControls.autoAimEnabledSource(),
-                        scoringTargeting.aimOverlay(),
-                        DriveOverlayMask.OMEGA_ONLY
-                )
-                .build();
+        driveAssists = new PhoenixDriveAssistService(
+                profile.driveAssist,
+                teleOpControls.manualDriveSource(),
+                teleOpControls.manualTranslateMagnitudeSource(),
+                teleOpControls.autoAimEnabledSource(),
+                localization.globalEstimator(),
+                scoringTargeting.aimOverlay()
+        );
+        teleOpDriveSource = driveAssists.driveSource();
 
         teleOpControls.emitInitHelp(telemetry);
         telemetry.update();
@@ -222,8 +204,8 @@ public final class PhoenixRobot {
      * Advances one TeleOp loop.
      *
      * <p>
-     * Loop order is intentionally explicit: localization lane, targeting, controls, supervisor,
-     * drive lane, shooter subsystem, then telemetry presentation.
+     * Loop order is intentionally explicit: localization lane, targeting, controls, scoring
+     * supervisor, drive-assist service, drive lane, shooter subsystem, then telemetry presentation.
      * </p>
      */
     public void updateTeleOp() {
@@ -233,7 +215,8 @@ public final class PhoenixRobot {
                 || shooterSupervisor == null
                 || scoringTargeting == null
                 || teleOpControls == null
-                || driveWithAim == null) {
+                || driveAssists == null
+                || teleOpDriveSource == null) {
             return;
         }
 
@@ -244,14 +227,15 @@ public final class PhoenixRobot {
         shooterSupervisor.update(clock);
         ScoringStatus scoringStatus = shooterSupervisor.status();
 
-        updateShootBraceEnabled(scoringStatus);
-        DriveSignal cmd = driveWithAim.get(clock).clamped();
+        driveAssists.update(clock, scoringStatus);
+        DriveSignal cmd = teleOpDriveSource.get(clock).clamped();
         drive.update(clock);
         drive.drive(cmd);
 
         shooter.update(clock);
         ShooterStatus shooterStatus = shooter.status(clock);
         TargetingStatus targetingStatus = scoringTargeting.status(clock);
+        DriveAssistStatus driveAssistStatus = driveAssists.status();
         PoseEstimate globalPose = localization.globalPose();
         PoseEstimate odomPose = localization.odometryPose();
 
@@ -259,20 +243,12 @@ public final class PhoenixRobot {
                 shooterStatus,
                 scoringStatus,
                 targetingStatus,
+                driveAssistStatus,
                 globalPose,
                 odomPose
         );
     }
 
-    private void updateShootBraceEnabled(ScoringStatus scoringStatus) {
-        if (scoringStatus == null || !scoringStatus.shootActive || teleOpControls == null) {
-            shootBraceLatch.reset(false);
-            return;
-        }
-
-        double mag = teleOpControls.manualTranslateMagnitude(clock);
-        shootBraceLatch.update(mag);
-    }
 
     /**
      * Stops mode-agnostic hardware owners.
@@ -304,6 +280,10 @@ public final class PhoenixRobot {
             scoringTargeting.reset();
             scoringTargeting = null;
         }
-        driveWithAim = null;
+        if (driveAssists != null) {
+            driveAssists.reset();
+            driveAssists = null;
+        }
+        teleOpDriveSource = null;
     }
 }

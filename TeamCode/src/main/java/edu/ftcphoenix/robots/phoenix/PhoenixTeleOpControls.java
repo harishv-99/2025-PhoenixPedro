@@ -5,6 +5,7 @@ import org.firstinspires.ftc.robotcore.external.Telemetry;
 import java.util.Objects;
 
 import edu.ftcphoenix.fw.core.source.BooleanSource;
+import edu.ftcphoenix.fw.core.source.ScalarSource;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.drive.DriveSource;
 import edu.ftcphoenix.fw.drive.source.GamepadDriveSource;
@@ -33,6 +34,7 @@ public final class PhoenixTeleOpControls {
     private final PhoenixProfile.TeleOpControlsConfig cfg;
     private final Bindings bindings = new Bindings();
     private final DriveSource manualDrive;
+    private final ScalarSource manualTranslateMagnitude;
     private final BooleanSource autoAimEnabled;
     private final BooleanSource aimOverride;
     private final GamepadDevice driver;
@@ -57,6 +59,7 @@ public final class PhoenixTeleOpControls {
 
         this.driver = gamepads.p1();
         this.operator = gamepads.p2();
+        this.manualTranslateMagnitude = driver.leftStickMagnitude().memoized();
 
         manualDrive = new GamepadDriveSource(
                 driver.leftX(),
@@ -119,6 +122,21 @@ public final class PhoenixTeleOpControls {
     }
 
     /**
+     * Returns the current manual translation-stick magnitude as a source.
+     *
+     * <p>
+     * Higher-level robot services can depend on this source when they need to reason about driver
+     * translation intent without taking ownership of button or stick semantics themselves.
+     * </p>
+     *
+     * @return memoized scalar source representing normalized translation-stick magnitude in [0, 1]
+     */
+    public ScalarSource manualTranslateMagnitudeSource() {
+        return manualTranslateMagnitude;
+    }
+
+
+    /**
      * Returns the operator-controlled auto-aim enable source.
      *
      * @return memoized boolean source that becomes true while auto aim is enabled
@@ -148,7 +166,7 @@ public final class PhoenixTeleOpControls {
      * @return current left-stick magnitude in [0, 1]
      */
     public double manualTranslateMagnitude(LoopClock clock) {
-        return driver.leftStickMagnitude().getAsDouble(clock);
+        return manualTranslateMagnitude.getAsDouble(clock);
     }
 
     /**
@@ -160,7 +178,7 @@ public final class PhoenixTeleOpControls {
         if (telemetry == null) {
             return;
         }
-        telemetry.addLine("Phoenix TeleOp (framework lanes + controls + targeting + presenter)");
+        telemetry.addLine("Phoenix TeleOp (framework lanes + controls + drive assists + targeting + presenter)");
         telemetry.addLine("P1: Left stick=drive, Right stick=turn, RB=slow mode");
         telemetry.addLine("P2: RB=toggle shooter flywheel (spins at selected velocity)");
         telemetry.addLine("P2: LB=auto aim + set velocity from AprilTag range");

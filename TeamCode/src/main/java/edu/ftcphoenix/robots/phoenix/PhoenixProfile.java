@@ -31,6 +31,7 @@ import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
  *   <li>framework-owned lanes: drive, vision, localization</li>
  *   <li>shared field facts: fixed AprilTag layout for the current game</li>
  *   <li>robot-owned controls: TeleOp stick shaping and slow-mode tuning</li>
+ *   <li>robot-owned drive assists: scoring-related drive overlays and brace tuning</li>
  *   <li>robot-owned mechanisms and strategy: shooter, targeting, and calibration acknowledgements</li>
  * </ul>
  */
@@ -60,6 +61,11 @@ public final class PhoenixProfile {
 
     /** TeleOp control-layer tuning owned by Phoenix's robot-specific controls object. */
     public TeleOpControlsConfig controls = new TeleOpControlsConfig();
+
+    /**
+     * Robot-specific drive-assist tuning layered on top of the stable framework drive lane.
+     */
+    public DriveAssistConfig driveAssist = new DriveAssistConfig();
 
     /** Shooter hardware + scoring-path tuning. */
     public ShooterConfig shooter = new ShooterConfig();
@@ -111,6 +117,7 @@ public final class PhoenixProfile {
         copy.localization = this.localization.copy();
         copy.field = this.field.copy();
         copy.controls = this.controls.copy();
+        copy.driveAssist = this.driveAssist.copy();
         copy.shooter = this.shooter.copy();
         copy.calibration = this.calibration.copy();
         copy.autoAim = this.autoAim.copy();
@@ -224,6 +231,97 @@ public final class PhoenixProfile {
             }
         }
     }
+
+
+    /**
+     * Robot-specific drive-assist tuning layered on top of the framework drive lane.
+     *
+     * <p>
+     * Phoenix distinguishes between:
+     * </p>
+     * <ul>
+     *   <li>controls config: how the driver requests motion</li>
+     *   <li>drive-assist config: how robot policy reshapes that motion using localization,
+     *       scoring state, and overlays</li>
+     * </ul>
+     *
+     * <p>
+     * Keeping these values out of {@link AutoAimConfig} makes the ownership boundary explicit.
+     * Shoot-brace is not target-selection policy. It is a robot-specific drive-assist policy that
+     * uses scoring state and manual-drive idleness to decide when translation should be held.
+     * </p>
+     */
+    public static final class DriveAssistConfig {
+
+        /**
+         * Shoot-brace tuning for translation hold while actively shooting.
+         */
+        public ShootBraceConfig shootBrace = new ShootBraceConfig();
+
+        /**
+         * Creates a drive-assist config initialized with Phoenix defaults.
+         */
+        public DriveAssistConfig() {
+        }
+
+        /**
+         * Creates a deep copy of this drive-assist config.
+         *
+         * @return copied drive-assist config
+         */
+        public DriveAssistConfig copy() {
+            DriveAssistConfig c = new DriveAssistConfig();
+            c.shootBrace = this.shootBrace.copy();
+            return c;
+        }
+
+        /**
+         * Translation-hold tuning for the Phoenix shoot-brace drive assist.
+         */
+        public static final class ShootBraceConfig {
+
+            /**
+             * Translation-stick magnitude at or below which shoot-brace may latch on.
+             */
+            public double enterTranslateMagnitude = 0.06;
+
+            /**
+             * Translation-stick magnitude at or above which shoot-brace must drop back out.
+             */
+            public double exitTranslateMagnitude = 0.10;
+
+            /**
+             * Translation proportional gain used by the pose-lock overlay while shoot-brace is active.
+             */
+            public double translateKp = 0.08;
+
+            /**
+             * Maximum translation command magnitude contributed by the shoot-brace overlay.
+             */
+            public double maxTranslateCmd = 0.35;
+
+            /**
+             * Creates a shoot-brace config initialized with Phoenix defaults.
+             */
+            public ShootBraceConfig() {
+            }
+
+            /**
+             * Creates a deep copy of this shoot-brace config.
+             *
+             * @return copied shoot-brace config
+             */
+            public ShootBraceConfig copy() {
+                ShootBraceConfig c = new ShootBraceConfig();
+                c.enterTranslateMagnitude = this.enterTranslateMagnitude;
+                c.exitTranslateMagnitude = this.exitTranslateMagnitude;
+                c.translateKp = this.translateKp;
+                c.maxTranslateCmd = this.maxTranslateCmd;
+                return c;
+            }
+        }
+    }
+
 
     private static FtcMecanumDriveLane.Config defaultDriveConfig() {
         FtcMecanumDriveLane.Config cfg = FtcMecanumDriveLane.Config.defaults();
@@ -450,6 +548,12 @@ public final class PhoenixProfile {
 
     /**
      * Auto-aim / selected-tag profile values.
+     *
+     * <p>
+     * This section owns targeting and shot-selection policy only. Robot-specific drive-assist tuning
+     * such as shoot-brace lives in {@link DriveAssistConfig} so the config boundary matches the
+     * runtime ownership boundary.
+     * </p>
      */
     public static final class AutoAimConfig {
         /**
@@ -467,11 +571,6 @@ public final class PhoenixProfile {
 
         public double selectionMaxAgeSec = 0.50;
         public double selectionReacquireSec = 0.20;
-
-        public double shootBraceEnterMagnitude = 0.06;
-        public double shootBraceExitMagnitude = 0.10;
-        public double shootBraceTranslateKp = 0.08;
-        public double shootBraceMaxTranslateCmd = 0.35;
 
         /** Default tag-local offset used when an unknown tag id is queried. */
         public AimOffset defaultAimOffset = new AimOffset(0.0, 0.0);
@@ -589,10 +688,6 @@ public final class PhoenixProfile {
             c.aimMinOmegaCmd = this.aimMinOmegaCmd;
             c.selectionMaxAgeSec = this.selectionMaxAgeSec;
             c.selectionReacquireSec = this.selectionReacquireSec;
-            c.shootBraceEnterMagnitude = this.shootBraceEnterMagnitude;
-            c.shootBraceExitMagnitude = this.shootBraceExitMagnitude;
-            c.shootBraceTranslateKp = this.shootBraceTranslateKp;
-            c.shootBraceMaxTranslateCmd = this.shootBraceMaxTranslateCmd;
             c.defaultAimOffset = this.defaultAimOffset.copy();
             c.shotVelocityTable = this.shotVelocityTable;
             return c;

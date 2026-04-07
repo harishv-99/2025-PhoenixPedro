@@ -178,13 +178,14 @@ It is usually not the final writer and is usually not primarily about buttons.
 Examples:
 
 - `ScoringTargeting`
+- `PhoenixDriveAssistService`
 - a shot planner
 - a target selector
 - a pose-based evaluator
 
 A service answers:
 
-> What shared computation do multiple robot parts need?
+> What shared computation or robot-state-dependent policy do multiple robot parts need?
 
 ### Presenter
 
@@ -381,6 +382,7 @@ public final class MyRobotProfile {
 
     public FieldConfig field = new FieldConfig();
     public ControlsConfig controls = new ControlsConfig();
+    public DriveAssistConfig driveAssist = new DriveAssistConfig();
     public MechanismConfig mechanism = new MechanismConfig();
     public StrategyConfig strategy = new StrategyConfig();
     public CalibrationConfig calibration = new CalibrationConfig();
@@ -392,6 +394,7 @@ public final class MyRobotProfile {
         c.localization = this.localization.copy();
         c.field = this.field.copy();
         c.controls = this.controls.copy();
+        c.driveAssist = this.driveAssist.copy();
         c.mechanism = this.mechanism.copy();
         c.strategy = this.strategy.copy();
         c.calibration = this.calibration.copy();
@@ -405,6 +408,7 @@ Why this order works:
 - lane configs stay grouped by stable ownership
 - field facts stay separate from sensor rigs and strategy
 - controls tuning stays with controls
+- drive-assist tuning stays with the service that owns robot-specific overlays and assist latches
 - mechanism tuning stays with the subsystem
 - strategy tuning stays with services and supervisors
 
@@ -453,6 +457,7 @@ public final class MyTeleOpControls {
 
     private final Bindings bindings = new Bindings();
     private final DriveSource manualDrive;
+    private final ScalarSource manualTranslateMagnitude;
     private final BooleanSource assistEnabled;
     private final BooleanSource override;
     private final GamepadDevice driver;
@@ -461,6 +466,7 @@ public final class MyTeleOpControls {
     public MyTeleOpControls(Gamepads gamepads, MyRobotProfile.ControlsConfig cfg) {
         this.driver = gamepads.p1();
         this.operator = gamepads.p2();
+        this.manualTranslateMagnitude = driver.leftStickMagnitude().memoized();
 
         this.manualDrive = new GamepadDriveSource(
                 driver.leftX(),
@@ -482,6 +488,10 @@ public final class MyTeleOpControls {
         return manualDrive;
     }
 
+    public ScalarSource manualTranslateMagnitudeSource() {
+        return manualTranslateMagnitude;
+    }
+
     public BooleanSource assistEnabledSource() {
         return assistEnabled;
     }
@@ -500,7 +510,110 @@ Why this matters:
 
 - stick mapping lives with button semantics
 - slow mode is not hidden in a low-level primitive
+- higher-level services can depend on input semantics through narrow sources instead of peeking at raw gamepads
 - the composition root does not need to know specific button identities
+
+
+### Optional: add a robot-specific drive-assist service
+
+If your TeleOp drive path needs robot-specific overlays or latches, create a service for them instead
+of putting that logic in the composition root.
+
+Good examples:
+
+- shoot-brace / pose hold while scoring
+- heading hold that depends on a robot mode
+- temporary precision translation hold
+- auto-align overlays that combine manual drive with targeting state
+
+Bad example:
+
+- a `shootBraceEnabled()` helper plus a hysteresis latch stored directly inside `MyRobot`
+
+That is not the composition root's job. The composition root should wire the service, not own the
+assist policy itself.
+
+```java
+public final class MyDriveAssistService {
+
+    private final DriveSource driveSource;
+    private final ScalarSource manualTranslateMagnitude;
+    private final BooleanSource assistRequested;
+    private final HysteresisBoolean braceLatch;
+    private DriveAssistStatus lastStatus = new DriveAssistStatus(false, false, false, 0.0);
+
+    public MyDriveAssistService(MyRobotProfile.DriveAssistConfig cfg,
+                                DriveSource manualDrive,
+                                ScalarSource manualTranslateMagnitude,
+                                BooleanSource assistRequested,
+                                PoseEstimator globalPose,
+                                DriveOverlay assistOverlay) {
+        this.manualTranslateMagnitude = manualTranslateMagnitude;
+        this.assistRequested = assistRequested;
+        this.braceLatch = HysteresisBoolean.onWhenBelowOffWhenAbove(
+                cfg.shootBrace.enterTranslateMagnitude,
+                cfg.shootBrace.exitTranslateMagnitude
+        );
+
+        this.driveSource = DriveOverlayStack.on(manualDrive)
+                .add(
+                        "shootBrace",
+                        BooleanSource.of(braceLatch::get),
+                        DriveGuidance.poseLock(
+                                globalPose,
+                                DriveGuidancePlan.Tuning.defaults()
+                                        .withTranslateKp(cfg.shootBrace.translateKp)
+                                        .withMaxTranslateCmd(cfg.shootBrace.maxTranslateCmd)
+                        ),
+                        DriveOverlayMask.TRANSLATION_ONLY
+                )
+                .add("assist", assistRequested, assistOverlay, DriveOverlayMask.OMEGA_ONLY)
+                .build();
+    }
+
+    public DriveSource driveSource() {
+        return driveSource;
+    }
+
+    public void update(LoopClock clock, MechanismSupervisorStatus supervisorStatus) {
+        boolean braceEligible = supervisorStatus != null && supervisorStatus.actionActive();
+        double translateMag = manualTranslateMagnitude.getAsDouble(clock);
+
+        boolean braceEnabled;
+        if (!braceEligible) {
+            braceLatch.reset(false);
+            braceEnabled = false;
+        } else {
+            braceEnabled = braceLatch.update(translateMag);
+        }
+
+        lastStatus = new DriveAssistStatus(
+                assistRequested.getAsBoolean(clock),
+                braceEligible,
+                braceEnabled,
+                translateMag
+        );
+    }
+
+    public DriveAssistStatus status() {
+        return lastStatus;
+    }
+}
+```
+
+Why this boundary works:
+
+- controls still own what the sticks and buttons mean
+- the service owns how robot policy reshapes drive behavior
+- the subsystem and supervisor stay focused on the mechanism
+- the composition root stays boring
+
+When in doubt, ask:
+
+> Is this logic deciding how manual drive should be reshaped based on robot state?
+
+If yes, that usually belongs in a robot service like `MyDriveAssistService`, not in the controls owner
+and not in the composition root.
 
 ## Step 4: make each mechanism a subsystem
 
@@ -574,8 +687,17 @@ public final class IntakeShooterSupervisor {
             subsystem.requestSingleFeedPulse();
         }
     }
+
+    public SupervisorStatus status() {
+        return new SupervisorStatus(intakeEnabled, shootingRequested);
+    }
 }
 ```
+
+In real robot code, make `SupervisorStatus` an immutable snapshot class just like subsystem and service
+status objects. The exact fields will vary by mechanism; the important point is that higher-level
+consumers such as drive-assist services or telemetry should read a narrow status object instead of
+peeking into supervisor internals.
 
 A supervisor should usually not be the final plant writer.
 

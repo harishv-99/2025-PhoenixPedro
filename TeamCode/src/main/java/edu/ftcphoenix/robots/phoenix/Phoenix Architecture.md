@@ -19,6 +19,7 @@ PhoenixRobot
   FtcOdometryAprilTagLocalizationLane localization
 
   PhoenixTeleOpControls controls
+  PhoenixDriveAssistService driveAssists
   ScoringTargeting targeting
   Shooter shooter
   ShooterSupervisor scoring
@@ -51,6 +52,7 @@ This layout is consumed by localization and targeting. It is intentionally not h
 
 - `PhoenixTeleOpControls`: all TeleOp input semantics, including stick mapping and scoring buttons
 - `ScoringTargeting`: selected-tag policy, auto-aim guidance, cached targeting status, and shot suggestions
+- `PhoenixDriveAssistService`: robot-specific drive assists that combine manual drive, scoring state, localization, and overlays
 - `Shooter`: mechanism subsystem and single writer to scoring-path plants
 - `ShooterSupervisor`: policy/orchestration for scoring modes and requests
 - `PhoenixTelemetryPresenter`: driver-facing presentation from snapshots
@@ -65,6 +67,7 @@ PhoenixProfile
   ├─ localization -> FtcOdometryAprilTagLocalizationLane.Config
   ├─ field       -> TagLayout
   ├─ controls    -> PhoenixTeleOpControls tuning
+  ├─ driveAssist -> PhoenixDriveAssistService tuning
   ├─ shooter     -> Shooter config
   └─ autoAim     -> ScoringTargeting / scoring policy config
 
@@ -73,6 +76,7 @@ PhoenixRobot
   ├─ vision lane
   ├─ localization lane
   ├─ controls owner
+  ├─ drive-assist service
   ├─ targeting service
   ├─ shooter subsystem
   ├─ scoring supervisor
@@ -108,6 +112,30 @@ Older FTC code often lumps camera ownership and localization together. Phoenix n
 
 That dependency structure is deliberate and matches the role vocabulary in the framework docs.
 
+
+## Why `shootBraceEnabled()` no longer lives in `PhoenixRobot`
+
+Earlier revisions left a `shootBraceEnabled()` helper and the underlying hysteresis latch inside the
+robot container. That was a boundary mistake.
+
+`shootBrace` depends on:
+
+- driver translation intent from the controls owner
+- scoring state from the scoring supervisor
+- localization-backed pose lock from the drive-guidance layer
+
+That makes it a **robot-specific drive-assist policy**, not a composition-root concern.
+
+Phoenix now assigns that responsibility to `PhoenixDriveAssistService`, which owns:
+
+- the shoot-brace latch and thresholds
+- the pose-lock overlay used while actively shooting
+- the final TeleOp drive source built from manual drive + brace + auto aim
+- the read-only drive-assist status snapshot used by telemetry
+
+That split matters because the composition root should wire objects together, not quietly hold onto
+small state machines that implement match behavior.
+
 ## TeleOp controls live in one place now
 
 Phoenix no longer spreads drive stick setup in one class and scoring bindings in another.
@@ -115,6 +143,7 @@ Phoenix no longer spreads drive stick setup in one class and scoring bindings in
 `PhoenixTeleOpControls` owns all of these:
 
 - manual drive source creation
+- translation-magnitude semantics shared with higher-level services
 - slow mode
 - auto-aim enable source
 - aim override source
@@ -123,7 +152,7 @@ Phoenix no longer spreads drive stick setup in one class and scoring bindings in
 - shoot/eject hold semantics
 - selected-velocity up/down bindings
 
-That makes it obvious where driver policy lives.
+`PhoenixDriveAssistService` then consumes those control-layer sources without taking ownership of the button layout itself. That keeps input semantics and drive-assist policy separate while still letting them collaborate cleanly.
 
 ## Recommended profile shape
 
@@ -134,6 +163,7 @@ PhoenixProfile
   localization  -> FtcOdometryAprilTagLocalizationLane.Config
   field         -> fixed AprilTag layout
   controls      -> TeleOp control tuning
+  driveAssist   -> shoot-brace / drive-assist tuning
   shooter       -> mechanism config
   autoAim       -> scoring target catalog + shot model + aim tuning
   calibration   -> human acknowledgements
@@ -150,10 +180,11 @@ Phoenix keeps loop order explicit inside `PhoenixRobot.updateTeleOp()`:
 2. targeting.update(clock)
 3. controls.update(clock)
 4. shooterSupervisor.update(clock)
-5. drive.update(clock)
-6. drive.drive(...)
-7. shooter.update(clock)
-8. telemetryPresenter.emitTeleOp(...snapshots...)
+5. driveAssists.update(clock, scoringStatus)
+6. drive.update(clock)
+7. drive.drive(...)
+8. shooter.update(clock)
+9. telemetryPresenter.emitTeleOp(...snapshots...)
 ```
 
 That order reflects ownership:
@@ -176,7 +207,7 @@ The camera rig belongs to the vision lane because other robot systems may use it
 
 ### Letting the robot container become a control script
 
-`PhoenixRobot` is allowed to wire objects together and choose loop order. It should not quietly absorb detailed scoring or targeting policy.
+`PhoenixRobot` is allowed to wire objects together and choose loop order. It should not quietly absorb detailed scoring, targeting, or drive-assist policy. Small state machines like shoot-brace latches belong in a service or supervisor that clearly owns that behavior.
 
 ## If you are building a future robot
 
@@ -193,6 +224,7 @@ MyRobot
   FtcOdometryAprilTagLocalizationLane localization
 
   MyTeleOpControls controls
+  MyDriveAssistService driveAssists
   MyTargetingService targeting
   MySubsystem subsystem
   MySupervisor supervisor

@@ -803,6 +803,20 @@ DriveSource manual = new GamepadDriveSource(
 
 That manual source may then be wrapped with overlays or assist logic.
 
+When those overlays depend on robot state, put them in a robot-owned **drive-assist service** rather
+than hiding small latches or helper booleans in the composition root. For example, a `shootBrace`
+pose-hold that depends on both scoring state and stick idleness is not just "drive wiring." It is
+robot policy, so it should live beside targeting/services/supervisors, not inside `MyRobot`.
+
+A typical split looks like:
+
+- controls owner: maps sticks/buttons into intent sources
+- drive-assist service: combines manual drive + robot-state-driven overlays
+- drive lane: owns the drivebase hardware and executes the final command
+
+That keeps the control script out of the robot container and makes the drive path reusable and easier
+to debug.
+
 ### Auto drive
 
 Auto usually wants either:
