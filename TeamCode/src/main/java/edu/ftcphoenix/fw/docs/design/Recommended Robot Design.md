@@ -6,7 +6,10 @@ For larger robots, use this ownership pattern:
 
 - **framework lanes** for stable FTC-side systems that recur year to year
   - example: `FtcMecanumDriveLane`
-  - example: `FtcLocalizationLane`
+  - example: `FtcAprilTagVisionLane`
+  - example: `FtcOdometryAprilTagLocalizationLane`
+- **shared field facts** for layouts and landmarks used by several systems
+  - example: `TagLayout` and `FtcGameTagLayout.currentGameFieldFixed()`
 - **robot-owned controls** for all TeleOp input semantics
   - driver sticks
   - slow mode
@@ -23,6 +26,8 @@ A good composition root wires those owners together, but does not absorb their r
 ### Why this matters
 
 This keeps stable framework code reusable across seasons without turning the framework into a giant base robot class. It also keeps each robot's control scheme and game logic easy to find, instead of scattering it across convenience helpers and subsystem constructors.
+
+Before reading the rest of this file, read [`Framework Lanes & Robot Controls`](<Framework Lanes & Robot Controls.md>). That document defines the ownership vocabulary used throughout the framework and shows how to build a robot from scratch without copying an older robot.
 
 This document describes Phoenix's recommended design for robot code that will be shared between
 TeleOp and Auto.

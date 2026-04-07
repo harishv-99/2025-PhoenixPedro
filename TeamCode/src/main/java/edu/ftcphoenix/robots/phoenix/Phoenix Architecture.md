@@ -1,12 +1,12 @@
 # Phoenix Architecture
 
-This file explains the current Phoenix object split and, more importantly, **why** it is structured this way.
+This document explains the current Phoenix object graph and how it maps onto the framework architecture vocabulary.
 
-The design follows one core rule:
+The governing rule is:
 
-> Stable hardware/resource ownership belongs in framework lanes. Driver/operator semantics belong in a robot-owned controls object. Game-specific behavior belongs in robot policy and subsystems.
+> Stable hardware and resource ownership lives in framework lanes. Shared field landmarks stay separate. Operator semantics live in robot controls. Game-specific behavior lives in robot services, supervisors, and subsystems.
 
-That rule keeps the framework reusable year to year without pushing game strategy into the framework.
+That split is what keeps Phoenix reusable as a template without pushing one season's strategy into the framework.
 
 ## Big-picture structure
 
@@ -15,7 +15,8 @@ PhoenixRobot
   PhoenixProfile
 
   FtcMecanumDriveLane drive
-  FtcLocalizationLane localization
+  FtcAprilTagVisionLane vision
+  FtcOdometryAprilTagLocalizationLane localization
 
   PhoenixTeleOpControls controls
   ScoringTargeting targeting
@@ -24,164 +25,178 @@ PhoenixRobot
   PhoenixTelemetryPresenter telemetry
 ```
 
-## What each object owns
+## Role map
 
-### `FtcMecanumDriveLane`
+### Framework primitives used underneath the lanes
 
-Owns stable drive-lane concerns:
-
-- motor wiring
-- zero-power brake behavior
+- `GamepadDriveSource`
 - `MecanumDrivebase`
-- drive lifecycle
+- `AprilTagSensor`
+- `PinpointPoseEstimator`
+- `FixedTagFieldPoseSolver`
 
-Does **not** own:
+### Framework lanes
 
-- stick mapping
-- slow-mode button choices
-- aim assists
-- driver policy
+- `FtcMecanumDriveLane`: owns mecanum hardware wiring, brake behavior, drivebase construction, and drive lifecycle
+- `FtcAprilTagVisionLane`: owns the AprilTag camera rig, webcam identity, camera mount, and portal cleanup
+- `FtcOdometryAprilTagLocalizationLane`: owns odometry + AprilTag localization strategy, fused estimator selection, and pose production
 
-### `FtcLocalizationLane`
+### Shared field facts
 
-Owns stable localization-lane concerns:
+- `PhoenixProfile.field.fixedAprilTagLayout`
+
+This layout is consumed by localization and targeting. It is intentionally not hidden inside the vision lane or the localization lane.
+
+### Robot-owned objects
+
+- `PhoenixTeleOpControls`: all TeleOp input semantics, including stick mapping and scoring buttons
+- `ScoringTargeting`: selected-tag policy, auto-aim guidance, cached targeting status, and shot suggestions
+- `Shooter`: mechanism subsystem and single writer to scoring-path plants
+- `ShooterSupervisor`: policy/orchestration for scoring modes and requests
+- `PhoenixTelemetryPresenter`: driver-facing presentation from snapshots
+- `PhoenixRobot`: composition root and loop owner
+
+## Dependency graph
+
+```text
+PhoenixProfile
+  ├─ drive       -> FtcMecanumDriveLane.Config
+  ├─ vision      -> FtcAprilTagVisionLane.Config
+  ├─ localization -> FtcOdometryAprilTagLocalizationLane.Config
+  ├─ field       -> TagLayout
+  ├─ controls    -> PhoenixTeleOpControls tuning
+  ├─ shooter     -> Shooter config
+  └─ autoAim     -> ScoringTargeting / scoring policy config
+
+PhoenixRobot
+  ├─ drive lane
+  ├─ vision lane
+  ├─ localization lane
+  ├─ controls owner
+  ├─ targeting service
+  ├─ shooter subsystem
+  ├─ scoring supervisor
+  └─ telemetry presenter
+```
+
+## Why the vision/localization split matters
+
+Older FTC code often lumps camera ownership and localization together. Phoenix now avoids that because the camera rig is not only for localization.
+
+### `FtcAprilTagVisionLane` owns
+
+- webcam name
+- camera resolution
+- camera mount
+- AprilTag sensor / portal lifetime
+- camera cleanup
+
+### `FtcOdometryAprilTagLocalizationLane` owns
 
 - Pinpoint odometry
-- AprilTag camera ownership
-- AprilTag-only field solve
+- AprilTag-only field solver
 - fused/global estimator selection
-- per-loop localization updates
-- vision cleanup
+- localization update order
+- fused and odometry pose outputs
 
-Does **not** own:
+### `ScoringTargeting` consumes
 
-- scoring-tag selection
-- shot decisions
-- aiming policy
-- match strategy
+- the shared AprilTag sensor from the vision lane
+- the camera mount from the vision lane
+- the fused pose from the localization lane
+- the fixed field tag layout from `PhoenixProfile.field`
 
-### `PhoenixTeleOpControls`
+That dependency structure is deliberate and matches the role vocabulary in the framework docs.
 
-Owns all TeleOp input semantics:
+## TeleOp controls live in one place now
 
-- base drive-stick mapping
+Phoenix no longer spreads drive stick setup in one class and scoring bindings in another.
+
+`PhoenixTeleOpControls` owns all of these:
+
+- manual drive source creation
 - slow mode
-- auto-aim enable / override sources
-- intake / flywheel / shoot / eject bindings
-- selected-velocity adjustment bindings
+- auto-aim enable source
+- aim override source
+- intake binding
+- flywheel binding
+- shoot/eject hold semantics
+- selected-velocity up/down bindings
 
-This is the key cleanup from the previous design. Drive controls are no longer configured in a different place from the rest of the bindings.
-
-### `ScoringTargeting`
-
-Owns targeting policy:
-
-- scoring-tag selection
-- auto-aim query
-- cached targeting snapshot
-- range-based shot suggestion
-
-### `ShooterSupervisor`
-
-Owns scoring policy:
-
-- requests
-- mode transitions
-- gating
-- feed decisions
-
-### `Shooter`
-
-Owns scoring-path actuation:
-
-- plants
-- flywheel control
-- feed queue
-- final output writes
-
-### `PhoenixTelemetryPresenter`
-
-Owns driver-facing telemetry formatting and consumes snapshots rather than reaching back into live objects.
-
-## Recommended future-robot pattern
-
-When starting a new robot, try to keep the same three-way split:
-
-1. **Framework lanes**
-   - drive hardware lane
-   - localization lane
-   - any other truly stable, reusable resource owner
-
-2. **Robot-owned controls**
-   - all driver/operator semantics in one place
-   - build `DriveSource`s here
-   - expose the enable/override sources higher-level code needs
-
-3. **Robot-owned mechanisms and policy**
-   - subsystems write plants
-   - supervisors own policy
-   - targeting/strategy objects own game-specific reasoning
+That makes it obvious where driver policy lives.
 
 ## Recommended profile shape
-
-Phoenix now uses this style of profile:
 
 ```text
 PhoenixProfile
   drive         -> FtcMecanumDriveLane.Config
-  localization  -> FtcLocalizationLane.Config
-  controls      -> PhoenixTeleOpControls.Config-ish tuning
-  shooter       -> Shooter.Config
-  autoAim       -> ScoringTargeting.Config-ish tuning
+  vision        -> FtcAprilTagVisionLane.Config
+  localization  -> FtcOdometryAprilTagLocalizationLane.Config
+  field         -> fixed AprilTag layout
+  controls      -> TeleOp control tuning
+  shooter       -> mechanism config
+  autoAim       -> scoring target catalog + shot model + aim tuning
   calibration   -> human acknowledgements
 ```
 
-That shape is a good template for future robots too.
+This profile shape is the template future robots should copy.
 
-## Anti-patterns this refactor is trying to avoid
+## Loop order
 
-### 1. Framework primitives that smuggle button policy
-
-Bad example in spirit:
+Phoenix keeps loop order explicit inside `PhoenixRobot.updateTeleOp()`:
 
 ```text
-a low-level drive helper that bakes a button choice into a primitive
+1. localization.update(clock)
+2. targeting.update(clock)
+3. controls.update(clock)
+4. shooterSupervisor.update(clock)
+5. drive.update(clock)
+6. drive.drive(...)
+7. shooter.update(clock)
+8. telemetryPresenter.emitTeleOp(...snapshots...)
 ```
 
-Why it is odd:
+That order reflects ownership:
 
-- a low-level input primitive suddenly chooses a specific button
-- drive controls become split between multiple places
-- future robots inherit hidden operator assumptions
+- lanes produce stable shared state first
+- robot services and controls consume that state
+- supervisors translate intent into requests
+- subsystems write hardware
+- presenters explain the result
 
-### 2. Robot container as a giant control script
+## Anti-patterns this architecture avoids
 
-If `PhoenixRobot` owns all of these directly:
+### Putting button policy into framework primitives
 
-- stick mapping
-- button edges
-- target selection
-- aim gating
-- telemetry formatting
-- resource cleanup
+Phoenix intentionally avoids helpers that bake in a specific gamepad button at the primitive layer.
 
-then it stops being a composition root and becomes the place where every behavior change lands.
+### Treating localization as the owner of every camera concern
 
-### 3. Pushing game strategy into framework lanes
+The camera rig belongs to the vision lane because other robot systems may use it too.
 
-The framework should know how to produce pose and how to send drive output. It should not know which tag is a scoring target or when a shooter should feed.
+### Letting the robot container become a control script
 
-## The practical rule of thumb
+`PhoenixRobot` is allowed to wire objects together and choose loop order. It should not quietly absorb detailed scoring or targeting policy.
 
-If a new object answers one of these questions, it probably belongs in the framework:
+## If you are building a future robot
 
-- "Which FTC resources does this stable lane own?"
-- "How is this stable lane configured?"
-- "How is this stable lane updated and shut down?"
+Copy the ownership pattern, not Phoenix's season-specific behavior.
 
-If a new object answers one of these questions, it probably belongs in robot code:
+A good starting point is:
 
-- "Which buttons do the drivers use?"
-- "What does auto aim mean for this game?"
-- "When is it okay to score?"
-- "How should this mechanism behave in this robot?"
+```text
+MyRobot
+  MyRobotProfile
+
+  FtcMecanumDriveLane drive
+  FtcAprilTagVisionLane vision
+  FtcOdometryAprilTagLocalizationLane localization
+
+  MyTeleOpControls controls
+  MyTargetingService targeting
+  MySubsystem subsystem
+  MySupervisor supervisor
+  MyTelemetryPresenter telemetry
+```
+
+Then read the framework doc [`Framework Lanes & Robot Controls`](<../fw/docs/design/Framework Lanes & Robot Controls.md>) for the full glossary and from-scratch build steps.

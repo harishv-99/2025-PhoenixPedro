@@ -11,29 +11,27 @@ import java.util.Set;
 import edu.ftcphoenix.fw.core.hal.Direction;
 import edu.ftcphoenix.fw.core.math.InterpolatingTable1D;
 import edu.ftcphoenix.fw.drive.source.GamepadDriveSource;
+import edu.ftcphoenix.fw.field.TagLayout;
 import edu.ftcphoenix.fw.ftc.FtcFieldRegions;
+import edu.ftcphoenix.fw.ftc.FtcGameTagLayout;
 import edu.ftcphoenix.fw.ftc.drive.FtcMecanumDriveLane;
-import edu.ftcphoenix.fw.ftc.localization.FtcLocalizationLane;
+import edu.ftcphoenix.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane;
+import edu.ftcphoenix.fw.ftc.vision.FtcAprilTagVisionLane;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 
 /**
  * Phoenix robot profile.
  *
  * <p>
- * Phoenix now treats the stable year-to-year framework lanes as first-class config owners.
- * Drive hardware is configured directly with {@link FtcMecanumDriveLane.Config}. Localization is
- * configured directly with {@link FtcLocalizationLane.Config}. Robot-specific policy still lives
- * here too, but it is layered on top of those reusable framework owners instead of rebuilding their
- * wiring in Phoenix every season.
- * </p>
- *
- * <p>
- * The result is a thinner robot profile:
+ * Phoenix treats stable framework lanes as first-class config owners while keeping robot-specific
+ * strategy and operator policy in the robot layer. The result is a profile whose top-level sections
+ * mirror the architectural roles used in code:
  * </p>
  * <ul>
- *   <li>framework-owned lanes: drive + localization</li>
- *   <li>robot-owned controls: TeleOp stick shaping / slow-mode tuning</li>
- *   <li>robot-owned mechanisms and strategy: shooter + targeting + calibration acknowledgements</li>
+ *   <li>framework-owned lanes: drive, vision, localization</li>
+ *   <li>shared field facts: fixed AprilTag layout for the current game</li>
+ *   <li>robot-owned controls: TeleOp stick shaping and slow-mode tuning</li>
+ *   <li>robot-owned mechanisms and strategy: shooter, targeting, and calibration acknowledgements</li>
  * </ul>
  */
 public final class PhoenixProfile {
@@ -46,13 +44,21 @@ public final class PhoenixProfile {
     public FtcMecanumDriveLane.Config drive = defaultDriveConfig();
 
     /**
-     * Stable localization hardware/lifecycle configuration owned by the framework localization lane.
+     * Stable AprilTag camera-rig configuration owned by the framework vision lane.
      */
-    public FtcLocalizationLane.Config localization = defaultLocalizationConfig();
+    public FtcAprilTagVisionLane.Config vision = defaultVisionConfig();
 
     /**
-     * TeleOp control-layer tuning owned by Phoenix's robot-specific controls object.
+     * Stable localization-strategy configuration owned by the framework localization lane.
      */
+    public FtcOdometryAprilTagLocalizationLane.Config localization = defaultLocalizationConfig();
+
+    /**
+     * Shared field facts consumed by localization, targeting, and calibration tools.
+     */
+    public FieldConfig field = new FieldConfig();
+
+    /** TeleOp control-layer tuning owned by Phoenix's robot-specific controls object. */
     public TeleOpControlsConfig controls = new TeleOpControlsConfig();
 
     /** Shooter hardware + scoring-path tuning. */
@@ -101,12 +107,50 @@ public final class PhoenixProfile {
     public PhoenixProfile copy() {
         PhoenixProfile copy = new PhoenixProfile();
         copy.drive = this.drive.copy();
+        copy.vision = this.vision.copy();
         copy.localization = this.localization.copy();
+        copy.field = this.field.copy();
         copy.controls = this.controls.copy();
         copy.shooter = this.shooter.copy();
         copy.calibration = this.calibration.copy();
         copy.autoAim = this.autoAim.copy();
         return copy;
+    }
+
+    /**
+     * Shared field facts for Phoenix.
+     *
+     * <p>
+     * Field facts are intentionally separate from both the vision lane and the localization lane.
+     * The camera rig is a physical sensor concern. Localization is a pose-estimation concern.
+     * Field facts answer a different question entirely: which fixed landmarks and regions describe
+     * the current game field? Keeping them separate makes it obvious where future overrides or
+     * practice-field substitutions belong.
+     * </p>
+     */
+    public static final class FieldConfig {
+
+        /**
+         * Fixed AprilTag layout trusted as field landmarks for localization and targeting.
+         */
+        public TagLayout fixedAprilTagLayout = FtcGameTagLayout.currentGameFieldFixed();
+
+        /**
+         * Creates a field-facts config initialized with Phoenix defaults.
+         */
+        public FieldConfig() {
+        }
+
+        /**
+         * Creates a copy of this field-facts config.
+         *
+         * @return copied field-facts config
+         */
+        public FieldConfig copy() {
+            FieldConfig c = new FieldConfig();
+            c.fixedAprilTagLayout = this.fixedAprilTagLayout;
+            return c;
+        }
     }
 
     /**
@@ -120,9 +164,7 @@ public final class PhoenixProfile {
      */
     public static final class TeleOpControlsConfig {
 
-        /**
-         * Drive-stick shaping and slow-mode tuning for the manual drive source.
-         */
+        /** Drive-stick shaping and slow-mode tuning for the manual drive source. */
         public DriveControlsConfig drive = new DriveControlsConfig();
 
         /**
@@ -197,8 +239,8 @@ public final class PhoenixProfile {
         return cfg;
     }
 
-    private static FtcLocalizationLane.Config defaultLocalizationConfig() {
-        FtcLocalizationLane.Config cfg = FtcLocalizationLane.Config.defaults();
+    private static FtcAprilTagVisionLane.Config defaultVisionConfig() {
+        FtcAprilTagVisionLane.Config cfg = FtcAprilTagVisionLane.Config.defaults();
         cfg.webcamName = "Webcam 1";
         cfg.cameraMount = CameraMountConfig.ofDegrees(
                 9.97,
@@ -208,25 +250,30 @@ public final class PhoenixProfile {
                 -18.2,
                 -1.7
         );
+        return cfg;
+    }
 
-        cfg.globalEstimatorMode = FtcLocalizationLane.GlobalEstimatorMode.FUSION;
+    private static FtcOdometryAprilTagLocalizationLane.Config defaultLocalizationConfig() {
+        FtcOdometryAprilTagLocalizationLane.Config cfg = FtcOdometryAprilTagLocalizationLane.Config.defaults();
+        cfg.globalEstimatorMode = FtcOdometryAprilTagLocalizationLane.GlobalEstimatorMode.FUSION;
 
-        cfg.pinpoint = cfg.pinpoint
+        cfg.odometry = cfg.odometry
                 .withHardwareMapName("pinPoint")
                 .withOffsets(0.0, 0.0)
                 .withForwardPodDirection(GoBildaPinpointDriver.EncoderDirection.FORWARD)
                 .withStrafePodDirection(GoBildaPinpointDriver.EncoderDirection.FORWARD);
 
-        cfg.aprilTags.maxAbsBearingRad = 0.0;
-        cfg.aprilTags.preferObservationFieldPose = true;
-        cfg.aprilTags.observationFieldPoseMaxDeltaInches = 8.0;
-        cfg.aprilTags.observationFieldPoseMaxDeltaHeadingRad = Math.toRadians(12.0);
-        cfg.aprilTags.rangeSoftnessInches = 36.0;
-        cfg.aprilTags.minObservationWeight = 0.05;
-        cfg.aprilTags.outlierPositionGateInches = 18.0;
-        cfg.aprilTags.outlierHeadingGateRad = Math.toRadians(25.0);
-        cfg.aprilTags.plausibleFieldRegion = FtcFieldRegions.fullField();
-        cfg.aprilTags.maxOutsidePlausibleFieldRegionInches = 3.0;
+        cfg.aprilTags.maxDetectionAgeSec = 0.50;
+        cfg.aprilTags.fieldPoseSolver.maxAbsBearingRad = 0.0;
+        cfg.aprilTags.fieldPoseSolver.preferObservationFieldPose = true;
+        cfg.aprilTags.fieldPoseSolver.observationFieldPoseMaxDeltaInches = 8.0;
+        cfg.aprilTags.fieldPoseSolver.observationFieldPoseMaxDeltaHeadingRad = Math.toRadians(12.0);
+        cfg.aprilTags.fieldPoseSolver.rangeSoftnessInches = 36.0;
+        cfg.aprilTags.fieldPoseSolver.minObservationWeight = 0.05;
+        cfg.aprilTags.fieldPoseSolver.outlierPositionGateInches = 18.0;
+        cfg.aprilTags.fieldPoseSolver.outlierHeadingGateRad = Math.toRadians(25.0);
+        cfg.aprilTags.fieldPoseSolver.plausibleFieldRegion = FtcFieldRegions.fullField();
+        cfg.aprilTags.fieldPoseSolver.maxOutsidePlausibleFieldRegionInches = 3.0;
 
         cfg.odometryTagFusion.maxVisionAgeSec = 0.35;
         cfg.odometryTagFusion.minVisionQuality = 0.10;

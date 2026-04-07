@@ -48,7 +48,7 @@ public final class PhoenixTeleOpControls {
      * </p>
      *
      * @param gamepads wrapped gamepad sources used to map driver/operator controls
-     * @param config   TeleOp control-layer config; defensively copied for local ownership
+     * @param config TeleOp control-layer config; defensively copied for local ownership
      */
     public PhoenixTeleOpControls(Gamepads gamepads,
                                  PhoenixProfile.TeleOpControlsConfig config) {
@@ -76,8 +76,8 @@ public final class PhoenixTeleOpControls {
     /**
      * Registers the Phoenix scoring button semantics with this controls owner.
      *
-     * @param shooter                  shooter subsystem used for direct selected-velocity adjustments
-     * @param scoring                  scoring supervisor that receives intent-level actions
+     * @param shooter shooter subsystem used for direct selected-velocity adjustments
+     * @param scoring scoring supervisor that receives intent-level actions
      * @param captureSuggestedVelocity action invoked when the operator requests a fresh
      *                                 target-based velocity suggestion
      */

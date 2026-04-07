@@ -91,7 +91,7 @@ public final class FtcMecanumDriveLane implements DriveCommandSink {
      * Creates the mecanum lane from one FTC hardware map and one config snapshot.
      *
      * @param hardwareMap FTC hardware map used to create and configure drive hardware
-     * @param config      lane config; defensively copied for local ownership
+     * @param config lane config; defensively copied for local ownership
      */
     public FtcMecanumDriveLane(HardwareMap hardwareMap, Config config) {
         Objects.requireNonNull(hardwareMap, "hardwareMap");
@@ -164,7 +164,7 @@ public final class FtcMecanumDriveLane implements DriveCommandSink {
     /**
      * Dumps the lane's live debug state.
      *
-     * @param dbg    debug sink to write to; ignored when {@code null}
+     * @param dbg debug sink to write to; ignored when {@code null}
      * @param prefix key prefix for all entries; may be {@code null} or empty
      */
     public void debugDump(DebugSink dbg, String prefix) {

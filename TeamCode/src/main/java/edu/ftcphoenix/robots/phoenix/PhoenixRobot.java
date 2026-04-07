@@ -16,7 +16,8 @@ import edu.ftcphoenix.fw.drive.DriveSource;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidance;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidancePlan;
 import edu.ftcphoenix.fw.ftc.drive.FtcMecanumDriveLane;
-import edu.ftcphoenix.fw.ftc.localization.FtcLocalizationLane;
+import edu.ftcphoenix.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane;
+import edu.ftcphoenix.fw.ftc.vision.FtcAprilTagVisionLane;
 import edu.ftcphoenix.fw.input.Gamepads;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
 
@@ -28,7 +29,8 @@ import edu.ftcphoenix.fw.localization.PoseEstimate;
  * </p>
  * <ul>
  *   <li>{@link FtcMecanumDriveLane} owns stable drive hardware/lifecycle concerns.</li>
- *   <li>{@link FtcLocalizationLane} owns stable localization hardware/lifecycle concerns.</li>
+ *   <li>{@link FtcAprilTagVisionLane} owns the stable AprilTag camera rig and vision resource lifecycle.</li>
+ *   <li>{@link FtcOdometryAprilTagLocalizationLane} owns stable localization strategy and pose production.</li>
  *   <li>{@link PhoenixTeleOpControls} owns all TeleOp input semantics, including drive controls.</li>
  *   <li>{@link ScoringTargeting} owns target selection, aim status, and shot suggestions.</li>
  *   <li>{@link ShooterSupervisor} owns scoring policy.</li>
@@ -47,7 +49,8 @@ public final class PhoenixRobot {
     private final PhoenixTelemetryPresenter telemetryPresenter;
 
     private FtcMecanumDriveLane drive;
-    private FtcLocalizationLane localization;
+    private FtcAprilTagVisionLane vision;
+    private FtcOdometryAprilTagLocalizationLane localization;
     private Shooter shooter;
     private ShooterSupervisor shooterSupervisor;
     private ScoringTargeting scoringTargeting;
@@ -116,18 +119,24 @@ public final class PhoenixRobot {
      */
     public void initTeleOp() {
         drive = new FtcMecanumDriveLane(hardwareMap, profile.drive);
-        localization = new FtcLocalizationLane(hardwareMap, profile.localization);
+        vision = new FtcAprilTagVisionLane(hardwareMap, profile.vision);
+        localization = new FtcOdometryAprilTagLocalizationLane(
+                hardwareMap,
+                vision,
+                profile.field.fixedAprilTagLayout,
+                profile.localization
+        );
 
         shooter = new Shooter(hardwareMap, profile.shooter);
         teleOpControls = new PhoenixTeleOpControls(gamepads, profile.controls);
 
         scoringTargeting = new ScoringTargeting(
                 profile.autoAim,
-                profile.localization.aprilTags.copy(),
-                localization.tagSensor(),
-                localization.cameraMountConfig(),
+                profile.localization.aprilTags.fieldPoseSolver.copy(),
+                vision.tagSensor(),
+                vision.cameraMountConfig(),
                 localization.globalEstimator(),
-                localization.fieldTagLayout(),
+                profile.field.fixedAprilTagLayout,
                 teleOpControls.autoAimEnabledSource(),
                 teleOpControls.aimOverrideSource(),
                 profile.autoAim.shotVelocityModel()
@@ -281,9 +290,11 @@ public final class PhoenixRobot {
      * Stops TeleOp-specific resources and releases vision/localization helpers.
      */
     public void stopTeleOp() {
-        if (localization != null) {
-            localization.close();
-            localization = null;
+        localization = null;
+        shooterSupervisor = null;
+        if (vision != null) {
+            vision.close();
+            vision = null;
         }
         if (teleOpControls != null) {
             teleOpControls.clear();

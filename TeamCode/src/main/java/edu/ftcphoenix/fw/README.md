@@ -13,9 +13,10 @@ If you are new to Phoenix, read in this order:
 
 1. [`docs/getting-started/Framework Overview.md`](<docs/getting-started/Framework Overview.md>)
 2. [`docs/getting-started/Beginner's Guide.md`](<docs/getting-started/Beginner's Guide.md>)
-3. [`docs/design/Recommended Robot Design.md`](<docs/design/Recommended Robot Design.md>)
-4. [`docs/core-concepts/Loop Structure.md`](<docs/core-concepts/Loop Structure.md>)
-5. [`docs/design/Tasks & Macros Quickstart.md`](<docs/design/Tasks & Macros Quickstart.md>)
+3. [`docs/design/Framework Lanes & Robot Controls.md`](<docs/design/Framework Lanes & Robot Controls.md>)
+4. [`docs/design/Recommended Robot Design.md`](<docs/design/Recommended Robot Design.md>)
+5. [`docs/core-concepts/Loop Structure.md`](<docs/core-concepts/Loop Structure.md>)
+6. [`docs/design/Tasks & Macros Quickstart.md`](<docs/design/Tasks & Macros Quickstart.md>)
 
 ## Reading paths by goal
 
@@ -23,11 +24,13 @@ If you are new to Phoenix, read in this order:
 
 - [`docs/getting-started/Framework Overview.md`](<docs/getting-started/Framework Overview.md>)
 - [`docs/getting-started/Beginner's Guide.md`](<docs/getting-started/Beginner's Guide.md>)
+- [`docs/design/Framework Lanes & Robot Controls.md`](<docs/design/Framework Lanes & Robot Controls.md>)
 - [`docs/core-concepts/Loop Structure.md`](<docs/core-concepts/Loop Structure.md>)
 - [`docs/design/Tasks & Macros Quickstart.md`](<docs/design/Tasks & Macros Quickstart.md>)
 
 ### I want a clean TeleOp + Auto robot design
 
+- [`docs/design/Framework Lanes & Robot Controls.md`](<docs/design/Framework Lanes & Robot Controls.md>)
 - [`docs/design/Recommended Robot Design.md`](<docs/design/Recommended Robot Design.md>)
 - [`docs/design/Supervisors & Pipelines.md`](<docs/design/Supervisors & Pipelines.md>)
 - [`docs/design/Output Tasks & Queues.md`](<docs/design/Output Tasks & Queues.md>)

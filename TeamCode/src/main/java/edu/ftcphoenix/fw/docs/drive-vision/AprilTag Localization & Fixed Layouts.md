@@ -8,6 +8,14 @@ The short version:
 - **A Phoenix `TagLayout`** tells localization / guidance which tags are safe to treat as **fixed field landmarks**.
 - **Raw detections may see more tags than the fixed layout contains.** That is intentional.
 
+In the current framework structure, keep these ownership boundaries separate:
+
+- `FtcAprilTagVisionLane` owns the camera rig, webcam identity, camera mount, and portal cleanup
+- `FtcOdometryAprilTagLocalizationLane` owns pose-estimation strategy built on top of that rig
+- field facts such as `TagLayout` stay separate from both
+
+That split matters because the camera rig may be shared by localization, aiming, and future vision features.
+
 ---
 
 ## 1. Detectable tags vs fixed field tags
@@ -101,8 +109,8 @@ reported as confidently as a solve where multiple tags agree.
 When another component should reuse the same weighting / outlier / plausibility policy, use:
 
 ```java
-TagOnlyPoseEstimator.Config tagCfg = RobotConfig.Localization.aprilTags.copy()
-        .withCameraMount(cameraMount);
+TagOnlyPoseEstimator.Config tagCfg = profile.localization.aprilTags
+        .toTagOnlyPoseEstimatorConfig(profile.vision.cameraMount);
 
 TagOnlyPoseEstimator tagLocalizer = new TagOnlyPoseEstimator(tags, fixedLayout, tagCfg);
 
@@ -176,8 +184,8 @@ That is more trustworthy than repeatedly blending the same delayed frame against
 Typical pattern:
 
 ```java
-TagOnlyPoseEstimator.Config tagCfg = RobotConfig.Localization.aprilTags.copy()
-        .withCameraMount(cameraMount);
+TagOnlyPoseEstimator.Config tagCfg = profile.localization.aprilTags
+        .toTagOnlyPoseEstimatorConfig(profile.vision.cameraMount);
 
 TagOnlyPoseEstimator tagLocalizer = new TagOnlyPoseEstimator(tags, fixedLayout, tagCfg);
 
@@ -202,8 +210,8 @@ Notes:
 The framework now also ships an optional covariance-aware localizer:
 
 ```java
-TagOnlyPoseEstimator.Config tagCfg = RobotConfig.Localization.aprilTags.copy()
-        .withCameraMount(cameraMount);
+TagOnlyPoseEstimator.Config tagCfg = profile.localization.aprilTags
+        .toTagOnlyPoseEstimatorConfig(profile.vision.cameraMount);
 
 TagOnlyPoseEstimator tagLocalizer = new TagOnlyPoseEstimator(tags, fixedLayout, tagCfg);
 

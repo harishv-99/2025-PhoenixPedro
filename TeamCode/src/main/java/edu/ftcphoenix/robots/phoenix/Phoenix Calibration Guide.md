@@ -2,30 +2,31 @@
 
 This is the Phoenix-specific version of the framework calibration path.
 
-Use it when you are bringing up a fresh Phoenix robot and want the exact menu names and `PhoenixProfile` fields to touch.
+Use it when you are bringing up a fresh Phoenix robot and want the exact menu names and `PhoenixProfile` fields to edit.
 
-## Architecture notes for the framework-lane refactor
+## Architecture notes
 
-Phoenix now follows the framework split more explicitly:
+Phoenix now splits stable ownership this way:
 
-- `PhoenixProfile` owns one thin robot profile built on top of framework-lane configs.
-- `PhoenixProfile.drive` is a direct `FtcMecanumDriveLane.Config`.
-- `PhoenixProfile.localization` is a direct `FtcLocalizationLane.Config`.
-- `PhoenixTeleOpControls` owns **all** TeleOp input semantics, including the drive sticks and slow mode.
-- `PhoenixRobot` is the composition root and loop owner.
-- `ShooterSupervisor` owns scoring policy and intent-level commands.
-- `PhoenixTelemetryPresenter` owns driver-facing telemetry formatting.
-- `ScoringTargeting` owns selected-tag policy, cached auto-aim status, and range-based shot suggestions.
-- `PhoenixProfile.autoAim.scoringTargets` is the target catalog; adding a scoring tag should usually be a profile edit, not a robot-code branch.
-- The range-to-velocity interpolation table lives with targeting configuration instead of inside `Shooter`.
+- `PhoenixProfile.drive` -> `FtcMecanumDriveLane.Config`
+- `PhoenixProfile.vision` -> `FtcAprilTagVisionLane.Config`
+- `PhoenixProfile.localization` -> `FtcOdometryAprilTagLocalizationLane.Config`
+- `PhoenixProfile.field` -> shared field facts such as the fixed AprilTag layout
+- `PhoenixTeleOpControls` -> all TeleOp input semantics
+- `ShooterSupervisor` -> scoring policy and intent-level requests
+- `ScoringTargeting` -> selected-tag policy, cached aim status, and shot suggestions
+- `Shooter` -> mechanism actuation and status
+- `PhoenixRobot` -> composition root and loop owner
 
 That split matters during bring-up because fixes should land in the owner of the behavior:
 
-- drivetrain wiring / brake / drive tuning → `PhoenixProfile.drive`
-- camera mount / AprilTag tuning / fusion tuning → `PhoenixProfile.localization`
-- button semantics / manual drive behavior → `PhoenixTeleOpControls`
-- scoring gating / requests / feed policy → `ShooterSupervisor`
-- mechanism actuation → `Shooter`
+- drivetrain wiring / brake / drive tuning -> `PhoenixProfile.drive`
+- webcam name / camera mount / vision portal settings -> `PhoenixProfile.vision`
+- odometry tuning / AprilTag localization tuning / fusion tuning -> `PhoenixProfile.localization`
+- fixed field tags or practice-field overrides -> `PhoenixProfile.field`
+- button semantics / manual drive behavior -> `PhoenixTeleOpControls`
+- scoring gating / requests / feed policy -> `ShooterSupervisor`
+- mechanism actuation -> `Shooter`
 
 ## Where to start in the tester menu
 
@@ -33,7 +34,7 @@ Open:
 
 - `Guide: Phoenix Calibration Walkthrough`
 
-That walkthrough intentionally duplicates links to the real testers so students can follow one recommended path.
+That walkthrough intentionally links to the real testers in the recommended order.
 
 If you already know what you need, browse instead through:
 
@@ -75,14 +76,14 @@ Solve Phoenix's webcam pose relative to the robot.
 ### Paste result into
 
 ```java
-PhoenixProfile.current().localization.cameraMount
+PhoenixProfile.current().vision.cameraMount
 ```
 
 The tester prints `CameraMountConfig.of(...)` and `CameraMountConfig.ofDegrees(...)`. Paste one of those directly.
 
 ### Phoenix notes
 
-- the preferred camera is `PhoenixProfile.current().localization.webcamName`
+- the preferred camera is `PhoenixProfile.current().vision.webcamName`
 - the walkthrough status turns `OK` once the camera mount no longer looks like the identity placeholder
 
 ## Step 3: AprilTag-only localization sanity check
@@ -107,9 +108,10 @@ Verify that Phoenix's preferred camera, fixed-tag layout policy, and AprilTag-on
 This tester reuses:
 
 ```java
-PhoenixProfile.current().localization.webcamName
-PhoenixProfile.current().localization.cameraMount
+PhoenixProfile.current().vision.webcamName
+PhoenixProfile.current().vision.cameraMount
 PhoenixProfile.current().localization.aprilTags
+PhoenixProfile.current().field.fixedAprilTagLayout
 ```
 
 So the practice tool should match production localization math more closely.
@@ -133,7 +135,7 @@ Verify:
 Adjust:
 
 ```java
-PhoenixProfile.current().localization.pinpoint
+PhoenixProfile.current().localization.odometry
 ```
 
 Specifically, correct pod direction fields before continuing.
@@ -159,7 +161,7 @@ Estimate the Pinpoint offsets that remove fake translation during rotation.
 ### Paste result into
 
 ```java
-PhoenixProfile.current().localization.pinpoint
+PhoenixProfile.current().localization.odometry
 ```
 
 The tester prints the recommended:
@@ -199,10 +201,12 @@ Validate Phoenix's default global localizer in the conditions that matter for re
 ### Config involved
 
 ```java
-PhoenixProfile.current().localization.pinpoint
+PhoenixProfile.current().vision.webcamName
+PhoenixProfile.current().vision.cameraMount
+PhoenixProfile.current().localization.odometry
 PhoenixProfile.current().localization.aprilTags
 PhoenixProfile.current().localization.odometryTagFusion
-PhoenixProfile.current().localization.cameraMount
+PhoenixProfile.current().field.fixedAprilTagLayout
 ```
 
 ## Step 7: optional EKF comparison
@@ -241,8 +245,9 @@ Use the tester to compare behavior first. Only then consider changing the robot'
 6. default fusion validation
 7. optional EKF comparison
 
-## Related framework docs
+## Related docs
 
-- [`docs/design/Framework Lanes & Robot Controls.md`](<docs/design/Framework Lanes & Robot Controls.md>)
-- [`docs/testing-calibration/Robot Calibration Tutorials.md`](<docs/testing-calibration/Robot Calibration Tutorials.md>)
-- [`docs/testing-calibration/Guided Calibration Walkthroughs.md`](<docs/testing-calibration/Guided Calibration Walkthroughs.md>)
+- [`Framework Lanes & Robot Controls`](<../fw/docs/design/Framework Lanes & Robot Controls.md>)
+- [`Recommended Robot Design`](<../fw/docs/design/Recommended Robot Design.md>)
+- [`Robot Calibration Tutorials`](<../fw/docs/testing-calibration/Robot Calibration Tutorials.md>)
+- [`Guided Calibration Walkthroughs`](<../fw/docs/testing-calibration/Guided Calibration Walkthroughs.md>)

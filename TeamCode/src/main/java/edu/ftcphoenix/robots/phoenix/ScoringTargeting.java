@@ -21,7 +21,7 @@ import edu.ftcphoenix.fw.drive.guidance.References;
 import edu.ftcphoenix.fw.field.TagLayout;
 import edu.ftcphoenix.fw.field.TagLayouts;
 import edu.ftcphoenix.fw.localization.PoseEstimator;
-import edu.ftcphoenix.fw.localization.apriltag.TagOnlyPoseEstimator;
+import edu.ftcphoenix.fw.localization.apriltag.FixedTagFieldPoseSolver;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelectionPolicies;
@@ -40,7 +40,7 @@ public final class ScoringTargeting {
 
     private final PhoenixProfile.AutoAimConfig cfg;
     private final CameraMountConfig cameraMountConfig;
-    private final TagLayout gameTagLayout;
+    private final TagLayout fieldTagLayout;
     private final BooleanSource autoAimEnabled;
     private final BooleanSource aimOverrideInput;
     private final ShotVelocityModel shotVelocityModel;
@@ -93,30 +93,34 @@ public final class ScoringTargeting {
      * Creates the shared Phoenix scoring-targeting service.
      *
      * @param config auto-aim configuration snapshot copied for local ownership
-     * @param aprilTagLocalizationConfig AprilTag field-pose solve config used by the guidance plan
+     * @param aprilTagFieldPoseConfig AprilTag field-pose solve config used by the guidance plan
      * @param tagSensor shared AprilTag sensor used for selection and guidance
      * @param cameraMountConfig fixed camera extrinsics for the current robot profile
-     * @param globalLocalizer current global pose-estimator lane used by adaptive guidance
-     * @param gameTagLayout fixed field tag layout for the current game
+     * @param globalPoseEstimator current global pose-estimator lane used by adaptive guidance
+     * @param fieldTagLayout fixed field tag layout for the current game
      * @param autoAimEnabled driver enable source that activates sticky target selection and the aim overlay
      * @param aimOverrideInput driver override source that bypasses aim readiness gates when held
      * @param shotVelocityModel range-to-velocity model used for fresh target-based shot suggestions
      */
     public ScoringTargeting(PhoenixProfile.AutoAimConfig config,
-                            TagOnlyPoseEstimator.Config aprilTagLocalizationConfig,
+                            FixedTagFieldPoseSolver.Config aprilTagFieldPoseConfig,
                             AprilTagSensor tagSensor,
                             CameraMountConfig cameraMountConfig,
-                            PoseEstimator globalLocalizer,
-                            TagLayout gameTagLayout,
+                            PoseEstimator globalPoseEstimator,
+                            TagLayout fieldTagLayout,
                             BooleanSource autoAimEnabled,
                             BooleanSource aimOverrideInput,
                             ShotVelocityModel shotVelocityModel) {
         this.cfg = Objects.requireNonNull(config, "config").copy();
-        Objects.requireNonNull(aprilTagLocalizationConfig, "aprilTagLocalizationConfig");
+        FixedTagFieldPoseSolver.Config fieldPoseCfg =
+                FixedTagFieldPoseSolver.Config.normalizedValidatedCopyOf(
+                        Objects.requireNonNull(aprilTagFieldPoseConfig, "aprilTagFieldPoseConfig"),
+                        "ScoringTargeting.aprilTagFieldPoseConfig"
+                );
         Objects.requireNonNull(tagSensor, "tagSensor");
         this.cameraMountConfig = Objects.requireNonNull(cameraMountConfig, "cameraMountConfig");
-        Objects.requireNonNull(globalLocalizer, "globalLocalizer");
-        this.gameTagLayout = Objects.requireNonNull(gameTagLayout, "gameTagLayout");
+        Objects.requireNonNull(globalPoseEstimator, "globalPoseEstimator");
+        this.fieldTagLayout = Objects.requireNonNull(fieldTagLayout, "fieldTagLayout");
         this.autoAimEnabled = Objects.requireNonNull(autoAimEnabled, "autoAimEnabled").memoized();
         this.aimOverrideInput = Objects.requireNonNull(aimOverrideInput, "aimOverrideInput").memoized();
         this.shotVelocityModel = Objects.requireNonNull(shotVelocityModel, "shotVelocityModel");
@@ -130,7 +134,7 @@ public final class ScoringTargeting {
         }
 
         TagLayout scoringTagLayout = TagLayouts.subsetOrSame(
-                this.gameTagLayout,
+                this.fieldTagLayout,
                 this.cfg.scoringTagIds(),
                 "Phoenix scoring fixed-tag layout"
         );
@@ -157,8 +161,8 @@ public final class ScoringTargeting {
                 .resolveWith()
                 .adaptive()
                 .aprilTags(tagSensor, this.cameraMountConfig, this.cfg.selectionMaxAgeSec)
-                .aprilTagFieldPoseConfig(aprilTagLocalizationConfig.toSolverConfig())
-                .localization(globalLocalizer)
+                .aprilTagFieldPoseConfig(fieldPoseCfg)
+                .localization(globalPoseEstimator)
                 .fixedAprilTagLayout(scoringTagLayout)
                 .omegaPolicy(DriveGuidanceSpec.OmegaPolicy.PREFER_APRIL_TAGS_WHEN_VALID)
                 .onLoss(DriveGuidanceSpec.LossPolicy.PASS_THROUGH)
@@ -245,8 +249,8 @@ public final class ScoringTargeting {
 
         Pose3d fieldToSelectedTag = null;
         Pose2d fieldToAimPoint = null;
-        if (selection.hasSelection && gameTagLayout.has(selection.selectedTagId)) {
-            fieldToSelectedTag = gameTagLayout.requireFieldToTagPose(selection.selectedTagId);
+        if (selection.hasSelection && fieldTagLayout.has(selection.selectedTagId)) {
+            fieldToSelectedTag = fieldTagLayout.requireFieldToTagPose(selection.selectedTagId);
             fieldToAimPoint = new Pose2d(
                     fieldToSelectedTag.xInches,
                     fieldToSelectedTag.yInches,
