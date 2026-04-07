@@ -23,25 +23,25 @@ public final class PhoenixTeleOpBindings {
      * logic can be reused by Auto or alternate driver-control schemes without carrying button-edge
      * semantics with it.</p>
      *
-     * @param gamepads                  wrapped gamepad sources used to bind driver inputs
-     * @param shooter                   shooter subsystem used for direct selected-velocity adjustments
-     * @param scoring                   scoring supervisor that receives intent-level actions
-     * @param captureVelocityFromTarget action invoked when the driver requests a fresh range-based
-     *                                  velocity suggestion from the current target observation
+     * @param gamepads wrapped gamepad sources used to bind driver inputs
+     * @param shooter shooter subsystem used for direct selected-velocity adjustments
+     * @param scoring scoring supervisor that receives intent-level actions
+     * @param captureSuggestedVelocity action invoked when the driver requests a fresh range-based
+     *                                 velocity suggestion from the current targeting snapshot
      */
     public PhoenixTeleOpBindings(Gamepads gamepads,
                                  Shooter shooter,
                                  ShooterSupervisor scoring,
-                                 Runnable captureVelocityFromTarget) {
+                                 Runnable captureSuggestedVelocity) {
         Objects.requireNonNull(gamepads, "gamepads");
         Objects.requireNonNull(shooter, "shooter");
         Objects.requireNonNull(scoring, "scoring");
-        Objects.requireNonNull(captureVelocityFromTarget, "captureVelocityFromTarget");
+        Objects.requireNonNull(captureSuggestedVelocity, "captureSuggestedVelocity");
 
         bindings.onToggle(gamepads.p2().a(), scoring::setIntakeEnabled);
         bindings.onToggle(gamepads.p2().rightBumper(), scoring::setFlywheelEnabled);
 
-        bindings.onRise(gamepads.p2().leftBumper(), captureVelocityFromTarget);
+        bindings.onRise(gamepads.p2().leftBumper(), captureSuggestedVelocity);
 
         bindings.onRiseAndFall(
                 gamepads.p2().b(),

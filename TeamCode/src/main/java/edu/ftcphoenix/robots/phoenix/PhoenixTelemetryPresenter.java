@@ -2,10 +2,7 @@ package edu.ftcphoenix.robots.phoenix;
 
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 
-import edu.ftcphoenix.fw.core.geometry.Pose2d;
-import edu.ftcphoenix.fw.core.geometry.Pose3d;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceStatus;
-import edu.ftcphoenix.fw.field.TagLayout;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagObservation;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelectionResult;
@@ -22,7 +19,7 @@ public final class PhoenixTelemetryPresenter {
      * Creates a telemetry presenter bound to one telemetry sink and one Phoenix profile snapshot.
      *
      * @param telemetry FTC telemetry sink to write into; when {@code null}, emission becomes a no-op
-     * @param profile   profile snapshot used to label values such as estimator mode and aim offsets
+     * @param profile profile snapshot used to label values such as estimator mode
      */
     public PhoenixTelemetryPresenter(Telemetry telemetry, PhoenixProfile profile) {
         this.telemetry = telemetry;
@@ -36,29 +33,17 @@ public final class PhoenixTelemetryPresenter {
      * live subsystems. That keeps loop ownership explicit and makes the output easy to audit during
      * refactors.</p>
      *
-     * @param shooter           shooter subsystem status snapshot for the current loop
-     * @param scoring           scoring supervisor status snapshot for the current loop
-     * @param aimReady          whether the current aim gate is satisfied
-     * @param aimOkToShoot      whether aiming policy currently allows feeding a shot
-     * @param aimOverride       whether the operator is overriding aim gating
-     * @param shootBraceEnabled whether the translation brace overlay is latched on
-     * @param globalPose        current fused/global pose estimate, or {@code null} if unavailable
-     * @param odomPose          current odometry-only pose estimate, or {@code null} if unavailable
-     * @param selection         currently selected scoring-tag result, or {@code null} if no selection exists
-     * @param aimStatus         current guidance status for the aiming overlay, or {@code null} if inactive
-     * @param gameTagLayout     fixed field tag layout used to derive field-frame target information
+     * @param shooter shooter subsystem status snapshot for the current loop
+     * @param scoring scoring supervisor status snapshot for the current loop
+     * @param targeting scoring-targeting status snapshot for the current loop
+     * @param globalPose current fused/global pose estimate, or {@code null} if unavailable
+     * @param odomPose current odometry-only pose estimate, or {@code null} if unavailable
      */
     public void emitTeleOp(ShooterStatus shooter,
                            ScoringStatus scoring,
-                           boolean aimReady,
-                           boolean aimOkToShoot,
-                           boolean aimOverride,
-                           boolean shootBraceEnabled,
+                           TargetingStatus targeting,
                            PoseEstimate globalPose,
-                           PoseEstimate odomPose,
-                           TagSelectionResult selection,
-                           DriveGuidanceStatus aimStatus,
-                           TagLayout gameTagLayout) {
+                           PoseEstimate odomPose) {
         if (telemetry == null) {
             return;
         }
@@ -71,10 +56,10 @@ public final class PhoenixTelemetryPresenter {
         telemetry.addData("flywheel.requested", scoring.flywheelRequested);
         telemetry.addData("shoot.requested", scoring.shootingRequested);
         telemetry.addData("shoot.active", scoring.shootActive);
-        telemetry.addData("aim.ready", aimReady);
-        telemetry.addData("aim.okToShoot", aimOkToShoot);
-        telemetry.addData("aim.override", aimOverride);
-        telemetry.addData("shootBrace", shootBraceEnabled);
+        telemetry.addData("aim.ready", targeting.aimReady);
+        telemetry.addData("aim.okToShoot", targeting.aimOkToShoot);
+        telemetry.addData("aim.override", targeting.aimOverride);
+        telemetry.addData("aim.enabled", targeting.autoAimEnabled);
 
         if (globalPose != null) {
             telemetry.addData("pose.global", globalPose);
@@ -84,13 +69,7 @@ public final class PhoenixTelemetryPresenter {
             telemetry.addData("pose.odom", odomPose);
         }
 
-        if (selection != null && selection.hasSelection) {
-            AprilTagObservation obs = selection.hasFreshSelectedObservation
-                    ? selection.selectedObservation
-                    : AprilTagObservation.noTarget(Double.POSITIVE_INFINITY);
-            emitTargetTelemetry(selection.selectedTagId, obs, selection.hasFreshSelectedObservation, aimStatus, gameTagLayout, aimReady, aimOverride);
-        }
-
+        emitTargetTelemetry(targeting);
         telemetry.update();
     }
 
@@ -122,28 +101,35 @@ public final class PhoenixTelemetryPresenter {
         telemetry.addData(p + ".feedOut", shooter.feedOutput);
     }
 
-    private void emitTargetTelemetry(int tagId,
-                                     AprilTagObservation obs,
-                                     boolean tagVisible,
-                                     DriveGuidanceStatus aimStatus,
-                                     TagLayout gameTagLayout,
-                                     boolean aimReady,
-                                     boolean aimOverride) {
-        PhoenixProfile.AutoAimConfig.AimOffset aimOffset = profile.autoAim.aimOffsetForTag(tagId);
+    private void emitTargetTelemetry(TargetingStatus targeting) {
+        if (targeting == null) {
+            return;
+        }
 
-        if (aimReady) {
+        if (targeting.aimReady) {
             telemetry.addLine(">>> AIM READY <<<");
-        } else if (aimOverride) {
+        } else if (targeting.aimOverride) {
             telemetry.addLine(">>> AIM OVERRIDE <<<");
         }
 
-        telemetry.addData("tagId", tagId);
-        telemetry.addData("tag.visible", tagVisible);
-        telemetry.addData("distIn", tagVisible ? obs.cameraRangeInches() : Double.NaN);
-        telemetry.addData("bearingTagDeg", tagVisible ? Math.toDegrees(obs.cameraBearingRad()) : Double.NaN);
+        TagSelectionResult selection = targeting.selection;
+        if (selection == null || !selection.hasSelection) {
+            return;
+        }
+
+        AprilTagObservation obs = selection.hasFreshSelectedObservation
+                ? selection.selectedObservation
+                : AprilTagObservation.noTarget(Double.POSITIVE_INFINITY);
+        DriveGuidanceStatus aimStatus = targeting.aimStatus;
+
+        telemetry.addData("tagId", selection.selectedTagId);
+        telemetry.addData("target.label", targeting.targetLabel);
+        telemetry.addData("tag.visible", selection.hasFreshSelectedObservation);
+        telemetry.addData("distIn", selection.hasFreshSelectedObservation ? obs.cameraRangeInches() : Double.NaN);
+        telemetry.addData("bearingTagDeg", selection.hasFreshSelectedObservation ? Math.toDegrees(obs.cameraBearingRad()) : Double.NaN);
         telemetry.addData(
                 "aimOffset(fwd,left)",
-                String.format("%.1f, %.1f", aimOffset.forwardInches, aimOffset.leftInches)
+                String.format("%.1f, %.1f", targeting.aimOffsetForwardInches, targeting.aimOffsetLeftInches)
         );
         telemetry.addData(
                 "omegaErrDeg",
@@ -157,19 +143,15 @@ public final class PhoenixTelemetryPresenter {
                         ? aimStatus.omegaSource
                         : DriveGuidanceStatus.ChannelSource.NONE
         );
-        telemetry.addData("aim.tolDeg", profile.autoAim.aimToleranceDeg);
-        telemetry.addData("aim.readyTolDeg", profile.autoAim.aimReadyToleranceDeg);
+        telemetry.addData("aim.tolDeg", targeting.aimToleranceDeg);
+        telemetry.addData("aim.readyTolDeg", targeting.aimReadyToleranceDeg);
+        telemetry.addData("aim.suggestedVel", targeting.hasSuggestedVelocity ? targeting.suggestedVelocityNative : Double.NaN);
 
-        if (gameTagLayout != null && gameTagLayout.has(tagId)) {
-            Pose3d fieldToTag = gameTagLayout.requireFieldToTagPose(tagId);
-            Pose2d fieldToAimPoint = new Pose2d(
-                    fieldToTag.xInches,
-                    fieldToTag.yInches,
-                    fieldToTag.yawRad
-            ).then(new Pose2d(aimOffset.forwardInches, aimOffset.leftInches, 0.0));
-
-            telemetry.addData("field.tag", fieldToTag);
-            telemetry.addData("field.aim", fieldToAimPoint);
+        if (targeting.fieldToSelectedTag != null) {
+            telemetry.addData("field.tag", targeting.fieldToSelectedTag);
+        }
+        if (targeting.fieldToAimPoint != null) {
+            telemetry.addData("field.aim", targeting.fieldToAimPoint);
         }
     }
 }

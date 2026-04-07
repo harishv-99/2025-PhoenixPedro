@@ -4,7 +4,7 @@ This is the Phoenix-specific version of the framework calibration path.
 
 Use it when you are bringing up a fresh Phoenix robot and want the exact menu names and `PhoenixProfile` fields to touch.
 
-## Architecture notes for the stage-1 refactor
+## Architecture notes for the stage-1 and stage-2 refactors
 
 The stage-1 cleanup intentionally split a few responsibilities that used to live together:
 
@@ -13,6 +13,9 @@ The stage-1 cleanup intentionally split a few responsibilities that used to live
 - `PhoenixTeleOpBindings` owns button-edge and toggle semantics.
 - `ShooterSupervisor` owns scoring policy and intent-level commands.
 - `PhoenixTelemetryPresenter` owns driver-facing telemetry formatting.
+- `ScoringTargeting` owns selected-tag policy, cached auto-aim status, and range-based shot suggestions.
+- `PhoenixProfile.autoAim.scoringTargets` is now the target catalog; adding a scoring tag should usually be a profile edit, not a robot-code branch.
+- The range-to-velocity interpolation table now lives with targeting configuration instead of inside `Shooter`.
 
 That split matters during bring-up because tester fixes and robot fixes should usually go to the owner of the behavior, not to an unrelated helper.
 

@@ -33,28 +33,28 @@ public final class ShooterStatus {
     /**
      * Creates an immutable shooter status snapshot.
      *
-     * @param flywheelEnabled              whether the flywheel is currently enabled
-     * @param pidfEnabled                  whether motor-controller velocity PIDF was requested in config
-     * @param pidfWarning                  warning text emitted while attempting to apply PIDF, or {@code null}
-     * @param selectedVelocityNative       operator-selected flywheel target in motor native units
-     * @param flywheelTargetNative         commanded flywheel target in native velocity units
-     * @param flywheelMeasuredNative       measured flywheel velocity in native units
-     * @param flywheelErrorNative          measured minus target flywheel velocity in native units
-     * @param flywheelErrorAbsNative       absolute flywheel velocity error in native units
-     * @param flywheelToleranceNative      plant setpoint tolerance in native units
+     * @param flywheelEnabled whether the flywheel is currently enabled
+     * @param pidfEnabled whether motor-controller velocity PIDF was requested in config
+     * @param pidfWarning warning text emitted while attempting to apply PIDF, or {@code null}
+     * @param selectedVelocityNative operator-selected flywheel target in motor native units
+     * @param flywheelTargetNative commanded flywheel target in native velocity units
+     * @param flywheelMeasuredNative measured flywheel velocity in native units
+     * @param flywheelErrorNative measured minus target flywheel velocity in native units
+     * @param flywheelErrorAbsNative absolute flywheel velocity error in native units
+     * @param flywheelToleranceNative plant setpoint tolerance in native units
      * @param flywheelToleranceBelowNative lower ready-band tolerance in native units
      * @param flywheelToleranceAboveNative upper ready-band tolerance in native units
-     * @param flywheelAccelNativePerSec    measured flywheel acceleration in native units per second
+     * @param flywheelAccelNativePerSec measured flywheel acceleration in native units per second
      * @param flywheelAccelAbsNativePerSec absolute measured flywheel acceleration in native units per second
-     * @param readyLeadSec                 prediction horizon used by the ready calculation, in seconds
-     * @param predictedFlywheelAbsNative   predicted absolute flywheel speed at the feed horizon, in native units
+     * @param readyLeadSec prediction horizon used by the ready calculation, in seconds
+     * @param predictedFlywheelAbsNative predicted absolute flywheel speed at the feed horizon, in native units
      * @param predictedFlywheelErrorNative predicted absolute-speed error at the feed horizon, in native units
-     * @param flywheelAtSetpoint           whether the flywheel plant currently reports at-setpoint
-     * @param ready                        whether the Phoenix ready gate currently allows feeding
-     * @param feedBacklog                  number of backlog slots still requested by the queue owner
-     * @param feedQueued                   number of queued feed tasks waiting behind the active task
-     * @param feedActive                   whether a feed task is currently driving the path
-     * @param feedOutput                   current output value coming from the feed queue
+     * @param flywheelAtSetpoint whether the flywheel plant currently reports at-setpoint
+     * @param ready whether the Phoenix ready gate currently allows feeding
+     * @param feedBacklog number of backlog slots still requested by the queue owner
+     * @param feedQueued number of queued feed tasks waiting behind the active task
+     * @param feedActive whether a feed task is currently driving the path
+     * @param feedOutput current output value coming from the feed queue
      */
     public ShooterStatus(boolean flywheelEnabled,
                          boolean pidfEnabled,

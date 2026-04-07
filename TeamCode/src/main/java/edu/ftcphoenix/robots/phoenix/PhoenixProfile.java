@@ -36,29 +36,19 @@ public final class PhoenixProfile {
      */
     public DriveTrainConfig driveTrain = new DriveTrainConfig();
 
-    /**
-     * Shooter hardware + scoring-path tuning.
-     */
+    /** Shooter hardware + scoring-path tuning. */
     public ShooterConfig shooter = new ShooterConfig();
 
-    /**
-     * Vision hardware and camera extrinsics.
-     */
+    /** Vision hardware and camera extrinsics. */
     public VisionConfig vision = new VisionConfig();
 
-    /**
-     * Localization configs shared by TeleOp and testers.
-     */
+    /** Localization configs shared by TeleOp and testers. */
     public LocalizationConfig localization = new LocalizationConfig();
 
-    /**
-     * Human-acknowledged calibration checkpoints.
-     */
+    /** Human-acknowledged calibration checkpoints. */
     public CalibrationConfig calibration = new CalibrationConfig();
 
-    /**
-     * Auto-aim / selected-tag tuning.
-     */
+    /** Auto-aim / selected-tag tuning. */
     public AutoAimConfig autoAim = new AutoAimConfig();
 
     /**
@@ -120,14 +110,10 @@ public final class PhoenixProfile {
         public String nameMotorBackRight = "backRightMotor";
         public Direction directionMotorBackRight = Direction.FORWARD;
 
-        /**
-         * If true, set drivetrain motors to BRAKE when commanded power is 0.
-         */
+        /** If true, set drivetrain motors to BRAKE when commanded power is 0. */
         public boolean zeroPowerBrake = true;
 
-        /**
-         * Open-loop drivebase tuning.
-         */
+        /** Open-loop drivebase tuning. */
         public MecanumDrivebase.Config drivebase = MecanumDrivebase.Config.defaults();
 
         /**
@@ -230,31 +216,6 @@ public final class PhoenixProfile {
         public double feedScaleIntakeTransfer = 1.0;
         public double feedScaleShooterTransfer = 1.0;
 
-        /**
-         * Distance (in) -> flywheel velocity (native units).
-         */
-        public InterpolatingTable1D velocityTable = InterpolatingTable1D.ofSortedPairs(
-                28.06, 1505.6,
-                36.52, 1427.4,
-                42.3, 1424.35,
-                50.3, 1450,
-                56.5, 1461,
-                62.9, 1538,
-                65.8, 1535.7,
-                70, 1530,
-                74.2, 1575,
-                79.5, 1600,
-                83.4, 1625,
-                93.6, 1700,
-                96.6, 1700,
-                103.2, 1775,
-                104.7, 1800,
-                109.2, 1800,
-                112, 1818,
-                115, 1825,
-                120, 1850,
-                130, 1875
-        );
 
         /**
          * Creates a shooter config initialized with Phoenix defaults.
@@ -307,7 +268,6 @@ public final class PhoenixProfile {
             c.feedScaleIntakeMotor = this.feedScaleIntakeMotor;
             c.feedScaleIntakeTransfer = this.feedScaleIntakeTransfer;
             c.feedScaleShooterTransfer = this.feedScaleShooterTransfer;
-            c.velocityTable = this.velocityTable;
             return c;
         }
     }
@@ -468,8 +428,11 @@ public final class PhoenixProfile {
      * Auto-aim / selected-tag profile values.
      */
     public static final class AutoAimConfig {
-        public int blueTargetTagId = 20;
-        public int redTargetTagId = 24;
+        /**
+         * Catalog of scoring targets keyed by tag id. Insertion order is preserved for menus,
+         * telemetry, and deterministic profile diffs.
+         */
+        public LinkedHashMap<Integer, ScoringTarget> scoringTargets = defaultScoringTargets();
 
         public double aimToleranceDeg = 0.25;
         public double aimKp = 1.5;
@@ -486,9 +449,34 @@ public final class PhoenixProfile {
         public double shootBraceTranslateKp = 0.08;
         public double shootBraceMaxTranslateCmd = 0.35;
 
-        public AimOffset blueAimOffset = new AimOffset(0.0, 0.0);
-        public AimOffset redAimOffset = new AimOffset(0.0, 0.0);
+        /** Default tag-local offset used when an unknown tag id is queried. */
         public AimOffset defaultAimOffset = new AimOffset(0.0, 0.0);
+
+        /**
+         * Distance (in) -> recommended flywheel velocity (native units) for range-based shot capture.
+         */
+        public InterpolatingTable1D shotVelocityTable = InterpolatingTable1D.ofSortedPairs(
+                28.06, 1505.6,
+                36.52, 1427.4,
+                42.3, 1424.35,
+                50.3, 1450,
+                56.5, 1461,
+                62.9, 1538,
+                65.8, 1535.7,
+                70, 1530,
+                74.2, 1575,
+                79.5, 1600,
+                83.4, 1625,
+                93.6, 1700,
+                96.6, 1700,
+                103.2, 1775,
+                104.7, 1800,
+                109.2, 1800,
+                112, 1818,
+                115, 1825,
+                120, 1850,
+                130, 1875
+        );
 
         /**
          * Creates an auto-aim config initialized with Phoenix defaults.
@@ -502,39 +490,60 @@ public final class PhoenixProfile {
          * @return unmodifiable set of scoring tag ids
          */
         public Set<Integer> scoringTagIds() {
-            LinkedHashSet<Integer> ids = new LinkedHashSet<Integer>();
-            ids.add(blueTargetTagId);
-            ids.add(redTargetTagId);
-            return Collections.unmodifiableSet(ids);
+            return Collections.unmodifiableSet(new LinkedHashSet<Integer>(scoringTargets.keySet()));
         }
 
         /**
-         * Returns the configured per-tag aim offsets keyed by tag id.
+         * Returns the configured per-tag target catalog keyed by tag id.
+         *
+         * @return unmodifiable map of scoring-target definitions keyed by AprilTag id
+         */
+        public Map<Integer, ScoringTarget> scoringTargetsById() {
+            return Collections.unmodifiableMap(scoringTargets);
+        }
+
+        /**
+         * Returns the configured aim offsets keyed by target tag id.
          *
          * @return unmodifiable map from tag id to tag-local aim offset
          */
         public Map<Integer, AimOffset> aimOffsetsByTag() {
             LinkedHashMap<Integer, AimOffset> offsets = new LinkedHashMap<Integer, AimOffset>();
-            offsets.put(blueTargetTagId, blueAimOffset);
-            offsets.put(redTargetTagId, redAimOffset);
+            for (Map.Entry<Integer, ScoringTarget> entry : scoringTargets.entrySet()) {
+                offsets.put(entry.getKey(), entry.getValue().aimOffset);
+            }
             return Collections.unmodifiableMap(offsets);
         }
 
         /**
-         * Returns the configured aim offset for a specific scoring tag.
+         * Returns the configured target profile for a specific scoring tag.
          *
          * @param tagId AprilTag id to query
-         * @return configured tag-local aim offset, or {@link #defaultAimOffset} when the tag id does
-         * not match one of the explicit scoring targets
+         * @return configured target profile, or a synthetic default profile when the tag id does not
+         *         match one of the explicit scoring targets
          */
-        public AimOffset aimOffsetForTag(int tagId) {
-            if (tagId == blueTargetTagId) {
-                return blueAimOffset;
-            }
-            if (tagId == redTargetTagId) {
-                return redAimOffset;
-            }
-            return defaultAimOffset;
+        public ScoringTarget targetProfileForTag(int tagId) {
+            ScoringTarget explicit = scoringTargets.get(tagId);
+            return explicit != null ? explicit : defaultTargetProfile(tagId);
+        }
+
+        /**
+         * Returns a synthetic fallback profile for an unknown scoring tag id.
+         *
+         * @param tagId tag id to stamp into the fallback profile; use a negative value when no tag is selected
+         * @return fallback target profile using the default aim offset
+         */
+        public ScoringTarget defaultTargetProfile(int tagId) {
+            return new ScoringTarget(tagId, tagId >= 0 ? ("Tag " + tagId) : "No target", defaultAimOffset.copy());
+        }
+
+        /**
+         * Builds the default range-to-velocity model for the targeting layer.
+         *
+         * @return new interpolating shot-velocity model backed by {@link #shotVelocityTable}
+         */
+        public ShotVelocityModel shotVelocityModel() {
+            return new InterpolatingShotVelocityModel(shotVelocityTable);
         }
 
         /**
@@ -544,8 +553,10 @@ public final class PhoenixProfile {
          */
         public AutoAimConfig copy() {
             AutoAimConfig c = new AutoAimConfig();
-            c.blueTargetTagId = this.blueTargetTagId;
-            c.redTargetTagId = this.redTargetTagId;
+            c.scoringTargets = new LinkedHashMap<Integer, ScoringTarget>();
+            for (Map.Entry<Integer, ScoringTarget> entry : this.scoringTargets.entrySet()) {
+                c.scoringTargets.put(entry.getKey(), entry.getValue().copy());
+            }
             c.aimToleranceDeg = this.aimToleranceDeg;
             c.aimKp = this.aimKp;
             c.aimMaxOmegaCmd = this.aimMaxOmegaCmd;
@@ -558,10 +569,52 @@ public final class PhoenixProfile {
             c.shootBraceExitMagnitude = this.shootBraceExitMagnitude;
             c.shootBraceTranslateKp = this.shootBraceTranslateKp;
             c.shootBraceMaxTranslateCmd = this.shootBraceMaxTranslateCmd;
-            c.blueAimOffset = this.blueAimOffset.copy();
-            c.redAimOffset = this.redAimOffset.copy();
             c.defaultAimOffset = this.defaultAimOffset.copy();
+            c.shotVelocityTable = this.shotVelocityTable;
             return c;
+        }
+
+        /**
+         * Returns Phoenix's default scoring-target catalog.
+         *
+         * @return mutable linked hash map containing the checked-in scoring targets
+         */
+        public static LinkedHashMap<Integer, ScoringTarget> defaultScoringTargets() {
+            LinkedHashMap<Integer, ScoringTarget> targets = new LinkedHashMap<Integer, ScoringTarget>();
+            targets.put(20, new ScoringTarget(20, "Blue scoring target", new AimOffset(0.0, 0.0)));
+            targets.put(24, new ScoringTarget(24, "Red scoring target", new AimOffset(0.0, 0.0)));
+            return targets;
+        }
+
+        /**
+         * Target-catalog entry describing one scoreable fixed tag.
+         */
+        public static final class ScoringTarget {
+            public int tagId;
+            public String label;
+            public AimOffset aimOffset;
+
+            /**
+             * Creates a scoring-target profile.
+             *
+             * @param tagId     AprilTag id that identifies the scoring target
+             * @param label     human-readable label for telemetry and documentation
+             * @param aimOffset tag-local point offset used for auto-aim geometry
+             */
+            public ScoringTarget(int tagId, String label, AimOffset aimOffset) {
+                this.tagId = tagId;
+                this.label = label;
+                this.aimOffset = aimOffset != null ? aimOffset : new AimOffset(0.0, 0.0);
+            }
+
+            /**
+             * Creates a deep copy of this scoring-target profile.
+             *
+             * @return copied scoring-target profile
+             */
+            public ScoringTarget copy() {
+                return new ScoringTarget(tagId, label, aimOffset.copy());
+            }
         }
 
         /**
@@ -575,7 +628,7 @@ public final class PhoenixProfile {
              * Creates a tag-local aim offset.
              *
              * @param forwardInches forward offset from the tag frame, in inches
-             * @param leftInches    left offset from the tag frame, in inches
+             * @param leftInches left offset from the tag frame, in inches
              */
             public AimOffset(double forwardInches, double leftInches) {
                 this.forwardInches = forwardInches;

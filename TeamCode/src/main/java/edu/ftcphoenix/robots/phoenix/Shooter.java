@@ -17,8 +17,8 @@ import edu.ftcphoenix.fw.task.Tasks;
  * Phoenix shooter + ball-path subsystem.
  *
  * <p>This class remains the single writer to the intake, transfer, and flywheel plants. Outside
- * code requests intent and reads {@link ShooterStatus}; it does not format FTC telemetry or command
- * the hardware directly.</p>
+ * code requests intent and reads {@link ShooterStatus}; it does not format FTC telemetry, choose
+ * range-to-shot recommendations, or command the hardware directly.</p>
  */
 public final class Shooter {
 
@@ -223,16 +223,6 @@ public final class Shooter {
      */
     public void decreaseSelectedVelocity() {
         setSelectedVelocity(selectedVelocityNative - cfg.velocityIncrement);
-    }
-
-    /**
-     * Looks up a flywheel velocity recommendation for a measured camera range.
-     *
-     * @param rangeInches measured target range in inches
-     * @return interpolated and clamped flywheel velocity in motor native units
-     */
-    public double velocityForRangeInches(double rangeInches) {
-        return clampVelocity(cfg.velocityTable.interpolate(rangeInches));
     }
 
     /**
