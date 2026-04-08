@@ -1,11 +1,16 @@
 package edu.ftcphoenix.robots.phoenix.autonomous.pedro;
 
+import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
+
 import com.pedropathing.follower.Follower;
 import com.pedropathing.geometry.BezierLine;
 import com.pedropathing.geometry.Pose;
 import com.pedropathing.paths.PathChain;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
+import com.qualcomm.robotcore.hardware.HardwareMap;
+
+import java.util.Objects;
 
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceTask;
 import edu.ftcphoenix.fw.drive.route.RouteTask;
@@ -31,23 +36,13 @@ import edu.ftcphoenix.robots.phoenix.PhoenixRobot;
  *   <li>Drive back to the starting pose.</li>
  * </ol>
  *
- * <p>This OpMode is intentionally a testing ground rather than a full match autonomous. Update
- * {@link #PEDRO_FOLLOWER_FACTORY_CLASSES} so one of the entries matches your team's Pedro constants
- * class if your project uses a different package layout.</p>
+ * <p>This OpMode intentionally keeps follower construction as one direct, project-owned call to
+ * {@code Constants.createFollower(hardwareMap)}. If your team stores the Pedro constants class in
+ * a different package, change the import above or edit {@link #createPedroFollower(HardwareMap)}.
+ * Phoenix no longer carries a reflective helper for this setup step.</p>
  */
 @Autonomous(name = "Phoenix: Pedro Auto Test", group = "Phoenix")
 public final class PhoenixPedroAutoTestOpMode extends OpMode {
-
-    /**
-     * Candidate team-owned classes that expose {@code static Follower createFollower(HardwareMap)}.
-     *
-     * <p>These cover the two most common Pedro package layouts used in the docs and sample code.
-     * Add your own class name here if your project keeps its Pedro constants somewhere else.</p>
-     */
-    private static final String[] PEDRO_FOLLOWER_FACTORY_CLASSES = new String[]{
-            "org.firstinspires.ftc.teamcode.pedroPathing.Constants",
-            "org.firstinspires.ftc.teamcode.pedro.Constants"
-    };
 
     private static final double TEST_DISTANCE_IN = 12.0;
 
@@ -73,7 +68,7 @@ public final class PhoenixPedroAutoTestOpMode extends OpMode {
         try {
             robot.initAuto();
 
-            follower = PedroPathingFollowers.createFollower(hardwareMap, PEDRO_FOLLOWER_FACTORY_CLASSES);
+            follower = createPedroFollower(hardwareMap);
             driveAdapter = new PedroPathingDriveAdapter(follower);
             follower.setStartingPose(START_POSE);
             follower.update();
@@ -82,7 +77,7 @@ public final class PhoenixPedroAutoTestOpMode extends OpMode {
             queueAutoRoutine();
 
             telemetry.addLine("Phoenix Pedro auto ready");
-            telemetry.addData("pedro.factoryCandidates", String.join(", ", PEDRO_FOLLOWER_FACTORY_CLASSES));
+            telemetry.addLine("Follower factory: Constants.createFollower(hardwareMap)");
             telemetry.addData("test.distanceIn", TEST_DISTANCE_IN);
             telemetry.addLine("Mid-path callback: spin up + capture shot velocity");
         } catch (RuntimeException e) {
@@ -193,11 +188,15 @@ public final class PhoenixPedroAutoTestOpMode extends OpMode {
         robot.enqueueAuto(auto);
     }
 
+    private static Follower createPedroFollower(HardwareMap hardwareMap) {
+        return Constants.createFollower(Objects.requireNonNull(hardwareMap, "hardwareMap"));
+    }
+
     private static String buildInitError(RuntimeException e) {
         String message = e.getMessage();
         if (message == null || message.isEmpty()) {
             message = e.getClass().getSimpleName();
         }
-        return message + " | Check PEDRO_FOLLOWER_FACTORY_CLASSES if your Constants class lives elsewhere.";
+        return message + " | Check the Pedro Constants import or createPedroFollower(...) if your project uses a different package.";
     }
 }

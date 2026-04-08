@@ -183,12 +183,12 @@ Phoenix Auto now reuses the same targeting, shooter, and telemetry stack as Tele
 The checked-in Pedro example is `autonomous/pedro/PhoenixPedroAutoTestOpMode.java`. It uses:
 
 - `fw/integrations/pedro/PedroPathingDriveAdapter.java` to wrap a Pedro `Follower` as both a `DriveCommandSink` and a `RouteFollower<PathChain>`
-- `autonomous/pedro/PedroPathingFollowers.java` to construct the follower without importing a team-specific Pedro constants class into Phoenix core
+- one direct robot-side call to `Constants.createFollower(hardwareMap)` so follower construction stays compile-time checked and project-owned
 - `RouteTasks.follow(...)` for outbound and return path segments
 - a mid-path Pedro callback to spin up the flywheel and refresh the target-derived shot velocity
 - a separate Phoenix aim task before requesting the shot
 
-That split matches the framework principles: the route package stays project-specific, Pedro imports stay in clearly marked edge folders, and the robot behavior still reads like normal Phoenix tasks.
+That split matches the framework principles: the reusable adapter stays in the framework integration folder, the project-specific Pedro setup stays in the robot-side OpMode, and the robot behavior still reads like normal Phoenix tasks.
 
 ## Loop order
 
