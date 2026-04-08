@@ -19,9 +19,9 @@ public final class RouteTasks {
      * Creates a route-follow task with a default debug name.
      *
      * @param follower adapter that knows how to follow the supplied route type
-     * @param route    route object to follow
-     * @param cfg      task-level config (timeout); may be {@code null}
-     * @param <R>      route type
+     * @param route route object to follow
+     * @param cfg task-level config (timeout); may be {@code null}
+     * @param <R> route type
      * @return task that follows the supplied route until completion or timeout
      */
     public static <R> Task follow(RouteFollower<R> follower,
@@ -34,10 +34,10 @@ public final class RouteTasks {
      * Creates a named route-follow task.
      *
      * @param debugName human-readable debug label
-     * @param follower  adapter that knows how to follow the supplied route type
-     * @param route     route object to follow
-     * @param cfg       task-level config (timeout); may be {@code null}
-     * @param <R>       route type
+     * @param follower adapter that knows how to follow the supplied route type
+     * @param route route object to follow
+     * @param cfg task-level config (timeout); may be {@code null}
+     * @param <R> route type
      * @return task that follows the supplied route until completion or timeout
      */
     public static <R> Task follow(String debugName,

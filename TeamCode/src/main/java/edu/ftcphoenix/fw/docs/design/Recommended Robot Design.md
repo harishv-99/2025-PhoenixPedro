@@ -181,6 +181,12 @@ Examples:
 Phoenix should not reimplement those planners. Wrap them in tasks, let Phoenix own mechanism
 supervision around them, and use Phoenix cancellation seams to interrupt them cleanly.
 
+In a single-module codebase, keep that lane-5 code at the edges:
+
+- framework-owned bridges in `fw/integrations/<library>/`
+- robot-specific autos/examples in `.../autonomous/<library>/`
+- core framework and robot packages depending only on `RouteFollower<RouteT>` / `RouteTask<RouteT>`
+
 ---
 
 ## What each layer should own

@@ -180,14 +180,15 @@ Phoenix Auto now reuses the same targeting, shooter, and telemetry stack as Tele
 - `DriveCommandSink` when Phoenix only needs to command normalized drive signals (for example, the final aim turn)
 - `RouteFollower<RouteT>` / `RouteTask<RouteT>` when Phoenix wants to sequence an external route object alongside waits, shots, and other tasks
 
-The checked-in Pedro example is `opmode/PhoenixPedroAutoTestOpMode.java`. It uses:
+The checked-in Pedro example is `autonomous/pedro/PhoenixPedroAutoTestOpMode.java`. It uses:
 
-- `PedroPathingDriveAdapter` to wrap a Pedro `Follower` as both a `DriveCommandSink` and a `RouteFollower<PathChain>`
+- `fw/integrations/pedro/PedroPathingDriveAdapter.java` to wrap a Pedro `Follower` as both a `DriveCommandSink` and a `RouteFollower<PathChain>`
+- `autonomous/pedro/PedroPathingFollowers.java` to construct the follower without importing a team-specific Pedro constants class into Phoenix core
 - `RouteTasks.follow(...)` for outbound and return path segments
 - a mid-path Pedro callback to spin up the flywheel and refresh the target-derived shot velocity
 - a separate Phoenix aim task before requesting the shot
 
-That split matches the framework principles: the route package stays project-specific, while the robot behavior still reads like normal Phoenix tasks.
+That split matches the framework principles: the route package stays project-specific, Pedro imports stay in clearly marked edge folders, and the robot behavior still reads like normal Phoenix tasks.
 
 ## Loop order
 

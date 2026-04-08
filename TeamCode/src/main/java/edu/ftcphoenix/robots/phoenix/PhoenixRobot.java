@@ -159,7 +159,7 @@ public final class PhoenixRobot {
      * Initializes the Phoenix autonomous runtime with explicit auto-aim enable / override sources.
      *
      * @param autoAimEnabledSource source that controls whether target selection + aim gating are active
-     * @param aimOverrideSource    source that bypasses aim-readiness gating when true
+     * @param aimOverrideSource source that bypasses aim-readiness gating when true
      */
     public void initAuto(BooleanSource autoAimEnabledSource,
                          BooleanSource aimOverrideSource) {
@@ -392,7 +392,7 @@ public final class PhoenixRobot {
      * Builds an autonomous aim task using Phoenix's scoring-target selection logic.
      *
      * @param driveSink sink used to apply the omega correction command
-     * @param cfg       task-level aim tolerances/timeouts; when {@code null}, defaults are used
+     * @param cfg task-level aim tolerances/timeouts; when {@code null}, defaults are used
      * @return task that turns the robot onto the selected Phoenix scoring target
      */
     public Task aimTask(DriveCommandSink driveSink,

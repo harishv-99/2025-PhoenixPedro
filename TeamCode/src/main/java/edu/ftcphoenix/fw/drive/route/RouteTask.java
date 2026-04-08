@@ -56,9 +56,9 @@ public final class RouteTask<R> implements Task {
      * Creates a named route-follow task.
      *
      * @param debugName human-readable task label used for debugging
-     * @param follower  route follower adapter to command
-     * @param route     route object to follow
-     * @param cfg       task-level timeout config; when {@code null}, defaults are used
+     * @param follower route follower adapter to command
+     * @param route route object to follow
+     * @param cfg task-level timeout config; when {@code null}, defaults are used
      */
     public RouteTask(String debugName,
                      RouteFollower<R> follower,

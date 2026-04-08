@@ -296,6 +296,8 @@ When code only needs a place to *send* drive commands, Phoenix now uses the smal
 
 When code needs to follow an external route object (Pedro `PathChain`, Road Runner trajectory, or your own route type), Phoenix now provides the matching generic seam: `RouteFollower<RouteT>` in `edu.ftcphoenix.fw.drive.route`. Wrap the external follower once, then sequence it with the rest of your robot using `RouteTask` / `RouteTasks.follow(...)`.
 
+Even in a one-module repo, keep those adapters in a library-specific edge folder/package such as `fw/integrations/pedro/`, and keep robot-specific examples in a matching robot-side folder such as `autonomous/pedro/`. The folder split does not make the dependency optional by itself, but it keeps the boundary obvious and makes later source-set or module extraction mechanical.
+
 ```java
 Task auto = Tasks.sequence(
         RouteTasks.follow(pedroAdapter, outboundPath, new RouteTask.Config()),

@@ -43,6 +43,9 @@ Phoenix is designed around a few core goals:
 
     * Use `GamepadDriveSource` today, add a `DriveGuidance` overlay tomorrow.
     * Keep the same shooter macro while changing how distance is estimated.
+    * Keep optional third-party route integrations in library-specific edge packages
+      (for example `fw/integrations/pedro`) so framework core continues to depend only on
+      Phoenix seams like `DriveCommandSink` and `RouteFollower`.
 
 5. **SOLID where practical**
 

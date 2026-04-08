@@ -1,4 +1,4 @@
-package edu.ftcphoenix.robots.phoenix.opmode;
+package edu.ftcphoenix.robots.phoenix.autonomous.pedro;
 
 import com.pedropathing.follower.Follower;
 import com.pedropathing.geometry.BezierLine;
@@ -10,14 +10,16 @@ import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceTask;
 import edu.ftcphoenix.fw.drive.route.RouteTask;
 import edu.ftcphoenix.fw.drive.route.RouteTasks;
+import edu.ftcphoenix.fw.integrations.pedro.PedroPathingDriveAdapter;
 import edu.ftcphoenix.fw.task.Task;
 import edu.ftcphoenix.fw.task.Tasks;
 import edu.ftcphoenix.robots.phoenix.PhoenixRobot;
-import edu.ftcphoenix.robots.phoenix.pedro.PedroPathingDriveAdapter;
-import edu.ftcphoenix.robots.phoenix.pedro.PedroPathingFollowers;
 
 /**
  * Minimal Phoenix autonomous used to validate Pedro Pathing integration.
+ *
+ * <p>This lives under {@code autonomous/pedro} on purpose so all Pedro-specific robot code is
+ * easy to find today and easy to extract into a dedicated source set or module later.</p>
  *
  * <p>Routine shape:</p>
  * <ol>

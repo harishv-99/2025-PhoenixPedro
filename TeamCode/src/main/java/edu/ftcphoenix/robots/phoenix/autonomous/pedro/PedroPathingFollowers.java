@@ -1,4 +1,4 @@
-package edu.ftcphoenix.robots.phoenix.pedro;
+package edu.ftcphoenix.robots.phoenix.autonomous.pedro;
 
 import com.pedropathing.follower.Follower;
 import com.qualcomm.robotcore.hardware.HardwareMap;
@@ -13,9 +13,9 @@ import java.util.Objects;
  * team-specific constants class import into Phoenix.
  *
  * <p>The current Pedro docs create followers via a static {@code Constants.createFollower(hardwareMap)}
- * helper, but different projects place that class in different packages. This helper lets Phoenix
- * sample OpModes point at a factory class name string instead of forcing a compile-time dependency
- * on one specific TeamCode package layout.</p>
+ * helper, but different projects place that class in different packages. This helper stays beside
+ * the Pedro-specific sample autos instead of living in Phoenix core, so later module extraction is
+ * straightforward and team-specific constants imports stay out of the core packages.</p>
  */
 public final class PedroPathingFollowers {
 

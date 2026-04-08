@@ -1,4 +1,4 @@
-package edu.ftcphoenix.robots.phoenix.pedro;
+package edu.ftcphoenix.fw.integrations.pedro;
 
 import com.pedropathing.follower.Follower;
 import com.pedropathing.paths.PathChain;
@@ -13,7 +13,7 @@ import edu.ftcphoenix.fw.drive.DriveSignal;
 import edu.ftcphoenix.fw.drive.route.RouteFollower;
 
 /**
- * Phoenix adapter that bridges Pedro Pathing into the framework's small route/drive seams.
+ * Framework adapter that bridges Pedro Pathing into Phoenix's small route/drive seams.
  *
  * <p>This adapter intentionally plays two roles:</p>
  * <ul>

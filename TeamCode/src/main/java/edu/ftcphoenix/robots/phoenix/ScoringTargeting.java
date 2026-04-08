@@ -195,7 +195,7 @@ public final class ScoringTargeting {
      * supplied {@link DriveCommandSink} directly until the aim task reaches its tolerance.</p>
      *
      * @param driveSink sink used to apply the aim command
-     * @param cfg       task-level tolerances/timeouts; when {@code null}, defaults are used
+     * @param cfg task-level tolerances/timeouts; when {@code null}, defaults are used
      * @return task that turns the robot toward the currently selected Phoenix scoring target
      */
     public Task aimTask(DriveCommandSink driveSink, DriveGuidanceTask.Config cfg) {
