@@ -33,6 +33,10 @@ import edu.ftcphoenix.fw.drive.route.RouteFollower;
  *         Tasks.runOnce(phoenixRobot::requestSingleShot)
  * );
  * }</pre>
+ *
+ * <p>This class intentionally lives in a Pedro-specific integration package instead of in
+ * framework core code. In a one-module repo that keeps the optional dependency boundary
+ * obvious and makes later source-set or module extraction mechanical.</p>
  */
 public final class PedroPathingDriveAdapter implements RouteFollower<PathChain>, DriveCommandSink {
 
@@ -69,7 +73,7 @@ public final class PedroPathingDriveAdapter implements RouteFollower<PathChain>,
     /**
      * Begins following a route while requesting Pedro's hold-end behavior when supported.
      *
-     * @param route   path chain to follow
+     * @param route path chain to follow
      * @param holdEnd whether Pedro should hold the final point when the path completes
      */
     public void follow(PathChain route, boolean holdEnd) {

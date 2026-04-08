@@ -26,7 +26,7 @@ public final class PedroPathingFollowers {
     /**
      * Creates a Pedro follower from one explicit factory-class name.
      *
-     * @param hardwareMap      FTC hardware map to pass through to Pedro
+     * @param hardwareMap FTC hardware map to pass through to Pedro
      * @param factoryClassName fully-qualified class name that exposes
      *                         {@code static Follower createFollower(HardwareMap)}
      * @return created follower
@@ -44,7 +44,7 @@ public final class PedroPathingFollowers {
      * {@code new Follower(hardwareMap)} construction attempt for older Pedro setups that still use
      * the direct constructor.</p>
      *
-     * @param hardwareMap       FTC hardware map to pass through to Pedro
+     * @param hardwareMap FTC hardware map to pass through to Pedro
      * @param factoryClassNames candidate fully-qualified factory class names to try in order
      * @return created follower
      */
