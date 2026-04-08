@@ -24,11 +24,11 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *     }
  *
  *     public void drive(DriveSignal signal) {
- *         follower.setTeleOpMovementVectors(signal.axial, signal.lateral, signal.omega);
+ *         follower.setTeleOpDrive(signal.axial, signal.lateral, signal.omega, true);
  *     }
  *
  *     public void stop() {
- *         follower.setTeleOpMovementVectors(0.0, 0.0, 0.0);
+ *         follower.setTeleOpDrive(0.0, 0.0, 0.0, true);
  *     }
  * }
  * }</pre>

@@ -40,6 +40,7 @@ public final class ShooterSupervisor {
     private boolean ejectRequested = false;
     private boolean shootingRequested = false;
     private boolean flywheelRequested = false;
+    private int queuedShotRequests = 0;
 
     /**
      * Creates the scoring supervisor.
@@ -127,6 +128,38 @@ public final class ShooterSupervisor {
     }
 
     /**
+     * Queues one autonomous shot request without entering held shooting mode.
+     *
+     * <p>This is the intent-style API Auto should prefer when it wants exactly one feed pulse. The
+     * request is converted into the subsystem-owned feed queue during {@link #update(LoopClock)},
+     * where it still respects flywheel and aim gating.</p>
+     */
+    public void requestSingleShot() {
+        requestShots(1);
+    }
+
+    /**
+     * Queues a fixed number of shot requests without entering held shooting mode.
+     *
+     * @param shotCount number of shots to request; values {@code <= 0} are ignored
+     */
+    public void requestShots(int shotCount) {
+        if (shotCount <= 0) {
+            return;
+        }
+        queuedShotRequests += shotCount;
+    }
+
+    /**
+     * Returns whether any requested or active shot still remains in flight.
+     *
+     * @return {@code true} while pending autonomous requests or feed-queue work still exists
+     */
+    public boolean hasPendingShots() {
+        return queuedShotRequests > 0 || shooter.feedQueue().backlogCount() > 0;
+    }
+
+    /**
      * Starts eject/unjam mode and clears pending shots.
      */
     public void beginEject() {
@@ -156,14 +189,14 @@ public final class ShooterSupervisor {
     public ScoringStatus status() {
         int backlog = shooter.feedQueue().backlogCount();
         FeedMode mode = selectFeedMode(backlog);
-        boolean shootActive = shootingRequested || backlog > 0;
+        boolean shootActive = shootingRequested || hasPendingShots();
         return new ScoringStatus(
                 intakeEnabled,
                 ejectRequested,
                 shootingRequested,
                 flywheelRequested,
                 shootActive,
-                backlog,
+                backlog + queuedShotRequests,
                 mode.debugName
         );
     }
@@ -186,7 +219,8 @@ public final class ShooterSupervisor {
                 .addData(p + ".shootingRequested", s.shootingRequested)
                 .addData(p + ".flywheelRequested", s.flywheelRequested)
                 .addData(p + ".shootActive", s.shootActive)
-                .addData(p + ".feedBacklog", s.feedBacklog);
+                .addData(p + ".feedBacklog", s.feedBacklog)
+                .addData(p + ".queuedShotRequests", queuedShotRequests);
     }
 
     /**
@@ -197,18 +231,17 @@ public final class ShooterSupervisor {
     public void update(LoopClock clock) {
         shooter.setFlywheelEnabled(flywheelRequested && !ejectRequested);
 
-        if (!shootingRequested && shooter.feedQueue().backlogCount() > 0) {
-            clearPendingShots();
-        }
-
-        FeedMode mode = selectFeedMode(shooter.feedQueue().backlogCount());
+        int backlog = shooter.feedQueue().backlogCount();
+        FeedMode mode = selectFeedMode(backlog);
         switch (mode) {
             case EJECT:
                 applyEject();
                 return;
 
             case SHOOT:
-                shooter.feedQueue().ensureBacklog(clock, 1, this::shootOneTask);
+                int desiredBacklog = shootingRequested ? Math.max(1, backlog) : backlog + queuedShotRequests;
+                shooter.feedQueue().ensureBacklog(clock, desiredBacklog, this::shootOneTask);
+                queuedShotRequests = 0;
                 applyIdleFeeds();
                 return;
 
@@ -218,6 +251,7 @@ public final class ShooterSupervisor {
 
             case IDLE:
             default:
+                queuedShotRequests = 0;
                 applyIdleFeeds();
         }
     }
@@ -244,7 +278,7 @@ public final class ShooterSupervisor {
         if (ejectRequested) {
             return FeedMode.EJECT;
         }
-        if (shootingRequested || backlog > 0) {
+        if (shootingRequested || backlog > 0 || queuedShotRequests > 0) {
             return FeedMode.SHOOT;
         }
         if (intakeEnabled) {
@@ -254,6 +288,7 @@ public final class ShooterSupervisor {
     }
 
     private void clearPendingShots() {
+        queuedShotRequests = 0;
         shooter.clearFeedQueue();
     }
 

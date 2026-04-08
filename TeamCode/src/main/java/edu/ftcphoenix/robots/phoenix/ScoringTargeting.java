@@ -10,6 +10,7 @@ import edu.ftcphoenix.fw.core.geometry.Pose2d;
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
 import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.time.LoopClock;
+import edu.ftcphoenix.fw.drive.DriveCommandSink;
 import edu.ftcphoenix.fw.drive.DriveOverlay;
 import edu.ftcphoenix.fw.drive.DriveOverlayMask;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidance;
@@ -17,6 +18,7 @@ import edu.ftcphoenix.fw.drive.guidance.DriveGuidancePlan;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceQuery;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceSpec;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceStatus;
+import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceTask;
 import edu.ftcphoenix.fw.drive.guidance.References;
 import edu.ftcphoenix.fw.field.TagLayout;
 import edu.ftcphoenix.fw.field.TagLayouts;
@@ -28,6 +30,7 @@ import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelectionPolicies;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelectionResult;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelectionSource;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelections;
+import edu.ftcphoenix.fw.task.Task;
 
 /**
  * Shared targeting service for Phoenix scoring.
@@ -185,6 +188,21 @@ public final class ScoringTargeting {
     }
 
     /**
+     * Returns a task wrapper around Phoenix's shared aim plan.
+     *
+     * <p>This is the autonomous counterpart to {@link #aimOverlay()}: it reuses the exact same
+     * selected-target policy, AprilTag/localization resolution, and controller tuning, but drives a
+     * supplied {@link DriveCommandSink} directly until the aim task reaches its tolerance.</p>
+     *
+     * @param driveSink sink used to apply the aim command
+     * @param cfg       task-level tolerances/timeouts; when {@code null}, defaults are used
+     * @return task that turns the robot toward the currently selected Phoenix scoring target
+     */
+    public Task aimTask(DriveCommandSink driveSink, DriveGuidanceTask.Config cfg) {
+        return aimPlan.task(driveSink, cfg);
+    }
+
+    /**
      * Returns a boolean source that reflects whether targeting policy currently allows feeding.
      *
      * @return source that becomes true when aim is ready or the driver is overriding the gate
@@ -234,8 +252,14 @@ public final class ScoringTargeting {
         }
 
         DriveGuidanceStatus aimStatus = aimQuery.sample(clock, DriveOverlayMask.OMEGA_ONLY);
-        boolean rawAimReady = aimStatus == null || !aimStatus.hasOmegaError || aimStatus.omegaWithin(aimReadyToleranceRad);
-        boolean aimReadyNow = aimReadyDebouncer.update(clock, rawAimReady);
+        boolean hasAimReference = !autoAimNow || selection.hasSelection;
+        boolean rawAimReady = !autoAimNow || (
+                hasAimReference
+                        && aimStatus != null
+                        && aimStatus.hasOmegaError
+                        && aimStatus.omegaWithin(aimReadyToleranceRad)
+        );
+        boolean aimReadyNow = autoAimNow ? aimReadyDebouncer.update(clock, rawAimReady) : true;
         boolean aimOkToShootNow = aimReadyNow || aimOverrideNow;
 
         PhoenixProfile.AutoAimConfig.ScoringTarget target = selection.hasSelection

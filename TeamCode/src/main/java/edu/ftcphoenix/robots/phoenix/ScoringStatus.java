@@ -20,7 +20,7 @@ public final class ScoringStatus {
      * @param shootingRequested whether the caller is actively requesting shot execution
      * @param flywheelRequested whether the flywheel has been requested on by the caller
      * @param shootActive whether the scoring path is effectively in shooting mode this loop
-     * @param feedBacklog requested feed-task backlog managed by the supervisor
+     * @param feedBacklog total pending shot work managed by the supervisor (queued requests plus active/queued feed tasks)
      * @param mode human-readable feed mode label for telemetry/debug output
      */
     public ScoringStatus(boolean intakeEnabled,

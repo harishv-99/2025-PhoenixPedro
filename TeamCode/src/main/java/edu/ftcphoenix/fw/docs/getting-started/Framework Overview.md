@@ -294,6 +294,18 @@ That keeps normal stick translation while guidance owns omega.
 
 When code only needs a place to *send* drive commands, Phoenix now uses the smaller `DriveCommandSink` seam. `MecanumDrivebase` implements that interface, but route adapters can implement it too.
 
+When code needs to follow an external route object (Pedro `PathChain`, Road Runner trajectory, or your own route type), Phoenix now provides the matching generic seam: `RouteFollower<RouteT>` in `edu.ftcphoenix.fw.drive.route`. Wrap the external follower once, then sequence it with the rest of your robot using `RouteTask` / `RouteTasks.follow(...)`.
+
+```java
+Task auto = Tasks.sequence(
+        RouteTasks.follow(pedroAdapter, outboundPath, new RouteTask.Config()),
+        Tasks.runOnce(scoringSupervisor::requestSingleShot),
+        RouteTasks.follow(pedroAdapter, returnPath, new RouteTask.Config())
+);
+```
+
+That keeps route-library ownership outside the framework while still letting Auto reuse the same Phoenix task vocabulary as everything else.
+
 ### `MecanumDrivebase` + `FtcDrives`
 
 `FtcDrives.mecanum(hardwareMap)` is the beginner-friendly way to wire a mecanum drivetrain.
@@ -354,6 +366,7 @@ Phoenix gives you factories so your code reads like intent:
 * `PlantTasks` — patterns that command a `Plant` (`setInstant`, `holdFor`, `moveTo`, …)
 * `DriveTasks` — simple patterns that command a `DriveCommandSink` (`driveForSeconds`, `stop`, …)
 * `DriveGuidanceTasks` — execute a `DriveGuidancePlan` as a Task (autonomous-style guidance)
+* `RouteTasks` — follow an external route through a generic `RouteFollower<RouteT>` adapter
 * `GoToPoseTasks` — convenience wrappers for common go-to-pose behaviors (`goToPoseFieldRelative`, `goToPoseTagRelative`, …)
 
 Example macro (shoot one disc):

@@ -822,7 +822,7 @@ to debug.
 Auto usually wants either:
 
 - a Phoenix `DriveGuidanceTask`, or
-- a route-library adapter task (Road Runner / Pedro / other)
+- a `RouteTask<RouteT>` built around a project-specific external follower adapter (Road Runner / Pedro / other)
 
 When you do use `DriveGuidanceTask`, prefer semantic references over tag-specific public targets.
 For example, define “slot 4 face” or “speaker aim point” once, then let guidance solve that
@@ -832,10 +832,10 @@ Conceptually:
 
 ```java
 Task goToBackstage = drivePlan.task(drivebase, cfg);
-Task followCyclePath = roadRunnerAdapter.follow(cyclePath);
+Task followCyclePath = RouteTasks.follow(roadRunnerAdapter, cyclePath, new RouteTask.Config());
 ```
 
-`roadRunnerAdapter.follow(...)` is a project-specific adapter example, not a built-in Phoenix API.
+The adapter is still project-specific, but Phoenix now provides the generic `RouteFollower<RouteT>` / `RouteTask<RouteT>` seam so the rest of your Auto can stay inside the normal task vocabulary.
 
 ### What still stays common
 
