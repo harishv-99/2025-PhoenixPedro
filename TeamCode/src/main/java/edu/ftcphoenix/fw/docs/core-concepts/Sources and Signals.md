@@ -44,7 +44,7 @@ One important specialization: `DriveSource` is now explicitly the drive-specific
 A `Source<T>` is the minimal interface:
 
 * `T get(LoopClock clock)` — sample the value for the current loop
-* `reset()` — optional (for stateful sources)
+* `reset()` — optional lifecycle hook for stateful sources (clear internal memory and owned child state; not a substitute for graph-level reset signals)
 * `debugDump(...)` — optional debug support
 
 ### `ScalarSource`
@@ -238,6 +238,19 @@ slotColor.reset();
 ```
 
 Use this when the reset condition is a **mechanical / logical boundary**, not a timeout.
+
+### Choosing the reset model
+
+Phoenix intentionally keeps **two different reset styles**:
+
+* Use `accumulateUntil(resetSignal, ...)` when the boundary is part of the loop graph
+  (encoder pulse, beam-break edge, "new slot" signal, etc.).
+* Use `reset()` when some owner outside the graph wants an immediate clear
+  (mode change, tester clear, task restart, supervisor restart, OpMode re-init).
+
+`accumulateUntil(...)` does **not** replace `reset()`. It only applies when the source is sampled,
+and when the reset signal is true it clears the state and then folds the current sample into the
+fresh state in the same loop.
 
 ### Hold last valid: `holdLastValid(...)`
 

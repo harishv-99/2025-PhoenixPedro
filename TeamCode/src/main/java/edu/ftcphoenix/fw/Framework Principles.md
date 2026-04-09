@@ -570,3 +570,11 @@ Phoenix frequently teaches through its exceptions.
 
 - If an API changes, update **Javadocs**, **Markdown docs**, and **examples** in the same change.
 - Avoid stale comments (“TODO update later”) in student-facing areas — they become misinformation.
+
+### 10.4 Keep the docs navigable
+
+- Keep the repo root [`README.md`](<README.md>) as the quick orientation page.
+- Keep [`docs/README.md`](<docs/README.md>) as the full docs hub.
+- Keep a short `README.md` in each major docs folder with reading order and related links.
+- If a doc intentionally lives next to code instead of under `docs/` (for example an optional
+  integration guide), link it from the hub so it stays discoverable.

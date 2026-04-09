@@ -36,10 +36,22 @@ public interface Source<T> {
     T get(LoopClock clock);
 
     /**
-     * Optional: reset any internal state.
+     * Optional lifecycle hook to clear internal memory.
      *
      * <p>Most stateless sources can ignore this. Stateful sources should implement it to return
-     * to a known state.</p>
+     * to a known state, and should usually propagate the reset to any owned child sources.</p>
+     *
+     * <p>This hook is for lifecycle / ownership boundaries: OpMode restarts, tester re-init,
+     * macro restarts, or any other case where code that owns the source graph wants a clean
+     * slate immediately.</p>
+     *
+     * <p>Normal runtime behavior should usually prefer explicit signals inside the source graph.
+     * If the reset boundary is itself a loop-time condition, model it with a
+     * {@link BooleanSource} and helpers such as
+     * {@link #accumulateUntil(BooleanSource, BiFunction, Object)} instead of inventing an
+     * out-of-band imperative call.</p>
+     *
+     * <p>Implementations should make {@code reset()} safe, immediate, and idempotent.</p>
      */
     default void reset() {
         // no-op
@@ -101,12 +113,13 @@ public interface Source<T> {
      * Accumulate source samples into a state value, advancing at most once per loop cycle.
      *
      * <p>This is Phoenix's generic "remember across samples" primitive for value-object sources.
-     * It is useful when you want to keep state across multiple readings until some higher-level
-     * code explicitly calls {@link #reset()} on the returned source.</p>
+     * It is useful when the code that owns the source decides when that memory window starts and
+     * ends, and can explicitly call {@link #reset()} on the returned source.</p>
      *
      * <p>Common uses include window-local classification, agreement / conflict reduction across
      * noisy samples, and small supervisor state machines where the accumulated state is still best
-     * modeled as a source.</p>
+     * modeled as a source. When the window boundary is itself a signal in the source graph,
+     * prefer {@link #accumulateUntil(BooleanSource, BiFunction, Object)}.</p>
      *
      * <p>Contract:
      * <ul>
@@ -183,6 +196,10 @@ public interface Source<T> {
      * good fit for "remember within a window" logic such as slot-local classification, one-piece
      * observation windows, and other cases where the memory should be cleared by an explicit
      * boundary signal instead of a timer.</p>
+     *
+     * <p>This complements rather than replaces {@link #reset()}. Use this helper when the reset
+     * boundary is part of the loop graph. Keep {@code reset()} for lifecycle / owner-driven clears
+     * that need to happen immediately, even outside a normal sampling pass.</p>
      *
      * <p>Reset semantics: when {@code reset} is true, the internal state is first set back to
      * {@code initial}, then the current sample is folded into that fresh state during the same

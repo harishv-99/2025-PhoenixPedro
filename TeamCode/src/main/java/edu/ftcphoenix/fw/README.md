@@ -1,102 +1,73 @@
 # Phoenix Documentation Guide
 
-Phoenix now organizes its documentation by **reading path** instead of keeping every guide at the
-repository root. The goal is to keep the docs easier to navigate without losing the deeper rationale
-and examples that make the framework usable in practice.
+Phoenix now uses a layered documentation map so the repo stays navigable whether you start from the
+repo root, browse inside `docs/`, or click directly into a section folder on GitHub.
 
-`Framework Principles.md` intentionally remains separate at the root. It is the durable design
-reference for the framework itself.
+There are three main landing points:
+
+1. `README.md` at the repo root for quick orientation
+2. [`docs/README.md`](<docs/README.md>) for the full documentation hub and reading paths
+3. a short `README.md` inside each major `docs/...` section for local navigation
+
+[`Framework Principles.md`](<Framework Principles.md>) intentionally remains at the repo root. It is
+Phoenix's long-lived design reference.
 
 ## Start here
 
-If you are new to Phoenix, read in this order:
+- [`docs/README.md`](<docs/README.md>) — full docs hub and reading paths
+- [`Framework Principles.md`](<Framework Principles.md>) — durable design reference
+- [`docs/getting-started/README.md`](<docs/getting-started/README.md>) — first-time Phoenix ramp
+- [`docs/design/README.md`](<docs/design/README.md>) — robot architecture, controls, and ownership
+- [`docs/testing-calibration/README.md`](<docs/testing-calibration/README.md>) — bring-up and calibration order
+
+## Common reading paths
+
+### I am new to Phoenix
 
 1. [`docs/getting-started/Framework Overview.md`](<docs/getting-started/Framework Overview.md>)
 2. [`docs/getting-started/Beginner's Guide.md`](<docs/getting-started/Beginner's Guide.md>)
 3. [`docs/design/Framework Lanes & Robot Controls.md`](<docs/design/Framework Lanes & Robot Controls.md>)
-4. [`docs/design/Recommended Robot Design.md`](<docs/design/Recommended Robot Design.md>)
-5. [`docs/core-concepts/Loop Structure.md`](<docs/core-concepts/Loop Structure.md>)
-6. [`docs/design/Tasks & Macros Quickstart.md`](<docs/design/Tasks & Macros Quickstart.md>)
-
-## Reading paths by goal
-
-### I want to write my first Phoenix robot
-
-- [`docs/getting-started/Framework Overview.md`](<docs/getting-started/Framework Overview.md>)
-- [`docs/getting-started/Beginner's Guide.md`](<docs/getting-started/Beginner's Guide.md>)
-- [`docs/design/Framework Lanes & Robot Controls.md`](<docs/design/Framework Lanes & Robot Controls.md>)
-- [`docs/core-concepts/Loop Structure.md`](<docs/core-concepts/Loop Structure.md>)
-- [`docs/design/Tasks & Macros Quickstart.md`](<docs/design/Tasks & Macros Quickstart.md>)
+4. [`docs/core-concepts/Loop Structure.md`](<docs/core-concepts/Loop Structure.md>)
+5. [`docs/design/Tasks & Macros Quickstart.md`](<docs/design/Tasks & Macros Quickstart.md>)
 
 ### I want a clean TeleOp + Auto robot design
 
-- [`docs/design/Framework Lanes & Robot Controls.md`](<docs/design/Framework Lanes & Robot Controls.md>)
-- [`docs/design/Recommended Robot Design.md`](<docs/design/Recommended Robot Design.md>)
-- [`docs/design/Supervisors & Pipelines.md`](<docs/design/Supervisors & Pipelines.md>)
-- [`docs/design/Output Tasks & Queues.md`](<docs/design/Output Tasks & Queues.md>)
-- [`Framework Principles.md`](<Framework Principles.md>)
+1. [`docs/design/README.md`](<docs/design/README.md>)
+2. [`docs/design/Framework Lanes & Robot Controls.md`](<docs/design/Framework Lanes & Robot Controls.md>)
+3. [`docs/design/Recommended Robot Design.md`](<docs/design/Recommended Robot Design.md>)
+4. [`docs/design/Supervisors & Pipelines.md`](<docs/design/Supervisors & Pipelines.md>)
+5. [`docs/design/Output Tasks & Queues.md`](<docs/design/Output Tasks & Queues.md>)
 
-### I am building drive assists, auto-aim, or route integration
+### I am tuning sensors, localization, or calibration
 
-- [`docs/drive-vision/Drive Guidance.md`](<docs/drive-vision/Drive Guidance.md>)
-- [`docs/drive-vision/AprilTag Localization & Fixed Layouts.md`](<docs/drive-vision/AprilTag Localization & Fixed Layouts.md>)
-- [`docs/design/Recommended Robot Design.md`](<docs/design/Recommended Robot Design.md>)
-- [`docs/core-concepts/Sources and Signals.md`](<docs/core-concepts/Sources and Signals.md>)
-- [`docs/core-concepts/Loop Structure.md`](<docs/core-concepts/Loop Structure.md>)
-
-### I am wiring sensors or calibrating AprilTag setups
-
-- [`docs/ftc-boundary/FTC Sensors.md`](<docs/ftc-boundary/FTC Sensors.md>)
-- [`docs/drive-vision/AprilTag Practice Setup.md`](<docs/drive-vision/AprilTag Practice Setup.md>)
-- [`docs/drive-vision/AprilTag Localization & Fixed Layouts.md`](<docs/drive-vision/AprilTag Localization & Fixed Layouts.md>)
-- [`docs/drive-vision/Drive Guidance.md`](<docs/drive-vision/Drive Guidance.md>)
-
-### I want to bring up and calibrate a robot from scratch
-
-- [`docs/testing-calibration/Robot Calibration Tutorials.md`](<docs/testing-calibration/Robot Calibration Tutorials.md>)
-- [`docs/testing-calibration/Guided Calibration Walkthroughs.md`](<docs/testing-calibration/Guided Calibration Walkthroughs.md>)
-- [`docs/drive-vision/AprilTag Localization & Fixed Layouts.md`](<docs/drive-vision/AprilTag Localization & Fixed Layouts.md>)
-- [`docs/ftc-boundary/FTC Sensors.md`](<docs/ftc-boundary/FTC Sensors.md>)
-
-### I want a concrete end-to-end example
-
-- [`docs/examples/Shooter Case Study & Examples Walkthrough.md`](<docs/examples/Shooter Case Study & Examples Walkthrough.md>)
-- `tools/examples/*`
+1. [`docs/testing-calibration/README.md`](<docs/testing-calibration/README.md>)
+2. [`docs/testing-calibration/Robot Calibration Tutorials.md`](<docs/testing-calibration/Robot Calibration Tutorials.md>)
+3. [`docs/ftc-boundary/FTC Sensors.md`](<docs/ftc-boundary/FTC Sensors.md>)
+4. [`docs/drive-vision/AprilTag Practice Setup.md`](<docs/drive-vision/AprilTag Practice Setup.md>)
+5. [`docs/drive-vision/AprilTag Localization & Fixed Layouts.md`](<docs/drive-vision/AprilTag Localization & Fixed Layouts.md>)
 
 ### I am maintaining or extending the framework
 
-- [`Framework Principles.md`](<Framework Principles.md>)
-- [`docs/maintainers/Maintainer Notes.md`](<docs/maintainers/Maintainer Notes.md>)
-- [`docs/maintainers/AprilTag Localization Follow-Ups.md`](<docs/maintainers/AprilTag Localization Follow-Ups.md>)
-- [`docs/drive-vision/AprilTag Localization & Fixed Layouts.md`](<docs/drive-vision/AprilTag Localization & Fixed Layouts.md>)
-- [`docs/getting-started/Framework Overview.md`](<docs/getting-started/Framework Overview.md>)
+1. [`Framework Principles.md`](<Framework Principles.md>)
+2. [`docs/maintainers/README.md`](<docs/maintainers/README.md>)
+3. [`docs/maintainers/Maintainer Notes.md`](<docs/maintainers/Maintainer Notes.md>)
+4. [`docs/maintainers/AprilTag Localization Follow-Ups.md`](<docs/maintainers/AprilTag Localization Follow-Ups.md>)
+5. [`integrations/pedro/README.md`](<integrations/pedro/README.md>)
 
-## Documentation structure
+## Section hubs
 
-- `docs/getting-started/`
-  - overview, beginner ramp, and the "what exists?" map
-- `docs/design/`
-  - the recommended robot design, supervisors/subsystems, tasks, and output queues
-- `docs/core-concepts/`
-  - loop semantics and source/signal composition
-- `docs/drive-vision/`
-  - drive guidance, AprilTag localization policy, and practice setup
-- `docs/testing-calibration/`
-  - ordered calibration tutorials and walkthrough-builder guidance
-- `docs/ftc-boundary/`
-  - FTC-boundary sensor notes and recommendations
-- `docs/examples/`
-  - case studies that connect the concepts to real Phoenix examples
-- `docs/maintainers/`
-  - advanced notes for maintainers and framework extensions
+- [`docs/README.md`](<docs/README.md>)
+- [`docs/getting-started/README.md`](<docs/getting-started/README.md>)
+- [`docs/core-concepts/README.md`](<docs/core-concepts/README.md>)
+- [`docs/design/README.md`](<docs/design/README.md>)
+- [`docs/drive-vision/README.md`](<docs/drive-vision/README.md>)
+- [`docs/testing-calibration/README.md`](<docs/testing-calibration/README.md>)
+- [`docs/ftc-boundary/README.md`](<docs/ftc-boundary/README.md>)
+- [`docs/examples/README.md`](<docs/examples/README.md>)
+- [`docs/maintainers/README.md`](<docs/maintainers/README.md>)
 
-## Notes on what changed
+## Integration notes
 
-- The old `Behavior Lanes.md` content now lives inside
-  [`docs/design/Recommended Robot Design.md`](<docs/design/Recommended Robot Design.md>), because
-  it is most useful when paired with concrete robot-design recommendations and examples.
-- `Notes.md` was renamed and moved to
-  [`docs/maintainers/Maintainer Notes.md`](<docs/maintainers/Maintainer Notes.md>) so advanced
-  maintainer guidance is still available without cluttering the main reading path.
-- `Framework Principles.md` stays separate on purpose. It is the long-lived design reference and
-  should remain easy to find.
+Optional integration docs may still live next to the code they describe. Right now that includes:
+
+- [`integrations/pedro/README.md`](<integrations/pedro/README.md>) — Phoenix's optional Pedro Pathing bridge

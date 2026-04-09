@@ -154,7 +154,10 @@ signals that a supervisor or task reacts to.
 
 If the signal needs memory across an explicit window (for example, keep a slot classification until
 an encoder boundary pulse), keep that memory as a `Source` using `accumulateUntil(...)` rather than
-teaching the FTC boundary adapter about your mechanism.
+teaching the FTC boundary adapter about your mechanism. If a supervisor owns that lifecycle
+explicitly (mode change, task restart, tester clear, or a state-machine transition), keep
+`reset()` on the composed source and call it from the owner instead of forcing every boundary into
+a synthetic `BooleanSource`.
 
 ### Lane 4: spatial relation guidance
 

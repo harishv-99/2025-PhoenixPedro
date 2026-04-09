@@ -147,6 +147,9 @@ Source<SlotColor> slotColor = rawBallColor.accumulateUntil(
 This keeps the FTC boundary adapter focused on **reading the sensor**, while the robot-specific
 reducer controls which samples should win, merge, or be ignored.
 
+Use `accumulateUntil(...)` when the boundary pulse is already part of the loop graph. If a
+supervisor, tester, or other owner object defines the window lifecycle imperatively, keep the
+memory as `accumulate(...)` and call `reset()` from that owner instead.
 
 ---
 

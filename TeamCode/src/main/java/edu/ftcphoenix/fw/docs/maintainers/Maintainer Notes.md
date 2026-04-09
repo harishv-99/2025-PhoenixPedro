@@ -67,3 +67,13 @@ As a best practice, keep FTC SDK types (`com.qualcomm.*`) inside:
 - `edu.ftcphoenix.fw.tools.*` (testers/examples that necessarily depend on OpModes)
 
 This keeps the student-facing building blocks (`actuation/drive/input/task/...`) easier to reason about and easier to test in isolation.
+
+### 1.5 Documentation topology
+
+Keep the docs easy to navigate from three places:
+
+- the repo root [`README.md`](<../../README.md>)
+- the full hub [`../README.md`](<../README.md>)
+- the local section `README.md` in whatever docs folder you are editing
+
+If you add or move a maintainer-facing doc that lives outside `docs/`, link it back into the hub so it stays visible to future maintainers.
