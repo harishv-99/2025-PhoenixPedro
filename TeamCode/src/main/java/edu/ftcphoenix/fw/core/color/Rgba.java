@@ -8,9 +8,10 @@ package edu.ftcphoenix.fw.core.color;
  * particular range (some sensors report 0-255, others report larger values). Treat them as
  * <em>arbitrary units</em> and prefer ratio-based logic when comparing colors.</p>
  *
- * <p>Phoenix intentionally keeps this as a minimal value object:
- * it has a compact {@link #toString()} for logs and a few tiny helpers commonly used in
- * classification (sum and channel ratios).</p>
+ * <p>{@code Rgba} intentionally stays parallel to {@link NormalizedRgba} where that still makes
+ * sense: both expose channel ratios, RGB max/min/chroma, and simple HSV-style derived values.
+ * The important caveat is that raw thresholds on alpha/value/chroma are typically much less
+ * portable across sensors, gain settings, and lighting than normalized thresholds are.</p>
  */
 public final class Rgba {
 
@@ -51,27 +52,66 @@ public final class Rgba {
     }
 
     /**
+     * @return the largest RGB channel, in raw sensor units.
+     */
+    public double maxChannel() {
+        return ColorMath.maxChannel(r, g, b);
+    }
+
+    /**
+     * @return the smallest RGB channel, in raw sensor units.
+     */
+    public double minChannel() {
+        return ColorMath.minChannel(r, g, b);
+    }
+
+    /**
+     * @return a simple RGB chroma estimate ({@code max(rgb) - min(rgb)}) in raw sensor units.
+     */
+    public double chroma() {
+        return ColorMath.chroma(r, g, b);
+    }
+
+    /**
      * @return red ratio in [0,1] relative to {@link #sumRgb()}, or 0 if sum is 0.
      */
     public double rRatio() {
-        double s = sumRgb();
-        return (s <= 0.0) ? 0.0 : ((double) r / s);
+        return ColorMath.ratio(r, sumRgb());
     }
 
     /**
      * @return green ratio in [0,1] relative to {@link #sumRgb()}, or 0 if sum is 0.
      */
     public double gRatio() {
-        double s = sumRgb();
-        return (s <= 0.0) ? 0.0 : ((double) g / s);
+        return ColorMath.ratio(g, sumRgb());
     }
 
     /**
      * @return blue ratio in [0,1] relative to {@link #sumRgb()}, or 0 if sum is 0.
      */
     public double bRatio() {
-        double s = sumRgb();
-        return (s <= 0.0) ? 0.0 : ((double) b / s);
+        return ColorMath.ratio(b, sumRgb());
+    }
+
+    /**
+     * @return hue in degrees in [0,360), or 0 if chroma is 0.
+     */
+    public double hueDeg() {
+        return ColorMath.hueDeg(r, g, b);
+    }
+
+    /**
+     * @return HSV saturation in [0,1], or 0 when {@link #value()} is 0.
+     */
+    public double saturation() {
+        return ColorMath.saturation(r, g, b);
+    }
+
+    /**
+     * @return HSV value ({@code max(rgb)}) in raw sensor units.
+     */
+    public double value() {
+        return ColorMath.value(r, g, b);
     }
 
     /**

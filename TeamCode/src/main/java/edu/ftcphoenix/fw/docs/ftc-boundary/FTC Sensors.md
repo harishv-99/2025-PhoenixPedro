@@ -113,10 +113,17 @@ Source<BallColor> rawBallColor = color.map(c -> {
 Notes:
 
 * Prefer **ratios + confidence gates** over hue-only logic.
+* `Rgba` and `NormalizedRgba` intentionally expose a parallel helper surface:
+  `sumRgb()`, `maxChannel()`, `minChannel()`, `chroma()`, channel ratios, and simple
+  HSV-style helpers (`hueDeg()`, `saturation()`, `value()`).
 * For object classification, only trust the reading when the object is **close enough** or the
   brightness / alpha channel is strong enough.
+* Treat HSV as **secondary debug telemetry**, not the first thing you threshold on.
+  Hue gets noisy when chroma is low.
 * If your sensor supports a built-in light or gain, set those during initialization; `FtcSensors`
   only adapts the reading into Phoenix sources.
+* The framework hardware menu now includes `HW: Color Sensor (Normalized)`, which prints
+  normalized RGBA, ratios, alpha/chroma, HSV, and optional raw RGBA detail while you tune gain.
 
 ### Reset-driven slot / window memory
 

@@ -5,6 +5,7 @@ import edu.ftcphoenix.fw.tools.tester.hardware.CrServoPowerTester;
 import edu.ftcphoenix.fw.tools.tester.hardware.DcMotorPositionTester;
 import edu.ftcphoenix.fw.tools.tester.hardware.DcMotorPowerTester;
 import edu.ftcphoenix.fw.tools.tester.hardware.DcMotorVelocityTester;
+import edu.ftcphoenix.fw.tools.tester.hardware.NormalizedColorSensorTester;
 import edu.ftcphoenix.fw.tools.tester.hardware.ServoPositionTester;
 import edu.ftcphoenix.fw.tools.tester.localization.AprilTagLocalizationTester;
 
@@ -34,7 +35,7 @@ public final class StandardTesters {
 
         suite.add(
                 "Framework: Hardware Testers",
-                "Generic DcMotor / Servo / CRServo bring-up tools.",
+                "Generic DcMotor / Servo / CRServo / color-sensor bring-up tools.",
                 StandardTesters::createHardwareSuite
         );
     }
@@ -111,6 +112,12 @@ public final class StandardTesters {
                 "HW: Servo Position",
                 "Standard servo position test (enable=hold, invert, step, stick override).",
                 ServoPositionTester::new
+        );
+
+        suite.add(
+                "HW: Color Sensor (Normalized)",
+                "NormalizedColorSensor bring-up (ratios + alpha/chroma + HSV, optional raw RGBA detail, live gain tuning).",
+                NormalizedColorSensorTester::new
         );
 
         return suite;
