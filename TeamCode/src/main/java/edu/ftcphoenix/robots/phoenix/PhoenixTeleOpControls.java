@@ -45,8 +45,8 @@ public final class PhoenixTeleOpControls {
      *
      * <p>
      * The constructor only establishes the stable driver/operator sources. Mechanism-specific button
-     * bindings are registered later through {@link #bindScoringControls(Shooter, ShooterSupervisor, Runnable)}
-     * once the scoring collaborators exist.
+     * bindings are registered later through {@link #bind(PhoenixCapabilities)} once the shared
+     * robot capability families exist.
      * </p>
      *
      * @param gamepads wrapped gamepad sources used to map driver/operator controls
@@ -79,37 +79,39 @@ public final class PhoenixTeleOpControls {
     /**
      * Registers the Phoenix scoring button semantics with this controls owner.
      *
-     * @param shooter shooter subsystem used for direct selected-velocity adjustments
-     * @param scoring scoring supervisor that receives intent-level actions
-     * @param captureSuggestedVelocity action invoked when the operator requests a fresh
-     *                                 target-based velocity suggestion
+     * <p>
+     * TeleOp binds against the shared robot capability families instead of directly depending on
+     * Phoenix internals. That keeps the control layer mode-neutral and leaves room for Auto to use
+     * the same vocabulary through tasks instead of button bindings.
+     * </p>
+     *
+     * @param capabilities shared Phoenix capability families exposed by the robot container
      */
-    public void bindScoringControls(Shooter shooter,
-                                    ShooterSupervisor scoring,
-                                    Runnable captureSuggestedVelocity) {
-        Objects.requireNonNull(shooter, "shooter");
-        Objects.requireNonNull(scoring, "scoring");
-        Objects.requireNonNull(captureSuggestedVelocity, "captureSuggestedVelocity");
+    public void bind(PhoenixCapabilities capabilities) {
+        PhoenixCapabilities.Scoring scoring =
+                Objects.requireNonNull(capabilities, "capabilities").scoring();
 
         bindings.onToggle(operator.a(), scoring::setIntakeEnabled);
         bindings.onToggle(operator.rightBumper(), scoring::setFlywheelEnabled);
 
-        bindings.onRise(operator.leftBumper(), captureSuggestedVelocity);
+        bindings.onRise(operator.leftBumper(), scoring::captureSuggestedShotVelocity);
 
         bindings.onRiseAndFall(
                 operator.b(),
-                scoring::beginShooting,
-                scoring::endShooting
+                () -> scoring.setShootingEnabled(true),
+                () -> scoring.setShootingEnabled(false)
         );
 
         bindings.onRiseAndFall(
                 operator.x(),
-                scoring::beginEject,
-                scoring::endEject
+                () -> scoring.setEjectEnabled(true),
+                () -> scoring.setEjectEnabled(false)
         );
 
-        bindings.onRise(operator.dpadUp(), shooter::increaseSelectedVelocity);
-        bindings.onRise(operator.dpadDown(), shooter::decreaseSelectedVelocity);
+        bindings.onRise(operator.dpadUp(),
+                () -> scoring.adjustSelectedVelocityNative(cfg.selectedVelocityStepNative));
+        bindings.onRise(operator.dpadDown(),
+                () -> scoring.adjustSelectedVelocityNative(-cfg.selectedVelocityStepNative));
     }
 
     /**

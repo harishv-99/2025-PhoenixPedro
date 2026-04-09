@@ -29,6 +29,7 @@ If you are new to Phoenix, read in this order:
 
 - [`design/README.md`](<design/README.md>)
 - [`design/Framework Lanes & Robot Controls.md`](<design/Framework Lanes & Robot Controls.md>)
+- [`design/Robot Capabilities & Mode Clients.md`](<design/Robot Capabilities & Mode Clients.md>)
 - [`design/Recommended Robot Design.md`](<design/Recommended Robot Design.md>)
 - [`design/Supervisors & Pipelines.md`](<design/Supervisors & Pipelines.md>)
 - [`design/Output Tasks & Queues.md`](<design/Output Tasks & Queues.md>)

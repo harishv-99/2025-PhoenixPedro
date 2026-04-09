@@ -12,6 +12,7 @@ Phoenix now splits stable ownership this way:
 - `PhoenixProfile.vision` -> `FtcAprilTagVisionLane.Config`
 - `PhoenixProfile.localization` -> `FtcOdometryAprilTagLocalizationLane.Config`
 - `PhoenixProfile.field` -> shared field facts such as the fixed AprilTag layout
+- `PhoenixCapabilities` -> shared mode-neutral API used by TeleOp and Auto
 - `PhoenixTeleOpControls` -> all TeleOp input semantics
 - `ShooterSupervisor` -> scoring policy and intent-level requests
 - `ScoringTargeting` -> selected-tag policy, cached aim status, and shot suggestions

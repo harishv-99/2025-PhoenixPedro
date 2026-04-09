@@ -212,20 +212,6 @@ public final class Shooter {
     }
 
     /**
-     * Increases the selected flywheel velocity by one configured increment.
-     */
-    public void increaseSelectedVelocity() {
-        setSelectedVelocity(selectedVelocityNative + cfg.velocityIncrement);
-    }
-
-    /**
-     * Decreases the selected flywheel velocity by one configured increment.
-     */
-    public void decreaseSelectedVelocity() {
-        setSelectedVelocity(selectedVelocityNative - cfg.velocityIncrement);
-    }
-
-    /**
      * Returns the memoized flywheel-ready gate for the current loop.
      *
      * @return boolean source that predicts whether the flywheel will be within its ready band when a

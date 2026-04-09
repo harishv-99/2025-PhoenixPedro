@@ -4,7 +4,7 @@ Phoenix is a small FTC framework that helps you structure robot code around a cl
 
 The big idea is: **advance a single `LoopClock` once per OpMode cycle**, then run everything else (inputs, bindings, tasks, drive, mechanisms) off that clock.
 
-Useful companions to this document are [`Framework Lanes & Robot Controls`](<../design/Framework Lanes & Robot Controls.md>) and [`Recommended Robot Design`](<../design/Recommended Robot Design.md>). Together they explain the ownership vocabulary, how to split framework lanes from robot code, how TeleOp and Auto should share mechanism APIs, and how to choose the right internal behavior lane for a mechanism.
+Useful companions to this document are [`Framework Lanes & Robot Controls`](<../design/Framework Lanes & Robot Controls.md>), [`Robot Capabilities & Mode Clients`](<../design/Robot Capabilities & Mode Clients.md>), and [`Recommended Robot Design`](<../design/Recommended Robot Design.md>). Together they explain the ownership vocabulary, how to split framework lanes from robot code, how TeleOp and Auto should share mechanism APIs through robot-owned capability families, and how to choose the right internal behavior lane for a mechanism.
 
 See the repository [`README`](<../../README.md>) for the full documentation map and suggested reading paths.
 
@@ -133,11 +133,12 @@ Phoenix now distinguishes between three different kinds of ownership that often 
 - **primitives**: small reusable building blocks like `GamepadDriveSource`, `MecanumDrivebase`, `AprilTagSensor`, and `PinpointPoseEstimator`
 - **framework lanes**: stable reusable owners built from primitives, such as `FtcMecanumDriveLane`, `FtcAprilTagVisionLane`, and `FtcOdometryAprilTagLocalizationLane`
 - **field facts**: shared environment data such as `TagLayout` and `FtcGameTagLayout.currentGameFieldFixed()`
+- **robot-owned capability families**: the shared mode-neutral API used by both TeleOp and Auto
 - **robot-owned controls/policy**: button semantics, scoring logic, auto-aim rules, and telemetry presentation
 
 That split is deliberate. A framework primitive should not decide that "right bumper means slow mode" any more than an estimator should decide which scoring target matters this year. Stable hardware/resource ownership belongs in reusable framework lanes. Operator semantics and game strategy belong in robot code.
 
-See [`Framework Lanes & Robot Controls`](<../design/Framework Lanes & Robot Controls.md>) for the full role glossary and from-scratch robot build guide, then use [`Recommended Robot Design`](<../design/Recommended Robot Design.md>) for the deeper mechanism/supervisor patterns.
+See [`Framework Lanes & Robot Controls`](<../design/Framework Lanes & Robot Controls.md>) for the full role glossary and from-scratch robot build guide, [`Robot Capabilities & Mode Clients`](<../design/Robot Capabilities & Mode Clients.md>) for the shared TeleOp/Auto API pattern, then use [`Recommended Robot Design`](<../design/Recommended Robot Design.md>) for the deeper mechanism/supervisor patterns.
 
 ## The layers (top → bottom)
 

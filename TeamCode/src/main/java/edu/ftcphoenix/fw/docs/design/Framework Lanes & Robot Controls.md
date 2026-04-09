@@ -6,7 +6,7 @@ Read this if you want to answer questions like:
 
 - What is the difference between a primitive and a lane?
 - What should live in the framework versus in robot code?
-- Where should controls, strategy, field facts, and telemetry go?
+- Where should controls, strategy, capability families, field facts, and telemetry go?
 - How should TeleOp and Auto share code without building a giant base robot class?
 - How can I build a clean robot from scratch without copying an old robot verbatim?
 
@@ -21,13 +21,14 @@ Phoenix uses a few simple ownership rules.
 1. **Framework primitives own one narrow reusable capability.**
 2. **Framework lanes own one stable multi-object capability graph.**
 3. **Field facts stay separate from both sensor rigs and strategy.**
-4. **Robot controls own operator semantics.**
-5. **Subsystems are the single writers to mechanisms.**
-6. **Supervisors own policy and orchestration.**
-7. **Services own shared robot-specific computation.**
-8. **Presenters own human-facing output.**
-9. **The composition root wires everything together and owns loop order.**
-10. **Profiles hold data, not behavior.**
+4. **Robot capabilities expose the shared mode-neutral robot vocabulary.**
+5. **Robot controls own operator semantics.**
+6. **Subsystems are the single writers to mechanisms.**
+7. **Supervisors own policy and orchestration.**
+8. **Services own shared robot-specific computation.**
+9. **Presenters own human-facing output.**
+10. **The composition root wires everything together and owns loop order.**
+11. **Profiles hold data, not behavior.**
 
 A good rule of thumb is:
 
@@ -128,6 +129,35 @@ Example:
 A controls owner answers:
 
 > What do these sticks and buttons mean on this robot?
+
+### Capability family
+
+A **capability family** is a robot-owned, mode-neutral public façade used by both TeleOp and Auto.
+
+It should usually own:
+
+- intent-level methods and status snapshots
+- one cohesive public vocabulary
+- as little knowledge of internal class boundaries as possible
+
+It should usually **not** own:
+
+- button semantics
+- specific autonomous route sequencing
+- final actuator writes
+
+Examples:
+
+- `PhoenixCapabilities.scoring()`
+- `PhoenixCapabilities.targeting()`
+
+A capability family answers:
+
+> What shared robot vocabulary should all mode clients use?
+
+Capability families are a normal yearly robot pattern, but they are usually **not** framework lanes.
+The public nouns and the best splits vary too much by game and robot design. For the full split
+philosophy, read [`Robot Capabilities & Mode Clients`](<Robot Capabilities & Mode Clients.md>).
 
 ### Subsystem
 
@@ -479,9 +509,25 @@ public final class MyTeleOpControls {
         this.override = operator.y().memoized();
     }
 
-    public void bindMechanismControls(MySupervisor supervisor) {
-        bindings.onToggle(operator.a(), supervisor::setIntakeEnabled);
-        bindings.onRiseAndFall(operator.b(), supervisor::beginAction, supervisor::endAction);
+    public void bind(MyCapabilities capabilities) {
+        MyCapabilities.GamePiece gamePiece = capabilities.gamePiece();
+
+        bindings.onToggle(operator.a(), gamePiece::setIntakeEnabled);
+        bindings.onRiseAndFall(
+                operator.b(),
+                new Runnable() {
+                    @Override
+                    public void run() {
+                        gamePiece.setActionEnabled(true);
+                    }
+                },
+                new Runnable() {
+                    @Override
+                    public void run() {
+                        gamePiece.setActionEnabled(false);
+                    }
+                }
+        );
     }
 
     public DriveSource manualDriveSource() {
@@ -511,8 +557,45 @@ Why this matters:
 - stick mapping lives with button semantics
 - slow mode is not hidden in a low-level primitive
 - higher-level services can depend on input semantics through narrow sources instead of peeking at raw gamepads
+- mode clients can bind against shared capability families instead of raw internals
 - the composition root does not need to know specific button identities
 
+
+## Step 3.5: add one shared capability aggregate
+
+Before you wire TeleOp or Auto, decide what shared robot-facing capability families exist this year.
+
+A small example:
+
+```java
+public interface MyCapabilities {
+    GamePiece gamePiece();
+    Targeting targeting();
+
+    interface GamePiece {
+        void setIntakeEnabled(boolean enabled);
+        void setFlywheelEnabled(boolean enabled);
+        void requestSingleShot();
+        void cancelTransientActions();
+        GamePieceStatus status();
+    }
+
+    interface Targeting {
+        TargetingStatus status(LoopClock clock);
+        Task aimTask(DriveCommandSink driveSink, DriveGuidanceTask.Config cfg);
+    }
+}
+```
+
+Why this layer exists:
+
+- TeleOp and Auto should share the same vocabulary even when they do not share the same top-level code
+- the controls owner should not depend directly on supervisors/subsystems/services
+- the robot container should expose a small public façade instead of leaking all internals
+
+Do **not** assume every year will use the same family names. Choose the split that matches the
+robot's cohesive public story this season. For the full decision rules, read
+[`Robot Capabilities & Mode Clients`](<Robot Capabilities & Mode Clients.md>).
 
 ### Optional: add a robot-specific drive-assist service
 
@@ -764,6 +847,7 @@ public final class MyRobot {
     private FtcAprilTagVisionLane vision;
     private FtcOdometryAprilTagLocalizationLane localization;
 
+    private MyCapabilities capabilities;
     private MyTeleOpControls controls;
     private ScoringTargeting targeting;
     private IntakeShooterSubsystem shooter;
@@ -794,8 +878,9 @@ public final class MyRobot {
         );
         scoring = new IntakeShooterSupervisor(shooter);
         telemetry = new MyTelemetryPresenter();
+        capabilities = new MyRobotCapabilities(shooter, scoring, targeting);
 
-        controls.bindMechanismControls(scoring);
+        controls.bind(capabilities);
         driveSource = controls.manualDriveSource();
     }
 
@@ -837,6 +922,7 @@ MyRobot
   ├─ FtcMecanumDriveLane
   ├─ FtcAprilTagVisionLane
   ├─ FtcOdometryAprilTagLocalizationLane
+  ├─ MyCapabilities
   ├─ MyTeleOpControls
   ├─ MySubsystem
   ├─ MySupervisor
@@ -951,6 +1037,7 @@ Phoenix is the reference example for this split:
 - lane: `FtcAprilTagVisionLane`
 - lane: `FtcOdometryAprilTagLocalizationLane`
 - field facts: `PhoenixProfile.field.fixedAprilTagLayout`
+- capability family: `PhoenixCapabilities.scoring()` / `PhoenixCapabilities.targeting()`
 - controls owner: `PhoenixTeleOpControls`
 - subsystem: `Shooter`
 - supervisor: `ShooterSupervisor`
@@ -965,6 +1052,7 @@ That is the intended pattern for future robots too. Copy the structure, not the 
 
 ## Read next
 
+- [`Robot Capabilities & Mode Clients`](<Robot Capabilities & Mode Clients.md>)
 - [`Recommended Robot Design`](<Recommended Robot Design.md>)
 - [`Supervisors & Pipelines`](<Supervisors & Pipelines.md>)
 - [`Tasks & Macros Quickstart`](<Tasks & Macros Quickstart.md>)

@@ -175,10 +175,11 @@ Keep the layers separated:
 - **framework primitives** map signals, mix drive, estimate pose, or talk to hardware
 - **framework lanes** own stable hardware/resource graphs like mecanum drive or localization
 - **robot controls** choose sticks, buttons, slow mode, and driver/operator semantics
+- **robot capabilities** expose the shared mode-neutral API that both TeleOp and Auto should use
 - **robot policy** decides game-specific behavior like aiming, scoring, and macros
 
 That separation keeps the framework reusable year to year and keeps each robot's control scheme obvious in one place.
-For the full philosophy, see [`Framework Lanes & Robot Controls`](<../design/Framework Lanes & Robot Controls.md>).
+For the full philosophy, see [`Framework Lanes & Robot Controls`](<../design/Framework Lanes & Robot Controls.md>) and [`Robot Capabilities & Mode Clients`](<../design/Robot Capabilities & Mode Clients.md>).
 
 ---
 

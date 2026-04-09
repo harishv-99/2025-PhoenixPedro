@@ -175,6 +175,16 @@ public final class PhoenixProfile {
         public DriveControlsConfig drive = new DriveControlsConfig();
 
         /**
+         * Step size used when the operator nudges the selected flywheel velocity target.
+         *
+         * <p>
+         * This lives in the controls config because it is part of the control-layer experience, not
+         * part of the shooter hardware definition.
+         * </p>
+         */
+        public double selectedVelocityStepNative = 25;
+
+        /**
          * Creates a TeleOp controls config initialized with Phoenix defaults.
          */
         public TeleOpControlsConfig() {
@@ -188,6 +198,7 @@ public final class PhoenixProfile {
         public TeleOpControlsConfig copy() {
             TeleOpControlsConfig c = new TeleOpControlsConfig();
             c.drive = this.drive.copy();
+            c.selectedVelocityStepNative = this.selectedVelocityStepNative;
             return c;
         }
 
@@ -433,7 +444,6 @@ public final class PhoenixProfile {
 
         public double velocityMin = 700;
         public double velocityMax = 2000;
-        public double velocityIncrement = 25;
         public double velocityToleranceNative = 50;
 
         public boolean applyFlywheelVelocityPIDF = false;
@@ -492,7 +502,6 @@ public final class PhoenixProfile {
             c.directionMotorShooterWheel = this.directionMotorShooterWheel;
             c.velocityMin = this.velocityMin;
             c.velocityMax = this.velocityMax;
-            c.velocityIncrement = this.velocityIncrement;
             c.velocityToleranceNative = this.velocityToleranceNative;
             c.applyFlywheelVelocityPIDF = this.applyFlywheelVelocityPIDF;
             c.flywheelVelKp = this.flywheelVelKp;

@@ -28,6 +28,11 @@ Phoenix is designed around a few core goals:
 
    FTC SDK specifics live in the `fw.ftc` boundary layer (and `fw.tools`), not in your robot logic.
 
+   Most yearly robots will also define a robot-owned **capabilities** layer between their mode
+   clients and their internals. That concept is documented in
+   [`Robot Capabilities & Mode Clients`](<docs/design/Robot Capabilities & Mode Clients.md>). It is
+   a normal robot pattern, but usually not a framework lane.
+
 3. **Beginner-friendly, mentor-powerful**
 
    Students primarily use:

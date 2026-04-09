@@ -1,18 +1,30 @@
 # Phoenix Architecture
 
-This document explains the current Phoenix object graph and how it maps onto the framework architecture vocabulary.
+This document explains Phoenix's current object graph and how it maps onto the framework's
+architecture vocabulary.
 
 The governing rule is:
 
-> Stable hardware and resource ownership lives in framework lanes. Shared field landmarks stay separate. Operator semantics live in robot controls. Game-specific behavior lives in robot services, supervisors, and subsystems.
+> Stable hardware/resource ownership lives in framework lanes. Shared public robot vocabulary lives
+> in robot-owned capability families. Operator semantics live in TeleOp controls. Game-specific
+> reasoning lives in services, supervisors, and subsystems.
 
-That split is what keeps Phoenix reusable as a template without pushing one season's strategy into the framework.
+That split keeps Phoenix reusable as a template without pushing one season's strategy into the
+framework.
+
+Useful framework references:
+
+- [`Framework Lanes & Robot Controls`](<../fw/docs/design/Framework Lanes & Robot Controls.md>)
+- [`Robot Capabilities & Mode Clients`](<../fw/docs/design/Robot Capabilities & Mode Clients.md>)
+- [`Recommended Robot Design`](<../fw/docs/design/Recommended Robot Design.md>)
 
 ## Big-picture structure
 
 ```text
 PhoenixRobot
   PhoenixProfile
+
+  PhoenixCapabilities capabilities
 
   FtcMecanumDriveLane drive
   FtcAprilTagVisionLane vision
@@ -26,6 +38,19 @@ PhoenixRobot
   TaskRunner autoRunner
   PhoenixTelemetryPresenter telemetry
 ```
+
+The shared mode clients are:
+
+```text
+TeleOp client:
+  PhoenixTeleOpControls -> PhoenixCapabilities -> Phoenix internals
+
+Auto client:
+  autonomous OpMode / PhoenixPedroAutoPlan -> PhoenixCapabilities -> Phoenix internals
+```
+
+That is the intended parallelism. TeleOp and Auto are parallel **clients** of Phoenix, not
+different APIs layered directly onto internals.
 
 ## Role map
 
@@ -47,36 +72,95 @@ PhoenixRobot
 
 - `PhoenixProfile.field.fixedAprilTagLayout`
 
-This layout is consumed by localization and targeting. It is intentionally not hidden inside the vision lane or the localization lane.
+This layout is consumed by localization and targeting. It is intentionally not hidden inside the
+vision lane or the localization lane.
+
+### Robot-owned capability families
+
+- `PhoenixCapabilities.scoring()`
+- `PhoenixCapabilities.targeting()`
+
+These are Phoenix's shared mode-neutral public API families. TeleOp controls and Auto plans should
+use them instead of touching `Shooter`, `ShooterSupervisor`, or `ScoringTargeting` directly.
 
 ### Robot-owned objects
 
-- `PhoenixTeleOpControls`: all TeleOp input semantics, including stick mapping and scoring buttons
-- `ScoringTargeting`: selected-tag policy, auto-aim guidance, cached targeting status, and shot suggestions
+- `PhoenixTeleOpControls`: all TeleOp input semantics, including stick mapping and scoring button semantics
 - `PhoenixDriveAssistService`: robot-specific drive assists that combine manual drive, scoring state, localization, and overlays
+- `ScoringTargeting`: selected-tag policy, auto-aim guidance, cached targeting status, and shot suggestions
 - `Shooter`: mechanism subsystem and single writer to scoring-path plants
 - `ShooterSupervisor`: policy/orchestration for scoring modes and requests
 - `TaskRunner autoRunner`: autonomous task queue used when Phoenix is running Auto
 - `PhoenixTelemetryPresenter`: driver-facing presentation from snapshots
 - `PhoenixRobot`: composition root and loop owner
 
+## Why Phoenix uses capability families
+
+Phoenix now has an explicit `PhoenixCapabilities` layer because TeleOp and Auto both need the same
+robot vocabulary, but they should not depend on raw internals.
+
+Phoenix currently splits that vocabulary into two families because that is the clearest public split
+for Decode.
+
+### `scoring()`
+
+Owns public actions that change scoring-path state:
+
+- intake enable
+- flywheel enable
+- continuous shooting enable
+- eject enable
+- single-shot requests
+- selected-velocity adjustments
+- scoring status
+
+### `targeting()`
+
+Owns public targeting/aiming behavior and read-side status:
+
+- selected target / aim status snapshots
+- autonomous aim task creation
+
+### Why this split makes sense for Decode
+
+`scoring()` is command-heavy and mutates mechanism state.
+
+`targeting()` is mostly about selection, aim readiness, and aim execution. Auto and telemetry often
+need to read targeting status without also caring about intake/eject/flywheel requests.
+
+That makes the split cohesive without forcing callers to depend on one giant flat robot API.
+
+### What future robots should copy
+
+Copy the **pattern**, not these exact family names.
+
+Another season may use families like:
+
+- `gamePiece()`
+- `endgame()`
+- `awareness()`
+- `drive()`
+
+The rule is to split by cohesive public vocabulary, not by this year's internal class names.
+
 ## Dependency graph
 
 ```text
 PhoenixProfile
-  ├─ drive       -> FtcMecanumDriveLane.Config
-  ├─ vision      -> FtcAprilTagVisionLane.Config
+  ├─ drive        -> FtcMecanumDriveLane.Config
+  ├─ vision       -> FtcAprilTagVisionLane.Config
   ├─ localization -> FtcOdometryAprilTagLocalizationLane.Config
-  ├─ field       -> TagLayout
-  ├─ controls    -> PhoenixTeleOpControls tuning
-  ├─ driveAssist -> PhoenixDriveAssistService tuning
-  ├─ shooter     -> Shooter config
-  └─ autoAim     -> ScoringTargeting / scoring policy config
+  ├─ field        -> TagLayout
+  ├─ controls     -> PhoenixTeleOpControls tuning
+  ├─ driveAssist  -> PhoenixDriveAssistService tuning
+  ├─ shooter      -> Shooter config
+  └─ autoAim      -> ScoringTargeting / scoring policy config
 
 PhoenixRobot
   ├─ drive lane
   ├─ vision lane
   ├─ localization lane
+  ├─ capabilities façade
   ├─ controls owner
   ├─ drive-assist service
   ├─ targeting service
@@ -87,7 +171,8 @@ PhoenixRobot
 
 ## Why the vision/localization split matters
 
-Older FTC code often lumps camera ownership and localization together. Phoenix now avoids that because the camera rig is not only for localization.
+Older FTC code often lumps camera ownership and localization together. Phoenix avoids that because
+the camera rig is not only for localization.
 
 ### `FtcAprilTagVisionLane` owns
 
@@ -114,31 +199,7 @@ Older FTC code often lumps camera ownership and localization together. Phoenix n
 
 That dependency structure is deliberate and matches the role vocabulary in the framework docs.
 
-
-## Why `shootBraceEnabled()` no longer lives in `PhoenixRobot`
-
-Earlier revisions left a `shootBraceEnabled()` helper and the underlying hysteresis latch inside the
-robot container. That was a boundary mistake.
-
-`shootBrace` depends on:
-
-- driver translation intent from the controls owner
-- scoring state from the scoring supervisor
-- localization-backed pose lock from the drive-guidance layer
-
-That makes it a **robot-specific drive-assist policy**, not a composition-root concern.
-
-Phoenix now assigns that responsibility to `PhoenixDriveAssistService`, which owns:
-
-- the shoot-brace latch and thresholds
-- the pose-lock overlay used while actively shooting
-- the final TeleOp drive source built from manual drive + brace + auto aim
-- the read-only drive-assist status snapshot used by telemetry
-
-That split matters because the composition root should wire objects together, not quietly hold onto
-small state machines that implement match behavior.
-
-## TeleOp controls live in one place now
+## TeleOp controls live in one place
 
 Phoenix no longer spreads drive stick setup in one class and scoring bindings in another.
 
@@ -149,46 +210,42 @@ Phoenix no longer spreads drive stick setup in one class and scoring bindings in
 - slow mode
 - auto-aim enable source
 - aim override source
-- intake binding
-- flywheel binding
-- shoot/eject hold semantics
-- selected-velocity up/down bindings
+- intake/flywheel/shoot/eject button semantics
+- selected-velocity nudge semantics
 
-`PhoenixDriveAssistService` then consumes those control-layer sources without taking ownership of the button layout itself. That keeps input semantics and drive-assist policy separate while still letting them collaborate cleanly.
+The important boundary change is that TeleOp binds against `PhoenixCapabilities`, not against raw
+`Shooter` or `ShooterSupervisor` objects.
 
-## Recommended profile shape
-
-```text
-PhoenixProfile
-  drive         -> FtcMecanumDriveLane.Config
-  vision        -> FtcAprilTagVisionLane.Config
-  localization  -> FtcOdometryAprilTagLocalizationLane.Config
-  field         -> fixed AprilTag layout
-  controls      -> TeleOp control tuning
-  driveAssist   -> shoot-brace / drive-assist tuning
-  shooter       -> mechanism config
-  autoAim       -> scoring target catalog + shot model + aim tuning
-  calibration   -> human acknowledgements
-```
-
-This profile shape is the template future robots should copy.
+`PhoenixDriveAssistService` then consumes those control-layer sources without taking ownership of the
+button layout itself. That keeps input semantics and drive-assist policy separate while still
+letting them collaborate cleanly.
 
 ## Autonomous structure
 
-Phoenix Auto now reuses the same targeting, shooter, and telemetry stack as TeleOp, but leaves route ownership outside the robot container. `PhoenixRobot.initAuto()` intentionally does **not** create a drivetrain lane. Instead, Auto code can plug in an external follower through the framework seams:
+Phoenix Auto reuses the same targeting, shooter, and telemetry stack as TeleOp, but leaves route
+ownership outside the robot container.
 
-- `DriveCommandSink` when Phoenix only needs to command normalized drive signals (for example, the final aim turn)
-- `RouteFollower<RouteT>` / `RouteTask<RouteT>` when Phoenix wants to sequence an external route object alongside waits, shots, and other tasks
+`PhoenixRobot.initAuto()` now does three things:
 
-The checked-in Pedro example is `autonomous/pedro/PhoenixPedroAutoTestOpMode.java`. It uses:
+1. build the shared runtime used by Auto
+2. create `PhoenixCapabilities`
+3. create the shared `TaskRunner autoRunner`
 
-- `fw/integrations/pedro/PedroPathingDriveAdapter.java` to wrap a Pedro `Follower` as both a `DriveCommandSink` and a `RouteFollower<PathChain>`
-- one direct robot-side call to `Constants.createFollower(hardwareMap)` so follower construction stays compile-time checked and project-owned
-- `RouteTasks.follow(...)` for outbound and return path segments
-- a mid-path Pedro callback to spin up the flywheel and refresh the target-derived shot velocity
-- a separate Phoenix aim task before requesting the shot
+It intentionally does **not**:
 
-That split matches the framework principles: the reusable adapter stays in the framework integration folder, the project-specific Pedro setup stays in the robot-side OpMode, and the robot behavior still reads like normal Phoenix tasks.
+- create a drivetrain lane for a specific route library
+- choose a specific autonomous routine
+- expose a pile of robot-container task helpers for one season's strategy
+
+The checked-in Pedro example now shows the intended pattern:
+
+- `PhoenixPedroAutoTestOpMode` owns Pedro follower construction and path creation
+- `PhoenixPedroAutoPlan` is the auto-side mode client that composes tasks over `PhoenixCapabilities`
+- `PhoenixRobot` owns the shared runtime and task runner
+- `PedroPathingDriveAdapter` remains the framework bridge between Pedro and Phoenix seams
+
+That split matches the framework principles: reusable bridges stay in the framework, project-specific
+route setup stays in robot code, and both modes share the same capability vocabulary.
 
 ## Loop order
 
@@ -209,8 +266,9 @@ Phoenix keeps loop order explicit inside `PhoenixRobot.updateTeleOp()`:
 That order reflects ownership:
 
 - lanes produce stable shared state first
-- robot services and controls consume that state
+- controls update operator intent
 - supervisors translate intent into requests
+- services reshape drive behavior
 - subsystems write hardware
 - presenters explain the result
 
@@ -225,21 +283,42 @@ Phoenix keeps `updateAuto()` just as explicit:
 6. telemetryPresenter.emitTeleOp(...with Auto snapshots...)
 ```
 
-Auto uses the same scoring and targeting services, but swaps TeleOp drive-assist policy for the queued autonomous task runner.
+Auto uses the same scoring and targeting services, but swaps TeleOp drive-assist policy for the
+queued autonomous task runner.
+
+## Recommended profile shape
+
+```text
+PhoenixProfile
+  drive         -> FtcMecanumDriveLane.Config
+  vision        -> FtcAprilTagVisionLane.Config
+  localization  -> FtcOdometryAprilTagLocalizationLane.Config
+  field         -> fixed AprilTag layout
+  controls      -> TeleOp control tuning
+  driveAssist   -> shoot-brace / drive-assist tuning
+  shooter       -> mechanism config
+  autoAim       -> scoring target catalog + shot model + aim tuning
+  calibration   -> human acknowledgements
+```
+
+This profile shape is the template future robots should copy.
 
 ## Anti-patterns this architecture avoids
 
-### Putting button policy into framework primitives
-
-Phoenix intentionally avoids helpers that bake in a specific gamepad button at the primitive layer.
-
-### Treating localization as the owner of every camera concern
-
-The camera rig belongs to the vision lane because other robot systems may use it too.
-
 ### Letting the robot container become a control script
 
-`PhoenixRobot` is allowed to wire objects together and choose loop order. It should not quietly absorb detailed scoring, targeting, or drive-assist policy. Small state machines like shoot-brace latches belong in a service or supervisor that clearly owns that behavior.
+`PhoenixRobot` is allowed to wire objects together, expose `PhoenixCapabilities`, and choose loop
+order. It should not quietly absorb detailed scoring, targeting, or route-specific strategy.
+
+### Letting TeleOp or Auto touch raw internals directly
+
+`PhoenixTeleOpControls` and auto plans should use `PhoenixCapabilities`, not `Shooter`,
+`ShooterSupervisor`, or `ScoringTargeting`.
+
+### Treating capability families like framework lanes
+
+The capability pattern is expected every year, but the family names and splits belong to the robot,
+not to the framework.
 
 ## If you are building a future robot
 
@@ -251,16 +330,18 @@ A good starting point is:
 MyRobot
   MyRobotProfile
 
-  FtcMecanumDriveLane drive
-  FtcAprilTagVisionLane vision
-  FtcOdometryAprilTagLocalizationLane localization
+  framework lanes
+  shared field facts
 
-  MyTeleOpControls controls
-  MyDriveAssistService driveAssists
-  MyTargetingService targeting
-  MySubsystem subsystem
-  MySupervisor supervisor
-  MyTelemetryPresenter telemetry
+  MyCapabilities
+  MyTeleOpControls
+  MyAutoPlan / MyAutoRoutine
+
+  MyDriveAssistService
+  MyTargetingService
+  MySubsystem
+  MySupervisor
+  MyTelemetryPresenter
 ```
 
-Then read the framework doc [`Framework Lanes & Robot Controls`](<../fw/docs/design/Framework Lanes & Robot Controls.md>) for the full glossary and from-scratch build steps.
+Then read the framework docs for the full split philosophy and role glossary.

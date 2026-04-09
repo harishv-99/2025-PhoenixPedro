@@ -9,10 +9,8 @@ import java.util.Objects;
 
 import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.time.LoopClock;
-import edu.ftcphoenix.fw.drive.DriveCommandSink;
 import edu.ftcphoenix.fw.drive.DriveSignal;
 import edu.ftcphoenix.fw.drive.DriveSource;
-import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceTask;
 import edu.ftcphoenix.fw.ftc.drive.FtcMecanumDriveLane;
 import edu.ftcphoenix.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane;
 import edu.ftcphoenix.fw.ftc.vision.FtcAprilTagVisionLane;
@@ -20,7 +18,6 @@ import edu.ftcphoenix.fw.input.Gamepads;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
 import edu.ftcphoenix.fw.task.Task;
 import edu.ftcphoenix.fw.task.TaskRunner;
-import edu.ftcphoenix.fw.task.Tasks;
 
 /**
  * Central robot container / composition root for Phoenix.
@@ -32,6 +29,7 @@ import edu.ftcphoenix.fw.task.Tasks;
  *   <li>{@link FtcMecanumDriveLane} owns stable drive hardware/lifecycle concerns.</li>
  *   <li>{@link FtcAprilTagVisionLane} owns the stable AprilTag camera rig and vision resource lifecycle.</li>
  *   <li>{@link FtcOdometryAprilTagLocalizationLane} owns stable localization strategy and pose production.</li>
+ *   <li>{@link PhoenixCapabilities} exposes Phoenix's shared mode-neutral capability families.</li>
  *   <li>{@link PhoenixTeleOpControls} owns all TeleOp input semantics, including drive controls.</li>
  *   <li>{@link ScoringTargeting} owns target selection, aim status, and shot suggestions.</li>
  *   <li>{@link PhoenixDriveAssistService} owns robot-specific drive-assist policy layered on top of manual drive.</li>
@@ -49,6 +47,7 @@ public final class PhoenixRobot {
     private final PhoenixProfile profile;
     private final PhoenixTelemetryPresenter telemetryPresenter;
 
+    private PhoenixCapabilities capabilities;
     private FtcMecanumDriveLane drive;
     private FtcAprilTagVisionLane vision;
     private FtcOdometryAprilTagLocalizationLane localization;
@@ -111,9 +110,9 @@ public final class PhoenixRobot {
      * Initializes the full Phoenix TeleOp runtime.
      *
      * <p>
-     * This method wires the framework lanes, robot-specific controls, scoring services, drive
-     * overlays, and driver-facing telemetry help text. Call it once while the OpMode is in INIT
-     * before any TeleOp updates begin.
+     * This method wires the framework lanes, shared Phoenix capability families, robot-specific
+     * controls, scoring services, drive overlays, and driver-facing telemetry help text. Call it
+     * once while the OpMode is in INIT before any TeleOp updates begin.
      * </p>
      */
     public void initTeleOp() {
@@ -123,12 +122,9 @@ public final class PhoenixRobot {
                 teleOpControls.autoAimEnabledSource(),
                 teleOpControls.aimOverrideSource()
         );
+        capabilities = createCapabilities();
 
-        teleOpControls.bindScoringControls(
-                shooter,
-                shooterSupervisor,
-                this::captureSuggestedShotVelocity
-        );
+        teleOpControls.bind(capabilities);
 
         driveAssists = new PhoenixDriveAssistService(
                 profile.driveAssist,
@@ -158,12 +154,18 @@ public final class PhoenixRobot {
     /**
      * Initializes the Phoenix autonomous runtime with explicit auto-aim enable / override sources.
      *
+     * <p>
+     * This creates the same shared runtime and {@link PhoenixCapabilities} surface used in TeleOp,
+     * but leaves route ownership and autonomous task composition outside the robot container.
+     * </p>
+     *
      * @param autoAimEnabledSource source that controls whether target selection + aim gating are active
      * @param aimOverrideSource source that bypasses aim-readiness gating when true
      */
     public void initAuto(BooleanSource autoAimEnabledSource,
                          BooleanSource aimOverrideSource) {
         initSharedRuntime(autoAimEnabledSource, aimOverrideSource);
+        capabilities = createCapabilities();
         autoRunner = new TaskRunner();
         telemetry.addLine("Phoenix auto ready");
         telemetry.update();
@@ -197,6 +199,15 @@ public final class PhoenixRobot {
                 profile.shooter,
                 scoringTargeting.aimOkToShootSource(),
                 scoringTargeting.aimOverrideSource()
+        );
+    }
+
+    private PhoenixCapabilities createCapabilities() {
+        return new PhoenixRobotCapabilities(
+                clock,
+                requireShooter(),
+                requireShooterSupervisor(),
+                requireScoringTargeting()
         );
     }
 
@@ -353,78 +364,12 @@ public final class PhoenixRobot {
     }
 
     /**
-     * Captures a fresh target-based flywheel velocity suggestion into the shooter subsystem.
-     */
-    public void captureSuggestedShotVelocity() {
-        Shooter liveShooter = requireShooter();
-        ScoringTargeting targeting = requireScoringTargeting();
-        liveShooter.setSelectedVelocity(
-                targeting.suggestedVelocityNative(clock, liveShooter.selectedVelocity())
-        );
-    }
-
-    /**
-     * Requests the scoring supervisor to enable or disable the flywheel.
+     * Returns Phoenix's shared mode-neutral capability families.
      *
-     * @param enabled {@code true} to spin up, {@code false} to spin down and clear pending shots
+     * @return initialized capability-family façade for the active mode
      */
-    public void setFlywheelEnabled(boolean enabled) {
-        requireShooterSupervisor().setFlywheelEnabled(enabled);
-    }
-
-    /**
-     * Requests one autonomous shot through the scoring supervisor's intent API.
-     */
-    public void requestSingleShot() {
-        requireShooterSupervisor().requestSingleShot();
-    }
-
-    /**
-     * Returns whether Phoenix still has a shot request in flight.
-     *
-     * @return {@code true} while a requested shot is still pending or actively feeding
-     */
-    public boolean hasPendingShots() {
-        return requireShooterSupervisor().hasPendingShots();
-    }
-
-    /**
-     * Builds an autonomous aim task using Phoenix's scoring-target selection logic.
-     *
-     * @param driveSink sink used to apply the omega correction command
-     * @param cfg task-level aim tolerances/timeouts; when {@code null}, defaults are used
-     * @return task that turns the robot onto the selected Phoenix scoring target
-     */
-    public Task aimTask(DriveCommandSink driveSink,
-                        DriveGuidanceTask.Config cfg) {
-        return requireScoringTargeting().aimTask(driveSink, cfg);
-    }
-
-    /**
-     * Creates a task that waits until Phoenix has a selected scoring target.
-     *
-     * @param timeoutSec timeout in seconds before the wait task reports {@code TIMEOUT}
-     * @return wait task for target selection
-     */
-    public Task waitForTargetSelection(double timeoutSec) {
-        final ScoringTargeting targeting = requireScoringTargeting();
-        return Tasks.waitUntil(new BooleanSource() {
-            @Override
-            public boolean getAsBoolean(LoopClock clock) {
-                return targeting.status(clock).selection.hasSelection;
-            }
-        }, timeoutSec);
-    }
-
-    /**
-     * Creates a task that waits until all pending shot requests have completed.
-     *
-     * @param timeoutSec timeout in seconds before the wait task reports {@code TIMEOUT}
-     * @return wait task for shot completion
-     */
-    public Task waitForShotCompletion(double timeoutSec) {
-        final ShooterSupervisor supervisor = requireShooterSupervisor();
-        return Tasks.waitUntil(() -> !supervisor.hasPendingShots(), timeoutSec);
+    public PhoenixCapabilities capabilities() {
+        return requireCapabilities();
     }
 
     /**
@@ -467,6 +412,7 @@ public final class PhoenixRobot {
     }
 
     private void stopSharedRuntime() {
+        capabilities = null;
         localization = null;
         shooterSupervisor = null;
         if (vision != null) {
@@ -477,6 +423,13 @@ public final class PhoenixRobot {
             scoringTargeting.reset();
             scoringTargeting = null;
         }
+    }
+
+    private PhoenixCapabilities requireCapabilities() {
+        if (capabilities == null) {
+            throw new IllegalStateException("Phoenix capabilities are not initialized");
+        }
+        return capabilities;
     }
 
     private Shooter requireShooter() {

@@ -10,6 +10,9 @@ For larger robots, use this ownership pattern:
   - example: `FtcOdometryAprilTagLocalizationLane`
 - **shared field facts** for layouts and landmarks used by several systems
   - example: `TagLayout` and `FtcGameTagLayout.currentGameFieldFixed()`
+- **robot-owned capability families** for the shared TeleOp/Auto vocabulary
+  - example: `MyCapabilities.gamePiece()`
+  - example: `MyCapabilities.targeting()`
 - **robot-owned controls** for all TeleOp input semantics
   - driver sticks
   - slow mode
@@ -68,7 +71,8 @@ Think of a robot as four layers:
    - TeleOp bindings
    - Auto routines / route tasks
 
-2. **Intent layer**
+2. **Intent / capabilities layer**
+   - robot-owned capability families such as `gamePiece()` or `targeting()`
    - small public methods like `setTargetHeightIn(...)`, `setIntakeEnabled(...)`,
      `requestSingleShot()`
    - small status snapshots like `Lift.Status`, `ShooterSupervisor.Status`
@@ -261,11 +265,49 @@ methods and read the same status snapshots.
 
 That is the main recommended reuse boundary.
 
+### Capability families
+
+For larger robots, expose that shared vocabulary through one robot-owned capabilities aggregate with
+a few cohesive families.
+
+Example shape:
+
+```java
+public interface MyCapabilities {
+    GamePiece gamePiece();
+    Targeting targeting();
+
+    interface GamePiece {
+        void setIntakeEnabled(boolean enabled);
+        void requestSingleShot();
+        void cancelTransientActions();
+        GamePieceStatus status();
+    }
+
+    interface Targeting {
+        TargetingStatus status(LoopClock clock);
+        Task aimTask(DriveCommandSink driveSink, DriveGuidanceTask.Config cfg);
+    }
+}
+```
+
+The split philosophy is:
+
+- group one coherent public story per family
+- keep TeleOp and Auto on the same vocabulary
+- do not mirror every internal class mechanically
+- do not mirror TeleOp button semantics
+- keep the common path easy instead of over-splitting for SOLID mechanically
+
+Those families are a **robot-owned** pattern, not usually a framework lane. The exact names should
+change when the robot's public story changes from season to season. For the full decision rules, see
+[`Robot Capabilities & Mode Clients`](<Robot Capabilities & Mode Clients.md>).
+
 ---
 
 ## The common API shape
 
-For most shared mechanisms, the public API should look something like this:
+For most shared mechanisms, one capability family should expose a public API that looks something like this:
 
 ```java
 public interface LiftApi {

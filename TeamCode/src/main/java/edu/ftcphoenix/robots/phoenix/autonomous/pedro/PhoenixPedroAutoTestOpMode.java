@@ -1,7 +1,5 @@
 package edu.ftcphoenix.robots.phoenix.autonomous.pedro;
 
-import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
-
 import com.pedropathing.follower.Follower;
 import com.pedropathing.geometry.BezierLine;
 import com.pedropathing.geometry.Pose;
@@ -10,14 +8,12 @@ import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 
+import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
+
 import java.util.Objects;
 
-import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceTask;
-import edu.ftcphoenix.fw.drive.route.RouteTask;
-import edu.ftcphoenix.fw.drive.route.RouteTasks;
 import edu.ftcphoenix.fw.integrations.pedro.PedroPathingDriveAdapter;
-import edu.ftcphoenix.fw.task.Task;
-import edu.ftcphoenix.fw.task.Tasks;
+import edu.ftcphoenix.robots.phoenix.PhoenixCapabilities;
 import edu.ftcphoenix.robots.phoenix.PhoenixRobot;
 
 /**
@@ -32,7 +28,7 @@ import edu.ftcphoenix.robots.phoenix.PhoenixRobot;
  *   <li>Run a mid-path callback that captures the current Phoenix shot velocity suggestion and
  *       spins up the flywheel while the robot is still moving.</li>
  *   <li>Wait briefly for a selected scoring target, then execute Phoenix aim logic.</li>
- *   <li>Shoot one ball through the Phoenix scoring supervisor.</li>
+ *   <li>Shoot one ball through the shared Phoenix scoring capability family.</li>
  *   <li>Drive back to the starting pose.</li>
  * </ol>
  *
@@ -54,6 +50,8 @@ public final class PhoenixPedroAutoTestOpMode extends OpMode {
     private static final Pose FORWARD_POSE = new Pose(TEST_DISTANCE_IN, 0.0, 0.0);
 
     private PhoenixRobot robot;
+    private PhoenixCapabilities capabilities;
+    private PhoenixPedroAutoPlan autoPlan;
     private Follower follower;
     private PedroPathingDriveAdapter driveAdapter;
     private PathChain outboundPath;
@@ -67,9 +65,11 @@ public final class PhoenixPedroAutoTestOpMode extends OpMode {
 
         try {
             robot.initAuto();
+            capabilities = robot.capabilities();
 
             follower = createPedroFollower(hardwareMap);
             driveAdapter = new PedroPathingDriveAdapter(follower);
+            autoPlan = new PhoenixPedroAutoPlan(capabilities, driveAdapter);
             follower.setStartingPose(START_POSE);
             follower.update();
 
@@ -136,8 +136,9 @@ public final class PhoenixPedroAutoTestOpMode extends OpMode {
                 .addParametricCallback(0.50, new Runnable() {
                     @Override
                     public void run() {
-                        robot.captureSuggestedShotVelocity();
-                        robot.setFlywheelEnabled(true);
+                        PhoenixCapabilities.Scoring scoring = capabilities.scoring();
+                        scoring.captureSuggestedShotVelocity();
+                        scoring.setFlywheelEnabled(true);
                     }
                 })
                 .build();
@@ -149,43 +150,7 @@ public final class PhoenixPedroAutoTestOpMode extends OpMode {
     }
 
     private void queueAutoRoutine() {
-        RouteTask.Config routeCfg = new RouteTask.Config();
-        routeCfg.timeoutSec = 4.0;
-
-        DriveGuidanceTask.Config aimCfg = new DriveGuidanceTask.Config();
-        aimCfg.headingTolRad = Math.toRadians(2.0);
-        aimCfg.timeoutSec = 1.75;
-        aimCfg.maxNoGuidanceSec = 0.75;
-
-        Task aimAndMaybeShoot = Tasks.branchOnOutcome(
-                robot.waitForTargetSelection(0.75),
-                Tasks.sequence(
-                        Tasks.runOnce(robot::captureSuggestedShotVelocity),
-                        Tasks.branchOnOutcome(
-                                robot.aimTask(driveAdapter, aimCfg),
-                                Tasks.sequence(
-                                        Tasks.runOnce(robot::requestSingleShot),
-                                        robot.waitForShotCompletion(2.5)
-                                ),
-                                Tasks.noop()
-                        )
-                ),
-                Tasks.noop()
-        );
-
-        Task auto = Tasks.sequence(
-                RouteTasks.follow("pedro.outbound12in", driveAdapter, outboundPath, routeCfg),
-                aimAndMaybeShoot,
-                RouteTasks.follow("pedro.returnToStart", driveAdapter, returnPath, routeCfg),
-                Tasks.runOnce(new Runnable() {
-                    @Override
-                    public void run() {
-                        robot.setFlywheelEnabled(false);
-                    }
-                })
-        );
-
-        robot.enqueueAuto(auto);
+        robot.enqueueAuto(autoPlan.build(outboundPath, returnPath));
     }
 
     private static Follower createPedroFollower(HardwareMap hardwareMap) {

@@ -7,6 +7,7 @@ The current framework split is:
 - `FtcMecanumDriveLane` owns mecanum wiring, brake behavior, and drivebase lifecycle.
 - `FtcAprilTagVisionLane` owns webcam identity, camera mount, and AprilTag portal cleanup.
 - `FtcOdometryAprilTagLocalizationLane` owns Pinpoint, AprilTag-only field solving, fused estimator selection, and per-loop pose production.
+- `PhoenixCapabilities` owns the shared mode-neutral robot vocabulary used by TeleOp and Auto.
 - `PhoenixTeleOpControls` owns all TeleOp input semantics, including the drive sticks and slow mode.
 - `PhoenixRobot` now composes framework lanes and robot policy instead of rebuilding those owners inline.
 

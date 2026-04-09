@@ -34,9 +34,10 @@ Phoenix's long-lived design reference.
 
 1. [`docs/design/README.md`](<docs/design/README.md>)
 2. [`docs/design/Framework Lanes & Robot Controls.md`](<docs/design/Framework Lanes & Robot Controls.md>)
-3. [`docs/design/Recommended Robot Design.md`](<docs/design/Recommended Robot Design.md>)
-4. [`docs/design/Supervisors & Pipelines.md`](<docs/design/Supervisors & Pipelines.md>)
-5. [`docs/design/Output Tasks & Queues.md`](<docs/design/Output Tasks & Queues.md>)
+3. [`docs/design/Robot Capabilities & Mode Clients.md`](<docs/design/Robot Capabilities & Mode Clients.md>)
+4. [`docs/design/Recommended Robot Design.md`](<docs/design/Recommended Robot Design.md>)
+5. [`docs/design/Supervisors & Pipelines.md`](<docs/design/Supervisors & Pipelines.md>)
+6. [`docs/design/Output Tasks & Queues.md`](<docs/design/Output Tasks & Queues.md>)
 
 ### I am tuning sensors, localization, or calibration
 
