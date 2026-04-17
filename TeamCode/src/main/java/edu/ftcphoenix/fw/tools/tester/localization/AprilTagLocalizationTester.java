@@ -1,11 +1,14 @@
 package edu.ftcphoenix.fw.tools.tester.localization;
 
+import com.qualcomm.robotcore.hardware.HardwareDevice;
+
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
 import org.firstinspires.ftc.vision.apriltag.AprilTagLibrary;
 
 import java.util.Collections;
 import java.util.Set;
+import java.util.function.Function;
 
 import edu.ftcphoenix.fw.core.geometry.Pose2d;
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
@@ -14,7 +17,10 @@ import edu.ftcphoenix.fw.field.TagLayout;
 import edu.ftcphoenix.fw.ftc.FtcGameTagLayout;
 import edu.ftcphoenix.fw.ftc.FtcTagLayoutDebug;
 import edu.ftcphoenix.fw.ftc.FtcTelemetryDebugSink;
-import edu.ftcphoenix.fw.ftc.FtcVision;
+import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLane;
+import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLaneFactories;
+import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLaneFactory;
+import edu.ftcphoenix.fw.ftc.vision.FtcWebcamAprilTagVisionLane;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
 import edu.ftcphoenix.fw.localization.apriltag.TagOnlyPoseEstimator;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
@@ -49,8 +55,9 @@ import edu.ftcphoenix.fw.tools.tester.ui.HardwareNamePicker;
  *
  * <h2>Selection</h2>
  * <p>
- * If constructed without a camera name (or if the preferred camera cannot be initialized), the
- * tester shows a camera picker listing configured webcams and lets you choose one.
+ * If constructed without a preferred hardware name (or if the preferred device cannot be
+ * initialized), the tester shows a picker for the configured vision-device type and lets you
+ * choose one.
  * </p>
  *
  * <h2>Controls (gamepad1)</h2>
@@ -79,10 +86,12 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
     private static final int DEFAULT_TAG_ID = 1;
 
     private final String preferredCameraName;
-    private final CameraMountConfig cameraMount;
+    private final Class<? extends HardwareDevice> cameraDeviceType;
+    private final String cameraPickerTitle;
+    private final Function<String, AprilTagVisionLaneFactory> cameraLaneFactoryBuilder;
+    private CameraMountConfig cameraMount;
     private final double maxAgeSec;
     private final TagLayout layoutOverride;
-    private final AprilTagLibrary tagLibraryOverride;
     private final TagOnlyPoseEstimator.Config poseEstimatorConfigOverride;
 
     private TagLayout layout;
@@ -92,7 +101,9 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
 
     private boolean visionReady = false;
     private String visionInitError = null;
+    private String activeVisionDescription = null;
 
+    private AprilTagVisionLane visionLane;
     private AprilTagSensor tagSensor;
     private TagSelectionSource selection;
     private TagOnlyPoseEstimator poseEstimator;
@@ -108,7 +119,7 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
      * <p>A camera picker will be shown so you can choose a configured webcam.</p>
      */
     public AprilTagLocalizationTester() {
-        this(null, null, null, null, null, DEFAULT_MAX_AGE_SEC);
+        this(null, null, null, null, null, null, DEFAULT_MAX_AGE_SEC);
     }
 
     /**
@@ -159,10 +170,47 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
                                       AprilTagLibrary tagLibraryOverride,
                                       TagOnlyPoseEstimator.Config poseEstimatorConfigOverride,
                                       double maxAgeSec) {
-        this.preferredCameraName = cameraName;
-        this.cameraMount = (cameraMount != null) ? cameraMount : CameraMountConfig.identity();
+        this(cameraName,
+                WebcamName.class,
+                "Select Camera",
+                defaultWebcamLaneFactoryBuilder(cameraMount, tagLibraryOverride),
+                layoutOverride,
+                poseEstimatorConfigOverride,
+                maxAgeSec);
+    }
+
+    /**
+     * Creates a backend-neutral AprilTag localization tester.
+     *
+     * <p>The caller chooses the hardware type to enumerate and provides a builder that opens the
+     * concrete {@link AprilTagVisionLane} once the operator picks a device name. The tester then
+     * consumes only the shared lane seam and the camera mount reported by that lane.</p>
+     *
+     * @param preferredCameraName         preferred hardware-map name for the active vision device (nullable)
+     * @param cameraDeviceType            FTC hardware type to enumerate in the picker
+     * @param cameraPickerTitle           telemetry title for the picker screen
+     * @param cameraLaneFactoryBuilder    builder that turns a chosen hardware name into a lane opener
+     * @param layoutOverride              optional fixed-tag layout override (nullable)
+     * @param poseEstimatorConfigOverride optional AprilTag-localizer config override
+     * @param maxAgeSec                   fallback maximum allowed tag frame age in seconds
+     */
+    public AprilTagLocalizationTester(String preferredCameraName,
+                                      Class<? extends HardwareDevice> cameraDeviceType,
+                                      String cameraPickerTitle,
+                                      Function<String, AprilTagVisionLaneFactory> cameraLaneFactoryBuilder,
+                                      TagLayout layoutOverride,
+                                      TagOnlyPoseEstimator.Config poseEstimatorConfigOverride,
+                                      double maxAgeSec) {
+        this.preferredCameraName = preferredCameraName;
+        this.cameraDeviceType = cameraDeviceType != null ? cameraDeviceType : WebcamName.class;
+        this.cameraPickerTitle = (cameraPickerTitle == null || cameraPickerTitle.trim().isEmpty())
+                ? "Select Vision Device"
+                : cameraPickerTitle;
+        this.cameraLaneFactoryBuilder = cameraLaneFactoryBuilder != null
+                ? cameraLaneFactoryBuilder
+                : defaultWebcamLaneFactoryBuilder(CameraMountConfig.identity(), null);
+        this.cameraMount = CameraMountConfig.identity();
         this.layoutOverride = layoutOverride;
-        this.tagLibraryOverride = tagLibraryOverride;
         this.poseEstimatorConfigOverride = poseEstimatorConfigOverride != null
                 ? poseEstimatorConfigOverride.copy()
                 : null;
@@ -170,6 +218,18 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
             throw new IllegalArgumentException("maxAgeSec must be non-negative");
         }
         this.maxAgeSec = maxAgeSec;
+    }
+
+    private static Function<String, AprilTagVisionLaneFactory> defaultWebcamLaneFactoryBuilder(CameraMountConfig cameraMount,
+                                                                                               AprilTagLibrary tagLibraryOverride) {
+        final CameraMountConfig mount = (cameraMount != null) ? cameraMount : CameraMountConfig.identity();
+        return cameraName -> {
+            FtcWebcamAprilTagVisionLane.Config cfg = FtcWebcamAprilTagVisionLane.Config.defaults();
+            cfg.webcamName = cameraName;
+            cfg.cameraMount = mount;
+            cfg.tagLibrary = tagLibraryOverride;
+            return AprilTagVisionLaneFactories.webcam(cfg);
+        };
     }
 
     /**
@@ -195,8 +255,8 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
         // Camera selection
         cameraPicker = new HardwareNamePicker(
                 ctx.hw,
-                WebcamName.class,
-                "Select Camera",
+                cameraDeviceType,
+                cameraPickerTitle,
                 "Dpad: highlight | A: choose | B: refresh"
         );
         cameraPicker.refresh();
@@ -222,11 +282,9 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
                 }
         );
 
-        // B: refresh camera list (picker) OR clear samples (run).
+        // B: clear samples once the vision pipeline is already running.
         bindings.onRise(gamepads.p1().b(), () -> {
-            if (!visionReady) {
-                cameraPicker.refresh();
-            } else {
+            if (visionReady) {
                 samples.clear();
             }
         });
@@ -311,19 +369,22 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
         visionReady = false;
         visionInitError = null;
 
-        // IMPORTANT: Release camera resources before re-entering the picker.
-        if (tagSensor != null) {
-            tagSensor.close();
+        if (visionLane != null) {
+            visionLane.close();
         }
+        visionLane = null;
         tagSensor = null;
         selection = null;
         poseEstimator = null;
+        activeVisionDescription = null;
 
         samples.clear();
 
         // Reset picker UI and highlight the last camera for convenience.
-        cameraPicker.clearChoice();
-        cameraPicker.refresh();
+        if (cameraPicker != null) {
+            cameraPicker.clearChoice();
+            cameraPicker.refresh();
+        }
         if (selectedCameraName != null && !selectedCameraName.isEmpty()) {
             cameraPicker.setPreferredName(selectedCameraName);
         }
@@ -333,11 +394,12 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
 
     @Override
     protected void onStop() {
-        // Ensure we release the VisionPortal when leaving the tester.
-        if (tagSensor != null) {
-            tagSensor.close();
-            tagSensor = null;
+        if (visionLane != null) {
+            visionLane.close();
+            visionLane = null;
         }
+        tagSensor = null;
+        activeVisionDescription = null;
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -351,18 +413,30 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
         visionInitError = null;
 
         try {
-            FtcVision.Config cfg = FtcVision.Config.defaults()
-                    .withCameraMount(cameraMount);
-            if (tagLibraryOverride != null) {
-                cfg.withTagLibrary(tagLibraryOverride);
+            AprilTagVisionLaneFactory factory = cameraLaneFactoryBuilder.apply(selectedCameraName);
+            if (factory == null) {
+                throw new IllegalStateException("cameraLaneFactoryBuilder returned null for " + selectedCameraName);
             }
-            tagSensor = FtcVision.aprilTags(ctx.hw, selectedCameraName, cfg);
+
+            visionLane = factory.open(ctx.hw);
+            tagSensor = visionLane.tagSensor();
+            cameraMount = visionLane.cameraMountConfig();
+            activeVisionDescription = factory.description();
             visionReady = true;
 
             rebuildSelectionAndEstimator();
         } catch (Exception ex) {
-            visionReady = false;
+            if (visionLane != null) {
+                try {
+                    visionLane.close();
+                } catch (Exception ignored) {
+                    // Best effort only.
+                }
+            }
+            visionLane = null;
             tagSensor = null;
+            activeVisionDescription = null;
+            visionReady = false;
             visionInitError = ex.getClass().getSimpleName() + ": " + ex.getMessage();
         }
     }
@@ -421,8 +495,8 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
 
         t.addLine("");
         t.addLine("Chosen: " + (selectedCameraName == null ? "(none)" : selectedCameraName));
-        t.addLine("Press A to choose a camera and initialize vision.");
-        t.addLine("Press B to refresh camera list.");
+        t.addLine("Press A to choose the active vision device and initialize AprilTags.");
+        t.addLine("Press B to refresh the device list.");
         t.addLine("Press BACK to exit to the tester menu.");
 
         if (visionInitError != null) {
@@ -473,6 +547,9 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
 
         t.addLine("=== AprilTag Localization ===");
         t.addData("Camera", selectedCameraName);
+        if (activeVisionDescription != null && !activeVisionDescription.isEmpty()) {
+            t.addData("Backend", activeVisionDescription);
+        }
         t.addData("Track [START]", trackAny ? "ANY" : "SINGLE");
         t.addData("Tag ID [Dpad L/R or Y/X]", selectedTagId);
         t.addData("Samples [A capture | B clear]", samples.count());

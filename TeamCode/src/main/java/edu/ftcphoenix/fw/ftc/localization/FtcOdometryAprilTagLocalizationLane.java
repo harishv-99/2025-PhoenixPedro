@@ -8,7 +8,6 @@ import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.field.TagLayout;
 import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLane;
-import edu.ftcphoenix.fw.ftc.vision.FtcWebcamAprilTagVisionLane;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
 import edu.ftcphoenix.fw.localization.apriltag.FixedTagFieldPoseSolver;
 import edu.ftcphoenix.fw.localization.apriltag.TagOnlyPoseEstimator;
@@ -54,7 +53,7 @@ public final class FtcOdometryAprilTagLocalizationLane {
      *
      * <p>
      * This config intentionally excludes camera-rig concerns such as backend/device identity and camera
-     * mount. Those belong in the concrete vision-lane config (for example {@link FtcWebcamAprilTagVisionLane.Config}). It only contains the
+     * mount. Those belong in the concrete vision-lane config owned by the active backend. It only contains the
      * AprilTag-specific field-pose solve policy needed by localization itself.
      * </p>
      */
@@ -130,7 +129,7 @@ public final class FtcOdometryAprilTagLocalizationLane {
      * The config groups the stable pieces of localization strategy: odometry tuning, AprilTag field
      * solve tuning, fused-estimator tuning, and which fused/global estimator implementation to use.
      * The camera rig itself is intentionally separate and belongs to
-     * the concrete vision-lane config (for example {@link FtcWebcamAprilTagVisionLane.Config}).
+     * the concrete vision-lane config owned by the active backend.
      * </p>
      */
     public static final class Config {

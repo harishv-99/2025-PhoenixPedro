@@ -29,7 +29,7 @@ public final class PhoenixCalibrationWalkthrough {
 
         guide.addStep(
                 "Calib: Camera Mount",
-                "Solve PhoenixProfile.current().vision.webcam.cameraMount and paste the printed CameraMountConfig.ofDegrees(...) value.",
+                "Solve PhoenixProfile.current().vision.activeCameraMount() and paste the printed CameraMountConfig.ofDegrees(...) value.",
                 PhoenixRobotTesters::cameraMountStatus,
                 PhoenixRobotTesters::cameraMountCalibrator
         );
@@ -50,7 +50,7 @@ public final class PhoenixCalibrationWalkthrough {
 
         guide.addStep(
                 "Calib: Pinpoint Pod Offsets",
-                "Rotate in place to estimate Pinpoint pod offsets. AprilTag assist auto-enables once the camera mount is solved.",
+                "Rotate in place to estimate Pinpoint pod offsets. AprilTag assist auto-enables once the active camera mount is solved.",
                 PhoenixRobotTesters::pinpointOffsetsStatus,
                 PhoenixRobotTesters::pinpointPodOffsets
         );

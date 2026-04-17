@@ -58,7 +58,7 @@ Every AprilTag field-pose solve depends on `robot -> camera` extrinsics. If the 
 ### Tester
 
 - `Calib: Camera Mount`
-- robot-specific variant if your project preselects a webcam or tag-localizer config
+- robot-specific variant if your project preselects a vision backend or tag-localizer config
 
 ### What you are solving
 
@@ -68,7 +68,7 @@ You tell the tester where the robot is on the field, the tester observes a known
 
 1. Place the robot in a pose you can describe confidently in the FTC field frame.
 2. Open `Calib: Camera Mount`.
-3. Choose the webcam if a picker appears.
+3. Choose the active vision device if a picker appears.
 4. Select the visible tag ID.
 5. Adjust the known robot pose until it matches the real robot position and heading.
 6. Hold the robot still and capture several samples.
@@ -107,7 +107,7 @@ Do not jump straight to odometry fusion. First verify that tags alone are being 
 ### Procedure
 
 1. Run the tester after the camera mount has been pasted into config.
-2. Confirm the selected camera is correct.
+2. Confirm the selected vision device is correct.
 3. Start in `ANY` mode to verify fresh detections exist.
 4. Switch to `SINGLE` mode when you want to inspect one tag at a time.
 5. Look at the solved `fieldToRobot` pose while the robot is still.

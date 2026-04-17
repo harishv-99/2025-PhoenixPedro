@@ -16,6 +16,7 @@ import edu.ftcphoenix.fw.ftc.FtcFieldRegions;
 import edu.ftcphoenix.fw.ftc.FtcGameTagLayout;
 import edu.ftcphoenix.fw.ftc.drive.FtcMecanumDriveLane;
 import edu.ftcphoenix.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane;
+import edu.ftcphoenix.fw.ftc.vision.FtcLimelightAprilTagVisionLane;
 import edu.ftcphoenix.fw.ftc.vision.FtcWebcamAprilTagVisionLane;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 
@@ -47,10 +48,6 @@ public final class PhoenixProfile {
 
     /**
      * Phoenix-owned AprilTag backend-selection config.
-     *
-     * <p>The checked-in backend is a webcam-backed framework lane today, but Phoenix keeps the
-     * wrapper robot-owned so future smart-camera backends can slot in without reshaping the rest
-     * of the robot container.</p>
      */
     public VisionConfig vision = defaultVisionConfig();
 
@@ -129,15 +126,14 @@ public final class PhoenixProfile {
         return copy;
     }
 
-
     /**
      * Phoenix-owned AprilTag backend-selection config.
      *
      * <p>
      * The framework owns concrete FTC-boundary lane implementations such as
-     * {@link FtcWebcamAprilTagVisionLane}. Phoenix owns the higher-level choice of which backend
-     * to instantiate. That keeps backend selection in the robot layer while the rest of Phoenix
-     * consumes only the backend-neutral lane seam.
+     * {@link FtcWebcamAprilTagVisionLane} and {@link FtcLimelightAprilTagVisionLane}. Phoenix owns
+     * the higher-level choice of which backend to instantiate. That keeps backend selection in the
+     * robot layer while the rest of Phoenix consumes only the backend-neutral lane seam.
      * </p>
      */
     public static final class VisionConfig {
@@ -151,7 +147,7 @@ public final class PhoenixProfile {
              */
             WEBCAM,
             /**
-             * Reserved for a later stage of Limelight integration.
+             * Use the FTC Limelight-backed AprilTag lane.
              */
             LIMELIGHT
         }
@@ -167,14 +163,9 @@ public final class PhoenixProfile {
         public FtcWebcamAprilTagVisionLane.Config webcam = defaultWebcamVisionConfig();
 
         /**
-         * Future smart-camera mount/config slot reserved for later Limelight integration.
-         *
-         * <p>
-         * Stage 1 does not yet instantiate a Limelight lane, but keeping this config slot in the
-         * robot profile now avoids another profile reshape when that backend lands.
-         * </p>
+         * Limelight-backed lane configuration used when {@link #backend} is {@link Backend#LIMELIGHT}.
          */
-        public LimelightConfig limelight = LimelightConfig.defaults();
+        public FtcLimelightAprilTagVisionLane.Config limelight = defaultLimelightVisionConfig();
 
         /**
          * Creates a vision config initialized with Phoenix defaults.
@@ -211,47 +202,6 @@ public final class PhoenixProfile {
          */
         public String activeDeviceName() {
             return backend == Backend.LIMELIGHT ? limelight.hardwareName : webcam.webcamName;
-        }
-
-        /**
-         * Placeholder config for a future Limelight-backed AprilTag lane.
-         */
-        public static final class LimelightConfig {
-
-            /**
-             * Preferred FTC hardware-map name for the Limelight device.
-             */
-            public String hardwareName = "limelight";
-
-            /**
-             * Camera extrinsics expressed in the robot frame.
-             */
-            public CameraMountConfig cameraMount = CameraMountConfig.identity();
-
-            private LimelightConfig() {
-                // Defaults assigned in field initializers.
-            }
-
-            /**
-             * Creates a config populated with Phoenix defaults.
-             *
-             * @return new mutable config instance
-             */
-            public static LimelightConfig defaults() {
-                return new LimelightConfig();
-            }
-
-            /**
-             * Creates a deep copy of this config.
-             *
-             * @return copied config whose fields can be edited independently
-             */
-            public LimelightConfig copy() {
-                LimelightConfig c = new LimelightConfig();
-                c.hardwareName = this.hardwareName;
-                c.cameraMount = this.cameraMount;
-                return c;
-            }
         }
     }
 
@@ -483,13 +433,29 @@ public final class PhoenixProfile {
         VisionConfig cfg = new VisionConfig();
         cfg.backend = VisionConfig.Backend.WEBCAM;
         cfg.webcam = defaultWebcamVisionConfig();
-        cfg.limelight = VisionConfig.LimelightConfig.defaults();
+        cfg.limelight = defaultLimelightVisionConfig();
         return cfg;
     }
 
     private static FtcWebcamAprilTagVisionLane.Config defaultWebcamVisionConfig() {
         FtcWebcamAprilTagVisionLane.Config cfg = FtcWebcamAprilTagVisionLane.Config.defaults();
         cfg.webcamName = "Webcam 1";
+        cfg.cameraMount = CameraMountConfig.ofDegrees(
+                9.97,
+                -1.80,
+                13.68,
+                1.9,
+                -18.2,
+                -1.7
+        );
+        return cfg;
+    }
+
+    private static FtcLimelightAprilTagVisionLane.Config defaultLimelightVisionConfig() {
+        FtcLimelightAprilTagVisionLane.Config cfg = FtcLimelightAprilTagVisionLane.Config.defaults();
+        cfg.hardwareName = "limelight";
+        cfg.pipelineIndex = 0;
+        cfg.pollRateHz = 100;
         cfg.cameraMount = CameraMountConfig.ofDegrees(
                 9.97,
                 -1.80,

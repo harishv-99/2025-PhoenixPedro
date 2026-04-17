@@ -1,6 +1,17 @@
 package edu.ftcphoenix.robots.phoenix.tester;
 
+import com.qualcomm.hardware.limelightvision.Limelight3A;
+import com.qualcomm.robotcore.hardware.HardwareDevice;
+
+import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
+
+import java.util.function.Function;
+
 import edu.ftcphoenix.fw.ftc.localization.PinpointPoseEstimator;
+import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLaneFactories;
+import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLaneFactory;
+import edu.ftcphoenix.fw.ftc.vision.FtcLimelightAprilTagVisionLane;
+import edu.ftcphoenix.fw.ftc.vision.FtcWebcamAprilTagVisionLane;
 import edu.ftcphoenix.fw.tools.tester.TeleOpTester;
 import edu.ftcphoenix.fw.tools.tester.TesterSuite;
 import edu.ftcphoenix.fw.tools.tester.calibration.CalibrationChecks;
@@ -14,6 +25,11 @@ import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
 
 /**
  * Central home for Phoenix robot-specific tester wiring.
+ *
+ * <p>This class adapts Phoenix's checked-in profile into concrete framework testers while keeping
+ * the higher-level tester menu robot-owned. All AprilTag-facing testers are wired through the active
+ * Phoenix vision backend so the same calibration and localization flows work for either a webcam or
+ * a Limelight-backed rig.</p>
  */
 public final class PhoenixRobotTesters {
 
@@ -24,15 +40,41 @@ public final class PhoenixRobotTesters {
         return PhoenixProfile.current();
     }
 
-    private static PhoenixProfile webcamProfile() {
-        PhoenixProfile p = profile();
-        if (p.vision.backend != PhoenixProfile.VisionConfig.Backend.WEBCAM) {
-            throw new IllegalStateException(
-                    "Phoenix's Stage 1 tester flow is webcam-backed. "
-                            + "Set PhoenixProfile.vision.backend = WEBCAM or wait for a later Limelight stage."
-            );
+    private static String activeVisionBackendLabel(PhoenixProfile p) {
+        return p.vision.backend == PhoenixProfile.VisionConfig.Backend.LIMELIGHT
+                ? "Limelight"
+                : "Webcam";
+    }
+
+    private static Class<? extends HardwareDevice> activeVisionDeviceType(PhoenixProfile p) {
+        return p.vision.backend == PhoenixProfile.VisionConfig.Backend.LIMELIGHT
+                ? Limelight3A.class
+                : WebcamName.class;
+    }
+
+    private static String activeVisionPickerTitle(PhoenixProfile p) {
+        return p.vision.backend == PhoenixProfile.VisionConfig.Backend.LIMELIGHT
+                ? "Select Limelight"
+                : "Select Camera";
+    }
+
+    private static Function<String, AprilTagVisionLaneFactory> activeVisionLaneFactoryBuilder(PhoenixProfile p) {
+        switch (p.vision.backend) {
+            case WEBCAM:
+                return hardwareName -> {
+                    FtcWebcamAprilTagVisionLane.Config cfg = p.vision.webcam.copy();
+                    cfg.webcamName = hardwareName;
+                    return AprilTagVisionLaneFactories.webcam(cfg);
+                };
+            case LIMELIGHT:
+                return hardwareName -> {
+                    FtcLimelightAprilTagVisionLane.Config cfg = p.vision.limelight.copy();
+                    cfg.hardwareName = hardwareName;
+                    return AprilTagVisionLaneFactories.limelight(cfg);
+                };
+            default:
+                throw new IllegalArgumentException("Unsupported vision backend: " + p.vision.backend);
         }
-        return p;
     }
 
     /**
@@ -51,7 +93,7 @@ public final class PhoenixRobotTesters {
 
         suite.add(
                 "Phoenix: Calibration & Localization",
-                "Phoenix-configured camera, Pinpoint, and localization tools.",
+                "Phoenix-configured camera, Pinpoint, and localization tools for the active vision backend.",
                 PhoenixRobotTesters::createCalibrationAndLocalizationSuite
         );
 
@@ -88,9 +130,12 @@ public final class PhoenixRobotTesters {
      * @return tester suite containing Phoenix-configured calibration and localization tools
      */
     public static TesterSuite createCalibrationAndLocalizationSuite() {
+        PhoenixProfile p = profile();
+        String backend = activeVisionBackendLabel(p);
+
         TesterSuite suite = new TesterSuite()
                 .setTitle("Phoenix Calibration & Localization")
-                .setHelp("Phoenix-configured bring-up and localization tools.")
+                .setHelp("Phoenix-configured bring-up and localization tools for the active vision backend.")
                 .setMaxVisibleItems(8);
 
         CalibrationStatus mount = cameraMountStatus();
@@ -99,13 +144,13 @@ public final class PhoenixRobotTesters {
 
         suite.add(
                 "Calib: Camera Mount (Robot)",
-                "Uses Phoenix's preferred camera. Status: " + mount.summaryOrEmpty(),
+                "Uses Phoenix's active " + backend + " AprilTag backend. Status: " + mount.summaryOrEmpty(),
                 PhoenixRobotTesters::cameraMountCalibrator
         );
 
         suite.add(
                 "Loc: AprilTag Localization (Robot)",
-                "Uses Phoenix vision/localization defaults. Status: " + mount.summaryOrEmpty(),
+                "Uses Phoenix vision/localization defaults on the active " + backend + " backend. Status: " + mount.summaryOrEmpty(),
                 PhoenixRobotTesters::aprilTagLocalization
         );
 
@@ -117,13 +162,13 @@ public final class PhoenixRobotTesters {
 
         suite.add(
                 "Calib: Pinpoint Pod Offsets (Robot)",
-                "Estimate pod offsets with Phoenix Pinpoint + drive config. Status: " + offsets.summaryOrEmpty(),
+                "Estimate pod offsets with Phoenix Pinpoint + drive config. AprilTag assist follows the active " + backend + " backend. Status: " + offsets.summaryOrEmpty(),
                 PhoenixRobotTesters::pinpointPodOffsets
         );
 
         suite.add(
                 "Loc: Pinpoint + AprilTag Fusion (Robot)",
-                "Default Phoenix global localizer. Status: " + globalLocalizationStatus().summaryOrEmpty(),
+                "Default Phoenix global localizer on the active " + backend + " backend. Status: " + globalLocalizationStatus().summaryOrEmpty(),
                 PhoenixRobotTesters::pinpointAprilTagFusion
         );
 
@@ -140,25 +185,34 @@ public final class PhoenixRobotTesters {
     /**
      * Creates the Phoenix camera-mount calibration tester.
      *
-     * @return tester configured to solve Phoenix's webcam mount pose
+     * @return tester configured to solve Phoenix's active camera mount pose
      */
     public static TeleOpTester cameraMountCalibrator() {
-        return new CameraMountCalibrator(webcamProfile().vision.webcam.webcamName);
+        PhoenixProfile p = profile();
+        return new CameraMountCalibrator(
+                p.vision.activeDeviceName(),
+                activeVisionDeviceType(p),
+                activeVisionPickerTitle(p),
+                activeVisionLaneFactoryBuilder(p),
+                null,
+                0.35
+        );
     }
 
     /**
      * Creates the Phoenix AprilTag-only localization tester.
      *
-     * @return tester configured with Phoenix's vision lane, field facts, and AprilTag-localizer defaults
+     * @return tester configured with Phoenix's active vision backend, field facts, and AprilTag-localizer defaults
      */
     public static TeleOpTester aprilTagLocalization() {
-        PhoenixProfile p = webcamProfile();
+        PhoenixProfile p = profile();
         return new AprilTagLocalizationTester(
-                p.vision.webcam.webcamName,
-                p.vision.webcam.cameraMount,
+                p.vision.activeDeviceName(),
+                activeVisionDeviceType(p),
+                activeVisionPickerTitle(p),
+                activeVisionLaneFactoryBuilder(p),
                 p.field.fixedAprilTagLayout,
-                null,
-                p.localization.aprilTags.toTagOnlyPoseEstimatorConfig(p.vision.webcam.cameraMount),
+                p.localization.aprilTags.toTagOnlyPoseEstimatorConfig(p.vision.activeCameraMount()),
                 p.localization.aprilTags.maxDetectionAgeSec
         );
     }
@@ -178,18 +232,21 @@ public final class PhoenixRobotTesters {
      * Creates the Pinpoint pod-offset calibration tester using the current Phoenix profile.
      *
      * @return tester configured for Phoenix drivetrain wiring, odometry config, and optional
-     *         AprilTag assist when the shared webcam mount is already trustworthy
+     *         AprilTag assist through Phoenix's active vision backend when the shared camera mount is trustworthy
      */
     public static TeleOpTester pinpointPodOffsets() {
-        PhoenixProfile p = webcamProfile();
+        PhoenixProfile p = profile();
         PinpointPodOffsetCalibrator.Config cfg = PinpointPodOffsetCalibrator.Config.defaults();
         cfg.pinpoint = p.localization.odometry.copy();
         cfg.mecanumWiring = p.drive.wiring.copy();
         cfg.targetTurnRad = Math.PI;
-        cfg.enableAprilTagAssist = CalibrationChecks.canUseAprilTagAssist(p.vision.webcam.cameraMount);
+        cfg.enableAprilTagAssist = CalibrationChecks.canUseAprilTagAssist(p.vision.activeCameraMount());
         cfg.autoComputeAfterAutoSample = true;
-        cfg.preferredCameraName = p.vision.webcam.webcamName;
-        cfg.cameraMount = p.vision.webcam.cameraMount;
+        cfg.preferredVisionDeviceName = p.vision.activeDeviceName();
+        cfg.visionDeviceType = activeVisionDeviceType(p);
+        cfg.visionPickerTitle = activeVisionPickerTitle(p);
+        cfg.visionLaneFactoryBuilder = activeVisionLaneFactoryBuilder(p);
+        cfg.cameraMount = p.vision.activeCameraMount();
         return new PinpointPodOffsetCalibrator(cfg);
     }
 
@@ -199,16 +256,17 @@ public final class PhoenixRobotTesters {
      * @return tester configured with Phoenix's default fusion estimator settings
      */
     public static TeleOpTester pinpointAprilTagFusion() {
-        PhoenixProfile p = webcamProfile();
+        PhoenixProfile p = profile();
         PinpointPoseEstimator.Config cfg = p.localization.odometry.copy();
         return new PinpointAprilTagFusionLocalizationTester(
-                p.vision.webcam.webcamName,
-                p.vision.webcam.cameraMount,
+                p.vision.activeDeviceName(),
+                activeVisionDeviceType(p),
+                activeVisionPickerTitle(p),
+                activeVisionLaneFactoryBuilder(p),
                 cfg,
                 p.localization.odometryTagFusion.copy(),
                 p.field.fixedAprilTagLayout,
-                null,
-                p.localization.aprilTags.toTagOnlyPoseEstimatorConfig(p.vision.webcam.cameraMount)
+                p.localization.aprilTags.toTagOnlyPoseEstimatorConfig(p.vision.activeCameraMount())
         );
     }
 
@@ -218,18 +276,19 @@ public final class PhoenixRobotTesters {
      * @return tester configured to compare the optional EKF path against the default fusion path
      */
     public static TeleOpTester pinpointAprilTagEkf() {
-        PhoenixProfile p = webcamProfile();
+        PhoenixProfile p = profile();
         PinpointPoseEstimator.Config cfg = p.localization.odometry.copy();
         return PinpointAprilTagFusionLocalizationTester.ekf(
-                p.vision.webcam.webcamName,
-                p.vision.webcam.cameraMount,
+                p.vision.activeDeviceName(),
+                activeVisionDeviceType(p),
+                activeVisionPickerTitle(p),
+                activeVisionLaneFactoryBuilder(p),
                 cfg,
                 p.localization.odometryTagEkf.validatedCopy(
                         "PhoenixProfile.current().localization.odometryTagEkf"
                 ),
                 p.field.fixedAprilTagLayout,
-                null,
-                p.localization.aprilTags.toTagOnlyPoseEstimatorConfig(p.vision.webcam.cameraMount)
+                p.localization.aprilTags.toTagOnlyPoseEstimatorConfig(p.vision.activeCameraMount())
         );
     }
 
@@ -248,7 +307,7 @@ public final class PhoenixRobotTesters {
      * @return status indicating whether the configured Phoenix camera mount looks solved
      */
     public static CalibrationStatus cameraMountStatus() {
-        return CalibrationChecks.cameraMount(webcamProfile().vision.webcam.cameraMount);
+        return CalibrationChecks.cameraMount(profile().vision.activeCameraMount());
     }
 
     /**

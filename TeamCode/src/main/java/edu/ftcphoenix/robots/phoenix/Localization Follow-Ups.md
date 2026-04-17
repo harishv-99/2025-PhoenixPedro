@@ -5,7 +5,7 @@ This file tracks Phoenix-specific follow-up work now that TeleOp uses framework-
 The current framework split is:
 
 - `FtcMecanumDriveLane` owns mecanum wiring, brake behavior, and drivebase lifecycle.
-- `AprilTagVisionLane` is the backend-neutral seam; Phoenix currently instantiates `FtcWebcamAprilTagVisionLane` for webcam identity, camera mount, and AprilTag portal cleanup.
+- `AprilTagVisionLane` is the backend-neutral seam; Phoenix now instantiates either `FtcWebcamAprilTagVisionLane` or `FtcLimelightAprilTagVisionLane` for backend-specific device identity, camera mount, and AprilTag resource cleanup.
 - `FtcOdometryAprilTagLocalizationLane` owns Pinpoint, AprilTag-only field solving, fused estimator selection, and per-loop pose production.
 - `PhoenixCapabilities` owns the shared mode-neutral robot vocabulary used by TeleOp and Auto.
 - `PhoenixTeleOpControls` owns all TeleOp input semantics, including the drive sticks and slow mode.
@@ -27,6 +27,6 @@ Keep those owners documented so Javadocs, markdown docs, and real code boundarie
 ## Longer-term
 
 1. Add driver-facing telemetry for localization/aim source only if drivers actually find it useful in matches.
-2. Reuse the same `AprilTagVisionLane`/`FtcWebcamAprilTagVisionLane` and `FtcOdometryAprilTagLocalizationLane` configuration across TeleOp and Auto initialization so both modes rely on one pose stack and one shared vision rig.
+2. Reuse the same active `AprilTagVisionLane` configuration and `FtcOdometryAprilTagLocalizationLane` configuration across TeleOp and Auto initialization so both modes rely on one pose stack and one shared vision rig.
 3. Revisit automatic vision-based velocity capture once more range-to-shot data is collected from the real field.
 4. If another future robot ends up with the same drive-controls pattern, extract only the reusable tuning/config ideas. Keep actual button identities in robot code unless several robots truly share the same operator semantics.

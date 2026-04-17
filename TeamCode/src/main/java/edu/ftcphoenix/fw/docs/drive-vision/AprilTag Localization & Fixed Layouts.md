@@ -11,13 +11,34 @@ The short version:
 In the current framework structure, keep these ownership boundaries separate:
 
 - `AprilTagVisionLane` is the backend-neutral seam consumed by localization, targeting, and future vision features
-- `FtcWebcamAprilTagVisionLane` is the standard webcam-backed implementation of that seam today
+- `FtcWebcamAprilTagVisionLane` and `FtcLimelightAprilTagVisionLane` are the standard FTC-boundary implementations of that seam
 - `FtcOdometryAprilTagLocalizationLane` owns pose-estimation strategy built on top of that shared rig
 - field facts such as `TagLayout` stay separate from both
 
 That split matters because the camera rig may be shared by localization, aiming, and future vision features.
 
-Stage 1 of the backend split deliberately keeps the consumer side small: localization lanes depend on `AprilTagVisionLane`, not on a webcam-specific owner. That keeps the rest of the framework focused on tag observations and camera extrinsics while future smart-camera implementations can own their own FTC-boundary wiring.
+That split keeps localization lanes dependent on `AprilTagVisionLane`, not on a backend-specific owner. The rest of the framework stays focused on tag observations and camera extrinsics while each FTC-boundary implementation remains free to own its own device lifecycle and setup details.
+
+### What changes when switching from a webcam to Limelight?
+
+For the functionality implemented so far, both backends are used the same way above the FTC boundary:
+
+```java
+AprilTagVisionLane vision = MyVisionFactory.create(hardwareMap, profile.vision);
+
+FtcOdometryAprilTagLocalizationLane localization =
+        new FtcOdometryAprilTagLocalizationLane(hardwareMap, vision, fixedLayout, locCfg);
+
+AprilTagSensor tags = vision.tagSensor();
+CameraMountConfig mount = vision.cameraMountConfig();
+```
+
+What changes is only how the FTC-boundary lane acquires AprilTag observations:
+
+- `FtcWebcamAprilTagVisionLane` uses a `WebcamName` plus FTC VisionPortal / SDK AprilTag processing.
+- `FtcLimelightAprilTagVisionLane` uses a `Limelight3A`, switches to the configured AprilTag pipeline, starts polling, and adapts Limelight fiducial results into the same `AprilTagSensor` seam.
+
+At this point in the framework, Limelight is acting as an **AprilTag-observation backend**. The rest of localization and targeting still consumes the same normalized AprilTag observations regardless of whether they came from a webcam or from Limelight. Direct Limelight `botpose` / MegaTag2 consumption is intentionally a later, separate integration step.
 
 ---
 
@@ -113,7 +134,7 @@ When another component should reuse the same weighting / outlier / plausibility 
 
 ```java
 TagOnlyPoseEstimator.Config tagCfg = profile.localization.aprilTags
-        .toTagOnlyPoseEstimatorConfig(profile.vision.cameraMount);
+        .toTagOnlyPoseEstimatorConfig(profile.vision.activeCameraMount());
 
 TagOnlyPoseEstimator tagLocalizer = new TagOnlyPoseEstimator(tags, fixedLayout, tagCfg);
 
@@ -188,7 +209,7 @@ Typical pattern:
 
 ```java
 TagOnlyPoseEstimator.Config tagCfg = profile.localization.aprilTags
-        .toTagOnlyPoseEstimatorConfig(profile.vision.cameraMount);
+        .toTagOnlyPoseEstimatorConfig(profile.vision.activeCameraMount());
 
 TagOnlyPoseEstimator tagLocalizer = new TagOnlyPoseEstimator(tags, fixedLayout, tagCfg);
 
@@ -214,7 +235,7 @@ The framework now also ships an optional covariance-aware localizer:
 
 ```java
 TagOnlyPoseEstimator.Config tagCfg = profile.localization.aprilTags
-        .toTagOnlyPoseEstimatorConfig(profile.vision.cameraMount);
+        .toTagOnlyPoseEstimatorConfig(profile.vision.activeCameraMount());
 
 TagOnlyPoseEstimator tagLocalizer = new TagOnlyPoseEstimator(tags, fixedLayout, tagCfg);
 

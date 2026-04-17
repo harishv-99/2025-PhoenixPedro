@@ -1,9 +1,12 @@
 package edu.ftcphoenix.fw.tools.tester.calibration;
 
+import com.qualcomm.robotcore.hardware.HardwareDevice;
+
 import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
 import org.firstinspires.ftc.vision.apriltag.AprilTagLibrary;
 
 import java.util.Locale;
+import java.util.function.Function;
 
 import edu.ftcphoenix.fw.core.geometry.Pose2d;
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
@@ -15,8 +18,11 @@ import edu.ftcphoenix.fw.ftc.FtcDrives;
 import edu.ftcphoenix.fw.ftc.FtcGameTagLayout;
 import edu.ftcphoenix.fw.ftc.FtcTagLayoutDebug;
 import edu.ftcphoenix.fw.ftc.FtcTelemetryDebugSink;
-import edu.ftcphoenix.fw.ftc.FtcVision;
 import edu.ftcphoenix.fw.ftc.localization.PinpointPoseEstimator;
+import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLane;
+import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLaneFactories;
+import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLaneFactory;
+import edu.ftcphoenix.fw.ftc.vision.FtcWebcamAprilTagVisionLane;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
 import edu.ftcphoenix.fw.localization.apriltag.TagOnlyPoseEstimator;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
@@ -41,8 +47,8 @@ import edu.ftcphoenix.fw.tools.tester.ui.HardwareNamePicker;
  * </ul>
  *
  * <p><b>Important:</b> robot movement only happens after you press <b>PLAY</b> on the Driver Station.
- * In <b>INIT</b> (before PLAY), this tester can still show status and (optionally) let you select a
- * webcam for AprilTag assist, but it will not command the motors.</p>
+ * In <b>INIT</b> (before PLAY), this tester can still show status and (optionally) let you select an
+ * AprilTag vision device for assist, but it will not command the motors.</p>
  *
  * <p>Optional: enable AprilTag assist to subtract real translation while sampling. This is useful if the
  * robot doesn't rotate perfectly in place (carpet slip, uneven pod preload, etc.).</p>
@@ -170,9 +176,37 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         public boolean enableAprilTagAssist = false;
 
         /**
-         * Preferred webcam name for AprilTag assist. If null, a camera picker is shown.
+         * Preferred FTC hardware-map name for the AprilTag vision device used by assist.
+         *
+         * <p>When {@code null}, the tester shows a runtime hardware picker for the configured
+         * {@link #visionDeviceType}.</p>
          */
-        public String preferredCameraName = null;
+        public String preferredVisionDeviceName = null;
+
+        /**
+         * FTC hardware type to enumerate when {@link #preferredVisionDeviceName} is not supplied.
+         *
+         * <p>The default is {@link WebcamName} so existing webcam-assisted flows work with no extra
+         * setup. Limelight-backed robot projects should switch this to the FTC Limelight device type
+         * and provide a matching {@link #visionLaneFactoryBuilder}.</p>
+         */
+        public Class<? extends HardwareDevice> visionDeviceType = WebcamName.class;
+
+        /**
+         * Title shown above the AprilTag vision-device picker when assist needs a runtime selection.
+         */
+        public String visionPickerTitle = "Select Camera";
+
+        /**
+         * Optional factory builder that opens a shared AprilTag vision lane for one chosen FTC
+         * hardware-map name.
+         *
+         * <p>When left {@code null}, the tester falls back to the framework webcam-backed lane using
+         * {@link #cameraMount} and {@link #tagLibrary}. Supplying this builder is the standard way for
+         * robot projects to plug in Limelight-backed AprilTag assist without changing the rest of the
+         * calibrator.</p>
+         */
+        public Function<String, AprilTagVisionLaneFactory> visionLaneFactoryBuilder = null;
 
         /**
          * Required when {@link #enableAprilTagAssist} is true.
@@ -228,7 +262,10 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
             c.recenterTranslationScale = this.recenterTranslationScale;
 
             c.enableAprilTagAssist = this.enableAprilTagAssist;
-            c.preferredCameraName = this.preferredCameraName;
+            c.preferredVisionDeviceName = this.preferredVisionDeviceName;
+            c.visionDeviceType = this.visionDeviceType;
+            c.visionPickerTitle = this.visionPickerTitle;
+            c.visionLaneFactoryBuilder = this.visionLaneFactoryBuilder;
             c.cameraMount = this.cameraMount;
             c.tagLayout = this.tagLayout;
             c.tagLibrary = this.tagLibrary;
@@ -243,11 +280,13 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
     private MecanumDrivebase drive;
 
     // AprilTag assist
-    private HardwareNamePicker cameraPicker;
-    private String selectedCameraName;
+    private HardwareNamePicker visionPicker;
+    private String selectedVisionDeviceName;
     private TagLayout layout;
+    private AprilTagVisionLane visionLane;
     private AprilTagSensor tagSensor;
     private TagOnlyPoseEstimator tagEstimator;
+    private String activeVisionDescription;
     private String aprilTagAssistNotice;
 
     /**
@@ -377,17 +416,23 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
                     ? cfg.tagLayout
                     : FtcGameTagLayout.currentGameFieldFixed();
 
-            selectedCameraName = cfg.preferredCameraName;
-            if (selectedCameraName == null) {
-                cameraPicker = new HardwareNamePicker(ctx.hw, WebcamName.class, "Select a webcam");
-                cameraPicker.bind(
+            selectedVisionDeviceName = cfg.preferredVisionDeviceName;
+            if (selectedVisionDeviceName == null) {
+                Class<? extends HardwareDevice> deviceType = cfg.visionDeviceType != null
+                        ? cfg.visionDeviceType
+                        : WebcamName.class;
+                String pickerTitle = (cfg.visionPickerTitle == null || cfg.visionPickerTitle.trim().isEmpty())
+                        ? "Select Vision Device"
+                        : cfg.visionPickerTitle;
+                visionPicker = new HardwareNamePicker(ctx.hw, deviceType, pickerTitle, "Dpad: highlight | A: choose | B: refresh");
+                visionPicker.bind(
                         bindings,
                         gamepads.p1().dpadUp(),
                         gamepads.p1().dpadDown(),
                         gamepads.p1().a(),
-                        gamepads.p1().y(),
+                        gamepads.p1().b(),
                         () -> tagSensor == null,
-                        name -> selectedCameraName = name
+                        name -> selectedVisionDeviceName = name
                 );
             }
         }
@@ -850,17 +895,35 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
     private void ensureAprilTagAssistReady() {
         if (!cfg.enableAprilTagAssist) return;
         if (tagSensor != null) return;
-        if (selectedCameraName == null) return;
+        if (selectedVisionDeviceName == null) return;
 
-        FtcVision.Config vCfg = FtcVision.Config.defaults()
-                .withCameraMount(cfg.cameraMount);
-        if (cfg.tagLibrary != null) {
-            vCfg.withTagLibrary(cfg.tagLibrary);
+        Function<String, AprilTagVisionLaneFactory> builder = cfg.visionLaneFactoryBuilder;
+        if (builder == null) {
+            final CameraMountConfig mount = (cfg.cameraMount != null)
+                    ? cfg.cameraMount
+                    : CameraMountConfig.identity();
+            final AprilTagLibrary tagLibrary = cfg.tagLibrary;
+            builder = cameraName -> {
+                FtcWebcamAprilTagVisionLane.Config vCfg = FtcWebcamAprilTagVisionLane.Config.defaults();
+                vCfg.webcamName = cameraName;
+                vCfg.cameraMount = mount;
+                vCfg.tagLibrary = tagLibrary;
+                return AprilTagVisionLaneFactories.webcam(vCfg);
+            };
         }
 
-        tagSensor = FtcVision.aprilTags(ctx.hw, selectedCameraName, vCfg);
+        AprilTagVisionLaneFactory factory = builder.apply(selectedVisionDeviceName);
+        if (factory == null) {
+            throw new IllegalStateException("visionLaneFactoryBuilder returned null for " + selectedVisionDeviceName);
+        }
+
+        visionLane = factory.open(ctx.hw);
+        tagSensor = visionLane.tagSensor();
+        activeVisionDescription = factory.description();
+
         TagOnlyPoseEstimator.Config estCfg = TagOnlyPoseEstimator.Config.defaults()
-                .withCameraMount(cfg.cameraMount);
+                .withCameraMount(visionLane.cameraMountConfig());
+        estCfg.maxDetectionAgeSec = cfg.maxTagAgeSec;
         tagEstimator = new TagOnlyPoseEstimator(tagSensor, layout, estCfg);
     }
 
@@ -900,14 +963,17 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         }
 
         if (cfg.enableAprilTagAssist) {
-            String cam = (selectedCameraName != null) ? selectedCameraName : "<select webcam>";
+            String device = (selectedVisionDeviceName != null) ? selectedVisionDeviceName : "<select vision device>";
             ctx.telemetry.addData("Tag assist", true);
-            ctx.telemetry.addData("Webcam", cam);
+            ctx.telemetry.addData("Vision device", device);
+            if (activeVisionDescription != null && !activeVisionDescription.isEmpty()) {
+                ctx.telemetry.addData("Vision backend", activeVisionDescription);
+            }
             ctx.telemetry.addData("Tag pose", latestTagPose != null ? latestTagPose.toString() : "<none>");
             FtcTagLayoutDebug.dumpSummary(layout, new FtcTelemetryDebugSink(ctx.telemetry), "layout");
-            if (initPhase && cameraPicker != null && selectedCameraName == null) {
+            if (initPhase && visionPicker != null && selectedVisionDeviceName == null) {
                 ctx.telemetry.addLine();
-                cameraPicker.render(ctx.telemetry);
+                visionPicker.render(ctx.telemetry);
             }
         } else {
             ctx.telemetry.addData("Tag assist", false);
@@ -1083,11 +1149,13 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
 
     @Override
     protected void onStop() {
-        // Release vision resources (VisionPortal) if AprilTag assist was used.
-        if (tagSensor != null) {
-            tagSensor.close();
-            tagSensor = null;
+        if (visionLane != null) {
+            visionLane.close();
+            visionLane = null;
         }
+        tagSensor = null;
+        tagEstimator = null;
+        activeVisionDescription = null;
     }
 
     /**

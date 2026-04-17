@@ -1,11 +1,14 @@
 package edu.ftcphoenix.fw.tools.tester.localization;
 
+import com.qualcomm.robotcore.hardware.HardwareDevice;
+
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
 import org.firstinspires.ftc.vision.apriltag.AprilTagLibrary;
 
 import java.util.Collections;
 import java.util.Set;
+import java.util.function.Function;
 
 import edu.ftcphoenix.fw.core.geometry.Pose2d;
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
@@ -13,8 +16,11 @@ import edu.ftcphoenix.fw.field.TagLayout;
 import edu.ftcphoenix.fw.ftc.FtcGameTagLayout;
 import edu.ftcphoenix.fw.ftc.FtcTagLayoutDebug;
 import edu.ftcphoenix.fw.ftc.FtcTelemetryDebugSink;
-import edu.ftcphoenix.fw.ftc.FtcVision;
 import edu.ftcphoenix.fw.ftc.localization.PinpointPoseEstimator;
+import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLane;
+import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLaneFactories;
+import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLaneFactory;
+import edu.ftcphoenix.fw.ftc.vision.FtcWebcamAprilTagVisionLane;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
 import edu.ftcphoenix.fw.localization.apriltag.TagOnlyPoseEstimator;
 import edu.ftcphoenix.fw.localization.fusion.OdometryTagEkfPoseEstimator;
@@ -74,14 +80,16 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
     private static final int DEFAULT_TAG_ID = 1;
 
     private final String preferredCameraName;
-    private final CameraMountConfig cameraMount;
+    private final Class<? extends HardwareDevice> cameraDeviceType;
+    private final String cameraPickerTitle;
+    private final Function<String, AprilTagVisionLaneFactory> cameraLaneFactoryBuilder;
+    private CameraMountConfig cameraMount;
     private final PinpointPoseEstimator.Config pinpointCfg;
     private final EstimatorMode estimatorMode;
     private final OdometryTagFusionPoseEstimator.Config fusionCfg;
     private final OdometryTagEkfPoseEstimator.Config ekfCfg;
 
     private final TagLayout layoutOverride;
-    private final AprilTagLibrary tagLibraryOverride;
     private final TagOnlyPoseEstimator.Config visionEstimatorConfigOverride;
 
     private HardwareNamePicker cameraPicker;
@@ -89,10 +97,12 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
 
     private boolean ready = false;
     private String initError = null;
+    private String activeVisionDescription = null;
 
     private TagLayout layout;
 
     // Vision pieces
+    private AprilTagVisionLane visionLane;
     private AprilTagSensor tagSensor;
     private TagSelectionSource selection;
     private TagOnlyPoseEstimator visionEstimator;
@@ -113,9 +123,7 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
         this(preferredCameraName,
                 cameraMount,
                 pinpointCfg,
-                EstimatorMode.FUSION,
                 OdometryTagFusionPoseEstimator.Config.defaults(),
-                null,
                 null,
                 null,
                 null);
@@ -131,9 +139,7 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
         this(preferredCameraName,
                 cameraMount,
                 pinpointCfg,
-                EstimatorMode.FUSION,
                 fusionCfg,
-                null,
                 null,
                 null,
                 null);
@@ -155,13 +161,14 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
                                                     AprilTagLibrary tagLibraryOverride,
                                                     TagOnlyPoseEstimator.Config visionEstimatorConfigOverride) {
         this(preferredCameraName,
-                cameraMount,
+                WebcamName.class,
+                "Select Camera",
+                defaultWebcamLaneFactoryBuilder(cameraMount, tagLibraryOverride),
                 pinpointCfg,
                 EstimatorMode.FUSION,
                 fusionCfg,
                 null,
                 layoutOverride,
-                tagLibraryOverride,
                 visionEstimatorConfigOverride);
     }
 
@@ -176,13 +183,14 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
                                                                AprilTagLibrary tagLibraryOverride,
                                                                TagOnlyPoseEstimator.Config visionEstimatorConfigOverride) {
         return new PinpointAprilTagFusionLocalizationTester(preferredCameraName,
-                cameraMount,
+                WebcamName.class,
+                "Select Camera",
+                defaultWebcamLaneFactoryBuilder(cameraMount, tagLibraryOverride),
                 pinpointCfg,
                 EstimatorMode.EKF,
                 null,
                 ekfCfg,
                 layoutOverride,
-                tagLibraryOverride,
                 visionEstimatorConfigOverride);
     }
 
@@ -196,26 +204,91 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
         return ekf(preferredCameraName, cameraMount, pinpointCfg, ekfCfg, null, null, null);
     }
 
+    /**
+     * Creates a backend-neutral fused-localization tester.
+     */
+    public PinpointAprilTagFusionLocalizationTester(String preferredCameraName,
+                                                    Class<? extends HardwareDevice> cameraDeviceType,
+                                                    String cameraPickerTitle,
+                                                    Function<String, AprilTagVisionLaneFactory> cameraLaneFactoryBuilder,
+                                                    PinpointPoseEstimator.Config pinpointCfg,
+                                                    OdometryTagFusionPoseEstimator.Config fusionCfg,
+                                                    TagLayout layoutOverride,
+                                                    TagOnlyPoseEstimator.Config visionEstimatorConfigOverride) {
+        this(preferredCameraName,
+                cameraDeviceType,
+                cameraPickerTitle,
+                cameraLaneFactoryBuilder,
+                pinpointCfg,
+                EstimatorMode.FUSION,
+                fusionCfg,
+                null,
+                layoutOverride,
+                visionEstimatorConfigOverride);
+    }
+
+    /**
+     * Creates a backend-neutral EKF localization tester.
+     */
+    public static PinpointAprilTagFusionLocalizationTester ekf(String preferredCameraName,
+                                                               Class<? extends HardwareDevice> cameraDeviceType,
+                                                               String cameraPickerTitle,
+                                                               Function<String, AprilTagVisionLaneFactory> cameraLaneFactoryBuilder,
+                                                               PinpointPoseEstimator.Config pinpointCfg,
+                                                               OdometryTagEkfPoseEstimator.Config ekfCfg,
+                                                               TagLayout layoutOverride,
+                                                               TagOnlyPoseEstimator.Config visionEstimatorConfigOverride) {
+        return new PinpointAprilTagFusionLocalizationTester(preferredCameraName,
+                cameraDeviceType,
+                cameraPickerTitle,
+                cameraLaneFactoryBuilder,
+                pinpointCfg,
+                EstimatorMode.EKF,
+                null,
+                ekfCfg,
+                layoutOverride,
+                visionEstimatorConfigOverride);
+    }
+
     private PinpointAprilTagFusionLocalizationTester(String preferredCameraName,
-                                                     CameraMountConfig cameraMount,
+                                                     Class<? extends HardwareDevice> cameraDeviceType,
+                                                     String cameraPickerTitle,
+                                                     Function<String, AprilTagVisionLaneFactory> cameraLaneFactoryBuilder,
                                                      PinpointPoseEstimator.Config pinpointCfg,
                                                      EstimatorMode estimatorMode,
                                                      OdometryTagFusionPoseEstimator.Config fusionCfg,
                                                      OdometryTagEkfPoseEstimator.Config ekfCfg,
                                                      TagLayout layoutOverride,
-                                                     AprilTagLibrary tagLibraryOverride,
                                                      TagOnlyPoseEstimator.Config visionEstimatorConfigOverride) {
         this.preferredCameraName = preferredCameraName;
-        this.cameraMount = cameraMount != null ? cameraMount : CameraMountConfig.identity();
+        this.cameraDeviceType = cameraDeviceType != null ? cameraDeviceType : WebcamName.class;
+        this.cameraPickerTitle = (cameraPickerTitle == null || cameraPickerTitle.trim().isEmpty())
+                ? "Select Vision Device"
+                : cameraPickerTitle;
+        this.cameraLaneFactoryBuilder = cameraLaneFactoryBuilder != null
+                ? cameraLaneFactoryBuilder
+                : defaultWebcamLaneFactoryBuilder(CameraMountConfig.identity(), null);
+        this.cameraMount = CameraMountConfig.identity();
         this.pinpointCfg = pinpointCfg != null ? pinpointCfg : PinpointPoseEstimator.Config.defaults();
         this.estimatorMode = estimatorMode != null ? estimatorMode : EstimatorMode.FUSION;
         this.fusionCfg = fusionCfg != null ? fusionCfg : OdometryTagFusionPoseEstimator.Config.defaults();
         this.ekfCfg = ekfCfg != null ? ekfCfg : OdometryTagEkfPoseEstimator.Config.defaults();
         this.layoutOverride = layoutOverride;
-        this.tagLibraryOverride = tagLibraryOverride;
         this.visionEstimatorConfigOverride = visionEstimatorConfigOverride != null
                 ? visionEstimatorConfigOverride.copy()
                 : null;
+    }
+
+    private static Function<String, AprilTagVisionLaneFactory> defaultWebcamLaneFactoryBuilder(CameraMountConfig cameraMount,
+                                                                                               AprilTagLibrary tagLibraryOverride) {
+        final CameraMountConfig mount = (cameraMount != null) ? cameraMount : CameraMountConfig.identity();
+        return cameraName -> {
+            FtcWebcamAprilTagVisionLane.Config cfg = FtcWebcamAprilTagVisionLane.Config.defaults();
+            cfg.webcamName = cameraName;
+            cfg.cameraMount = mount;
+            cfg.tagLibrary = tagLibraryOverride;
+            return AprilTagVisionLaneFactories.webcam(cfg);
+        };
     }
 
     /**
@@ -232,8 +305,8 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
     protected void onInit() {
         cameraPicker = new HardwareNamePicker(
                 ctx.hw,
-                WebcamName.class,
-                "Select Camera",
+                cameraDeviceType,
+                cameraPickerTitle,
                 "Dpad: highlight | A: choose | B: refresh"
         );
         cameraPicker.refresh();
@@ -258,11 +331,9 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
                 }
         );
 
-        // B: refresh picker OR toggle vision fusion.
+        // B toggles vision fusion once the pipeline is already running.
         bindings.onRise(gamepads.p1().b(), () -> {
-            if (!ready) {
-                cameraPicker.refresh();
-            } else if (globalEstimator != null) {
+            if (ready && globalEstimator != null) {
                 globalEstimator.setVisionEnabled(!globalEstimator.isVisionEnabled());
             }
         });
@@ -340,23 +411,27 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
         ready = false;
         initError = null;
         layout = null;
-        if (tagSensor != null) {
-            tagSensor.close();
+        if (visionLane != null) {
+            visionLane.close();
         }
+        visionLane = null;
         tagSensor = null;
         selection = null;
         visionEstimator = null;
         odomEstimator = null;
         globalEstimator = null;
+        activeVisionDescription = null;
         return true;
     }
 
     @Override
     protected void onStop() {
-        if (tagSensor != null) {
-            tagSensor.close();
-            tagSensor = null;
+        if (visionLane != null) {
+            visionLane.close();
+            visionLane = null;
         }
+        tagSensor = null;
+        activeVisionDescription = null;
     }
 
     private void renderPicker() {
@@ -373,8 +448,8 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
         cameraPicker.render(t);
         t.addLine("");
         t.addLine("Chosen: " + (selectedCameraName == null ? "(none)" : selectedCameraName));
-        t.addLine("Press A to choose a camera and initialize vision.");
-        t.addLine("Press B to refresh camera list.");
+        t.addLine("Press A to choose the active vision device and initialize AprilTags.");
+        t.addLine("Press B to refresh the device list.");
         t.addLine("Press BACK to exit to the tester menu.");
         t.update();
     }
@@ -387,12 +462,15 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
         }
 
         try {
-            FtcVision.Config cfg = FtcVision.Config.defaults()
-                    .withCameraMount(cameraMount);
-            if (tagLibraryOverride != null) {
-                cfg.withTagLibrary(tagLibraryOverride);
+            AprilTagVisionLaneFactory factory = cameraLaneFactoryBuilder.apply(selectedCameraName);
+            if (factory == null) {
+                throw new IllegalStateException("cameraLaneFactoryBuilder returned null for " + selectedCameraName);
             }
-            tagSensor = FtcVision.aprilTags(ctx.hw, selectedCameraName, cfg);
+
+            visionLane = factory.open(ctx.hw);
+            tagSensor = visionLane.tagSensor();
+            cameraMount = visionLane.cameraMountConfig();
+            activeVisionDescription = factory.description();
 
             odomEstimator = new PinpointPoseEstimator(ctx.hw, pinpointCfg);
 
@@ -405,6 +483,16 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
             ready = true;
             initError = null;
         } catch (Exception e) {
+            if (visionLane != null) {
+                try {
+                    visionLane.close();
+                } catch (Exception ignored) {
+                    // Best effort only.
+                }
+            }
+            visionLane = null;
+            tagSensor = null;
+            activeVisionDescription = null;
             initError = e.getClass().getSimpleName() + ": " + e.getMessage();
             ready = false;
         }
@@ -501,6 +589,9 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
         t.clearAll();
         t.addLine("=== " + name() + " ===");
         t.addData("Camera", selectedCameraName);
+        if (activeVisionDescription != null && !activeVisionDescription.isEmpty()) {
+            t.addData("Backend", activeVisionDescription);
+        }
         t.addData("Estimator", estimatorMode);
         t.addData("Track [START]", trackAny ? "ANY" : "SINGLE");
         t.addData("Tag ID [Dpad L/R or Y/X]", selectedTagId);

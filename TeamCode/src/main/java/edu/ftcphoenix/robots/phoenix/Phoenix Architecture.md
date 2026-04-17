@@ -27,7 +27,7 @@ PhoenixRobot
   PhoenixCapabilities capabilities
 
   FtcMecanumDriveLane drive
-  AprilTagVisionLane vision   (selected by PhoenixVisionFactory; checked-in impl = FtcWebcamAprilTagVisionLane)
+  AprilTagVisionLane vision   (selected by PhoenixVisionFactory from the active profile backend)
   FtcOdometryAprilTagLocalizationLane localization
 
   PhoenixTeleOpControls controls
@@ -41,8 +41,8 @@ PhoenixRobot
 
 Phoenix keeps backend choice in a small robot-owned wrapper: `PhoenixProfile.VisionConfig`
 plus `PhoenixVisionFactory`. That is why the rest of the graph can depend on
-`AprilTagVisionLane` instead of a webcam-specific owner while Stage 1 still keeps the
-checked-in implementation on `FtcWebcamAprilTagVisionLane`.
+`AprilTagVisionLane` instead of a backend-specific owner even though the FTC-boundary
+implementation may be a webcam lane or a Limelight lane.
 
 The shared mode clients are:
 
@@ -70,7 +70,7 @@ different APIs layered directly onto internals.
 ### Framework lanes
 
 - `FtcMecanumDriveLane`: owns mecanum hardware wiring, brake behavior, drivebase construction, and drive lifecycle
-- `AprilTagVisionLane` / `FtcWebcamAprilTagVisionLane`: Phoenix consumes the backend-neutral seam while the checked-in FTC-boundary implementation remains webcam-backed today
+- `AprilTagVisionLane` plus a concrete FTC-boundary implementation such as `FtcWebcamAprilTagVisionLane` or `FtcLimelightAprilTagVisionLane`: Phoenix consumes the backend-neutral seam while `PhoenixVisionFactory` chooses the active backend
 - `FtcOdometryAprilTagLocalizationLane`: owns odometry + AprilTag localization strategy, fused estimator selection, and pose production
 
 ### Shared field facts
@@ -179,13 +179,13 @@ PhoenixRobot
 Older FTC code often lumps camera ownership and localization together. Phoenix avoids that because
 the camera rig is not only for localization.
 
-### `AprilTagVisionLane` / `FtcWebcamAprilTagVisionLane` own
+### `AprilTagVisionLane` plus its concrete backend owner own
 
-- backend-specific device identity (webcam today, smart camera later)
-- camera resolution / processor setup for the active backend
+- backend-specific device identity (for example webcam or Limelight)
+- backend-specific processor / pipeline setup
 - camera mount
 - AprilTag sensor lifetime
-- camera cleanup
+- vision-device cleanup
 
 ### `FtcOdometryAprilTagLocalizationLane` owns
 

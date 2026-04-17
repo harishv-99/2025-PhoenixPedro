@@ -20,7 +20,7 @@ import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
  * <p>
  * The point of this seam is not to erase the real differences between webcam- and smart-camera
  * backends. It is to keep the rest of the framework dependent on the outputs it consumes, while
- * concrete FTC-boundary owners such as {@link FtcWebcamAprilTagVisionLane} remain free to own
+ * concrete FTC-boundary owners such as {@link FtcWebcamAprilTagVisionLane} or {@link FtcLimelightAprilTagVisionLane} remain free to own
  * backend-specific wiring, processor setup, and cleanup.
  * </p>
  */

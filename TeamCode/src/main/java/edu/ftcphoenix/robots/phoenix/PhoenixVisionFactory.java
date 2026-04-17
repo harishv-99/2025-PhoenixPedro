@@ -5,16 +5,15 @@ import com.qualcomm.robotcore.hardware.HardwareMap;
 import java.util.Objects;
 
 import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLane;
+import edu.ftcphoenix.fw.ftc.vision.FtcLimelightAprilTagVisionLane;
 import edu.ftcphoenix.fw.ftc.vision.FtcWebcamAprilTagVisionLane;
 
 /**
- * Phoenix-owned factory for AprilTag vision backend selection.
+ * Robot-owned factory that selects Phoenix's concrete AprilTag vision lane backend.
  *
- * <p>
- * The framework owns the concrete FTC-boundary lane implementations. Phoenix owns the decision
- * of which backend to instantiate for this robot profile. That keeps backend choice in the robot
- * layer while the rest of Phoenix depends only on {@link AprilTagVisionLane}.
- * </p>
+ * <p>Phoenix keeps this selection wrapper in the robot layer so the rest of the robot consumes only
+ * the backend-neutral {@link AprilTagVisionLane} seam. The framework still owns the concrete FTC
+ * boundary implementations for each supported backend.</p>
  */
 public final class PhoenixVisionFactory {
 
@@ -22,31 +21,23 @@ public final class PhoenixVisionFactory {
     }
 
     /**
-     * Creates the configured AprilTag vision lane for Phoenix.
+     * Creates the concrete AprilTag vision lane requested by the supplied Phoenix profile.
      *
-     * @param hardwareMap FTC hardware map used to construct the active backend
-     * @param config      Phoenix vision configuration; copied before use
-     * @return backend-specific lane exposed through the shared {@link AprilTagVisionLane} seam
+     * @param hardwareMap FTC hardware map used to acquire the chosen vision device
+     * @param cfg Phoenix AprilTag backend-selection config
+     * @return concrete vision lane for the active Phoenix backend
      */
-    public static AprilTagVisionLane create(HardwareMap hardwareMap,
-                                            PhoenixProfile.VisionConfig config) {
+    public static AprilTagVisionLane create(HardwareMap hardwareMap, PhoenixProfile.VisionConfig cfg) {
         Objects.requireNonNull(hardwareMap, "hardwareMap");
-        PhoenixProfile.VisionConfig cfg =
-                Objects.requireNonNull(config, "config").copy();
+        Objects.requireNonNull(cfg, "cfg");
 
         switch (cfg.backend) {
             case WEBCAM:
                 return new FtcWebcamAprilTagVisionLane(hardwareMap, cfg.webcam);
-
             case LIMELIGHT:
-                throw new UnsupportedOperationException(
-                        "PhoenixProfile.vision.backend = LIMELIGHT is reserved for a later stage. "
-                                + "Stage 1 introduces the backend-neutral AprilTagVisionLane seam and "
-                                + "keeps the checked-in implementation on FtcWebcamAprilTagVisionLane."
-                );
-
+                return new FtcLimelightAprilTagVisionLane(hardwareMap, cfg.limelight);
             default:
-                throw new IllegalArgumentException("Unsupported Phoenix vision backend: " + cfg.backend);
+                throw new IllegalArgumentException("Unsupported vision backend: " + cfg.backend);
         }
     }
 }

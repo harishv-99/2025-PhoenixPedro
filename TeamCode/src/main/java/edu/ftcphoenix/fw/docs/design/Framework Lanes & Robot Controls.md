@@ -87,7 +87,7 @@ A lane usually:
 Examples:
 
 - `FtcMecanumDriveLane`
-- `AprilTagVisionLane` / `FtcWebcamAprilTagVisionLane`
+- `AprilTagVisionLane` / `FtcWebcamAprilTagVisionLane` / `FtcLimelightAprilTagVisionLane`
 - `FtcOdometryAprilTagLocalizationLane`
 
 A lane answers:
@@ -339,7 +339,7 @@ Good names reveal the role.
 Good:
 
 - `FtcMecanumDriveLane`
-- `AprilTagVisionLane` / `FtcWebcamAprilTagVisionLane`
+- `AprilTagVisionLane` / `FtcWebcamAprilTagVisionLane` / `FtcLimelightAprilTagVisionLane`
 - `ShooterSupervisor`
 - `PhoenixTeleOpControls`
 - `ScoringTargeting`
@@ -406,7 +406,7 @@ A strong starting pattern is:
 public final class MyRobotProfile {
 
     public FtcMecanumDriveLane.Config drive = FtcMecanumDriveLane.Config.defaults();
-    public FtcWebcamAprilTagVisionLane.Config vision = FtcWebcamAprilTagVisionLane.Config.defaults();
+    public VisionConfig vision = new VisionConfig();
     public FtcOdometryAprilTagLocalizationLane.Config localization =
             FtcOdometryAprilTagLocalizationLane.Config.defaults();
 
@@ -435,7 +435,7 @@ public final class MyRobotProfile {
 
 
 For the simplest robot, keeping `vision` concrete as `FtcWebcamAprilTagVisionLane.Config` is still a good default.
-If you expect to swap between webcam and smart-camera backends later, keep a robot-owned `VisionConfig`
+If you expect to swap between webcam and smart-camera backends, keep a robot-owned `VisionConfig`
 wrapper in the profile and let the composition root hold the backend-neutral `AprilTagVisionLane` interface.
 
 Why this order works:
@@ -460,12 +460,12 @@ FtcMecanumDriveLane drive = new FtcMecanumDriveLane(hardwareMap, profile.drive);
 ### Vision lane example
 
 ```java
-AprilTagVisionLane vision = new FtcWebcamAprilTagVisionLane(hardwareMap, profile.vision);
+AprilTagVisionLane vision = MyVisionFactory.create(hardwareMap, profile.vision);
 ```
 
 The important split is: construct a concrete lane at the FTC boundary, but store and pass around the
 backend-neutral `AprilTagVisionLane` seam above that boundary. That lets localization and targeting
-consume tag observations without caring whether the implementation is webcam-backed today or smart-camera-backed later.
+consume tag observations without caring whether the implementation is webcam-backed or Limelight-backed.
 
 ### Localization lane example
 
@@ -866,7 +866,7 @@ public final class MyRobot {
 
     public void initTeleOp() {
         drive = new FtcMecanumDriveLane(hardwareMap, profile.drive);
-        vision = new FtcWebcamAprilTagVisionLane(hardwareMap, profile.vision);
+        vision = MyVisionFactory.create(hardwareMap, profile.vision);
         localization = new FtcOdometryAprilTagLocalizationLane(
                 hardwareMap,
                 vision,
@@ -929,7 +929,7 @@ MyRobotProfile
 
 MyRobot
   ├─ FtcMecanumDriveLane
-  ├─ AprilTagVisionLane (commonly `FtcWebcamAprilTagVisionLane`)
+  ├─ AprilTagVisionLane (commonly `FtcWebcamAprilTagVisionLane` or `FtcLimelightAprilTagVisionLane`)
   ├─ FtcOdometryAprilTagLocalizationLane
   ├─ MyCapabilities
   ├─ MyTeleOpControls
@@ -1019,7 +1019,7 @@ Why it is a problem:
 
 Instead, split:
 
-- `AprilTagVisionLane` / `FtcWebcamAprilTagVisionLane` for the camera rig
+- `AprilTagVisionLane` plus a concrete backend owner such as `FtcWebcamAprilTagVisionLane` or `FtcLimelightAprilTagVisionLane` for the camera rig
 - `FtcOdometryAprilTagLocalizationLane` for pose production
 - field facts for shared landmarks
 
@@ -1043,7 +1043,7 @@ Phoenix is the reference example for this split:
 - primitive: `MecanumDrivebase`
 - primitive: `AprilTagSensor`
 - lane: `FtcMecanumDriveLane`
-- lane: `FtcWebcamAprilTagVisionLane` (through the `AprilTagVisionLane` seam)
+- lane: `AprilTagVisionLane` with a concrete backend such as `FtcWebcamAprilTagVisionLane` or `FtcLimelightAprilTagVisionLane`
 - lane: `FtcOdometryAprilTagLocalizationLane`
 - field facts: `PhoenixProfile.field.fixedAprilTagLayout`
 - capability family: `PhoenixCapabilities.scoring()` / `PhoenixCapabilities.targeting()`

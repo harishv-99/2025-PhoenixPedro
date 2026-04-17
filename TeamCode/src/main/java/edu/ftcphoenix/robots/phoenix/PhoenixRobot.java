@@ -14,7 +14,6 @@ import edu.ftcphoenix.fw.drive.DriveSource;
 import edu.ftcphoenix.fw.ftc.drive.FtcMecanumDriveLane;
 import edu.ftcphoenix.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane;
 import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLane;
-import edu.ftcphoenix.fw.ftc.vision.FtcWebcamAprilTagVisionLane;
 import edu.ftcphoenix.fw.input.Gamepads;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
 import edu.ftcphoenix.fw.task.Task;
@@ -28,7 +27,7 @@ import edu.ftcphoenix.fw.task.TaskRunner;
  * </p>
  * <ul>
  *   <li>{@link FtcMecanumDriveLane} owns stable drive hardware/lifecycle concerns.</li>
- *   <li>{@link PhoenixVisionFactory} selects a concrete {@link AprilTagVisionLane} backend; the checked-in implementation is {@link FtcWebcamAprilTagVisionLane}.</li>
+ *   <li>{@link PhoenixVisionFactory} selects a concrete {@link AprilTagVisionLane} backend from the active profile.</li>
  *   <li>{@link FtcOdometryAprilTagLocalizationLane} owns stable localization strategy and pose production.</li>
  *   <li>{@link PhoenixCapabilities} exposes Phoenix's shared mode-neutral capability families.</li>
  *   <li>{@link PhoenixTeleOpControls} owns all TeleOp input semantics, including drive controls.</li>

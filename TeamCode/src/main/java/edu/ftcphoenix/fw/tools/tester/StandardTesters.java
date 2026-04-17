@@ -1,8 +1,16 @@
 package edu.ftcphoenix.fw.tools.tester;
 
 import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver;
+import com.qualcomm.hardware.limelightvision.Limelight3A;
+
+import java.util.function.Function;
 
 import edu.ftcphoenix.fw.ftc.localization.PinpointPoseEstimator;
+import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLaneFactories;
+import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLaneFactory;
+import edu.ftcphoenix.fw.ftc.vision.FtcLimelightAprilTagVisionLane;
+import edu.ftcphoenix.fw.localization.fusion.OdometryTagFusionPoseEstimator;
+import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 import edu.ftcphoenix.fw.tools.tester.calibration.CalibrationWalkthroughBuilder;
 import edu.ftcphoenix.fw.tools.tester.calibration.CameraMountCalibrator;
 import edu.ftcphoenix.fw.tools.tester.calibration.PinpointAxisDirectionTester;
@@ -30,9 +38,10 @@ import edu.ftcphoenix.fw.tools.tester.localization.PinpointAprilTagFusionLocaliz
  * </ul>
  *
  * <p>The standalone home suite goes a bit farther than the embedded registration path. It includes
- * a generic bring-up walkthrough plus a few default-config Pinpoint/global-localization tools that
- * are useful when no robot project has supplied better-configured wrappers yet. The embedded path is
- * intentionally more conservative so it does not duplicate robot-configured tools unnecessarily.</p>
+ * a generic bring-up walkthrough plus default-config Pinpoint/global-localization tools that are
+ * useful when no robot project has supplied better-configured wrappers yet. The embedded path stays
+ * conservative about robot-specific duplication, but now exposes both standard AprilTag backends:
+ * webcam and Limelight.</p>
  */
 public final class StandardTesters {
 
@@ -42,15 +51,15 @@ public final class StandardTesters {
     /**
      * Adds the shared framework tester groups to an existing robot-owned top-level suite.
      *
-     * <p>This is the embed-safe registration path. It only adds the generic categories that are a
-     * clean fit underneath a robot-specific tester tree.</p>
+     * <p>This is the embed-safe registration path. It adds the generic framework-owned categories
+     * without assuming anything about robot-specific wrappers layered above them.</p>
      */
     public static void register(TesterSuite suite) {
         if (suite == null) return;
 
         suite.add(
                 "Framework: Calibration & Localization",
-                "Framework-owned camera-mount and AprilTag localization tools.",
+                "Framework-owned camera-mount, AprilTag, and localization tools for webcam and Limelight backends.",
                 StandardTesters::createCalibrationAndLocalizationSuite
         );
 
@@ -80,7 +89,7 @@ public final class StandardTesters {
 
         suite.add(
                 "Framework: Calibration & Localization",
-                "Framework-owned camera, AprilTag, and generic Pinpoint tools.",
+                "Framework-owned camera, AprilTag, Limelight, and generic Pinpoint tools.",
                 StandardTesters::createStandaloneCalibrationAndLocalizationSuite
         );
 
@@ -103,7 +112,7 @@ public final class StandardTesters {
     public static TesterSuite createWalkthrough() {
         CalibrationWalkthroughBuilder guide = new CalibrationWalkthroughBuilder("Framework Bring-up Guide")
                 .setHelp("Run steps in order. A: enter step | BACK: go back")
-                .setMaxVisibleItems(8);
+                .setMaxVisibleItems(10);
 
         guide.addStep(
                 "HW: DcMotor Power",
@@ -112,15 +121,27 @@ public final class StandardTesters {
         );
 
         guide.addStep(
-                "Calib: Camera Mount",
-                "Use the camera picker if needed, solve robot->camera, and paste the printed CameraMountConfig.ofDegrees(...).",
-                CameraMountCalibrator::new
+                "Calib: Camera Mount (Webcam)",
+                "Use when your AprilTag backend is a standard FTC webcam. Solve robot->camera and paste the printed CameraMountConfig.ofDegrees(...).",
+                StandardTesters::createGenericWebcamCameraMountTester
         );
 
         guide.addStep(
-                "Loc: AprilTag Localization",
-                "Sanity-check tag detection and the AprilTag-only field pose solve before fusing with odometry.",
-                AprilTagLocalizationTester::new
+                "Calib: Camera Mount (Limelight)",
+                "Use when your AprilTag backend is a Limelight. Solve robot->camera from Limelight fiducials and paste the printed CameraMountConfig.ofDegrees(...).",
+                StandardTesters::createGenericLimelightCameraMountTester
+        );
+
+        guide.addStep(
+                "Loc: AprilTag Localization (Webcam)",
+                "Sanity-check tag detection and the AprilTag-only field pose solve using a webcam-backed lane.",
+                StandardTesters::createGenericWebcamAprilTagLocalizationTester
+        );
+
+        guide.addStep(
+                "Loc: AprilTag Localization (Limelight)",
+                "Sanity-check the same AprilTag-only field pose solve using Limelight fiducials.",
+                StandardTesters::createGenericLimelightAprilTagLocalizationTester
         );
 
         guide.addStep(
@@ -131,14 +152,20 @@ public final class StandardTesters {
 
         guide.addStep(
                 "Calib: Pinpoint Pod Offsets",
-                "Pick the Pinpoint device name if needed. Manual by-hand samples work without drive wiring.",
+                "Pick the Pinpoint device name if needed. Manual by-hand samples work without drive wiring; robot-owned wrappers can also supply AprilTag assist.",
                 StandardTesters::createGenericPinpointPodOffsetTester
         );
 
         guide.addStep(
-                "Loc: Pinpoint + AprilTag Fusion",
-                "Pick the Pinpoint device name if needed. The tester still provides its own camera picker and uses an identity camera mount until you calibrate it.",
-                StandardTesters::createGenericPinpointAprilTagFusionTester
+                "Loc: Pinpoint + AprilTag Fusion (Webcam)",
+                "Pick the Pinpoint device name if needed. The tester opens a webcam-backed AprilTag lane and uses an identity camera mount until you calibrate it.",
+                StandardTesters::createGenericPinpointAprilTagFusionTesterWebcam
+        );
+
+        guide.addStep(
+                "Loc: Pinpoint + AprilTag Fusion (Limelight)",
+                "Pick the Pinpoint device name if needed. The tester opens a Limelight-backed AprilTag lane and uses an identity camera mount until you calibrate it.",
+                StandardTesters::createGenericPinpointAprilTagFusionTesterLimelight
         );
 
         return guide.build();
@@ -150,19 +177,31 @@ public final class StandardTesters {
     public static TesterSuite createCalibrationAndLocalizationSuite() {
         TesterSuite suite = new TesterSuite()
                 .setTitle("Framework Calibration & Localization")
-                .setHelp("Camera mount and AprilTag bring-up tools.")
-                .setMaxVisibleItems(8);
+                .setHelp("Camera mount and AprilTag bring-up tools for webcam and Limelight backends.")
+                .setMaxVisibleItems(10);
 
         suite.add(
-                "Calib: Camera Mount",
-                "Solve robotToCameraPose using known robot pose + fixed tag layout. Includes camera picker.",
-                CameraMountCalibrator::new
+                "Calib: Camera Mount (Webcam)",
+                "Solve robotToCameraPose using a webcam-backed AprilTag lane and the fixed field layout.",
+                StandardTesters::createGenericWebcamCameraMountTester
         );
 
         suite.add(
-                "Loc: AprilTag Localization",
-                "Verify AprilTag detections and the field pose solve. Includes camera picker.",
-                AprilTagLocalizationTester::new
+                "Loc: AprilTag Localization (Webcam)",
+                "Verify AprilTag detections and the field pose solve using a webcam-backed lane.",
+                StandardTesters::createGenericWebcamAprilTagLocalizationTester
+        );
+
+        suite.add(
+                "Calib: Camera Mount (Limelight)",
+                "Solve robotToCameraPose using Limelight AprilTag fiducials and the fixed field layout.",
+                StandardTesters::createGenericLimelightCameraMountTester
+        );
+
+        suite.add(
+                "Loc: AprilTag Localization (Limelight)",
+                "Verify AprilTag detections and the field pose solve using a Limelight-backed lane.",
+                StandardTesters::createGenericLimelightAprilTagLocalizationTester
         );
 
         return suite;
@@ -178,19 +217,31 @@ public final class StandardTesters {
     public static TesterSuite createStandaloneCalibrationAndLocalizationSuite() {
         TesterSuite suite = new TesterSuite()
                 .setTitle("Framework Calibration & Localization")
-                .setHelp("Camera, AprilTag, and generic Pinpoint bring-up tools.")
-                .setMaxVisibleItems(8);
+                .setHelp("Camera, AprilTag, Limelight, and generic Pinpoint bring-up tools.")
+                .setMaxVisibleItems(10);
 
         suite.add(
-                "Calib: Camera Mount",
-                "Solve robotToCameraPose using known robot pose + fixed tag layout. Includes camera picker.",
-                CameraMountCalibrator::new
+                "Calib: Camera Mount (Webcam)",
+                "Solve robotToCameraPose using a webcam-backed AprilTag lane and the fixed field layout.",
+                StandardTesters::createGenericWebcamCameraMountTester
         );
 
         suite.add(
-                "Loc: AprilTag Localization",
-                "Verify AprilTag detections and the field pose solve. Includes camera picker.",
-                AprilTagLocalizationTester::new
+                "Loc: AprilTag Localization (Webcam)",
+                "Verify AprilTag detections and the field pose solve using a webcam-backed lane.",
+                StandardTesters::createGenericWebcamAprilTagLocalizationTester
+        );
+
+        suite.add(
+                "Calib: Camera Mount (Limelight)",
+                "Solve robotToCameraPose using Limelight AprilTag fiducials and the fixed field layout.",
+                StandardTesters::createGenericLimelightCameraMountTester
+        );
+
+        suite.add(
+                "Loc: AprilTag Localization (Limelight)",
+                "Verify AprilTag detections and the field pose solve using a Limelight-backed lane.",
+                StandardTesters::createGenericLimelightAprilTagLocalizationTester
         );
 
         suite.add(
@@ -206,9 +257,15 @@ public final class StandardTesters {
         );
 
         suite.add(
-                "Loc: Pinpoint + AprilTag Fusion",
-                "Choose the Pinpoint device name at runtime. The tester still provides its own camera picker and uses an identity camera mount until calibrated.",
-                StandardTesters::createGenericPinpointAprilTagFusionTester
+                "Loc: Pinpoint + AprilTag Fusion (Webcam)",
+                "Choose the Pinpoint device name at runtime. The tester still provides a webcam picker and uses an identity camera mount until calibrated.",
+                StandardTesters::createGenericPinpointAprilTagFusionTesterWebcam
+        );
+
+        suite.add(
+                "Loc: Pinpoint + AprilTag Fusion (Limelight)",
+                "Choose the Pinpoint device name at runtime. The tester provides a Limelight picker and uses an identity camera mount until calibrated.",
+                StandardTesters::createGenericPinpointAprilTagFusionTesterLimelight
         );
 
         return suite;
@@ -262,6 +319,37 @@ public final class StandardTesters {
         return suite;
     }
 
+    private static TeleOpTester createGenericWebcamCameraMountTester() {
+        return new CameraMountCalibrator();
+    }
+
+    private static TeleOpTester createGenericLimelightCameraMountTester() {
+        return new CameraMountCalibrator(
+                null,
+                Limelight3A.class,
+                "Select Limelight",
+                limelightLaneFactoryBuilder(),
+                null,
+                0.35
+        );
+    }
+
+    private static TeleOpTester createGenericWebcamAprilTagLocalizationTester() {
+        return new AprilTagLocalizationTester();
+    }
+
+    private static TeleOpTester createGenericLimelightAprilTagLocalizationTester() {
+        return new AprilTagLocalizationTester(
+                null,
+                Limelight3A.class,
+                "Select Limelight",
+                limelightLaneFactoryBuilder(),
+                null,
+                null,
+                0.35
+        );
+    }
+
     private static TeleOpTester createGenericPinpointAxisCheckTester() {
         return new HardwareSelectingTester(
                 "Pinpoint Axis Check",
@@ -292,9 +380,9 @@ public final class StandardTesters {
         );
     }
 
-    private static TeleOpTester createGenericPinpointAprilTagFusionTester() {
+    private static TeleOpTester createGenericPinpointAprilTagFusionTesterWebcam() {
         return new HardwareSelectingTester(
-                "Pinpoint + AprilTag Fusion",
+                "Pinpoint + AprilTag Fusion (Webcam)",
                 GoBildaPinpointDriver.class,
                 "Select Pinpoint",
                 "Dpad: highlight | A: choose | B: refresh",
@@ -305,5 +393,34 @@ public final class StandardTesters {
                         PinpointPoseEstimator.Config.defaults().withHardwareMapName(hardwareName)
                 )
         );
+    }
+
+    private static TeleOpTester createGenericPinpointAprilTagFusionTesterLimelight() {
+        return new HardwareSelectingTester(
+                "Pinpoint + AprilTag Fusion (Limelight)",
+                GoBildaPinpointDriver.class,
+                "Select Pinpoint",
+                "Dpad: highlight | A: choose | B: refresh",
+                PinpointPoseEstimator.Config.defaults().hardwareMapName,
+                hardwareName -> new PinpointAprilTagFusionLocalizationTester(
+                        null,
+                        Limelight3A.class,
+                        "Select Limelight",
+                        limelightLaneFactoryBuilder(),
+                        PinpointPoseEstimator.Config.defaults().withHardwareMapName(hardwareName),
+                        OdometryTagFusionPoseEstimator.Config.defaults(),
+                        null,
+                        null
+                )
+        );
+    }
+
+    private static Function<String, AprilTagVisionLaneFactory> limelightLaneFactoryBuilder() {
+        return hardwareName -> {
+            FtcLimelightAprilTagVisionLane.Config cfg = FtcLimelightAprilTagVisionLane.Config.defaults();
+            cfg.hardwareName = hardwareName;
+            cfg.cameraMount = CameraMountConfig.identity();
+            return AprilTagVisionLaneFactories.limelight(cfg);
+        };
     }
 }

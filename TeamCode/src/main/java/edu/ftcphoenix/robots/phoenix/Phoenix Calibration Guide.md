@@ -9,7 +9,7 @@ Use it when you are bringing up a fresh Phoenix robot and want the exact menu na
 Phoenix now splits stable ownership this way:
 
 - `PhoenixProfile.drive` -> `FtcMecanumDriveLane.Config`
-- `PhoenixProfile.vision` -> `PhoenixProfile.VisionConfig` (checked-in backend: webcam)
+- `PhoenixProfile.vision` -> `PhoenixProfile.VisionConfig` (backend choice plus backend-specific rig config)
 - `PhoenixProfile.localization` -> `FtcOdometryAprilTagLocalizationLane.Config`
 - `PhoenixProfile.field` -> shared field facts such as the fixed AprilTag layout
 - `PhoenixCapabilities` -> shared mode-neutral API used by TeleOp and Auto
@@ -23,14 +23,13 @@ That split matters during bring-up because fixes should land in the owner of the
 
 - drivetrain wiring / brake / drive tuning -> `PhoenixProfile.drive`
 - backend choice + active camera-rig config -> `PhoenixProfile.vision`
-- webcam name / webcam camera mount / vision portal settings -> `PhoenixProfile.vision.webcam`
+- webcam name / camera mount / VisionPortal-specific settings -> `PhoenixProfile.vision.webcam`
+- Limelight hardware name / pipeline / poll rate / camera mount -> `PhoenixProfile.vision.limelight`
 - odometry tuning / AprilTag localization tuning / fusion tuning -> `PhoenixProfile.localization`
 - fixed field tags or practice-field overrides -> `PhoenixProfile.field`
 - button semantics / manual drive behavior -> `PhoenixTeleOpControls`
 - scoring gating / requests / feed policy -> `ShooterSupervisor`
 - mechanism actuation -> `Shooter`
-
-Stage 1 note: Phoenix now has a backend-selection wrapper for future Limelight work, but the checked-in implementation and the calibration/tester flow in this guide are still webcam-backed.
 
 ## Where to start in the tester menu
 
@@ -75,20 +74,41 @@ PhoenixProfile.current().drive.wiring
 
 ### Goal
 
-Solve Phoenix's webcam pose relative to the robot.
+Solve the active AprilTag vision device pose relative to the robot.
 
 ### Paste result into
 
 ```java
-PhoenixProfile.current().vision.webcam.cameraMount
+PhoenixProfile.current().vision.webcam.cameraMount   // when backend = WEBCAM
+PhoenixProfile.current().vision.limelight.cameraMount // when backend = LIMELIGHT
 ```
 
-The tester prints `CameraMountConfig.of(...)` and `CameraMountConfig.ofDegrees(...)`. Paste one of those directly.
+The tester prints `CameraMountConfig.of(...)` and `CameraMountConfig.ofDegrees(...)`. Paste one of those directly into the active backend's `cameraMount` field.
+
+### Backend usage in production code
+
+Above the FTC boundary, Phoenix uses both backends the same way:
+
+```java
+AprilTagVisionLane vision = PhoenixVisionFactory.create(hardwareMap, PhoenixProfile.current().vision);
+
+FtcOdometryAprilTagLocalizationLane localization =
+        new FtcOdometryAprilTagLocalizationLane(hardwareMap, vision,
+                PhoenixProfile.current().field.fixedAprilTagLayout,
+                PhoenixProfile.current().localization);
+```
+
+The active backend only changes which concrete lane `PhoenixVisionFactory` instantiates:
+
+- `Backend.WEBCAM` -> `FtcWebcamAprilTagVisionLane`
+- `Backend.LIMELIGHT` -> `FtcLimelightAprilTagVisionLane`
+
+For the functionality implemented so far, Limelight is being used as an AprilTag-detection backend, not yet as a direct `botpose` / MegaTag2 pose source.
 
 ### Phoenix notes
 
-- the preferred camera is `PhoenixProfile.current().vision.webcam.webcamName`
-- the walkthrough status turns `OK` once the camera mount no longer looks like the identity placeholder
+- the preferred AprilTag device name is `PhoenixProfile.current().vision.activeDeviceName()`
+- the walkthrough status turns `OK` once the active backend's camera mount no longer looks like the identity placeholder
 
 ## Step 3: AprilTag-only localization sanity check
 
@@ -98,7 +118,7 @@ The tester prints `CameraMountConfig.of(...)` and `CameraMountConfig.ofDegrees(.
 
 ### Goal
 
-Verify that Phoenix's preferred camera, fixed-tag layout policy, and AprilTag-only solver produce a believable field pose before odometry is fused in.
+Verify that Phoenix's active AprilTag backend, fixed-tag layout policy, and AprilTag-only solver produce a believable field pose before odometry is fused in.
 
 ### What to watch
 
@@ -112,8 +132,8 @@ Verify that Phoenix's preferred camera, fixed-tag layout policy, and AprilTag-on
 This tester reuses:
 
 ```java
-PhoenixProfile.current().vision.webcam.webcamName
-PhoenixProfile.current().vision.webcam.cameraMount
+PhoenixProfile.current().vision.activeDeviceName()
+PhoenixProfile.current().vision.activeCameraMount()
 PhoenixProfile.current().localization.aprilTags
 PhoenixProfile.current().field.fixedAprilTagLayout
 ```
@@ -184,7 +204,7 @@ PhoenixProfile.current().calibration.pinpointPodOffsetsCalibrated = true
 
 ### Phoenix notes
 
-Phoenix enables AprilTag assist for this tester automatically once the camera mount looks solved enough to trust.
+Phoenix enables AprilTag assist for this tester automatically once the active backend's camera mount looks solved enough to trust.
 
 ## Step 6: default global localization validation
 
@@ -205,8 +225,8 @@ Validate Phoenix's default global localizer in the conditions that matter for re
 ### Config involved
 
 ```java
-PhoenixProfile.current().vision.webcam.webcamName
-PhoenixProfile.current().vision.webcam.cameraMount
+PhoenixProfile.current().vision.activeDeviceName()
+PhoenixProfile.current().vision.activeCameraMount()
 PhoenixProfile.current().localization.odometry
 PhoenixProfile.current().localization.aprilTags
 PhoenixProfile.current().localization.odometryTagFusion
