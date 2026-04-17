@@ -31,7 +31,7 @@ Everything else exists to keep those packages clean:
 
 * `edu.ftcphoenix.fw.core.*` is framework plumbing (math/geometry/control/time/HAL).
 * `edu.ftcphoenix.fw.ftc.*` is the FTC SDK boundary (hardware + vision adapters).
-* `edu.ftcphoenix.fw.tools.*` contains testers and copyable examples.
+* `edu.ftcphoenix.fw.tools.*` contains testers and copyable examples. If you just want to open the framework tester tree without writing any robot-specific glue first, run the ready-made `FW: Testers` OpMode.
 
 If you’re curious *why* the packages are arranged this way, see [`Framework Overview`](<Framework Overview.md>) → Package structure.
 
