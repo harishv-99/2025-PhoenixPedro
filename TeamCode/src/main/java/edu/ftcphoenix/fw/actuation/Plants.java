@@ -1,414 +1,379 @@
 package edu.ftcphoenix.fw.actuation;
 
+import java.util.Objects;
+
+import edu.ftcphoenix.fw.core.control.ScalarRegulator;
+import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.hal.PositionOutput;
 import edu.ftcphoenix.fw.core.hal.PowerOutput;
 import edu.ftcphoenix.fw.core.hal.VelocityOutput;
+import edu.ftcphoenix.fw.core.source.ScalarSource;
+import edu.ftcphoenix.fw.core.time.LoopClock;
 
 /**
- * Helpers for constructing {@link Plant} instances on top of Phoenix HAL
- * output interfaces using native units.
+ * Factories for constructing {@link Plant} implementations from low-level actuator command
+ * channels plus optional measurement/regulator ingredients.
  *
- * <p>This class sits just above the hardware-abstraction layer:
- * it takes {@link PowerOutput}, {@link PositionOutput}, and
- * {@link VelocityOutput} channels (in their <b>native</b> units) and wraps
- * them in simple {@link Plant} implementations.</p>
- *
- * <h2>Unit conventions</h2>
- *
- * <ul>
- *   <li><b>Power plants</b>: target is normalized power (typically {@code [-1.0, +1.0]}).</li>
- *   <li><b>Position plants</b>:
- *     <ul>
- *       <li>Servos: {@code 0.0 .. 1.0} (FTC servo position).</li>
- *       <li>Motors: encoder ticks (or other platform-native units).</li>
- *     </ul>
- *   </li>
- *   <li><b>Velocity plants</b>: target is native velocity units (e.g. ticks/sec).</li>
- * </ul>
- *
- * <p>Higher-level code is responsible for converting between these native
- * units and physical units (meters, radians, etc.) where necessary.</p>
+ * <p>This class is intentionally ingredient-based. Callers choose the command channel and, when
+ * needed, the measurement and control law. Higher-level staged builders (such as
+ * {@code FtcActuators}) can then present beginner-friendly defaults on top of these primitives.</p>
  */
 public final class Plants {
 
     private Plants() {
-        // utility class; no instances
+        // utility class
     }
 
-    // =====================================================================
-    // POWER PLANTS (PowerOutput, normalized power)
-    // =====================================================================
-
     /**
-     * Power plant over a {@link PowerOutput} in normalized units.
+     * Create a direct power plant over a {@link PowerOutput}.
      *
-     * <p>Target is interpreted as a normalized power in {@code [-1.0, +1.0]}.
-     * The plant does no additional control logic; it simply forwards the
-     * command to the underlying {@link PowerOutput}.</p>
-     *
-     * <p>{@link Plant#atSetpoint()} is always {@code true} for power plants,
-     * as there is no meaningful "setpoint" concept without feedback.</p>
+     * @param out raw power command channel that the returned plant should drive directly
+     * @return power plant whose target domain matches the supplied output's power command domain
      */
-    static Plant power(PowerOutput out) {
-        if (out == null) {
-            throw new IllegalArgumentException("PowerOutput is required");
-        }
+    public static Plant power(PowerOutput out) {
+        Objects.requireNonNull(out, "out");
         return new PowerPlant(out);
     }
 
     /**
-     * Internal {@link Plant} implementation for {@link PowerOutput} channels.
+     * Create a commanded-position plant over a {@link PositionOutput} with no authoritative
+     * feedback.
+     *
+     * <p>This is the right fit for standard FTC servos and other set-and-hold outputs where the
+     * framework does not have a meaningful measured position.</p>
+     *
+     * @param out raw position command channel that the returned plant should drive directly
+     * @return position plant that reports commanded targets but no authoritative feedback
      */
+    public static Plant position(PositionOutput out) {
+        Objects.requireNonNull(out, "out");
+        return new CommandedPositionPlant(out);
+    }
+
+    /**
+     * Create a device-managed or otherwise externally regulated position plant over a
+     * {@link PositionOutput} plus an authoritative position measurement source.
+     *
+     * <p>{@code positionTolerance} is the plant-level completion band used by
+     * {@link Plant#atSetpoint()}.</p>
+     *
+     * @param out               raw position command channel that the returned plant should drive
+     * @param measurement       authoritative position measurement source in the same units as the plant target
+     * @param positionTolerance absolute completion band used for {@link Plant#atSetpoint()}
+     * @return feedback-capable position plant backed by the supplied command channel and measurement
+     */
+    public static Plant position(PositionOutput out,
+                                 ScalarSource measurement,
+                                 double positionTolerance) {
+        Objects.requireNonNull(out, "out");
+        Objects.requireNonNull(measurement, "measurement");
+        if (positionTolerance < 0.0) {
+            throw new IllegalArgumentException("positionTolerance must be >= 0, got " + positionTolerance);
+        }
+        return new DeviceManagedPositionPlant(out, measurement.memoized(), positionTolerance);
+    }
+
+    /**
+     * Create a device-managed or otherwise externally regulated velocity plant over a
+     * {@link VelocityOutput} plus an authoritative velocity measurement source.
+     *
+     * @param out               raw velocity command channel that the returned plant should drive
+     * @param measurement       authoritative velocity measurement source in the same units as the plant target
+     * @param velocityTolerance absolute completion band used for {@link Plant#atSetpoint()}
+     * @return feedback-capable velocity plant backed by the supplied command channel and measurement
+     */
+    public static Plant velocity(VelocityOutput out,
+                                 ScalarSource measurement,
+                                 double velocityTolerance) {
+        Objects.requireNonNull(out, "out");
+        Objects.requireNonNull(measurement, "measurement");
+        if (velocityTolerance < 0.0) {
+            throw new IllegalArgumentException("velocityTolerance must be >= 0, got " + velocityTolerance);
+        }
+        return new DeviceManagedVelocityPlant(out, measurement.memoized(), velocityTolerance);
+    }
+
+    /**
+     * Create a framework-regulated position plant that uses raw power as the actuation lever.
+     *
+     * @param powerOut raw power command channel driven by the returned plant
+     * @param measurement authoritative position measurement source in the same units as the plant target
+     * @param regulator framework-owned control law that converts position error into power commands
+     * @param positionTolerance absolute completion band used for {@link Plant#atSetpoint()}
+     * @return feedback-capable regulated position plant that drives power from the supplied measurement
+     */
+    public static Plant positionFromPower(PowerOutput powerOut,
+                                          ScalarSource measurement,
+                                          ScalarRegulator regulator,
+                                          double positionTolerance) {
+        Objects.requireNonNull(powerOut, "powerOut");
+        Objects.requireNonNull(measurement, "measurement");
+        Objects.requireNonNull(regulator, "regulator");
+        if (positionTolerance < 0.0) {
+            throw new IllegalArgumentException("positionTolerance must be >= 0, got " + positionTolerance);
+        }
+        return new RegulatedPositionPlant(powerOut, measurement.memoized(), regulator, positionTolerance);
+    }
+
+    /**
+     * Create a framework-regulated velocity plant that uses raw power as the actuation lever.
+     *
+     * @param powerOut          raw power command channel driven by the returned plant
+     * @param measurement       authoritative velocity measurement source in the same units as the plant target
+     * @param regulator         framework-owned control law that converts velocity error into power commands
+     * @param velocityTolerance absolute completion band used for {@link Plant#atSetpoint()}
+     * @return feedback-capable regulated velocity plant that drives power from the supplied measurement
+     */
+    public static Plant velocityFromPower(PowerOutput powerOut,
+                                          ScalarSource measurement,
+                                          ScalarRegulator regulator,
+                                          double velocityTolerance) {
+        Objects.requireNonNull(powerOut, "powerOut");
+        Objects.requireNonNull(measurement, "measurement");
+        Objects.requireNonNull(regulator, "regulator");
+        if (velocityTolerance < 0.0) {
+            throw new IllegalArgumentException("velocityTolerance must be >= 0, got " + velocityTolerance);
+        }
+        return new RegulatedVelocityPlant(powerOut, measurement.memoized(), regulator, velocityTolerance);
+    }
+
     private static final class PowerPlant implements Plant {
         private final PowerOutput out;
-        private double target = 0.0;
+        private double target;
 
-        PowerPlant(PowerOutput out) {
+        private PowerPlant(PowerOutput out) {
             this.out = out;
         }
 
-        /**
-         * {@inheritDoc}
-         */
         @Override
         public void setTarget(double target) {
             this.target = target;
             out.setPower(target);
         }
 
-        /**
-         * {@inheritDoc}
-         */
         @Override
         public double getTarget() {
             return target;
         }
 
-        /**
-         * {@inheritDoc}
-         */
         @Override
-        public void update(double dtSec) {
-            // No additional control logic; relies on underlying implementation.
+        public void update(LoopClock clock) {
+            // direct command plant; nothing else to do
         }
 
-        /**
-         * {@inheritDoc}
-         */
         @Override
         public void stop() {
             out.stop();
             target = 0.0;
         }
 
-        /**
-         * {@inheritDoc}
-         */
         @Override
-        public boolean atSetpoint() {
-            return true;
-        }
-
-        /**
-         * {@inheritDoc}
-         */
-        @Override
-        public String toString() {
-            return "PowerPlant{target=" + target + "}";
+        public void debugDump(DebugSink dbg, String prefix) {
+            Plant.super.debugDump(dbg, prefix);
         }
     }
 
-    // =====================================================================
-    // SERVO POSITION PLANTS (PositionOutput, open-loop set-and-hold)
-    // =====================================================================
-
-    /**
-     * Servo-style position plant over a {@link PositionOutput} in native units.
-     *
-     * <p>This variant is "set-and-hold": it commands the target position
-     * when {@link Plant#setTarget(double)} is called and immediately considers
-     * itself at setpoint (i.e., {@link Plant#atSetpoint()} always returns
-     * {@code true}).</p>
-     *
-     * <p>For encoder-backed motors where you want sensor-based completion and
-     * {@link Plant#hasFeedback()}, use {@link #motorPosition(PositionOutput, double)}.
-     */
-    static Plant servoPosition(PositionOutput out) {
-        if (out == null) {
-            throw new IllegalArgumentException("PositionOutput is required");
-        }
-        return new PositionPlant(out);
-    }
-
-    /**
-     * Internal {@link Plant} implementation for open-loop position channels (e.g., servos).
-     */
-    private static final class PositionPlant implements Plant {
+    private static final class CommandedPositionPlant implements Plant {
         private final PositionOutput out;
-        private double target = 0.0;
+        private double target;
 
-        PositionPlant(PositionOutput out) {
+        private CommandedPositionPlant(PositionOutput out) {
             this.out = out;
         }
 
-        /**
-         * {@inheritDoc}
-         */
         @Override
         public void setTarget(double target) {
             this.target = target;
             out.setPosition(target);
         }
 
-        /**
-         * {@inheritDoc}
-         */
         @Override
         public double getTarget() {
             return target;
         }
 
-        /**
-         * {@inheritDoc}
-         */
         @Override
-        public void update(double dtSec) {
-            // No additional control logic; relies on underlying implementation.
+        public void update(LoopClock clock) {
+            // commanded-position plant; no authoritative feedback
         }
 
-        /**
-         * {@inheritDoc}
-         */
         @Override
         public void stop() {
             out.stop();
-            // Keep target as-is; this plant is open-loop in terms of atSetpoint().
+        }
+    }
+
+    private abstract static class AbstractFeedbackPlant implements Plant {
+        private final ScalarSource measurement;
+        private final double tolerance;
+        private double target;
+        private double lastMeasurement = Double.NaN;
+        private boolean lastAtSetpoint;
+
+        private AbstractFeedbackPlant(ScalarSource measurement, double tolerance) {
+            this.measurement = measurement;
+            this.tolerance = tolerance;
         }
 
-        /**
-         * {@inheritDoc}
-         */
         @Override
-        public boolean atSetpoint() {
+        public final void setTarget(double target) {
+            this.target = target;
+            onSetTarget(target);
+        }
+
+        @Override
+        public final double getTarget() {
+            return target;
+        }
+
+        @Override
+        public final void update(LoopClock clock) {
+            lastMeasurement = measurement.getAsDouble(clock);
+            onUpdate(clock, lastMeasurement);
+            lastAtSetpoint = Double.isFinite(lastMeasurement)
+                    && Math.abs(target - lastMeasurement) <= tolerance;
+        }
+
+        protected abstract void onSetTarget(double target);
+
+        protected abstract void onUpdate(LoopClock clock, double measurement);
+
+        @Override
+        public final boolean atSetpoint() {
+            return lastAtSetpoint;
+        }
+
+        @Override
+        public final boolean hasFeedback() {
             return true;
         }
 
-        /**
-         * {@inheritDoc}
-         */
         @Override
-        public String toString() {
-            return "PositionPlant{target=" + target + "}";
+        public final double getMeasurement() {
+            return lastMeasurement;
+        }
+
+        protected final double tolerance() {
+            return tolerance;
         }
     }
 
-    // =====================================================================
-    // MOTOR POSITION PLANTS (PositionOutput, feedback + tolerance + reset)
-    // =====================================================================
-
-    /**
-     * Position plant for an encoder-backed motor in native units (ticks).
-     *
-     * <p>This variant assumes {@link PositionOutput#getMeasuredPosition()} returns
-     * a real sensor reading and uses that feedback to implement
-     * {@link Plant#atSetpoint()} with a tolerance.</p>
-     *
-     * <p>It also maintains an internal offset so that {@link Plant#reset()} can
-     * logically re-zero the position at the current measured value without
-     * requiring the HAL to reset the encoder itself.</p>
-     */
-    static Plant motorPosition(PositionOutput out, double toleranceNative) {
-        if (out == null) {
-            throw new IllegalArgumentException("PositionOutput is required");
-        }
-        if (toleranceNative < 0.0) {
-            throw new IllegalArgumentException("toleranceNative must be >= 0");
-        }
-        return new MotorPositionPlant(out, toleranceNative);
-    }
-
-    /**
-     * Internal {@link Plant} implementation for encoder-backed position control with feedback.
-     */
-    private static final class MotorPositionPlant implements Plant {
+    private static final class DeviceManagedPositionPlant extends AbstractFeedbackPlant {
         private final PositionOutput out;
-        private final double toleranceNative;
 
-        // Plant-frame target (after offset).
-        private double target = 0.0;
-
-        // hardware_position = plant_position + offsetNative
-        private double offsetNative = 0.0;
-
-        MotorPositionPlant(PositionOutput out, double toleranceNative) {
+        private DeviceManagedPositionPlant(PositionOutput out, ScalarSource measurement, double tolerance) {
+            super(measurement, tolerance);
             this.out = out;
-            this.toleranceNative = toleranceNative;
         }
 
-        /**
-         * {@inheritDoc}
-         */
         @Override
-        public void setTarget(double target) {
-            this.target = target;
-            out.setPosition(target + offsetNative);
+        protected void onSetTarget(double target) {
+            out.setPosition(target);
         }
 
-        /**
-         * {@inheritDoc}
-         */
         @Override
-        public double getTarget() {
-            return target;
+        protected void onUpdate(LoopClock clock, double measurement) {
+            // device owns the loop; measurement is sampled for plant status only
         }
 
-        /**
-         * {@inheritDoc}
-         */
-        @Override
-        public void update(double dtSec) {
-            // No additional control beyond the underlying motor controller.
-        }
-
-        /**
-         * {@inheritDoc}
-         */
         @Override
         public void stop() {
             out.stop();
         }
-
-        /**
-         * {@inheritDoc}
-         */
-        @Override
-        public void reset() {
-            // Re-zero the plant's coordinate frame at the current measured position.
-            out.stop();
-            offsetNative = out.getMeasuredPosition();
-            target = 0.0;
-        }
-
-        /**
-         * {@inheritDoc}
-         */
-        @Override
-        public boolean atSetpoint() {
-            double measuredPlantFrame = out.getMeasuredPosition() - offsetNative;
-            double error = measuredPlantFrame - target;
-            return Math.abs(error) <= toleranceNative;
-        }
-
-        /**
-         * {@inheritDoc}
-         */
-        @Override
-        public boolean hasFeedback() {
-            return true;
-        }
-
-        /**
-         * {@inheritDoc}
-         */
-        @Override
-        public String toString() {
-            return "MotorPositionPlant{target=" + target +
-                    ", offsetNative=" + offsetNative +
-                    ", toleranceNative=" + toleranceNative + "}";
-        }
     }
 
-    // =====================================================================
-    // VELOCITY PLANTS (VelocityOutput, feedback + tolerance)
-    // =====================================================================
-
-    /**
-     * Velocity plant over a {@link VelocityOutput} in native units.
-     *
-     * <p>This variant assumes {@link VelocityOutput#getMeasuredVelocity()} returns
-     * a real sensor reading and uses that feedback to implement
-     * {@link Plant#atSetpoint()} with a tolerance.</p>
-     */
-    static Plant velocity(VelocityOutput out, double toleranceNative) {
-        if (out == null) {
-            throw new IllegalArgumentException("VelocityOutput is required");
-        }
-        if (toleranceNative < 0.0) {
-            throw new IllegalArgumentException("toleranceNative must be >= 0");
-        }
-        return new VelocityPlant(out, toleranceNative);
-    }
-
-    /**
-     * Internal {@link Plant} implementation for encoder-backed velocity control with feedback.
-     */
-    private static final class VelocityPlant implements Plant {
+    private static final class DeviceManagedVelocityPlant extends AbstractFeedbackPlant {
         private final VelocityOutput out;
-        private final double toleranceNative;
-        private double target = 0.0;
 
-        VelocityPlant(VelocityOutput out, double toleranceNative) {
+        private DeviceManagedVelocityPlant(VelocityOutput out, ScalarSource measurement, double tolerance) {
+            super(measurement, tolerance);
             this.out = out;
-            this.toleranceNative = toleranceNative;
         }
 
-        /**
-         * {@inheritDoc}
-         */
         @Override
-        public void setTarget(double target) {
-            this.target = target;
+        protected void onSetTarget(double target) {
             out.setVelocity(target);
         }
 
-        /**
-         * {@inheritDoc}
-         */
         @Override
-        public double getTarget() {
-            return target;
+        protected void onUpdate(LoopClock clock, double measurement) {
+            // device owns the loop; measurement is sampled for plant status only
         }
 
-        /**
-         * {@inheritDoc}
-         */
-        @Override
-        public void update(double dtSec) {
-            // No additional control logic; relies on underlying implementation.
-        }
-
-        /**
-         * {@inheritDoc}
-         */
         @Override
         public void stop() {
             out.stop();
         }
+    }
 
-        /**
-         * {@inheritDoc}
-         */
-        @Override
-        public boolean atSetpoint() {
-            double error = out.getMeasuredVelocity() - target;
-            return Math.abs(error) <= toleranceNative;
+    private abstract static class AbstractRegulatedPlant extends AbstractFeedbackPlant {
+        private final PowerOutput out;
+        private final ScalarRegulator regulator;
+        private double lastOutput;
+
+        private AbstractRegulatedPlant(PowerOutput out,
+                                       ScalarSource measurement,
+                                       ScalarRegulator regulator,
+                                       double tolerance) {
+            super(measurement, tolerance);
+            this.out = out;
+            this.regulator = regulator;
         }
 
-        /**
-         * {@inheritDoc}
-         */
         @Override
-        public boolean hasFeedback() {
-            return true;
+        protected final void onSetTarget(double target) {
+            // no immediate action; command happens during update with a fresh measurement
         }
 
-        /**
-         * {@inheritDoc}
-         */
         @Override
-        public String toString() {
-            return "VelocityPlant{target=" + target +
-                    ", toleranceNative=" + toleranceNative + "}";
+        protected final void onUpdate(LoopClock clock, double measurement) {
+            lastOutput = regulator.update(getTarget(), measurement, clock);
+            out.setPower(lastOutput);
+        }
+
+        @Override
+        public void reset() {
+            regulator.reset();
+        }
+
+        @Override
+        public void stop() {
+            out.stop();
+            regulator.reset();
+            lastOutput = 0.0;
+        }
+
+        @Override
+        public void debugDump(DebugSink dbg, String prefix) {
+            if (dbg == null) {
+                return;
+            }
+            String p = (prefix == null || prefix.isEmpty()) ? "plant" : prefix;
+            dbg.addData(p + ".target", getTarget())
+                    .addData(p + ".hasFeedback", hasFeedback())
+                    .addData(p + ".atSetpoint", atSetpoint())
+                    .addData(p + ".measurement", getMeasurement())
+                    .addData(p + ".error", getError())
+                    .addData(p + ".output", lastOutput);
+            regulator.debugDump(dbg, p + ".regulator");
+        }
+    }
+
+    private static final class RegulatedPositionPlant extends AbstractRegulatedPlant {
+        private RegulatedPositionPlant(PowerOutput out,
+                                       ScalarSource measurement,
+                                       ScalarRegulator regulator,
+                                       double tolerance) {
+            super(out, measurement, regulator, tolerance);
+        }
+    }
+
+    private static final class RegulatedVelocityPlant extends AbstractRegulatedPlant {
+        private RegulatedVelocityPlant(PowerOutput out,
+                                       ScalarSource measurement,
+                                       ScalarRegulator regulator,
+                                       double tolerance) {
+            super(out, measurement, regulator, tolerance);
         }
     }
 }

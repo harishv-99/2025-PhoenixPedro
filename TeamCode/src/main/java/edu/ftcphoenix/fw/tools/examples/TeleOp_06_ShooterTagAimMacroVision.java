@@ -8,7 +8,6 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 
-import edu.ftcphoenix.fw.actuation.Actuators;
 import edu.ftcphoenix.fw.actuation.Plant;
 import edu.ftcphoenix.fw.actuation.PlantTasks;
 import edu.ftcphoenix.fw.core.debug.DebugSink;
@@ -26,6 +25,7 @@ import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceSpec;
 import edu.ftcphoenix.fw.drive.guidance.ReferencePoint2d;
 import edu.ftcphoenix.fw.drive.guidance.References;
 import edu.ftcphoenix.fw.drive.source.GamepadDriveSource;
+import edu.ftcphoenix.fw.ftc.FtcActuators;
 import edu.ftcphoenix.fw.ftc.FtcDrives;
 import edu.ftcphoenix.fw.ftc.FtcTelemetryDebugSink;
 import edu.ftcphoenix.fw.ftc.FtcVision;
@@ -281,21 +281,22 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
                 DriveOverlayMask.OMEGA_ONLY
         );
 
-        // 4) Mechanism wiring using Actuators.
+        // 4) Mechanism wiring using FtcActuators.
 
-        shooter = Actuators.plant(hardwareMap)
+        shooter = FtcActuators.plant(hardwareMap)
                 .motor(HW_SHOOTER_LEFT, Direction.FORWARD)
                 .andMotor(HW_SHOOTER_RIGHT, Direction.REVERSE)
-                .velocity(SHOOTER_VELOCITY_TOLERANCE_NATIVE)
+                .velocity(FtcActuators.MotorVelocityControl.deviceManaged()
+                        .velocityTolerance(SHOOTER_VELOCITY_TOLERANCE_NATIVE))
                 .build();
 
-        transfer = Actuators.plant(hardwareMap)
+        transfer = FtcActuators.plant(hardwareMap)
                 .crServo(HW_TRANSFER_LEFT, Direction.FORWARD)
                 .andCrServo(HW_TRANSFER_RIGHT, Direction.REVERSE)
                 .power()
                 .build();
 
-        pusher = Actuators.plant(hardwareMap)
+        pusher = FtcActuators.plant(hardwareMap)
                 .servo(HW_PUSHER, Direction.FORWARD)
                 .position()
                 .build();
@@ -392,9 +393,9 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
         drivebase.drive(cmd);
 
         // Plants: shooter, transfer, pusher.
-        shooter.update(dtSec);
-        transfer.update(dtSec);
-        pusher.update(dtSec);
+        shooter.update(clock);
+        transfer.update(clock);
+        pusher.update(clock);
 
         // ------------------------------------------------------------------
         // 5) Report

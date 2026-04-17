@@ -14,89 +14,76 @@ import edu.ftcphoenix.fw.core.hal.VelocityOutput;
 import edu.ftcphoenix.fw.core.math.MathUtil;
 
 /**
- * Adapters from FTC SDK devices to Phoenix HAL output interfaces.
+ * FTC-boundary adapters that turn FTC SDK hardware devices into Phoenix command channels.
  *
- * <p>This class is the bridge between the FTC SDK and the framework's
- * hardware-abstraction interfaces:</p>
+ * <p>This class intentionally exposes <b>command-only</b> outputs. If you need measurement or
+ * feedback, use {@link FtcSensors} to obtain a Phoenix source instead of trying to read back from
+ * the command channel itself.</p>
  *
- * <ul>
- *   <li>{@link PowerOutput} – normalized power (typically [-1, +1])</li>
- *   <li>{@link PositionOutput} – native position units
- *       <ul>
- *         <li>Servos: {@code 0.0 .. 1.0}</li>
- *         <li>Motors: encoder ticks</li>
- *       </ul>
- *   </li>
- *   <li>{@link VelocityOutput} – native velocity units
- *       <ul>
- *         <li>Motors: encoder ticks per second</li>
- *       </ul>
- *   </li>
- * </ul>
+ * <h2>Typical usage</h2>
  *
- * <p>All direction handling is centralized here, using the FTC SDK's direction APIs:</p>
- *
- * <ul>
- *   <li>{@link DcMotor#setDirection(DcMotorSimple.Direction)}</li>
- *   <li>{@link CRServo#setDirection(com.qualcomm.robotcore.hardware.CRServo.Direction)}</li>
- *   <li>{@link Servo#setDirection(Servo.Direction)}</li>
- * </ul>
- *
- * <p>Framework code and {@code Plant} implementations then treat positive
- * values as "forward" in whatever coordinate system the hardware already
- * uses.</p>
+ * <pre>{@code
+ * PowerOutput intake = FtcHardware.motorPower(hardwareMap, "intake", Direction.FORWARD);
+ * PositionOutput wrist = FtcHardware.servoPosition(hardwareMap, "wrist", Direction.FORWARD);
+ * VelocityOutput flywheel = FtcHardware.motorVelocity(hardwareMap, "flywheel", Direction.FORWARD);
+ * }</pre>
  */
 public final class FtcHardware {
 
     private FtcHardware() {
-        // utility class; no instances
+        // utility class
     }
 
-    // ----------------------------------------------------------------------
-    // POWER OUTPUTS (normalized power [-1, +1])
-    // ----------------------------------------------------------------------
+    // ---------------------------------------------------------------------------------------------
+    // Power outputs
+    // ---------------------------------------------------------------------------------------------
 
     /**
-     * Wrap an FTC {@link DcMotorEx} as a normalized {@link PowerOutput}.
+     * Create a Phoenix {@link PowerOutput} for a named FTC motor.
      *
-     * <p>The logical power input is clamped to {@code [-1.0, +1.0]} and
-     * forwarded to {@link DcMotorEx#setPower(double)}.</p>
+     * <p>The returned output writes through {@link DcMotor#setPower(double)} and reports the most
+     * recent commanded power through {@link PowerOutput#getCommandedPower()}.</p>
      *
-     * @param hw        hardware map
-     * @param name      configured device name
-     * @param direction logical direction for this channel
-     * @return a {@link PowerOutput} controlling the motor
+     * @param hw FTC hardware map used to look up the motor
+     * @param name configured hardware name of the {@link DcMotorEx}
+     * @param direction logical forward direction for Phoenix commands
+     * @return command-only power output for the named motor
      */
-    public static PowerOutput motorPower(HardwareMap hw,
-                                         String name,
-                                         Direction direction) {
-        if (hw == null) {
-            throw new IllegalArgumentException("HardwareMap is required");
-        }
-        if (name == null) {
-            throw new IllegalArgumentException("name is required");
-        }
-        if (direction == null) {
-            throw new IllegalArgumentException("direction is required");
-        }
+    public static PowerOutput motorPower(HardwareMap hw, String name, Direction direction) {
+        requireHardwareMap(hw);
+        requireName(name);
+        requireDirection(direction);
+        return motorPower(hw.get(DcMotorEx.class, name), direction);
+    }
 
-        final DcMotorEx m = hw.get(DcMotorEx.class, name);
-        m.setDirection(direction == Direction.REVERSE
+    /**
+     * Create a Phoenix {@link PowerOutput} for an FTC motor instance.
+     *
+     * <p>The adapter configures the motor direction immediately and clamps every commanded value to
+     * {@code [-1.0, +1.0]} before forwarding it to the FTC SDK.</p>
+     *
+     * @param motor     FTC motor instance to command
+     * @param direction logical forward direction for Phoenix commands
+     * @return command-only power output backed by {@link DcMotor#setPower(double)}
+     */
+    public static PowerOutput motorPower(DcMotorEx motor, Direction direction) {
+        if (motor == null) {
+            throw new IllegalArgumentException("motor is required");
+        }
+        requireDirection(direction);
+        motor.setDirection(direction == Direction.REVERSE
                 ? DcMotorSimple.Direction.REVERSE
                 : DcMotorSimple.Direction.FORWARD);
 
         return new PowerOutput() {
             private double last;
 
-            /** {@inheritDoc} */
             @Override
             public void setPower(double power) {
-                double cmd = MathUtil.clampAbs(power, 1.0);
-                last = cmd;
-                m.setPower(cmd);
+                last = MathUtil.clampAbs(power, 1.0);
+                motor.setPower(last);
             }
 
-            /** {@inheritDoc} */
             @Override
             public double getCommandedPower() {
                 return last;
@@ -105,46 +92,48 @@ public final class FtcHardware {
     }
 
     /**
-     * Wrap an FTC {@link CRServo} as a normalized {@link PowerOutput}.
+     * Create a Phoenix {@link PowerOutput} for a named FTC continuous-rotation servo.
      *
-     * <p>The logical power input is clamped to {@code [-1.0, +1.0]} and
-     * forwarded to {@link CRServo#setPower(double)}.</p>
-     *
-     * @param hw        hardware map
-     * @param name      configured device name
-     * @param direction logical direction for this channel
-     * @return a {@link PowerOutput} controlling the continuous rotation servo
+     * @param hw        FTC hardware map used to look up the CR servo
+     * @param name      configured hardware name of the {@link CRServo}
+     * @param direction logical forward direction for Phoenix commands
+     * @return command-only power output for the named CR servo
      */
-    public static PowerOutput crServoPower(HardwareMap hw,
-                                           String name,
-                                           Direction direction) {
-        if (hw == null) {
-            throw new IllegalArgumentException("HardwareMap is required");
-        }
-        if (name == null) {
-            throw new IllegalArgumentException("name is required");
-        }
-        if (direction == null) {
-            throw new IllegalArgumentException("direction is required");
-        }
+    public static PowerOutput crServoPower(HardwareMap hw, String name, Direction direction) {
+        requireHardwareMap(hw);
+        requireName(name);
+        requireDirection(direction);
+        return crServoPower(hw.get(CRServo.class, name), direction);
+    }
 
-        final CRServo s = hw.get(CRServo.class, name);
-        s.setDirection(direction == Direction.REVERSE
+    /**
+     * Create a Phoenix {@link PowerOutput} for an FTC continuous-rotation servo instance.
+     *
+     * <p>The adapter configures the servo direction immediately and clamps every commanded value to
+     * {@code [-1.0, +1.0]} before forwarding it to the FTC SDK.</p>
+     *
+     * @param servo FTC continuous-rotation servo to command
+     * @param direction logical forward direction for Phoenix commands
+     * @return command-only power output backed by {@link CRServo#setPower(double)}
+     */
+    public static PowerOutput crServoPower(CRServo servo, Direction direction) {
+        if (servo == null) {
+            throw new IllegalArgumentException("servo is required");
+        }
+        requireDirection(direction);
+        servo.setDirection(direction == Direction.REVERSE
                 ? CRServo.Direction.REVERSE
                 : CRServo.Direction.FORWARD);
 
         return new PowerOutput() {
             private double last;
 
-            /** {@inheritDoc} */
             @Override
             public void setPower(double power) {
-                double cmd = MathUtil.clampAbs(power, 1.0);
-                last = cmd;
-                s.setPower(cmd);
+                last = MathUtil.clampAbs(power, 1.0);
+                servo.setPower(last);
             }
 
-            /** {@inheritDoc} */
             @Override
             public double getCommandedPower() {
                 return last;
@@ -152,54 +141,56 @@ public final class FtcHardware {
         };
     }
 
-    // ----------------------------------------------------------------------
-    // POSITION OUTPUTS
-    //  - Servos: 0..1 (FTC native)
-    //  - Motors: encoder ticks
-    // ----------------------------------------------------------------------
+    // ---------------------------------------------------------------------------------------------
+    // Position outputs
+    // ---------------------------------------------------------------------------------------------
 
     /**
-     * Wrap an FTC {@link Servo} as a {@link PositionOutput} in the range
-     * {@code 0.0 .. 1.0}.
+     * Create a Phoenix {@link PositionOutput} for a named FTC standard servo.
      *
-     * <p>The input is clamped to {@code [0.0, 1.0]} and forwarded to
-     * {@link Servo#setPosition(double)}.</p>
+     * <p>The returned output uses the servo's usual {@code 0.0 .. 1.0} position domain and reports
+     * the most recent commanded value through {@link PositionOutput#getCommandedPosition()}.</p>
      *
-     * @param hw        hardware map
-     * @param name      configured device name
-     * @param direction logical direction for this channel
-     * @return a {@link PositionOutput} controlling the servo
+     * @param hw FTC hardware map used to look up the servo
+     * @param name configured hardware name of the {@link Servo}
+     * @param direction logical forward direction for Phoenix commands
+     * @return command-only position output for the named servo
      */
-    public static PositionOutput servoPosition(HardwareMap hw,
-                                               String name,
-                                               Direction direction) {
-        if (hw == null) {
-            throw new IllegalArgumentException("HardwareMap is required");
-        }
-        if (name == null) {
-            throw new IllegalArgumentException("name is required");
-        }
-        if (direction == null) {
-            throw new IllegalArgumentException("direction is required");
-        }
+    public static PositionOutput servoPosition(HardwareMap hw, String name, Direction direction) {
+        requireHardwareMap(hw);
+        requireName(name);
+        requireDirection(direction);
+        return servoPosition(hw.get(Servo.class, name), direction);
+    }
 
-        final Servo s = hw.get(Servo.class, name);
-        s.setDirection(direction == Direction.REVERSE
+    /**
+     * Create a Phoenix {@link PositionOutput} for an FTC standard servo instance.
+     *
+     * <p>The adapter configures the servo direction immediately and clamps every commanded position
+     * to the servo domain {@code [0.0, 1.0]}.</p>
+     *
+     * @param servo     FTC standard servo to command
+     * @param direction logical forward direction for Phoenix commands
+     * @return command-only position output backed by {@link Servo#setPosition(double)}
+     */
+    public static PositionOutput servoPosition(Servo servo, Direction direction) {
+        if (servo == null) {
+            throw new IllegalArgumentException("servo is required");
+        }
+        requireDirection(direction);
+        servo.setDirection(direction == Direction.REVERSE
                 ? Servo.Direction.REVERSE
                 : Servo.Direction.FORWARD);
 
         return new PositionOutput() {
             private double last;
 
-            /** {@inheritDoc} */
             @Override
             public void setPosition(double position) {
-                double cmd = MathUtil.clamp(position, 0.0, 1.0);
-                last = cmd;
-                s.setPosition(cmd);
+                last = MathUtil.clamp(position, 0.0, 1.0);
+                servo.setPosition(last);
             }
 
-            /** {@inheritDoc} */
             @Override
             public double getCommandedPosition() {
                 return last;
@@ -208,146 +199,180 @@ public final class FtcHardware {
     }
 
     /**
-     * Wrap an FTC {@link DcMotorEx} as a {@link PositionOutput} in native
-     * encoder ticks.
+     * Create a Phoenix {@link PositionOutput} for a named FTC motor using
+     * {@link DcMotor.RunMode#RUN_TO_POSITION}.
      *
-     * <p>The input is interpreted as an absolute target position in encoder
-     * ticks. The implementation uses {@link DcMotor.RunMode#RUN_TO_POSITION}
-     * and commands full power ({@code 1.0}) when a new target is set.</p>
+     * <p>The framework does <b>not</b> reset the encoder automatically. The motor's existing encoder
+     * frame is preserved and the caller's target is interpreted directly in native encoder ticks.
+     * The default command power is {@code 1.0}; use the overload with {@code maxPower} when you want
+     * a different power applied after each new target command.</p>
      *
-     * <p>Higher-level code is responsible for converting to/from physical
-     * units (e.g., radians) if needed. The framework standardizes on ticks
-     * as the native position unit for motors.</p>
-     *
-     * @param hw        hardware map
-     * @param name      configured device name
-     * @param direction logical direction for this channel
-     * @return a {@link PositionOutput} controlling the motor in ticks
+     * @param hw FTC hardware map used to look up the motor
+     * @param name configured hardware name of the {@link DcMotorEx}
+     * @param direction logical forward direction for Phoenix commands
+     * @return command-only position output backed by {@code RUN_TO_POSITION}
      */
     public static PositionOutput motorPosition(HardwareMap hw,
                                                String name,
                                                Direction direction) {
-        if (hw == null) {
-            throw new IllegalArgumentException("HardwareMap is required");
-        }
-        if (name == null) {
-            throw new IllegalArgumentException("name is required");
-        }
-        if (direction == null) {
-            throw new IllegalArgumentException("direction is required");
-        }
+        return motorPosition(hw, name, direction, 1.0);
+    }
 
-        final DcMotorEx m = hw.get(DcMotorEx.class, name);
-        m.setDirection(direction == Direction.REVERSE
+    /**
+     * Create a Phoenix {@link PositionOutput} for a named FTC motor using
+     * {@link DcMotor.RunMode#RUN_TO_POSITION} and an explicit command power.
+     *
+     * @param hw        FTC hardware map used to look up the motor
+     * @param name      configured hardware name of the {@link DcMotorEx}
+     * @param direction logical forward direction for Phoenix commands
+     * @param maxPower  power Phoenix reapplies after each new target command; typical FTC values are
+     *                  in {@code [0.0, 1.0]}
+     * @return command-only position output backed by {@code RUN_TO_POSITION}
+     */
+    public static PositionOutput motorPosition(HardwareMap hw,
+                                               String name,
+                                               Direction direction,
+                                               double maxPower) {
+        requireHardwareMap(hw);
+        requireName(name);
+        requireDirection(direction);
+        return motorPosition(hw.get(DcMotorEx.class, name), direction, maxPower);
+    }
+
+    /**
+     * Create a Phoenix {@link PositionOutput} for an FTC motor instance using
+     * {@link DcMotor.RunMode#RUN_TO_POSITION}.
+     *
+     * <p>Each call to {@link PositionOutput#setPosition(double)} writes the requested target in
+     * native encoder ticks, switches the motor into {@code RUN_TO_POSITION}, and reapplies the
+     * configured drive power. Calling {@link PositionOutput#stop()} powers the motor down and returns
+     * it to {@link DcMotor.RunMode#RUN_USING_ENCODER}.</p>
+     *
+     * @param motor     FTC motor instance to command
+     * @param direction logical forward direction for Phoenix commands
+     * @param maxPower  power Phoenix reapplies after each new target command; values are clamped to
+     *                  {@code [0.0, 1.0]}
+     * @return command-only position output backed by {@code RUN_TO_POSITION}
+     */
+    public static PositionOutput motorPosition(DcMotorEx motor,
+                                               Direction direction,
+                                               double maxPower) {
+        if (motor == null) {
+            throw new IllegalArgumentException("motor is required");
+        }
+        requireDirection(direction);
+        final double power = MathUtil.clampAbs(maxPower, 1.0);
+        motor.setDirection(direction == Direction.REVERSE
                 ? DcMotorSimple.Direction.REVERSE
                 : DcMotorSimple.Direction.FORWARD);
 
-        // Ensure encoder-based positioning is enabled; reset once at setup.
-        m.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
-        m.setMode(DcMotor.RunMode.RUN_TO_POSITION);
-
         return new PositionOutput() {
-            private double lastTicks = 0.0;
+            private double last;
 
-            /** {@inheritDoc} */
             @Override
-            public void setPosition(double positionTicks) {
-                lastTicks = positionTicks;
-                int target = (int) Math.round(positionTicks);
-                m.setTargetPosition(target);
-                m.setMode(DcMotor.RunMode.RUN_TO_POSITION);
-                m.setPower(1.0); // full power; SDK manages PID profile
+            public void setPosition(double position) {
+                last = position;
+                motor.setTargetPosition((int) Math.round(position));
+                motor.setMode(DcMotor.RunMode.RUN_TO_POSITION);
+                motor.setPower(power);
             }
 
-            /** {@inheritDoc} */
             @Override
             public double getCommandedPosition() {
-                return lastTicks;
+                return last;
             }
 
-            /** {@inheritDoc} */
-            @Override
-            public double getMeasuredPosition() {
-                // True encoder-based feedback in native ticks.
-                return m.getCurrentPosition();
-            }
-
-            /** {@inheritDoc} */
             @Override
             public void stop() {
-                // Stop actively driving toward the previous target.
-                m.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
-                m.setPower(0.0);
+                motor.setPower(0.0);
+                motor.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
             }
         };
     }
 
-    // ----------------------------------------------------------------------
-    // VELOCITY OUTPUTS
-    //  - Motors: encoder ticks per second
-    // ----------------------------------------------------------------------
+    // ---------------------------------------------------------------------------------------------
+    // Velocity outputs
+    // ---------------------------------------------------------------------------------------------
 
     /**
-     * Wrap an FTC {@link DcMotorEx} as a {@link VelocityOutput} in native
-     * encoder units (ticks per second).
+     * Create a Phoenix {@link VelocityOutput} for a named FTC motor using
+     * {@link DcMotorEx#setVelocity(double)}.
      *
-     * <p>The input is forwarded directly to
-     * {@link DcMotorEx#setVelocity(double)} while the motor is in
-     * {@link DcMotor.RunMode#RUN_USING_ENCODER}.</p>
+     * <p>FTC uses native encoder ticks per second for this command path by default.</p>
      *
-     * <p>{@link VelocityOutput#getCommandedVelocity()} returns the last
-     * requested velocity (ticks/sec), while
-     * {@link VelocityOutput#getMeasuredVelocity()} returns the current
-     * sensor-based velocity reading from {@link DcMotorEx#getVelocity()}
-     * (also ticks/sec).</p>
-     *
-     * @param hw        hardware map
-     * @param name      configured device name
-     * @param direction logical direction for this channel
-     * @return a {@link VelocityOutput} controlling the motor velocity
+     * @param hw FTC hardware map used to look up the motor
+     * @param name configured hardware name of the {@link DcMotorEx}
+     * @param direction logical forward direction for Phoenix commands
+     * @return command-only velocity output for the named motor
      */
     public static VelocityOutput motorVelocity(HardwareMap hw,
                                                String name,
                                                Direction direction) {
-        if (hw == null) {
-            throw new IllegalArgumentException("HardwareMap is required");
-        }
-        if (name == null) {
-            throw new IllegalArgumentException("name is required");
-        }
-        if (direction == null) {
-            throw new IllegalArgumentException("direction is required");
-        }
+        requireHardwareMap(hw);
+        requireName(name);
+        requireDirection(direction);
+        return motorVelocity(hw.get(DcMotorEx.class, name), direction);
+    }
 
-        final DcMotorEx m = hw.get(DcMotorEx.class, name);
-        m.setDirection(direction == Direction.REVERSE
+    /**
+     * Create a Phoenix {@link VelocityOutput} for an FTC motor instance using
+     * {@link DcMotorEx#setVelocity(double)}.
+     *
+     * <p>Each call to {@link VelocityOutput#setVelocity(double)} switches the motor to
+     * {@link DcMotor.RunMode#RUN_USING_ENCODER} before applying the requested velocity command.</p>
+     *
+     * @param motor     FTC motor instance to command
+     * @param direction logical forward direction for Phoenix commands
+     * @return command-only velocity output backed by {@link DcMotorEx#setVelocity(double)}
+     */
+    public static VelocityOutput motorVelocity(DcMotorEx motor,
+                                               Direction direction) {
+        if (motor == null) {
+            throw new IllegalArgumentException("motor is required");
+        }
+        requireDirection(direction);
+        motor.setDirection(direction == Direction.REVERSE
                 ? DcMotorSimple.Direction.REVERSE
                 : DcMotorSimple.Direction.FORWARD);
 
-        m.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
-
         return new VelocityOutput() {
-            private double commanded = 0.0;
+            private double last;
 
-            /** {@inheritDoc} */
             @Override
-            public void setVelocity(double velocityTicksPerSec) {
-                commanded = velocityTicksPerSec;
-                m.setVelocity(velocityTicksPerSec);
+            public void setVelocity(double velocity) {
+                last = velocity;
+                motor.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+                motor.setVelocity(velocity);
             }
 
-            /** {@inheritDoc} */
             @Override
             public double getCommandedVelocity() {
-                return commanded;
+                return last;
             }
 
-            /** {@inheritDoc} */
             @Override
-            public double getMeasuredVelocity() {
-                // Native FTC SDK units, typically ticks per second.
-                return m.getVelocity();
+            public void stop() {
+                motor.setVelocity(0.0);
+                motor.setPower(0.0);
             }
         };
+    }
+
+    private static void requireHardwareMap(HardwareMap hw) {
+        if (hw == null) {
+            throw new IllegalArgumentException("HardwareMap is required");
+        }
+    }
+
+    private static void requireName(String name) {
+        if (name == null) {
+            throw new IllegalArgumentException("name is required");
+        }
+    }
+
+    private static void requireDirection(Direction direction) {
+        if (direction == null) {
+            throw new IllegalArgumentException("direction is required");
+        }
     }
 }

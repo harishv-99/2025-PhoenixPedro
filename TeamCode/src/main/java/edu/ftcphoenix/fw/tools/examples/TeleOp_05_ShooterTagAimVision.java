@@ -8,7 +8,6 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 
-import edu.ftcphoenix.fw.actuation.Actuators;
 import edu.ftcphoenix.fw.actuation.Plant;
 import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.debug.NullDebugSink;
@@ -25,6 +24,7 @@ import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceSpec;
 import edu.ftcphoenix.fw.drive.guidance.ReferencePoint2d;
 import edu.ftcphoenix.fw.drive.guidance.References;
 import edu.ftcphoenix.fw.drive.source.GamepadDriveSource;
+import edu.ftcphoenix.fw.ftc.FtcActuators;
 import edu.ftcphoenix.fw.ftc.FtcDrives;
 import edu.ftcphoenix.fw.ftc.FtcTelemetryDebugSink;
 import edu.ftcphoenix.fw.ftc.FtcVision;
@@ -223,11 +223,12 @@ public final class TeleOp_05_ShooterTagAimVision extends OpMode {
                 DriveOverlayMask.OMEGA_ONLY
         );
 
-        // 4) Shooter wiring using Actuators.
-        shooter = Actuators.plant(hardwareMap)
+        // 4) Shooter wiring using FtcActuators.
+        shooter = FtcActuators.plant(hardwareMap)
                 .motor(HW_SHOOTER_LEFT, Direction.FORWARD)
                 .andMotor(HW_SHOOTER_RIGHT, Direction.REVERSE)
-                .velocity(/*toleranceNative=*/100.0)
+                .velocity(FtcActuators.MotorVelocityControl.deviceManaged()
+                        .velocityTolerance(/*toleranceNative=*/100.0))
                 .build();
 
         shooter.setTarget(0.0);
@@ -304,7 +305,7 @@ public final class TeleOp_05_ShooterTagAimVision extends OpMode {
         drivebase.drive(cmd);
 
         // Shooter plant executes whatever target we just decided above
-        shooter.update(dtSec);
+        shooter.update(clock);
 
         // 5) Report
         //
@@ -352,7 +353,7 @@ public final class TeleOp_05_ShooterTagAimVision extends OpMode {
         }
         shooterEnabled = false;
         shooter.setTarget(0.0);
-        shooter.update(0.0);
+        shooter.stop();
         drivebase.stop();
     }
 }

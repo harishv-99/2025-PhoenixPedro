@@ -95,9 +95,9 @@ public void loop() {
 
     // 6) Plants (mechanisms)
     double dtSec = clock.dtSec();
-    shooter.update(dtSec);
-    transfer.update(dtSec);
-    pusher.update(dtSec);
+    shooter.update(clock);
+    transfer.update(clock);
+    pusher.update(clock);
 
     // 7) Telemetry
     telemetry.addData("dtSec", dtSec);
@@ -192,7 +192,7 @@ Plants are stateful actuators. Tasks typically set targets on plants, but target
 Your loop must call:
 
 ```java
-plant.update(clock.dtSec());
+plant.update(clock);
 ```
 
 for each plant you care about.

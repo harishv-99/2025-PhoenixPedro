@@ -69,7 +69,7 @@ public class MyTeleOp extends OpMode {
         // 3) Apply the latest targets.
         drivebase.update(clock);
         double dtSec = clock.dtSec();
-        shooter.update(dtSec);
+        shooter.update(clock);
         // ... etc.
     }
 }
@@ -219,7 +219,7 @@ These work with *both* feedback and non‑feedback plants (for example, power pl
 
 ### 4.2 Feedback‑based move helpers (require feedback)
 
-These helpers rely on `plant.hasFeedback() == true` and `plant.atSetpoint()` being meaningful. They are designed for encoder‑backed motor plants (position or velocity) created via `Actuators.plant(...).motor(...).position(...)` or `.velocity(...)`.
+These helpers rely on `plant.hasFeedback() == true` and `plant.atSetpoint()` being meaningful. They are designed for encoder‑backed motor plants (position or velocity) created via `FtcActuators.plant(...).motor(...).position(...)` or `.velocity(...)`.
 
 * **Move to setpoint and hold**
 

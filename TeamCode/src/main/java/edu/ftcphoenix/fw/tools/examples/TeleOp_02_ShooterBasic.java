@@ -4,7 +4,6 @@ import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 
-import edu.ftcphoenix.fw.actuation.Actuators;
 import edu.ftcphoenix.fw.actuation.Plant;
 import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.debug.NullDebugSink;
@@ -14,6 +13,7 @@ import edu.ftcphoenix.fw.drive.DriveSignal;
 import edu.ftcphoenix.fw.drive.DriveSource;
 import edu.ftcphoenix.fw.drive.MecanumDrivebase;
 import edu.ftcphoenix.fw.drive.source.GamepadDriveSource;
+import edu.ftcphoenix.fw.ftc.FtcActuators;
 import edu.ftcphoenix.fw.ftc.FtcDrives;
 import edu.ftcphoenix.fw.ftc.FtcTelemetryDebugSink;
 import edu.ftcphoenix.fw.input.Gamepads;
@@ -42,7 +42,7 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
  * <ol>
  *   <li><b>How to wire mechanisms using beginner helpers</b>:
  *     <ul>
- *       <li>{@link Actuators#plant} to turn hardware into {@link Plant}s.</li>
+ *       <li>{@link FtcActuators#plant} to turn hardware into {@link Plant}s.</li>
  *       <li>{@code motor(...).andMotor(...).velocity(...).build()} for the shooter.</li>
  *       <li>{@code crServo(...).andCrServo(...).power().build()} for the transfer.</li>
  *       <li>{@code servo(...).position().build()} for the pusher.</li>
@@ -138,7 +138,7 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
  * <ol>
  *   <li><b>Example 01: Mecanum Basic</b> – pure driving.</li>
  *   <li><b>Example 02: Shooter Basic</b> (this file) – add shooter, transfer,
- *       pusher using {@link Actuators} + {@link Plant}s + {@link Bindings}.</li>
+ *       pusher using {@link FtcActuators} + {@link Plant}s + {@link Bindings}.</li>
  *   <li>Next examples will add:
  *     <ul>
  *       <li>Macros and tasks for one-button shooting sequences.</li>
@@ -267,24 +267,25 @@ public final class TeleOp_02_ShooterBasic extends OpMode {
                 GamepadDriveSource.Config.defaults()
         ).scaledWhen(gamepads.p1().rightBumper(), 0.35, 0.20);
 
-        // === 3) Mechanism wiring using Actuators ===
+        // === 3) Mechanism wiring using FtcActuators ===
 
         // Shooter: two motors, velocity-controlled pair.
-        shooter = Actuators.plant(hardwareMap)
+        shooter = FtcActuators.plant(hardwareMap)
                 .motor(HW_SHOOTER_LEFT, Direction.FORWARD)
                 .andMotor(HW_SHOOTER_RIGHT, Direction.REVERSE)
-                .velocity(SHOOTER_VELOCITY_TOLERANCE_NATIVE)
+                .velocity(FtcActuators.MotorVelocityControl.deviceManaged()
+                        .velocityTolerance(SHOOTER_VELOCITY_TOLERANCE_NATIVE))
                 .build();
 
         // Transfer: two CR servos, power-controlled pair.
-        transfer = Actuators.plant(hardwareMap)
+        transfer = FtcActuators.plant(hardwareMap)
                 .crServo(HW_TRANSFER_LEFT, Direction.FORWARD)
                 .andCrServo(HW_TRANSFER_RIGHT, Direction.REVERSE)
                 .power()
                 .build();
 
         // Pusher: single positional servo, 0..1 position plant.
-        pusher = Actuators.plant(hardwareMap)
+        pusher = FtcActuators.plant(hardwareMap)
                 .servo(HW_PUSHER, Direction.FORWARD)
                 .position()
                 .build();
@@ -397,9 +398,9 @@ public final class TeleOp_02_ShooterBasic extends OpMode {
         drivebase.update(clock);
         drivebase.drive(driveCmd);
 
-        shooter.update(dtSec);
-        transfer.update(dtSec);
-        pusher.update(dtSec);
+        shooter.update(clock);
+        transfer.update(clock);
+        pusher.update(clock);
         // --- 6) Required telemetry (driver-facing) ---
         // This is the information you should not lose even when debug output is disabled.
         telemetry.addLine("FW Example 02: Shooter Basic");
@@ -443,9 +444,9 @@ public final class TeleOp_02_ShooterBasic extends OpMode {
         transfer.setTarget(0.0);
         pusher.setTarget(PUSHER_POS_RETRACT);
 
-        shooter.update(0.0);
-        transfer.update(0.0);
-        pusher.update(0.0);
+        shooter.stop();
+        transfer.stop();
+        pusher.stop();
 
         drivebase.stop();
     }

@@ -4,11 +4,11 @@ import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 
-import edu.ftcphoenix.fw.actuation.Actuators;
 import edu.ftcphoenix.fw.actuation.Plant;
 import edu.ftcphoenix.fw.core.hal.Direction;
 import edu.ftcphoenix.fw.core.source.ScalarSource;
 import edu.ftcphoenix.fw.core.time.LoopClock;
+import edu.ftcphoenix.fw.ftc.FtcActuators;
 import edu.ftcphoenix.fw.input.Gamepads;
 import edu.ftcphoenix.fw.input.binding.Bindings;
 import edu.ftcphoenix.fw.task.OutputTaskRunner;
@@ -66,7 +66,7 @@ public final class TeleOp_07_SupervisorPoseMechanism extends OpMode {
     public void init() {
         gamepads = Gamepads.create(gamepad1, gamepad2);
 
-        Plant wristPlant = Actuators.plant(hardwareMap)
+        Plant wristPlant = FtcActuators.plant(hardwareMap)
                 .servo(HW_WRIST, Direction.FORWARD)
                 .position()
                 .build();
@@ -148,7 +148,7 @@ public final class TeleOp_07_SupervisorPoseMechanism extends OpMode {
 
             // 4) Apply to plant.
             plant.setTarget(finalTarget.getAsDouble(clock));
-            plant.update(clock.dtSec());
+            plant.update(clock);
         }
 
         private double poseTarget(Pose pose) {

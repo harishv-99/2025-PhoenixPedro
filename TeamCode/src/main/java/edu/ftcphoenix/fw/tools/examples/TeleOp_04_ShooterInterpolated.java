@@ -4,7 +4,6 @@ import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 
-import edu.ftcphoenix.fw.actuation.Actuators;
 import edu.ftcphoenix.fw.actuation.Plant;
 import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.debug.NullDebugSink;
@@ -16,6 +15,7 @@ import edu.ftcphoenix.fw.drive.DriveSignal;
 import edu.ftcphoenix.fw.drive.DriveSource;
 import edu.ftcphoenix.fw.drive.MecanumDrivebase;
 import edu.ftcphoenix.fw.drive.source.GamepadDriveSource;
+import edu.ftcphoenix.fw.ftc.FtcActuators;
 import edu.ftcphoenix.fw.ftc.FtcDrives;
 import edu.ftcphoenix.fw.ftc.FtcTelemetryDebugSink;
 import edu.ftcphoenix.fw.input.Gamepads;
@@ -207,11 +207,12 @@ public final class TeleOp_04_ShooterInterpolated extends OpMode {
                 GamepadDriveSource.Config.defaults()
         ).scaledWhen(gamepads.p1().rightBumper(), 0.35, 0.20);
 
-        // 3) Shooter wiring using Actuators
-        shooter = Actuators.plant(hardwareMap)
+        // 3) Shooter wiring using FtcActuators
+        shooter = FtcActuators.plant(hardwareMap)
                 .motor(HW_SHOOTER_LEFT, Direction.FORWARD)
                 .andMotor(HW_SHOOTER_RIGHT, Direction.REVERSE)
-                .velocity(/*toleranceNative=*/100.0)
+                .velocity(FtcActuators.MotorVelocityControl.deviceManaged()
+                        .velocityTolerance(/*toleranceNative=*/100.0))
                 .build();
 
         shooter.setTarget(0.0);
@@ -290,7 +291,7 @@ public final class TeleOp_04_ShooterInterpolated extends OpMode {
         }
 
         // Update shooter plant once per loop.
-        shooter.update(dtSec);
+        shooter.update(clock);
         // --- 5) Required telemetry (driver-facing) ---
         // This is the information you should not lose even when debug output is disabled.
         telemetry.addLine("FW Example 04: Shooter Interpolated");
@@ -326,7 +327,7 @@ public final class TeleOp_04_ShooterInterpolated extends OpMode {
     public void stop() {
         shooterEnabled = false;
         shooter.setTarget(0.0);
-        shooter.update(0.0);
+        shooter.stop();
         drivebase.stop();
     }
 }

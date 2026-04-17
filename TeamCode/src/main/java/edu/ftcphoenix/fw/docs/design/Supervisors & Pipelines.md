@@ -117,7 +117,7 @@ switch (pose) {
 }
 
 wristPlant.setTarget(target);
-wristPlant.update(clock.dtSec());
+wristPlant.update(clock);
 ```
 
 This teaches the essentials:

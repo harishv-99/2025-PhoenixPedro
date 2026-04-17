@@ -27,7 +27,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *
  * // In the loop:
  * liftPlant.setTarget(liftPower.getAsDouble(clock));
- * liftPlant.update(clock.dtSec());
+ * liftPlant.update(clock);
  * }</pre>
  *
  * <p>This is Phoenix's lane-2 scalar-regulation pattern: one measured scalar is regulated

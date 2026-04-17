@@ -446,7 +446,7 @@ public final class Wrist {
 
         lastAppliedTarget = target;
         plant.setTarget(target);
-        plant.update(clock.dtSec());
+        plant.update(clock);
     }
 }
 ```
@@ -486,7 +486,25 @@ or potentiometer gives the measured height.
 
 This is not a spatial problem. It is one scalar measured variable driven toward a scalar setpoint.
 
+With the current plant design, the clean implementation is a **regulated position plant**: a raw actuator command (motor power), a controller/regulator, and a feedback source packaged into one plant owned by the subsystem.
+
 ### Recommended subsystem shape
+
+A typical plant construction would look like this:
+
+```java
+Plant liftPlant = FtcActuators.plant(hardwareMap)
+        .motor("liftMotor", Direction.FORWARD)
+        .position(
+                FtcActuators.MotorPositionControl.regulated(
+                        FtcActuators.PositionFeedback.fromSource(measuredHeightIn),
+                        ScalarRegulators.pid(Pid.withGains(0.12, 0.0, 0.0).setOutputLimits(-0.55, 0.55))
+                ).positionTolerance(0.50)
+        )
+        .build();
+```
+
+Then the subsystem can own that plant and expose a robot-level API:
 
 ```java
 public final class Lift {
@@ -514,35 +532,26 @@ public final class Lift {
         }
     }
 
-    private final Plant powerPlant;
-    private final ScalarSource measuredHeightIn;
-    private final Pid pid;
-    private final ScalarSource targetHeightSource = clock -> targetHeightIn;
-    private final ScalarSource command;
-
+    private final Plant liftPlant;
     private double targetHeightIn = 0.0;
-    private double lastMeasuredHeightIn = 0.0;
 
-    public Lift(Plant powerPlant, ScalarSource measuredHeightIn) {
-        this.powerPlant = powerPlant;
-        this.measuredHeightIn = measuredHeightIn;
-        this.pid = Pid.withGains(0.12, 0.0, 0.0).setOutputLimits(-0.55, 0.55);
-        this.command = ScalarControllers.pid(targetHeightSource, measuredHeightIn, pid);
+    public Lift(Plant liftPlant) {
+        this.liftPlant = liftPlant;
     }
 
     public void setTargetHeightIn(double heightIn) {
         targetHeightIn = Math.max(0.0, Math.min(heightIn, 30.0));
+        liftPlant.setTarget(targetHeightIn);
     }
 
     public Status status() {
-        boolean atGoal = Math.abs(lastMeasuredHeightIn - targetHeightIn) <= 0.50;
-        return new Status(targetHeightIn, lastMeasuredHeightIn, atGoal);
+        double measured = liftPlant.getMeasurement();
+        boolean atGoal = liftPlant.atSetpoint();
+        return new Status(targetHeightIn, measured, atGoal);
     }
 
     public void update(LoopClock clock) {
-        lastMeasuredHeightIn = measuredHeightIn.getAsDouble(clock);
-        powerPlant.setTarget(command.getAsDouble(clock));
-        powerPlant.update(clock.dtSec());
+        liftPlant.update(clock);
     }
 }
 ```
@@ -666,12 +675,12 @@ public final class Intake {
         feedQueue.update(clock);
 
         intakePlant.setTarget(intakeEnabled ? 1.0 : 0.0);
-        intakePlant.update(clock.dtSec());
+        intakePlant.update(clock);
 
         double feederCmd = feedQueue.activeSource().choose(feedQueue, ScalarSource.constant(0.0))
                 .getAsDouble(clock);
         feederPlant.setTarget(feederCmd);
-        feederPlant.update(clock.dtSec());
+        feederPlant.update(clock);
     }
 }
 ```

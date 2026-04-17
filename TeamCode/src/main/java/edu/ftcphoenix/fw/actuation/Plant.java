@@ -1,151 +1,161 @@
 package edu.ftcphoenix.fw.actuation;
 
 import edu.ftcphoenix.fw.core.debug.DebugSink;
+import edu.ftcphoenix.fw.core.time.LoopClock;
 
 /**
- * A generic setpoint-driven mechanism.
+ * A generic single-degree-of-freedom mechanism sink.
  *
- * <p>A {@code Plant} is the low-level "sink" that accepts a scalar target
- * and drives one or more hardware outputs (motors, servos, etc.) toward
- * that target using whatever control logic it chooses (open-loop, PID,
- * vendor velocity control, feedforward, etc.).</p>
+ * <p>A {@code Plant} is the low-level runtime object that owns a scalar target and drives one or
+ * more outputs toward that target using whatever control strategy it chooses: direct power, direct
+ * position command, device-managed velocity/position control, or a framework-owned regulator over a
+ * raw actuator command.</p>
  *
- * <h2>Semantic categories</h2>
+ * <h2>Target semantics</h2>
  *
- * <p>Each concrete plant should document which of these categories it uses:</p>
+ * <p>Every concrete plant defines exactly one caller-facing target domain. Typical examples:</p>
  *
  * <ul>
- *   <li><b>Power</b>: target is a normalized power command (e.g. {@code -1..+1})
- *       sent directly to a motor/CR-servo output.</li>
- *   <li><b>Position</b>: target is a desired position in some native units
- *       (servo position, encoder ticks, etc.).</li>
- *   <li><b>Velocity</b>: target is a desired velocity/speed in native units
- *       (ticks per second, RPM, etc.).</li>
+ *   <li><b>Power plants</b>: target is normalized power, usually in {@code [-1.0, +1.0]}.</li>
+ *   <li><b>Position plants</b>: target is a position in the plant's own scalar units
+ *       (for example servo {@code 0..1}, encoder ticks, or a subsystem-defined mechanism unit).</li>
+ *   <li><b>Velocity plants</b>: target is a velocity in the plant's own scalar units
+ *       (for example encoder ticks/sec).</li>
  * </ul>
  *
- * <p>Plants are intentionally simple: they do not know about tasks or macros,
- * but they may implement local control logic, clamping, rate limiting, or
- * other behavior that makes sense for a given mechanism.</p>
+ * <p>The framework intentionally keeps {@code Plant} simple: tasks set targets on plants, robots
+ * call {@link #update(LoopClock)} once per loop, and each concrete implementation decides how to
+ * drive the mechanism.</p>
+ *
+ * <h2>Typical usage</h2>
+ *
+ * <pre>{@code
+ * Plant flywheel = FtcActuators.plant(hardwareMap)
+ *     .motor("flywheel", Direction.FORWARD)
+ *     .velocity()
+ *     .build();
+ *
+ * LoopClock clock = new LoopClock();
+ *
+ * // In init():
+ * clock.reset(getRuntime());
+ *
+ * // In loop():
+ * clock.update(getRuntime());
+ * flywheel.setTarget(1800.0);   // ticks/sec for a motor velocity plant
+ * flywheel.update(clock);
+ *
+ * telemetry.addData("flywheel.target", flywheel.getTarget());
+ * telemetry.addData("flywheel.measured", flywheel.getMeasurement());
+ * telemetry.addData("flywheel.atSetpoint", flywheel.atSetpoint());
+ * }</pre>
  */
 public interface Plant {
 
     /**
      * Set the current target for this plant.
      *
-     * <p>The interpretation of {@code target} depends on the concrete plant
-     * type (power, position, velocity, etc.) and should be documented by the
-     * implementation.</p>
+     * <p>The meaning of {@code target} depends on the concrete plant implementation and should be
+     * documented by that implementation. Callers should treat the value as being in the plant's own
+     * scalar units.</p>
      *
-     * <p>This method should be cheap to call; it is expected that high-level
-     * code may update targets frequently (e.g., each loop for joystick-driven
-     * drivebases).</p>
-     *
-     * @param target new target value in the plant's native units
+     * @param target new target value in the plant's units
      */
     void setTarget(double target);
 
     /**
-     * @return the most recently commanded target value.
+     * Return the most recently commanded target value.
+     *
+     * @return current plant target in the plant's target units
      */
     double getTarget();
 
     /**
-     * Update the plant's internal state for the current loop.
+     * Update this plant once for the current loop.
      *
-     * <p>Typical responsibilities include:</p>
+     * <p>Concrete plants typically use this to sample feedback, run any internal control logic,
+     * cache status such as measurement/error/at-setpoint, and forward the resulting command to the
+     * underlying actuator output.</p>
      *
-     * <ul>
-     *   <li>Running closed-loop control (PID, velocity control, etc.)</li>
-     *   <li>Applying rate limits or filters to the commanded output</li>
-     *   <li>Forwarding the resulting command to one or more hardware outputs</li>
-     * </ul>
+     * <p>Robot code should call this once per loop after updating the shared {@link LoopClock}.</p>
      *
-     * <p>This method should be called once per loop with the elapsed time
-     * since the previous call.</p>
-     *
-     * @param dtSec time since the last update call, in seconds (non-negative)
+     * @param clock loop clock for the current cycle
      */
-    void update(double dtSec);
+    void update(LoopClock clock);
 
     /**
-     * Reset any internal state used by the plant (integrators, filters, etc.).
+     * Reset any transient internal state used by the plant.
      *
-     * <p>This is typically called at the beginning of a mode (e.g. TeleOp,
-     * autonomous) or when a mechanism is reinitialized.</p>
-     *
-     * <p>Default implementation does nothing.</p>
+     * <p>This is intended for controller/filter lifecycle state (integrators, memoized values,
+     * cached debounce windows, etc.). It should <b>not</b> be used to redefine the physical
+     * coordinate frame of the mechanism.</p>
      */
     default void reset() {
-        // Default: no internal state to clear.
+        // default: no transient state to clear
     }
 
     /**
-     * Immediately stop driving this plant in the most reasonable way for
-     * its underlying hardware.
-     *
-     * <p>Concrete plants <b>must</b> implement this. A typical implementation
-     * will forward to one or more HAL outputs, for example:</p>
-     *
-     * <ul>
-     *   <li>Power plants: call {@code powerOutput.stop()} (equivalent to power 0)</li>
-     *   <li>Velocity plants: call {@code velocityOutput.stop()} (velocity 0)</li>
-     *   <li>Position plants:
-     *     <ul>
-     *       <li>Servos: usually a no-op or re-command the current position</li>
-     *       <li>Motors: call {@code positionOutput.stop()}, which may switch
-     *           modes and cut power to stop chasing the old target</li>
-     *     </ul>
-     *   </li>
-     *   <li>Decorator plants (rate limiters, interlocks): forward to the
-     *       wrapped plant's {@link #stop()}.</li>
-     * </ul>
-     *
-     * <p>Purely virtual or simulated plants <em>may</em> choose to implement
-     * this as a no-op, but they must still provide an implementation.</p>
+     * Immediately stop driving this plant in the most reasonable way for its implementation.
      */
     void stop();
 
     /**
-     * @return {@code true} if this plant considers itself "at" its current
-     * target setpoint. Implementations that do not track this can
-     * simply return {@code false} or {@code true} unconditionally.
+     * Whether the plant considers itself at its current target based on the most recent
+     * {@link #update(LoopClock)}.
+     *
+     * <p>Open-loop plants typically return {@code false} or {@code true} unconditionally. Feedback
+     * plants should cache and report a meaningful answer based on their authoritative measurement.</p>
+     *
+     * @return {@code true} when the plant considers its last measured state close enough to its
+     *         current target; otherwise {@code false}
      */
     default boolean atSetpoint() {
         return false;
     }
 
     /**
-     * Indicates whether this plant has meaningful feedback for determining
-     * when it has reached its current target setpoint.
+     * Whether this plant has meaningful feedback.
      *
-     * <p>Examples of feedback-capable plants include velocity or position
-     * controllers that compare a measured value against the commanded target
-     * with some tolerance. For simple open-loop plants (e.g., plain power
-     * outputs or "fire-and-forget" servos), this may return {@code false},
-     * and callers should prefer time-based completion instead of relying on
-     * {@link #atSetpoint()}.</p>
+     * <p>If {@code false}, callers should generally prefer time-based completion instead of relying
+     * on {@link #atSetpoint()} or {@link #getMeasurement()}.</p>
      *
-     * <p>The default implementation returns {@code false}. Implementations
-     * that override {@link #atSetpoint()} with a sensor-based definition
-     * should also override this to return {@code true}.</p>
-     *
-     * @return {@code true} if this plant exposes a meaningful
-     *         {@link #atSetpoint()} value; {@code false} otherwise
+     * @return {@code true} if the plant exposes an authoritative measurement; otherwise {@code false}
      */
     default boolean hasFeedback() {
         return false;
     }
 
     /**
+     * Return the plant's authoritative measurement from the most recent {@link #update(LoopClock)}.
+     *
+     * <p>This value is in the same units and reference frame as {@link #getTarget()}. Plants
+     * without meaningful feedback should return {@link Double#NaN}.</p>
+     *
+     * @return last authoritative measurement in plant units, or {@code NaN} if unavailable
+     */
+    default double getMeasurement() {
+        return Double.NaN;
+    }
+
+    /**
+     * Convenience helper returning {@code getTarget() - getMeasurement()} using the most recent
+     * plant update.
+     *
+     * @return last plant error in plant units, or {@code NaN} if measurement is unavailable
+     */
+    default double getError() {
+        double measurement = getMeasurement();
+        return Double.isFinite(measurement) ? (getTarget() - measurement) : Double.NaN;
+    }
+
+    /**
      * Optional debug hook: emit a compact summary of this plant's state.
      *
-     * <p>The default implementation writes only the target and atSetpoint
-     * flag. Implementations are encouraged to override this to include
-     * additional mechanism-specific details (sensor feedback, errors,
-     * internal controller state, etc.).</p>
+     * <p>Implementations are encouraged to extend this with mechanism-specific details, but the
+     * default implementation already reports the core target/feedback summary.</p>
      *
-     * @param dbg    debug sink (may be {@code null}; if null, no output is produced)
-     * @param prefix base key prefix, e.g. "intake", "shooter", or "arm"
+     * @param dbg    debug sink (may be {@code null})
+     * @param prefix base key prefix, for example {@code "arm"} or {@code "shooter.flywheel"}
      */
     default void debugDump(DebugSink dbg, String prefix) {
         if (dbg == null) {
@@ -153,6 +163,9 @@ public interface Plant {
         }
         String p = (prefix == null || prefix.isEmpty()) ? "plant" : prefix;
         dbg.addData(p + ".target", getTarget())
-                .addData(p + ".atSetpoint", atSetpoint());
+                .addData(p + ".hasFeedback", hasFeedback())
+                .addData(p + ".atSetpoint", atSetpoint())
+                .addData(p + ".measurement", getMeasurement())
+                .addData(p + ".error", getError());
     }
 }

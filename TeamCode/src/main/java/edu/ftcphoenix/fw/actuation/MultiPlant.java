@@ -5,79 +5,64 @@ import java.util.List;
 import java.util.Objects;
 
 import edu.ftcphoenix.fw.core.debug.DebugSink;
+import edu.ftcphoenix.fw.core.time.LoopClock;
 
 /**
- * A {@link Plant} that fans out a single logical target to multiple child plants.
+ * A {@link Plant} that fans a single logical target out to multiple child plants.
  *
- * <p>Each child may optionally apply a linear mapping:</p>
+ * <p>Each child may apply a linear mapping:</p>
  *
  * <pre>{@code
- * childTarget = scale * target + bias
+ * childTarget = scale * groupTarget + bias
  * }</pre>
  *
- * <p>This is useful for multi-motor mechanisms where one motor needs a small
- * constant calibration factor, or for mirrored mechanisms where one side should
- * receive a slightly different command.</p>
- *
- * <h2>Setpoint semantics</h2>
- * <ul>
- *   <li>{@link #atSetpoint()} is {@code true} only if <b>all</b> children are at setpoint.</li>
- *   <li>{@link #hasFeedback()} is {@code true} only if <b>all</b> children report feedback.</li>
- * </ul>
+ * <p>This is useful for device-managed groups such as mirrored lift motors or multi-servo linkages.
+ * The group's authoritative measurement is computed by inverse-mapping each child measurement back
+ * into group units and averaging the results.</p>
  */
-final class MultiPlant implements Plant {
+public final class MultiPlant implements Plant {
 
-    static Builder builder() {
+    /**
+     * Create a new builder.
+     */
+    public static Builder builder() {
         return new Builder();
-    }
-
-    static MultiPlant of(Plant... plants) {
-        Builder b = builder();
-        if (plants != null) {
-            for (Plant p : plants) {
-                b.add(p);
-            }
-        }
-        return b.build();
     }
 
     /**
      * Small builder for {@link MultiPlant}.
-     *
-     * <p>This is internal framework plumbing used by higher-level builders
-     * (for example {@link Actuators}) to assemble multi-actuator mechanisms.</p>
      */
-    static final class Builder {
+    public static final class Builder {
         private final List<Plant> plants = new ArrayList<>();
         private final List<Double> scales = new ArrayList<>();
         private final List<Double> biases = new ArrayList<>();
 
-        Builder add(Plant plant) {
+        public Builder add(Plant plant) {
             return add(plant, 1.0, 0.0);
         }
 
-        Builder add(Plant plant, double scale) {
+        public Builder add(Plant plant, double scale) {
             return add(plant, scale, 0.0);
         }
 
-        Builder add(Plant plant, double scale, double bias) {
+        public Builder add(Plant plant, double scale, double bias) {
             plants.add(Objects.requireNonNull(plant, "plant"));
             scales.add(scale);
             biases.add(bias);
             return this;
         }
 
-        Builder addAll(Plant... plants) {
+        public Builder addAll(Plant... plants) {
             if (plants == null) {
                 return this;
             }
-            for (Plant p : plants) {
-                add(p);
+            for (Plant plant : plants) {
+                add(plant);
             }
             return this;
         }
 
-        MultiPlant build() {
+        public MultiPlant build() {
             if (plants.isEmpty()) {
                 throw new IllegalStateException("MultiPlant requires at least one child plant");
             }
@@ -93,116 +78,123 @@ final class MultiPlant implements Plant {
     }
 
     private final Plant[] plants;
-    private final double[] scale;
-    private final double[] bias;
+    private final double[] scales;
+    private final double[] biases;
 
     private double target;
+    private double lastMeasurement = Double.NaN;
 
-    private MultiPlant(Plant[] plants, double[] scale, double[] bias) {
+    private MultiPlant(Plant[] plants, double[] scales, double[] biases) {
         this.plants = Objects.requireNonNull(plants, "plants");
-        this.scale = Objects.requireNonNull(scale, "scale");
-        this.bias = Objects.requireNonNull(bias, "bias");
+        this.scales = Objects.requireNonNull(scales, "scales");
+        this.biases = Objects.requireNonNull(biases, "biases");
         if (plants.length == 0) {
             throw new IllegalArgumentException("MultiPlant requires at least one child plant");
         }
-        if (scale.length != plants.length || bias.length != plants.length) {
-            throw new IllegalArgumentException("scale/bias arrays must match plant count");
+        if (plants.length != scales.length || plants.length != biases.length) {
+            throw new IllegalArgumentException("plants/scales/biases must have matching lengths");
         }
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void setTarget(double target) {
         this.target = target;
         for (int i = 0; i < plants.length; i++) {
-            plants[i].setTarget(scale[i] * target + bias[i]);
+            plants[i].setTarget(scales[i] * target + biases[i]);
         }
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public double getTarget() {
         return target;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
-    public void update(double dtSec) {
-        for (Plant p : plants) {
-            p.update(dtSec);
+    public void update(LoopClock clock) {
+        for (Plant plant : plants) {
+            plant.update(clock);
         }
+        lastMeasurement = computeAggregateMeasurement();
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void reset() {
-        for (Plant p : plants) {
-            p.reset();
+        for (Plant plant : plants) {
+            plant.reset();
         }
+        lastMeasurement = Double.NaN;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void stop() {
-        for (Plant p : plants) {
-            p.stop();
+        for (Plant plant : plants) {
+            plant.stop();
         }
-        target = 0.0;
+        lastMeasurement = Double.NaN;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public boolean atSetpoint() {
-        for (Plant p : plants) {
-            if (!p.atSetpoint()) {
+        for (Plant plant : plants) {
+            if (!plant.atSetpoint()) {
                 return false;
             }
         }
         return true;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public boolean hasFeedback() {
-        for (Plant p : plants) {
-            if (!p.hasFeedback()) {
+        for (Plant plant : plants) {
+            if (!plant.hasFeedback()) {
                 return false;
             }
         }
         return true;
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    @Override
+    public double getMeasurement() {
+        return lastMeasurement;
+    }
+
+    private double computeAggregateMeasurement() {
+        if (!hasFeedback()) {
+            return Double.NaN;
+        }
+        double sum = 0.0;
+        int count = 0;
+        for (int i = 0; i < plants.length; i++) {
+            double scale = scales[i];
+            if (Math.abs(scale) < 1e-9) {
+                return Double.NaN;
+            }
+            double childMeasurement = plants[i].getMeasurement();
+            if (!Double.isFinite(childMeasurement)) {
+                return Double.NaN;
+            }
+            sum += (childMeasurement - biases[i]) / scale;
+            count++;
+        }
+        return count > 0 ? (sum / count) : Double.NaN;
+    }
+
     @Override
     public void debugDump(DebugSink dbg, String prefix) {
         if (dbg == null) {
             return;
         }
         String p = (prefix == null || prefix.isEmpty()) ? "plant" : prefix;
-        dbg.addData(p + ".target", target)
+        dbg.addData(p + ".target", getTarget())
                 .addData(p + ".count", plants.length)
+                .addData(p + ".hasFeedback", hasFeedback())
                 .addData(p + ".atSetpoint", atSetpoint())
-                .addData(p + ".hasFeedback", hasFeedback());
-
-        // Emit child targets in a compact form.
+                .addData(p + ".measurement", getMeasurement())
+                .addData(p + ".error", getError());
         for (int i = 0; i < plants.length; i++) {
-            dbg.addData(p + ".child" + i + ".target", plants[i].getTarget());
+            dbg.addData(p + ".child" + i + ".target", plants[i].getTarget())
+                    .addData(p + ".child" + i + ".measurement", plants[i].getMeasurement())
+                    .addData(p + ".child" + i + ".error", plants[i].getError());
         }
     }
 }

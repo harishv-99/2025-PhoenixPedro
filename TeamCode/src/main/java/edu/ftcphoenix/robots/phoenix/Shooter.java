@@ -1,15 +1,14 @@
 package edu.ftcphoenix.robots.phoenix;
 
-import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 
 import java.util.Objects;
 
-import edu.ftcphoenix.fw.actuation.Actuators;
 import edu.ftcphoenix.fw.actuation.Plant;
 import edu.ftcphoenix.fw.core.control.DebounceBoolean;
 import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.time.LoopClock;
+import edu.ftcphoenix.fw.ftc.FtcActuators;
 import edu.ftcphoenix.fw.task.OutputTaskRunner;
 import edu.ftcphoenix.fw.task.Tasks;
 
@@ -28,7 +27,6 @@ public final class Shooter {
     private final Plant plantIntakeTransfer;
     private final Plant plantShooterTransfer;
     private final Plant plantFlywheel;
-    private final DcMotorEx flywheelMotor;
 
     private double manualIntakeMotorPower = 0.0;
     private double manualIntakeTransferPower = 0.0;
@@ -62,31 +60,30 @@ public final class Shooter {
         this.selectedVelocityNative = cfg.velocityMin;
         this.readyLatch = DebounceBoolean.onAfterOffImmediately(cfg.readyStableSec);
 
-        flywheelMotor = hardwareMap.get(DcMotorEx.class, cfg.nameMotorShooterWheel);
+        FtcActuators.DeviceManagedMotorVelocityControl flywheelControl =
+                FtcActuators.MotorVelocityControl.deviceManaged()
+                        .velocityTolerance(cfg.velocityToleranceNative);
         if (cfg.applyFlywheelVelocityPIDF) {
-            try {
-                flywheelMotor.setVelocityPIDFCoefficients(
-                        cfg.flywheelVelKp,
-                        cfg.flywheelVelKi,
-                        cfg.flywheelVelKd,
-                        cfg.flywheelVelKf
-                );
-            } catch (RuntimeException e) {
-                flywheelPidfWarning = "flywheel PIDF not applied: " + e.getMessage();
-            }
+            flywheelControl.velocityPidf(
+                    cfg.flywheelVelKp,
+                    cfg.flywheelVelKi,
+                    cfg.flywheelVelKd,
+                    cfg.flywheelVelKf
+            );
         }
+        flywheelPidfWarning = null;
 
-        plantIntakeMotor = Actuators.plant(hardwareMap)
+        plantIntakeMotor = FtcActuators.plant(hardwareMap)
                 .motor(cfg.nameMotorIntake, cfg.directionMotorIntake)
                 .power()
                 .build();
 
-        plantIntakeTransfer = Actuators.plant(hardwareMap)
+        plantIntakeTransfer = FtcActuators.plant(hardwareMap)
                 .crServo(cfg.nameCrServoIntakeTransfer, cfg.directionCrServoIntakeTransfer)
                 .power()
                 .build();
 
-        plantShooterTransfer = Actuators.plant(hardwareMap)
+        plantShooterTransfer = FtcActuators.plant(hardwareMap)
                 .crServo(cfg.nameCrServoShooterTransferRight, cfg.directionCrServoShooterTransferRight)
                 .andCrServo(cfg.nameCrServoShooterTransferLeft, cfg.directionCrServoShooterTransferLeft)
                 .scale(cfg.shooterTransferLeftScale)
@@ -94,9 +91,9 @@ public final class Shooter {
                 .power()
                 .build();
 
-        plantFlywheel = Actuators.plant(hardwareMap)
+        plantFlywheel = FtcActuators.plant(hardwareMap)
                 .motor(cfg.nameMotorShooterWheel, cfg.directionMotorShooterWheel)
-                .velocity(cfg.velocityToleranceNative)
+                .velocity(flywheelControl)
                 .build();
 
         flywheelReadySource = new BooleanSource() {
@@ -256,9 +253,12 @@ public final class Shooter {
     public void update(LoopClock clock) {
         flywheelTargetNative = flywheelEnabled ? selectedVelocityNative : 0.0;
         plantFlywheel.setTarget(flywheelTargetNative);
-        plantFlywheel.update(clock.dtSec());
+        plantFlywheel.update(clock);
 
-        flywheelMeasuredNative = flywheelMotor.getVelocity();
+        flywheelMeasuredNative = plantFlywheel.getMeasurement();
+        if (!Double.isFinite(flywheelMeasuredNative)) {
+            flywheelMeasuredNative = 0.0;
+        }
         flywheelMeasuredAbs = Math.abs(flywheelMeasuredNative);
 
         double dt = clock.dtSec();
@@ -292,9 +292,9 @@ public final class Shooter {
         plantIntakeTransfer.setTarget(intakeTransferTarget);
         plantShooterTransfer.setTarget(shooterTransferTarget);
 
-        plantIntakeMotor.update(clock.dtSec());
-        plantIntakeTransfer.update(clock.dtSec());
-        plantShooterTransfer.update(clock.dtSec());
+        plantIntakeMotor.update(clock);
+        plantIntakeTransfer.update(clock);
+        plantShooterTransfer.update(clock);
     }
 
     /**

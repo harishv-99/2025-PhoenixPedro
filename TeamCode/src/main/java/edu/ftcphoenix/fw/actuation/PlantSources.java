@@ -6,27 +6,10 @@ import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.source.ScalarSource;
 
 /**
- * {@link edu.ftcphoenix.fw.core.source.Source} adapters for {@link Plant}s.
+ * Helper adapters that expose common {@link Plant} state as Phoenix sources.
  *
- * <p>Phoenix encourages a clean separation between:</p>
- *
- * <ul>
- *   <li><b>sources</b>: values you sample each loop (operator intent, sensors, derived signals)</li>
- *   <li><b>plants</b>: low-level sinks you command with a scalar target</li>
- * </ul>
- *
- * <p>Sometimes you want to treat a plant's state as a signal—for example, to build a debounced
- * “ready” gate from {@link Plant#atSetpoint()} or to log a plant’s target consistently. This class
- * provides small, obvious adapters for that purpose.</p>
- *
- * <h2>Design notes</h2>
- *
- * <ul>
- *   <li>{@link #atSetpoint(Plant)} returns a <em>memoized</em> boolean source by default so the
- *       plant is sampled at most once per {@code LoopClock.cycle()}.</li>
- *   <li>{@link #target(Plant)} is <em>not</em> memoized. Targets can legitimately change within
- *       a loop if multiple call sites are still in transition toward single-writer ownership.</li>
- * </ul>
+ * <p>These adapters are useful when higher-level logic wants to compose plant status into source
+ * pipelines, debouncers, or tasks without reaching into the plant implementation directly.</p>
  */
 public final class PlantSources {
 
@@ -35,7 +18,10 @@ public final class PlantSources {
     }
 
     /**
-     * A scalar source that returns {@link Plant#getTarget()}.
+     * Create a scalar source view of {@link Plant#getTarget()}.
+     *
+     * @param plant plant whose target should be exposed as a source
+     * @return scalar source that reports the plant's current target value
      */
     public static ScalarSource target(Plant plant) {
         Objects.requireNonNull(plant, "plant");
@@ -43,20 +29,46 @@ public final class PlantSources {
     }
 
     /**
-     * A boolean source that returns {@link Plant#atSetpoint()}.
+     * Create a scalar source view of {@link Plant#getMeasurement()}.
      *
-     * <p>The returned source is memoized per loop cycle.</p>
+     * @param plant plant whose authoritative measurement should be exposed as a source
+     * @return scalar source that reports the plant's last cached measurement value
      */
-    public static BooleanSource atSetpoint(Plant plant) {
+    public static ScalarSource measurement(Plant plant) {
         Objects.requireNonNull(plant, "plant");
-        return BooleanSource.of(plant::atSetpoint).memoized();
+        return ScalarSource.of(plant::getMeasurement);
     }
 
     /**
-     * A constant boolean source that returns {@link Plant#hasFeedback()}.
+     * Create a scalar source view of {@link Plant#getError()}.
+     *
+     * @param plant plant whose target-minus-measurement error should be exposed as a source
+     * @return scalar source that reports the plant's last cached error value
+     */
+    public static ScalarSource error(Plant plant) {
+        Objects.requireNonNull(plant, "plant");
+        return ScalarSource.of(plant::getError);
+    }
+
+    /**
+     * Create a boolean source view of {@link Plant#atSetpoint()}.
+     *
+     * @param plant plant whose at-setpoint status should be exposed as a source
+     * @return boolean source that reports whether the plant was at setpoint on its last update
+     */
+    public static BooleanSource atSetpoint(Plant plant) {
+        Objects.requireNonNull(plant, "plant");
+        return BooleanSource.of(plant::atSetpoint);
+    }
+
+    /**
+     * Create a boolean source view of {@link Plant#hasFeedback()}.
+     *
+     * @param plant plant whose feedback capability should be exposed as a source
+     * @return boolean source that reports whether the plant exposes meaningful feedback
      */
     public static BooleanSource hasFeedback(Plant plant) {
         Objects.requireNonNull(plant, "plant");
-        return BooleanSource.constant(plant.hasFeedback());
+        return BooleanSource.of(plant::hasFeedback);
     }
 }

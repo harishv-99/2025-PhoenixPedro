@@ -4,7 +4,7 @@ This guide is a gentle introduction to the Phoenix framework. It focuses on:
 
 1. The **big ideas** (loop timing, inputs, tasks, plants, drive).
 2. A minimal **TeleOp skeleton** that you can copy.
-3. How to wire **hardware into Plants** using `Actuators.plant(...)`.
+3. How to wire **hardware into Plants** using `FtcActuators.plant(...)`.
 4. How to use **factory helpers** (`Tasks`, `PlantTasks`, `DriveTasks`) for common patterns.
 
 If you’re new, you don’t need to know how everything works inside.
@@ -16,7 +16,7 @@ The goal is: **get a clean, non‑blocking TeleOp running quickly**.
 
 If you’re writing robot code, you’ll spend almost all your time in a small set of packages:
 
-* `edu.ftcphoenix.fw.actuation` — mechanisms as `Plant`s (`Actuators`, `PlantTasks`).
+* `edu.ftcphoenix.fw.actuation` — mechanisms as `Plant`s (`Plant`, `Plants`, `PlantTasks`).
 * `edu.ftcphoenix.fw.drive` — driving (`DriveSource`, `DriveSignal`, `MecanumDrivebase`).
 * `edu.ftcphoenix.fw.input` — gamepads/buttons + `Bindings`.
 * `edu.ftcphoenix.fw.task` — macros (`Task`, `TaskRunner`, `Tasks`).
@@ -143,9 +143,9 @@ public class PhoenixTeleOp extends OpMode {
 
         // 5) Mechanisms (Plants)
         double dt = clock.dtSec();
-        shooter.update(dt);
-        transfer.update(dt);
-        pusher.update(dt);
+        shooter.update(clock);
+        transfer.update(clock);
+        pusher.update(clock);
 
         // 6) Telemetry (optional)
         telemetry.addData("dtSec", dt);
@@ -183,85 +183,151 @@ For the full philosophy, see [`Framework Lanes & Robot Controls`](<../design/Fra
 
 ---
 
-## 3. Wiring hardware as Plants with `Actuators.plant(...)`
+## 3. Wiring hardware as Plants with `FtcActuators.plant(...)`
 
 To control hardware in Phoenix, you wrap it as a **Plant**.
 
 The recommended way is to use the staged builder in
-`edu.ftcphoenix.fw.actuation.Actuators`:
+`edu.ftcphoenix.fw.ftc.FtcActuators`:
 
 ```java
 private void initShooterPlants() {
-    // Shooter: dual DC motors, velocity control with feedback.
-    shooter = Actuators.plant(hardwareMap)
+    // Shooter: dual DC motors, device-managed velocity control with feedback.
+    shooter = FtcActuators.plant(hardwareMap)
             .motor("shooterLeftMotor", Direction.FORWARD)
             .andMotor("shooterRightMotor", Direction.REVERSE)
-            .velocity()     // default tolerance (native units)
+            .velocity()     // default velocityTolerance = 100 ticks/sec
             .build();
 
     // Transfer: dual CR servos, power control.
-    transfer = Actuators.plant(hardwareMap)
+    transfer = FtcActuators.plant(hardwareMap)
             .crServo("transferLeftServo", Direction.FORWARD)
             .andCrServo("transferRightServo", Direction.REVERSE)
             .power()
             .build();
 
-    // Pusher: positional servo, set-and-hold position.
-    pusher = Actuators.plant(hardwareMap)
+    // Pusher: positional servo, commanded-position set-and-hold.
+    pusher = FtcActuators.plant(hardwareMap)
             .servo("pusherServo", Direction.FORWARD)
-            .position()     // open-loop servo position (no feedback)
+            .position()
             .build();
 }
 ```
 
 ### 3.1 What the builder is doing
 
-The builder has three steps:
+The builder has three stages:
 
 1. **Pick hardware**:
 
     * `.motor(name, direction)` then (optional) `.andMotor(name, direction)`
         * After you add a second motor, you may optionally calibrate the <i>last added</i>
-          motor with `.scale(...)` / `.bias(...)` if one side needs a small adjustment.
+          motor with `.scale(...)` / `.bias(...)` for device-managed grouped plants.
     * `.servo(name, direction)` then (optional) `.andServo(name, direction)`
     * `.crServo(name, direction)` then (optional) `.andCrServo(name, direction)`
 
-2. **Pick control type**:
+2. **Pick the target domain**:
 
-    * `.power()` – open‑loop power (e.g., CR servos, motors as % power).
-    * `.velocity()` or `.velocity(tolerance)` – closed‑loop velocity (native units).
-    * `.position()` or `.position(tolerance)` – position control.
+    * `.power()` – open-loop power (motors or CR servos).
+    * `.velocity()` – motor velocity control.
+    * `.position()` – position control.
 
-3. **Optional modifiers**:
+3. **Optionally override the control strategy**:
 
-    * `.rateLimit(maxDeltaPerSec)` – limit how quickly the target can change.
-    * `.build()` – return the final `Plant`.
+    * No-arg motor `.velocity()` / `.position()` use the device-managed FTC motor path.
+    * Advanced overloads let you switch to framework-regulated control:
+      * `.velocity(MotorVelocityControl.regulated(...))`
+      * `.position(MotorPositionControl.regulated(...))`
+      * `.position(CrServoPositionControl.regulated(...))` for CR servos.
+
+Then you may add modifiers like `.rateLimit(...)` and finish with `.build()`.
 
 ### 3.2 Position semantics: motors vs servos
 
-The `.position(...)` control mode behaves slightly differently depending on
-which hardware you chose:
+The public builder surface stays parallel, but the behavior depends on the hardware and strategy:
 
-* **DC motors** (via `.motor(...)` and optional `.andMotor(...)`):
+* **Motor position**:
 
-    * `.position(tolerance)` creates a **feedback-based motor position plant**.
+    * `motor(...).position()` creates a **device-managed motor position plant**.
     * `plant.hasFeedback() == true`.
-    * `plant.atSetpoint()` becomes true when the encoder error is within tolerance.
-    * `plant.reset()` re-zeros the plant’s coordinate frame at the current measured position.
+    * `plant.atSetpoint()` becomes true when the last sampled measurement is within the configured
+      `positionTolerance(...)` band.
+    * `plant.getMeasurement()` returns the authoritative measured position from the most recent
+      `plant.update(clock)`.
+    * `plant.reset()` clears transient controller state only. It does **not** redefine the encoder
+      zero or physical coordinate frame.
 
-* **Servos** (via `.servo(...)` and optional `.andServo(...)`):
+* **Regulated motor / CR-servo position**:
 
-    * `.position()` creates a **servo position plant** in the range `0.0..1.0`.
-    * This is an open‑loop “set‑and‑hold” behavior.
+    * `position(MotorPositionControl.regulated(...))` or
+      `position(CrServoPositionControl.regulated(...))` uses a framework-owned regulator plus an
+      explicit feedback source.
+    * The feedback source can be an internal encoder, an external encoder, or a custom source.
+
+* **Servo position**:
+
+    * `servo(...).position()` creates a commanded-position plant in the range `0.0..1.0`.
+    * This is an open-loop “set-and-hold” behavior.
     * `plant.hasFeedback() == false`.
-    * `plant.atSetpoint()` is always true (there is no measured position).
+    * `plant.getMeasurement()` returns `NaN`, because the framework does not pretend a standard FTC
+      servo has a true measured position.
 
 Why this matters:
 
-* For **feedback-based moves** (e.g., “move arm to this angle and wait”),
-  you must use a feedback plant (usually motor position or motor velocity).
-* For **simple servo motions** (e.g., pusher, claw), it’s fine to use open‑loop
-  servo position plants and time-based waits.
+* For **feedback-based moves** (for example, “move arm to this angle and wait”), use a feedback
+  plant: device-managed motor position/velocity or a regulated plant.
+* For **simple servo motions** (pusher, claw), commanded servo position plants plus time-based waits
+  are usually the right choice.
+
+### 3.3 Device-managed vs regulated motor control
+
+Use the no-arg motor builders for the common FTC path:
+
+```java
+Plant arm = FtcActuators.plant(hardwareMap)
+        .motor("armMotor", Direction.FORWARD)
+        .position()
+        .build();
+```
+
+Switch to a regulated path when you need an explicit feedback source or a custom regulator:
+
+```java
+Plant arm = FtcActuators.plant(hardwareMap)
+        .motor("armMotor", Direction.FORWARD)
+        .position(
+                FtcActuators.MotorPositionControl.regulated(
+                        FtcActuators.PositionFeedback.externalEncoder("armEncoder"),
+                        ScalarRegulators.pid(Pid.withGains(0.006, 0.0, 0.0002))
+                ).positionTolerance(20.0)
+        )
+        .build();
+```
+
+### 3.4 Position-tolerance knobs: what they mean
+
+For device-managed motor position plants there are **two different tolerance concepts**:
+
+* `positionTolerance(...)`
+    * Plant-level completion band used by `plant.atSetpoint()`.
+    * Default: **10 ticks** for the built-in motor-position helpers.
+    * This is the normal knob to use when you want to say “close enough for robot logic.”
+
+* `devicePositionToleranceTicks(...)`
+    * Optional override for the FTC motor controller's own target-position tolerance via
+      `DcMotorEx.setTargetPositionTolerance(int)`.
+    * Default in Phoenix: **unchanged unless you call it**.
+    * Use this only when you intentionally want to change the FTC motor controller's internal
+      completion threshold.
+
+Related defaults:
+
+* `maxPower(...)` default: **1.0**
+* `velocityTolerance(...)` default for motor velocity plants: **100 ticks/sec**
+* `outerPositionP(...)`, `innerVelocityPidf(...)`, and `velocityPidf(...)`: **unchanged unless set**
+
+That separation keeps the common path simple: set the plant-level tolerance first, and only reach
+for device-specific overrides when you actually need them.
 
 ---
 
@@ -387,7 +453,7 @@ without blocking TeleOp.
 
 For most student code, you only need:
 
-* `Actuators.plant(...)` to build Plants.
+* `FtcActuators.plant(...)` to build Plants from FTC hardware.
 * `PlantTasks.*` for mechanism behavior.
 * `Tasks.*` for generic timing and composition.
 * `DriveTasks.*` for drive‑specific helpers.
@@ -404,11 +470,11 @@ The raw task classes (`InstantTask`, `RunForSecondsTask`, `WaitUntilTask`,
 
 * **Plants** represent mechanisms you can command with a numeric target.
 
-* **Actuators.plant(...)** is the preferred way to create Plants from FTC hardware.
+* **FtcActuators.plant(...)** is the preferred way to create Plants from FTC hardware.
 
 * **Position semantics differ**:
 
-    * Motors + `.position(tolerance)` → feedback + encoders.
+    * Motors + `.position()` (or `.position(MotorPositionControl.regulated(...))`) → feedback-capable position control.
     * Servos + `.position()` → open‑loop set‑and‑hold.
 
 * **PlantTasks** and **Tasks** provide factory helpers that build `Task`s for you.

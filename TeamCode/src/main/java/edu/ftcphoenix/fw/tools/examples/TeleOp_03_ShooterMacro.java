@@ -4,7 +4,6 @@ import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 
-import edu.ftcphoenix.fw.actuation.Actuators;
 import edu.ftcphoenix.fw.actuation.Plant;
 import edu.ftcphoenix.fw.actuation.PlantTasks;
 import edu.ftcphoenix.fw.core.debug.DebugSink;
@@ -15,6 +14,7 @@ import edu.ftcphoenix.fw.drive.DriveSignal;
 import edu.ftcphoenix.fw.drive.DriveSource;
 import edu.ftcphoenix.fw.drive.MecanumDrivebase;
 import edu.ftcphoenix.fw.drive.source.GamepadDriveSource;
+import edu.ftcphoenix.fw.ftc.FtcActuators;
 import edu.ftcphoenix.fw.ftc.FtcDrives;
 import edu.ftcphoenix.fw.ftc.FtcTelemetryDebugSink;
 import edu.ftcphoenix.fw.input.Gamepads;
@@ -234,21 +234,22 @@ public final class TeleOp_03_ShooterMacro extends OpMode {
                 GamepadDriveSource.Config.defaults()
         ).scaledWhen(gamepads.p1().rightBumper(), 0.35, 0.20);
 
-        // === 3) Mechanism wiring using Actuators ===
+        // === 3) Mechanism wiring using FtcActuators ===
 
-        shooter = Actuators.plant(hardwareMap)
+        shooter = FtcActuators.plant(hardwareMap)
                 .motor(HW_SHOOTER_LEFT, Direction.FORWARD)
                 .andMotor(HW_SHOOTER_RIGHT, Direction.REVERSE)
-                .velocity(SHOOTER_VELOCITY_TOLERANCE_NATIVE)
+                .velocity(FtcActuators.MotorVelocityControl.deviceManaged()
+                        .velocityTolerance(SHOOTER_VELOCITY_TOLERANCE_NATIVE))
                 .build();
 
-        transfer = Actuators.plant(hardwareMap)
+        transfer = FtcActuators.plant(hardwareMap)
                 .crServo(HW_TRANSFER_LEFT, Direction.FORWARD)
                 .andCrServo(HW_TRANSFER_RIGHT, Direction.REVERSE)
                 .power()
                 .build();
 
-        pusher = Actuators.plant(hardwareMap)
+        pusher = FtcActuators.plant(hardwareMap)
                 .servo(HW_PUSHER, Direction.FORWARD)
                 .position()
                 .build();
@@ -319,9 +320,9 @@ public final class TeleOp_03_ShooterMacro extends OpMode {
         drivebase.drive(driveCmd);
 
         // --- 5) Mechanism updates ---
-        shooter.update(dtSec);
-        transfer.update(dtSec);
-        pusher.update(dtSec);
+        shooter.update(clock);
+        transfer.update(clock);
+        pusher.update(clock);
         // --- 6) Required telemetry (driver-facing) ---
         // This is the information you should not lose even when debug output is disabled.
         telemetry.addLine("FW Example 03: Shooter Macro");

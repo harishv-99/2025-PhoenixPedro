@@ -37,7 +37,7 @@ Phoenix is designed around a few core goals:
 
    Students primarily use:
 
-    * `Actuators.plant(hardwareMap) ... build()` (to create Plants)
+    * `FtcActuators.plant(hardwareMap) ... build()` (to create Plants)
     * `PlantTasks`, `Tasks`, `DriveTasks` (to create Tasks)
 
    Mentors can go deeper (HAL, adapters, custom Tasks) when needed.
@@ -144,45 +144,50 @@ A **Plant** is the low-level sink you command with a scalar target.
 Key methods (see `edu.ftcphoenix.fw.actuation.Plant`):
 
 * `setTarget(double)` / `getTarget()`
-* `update(double dtSec)`
+* `update(LoopClock clock)`
 * `stop()`
-* `atSetpoint()` and `hasFeedback()`
+* `atSetpoint()` / `hasFeedback()`
+* `getMeasurement()` / `getError()` for feedback-capable plants
 * optional `reset()` and `debugDump(...)`
 
-A Plant may be open-loop (power, servo set-and-hold) or closed-loop (motor position/velocity with feedback).
+A Plant may be open-loop (power, commanded servo position), device-managed closed-loop (for example FTC motor velocity/position), or framework-regulated closed-loop over a raw actuator command.
 
-### 2.3 The beginner entrypoint: `Actuators.plant(...)`
+### 2.3 The beginner entrypoint: `FtcActuators.plant(...)`
 
-`edu.ftcphoenix.fw.actuation.Actuators` is the recommended way to create Plants from FTC hardware.
+`edu.ftcphoenix.fw.ftc.FtcActuators` is the recommended way to create Plants from FTC hardware. It lives in the FTC boundary because it depends directly on `HardwareMap`, FTC device classes, and FTC-specific motor tuning APIs.
 
 ```java
 import edu.ftcphoenix.fw.core.hal.Direction;
+import edu.ftcphoenix.fw.ftc.FtcActuators;
 
-Plant shooter = Actuators.plant(hardwareMap)
+Plant shooter = FtcActuators.plant(hardwareMap)
         .motor("shooterLeftMotor", Direction.FORWARD)
         .andMotor("shooterRightMotor", Direction.REVERSE)
-        .velocity()   // uses default tolerance in native velocity units
+        .velocity()   // default device-managed motor velocity control
         .build();
 
-Plant transfer = Actuators.plant(hardwareMap)
+Plant transfer = FtcActuators.plant(hardwareMap)
         .crServo("transferLeftServo", Direction.FORWARD)
         .andCrServo("transferRightServo", Direction.REVERSE)
         .power()
         .build();
 
-Plant pusher = Actuators.plant(hardwareMap)
+Plant pusher = FtcActuators.plant(hardwareMap)
         .servo("pusherServo", Direction.FORWARD)
-        .position()   // servo position set-and-hold (open-loop)
+        .position()   // servo commanded-position plant (open-loop)
         .build();
 ```
 
 The builder is staged on purpose:
 
 1. **Pick hardware**: `motor` (optional `andMotor`), `servo` (optional `andServo`), `crServo` (optional `andCrServo`)
-2. **Pick control type**: `power()`, `velocity()` / `velocity(tol)`, `position()` / `position(tol)`
-3. **Optional modifiers**: `rateLimit(maxDeltaPerSec)`, then `build()`
+2. **Pick target domain**: `power()`, `velocity()`, `position()`
+3. **Optional advanced strategy override**:
+   * device-managed motor control (the default for motor `position()` / `velocity()`)
+   * regulated control via `position(MotorPositionControl.regulated(...))` or `velocity(MotorVelocityControl.regulated(...))`
+4. **Optional modifiers**: `rateLimit(maxDeltaPerSec)`, then `build()`
 
-Internally, Phoenix also has `Plants` factory helpers, but student code should typically prefer `Actuators`.
+Internally, Phoenix also has lower-level `Plants` factory helpers, but student code should typically prefer `FtcActuators`.
 
 ---
 
@@ -504,8 +509,8 @@ macroRunner.update(clock);
 drivebase.update(clock);
 drivebase.drive(driveSource.get(clock).clamped());
 
-shooter.update(clock.dtSec());
-transfer.update(clock.dtSec());
+shooter.update(clock);
+transfer.update(clock);
 ```
 
 The [`Loop Structure`](<docs/core-concepts/Loop Structure.md>) guide dives deeper into why this order matters.

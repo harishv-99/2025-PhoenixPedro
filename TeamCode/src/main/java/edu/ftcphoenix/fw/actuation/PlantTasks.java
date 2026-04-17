@@ -30,8 +30,8 @@ import edu.ftcphoenix.fw.task.TaskOutcome;
  * {@link #moveToThen(Plant, double, double, double)}) require a
  * <b>feedback-capable</b> plant where {@link Plant#hasFeedback()} returns
  * {@code true}. In practice this usually means plants created from DC motors
- * using the {@code Actuators.plant(...).motor(...).position(...)} or
- * {@code Actuators.plant(...).motor(...).velocity(...)} paths.</p>
+ * using the {@code FtcActuators.plant(...).motor(...).position(...)} or
+ * {@code FtcActuators.plant(...).motor(...).velocity(...)} paths.</p>
  *
  * <p>Time-based helpers such as {@link #holdFor(Plant, double, double)} and
  * {@link #holdForThen(Plant, double, double, double)} only care about time and
@@ -41,7 +41,7 @@ import edu.ftcphoenix.fw.task.TaskOutcome;
  * <p>All helpers here are <b>non-blocking</b> and are intended to be used with
  * {@link edu.ftcphoenix.fw.task.TaskRunner} and the rest of the {@code fw.task}
  * package. These tasks set targets on plants and rely on some other mechanism
- * to call {@link Plant#update(double)} each loop.</p>
+ * to call {@link Plant#update(edu.ftcphoenix.fw.core.time.LoopClock)} each loop.</p>
  */
 public final class PlantTasks {
 

@@ -4,21 +4,22 @@ import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 
-import edu.ftcphoenix.fw.actuation.Actuators;
 import edu.ftcphoenix.fw.actuation.Plant;
 import edu.ftcphoenix.fw.core.control.Pid;
-import edu.ftcphoenix.fw.core.control.ScalarControllers;
+import edu.ftcphoenix.fw.core.control.ScalarRegulators;
 import edu.ftcphoenix.fw.core.hal.Direction;
 import edu.ftcphoenix.fw.core.source.ScalarSource;
 import edu.ftcphoenix.fw.core.time.LoopClock;
+import edu.ftcphoenix.fw.ftc.FtcActuators;
 import edu.ftcphoenix.fw.ftc.FtcSensors;
 import edu.ftcphoenix.fw.input.Gamepads;
 import edu.ftcphoenix.fw.input.binding.Bindings;
 
 /**
- * <h1>Example 08: External Sensor + Scalar Regulation</h1>
+ * <h1>Example 08: External Sensor + Regulated Position Plant</h1>
  *
- * <p>This example shows Phoenix lane 2: a single measured variable, a controller, and a plant.</p>
+ * <p>This example shows the new regulated-plant path: a raw motor-power actuator, a regulator, and
+ * an external feedback source packaged into one position plant.</p>
  */
 @TeleOp(name = "FW Ex 08: Lift External Sensor", group = "Framework Examples")
 @Disabled
@@ -40,32 +41,17 @@ public final class TeleOp_08_LiftExternalSensorControl extends OpMode {
     private final Bindings bindings = new Bindings();
 
     private Gamepads gamepads;
-    private Plant liftPowerPlant;
-
+    private Plant liftPlant;
     private ScalarSource liftHeightIn;
-    private ScalarSource desiredHeightIn;
-    private ScalarSource liftPowerCmd;
 
     private double desiredHeight = HEIGHT_LOW_IN;
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void init() {
         gamepads = Gamepads.create(gamepad1, gamepad2);
 
-        liftPowerPlant = Actuators.plant(hardwareMap)
-                .motor(HW_LIFT_MOTOR, Direction.FORWARD)
-                .power()
-                .build();
-
         ScalarSource potVoltage = FtcSensors.analogVoltage(hardwareMap, HW_LIFT_POT);
-
         liftHeightIn = new ScalarSource() {
-            /**
-             * {@inheritDoc}
-             */
             @Override
             public double getAsDouble(LoopClock clock) {
                 double volts = potVoltage.getAsDouble(clock);
@@ -73,52 +59,45 @@ public final class TeleOp_08_LiftExternalSensorControl extends OpMode {
                 t = Math.max(0.0, Math.min(1.0, t));
                 return HEIGHT_MIN_IN + t * (HEIGHT_MAX_IN - HEIGHT_MIN_IN);
             }
-        };
-
-        desiredHeightIn = new ScalarSource() {
-            /**
-             * {@inheritDoc}
-             */
-            @Override
-            public double getAsDouble(LoopClock clock) {
-                return desiredHeight;
-            }
-        };
+        }.memoized();
 
         Pid liftPid = Pid.withGains(0.12, 0.0, 0.0)
                 .setOutputLimits(-0.55, 0.55);
 
-        liftPowerCmd = ScalarControllers.pid(desiredHeightIn, liftHeightIn, liftPid);
+        liftPlant = FtcActuators.plant(hardwareMap)
+                .motor(HW_LIFT_MOTOR, Direction.FORWARD)
+                .position(
+                        FtcActuators.MotorPositionControl.regulated(
+                                FtcActuators.PositionFeedback.fromSource(liftHeightIn),
+                                ScalarRegulators.pid(liftPid)
+                        ).positionTolerance(0.50)
+                )
+                .build();
 
         bindings.onRise(gamepads.p1().a(), () -> desiredHeight = HEIGHT_LOW_IN);
         bindings.onRise(gamepads.p1().b(), () -> desiredHeight = HEIGHT_MID_IN);
         bindings.onRise(gamepads.p1().y(), () -> desiredHeight = HEIGHT_HIGH_IN);
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void loop() {
         clock.update(getRuntime());
         bindings.update(clock);
 
-        double cmd = liftPowerCmd.getAsDouble(clock);
-        liftPowerPlant.setTarget(cmd);
-        liftPowerPlant.update(clock.dtSec());
+        liftPlant.setTarget(desiredHeight);
+        liftPlant.update(clock);
 
-        telemetry.addData("lift.targetIn", desiredHeightIn.getAsDouble(clock));
-        telemetry.addData("lift.heightIn", liftHeightIn.getAsDouble(clock));
-        telemetry.addData("lift.powerCmd", cmd);
+        telemetry.addData("lift.targetIn", liftPlant.getTarget());
+        telemetry.addData("lift.heightIn", liftPlant.getMeasurement());
+        telemetry.addData("lift.errorIn", liftPlant.getError());
+        telemetry.addData("lift.atSetpoint", liftPlant.atSetpoint());
         telemetry.update();
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void stop() {
-        liftPowerPlant.stop();
-        liftPowerCmd.reset();
+        if (liftPlant != null) {
+            liftPlant.stop();
+        }
     }
 }

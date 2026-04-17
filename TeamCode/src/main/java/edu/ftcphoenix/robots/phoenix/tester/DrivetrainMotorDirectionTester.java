@@ -1,7 +1,7 @@
 package edu.ftcphoenix.robots.phoenix.tester;
 
-import edu.ftcphoenix.fw.actuation.Actuators;
 import edu.ftcphoenix.fw.actuation.Plant;
+import edu.ftcphoenix.fw.ftc.FtcActuators;
 import edu.ftcphoenix.fw.ftc.drive.FtcMecanumDriveLane;
 import edu.ftcphoenix.fw.tools.tester.BaseTeleOpTester;
 import edu.ftcphoenix.fw.tools.tester.TesterSuite;
@@ -61,22 +61,22 @@ public final class DrivetrainMotorDirectionTester extends BaseTeleOpTester {
     protected void onInit() {
         FtcMecanumDriveLane.Config drive = PhoenixProfile.current().drive;
 
-        plantFL = Actuators.plant(ctx.hw)
+        plantFL = FtcActuators.plant(ctx.hw)
                 .motor(drive.wiring.frontLeftName, drive.wiring.frontLeftDirection)
                 .power()
                 .build();
 
-        plantFR = Actuators.plant(ctx.hw)
+        plantFR = FtcActuators.plant(ctx.hw)
                 .motor(drive.wiring.frontRightName, drive.wiring.frontRightDirection)
                 .power()
                 .build();
 
-        plantBL = Actuators.plant(ctx.hw)
+        plantBL = FtcActuators.plant(ctx.hw)
                 .motor(drive.wiring.backLeftName, drive.wiring.backLeftDirection)
                 .power()
                 .build();
 
-        plantBR = Actuators.plant(ctx.hw)
+        plantBR = FtcActuators.plant(ctx.hw)
                 .motor(drive.wiring.backRightName, drive.wiring.backRightDirection)
                 .power()
                 .build();
@@ -116,10 +116,10 @@ public final class DrivetrainMotorDirectionTester extends BaseTeleOpTester {
     }
 
     private void updateAndRender(double dtSec) {
-        plantFL.update(dtSec);
-        plantFR.update(dtSec);
-        plantBL.update(dtSec);
-        plantBR.update(dtSec);
+        plantFL.update(clock);
+        plantFR.update(clock);
+        plantBL.update(clock);
+        plantBR.update(clock);
 
         telemHeader("Drivetrain Motor Direction");
         telemHint("Hold X/Y/A/B to run one drivetrain motor forward.");

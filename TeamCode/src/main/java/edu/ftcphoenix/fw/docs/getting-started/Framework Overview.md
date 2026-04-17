@@ -21,7 +21,7 @@ Most robot code should only need imports from these packages:
 * `edu.ftcphoenix.fw.input` — gamepad wrappers (`Gamepads`, `GamepadDevice`) that expose axes as `ScalarSource` and buttons as `BooleanSource`.
 * `edu.ftcphoenix.fw.input.binding` — `Bindings`: map button edges to actions.
 * `edu.ftcphoenix.fw.task` — `Task`, `TaskRunner`, `Tasks`: non-blocking macros over time.
-* `edu.ftcphoenix.fw.actuation` — `Plant`, `Actuators`, `PlantTasks`: mechanisms you command with numeric targets.
+* `edu.ftcphoenix.fw.actuation` — `Plant`, `Plants`, `PlantTasks`: mechanism/runtime abstractions you command with numeric targets.
 * `edu.ftcphoenix.fw.drive` — `DriveSignal`, `DriveSource`, `DriveCommandSink`, `MecanumDrivebase` (FTC-independent drive logic).
 * `edu.ftcphoenix.fw.ftc` — FTC entrypoints/adapters (e.g. `FtcDrives` for drivetrain wiring).
 * `edu.ftcphoenix.fw.sensing` — sensor-facing wrappers (vision, odometry, etc.).
@@ -191,7 +191,7 @@ This prevents bugs like “button press fired twice” or “tasks advanced twic
 
 ---
 
-## Hardware and mechanisms: `Actuators`, `Plant`, and the HAL
+## Hardware and mechanisms: `FtcActuators`, `Plant`, and the HAL
 
 ### HAL outputs (lowest level)
 
@@ -200,6 +200,8 @@ Phoenix abstracts FTC hardware into small output interfaces (in `fw.core.hal`):
 * `PowerOutput` — normalized power (typically `[-1, +1]`)
 * `PositionOutput` — native position units (servo `0..1`, motor encoder ticks, etc.)
 * `VelocityOutput` — native velocity units (e.g., ticks/sec)
+
+These HAL outputs are intentionally **command-only**. Plant-level feedback lives on `Plant.getMeasurement()` and raw sensor reads live in `ScalarSource` / `FtcSensors`.
 
 ### FTC boundary: `FtcHardware`
 
@@ -211,40 +213,43 @@ Phoenix abstracts FTC hardware into small output interfaces (in `fw.core.hal`):
 * `FtcHardware.servoPosition(hw, name, direction)`
 * `FtcHardware.crServoPower(hw, name, direction)`
 
-These return HAL outputs.
+These return command-only HAL outputs. Measurement lives separately as `ScalarSource` values (for example via `FtcSensors`) so internal encoders, external encoders, and derived mechanism units all share the same feedback abstraction.
 
-### Beginner entrypoint: `Actuators`
+### Beginner entrypoint: `FtcActuators`
 
-Most teams should **not** call `FtcHardware` directly. Use the staged builder in `Actuators`:
+Most teams should **not** call `FtcHardware` directly. Use the staged builder in `FtcActuators`:
 
 ```java
 import edu.ftcphoenix.fw.core.hal.Direction;
-
-import edu.ftcphoenix.fw.actuation.Actuators;
+import edu.ftcphoenix.fw.ftc.FtcActuators;
 import edu.ftcphoenix.fw.actuation.Plant;
 
-// Shooter: dual-motor velocity plant (native units) with a rate limit.
-Plant shooter = Actuators.plant(hardwareMap)
+// Shooter: dual-motor velocity plant with a rate limit.
+Plant shooter = FtcActuators.plant(hardwareMap)
         .motor("shooterLeftMotor", Direction.FORWARD)
         .andMotor("shooterRightMotor", Direction.REVERSE)
-        .velocity()            // default tolerance (native units)
+        .velocity()            // default velocityTolerance = 100 ticks/sec
         .rateLimit(500.0)      // max delta in native units per second
         .build();
 
 // Transfer: CR servo power plant.
-Plant transfer = Actuators.plant(hardwareMap)
+Plant transfer = FtcActuators.plant(hardwareMap)
         .crServo("transferServo", Direction.FORWARD)
         .power()
         .build();
 
 // Pusher: positional servo plant (0..1).
-Plant pusher = Actuators.plant(hardwareMap)
+Plant pusher = FtcActuators.plant(hardwareMap)
         .servo("pusherServo", Direction.FORWARD)
         .position()
         .build();
 ```
 
-**Important:** tasks can set targets on plants, but *your loop* must still call `plant.update(dtSec)` each cycle.
+The builder stays domain-first (`power()`, `position()`, `velocity()`) and offers advanced
+strategy overrides only when you need them, for example
+`motor(...).position(MotorPositionControl.regulated(...))`.
+
+**Important:** tasks can set targets on plants, but *your loop* must still call `plant.update(clock)` each cycle.
 
 ---
 
@@ -455,9 +460,8 @@ public void loop() {
     drivebase.drive(cmd);
 
     // 5) Mechanisms
-    double dtSec = clock.dtSec();
-    shooter.update(dtSec);
-    transfer.update(dtSec);
+    shooter.update(clock);
+    transfer.update(clock);
 
     // 7) Telemetry
     telemetry.update();
