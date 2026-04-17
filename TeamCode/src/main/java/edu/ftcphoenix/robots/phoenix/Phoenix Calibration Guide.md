@@ -9,7 +9,7 @@ Use it when you are bringing up a fresh Phoenix robot and want the exact menu na
 Phoenix now splits stable ownership this way:
 
 - `PhoenixProfile.drive` -> `FtcMecanumDriveLane.Config`
-- `PhoenixProfile.vision` -> `FtcAprilTagVisionLane.Config`
+- `PhoenixProfile.vision` -> `PhoenixProfile.VisionConfig` (checked-in backend: webcam)
 - `PhoenixProfile.localization` -> `FtcOdometryAprilTagLocalizationLane.Config`
 - `PhoenixProfile.field` -> shared field facts such as the fixed AprilTag layout
 - `PhoenixCapabilities` -> shared mode-neutral API used by TeleOp and Auto
@@ -22,12 +22,15 @@ Phoenix now splits stable ownership this way:
 That split matters during bring-up because fixes should land in the owner of the behavior:
 
 - drivetrain wiring / brake / drive tuning -> `PhoenixProfile.drive`
-- webcam name / camera mount / vision portal settings -> `PhoenixProfile.vision`
+- backend choice + active camera-rig config -> `PhoenixProfile.vision`
+- webcam name / webcam camera mount / vision portal settings -> `PhoenixProfile.vision.webcam`
 - odometry tuning / AprilTag localization tuning / fusion tuning -> `PhoenixProfile.localization`
 - fixed field tags or practice-field overrides -> `PhoenixProfile.field`
 - button semantics / manual drive behavior -> `PhoenixTeleOpControls`
 - scoring gating / requests / feed policy -> `ShooterSupervisor`
 - mechanism actuation -> `Shooter`
+
+Stage 1 note: Phoenix now has a backend-selection wrapper for future Limelight work, but the checked-in implementation and the calibration/tester flow in this guide are still webcam-backed.
 
 ## Where to start in the tester menu
 
@@ -77,14 +80,14 @@ Solve Phoenix's webcam pose relative to the robot.
 ### Paste result into
 
 ```java
-PhoenixProfile.current().vision.cameraMount
+PhoenixProfile.current().vision.webcam.cameraMount
 ```
 
 The tester prints `CameraMountConfig.of(...)` and `CameraMountConfig.ofDegrees(...)`. Paste one of those directly.
 
 ### Phoenix notes
 
-- the preferred camera is `PhoenixProfile.current().vision.webcamName`
+- the preferred camera is `PhoenixProfile.current().vision.webcam.webcamName`
 - the walkthrough status turns `OK` once the camera mount no longer looks like the identity placeholder
 
 ## Step 3: AprilTag-only localization sanity check
@@ -109,8 +112,8 @@ Verify that Phoenix's preferred camera, fixed-tag layout policy, and AprilTag-on
 This tester reuses:
 
 ```java
-PhoenixProfile.current().vision.webcamName
-PhoenixProfile.current().vision.cameraMount
+PhoenixProfile.current().vision.webcam.webcamName
+PhoenixProfile.current().vision.webcam.cameraMount
 PhoenixProfile.current().localization.aprilTags
 PhoenixProfile.current().field.fixedAprilTagLayout
 ```
@@ -202,8 +205,8 @@ Validate Phoenix's default global localizer in the conditions that matter for re
 ### Config involved
 
 ```java
-PhoenixProfile.current().vision.webcamName
-PhoenixProfile.current().vision.cameraMount
+PhoenixProfile.current().vision.webcam.webcamName
+PhoenixProfile.current().vision.webcam.cameraMount
 PhoenixProfile.current().localization.odometry
 PhoenixProfile.current().localization.aprilTags
 PhoenixProfile.current().localization.odometryTagFusion

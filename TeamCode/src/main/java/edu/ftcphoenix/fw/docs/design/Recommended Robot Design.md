@@ -6,7 +6,7 @@ For larger robots, use this ownership pattern:
 
 - **framework lanes** for stable FTC-side systems that recur year to year
   - example: `FtcMecanumDriveLane`
-  - example: `FtcAprilTagVisionLane`
+  - example: `FtcWebcamAprilTagVisionLane` (behind the `AprilTagVisionLane` seam)
   - example: `FtcOdometryAprilTagLocalizationLane`
 - **shared field facts** for layouts and landmarks used by several systems
   - example: `TagLayout` and `FtcGameTagLayout.currentGameFieldFixed()`

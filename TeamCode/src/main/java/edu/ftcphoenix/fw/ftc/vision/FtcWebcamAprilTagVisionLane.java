@@ -14,24 +14,25 @@ import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
 
 /**
- * FTC-boundary lane owner for an AprilTag vision rig.
+ * FTC-boundary lane owner for a webcam-backed AprilTag vision rig.
  *
  * <p>
  * This lane owns the pieces that are primarily about the camera rig itself: webcam identity,
  * camera extrinsics, FTC AprilTag-processor settings, sensor construction, and portal cleanup.
  * It intentionally does <em>not</em> own field-pose solving or localization strategy. Those are
- * separate concerns that may consume the same shared vision resource.
+ * separate concerns that may consume the same shared vision resource through the backend-neutral
+ * {@link AprilTagVisionLane} seam.
  * </p>
  *
  * <p>
- * In other words, this lane answers: "how do we own and configure the AprilTag camera?" It does
+ * In other words, this lane answers: "how do we own and configure the AprilTag webcam?" It does
  * not answer: "how do we use AprilTags for localization, aiming, or game strategy?"
  * </p>
  */
-public final class FtcAprilTagVisionLane {
+public final class FtcWebcamAprilTagVisionLane implements AprilTagVisionLane {
 
     /**
-     * Configuration for an FTC AprilTag-vision lane.
+     * Configuration for a webcam-backed FTC AprilTag-vision lane.
      *
      * <p>
      * The config groups stable camera-rig concerns that tend to recur across robots and seasons:
@@ -116,12 +117,12 @@ public final class FtcAprilTagVisionLane {
     private boolean closed = false;
 
     /**
-     * Creates the AprilTag vision lane from one FTC hardware map and one config snapshot.
+     * Creates the webcam AprilTag vision lane from one FTC hardware map and one config snapshot.
      *
      * @param hardwareMap FTC hardware map used to create the underlying vision portal
      * @param config      lane config; defensively copied for the lifetime of this owner
      */
-    public FtcAprilTagVisionLane(HardwareMap hardwareMap, Config config) {
+    public FtcWebcamAprilTagVisionLane(HardwareMap hardwareMap, Config config) {
         Objects.requireNonNull(hardwareMap, "hardwareMap");
         this.cfg = Objects.requireNonNull(config, "config").copy();
         this.tagSensor = FtcVision.aprilTags(hardwareMap, this.cfg.webcamName, this.cfg.toFtcVisionConfig());
@@ -150,6 +151,7 @@ public final class FtcAprilTagVisionLane {
      *
      * @return camera extrinsics for the active robot profile
      */
+    @Override
     public CameraMountConfig cameraMountConfig() {
         return cfg.cameraMount;
     }
@@ -159,6 +161,7 @@ public final class FtcAprilTagVisionLane {
      *
      * @return shared AprilTag sensor
      */
+    @Override
     public AprilTagSensor tagSensor() {
         return tagSensor;
     }
@@ -168,6 +171,7 @@ public final class FtcAprilTagVisionLane {
      *
      * <p>This method is idempotent so it is safe to call from repeated shutdown paths.</p>
      */
+    @Override
     public void close() {
         if (closed) {
             return;
@@ -191,11 +195,13 @@ public final class FtcAprilTagVisionLane {
      * @param dbg    debug sink to write to; ignored when {@code null}
      * @param prefix key prefix for all entries; may be {@code null} or empty
      */
+    @Override
     public void debugDump(DebugSink dbg, String prefix) {
         if (dbg == null) {
             return;
         }
         String p = (prefix == null || prefix.isEmpty()) ? "visionLane" : prefix;
+        dbg.addData(p + ".backend", "webcam");
         dbg.addData(p + ".webcamName", cfg.webcamName);
         dbg.addData(p + ".sdkPitchRadOffset", cfg.sdkPitchRadOffset);
         dbg.addData(p + ".closed", closed);

@@ -7,7 +7,8 @@ import java.util.Objects;
 import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.field.TagLayout;
-import edu.ftcphoenix.fw.ftc.vision.FtcAprilTagVisionLane;
+import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLane;
+import edu.ftcphoenix.fw.ftc.vision.FtcWebcamAprilTagVisionLane;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
 import edu.ftcphoenix.fw.localization.apriltag.FixedTagFieldPoseSolver;
 import edu.ftcphoenix.fw.localization.apriltag.TagOnlyPoseEstimator;
@@ -24,12 +25,12 @@ import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
  * </p>
  * <ul>
  *   <li>a Pinpoint odometry rig,</li>
- *   <li>a shared {@link FtcAprilTagVisionLane}, and</li>
+ *   <li>a shared {@link AprilTagVisionLane}, and</li>
  *   <li>a field-fixed {@link TagLayout} describing which tags are trusted landmarks.</li>
  * </ul>
  *
  * <p>
- * This owner deliberately does <em>not</em> own the camera rig. The vision lane owns webcam identity, camera mount, and portal cleanup. This localization lane owns the pose-estimation strategy built on top of those resources: odometry, AprilTag-only field solving, fused/global estimator selection, and per-loop updates.
+ * This owner deliberately does <em>not</em> own the camera rig. The vision lane owns device identity, camera mount, and backend cleanup. This localization lane owns the pose-estimation strategy built on top of those resources: odometry, AprilTag-only field solving, fused/global estimator selection, and per-loop updates.
  * </p>
  */
 public final class FtcOdometryAprilTagLocalizationLane {
@@ -52,8 +53,8 @@ public final class FtcOdometryAprilTagLocalizationLane {
      * AprilTag-localization tuning owned by the localization lane.
      *
      * <p>
-     * This config intentionally excludes camera-rig concerns such as webcam identity and camera
-     * mount. Those belong in {@link FtcAprilTagVisionLane.Config}. It only contains the
+     * This config intentionally excludes camera-rig concerns such as backend/device identity and camera
+     * mount. Those belong in the concrete vision-lane config (for example {@link FtcWebcamAprilTagVisionLane.Config}). It only contains the
      * AprilTag-specific field-pose solve policy needed by localization itself.
      * </p>
      */
@@ -129,7 +130,7 @@ public final class FtcOdometryAprilTagLocalizationLane {
      * The config groups the stable pieces of localization strategy: odometry tuning, AprilTag field
      * solve tuning, fused-estimator tuning, and which fused/global estimator implementation to use.
      * The camera rig itself is intentionally separate and belongs to
-     * {@link FtcAprilTagVisionLane.Config}.
+     * the concrete vision-lane config (for example {@link FtcWebcamAprilTagVisionLane.Config}).
      * </p>
      */
     public static final class Config {
@@ -191,7 +192,7 @@ public final class FtcOdometryAprilTagLocalizationLane {
     }
 
     private final Config cfg;
-    private final FtcAprilTagVisionLane visionLane;
+    private final AprilTagVisionLane visionLane;
     private final TagLayout fixedFieldTagLayout;
     private final PinpointPoseEstimator odometryEstimator;
     private final TagOnlyPoseEstimator aprilTagLocalizer;
@@ -207,7 +208,7 @@ public final class FtcOdometryAprilTagLocalizationLane {
      * @param config              lane config; defensively copied for the lifetime of this owner
      */
     public FtcOdometryAprilTagLocalizationLane(HardwareMap hardwareMap,
-                                               FtcAprilTagVisionLane visionLane,
+                                               AprilTagVisionLane visionLane,
                                                TagLayout fixedFieldTagLayout,
                                                Config config) {
         Objects.requireNonNull(hardwareMap, "hardwareMap");

@@ -29,7 +29,7 @@ public final class PhoenixCalibrationWalkthrough {
 
         guide.addStep(
                 "Calib: Camera Mount",
-                "Solve PhoenixProfile.current().vision.cameraMount and paste the printed CameraMountConfig.ofDegrees(...) value.",
+                "Solve PhoenixProfile.current().vision.webcam.cameraMount and paste the printed CameraMountConfig.ofDegrees(...) value.",
                 PhoenixRobotTesters::cameraMountStatus,
                 PhoenixRobotTesters::cameraMountCalibrator
         );

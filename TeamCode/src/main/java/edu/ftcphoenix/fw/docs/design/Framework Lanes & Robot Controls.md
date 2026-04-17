@@ -87,7 +87,7 @@ A lane usually:
 Examples:
 
 - `FtcMecanumDriveLane`
-- `FtcAprilTagVisionLane`
+- `AprilTagVisionLane` / `FtcWebcamAprilTagVisionLane`
 - `FtcOdometryAprilTagLocalizationLane`
 
 A lane answers:
@@ -339,7 +339,7 @@ Good names reveal the role.
 Good:
 
 - `FtcMecanumDriveLane`
-- `FtcAprilTagVisionLane`
+- `AprilTagVisionLane` / `FtcWebcamAprilTagVisionLane`
 - `ShooterSupervisor`
 - `PhoenixTeleOpControls`
 - `ScoringTargeting`
@@ -406,7 +406,7 @@ A strong starting pattern is:
 public final class MyRobotProfile {
 
     public FtcMecanumDriveLane.Config drive = FtcMecanumDriveLane.Config.defaults();
-    public FtcAprilTagVisionLane.Config vision = FtcAprilTagVisionLane.Config.defaults();
+    public FtcWebcamAprilTagVisionLane.Config vision = FtcWebcamAprilTagVisionLane.Config.defaults();
     public FtcOdometryAprilTagLocalizationLane.Config localization =
             FtcOdometryAprilTagLocalizationLane.Config.defaults();
 
@@ -433,6 +433,11 @@ public final class MyRobotProfile {
 }
 ```
 
+
+For the simplest robot, keeping `vision` concrete as `FtcWebcamAprilTagVisionLane.Config` is still a good default.
+If you expect to swap between webcam and smart-camera backends later, keep a robot-owned `VisionConfig`
+wrapper in the profile and let the composition root hold the backend-neutral `AprilTagVisionLane` interface.
+
 Why this order works:
 
 - lane configs stay grouped by stable ownership
@@ -455,8 +460,12 @@ FtcMecanumDriveLane drive = new FtcMecanumDriveLane(hardwareMap, profile.drive);
 ### Vision lane example
 
 ```java
-FtcAprilTagVisionLane vision = new FtcAprilTagVisionLane(hardwareMap, profile.vision);
+AprilTagVisionLane vision = new FtcWebcamAprilTagVisionLane(hardwareMap, profile.vision);
 ```
+
+The important split is: construct a concrete lane at the FTC boundary, but store and pass around the
+backend-neutral `AprilTagVisionLane` seam above that boundary. That lets localization and targeting
+consume tag observations without caring whether the implementation is webcam-backed today or smart-camera-backed later.
 
 ### Localization lane example
 
@@ -844,7 +853,7 @@ public final class MyRobot {
     private final MyRobotProfile profile;
 
     private FtcMecanumDriveLane drive;
-    private FtcAprilTagVisionLane vision;
+    private AprilTagVisionLane vision;
     private FtcOdometryAprilTagLocalizationLane localization;
 
     private MyCapabilities capabilities;
@@ -857,7 +866,7 @@ public final class MyRobot {
 
     public void initTeleOp() {
         drive = new FtcMecanumDriveLane(hardwareMap, profile.drive);
-        vision = new FtcAprilTagVisionLane(hardwareMap, profile.vision);
+        vision = new FtcWebcamAprilTagVisionLane(hardwareMap, profile.vision);
         localization = new FtcOdometryAprilTagLocalizationLane(
                 hardwareMap,
                 vision,
@@ -911,7 +920,7 @@ If the composition root starts containing lots of button semantics, aim threshol
 ```text
 MyRobotProfile
   ├─ drive      -> FtcMecanumDriveLane.Config
-  ├─ vision     -> FtcAprilTagVisionLane.Config
+  ├─ vision     -> FtcWebcamAprilTagVisionLane.Config (or a robot-owned backend wrapper)
   ├─ localization -> FtcOdometryAprilTagLocalizationLane.Config
   ├─ field      -> TagLayout / field facts
   ├─ controls   -> MyTeleOpControls.Config
@@ -920,7 +929,7 @@ MyRobotProfile
 
 MyRobot
   ├─ FtcMecanumDriveLane
-  ├─ FtcAprilTagVisionLane
+  ├─ AprilTagVisionLane (commonly `FtcWebcamAprilTagVisionLane`)
   ├─ FtcOdometryAprilTagLocalizationLane
   ├─ MyCapabilities
   ├─ MyTeleOpControls
@@ -999,7 +1008,7 @@ Instead, create the primitive with explicit axes and apply slow mode in the cont
 Bad in spirit:
 
 ```text
-one localization lane owns webcam identity, camera mount, and every AprilTag user
+one localization lane owns camera identity, camera mount, and every AprilTag user
 ```
 
 Why it is a problem:
@@ -1010,7 +1019,7 @@ Why it is a problem:
 
 Instead, split:
 
-- `FtcAprilTagVisionLane` for the camera rig
+- `AprilTagVisionLane` / `FtcWebcamAprilTagVisionLane` for the camera rig
 - `FtcOdometryAprilTagLocalizationLane` for pose production
 - field facts for shared landmarks
 
@@ -1034,7 +1043,7 @@ Phoenix is the reference example for this split:
 - primitive: `MecanumDrivebase`
 - primitive: `AprilTagSensor`
 - lane: `FtcMecanumDriveLane`
-- lane: `FtcAprilTagVisionLane`
+- lane: `FtcWebcamAprilTagVisionLane` (through the `AprilTagVisionLane` seam)
 - lane: `FtcOdometryAprilTagLocalizationLane`
 - field facts: `PhoenixProfile.field.fixedAprilTagLayout`
 - capability family: `PhoenixCapabilities.scoring()` / `PhoenixCapabilities.targeting()`

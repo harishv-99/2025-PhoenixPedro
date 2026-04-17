@@ -24,6 +24,17 @@ public final class PhoenixRobotTesters {
         return PhoenixProfile.current();
     }
 
+    private static PhoenixProfile webcamProfile() {
+        PhoenixProfile p = profile();
+        if (p.vision.backend != PhoenixProfile.VisionConfig.Backend.WEBCAM) {
+            throw new IllegalStateException(
+                    "Phoenix's Stage 1 tester flow is webcam-backed. "
+                            + "Set PhoenixProfile.vision.backend = WEBCAM or wait for a later Limelight stage."
+            );
+        }
+        return p;
+    }
+
     /**
      * Registers the Phoenix-specific tester groups in the supplied suite.
      *
@@ -132,7 +143,7 @@ public final class PhoenixRobotTesters {
      * @return tester configured to solve Phoenix's webcam mount pose
      */
     public static TeleOpTester cameraMountCalibrator() {
-        return new CameraMountCalibrator(profile().vision.webcamName);
+        return new CameraMountCalibrator(webcamProfile().vision.webcam.webcamName);
     }
 
     /**
@@ -141,13 +152,13 @@ public final class PhoenixRobotTesters {
      * @return tester configured with Phoenix's vision lane, field facts, and AprilTag-localizer defaults
      */
     public static TeleOpTester aprilTagLocalization() {
-        PhoenixProfile p = profile();
+        PhoenixProfile p = webcamProfile();
         return new AprilTagLocalizationTester(
-                p.vision.webcamName,
-                p.vision.cameraMount,
+                p.vision.webcam.webcamName,
+                p.vision.webcam.cameraMount,
                 p.field.fixedAprilTagLayout,
                 null,
-                p.localization.aprilTags.toTagOnlyPoseEstimatorConfig(p.vision.cameraMount),
+                p.localization.aprilTags.toTagOnlyPoseEstimatorConfig(p.vision.webcam.cameraMount),
                 p.localization.aprilTags.maxDetectionAgeSec
         );
     }
@@ -167,18 +178,18 @@ public final class PhoenixRobotTesters {
      * Creates the Pinpoint pod-offset calibration tester using the current Phoenix profile.
      *
      * @return tester configured for Phoenix drivetrain wiring, odometry config, and optional
-     *         AprilTag assist when the shared vision mount is already trustworthy
+     *         AprilTag assist when the shared webcam mount is already trustworthy
      */
     public static TeleOpTester pinpointPodOffsets() {
-        PhoenixProfile p = profile();
+        PhoenixProfile p = webcamProfile();
         PinpointPodOffsetCalibrator.Config cfg = PinpointPodOffsetCalibrator.Config.defaults();
         cfg.pinpoint = p.localization.odometry.copy();
         cfg.mecanumWiring = p.drive.wiring.copy();
         cfg.targetTurnRad = Math.PI;
-        cfg.enableAprilTagAssist = CalibrationChecks.canUseAprilTagAssist(p.vision.cameraMount);
+        cfg.enableAprilTagAssist = CalibrationChecks.canUseAprilTagAssist(p.vision.webcam.cameraMount);
         cfg.autoComputeAfterAutoSample = true;
-        cfg.preferredCameraName = p.vision.webcamName;
-        cfg.cameraMount = p.vision.cameraMount;
+        cfg.preferredCameraName = p.vision.webcam.webcamName;
+        cfg.cameraMount = p.vision.webcam.cameraMount;
         return new PinpointPodOffsetCalibrator(cfg);
     }
 
@@ -188,16 +199,16 @@ public final class PhoenixRobotTesters {
      * @return tester configured with Phoenix's default fusion estimator settings
      */
     public static TeleOpTester pinpointAprilTagFusion() {
-        PhoenixProfile p = profile();
+        PhoenixProfile p = webcamProfile();
         PinpointPoseEstimator.Config cfg = p.localization.odometry.copy();
         return new PinpointAprilTagFusionLocalizationTester(
-                p.vision.webcamName,
-                p.vision.cameraMount,
+                p.vision.webcam.webcamName,
+                p.vision.webcam.cameraMount,
                 cfg,
                 p.localization.odometryTagFusion.copy(),
                 p.field.fixedAprilTagLayout,
                 null,
-                p.localization.aprilTags.toTagOnlyPoseEstimatorConfig(p.vision.cameraMount)
+                p.localization.aprilTags.toTagOnlyPoseEstimatorConfig(p.vision.webcam.cameraMount)
         );
     }
 
@@ -207,18 +218,18 @@ public final class PhoenixRobotTesters {
      * @return tester configured to compare the optional EKF path against the default fusion path
      */
     public static TeleOpTester pinpointAprilTagEkf() {
-        PhoenixProfile p = profile();
+        PhoenixProfile p = webcamProfile();
         PinpointPoseEstimator.Config cfg = p.localization.odometry.copy();
         return PinpointAprilTagFusionLocalizationTester.ekf(
-                p.vision.webcamName,
-                p.vision.cameraMount,
+                p.vision.webcam.webcamName,
+                p.vision.webcam.cameraMount,
                 cfg,
                 p.localization.odometryTagEkf.validatedCopy(
                         "PhoenixProfile.current().localization.odometryTagEkf"
                 ),
                 p.field.fixedAprilTagLayout,
                 null,
-                p.localization.aprilTags.toTagOnlyPoseEstimatorConfig(p.vision.cameraMount)
+                p.localization.aprilTags.toTagOnlyPoseEstimatorConfig(p.vision.webcam.cameraMount)
         );
     }
 
@@ -237,7 +248,7 @@ public final class PhoenixRobotTesters {
      * @return status indicating whether the configured Phoenix camera mount looks solved
      */
     public static CalibrationStatus cameraMountStatus() {
-        return CalibrationChecks.cameraMount(profile().vision.cameraMount);
+        return CalibrationChecks.cameraMount(webcamProfile().vision.webcam.cameraMount);
     }
 
     /**

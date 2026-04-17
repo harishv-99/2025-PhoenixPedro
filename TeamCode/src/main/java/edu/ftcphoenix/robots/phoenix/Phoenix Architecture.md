@@ -27,7 +27,7 @@ PhoenixRobot
   PhoenixCapabilities capabilities
 
   FtcMecanumDriveLane drive
-  FtcAprilTagVisionLane vision
+  AprilTagVisionLane vision   (selected by PhoenixVisionFactory; checked-in impl = FtcWebcamAprilTagVisionLane)
   FtcOdometryAprilTagLocalizationLane localization
 
   PhoenixTeleOpControls controls
@@ -38,6 +38,11 @@ PhoenixRobot
   TaskRunner autoRunner
   PhoenixTelemetryPresenter telemetry
 ```
+
+Phoenix keeps backend choice in a small robot-owned wrapper: `PhoenixProfile.VisionConfig`
+plus `PhoenixVisionFactory`. That is why the rest of the graph can depend on
+`AprilTagVisionLane` instead of a webcam-specific owner while Stage 1 still keeps the
+checked-in implementation on `FtcWebcamAprilTagVisionLane`.
 
 The shared mode clients are:
 
@@ -65,7 +70,7 @@ different APIs layered directly onto internals.
 ### Framework lanes
 
 - `FtcMecanumDriveLane`: owns mecanum hardware wiring, brake behavior, drivebase construction, and drive lifecycle
-- `FtcAprilTagVisionLane`: owns the AprilTag camera rig, webcam identity, camera mount, and portal cleanup
+- `AprilTagVisionLane` / `FtcWebcamAprilTagVisionLane`: Phoenix consumes the backend-neutral seam while the checked-in FTC-boundary implementation remains webcam-backed today
 - `FtcOdometryAprilTagLocalizationLane`: owns odometry + AprilTag localization strategy, fused estimator selection, and pose production
 
 ### Shared field facts
@@ -148,7 +153,7 @@ The rule is to split by cohesive public vocabulary, not by this year's internal 
 ```text
 PhoenixProfile
   ├─ drive        -> FtcMecanumDriveLane.Config
-  ├─ vision       -> FtcAprilTagVisionLane.Config
+  ├─ vision       -> PhoenixProfile.VisionConfig
   ├─ localization -> FtcOdometryAprilTagLocalizationLane.Config
   ├─ field        -> TagLayout
   ├─ controls     -> PhoenixTeleOpControls tuning
@@ -174,12 +179,12 @@ PhoenixRobot
 Older FTC code often lumps camera ownership and localization together. Phoenix avoids that because
 the camera rig is not only for localization.
 
-### `FtcAprilTagVisionLane` owns
+### `AprilTagVisionLane` / `FtcWebcamAprilTagVisionLane` own
 
-- webcam name
-- camera resolution
+- backend-specific device identity (webcam today, smart camera later)
+- camera resolution / processor setup for the active backend
 - camera mount
-- AprilTag sensor / portal lifetime
+- AprilTag sensor lifetime
 - camera cleanup
 
 ### `FtcOdometryAprilTagLocalizationLane` owns
@@ -291,7 +296,7 @@ queued autonomous task runner.
 ```text
 PhoenixProfile
   drive         -> FtcMecanumDriveLane.Config
-  vision        -> FtcAprilTagVisionLane.Config
+  vision        -> PhoenixProfile.VisionConfig
   localization  -> FtcOdometryAprilTagLocalizationLane.Config
   field         -> fixed AprilTag layout
   controls      -> TeleOp control tuning

@@ -34,10 +34,10 @@ public final class HardwareSelectingTester extends BaseTeleOpTester {
      * Creates a wrapper that lets the operator choose a hardware device before opening an inner
      * tester configured for that device.
      *
-     * @param displayName   human-facing name for the wrapper tester
-     * @param deviceType    FTC hardware type to enumerate in the picker
-     * @param pickerTitle   picker title shown in telemetry (nullable for a default title)
-     * @param pickerHelp    picker controls hint (nullable for the default hint)
+     * @param displayName  human-facing name for the wrapper tester
+     * @param deviceType   FTC hardware type to enumerate in the picker
+     * @param pickerTitle  picker title shown in telemetry (nullable for a default title)
+     * @param pickerHelp   picker controls hint (nullable for the default hint)
      * @param preferredName preferred device name to pre-select when it exists (nullable)
      * @param testerFactory factory that builds the real tester after a hardware name is chosen
      */

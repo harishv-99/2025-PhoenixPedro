@@ -131,7 +131,7 @@ Two rules of thumb:
 Phoenix now distinguishes between three different kinds of ownership that often got blurred together in older FTC code:
 
 - **primitives**: small reusable building blocks like `GamepadDriveSource`, `MecanumDrivebase`, `AprilTagSensor`, and `PinpointPoseEstimator`
-- **framework lanes**: stable reusable owners built from primitives, such as `FtcMecanumDriveLane`, `FtcAprilTagVisionLane`, and `FtcOdometryAprilTagLocalizationLane`
+- **framework lanes**: stable reusable owners built from primitives, such as `FtcMecanumDriveLane`, the backend-neutral `AprilTagVisionLane` seam (commonly implemented by `FtcWebcamAprilTagVisionLane`), and `FtcOdometryAprilTagLocalizationLane`
 - **field facts**: shared environment data such as `TagLayout` and `FtcGameTagLayout.currentGameFieldFixed()`
 - **robot-owned capability families**: the shared mode-neutral API used by both TeleOp and Auto
 - **robot-owned controls/policy**: button semantics, scoring logic, auto-aim rules, and telemetry presentation

@@ -10,11 +10,14 @@ The short version:
 
 In the current framework structure, keep these ownership boundaries separate:
 
-- `FtcAprilTagVisionLane` owns the camera rig, webcam identity, camera mount, and portal cleanup
-- `FtcOdometryAprilTagLocalizationLane` owns pose-estimation strategy built on top of that rig
+- `AprilTagVisionLane` is the backend-neutral seam consumed by localization, targeting, and future vision features
+- `FtcWebcamAprilTagVisionLane` is the standard webcam-backed implementation of that seam today
+- `FtcOdometryAprilTagLocalizationLane` owns pose-estimation strategy built on top of that shared rig
 - field facts such as `TagLayout` stay separate from both
 
 That split matters because the camera rig may be shared by localization, aiming, and future vision features.
+
+Stage 1 of the backend split deliberately keeps the consumer side small: localization lanes depend on `AprilTagVisionLane`, not on a webcam-specific owner. That keeps the rest of the framework focused on tag observations and camera extrinsics while future smart-camera implementations can own their own FTC-boundary wiring.
 
 ---
 
