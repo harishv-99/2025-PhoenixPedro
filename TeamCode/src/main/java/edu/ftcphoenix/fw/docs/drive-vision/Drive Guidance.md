@@ -137,6 +137,71 @@ Because `aimTo()` still has more than one real family inside it:
 
 Keeping the outer “channel selector” (`translateTo`, `aimTo`, `resolveWith`) and the inner “how” choice makes the structure parallel and readable.
 
+### 2.1 `controlFrames(...)`: which part of the robot is being controlled?
+
+`controlFrames(...)` answers a different question from `translateTo()` and `aimTo()`.
+
+- `translateTo(...)` / `aimTo(...)` describe the **target geometry**.
+- `controlFrames(...)` describes **which robot-relative point or frame should satisfy that geometry**.
+
+There are two independent control frames:
+
+- **translation frame**: the robot-relative point that should land on the translation target
+- **aim frame**: the robot-relative frame whose `+X` axis should point at the aim target
+
+By default, both are the robot center:
+
+```java
+.controlFrames(ControlFrames.robotCenter())
+```
+
+That is equivalent to “drive the robot center to the translation point” and “turn the robot so the robot's forward axis points at the aim target.”
+
+For an off-center mechanism, give guidance the robot→mechanism transform instead.
+
+```java
+Pose2d robotToShooter = new Pose2d(7.0, 4.5, Math.toRadians(5.0));
+
+DriveGuidancePlan plan = DriveGuidance.plan()
+        .aimTo()
+            .fieldPointInches(72.0, 24.0)
+            .doneAimTo()
+        .resolveWith()
+            .localizationOnly()
+            .localization(poseEstimator)
+            .doneResolveWith()
+        .controlFrames(ControlFrames.robotCenter().withAimFrame(robotToShooter))
+        .build();
+```
+
+That means: “rotate the robot until the shooter's local `+X` axis points at `(72, 24)`.”
+
+A few important consequences:
+
+- The aim frame does **not** need to be at the robot center.
+- The aim frame may include a heading offset if the mechanism is mounted skewed relative to the chassis.
+- Translation and aiming can use **different** frames. For example, you might translate the intake mouth onto a pickup point while aiming a shooter frame somewhere else.
+
+Example: hold the front-left intake corner on a pickup point while a side-mounted shooter frame aims at a target.
+
+```java
+Pose2d robotToIntakeMouth = new Pose2d(12.0, 8.0, 0.0);
+Pose2d robotToShooter = new Pose2d(-3.0, 6.0, Math.toRadians(15.0));
+
+ControlFrames frames = ControlFrames.of(robotToIntakeMouth, robotToShooter);
+```
+
+**Important:** `controlFrames(...)` changes the **geometry of the solve**, not which actuator is commanded.
+
+Today, Drive Guidance still produces a drivetrain `DriveSignal`. So if you set an off-center aim frame, the framework will turn / translate the **robot** until that robot-relative frame satisfies the geometry. It will not automatically rotate an internal turret, wrist, or camera gimbal.
+
+That distinction matters:
+
+- if the drivetrain is the thing that should move, `controlFrames(...)` is already the right tool
+- if an internal mechanism (like a turret) should move instead, reuse the same geometry idea but feed the resulting angular target/error into that mechanism's own controller path
+
+You can think of `controlFrames(...)` as saying: **"pretend this frame is the thing being guided."** The current built-in consumer just happens to be the drivetrain.
+
 ---
 
 ## 3. References
@@ -512,6 +577,38 @@ This is the important mental model:
 - the selected tag identity can remain sticky,
 - live AprilTag solving can temporarily disappear,
 - localization can keep solving relative to the same selected tag.
+
+### 8.6 Aim an off-center robot part at a point
+
+Suppose the scoring reference point should line up with the **center of a shooter**, not the robot center.
+
+```java
+Pose2d robotToShooter = new Pose2d(6.0, 4.0, Math.toRadians(10.0));
+
+DriveGuidancePlan plan = DriveGuidance.plan()
+        .aimTo()
+            .point(References.fieldPoint(72.0, 24.0))
+            .doneAimTo()
+        .resolveWith()
+            .localizationOnly()
+            .localization(poseEstimator)
+            .doneResolveWith()
+        .controlFrames(ControlFrames.robotCenter().withAimFrame(robotToShooter))
+        .build();
+```
+
+Guidance will compute the bearing from the **shooter frame origin** to the target point and will turn the drivetrain until the shooter's `+X` axis is aligned.
+
+### 8.7 What if the mechanism is a turret?
+
+The geometry is the same, but the actuator path is different.
+
+If the turret rotates independently, you generally want two layers:
+
+1. a **spatial layer** that decides what heading the turret frame should face
+2. a **mechanism layer** that drives the turret motor/servo toward that heading while respecting turret limits, wrap rules, and completion criteria
+
+Drive Guidance already gives you the mature drivetrain-shaped version of the spatial layer. A turret-specific owner can reuse the same frame/target concepts, but should output a turret setpoint or turret power rather than a drivetrain omega command.
 
 ---
 
