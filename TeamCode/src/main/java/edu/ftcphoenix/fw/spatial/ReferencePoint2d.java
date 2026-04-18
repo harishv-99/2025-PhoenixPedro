@@ -1,7 +1,7 @@
-package edu.ftcphoenix.fw.drive.guidance;
+package edu.ftcphoenix.fw.spatial;
 
 /**
- * Semantic 2D reference point for {@link DriveGuidance}.
+ * Semantic 2D reference point for Phoenix spatial queries and guidance.
  *
  * <p>A reference point answers only one question: <em>where is the meaningful point?</em> It does
  * <strong>not</strong> say how that point will be solved. The same immutable reference may be
@@ -31,5 +31,5 @@ package edu.ftcphoenix.fw.drive.guidance;
  * @see References
  */
 public interface ReferencePoint2d {
-    // Marker interface for the public guidance API.
+    // Marker interface for the public spatial-query API.
 }

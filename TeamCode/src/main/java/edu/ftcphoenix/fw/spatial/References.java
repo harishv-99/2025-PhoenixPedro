@@ -1,4 +1,4 @@
-package edu.ftcphoenix.fw.drive.guidance;
+package edu.ftcphoenix.fw.spatial;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -226,35 +226,53 @@ public final class References {
         return new SelectedTagFrameRef(selection, new MapFrameLookup(selection, offsetsByTag));
     }
 
-    static boolean isFieldPoint(ReferencePoint2d ref) {
+    /**
+     * Returns the base frame when {@code ref} is a frame-point reference, else {@code null}.
+     */
+    public static ReferenceFrame2d framePointBaseFrame(ReferencePoint2d ref) {
+        return (ref instanceof FramePointRef) ? ((FramePointRef) ref).frame : null;
+    }
+
+    /**
+     * Returns the frame-local offset when {@code ref} is a frame-point reference, else {@code null}.
+     */
+    public static Pose2d framePointOffset(ReferencePoint2d ref) {
+        if (!(ref instanceof FramePointRef)) {
+            return null;
+        }
+        FramePointRef fp = (FramePointRef) ref;
+        return new Pose2d(fp.forwardInches, fp.leftInches, 0.0);
+    }
+
+    public static boolean isFieldPoint(ReferencePoint2d ref) {
         return ref instanceof FieldPointRef;
     }
 
-    static boolean isFieldFrame(ReferenceFrame2d ref) {
+    public static boolean isFieldFrame(ReferenceFrame2d ref) {
         return ref instanceof FieldFrameRef;
     }
 
-    static boolean isDirectTagPoint(ReferencePoint2d ref) {
+    public static boolean isDirectTagPoint(ReferencePoint2d ref) {
         return ref instanceof TagPointRef;
     }
 
-    static boolean isDirectTagFrame(ReferenceFrame2d ref) {
+    public static boolean isDirectTagFrame(ReferenceFrame2d ref) {
         return ref instanceof TagFrameRef;
     }
 
-    static boolean isSelectedTagPoint(ReferencePoint2d ref) {
+    public static boolean isSelectedTagPoint(ReferencePoint2d ref) {
         return ref instanceof SelectedTagPointRef;
     }
 
-    static boolean isSelectedTagFrame(ReferenceFrame2d ref) {
+    public static boolean isSelectedTagFrame(ReferenceFrame2d ref) {
         return ref instanceof SelectedTagFrameRef;
     }
 
-    static boolean isFramePoint(ReferencePoint2d ref) {
+    public static boolean isFramePoint(ReferencePoint2d ref) {
         return ref instanceof FramePointRef;
     }
 
-    static Set<Integer> candidateTagIds(ReferencePoint2d ref) {
+    public static Set<Integer> candidateTagIds(ReferencePoint2d ref) {
         if (ref instanceof TagPointRef) {
             return Collections.singleton(((TagPointRef) ref).tagId);
         }
@@ -267,7 +285,7 @@ public final class References {
         return Collections.emptySet();
     }
 
-    static Set<Integer> candidateTagIds(ReferenceFrame2d ref) {
+    public static Set<Integer> candidateTagIds(ReferenceFrame2d ref) {
         if (ref instanceof TagFrameRef) {
             return Collections.singleton(((TagFrameRef) ref).tagId);
         }
@@ -277,19 +295,19 @@ public final class References {
         return Collections.emptySet();
     }
 
-    static boolean allCandidateTagsAreFixed(ReferencePoint2d ref, TagLayout layout) {
+    public static boolean allCandidateTagsAreFixed(ReferencePoint2d ref, TagLayout layout) {
         return allCandidateTagsAreFixed(candidateTagIds(ref), layout);
     }
 
-    static boolean allCandidateTagsAreFixed(ReferenceFrame2d ref, TagLayout layout) {
+    public static boolean allCandidateTagsAreFixed(ReferenceFrame2d ref, TagLayout layout) {
         return allCandidateTagsAreFixed(candidateTagIds(ref), layout);
     }
 
-    static Set<Integer> missingCandidateTagIds(ReferencePoint2d ref, TagLayout layout) {
+    public static Set<Integer> missingCandidateTagIds(ReferencePoint2d ref, TagLayout layout) {
         return missingCandidateTagIds(candidateTagIds(ref), layout);
     }
 
-    static Set<Integer> missingCandidateTagIds(ReferenceFrame2d ref, TagLayout layout) {
+    public static Set<Integer> missingCandidateTagIds(ReferenceFrame2d ref, TagLayout layout) {
         return missingCandidateTagIds(candidateTagIds(ref), layout);
     }
 
@@ -324,7 +342,7 @@ public final class References {
                 : Collections.unmodifiableSet(missing);
     }
 
-    static Pose2d tryResolveFieldPoint(ReferencePoint2d ref, TagLayout layout, LoopClock clock) {
+    public static Pose2d tryResolveFieldPoint(ReferencePoint2d ref, TagLayout layout, LoopClock clock) {
         if (ref instanceof FieldPointRef) {
             FieldPointRef fp = (FieldPointRef) ref;
             return new Pose2d(fp.xInches, fp.yInches, 0.0);
@@ -359,7 +377,7 @@ public final class References {
         return null;
     }
 
-    static Pose2d tryResolveFieldFrame(ReferenceFrame2d ref, TagLayout layout, LoopClock clock) {
+    public static Pose2d tryResolveFieldFrame(ReferenceFrame2d ref, TagLayout layout, LoopClock clock) {
         if (ref instanceof FieldFrameRef) {
             FieldFrameRef ff = (FieldFrameRef) ref;
             return new Pose2d(ff.xInches, ff.yInches, ff.headingRad);

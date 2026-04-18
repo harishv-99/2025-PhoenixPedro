@@ -29,7 +29,7 @@ public final class RobotHeadings2d {
     /**
      * Start a heading rule for a robot-relative control frame.
      *
-     * <p>This is the same concept as {@link edu.ftcphoenix.fw.drive.guidance.ControlFrames#robotToAimFrame()}.
+     * <p>This is the same concept as {@link SpatialControlFrames#aimFrame()}.
      * If you are aiming with an off-center shooter, pass that robot→shooter transform here.
      *</p>
      *

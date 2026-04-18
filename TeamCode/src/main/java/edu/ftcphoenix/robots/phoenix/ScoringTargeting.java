@@ -19,7 +19,6 @@ import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceQuery;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceSpec;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceStatus;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceTask;
-import edu.ftcphoenix.fw.drive.guidance.References;
 import edu.ftcphoenix.fw.field.TagLayout;
 import edu.ftcphoenix.fw.field.TagLayouts;
 import edu.ftcphoenix.fw.localization.AbsolutePoseEstimator;
@@ -30,6 +29,7 @@ import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelectionPolicies;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelectionResult;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelectionSource;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelections;
+import edu.ftcphoenix.fw.spatial.References;
 import edu.ftcphoenix.fw.task.Task;
 
 /**

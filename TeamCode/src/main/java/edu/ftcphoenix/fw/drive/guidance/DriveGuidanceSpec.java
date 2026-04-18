@@ -8,32 +8,25 @@ import edu.ftcphoenix.fw.localization.AbsolutePoseEstimator;
 import edu.ftcphoenix.fw.localization.apriltag.FixedTagFieldPoseSolver;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
+import edu.ftcphoenix.fw.spatial.AimTarget2d;
+import edu.ftcphoenix.fw.spatial.SpatialControlFrames;
+import edu.ftcphoenix.fw.spatial.SpatialQuerySpec;
+import edu.ftcphoenix.fw.spatial.TranslationTarget2d;
 
 /**
  * Controller-neutral configuration for {@link DriveGuidance}.
  *
- * <p>A {@link DriveGuidanceSpec} answers four questions:</p>
+ * <p>A {@link DriveGuidanceSpec} now has two layers:</p>
  * <ol>
- *   <li><b>What is the robot trying to do?</b> translate, aim, or both</li>
- *   <li><b>How is the goal expressed?</b> field point / heading, robot-relative nudge, or semantic
- *       reference point / frame</li>
- *   <li><b>Which point on the robot is controlled?</b> the robot center or an offset mechanism frame</li>
- *   <li><b>How will that goal be solved?</b> localization, live AprilTags, or explicit adaptive
- *       arbitration between both lanes</li>
+ *   <li>a shared {@link #spatialQuerySpec spatial query spec} that describes the target,
+ *       controlled frames, and solve lanes</li>
+ *   <li>drive-specific arbitration policy for blending/choosing between those lane results</li>
  * </ol>
  *
  * <p>A spec intentionally contains <strong>no controller tuning</strong>. That keeps “what I want”
  * reusable across TeleOp overlays, autonomous tasks, and readiness queries.</p>
  */
 public final class DriveGuidanceSpec {
-
-    public interface TranslationTarget {
-        // Marker.
-    }
-
-    public interface AimTarget {
-        // Marker.
-    }
 
     /**
      * Explicit solve mode for guidance.
@@ -67,39 +60,13 @@ public final class DriveGuidanceSpec {
     }
 
     /**
-     * Field point target used for translation or point-at aiming.
-     */
-    public static final class FieldPoint implements TranslationTarget, AimTarget {
-        public final double xInches;
-        public final double yInches;
-
-        /**
-         * Creates a field-fixed point target in inches.
-         */
-        public FieldPoint(double xInches, double yInches) {
-            this.xInches = xInches;
-            this.yInches = yInches;
-        }
-    }
-
-    /**
-     * Absolute field heading target.
-     */
-    public static final class FieldHeading implements AimTarget {
-        public final double fieldHeadingRad;
-
-        /**
-         * Creates an absolute field heading target in radians.
-         */
-        public FieldHeading(double fieldHeadingRad) {
-            this.fieldHeadingRad = fieldHeadingRad;
-        }
-    }
-
-    /**
      * Robot-relative movement captured from the translation control frame when guidance enables.
+     *
+     * <p>This remains a drive-guidance-specific target because it is not just a geometric point.
+     * It is a <em>latched target semantic</em>: capture the current translation frame in field space
+     * on enable, then offset from that captured anchor in the frame's local forward/left axes.</p>
      */
-    public static final class RobotRelativePoint implements TranslationTarget {
+    public static final class RobotRelativePoint implements TranslationTarget2d {
         public final double forwardInches;
         public final double leftInches;
 
@@ -114,39 +81,6 @@ public final class DriveGuidanceSpec {
     }
 
     /**
-     * Semantic reference point target.
-     */
-    public static final class ReferencePointTarget implements TranslationTarget, AimTarget {
-        public final ReferencePoint2d reference;
-
-        /**
-         * Wraps a semantic reference point as a guidance target.
-         */
-        public ReferencePointTarget(ReferencePoint2d reference) {
-            this.reference = Objects.requireNonNull(reference, "reference");
-        }
-    }
-
-    /**
-     * Aligns the aim control frame to a semantic reference frame heading.
-     */
-    public static final class ReferenceFrameHeadingTarget implements AimTarget {
-        public final ReferenceFrame2d reference;
-        public final double headingOffsetRad;
-
-        /**
-         * Wraps a semantic reference frame heading as an aim target.
-         *
-         * @param reference frame whose heading should be matched
-         * @param headingOffsetRad additional heading offset applied on top of the frame heading
-         */
-        public ReferenceFrameHeadingTarget(ReferenceFrame2d reference, double headingOffsetRad) {
-            this.reference = Objects.requireNonNull(reference, "reference");
-            this.headingOffsetRad = headingOffsetRad;
-        }
-    }
-
-    /**
      * Live AprilTag solve lane used directly by guidance.
      */
     public static final class AprilTags {
@@ -157,37 +91,14 @@ public final class DriveGuidanceSpec {
         public final double maxAgeSec;
         public final FixedTagFieldPoseSolver.Config fieldPoseSolverConfig;
 
-        /**
-         * Creates a live AprilTag solve lane using the default freshness window and default
-         * multi-tag field-pose solver configuration.
-         */
         public AprilTags(AprilTagSensor sensor, CameraMountConfig cameraMount) {
             this(sensor, cameraMount, DEFAULT_MAX_AGE_SEC, FixedTagFieldPoseSolver.Config.defaults());
         }
 
-        /**
-         * Creates a live AprilTag solve lane using an explicit freshness window and the default
-         * multi-tag field-pose solver configuration.
-         *
-         * @param sensor shared AprilTag detections source
-         * @param cameraMount camera extrinsics in the robot frame
-         * @param maxAgeSec maximum accepted detection age in seconds
-         */
         public AprilTags(AprilTagSensor sensor, CameraMountConfig cameraMount, double maxAgeSec) {
             this(sensor, cameraMount, maxAgeSec, FixedTagFieldPoseSolver.Config.defaults());
         }
 
-        /**
-         * Creates a live AprilTag solve lane.
-         *
-         * @param sensor shared AprilTag detections source
-         * @param cameraMount camera extrinsics in the robot frame
-         * @param maxAgeSec maximum accepted detection age in seconds
-         * @param fieldPoseSolverConfig shared multi-tag field-pose solver configuration used when
-         *                              guidance temporarily promotes fixed tags into a field pose;
-         *                              normalized to the shared base solver config at this API
-         *                              boundary so subtype-only extras do not leak through
-         */
         public AprilTags(AprilTagSensor sensor,
                          CameraMountConfig cameraMount,
                          double maxAgeSec,
@@ -215,20 +126,10 @@ public final class DriveGuidanceSpec {
         public final double maxAgeSec;
         public final double minQuality;
 
-        /**
-         * Creates a localization solve lane using the default freshness and quality gates.
-         */
         public Localization(AbsolutePoseEstimator poseEstimator) {
             this(poseEstimator, DEFAULT_MAX_AGE_SEC, DEFAULT_MIN_QUALITY);
         }
 
-        /**
-         * Creates a localization solve lane.
-         *
-         * @param poseEstimator field-centric pose estimator to sample
-         * @param maxAgeSec maximum accepted estimate age in seconds
-         * @param minQuality minimum accepted estimate quality
-         */
         public Localization(AbsolutePoseEstimator poseEstimator, double maxAgeSec, double minQuality) {
             this.poseEstimator = Objects.requireNonNull(poseEstimator, "poseEstimator");
             this.maxAgeSec = maxAgeSec;
@@ -248,22 +149,12 @@ public final class DriveGuidanceSpec {
         public final double exitRangeInches;
         public final double blendSec;
 
-        /**
-         * Creates adaptive translation takeover hysteresis and blending parameters.
-         *
-         * @param enterRangeInches range below which AprilTag translation may take over
-         * @param exitRangeInches range above which guidance falls back out of takeover
-         * @param blendSec first-order blend time constant in seconds
-         */
         public TranslationTakeover(double enterRangeInches, double exitRangeInches, double blendSec) {
             this.enterRangeInches = enterRangeInches;
             this.exitRangeInches = exitRangeInches;
             this.blendSec = blendSec;
         }
 
-        /**
-         * Returns the framework defaults for adaptive translation takeover.
-         */
         public static TranslationTakeover defaults() {
             return new TranslationTakeover(DEFAULT_ENTER_RANGE_IN, DEFAULT_EXIT_RANGE_IN, DEFAULT_BLEND_SEC);
         }
@@ -297,13 +188,6 @@ public final class DriveGuidanceSpec {
             this.lossPolicy = lossPolicy;
         }
 
-        /**
-         * Creates a validated immutable solve-lane configuration.
-         *
-         * <p>This method centralizes the invariants for each {@link SolveMode}, fills in default
-         * takeover / loss / omega-policy values where appropriate, and throws descriptive
-         * {@link IllegalArgumentException}s for mismatched combinations.</p>
-         */
         public static ResolveWith create(SolveMode mode,
                                          AprilTags aprilTags,
                                          Localization localization,
@@ -347,53 +231,47 @@ public final class DriveGuidanceSpec {
             }
         }
 
-        /**
-         * Returns {@code true} when a live AprilTag solve lane is configured.
-         */
         public boolean hasAprilTags() {
             return aprilTags != null;
         }
 
-        /**
-         * Returns {@code true} when a localization solve lane is configured.
-         */
         public boolean hasLocalization() {
             return localization != null;
         }
 
-        /**
-         * Returns {@code true} when fixed AprilTag field metadata is available.
-         */
         public boolean hasFixedAprilTagLayout() {
             return fixedAprilTagLayout != null;
         }
 
-        /**
-         * Returns {@code true} when both solve lanes are configured for explicit adaptive behavior.
-         */
         public boolean isAdaptive() {
             return mode == SolveMode.ADAPTIVE;
         }
     }
 
-    public final TranslationTarget translationTarget;
-    public final AimTarget aimTarget;
-    public final ControlFrames controlFrames;
+    public final TranslationTarget2d translationTarget;
+    public final AimTarget2d aimTarget;
+    public final SpatialControlFrames controlFrames;
     public final ResolveWith resolveWith;
+    public final SpatialQuerySpec spatialQuerySpec;
+    public final int localizationLaneIndex;
+    public final int aprilTagsLaneIndex;
 
-    DriveGuidanceSpec(TranslationTarget translationTarget,
-                      AimTarget aimTarget,
-                      ControlFrames controlFrames,
-                      ResolveWith resolveWith) {
+    DriveGuidanceSpec(TranslationTarget2d translationTarget,
+                      AimTarget2d aimTarget,
+                      SpatialControlFrames controlFrames,
+                      ResolveWith resolveWith,
+                      SpatialQuerySpec spatialQuerySpec,
+                      int localizationLaneIndex,
+                      int aprilTagsLaneIndex) {
         this.translationTarget = translationTarget;
         this.aimTarget = aimTarget;
         this.controlFrames = Objects.requireNonNull(controlFrames, "controlFrames");
         this.resolveWith = Objects.requireNonNull(resolveWith, "resolveWith");
+        this.spatialQuerySpec = spatialQuerySpec;
+        this.localizationLaneIndex = localizationLaneIndex;
+        this.aprilTagsLaneIndex = aprilTagsLaneIndex;
     }
 
-    /**
-     * Returns the natural overlay mask implied by the configured targets.
-     */
     public DriveOverlayMask requestedMask() {
         boolean t = translationTarget != null;
         boolean o = aimTarget != null;
@@ -409,12 +287,6 @@ public final class DriveGuidanceSpec {
         return DriveOverlayMask.NONE;
     }
 
-    /**
-     * Returns the recommended runtime mask for overlays/tasks/queries.
-     *
-     * <p>Today this is the same as {@link #requestedMask()}, but the separate method keeps call
-     * sites expressive and leaves room for future heuristics.</p>
-     */
     public DriveOverlayMask suggestedMask() {
         return requestedMask();
     }

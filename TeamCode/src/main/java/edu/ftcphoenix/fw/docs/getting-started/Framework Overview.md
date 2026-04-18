@@ -342,23 +342,26 @@ DriveSource drive = new GamepadDriveSource(
 
 **Rate limiting note:** `MecanumDrivebase` can rate-limit components using the most recent `dtSec`. Call `drivebase.update(clock)` once per loop. If you want rate limiting to use the *current* loop’s `dt`, call `update(clock)` **before** `drive(...)`.
 
-### Spatial reasoning layers (math → predicates → controllers)
+### Spatial reasoning layers (math → queries/predicates → controllers)
 
-Phoenix tries to keep “spatial logic” reusable by splitting it into three layers:
+Phoenix tries to keep “spatial logic” reusable by splitting it into four layers:
 
 1. **Spatial math** (pure geometry): `Pose2d`, `SpatialMath2d`, region/shape primitives.
 2. **Spatial predicates** (answering yes/no): `RobotZones2d`, `RobotHeadings2d` (often with
    hysteresis latches).
-3. **Controllers** (turn errors into commands): `DriveGuidanceSpec` + `DriveGuidancePlan` and their
-   overlays/tasks/queries.
+3. **Spatial queries** (solving target ↔ controlled-frame relationships): `SpatialQuery`,
+   `SpatialSolveLane`, `SpatialControlFrames`.
+4. **Controllers / planners** (turn solved relationships into commands): `DriveGuidanceSpec` +
+   `DriveGuidancePlan` and their overlays/tasks/queries.
 
 If you only want to ask “is the robot in the zone?” or “is the robot aimed?”, use layer (2). If you
-want the framework to *drive*, use layer (3).
+want reusable relationship solves without drivetrain policy, use layer (3). If you want the framework
+to *drive*, use layer (4).
 
-Reference-first guidance is the intended mental model: define the meaningful point or frame once,
-then let feedback lanes solve it from field pose, live AprilTags, or both. For example, a
-field-fixed scoring frame can be driven from odometry alone, or refined by visible fixed tags when
-you also provide `fixedAprilTagLayout(...)`.
+Reference-first guidance is still the intended mental model: define the meaningful point or frame
+once, then let solve lanes answer it from field pose, live AprilTags, or both. `DriveGuidance` now
+consumes the shared `SpatialQuery` layer internally, so the same geometry and solve-lane setup can
+later be reused by mechanism planners as well.
 
 ---
 

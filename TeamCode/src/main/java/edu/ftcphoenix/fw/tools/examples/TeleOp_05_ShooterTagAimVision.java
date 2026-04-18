@@ -21,8 +21,6 @@ import edu.ftcphoenix.fw.drive.MecanumDrivebase;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidance;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidancePlan;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceSpec;
-import edu.ftcphoenix.fw.drive.guidance.ReferencePoint2d;
-import edu.ftcphoenix.fw.drive.guidance.References;
 import edu.ftcphoenix.fw.drive.source.GamepadDriveSource;
 import edu.ftcphoenix.fw.ftc.FtcActuators;
 import edu.ftcphoenix.fw.ftc.FtcDrives;
@@ -38,6 +36,8 @@ import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelectionPolicies;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelectionResult;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelectionSource;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelections;
+import edu.ftcphoenix.fw.spatial.ReferencePoint2d;
+import edu.ftcphoenix.fw.spatial.References;
 
 /**
  * <h1>Example 05: Shooter + DriveGuidance Auto-Aim + Vision Distance</h1>

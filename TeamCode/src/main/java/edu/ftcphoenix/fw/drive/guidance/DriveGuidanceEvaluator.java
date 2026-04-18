@@ -1,27 +1,28 @@
 package edu.ftcphoenix.fw.drive.guidance;
 
 import java.util.Collections;
-import java.util.List;
-import java.util.Set;
+import java.util.Objects;
 
 import edu.ftcphoenix.fw.core.geometry.Pose2d;
-import edu.ftcphoenix.fw.core.geometry.Pose3d;
 import edu.ftcphoenix.fw.core.time.LoopClock;
-import edu.ftcphoenix.fw.field.TagLayout;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
-import edu.ftcphoenix.fw.localization.apriltag.FixedTagFieldPoseSolver;
-import edu.ftcphoenix.fw.sensing.vision.CameraMountLogic;
-import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagDetections;
-import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagObservation;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelectionResult;
-import edu.ftcphoenix.fw.spatial.SpatialMath2d;
+import edu.ftcphoenix.fw.spatial.AimSolution;
+import edu.ftcphoenix.fw.spatial.SpatialLaneResult;
+import edu.ftcphoenix.fw.spatial.SpatialQuery;
+import edu.ftcphoenix.fw.spatial.SpatialQuerySample;
+import edu.ftcphoenix.fw.spatial.TranslationSolution;
 
 /**
- * Spatial evaluation engine for {@link DriveGuidancePlan}.
+ * Spatial evaluation bridge for {@link DriveGuidancePlan}.
  *
- * <p>This class performs the geometry half of guidance: resolve the target, compute translation
- * and omega errors, and report whether localization and/or live AprilTags could solve the
- * requested channel(s) this loop.</p>
+ * <p>{@link DriveGuidanceEvaluator} consumes the shared spatial-query layer introduced for
+ * reusable task-space solving, then adapts those per-lane results into the drive-specific
+ * translation/omega solution shape expected by {@link DriveGuidanceCore}.</p>
+ *
+ * <p>The only remaining drive-specific solve logic here is the latched
+ * {@link DriveGuidanceSpec.RobotRelativePoint} target. That target captures the translation frame's
+ * field pose on enable and is therefore intentionally kept outside the generic spatial-query API.</p>
  */
 final class DriveGuidanceEvaluator {
 
@@ -29,13 +30,15 @@ final class DriveGuidanceEvaluator {
             TagSelectionResult.none(Collections.<Integer>emptySet());
 
     private final DriveGuidanceSpec spec;
+    private final SpatialQuery spatialQuery;
     private Pose2d fieldToTranslationFrameAnchor = null;
 
     /**
      * Creates an evaluator for one immutable guidance spec.
      */
     DriveGuidanceEvaluator(DriveGuidanceSpec spec) {
-        this.spec = spec;
+        this.spec = Objects.requireNonNull(spec, "spec");
+        this.spatialQuery = spec.spatialQuerySpec != null ? new SpatialQuery(spec.spatialQuerySpec) : null;
     }
 
     /**
@@ -44,8 +47,9 @@ final class DriveGuidanceEvaluator {
      */
     void onEnable() {
         fieldToTranslationFrameAnchor = null;
-        resetSelections(spec.translationTarget);
-        resetSelections(spec.aimTarget);
+        if (spatialQuery != null) {
+            spatialQuery.reset();
+        }
     }
 
     /**
@@ -57,38 +61,22 @@ final class DriveGuidanceEvaluator {
     }
 
     /**
-     * Attempts to solve the configured targets from the live AprilTag lane, with optional fallback
-     * through a temporary live field pose derived from fixed field tags.
+     * Attempts to solve the configured targets from the shared live-AprilTag spatial lane.
      */
     Solution solveWithAprilTags(LoopClock clock) {
-        DriveGuidanceSpec.AprilTags cfg = spec.resolveWith.aprilTags;
-        if (cfg == null) {
+        if (spec.resolveWith.aprilTags == null || spatialQuery == null || spec.aprilTagsLaneIndex < 0) {
             return Solution.invalid();
         }
-
-        TagLayout layout = spec.resolveWith.fixedAprilTagLayout;
-        LiveFieldPose liveFieldPose = estimateFieldPoseFromAprilTags(clock, cfg, layout);
-
-        TranslationSolve t = solveTranslationWithAprilTags(clock, cfg, layout, liveFieldPose);
-        AimSolve o = solveAimWithAprilTags(clock, cfg, layout, liveFieldPose);
-
-        boolean valid = t.canTranslate || o.canOmega;
-        return new Solution(
-                valid,
-                t.canTranslate,
-                o.canOmega,
-                t.forwardErrorIn,
-                t.leftErrorIn,
-                o.omegaErrorRad,
-                t.hasRangeInches,
-                t.rangeInches,
-                translationSelectionSnapshot(clock, cfg),
-                aimSelectionSnapshot(clock, cfg)
-        );
+        return solutionFromLane(sampleSpatialQuery(clock), spec.aprilTagsLaneIndex);
     }
 
     /**
      * Attempts to solve the configured targets from the localization lane.
+     *
+     * <p>Most localization-backed targets are now handled by the shared spatial-query layer via the
+     * {@code AbsolutePoseSpatialSolveLane}. The one exception is
+     * {@link DriveGuidanceSpec.RobotRelativePoint}, whose latched-on-enable semantics remain local
+     * to DriveGuidance.</p>
      */
     Solution solveWithLocalization(LoopClock clock) {
         DriveGuidanceSpec.Localization cfg = spec.resolveWith.localization;
@@ -96,6 +84,117 @@ final class DriveGuidanceEvaluator {
             return Solution.invalid();
         }
 
+        SpatialQuerySample sample = sampleSpatialQuery(clock);
+        SpatialLaneResult lane = laneResult(sample, spec.localizationLaneIndex);
+
+        TranslationSolve translation;
+        TagSelectionResult translationSelection;
+        if (spec.translationTarget instanceof DriveGuidanceSpec.RobotRelativePoint) {
+            translation = solveRobotRelativeTranslation(clock, cfg, sample);
+            translationSelection = NO_SELECTION;
+        } else {
+            translation = toTranslationSolve(sample, lane);
+            translationSelection = lane.translationSelection;
+        }
+
+        AimSolve aim = toAimSolve(lane);
+        boolean valid = translation.canTranslate || aim.canOmega;
+        return new Solution(
+                valid,
+                translation.canTranslate,
+                aim.canOmega,
+                translation.forwardErrorIn,
+                translation.leftErrorIn,
+                aim.omegaErrorRad,
+                translation.hasRangeInches,
+                translation.rangeInches,
+                translationSelection,
+                lane.aimSelection
+        );
+    }
+
+    /**
+     * Samples the shared spatial query for this loop, reusing the cached per-cycle sample when both
+     * localization and AprilTag solve paths inspect it.
+     */
+    private SpatialQuerySample sampleSpatialQuery(LoopClock clock) {
+        return spatialQuery != null ? spatialQuery.get(clock) : null;
+    }
+
+    /**
+     * Returns one per-lane spatial result or a synthetic empty result when that lane is absent.
+     */
+    private static SpatialLaneResult laneResult(SpatialQuerySample sample, int laneIndex) {
+        if (sample == null || laneIndex < 0 || laneIndex >= sample.laneCount()) {
+            return SpatialLaneResult.none();
+        }
+        SpatialLaneResult result = sample.laneResult(laneIndex);
+        return result != null ? result : SpatialLaneResult.none();
+    }
+
+    /**
+     * Converts one spatial lane result into the drive-guidance solution format.
+     */
+    private Solution solutionFromLane(SpatialQuerySample sample, int laneIndex) {
+        SpatialLaneResult lane = laneResult(sample, laneIndex);
+        TranslationSolve translation = toTranslationSolve(sample, lane);
+        AimSolve aim = toAimSolve(lane);
+        boolean valid = translation.canTranslate || aim.canOmega;
+        return new Solution(
+                valid,
+                translation.canTranslate,
+                aim.canOmega,
+                translation.forwardErrorIn,
+                translation.leftErrorIn,
+                aim.omegaErrorRad,
+                translation.hasRangeInches,
+                translation.rangeInches,
+                lane.translationSelection,
+                lane.aimSelection
+        );
+    }
+
+    /**
+     * Converts one shared translation solution into DriveGuidance's translation-error convention.
+     *
+     * <p>The shared spatial layer reports the fully solved target point in robot coordinates and in
+     * the translation frame's coordinates. DriveGuidance keeps its historic convention: translation
+     * error is the target point minus the translation frame's <em>origin</em>, expressed in robot
+     * forward/left axes. This preserves existing drive behavior while still exposing richer frame
+     * coordinates to non-drive consumers through {@link TranslationSolution}.</p>
+     */
+    private static TranslationSolve toTranslationSolve(SpatialQuerySample sample, SpatialLaneResult lane) {
+        if (sample == null || lane == null || lane.translation == null) {
+            return TranslationSolve.invalid();
+        }
+        TranslationSolution translation = lane.translation;
+        double forwardErr = translation.robotToTargetPoint.xInches - sample.robotToTranslationFrame.xInches;
+        double leftErr = translation.robotToTargetPoint.yInches - sample.robotToTranslationFrame.yInches;
+        return new TranslationSolve(true,
+                forwardErr,
+                leftErr,
+                translation.hasRangeInches,
+                translation.rangeInches);
+    }
+
+    /**
+     * Converts one shared aim solution into DriveGuidance's omega-error convention.
+     */
+    private static AimSolve toAimSolve(SpatialLaneResult lane) {
+        if (lane == null || lane.aim == null) {
+            return AimSolve.invalid();
+        }
+        AimSolution aim = lane.aim;
+        return new AimSolve(true, aim.aimErrorRad);
+    }
+
+    /**
+     * Solves the drive-specific latched robot-relative translation target from the localization
+     * pose estimate.
+     */
+    private TranslationSolve solveRobotRelativeTranslation(LoopClock clock,
+                                                           DriveGuidanceSpec.Localization cfg,
+                                                           SpatialQuerySample sample) {
         PoseEstimate est = cfg.poseEstimator.getEstimate();
         double estAgeSec = (est != null)
                 ? Math.max(est.ageSec, clock.nowSec() - est.timestampSec)
@@ -105,455 +204,36 @@ final class DriveGuidanceEvaluator {
                 && estAgeSec <= cfg.maxAgeSec
                 && est.quality >= cfg.minQuality;
         if (!valid) {
-            return Solution.invalid();
+            return TranslationSolve.invalid();
         }
+
+        Pose2d robotToTranslationFrame = (sample != null)
+                ? sample.robotToTranslationFrame
+                : Objects.requireNonNull(
+                spec.controlFrames.translationFrame().get(clock),
+                "SpatialControlFrames.translationFrame().get(clock) returned null"
+        );
 
         Pose2d fieldToRobot = est.toPose2d();
-        TagLayout layout = spec.resolveWith.fixedAprilTagLayout;
+        Pose2d fieldToTranslationFrame = fieldToRobot.then(robotToTranslationFrame);
+        if (fieldToTranslationFrameAnchor == null) {
+            fieldToTranslationFrameAnchor = fieldToTranslationFrame;
+        }
 
-        TranslationSolve t = solveTranslationFromLocalization(clock, fieldToRobot, layout, false, Double.NaN);
-        AimSolve o = solveAimFromLocalization(clock, fieldToRobot, layout);
-
-        boolean any = t.canTranslate || o.canOmega;
-        return new Solution(
-                any,
-                t.canTranslate,
-                o.canOmega,
-                t.forwardErrorIn,
-                t.leftErrorIn,
-                o.omegaErrorRad,
-                t.hasRangeInches,
-                t.rangeInches,
-                translationSelectionSnapshot(clock, null),
-                aimSelectionSnapshot(clock, null)
+        DriveGuidanceSpec.RobotRelativePoint target =
+                (DriveGuidanceSpec.RobotRelativePoint) spec.translationTarget;
+        Pose2d fieldToTargetPoint = fieldToTranslationFrameAnchor.then(
+                new Pose2d(target.forwardInches, target.leftInches, 0.0)
         );
-    }
+        Pose2d robotToTargetPoint = fieldToRobot.inverse().then(fieldToTargetPoint);
 
-    /**
-     * Solves translation from live tag geometry first, then falls back to a live field-pose bridge
-     * when enough fixed tags are visible.
-     */
-    private TranslationSolve solveTranslationWithAprilTags(LoopClock clock,
-                                                           DriveGuidanceSpec.AprilTags cfg,
-                                                           TagLayout layout,
-                                                           LiveFieldPose liveFieldPose) {
-        TranslationSolve direct = solveTranslationDirectFromAprilTags(clock, cfg);
-        if (direct.canTranslate) {
-            return direct;
-        }
-        if (liveFieldPose != null) {
-            return solveTranslationFromLocalization(clock, liveFieldPose.fieldToRobot, layout, true, liveFieldPose.rangeInches);
-        }
-        return TranslationSolve.invalid();
-    }
-
-    /**
-     * Solves omega from live tag geometry first, then falls back to a live field-pose bridge when
-     * enough fixed tags are visible.
-     */
-    private AimSolve solveAimWithAprilTags(LoopClock clock,
-                                           DriveGuidanceSpec.AprilTags cfg,
-                                           TagLayout layout,
-                                           LiveFieldPose liveFieldPose) {
-        AimSolve direct = solveAimDirectFromAprilTags(clock, cfg);
-        if (direct.canOmega) {
-            return direct;
-        }
-        if (liveFieldPose != null) {
-            return solveAimFromLocalization(clock, liveFieldPose.fieldToRobot, layout);
-        }
-        return AimSolve.invalid();
-    }
-
-    /**
-     * Solves translation from a field-centric robot pose, promoting semantic references through the
-     * fixed AprilTag layout when necessary.
-     */
-    private TranslationSolve solveTranslationFromLocalization(LoopClock clock,
-                                                              Pose2d fieldToRobot,
-                                                              TagLayout layout,
-                                                              boolean hasRange,
-                                                              double rangeInches) {
-        Pose2d fieldToTFrame = fieldToRobot.then(spec.controlFrames.robotToTranslationFrame());
-
-        Pose2d fieldToTargetPoint;
-        if (spec.translationTarget instanceof DriveGuidanceSpec.RobotRelativePoint) {
-            DriveGuidanceSpec.RobotRelativePoint rr = (DriveGuidanceSpec.RobotRelativePoint) spec.translationTarget;
-            if (fieldToTranslationFrameAnchor == null) {
-                fieldToTranslationFrameAnchor = fieldToTFrame;
-            }
-            fieldToTargetPoint = fieldToTranslationFrameAnchor.then(new Pose2d(rr.forwardInches, rr.leftInches, 0.0));
-        } else {
-            fieldToTargetPoint = resolveFieldPointTarget(spec.translationTarget, layout, clock);
-        }
-
-        if (fieldToTargetPoint == null) {
-            return TranslationSolve.invalid();
-        }
-
-        double dxField = fieldToTargetPoint.xInches - fieldToTFrame.xInches;
-        double dyField = fieldToTargetPoint.yInches - fieldToTFrame.yInches;
-
-        double h = fieldToRobot.headingRad;
-        double cos = Math.cos(h);
-        double sin = Math.sin(h);
-        double forwardErr = dxField * cos + dyField * sin;
-        double leftErr = -dxField * sin + dyField * cos;
-
-        return new TranslationSolve(true, forwardErr, leftErr, hasRange, rangeInches);
-    }
-
-    /**
-     * Solves omega from a field-centric robot pose.
-     */
-    private AimSolve solveAimFromLocalization(LoopClock clock, Pose2d fieldToRobot, TagLayout layout) {
-        if (spec.aimTarget == null) {
-            return AimSolve.invalid();
-        }
-
-        Pose2d fieldToAimFrame = fieldToRobot.then(spec.controlFrames.robotToAimFrame());
-
-        if (spec.aimTarget instanceof DriveGuidanceSpec.FieldHeading) {
-            DriveGuidanceSpec.FieldHeading fh = (DriveGuidanceSpec.FieldHeading) spec.aimTarget;
-            return new AimSolve(true, Pose2d.wrapToPi(fh.fieldHeadingRad - fieldToAimFrame.headingRad));
-        }
-
-        if (spec.aimTarget instanceof DriveGuidanceSpec.ReferenceFrameHeadingTarget) {
-            DriveGuidanceSpec.ReferenceFrameHeadingTarget rh = (DriveGuidanceSpec.ReferenceFrameHeadingTarget) spec.aimTarget;
-            Pose2d fieldToFrame = References.tryResolveFieldFrame(rh.reference, layout, clock);
-            if (fieldToFrame == null) {
-                return AimSolve.invalid();
-            }
-            return new AimSolve(true, Pose2d.wrapToPi((fieldToFrame.headingRad + rh.headingOffsetRad) - fieldToAimFrame.headingRad));
-        }
-
-        Pose2d fieldToAimPoint = resolveFieldPointTarget(spec.aimTarget, layout, clock);
-        if (fieldToAimPoint == null) {
-            return AimSolve.invalid();
-        }
-
-        Pose2d aimFrameToPoint = fieldToAimFrame.inverse().then(fieldToAimPoint);
-        double omegaErr = Pose2d.wrapToPi(SpatialMath2d.bearingRadOfVector(aimFrameToPoint.xInches, aimFrameToPoint.yInches));
-        return new AimSolve(true, omegaErr);
-    }
-
-    /**
-     * Attempts to solve translation directly from live tag-relative geometry without first deriving
-     * a field pose.
-     */
-    private TranslationSolve solveTranslationDirectFromAprilTags(LoopClock clock, DriveGuidanceSpec.AprilTags cfg) {
-        if (!(spec.translationTarget instanceof DriveGuidanceSpec.ReferencePointTarget)) {
-            return TranslationSolve.invalid();
-        }
-
-        Pose2d robotToTargetPoint = resolveRobotPointDirect(clock,
-                ((DriveGuidanceSpec.ReferencePointTarget) spec.translationTarget).reference,
-                cfg);
-        if (robotToTargetPoint == null) {
-            return TranslationSolve.invalid();
-        }
-
-        Pose2d robotToTFrame = spec.controlFrames.robotToTranslationFrame();
-        double forwardErr = robotToTargetPoint.xInches - robotToTFrame.xInches;
-        double leftErr = robotToTargetPoint.yInches - robotToTFrame.yInches;
-        double range = Math.hypot(robotToTargetPoint.xInches, robotToTargetPoint.yInches);
-        return new TranslationSolve(true, forwardErr, leftErr, Double.isFinite(range), range);
-    }
-
-    /**
-     * Attempts to solve omega directly from live tag-relative geometry without first deriving a
-     * field pose.
-     */
-    private AimSolve solveAimDirectFromAprilTags(LoopClock clock, DriveGuidanceSpec.AprilTags cfg) {
-        if (spec.aimTarget == null) {
-            return AimSolve.invalid();
-        }
-
-        if (spec.aimTarget instanceof DriveGuidanceSpec.ReferenceFrameHeadingTarget) {
-            DriveGuidanceSpec.ReferenceFrameHeadingTarget rh = (DriveGuidanceSpec.ReferenceFrameHeadingTarget) spec.aimTarget;
-            Pose2d robotToFrame = resolveRobotFrameDirect(clock, rh.reference, cfg);
-            if (robotToFrame == null) {
-                return AimSolve.invalid();
-            }
-            Pose2d robotToAimFrame = spec.controlFrames.robotToAimFrame();
-            double omegaErr = Pose2d.wrapToPi((robotToFrame.headingRad + rh.headingOffsetRad) - robotToAimFrame.headingRad);
-            return new AimSolve(true, omegaErr);
-        }
-
-        if (!(spec.aimTarget instanceof DriveGuidanceSpec.ReferencePointTarget)) {
-            return AimSolve.invalid();
-        }
-
-        Pose2d robotToPoint = resolveRobotPointDirect(clock,
-                ((DriveGuidanceSpec.ReferencePointTarget) spec.aimTarget).reference,
-                cfg);
-        if (robotToPoint == null) {
-            return AimSolve.invalid();
-        }
-
-        Pose2d robotToAimFrame = spec.controlFrames.robotToAimFrame();
-        Pose2d aimFrameToPoint = robotToAimFrame.inverse().then(robotToPoint);
-        double omegaErr = Pose2d.wrapToPi(SpatialMath2d.bearingRadOfVector(aimFrameToPoint.xInches, aimFrameToPoint.yInches));
-        return new AimSolve(true, omegaErr);
-    }
-
-    /**
-     * Resolves a translation/aim point target into field coordinates when possible.
-     */
-    private Pose2d resolveFieldPointTarget(Object target, TagLayout layout, LoopClock clock) {
-        if (target == null) {
-            return null;
-        }
-        if (target instanceof DriveGuidanceSpec.FieldPoint) {
-            DriveGuidanceSpec.FieldPoint fp = (DriveGuidanceSpec.FieldPoint) target;
-            return new Pose2d(fp.xInches, fp.yInches, 0.0);
-        }
-        if (target instanceof DriveGuidanceSpec.ReferencePointTarget) {
-            return References.tryResolveFieldPoint(((DriveGuidanceSpec.ReferencePointTarget) target).reference, layout, clock);
-        }
-        return null;
-    }
-
-    /**
-     * Resolves a reference point directly into the robot frame from live AprilTag observations.
-     */
-    private Pose2d resolveRobotPointDirect(LoopClock clock,
-                                           ReferencePoint2d reference,
-                                           DriveGuidanceSpec.AprilTags cfg) {
-        if (reference instanceof References.FieldPointRef) {
-            return null;
-        }
-        if (reference instanceof References.FramePointRef) {
-            References.FramePointRef fp = (References.FramePointRef) reference;
-            Pose2d robotToFrame = resolveRobotFrameDirect(clock, fp.frame, cfg);
-            return robotToFrame != null ? robotToFrame.then(new Pose2d(fp.forwardInches, fp.leftInches, 0.0)) : null;
-        }
-        if (reference instanceof References.TagPointRef) {
-            References.TagPointRef tp = (References.TagPointRef) reference;
-            AprilTagObservation obs = observationForId(clock, cfg, tp.tagId);
-            return composeRobotPointFromObservation(obs, cfg, new Pose2d(tp.forwardInches, tp.leftInches, 0.0));
-        }
-        if (reference instanceof References.SelectedTagPointRef) {
-            References.SelectedTagPointRef sp = (References.SelectedTagPointRef) reference;
-            TagSelectionResult sel = sp.selection.get(clock);
-            if (sel == null || !sel.hasFreshSelectedObservation) {
-                return null;
-            }
-            Pose2d tagToPoint = sp.lookup.tagToPoint(sel.selectedTagId);
-            return composeRobotPointFromObservation(sel.selectedObservation, cfg, tagToPoint);
-        }
-        return null;
-    }
-
-    /**
-     * Resolves a reference frame directly into the robot frame from live AprilTag observations.
-     */
-    private Pose2d resolveRobotFrameDirect(LoopClock clock,
-                                           ReferenceFrame2d reference,
-                                           DriveGuidanceSpec.AprilTags cfg) {
-        if (reference instanceof References.FieldFrameRef) {
-            return null;
-        }
-        if (reference instanceof References.TagFrameRef) {
-            References.TagFrameRef tf = (References.TagFrameRef) reference;
-            AprilTagObservation obs = observationForId(clock, cfg, tf.tagId);
-            return composeRobotPointFromObservation(obs, cfg, new Pose2d(tf.forwardInches, tf.leftInches, tf.headingRad));
-        }
-        if (reference instanceof References.SelectedTagFrameRef) {
-            References.SelectedTagFrameRef sf = (References.SelectedTagFrameRef) reference;
-            TagSelectionResult sel = sf.selection.get(clock);
-            if (sel == null || !sel.hasFreshSelectedObservation) {
-                return null;
-            }
-            Pose2d tagToFrame = sf.lookup.tagToFrame(sel.selectedTagId);
-            return composeRobotPointFromObservation(sel.selectedObservation, cfg, tagToFrame);
-        }
-        return null;
-    }
-
-    /**
-     * Composes a robot-frame point or frame pose from one camera observation plus a tag-local
-     * offset.
-     */
-    private Pose2d composeRobotPointFromObservation(AprilTagObservation obs,
-                                                    DriveGuidanceSpec.AprilTags cfg,
-                                                    Pose2d tagToThing) {
-        if (obs == null || !obs.hasTarget || tagToThing == null) {
-            return null;
-        }
-        Pose3d robotToTag = CameraMountLogic.robotToTagPose(cfg.cameraMount, obs.cameraToTagPose);
-        Pose2d robotToThing = robotToTag.toPose2d().then(tagToThing);
-        return new Pose2d(robotToThing.xInches, robotToThing.yInches, robotToThing.headingRad);
-    }
-
-    /**
-     * Estimates a temporary field-centric robot pose from all fresh fixed-tag observations visible
-     * in the current frame.
-     *
-     * <p>This intentionally reuses the same weighted multi-tag solver as the AprilTag-only
-     * localizer so the guidance lane and the localization lane do not diverge.</p>
-     */
-    private LiveFieldPose estimateFieldPoseFromAprilTags(LoopClock clock,
-                                                         DriveGuidanceSpec.AprilTags cfg,
-                                                         TagLayout layout) {
-        if (cfg == null || layout == null || layout.ids().isEmpty()) {
-            return null;
-        }
-
-        AprilTagDetections dets = cfg.sensor.get(clock);
-        if (dets == null) {
-            return null;
-        }
-        List<AprilTagObservation> observations = dets.freshMatching(layout.ids(), cfg.maxAgeSec);
-        if (observations.isEmpty()) {
-            return null;
-        }
-
-        FixedTagFieldPoseSolver.Result solve = FixedTagFieldPoseSolver.solve(
-                observations,
-                layout,
-                cfg.cameraMount,
-                cfg.fieldPoseSolverConfig
-        );
-        if (!solve.hasPose) {
-            return null;
-        }
-
-        return new LiveFieldPose(solve.toPose2d(), solve.rangeInches);
-    }
-
-    /**
-     * Looks up one fresh AprilTag observation by ID, returning a no-target sentinel when absent.
-     */
-    private AprilTagObservation observationForId(LoopClock clock,
-                                                 DriveGuidanceSpec.AprilTags cfg,
-                                                 int id) {
-        AprilTagDetections dets = cfg.sensor.get(clock);
-        return dets != null ? dets.forId(id, cfg.maxAgeSec) : AprilTagObservation.noTarget(Double.POSITIVE_INFINITY);
-    }
-
-    /**
-     * Returns the translation reference's current selection snapshot for status/telemetry.
-     */
-    private TagSelectionResult translationSelectionSnapshot(LoopClock clock, DriveGuidanceSpec.AprilTags cfg) {
-        if (!(spec.translationTarget instanceof DriveGuidanceSpec.ReferencePointTarget)) {
-            return NO_SELECTION;
-        }
-        return pointSelectionSnapshot(((DriveGuidanceSpec.ReferencePointTarget) spec.translationTarget).reference, clock, cfg);
-    }
-
-    /**
-     * Returns the aim reference's current selection snapshot for status/telemetry.
-     */
-    private TagSelectionResult aimSelectionSnapshot(LoopClock clock, DriveGuidanceSpec.AprilTags cfg) {
-        if (spec.aimTarget instanceof DriveGuidanceSpec.ReferencePointTarget) {
-            return pointSelectionSnapshot(((DriveGuidanceSpec.ReferencePointTarget) spec.aimTarget).reference, clock, cfg);
-        }
-        if (spec.aimTarget instanceof DriveGuidanceSpec.ReferenceFrameHeadingTarget) {
-            return frameSelectionSnapshot(((DriveGuidanceSpec.ReferenceFrameHeadingTarget) spec.aimTarget).reference, clock, cfg);
-        }
-        return NO_SELECTION;
-    }
-
-    /**
-     * Produces a selection snapshot for a reference point, including fixed-tag and selected-tag
-     * cases.
-     */
-    private TagSelectionResult pointSelectionSnapshot(ReferencePoint2d ref,
-                                                      LoopClock clock,
-                                                      DriveGuidanceSpec.AprilTags cfg) {
-        if (ref instanceof References.FieldPointRef) {
-            return NO_SELECTION;
-        }
-        if (ref instanceof References.FramePointRef) {
-            return frameSelectionSnapshot(((References.FramePointRef) ref).frame, clock, cfg);
-        }
-        if (ref instanceof References.TagPointRef) {
-            References.TagPointRef tp = (References.TagPointRef) ref;
-            AprilTagObservation obs = cfg != null ? observationForId(clock, cfg, tp.tagId) : AprilTagObservation.noTarget(Double.POSITIVE_INFINITY);
-            return fixedTagSelection(tp.tagId, obs);
-        }
-        if (ref instanceof References.SelectedTagPointRef) {
-            TagSelectionResult sel = ((References.SelectedTagPointRef) ref).selection.get(clock);
-            return sel != null ? sel : NO_SELECTION;
-        }
-        return NO_SELECTION;
-    }
-
-    /**
-     * Produces a selection snapshot for a reference frame, including fixed-tag and selected-tag
-     * cases.
-     */
-    private TagSelectionResult frameSelectionSnapshot(ReferenceFrame2d ref,
-                                                      LoopClock clock,
-                                                      DriveGuidanceSpec.AprilTags cfg) {
-        if (ref instanceof References.FieldFrameRef) {
-            return NO_SELECTION;
-        }
-        if (ref instanceof References.TagFrameRef) {
-            References.TagFrameRef tf = (References.TagFrameRef) ref;
-            AprilTagObservation obs = cfg != null ? observationForId(clock, cfg, tf.tagId) : AprilTagObservation.noTarget(Double.POSITIVE_INFINITY);
-            return fixedTagSelection(tf.tagId, obs);
-        }
-        if (ref instanceof References.SelectedTagFrameRef) {
-            TagSelectionResult sel = ((References.SelectedTagFrameRef) ref).selection.get(clock);
-            return sel != null ? sel : NO_SELECTION;
-        }
-        return NO_SELECTION;
-    }
-
-    /**
-     * Builds a synthetic selection snapshot for a direct single-tag reference.
-     */
-    private static TagSelectionResult fixedTagSelection(int tagId, AprilTagObservation obs) {
-        boolean fresh = obs != null && obs.hasTarget;
-        Set<Integer> visibleIds = fresh ? Collections.singleton(tagId) : Collections.<Integer>emptySet();
-        AprilTagObservation shown = fresh ? obs : AprilTagObservation.noTarget(Double.POSITIVE_INFINITY);
-        return new TagSelectionResult(
-                fresh,
-                tagId,
-                shown,
+        return new TranslationSolve(
                 true,
-                tagId,
+                robotToTargetPoint.xInches - robotToTranslationFrame.xInches,
+                robotToTargetPoint.yInches - robotToTranslationFrame.yInches,
                 false,
-                fresh,
-                shown,
-                visibleIds,
-                "fixedTagReference",
-                "fixed tag reference",
                 Double.NaN
         );
-    }
-
-    /**
-     * Clears any sticky selector state referenced by the supplied target.
-     */
-    private void resetSelections(Object target) {
-        if (target instanceof DriveGuidanceSpec.ReferencePointTarget) {
-            resetReferenceSelection(((DriveGuidanceSpec.ReferencePointTarget) target).reference);
-        } else if (target instanceof DriveGuidanceSpec.ReferenceFrameHeadingTarget) {
-            resetReferenceSelection(((DriveGuidanceSpec.ReferenceFrameHeadingTarget) target).reference);
-        }
-    }
-
-    /**
-     * Resets selection state nested under a point reference.
-     */
-    private void resetReferenceSelection(ReferencePoint2d ref) {
-        if (ref instanceof References.SelectedTagPointRef) {
-            ((References.SelectedTagPointRef) ref).selection.reset();
-        } else if (ref instanceof References.FramePointRef) {
-            resetReferenceSelection(((References.FramePointRef) ref).frame);
-        }
-    }
-
-    /**
-     * Resets selection state nested under a frame reference.
-     */
-    private void resetReferenceSelection(ReferenceFrame2d ref) {
-        if (ref instanceof References.SelectedTagFrameRef) {
-            ((References.SelectedTagFrameRef) ref).selection.reset();
-        }
     }
 
     static final class Solution {
@@ -630,16 +310,6 @@ final class DriveGuidanceEvaluator {
 
         static AimSolve invalid() {
             return new AimSolve(false, 0.0);
-        }
-    }
-
-    private static final class LiveFieldPose {
-        final Pose2d fieldToRobot;
-        final double rangeInches;
-
-        LiveFieldPose(Pose2d fieldToRobot, double rangeInches) {
-            this.fieldToRobot = fieldToRobot;
-            this.rangeInches = rangeInches;
         }
     }
 }

@@ -1,7 +1,7 @@
-package edu.ftcphoenix.fw.drive.guidance;
+package edu.ftcphoenix.fw.spatial;
 
 /**
- * Semantic 2D reference frame for {@link DriveGuidance}.
+ * Semantic 2D reference frame for Phoenix spatial queries and guidance.
  *
  * <p>A reference frame is an origin point plus an oriented local basis. Guidance can use that
  * information in several different ways:</p>
@@ -56,5 +56,5 @@ package edu.ftcphoenix.fw.drive.guidance;
  * @see References
  */
 public interface ReferenceFrame2d {
-    // Marker interface for the public guidance API.
+    // Marker interface for the public spatial-query API.
 }

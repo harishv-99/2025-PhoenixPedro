@@ -9,7 +9,7 @@ It is built around one idea:
 That leads to a clean split:
 
 - **References** describe geometry: field points, field frames, single-tag-relative points/frames, or selected-tag-relative points/frames.
-- **Resolve lanes** describe solving: localization, live AprilTags, or explicit adaptive use of both.
+- **Solve lanes** describe solving: localization, live AprilTags, or explicit adaptive use of both.
 - **Loss behavior** describes output policy when the requested channel cannot be solved this loop.
 
 This document reflects the current API:
@@ -95,6 +95,19 @@ Loss behavior is separate from both geometry and selection.
 
 ---
 
+### 1.7 DriveGuidance now consumes the shared spatial-query layer
+
+Drive Guidance still remains the public drivetrain-facing planner, but it now sits on top of the framework's shared **spatial-query** layer.
+
+- `SpatialQuery` solves the relationship between a target and one or more robot-relative control frames.
+- `DriveGuidance` consumes that shared solve result and turns it into drivetrain translation/omega commands.
+- Future mechanism planners (for example a turret or a floor-pickup planner) can reuse the same spatial-query layer without depending on the whole drive-guidance stack.
+
+That means the geometry and solve-lane setup are now reusable outside the drivetrain while the drive-specific blending and loss policy stay in `DriveGuidance`. See [`Spatial Queries.md`](<Spatial Queries.md>) for the direct shared-layer API.
+
+---
+
+
 ## 2. The builder shape
 
 ```java
@@ -149,15 +162,17 @@ There are two independent control frames:
 - **translation frame**: the robot-relative point that should land on the translation target
 - **aim frame**: the robot-relative frame whose `+X` axis should point at the aim target
 
-By default, both are the robot center:
+The public API for those is now `SpatialControlFrames`. By default, both frames are the robot center:
 
 ```java
-.controlFrames(ControlFrames.robotCenter())
+.controlFrames(SpatialControlFrames.robotCenter())
 ```
 
 That is equivalent to “drive the robot center to the translation point” and “turn the robot so the robot's forward axis points at the aim target.”
 
-For an off-center mechanism, give guidance the robot→mechanism transform instead.
+For an off-center rigid mechanism, give guidance the robot→mechanism transform instead.
+
+When the controlled frame is dynamic, `SpatialControlFrames` also accepts a `Source<Pose2d>` instead of a fixed `Pose2d`. Drive Guidance itself still usually uses rigid frames, but the shared spatial-query layer is now ready for dynamic mechanism frames too.
 
 ```java
 Pose2d robotToShooter = new Pose2d(7.0, 4.5, Math.toRadians(5.0));
@@ -170,7 +185,7 @@ DriveGuidancePlan plan = DriveGuidance.plan()
             .localizationOnly()
             .localization(poseEstimator)
             .doneResolveWith()
-        .controlFrames(ControlFrames.robotCenter().withAimFrame(robotToShooter))
+        .controlFrames(SpatialControlFrames.robotCenter().withAimFrame(robotToShooter))
         .build();
 ```
 
@@ -188,7 +203,15 @@ Example: hold the front-left intake corner on a pickup point while a side-mounte
 Pose2d robotToIntakeMouth = new Pose2d(12.0, 8.0, 0.0);
 Pose2d robotToShooter = new Pose2d(-3.0, 6.0, Math.toRadians(15.0));
 
-ControlFrames frames = ControlFrames.of(robotToIntakeMouth, robotToShooter);
+SpatialControlFrames frames = SpatialControlFrames.of(robotToIntakeMouth, robotToShooter);
+```
+
+If you only want to override one frame, use the fluent helpers:
+
+```java
+SpatialControlFrames frames = SpatialControlFrames.robotCenter()
+        .withTranslationFrame(robotToIntakeMouth)
+        .withAimFrame(robotToShooter);
 ```
 
 **Important:** `controlFrames(...)` changes the **geometry of the solve**, not which actuator is commanded.
@@ -201,6 +224,8 @@ That distinction matters:
 - if an internal mechanism (like a turret) should move instead, reuse the same geometry idea but feed the resulting angular target/error into that mechanism's own controller path
 
 You can think of `controlFrames(...)` as saying: **"pretend this frame is the thing being guided."** The current built-in consumer just happens to be the drivetrain.
+
+Under the hood, `DriveGuidance` now turns these control frames into a shared `SpatialQuery` and then applies drive-specific policy on top of the query results.
 
 ---
 
@@ -593,7 +618,7 @@ DriveGuidancePlan plan = DriveGuidance.plan()
             .localizationOnly()
             .localization(poseEstimator)
             .doneResolveWith()
-        .controlFrames(ControlFrames.robotCenter().withAimFrame(robotToShooter))
+        .controlFrames(SpatialControlFrames.robotCenter().withAimFrame(robotToShooter))
         .build();
 ```
 

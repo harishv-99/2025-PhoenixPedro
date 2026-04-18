@@ -10,6 +10,16 @@ import edu.ftcphoenix.fw.localization.AbsolutePoseEstimator;
 import edu.ftcphoenix.fw.localization.apriltag.FixedTagFieldPoseSolver;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
+import edu.ftcphoenix.fw.spatial.AimTarget2d;
+import edu.ftcphoenix.fw.spatial.ReferenceFrame2d;
+import edu.ftcphoenix.fw.spatial.ReferencePoint2d;
+import edu.ftcphoenix.fw.spatial.References;
+import edu.ftcphoenix.fw.spatial.SpatialControlFrames;
+import edu.ftcphoenix.fw.spatial.SpatialQuery;
+import edu.ftcphoenix.fw.spatial.SpatialQuerySpec;
+import edu.ftcphoenix.fw.spatial.SpatialSolveSet;
+import edu.ftcphoenix.fw.spatial.SpatialTargets;
+import edu.ftcphoenix.fw.spatial.TranslationTarget2d;
 
 /**
  * Builder + helpers for creating {@link DriveGuidanceSpec}s and {@link DriveGuidancePlan}s.
@@ -165,7 +175,7 @@ public final class DriveGuidance {
         /**
          * Chooses which point(s) on the robot guidance should translate / aim with respect to.
          */
-        SELF controlFrames(ControlFrames frames);
+        SELF controlFrames(SpatialControlFrames frames);
 
         /**
          * Finishes the builder and returns an immutable {@link DriveGuidanceSpec}.
@@ -245,7 +255,7 @@ public final class DriveGuidance {
         /**
          * Chooses which point(s) on the robot guidance should translate / aim with respect to.
          */
-        SELF controlFrames(ControlFrames frames);
+        SELF controlFrames(SpatialControlFrames frames);
 
         /**
          * Supplies controller tuning for the final plan.
@@ -460,10 +470,10 @@ public final class DriveGuidance {
     // ------------------------------------------------------------------------
 
     private static final class State {
-        DriveGuidanceSpec.TranslationTarget translationTarget;
-        DriveGuidanceSpec.AimTarget aimTarget;
+        TranslationTarget2d translationTarget;
+        AimTarget2d aimTarget;
 
-        ControlFrames controlFrames = ControlFrames.robotCenter();
+        SpatialControlFrames controlFrames = SpatialControlFrames.robotCenter();
         DriveGuidancePlan.Tuning tuning = DriveGuidancePlan.Tuning.defaults();
 
         AprilTagSensor aprilTagSensor;
@@ -519,7 +529,43 @@ public final class DriveGuidance {
                 s.onLoss
         );
 
-        return new DriveGuidanceSpec(s.translationTarget, s.aimTarget, s.controlFrames, rw);
+        SpatialSolveSet.Builder solveSetBuilder = SpatialSolveSet.builder();
+        int localizationLaneIndex = -1;
+        int aprilTagsLaneIndex = -1;
+        int nextLaneIndex = 0;
+
+        if (localization != null) {
+            localizationLaneIndex = nextLaneIndex++;
+            solveSetBuilder.absolutePose(localization.poseEstimator, localization.maxAgeSec, localization.minQuality);
+        }
+        if (tags != null) {
+            aprilTagsLaneIndex = nextLaneIndex++;
+            solveSetBuilder.aprilTags(tags.sensor, tags.cameraMount, tags.maxAgeSec, tags.fieldPoseSolverConfig);
+        }
+
+        SpatialQuerySpec spatialQuerySpec = null;
+        TranslationTarget2d spatialTranslationTarget = (s.translationTarget instanceof DriveGuidanceSpec.RobotRelativePoint)
+                ? null
+                : s.translationTarget;
+        if (spatialTranslationTarget != null || s.aimTarget != null) {
+            spatialQuerySpec = SpatialQuery.builder()
+                    .translateTo(spatialTranslationTarget)
+                    .aimTo(s.aimTarget)
+                    .controlFrames(s.controlFrames)
+                    .solveWith(solveSetBuilder.build())
+                    .fixedAprilTagLayout(s.fixedAprilTagLayout)
+                    .build();
+        }
+
+        return new DriveGuidanceSpec(
+                s.translationTarget,
+                s.aimTarget,
+                s.controlFrames,
+                rw,
+                spatialQuerySpec,
+                localizationLaneIndex,
+                aprilTagsLaneIndex
+        );
     }
 
     /**
@@ -662,12 +708,12 @@ public final class DriveGuidance {
         }
     }
 
-    private static String localizationFailureForTranslationTarget(DriveGuidanceSpec.TranslationTarget target,
+    private static String localizationFailureForTranslationTarget(TranslationTarget2d target,
                                                                   TagLayout layout) {
         String base = "translateTo() target cannot be solved from localization(...)";
-        if (target instanceof DriveGuidanceSpec.ReferencePointTarget) {
+        if (target instanceof SpatialTargets.ReferencePointTarget) {
             return explainLocalizationPointFailure(
-                    ((DriveGuidanceSpec.ReferencePointTarget) target).reference,
+                    ((SpatialTargets.ReferencePointTarget) target).reference,
                     layout,
                     base
             );
@@ -675,19 +721,19 @@ public final class DriveGuidance {
         return base + "; add fixedAprilTagLayout(...) for fixed-tag references or choose aprilTags()/adaptive() as appropriate";
     }
 
-    private static String localizationFailureForAimTarget(DriveGuidanceSpec.AimTarget target,
+    private static String localizationFailureForAimTarget(AimTarget2d target,
                                                           TagLayout layout) {
         String base = "aimTo() target cannot be solved from localization(...)";
-        if (target instanceof DriveGuidanceSpec.ReferencePointTarget) {
+        if (target instanceof SpatialTargets.ReferencePointTarget) {
             return explainLocalizationPointFailure(
-                    ((DriveGuidanceSpec.ReferencePointTarget) target).reference,
+                    ((SpatialTargets.ReferencePointTarget) target).reference,
                     layout,
                     base
             );
         }
-        if (target instanceof DriveGuidanceSpec.ReferenceFrameHeadingTarget) {
+        if (target instanceof SpatialTargets.ReferenceFrameHeadingTarget) {
             return explainLocalizationFrameFailure(
-                    ((DriveGuidanceSpec.ReferenceFrameHeadingTarget) target).reference,
+                    ((SpatialTargets.ReferenceFrameHeadingTarget) target).reference,
                     layout,
                     base
             );
@@ -702,7 +748,7 @@ public final class DriveGuidance {
             return base;
         }
         if (References.isFramePoint(ref)) {
-            return explainLocalizationFrameFailure(((References.FramePointRef) ref).frame, layout, base);
+            return explainLocalizationFrameFailure(References.framePointBaseFrame(ref), layout, base);
         }
         if (References.isDirectTagPoint(ref) || References.isSelectedTagPoint(ref)) {
             if (layout == null) {
@@ -750,64 +796,64 @@ public final class DriveGuidance {
                 : DriveGuidanceSpec.SolveMode.LOCALIZATION_ONLY;
     }
 
-    private static boolean canSolveTranslationWithLocalization(DriveGuidanceSpec.TranslationTarget target,
+    private static boolean canSolveTranslationWithLocalization(TranslationTarget2d target,
                                                                TagLayout layout) {
-        if (target instanceof DriveGuidanceSpec.FieldPoint) {
+        if (target instanceof SpatialTargets.FieldPoint) {
             return true;
         }
         if (target instanceof DriveGuidanceSpec.RobotRelativePoint) {
             return true;
         }
-        if (target instanceof DriveGuidanceSpec.ReferencePointTarget) {
-            return canResolvePointWithLocalization(((DriveGuidanceSpec.ReferencePointTarget) target).reference, layout);
+        if (target instanceof SpatialTargets.ReferencePointTarget) {
+            return canResolvePointWithLocalization(((SpatialTargets.ReferencePointTarget) target).reference, layout);
         }
         return false;
     }
 
-    private static boolean canSolveTranslationWithAprilTags(DriveGuidanceSpec.TranslationTarget target,
+    private static boolean canSolveTranslationWithAprilTags(TranslationTarget2d target,
                                                             boolean hasLayout) {
         if (target instanceof DriveGuidanceSpec.RobotRelativePoint) {
             return false;
         }
-        if (target instanceof DriveGuidanceSpec.FieldPoint) {
+        if (target instanceof SpatialTargets.FieldPoint) {
             return hasLayout;
         }
-        if (target instanceof DriveGuidanceSpec.ReferencePointTarget) {
-            return canResolvePointWithAprilTags(((DriveGuidanceSpec.ReferencePointTarget) target).reference, hasLayout);
+        if (target instanceof SpatialTargets.ReferencePointTarget) {
+            return canResolvePointWithAprilTags(((SpatialTargets.ReferencePointTarget) target).reference, hasLayout);
         }
         return false;
     }
 
-    private static boolean canSolveAimWithLocalization(DriveGuidanceSpec.AimTarget target,
+    private static boolean canSolveAimWithLocalization(AimTarget2d target,
                                                        TagLayout layout) {
-        if (target instanceof DriveGuidanceSpec.FieldPoint) {
+        if (target instanceof SpatialTargets.FieldPoint) {
             return true;
         }
-        if (target instanceof DriveGuidanceSpec.FieldHeading) {
+        if (target instanceof SpatialTargets.FieldHeading) {
             return true;
         }
-        if (target instanceof DriveGuidanceSpec.ReferencePointTarget) {
-            return canResolvePointWithLocalization(((DriveGuidanceSpec.ReferencePointTarget) target).reference, layout);
+        if (target instanceof SpatialTargets.ReferencePointTarget) {
+            return canResolvePointWithLocalization(((SpatialTargets.ReferencePointTarget) target).reference, layout);
         }
-        if (target instanceof DriveGuidanceSpec.ReferenceFrameHeadingTarget) {
-            return canResolveFrameWithLocalization(((DriveGuidanceSpec.ReferenceFrameHeadingTarget) target).reference, layout);
+        if (target instanceof SpatialTargets.ReferenceFrameHeadingTarget) {
+            return canResolveFrameWithLocalization(((SpatialTargets.ReferenceFrameHeadingTarget) target).reference, layout);
         }
         return false;
     }
 
-    private static boolean canSolveAimWithAprilTags(DriveGuidanceSpec.AimTarget target,
+    private static boolean canSolveAimWithAprilTags(AimTarget2d target,
                                                     boolean hasLayout) {
-        if (target instanceof DriveGuidanceSpec.FieldPoint) {
+        if (target instanceof SpatialTargets.FieldPoint) {
             return hasLayout;
         }
-        if (target instanceof DriveGuidanceSpec.FieldHeading) {
+        if (target instanceof SpatialTargets.FieldHeading) {
             return hasLayout;
         }
-        if (target instanceof DriveGuidanceSpec.ReferencePointTarget) {
-            return canResolvePointWithAprilTags(((DriveGuidanceSpec.ReferencePointTarget) target).reference, hasLayout);
+        if (target instanceof SpatialTargets.ReferencePointTarget) {
+            return canResolvePointWithAprilTags(((SpatialTargets.ReferencePointTarget) target).reference, hasLayout);
         }
-        if (target instanceof DriveGuidanceSpec.ReferenceFrameHeadingTarget) {
-            return canResolveFrameWithAprilTags(((DriveGuidanceSpec.ReferenceFrameHeadingTarget) target).reference, hasLayout);
+        if (target instanceof SpatialTargets.ReferenceFrameHeadingTarget) {
+            return canResolveFrameWithAprilTags(((SpatialTargets.ReferenceFrameHeadingTarget) target).reference, hasLayout);
         }
         return false;
     }
@@ -820,7 +866,7 @@ public final class DriveGuidance {
             return References.allCandidateTagsAreFixed(ref, layout);
         }
         if (References.isFramePoint(ref)) {
-            return canResolveFrameWithLocalization(((References.FramePointRef) ref).frame, layout);
+            return canResolveFrameWithLocalization(References.framePointBaseFrame(ref), layout);
         }
         return false;
     }
@@ -833,7 +879,7 @@ public final class DriveGuidance {
             return true;
         }
         if (References.isFramePoint(ref)) {
-            return canResolveFrameWithAprilTags(((References.FramePointRef) ref).frame, hasLayout);
+            return canResolveFrameWithAprilTags(References.framePointBaseFrame(ref), hasLayout);
         }
         return false;
     }
@@ -876,7 +922,7 @@ public final class DriveGuidance {
          * <p>This implementation backs the public builder interfaces and simply stores the chosen
          * frames into shared builder state.</p>
          */
-        public final SELF controlFrames(ControlFrames frames) {
+        public final SELF controlFrames(SpatialControlFrames frames) {
             s.controlFrames = Objects.requireNonNull(frames, "frames");
             return self();
         }
@@ -1058,7 +1104,7 @@ public final class DriveGuidance {
             if (s.translationTarget != null) {
                 throw new IllegalStateException("translateTo() target already configured; choose only one target method");
             }
-            s.translationTarget = new DriveGuidanceSpec.FieldPoint(xInches, yInches);
+            s.translationTarget = SpatialTargets.fieldPoint(xInches, yInches);
             return this;
         }
 
@@ -1082,7 +1128,7 @@ public final class DriveGuidance {
             if (s.translationTarget != null) {
                 throw new IllegalStateException("translateTo() target already configured; choose only one target method");
             }
-            s.translationTarget = new DriveGuidanceSpec.ReferencePointTarget(Objects.requireNonNull(reference, "reference"));
+            s.translationTarget = SpatialTargets.point(Objects.requireNonNull(reference, "reference"));
             return this;
         }
 
@@ -1115,7 +1161,7 @@ public final class DriveGuidance {
             if (s.aimTarget != null) {
                 throw new IllegalStateException("aimTo() target already configured; choose only one target method");
             }
-            s.aimTarget = new DriveGuidanceSpec.FieldPoint(xInches, yInches);
+            s.aimTarget = SpatialTargets.fieldPoint(xInches, yInches);
             return this;
         }
 
@@ -1127,7 +1173,7 @@ public final class DriveGuidance {
             if (s.aimTarget != null) {
                 throw new IllegalStateException("aimTo() target already configured; choose only one target method");
             }
-            s.aimTarget = new DriveGuidanceSpec.FieldHeading(fieldHeadingRad);
+            s.aimTarget = SpatialTargets.fieldHeading(fieldHeadingRad);
             return this;
         }
 
@@ -1139,7 +1185,7 @@ public final class DriveGuidance {
             if (s.aimTarget != null) {
                 throw new IllegalStateException("aimTo() target already configured; choose only one target method");
             }
-            s.aimTarget = new DriveGuidanceSpec.ReferencePointTarget(Objects.requireNonNull(reference, "reference"));
+            s.aimTarget = SpatialTargets.point(Objects.requireNonNull(reference, "reference"));
             return this;
         }
 
@@ -1159,7 +1205,7 @@ public final class DriveGuidance {
             if (s.aimTarget != null) {
                 throw new IllegalStateException("aimTo() target already configured; choose only one target method");
             }
-            s.aimTarget = new DriveGuidanceSpec.ReferenceFrameHeadingTarget(Objects.requireNonNull(reference, "reference"), headingOffsetRad);
+            s.aimTarget = SpatialTargets.frameHeading(Objects.requireNonNull(reference, "reference"), headingOffsetRad);
             return this;
         }
 
