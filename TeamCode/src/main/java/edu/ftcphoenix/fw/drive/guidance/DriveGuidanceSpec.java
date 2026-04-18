@@ -4,7 +4,7 @@ import java.util.Objects;
 
 import edu.ftcphoenix.fw.drive.DriveOverlayMask;
 import edu.ftcphoenix.fw.field.TagLayout;
-import edu.ftcphoenix.fw.localization.PoseEstimator;
+import edu.ftcphoenix.fw.localization.AbsolutePoseEstimator;
 import edu.ftcphoenix.fw.localization.apriltag.FixedTagFieldPoseSolver;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
@@ -211,14 +211,14 @@ public final class DriveGuidanceSpec {
         public static final double DEFAULT_MAX_AGE_SEC = 0.50;
         public static final double DEFAULT_MIN_QUALITY = 0.10;
 
-        public final PoseEstimator poseEstimator;
+        public final AbsolutePoseEstimator poseEstimator;
         public final double maxAgeSec;
         public final double minQuality;
 
         /**
          * Creates a localization solve lane using the default freshness and quality gates.
          */
-        public Localization(PoseEstimator poseEstimator) {
+        public Localization(AbsolutePoseEstimator poseEstimator) {
             this(poseEstimator, DEFAULT_MAX_AGE_SEC, DEFAULT_MIN_QUALITY);
         }
 
@@ -229,7 +229,7 @@ public final class DriveGuidanceSpec {
          * @param maxAgeSec maximum accepted estimate age in seconds
          * @param minQuality minimum accepted estimate quality
          */
-        public Localization(PoseEstimator poseEstimator, double maxAgeSec, double minQuality) {
+        public Localization(AbsolutePoseEstimator poseEstimator, double maxAgeSec, double minQuality) {
             this.poseEstimator = Objects.requireNonNull(poseEstimator, "poseEstimator");
             this.maxAgeSec = maxAgeSec;
             this.minQuality = minQuality;

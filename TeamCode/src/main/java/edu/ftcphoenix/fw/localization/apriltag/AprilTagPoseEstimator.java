@@ -6,15 +6,15 @@ import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.field.TagLayout;
+import edu.ftcphoenix.fw.localization.AbsolutePoseEstimator;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
-import edu.ftcphoenix.fw.localization.PoseEstimator;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagDetections;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
 import edu.ftcphoenix.fw.spatial.Region2d;
 
 /**
- * {@link PoseEstimator} that derives a field-centric robot pose estimate from one or more fresh
+ * {@link AbsolutePoseEstimator} that derives a field-centric robot pose estimate from one or more fresh
  * AprilTag detections and a known {@link TagLayout}.
  *
  * <p>This estimator intentionally sits on the <em>raw detections</em> boundary rather than a
@@ -29,9 +29,11 @@ import edu.ftcphoenix.fw.spatial.Region2d;
  * and outlier rejection so localization and guidance's temporary AprilTag field-pose bridge stay
  * behaviorally aligned.</p>
  */
-public final class TagOnlyPoseEstimator implements PoseEstimator {
+public final class AprilTagPoseEstimator implements AbsolutePoseEstimator {
 
-    /** Configuration parameters for {@link TagOnlyPoseEstimator}. */
+    /**
+     * Configuration parameters for {@link AprilTagPoseEstimator}.
+     */
     public static final class Config extends FixedTagFieldPoseSolver.Config {
         /**
          * Maximum age (seconds) of the underlying detections frame accepted by this estimator.
@@ -42,7 +44,9 @@ public final class TagOnlyPoseEstimator implements PoseEstimator {
          */
         public double maxDetectionAgeSec = 0.50;
 
-        /** Camera mount extrinsics in the robot frame. */
+        /**
+         * Camera mount extrinsics in the robot frame.
+         */
         public CameraMountConfig cameraMount = CameraMountConfig.identity();
 
         private Config() {
@@ -103,7 +107,7 @@ public final class TagOnlyPoseEstimator implements PoseEstimator {
         public FixedTagFieldPoseSolver.Config toSolverConfig() {
             return FixedTagFieldPoseSolver.Config.normalizedValidatedCopyOf(
                     this,
-                    "TagOnlyPoseEstimator.Config.toSolverConfig"
+                    "AprilTagPoseEstimator.Config.toSolverConfig"
             );
         }
 
@@ -122,7 +126,7 @@ public final class TagOnlyPoseEstimator implements PoseEstimator {
             super.validate(context);
             String p = (context != null && !context.trim().isEmpty())
                     ? context.trim()
-                    : "TagOnlyPoseEstimator.Config";
+                    : "AprilTagPoseEstimator.Config";
             if (!Double.isFinite(maxDetectionAgeSec) || maxDetectionAgeSec < 0.0) {
                 throw new IllegalArgumentException(p + ".maxDetectionAgeSec must be finite and >= 0");
             }
@@ -163,10 +167,10 @@ public final class TagOnlyPoseEstimator implements PoseEstimator {
      * Creates an AprilTag-only pose estimator that may use multiple visible fixed tags from the
      * same frame.
      */
-    public TagOnlyPoseEstimator(AprilTagSensor tags, TagLayout layout, Config cfg) {
+    public AprilTagPoseEstimator(AprilTagSensor tags, TagLayout layout, Config cfg) {
         this.tags = Objects.requireNonNull(tags, "tags");
         this.layout = Objects.requireNonNull(layout, "layout");
-        this.cfg = (cfg != null) ? cfg.validatedCopy("TagOnlyPoseEstimator.Config") : Config.defaults();
+        this.cfg = (cfg != null) ? cfg.validatedCopy("AprilTagPoseEstimator.Config") : Config.defaults();
         if (this.cfg.cameraMount == null) {
             this.cfg.cameraMount = CameraMountConfig.identity();
         }

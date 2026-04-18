@@ -17,9 +17,9 @@ import edu.ftcphoenix.fw.spatial.Region2d;
  * Shared helper that estimates a field-centric robot pose from one camera frame containing one or
  * more fixed AprilTag observations.
  *
- * <p>This solver is intentionally lower-level than a full {@link edu.ftcphoenix.fw.localization.PoseEstimator}.
+ * <p>This solver is intentionally lower-level than a full {@link edu.ftcphoenix.fw.localization.AbsolutePoseEstimator}.
  * It takes one coherent set of raw observations plus fixed field metadata and returns a best-effort
- * field pose solve. Both {@link TagOnlyPoseEstimator} and drive-guidance's temporary
+ * field pose solve. Both {@link AprilTagPoseEstimator} and drive-guidance's temporary
  * "live field pose" bridge reuse this implementation so they do not diverge over time.</p>
  *
  * <p>Design goals:</p>

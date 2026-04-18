@@ -66,7 +66,8 @@ public final class PhoenixTelemetryPresenter {
 
         if (globalPose != null) {
             telemetry.addData("pose.global", globalPose);
-            telemetry.addData("pose.global.mode", profile.localization.globalEstimatorMode);
+            telemetry.addData("pose.global.mode", profile.localization.correctedEstimatorMode);
+            telemetry.addData("pose.global.correctionSource", profile.localization.correctionSource.mode);
         }
         if (odomPose != null) {
             telemetry.addData("pose.odom", odomPose);

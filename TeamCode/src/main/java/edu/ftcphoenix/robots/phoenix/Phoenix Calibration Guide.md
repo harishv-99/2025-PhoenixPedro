@@ -1,133 +1,137 @@
 # Phoenix calibration guide
 
-This is the Phoenix-specific version of the framework calibration path.
+This is the Phoenix-specific bring-up path.
 
-Use it when you are bringing up a fresh Phoenix robot and want the exact menu names and `PhoenixProfile` fields to edit.
+Use it when you want the exact Phoenix menu names and the exact `PhoenixProfile` fields to edit while bringing up a fresh robot.
 
-## Architecture notes
+---
 
-Phoenix now splits stable ownership this way:
+## 1. Ownership map
 
-- `PhoenixProfile.drive` -> `FtcMecanumDriveLane.Config`
-- `PhoenixProfile.vision` -> `PhoenixProfile.VisionConfig` (backend choice plus backend-specific rig config)
-- `PhoenixProfile.localization` -> `FtcOdometryAprilTagLocalizationLane.Config`
+Phoenix keeps calibration ownership intentionally clean:
+
+- `PhoenixProfile.drive` -> drivetrain hardware/wiring/brake tuning
+- `PhoenixProfile.vision` -> active vision backend plus backend-specific rig config
+- `PhoenixProfile.localization` -> predictor, AprilTag-localization tuning, correction-source choice, and corrected-global estimator tuning
 - `PhoenixProfile.field` -> shared field facts such as the fixed AprilTag layout
-- `PhoenixCapabilities` -> shared mode-neutral API used by TeleOp and Auto
-- `PhoenixTeleOpControls` -> all TeleOp input semantics
-- `ShooterSupervisor` -> scoring policy and intent-level requests
-- `ScoringTargeting` -> selected-tag policy, cached aim status, and shot suggestions
+- `PhoenixCapabilities` -> shared mode-neutral robot API used by TeleOp and Auto
+- `PhoenixTeleOpControls` -> TeleOp stick/button semantics
+- `ShooterSupervisor` -> scoring policy and requests
+- `ScoringTargeting` -> selected-tag policy and aim status
 - `Shooter` -> mechanism actuation and status
 - `PhoenixRobot` -> composition root and loop owner
 
-That split matters during bring-up because fixes should land in the owner of the behavior:
+That ownership split matters during bring-up because fixes should land in the owner of the behavior:
 
 - drivetrain wiring / brake / drive tuning -> `PhoenixProfile.drive`
-- backend choice + active camera-rig config -> `PhoenixProfile.vision`
-- webcam name / camera mount / VisionPortal-specific settings -> `PhoenixProfile.vision.webcam`
-- Limelight hardware name / pipeline / poll rate / camera mount -> `PhoenixProfile.vision.limelight`
-- odometry tuning / AprilTag localization tuning / fusion tuning -> `PhoenixProfile.localization`
-- fixed field tags or practice-field overrides -> `PhoenixProfile.field`
-- button semantics / manual drive behavior -> `PhoenixTeleOpControls`
-- scoring gating / requests / feed policy -> `ShooterSupervisor`
-- mechanism actuation -> `Shooter`
+- backend choice + active camera rig -> `PhoenixProfile.vision`
+- webcam name / VisionPortal-backed rig config -> `PhoenixProfile.vision.webcam`
+- Limelight hardware name / pipeline / poll rate -> `PhoenixProfile.vision.limelight`
+- predictor, AprilTag solve, and corrected-global localization tuning -> `PhoenixProfile.localization`
+- field-fixed tag policy or practice-field overrides -> `PhoenixProfile.field`
 
-## Where to start in the tester menu
+---
 
-Open:
+## 2. Where to start in the tester menu
+
+Recommended starting point:
 
 - `Guide: Phoenix Calibration Walkthrough`
 
-That walkthrough intentionally links to the real testers in the recommended order.
+That walkthrough links to the real testers in the recommended order.
 
 If you already know what you need, browse instead through:
 
 - `Phoenix: Hardware Bring-up`
 - `Phoenix: Calibration & Localization`
 
-## Step 1: drivetrain motor direction
+---
 
-### Menu entry
+## 3. Step-by-step bring-up
+
+### Step 1: drivetrain motor direction
+
+Menu entry:
 
 - `HW: Drivetrain Motor Direction`
 
-### Goal
+Goal:
 
-Confirm each wheel would drive the robot forward when the tester says it should.
+- confirm each wheel would drive the robot forward when the tester says it should
 
-### Fix in code
-
-Use the Phoenix drive-lane wiring config, not a tester workaround, to correct any reversed motor:
+Fix in code:
 
 ```java
 PhoenixProfile.current().drive.wiring
 ```
 
-### Tester implementation note
+---
 
-`DrivetrainMotorDirectionTester` is a `BaseTeleOpTester`, so telemetry should go through `ctx.telemetry` or the base helpers (`telemHeader`, `telemHint`, `telemUpdate`) rather than an OpMode field named `telemetry`.
+### Step 2: camera mount
 
-## Step 2: camera mount
-
-### Menu entry
+Menu entry:
 
 - `Calib: Camera Mount (Robot)`
 
-### Goal
+Goal:
 
-Solve the active AprilTag vision device pose relative to the robot.
+- solve the active AprilTag vision device pose relative to the robot
 
-### Paste result into
+Paste result into:
 
 ```java
-PhoenixProfile.current().vision.webcam.cameraMount   // when backend = WEBCAM
+PhoenixProfile.current().vision.webcam.cameraMount    // when backend = WEBCAM
 PhoenixProfile.current().vision.limelight.cameraMount // when backend = LIMELIGHT
 ```
 
-The tester prints `CameraMountConfig.of(...)` and `CameraMountConfig.ofDegrees(...)`. Paste one of those directly into the active backend's `cameraMount` field.
+The tester prints both `CameraMountConfig.of(...)` and `CameraMountConfig.ofDegrees(...)`. Paste one of those directly into the active backend config.
 
-### Backend usage in production code
+### How webcam and Limelight are used so far
 
-Above the FTC boundary, Phoenix uses both backends the same way:
+Above the FTC boundary, Phoenix uses both backends almost the same way:
 
 ```java
 AprilTagVisionLane vision = PhoenixVisionFactory.create(hardwareMap, PhoenixProfile.current().vision);
 
 FtcOdometryAprilTagLocalizationLane localization =
-        new FtcOdometryAprilTagLocalizationLane(hardwareMap, vision,
+        new FtcOdometryAprilTagLocalizationLane(
+                hardwareMap,
+                vision,
                 PhoenixProfile.current().field.fixedAprilTagLayout,
-                PhoenixProfile.current().localization);
+                PhoenixProfile.current().localization
+        );
 ```
 
-The active backend only changes which concrete lane `PhoenixVisionFactory` instantiates:
+The backend only changes which concrete AprilTag lane is created:
 
 - `Backend.WEBCAM` -> `FtcWebcamAprilTagVisionLane`
 - `Backend.LIMELIGHT` -> `FtcLimelightAprilTagVisionLane`
 
-For the functionality implemented so far, Limelight is being used as an AprilTag-detection backend, not yet as a direct `botpose` / MegaTag2 pose source.
+Phoenix can now also use Limelight's direct device field pose as an **optional** correction source through `PhoenixProfile.localization.correctionSource`, but the raw AprilTag path remains available either way. Limelight's FTC SDK exposes both fiducial-result access and direct botpose / MT2 pose access.
 
 ### Phoenix notes
 
 - the preferred AprilTag device name is `PhoenixProfile.current().vision.activeDeviceName()`
 - the walkthrough status turns `OK` once the active backend's camera mount no longer looks like the identity placeholder
 
-## Step 3: AprilTag-only localization sanity check
+---
 
-### Menu entry
+### Step 3: AprilTag-only localization sanity check
+
+Menu entry:
 
 - `Loc: AprilTag Localization (Robot)`
 
-### Goal
+Goal:
 
-Verify that Phoenix's active AprilTag backend, fixed-tag layout policy, and AprilTag-only solver produce a believable field pose before odometry is fused in.
+- verify that Phoenix's active AprilTag backend, fixed-tag layout policy, and raw AprilTag field solve produce a believable field pose before odometry is fused in
 
-### What to watch
+What to watch:
 
 - fresh detections
 - correct selected tag ID
 - stable `fieldToRobot` pose
 - low sample jitter while stationary
-
-### Phoenix notes
 
 This tester reuses:
 
@@ -138,54 +142,50 @@ PhoenixProfile.current().localization.aprilTags
 PhoenixProfile.current().field.fixedAprilTagLayout
 ```
 
-So the practice tool should match production localization math more closely.
+So the practice tool should match production AprilTag-solving math closely.
 
-## Step 4: Pinpoint axis directions
+---
 
-### Menu entry
+### Step 4: Pinpoint axis directions
+
+Menu entry:
 
 - `Calib: Pinpoint Axis Check (Robot)`
 
-### Goal
+Goal:
 
-Verify:
+- verify +X forward, +Y left, heading CCW+
 
-- +X is forward
-- +Y is left
-- heading is CCW-positive
-
-### Fix in code
-
-Adjust:
+Fix in code:
 
 ```java
-PhoenixProfile.current().localization.odometry
+PhoenixProfile.current().localization.predictor
 ```
 
 Specifically, correct pod direction fields before continuing.
 
-### Record completion
-
-After you have rerun the tester and accepted the result, set:
+Record completion after rerunning the tester and accepting the result:
 
 ```java
-PhoenixProfile.current().calibration.pinpointAxesVerified = true
+PhoenixProfile.current().calibration.pinpointAxesVerified = true;
 ```
 
-## Step 5: Pinpoint pod offsets
+---
 
-### Menu entry
+### Step 5: Pinpoint pod offsets
+
+Menu entry:
 
 - `Calib: Pinpoint Pod Offsets (Robot)`
 
-### Goal
+Goal:
 
-Estimate the Pinpoint offsets that remove fake translation during rotation.
+- estimate the Pinpoint offsets that remove fake translation during rotation
 
-### Paste result into
+Paste result into:
 
 ```java
-PhoenixProfile.current().localization.odometry
+PhoenixProfile.current().localization.predictor
 ```
 
 The tester prints the recommended:
@@ -194,84 +194,133 @@ The tester prints the recommended:
 .withOffsets(forwardPodOffsetLeftInches, strafePodOffsetForwardInches)
 ```
 
-### Record completion
-
-After copying the numbers and rerunning once to confirm they are stable, set:
+Record completion after copying the numbers and rerunning once to confirm they are stable:
 
 ```java
-PhoenixProfile.current().calibration.pinpointPodOffsetsCalibrated = true
+PhoenixProfile.current().calibration.pinpointPodOffsetsCalibrated = true;
 ```
-
-### Phoenix notes
 
 Phoenix enables AprilTag assist for this tester automatically once the active backend's camera mount looks solved enough to trust.
 
-## Step 6: default global localization validation
+---
 
-### Menu entry
+### Step 6: default corrected-global localization validation
 
-- `Loc: Pinpoint + AprilTag Fusion (Robot)`
+Menu entry:
 
-### Goal
+- `Loc: Pinpoint + Field Corrections (Robot)`
 
-Validate Phoenix's default global localizer in the conditions that matter for real operation:
+Goal:
 
-- tags visible at the start
-- movement while vision is available
-- temporary tag loss near the target
-- smooth continuity while relying on odometry alone
-- clean correction when tags come back
+- validate Phoenix's default corrected-global localizer in the conditions that matter for real operation:
+  - tags visible at the start
+  - movement while corrections are available
+  - temporary tag loss near the target
+  - smooth continuity while relying on prediction alone
+  - clean correction when tags come back
 
-### Config involved
+Config involved:
 
 ```java
-PhoenixProfile.current().vision.activeDeviceName()
-PhoenixProfile.current().vision.activeCameraMount()
-PhoenixProfile.current().localization.odometry
+PhoenixProfile.current().vision
+PhoenixProfile.current().localization.predictor
 PhoenixProfile.current().localization.aprilTags
-PhoenixProfile.current().localization.odometryTagFusion
+PhoenixProfile.current().localization.correctionSource
+PhoenixProfile.current().localization.correctionFusion
 PhoenixProfile.current().field.fixedAprilTagLayout
 ```
 
-## Step 7: optional EKF comparison
+Phoenix defaults to:
 
-### Menu entry
+- predictor = Pinpoint odometry
+- absolute correction source = raw AprilTag field solve (`APRILTAG_POSE`)
+- corrected estimator = gain-based fusion (`FUSION`)
 
-- `Loc: Pinpoint + AprilTag EKF (Robot)`
+### Trying direct Limelight field pose
 
-### Goal
+If you want the corrected/global estimator to use Limelight's direct device field pose instead of the raw AprilTag field solve:
 
-Compare the optional covariance-aware estimator against the default fusion path.
+```java
+PhoenixProfile.current().vision.backend = PhoenixProfile.VisionConfig.Backend.LIMELIGHT;
+PhoenixProfile.current().localization.correctionSource.mode =
+        FtcOdometryAprilTagLocalizationLane.CorrectionSourceMode.LIMELIGHT_FIELD_POSE;
+PhoenixProfile.current().localization.correctionSource.limelightFieldPose.mode =
+        LimelightFieldPoseEstimator.Config.Mode.BOTPOSE_MT2;
+```
 
-### Do this only after
+Start conservatively:
+
+- keep the raw AprilTag tester available as your sanity check
+- tighten `maxResultAgeSec`
+- require at least 2 visible tags if direct pose looks noisy in motion
+- keep motion-aware degradation enabled
+
+Phoenix's direct Limelight path currently assumes the Limelight field map already matches the field/tag layout you intend to use.
+
+---
+
+### Step 7: optional EKF comparison
+
+Menu entry:
+
+- `Loc: Pinpoint + Field Corrections EKF (Robot)`
+
+Goal:
+
+- compare the optional covariance-aware corrected localizer against the default fusion path
+
+Do this only after:
 
 - camera mount is calibrated
 - Pinpoint axis directions are verified
 - Pinpoint pod offsets are measured
-- the default fusion tester already looks trustworthy
+- the default corrected-global tester already looks trustworthy
 
-### Config involved
+Config involved:
 
 ```java
-PhoenixProfile.current().localization.odometryTagEkf
-PhoenixProfile.current().localization.globalEstimatorMode
+PhoenixProfile.current().localization.correctionEkf
+PhoenixProfile.current().localization.correctedEstimatorMode
 ```
 
-Use the tester to compare behavior first. Only then consider changing the robot's default estimator mode.
+Use the tester to compare behavior first. Only then consider changing the robot's default corrected estimator mode.
 
-## Quick checklist for a fresh Phoenix robot
+---
+
+## 4. The localization model Phoenix is using
+
+Phoenix now treats localization as three different roles:
+
+- `MotionPredictor` -> short-term motion propagation (`PinpointOdometryPredictor`)
+- `AbsolutePoseEstimator` -> field-anchored absolute pose (`AprilTagPoseEstimator`, optional `LimelightFieldPoseEstimator`)
+- `CorrectedPoseEstimator` -> combines a predictor with one absolute correction source (`OdometryCorrectionFusionEstimator` or `OdometryCorrectionEkfEstimator`)
+
+That split is important because it gives Phoenix a clean extension path later.
+
+Examples of future additions that would fit this model naturally:
+
+- field tape / line tracking that can directly anchor robot pose -> another `AbsolutePoseEstimator`
+- wheel + IMU dead-reckoning -> another `MotionPredictor`
+- smarter absolute-source selection policies -> a higher-level `AbsolutePoseEstimator` wrapper
+
+---
+
+## 5. Quick checklist for a fresh Phoenix robot
 
 1. drivetrain direction
 2. camera mount
-3. AprilTag-only localization check
+3. raw AprilTag localization check
 4. Pinpoint axis directions
 5. Pinpoint pod offsets
-6. default fusion validation
+6. default corrected-global localization validation
 7. optional EKF comparison
 
-## Related docs
+---
 
+## 6. Related docs
+
+- [`Framework Overview`](<../fw/docs/getting-started/Framework Overview.md>)
+- [`AprilTag Localization & Fixed Layouts`](<../fw/docs/drive-vision/AprilTag Localization & Fixed Layouts.md>)
 - [`Framework Lanes & Robot Controls`](<../fw/docs/design/Framework Lanes & Robot Controls.md>)
-- [`Recommended Robot Design`](<../fw/docs/design/Recommended Robot Design.md>)
 - [`Robot Calibration Tutorials`](<../fw/docs/testing-calibration/Robot Calibration Tutorials.md>)
 - [`Guided Calibration Walkthroughs`](<../fw/docs/testing-calibration/Guided Calibration Walkthroughs.md>)

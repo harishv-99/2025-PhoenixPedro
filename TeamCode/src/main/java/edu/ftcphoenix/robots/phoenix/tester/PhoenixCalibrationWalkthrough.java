@@ -56,15 +56,15 @@ public final class PhoenixCalibrationWalkthrough {
         );
 
         int fusionStep = guide.addStep(
-                "Loc: Pinpoint + AprilTag Fusion",
-                "Validate Phoenix's default global localizer after camera mount and Pinpoint calibration look good.",
+                "Loc: Pinpoint + Field Corrections",
+                "Validate Phoenix's default corrected-global localizer after camera mount and Pinpoint calibration look good.",
                 PhoenixRobotTesters::globalLocalizationStatus,
                 PhoenixRobotTesters::pinpointAprilTagFusion
         );
 
         guide.addStep(
-                "Loc: Pinpoint + AprilTag EKF (Optional)",
-                "Compare the optional EKF-style localizer only after the default fusion tester looks trustworthy.",
+                "Loc: Pinpoint + Field Corrections EKF (Optional)",
+                "Compare the optional covariance-aware corrected localizer only after the default fusion tester looks trustworthy.",
                 PhoenixRobotTesters::globalLocalizationStatus,
                 PhoenixRobotTesters::pinpointAprilTagEkf
         );

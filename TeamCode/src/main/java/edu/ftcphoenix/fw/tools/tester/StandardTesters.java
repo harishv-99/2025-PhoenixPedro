@@ -5,11 +5,11 @@ import com.qualcomm.hardware.limelightvision.Limelight3A;
 
 import java.util.function.Function;
 
-import edu.ftcphoenix.fw.ftc.localization.PinpointPoseEstimator;
+import edu.ftcphoenix.fw.ftc.localization.PinpointOdometryPredictor;
 import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLaneFactories;
 import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLaneFactory;
 import edu.ftcphoenix.fw.ftc.vision.FtcLimelightAprilTagVisionLane;
-import edu.ftcphoenix.fw.localization.fusion.OdometryTagFusionPoseEstimator;
+import edu.ftcphoenix.fw.localization.fusion.OdometryCorrectionFusionEstimator;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 import edu.ftcphoenix.fw.tools.tester.calibration.CalibrationWalkthroughBuilder;
 import edu.ftcphoenix.fw.tools.tester.calibration.CameraMountCalibrator;
@@ -157,14 +157,14 @@ public final class StandardTesters {
         );
 
         guide.addStep(
-                "Loc: Pinpoint + AprilTag Fusion (Webcam)",
-                "Pick the Pinpoint device name if needed. The tester opens a webcam-backed AprilTag lane and uses an identity camera mount until you calibrate it.",
+                "Loc: Pinpoint + Field Corrections (Webcam)",
+                "Pick the Pinpoint device name if needed. The tester opens a webcam-backed AprilTag lane and uses raw AprilTag correction with an identity camera mount until you calibrate it.",
                 StandardTesters::createGenericPinpointAprilTagFusionTesterWebcam
         );
 
         guide.addStep(
-                "Loc: Pinpoint + AprilTag Fusion (Limelight)",
-                "Pick the Pinpoint device name if needed. The tester opens a Limelight-backed AprilTag lane and uses an identity camera mount until you calibrate it.",
+                "Loc: Pinpoint + Field Corrections (Limelight)",
+                "Pick the Pinpoint device name if needed. The tester opens a Limelight-backed AprilTag lane and uses raw AprilTag correction with an identity camera mount until you calibrate it.",
                 StandardTesters::createGenericPinpointAprilTagFusionTesterLimelight
         );
 
@@ -257,14 +257,14 @@ public final class StandardTesters {
         );
 
         suite.add(
-                "Loc: Pinpoint + AprilTag Fusion (Webcam)",
-                "Choose the Pinpoint device name at runtime. The tester still provides a webcam picker and uses an identity camera mount until calibrated.",
+                "Loc: Pinpoint + Field Corrections (Webcam)",
+                "Choose the Pinpoint device name at runtime. The tester still provides a webcam picker and uses raw AprilTag correction with an identity camera mount until calibrated.",
                 StandardTesters::createGenericPinpointAprilTagFusionTesterWebcam
         );
 
         suite.add(
-                "Loc: Pinpoint + AprilTag Fusion (Limelight)",
-                "Choose the Pinpoint device name at runtime. The tester provides a Limelight picker and uses an identity camera mount until calibrated.",
+                "Loc: Pinpoint + Field Corrections (Limelight)",
+                "Choose the Pinpoint device name at runtime. The tester provides a Limelight picker and uses raw AprilTag correction with an identity camera mount until calibrated.",
                 StandardTesters::createGenericPinpointAprilTagFusionTesterLimelight
         );
 
@@ -356,10 +356,10 @@ public final class StandardTesters {
                 GoBildaPinpointDriver.class,
                 "Select Pinpoint",
                 "Dpad: highlight | A: choose | B: refresh",
-                PinpointPoseEstimator.Config.defaults().hardwareMapName,
+                PinpointOdometryPredictor.Config.defaults().hardwareMapName,
                 hardwareName -> {
                     PinpointAxisDirectionTester.Config cfg = PinpointAxisDirectionTester.Config.defaults();
-                    cfg.pinpoint = PinpointPoseEstimator.Config.defaults().withHardwareMapName(hardwareName);
+                    cfg.pinpoint = PinpointOdometryPredictor.Config.defaults().withHardwareMapName(hardwareName);
                     return new PinpointAxisDirectionTester(cfg);
                 }
         );
@@ -371,10 +371,10 @@ public final class StandardTesters {
                 GoBildaPinpointDriver.class,
                 "Select Pinpoint",
                 "Dpad: highlight | A: choose | B: refresh",
-                PinpointPoseEstimator.Config.defaults().hardwareMapName,
+                PinpointOdometryPredictor.Config.defaults().hardwareMapName,
                 hardwareName -> {
                     PinpointPodOffsetCalibrator.Config cfg = PinpointPodOffsetCalibrator.Config.defaults();
-                    cfg.pinpoint = PinpointPoseEstimator.Config.defaults().withHardwareMapName(hardwareName);
+                    cfg.pinpoint = PinpointOdometryPredictor.Config.defaults().withHardwareMapName(hardwareName);
                     return new PinpointPodOffsetCalibrator(cfg);
                 }
         );
@@ -382,37 +382,45 @@ public final class StandardTesters {
 
     private static TeleOpTester createGenericPinpointAprilTagFusionTesterWebcam() {
         return new HardwareSelectingTester(
-                "Pinpoint + AprilTag Fusion (Webcam)",
+                "Pinpoint + Field Corrections (Webcam)",
                 GoBildaPinpointDriver.class,
                 "Select Pinpoint",
                 "Dpad: highlight | A: choose | B: refresh",
-                PinpointPoseEstimator.Config.defaults().hardwareMapName,
+                PinpointOdometryPredictor.Config.defaults().hardwareMapName,
                 hardwareName -> new PinpointAprilTagFusionLocalizationTester(
                         null,
                         null,
-                        PinpointPoseEstimator.Config.defaults().withHardwareMapName(hardwareName)
+                        PinpointOdometryPredictor.Config.defaults().withHardwareMapName(hardwareName)
                 )
         );
     }
 
     private static TeleOpTester createGenericPinpointAprilTagFusionTesterLimelight() {
         return new HardwareSelectingTester(
-                "Pinpoint + AprilTag Fusion (Limelight)",
+                "Pinpoint + Field Corrections (Limelight)",
                 GoBildaPinpointDriver.class,
                 "Select Pinpoint",
                 "Dpad: highlight | A: choose | B: refresh",
-                PinpointPoseEstimator.Config.defaults().hardwareMapName,
+                PinpointOdometryPredictor.Config.defaults().hardwareMapName,
                 hardwareName -> new PinpointAprilTagFusionLocalizationTester(
                         null,
                         Limelight3A.class,
                         "Select Limelight",
                         limelightLaneFactoryBuilder(),
-                        PinpointPoseEstimator.Config.defaults().withHardwareMapName(hardwareName),
-                        OdometryTagFusionPoseEstimator.Config.defaults(),
-                        null,
+                        buildLimelightFusionLocalizationConfig(hardwareName),
                         null
                 )
         );
+    }
+
+    private static edu.ftcphoenix.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane.Config buildLimelightFusionLocalizationConfig(String hardwareName) {
+        edu.ftcphoenix.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane.Config cfg =
+                edu.ftcphoenix.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane.Config.defaults();
+        cfg.predictor = PinpointOdometryPredictor.Config.defaults().withHardwareMapName(hardwareName);
+        cfg.correctedEstimatorMode = edu.ftcphoenix.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane.GlobalEstimatorMode.FUSION;
+        cfg.correctionSource.mode = edu.ftcphoenix.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane.CorrectionSourceMode.APRILTAG_POSE;
+        cfg.correctionFusion = OdometryCorrectionFusionEstimator.Config.defaults();
+        return cfg;
     }
 
     private static Function<String, AprilTagVisionLaneFactory> limelightLaneFactoryBuilder() {

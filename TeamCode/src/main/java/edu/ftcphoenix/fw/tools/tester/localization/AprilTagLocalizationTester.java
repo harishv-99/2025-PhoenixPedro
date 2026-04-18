@@ -22,7 +22,7 @@ import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLaneFactories;
 import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLaneFactory;
 import edu.ftcphoenix.fw.ftc.vision.FtcWebcamAprilTagVisionLane;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
-import edu.ftcphoenix.fw.localization.apriltag.TagOnlyPoseEstimator;
+import edu.ftcphoenix.fw.localization.apriltag.AprilTagPoseEstimator;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagObservation;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
@@ -43,7 +43,7 @@ import edu.ftcphoenix.fw.tools.tester.ui.HardwareNamePicker;
  * </ul>
  *
  * <p>Internally this tester shares one raw {@link AprilTagSensor} across a selector (for telemetry) and
- * {@link TagOnlyPoseEstimator} (for pose solving) with the official
+ * {@link AprilTagPoseEstimator} (for pose solving) with the official
  * framework's default field-fixed FTC game tag layout via {@link FtcGameTagLayout#currentGameFieldFixed()}.</p>
  *
  * <h2>Camera mount calibration</h2>
@@ -92,7 +92,7 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
     private CameraMountConfig cameraMount;
     private final double maxAgeSec;
     private final TagLayout layoutOverride;
-    private final TagOnlyPoseEstimator.Config poseEstimatorConfigOverride;
+    private final AprilTagPoseEstimator.Config poseEstimatorConfigOverride;
 
     private TagLayout layout;
 
@@ -106,7 +106,7 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
     private AprilTagVisionLane visionLane;
     private AprilTagSensor tagSensor;
     private TagSelectionSource selection;
-    private TagOnlyPoseEstimator poseEstimator;
+    private AprilTagPoseEstimator poseEstimator;
 
     private boolean trackAny = true;
     private int selectedTagId = DEFAULT_TAG_ID;
@@ -168,7 +168,7 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
                                       CameraMountConfig cameraMount,
                                       TagLayout layoutOverride,
                                       AprilTagLibrary tagLibraryOverride,
-                                      TagOnlyPoseEstimator.Config poseEstimatorConfigOverride,
+                                      AprilTagPoseEstimator.Config poseEstimatorConfigOverride,
                                       double maxAgeSec) {
         this(cameraName,
                 WebcamName.class,
@@ -199,7 +199,7 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
                                       String cameraPickerTitle,
                                       Function<String, AprilTagVisionLaneFactory> cameraLaneFactoryBuilder,
                                       TagLayout layoutOverride,
-                                      TagOnlyPoseEstimator.Config poseEstimatorConfigOverride,
+                                      AprilTagPoseEstimator.Config poseEstimatorConfigOverride,
                                       double maxAgeSec) {
         this.preferredCameraName = preferredCameraName;
         this.cameraDeviceType = cameraDeviceType != null ? cameraDeviceType : WebcamName.class;
@@ -465,13 +465,13 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
                 .continuous()
                 .build();
 
-        TagOnlyPoseEstimator.Config cfg = (poseEstimatorConfigOverride != null)
+        AprilTagPoseEstimator.Config cfg = (poseEstimatorConfigOverride != null)
                 ? poseEstimatorConfigOverride.copy()
-                : TagOnlyPoseEstimator.Config.defaults().withMaxDetectionAgeSec(effectiveMaxAgeSec);
+                : AprilTagPoseEstimator.Config.defaults().withMaxDetectionAgeSec(effectiveMaxAgeSec);
         cfg.withCameraMount(cameraMount);
         cfg.maxAbsBearingRad = 0.0;
 
-        poseEstimator = new TagOnlyPoseEstimator(tagSensor, layout, cfg);
+        poseEstimator = new AprilTagPoseEstimator(tagSensor, layout, cfg);
 
         // Reset sampling when the core solve parameters change.
         samples.clear();
@@ -596,7 +596,7 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
         }
 
         t.addLine("");
-        t.addLine("Pose estimate (TagOnlyPoseEstimator):");
+        t.addLine("Pose estimate (AprilTagPoseEstimator):");
         if (!est.hasPose || est.fieldToRobotPose == null) {
             t.addLine("  (no pose) Need: fresh detection for a tag present in the field layout.");
         } else {

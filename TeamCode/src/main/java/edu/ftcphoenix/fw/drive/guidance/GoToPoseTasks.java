@@ -5,7 +5,7 @@ import java.util.Objects;
 import edu.ftcphoenix.fw.core.geometry.Pose2d;
 import edu.ftcphoenix.fw.drive.DriveCommandSink;
 import edu.ftcphoenix.fw.field.TagLayout;
-import edu.ftcphoenix.fw.localization.PoseEstimator;
+import edu.ftcphoenix.fw.localization.AbsolutePoseEstimator;
 import edu.ftcphoenix.fw.task.Task;
 
 /**
@@ -25,7 +25,7 @@ public final class GoToPoseTasks {
      * Drive to an absolute pose in the field frame.
      */
     public static Task goToPoseFieldRelative(
-            PoseEstimator poseEstimator,
+            AbsolutePoseEstimator poseEstimator,
             DriveCommandSink drivebase,
             Pose2d targetFieldPose,
             DriveGuidancePlan.Tuning tuning,
@@ -60,7 +60,7 @@ public final class GoToPoseTasks {
      * The final heading is the tag's heading + π (to face the tag) plus {@code headingOffsetRad}.</p>
      */
     public static Task goToPoseTagRelative(
-            PoseEstimator poseEstimator,
+            AbsolutePoseEstimator poseEstimator,
             DriveCommandSink drivebase,
             TagLayout tagLayout,
             int tagId,
@@ -106,7 +106,7 @@ public final class GoToPoseTasks {
      * <p>This is the most common “aim only but keep position” autonomous behavior.</p>
      */
     public static Task holdPositionAndAimFieldHeading(
-            PoseEstimator poseEstimator,
+            AbsolutePoseEstimator poseEstimator,
             DriveCommandSink drivebase,
             double targetFieldHeadingRad,
             DriveGuidancePlan.Tuning tuning,
@@ -138,7 +138,7 @@ public final class GoToPoseTasks {
      * Turn to face a field heading without holding position.
      */
     public static Task aimOnlyFieldHeading(
-            PoseEstimator poseEstimator,
+            AbsolutePoseEstimator poseEstimator,
             DriveCommandSink drivebase,
             double targetFieldHeadingRad,
             DriveGuidancePlan.Tuning tuning,

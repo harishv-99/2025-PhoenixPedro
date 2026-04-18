@@ -1,6 +1,6 @@
 package edu.ftcphoenix.fw.tools.tester.calibration;
 
-import edu.ftcphoenix.fw.ftc.localization.PinpointPoseEstimator;
+import edu.ftcphoenix.fw.ftc.localization.PinpointOdometryPredictor;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 
 /**
@@ -54,7 +54,7 @@ public final class CalibrationChecks {
     /**
      * Returns whether the Pinpoint offsets look non-default.
      */
-    public static boolean pinpointOffsetsLookConfigured(PinpointPoseEstimator.Config cfg) {
+    public static boolean pinpointOffsetsLookConfigured(PinpointOdometryPredictor.Config cfg) {
         if (cfg == null) {
             return false;
         }
@@ -70,14 +70,14 @@ public final class CalibrationChecks {
      * "ready" so teams are not blocked if they copied the numbers in but forgot to flip a separate
      * boolean.</p>
      */
-    public static boolean pinpointOffsetsReady(PinpointPoseEstimator.Config cfg, boolean explicitlyVerified) {
+    public static boolean pinpointOffsetsReady(PinpointOdometryPredictor.Config cfg, boolean explicitlyVerified) {
         return explicitlyVerified || pinpointOffsetsLookConfigured(cfg);
     }
 
     /**
      * Status helper for Pinpoint pod offsets.
      */
-    public static CalibrationStatus pinpointOffsets(PinpointPoseEstimator.Config cfg,
+    public static CalibrationStatus pinpointOffsets(PinpointOdometryPredictor.Config cfg,
                                                     boolean explicitlyVerified) {
         if (explicitlyVerified) {
             return CalibrationStatus.complete("Pinpoint pod offsets were explicitly confirmed");

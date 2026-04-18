@@ -64,14 +64,14 @@ different APIs layered directly onto internals.
 - `GamepadDriveSource`
 - `MecanumDrivebase`
 - `AprilTagSensor`
-- `PinpointPoseEstimator`
+- `PinpointOdometryPredictor`
 - `FixedTagFieldPoseSolver`
 
 ### Framework lanes
 
 - `FtcMecanumDriveLane`: owns mecanum hardware wiring, brake behavior, drivebase construction, and drive lifecycle
 - `AprilTagVisionLane` plus a concrete FTC-boundary implementation such as `FtcWebcamAprilTagVisionLane` or `FtcLimelightAprilTagVisionLane`: Phoenix consumes the backend-neutral seam while `PhoenixVisionFactory` chooses the active backend
-- `FtcOdometryAprilTagLocalizationLane`: owns odometry + AprilTag localization strategy, fused estimator selection, and pose production
+- `FtcOdometryAprilTagLocalizationLane`: owns predictor + AprilTag localization strategy, correction-source selection, corrected-estimator selection, and pose production
 
 ### Shared field facts
 
@@ -190,16 +190,17 @@ the camera rig is not only for localization.
 ### `FtcOdometryAprilTagLocalizationLane` owns
 
 - Pinpoint odometry
-- AprilTag-only field solver
-- fused/global estimator selection
+- raw AprilTag field solver
+- optional direct Limelight field pose
+- correction-source and corrected/global estimator selection
 - localization update order
-- fused and odometry pose outputs
+- corrected and predictor pose outputs
 
 ### `ScoringTargeting` consumes
 
 - the shared AprilTag sensor from the vision lane
 - the camera mount from the vision lane
-- the fused pose from the localization lane
+- the corrected/global pose from the localization lane
 - the fixed field tag layout from `PhoenixProfile.field`
 
 That dependency structure is deliberate and matches the role vocabulary in the framework docs.

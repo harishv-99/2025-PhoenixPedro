@@ -7,7 +7,7 @@ import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
 
 import java.util.function.Function;
 
-import edu.ftcphoenix.fw.ftc.localization.PinpointPoseEstimator;
+import edu.ftcphoenix.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane;
 import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLaneFactories;
 import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLaneFactory;
 import edu.ftcphoenix.fw.ftc.vision.FtcLimelightAprilTagVisionLane;
@@ -167,14 +167,14 @@ public final class PhoenixRobotTesters {
         );
 
         suite.add(
-                "Loc: Pinpoint + AprilTag Fusion (Robot)",
-                "Default Phoenix global localizer on the active " + backend + " backend. Status: " + globalLocalizationStatus().summaryOrEmpty(),
+                "Loc: Pinpoint + Field Corrections (Robot)",
+                "Default Phoenix corrected-global localizer on the active " + backend + " backend. Status: " + globalLocalizationStatus().summaryOrEmpty(),
                 PhoenixRobotTesters::pinpointAprilTagFusion
         );
 
         suite.add(
-                "Loc: Pinpoint + AprilTag EKF (Robot)",
-                "Optional comparison localizer after the default fusion path looks good. Status: "
+                "Loc: Pinpoint + Field Corrections EKF (Robot)",
+                "Optional comparison corrected localizer after the default fusion path looks good. Status: "
                         + globalLocalizationStatus().summaryOrEmpty(),
                 PhoenixRobotTesters::pinpointAprilTagEkf
         );
@@ -212,7 +212,7 @@ public final class PhoenixRobotTesters {
                 activeVisionPickerTitle(p),
                 activeVisionLaneFactoryBuilder(p),
                 p.field.fixedAprilTagLayout,
-                p.localization.aprilTags.toTagOnlyPoseEstimatorConfig(p.vision.activeCameraMount()),
+                p.localization.aprilTags.toAprilTagPoseEstimatorConfig(p.vision.activeCameraMount()),
                 p.localization.aprilTags.maxDetectionAgeSec
         );
     }
@@ -224,7 +224,7 @@ public final class PhoenixRobotTesters {
      */
     public static TeleOpTester pinpointAxisCheck() {
         PinpointAxisDirectionTester.Config cfg = PinpointAxisDirectionTester.Config.defaults();
-        cfg.pinpoint = profile().localization.odometry.copy();
+        cfg.pinpoint = profile().localization.predictor.copy();
         return new PinpointAxisDirectionTester(cfg);
     }
 
@@ -237,7 +237,7 @@ public final class PhoenixRobotTesters {
     public static TeleOpTester pinpointPodOffsets() {
         PhoenixProfile p = profile();
         PinpointPodOffsetCalibrator.Config cfg = PinpointPodOffsetCalibrator.Config.defaults();
-        cfg.pinpoint = p.localization.odometry.copy();
+        cfg.pinpoint = p.localization.predictor.copy();
         cfg.mecanumWiring = p.drive.wiring.copy();
         cfg.targetTurnRad = Math.PI;
         cfg.enableAprilTagAssist = CalibrationChecks.canUseAprilTagAssist(p.vision.activeCameraMount());
@@ -251,44 +251,44 @@ public final class PhoenixRobotTesters {
     }
 
     /**
-     * Creates the default Phoenix global-localization tester based on odometry and AprilTag fusion.
+     * Creates the default Phoenix corrected-global-localization tester based on Pinpoint prediction plus the configured correction source.
      *
      * @return tester configured with Phoenix's default fusion estimator settings
      */
     public static TeleOpTester pinpointAprilTagFusion() {
         PhoenixProfile p = profile();
-        PinpointPoseEstimator.Config cfg = p.localization.odometry.copy();
+        FtcOdometryAprilTagLocalizationLane.Config cfg = p.localization.copy();
+        return configuredLocalizationTester(cfg, FtcOdometryAprilTagLocalizationLane.GlobalEstimatorMode.FUSION);
+    }
+
+    /**
+     * Creates the optional Phoenix covariance-aware corrected-global-localization tester.
+     *
+     * @return tester configured to compare the optional EKF path against the default fusion path
+     */
+    public static TeleOpTester pinpointAprilTagEkf() {
+        PhoenixProfile p = profile();
+        FtcOdometryAprilTagLocalizationLane.Config cfg = p.localization.copy();
+        return configuredLocalizationTester(cfg, FtcOdometryAprilTagLocalizationLane.GlobalEstimatorMode.EKF);
+    }
+
+    private static TeleOpTester configuredLocalizationTester(FtcOdometryAprilTagLocalizationLane.Config localizationCfg,
+                                                             FtcOdometryAprilTagLocalizationLane.GlobalEstimatorMode estimatorMode) {
+        PhoenixProfile p = profile();
+        FtcOdometryAprilTagLocalizationLane.Config cfg = localizationCfg != null
+                ? localizationCfg.copy()
+                : FtcOdometryAprilTagLocalizationLane.Config.defaults();
+        cfg.correctedEstimatorMode = estimatorMode != null
+                ? estimatorMode
+                : FtcOdometryAprilTagLocalizationLane.GlobalEstimatorMode.FUSION;
+
         return new PinpointAprilTagFusionLocalizationTester(
                 p.vision.activeDeviceName(),
                 activeVisionDeviceType(p),
                 activeVisionPickerTitle(p),
                 activeVisionLaneFactoryBuilder(p),
                 cfg,
-                p.localization.odometryTagFusion.copy(),
-                p.field.fixedAprilTagLayout,
-                p.localization.aprilTags.toTagOnlyPoseEstimatorConfig(p.vision.activeCameraMount())
-        );
-    }
-
-    /**
-     * Creates the optional Phoenix EKF-based global-localization tester.
-     *
-     * @return tester configured to compare the optional EKF path against the default fusion path
-     */
-    public static TeleOpTester pinpointAprilTagEkf() {
-        PhoenixProfile p = profile();
-        PinpointPoseEstimator.Config cfg = p.localization.odometry.copy();
-        return PinpointAprilTagFusionLocalizationTester.ekf(
-                p.vision.activeDeviceName(),
-                activeVisionDeviceType(p),
-                activeVisionPickerTitle(p),
-                activeVisionLaneFactoryBuilder(p),
-                cfg,
-                p.localization.odometryTagEkf.validatedCopy(
-                        "PhoenixProfile.current().localization.odometryTagEkf"
-                ),
-                p.field.fixedAprilTagLayout,
-                p.localization.aprilTags.toTagOnlyPoseEstimatorConfig(p.vision.activeCameraMount())
+                p.field.fixedAprilTagLayout
         );
     }
 
@@ -327,7 +327,7 @@ public final class PhoenixRobotTesters {
     public static CalibrationStatus pinpointOffsetsStatus() {
         PhoenixProfile p = profile();
         return CalibrationChecks.pinpointOffsets(
-                p.localization.odometry,
+                p.localization.predictor,
                 p.calibration.pinpointPodOffsetsCalibrated
         );
     }

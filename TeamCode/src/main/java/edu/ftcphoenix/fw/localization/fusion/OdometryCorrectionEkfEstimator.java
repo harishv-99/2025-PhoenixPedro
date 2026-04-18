@@ -8,27 +8,29 @@ import edu.ftcphoenix.fw.core.geometry.Pose2d;
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
 import edu.ftcphoenix.fw.core.math.MathUtil;
 import edu.ftcphoenix.fw.core.time.LoopClock;
+import edu.ftcphoenix.fw.localization.AbsolutePoseEstimator;
+import edu.ftcphoenix.fw.localization.MotionDelta;
+import edu.ftcphoenix.fw.localization.MotionPredictor;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
-import edu.ftcphoenix.fw.localization.PoseEstimator;
 import edu.ftcphoenix.fw.localization.PoseResetter;
 
 /**
- * Optional covariance-aware global localizer that combines smooth odometry with occasional absolute
- * vision corrections using a small planar EKF-style model.
+ * Optional covariance-aware global localizer that combines smooth predictor with occasional absolute
+ * corrections using a small planar EKF-style model.
  *
- * <p>This estimator exists alongside {@link OdometryTagFusionPoseEstimator}; it does <em>not</em>
+ * <p>This estimator exists alongside {@link OdometryCorrectionFusionEstimator}; it does <em>not</em>
  * replace the simpler complementary localizer. Teams that want a lightweight, easier-to-tune stack
- * should still start with {@link OdometryTagFusionPoseEstimator}. Teams that want an optional,
+ * should still start with {@link OdometryCorrectionFusionEstimator}. Teams that want an optional,
  * uncertainty-aware alternative can choose this class intentionally.</p>
  *
  * <h2>Model shape</h2>
  *
  * <ul>
  *   <li>State: planar {@code field -> robot} pose ({@code x}, {@code y}, {@code heading}).</li>
- *   <li>Prediction: odometry deltas are composed onto the current pose, while covariance grows as a
+ *   <li>Prediction: predictor deltas are composed onto the current pose, while covariance grows as a
  *       function of translational / rotational motion.</li>
- *   <li>Measurement: the supplied vision estimator is treated as an absolute pose measurement with a
- *       dynamically sized measurement covariance derived from the vision estimate's quality.</li>
+ *   <li>Measurement: the supplied correction estimator is treated as an absolute pose measurement with a
+ *       dynamically sized measurement covariance derived from the correction estimate's quality.</li>
  * </ul>
  *
  * <h2>Calibration and reliability notes</h2>
@@ -39,7 +41,7 @@ import edu.ftcphoenix.fw.localization.PoseResetter;
  *
  * <ol>
  *   <li>a calibrated {@code robot -> camera} mount,</li>
- *   <li>accurate odometry geometry / Pinpoint pod offsets, and</li>
+ *   <li>accurate predictor geometry / Pinpoint pod offsets, and</li>
  *   <li>a fixed-tag layout that excludes non-deterministic tags.</li>
  * </ol>
  *
@@ -49,33 +51,33 @@ import edu.ftcphoenix.fw.localization.PoseResetter;
  *
  * <h2>Latency compensation</h2>
  *
- * <p>When odometry history is available, accepted vision measurements are applied at their
- * measurement timestamp and the filter is replayed forward through stored odometry motion. If exact
+ * <p>When predictor history is available, accepted correction measurements are applied at their
+ * measurement timestamp and the filter is replayed forward through stored predictor motion. If exact
  * replay is unavailable, the estimator falls back to a projected-now update path rather than
  * pretending the delayed measurement was captured at the current loop time.</p>
  */
-public final class OdometryTagEkfPoseEstimator implements VisionCorrectionPoseEstimator {
+public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstimator {
 
     private static final double TIMESTAMP_EPS_SEC = 1e-6;
     private static final double MIN_VARIANCE = 1e-9;
 
     /**
-     * Configuration for {@link OdometryTagEkfPoseEstimator}.
+     * Configuration for {@link OdometryCorrectionEkfEstimator}.
      *
      * <p>The defaults are intentionally conservative and should be treated as a starting point, not
-     * as a substitute for real calibration. In particular, the odometry process-noise terms and the
-     * vision measurement-noise terms only make sense once camera extrinsics and odometry geometry are
+     * as a substitute for real calibration. In particular, the predictor process-noise terms and the
+     * correction measurement-noise terms only make sense once camera extrinsics and predictor geometry are
      * already trustworthy.</p>
      */
     public static final class Config {
         /**
-         * Reject vision measurements older than this (seconds).
+         * Reject correction measurements older than this (seconds).
          */
-        public double maxVisionAgeSec = 0.25;
+        public double maxCorrectionAgeSec = 0.25;
         /**
-         * Reject vision measurements with quality below this (0..1).
+         * Reject correction measurements with quality below this (0..1).
          */
-        public double minVisionQuality = 0.05;
+        public double minCorrectionQuality = 0.05;
 
         /**
          * Hard gate on planar innovation magnitude before the EKF update is even attempted.
@@ -83,56 +85,56 @@ public final class OdometryTagEkfPoseEstimator implements VisionCorrectionPoseEs
          * <p>This is a simple reliability guardrail: a wildly contradictory measurement should not be
          * allowed to rely solely on covariance math for rejection.</p>
          */
-        public double maxVisionPositionInnovationIn = 24.0;
+        public double maxCorrectionPositionInnovationIn = 24.0;
 
         /**
          * Hard gate on heading innovation magnitude before the EKF update is attempted.
          */
-        public double maxVisionHeadingInnovationRad = Math.toRadians(60.0);
+        public double maxCorrectionHeadingInnovationRad = Math.toRadians(60.0);
 
         /**
-         * Maximum allowed Mahalanobis distance squared for a vision innovation.
+         * Maximum allowed Mahalanobis distance squared for a correction innovation.
          *
          * <p>Higher values make the filter more permissive; lower values reject more contradictory
          * measurements. This is a reliability gate, not a scoring function.</p>
          */
-        public double maxVisionMahalanobisSq = 25.0;
+        public double maxCorrectionMahalanobisSq = 25.0;
 
         /**
-         * If true, the filter may initialize from a fresh vision measurement.
+         * If true, the filter may initialize from a fresh correction measurement.
          */
-        public boolean enableInitializeFromVision = true;
+        public boolean enableInitializeFromCorrection = true;
 
         /**
-         * If true, accepted filtered poses are pushed back into the odometry estimator when it
-         * supports {@link PoseResetter}. This keeps odometry and the filtered state aligned.
+         * If true, accepted filtered poses are pushed back into the predictor estimator when it
+         * supports {@link PoseResetter}. This keeps predictor and the filtered state aligned.
          */
-        public boolean enablePushFilteredPoseToOdometry = true;
+        public boolean enablePushCorrectedPoseToPredictor = true;
 
         /**
-         * If true, accepted vision measurements are updated at their measurement timestamp and the
-         * odometry prediction is replayed forward to the current loop when history is available.
+         * If true, accepted correction measurements are updated at their measurement timestamp and the
+         * predictor prediction is replayed forward to the current loop when history is available.
          */
         public boolean enableLatencyCompensation = true;
 
         /**
-         * How much recent odometry history (seconds) to retain for measurement-time replay.
+         * How much recent predictor history (seconds) to retain for measurement-time replay.
          *
          * <p>When latency compensation is enabled, this should be at least as large as
-         * {@link #maxVisionAgeSec} so every still-acceptable vision frame can be replayed through
-         * the stored odometry history.</p>
+         * {@link #maxCorrectionAgeSec} so every still-acceptable correction frame can be replayed through
+         * the stored predictor history.</p>
          */
-        public double odomHistorySec = 1.0;
+        public double predictorHistorySec = 1.0;
 
         /**
          * Initial planar position standard deviation (inches) when the filter initializes from
-         * odometry alone before any absolute vision correction has been accepted.
+         * predictor alone before any absolute correction has been accepted.
          */
         public double initialPositionStdIn = 18.0;
 
         /**
-         * Initial heading standard deviation (radians) when the filter initializes from odometry
-         * alone before any absolute vision correction has been accepted.
+         * Initial heading standard deviation (radians) when the filter initializes from predictor
+         * alone before any absolute correction has been accepted.
          */
         public double initialHeadingStdRad = Math.toRadians(45.0);
 
@@ -149,56 +151,56 @@ public final class OdometryTagEkfPoseEstimator implements VisionCorrectionPoseEs
         public double manualPoseHeadingStdRad = Math.toRadians(6.0);
 
         /**
-         * Base translational process-noise standard deviation added on every odometry predict step.
+         * Base translational process-noise standard deviation added on every predictor predict step.
          */
-        public double odomProcessPositionStdFloorIn = 0.10;
+        public double predictorProcessPositionStdFloorIn = 0.10;
         /**
-         * Extra translational process-noise standard deviation per inch of odometry travel.
+         * Extra translational process-noise standard deviation per inch of predictor travel.
          */
-        public double odomProcessPositionStdPerIn = 0.025;
+        public double predictorProcessPositionStdPerIn = 0.025;
         /**
-         * Extra translational process-noise standard deviation per radian of odometry heading change.
+         * Extra translational process-noise standard deviation per radian of predictor heading change.
          */
-        public double odomProcessPositionStdPerRad = 0.50;
+        public double predictorProcessPositionStdPerRad = 0.50;
 
         /**
-         * Base heading process-noise standard deviation added on every odometry predict step.
+         * Base heading process-noise standard deviation added on every predictor predict step.
          */
-        public double odomProcessHeadingStdFloorRad = Math.toRadians(0.25);
+        public double predictorProcessHeadingStdFloorRad = Math.toRadians(0.25);
         /**
-         * Extra heading process-noise standard deviation per inch of odometry travel.
+         * Extra heading process-noise standard deviation per inch of predictor travel.
          */
-        public double odomProcessHeadingStdPerIn = Math.toRadians(0.08);
+        public double predictorProcessHeadingStdPerIn = Math.toRadians(0.08);
         /**
-         * Extra heading process-noise standard deviation per radian of odometry heading change.
+         * Extra heading process-noise standard deviation per radian of predictor heading change.
          */
-        public double odomProcessHeadingStdPerRad = 0.05;
+        public double predictorProcessHeadingStdPerRad = 0.05;
 
         /**
-         * Best-case planar position measurement standard deviation (inches) for a high-quality vision pose.
+         * Best-case planar position measurement standard deviation (inches) for a high-quality correction pose.
          */
-        public double visionPositionStdFloorIn = 1.25;
+        public double correctionPositionStdFloorIn = 1.25;
         /**
-         * Additional planar position measurement standard deviation (inches) added as vision quality falls toward 0.
+         * Additional planar position measurement standard deviation (inches) added as correction quality falls toward 0.
          */
-        public double visionPositionStdScaleIn = 10.0;
+        public double correctionPositionStdScaleIn = 10.0;
         /**
          * Additional planar position standard deviation (inches/sec) when a delayed frame must be projected to "now" instead of replayed.
          */
-        public double projectedVisionPositionStdPerSec = 4.0;
+        public double projectedCorrectionPositionStdPerSec = 4.0;
 
         /**
-         * Best-case heading measurement standard deviation (radians) for a high-quality vision pose.
+         * Best-case heading measurement standard deviation (radians) for a high-quality correction pose.
          */
-        public double visionHeadingStdFloorRad = Math.toRadians(2.0);
+        public double correctionHeadingStdFloorRad = Math.toRadians(2.0);
         /**
-         * Additional heading measurement standard deviation (radians) added as vision quality falls toward 0.
+         * Additional heading measurement standard deviation (radians) added as correction quality falls toward 0.
          */
-        public double visionHeadingStdScaleRad = Math.toRadians(18.0);
+        public double correctionHeadingStdScaleRad = Math.toRadians(18.0);
         /**
          * Additional heading standard deviation (radians/sec) when a delayed frame must be projected to "now" instead of replayed.
          */
-        public double projectedVisionHeadingStdPerSec = Math.toRadians(12.0);
+        public double projectedCorrectionHeadingStdPerSec = Math.toRadians(12.0);
 
         /**
          * Position-uncertainty scale used when turning filter covariance into {@link PoseEstimate#quality}.
@@ -226,37 +228,37 @@ public final class OdometryTagEkfPoseEstimator implements VisionCorrectionPoseEs
         public void validate(String context) {
             String p = (context != null && !context.trim().isEmpty())
                     ? context.trim()
-                    : "OdometryTagEkfPoseEstimator.Config";
+                    : "OdometryCorrectionEkfEstimator.Config";
 
-            requireFiniteNonNegative(maxVisionAgeSec, p + ".maxVisionAgeSec");
-            requireFiniteInRange(minVisionQuality, 0.0, 1.0, p + ".minVisionQuality");
-            requireFinitePositive(maxVisionPositionInnovationIn, p + ".maxVisionPositionInnovationIn");
-            requireFinitePositive(maxVisionHeadingInnovationRad, p + ".maxVisionHeadingInnovationRad");
-            requireFinitePositive(maxVisionMahalanobisSq, p + ".maxVisionMahalanobisSq");
-            requireFiniteNonNegative(odomHistorySec, p + ".odomHistorySec");
+            requireFiniteNonNegative(maxCorrectionAgeSec, p + ".maxCorrectionAgeSec");
+            requireFiniteInRange(minCorrectionQuality, 0.0, 1.0, p + ".minCorrectionQuality");
+            requireFinitePositive(maxCorrectionPositionInnovationIn, p + ".maxCorrectionPositionInnovationIn");
+            requireFinitePositive(maxCorrectionHeadingInnovationRad, p + ".maxCorrectionHeadingInnovationRad");
+            requireFinitePositive(maxCorrectionMahalanobisSq, p + ".maxCorrectionMahalanobisSq");
+            requireFiniteNonNegative(predictorHistorySec, p + ".predictorHistorySec");
             requireFinitePositive(initialPositionStdIn, p + ".initialPositionStdIn");
             requireFinitePositive(initialHeadingStdRad, p + ".initialHeadingStdRad");
             requireFinitePositive(manualPosePositionStdIn, p + ".manualPosePositionStdIn");
             requireFinitePositive(manualPoseHeadingStdRad, p + ".manualPoseHeadingStdRad");
-            requireFinitePositive(odomProcessPositionStdFloorIn, p + ".odomProcessPositionStdFloorIn");
-            requireFiniteNonNegative(odomProcessPositionStdPerIn, p + ".odomProcessPositionStdPerIn");
-            requireFiniteNonNegative(odomProcessPositionStdPerRad, p + ".odomProcessPositionStdPerRad");
-            requireFinitePositive(odomProcessHeadingStdFloorRad, p + ".odomProcessHeadingStdFloorRad");
-            requireFiniteNonNegative(odomProcessHeadingStdPerIn, p + ".odomProcessHeadingStdPerIn");
-            requireFiniteNonNegative(odomProcessHeadingStdPerRad, p + ".odomProcessHeadingStdPerRad");
-            requireFinitePositive(visionPositionStdFloorIn, p + ".visionPositionStdFloorIn");
-            requireFiniteNonNegative(visionPositionStdScaleIn, p + ".visionPositionStdScaleIn");
-            requireFiniteNonNegative(projectedVisionPositionStdPerSec, p + ".projectedVisionPositionStdPerSec");
-            requireFinitePositive(visionHeadingStdFloorRad, p + ".visionHeadingStdFloorRad");
-            requireFiniteNonNegative(visionHeadingStdScaleRad, p + ".visionHeadingStdScaleRad");
-            requireFiniteNonNegative(projectedVisionHeadingStdPerSec, p + ".projectedVisionHeadingStdPerSec");
+            requireFinitePositive(predictorProcessPositionStdFloorIn, p + ".predictorProcessPositionStdFloorIn");
+            requireFiniteNonNegative(predictorProcessPositionStdPerIn, p + ".predictorProcessPositionStdPerIn");
+            requireFiniteNonNegative(predictorProcessPositionStdPerRad, p + ".predictorProcessPositionStdPerRad");
+            requireFinitePositive(predictorProcessHeadingStdFloorRad, p + ".predictorProcessHeadingStdFloorRad");
+            requireFiniteNonNegative(predictorProcessHeadingStdPerIn, p + ".predictorProcessHeadingStdPerIn");
+            requireFiniteNonNegative(predictorProcessHeadingStdPerRad, p + ".predictorProcessHeadingStdPerRad");
+            requireFinitePositive(correctionPositionStdFloorIn, p + ".correctionPositionStdFloorIn");
+            requireFiniteNonNegative(correctionPositionStdScaleIn, p + ".correctionPositionStdScaleIn");
+            requireFiniteNonNegative(projectedCorrectionPositionStdPerSec, p + ".projectedCorrectionPositionStdPerSec");
+            requireFinitePositive(correctionHeadingStdFloorRad, p + ".correctionHeadingStdFloorRad");
+            requireFiniteNonNegative(correctionHeadingStdScaleRad, p + ".correctionHeadingStdScaleRad");
+            requireFiniteNonNegative(projectedCorrectionHeadingStdPerSec, p + ".projectedCorrectionHeadingStdPerSec");
             requireFinitePositive(qualityPositionStdScaleIn, p + ".qualityPositionStdScaleIn");
             requireFinitePositive(qualityHeadingStdScaleRad, p + ".qualityHeadingStdScaleRad");
 
-            if (enableLatencyCompensation && odomHistorySec + TIMESTAMP_EPS_SEC < maxVisionAgeSec) {
+            if (enableLatencyCompensation && predictorHistorySec + TIMESTAMP_EPS_SEC < maxCorrectionAgeSec) {
                 throw new IllegalArgumentException(
-                        p + ".odomHistorySec must be >= maxVisionAgeSec when latency compensation is enabled"
-                                + " (increase odomHistorySec or reduce maxVisionAgeSec)"
+                        p + ".predictorHistorySec must be >= maxCorrectionAgeSec when latency compensation is enabled"
+                                + " (increase predictorHistorySec or reduce maxCorrectionAgeSec)"
                 );
             }
         }
@@ -266,31 +268,31 @@ public final class OdometryTagEkfPoseEstimator implements VisionCorrectionPoseEs
          */
         public Config copy() {
             Config c = new Config();
-            c.maxVisionAgeSec = this.maxVisionAgeSec;
-            c.minVisionQuality = this.minVisionQuality;
-            c.maxVisionPositionInnovationIn = this.maxVisionPositionInnovationIn;
-            c.maxVisionHeadingInnovationRad = this.maxVisionHeadingInnovationRad;
-            c.maxVisionMahalanobisSq = this.maxVisionMahalanobisSq;
-            c.enableInitializeFromVision = this.enableInitializeFromVision;
-            c.enablePushFilteredPoseToOdometry = this.enablePushFilteredPoseToOdometry;
+            c.maxCorrectionAgeSec = this.maxCorrectionAgeSec;
+            c.minCorrectionQuality = this.minCorrectionQuality;
+            c.maxCorrectionPositionInnovationIn = this.maxCorrectionPositionInnovationIn;
+            c.maxCorrectionHeadingInnovationRad = this.maxCorrectionHeadingInnovationRad;
+            c.maxCorrectionMahalanobisSq = this.maxCorrectionMahalanobisSq;
+            c.enableInitializeFromCorrection = this.enableInitializeFromCorrection;
+            c.enablePushCorrectedPoseToPredictor = this.enablePushCorrectedPoseToPredictor;
             c.enableLatencyCompensation = this.enableLatencyCompensation;
-            c.odomHistorySec = this.odomHistorySec;
+            c.predictorHistorySec = this.predictorHistorySec;
             c.initialPositionStdIn = this.initialPositionStdIn;
             c.initialHeadingStdRad = this.initialHeadingStdRad;
             c.manualPosePositionStdIn = this.manualPosePositionStdIn;
             c.manualPoseHeadingStdRad = this.manualPoseHeadingStdRad;
-            c.odomProcessPositionStdFloorIn = this.odomProcessPositionStdFloorIn;
-            c.odomProcessPositionStdPerIn = this.odomProcessPositionStdPerIn;
-            c.odomProcessPositionStdPerRad = this.odomProcessPositionStdPerRad;
-            c.odomProcessHeadingStdFloorRad = this.odomProcessHeadingStdFloorRad;
-            c.odomProcessHeadingStdPerIn = this.odomProcessHeadingStdPerIn;
-            c.odomProcessHeadingStdPerRad = this.odomProcessHeadingStdPerRad;
-            c.visionPositionStdFloorIn = this.visionPositionStdFloorIn;
-            c.visionPositionStdScaleIn = this.visionPositionStdScaleIn;
-            c.projectedVisionPositionStdPerSec = this.projectedVisionPositionStdPerSec;
-            c.visionHeadingStdFloorRad = this.visionHeadingStdFloorRad;
-            c.visionHeadingStdScaleRad = this.visionHeadingStdScaleRad;
-            c.projectedVisionHeadingStdPerSec = this.projectedVisionHeadingStdPerSec;
+            c.predictorProcessPositionStdFloorIn = this.predictorProcessPositionStdFloorIn;
+            c.predictorProcessPositionStdPerIn = this.predictorProcessPositionStdPerIn;
+            c.predictorProcessPositionStdPerRad = this.predictorProcessPositionStdPerRad;
+            c.predictorProcessHeadingStdFloorRad = this.predictorProcessHeadingStdFloorRad;
+            c.predictorProcessHeadingStdPerIn = this.predictorProcessHeadingStdPerIn;
+            c.predictorProcessHeadingStdPerRad = this.predictorProcessHeadingStdPerRad;
+            c.correctionPositionStdFloorIn = this.correctionPositionStdFloorIn;
+            c.correctionPositionStdScaleIn = this.correctionPositionStdScaleIn;
+            c.projectedCorrectionPositionStdPerSec = this.projectedCorrectionPositionStdPerSec;
+            c.correctionHeadingStdFloorRad = this.correctionHeadingStdFloorRad;
+            c.correctionHeadingStdScaleRad = this.correctionHeadingStdScaleRad;
+            c.projectedCorrectionHeadingStdPerSec = this.projectedCorrectionHeadingStdPerSec;
             c.qualityPositionStdScaleIn = this.qualityPositionStdScaleIn;
             c.qualityHeadingStdScaleRad = this.qualityHeadingStdScaleRad;
             return c;
@@ -324,11 +326,11 @@ public final class OdometryTagEkfPoseEstimator implements VisionCorrectionPoseEs
         }
     }
 
-    private static final class OdomSample {
+    private static final class PredictorSample {
         final double timestampSec;
         final Pose3d pose;
 
-        OdomSample(double timestampSec, Pose3d pose) {
+        PredictorSample(double timestampSec, Pose3d pose) {
             this.timestampSec = timestampSec;
             this.pose = pose;
         }
@@ -337,51 +339,51 @@ public final class OdometryTagEkfPoseEstimator implements VisionCorrectionPoseEs
     private static final class StateSnapshot {
         final Pose3d pose;
         final double[][] covariance;
-        final Pose3d odomPose;
+        final Pose3d predictorPose;
         final double timestampSec;
 
-        StateSnapshot(Pose3d pose, double[][] covariance, Pose3d odomPose, double timestampSec) {
+        StateSnapshot(Pose3d pose, double[][] covariance, Pose3d predictorPose, double timestampSec) {
             this.pose = pose;
             this.covariance = covariance;
-            this.odomPose = odomPose;
+            this.predictorPose = predictorPose;
             this.timestampSec = timestampSec;
         }
     }
 
-    private final PoseEstimator odometry;
-    private final PoseEstimator vision;
+    private final MotionPredictor predictor;
+    private final AbsolutePoseEstimator correction;
     private final Config cfg;
 
     private boolean initialized = false;
-    private boolean visionEnabled = true;
+    private boolean correctionEnabled = true;
 
     private Pose3d statePose = Pose3d.zero();
     private double[][] stateCovariance = diagonal(1.0, 1.0, 1.0);
-    private Pose3d lastOdomPose = Pose3d.zero();
+    private Pose3d lastPredictorPose = Pose3d.zero();
 
     private PoseEstimate lastEstimate = PoseEstimate.noPose(0.0);
-    private final Deque<OdomSample> odomHistory = new ArrayDeque<OdomSample>();
+    private final Deque<PredictorSample> predictorHistory = new ArrayDeque<PredictorSample>();
 
     private boolean replayBaseValid = false;
     private double replayBaseTimestampSec = Double.NaN;
     private Pose3d replayBasePose = Pose3d.zero();
     private double[][] replayBaseCovariance = diagonal(1.0, 1.0, 1.0);
-    private Pose3d replayBaseOdomPose = Pose3d.zero();
+    private Pose3d replayBasePredictorPose = Pose3d.zero();
 
     // Debug/telemetry helpers.
-    private double lastVisionAcceptedSec = Double.NaN;
-    private double lastAcceptedVisionMeasurementTimestampSec = Double.NaN;
-    private double lastEvaluatedVisionTimestampSec = Double.NaN;
-    private Pose3d lastVisionPose = Pose3d.zero();
-    private Pose3d lastLatencyCompensatedVisionPose = Pose3d.zero();
+    private double lastCorrectionAcceptedSec = Double.NaN;
+    private double lastAcceptedCorrectionMeasurementTimestampSec = Double.NaN;
+    private double lastEvaluatedCorrectionTimestampSec = Double.NaN;
+    private Pose3d lastCorrectionPose = Pose3d.zero();
+    private Pose3d lastLatencyCompensatedCorrectionPose = Pose3d.zero();
     private Pose3d lastReplayReferencePose = Pose3d.zero();
-    private boolean lastVisionUsedReplay = false;
-    private int acceptedVisionCount = 0;
-    private int rejectedVisionCount = 0;
-    private int skippedDuplicateVisionCount = 0;
-    private int skippedOutOfOrderVisionCount = 0;
-    private int replayedVisionCount = 0;
-    private int projectedVisionCount = 0;
+    private boolean lastCorrectionUsedReplay = false;
+    private int acceptedCorrectionCount = 0;
+    private int rejectedCorrectionCount = 0;
+    private int skippedDuplicateCorrectionCount = 0;
+    private int skippedOutOfOrderCorrectionCount = 0;
+    private int replayedCorrectionCount = 0;
+    private int projectedCorrectionCount = 0;
 
     private double lastInnovationPositionIn = Double.NaN;
     private double lastInnovationHeadingRad = Double.NaN;
@@ -392,40 +394,40 @@ public final class OdometryTagEkfPoseEstimator implements VisionCorrectionPoseEs
     /**
      * Creates an EKF-style localizer with default configuration.
      */
-    public OdometryTagEkfPoseEstimator(PoseEstimator odometry, PoseEstimator vision) {
-        this(odometry, vision, Config.defaults());
+    public OdometryCorrectionEkfEstimator(MotionPredictor predictor, AbsolutePoseEstimator correction) {
+        this(predictor, correction, Config.defaults());
     }
 
     /**
      * Creates an EKF-style localizer with explicit configuration.
      */
-    public OdometryTagEkfPoseEstimator(PoseEstimator odometry, PoseEstimator vision, Config cfg) {
-        if (odometry == null) {
-            throw new IllegalArgumentException("odometry must not be null");
+    public OdometryCorrectionEkfEstimator(MotionPredictor predictor, AbsolutePoseEstimator correction, Config cfg) {
+        if (predictor == null) {
+            throw new IllegalArgumentException("predictor must not be null");
         }
-        if (vision == null) {
-            throw new IllegalArgumentException("vision must not be null");
+        if (correction == null) {
+            throw new IllegalArgumentException("correction must not be null");
         }
-        this.odometry = odometry;
-        this.vision = vision;
+        this.predictor = predictor;
+        this.correction = correction;
         Config base = (cfg != null) ? cfg : Config.defaults();
-        this.cfg = base.validatedCopy("OdometryTagEkfPoseEstimator.Config");
+        this.cfg = base.validatedCopy("OdometryCorrectionEkfEstimator.Config");
     }
 
     /**
-     * {@inheritDoc}
+     * Enables or disables absolute corrections while leaving predictor propagation alive.
      */
     @Override
-    public void setVisionEnabled(boolean enabled) {
-        this.visionEnabled = enabled;
+    public void setCorrectionEnabled(boolean enabled) {
+        this.correctionEnabled = enabled;
     }
 
     /**
-     * {@inheritDoc}
+     * Returns whether absolute corrections are currently enabled.
      */
     @Override
-    public boolean isVisionEnabled() {
-        return visionEnabled;
+    public boolean isCorrectionEnabled() {
+        return correctionEnabled;
     }
 
     /**
@@ -478,155 +480,158 @@ public final class OdometryTagEkfPoseEstimator implements VisionCorrectionPoseEs
     }
 
     /**
-     * The timestamp (clock.nowSec) when vision was last accepted, or NaN if never.
+     * The timestamp (clock.nowSec) when correction was last accepted, or NaN if never.
      */
-    public double getLastVisionAcceptedSec() {
-        return lastVisionAcceptedSec;
+    public double getLastCorrectionAcceptedSec() {
+        return lastCorrectionAcceptedSec;
     }
 
     /**
-     * Measurement timestamp of the most recently accepted vision frame, or NaN if never.
+     * Measurement timestamp of the most recently accepted correction frame, or NaN if never.
      */
-    public double getLastAcceptedVisionMeasurementTimestampSec() {
-        return lastAcceptedVisionMeasurementTimestampSec;
+    public double getLastAcceptedCorrectionMeasurementTimestampSec() {
+        return lastAcceptedCorrectionMeasurementTimestampSec;
     }
 
     /**
-     * Last accepted vision pose at the frame's own measurement timestamp (planarized).
+     * Last accepted correction pose at the frame's own measurement timestamp (planarized).
      */
-    public Pose3d getLastVisionPose() {
-        return lastVisionPose;
+    public Pose3d getLastCorrectionPose() {
+        return lastCorrectionPose;
     }
 
     /**
      * Returns whether the most recently accepted correction used measurement-time replay.
      */
-    public boolean wasLastVisionCorrectionReplay() {
-        return lastVisionUsedReplay;
+    public boolean wasLastCorrectionCorrectionReplay() {
+        return lastCorrectionUsedReplay;
     }
 
     /**
-     * Returns the total number of accepted vision corrections.
+     * Returns the total number of accepted corrections.
      */
-    public int getAcceptedVisionCount() {
-        return acceptedVisionCount;
+    public int getAcceptedCorrectionCount() {
+        return acceptedCorrectionCount;
     }
 
     /**
-     * Returns the total number of newly-observed vision measurements that were rejected.
+     * Returns the total number of newly-observed correction measurements that were rejected.
      */
-    public int getRejectedVisionCount() {
-        return rejectedVisionCount;
+    public int getRejectedCorrectionCount() {
+        return rejectedCorrectionCount;
     }
 
     /**
      * Returns how many duplicate frame timestamps were skipped.
      */
-    public int getSkippedDuplicateVisionCount() {
-        return skippedDuplicateVisionCount;
+    public int getSkippedDuplicateCorrectionCount() {
+        return skippedDuplicateCorrectionCount;
     }
 
     /**
-     * Returns how many older-than-last-evaluated vision timestamps were skipped.
+     * Returns how many older-than-last-evaluated correction timestamps were skipped.
      */
-    public int getSkippedOutOfOrderVisionCount() {
-        return skippedOutOfOrderVisionCount;
+    public int getSkippedOutOfOrderCorrectionCount() {
+        return skippedOutOfOrderCorrectionCount;
     }
 
     /**
      * Returns how many accepted corrections used measurement-time replay.
      */
-    public int getReplayedVisionCount() {
-        return replayedVisionCount;
+    public int getReplayedCorrectionCount() {
+        return replayedCorrectionCount;
     }
 
     /**
      * Returns how many accepted corrections fell back to a simple projected-now path.
      */
-    public int getProjectedVisionCount() {
-        return projectedVisionCount;
+    public int getProjectedCorrectionCount() {
+        return projectedCorrectionCount;
     }
 
     /**
-     * {@inheritDoc}
+     * Returns aggregate correction counters and timestamps useful for EKF telemetry and tuning.
      */
     @Override
-    public VisionCorrectionStats getVisionCorrectionStats() {
-        return new VisionCorrectionStats(
-                acceptedVisionCount,
-                rejectedVisionCount,
-                skippedDuplicateVisionCount,
-                skippedOutOfOrderVisionCount,
-                replayedVisionCount,
-                projectedVisionCount,
-                lastVisionAcceptedSec,
-                lastAcceptedVisionMeasurementTimestampSec,
-                lastEvaluatedVisionTimestampSec,
-                lastVisionUsedReplay
+    public CorrectionStats getCorrectionStats() {
+        return new CorrectionStats(
+                acceptedCorrectionCount,
+                rejectedCorrectionCount,
+                skippedDuplicateCorrectionCount,
+                skippedOutOfOrderCorrectionCount,
+                replayedCorrectionCount,
+                projectedCorrectionCount,
+                lastCorrectionAcceptedSec,
+                lastAcceptedCorrectionMeasurementTimestampSec,
+                lastEvaluatedCorrectionTimestampSec,
+                lastCorrectionUsedReplay
         );
     }
 
     /**
-     * {@inheritDoc}
+     * Advances the EKF one loop by propagating predictor motion and conditionally applying the
+     * latest absolute correction measurement.
      */
     @Override
     public void update(LoopClock clock) {
         final double nowSec = clock != null ? clock.nowSec() : 0.0;
 
-        odometry.update(clock);
-        vision.update(clock);
+        predictor.update(clock);
+        correction.update(clock);
 
-        final PoseEstimate odomEst = odometry.getEstimate();
-        final PoseEstimate visEst = vision.getEstimate();
-        final Pose3d currentOdomPose = (odomEst != null && odomEst.hasPose)
-                ? planarize(odomEst.fieldToRobotPose)
+        final PoseEstimate predictorEst = predictor.getEstimate();
+        final MotionDelta predictorDelta = predictor.getLatestMotionDelta();
+        final PoseEstimate correctionEst = correction.getEstimate();
+        final Pose3d currentPredictorPose = (predictorEst != null && predictorEst.hasPose)
+                ? planarize(predictorEst.fieldToRobotPose)
                 : null;
-        final double currentOdomTimestampSec = estimateTimestampOr(odomEst, nowSec);
+        final double currentPredictorTimestampSec = estimateTimestampOr(predictorEst, nowSec);
 
-        if (currentOdomPose != null) {
-            recordOdomSample(currentOdomTimestampSec, currentOdomPose);
+        if (currentPredictorPose != null) {
+            recordPredictorSample(currentPredictorTimestampSec, currentPredictorPose);
         }
 
-        boolean evaluatedVisionThisLoop = false;
+        boolean evaluatedCorrectionThisLoop = false;
 
         if (!initialized) {
-            boolean initializedFromVision = false;
-            if (visionEnabled && cfg.enableInitializeFromVision && shouldEvaluateVisionMeasurement(visEst)) {
-                evaluatedVisionThisLoop = true;
-                if (isVisionAcceptable(visEst, nowSec)) {
-                    initializeFromVision(visEst, currentOdomPose, currentOdomTimestampSec, nowSec);
-                    initializedFromVision = initialized;
+            boolean initializedFromCorrection = false;
+            if (correctionEnabled && cfg.enableInitializeFromCorrection && shouldEvaluateCorrectionMeasurement(correctionEst)) {
+                evaluatedCorrectionThisLoop = true;
+                if (isCorrectionAcceptable(correctionEst, nowSec)) {
+                    initializeFromCorrection(correctionEst, currentPredictorPose, currentPredictorTimestampSec, nowSec);
+                    initializedFromCorrection = initialized;
                 } else {
-                    rejectedVisionCount++;
+                    rejectedCorrectionCount++;
                 }
             }
 
-            if (!initialized && currentOdomPose != null) {
-                statePose = currentOdomPose;
-                stateCovariance = initialOdometryCovariance();
+            if (!initialized && currentPredictorPose != null) {
+                statePose = currentPredictorPose;
+                stateCovariance = initialPredictorCovariance();
                 initialized = true;
-                lastOdomPose = statePose;
-                resetOdomHistory(currentOdomTimestampSec, statePose);
-                setReplayBase(currentOdomTimestampSec, statePose, stateCovariance, statePose);
-            } else if (!initialized && !initializedFromVision) {
+                lastPredictorPose = currentPredictorPose;
+                resetPredictorHistory(currentPredictorTimestampSec, currentPredictorPose);
+                setReplayBase(currentPredictorTimestampSec, statePose, stateCovariance, currentPredictorPose);
+            } else if (!initialized && !initializedFromCorrection) {
                 lastEstimate = PoseEstimate.noPose(nowSec);
                 return;
             }
         } else {
-            if (currentOdomPose != null) {
-                Pose3d delta = lastOdomPose.inverse().then(currentOdomPose);
-                StateSnapshot predicted = predictStep(statePose, stateCovariance, delta, currentOdomPose, currentOdomTimestampSec);
+            if (predictorDelta != null && predictorDelta.hasDelta && currentPredictorPose != null) {
+                StateSnapshot predicted = predictStep(statePose, stateCovariance, predictorDelta.deltaPose, currentPredictorPose, currentPredictorTimestampSec);
                 statePose = predicted.pose;
                 stateCovariance = predicted.covariance;
-                lastOdomPose = currentOdomPose;
+            }
+            if (currentPredictorPose != null) {
+                lastPredictorPose = currentPredictorPose;
             }
         }
 
-        if (visionEnabled && !evaluatedVisionThisLoop && shouldEvaluateVisionMeasurement(visEst)) {
-            if (!isVisionAcceptable(visEst, nowSec)) {
-                rejectedVisionCount++;
+        if (correctionEnabled && !evaluatedCorrectionThisLoop && shouldEvaluateCorrectionMeasurement(correctionEst)) {
+            if (!isCorrectionAcceptable(correctionEst, nowSec)) {
+                rejectedCorrectionCount++;
             } else {
-                maybeApplyVisionCorrection(visEst, currentOdomPose, currentOdomTimestampSec, nowSec);
+                maybeApplyCorrection(correctionEst, currentPredictorPose, currentPredictorTimestampSec, nowSec);
             }
         }
 
@@ -634,7 +639,7 @@ public final class OdometryTagEkfPoseEstimator implements VisionCorrectionPoseEs
     }
 
     /**
-     * {@inheritDoc}
+     * Returns the most recent corrected/global pose estimate produced by the EKF.
      */
     @Override
     public PoseEstimate getEstimate() {
@@ -642,7 +647,8 @@ public final class OdometryTagEkfPoseEstimator implements VisionCorrectionPoseEs
     }
 
     /**
-     * {@inheritDoc}
+     * Manually anchors the EKF to a known field pose and resets its covariance to the configured
+     * manual-anchor uncertainty.
      */
     @Override
     public void setPose(Pose2d pose) {
@@ -658,27 +664,27 @@ public final class OdometryTagEkfPoseEstimator implements VisionCorrectionPoseEs
         stateCovariance = manualAnchorCovariance();
         initialized = true;
 
-        Pose3d currentOdomPose = null;
-        double currentOdomTimestampSec = nowSec;
-        PoseEstimate odomEst = odometry.getEstimate();
-        if (odomEst != null && odomEst.hasPose) {
-            currentOdomPose = planarize(odomEst.fieldToRobotPose);
-            currentOdomTimestampSec = estimateTimestampOr(odomEst, nowSec);
+        Pose3d currentPredictorPose = null;
+        double currentPredictorTimestampSec = nowSec;
+        PoseEstimate predictorEst = predictor.getEstimate();
+        if (predictorEst != null && predictorEst.hasPose) {
+            currentPredictorPose = planarize(predictorEst.fieldToRobotPose);
+            currentPredictorTimestampSec = estimateTimestampOr(predictorEst, nowSec);
         }
 
-        boolean pushedToOdometry = pushFilteredPoseToOdometry();
-        clearRecentVisionState();
-        rebaseAfterPoseChange(currentOdomTimestampSec, currentOdomPose, pushedToOdometry);
+        boolean pushedToPredictor = pushFilteredPoseToPredictor();
+        clearRecentCorrectionState();
+        rebaseAfterPoseChange(currentPredictorTimestampSec, currentPredictorPose, pushedToPredictor);
         lastEstimate = new PoseEstimate(statePose, true, covarianceQuality(stateCovariance), 0.0, nowSec);
     }
 
-    private void initializeFromVision(PoseEstimate visEst,
-                                      Pose3d currentOdomPose,
-                                      double currentOdomTimestampSec,
-                                      double nowSec) {
-        Pose3d visionPoseAtMeasurement = planarize(visEst.fieldToRobotPose);
-        lastVisionPose = visionPoseAtMeasurement;
-        lastReplayReferencePose = visionPoseAtMeasurement;
+    private void initializeFromCorrection(PoseEstimate correctionEst,
+                                          Pose3d currentPredictorPose,
+                                          double currentPredictorTimestampSec,
+                                          double nowSec) {
+        Pose3d correctionPoseAtMeasurement = planarize(correctionEst.fieldToRobotPose);
+        lastCorrectionPose = correctionPoseAtMeasurement;
+        lastReplayReferencePose = correctionPoseAtMeasurement;
         lastInnovationPositionIn = Double.NaN;
         lastInnovationHeadingRad = Double.NaN;
         lastInnovationMahalanobisSq = Double.NaN;
@@ -686,112 +692,112 @@ public final class OdometryTagEkfPoseEstimator implements VisionCorrectionPoseEs
         StateSnapshot currentState = null;
         boolean usedReplay = false;
         if (cfg.enableLatencyCompensation) {
-            double[][] measCov = measurementCovariance(visEst.quality, false, 0.0);
+            double[][] measCov = measurementCovariance(correctionEst.quality, false, 0.0);
             currentState = propagateFromArbitraryState(
-                    visionPoseAtMeasurement,
+                    correctionPoseAtMeasurement,
                     measCov,
-                    visEst.timestampSec,
-                    currentOdomTimestampSec
+                    correctionEst.timestampSec,
+                    currentPredictorTimestampSec
             );
-            usedReplay = currentState != null && currentOdomTimestampSec > visEst.timestampSec + TIMESTAMP_EPS_SEC;
+            usedReplay = currentState != null && currentPredictorTimestampSec > correctionEst.timestampSec + TIMESTAMP_EPS_SEC;
         }
 
         if (currentState == null) {
-            Pose3d projectedVisionPoseNow = projectVisionPoseToNow(visionPoseAtMeasurement, visEst.timestampSec, currentOdomPose);
-            double projectedAgeSec = Math.max(0.0, nowSec - visEst.timestampSec);
-            statePose = projectedVisionPoseNow;
-            stateCovariance = measurementCovariance(visEst.quality, true, projectedAgeSec);
-            lastLatencyCompensatedVisionPose = projectedVisionPoseNow;
-            lastVisionUsedReplay = false;
-            projectedVisionCount++;
+            Pose3d projectedCorrectionPoseNow = projectCorrectionPoseToNow(correctionPoseAtMeasurement, correctionEst.timestampSec, currentPredictorPose);
+            double projectedAgeSec = Math.max(0.0, nowSec - correctionEst.timestampSec);
+            statePose = projectedCorrectionPoseNow;
+            stateCovariance = measurementCovariance(correctionEst.quality, true, projectedAgeSec);
+            lastLatencyCompensatedCorrectionPose = projectedCorrectionPoseNow;
+            lastCorrectionUsedReplay = false;
+            projectedCorrectionCount++;
         } else {
             statePose = currentState.pose;
             stateCovariance = currentState.covariance;
-            lastLatencyCompensatedVisionPose = currentState.pose;
-            lastVisionUsedReplay = usedReplay;
+            lastLatencyCompensatedCorrectionPose = currentState.pose;
+            lastCorrectionUsedReplay = usedReplay;
             if (usedReplay) {
-                replayedVisionCount++;
+                replayedCorrectionCount++;
             } else {
-                projectedVisionCount++;
+                projectedCorrectionCount++;
             }
         }
 
         initialized = true;
-        lastVisionAcceptedSec = nowSec;
-        lastAcceptedVisionMeasurementTimestampSec = visEst.timestampSec;
-        acceptedVisionCount++;
+        lastCorrectionAcceptedSec = nowSec;
+        lastAcceptedCorrectionMeasurementTimestampSec = correctionEst.timestampSec;
+        acceptedCorrectionCount++;
 
-        boolean pushedToOdometry = pushFilteredPoseToOdometry();
-        rebaseAfterPoseChange(currentOdomTimestampSec, currentOdomPose, pushedToOdometry);
+        boolean pushedToPredictor = pushFilteredPoseToPredictor();
+        rebaseAfterPoseChange(currentPredictorTimestampSec, currentPredictorPose, pushedToPredictor);
     }
 
-    private boolean shouldEvaluateVisionMeasurement(PoseEstimate visEst) {
-        if (visEst == null || !visEst.hasPose) {
+    private boolean shouldEvaluateCorrectionMeasurement(PoseEstimate correctionEst) {
+        if (correctionEst == null || !correctionEst.hasPose) {
             return false;
         }
-        double ts = visEst.timestampSec;
+        double ts = correctionEst.timestampSec;
         if (!Double.isFinite(ts)) {
             return false;
         }
-        if (Double.isNaN(lastEvaluatedVisionTimestampSec)) {
-            lastEvaluatedVisionTimestampSec = ts;
+        if (Double.isNaN(lastEvaluatedCorrectionTimestampSec)) {
+            lastEvaluatedCorrectionTimestampSec = ts;
             return true;
         }
-        if (ts > lastEvaluatedVisionTimestampSec + TIMESTAMP_EPS_SEC) {
-            lastEvaluatedVisionTimestampSec = ts;
+        if (ts > lastEvaluatedCorrectionTimestampSec + TIMESTAMP_EPS_SEC) {
+            lastEvaluatedCorrectionTimestampSec = ts;
             return true;
         }
-        if (Math.abs(ts - lastEvaluatedVisionTimestampSec) <= TIMESTAMP_EPS_SEC) {
-            skippedDuplicateVisionCount++;
+        if (Math.abs(ts - lastEvaluatedCorrectionTimestampSec) <= TIMESTAMP_EPS_SEC) {
+            skippedDuplicateCorrectionCount++;
         } else {
-            skippedOutOfOrderVisionCount++;
+            skippedOutOfOrderCorrectionCount++;
         }
         return false;
     }
 
-    private boolean isVisionAcceptable(PoseEstimate visEst, double nowSec) {
-        if (visEst == null || !visEst.hasPose || visEst.fieldToRobotPose == null) {
+    private boolean isCorrectionAcceptable(PoseEstimate correctionEst, double nowSec) {
+        if (correctionEst == null || !correctionEst.hasPose || correctionEst.fieldToRobotPose == null) {
             return false;
         }
-        if (!Double.isFinite(visEst.timestampSec)) {
+        if (!Double.isFinite(correctionEst.timestampSec)) {
             return false;
         }
-        if (visEst.timestampSec > nowSec + TIMESTAMP_EPS_SEC) {
+        if (correctionEst.timestampSec > nowSec + TIMESTAMP_EPS_SEC) {
             return false;
         }
 
-        if (cfg.maxVisionAgeSec > 0.0) {
-            double age = nowSec - visEst.timestampSec;
-            if (!Double.isFinite(age) || age < -TIMESTAMP_EPS_SEC || age > cfg.maxVisionAgeSec) {
+        if (cfg.maxCorrectionAgeSec > 0.0) {
+            double age = nowSec - correctionEst.timestampSec;
+            if (!Double.isFinite(age) || age < -TIMESTAMP_EPS_SEC || age > cfg.maxCorrectionAgeSec) {
                 return false;
             }
         }
 
-        if (!Double.isFinite(visEst.quality) || visEst.quality < cfg.minVisionQuality) {
+        if (!Double.isFinite(correctionEst.quality) || correctionEst.quality < cfg.minCorrectionQuality) {
             return false;
         }
 
-        Pose3d p = visEst.fieldToRobotPose;
+        Pose3d p = correctionEst.fieldToRobotPose;
         return !(Double.isNaN(p.xInches) || Double.isNaN(p.yInches) || Double.isNaN(p.yawRad));
     }
 
-    private void maybeApplyVisionCorrection(PoseEstimate visEst,
-                                            Pose3d currentOdomPose,
-                                            double currentOdomTimestampSec,
-                                            double nowSec) {
-        Pose3d visionPoseAtMeasurement = planarize(visEst.fieldToRobotPose);
-        Pose3d projectedVisionPoseAtNow = projectVisionPoseToNow(visionPoseAtMeasurement, visEst.timestampSec, currentOdomPose);
+    private void maybeApplyCorrection(PoseEstimate correctionEst,
+                                      Pose3d currentPredictorPose,
+                                      double currentPredictorTimestampSec,
+                                      double nowSec) {
+        Pose3d correctionPoseAtMeasurement = planarize(correctionEst.fieldToRobotPose);
+        Pose3d projectedCorrectionPoseAtNow = projectCorrectionPoseToNow(correctionPoseAtMeasurement, correctionEst.timestampSec, currentPredictorPose);
 
-        lastVisionPose = visionPoseAtMeasurement;
-        lastLatencyCompensatedVisionPose = projectedVisionPoseAtNow;
+        lastCorrectionPose = correctionPoseAtMeasurement;
+        lastLatencyCompensatedCorrectionPose = projectedCorrectionPoseAtNow;
 
         if (cfg.enableLatencyCompensation
                 && replayBaseValid
                 && Double.isFinite(replayBaseTimestampSec)
-                && visEst.timestampSec + TIMESTAMP_EPS_SEC < replayBaseTimestampSec) {
+                && correctionEst.timestampSec + TIMESTAMP_EPS_SEC < replayBaseTimestampSec) {
             lastReplayReferencePose = replayBasePose;
-            lastVisionUsedReplay = false;
-            rejectedVisionCount++;
+            lastCorrectionUsedReplay = false;
+            rejectedCorrectionCount++;
             return;
         }
 
@@ -799,31 +805,31 @@ public final class OdometryTagEkfPoseEstimator implements VisionCorrectionPoseEs
         boolean usedReplay = false;
 
         if (cfg.enableLatencyCompensation) {
-            StateSnapshot predictedAtMeasurement = predictFromReplayBaseTo(visEst.timestampSec);
+            StateSnapshot predictedAtMeasurement = predictFromReplayBaseTo(correctionEst.timestampSec);
             if (predictedAtMeasurement != null) {
                 lastReplayReferencePose = predictedAtMeasurement.pose;
                 StateSnapshot correctedAtMeasurement = measurementUpdate(
                         predictedAtMeasurement.pose,
                         predictedAtMeasurement.covariance,
-                        visionPoseAtMeasurement,
-                        visEst.quality,
+                        correctionPoseAtMeasurement,
+                        correctionEst.quality,
                         false,
                         0.0,
-                        predictedAtMeasurement.odomPose,
-                        visEst.timestampSec
+                        predictedAtMeasurement.predictorPose,
+                        correctionEst.timestampSec
                 );
                 if (correctedAtMeasurement != null) {
                     StateSnapshot replayed = propagateFromArbitraryState(
                             correctedAtMeasurement.pose,
                             correctedAtMeasurement.covariance,
-                            visEst.timestampSec,
-                            currentOdomTimestampSec
+                            correctionEst.timestampSec,
+                            currentPredictorTimestampSec
                     );
                     correctedNow = (replayed != null) ? replayed : correctedAtMeasurement;
                     usedReplay = true;
                 } else {
-                    rejectedVisionCount++;
-                    lastVisionUsedReplay = true;
+                    rejectedCorrectionCount++;
+                    lastCorrectionUsedReplay = true;
                     return;
                 }
             }
@@ -831,38 +837,38 @@ public final class OdometryTagEkfPoseEstimator implements VisionCorrectionPoseEs
 
         if (correctedNow == null) {
             lastReplayReferencePose = statePose;
-            double projectedAgeSec = Math.max(0.0, nowSec - visEst.timestampSec);
+            double projectedAgeSec = Math.max(0.0, nowSec - correctionEst.timestampSec);
             correctedNow = measurementUpdate(
                     statePose,
                     stateCovariance,
-                    projectedVisionPoseAtNow,
-                    visEst.quality,
+                    projectedCorrectionPoseAtNow,
+                    correctionEst.quality,
                     true,
                     projectedAgeSec,
-                    currentOdomPose,
-                    currentOdomTimestampSec
+                    currentPredictorPose,
+                    currentPredictorTimestampSec
             );
             if (correctedNow == null) {
-                rejectedVisionCount++;
-                lastVisionUsedReplay = false;
+                rejectedCorrectionCount++;
+                lastCorrectionUsedReplay = false;
                 return;
             }
         }
 
         statePose = correctedNow.pose;
         stateCovariance = correctedNow.covariance;
-        lastVisionAcceptedSec = nowSec;
-        lastAcceptedVisionMeasurementTimestampSec = visEst.timestampSec;
-        lastVisionUsedReplay = usedReplay;
-        acceptedVisionCount++;
+        lastCorrectionAcceptedSec = nowSec;
+        lastAcceptedCorrectionMeasurementTimestampSec = correctionEst.timestampSec;
+        lastCorrectionUsedReplay = usedReplay;
+        acceptedCorrectionCount++;
         if (usedReplay) {
-            replayedVisionCount++;
+            replayedCorrectionCount++;
         } else {
-            projectedVisionCount++;
+            projectedCorrectionCount++;
         }
 
-        boolean pushedToOdometry = pushFilteredPoseToOdometry();
-        rebaseAfterPoseChange(currentOdomTimestampSec, currentOdomPose, pushedToOdometry);
+        boolean pushedToPredictor = pushFilteredPoseToPredictor();
+        rebaseAfterPoseChange(currentPredictorTimestampSec, currentPredictorPose, pushedToPredictor);
     }
 
     private StateSnapshot predictFromReplayBaseTo(double timestampSec) {
@@ -883,7 +889,7 @@ public final class OdometryTagEkfPoseEstimator implements VisionCorrectionPoseEs
                                             double measurementQuality,
                                             boolean projectedMeasurement,
                                             double projectedAgeSec,
-                                            Pose3d odomPose,
+                                            Pose3d predictorPose,
                                             double timestampSec) {
         if (priorPose == null || priorCovariance == null || measurementPose == null) {
             return null;
@@ -902,8 +908,8 @@ public final class OdometryTagEkfPoseEstimator implements VisionCorrectionPoseEs
         lastInnovationPositionIn = innovationPosition;
         lastInnovationHeadingRad = innovationHeading;
 
-        if (innovationPosition > cfg.maxVisionPositionInnovationIn
-                || innovationHeading > cfg.maxVisionHeadingInnovationRad) {
+        if (innovationPosition > cfg.maxCorrectionPositionInnovationIn
+                || innovationHeading > cfg.maxCorrectionHeadingInnovationRad) {
             lastInnovationMahalanobisSq = Double.NaN;
             return null;
         }
@@ -918,7 +924,7 @@ public final class OdometryTagEkfPoseEstimator implements VisionCorrectionPoseEs
 
         double mahaSq = quadraticForm(innovation, sInv);
         lastInnovationMahalanobisSq = mahaSq;
-        if (!Double.isFinite(mahaSq) || mahaSq > cfg.maxVisionMahalanobisSq) {
+        if (!Double.isFinite(mahaSq) || mahaSq > cfg.maxCorrectionMahalanobisSq) {
             return null;
         }
 
@@ -944,7 +950,7 @@ public final class OdometryTagEkfPoseEstimator implements VisionCorrectionPoseEs
         return new StateSnapshot(
                 planarize(updatedPose),
                 sanitizeCovariance(updatedCovariance),
-                odomPose,
+                predictorPose,
                 timestampSec
         );
     }
@@ -952,7 +958,7 @@ public final class OdometryTagEkfPoseEstimator implements VisionCorrectionPoseEs
     private StateSnapshot predictStep(Pose3d priorPose,
                                       double[][] priorCovariance,
                                       Pose3d odomDelta,
-                                      Pose3d resultingOdomPose,
+                                      Pose3d resultingPredictorPose,
                                       double timestampSec) {
         Pose3d delta = planarize(odomDelta);
         Pose3d predictedPose = planarize(priorPose.then(delta));
@@ -969,12 +975,12 @@ public final class OdometryTagEkfPoseEstimator implements VisionCorrectionPoseEs
         };
 
         double translation = Math.hypot(dxLocal, dyLocal);
-        double sigmaPos = cfg.odomProcessPositionStdFloorIn
-                + cfg.odomProcessPositionStdPerIn * translation
-                + cfg.odomProcessPositionStdPerRad * Math.abs(dHeading);
-        double sigmaHeading = cfg.odomProcessHeadingStdFloorRad
-                + cfg.odomProcessHeadingStdPerIn * translation
-                + cfg.odomProcessHeadingStdPerRad * Math.abs(dHeading);
+        double sigmaPos = cfg.predictorProcessPositionStdFloorIn
+                + cfg.predictorProcessPositionStdPerIn * translation
+                + cfg.predictorProcessPositionStdPerRad * Math.abs(dHeading);
+        double sigmaHeading = cfg.predictorProcessHeadingStdFloorRad
+                + cfg.predictorProcessHeadingStdPerIn * translation
+                + cfg.predictorProcessHeadingStdPerRad * Math.abs(dHeading);
 
         double c = Math.cos(theta);
         double s = Math.sin(theta);
@@ -994,7 +1000,7 @@ public final class OdometryTagEkfPoseEstimator implements VisionCorrectionPoseEs
         return new StateSnapshot(
                 predictedPose,
                 sanitizeCovariance(predictedCovariance),
-                resultingOdomPose,
+                resultingPredictorPose,
                 timestampSec
         );
     }
@@ -1013,44 +1019,44 @@ public final class OdometryTagEkfPoseEstimator implements VisionCorrectionPoseEs
             return null;
         }
         if (Math.abs(endTimestampSec - startTimestampSec) <= TIMESTAMP_EPS_SEC) {
-            Pose3d odomPose = interpolateOdomPose(endTimestampSec);
-            return new StateSnapshot(planarize(startPose), sanitizeCovariance(copy(startCovariance)), odomPose, endTimestampSec);
+            Pose3d predictorPose = interpolatePredictorPose(endTimestampSec);
+            return new StateSnapshot(planarize(startPose), sanitizeCovariance(copy(startCovariance)), predictorPose, endTimestampSec);
         }
 
-        OdomSample[] samples = odomHistory.toArray(new OdomSample[0]);
+        PredictorSample[] samples = predictorHistory.toArray(new PredictorSample[0]);
         if (samples.length == 0) {
             return null;
         }
 
-        Pose3d startOdomPose = interpolateOdomPose(startTimestampSec);
-        Pose3d endOdomPose = interpolateOdomPose(endTimestampSec);
-        if (startOdomPose == null || endOdomPose == null) {
+        Pose3d startPredictorPose = interpolatePredictorPose(startTimestampSec);
+        Pose3d endPredictorPose = interpolatePredictorPose(endTimestampSec);
+        if (startPredictorPose == null || endPredictorPose == null) {
             return null;
         }
 
         Pose3d pose = planarize(startPose);
         double[][] covariance = sanitizeCovariance(copy(startCovariance));
-        Pose3d prevOdomPose = startOdomPose;
+        Pose3d prevPredictorPose = startPredictorPose;
         double prevTimestampSec = startTimestampSec;
 
-        for (OdomSample sample : samples) {
+        for (PredictorSample sample : samples) {
             if (sample.timestampSec <= startTimestampSec + TIMESTAMP_EPS_SEC) {
                 continue;
             }
             if (sample.timestampSec >= endTimestampSec - TIMESTAMP_EPS_SEC) {
                 break;
             }
-            Pose3d nextOdomPose = sample.pose;
+            Pose3d nextPredictorPose = sample.pose;
             StateSnapshot predicted = predictStep(
                     pose,
                     covariance,
-                    prevOdomPose.inverse().then(nextOdomPose),
-                    nextOdomPose,
+                    prevPredictorPose.inverse().then(nextPredictorPose),
+                    nextPredictorPose,
                     sample.timestampSec
             );
             pose = predicted.pose;
             covariance = predicted.covariance;
-            prevOdomPose = nextOdomPose;
+            prevPredictorPose = nextPredictorPose;
             prevTimestampSec = sample.timestampSec;
         }
 
@@ -1058,60 +1064,60 @@ public final class OdometryTagEkfPoseEstimator implements VisionCorrectionPoseEs
             StateSnapshot predicted = predictStep(
                     pose,
                     covariance,
-                    prevOdomPose.inverse().then(endOdomPose),
-                    endOdomPose,
+                    prevPredictorPose.inverse().then(endPredictorPose),
+                    endPredictorPose,
                     endTimestampSec
             );
             pose = predicted.pose;
             covariance = predicted.covariance;
         }
 
-        return new StateSnapshot(pose, covariance, endOdomPose, endTimestampSec);
+        return new StateSnapshot(pose, covariance, endPredictorPose, endTimestampSec);
     }
 
-    private boolean pushFilteredPoseToOdometry() {
-        if (cfg.enablePushFilteredPoseToOdometry && odometry instanceof PoseResetter) {
-            ((PoseResetter) odometry).setPose(statePose.toPose2d());
+    private boolean pushFilteredPoseToPredictor() {
+        if (cfg.enablePushCorrectedPoseToPredictor && predictor instanceof PoseResetter) {
+            ((PoseResetter) predictor).setPose(statePose.toPose2d());
             return true;
         }
         return false;
     }
 
-    private void clearRecentVisionState() {
-        lastVisionAcceptedSec = Double.NaN;
-        lastAcceptedVisionMeasurementTimestampSec = Double.NaN;
-        lastVisionUsedReplay = false;
+    private void clearRecentCorrectionState() {
+        lastCorrectionAcceptedSec = Double.NaN;
+        lastAcceptedCorrectionMeasurementTimestampSec = Double.NaN;
+        lastCorrectionUsedReplay = false;
     }
 
-    private void rebaseAfterPoseChange(double timestampSec, Pose3d currentOdomPose, boolean pushedToOdometry) {
-        Pose3d baseOdomPose;
-        if (pushedToOdometry) {
-            lastOdomPose = statePose;
-            baseOdomPose = statePose;
-        } else if (currentOdomPose != null) {
-            lastOdomPose = currentOdomPose;
-            baseOdomPose = currentOdomPose;
+    private void rebaseAfterPoseChange(double timestampSec, Pose3d currentPredictorPose, boolean pushedToPredictor) {
+        Pose3d basePredictorPose;
+        if (pushedToPredictor) {
+            lastPredictorPose = statePose;
+            basePredictorPose = statePose;
+        } else if (currentPredictorPose != null) {
+            lastPredictorPose = currentPredictorPose;
+            basePredictorPose = currentPredictorPose;
         } else {
-            lastOdomPose = statePose;
-            baseOdomPose = statePose;
+            lastPredictorPose = statePose;
+            basePredictorPose = statePose;
         }
 
-        resetOdomHistory(timestampSec, baseOdomPose);
-        setReplayBase(timestampSec, statePose, stateCovariance, baseOdomPose);
+        resetPredictorHistory(timestampSec, basePredictorPose);
+        setReplayBase(timestampSec, statePose, stateCovariance, basePredictorPose);
     }
 
     private void setReplayBase(double timestampSec,
                                Pose3d pose,
                                double[][] covariance,
-                               Pose3d odomPoseAtBase) {
-        replayBaseValid = Double.isFinite(timestampSec) && pose != null && covariance != null && odomPoseAtBase != null;
+                               Pose3d predictorPoseAtBase) {
+        replayBaseValid = Double.isFinite(timestampSec) && pose != null && covariance != null && predictorPoseAtBase != null;
         replayBaseTimestampSec = replayBaseValid ? timestampSec : Double.NaN;
         replayBasePose = replayBaseValid ? planarize(pose) : Pose3d.zero();
         replayBaseCovariance = replayBaseValid ? sanitizeCovariance(copy(covariance)) : diagonal(1.0, 1.0, 1.0);
-        replayBaseOdomPose = replayBaseValid ? planarize(odomPoseAtBase) : Pose3d.zero();
+        replayBasePredictorPose = replayBaseValid ? planarize(predictorPoseAtBase) : Pose3d.zero();
     }
 
-    private double[][] initialOdometryCovariance() {
+    private double[][] initialPredictorCovariance() {
         return diagonal(
                 cfg.initialPositionStdIn * cfg.initialPositionStdIn,
                 cfg.initialPositionStdIn * cfg.initialPositionStdIn,
@@ -1131,12 +1137,12 @@ public final class OdometryTagEkfPoseEstimator implements VisionCorrectionPoseEs
                                              boolean projectedMeasurement,
                                              double projectedAgeSec) {
         double q = MathUtil.clamp(measurementQuality, 0.0, 1.0);
-        double sigmaPos = cfg.visionPositionStdFloorIn + cfg.visionPositionStdScaleIn * (1.0 - q);
-        double sigmaHeading = cfg.visionHeadingStdFloorRad + cfg.visionHeadingStdScaleRad * (1.0 - q);
+        double sigmaPos = cfg.correctionPositionStdFloorIn + cfg.correctionPositionStdScaleIn * (1.0 - q);
+        double sigmaHeading = cfg.correctionHeadingStdFloorRad + cfg.correctionHeadingStdScaleRad * (1.0 - q);
 
         if (projectedMeasurement) {
-            sigmaPos += cfg.projectedVisionPositionStdPerSec * Math.max(0.0, projectedAgeSec);
-            sigmaHeading += cfg.projectedVisionHeadingStdPerSec * Math.max(0.0, projectedAgeSec);
+            sigmaPos += cfg.projectedCorrectionPositionStdPerSec * Math.max(0.0, projectedAgeSec);
+            sigmaHeading += cfg.projectedCorrectionHeadingStdPerSec * Math.max(0.0, projectedAgeSec);
         }
 
         sigmaPos = Math.max(1e-3, sigmaPos);
@@ -1166,77 +1172,77 @@ public final class OdometryTagEkfPoseEstimator implements VisionCorrectionPoseEs
         return Math.sqrt(Math.max(MIN_VARIANCE, covariance[2][2]));
     }
 
-    private void recordOdomSample(double timestampSec, Pose3d odomPose) {
-        if (!Double.isFinite(timestampSec) || odomPose == null) {
+    private void recordPredictorSample(double timestampSec, Pose3d predictorPose) {
+        if (!Double.isFinite(timestampSec) || predictorPose == null) {
             return;
         }
 
-        OdomSample last = odomHistory.peekLast();
+        PredictorSample last = predictorHistory.peekLast();
         if (last != null && timestampSec <= last.timestampSec) {
-            odomHistory.clear();
-            odomHistory.addLast(new OdomSample(timestampSec, planarize(odomPose)));
+            predictorHistory.clear();
+            predictorHistory.addLast(new PredictorSample(timestampSec, planarize(predictorPose)));
             if (initialized) {
-                setReplayBase(timestampSec, statePose, stateCovariance, planarize(odomPose));
-                lastOdomPose = planarize(odomPose);
+                setReplayBase(timestampSec, statePose, stateCovariance, planarize(predictorPose));
+                lastPredictorPose = planarize(predictorPose);
             }
             return;
         }
 
-        odomHistory.addLast(new OdomSample(timestampSec, planarize(odomPose)));
-        pruneOdomHistory(timestampSec);
+        predictorHistory.addLast(new PredictorSample(timestampSec, planarize(predictorPose)));
+        prunePredictorHistory(timestampSec);
     }
 
-    private void pruneOdomHistory(double nowSec) {
-        double keepSec = Math.max(0.0, cfg.odomHistorySec);
+    private void prunePredictorHistory(double nowSec) {
+        double keepSec = Math.max(0.0, cfg.predictorHistorySec);
         if (keepSec <= 0.0) {
-            while (odomHistory.size() > 1) {
-                odomHistory.removeFirst();
+            while (predictorHistory.size() > 1) {
+                predictorHistory.removeFirst();
             }
             return;
         }
 
         double minTime = nowSec - keepSec;
-        while (odomHistory.size() > 2) {
-            OdomSample[] samples = odomHistory.toArray(new OdomSample[0]);
+        while (predictorHistory.size() > 2) {
+            PredictorSample[] samples = predictorHistory.toArray(new PredictorSample[0]);
             if (samples.length < 2 || samples[1].timestampSec >= minTime) {
                 break;
             }
-            odomHistory.removeFirst();
+            predictorHistory.removeFirst();
         }
     }
 
-    private void resetOdomHistory(double timestampSec, Pose3d pose) {
-        odomHistory.clear();
+    private void resetPredictorHistory(double timestampSec, Pose3d pose) {
+        predictorHistory.clear();
         if (Double.isFinite(timestampSec) && pose != null) {
-            odomHistory.addLast(new OdomSample(timestampSec, planarize(pose)));
+            predictorHistory.addLast(new PredictorSample(timestampSec, planarize(pose)));
         }
     }
 
-    private Pose3d projectVisionPoseToNow(Pose3d visionPoseAtMeasurement,
-                                          double measurementTimestampSec,
-                                          Pose3d currentOdomPose) {
-        if (visionPoseAtMeasurement == null || currentOdomPose == null) {
-            return visionPoseAtMeasurement;
+    private Pose3d projectCorrectionPoseToNow(Pose3d correctionPoseAtMeasurement,
+                                              double measurementTimestampSec,
+                                              Pose3d currentPredictorPose) {
+        if (correctionPoseAtMeasurement == null || currentPredictorPose == null) {
+            return correctionPoseAtMeasurement;
         }
         if (!Double.isFinite(measurementTimestampSec)) {
-            return visionPoseAtMeasurement;
+            return correctionPoseAtMeasurement;
         }
 
-        Pose3d odomAtMeasurement = interpolateOdomPose(measurementTimestampSec);
-        if (odomAtMeasurement == null) {
-            return visionPoseAtMeasurement;
+        Pose3d predictorAtMeasurement = interpolatePredictorPose(measurementTimestampSec);
+        if (predictorAtMeasurement == null) {
+            return correctionPoseAtMeasurement;
         }
 
-        Pose3d odomDeltaSinceMeasurement = odomAtMeasurement.inverse().then(currentOdomPose);
-        return planarize(visionPoseAtMeasurement.then(odomDeltaSinceMeasurement));
+        Pose3d predictorDeltaSinceMeasurement = predictorAtMeasurement.inverse().then(currentPredictorPose);
+        return planarize(correctionPoseAtMeasurement.then(predictorDeltaSinceMeasurement));
     }
 
-    private Pose3d interpolateOdomPose(double timestampSec) {
-        if (odomHistory.isEmpty()) {
+    private Pose3d interpolatePredictorPose(double timestampSec) {
+        if (predictorHistory.isEmpty()) {
             return null;
         }
 
-        OdomSample[] samples = odomHistory.toArray(new OdomSample[0]);
+        PredictorSample[] samples = predictorHistory.toArray(new PredictorSample[0]);
         if (samples.length == 0) {
             return null;
         }
@@ -1248,8 +1254,8 @@ public final class OdometryTagEkfPoseEstimator implements VisionCorrectionPoseEs
             return samples[0].pose;
         }
 
-        OdomSample prev = samples[0];
-        for (OdomSample next : samples) {
+        PredictorSample prev = samples[0];
+        for (PredictorSample next : samples) {
             if (next.timestampSec < timestampSec - TIMESTAMP_EPS_SEC) {
                 prev = next;
                 continue;
@@ -1417,7 +1423,8 @@ public final class OdometryTagEkfPoseEstimator implements VisionCorrectionPoseEs
     }
 
     /**
-     * Debug helper: emit current EKF state, covariance summary, and recent vision-gating details.
+     * Emits the current EKF state, covariance-derived confidence, latest innovation metrics, and
+     * correction counters for debugging.
      */
     @Override
     public void debugDump(DebugSink dbg, String prefix) {
@@ -1428,20 +1435,20 @@ public final class OdometryTagEkfPoseEstimator implements VisionCorrectionPoseEs
 
         dbg.addLine(p)
                 .addData(p + ".initialized", initialized)
-                .addData(p + ".visionEnabled", visionEnabled)
-                .addData(p + ".acceptedVisionCount", acceptedVisionCount)
-                .addData(p + ".rejectedVisionCount", rejectedVisionCount)
-                .addData(p + ".skippedDuplicateVisionCount", skippedDuplicateVisionCount)
-                .addData(p + ".skippedOutOfOrderVisionCount", skippedOutOfOrderVisionCount)
-                .addData(p + ".replayedVisionCount", replayedVisionCount)
-                .addData(p + ".projectedVisionCount", projectedVisionCount)
-                .addData(p + ".lastVisionAcceptedSec", lastVisionAcceptedSec)
-                .addData(p + ".lastAcceptedVisionMeasurementTimestampSec", lastAcceptedVisionMeasurementTimestampSec)
-                .addData(p + ".lastEvaluatedVisionTimestampSec", lastEvaluatedVisionTimestampSec)
-                .addData(p + ".lastVisionPose", lastVisionPose)
-                .addData(p + ".lastLatencyCompensatedVisionPose", lastLatencyCompensatedVisionPose)
+                .addData(p + ".correctionEnabled", correctionEnabled)
+                .addData(p + ".acceptedCorrectionCount", acceptedCorrectionCount)
+                .addData(p + ".rejectedCorrectionCount", rejectedCorrectionCount)
+                .addData(p + ".skippedDuplicateCorrectionCount", skippedDuplicateCorrectionCount)
+                .addData(p + ".skippedOutOfOrderCorrectionCount", skippedOutOfOrderCorrectionCount)
+                .addData(p + ".replayedCorrectionCount", replayedCorrectionCount)
+                .addData(p + ".projectedCorrectionCount", projectedCorrectionCount)
+                .addData(p + ".lastCorrectionAcceptedSec", lastCorrectionAcceptedSec)
+                .addData(p + ".lastAcceptedCorrectionMeasurementTimestampSec", lastAcceptedCorrectionMeasurementTimestampSec)
+                .addData(p + ".lastEvaluatedCorrectionTimestampSec", lastEvaluatedCorrectionTimestampSec)
+                .addData(p + ".lastCorrectionPose", lastCorrectionPose)
+                .addData(p + ".lastLatencyCompensatedCorrectionPose", lastLatencyCompensatedCorrectionPose)
                 .addData(p + ".lastReplayReferencePose", lastReplayReferencePose)
-                .addData(p + ".lastVisionUsedReplay", lastVisionUsedReplay)
+                .addData(p + ".lastCorrectionUsedReplay", lastCorrectionUsedReplay)
                 .addData(p + ".lastInnovationPositionIn", lastInnovationPositionIn)
                 .addData(p + ".lastInnovationHeadingRad", lastInnovationHeadingRad)
                 .addData(p + ".lastInnovationMahalanobisSq", lastInnovationMahalanobisSq)
@@ -1452,24 +1459,24 @@ public final class OdometryTagEkfPoseEstimator implements VisionCorrectionPoseEs
                 .addData(p + ".replayBaseValid", replayBaseValid)
                 .addData(p + ".replayBaseTimestampSec", replayBaseTimestampSec)
                 .addData(p + ".replayBasePose", replayBasePose)
-                .addData(p + ".replayBaseOdomPose", replayBaseOdomPose)
-                .addData(p + ".odomHistorySize", odomHistory.size())
+                .addData(p + ".replayBasePredictorPose", replayBasePredictorPose)
+                .addData(p + ".predictorHistorySize", predictorHistory.size())
                 .addData(p + ".statePose", statePose)
                 .addData(p + ".stateCovariance.xx", stateCovariance[0][0])
                 .addData(p + ".stateCovariance.yy", stateCovariance[1][1])
                 .addData(p + ".stateCovariance.hh", stateCovariance[2][2])
-                .addData(p + ".cfg.maxVisionAgeSec", cfg.maxVisionAgeSec)
-                .addData(p + ".cfg.minVisionQuality", cfg.minVisionQuality)
-                .addData(p + ".cfg.maxVisionPositionInnovationIn", cfg.maxVisionPositionInnovationIn)
-                .addData(p + ".cfg.maxVisionHeadingInnovationRad", cfg.maxVisionHeadingInnovationRad)
-                .addData(p + ".cfg.maxVisionMahalanobisSq", cfg.maxVisionMahalanobisSq)
-                .addData(p + ".cfg.enableInitializeFromVision", cfg.enableInitializeFromVision)
-                .addData(p + ".cfg.enablePushFilteredPoseToOdometry", cfg.enablePushFilteredPoseToOdometry)
+                .addData(p + ".cfg.maxCorrectionAgeSec", cfg.maxCorrectionAgeSec)
+                .addData(p + ".cfg.minCorrectionQuality", cfg.minCorrectionQuality)
+                .addData(p + ".cfg.maxCorrectionPositionInnovationIn", cfg.maxCorrectionPositionInnovationIn)
+                .addData(p + ".cfg.maxCorrectionHeadingInnovationRad", cfg.maxCorrectionHeadingInnovationRad)
+                .addData(p + ".cfg.maxCorrectionMahalanobisSq", cfg.maxCorrectionMahalanobisSq)
+                .addData(p + ".cfg.enableInitializeFromCorrection", cfg.enableInitializeFromCorrection)
+                .addData(p + ".cfg.enablePushCorrectedPoseToPredictor", cfg.enablePushCorrectedPoseToPredictor)
                 .addData(p + ".cfg.enableLatencyCompensation", cfg.enableLatencyCompensation)
-                .addData(p + ".cfg.odomHistorySec", cfg.odomHistorySec)
+                .addData(p + ".cfg.predictorHistorySec", cfg.predictorHistorySec)
                 .addData(p + ".lastEstimate", lastEstimate);
 
-        odometry.debugDump(dbg, p + ".odometry");
-        vision.debugDump(dbg, p + ".vision");
+        predictor.debugDump(dbg, p + ".predictor");
+        correction.debugDump(dbg, p + ".correction");
     }
 }

@@ -65,7 +65,7 @@ Examples:
 - `GamepadDriveSource`
 - `MecanumDrivebase`
 - `AprilTagSensor`
-- `PinpointPoseEstimator`
+- `PinpointOdometryPredictor`
 - `FixedTagFieldPoseSolver`
 
 A primitive answers:
@@ -638,7 +638,7 @@ public final class MyDriveAssistService {
                                 DriveSource manualDrive,
                                 ScalarSource manualTranslateMagnitude,
                                 BooleanSource assistRequested,
-                                PoseEstimator globalPose,
+                                AbsolutePoseEstimator globalPose,
                                 DriveOverlay assistOverlay) {
         this.manualTranslateMagnitude = manualTranslateMagnitude;
         this.assistRequested = assistRequested;
@@ -803,7 +803,7 @@ public final class ScoringTargeting {
     public ScoringTargeting(MyRobotProfile.StrategyConfig cfg,
                             AprilTagSensor tagSensor,
                             CameraMountConfig cameraMount,
-                            PoseEstimator globalPose,
+                            AbsolutePoseEstimator globalPose,
                             TagLayout fieldTags,
                             BooleanSource aimEnabled,
                             BooleanSource aimOverride) {

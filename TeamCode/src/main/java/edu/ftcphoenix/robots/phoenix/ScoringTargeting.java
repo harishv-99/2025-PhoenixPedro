@@ -17,12 +17,12 @@ import edu.ftcphoenix.fw.drive.guidance.DriveGuidance;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidancePlan;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceQuery;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceSpec;
-import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceTask;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceStatus;
+import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceTask;
 import edu.ftcphoenix.fw.drive.guidance.References;
 import edu.ftcphoenix.fw.field.TagLayout;
 import edu.ftcphoenix.fw.field.TagLayouts;
-import edu.ftcphoenix.fw.localization.PoseEstimator;
+import edu.ftcphoenix.fw.localization.AbsolutePoseEstimator;
 import edu.ftcphoenix.fw.localization.apriltag.FixedTagFieldPoseSolver;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
@@ -99,7 +99,7 @@ public final class ScoringTargeting {
      * @param aprilTagFieldPoseConfig AprilTag field-pose solve config used by the guidance plan
      * @param tagSensor shared AprilTag sensor used for selection and guidance
      * @param cameraMountConfig fixed camera extrinsics for the current robot profile
-     * @param globalPoseEstimator current global pose-estimator lane used by adaptive guidance
+     * @param globalAbsolutePoseEstimator current global pose-estimator lane used by adaptive guidance
      * @param fieldTagLayout fixed field tag layout for the current game
      * @param autoAimEnabled driver enable source that activates sticky target selection and the aim overlay
      * @param aimOverrideInput driver override source that bypasses aim readiness gates when held
@@ -109,7 +109,7 @@ public final class ScoringTargeting {
                             FixedTagFieldPoseSolver.Config aprilTagFieldPoseConfig,
                             AprilTagSensor tagSensor,
                             CameraMountConfig cameraMountConfig,
-                            PoseEstimator globalPoseEstimator,
+                            AbsolutePoseEstimator globalAbsolutePoseEstimator,
                             TagLayout fieldTagLayout,
                             BooleanSource autoAimEnabled,
                             BooleanSource aimOverrideInput,
@@ -122,7 +122,7 @@ public final class ScoringTargeting {
                 );
         Objects.requireNonNull(tagSensor, "tagSensor");
         this.cameraMountConfig = Objects.requireNonNull(cameraMountConfig, "cameraMountConfig");
-        Objects.requireNonNull(globalPoseEstimator, "globalPoseEstimator");
+        Objects.requireNonNull(globalAbsolutePoseEstimator, "globalAbsolutePoseEstimator");
         this.fieldTagLayout = Objects.requireNonNull(fieldTagLayout, "fieldTagLayout");
         this.autoAimEnabled = Objects.requireNonNull(autoAimEnabled, "autoAimEnabled").memoized();
         this.aimOverrideInput = Objects.requireNonNull(aimOverrideInput, "aimOverrideInput").memoized();
@@ -165,7 +165,7 @@ public final class ScoringTargeting {
                 .adaptive()
                 .aprilTags(tagSensor, this.cameraMountConfig, this.cfg.selectionMaxAgeSec)
                 .aprilTagFieldPoseConfig(fieldPoseCfg)
-                .localization(globalPoseEstimator)
+                .localization(globalAbsolutePoseEstimator)
                 .fixedAprilTagLayout(scoringTagLayout)
                 .omegaPolicy(DriveGuidanceSpec.OmegaPolicy.PREFER_APRIL_TAGS_WHEN_VALID)
                 .onLoss(DriveGuidanceSpec.LossPolicy.PASS_THROUGH)

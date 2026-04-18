@@ -14,16 +14,22 @@ import edu.ftcphoenix.fw.core.geometry.Pose2d;
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
 import edu.ftcphoenix.fw.core.math.MathUtil;
 import edu.ftcphoenix.fw.core.time.LoopClock;
+import edu.ftcphoenix.fw.localization.MotionDelta;
+import edu.ftcphoenix.fw.localization.MotionPredictor;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
-import edu.ftcphoenix.fw.localization.PoseEstimator;
 import edu.ftcphoenix.fw.localization.PoseResetter;
 
 /**
- * {@link PoseEstimator} wrapper around the goBILDA Pinpoint Odometry Computer.
+ * {@link MotionPredictor} wrapper around the goBILDA Pinpoint Odometry Computer.
  *
  * <p>This class is intentionally FTC-hardware-facing (it depends on the FTC SDK). Phoenix robot
- * logic should depend on {@link PoseEstimator} / {@link PoseEstimate} instead of FTC SDK classes.
- * </p>
+ * logic should depend on {@link MotionPredictor} / {@link PoseEstimate} instead of FTC SDK classes.
+ * It formalizes Pinpoint's actual role in the localization stack:</p>
+ * <ul>
+ *   <li>Pinpoint produces a smooth absolute odometry pose.</li>
+ *   <li>Pinpoint also produces the incremental motion that global localizers want to replay between
+ *       absolute corrections.</li>
+ * </ul>
  *
  * <h2>Units</h2>
  * <ul>
@@ -39,23 +45,19 @@ import edu.ftcphoenix.fw.localization.PoseResetter;
  *   <li><b>headingRad</b> is CCW-positive (turn left)</li>
  * </ul>
  *
- * <h2>Pinpoint offsets (naming matters!)</h2>
- * <p>
- * The underlying Pinpoint driver is configured via
- * {@link GoBildaPinpointDriver#setOffsets(double, double, DistanceUnit)} using two offsets.
- * The parameter names in the goBILDA API ({@code xOffset}, {@code yOffset}) refer to the
- * <i>odometry pod axes</i>, which can be easy to confuse with Phoenix's coordinate axes.
- * </p>
+ * <h2>Pinpoint offsets (naming matters)</h2>
+ * <p>The underlying Pinpoint driver is configured via
+ * {@link GoBildaPinpointDriver#setOffsets(double, double, DistanceUnit)} using two offsets. The
+ * parameter names in the goBILDA API ({@code xOffset}, {@code yOffset}) refer to the pod axes,
+ * which can be easy to confuse with Phoenix's coordinate axes.</p>
  *
- * <p>
- * To reduce mixups, Phoenix uses <b>directional names</b> in {@link Config}:
- * </p>
+ * <p>To reduce mixups, Phoenix uses <b>directional names</b> in {@link Config}:</p>
  * <ul>
- *   <li>{@link Config#forwardPodOffsetLeftInches}: how far left (+) / right (-) the forward (X) pod is</li>
- *   <li>{@link Config#strafePodOffsetForwardInches}: how far forward (+) / back (-) the strafe (Y) pod is</li>
+ *   <li>{@link Config#forwardPodOffsetLeftInches}: how far left (+) / right (-) the forward pod is</li>
+ *   <li>{@link Config#strafePodOffsetForwardInches}: how far forward (+) / back (-) the strafe pod is</li>
  * </ul>
  */
-public final class PinpointPoseEstimator implements PoseEstimator, PoseResetter {
+public final class PinpointOdometryPredictor implements MotionPredictor, PoseResetter {
 
     /**
      * Phoenix standard unit for field poses.
@@ -63,61 +65,24 @@ public final class PinpointPoseEstimator implements PoseEstimator, PoseResetter 
     private static final DistanceUnit CONFIG_DISTANCE_UNIT = DistanceUnit.INCH;
 
     /**
-     * Configuration for {@link PinpointPoseEstimator}.
-     *
-     * <p>
-     * Phoenix convention for <b>single-owner configs</b> is to define them as a nested
-     * {@code <Owner>.Config} class (see {@code MecanumDrivebase.Config}, {@code FtcVision.Config}).
-     * This keeps the config "near" the code it configures and avoids proliferating top-level
-     * config types.
-     * </p>
-     *
-     * <h2>Units</h2>
-     * <ul>
-     *   <li>All distances are in <b>inches</b>.</li>
-     *   <li>All angles are in <b>radians</b> (where applicable).</li>
-     * </ul>
+     * Configuration for {@link PinpointOdometryPredictor}.
      */
     public static final class Config {
 
         /**
-         * FTC hardware configuration name of the Pinpoint device (commonly "odo").
+         * FTC hardware configuration name of the Pinpoint device (commonly {@code "odo"}).
          */
         public String hardwareMapName = "odo";
 
-        // --------------------------------------------------------------------
-        // Geometry: pod offsets relative to the robot tracking point
-        // --------------------------------------------------------------------
-
         /**
-         * Left/right offset of the <b>forward (X) pod</b> from the robot tracking point.
-         *
-         * <p>
-         * Positive values mean the forward pod is mounted to the <b>left</b> of the tracking point.
-         * Negative values mean it is mounted to the <b>right</b>.
-         * </p>
-         *
-         * <p>This maps to the first parameter ({@code xOffset}) of
-         * {@link GoBildaPinpointDriver#setOffsets(double, double, DistanceUnit)}.</p>
+         * Left/right offset of the forward (X) pod from the robot tracking point; +left, -right.
          */
         public double forwardPodOffsetLeftInches = 0.0;
 
         /**
-         * Forward/back offset of the <b>strafe (Y) pod</b> from the robot tracking point.
-         *
-         * <p>
-         * Positive values mean the strafe pod is mounted <b>forward</b> of the tracking point.
-         * Negative values mean it is mounted <b>behind</b> the tracking point.
-         * </p>
-         *
-         * <p>This maps to the second parameter ({@code yOffset}) of
-         * {@link GoBildaPinpointDriver#setOffsets(double, double, DistanceUnit)}.</p>
+         * Forward/back offset of the strafe (Y) pod from the robot tracking point; +forward, -back.
          */
         public double strafePodOffsetForwardInches = 0.0;
-
-        // --------------------------------------------------------------------
-        // Hardware behavior
-        // --------------------------------------------------------------------
 
         /**
          * If true, reset Pinpoint pose + IMU during estimator construction.
@@ -136,7 +101,7 @@ public final class PinpointPoseEstimator implements PoseEstimator, PoseResetter 
                 GoBildaPinpointDriver.GoBildaOdometryPods.goBILDA_4_BAR_POD;
 
         /**
-         * Custom encoder resolution in <b>ticks per inch</b>. If non-null, overrides {@link #encoderPods}.
+         * Custom encoder resolution in ticks per inch. If non-null, overrides {@link #encoderPods}.
          */
         public Double customEncoderResolutionTicksPerInch = null;
 
@@ -158,37 +123,26 @@ public final class PinpointPoseEstimator implements PoseEstimator, PoseResetter 
         public Double yawScalar = null;
 
         /**
-         * A simple quality score used by fusion / debug displays.
-         *
-         * <p>Domain is 0..1. Odometry is continuous but drift-prone long-term, so values like
-         * 0.6–0.9 are typical.</p>
+         * Quality score used when publishing absolute pose and motion deltas (0..1).
          */
         public double quality = 0.75;
 
         private Config() {
-            // Defaults assigned in field initializers.
         }
 
         /**
-         * Create a new config instance with Phoenix defaults.
+         * @return new config instance populated with framework defaults.
          */
         public static Config defaults() {
             return new Config();
         }
 
-
         /**
          * Convenience factory for the common case.
-         *
-         * @param hardwareMapName              FTC hardware configuration name
-         * @param forwardPodOffsetLeftInches   left/right offset of forward pod (+left)
-         * @param strafePodOffsetForwardInches forward/back offset of strafe pod (+forward)
          */
-        public static Config of(
-                String hardwareMapName,
-                double forwardPodOffsetLeftInches,
-                double strafePodOffsetForwardInches
-        ) {
+        public static Config of(String hardwareMapName,
+                                double forwardPodOffsetLeftInches,
+                                double strafePodOffsetForwardInches) {
             Config c = defaults();
             c.hardwareMapName = hardwareMapName;
             c.forwardPodOffsetLeftInches = forwardPodOffsetLeftInches;
@@ -205,14 +159,13 @@ public final class PinpointPoseEstimator implements PoseEstimator, PoseResetter 
         }
 
         /**
-         * Fluent helper: set both offsets.
+         * Fluent helper: set both pod offsets.
          */
         public Config withOffsets(double forwardPodOffsetLeftInches, double strafePodOffsetForwardInches) {
             this.forwardPodOffsetLeftInches = forwardPodOffsetLeftInches;
             this.strafePodOffsetForwardInches = strafePodOffsetForwardInches;
             return this;
         }
-
 
         /**
          * Fluent helper: set whether to reset pose + IMU during construction.
@@ -240,8 +193,6 @@ public final class PinpointPoseEstimator implements PoseEstimator, PoseResetter 
 
         /**
          * Fluent helper: override encoder resolution in ticks per inch.
-         *
-         * <p>Set to {@code null} to use {@link #encoderPods} instead.</p>
          */
         public Config withCustomEncoderResolutionTicksPerInch(Double ticksPerInch) {
             this.customEncoderResolutionTicksPerInch = ticksPerInch;
@@ -266,8 +217,6 @@ public final class PinpointPoseEstimator implements PoseEstimator, PoseResetter 
 
         /**
          * Fluent helper: set a yaw scalar.
-         *
-         * <p>Set to {@code null} to use the driver default / factory calibration.</p>
          */
         public Config withYawScalar(Double yawScalar) {
             this.yawScalar = yawScalar;
@@ -275,7 +224,7 @@ public final class PinpointPoseEstimator implements PoseEstimator, PoseResetter 
         }
 
         /**
-         * Fluent helper: set a quality score used by fusion/debug (0..1).
+         * Fluent helper: set the published quality score used by debug/fusion (0..1).
          */
         public Config withQuality(double quality) {
             this.quality = quality;
@@ -283,34 +232,31 @@ public final class PinpointPoseEstimator implements PoseEstimator, PoseResetter 
         }
 
         /**
-         * Create a deep copy of this config.
+         * @return deep copy of this config.
          */
         public Config copy() {
             Config c = defaults();
             c.hardwareMapName = this.hardwareMapName;
-
             c.forwardPodOffsetLeftInches = this.forwardPodOffsetLeftInches;
             c.strafePodOffsetForwardInches = this.strafePodOffsetForwardInches;
-
             c.enableResetOnInit = this.enableResetOnInit;
             c.resetWaitMs = this.resetWaitMs;
-
             c.encoderPods = this.encoderPods;
             c.customEncoderResolutionTicksPerInch = this.customEncoderResolutionTicksPerInch;
-
             c.forwardPodDirection = this.forwardPodDirection;
             c.strafePodDirection = this.strafePodDirection;
-
             c.yawScalar = this.yawScalar;
             c.quality = this.quality;
             return c;
         }
 
         /**
-         * Debug-dump this config using the framework {@link DebugSink} pattern.
+         * Emits a compact debug summary of this config.
          */
         public void debugDump(DebugSink dbg, String prefix) {
-            if (dbg == null) return;
+            if (dbg == null) {
+                return;
+            }
             String p = (prefix == null || prefix.isEmpty()) ? "pinpoint" : prefix;
             dbg.addData(p + ".hardwareMapName", hardwareMapName)
                     .addData(p + ".forwardPodOffsetLeftInches", forwardPodOffsetLeftInches)
@@ -329,15 +275,15 @@ public final class PinpointPoseEstimator implements PoseEstimator, PoseResetter 
     private final GoBildaPinpointDriver odo;
     private final Config cfg;
 
-    // Start in a "no pose" state until the first successful update.
     private PoseEstimate lastEstimate = PoseEstimate.noPose(0.0);
+    private MotionDelta lastMotionDelta = MotionDelta.none(0.0);
 
     /**
-     * Create a Pinpoint-backed {@link PoseEstimator}.
+     * Creates a Pinpoint-backed motion predictor.
      *
      * <p>If {@code config} is {@code null}, {@link Config#defaults()} is used.</p>
      */
-    public PinpointPoseEstimator(HardwareMap hardwareMap, Config config) {
+    public PinpointOdometryPredictor(HardwareMap hardwareMap, Config config) {
         Objects.requireNonNull(hardwareMap, "hardwareMap");
 
         Config base = (config != null) ? config : Config.defaults();
@@ -346,26 +292,22 @@ public final class PinpointPoseEstimator implements PoseEstimator, PoseResetter 
         this.odo = hardwareMap.get(GoBildaPinpointDriver.class,
                 Objects.requireNonNull(this.cfg.hardwareMapName, "hardwareMapName"));
 
-        // Configure offsets. Phoenix uses inches everywhere, so keep Pinpoint config in inches.
         odo.setOffsets(
                 this.cfg.forwardPodOffsetLeftInches,
                 this.cfg.strafePodOffsetForwardInches,
                 CONFIG_DISTANCE_UNIT
         );
 
-        // Configure yaw scalar if requested.
         if (this.cfg.yawScalar != null) {
             odo.setYawScalar(this.cfg.yawScalar);
         }
 
-        // Configure encoder resolution.
         if (this.cfg.customEncoderResolutionTicksPerInch != null) {
             odo.setEncoderResolution(this.cfg.customEncoderResolutionTicksPerInch, CONFIG_DISTANCE_UNIT);
         } else if (this.cfg.encoderPods != null) {
             odo.setEncoderResolution(this.cfg.encoderPods);
         }
 
-        // Configure encoder direction.
         if (this.cfg.forwardPodDirection != null && this.cfg.strafePodDirection != null) {
             odo.setEncoderDirections(this.cfg.forwardPodDirection, this.cfg.strafePodDirection);
         }
@@ -383,14 +325,17 @@ public final class PinpointPoseEstimator implements PoseEstimator, PoseResetter 
     }
 
     /**
-     * Exposes the underlying FTC driver in case you need advanced access.
+     * Exposes the underlying FTC driver in case advanced hardware access is needed.
      */
     public GoBildaPinpointDriver getDriver() {
         return odo;
     }
 
     /**
-     * {@inheritDoc}
+     * Polls the Pinpoint, updates the absolute odometry pose, and publishes the latest motion delta.
+     *
+     * <p>Typical usage is to call this once per loop before reading either {@link #getEstimate()} or
+     * {@link #getLatestMotionDelta()}.</p>
      */
     @Override
     public void update(LoopClock clock) {
@@ -400,6 +345,7 @@ public final class PinpointPoseEstimator implements PoseEstimator, PoseResetter 
 
         if (pos == null) {
             lastEstimate = PoseEstimate.noPose(nowSec);
+            lastMotionDelta = MotionDelta.none(nowSec);
             return;
         }
 
@@ -407,19 +353,32 @@ public final class PinpointPoseEstimator implements PoseEstimator, PoseResetter 
         double yIn = pos.getY(DistanceUnit.INCH);
         double headingRad = pos.getHeading(AngleUnit.RADIANS);
 
-        // Defensive conversion: a known issue in some versions causes unit confusion.
         if (Math.abs(headingRad) > Math.PI * 2.0 + 0.5) {
             headingRad = Math.toRadians(headingRad);
         }
-
         headingRad = MathUtil.wrapToPi(headingRad);
 
         Pose3d pose = new Pose3d(xIn, yIn, 0.0, headingRad, 0.0, 0.0);
+        PoseEstimate previous = lastEstimate;
+        if (previous != null && previous.hasPose) {
+            double startSec = Double.isFinite(previous.timestampSec) ? previous.timestampSec : nowSec;
+            Pose3d previousPose = previous.fieldToRobotPose;
+            lastMotionDelta = new MotionDelta(
+                    previousPose.inverse().then(pose),
+                    true,
+                    cfg.quality,
+                    startSec,
+                    nowSec
+            );
+        } else {
+            lastMotionDelta = MotionDelta.none(nowSec);
+        }
+
         lastEstimate = new PoseEstimate(pose, true, cfg.quality, 0.0, nowSec);
     }
 
     /**
-     * {@inheritDoc}
+     * Returns the most recent absolute odometry pose reported by Pinpoint.
      */
     @Override
     public PoseEstimate getEstimate() {
@@ -427,10 +386,21 @@ public final class PinpointPoseEstimator implements PoseEstimator, PoseResetter 
     }
 
     /**
+     * Returns the most recent timestamped motion increment computed from successive Pinpoint poses.
+     */
+    @Override
+    public MotionDelta getLatestMotionDelta() {
+        return lastMotionDelta;
+    }
+
+    /**
      * Resets the Pinpoint IMU and pose back to 0,0,0.
      */
     public void resetPosAndIMU() {
         odo.resetPosAndIMU();
+        double ts = (lastEstimate != null && Double.isFinite(lastEstimate.timestampSec)) ? lastEstimate.timestampSec : 0.0;
+        lastEstimate = PoseEstimate.noPose(ts);
+        lastMotionDelta = MotionDelta.none(ts);
     }
 
     /**
@@ -438,10 +408,12 @@ public final class PinpointPoseEstimator implements PoseEstimator, PoseResetter 
      */
     public void recalibrateIMU() {
         odo.recalibrateIMU();
+        double ts = (lastEstimate != null && Double.isFinite(lastEstimate.timestampSec)) ? lastEstimate.timestampSec : 0.0;
+        lastMotionDelta = MotionDelta.none(ts);
     }
 
     /**
-     * {@inheritDoc}
+     * Snaps both the underlying Pinpoint device and this predictor's cached estimate to a known field pose.
      */
     @Override
     public void setPose(Pose2d pose) {
@@ -450,5 +422,31 @@ public final class PinpointPoseEstimator implements PoseEstimator, PoseResetter 
         }
         Pose2D set = new Pose2D(DistanceUnit.INCH, pose.xInches, pose.yInches, AngleUnit.RADIANS, pose.headingRad);
         odo.setPosition(set);
+        double ts = (lastEstimate != null && Double.isFinite(lastEstimate.timestampSec)) ? lastEstimate.timestampSec : 0.0;
+        lastEstimate = new PoseEstimate(new Pose3d(
+                pose.xInches,
+                pose.yInches,
+                0.0,
+                MathUtil.wrapToPi(pose.headingRad),
+                0.0,
+                0.0
+        ), true, cfg.quality, 0.0, ts);
+        lastMotionDelta = MotionDelta.none(ts);
+    }
+
+    /**
+     * Emits the current predictor pose, last motion delta, and static config for telemetry/debugging.
+     */
+    @Override
+    public void debugDump(DebugSink dbg, String prefix) {
+        if (dbg == null) {
+            return;
+        }
+        String p = (prefix == null || prefix.isEmpty()) ? "pinpoint" : prefix;
+        dbg.addData(p + ".class", getClass().getSimpleName())
+                .addData(p + ".driverStatus", odo.getDeviceStatus())
+                .addData(p + ".lastEstimate", lastEstimate)
+                .addData(p + ".lastMotionDelta", lastMotionDelta);
+        cfg.debugDump(dbg, p + ".cfg");
     }
 }

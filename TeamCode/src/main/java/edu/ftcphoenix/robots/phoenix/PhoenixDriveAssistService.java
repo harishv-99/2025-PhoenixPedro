@@ -12,7 +12,7 @@ import edu.ftcphoenix.fw.drive.DriveOverlayStack;
 import edu.ftcphoenix.fw.drive.DriveSource;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidance;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidancePlan;
-import edu.ftcphoenix.fw.localization.PoseEstimator;
+import edu.ftcphoenix.fw.localization.AbsolutePoseEstimator;
 
 /**
  * Robot-specific drive-assist service for Phoenix TeleOp.
@@ -56,20 +56,20 @@ public final class PhoenixDriveAssistService {
      * @param manualDrive              base manual drive source from the controls owner
      * @param manualTranslateMagnitude source describing the driver's current translation-stick magnitude
      * @param autoAimEnabled           source that requests omega-only auto aim when held
-     * @param globalPoseEstimator      shared global pose estimator used by the shoot-brace pose lock
+     * @param globalAbsolutePoseEstimator      shared global pose estimator used by the shoot-brace pose lock
      * @param autoAimOverlay           scoring-targeting overlay that controls robot omega while auto aim is active
      */
     public PhoenixDriveAssistService(PhoenixProfile.DriveAssistConfig config,
                                      DriveSource manualDrive,
                                      ScalarSource manualTranslateMagnitude,
                                      BooleanSource autoAimEnabled,
-                                     PoseEstimator globalPoseEstimator,
+                                     AbsolutePoseEstimator globalAbsolutePoseEstimator,
                                      DriveOverlay autoAimOverlay) {
         PhoenixProfile.DriveAssistConfig cfg = Objects.requireNonNull(config, "config").copy();
         Objects.requireNonNull(manualDrive, "manualDrive");
         this.manualTranslateMagnitude = Objects.requireNonNull(manualTranslateMagnitude, "manualTranslateMagnitude");
         this.autoAimEnabled = Objects.requireNonNull(autoAimEnabled, "autoAimEnabled");
-        Objects.requireNonNull(globalPoseEstimator, "globalPoseEstimator");
+        Objects.requireNonNull(globalAbsolutePoseEstimator, "globalAbsolutePoseEstimator");
         Objects.requireNonNull(autoAimOverlay, "autoAimOverlay");
 
         PhoenixProfile.DriveAssistConfig.ShootBraceConfig shootBrace = cfg.shootBrace;
@@ -83,7 +83,7 @@ public final class PhoenixDriveAssistService {
                         "shootBrace",
                         BooleanSource.of(shootBraceLatch::get),
                         DriveGuidance.poseLock(
-                                globalPoseEstimator,
+                                globalAbsolutePoseEstimator,
                                 DriveGuidancePlan.Tuning.defaults()
                                         .withTranslateKp(shootBrace.translateKp)
                                         .withMaxTranslateCmd(shootBrace.maxTranslateCmd)

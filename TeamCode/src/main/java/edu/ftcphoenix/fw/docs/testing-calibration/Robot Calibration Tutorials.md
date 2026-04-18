@@ -200,20 +200,20 @@ Run this after:
 
 Paste the new offsets immediately and set your robot-side “offsets calibrated” acknowledgement flag when you are satisfied with the result.
 
-## Pinpoint plus AprilTag fusion
+## Pinpoint plus field corrections
 
 ### Why this matters
 
-This is the first true global-localization validation pass. At this point you are no longer asking whether each subsystem works in isolation. You are checking whether odometry and tags agree enough to trust the combined pose.
+This is the first true global-localization validation pass. At this point you are no longer asking whether each subsystem works in isolation. You are checking whether motion prediction and the chosen absolute correction source agree enough to trust the combined pose.
 
 ### Tester
 
-- `Loc: Pinpoint + AprilTag Fusion`
+- `Loc: Pinpoint + Field Corrections`
 
 ### Procedure
 
 1. Start with the robot where tags are visible.
-2. Compare the odometry pose, vision pose, and fused pose.
+2. Compare the predictor pose, the raw AprilTag pose, the active correction pose, and the corrected pose.
 3. Drive around while tags are visible and confirm the fused pose stays stable.
 4. Move closer to a target or rotate so tags disappear.
 5. Confirm the fused pose continues smoothly on odometry alone.
@@ -222,9 +222,9 @@ This is the first true global-localization validation pass. At this point you ar
 ### What “good” looks like
 
 - odom, vision, and fused estimates are broadly consistent
-- the fused pose does not jump unpredictably when vision is enabled
+- the corrected pose does not jump unpredictably when corrections are enabled
 - the fused pose keeps updating smoothly when tags disappear temporarily
-- vision corrections improve the estimate instead of fighting it
+- absolute corrections improve the estimate instead of fighting it
 
 ### Do not move on if
 
@@ -240,7 +240,7 @@ The covariance-aware EKF-style estimator is intentionally not the first thing te
 
 ### Tester
 
-- `Loc: Pinpoint + AprilTag EKF`
+- `Loc: Pinpoint + Field Corrections EKF`
 
 ### Procedure
 

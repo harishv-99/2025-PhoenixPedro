@@ -7,7 +7,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
 /**
  * Immutable snapshot of the robot's estimated pose on the field (6DOF).
  *
- * <p>A {@code PoseEstimate} is produced by a {@link PoseEstimator} and consumed by drive
+ * <p>A {@code PoseEstimate} is produced by a {@link AbsolutePoseEstimator} and consumed by drive
  * controllers, tasks, and debugging tools. It captures:</p>
  *
  * <ul>
@@ -66,7 +66,7 @@ public final class PoseEstimate {
     /**
      * Quality score in the range [0.0, 1.0], where 1.0 is "best" and 0.0 is "no confidence".
      *
-     * <p>This is intentionally simple. Different {@link PoseEstimator} implementations may interpret
+     * <p>This is intentionally simple. Different {@link AbsolutePoseEstimator} implementations may interpret
      * it differently (e.g., number of tags visible, covariance-like measure, etc.).</p>
      */
     public final double quality;

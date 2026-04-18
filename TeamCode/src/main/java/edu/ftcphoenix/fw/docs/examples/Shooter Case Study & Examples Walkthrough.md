@@ -233,7 +233,7 @@ If the robot maintains a trusted field pose estimate, the same selected-tag refe
 ```java
 .resolveWith()
     .adaptive()
-    .localization(fusedPoseEstimator, 0.25, 0.0)
+    .localization(fusedAbsolutePoseEstimator, 0.25, 0.0)
     .aprilTags(tagSensor, cameraMount, 0.25)
     .fixedAprilTagLayout(gameTagLayout)
 ```

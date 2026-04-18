@@ -77,7 +77,7 @@ Phoenix is designed around a few core goals:
    **Rule of thumb:**
 
    * Use **`toString()`** for small, mostly-immutable *value objects* and configs where a compact one-line representation is helpful (examples: `Pose2d`, `Pose3d`, `DriveSignal`, `ChassisSpeeds`, `CameraMountConfig`, small `Owner.Config` objects).
-   * Use **`debugDump(DebugSink dbg, String prefix)`** for loop-updated and/or stateful objects (things that have `update(...)`, own hardware, or own other objects): `Plant`, `PoseEstimator`, `DriveSource` / `DriveOverlay`, `Task`s, controllers, subsystems.
+   * Use **`debugDump(DebugSink dbg, String prefix)`** for loop-updated and/or stateful objects (things that have `update(...)`, own hardware, or own other objects): `Plant`, `AbsolutePoseEstimator`, `DriveSource` / `DriveOverlay`, `Task`s, controllers, subsystems.
 
    **When both exist:**
 
@@ -237,7 +237,7 @@ Phoenix uses two common patterns for configuration:
 1. **Owner-scoped configs** live as a nested `Owner.Config` class.
 
    * Use this when the config is only meaningful to that one class.
-   * Examples: `MecanumDrivebase.Config`, `FtcVision.Config`, `PinpointPoseEstimator.Config`.
+   * Examples: `MecanumDrivebase.Config`, `FtcVision.Config`, `PinpointOdometryPredictor.Config`.
    * These are usually simple mutable data objects: start from `defaults()`, tweak the fields you care about, then pass the config into the owner.
    * Owners should defensively copy configs at construction time when later mutation would be surprising.
 
@@ -257,7 +257,7 @@ Phoenix uses these names intentionally:
 - **`defaults()`** means “a reasonable starting configuration for a component.”
   It’s used for `Owner.Config` classes that collect tuning / hardware options.
   The values are not “correct for your robot,” they’re just safe to start from.
-  Example: `PinpointPoseEstimator.Config.defaults()`.
+  Example: `PinpointOdometryPredictor.Config.defaults()`.
 
 - **`identity()`** means “the identity transform.”
   It’s used when the object conceptually *is a transform between frames* and there is a meaningful
@@ -324,7 +324,7 @@ Phoenix tries to make boolean flags read clearly at the call site (especially in
 Examples:
 
 - ✅ `enableAprilTagAssist`
-- ✅ `enableInitializeFromVision`
+- ✅ `enableInitializeFromCorrection`
 - ✅ `enableResetOnInit`
 - ❌ `useAprilTagsAssist`
 - ❌ `disableVisionInit`

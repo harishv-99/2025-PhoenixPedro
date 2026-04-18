@@ -3,7 +3,7 @@ package edu.ftcphoenix.fw.localization;
 import edu.ftcphoenix.fw.core.geometry.Pose2d;
 
 /**
- * Optional capability interface for {@link PoseEstimator}s that can be "snapped" to a known pose.
+ * Optional capability interface for {@link AbsolutePoseEstimator}s that can be "snapped" to a known pose.
  *
  * <p>In practice, some estimators (e.g., odometry hardware like Pinpoint) can accept an absolute
  * pose reset. Fusion estimators can use this to keep the underlying odometry aligned to the fused

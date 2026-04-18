@@ -469,9 +469,10 @@ public final class PhoenixProfile {
 
     private static FtcOdometryAprilTagLocalizationLane.Config defaultLocalizationConfig() {
         FtcOdometryAprilTagLocalizationLane.Config cfg = FtcOdometryAprilTagLocalizationLane.Config.defaults();
-        cfg.globalEstimatorMode = FtcOdometryAprilTagLocalizationLane.GlobalEstimatorMode.FUSION;
+        cfg.correctedEstimatorMode = FtcOdometryAprilTagLocalizationLane.GlobalEstimatorMode.FUSION;
+        cfg.correctionSource.mode = FtcOdometryAprilTagLocalizationLane.CorrectionSourceMode.APRILTAG_POSE;
 
-        cfg.odometry = cfg.odometry
+        cfg.predictor = cfg.predictor
                 .withHardwareMapName("pinPoint")
                 .withOffsets(0.0, 0.0)
                 .withForwardPodDirection(GoBildaPinpointDriver.EncoderDirection.FORWARD)
@@ -489,38 +490,50 @@ public final class PhoenixProfile {
         cfg.aprilTags.fieldPoseSolver.plausibleFieldRegion = FtcFieldRegions.fullField();
         cfg.aprilTags.fieldPoseSolver.maxOutsidePlausibleFieldRegionInches = 3.0;
 
-        cfg.odometryTagFusion.maxVisionAgeSec = 0.35;
-        cfg.odometryTagFusion.minVisionQuality = 0.10;
-        cfg.odometryTagFusion.visionPositionGain = 0.25;
-        cfg.odometryTagFusion.visionHeadingGain = 0.35;
-        cfg.odometryTagFusion.maxVisionPositionJumpIn = 24.0;
-        cfg.odometryTagFusion.maxVisionHeadingJumpRad = Math.toRadians(60.0);
-        cfg.odometryTagFusion.enableLatencyCompensation = true;
-        cfg.odometryTagFusion.odomHistorySec = 1.0;
+        cfg.correctionSource.limelightFieldPose.mode = edu.ftcphoenix.fw.ftc.localization.LimelightFieldPoseEstimator.Config.Mode.BOTPOSE;
+        cfg.correctionSource.limelightFieldPose.maxResultAgeSec = 0.25;
+        cfg.correctionSource.limelightFieldPose.minVisibleTags = 1;
+        cfg.correctionSource.limelightFieldPose.singleTagQuality = 0.55;
+        cfg.correctionSource.limelightFieldPose.multiTagQuality = 0.85;
+        cfg.correctionSource.limelightFieldPose.degradeWhenMoving = true;
+        cfg.correctionSource.limelightFieldPose.translationSpeedForZeroQualityInPerSec = 72.0;
+        cfg.correctionSource.limelightFieldPose.yawRateForZeroQualityRadPerSec = Math.toRadians(360.0);
+        cfg.correctionSource.limelightFieldPose.rejectWhenMovingTooFast = false;
+        cfg.correctionSource.limelightFieldPose.maxTranslationSpeedInPerSec = 120.0;
+        cfg.correctionSource.limelightFieldPose.maxYawRateRadPerSec = Math.toRadians(720.0);
 
-        cfg.odometryTagEkf.maxVisionAgeSec = 0.35;
-        cfg.odometryTagEkf.minVisionQuality = 0.10;
-        cfg.odometryTagEkf.maxVisionPositionInnovationIn = 24.0;
-        cfg.odometryTagEkf.maxVisionHeadingInnovationRad = Math.toRadians(60.0);
-        cfg.odometryTagEkf.maxVisionMahalanobisSq = 14.0;
-        cfg.odometryTagEkf.enableLatencyCompensation = true;
-        cfg.odometryTagEkf.odomHistorySec = 1.0;
-        cfg.odometryTagEkf.initialPositionStdIn = 6.0;
-        cfg.odometryTagEkf.initialHeadingStdRad = Math.toRadians(12.0);
-        cfg.odometryTagEkf.manualPosePositionStdIn = 3.0;
-        cfg.odometryTagEkf.manualPoseHeadingStdRad = Math.toRadians(6.0);
-        cfg.odometryTagEkf.odomProcessPositionStdFloorIn = 0.20;
-        cfg.odometryTagEkf.odomProcessPositionStdPerIn = 0.03;
-        cfg.odometryTagEkf.odomProcessPositionStdPerRad = 0.55;
-        cfg.odometryTagEkf.odomProcessHeadingStdFloorRad = Math.toRadians(0.35);
-        cfg.odometryTagEkf.odomProcessHeadingStdPerIn = Math.toRadians(0.06);
-        cfg.odometryTagEkf.odomProcessHeadingStdPerRad = 0.06;
-        cfg.odometryTagEkf.visionPositionStdFloorIn = 1.75;
-        cfg.odometryTagEkf.visionPositionStdScaleIn = 6.0;
-        cfg.odometryTagEkf.visionHeadingStdFloorRad = Math.toRadians(3.0);
-        cfg.odometryTagEkf.visionHeadingStdScaleRad = Math.toRadians(10.0);
-        cfg.odometryTagEkf.qualityPositionStdScaleIn = 18.0;
-        cfg.odometryTagEkf.qualityHeadingStdScaleRad = Math.toRadians(30.0);
+        cfg.correctionFusion.maxCorrectionAgeSec = 0.35;
+        cfg.correctionFusion.minCorrectionQuality = 0.10;
+        cfg.correctionFusion.correctionPositionGain = 0.25;
+        cfg.correctionFusion.correctionHeadingGain = 0.35;
+        cfg.correctionFusion.maxCorrectionPositionJumpIn = 24.0;
+        cfg.correctionFusion.maxCorrectionHeadingJumpRad = Math.toRadians(60.0);
+        cfg.correctionFusion.enableLatencyCompensation = true;
+        cfg.correctionFusion.predictorHistorySec = 1.0;
+
+        cfg.correctionEkf.maxCorrectionAgeSec = 0.35;
+        cfg.correctionEkf.minCorrectionQuality = 0.10;
+        cfg.correctionEkf.maxCorrectionPositionInnovationIn = 24.0;
+        cfg.correctionEkf.maxCorrectionHeadingInnovationRad = Math.toRadians(60.0);
+        cfg.correctionEkf.maxCorrectionMahalanobisSq = 14.0;
+        cfg.correctionEkf.enableLatencyCompensation = true;
+        cfg.correctionEkf.predictorHistorySec = 1.0;
+        cfg.correctionEkf.initialPositionStdIn = 6.0;
+        cfg.correctionEkf.initialHeadingStdRad = Math.toRadians(12.0);
+        cfg.correctionEkf.manualPosePositionStdIn = 3.0;
+        cfg.correctionEkf.manualPoseHeadingStdRad = Math.toRadians(6.0);
+        cfg.correctionEkf.predictorProcessPositionStdFloorIn = 0.20;
+        cfg.correctionEkf.predictorProcessPositionStdPerIn = 0.03;
+        cfg.correctionEkf.predictorProcessPositionStdPerRad = 0.55;
+        cfg.correctionEkf.predictorProcessHeadingStdFloorRad = Math.toRadians(0.35);
+        cfg.correctionEkf.predictorProcessHeadingStdPerIn = Math.toRadians(0.06);
+        cfg.correctionEkf.predictorProcessHeadingStdPerRad = 0.06;
+        cfg.correctionEkf.correctionPositionStdFloorIn = 1.75;
+        cfg.correctionEkf.correctionPositionStdScaleIn = 6.0;
+        cfg.correctionEkf.correctionHeadingStdFloorRad = Math.toRadians(3.0);
+        cfg.correctionEkf.correctionHeadingStdScaleRad = Math.toRadians(10.0);
+        cfg.correctionEkf.projectedCorrectionPositionStdPerSec = 18.0;
+        cfg.correctionEkf.projectedCorrectionHeadingStdPerSec = Math.toRadians(30.0);
 
         return cfg;
     }

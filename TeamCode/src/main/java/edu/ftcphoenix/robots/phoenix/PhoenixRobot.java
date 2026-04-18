@@ -23,7 +23,7 @@ import edu.ftcphoenix.fw.task.TaskRunner;
  * Central robot container / composition root for Phoenix.
  *
  * <p>
- * At this stage Phoenix follows the framework's principle-driven split more explicitly:
+ * Phoenix follows the framework's principle-driven split explicitly:
  * </p>
  * <ul>
  *   <li>{@link FtcMecanumDriveLane} owns stable drive hardware/lifecycle concerns.</li>
@@ -285,8 +285,8 @@ public final class PhoenixRobot {
         ShooterStatus shooterStatus = shooter.status(clock);
         TargetingStatus targetingStatus = scoringTargeting.status(clock);
         DriveAssistStatus driveAssistStatus = driveAssists.status();
-        PoseEstimate globalPose = localization.globalPose();
-        PoseEstimate odomPose = localization.odometryPose();
+        PoseEstimate globalPose = localization.globalEstimator().getEstimate();
+        PoseEstimate odomPose = localization.predictor().getEstimate();
 
         telemetryPresenter.emitTeleOp(
                 shooterStatus,
@@ -324,8 +324,8 @@ public final class PhoenixRobot {
         shooter.update(clock);
         ShooterStatus shooterStatus = shooter.status(clock);
         TargetingStatus targetingStatus = scoringTargeting.status(clock);
-        PoseEstimate globalPose = localization.globalPose();
-        PoseEstimate odomPose = localization.odometryPose();
+        PoseEstimate globalPose = localization.globalEstimator().getEstimate();
+        PoseEstimate odomPose = localization.predictor().getEstimate();
 
         Task currentAutoTask = autoRunner.currentTaskOrNull();
         telemetry.addData("auto.currentTask", currentAutoTask != null ? currentAutoTask.getDebugName() : "<idle>");

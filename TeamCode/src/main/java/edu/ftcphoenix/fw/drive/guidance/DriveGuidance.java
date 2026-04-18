@@ -6,7 +6,7 @@ import java.util.Set;
 
 import edu.ftcphoenix.fw.drive.DriveOverlay;
 import edu.ftcphoenix.fw.field.TagLayout;
-import edu.ftcphoenix.fw.localization.PoseEstimator;
+import edu.ftcphoenix.fw.localization.AbsolutePoseEstimator;
 import edu.ftcphoenix.fw.localization.apriltag.FixedTagFieldPoseSolver;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
@@ -127,14 +127,14 @@ public final class DriveGuidance {
     /**
      * Creates a pose-lock overlay that holds the current field pose using default tuning.
      */
-    public static DriveOverlay poseLock(PoseEstimator poseEstimator) {
+    public static DriveOverlay poseLock(AbsolutePoseEstimator poseEstimator) {
         return poseLock(poseEstimator, DriveGuidancePlan.Tuning.defaults());
     }
 
     /**
      * Creates a pose-lock overlay with custom tuning.
      */
-    public static DriveOverlay poseLock(PoseEstimator poseEstimator, DriveGuidancePlan.Tuning tuning) {
+    public static DriveOverlay poseLock(AbsolutePoseEstimator poseEstimator, DriveGuidancePlan.Tuning tuning) {
         return new PoseLockOverlay(poseEstimator, tuning);
     }
 
@@ -155,7 +155,7 @@ public final class DriveGuidance {
          *
          * <p>At least one active lane is required:</p>
          * <ul>
-         *   <li>field pose via {@link ResolveWithBuilder#localization(PoseEstimator)}</li>
+         *   <li>field pose via {@link ResolveWithBuilder#localization(AbsolutePoseEstimator)}</li>
          *   <li>live AprilTags via {@link ResolveWithBuilder#aprilTags(AprilTagSensor, CameraMountConfig)}</li>
          *   <li>or both for adaptive behavior</li>
          * </ul>
@@ -405,12 +405,12 @@ public final class DriveGuidance {
         /**
          * Adds a localization solve lane with default age/quality bounds.
          */
-        ResolveWithBuilder<RETURN> localization(PoseEstimator poseEstimator);
+        ResolveWithBuilder<RETURN> localization(AbsolutePoseEstimator poseEstimator);
 
         /**
          * Adds a localization solve lane with explicit age/quality bounds.
          */
-        ResolveWithBuilder<RETURN> localization(PoseEstimator poseEstimator,
+        ResolveWithBuilder<RETURN> localization(AbsolutePoseEstimator poseEstimator,
                                                 double maxAgeSec,
                                                 double minQuality);
 
@@ -427,7 +427,7 @@ public final class DriveGuidance {
          * AprilTag-only localizer instead of silently falling back to helper defaults.</p>
          *
          * <p>The framework normalizes this to the shared base solver config at the API boundary.
-         * Subclass-specific extras (for example {@code TagOnlyPoseEstimator.Config.cameraMount})
+         * Subclass-specific extras (for example {@code AprilTagPoseEstimator.Config.cameraMount})
          * are intentionally ignored here because they belong to other APIs.</p>
          */
         ResolveWithBuilder<RETURN> aprilTagFieldPoseConfig(FixedTagFieldPoseSolver.Config cfg);
@@ -471,7 +471,7 @@ public final class DriveGuidance {
         double tagsMaxAgeSec = DriveGuidanceSpec.AprilTags.DEFAULT_MAX_AGE_SEC;
         FixedTagFieldPoseSolver.Config aprilTagFieldPoseConfig = FixedTagFieldPoseSolver.Config.defaults();
 
-        PoseEstimator poseEstimator;
+        AbsolutePoseEstimator poseEstimator;
         double poseMaxAgeSec = DriveGuidanceSpec.Localization.DEFAULT_MAX_AGE_SEC;
         double poseMinQuality = DriveGuidanceSpec.Localization.DEFAULT_MIN_QUALITY;
 
@@ -1239,7 +1239,7 @@ public final class DriveGuidance {
          * {@inheritDoc}
          */
         @Override
-        public ResolveWithBuilder<RETURN> localization(PoseEstimator poseEstimator) {
+        public ResolveWithBuilder<RETURN> localization(AbsolutePoseEstimator poseEstimator) {
             s.poseEstimator = Objects.requireNonNull(poseEstimator, "poseEstimator");
             s.poseMaxAgeSec = DriveGuidanceSpec.Localization.DEFAULT_MAX_AGE_SEC;
             s.poseMinQuality = DriveGuidanceSpec.Localization.DEFAULT_MIN_QUALITY;
@@ -1250,7 +1250,7 @@ public final class DriveGuidance {
          * {@inheritDoc}
          */
         @Override
-        public ResolveWithBuilder<RETURN> localization(PoseEstimator poseEstimator,
+        public ResolveWithBuilder<RETURN> localization(AbsolutePoseEstimator poseEstimator,
                                                        double maxAgeSec,
                                                        double minQuality) {
             s.poseEstimator = Objects.requireNonNull(poseEstimator, "poseEstimator");

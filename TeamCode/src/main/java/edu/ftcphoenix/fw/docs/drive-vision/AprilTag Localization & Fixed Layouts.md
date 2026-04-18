@@ -1,70 +1,44 @@
 # AprilTag Localization & Fixed Layouts
 
-This guide explains the framework policy for AprilTag localization, fixed-tag layouts, and the shared multi-tag field-pose solver.
+This guide explains Phoenix's AprilTag-localization policy, the difference between detector libraries and trusted field layouts, and how the framework now splits localization into **absolute pose estimators**, **motion predictors**, and **corrected/global estimators**.
 
 The short version:
 
-- **The FTC SDK AprilTag library** tells the detector which tags exist and what their printed size is.
-- **A Phoenix `TagLayout`** tells localization / guidance which tags are safe to treat as **fixed field landmarks**.
-- **Raw detections may see more tags than the fixed layout contains.** That is intentional.
+- **`AprilTagLibrary`** tells a detector which tags exist and how large they are.
+- **`TagLayout`** tells Phoenix which tag IDs are trusted as fixed field landmarks.
+- **`AprilTagVisionLane`** owns the FTC-side AprilTag rig and exposes a shared `AprilTagSensor`.
+- **`AbsolutePoseEstimator`** answers "where is the robot on the field?"
+- **`MotionPredictor`** answers both "where is the robot now?" and "how did it move since the last loop?"
+- **`CorrectedPoseEstimator`** combines a motion predictor with one absolute correction source.
 
-In the current framework structure, keep these ownership boundaries separate:
-
-- `AprilTagVisionLane` is the backend-neutral seam consumed by localization, targeting, and future vision features
-- `FtcWebcamAprilTagVisionLane` and `FtcLimelightAprilTagVisionLane` are the standard FTC-boundary implementations of that seam
-- `FtcOdometryAprilTagLocalizationLane` owns pose-estimation strategy built on top of that shared rig
-- field facts such as `TagLayout` stay separate from both
-
-That split matters because the camera rig may be shared by localization, aiming, and future vision features.
-
-That split keeps localization lanes dependent on `AprilTagVisionLane`, not on a backend-specific owner. The rest of the framework stays focused on tag observations and camera extrinsics while each FTC-boundary implementation remains free to own its own device lifecycle and setup details.
-
-### What changes when switching from a webcam to Limelight?
-
-For the functionality implemented so far, both backends are used the same way above the FTC boundary:
-
-```java
-AprilTagVisionLane vision = MyVisionFactory.create(hardwareMap, profile.vision);
-
-FtcOdometryAprilTagLocalizationLane localization =
-        new FtcOdometryAprilTagLocalizationLane(hardwareMap, vision, fixedLayout, locCfg);
-
-AprilTagSensor tags = vision.tagSensor();
-CameraMountConfig mount = vision.cameraMountConfig();
-```
-
-What changes is only how the FTC-boundary lane acquires AprilTag observations:
-
-- `FtcWebcamAprilTagVisionLane` uses a `WebcamName` plus FTC VisionPortal / SDK AprilTag processing.
-- `FtcLimelightAprilTagVisionLane` uses a `Limelight3A`, switches to the configured AprilTag pipeline, starts polling, and adapts Limelight fiducial results into the same `AprilTagSensor` seam.
-
-At this point in the framework, Limelight is acting as an **AprilTag-observation backend**. The rest of localization and targeting still consumes the same normalized AprilTag observations regardless of whether they came from a webcam or from Limelight. Direct Limelight `botpose` / MegaTag2 consumption is intentionally a later, separate integration step.
+That split matters because a camera can be shared by localization, alignment, and future vision jobs while the localization stack remains free to choose whether it trusts a raw AprilTag solve, a direct smart-camera pose, or some future absolute field-anchor signal.
 
 ---
 
-## 1. Detectable tags vs fixed field tags
+## 1. Detectable tags vs trusted field-fixed tags
 
 These are not the same thing.
 
 ### 1.1 Detectable tags
 
-The FTC SDK `AprilTagLibrary` is detection metadata:
+The FTC SDK `AprilTagLibrary` is detector metadata:
 
 - tag IDs
-- tag size
+- tag sizes
 - FTC-provided field metadata when available
 
-Phoenix does **not** assume every tag in that library is safe for global localization. Some seasons include tags that are useful for identification, scoring logic, or driver assists even though their exact placement is not deterministic enough to trust as a fixed field landmark.
+Phoenix does **not** assume every tag in that library is safe for global localization. Some FTC seasons include tags that are useful for identification, scoring logic, or driver assists even though their exact placement is not deterministic enough to trust as a fixed field landmark.
 
 ### 1.2 Fixed field tags
 
 A Phoenix `TagLayout` is the framework contract for **field-fixed** tags only.
 
-That means anything that promotes AprilTags into a field pose should use a `TagLayout`, not the raw FTC library. In practice that includes:
+Anything that promotes AprilTag observations into a field pose should use a `TagLayout`, not the raw FTC detector library. In practice that includes:
 
-- `TagOnlyPoseEstimator`
-- drive guidance's temporary AprilTag → field-pose bridge
-- any localizer or tool that solves `field -> robot` from visible tags
+- `AprilTagPoseEstimator`
+- guidance paths that temporarily solve a field pose from tags
+- corrected/global localization lanes
+- calibration tools that depend on field-fixed tags
 
 For official FTC games, the intended entrypoint is:
 
@@ -72,22 +46,7 @@ For official FTC games, the intended entrypoint is:
 TagLayout fixedLayout = FtcGameTagLayout.currentGameFieldFixed();
 ```
 
-That keeps the season-specific “which tags are really fixed?” decision in one framework-owned place.
-
-The helper may also normalize away known FTC SDK ancillary/sample tags that are present in a broad detector library but are not part of the official field-fixed policy. That way localization policy does not break just because the detector library contains extra SDK sample IDs.
-
----
-
-## 2. Official FTC games
-
-`FtcGameTagLayout.currentGameFieldFixed()` is the framework's best-known fixed-tag policy for the current FTC season.
-
-Design rules:
-
-- it should contain only tags Phoenix is willing to trust for localization / field-pose solving
-- it should fail fast for unknown future official libraries rather than silently treating every SDK tag as fixed
-- it should tolerate known ancillary SDK sample tags in broad/default detector libraries instead of forcing robot code to special-case them
-- robot code should not carry its own season-specific “exclude these IDs” list when the framework policy is always required
+That keeps the season-specific "which tags are really fixed?" decision in one framework-owned place.
 
 If you intentionally work with an archived or custom library, use:
 
@@ -101,254 +60,356 @@ Use `fromLibraryAllTags(...)` only when you already know every tag in that libra
 
 ---
 
-## 3. Multi-tag localization
+## 2. Localization roles: absolute pose vs motion prediction
 
-Phoenix's AprilTag localizer uses a shared solver:
+Phoenix now formalizes three distinct localization roles.
 
-- gather all visible observations whose IDs are in the fixed layout
+### 2.1 `AbsolutePoseEstimator`
+
+An `AbsolutePoseEstimator` outputs an absolute robot pose in field coordinates.
+
+Examples:
+
+- `AprilTagPoseEstimator` — solves `field -> robot` from raw AprilTag observations and a trusted `TagLayout`
+- `LimelightFieldPoseEstimator` — uses Limelight's direct full-field pose output as an absolute pose source
+- future line/tape, landmark, beacon, or wall-anchor localizers — if they can directly answer "where is the robot on the field?"
+
+This is the interface most consumers want:
+
+- drive guidance
+- go-to-pose tasks
+- targeting
+- telemetry
+
+### 2.2 `MotionPredictor`
+
+A `MotionPredictor` is the predictor side of localization.
+
+It still exposes a current absolute pose estimate, but it also exposes a timestamped `MotionDelta` describing how the robot moved since the last update. That lets corrected/global estimators replay motion through delayed measurements without reverse-engineering deltas from two unrelated absolute samples.
+
+Current example:
+
+- `PinpointOdometryPredictor`
+
+Future examples could include:
+
+- a wheel + IMU dead-reckoner
+- a drivetrain-state propagator
+- another odometry computer that naturally outputs incremental motion
+
+### 2.3 `CorrectedPoseEstimator`
+
+A `CorrectedPoseEstimator` combines:
+
+- one `MotionPredictor`
+- one `AbsolutePoseEstimator` used as the absolute correction source
+
+Phoenix currently ships two implementations:
+
+- `OdometryCorrectionFusionEstimator` — simpler gain-based corrected localizer
+- `OdometryCorrectionEkfEstimator` — optional covariance-aware corrected localizer
+
+Both expose the same high-level contract, so robot code and tools can swap between them intentionally.
+
+---
+
+## 3. Vision-lane ownership
+
+At the FTC boundary, the important seam is:
+
+- `AprilTagVisionLane`
+
+Standard FTC-boundary implementations are:
+
+- `FtcWebcamAprilTagVisionLane`
+- `FtcLimelightAprilTagVisionLane`
+
+Both expose the same shared resources above the FTC boundary:
+
+```java
+AprilTagSensor tags = visionLane.tagSensor();
+CameraMountConfig mount = visionLane.cameraMountConfig();
+```
+
+What changes is only how raw AprilTag observations are acquired:
+
+- `FtcWebcamAprilTagVisionLane` uses a `WebcamName` plus FTC VisionPortal / FTC AprilTag processing.
+- `FtcLimelightAprilTagVisionLane` uses a `Limelight3A`, switches to the configured AprilTag pipeline, starts polling, and adapts Limelight fiducial results into the same `AprilTagSensor` seam. Limelight also exposes direct device field pose and orientation-update APIs through the FTC SDK, which Phoenix can optionally consume through a separate absolute-pose estimator path.
+
+The important policy is: **the camera lane owns device lifecycle and raw observations; localization owns estimation strategy.**
+
+---
+
+## 4. The standard corrected-localization lane
+
+`FtcOdometryAprilTagLocalizationLane` is the standard FTC-boundary owner for the common "predictor + tags + corrected/global pose" stack.
+
+It owns:
+
+- one `PinpointOdometryPredictor`
+- one raw `AprilTagPoseEstimator`
+- optionally one `LimelightFieldPoseEstimator`
+- one selected absolute correction source
+- one corrected/global estimator (`OdometryCorrectionFusionEstimator` or `OdometryCorrectionEkfEstimator`)
+
+That means one lane can expose all of these views at once:
+
+- predictor pose
+- raw AprilTag pose
+- optional direct Limelight field pose
+- the currently active correction estimator
+- the corrected/global pose
+
+This is exactly why the framework does **not** need a new fusion class for every sensor combination. Instead, it composes a few primitive roles cleanly.
+
+---
+
+## 5. Common usage patterns
+
+### 5.1 Webcam + raw AprilTag correction
+
+This is the most common baseline.
+
+```java
+FtcWebcamAprilTagVisionLane.Config camCfg = FtcWebcamAprilTagVisionLane.Config.defaults();
+camCfg.webcamName = "Webcam 1";
+camCfg.cameraMount = solvedCameraMount;
+
+AprilTagVisionLane vision = new FtcWebcamAprilTagVisionLane(hardwareMap, camCfg);
+
+FtcOdometryAprilTagLocalizationLane.Config locCfg =
+        FtcOdometryAprilTagLocalizationLane.Config.defaults();
+locCfg.predictor.hardwareMapName = "pinPoint";
+locCfg.correctionSource.mode = FtcOdometryAprilTagLocalizationLane.CorrectionSourceMode.APRILTAG_POSE;
+locCfg.correctedEstimatorMode = FtcOdometryAprilTagLocalizationLane.GlobalEstimatorMode.FUSION;
+
+FtcOdometryAprilTagLocalizationLane localization =
+        new FtcOdometryAprilTagLocalizationLane(
+                hardwareMap,
+                vision,
+                FtcGameTagLayout.currentGameFieldFixed(),
+                locCfg
+        );
+```
+
+This gives you:
+
+- Pinpoint-based motion prediction
+- raw AprilTag field solves from the webcam
+- corrected/global localization using the raw AprilTag solve as the absolute correction source
+
+### 5.2 Limelight + raw AprilTag correction
+
+If you want Limelight to behave like a smart AprilTag camera but keep Phoenix's own raw-tag pose solve as the correction source:
+
+```java
+FtcLimelightAprilTagVisionLane.Config llCfg = FtcLimelightAprilTagVisionLane.Config.defaults();
+llCfg.hardwareName = "limelight";
+llCfg.pipelineIndex = 0;
+llCfg.pollRateHz = 100;
+llCfg.cameraMount = solvedCameraMount;
+
+AprilTagVisionLane vision = new FtcLimelightAprilTagVisionLane(hardwareMap, llCfg);
+
+FtcOdometryAprilTagLocalizationLane.Config locCfg =
+        FtcOdometryAprilTagLocalizationLane.Config.defaults();
+locCfg.predictor.hardwareMapName = "pinPoint";
+locCfg.correctionSource.mode = FtcOdometryAprilTagLocalizationLane.CorrectionSourceMode.APRILTAG_POSE;
+locCfg.correctedEstimatorMode = FtcOdometryAprilTagLocalizationLane.GlobalEstimatorMode.FUSION;
+```
+
+Everything above `AprilTagVisionLane` still consumes the same `AprilTagSensor` seam.
+
+### 5.3 Limelight + direct field-pose correction
+
+If you want corrected/global localization to trust the Limelight's direct full-field pose instead of Phoenix's raw-tag solve:
+
+```java
+FtcOdometryAprilTagLocalizationLane.Config locCfg =
+        FtcOdometryAprilTagLocalizationLane.Config.defaults();
+locCfg.predictor.hardwareMapName = "pinPoint";
+locCfg.correctionSource.mode = FtcOdometryAprilTagLocalizationLane.CorrectionSourceMode.LIMELIGHT_FIELD_POSE;
+locCfg.correctedEstimatorMode = FtcOdometryAprilTagLocalizationLane.GlobalEstimatorMode.FUSION;
+locCfg.correctionSource.limelightFieldPose.mode =
+        LimelightFieldPoseEstimator.Config.Mode.BOTPOSE_MT2;
+locCfg.correctionSource.limelightFieldPose.maxResultAgeSec = 0.20;
+locCfg.correctionSource.limelightFieldPose.minVisibleTags = 2;
+locCfg.correctionSource.limelightFieldPose.degradeWhenMoving = true;
+```
+
+This gives you two absolute pose views side by side:
+
+- `localization.aprilTagPoseEstimator()` — Phoenix's raw-tag field solve
+- `localization.limelightFieldPoseEstimator()` — Limelight's direct device field pose
+
+and the corrected/global estimator will use the configured correction source.
+
+### 5.4 Which one should I start with?
+
+Recommended order:
+
+1. Start with **webcam or Limelight raw AprilTag correction** (`APRILTAG_POSE`).
+2. Verify camera mount, tag policy, and predictor quality.
+3. Then try **direct Limelight field pose** (`LIMELIGHT_FIELD_POSE`) only after the raw-tag path already makes sense.
+4. Compare corrected/global behavior, especially while the robot is moving.
+
+That makes it easier to separate "camera rig / field map / mount is wrong" from "direct device pose is noisier than expected in motion."
+
+---
+
+## 6. Raw AprilTag solving policy
+
+Phoenix's shared AprilTag solver does this:
+
+- gather visible observations whose IDs are in the trusted `TagLayout`
 - compute one candidate `field -> robot` pose per visible fixed tag
 - weight closer / more centered tags more strongly
-- prefer the FTC SDK's per-detection robot pose when it agrees with Phoenix's explicit geometry and remains plausible
+- prefer observation-provided field pose when it agrees with Phoenix's explicit geometry and remains plausible
 - choose a consensus seed
 - reject outliers
 - compute one fused field pose and a quality score
 
-The framework uses that same solver in both:
+That shared policy is used by:
 
-- `TagOnlyPoseEstimator`
-- the Drive Guidance AprilTag lane when it temporarily needs a field pose
+- `AprilTagPoseEstimator`
+- guidance paths that temporarily solve a field pose from tags
 
-That keeps guidance and localization from drifting into two subtly different AprilTag policies.
+That keeps guidance and localization from drifting into subtly different AprilTag policies.
 
-The solver's quality score also now reflects how much of the visible candidate set actually agreed
-with the final consensus, so a solve that survives only by throwing away most of the frame is not
-reported as confidently as a solve where multiple tags agree.
+### Sharing solver tuning cleanly
 
----
+`AprilTagPoseEstimator.Config` extends the shared fixed-tag solver config and adds camera-specific fields.
 
-## 4. Sharing solver tuning cleanly
-
-`TagOnlyPoseEstimator.Config` extends the shared fixed-tag solver config and adds the camera mount.
-
-When another component should reuse the same weighting / outlier / plausibility policy, use:
+When another component should reuse the same weighting / outlier / plausibility policy, use `toSolverConfig()`:
 
 ```java
-TagOnlyPoseEstimator.Config tagCfg = profile.localization.aprilTags
-        .toTagOnlyPoseEstimatorConfig(profile.vision.activeCameraMount());
+AprilTagPoseEstimator.Config tagCfg = profile.localization.aprilTags
+        .toAprilTagPoseEstimatorConfig(profile.vision.activeCameraMount());
 
-TagOnlyPoseEstimator tagLocalizer = new TagOnlyPoseEstimator(tags, fixedLayout, tagCfg);
+AprilTagPoseEstimator tagLocalizer = new AprilTagPoseEstimator(tags, fixedLayout, tagCfg);
 
 DriveGuidancePlan plan = DriveGuidance.plan()
         .resolveWith()
             .adaptive()
-            .localization(fusedLocalizer)
-            .aprilTags(tags, cameraMount, 0.50)
+            .localization(correctedLocalizer)
+            .aprilTags(tags, profile.vision.activeCameraMount(), 0.50)
             .fixedAprilTagLayout(fixedLayout)
             .aprilTagFieldPoseConfig(tagCfg.toSolverConfig())
             .doneResolveWith()
         .build();
 ```
 
-That is the intended way to keep the AprilTag-only localizer and the guidance AprilTag bridge aligned without passing camera-mount-only fields into unrelated APIs.
-
-The guidance API also normalizes its solver-config input defensively at the boundary, so even if a caller accidentally passes a richer config subtype, only the shared fixed-tag solver fields are retained.
-
 ---
 
-## 5. Role-specific fixed-tag subsets
+## 7. Corrected/global localization and latency compensation
 
-Often one robot wants different fixed-tag views for different jobs:
+When you combine a `MotionPredictor` with an absolute correction source, Phoenix's corrected estimators do two important reliability jobs:
 
-- **global localization**: all fixed tags
-- **scoring alignment**: only scoring tags
-- **a tester or practice routine**: only one wall or one rig
+- deduplicate repeated absolute measurements by measurement timestamp
+- when history is available, apply the correction at the measurement timestamp and replay predictor motion forward to the current loop
 
-Use framework-owned subset views instead of duplicating tag metadata or repeating robot-side filtering logic:
+That is more trustworthy than repeatedly blending the same delayed frame against "now".
+
+Typical fusion setup:
 
 ```java
-TagLayout fullFixed = FtcGameTagLayout.currentGameFieldFixed();
-TagLayout scoringFixed = TagLayouts.subset(fullFixed, SCORING_TAG_IDS, "scoring tags");
+OdometryCorrectionFusionEstimator.Config fusionCfg =
+        OdometryCorrectionFusionEstimator.Config.defaults();
+fusionCfg.maxCorrectionAgeSec = 0.35;
+fusionCfg.predictorHistorySec = 1.0;  // should cover maxCorrectionAgeSec when latency compensation is enabled
+
+OdometryCorrectionFusionEstimator corrected =
+        new OdometryCorrectionFusionEstimator(predictor, absoluteCorrection, fusionCfg);
 ```
 
-The subset reuses the same underlying field metadata; it only narrows which fixed IDs a consumer is allowed to see.
-
----
-
-## 6. Plausibility gating
-
-The shared solver supports an optional field-region plausibility gate.
-
-Use this when a team wants to reject obviously impossible AprilTag field solves before they perturb localization:
+Typical EKF setup:
 
 ```java
-TagOnlyPoseEstimator.Config cfg = TagOnlyPoseEstimator.Config.defaults()
-        .withCameraMount(cameraMount)
-        .withPlausibleFieldRegion(FtcFieldRegions.fullField());
+OdometryCorrectionEkfEstimator.Config ekfCfg =
+        OdometryCorrectionEkfEstimator.Config.defaults();
+ekfCfg.maxCorrectionAgeSec = 0.35;
+ekfCfg.predictorHistorySec = 1.0;
 
-cfg.maxOutsidePlausibleFieldRegionInches = 3.0;
+CorrectedPoseEstimator corrected =
+        new OdometryCorrectionEkfEstimator(predictor, absoluteCorrection, ekfCfg);
 ```
 
 Notes:
 
-- this is a **reliability gate**, not a full rules engine
-- a small outside tolerance is often useful near walls and corners
-- if the FTC SDK per-detection robot pose is implausible but Phoenix's explicit geometry solve is plausible, the shared solver now falls back to the geometry solve instead of throwing the whole observation away
+- `predictorHistorySec` should be at least `maxCorrectionAgeSec` when latency compensation is enabled.
+- corrected estimators now consume an explicit `MotionDelta` from the predictor instead of reverse-engineering motion from two unrelated pose snapshots.
+- if the corrected pose is pushed back into the predictor, the estimator also rebases its predictor baseline/history so the next predictor delta does not re-apply that jump.
 
 ---
 
-## 7. Pinpoint + AprilTag fusion and latency compensation
+## 8. Direct Limelight field pose in motion
 
-When a robot uses odometry plus AprilTag global solves, Phoenix's fusion localizer now does two related reliability jobs:
+Some teams report that direct device field pose can degrade while the robot is moving.
 
-- deduplicate repeated camera frames by measurement timestamp
-- when history is available, apply the AprilTag correction at the frame timestamp and replay odometry forward to the current loop
+Potential causes include:
 
-That is more trustworthy than repeatedly blending the same delayed frame against “now”.
+- motion blur
+- rolling-shutter / capture delay effects
+- stale frames
+- single-tag geometry sensitivity
+- misconfigured camera mount or field map
+- aggressive robot rotation between capture time and robot-loop time
 
-Typical pattern:
+Phoenix's direct Limelight field-pose estimator is intentionally conservative:
 
-```java
-TagOnlyPoseEstimator.Config tagCfg = profile.localization.aprilTags
-        .toTagOnlyPoseEstimatorConfig(profile.vision.activeCameraMount());
+- freshness gating (`maxResultAgeSec`)
+- visible-tag gating (`minVisibleTags`)
+- optional motion-aware quality degradation (`degradeWhenMoving`)
+- optional hard reject thresholds (`rejectWhenMovingTooFast`)
+- optional predictor yaw feed for MegaTag2-style direct pose modes when the active SDK supports it. Limelight's FTC API exposes both direct botpose access and a robot-orientation update hook for the MT2 path.
 
-TagOnlyPoseEstimator tagLocalizer = new TagOnlyPoseEstimator(tags, fixedLayout, tagCfg);
+If direct Limelight field pose is unstable while moving:
 
-OdometryTagFusionPoseEstimator.Config fusionCfg = RobotConfig.Localization.pinpointAprilTagFusion.copy();
-fusionCfg.maxVisionAgeSec = 0.35;
-fusionCfg.odomHistorySec = 1.0;   // must cover maxVisionAgeSec when latency compensation is enabled
+1. tighten `maxResultAgeSec`
+2. require `minVisibleTags >= 2`
+3. keep `degradeWhenMoving = true`
+4. compare against the raw AprilTag solve in the tester
+5. fall back to `APRILTAG_POSE` as the correction source until the direct path is proven trustworthy
 
-PoseEstimator fused = new OdometryTagFusionPoseEstimator(pinpoint, tagLocalizer, fusionCfg);
-```
-
-Notes:
-
-- `odomHistorySec` should be at least `maxVisionAgeSec`; the config now validates this fail-fast.
-- replay only uses measurements newer than the current replay base (initialization, manual reset, or last accepted correction).
-- if exact replay is unavailable, the estimator falls back to a simpler projected-now correction rather than silently re-applying the same stale frame every loop.
-- if the fused pose is pushed back into odometry, the replay base and odometry history are rebased at that corrected pose.
-
----
-
-## 8. Optional EKF-style global localization
-
-The framework now also ships an optional covariance-aware localizer:
-
-```java
-TagOnlyPoseEstimator.Config tagCfg = profile.localization.aprilTags
-        .toTagOnlyPoseEstimatorConfig(profile.vision.activeCameraMount());
-
-TagOnlyPoseEstimator tagLocalizer = new TagOnlyPoseEstimator(tags, fixedLayout, tagCfg);
-
-OdometryTagEkfPoseEstimator.Config ekfCfg = RobotConfig.Localization.pinpointAprilTagEkf.copy();
-ekfCfg.maxVisionAgeSec = 0.35;
-ekfCfg.odomHistorySec = 1.0;
-
-VisionCorrectionPoseEstimator ekf =
-        new OdometryTagEkfPoseEstimator(pinpoint, tagLocalizer, ekfCfg);
-```
-
-This estimator is intentionally **optional**. The framework and Phoenix still keep
-`OdometryTagFusionPoseEstimator` as the simpler baseline because:
-
-- it is easier to tune and debug
-- it is more transparent when calibration is still rough
-- it gives teams a stable comparison point while evaluating the EKF
-
-What the EKF adds:
-
-- covariance-aware trust balancing between odometry and vision
-- principled innovation gating on contradictory measurements
-- a tracked uncertainty estimate that can be turned into downstream quality/readiness signals
-- the same measurement-time replay idea used by the fusion localizer, but integrated into the estimator update path
-
-Calibration guidance:
-
-- do **not** enable the EKF until `robot -> camera` extrinsics are calibrated
-- verify odometry axis directions before tuning covariance terms
-- measure Pinpoint pod offsets instead of leaving them at default 0/0
-- keep the fixed-tag layout honest; the EKF is still only as good as the landmarks it is allowed to trust
-
-A manual `setPose(...)` call is treated as an explicit pose anchor. The EKF resets its covariance to
-`manualPosePositionStdIn` / `manualPoseHeadingStdRad` instead of pretending the new pose is perfectly known.
+One important ownership note: Phoenix currently assumes the Limelight device is already configured with a field map that matches the trusted `TagLayout` you intend to use. Keep those aligned whenever you use direct device field pose.
 
 ---
 
-## 9. Selected-tag references and localization
+## 9. Future signals beyond AprilTags
 
-Selected-tag references are still **single-tag semantic references**.
+The current localization model already leaves room for other pose signals.
 
-That means:
+Examples:
 
-- a selector may preview or choose among many candidate IDs
-- but a reference resolves through exactly **one selected tag at a time**
-- the multi-tag fusion belongs in localization, not inside the reference object
+- field tape / field-line tracking
+- walls or fixed landmarks
+- overhead fiducials
+- vision-detected beacons
+- operator-placed anchors during setup
 
-Phoenix currently uses a conservative localization policy for selected-tag references:
+The rule of thumb is simple:
 
-> A selected-tag reference is considered localizable only when **all candidate IDs** that selector may choose are present in the fixed layout.
+- if the signal directly answers "where is the robot on the field?" it should probably implement `AbsolutePoseEstimator`
+- if the signal is primarily incremental motion (wheel encoders, IMU-integrated yaw, dead-reckoning) it should probably implement `MotionPredictor` or feed one
 
-Why the framework currently prefers that rule:
-
-- build-time validation stays static and honest
-- readiness semantics stay predictable
-- guidance does not change from “localizable” to “not localizable” merely because the selector changed its mind this loop
-
-A future runtime policy could allow localization whenever the **currently selected** tag is fixed, but that is a deeper contract change and should only be added if a real use case appears.
+That is why the framework does **not** need a bespoke fusion class for every sensor combination. It needs a few principled roles and then clear composition.
 
 ---
 
-## 10. Testers and calibration tools
+## 10. Testing checklist
 
-The localization testers now support using the same AprilTag-localizer config as production robot code.
+When AprilTag-based global localization feels wrong, work down this list:
 
-That matters because:
+1. camera mount solved and non-identity
+2. predictor/pod offsets calibrated
+3. trusted `TagLayout` matches the field you are actually on
+4. raw selected-tag observations look sane in the tester
+5. raw `AprilTagPoseEstimator` solves look sane before trusting the corrected/global estimator
+6. `predictorHistorySec` is large enough for accepted correction age when latency compensation is enabled
+7. direct Limelight field pose, if enabled, stays reasonable while the robot is moving
+8. corrected/global telemetry shows accepted corrections rather than repeated rejection or duplicate-frame skipping
 
-- solver tuning influences reliability
-- plausibility gates influence whether a measurement is accepted
-- a tester should ideally reflect the same assumptions the robot uses in TeleOp
+The intended tester progression is:
 
-For official-game layouts, the localization testers also surface the fixed-tag policy summary and source-library IDs so it is easy to confirm which IDs are trusted, which official-game IDs are intentionally excluded, and whether ancillary SDK tags are present in the detector library.
-
-If you want that same summary elsewhere, use `FtcTagLayoutDebug.dumpSummary(...)`. It prints a compact
-framework-owned view of the included IDs and, when available, the source FTC library IDs plus the
-IDs intentionally excluded from the fixed layout.
-
-For the step-by-step human workflow around these tools, see:
-
-- [`Robot Calibration Tutorials`](<../testing-calibration/Robot Calibration Tutorials.md>) for the full ordered path
-- [`Robot Calibration Tutorials → Camera mount`](<../testing-calibration/Robot Calibration Tutorials.md#camera-mount>)
-- [`Robot Calibration Tutorials → AprilTag-only localization check`](<../testing-calibration/Robot Calibration Tutorials.md#apriltag-only-localization-check>)
-- [`Guided Calibration Walkthroughs`](<../testing-calibration/Guided Calibration Walkthroughs.md>) for how robot projects should present those steps in tester menus
-
----
-
-## 11. Reliability checklist
-
-If AprilTag localization feels worse than expected, check these in order:
-
-1. camera mount calibration (`robot -> camera`)
-2. odometry calibration / pod offsets
-3. whether the fixed layout matches the environment
-4. whether the team is accidentally localizing against non-fixed tags
-5. whether the plausibility gate is too strict or too loose
-6. whether the guidance bridge and localizer are actually sharing the same solver tuning
-7. whether the fused localizer is rebasing odometry correctly after accepted vision corrections
-8. whether `odomHistorySec` is large enough for the accepted vision age when latency compensation is enabled
-9. whether the fusion/EKF tester is reporting lots of duplicate / out-of-order vision frames
-10. whether the optional EKF has been enabled before calibration is trustworthy enough to support it
-
-Those basics usually matter more than fancy estimator math.
-
----
-
-## 12. Season bring-up checklist for maintainers
-
-When FIRST publishes a new game:
-
-1. confirm which detected tags are truly field-fixed
-2. update `FtcGameTagLayout.officialGameFieldFixed(...)`
-3. keep the detector library broad enough for the season's vision use cases
-4. keep localization / guidance layouts restricted to the fixed tags
-5. check the tester layout summaries to confirm included vs excluded IDs
-
-The framework should absorb that fixed-tag policy so robot code does not need to rediscover it.
+- `Loc: AprilTag Localization` first
+- then `Loc: Pinpoint + Field Corrections` once camera mount and predictor calibration are trustworthy

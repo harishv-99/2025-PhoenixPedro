@@ -14,7 +14,7 @@ It exists so season-specific fixes and the next maintainership steps do not get 
 - Added framework-owned subset-tag-layout helpers for role-specific fixed-tag whitelists without robot-side metadata duplication.
 - Added config validation / fail-fast checks for the shared fixed-tag field-pose solver and the FTC full-field helper.
 - Made the shared solver fall back to Phoenix geometry when an otherwise-acceptable FTC SDK robot pose is implausible.
-- Added `TagOnlyPoseEstimator.Config.toSolverConfig()` so guidance can share solver tuning without smuggling camera-mount-only fields into unrelated APIs.
+- Added `AprilTagPoseEstimator.Config.toSolverConfig()` so guidance can share solver tuning without smuggling camera-mount-only fields into unrelated APIs.
 - Switched Phoenix TeleOp to use Pinpoint + AprilTag fusion for pose lock and selected-tag localization fallback.
 - Moved official-game fixed-tag knowledge into the framework via `FtcGameTagLayout.currentGameFieldFixed()`.
 - Removed the need for robot code to carry season-specific "exclude these IDs from localization" logic.
@@ -28,8 +28,8 @@ It exists so season-specific fixes and the next maintainership steps do not get 
 - Fixed a fusion reliability bug by rebasing the odometry baseline after accepted vision corrections are pushed back into odometry.
 - Upgraded fusion to deduplicate repeated camera frames by measurement timestamp and to apply accepted vision corrections at the frame timestamp before replaying odometry forward.
 - Added fail-fast validation for fusion latency-compensation history length and surfaced replay/projected/duplicate counters in the fusion tester.
-- Added a shared `VisionCorrectionPoseEstimator` contract so robot code and testers can swap between the lightweight fusion localizer and an optional EKF-style localizer without type-specific glue.
-- Added `OdometryTagEkfPoseEstimator` as an optional covariance-aware global localizer with documented calibration requirements, innovation gating, and measurement-time replay.
+- Added a shared `CorrectedPoseEstimator` contract so robot code and testers can swap between the lightweight fusion localizer and an optional EKF-style localizer without type-specific glue.
+- Added `OdometryCorrectionEkfEstimator` as an optional covariance-aware global localizer with documented calibration requirements, innovation gating, and measurement-time replay.
 - Extended the Pinpoint + AprilTag localization tester so teams can compare the default fusion estimator against the optional EKF estimator on the same calibrated inputs.
 
 ---

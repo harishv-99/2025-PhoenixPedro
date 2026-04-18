@@ -30,7 +30,13 @@ Most robot code should only need imports from these packages:
 
 For the AprilTag-specific policy around fixed vs detectable tags, see [`AprilTag Localization & Fixed Layouts`](<../drive-vision/AprilTag Localization & Fixed Layouts.md>).
 
-For odometry + AprilTag global localization specifically, the framework now exposes a shared `VisionCorrectionPoseEstimator` contract with both a simpler gain-based fusion implementation and an optional covariance-aware EKF-style implementation. The advanced estimator is intentionally opt-in; the simpler localizer remains the default starting point.
+For odometry + AprilTag global localization specifically, the framework now makes three roles explicit:
+
+* `AbsolutePoseEstimator` — a field-anchored pose source such as `AprilTagPoseEstimator` or `LimelightFieldPoseEstimator`
+* `MotionPredictor` — a predictor that exposes both a current pose and a latest `MotionDelta`, such as `PinpointOdometryPredictor`
+* `CorrectedPoseEstimator` — a global localizer that combines one predictor with one absolute correction source
+
+Phoenix ships both a simpler gain-based corrected estimator and an optional covariance-aware EKF-style estimator. The advanced estimator is intentionally opt-in; the simpler corrected localizer remains the default starting point.
 
 Within `drive/`, subpackages are intentionally parallel and predictable:
 
@@ -122,7 +128,7 @@ Tester naming conventions (telemetry menus):
 Two rules of thumb:
 
 1. If a class references FTC SDK types (`com.qualcomm.*`), it belongs in `fw.ftc` or `fw.tools`, not in the core building blocks.
-2. The package tree is kept **parallel** on purpose (for example, `sensing.vision` ↔ `localization.apriltag`, and later `sensing.odometry` ↔ `localization.odometry`). That makes it easy to predict where new features should go.
+2. The package tree is kept **parallel** on purpose (for example, `sensing.vision` ↔ `localization.apriltag`, and later predictor-side FTC localizers ↔ corrected/absolute localization packages). That makes it easy to predict where new features should go.
 
 ---
 
@@ -130,7 +136,7 @@ Two rules of thumb:
 
 Phoenix now distinguishes between three different kinds of ownership that often got blurred together in older FTC code:
 
-- **primitives**: small reusable building blocks like `GamepadDriveSource`, `MecanumDrivebase`, `AprilTagSensor`, and `PinpointPoseEstimator`
+- **primitives**: small reusable building blocks like `GamepadDriveSource`, `MecanumDrivebase`, `AprilTagSensor`, and `PinpointOdometryPredictor`
 - **framework lanes**: stable reusable owners built from primitives, such as `FtcMecanumDriveLane`, the backend-neutral `AprilTagVisionLane` seam (commonly implemented by `FtcWebcamAprilTagVisionLane` or `FtcLimelightAprilTagVisionLane`), and `FtcOdometryAprilTagLocalizationLane`
 - **field facts**: shared environment data such as `TagLayout` and `FtcGameTagLayout.currentGameFieldFixed()`
 - **robot-owned capability families**: the shared mode-neutral API used by both TeleOp and Auto

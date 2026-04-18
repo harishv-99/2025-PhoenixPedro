@@ -4,7 +4,7 @@ import java.util.Locale;
 
 import edu.ftcphoenix.fw.core.geometry.Pose2d;
 import edu.ftcphoenix.fw.core.math.MathUtil;
-import edu.ftcphoenix.fw.ftc.localization.PinpointPoseEstimator;
+import edu.ftcphoenix.fw.ftc.localization.PinpointOdometryPredictor;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
 import edu.ftcphoenix.fw.tools.tester.BaseTeleOpTester;
 
@@ -20,7 +20,7 @@ import edu.ftcphoenix.fw.tools.tester.BaseTeleOpTester;
  * </ul>
  *
  * <p>This tester guides you through three short samples (forward, left, rotate CCW)
- * and suggests which {@link PinpointPoseEstimator.Config} fields to flip when signs
+ * and suggests which {@link PinpointOdometryPredictor.Config} fields to flip when signs
  * are inverted.</p>
  *
  * <h2>Controls (gamepad1)</h2>
@@ -41,7 +41,7 @@ public final class PinpointAxisDirectionTester extends BaseTeleOpTester {
         /**
          * Pinpoint estimator configuration (device name, offsets, pod directions, etc).
          */
-        public PinpointPoseEstimator.Config pinpoint = PinpointPoseEstimator.Config.defaults();
+        public PinpointOdometryPredictor.Config pinpoint = PinpointOdometryPredictor.Config.defaults();
 
         /**
          * Minimum translation (inches) required to treat a sample as valid.
@@ -73,7 +73,7 @@ public final class PinpointAxisDirectionTester extends BaseTeleOpTester {
 
     private final Config cfg;
 
-    private PinpointPoseEstimator pinpoint;
+    private PinpointOdometryPredictor pinpoint;
 
     private Mode mode = Mode.IDLE;
     private Pose2d startPose = Pose2d.zero();
@@ -111,7 +111,7 @@ public final class PinpointAxisDirectionTester extends BaseTeleOpTester {
 
     @Override
     protected void onInit() {
-        pinpoint = new PinpointPoseEstimator(ctx.hw, cfg.pinpoint);
+        pinpoint = new PinpointOdometryPredictor(ctx.hw, cfg.pinpoint);
 
         // Controls.
         bindings.onRise(gamepads.p1().x(), this::resetAndClear);
@@ -262,7 +262,7 @@ public final class PinpointAxisDirectionTester extends BaseTeleOpTester {
         ctx.telemetry.addLine("");
 
         // Current config snapshot.
-        PinpointPoseEstimator.Config pcfg = cfg.pinpoint;
+        PinpointOdometryPredictor.Config pcfg = cfg.pinpoint;
         if (pcfg != null) {
             ctx.telemetry.addLine("Current Pinpoint config:");
             ctx.telemetry.addData("pinpoint.hardwareMapName", pcfg.hardwareMapName);

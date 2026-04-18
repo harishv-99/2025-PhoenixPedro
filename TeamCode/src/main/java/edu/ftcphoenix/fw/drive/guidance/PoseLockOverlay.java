@@ -9,8 +9,8 @@ import edu.ftcphoenix.fw.drive.DriveOverlay;
 import edu.ftcphoenix.fw.drive.DriveOverlayMask;
 import edu.ftcphoenix.fw.drive.DriveOverlayOutput;
 import edu.ftcphoenix.fw.drive.DriveSignal;
+import edu.ftcphoenix.fw.localization.AbsolutePoseEstimator;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
-import edu.ftcphoenix.fw.localization.PoseEstimator;
 
 /**
  * Overlay that “locks” the robot in place by holding the current field pose.
@@ -23,13 +23,13 @@ import edu.ftcphoenix.fw.localization.PoseEstimator;
  */
 final class PoseLockOverlay implements DriveOverlay {
 
-    private final PoseEstimator poseEstimator;
+    private final AbsolutePoseEstimator poseEstimator;
     private final DriveGuidancePlan.Tuning tuning;
 
     private Pose2d targetFieldToRobot = null;
     private DriveOverlayOutput lastOut = DriveOverlayOutput.zero();
 
-    PoseLockOverlay(PoseEstimator poseEstimator, DriveGuidancePlan.Tuning tuning) {
+    PoseLockOverlay(AbsolutePoseEstimator poseEstimator, DriveGuidancePlan.Tuning tuning) {
         this.poseEstimator = Objects.requireNonNull(poseEstimator, "poseEstimator");
         this.tuning = Objects.requireNonNull(tuning, "tuning");
     }

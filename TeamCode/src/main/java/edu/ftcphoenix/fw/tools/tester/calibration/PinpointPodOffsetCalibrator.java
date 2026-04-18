@@ -18,13 +18,13 @@ import edu.ftcphoenix.fw.ftc.FtcDrives;
 import edu.ftcphoenix.fw.ftc.FtcGameTagLayout;
 import edu.ftcphoenix.fw.ftc.FtcTagLayoutDebug;
 import edu.ftcphoenix.fw.ftc.FtcTelemetryDebugSink;
-import edu.ftcphoenix.fw.ftc.localization.PinpointPoseEstimator;
+import edu.ftcphoenix.fw.ftc.localization.PinpointOdometryPredictor;
 import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLane;
 import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLaneFactories;
 import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLaneFactory;
 import edu.ftcphoenix.fw.ftc.vision.FtcWebcamAprilTagVisionLane;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
-import edu.ftcphoenix.fw.localization.apriltag.TagOnlyPoseEstimator;
+import edu.ftcphoenix.fw.localization.apriltag.AprilTagPoseEstimator;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
 import edu.ftcphoenix.fw.tools.tester.BaseTeleOpTester;
@@ -75,7 +75,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         /**
          * Pinpoint estimator config (includes current pod offsets).
          */
-        public PinpointPoseEstimator.Config pinpoint = PinpointPoseEstimator.Config.defaults();
+        public PinpointOdometryPredictor.Config pinpoint = PinpointOdometryPredictor.Config.defaults();
 
         /**
          * Optional mecanum wiring. If null, the tester won't drive the robot.
@@ -276,7 +276,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
 
     private final Config cfg;
 
-    private PinpointPoseEstimator pinpoint;
+    private PinpointOdometryPredictor pinpoint;
     private MecanumDrivebase drive;
 
     // AprilTag assist
@@ -285,7 +285,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
     private TagLayout layout;
     private AprilTagVisionLane visionLane;
     private AprilTagSensor tagSensor;
-    private TagOnlyPoseEstimator tagEstimator;
+    private AprilTagPoseEstimator tagEstimator;
     private String activeVisionDescription;
     private String aprilTagAssistNotice;
 
@@ -390,7 +390,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
     @Override
     protected void onInit() {
         // Pinpoint is required
-        pinpoint = new PinpointPoseEstimator(ctx.hw, cfg.pinpoint);
+        pinpoint = new PinpointOdometryPredictor(ctx.hw, cfg.pinpoint);
 
         // Optional drive
         if (cfg.mecanumWiring != null) {
@@ -921,10 +921,10 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         tagSensor = visionLane.tagSensor();
         activeVisionDescription = factory.description();
 
-        TagOnlyPoseEstimator.Config estCfg = TagOnlyPoseEstimator.Config.defaults()
+        AprilTagPoseEstimator.Config estCfg = AprilTagPoseEstimator.Config.defaults()
                 .withCameraMount(visionLane.cameraMountConfig());
         estCfg.maxDetectionAgeSec = cfg.maxTagAgeSec;
-        tagEstimator = new TagOnlyPoseEstimator(tagSensor, layout, estCfg);
+        tagEstimator = new AprilTagPoseEstimator(tagSensor, layout, estCfg);
     }
 
     private void updateSensors() {
@@ -1128,7 +1128,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
                                 lastRecommendedStrafePodOffsetForwardInches
                         )
                 );
-                ctx.telemetry.addLine("Copy these into your PinpointPoseEstimator.Config / RobotConfig.");
+                ctx.telemetry.addLine("Copy these into your PinpointOdometryPredictor.Config / RobotConfig.");
             }
         }
     }
