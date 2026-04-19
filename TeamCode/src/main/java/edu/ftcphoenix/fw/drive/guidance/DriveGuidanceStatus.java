@@ -37,7 +37,7 @@ public final class DriveGuidanceStatus {
     public final ChannelSource omegaSource;
 
     public final TagSelectionResult translationSelection;
-    public final TagSelectionResult aimSelection;
+    public final TagSelectionResult facingSelection;
 
     public final boolean aprilTagsInRangeForTranslation;
     public final double blendTTranslate;
@@ -55,7 +55,7 @@ public final class DriveGuidanceStatus {
                         ChannelSource translationSource,
                         ChannelSource omegaSource,
                         TagSelectionResult translationSelection,
-                        TagSelectionResult aimSelection,
+                        TagSelectionResult facingSelection,
                         boolean aprilTagsInRangeForTranslation,
                         double blendTTranslate,
                         double blendTOmega,
@@ -73,8 +73,8 @@ public final class DriveGuidanceStatus {
         this.translationSelection = translationSelection != null
                 ? translationSelection
                 : TagSelectionResult.none(Collections.<Integer>emptySet());
-        this.aimSelection = aimSelection != null
-                ? aimSelection
+        this.facingSelection = facingSelection != null
+                ? facingSelection
                 : TagSelectionResult.none(Collections.<Integer>emptySet());
         this.aprilTagsInRangeForTranslation = aprilTagsInRangeForTranslation;
         this.blendTTranslate = blendTTranslate;
@@ -128,7 +128,7 @@ public final class DriveGuidanceStatus {
                 translationSource(step),
                 omegaSource(step),
                 step != null ? step.translationSelection : null,
-                step != null ? step.aimSelection : null,
+                step != null ? step.facingSelection : null,
                 (step != null) && step.aprilTagsInRangeForTranslation,
                 (step != null) ? step.blendTTranslate : Double.NaN,
                 (step != null) ? step.blendTOmega : Double.NaN,

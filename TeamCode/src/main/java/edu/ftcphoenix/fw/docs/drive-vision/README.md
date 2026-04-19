@@ -6,8 +6,9 @@ Use this section for drive guidance, AprilTag localization, and practice-field s
 
 1. [`Drive Guidance.md`](<Drive Guidance.md>)
 2. [`Spatial Queries.md`](<Spatial Queries.md>)
-3. [`AprilTag Localization & Fixed Layouts.md`](<AprilTag Localization & Fixed Layouts.md>)
-4. [`AprilTag Practice Setup.md`](<AprilTag Practice Setup.md>)
+3. [`Mechanism Setpoint Planning.md`](<Mechanism Setpoint Planning.md>)
+4. [`AprilTag Localization & Fixed Layouts.md`](<AprilTag Localization & Fixed Layouts.md>)
+5. [`AprilTag Practice Setup.md`](<AprilTag Practice Setup.md>)
 
 ## Pair with
 

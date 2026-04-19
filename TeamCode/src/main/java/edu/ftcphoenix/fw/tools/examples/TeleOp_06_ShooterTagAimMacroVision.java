@@ -264,9 +264,9 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
         // Wrap baseDrive with an auto-aim overlay: hold left bumper to auto-aim omega.
         ReferencePoint2d scoringRef = References.relativeToSelectedTagPoint(scoringSelection, 0.0, 0.0);
         DriveGuidancePlan aimPlan = DriveGuidance.plan()
-                .aimTo()
+                .faceTo()
                 .point(scoringRef)
-                .doneAimTo()
+                .doneFaceTo()
                 .resolveWith()
                 .aprilTagsOnly()
                 .aprilTags(tagSensor, cameraMount, MAX_TAG_AGE_SEC)

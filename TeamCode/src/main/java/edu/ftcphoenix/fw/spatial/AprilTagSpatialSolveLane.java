@@ -4,6 +4,8 @@ import java.util.List;
 import java.util.Objects;
 
 import edu.ftcphoenix.fw.core.geometry.Pose2d;
+import edu.ftcphoenix.fw.core.source.TimeAwareSource;
+import edu.ftcphoenix.fw.core.source.TimeAwareSources;
 import edu.ftcphoenix.fw.field.TagLayout;
 import edu.ftcphoenix.fw.localization.apriltag.FixedTagFieldPoseSolver;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
@@ -14,41 +16,63 @@ import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
 /**
  * Spatial solve lane backed by live AprilTag observations.
  *
- * <p>This lane first attempts direct robot-relative solves from the live tag observations. When a
- * target instead needs a trusted field pose (for example a field-fixed point or heading), the lane
- * may bridge through a temporary fixed-tag field-pose solve using the supplied
- * {@link FixedTagFieldPoseSolver.Config} and the query's fixed AprilTag layout.</p>
+ * <p>This lane can use a fixed camera mount or a timestamp-aware dynamic camera mount. Dynamic
+ * mounts matter for turret-mounted cameras and other moving sensor rigs: the tag observation may be
+ * older than the current loop, so the camera pose used for geometry should match the camera-frame
+ * timestamp whenever possible.</p>
  */
 public final class AprilTagSpatialSolveLane implements SpatialSolveLane {
 
     public static final double DEFAULT_MAX_AGE_SEC = 0.50;
 
     private final AprilTagSensor sensor;
-    private final CameraMountConfig cameraMount;
+    private final TimeAwareSource<CameraMountConfig> cameraMount;
     private final double maxAgeSec;
     private final FixedTagFieldPoseSolver.Config fieldPoseSolverConfig;
 
     /**
-     * Creates a live-AprilTag solve lane with default freshness and field-pose bridge tuning.
+     * Creates a live-AprilTag lane for a fixed camera mount.
      */
     public AprilTagSpatialSolveLane(AprilTagSensor sensor, CameraMountConfig cameraMount) {
-        this(sensor, cameraMount, DEFAULT_MAX_AGE_SEC, FixedTagFieldPoseSolver.Config.defaults());
+        this(sensor, TimeAwareSources.fixed(cameraMount), DEFAULT_MAX_AGE_SEC, FixedTagFieldPoseSolver.Config.defaults());
+    }
+
+    /** Creates a live-AprilTag lane for a fixed camera mount and explicit maximum observation age. */
+    public AprilTagSpatialSolveLane(AprilTagSensor sensor,
+                                    CameraMountConfig cameraMount,
+                                    double maxAgeSec) {
+        this(sensor, TimeAwareSources.fixed(cameraMount), maxAgeSec, FixedTagFieldPoseSolver.Config.defaults());
     }
 
     /**
-     * Creates a live-AprilTag solve lane with an explicit maximum observation age.
+     * Creates a live-AprilTag lane for a fixed camera mount with explicit field-pose bridge tuning.
      */
     public AprilTagSpatialSolveLane(AprilTagSensor sensor,
                                     CameraMountConfig cameraMount,
+                                    double maxAgeSec,
+                                    FixedTagFieldPoseSolver.Config fieldPoseSolverConfig) {
+        this(sensor, TimeAwareSources.fixed(cameraMount), maxAgeSec, fieldPoseSolverConfig);
+    }
+
+    /**
+     * Creates a live-AprilTag lane for a dynamic timestamp-aware camera mount.
+     */
+    public AprilTagSpatialSolveLane(AprilTagSensor sensor,
+                                    TimeAwareSource<CameraMountConfig> cameraMount,
                                     double maxAgeSec) {
         this(sensor, cameraMount, maxAgeSec, FixedTagFieldPoseSolver.Config.defaults());
     }
 
     /**
-     * Creates a live-AprilTag solve lane with explicit observation freshness and fixed-tag field-pose bridge tuning.
+     * Creates a live-AprilTag lane.
+     *
+     * @param sensor                 tag sensor source
+     * @param cameraMount            robot->camera mount provider; may be fixed or timestamp-aware
+     * @param maxAgeSec              maximum acceptable age for tag observations
+     * @param fieldPoseSolverConfig  config used only when this lane bridges live tags into a field pose
      */
     public AprilTagSpatialSolveLane(AprilTagSensor sensor,
-                                    CameraMountConfig cameraMount,
+                                    TimeAwareSource<CameraMountConfig> cameraMount,
                                     double maxAgeSec,
                                     FixedTagFieldPoseSolver.Config fieldPoseSolverConfig) {
         this.sensor = Objects.requireNonNull(sensor, "sensor");
@@ -65,22 +89,33 @@ public final class AprilTagSpatialSolveLane implements SpatialSolveLane {
     @Override
     public SpatialLaneResult solve(SpatialSolveRequest request) {
         AprilTagDetections detections = sensor.get(request.clock);
-        LiveFieldPose liveFieldPose = estimateFieldPoseFromAprilTags(detections, request.fixedAprilTagLayout);
+        double timestampSec = detections != null ? detections.frameTimestampSec(request.clock) : Double.NaN;
+        CameraMountConfig mountAtFrame = cameraMount.getAt(request.clock, timestampSec);
 
-        TranslationSolution translation = solveTranslation(request, detections, liveFieldPose);
-        AimSolution aim = solveAim(request, detections, liveFieldPose);
+        LiveFieldPose liveFieldPose = estimateFieldPoseFromAprilTags(
+                detections,
+                request.fixedAprilTagLayout,
+                mountAtFrame,
+                timestampSec
+        );
+
+        TranslationSolution translation = solveTranslation(request, detections, mountAtFrame, timestampSec, liveFieldPose);
+        FacingSolution facing = solveFacing(request, detections, mountAtFrame, timestampSec, liveFieldPose);
 
         return SpatialLaneResult.of(
                 translation,
-                aim,
+                facing,
                 SpatialQuerySupport.translationSelectionSnapshot(request.translationTarget, request.clock, detections, maxAgeSec),
-                SpatialQuerySupport.aimSelectionSnapshot(request.aimTarget, request.clock, detections, maxAgeSec)
+                SpatialQuerySupport.facingSelectionSnapshot(request.facingTarget, request.clock, detections, maxAgeSec)
         );
     }
 
     private TranslationSolution solveTranslation(SpatialSolveRequest request,
                                                  AprilTagDetections detections,
+                                                 CameraMountConfig mountAtFrame,
+                                                 double timestampSec,
                                                  LiveFieldPose liveFieldPose) {
+        Pose2d frame = request.robotToTranslationFrameAt(timestampSec);
         if (!(request.translationTarget instanceof SpatialTargets.ReferencePointTarget)) {
             if (liveFieldPose != null) {
                 Pose2d fieldToTargetPoint = SpatialQuerySupport.resolveFieldPointTarget(
@@ -91,12 +126,13 @@ public final class AprilTagSpatialSolveLane implements SpatialSolveLane {
                 if (fieldToTargetPoint != null) {
                     return SpatialSolveMath.translationFromFieldPose(
                             liveFieldPose.fieldToRobot,
-                            request.robotToTranslationFrame,
+                            frame,
                             fieldToTargetPoint,
                             true,
                             liveFieldPose.rangeInches,
                             liveFieldPose.quality,
-                            liveFieldPose.ageSec
+                            liveFieldPose.ageSec,
+                            liveFieldPose.timestampSec
                     );
                 }
             }
@@ -107,19 +143,20 @@ public final class AprilTagSpatialSolveLane implements SpatialSolveLane {
                 request.clock,
                 ((SpatialTargets.ReferencePointTarget) request.translationTarget).reference,
                 detections,
-                cameraMount,
+                mountAtFrame,
                 maxAgeSec
         );
         if (robotToTargetPoint != null) {
             double range = Math.hypot(robotToTargetPoint.xInches, robotToTargetPoint.yInches);
             double ageSec = detections != null ? detections.ageSec : Double.POSITIVE_INFINITY;
             return SpatialSolveMath.translationFromRobotPoint(
-                    request.robotToTranslationFrame,
+                    frame,
                     robotToTargetPoint,
                     Double.isFinite(range),
                     range,
                     1.0,
-                    ageSec
+                    ageSec,
+                    timestampSec
             );
         }
 
@@ -132,97 +169,105 @@ public final class AprilTagSpatialSolveLane implements SpatialSolveLane {
             if (fieldToTargetPoint != null) {
                 return SpatialSolveMath.translationFromFieldPose(
                         liveFieldPose.fieldToRobot,
-                        request.robotToTranslationFrame,
+                        frame,
                         fieldToTargetPoint,
                         true,
                         liveFieldPose.rangeInches,
                         liveFieldPose.quality,
-                        liveFieldPose.ageSec
+                        liveFieldPose.ageSec,
+                        liveFieldPose.timestampSec
                 );
             }
         }
         return null;
     }
 
-    private AimSolution solveAim(SpatialSolveRequest request,
-                                 AprilTagDetections detections,
-                                 LiveFieldPose liveFieldPose) {
-        if (request.aimTarget == null) {
+    private FacingSolution solveFacing(SpatialSolveRequest request,
+                                       AprilTagDetections detections,
+                                       CameraMountConfig mountAtFrame,
+                                       double timestampSec,
+                                       LiveFieldPose liveFieldPose) {
+        if (request.facingTarget == null) {
             return null;
         }
+        Pose2d facingFrame = request.robotToFacingFrameAt(timestampSec);
 
-        if (request.aimTarget instanceof SpatialTargets.ReferenceFrameHeadingTarget) {
-            SpatialTargets.ReferenceFrameHeadingTarget target = (SpatialTargets.ReferenceFrameHeadingTarget) request.aimTarget;
+        if (request.facingTarget instanceof SpatialTargets.ReferenceFrameHeadingTarget) {
+            SpatialTargets.ReferenceFrameHeadingTarget target = (SpatialTargets.ReferenceFrameHeadingTarget) request.facingTarget;
             Pose2d robotToFrame = SpatialQuerySupport.resolveRobotFrameDirect(
                     request.clock,
                     target.reference,
                     detections,
-                    cameraMount,
+                    mountAtFrame,
                     maxAgeSec
             );
             if (robotToFrame != null) {
                 double ageSec = detections != null ? detections.ageSec : Double.POSITIVE_INFINITY;
-                return SpatialSolveMath.aimFromRobotHeading(
-                        request.robotToAimFrame,
+                return SpatialSolveMath.facingFromRobotHeading(
+                        facingFrame,
                         robotToFrame.headingRad + target.headingOffsetRad,
                         1.0,
-                        ageSec
+                        ageSec,
+                        timestampSec
                 );
             }
-        } else if (request.aimTarget instanceof SpatialTargets.ReferencePointTarget) {
+        } else if (request.facingTarget instanceof SpatialTargets.ReferencePointTarget) {
             Pose2d robotToPoint = SpatialQuerySupport.resolveRobotPointDirect(
                     request.clock,
-                    ((SpatialTargets.ReferencePointTarget) request.aimTarget).reference,
+                    ((SpatialTargets.ReferencePointTarget) request.facingTarget).reference,
                     detections,
-                    cameraMount,
+                    mountAtFrame,
                     maxAgeSec
             );
             if (robotToPoint != null) {
                 double ageSec = detections != null ? detections.ageSec : Double.POSITIVE_INFINITY;
-                return SpatialSolveMath.aimFromRobotPoint(request.robotToAimFrame, robotToPoint, 1.0, ageSec);
+                return SpatialSolveMath.facingFromRobotPoint(facingFrame, robotToPoint, 1.0, ageSec, timestampSec);
             }
         }
 
         if (liveFieldPose != null) {
-            if (request.aimTarget instanceof SpatialTargets.FieldHeading) {
-                return SpatialSolveMath.aimFromFieldHeading(
+            if (request.facingTarget instanceof SpatialTargets.FieldHeading) {
+                return SpatialSolveMath.facingFromFieldHeading(
                         liveFieldPose.fieldToRobot,
-                        request.robotToAimFrame,
-                        ((SpatialTargets.FieldHeading) request.aimTarget).fieldHeadingRad,
+                        facingFrame,
+                        ((SpatialTargets.FieldHeading) request.facingTarget).fieldHeadingRad,
                         liveFieldPose.quality,
-                        liveFieldPose.ageSec
+                        liveFieldPose.ageSec,
+                        liveFieldPose.timestampSec
                 );
             }
-            if (request.aimTarget instanceof SpatialTargets.ReferenceFrameHeadingTarget) {
-                SpatialTargets.ReferenceFrameHeadingTarget target = (SpatialTargets.ReferenceFrameHeadingTarget) request.aimTarget;
+            if (request.facingTarget instanceof SpatialTargets.ReferenceFrameHeadingTarget) {
+                SpatialTargets.ReferenceFrameHeadingTarget target = (SpatialTargets.ReferenceFrameHeadingTarget) request.facingTarget;
                 Pose2d fieldToFrame = SpatialQuerySupport.resolveFieldFrameHeadingTarget(
                         target,
                         request.fixedAprilTagLayout,
                         request.clock
                 );
                 if (fieldToFrame != null) {
-                    return SpatialSolveMath.aimFromFieldHeading(
+                    return SpatialSolveMath.facingFromFieldHeading(
                             liveFieldPose.fieldToRobot,
-                            request.robotToAimFrame,
+                            facingFrame,
                             fieldToFrame.headingRad + target.headingOffsetRad,
                             liveFieldPose.quality,
-                            liveFieldPose.ageSec
+                            liveFieldPose.ageSec,
+                            liveFieldPose.timestampSec
                     );
                 }
             }
 
-            Pose2d fieldToAimPoint = SpatialQuerySupport.resolveFieldPointTarget(
-                    request.aimTarget,
+            Pose2d fieldToFacingPoint = SpatialQuerySupport.resolveFieldPointTarget(
+                    request.facingTarget,
                     request.fixedAprilTagLayout,
                     request.clock
             );
-            if (fieldToAimPoint != null) {
-                return SpatialSolveMath.aimFromFieldPoint(
+            if (fieldToFacingPoint != null) {
+                return SpatialSolveMath.facingFromFieldPoint(
                         liveFieldPose.fieldToRobot,
-                        request.robotToAimFrame,
-                        fieldToAimPoint,
+                        facingFrame,
+                        fieldToFacingPoint,
                         liveFieldPose.quality,
-                        liveFieldPose.ageSec
+                        liveFieldPose.ageSec,
+                        liveFieldPose.timestampSec
                 );
             }
         }
@@ -230,7 +275,10 @@ public final class AprilTagSpatialSolveLane implements SpatialSolveLane {
         return null;
     }
 
-    private LiveFieldPose estimateFieldPoseFromAprilTags(AprilTagDetections detections, TagLayout layout) {
+    private LiveFieldPose estimateFieldPoseFromAprilTags(AprilTagDetections detections,
+                                                         TagLayout layout,
+                                                         CameraMountConfig mountAtFrame,
+                                                         double timestampSec) {
         if (detections == null || layout == null || layout.ids().isEmpty()) {
             return null;
         }
@@ -242,13 +290,13 @@ public final class AprilTagSpatialSolveLane implements SpatialSolveLane {
         FixedTagFieldPoseSolver.Result solve = FixedTagFieldPoseSolver.solve(
                 observations,
                 layout,
-                cameraMount,
+                mountAtFrame,
                 fieldPoseSolverConfig
         );
         if (!solve.hasPose) {
             return null;
         }
-        return new LiveFieldPose(solve.toPose2d(), solve.rangeInches, solve.quality, detections.ageSec);
+        return new LiveFieldPose(solve.toPose2d(), solve.rangeInches, solve.quality, detections.ageSec, timestampSec);
     }
 
     private static final class LiveFieldPose {
@@ -256,12 +304,14 @@ public final class AprilTagSpatialSolveLane implements SpatialSolveLane {
         final double rangeInches;
         final double quality;
         final double ageSec;
+        final double timestampSec;
 
-        LiveFieldPose(Pose2d fieldToRobot, double rangeInches, double quality, double ageSec) {
+        LiveFieldPose(Pose2d fieldToRobot, double rangeInches, double quality, double ageSec, double timestampSec) {
             this.fieldToRobot = fieldToRobot;
             this.rangeInches = rangeInches;
             this.quality = quality;
             this.ageSec = ageSec;
+            this.timestampSec = timestampSec;
         }
     }
 

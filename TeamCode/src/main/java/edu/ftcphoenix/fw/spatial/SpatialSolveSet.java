@@ -5,6 +5,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
+import edu.ftcphoenix.fw.core.source.TimeAwareSource;
 import edu.ftcphoenix.fw.localization.AbsolutePoseEstimator;
 import edu.ftcphoenix.fw.localization.apriltag.FixedTagFieldPoseSolver;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
@@ -100,10 +101,31 @@ public final class SpatialSolveSet {
         }
 
         /**
+         * Adds a live-AprilTag solve lane with a dynamic timestamp-aware robot->camera mount.
+         *
+         * <p>Use this for turret-mounted cameras or other sensors whose mount changes over time.</p>
+         */
+        public Builder aprilTags(AprilTagSensor sensor,
+                                 TimeAwareSource<CameraMountConfig> cameraMount,
+                                 double maxAgeSec) {
+            return add(new AprilTagSpatialSolveLane(sensor, cameraMount, maxAgeSec));
+        }
+
+        /**
          * Adds a live-AprilTag solve lane with explicit freshness and fixed-tag field-pose bridge tuning.
          */
         public Builder aprilTags(AprilTagSensor sensor,
                                  CameraMountConfig cameraMount,
+                                 double maxAgeSec,
+                                 FixedTagFieldPoseSolver.Config fieldPoseSolverConfig) {
+            return add(new AprilTagSpatialSolveLane(sensor, cameraMount, maxAgeSec, fieldPoseSolverConfig));
+        }
+
+        /**
+         * Adds a live-AprilTag solve lane with a dynamic camera mount and explicit field-pose bridge tuning.
+         */
+        public Builder aprilTags(AprilTagSensor sensor,
+                                 TimeAwareSource<CameraMountConfig> cameraMount,
                                  double maxAgeSec,
                                  FixedTagFieldPoseSolver.Config fieldPoseSolverConfig) {
             return add(new AprilTagSpatialSolveLane(sensor, cameraMount, maxAgeSec, fieldPoseSolverConfig));

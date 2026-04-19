@@ -10,12 +10,11 @@ import edu.ftcphoenix.fw.localization.AbsolutePoseEstimator;
 import edu.ftcphoenix.fw.localization.apriltag.FixedTagFieldPoseSolver;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
-import edu.ftcphoenix.fw.spatial.AimTarget2d;
+import edu.ftcphoenix.fw.spatial.FacingTarget2d;
 import edu.ftcphoenix.fw.spatial.ReferenceFrame2d;
 import edu.ftcphoenix.fw.spatial.ReferencePoint2d;
 import edu.ftcphoenix.fw.spatial.References;
 import edu.ftcphoenix.fw.spatial.SpatialControlFrames;
-import edu.ftcphoenix.fw.spatial.SpatialQuery;
 import edu.ftcphoenix.fw.spatial.SpatialQuerySpec;
 import edu.ftcphoenix.fw.spatial.SpatialSolveSet;
 import edu.ftcphoenix.fw.spatial.SpatialTargets;
@@ -47,9 +46,9 @@ import edu.ftcphoenix.fw.spatial.TranslationTarget2d;
  *         .translateTo()
  *             .point(References.framePoint(slotFace, -6.0, 0.0))
  *             .doneTranslateTo()
- *         .aimTo()
+ *         .faceTo()
  *             .frameHeading(slotFace)
- *             .doneAimTo()
+ *             .doneFaceTo()
  *         .resolveWith()
  *             .localization(poseEstimator)
  *             .aprilTags(tagSensor, cameraMount, 0.25)
@@ -173,6 +172,13 @@ public final class DriveGuidance {
         ResolveWithBuilder<SELF> resolveWith();
 
         /**
+         * Alias for { #resolveWith()} using the shared spatial-query term.
+         */
+        default ResolveWithBuilder<SELF> solveWith() {
+            return resolveWith();
+        }
+
+        /**
          * Chooses which point(s) on the robot guidance should translate / aim with respect to.
          */
         SELF controlFrames(SpatialControlFrames frames);
@@ -196,7 +202,7 @@ public final class DriveGuidance {
         /**
          * Begins configuring the aim target.
          */
-        AimToBuilder<SpecBuilder2> aimTo();
+        FaceToBuilder<SpecBuilder2> faceTo();
     }
 
     /**
@@ -207,7 +213,7 @@ public final class DriveGuidance {
         /**
          * Adds an aim target to the spec.
          */
-        AimToBuilder<SpecBuilder3> aimTo();
+        FaceToBuilder<SpecBuilder3> faceTo();
     }
 
     /**
@@ -239,7 +245,7 @@ public final class DriveGuidance {
      * <pre>{@code
      * DriveGuidancePlan plan = DriveGuidance.plan()
      *         .translateTo()...doneTranslateTo()
-     *         .aimTo()...doneAimTo()
+     *         .faceTo()...doneFaceTo()
      *         .resolveWith()...doneResolveWith()
      *         .tuning(DriveGuidancePlan.Tuning.defaults())
      *         .build();
@@ -251,6 +257,13 @@ public final class DriveGuidance {
          * Configures the feedback lanes guidance may use to solve the requested targets.
          */
         ResolveWithBuilder<SELF> resolveWith();
+
+        /**
+         * Alias for { #resolveWith()} using the shared spatial-query term.
+         */
+        default ResolveWithBuilder<SELF> solveWith() {
+            return resolveWith();
+        }
 
         /**
          * Chooses which point(s) on the robot guidance should translate / aim with respect to.
@@ -281,7 +294,7 @@ public final class DriveGuidance {
         /**
          * Begins configuring the aim target.
          */
-        AimToBuilder<PlanBuilder2> aimTo();
+        FaceToBuilder<PlanBuilder2> faceTo();
     }
 
     /**
@@ -292,7 +305,7 @@ public final class DriveGuidance {
         /**
          * Adds an aim target to the plan.
          */
-        AimToBuilder<PlanBuilder3> aimTo();
+        FaceToBuilder<PlanBuilder3> faceTo();
     }
 
     /**
@@ -346,37 +359,37 @@ public final class DriveGuidance {
     /**
      * Nested builder used to describe the aim / heading goal.
      */
-    public interface AimToBuilder<RETURN> {
+    public interface FaceToBuilder<RETURN> {
 
         /**
          * Aims at a field-fixed point.
          */
-        AimToBuilder<RETURN> fieldPointInches(double xInches, double yInches);
+        FaceToBuilder<RETURN> fieldPointInches(double xInches, double yInches);
 
         /**
          * Aligns to an absolute field heading in radians.
          */
-        AimToBuilder<RETURN> fieldHeadingRad(double fieldHeadingRad);
+        FaceToBuilder<RETURN> fieldHeadingRad(double fieldHeadingRad);
 
         /**
          * Aims at a semantic point reference.
          */
-        AimToBuilder<RETURN> point(ReferencePoint2d reference);
+        FaceToBuilder<RETURN> point(ReferencePoint2d reference);
 
         /**
          * Aligns to the heading of a semantic reference frame.
          */
-        AimToBuilder<RETURN> frameHeading(ReferenceFrame2d reference);
+        FaceToBuilder<RETURN> frameHeading(ReferenceFrame2d reference);
 
         /**
          * Aligns to the heading of a semantic reference frame plus an additional offset.
          */
-        AimToBuilder<RETURN> frameHeading(ReferenceFrame2d reference, double headingOffsetRad);
+        FaceToBuilder<RETURN> frameHeading(ReferenceFrame2d reference, double headingOffsetRad);
 
         /**
          * Returns to the parent builder stage.
          */
-        RETURN doneAimTo();
+        RETURN doneFaceTo();
     }
 
     /**
@@ -463,6 +476,13 @@ public final class DriveGuidance {
          * Returns to the parent builder stage.
          */
         RETURN doneResolveWith();
+
+        /**
+         * Alias for { #doneResolveWith()} using the shared spatial-query term.
+         */
+        default RETURN doneSolveWith() {
+            return doneResolveWith();
+        }
     }
 
     // ------------------------------------------------------------------------
@@ -471,7 +491,7 @@ public final class DriveGuidance {
 
     private static final class State {
         TranslationTarget2d translationTarget;
-        AimTarget2d aimTarget;
+        FacingTarget2d facingTarget;
 
         SpatialControlFrames controlFrames = SpatialControlFrames.robotCenter();
         DriveGuidancePlan.Tuning tuning = DriveGuidancePlan.Tuning.defaults();
@@ -497,8 +517,8 @@ public final class DriveGuidance {
      * Validates the staged builder state and produces an immutable spec snapshot.
      */
     private static DriveGuidanceSpec buildSpec(State s) {
-        if (s.translationTarget == null && s.aimTarget == null) {
-            throw new IllegalStateException("DriveGuidance spec needs translateTo() and/or aimTo() configured");
+        if (s.translationTarget == null && s.facingTarget == null) {
+            throw new IllegalStateException("DriveGuidance spec needs translateTo() and/or faceTo() configured");
         }
 
         validateCapabilitiesOrThrow(s);
@@ -547,10 +567,10 @@ public final class DriveGuidance {
         TranslationTarget2d spatialTranslationTarget = (s.translationTarget instanceof DriveGuidanceSpec.RobotRelativePoint)
                 ? null
                 : s.translationTarget;
-        if (spatialTranslationTarget != null || s.aimTarget != null) {
-            spatialQuerySpec = SpatialQuery.builder()
+        if (spatialTranslationTarget != null || s.facingTarget != null) {
+            spatialQuerySpec = SpatialQuerySpec.builder()
                     .translateTo(spatialTranslationTarget)
-                    .aimTo(s.aimTarget)
+                    .faceTo(s.facingTarget)
                     .controlFrames(s.controlFrames)
                     .solveWith(solveSetBuilder.build())
                     .fixedAprilTagLayout(s.fixedAprilTagLayout)
@@ -559,7 +579,7 @@ public final class DriveGuidance {
 
         return new DriveGuidanceSpec(
                 s.translationTarget,
-                s.aimTarget,
+                s.facingTarget,
                 s.controlFrames,
                 rw,
                 spatialQuerySpec,
@@ -651,10 +671,10 @@ public final class DriveGuidance {
                 && canSolveTranslationWithLocalization(s.translationTarget, s.fixedAprilTagLayout);
         boolean canTagsT = s.translationTarget != null && hasAprilTags
                 && canSolveTranslationWithAprilTags(s.translationTarget, hasLayout);
-        boolean canLocO = s.aimTarget != null && hasLocalization
-                && canSolveAimWithLocalization(s.aimTarget, s.fixedAprilTagLayout);
-        boolean canTagsO = s.aimTarget != null && hasAprilTags
-                && canSolveAimWithAprilTags(s.aimTarget, hasLayout);
+        boolean canLocO = s.facingTarget != null && hasLocalization
+                && canSolveAimWithLocalization(s.facingTarget, s.fixedAprilTagLayout);
+        boolean canTagsO = s.facingTarget != null && hasAprilTags
+                && canSolveAimWithAprilTags(s.facingTarget, hasLayout);
 
         if (s.translationTarget instanceof DriveGuidanceSpec.RobotRelativePoint && !hasLocalization) {
             errors.add("robotRelativePointInches(...) requires localization(...)");
@@ -672,28 +692,28 @@ public final class DriveGuidance {
             }
         }
 
-        if (s.aimTarget != null) {
+        if (s.facingTarget != null) {
             if (mode == DriveGuidanceSpec.SolveMode.LOCALIZATION_ONLY && !canLocO) {
-                errors.add(localizationFailureForAimTarget(s.aimTarget, s.fixedAprilTagLayout));
+                errors.add(localizationFailureForFacingTarget(s.facingTarget, s.fixedAprilTagLayout));
             }
             if (mode == DriveGuidanceSpec.SolveMode.APRIL_TAGS_ONLY && !canTagsO) {
-                errors.add("aimTo() target cannot be solved from aprilTags(...); add fixedAprilTagLayout(...) for field-fixed references or choose localization()/adaptive() as appropriate");
+                errors.add("faceTo() target cannot be solved from aprilTags(...); add fixedAprilTagLayout(...) for field-fixed references or choose localization()/adaptive() as appropriate");
             }
             if (mode == DriveGuidanceSpec.SolveMode.ADAPTIVE && !canLocO && !canTagsO) {
-                errors.add("aimTo() target cannot be solved by either adaptive lane; check localization(...), aprilTags(...), and fixedAprilTagLayout(...)");
+                errors.add("faceTo() target cannot be solved by either adaptive lane; check localization(...), aprilTags(...), and fixedAprilTagLayout(...)");
             }
         }
 
         if (mode == DriveGuidanceSpec.SolveMode.ADAPTIVE) {
             boolean dualT = s.translationTarget != null && canLocT && canTagsT;
-            boolean dualO = s.aimTarget != null && canLocO && canTagsO;
+            boolean dualO = s.facingTarget != null && canLocO && canTagsO;
             if (!dualT && !dualO) {
                 errors.add("adaptive() requires at least one requested channel to be solvable by both lanes; otherwise choose localizationOnly() or aprilTagsOnly()");
             }
             if (s.translationTakeover != null && s.translationTarget != null && !dualT) {
                 errors.add("translationTakeover(...) is not applicable because translation cannot be solved by both adaptive lanes");
             }
-            if (s.omegaPolicyExplicit && s.aimTarget != null && !dualO) {
+            if (s.omegaPolicyExplicit && s.facingTarget != null && !dualO) {
                 errors.add("omegaPolicy(...) is not applicable because omega cannot be solved by both adaptive lanes");
             }
         }
@@ -721,9 +741,9 @@ public final class DriveGuidance {
         return base + "; add fixedAprilTagLayout(...) for fixed-tag references or choose aprilTags()/adaptive() as appropriate";
     }
 
-    private static String localizationFailureForAimTarget(AimTarget2d target,
+    private static String localizationFailureForFacingTarget(FacingTarget2d target,
                                                           TagLayout layout) {
-        String base = "aimTo() target cannot be solved from localization(...)";
+        String base = "faceTo() target cannot be solved from localization(...)";
         if (target instanceof SpatialTargets.ReferencePointTarget) {
             return explainLocalizationPointFailure(
                     ((SpatialTargets.ReferencePointTarget) target).reference,
@@ -824,7 +844,7 @@ public final class DriveGuidance {
         return false;
     }
 
-    private static boolean canSolveAimWithLocalization(AimTarget2d target,
+    private static boolean canSolveAimWithLocalization(FacingTarget2d target,
                                                        TagLayout layout) {
         if (target instanceof SpatialTargets.FieldPoint) {
             return true;
@@ -841,7 +861,7 @@ public final class DriveGuidance {
         return false;
     }
 
-    private static boolean canSolveAimWithAprilTags(AimTarget2d target,
+    private static boolean canSolveAimWithAprilTags(FacingTarget2d target,
                                                     boolean hasLayout) {
         if (target instanceof SpatialTargets.FieldPoint) {
             return hasLayout;
@@ -992,8 +1012,8 @@ public final class DriveGuidance {
          * {@inheritDoc}
          */
         @Override
-        public AimToBuilder<SpecBuilder2> aimTo() {
-            return new AimToStep<>(s, new Spec2(s));
+        public FaceToBuilder<SpecBuilder2> faceTo() {
+            return new FaceToStep<>(s, new Spec2(s));
         }
     }
 
@@ -1006,8 +1026,8 @@ public final class DriveGuidance {
          * {@inheritDoc}
          */
         @Override
-        public AimToBuilder<SpecBuilder3> aimTo() {
-            return new AimToStep<>(s, new Spec3(s));
+        public FaceToBuilder<SpecBuilder3> faceTo() {
+            return new FaceToStep<>(s, new Spec3(s));
         }
     }
 
@@ -1048,8 +1068,8 @@ public final class DriveGuidance {
          * {@inheritDoc}
          */
         @Override
-        public AimToBuilder<PlanBuilder2> aimTo() {
-            return new AimToStep<>(s, new Builder2(s));
+        public FaceToBuilder<PlanBuilder2> faceTo() {
+            return new FaceToStep<>(s, new Builder2(s));
         }
     }
 
@@ -1062,8 +1082,8 @@ public final class DriveGuidance {
          * {@inheritDoc}
          */
         @Override
-        public AimToBuilder<PlanBuilder3> aimTo() {
-            return new AimToStep<>(s, new Builder3(s));
+        public FaceToBuilder<PlanBuilder3> faceTo() {
+            return new FaceToStep<>(s, new Builder3(s));
         }
     }
 
@@ -1144,11 +1164,11 @@ public final class DriveGuidance {
         }
     }
 
-    private static final class AimToStep<RETURN> implements AimToBuilder<RETURN> {
+    private static final class FaceToStep<RETURN> implements FaceToBuilder<RETURN> {
         private final State s;
         private final RETURN ret;
 
-        AimToStep(State s, RETURN ret) {
+        FaceToStep(State s, RETURN ret) {
             this.s = s;
             this.ret = ret;
         }
@@ -1157,11 +1177,11 @@ public final class DriveGuidance {
          * {@inheritDoc}
          */
         @Override
-        public AimToBuilder<RETURN> fieldPointInches(double xInches, double yInches) {
-            if (s.aimTarget != null) {
-                throw new IllegalStateException("aimTo() target already configured; choose only one target method");
+        public FaceToBuilder<RETURN> fieldPointInches(double xInches, double yInches) {
+            if (s.facingTarget != null) {
+                throw new IllegalStateException("faceTo() target already configured; choose only one target method");
             }
-            s.aimTarget = SpatialTargets.fieldPoint(xInches, yInches);
+            s.facingTarget = SpatialTargets.fieldPoint(xInches, yInches);
             return this;
         }
 
@@ -1169,11 +1189,11 @@ public final class DriveGuidance {
          * {@inheritDoc}
          */
         @Override
-        public AimToBuilder<RETURN> fieldHeadingRad(double fieldHeadingRad) {
-            if (s.aimTarget != null) {
-                throw new IllegalStateException("aimTo() target already configured; choose only one target method");
+        public FaceToBuilder<RETURN> fieldHeadingRad(double fieldHeadingRad) {
+            if (s.facingTarget != null) {
+                throw new IllegalStateException("faceTo() target already configured; choose only one target method");
             }
-            s.aimTarget = SpatialTargets.fieldHeading(fieldHeadingRad);
+            s.facingTarget = SpatialTargets.fieldHeading(fieldHeadingRad);
             return this;
         }
 
@@ -1181,11 +1201,11 @@ public final class DriveGuidance {
          * {@inheritDoc}
          */
         @Override
-        public AimToBuilder<RETURN> point(ReferencePoint2d reference) {
-            if (s.aimTarget != null) {
-                throw new IllegalStateException("aimTo() target already configured; choose only one target method");
+        public FaceToBuilder<RETURN> point(ReferencePoint2d reference) {
+            if (s.facingTarget != null) {
+                throw new IllegalStateException("faceTo() target already configured; choose only one target method");
             }
-            s.aimTarget = SpatialTargets.point(Objects.requireNonNull(reference, "reference"));
+            s.facingTarget = SpatialTargets.point(Objects.requireNonNull(reference, "reference"));
             return this;
         }
 
@@ -1193,7 +1213,7 @@ public final class DriveGuidance {
          * {@inheritDoc}
          */
         @Override
-        public AimToBuilder<RETURN> frameHeading(ReferenceFrame2d reference) {
+        public FaceToBuilder<RETURN> frameHeading(ReferenceFrame2d reference) {
             return frameHeading(reference, 0.0);
         }
 
@@ -1201,11 +1221,11 @@ public final class DriveGuidance {
          * {@inheritDoc}
          */
         @Override
-        public AimToBuilder<RETURN> frameHeading(ReferenceFrame2d reference, double headingOffsetRad) {
-            if (s.aimTarget != null) {
-                throw new IllegalStateException("aimTo() target already configured; choose only one target method");
+        public FaceToBuilder<RETURN> frameHeading(ReferenceFrame2d reference, double headingOffsetRad) {
+            if (s.facingTarget != null) {
+                throw new IllegalStateException("faceTo() target already configured; choose only one target method");
             }
-            s.aimTarget = SpatialTargets.frameHeading(Objects.requireNonNull(reference, "reference"), headingOffsetRad);
+            s.facingTarget = SpatialTargets.frameHeading(Objects.requireNonNull(reference, "reference"), headingOffsetRad);
             return this;
         }
 
@@ -1213,9 +1233,9 @@ public final class DriveGuidance {
          * {@inheritDoc}
          */
         @Override
-        public RETURN doneAimTo() {
-            if (s.aimTarget == null) {
-                throw new IllegalStateException("aimTo() requires a target before doneAimTo()");
+        public RETURN doneFaceTo() {
+            if (s.facingTarget == null) {
+                throw new IllegalStateException("faceTo() requires a target before doneFaceTo()");
             }
             return ret;
         }

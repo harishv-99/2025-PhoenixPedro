@@ -9,9 +9,12 @@ import edu.ftcphoenix.fw.localization.PoseEstimate;
 /**
  * Spatial solve lane backed by any {@link AbsolutePoseEstimator}.
  *
- * <p>This lane is the shared “solve from field pose” adapter. It can be driven by a corrected
- * localization estimate, an AprilTag-only field pose, a Limelight field pose, or any future
- * absolute pose source.</p>
+ * <p>This is the shared “solve from field pose” adapter. It can be driven by corrected
+ * localization, AprilTag-only pose, Limelight field pose, or any future absolute pose source.</p>
+ *
+ * <p>When the pose estimate is delayed, the lane asks the query's time-aware control frames for the
+ * frame pose at the pose timestamp. This keeps moving mechanism frames aligned with the robot pose
+ * used to solve the spatial relationship.</p>
  */
 public final class AbsolutePoseSpatialSolveLane implements SpatialSolveLane {
 
@@ -29,9 +32,7 @@ public final class AbsolutePoseSpatialSolveLane implements SpatialSolveLane {
         this(poseEstimator, DEFAULT_MAX_AGE_SEC, DEFAULT_MIN_QUALITY);
     }
 
-    /**
-     * Creates an absolute-pose-backed solve lane with explicit freshness and quality gating.
-     */
+    /** Creates an absolute-pose-backed solve lane with explicit freshness and quality gating. */
     public AbsolutePoseSpatialSolveLane(AbsolutePoseEstimator poseEstimator,
                                         double maxAgeSec,
                                         double minQuality) {
@@ -51,7 +52,11 @@ public final class AbsolutePoseSpatialSolveLane implements SpatialSolveLane {
             return SpatialLaneResult.none();
         }
 
+        double timestampSec = est.timestampSec;
         Pose2d fieldToRobot = est.toPose2d();
+        Pose2d translationFrame = request.robotToTranslationFrameAt(timestampSec);
+        Pose2d facingFrame = request.robotToFacingFrameAt(timestampSec);
+
         TranslationSolution translation = null;
         if (request.translationTarget != null) {
             Pose2d fieldToTargetPoint = SpatialQuerySupport.resolveFieldPointTarget(
@@ -62,63 +67,67 @@ public final class AbsolutePoseSpatialSolveLane implements SpatialSolveLane {
             if (fieldToTargetPoint != null) {
                 translation = SpatialSolveMath.translationFromFieldPose(
                         fieldToRobot,
-                        request.robotToTranslationFrame,
+                        translationFrame,
                         fieldToTargetPoint,
                         false,
                         Double.NaN,
                         est.quality,
-                        estAgeSec
+                        estAgeSec,
+                        timestampSec
                 );
             }
         }
 
-        AimSolution aim = null;
-        if (request.aimTarget instanceof SpatialTargets.FieldHeading) {
-            aim = SpatialSolveMath.aimFromFieldHeading(
+        FacingSolution facing = null;
+        if (request.facingTarget instanceof SpatialTargets.FieldHeading) {
+            facing = SpatialSolveMath.facingFromFieldHeading(
                     fieldToRobot,
-                    request.robotToAimFrame,
-                    ((SpatialTargets.FieldHeading) request.aimTarget).fieldHeadingRad,
+                    facingFrame,
+                    ((SpatialTargets.FieldHeading) request.facingTarget).fieldHeadingRad,
                     est.quality,
-                    estAgeSec
+                    estAgeSec,
+                    timestampSec
             );
-        } else if (request.aimTarget instanceof SpatialTargets.ReferenceFrameHeadingTarget) {
-            SpatialTargets.ReferenceFrameHeadingTarget target = (SpatialTargets.ReferenceFrameHeadingTarget) request.aimTarget;
+        } else if (request.facingTarget instanceof SpatialTargets.ReferenceFrameHeadingTarget) {
+            SpatialTargets.ReferenceFrameHeadingTarget target = (SpatialTargets.ReferenceFrameHeadingTarget) request.facingTarget;
             Pose2d fieldToFrame = SpatialQuerySupport.resolveFieldFrameHeadingTarget(
                     target,
                     request.fixedAprilTagLayout,
                     request.clock
             );
             if (fieldToFrame != null) {
-                aim = SpatialSolveMath.aimFromFieldHeading(
+                facing = SpatialSolveMath.facingFromFieldHeading(
                         fieldToRobot,
-                        request.robotToAimFrame,
+                        facingFrame,
                         fieldToFrame.headingRad + target.headingOffsetRad,
                         est.quality,
-                        estAgeSec
+                        estAgeSec,
+                        timestampSec
                 );
             }
-        } else if (request.aimTarget != null) {
-            Pose2d fieldToAimPoint = SpatialQuerySupport.resolveFieldPointTarget(
-                    request.aimTarget,
+        } else if (request.facingTarget != null) {
+            Pose2d fieldToFacingPoint = SpatialQuerySupport.resolveFieldPointTarget(
+                    request.facingTarget,
                     request.fixedAprilTagLayout,
                     request.clock
             );
-            if (fieldToAimPoint != null) {
-                aim = SpatialSolveMath.aimFromFieldPoint(
+            if (fieldToFacingPoint != null) {
+                facing = SpatialSolveMath.facingFromFieldPoint(
                         fieldToRobot,
-                        request.robotToAimFrame,
-                        fieldToAimPoint,
+                        facingFrame,
+                        fieldToFacingPoint,
                         est.quality,
-                        estAgeSec
+                        estAgeSec,
+                        timestampSec
                 );
             }
         }
 
         return SpatialLaneResult.of(
                 translation,
-                aim,
+                facing,
                 SpatialQuerySupport.translationSelectionSnapshot(request.translationTarget, request.clock, null, Double.POSITIVE_INFINITY),
-                SpatialQuerySupport.aimSelectionSnapshot(request.aimTarget, request.clock, null, Double.POSITIVE_INFINITY)
+                SpatialQuerySupport.facingSelectionSnapshot(request.facingTarget, request.clock, null, Double.POSITIVE_INFINITY)
         );
     }
 

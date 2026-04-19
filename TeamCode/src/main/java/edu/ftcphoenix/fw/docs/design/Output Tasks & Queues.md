@@ -115,7 +115,7 @@ It has three phases:
 
 ```java
 BooleanSource shooterReady = PlantSources.atSetpoint(shooterPlant).debouncedOn(0.15);
-BooleanSource aimLocked = ...; // from your auto-aim error source + hysteresis/debounce
+BooleanSource aimLocked = ...; // from your auto-facing error source + hysteresis/debounce
 BooleanSource fireAllowed = shooterReady.and(aimLocked);
 
 BooleanSource ballAtGate = gateDistanceCm

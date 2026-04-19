@@ -1,308 +1,144 @@
 # Spatial Queries
 
-`SpatialQuery` is Phoenix's shared **task-space relationship solver**.
+`SpatialQuery` is the shared framework layer for **field/robot geometry**. It answers a task-space question:
 
-It answers questions like:
+> Given a target, a controlled robot frame, and one or more solve lanes, what translation or facing relationship can each lane solve this loop?
 
-- where is this target relative to the robot's translation frame?
-- how much should this aim frame rotate to face that point?
-- what do different solve lanes think about the same target this loop?
+It does **not** decide which lane wins, and it does **not** command a drivetrain or mechanism. That policy belongs to consumers such as Drive Guidance or Scalar Setpoint Planning.
 
-That makes it the reusable layer underneath `DriveGuidance` and a good foundation for future
-mechanism planners.
+## When to use `SpatialQuery`
 
----
+Use `SpatialQuery` directly when you need raw geometry:
 
-## 1. What problem does `SpatialQuery` solve?
+- compare live AprilTag solving against localization fallback
+- run a simple PID on a facing error
+- inspect translation/facing solutions for telemetry
+- build a robot-specific mechanism planner that needs field-relative context
 
-A `SpatialQuery` separates four concerns that used to live together inside Drive Guidance:
+Do not use `SpatialQuery` when the target is already a native plant value. A lift preset such as `1420 ticks` should go straight to a `ScalarSetpointPlanner` or directly to a `Plant`.
 
-1. **Target semantics** — what point or heading is meaningful?
-2. **Controlled frames** — which robot-relative point/frame should satisfy that geometry?
-3. **Solve lanes** — which backends are allowed to solve it?
-4. **Per-lane results** — what each lane solved this loop
+## Main vocabulary
 
-The query itself does **not** decide which result to trust or how to turn that result into a
-drivetrain or mechanism command.
+- `TranslationTarget2d`: the point a controlled frame should move toward.
+- `FacingTarget2d`: the point or heading a controlled frame should face.
+- `SpatialControlFrames`: robot-relative frame providers for translation and facing.
+- `SpatialSolveLane`: one strategy for solving the relationship, such as absolute pose or live AprilTags.
+- `SpatialQueryResult`: ordered per-lane results from one loop.
+- `TranslationSolution`: solved target point in robot and controlled-frame coordinates.
+- `FacingSolution`: signed facing error in radians.
 
-That policy belongs to higher-level consumers:
+The key naming rule is:
 
-- `DriveGuidance` turns the query result into drivetrain translation/omega commands.
-- A future turret planner can turn the same aim relationship into a turret angle target.
-- A future pickup planner can turn the same translation relationship into extension / lift / wrist
-  targets.
-
----
-
-## 2. The main public pieces
-
-### 2.1 Semantic targets
-
-Use the neutral target helpers in `edu.ftcphoenix.fw.spatial`:
-
-- `ReferencePoint2d`
-- `ReferenceFrame2d`
-- `References`
-- `TranslationTarget2d`
-- `AimTarget2d`
-- `SpatialTargets`
-
-Most teams should not implement `TranslationTarget2d` or `AimTarget2d` directly. Use the helpers in
-`SpatialTargets`.
-
-Examples:
-
-```java
-ReferenceFrame2d backdropFace = References.fieldFrame(48.0, 24.0, Math.PI);
-ReferencePoint2d settlePoint = References.framePoint(backdropFace, -6.0, 0.0);
-
-TranslationTarget2d translationTarget = SpatialTargets.point(settlePoint);
-AimTarget2d aimTarget = SpatialTargets.frameHeading(backdropFace);
+```text
+Query -> Result
+Planner/Guidance -> Status
 ```
 
-### 2.2 Controlled frames
+`SpatialQuery` produces a `SpatialQueryResult`. `DriveGuidanceQuery` and `ScalarSetpointPlanner` produce status objects because they apply policy and choose commands/setpoints.
 
-`SpatialControlFrames` describes **which robot-relative frames are being controlled**.
+## Builder shape
 
-There are two channels:
-
-- `translationFrame`
-- `aimFrame`
-
-The API accepts either:
-
-- a rigid `Pose2d`, or
-- a dynamic `Source<Pose2d>` sampled once per loop
-
-Examples:
+The common path builds a runtime query directly:
 
 ```java
-SpatialControlFrames robotCenter = SpatialControlFrames.robotCenter();
-```
-
-```java
-Pose2d robotToShooter = new Pose2d(7.0, 4.5, Math.toRadians(5.0));
-
-SpatialControlFrames shooterAim = SpatialControlFrames.robotCenter()
-        .withAimFrame(robotToShooter);
-```
-
-```java
-Source<Pose2d> clawLandingFrame = clock -> projectClawLandingPointOnFloor(clock);
-
-SpatialControlFrames pickupFrames = SpatialControlFrames.robotCenter()
-        .withTranslationFrame(clawLandingFrame);
-```
-
-The important rule is: the frame is always expressed as **`robot -> frame`**.
-
-### 2.3 Solve lanes
-
-A `SpatialSolveLane` is one strategy/backend that can solve some or all of the query.
-
-Phoenix currently provides two reusable lanes:
-
-- `AbsolutePoseSpatialSolveLane` — solve from any `AbsolutePoseEstimator`
-- `AprilTagSpatialSolveLane` — solve directly from live `AprilTagSensor` observations, with an
-  optional fixed-tag field-pose bridge when the target requires field coordinates
-
-Those lanes are composed with `SpatialSolveSet`.
-
-Examples:
-
-```java
-SpatialSolveSet lanes = SpatialSolveSet.builder()
-        .absolutePose(globalPoseEstimator, 0.50, 0.10)
-        .aprilTags(tagSensor, cameraMount, 0.25, fieldPoseSolverConfig)
-        .build();
-```
-
-Because the solve set is interface-based, teams can add their own lanes later without changing the
-shared query API.
-
-### 2.4 Spec and runtime query
-
-`SpatialQuerySpec` is the immutable description.
-
-`SpatialQuery` is the stateful runtime owner.
-
-```java
-SpatialQuerySpec spec = SpatialQuery.builder()
-        .translateTo(SpatialTargets.point(settlePoint))
-        .aimTo(SpatialTargets.frameHeading(backdropFace))
-        .controlFrames(SpatialControlFrames.robotCenter().withAimFrame(robotToShooter))
-        .solveWith(lanes)
+SpatialQuery query = SpatialQuery.builder()
+        .faceTo(SpatialTargets.point(References.relativeToTagPoint(20, 6.0, -1.5)))
+        .controlFrames(
+                SpatialControlFrames.robotCenter()
+                        .withFacingFrame(robotToShooterFrame)
+        )
+        .solveWith(
+                SpatialSolveSet.builder()
+                        .aprilTags(tagSensor, cameraMount, 0.25)
+                        .absolutePose(globalPoseEstimator, 0.50, 0.10)
+                        .build()
+        )
         .fixedAprilTagLayout(tagLayout)
         .build();
-
-SpatialQuery query = new SpatialQuery(spec);
 ```
 
----
-
-## 3. Sampling a query
-
-Call `query.get(clock)` once per loop (or let a higher-level owner do it).
+Use `SpatialQuerySpec.builder()` only when you need a reusable immutable description and separate runtime query instances:
 
 ```java
-SpatialQuerySample sample = query.get(clock);
-```
-
-A `SpatialQuerySample` contains:
-
-- the sampled `robotToTranslationFrame`
-- the sampled `robotToAimFrame`
-- one `SpatialLaneResult` per solve lane
-
-This matters for dynamic frames. `SpatialQuery` samples the control frames **once per loop** and
-passes the exact same snapshot to every solve lane so you can compare lanes fairly.
-
----
-
-## 4. Interpreting per-lane results
-
-Each `SpatialLaneResult` may contain:
-
-- a `TranslationSolution`
-- an `AimSolution`
-- translation-selection telemetry
-- aim-selection telemetry
-
-A lane can solve:
-
-- only translation
-- only aim
-- both
-- or neither
-
-That means a higher-level consumer can choose its own policy. For example:
-
-- `DriveGuidance` can blend between localization and live AprilTags.
-- A turret planner can prefer a direct vision lane when it is valid.
-- A pickup planner can ignore lanes that only solve aim.
-
-The spatial layer intentionally does **not** hide that policy.
-
----
-
-## 5. How `DriveGuidance` uses `SpatialQuery`
-
-`DriveGuidance` now consumes the shared spatial-query layer internally.
-
-That means:
-
-- the geometry is authored once,
-- the same solve lanes can later be reused by non-drive planners,
-- and drive-specific policy stays in `DriveGuidance`.
-
-One drive-only target still stays outside the shared query layer:
-
-- `DriveGuidanceSpec.RobotRelativePoint`
-
-That target is special because it is not just geometry. It means:
-
-> capture the translation frame's field pose when guidance enables, then offset from that latched
-> anchor.
-
-That lifecycle/enable semantic is specific to drive guidance today, so it stays there until another
-real consumer of the same behavior shows up.
-
----
-
-## 6. Example: direct query for turret-style aim geometry
-
-This example does **not** command a turret yet. It only shows how to reuse the shared query layer to
-solve the target relationship that a future turret planner would consume.
-
-```java
-Pose2d robotToTurretZeroFrame = new Pose2d(
-        6.5,
-        2.0,
-        Math.toRadians(15.0)
-);
-
-SpatialSolveSet lanes = SpatialSolveSet.builder()
-        .absolutePose(globalPoseEstimator, 0.50, 0.10)
-        .aprilTags(tagSensor, cameraMount, 0.25)
+SpatialQuerySpec spec = SpatialQuerySpec.builder()
+        .faceTo(SpatialTargets.fieldHeading(Math.PI))
+        .controlFrames(SpatialControlFrames.robotCenter())
+        .solveWith(solveSet)
         .build();
 
-SpatialQuery turretAimQuery = new SpatialQuery(
-        SpatialQuery.builder()
-                .aimTo(SpatialTargets.point(
-                        References.relativeToSelectedTagPoint(scoringSelection, 0.0, 0.0)
-                ))
-                .controlFrames(
-                        SpatialControlFrames.robotCenter().withAimFrame(robotToTurretZeroFrame)
-                )
-                .solveWith(lanes)
-                .fixedAprilTagLayout(tagLayout)
-                .build()
-);
+SpatialQuery driveSide = SpatialQuery.from(spec);
+SpatialQuery telemetrySide = SpatialQuery.from(spec);
+```
 
-SpatialQuerySample sample = turretAimQuery.get(clock);
-SpatialLaneResult localizationLane = sample.laneResult(0);
-if(localizationLane.aim !=null){
-double desiredAimErrorRad = localizationLane.aim.aimErrorRad;
-// A future mechanism planner would turn this into a commanded turret angle.
+Do not share one stateful `SpatialQuery` between independent owners if either owner may call `reset()`.
+
+## Control frame vs camera frame
+
+A control frame is the thing you are trying to move or face. A camera frame is the sensor pose used by an AprilTag lane.
+
+For a shooter:
+
+```java
+Pose2d robotToShooterFrame = new Pose2d(8.0, 2.0, Math.toRadians(3.0));
+CameraMountConfig robotToCamera = profile.vision.webcam.cameraMount;
+```
+
+`robotToShooterFrame` belongs in `SpatialControlFrames.withFacingFrame(...)`. `robotToCamera` belongs in `SpatialSolveSet.aprilTags(...)`.
+
+For a turret-mounted camera, those frames are still separate:
+
+```java
+Pose2d robotToTurretToolZero = new Pose2d(7.0, 2.5, Math.toRadians(10.0));
+TimeAwareSource<CameraMountConfig> turretCameraMount = turretCameraMountHistory;
+
+SpatialSolveSet solveSet = SpatialSolveSet.builder()
+        .aprilTags(turretCameraTags, turretCameraMount, 0.15)
+        .absolutePose(globalPoseEstimator, 0.50, 0.10)
+        .build();
+```
+
+The query controls the turret tool frame. The AprilTag lane uses the dynamic camera frame to understand what the camera saw.
+
+## Timestamp-aware frames
+
+Fast moving mechanisms need more than “current pose.” A camera frame may be old by the time the loop reads it. If a turret moved during that delay, the AprilTag lane should interpret the tag using the turret camera mount from the frame timestamp.
+
+Phoenix therefore supports `TimeAwareSource<T>` for dynamic frames and camera mounts. Fixed frames use `RobotFrames.rigid(...)` or `TimeAwareSources.fixed(...)`. Current-only dynamic frames can use `RobotFrames.currentOnly(...)`, but moving sensors should eventually use a history-backed source.
+
+Rule of thumb:
+
+> Anything derived from a delayed sensor frame should carry or derive a timestamp. Any moving frame used to interpret that sensor should be sampled at that timestamp when possible.
+
+## Selecting lane results
+
+The base query returns every lane result. Use selectors when you want priority behavior:
+
+```java
+SpatialSolutionGate gate = SpatialSolutionGate.builder()
+        .maxAgeSec(0.20)
+        .minQuality(0.45)
+        .build();
+
+SpatialQueryResult result = query.get(clock);
+SpatialFacingSelection facing = SpatialQuerySelectors.firstValidFacing(result, gate);
+```
+
+The same selector/gate concepts should be used by Drive Guidance and scalar setpoint request builders so “valid enough” means the same thing across the framework.
+
+## Direct query example: simple turret visual PID
+
+A quick visual-servo turret can use the facing error directly and skip scalar setpoint planning:
+
+```java
+SpatialQueryResult result = turretTagQuery.get(clock);
+SpatialFacingSelection facing = SpatialQuerySelectors.firstValidFacing(result, gate);
+
+if (facing != null) {
+    double power = turretPid.update(facing.facingErrorRad(), clock.dtSec());
+    turretMotor.setPower(power);
+} else {
+    turretMotor.setPower(0.0);
 }
 ```
 
----
-
-## 7. Example: floor-pickup geometry with a dynamic controlled frame
-
-For a floor pickup, the controlled point may not be welded to the chassis. It may be the projected
-landing point of the claw when lowered.
-
-```java
-Source<Pose2d> clawLandingFrame = clock -> projectClawLandingPointOnFloor(clock);
-
-SpatialQuery pickupQuery = new SpatialQuery(
-        SpatialQuery.builder()
-                .translateTo(SpatialTargets.point(detectedObjectReference))
-                .controlFrames(
-                        SpatialControlFrames.robotCenter().withTranslationFrame(clawLandingFrame)
-                )
-                .solveWith(lanes)
-                .build()
-);
-```
-
-The shared spatial layer gives you the relationship between:
-
-- the detected object target, and
-- the current projected claw landing frame
-
-A robot-specific pickup planner can then turn that task-space error into extension / lift / wrist
-setpoints.
-
----
-
-## 8. Relationship to localization
-
-Localization and spatial queries are related, but they are not the same layer.
-
-- **localization** answers: “where is the robot on the field?”
-- **spatial query** answers: “where is this target relative to this controlled frame?”
-
-A spatial solve lane may consume localization. For example, `AbsolutePoseSpatialSolveLane` can solve
-from a corrected global pose.
-
-But a pose estimator should not generally consume `SpatialQuery`. Queries are target-dependent; pose
-estimation is target-agnostic.
-
----
-
-## 9. When to use what
-
-Use `DriveGuidance` when you want the framework to output a drivetrain command.
-
-Use `SpatialQuery` directly when you want:
-
-- task-space geometry without drivetrain policy,
-- per-lane comparison data,
-- dynamic controlled-frame solving,
-- or a reusable solve layer for a custom planner.
-
-If all you need is a yes/no geometric predicate, stay even lower level and use the simpler spatial
-helpers such as `RobotZones2d` or `RobotHeadings2d`.
+This is simple, but you must handle cable limits, unreachable targets, and loss behavior yourself. For a position-controlled turret, prefer the scalar setpoint planner path described in [`Mechanism Setpoint Planning.md`](<Mechanism Setpoint Planning.md>).

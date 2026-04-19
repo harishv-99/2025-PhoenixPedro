@@ -177,7 +177,7 @@ final class SpatialQuerySupport {
                 maxAgeSec);
     }
 
-    static TagSelectionResult aimSelectionSnapshot(AimTarget2d target,
+    static TagSelectionResult facingSelectionSnapshot(FacingTarget2d target,
                                                    LoopClock clock,
                                                    AprilTagDetections detections,
                                                    double maxAgeSec) {
@@ -222,7 +222,7 @@ final class SpatialQuerySupport {
         }
     }
 
-    static void resetSelections(AimTarget2d target) {
+    static void resetSelections(FacingTarget2d target) {
         if (target instanceof SpatialTargets.ReferencePointTarget) {
             resetReferenceSelection(((SpatialTargets.ReferencePointTarget) target).reference);
         } else if (target instanceof SpatialTargets.ReferenceFrameHeadingTarget) {

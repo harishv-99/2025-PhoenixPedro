@@ -285,9 +285,9 @@ A common beginner-to-intermediate pattern is:
 ReferencePoint2d speakerAim = References.relativeToTagPoint(5, 0.0, 0.0);
 
 DriveGuidancePlan aimPlan = DriveGuidance.plan()
-        .aimTo()
+        .faceTo()
             .point(speakerAim)
-            .doneAimTo()
+            .doneFaceTo()
         .resolveWith()
             .aprilTagsOnly()
             .aprilTags(tagSensor, cameraMount, 0.25)

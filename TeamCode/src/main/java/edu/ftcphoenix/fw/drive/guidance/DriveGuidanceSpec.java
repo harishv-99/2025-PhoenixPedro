@@ -8,7 +8,7 @@ import edu.ftcphoenix.fw.localization.AbsolutePoseEstimator;
 import edu.ftcphoenix.fw.localization.apriltag.FixedTagFieldPoseSolver;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
-import edu.ftcphoenix.fw.spatial.AimTarget2d;
+import edu.ftcphoenix.fw.spatial.FacingTarget2d;
 import edu.ftcphoenix.fw.spatial.SpatialControlFrames;
 import edu.ftcphoenix.fw.spatial.SpatialQuerySpec;
 import edu.ftcphoenix.fw.spatial.TranslationTarget2d;
@@ -249,7 +249,7 @@ public final class DriveGuidanceSpec {
     }
 
     public final TranslationTarget2d translationTarget;
-    public final AimTarget2d aimTarget;
+    public final FacingTarget2d facingTarget;
     public final SpatialControlFrames controlFrames;
     public final ResolveWith resolveWith;
     public final SpatialQuerySpec spatialQuerySpec;
@@ -257,14 +257,14 @@ public final class DriveGuidanceSpec {
     public final int aprilTagsLaneIndex;
 
     DriveGuidanceSpec(TranslationTarget2d translationTarget,
-                      AimTarget2d aimTarget,
+                      FacingTarget2d facingTarget,
                       SpatialControlFrames controlFrames,
                       ResolveWith resolveWith,
                       SpatialQuerySpec spatialQuerySpec,
                       int localizationLaneIndex,
                       int aprilTagsLaneIndex) {
         this.translationTarget = translationTarget;
-        this.aimTarget = aimTarget;
+        this.facingTarget = facingTarget;
         this.controlFrames = Objects.requireNonNull(controlFrames, "controlFrames");
         this.resolveWith = Objects.requireNonNull(resolveWith, "resolveWith");
         this.spatialQuerySpec = spatialQuerySpec;
@@ -274,7 +274,7 @@ public final class DriveGuidanceSpec {
 
     public DriveOverlayMask requestedMask() {
         boolean t = translationTarget != null;
-        boolean o = aimTarget != null;
+        boolean o = facingTarget != null;
         if (t && o) {
             return DriveOverlayMask.ALL;
         }

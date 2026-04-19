@@ -10,25 +10,41 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.field.TagLayout;
 
 /**
- * Stateful runtime query that samples control frames once per loop and asks each solve lane to
- * compute the requested spatial relationship.
+ * Runtime source that solves one spatial relationship each loop.
  *
- * <p>{@link SpatialQuery} intentionally stops at <em>solving relationships</em>. It does not decide
- * whether to prefer one lane over another, blend between lanes, or turn the result into a drive or
- * mechanism command. Those decisions belong to higher-level consumers.</p>
+ * <p>A spatial query answers: <em>where is the requested target relative to the requested
+ * robot-attached control frames?</em> It may ask several ordered {@link SpatialSolveLane}s to solve
+ * the same relationship. It returns every lane result; it does not choose the final winner, blend
+ * lanes, or produce actuator commands.</p>
+ *
+ * <h2>When to use it directly</h2>
+ * <p>Use {@code SpatialQuery} directly when robot code needs raw geometry: a tag-relative point,
+ * a facing error, a translation error, or a comparison between solve lanes. Use higher-level
+ * planners such as drive guidance or scalar setpoint planning when you want a command or a plant
+ * setpoint.</p>
  */
-public final class SpatialQuery implements Source<SpatialQuerySample> {
+public final class SpatialQuery implements Source<SpatialQueryResult> {
 
     private final SpatialQuerySpec spec;
 
     private long lastCycle = Long.MIN_VALUE;
-    private SpatialQuerySample lastSample = null;
+    private SpatialQueryResult lastResult = null;
 
     /**
-     * Starts building a new immutable {@link SpatialQuerySpec}.
+     * Starts building a runtime {@link SpatialQuery}.
+     *
+     * <p>For a reusable immutable problem description, use {@link SpatialQuerySpec#builder()} and
+     * then {@link #from(SpatialQuerySpec)}.</p>
      */
     public static Builder builder() {
-        return new Builder();
+        return new Builder(false);
+    }
+
+    /**
+     * Creates a runtime query from an immutable spec.
+     */
+    public static SpatialQuery from(SpatialQuerySpec spec) {
+        return new SpatialQuery(spec);
     }
 
     /**
@@ -45,29 +61,34 @@ public final class SpatialQuery implements Source<SpatialQuerySample> {
         return spec;
     }
 
+    /**
+     * Returns the per-lane spatial result for this loop, caching by {@link LoopClock#cycle()}.
+     */
     @Override
-    public SpatialQuerySample get(LoopClock clock) {
+    public SpatialQueryResult get(LoopClock clock) {
         Objects.requireNonNull(clock, "clock");
         long cycle = clock.cycle();
-        if (cycle == lastCycle && lastSample != null) {
-            return lastSample;
+        if (cycle == lastCycle && lastResult != null) {
+            return lastResult;
         }
 
         Pose2d robotToTranslationFrame = Objects.requireNonNull(
                 spec.controlFrames.translationFrame().get(clock),
                 "SpatialControlFrames.translationFrame().get(clock) returned null"
         );
-        Pose2d robotToAimFrame = Objects.requireNonNull(
-                spec.controlFrames.aimFrame().get(clock),
-                "SpatialControlFrames.aimFrame().get(clock) returned null"
+        Pose2d robotToFacingFrame = Objects.requireNonNull(
+                spec.controlFrames.facingFrame().get(clock),
+                "SpatialControlFrames.facingFrame().get(clock) returned null"
         );
 
         SpatialSolveRequest request = new SpatialSolveRequest(
                 clock,
                 spec.translationTarget,
-                spec.aimTarget,
+                spec.facingTarget,
+                spec.controlFrames.translationFrame(),
+                spec.controlFrames.facingFrame(),
                 robotToTranslationFrame,
-                robotToAimFrame,
+                robotToFacingFrame,
                 spec.fixedAprilTagLayout
         );
 
@@ -78,28 +99,34 @@ public final class SpatialQuery implements Source<SpatialQuerySample> {
         }
 
         lastCycle = cycle;
-        lastSample = new SpatialQuerySample(
+        lastResult = new SpatialQueryResult(
                 spec.translationTarget,
-                spec.aimTarget,
+                spec.facingTarget,
                 robotToTranslationFrame,
-                robotToAimFrame,
+                robotToFacingFrame,
                 results
         );
-        return lastSample;
+        return lastResult;
     }
 
+    /**
+     * Clears query-local latch/caching state and resets owned solve lanes and frame providers.
+     */
     @Override
     public void reset() {
         lastCycle = Long.MIN_VALUE;
-        lastSample = null;
+        lastResult = null;
         spec.controlFrames.reset();
         for (SpatialSolveLane lane : spec.solveSet.lanes()) {
             lane.reset();
         }
         SpatialQuerySupport.resetSelections(spec.translationTarget);
-        SpatialQuerySupport.resetSelections(spec.aimTarget);
+        SpatialQuerySupport.resetSelections(spec.facingTarget);
     }
 
+    /**
+     * Emits query, frame, and lane debug state.
+     */
     @Override
     public void debugDump(DebugSink dbg, String prefix) {
         if (dbg == null) {
@@ -107,71 +134,58 @@ public final class SpatialQuery implements Source<SpatialQuerySample> {
         }
         String p = (prefix == null || prefix.isEmpty()) ? "spatialQuery" : prefix;
         dbg.addData(p + ".spec", spec)
-                .addData(p + ".lastSample", lastSample);
+                .addData(p + ".lastResult", lastResult);
         spec.controlFrames.debugDump(dbg, p + ".frames");
         for (int i = 0; i < spec.solveSet.size(); i++) {
             spec.solveSet.lane(i).debugDump(dbg, p + ".lanes[" + i + "]");
         }
     }
 
-    /**
-     * Builder for immutable {@link SpatialQuerySpec}s.
-     */
+    /** Builder for runtime {@link SpatialQuery} objects. */
     public static final class Builder {
-        private TranslationTarget2d translationTarget;
-        private AimTarget2d aimTarget;
-        private SpatialControlFrames controlFrames = SpatialControlFrames.robotCenter();
-        private SpatialSolveSet solveSet;
-        private TagLayout fixedAprilTagLayout;
+        private final SpatialQuerySpec.Builder specBuilder;
 
-        /**
-         * Configures the translation target to solve, or {@code null} for an aim-only query.
-         */
+        Builder(boolean specOnly) {
+            this.specBuilder = new SpatialQuerySpec.Builder();
+        }
+
+        /** Configures the translation target, or {@code null} for a facing-only query. */
         public Builder translateTo(TranslationTarget2d translationTarget) {
-            this.translationTarget = translationTarget;
+            specBuilder.translateTo(translationTarget);
             return this;
         }
 
         /**
-         * Configures the aim target to solve, or {@code null} for a translation-only query.
+         * Configures the facing target, or {@code null} for a translation-only query.
          */
-        public Builder aimTo(AimTarget2d aimTarget) {
-            this.aimTarget = aimTarget;
+        public Builder faceTo(FacingTarget2d facingTarget) {
+            specBuilder.faceTo(facingTarget);
             return this;
         }
 
-        /**
-         * Supplies the robot-relative frames that should satisfy the query geometry.
-         */
+        /** Supplies robot-relative control frames used by the query. */
         public Builder controlFrames(SpatialControlFrames controlFrames) {
-            this.controlFrames = Objects.requireNonNull(controlFrames, "controlFrames");
+            specBuilder.controlFrames(controlFrames);
             return this;
         }
 
-        /**
-         * Supplies the ordered solve-lane set used by this query.
-         */
+        /** Supplies the ordered solve-lane set. */
         public Builder solveWith(SpatialSolveSet solveSet) {
-            this.solveSet = Objects.requireNonNull(solveSet, "solveSet");
+            specBuilder.solveWith(solveSet);
             return this;
         }
 
-        /**
-         * Supplies the fixed field tag layout used by lanes that need trusted field-tag geometry.
-         */
+        /** Supplies the trusted fixed AprilTag layout used by lanes that need field-tag geometry. */
         public Builder fixedAprilTagLayout(TagLayout fixedAprilTagLayout) {
-            this.fixedAprilTagLayout = fixedAprilTagLayout;
+            specBuilder.fixedAprilTagLayout(fixedAprilTagLayout);
             return this;
         }
 
         /**
-         * Builds the immutable {@link SpatialQuerySpec}.
+         * Builds the runtime query.
          */
-        public SpatialQuerySpec build() {
-            if (solveSet == null) {
-                throw new IllegalStateException("SpatialQuery builder requires solveWith(...)");
-            }
-            return new SpatialQuerySpec(translationTarget, aimTarget, controlFrames, solveSet, fixedAprilTagLayout);
+        public SpatialQuery build() {
+            return SpatialQuery.from(specBuilder.build());
         }
     }
 }

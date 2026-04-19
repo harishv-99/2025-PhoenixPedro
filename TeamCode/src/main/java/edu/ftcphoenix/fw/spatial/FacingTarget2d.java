@@ -10,6 +10,6 @@ package edu.ftcphoenix.fw.spatial;
  * <p>Most teams do not implement this interface directly. Instead, use the factory helpers in
  * {@link SpatialTargets}.</p>
  */
-public interface AimTarget2d {
+public interface FacingTarget2d {
     // Marker interface for the public spatial-query API.
 }

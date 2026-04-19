@@ -14,24 +14,24 @@ import edu.ftcphoenix.fw.core.geometry.Pose2d;
  * generated from those same poses. Consumers can therefore make fair comparisons between lanes
  * without worrying that each lane sampled a slightly different dynamic frame.</p>
  */
-public final class SpatialQuerySample {
+public final class SpatialQueryResult {
 
     public final TranslationTarget2d translationTarget;
-    public final AimTarget2d aimTarget;
+    public final FacingTarget2d facingTarget;
     public final Pose2d robotToTranslationFrame;
-    public final Pose2d robotToAimFrame;
+    public final Pose2d robotToFacingFrame;
 
     private final List<SpatialLaneResult> laneResults;
 
-    SpatialQuerySample(TranslationTarget2d translationTarget,
-                       AimTarget2d aimTarget,
+    SpatialQueryResult(TranslationTarget2d translationTarget,
+                       FacingTarget2d facingTarget,
                        Pose2d robotToTranslationFrame,
-                       Pose2d robotToAimFrame,
+                       Pose2d robotToFacingFrame,
                        List<SpatialLaneResult> laneResults) {
         this.translationTarget = translationTarget;
-        this.aimTarget = aimTarget;
+        this.facingTarget = facingTarget;
         this.robotToTranslationFrame = Objects.requireNonNull(robotToTranslationFrame, "robotToTranslationFrame");
-        this.robotToAimFrame = Objects.requireNonNull(robotToAimFrame, "robotToAimFrame");
+        this.robotToFacingFrame = Objects.requireNonNull(robotToFacingFrame, "robotToFacingFrame");
         this.laneResults = Collections.unmodifiableList(new ArrayList<SpatialLaneResult>(laneResults));
     }
 
@@ -58,10 +58,10 @@ public final class SpatialQuerySample {
 
     @Override
     public String toString() {
-        return "SpatialQuerySample{translationTarget=" + translationTarget
-                + ", aimTarget=" + aimTarget
+        return "SpatialQueryResult{translationTarget=" + translationTarget
+                + ", facingTarget=" + facingTarget
                 + ", robotToTranslationFrame=" + robotToTranslationFrame
-                + ", robotToAimFrame=" + robotToAimFrame
+                + ", robotToFacingFrame=" + robotToFacingFrame
                 + ", laneResults=" + laneResults + '}';
     }
 }

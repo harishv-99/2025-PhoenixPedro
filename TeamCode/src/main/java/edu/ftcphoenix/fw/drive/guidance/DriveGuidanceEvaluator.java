@@ -7,10 +7,10 @@ import edu.ftcphoenix.fw.core.geometry.Pose2d;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelectionResult;
-import edu.ftcphoenix.fw.spatial.AimSolution;
+import edu.ftcphoenix.fw.spatial.FacingSolution;
 import edu.ftcphoenix.fw.spatial.SpatialLaneResult;
 import edu.ftcphoenix.fw.spatial.SpatialQuery;
-import edu.ftcphoenix.fw.spatial.SpatialQuerySample;
+import edu.ftcphoenix.fw.spatial.SpatialQueryResult;
 import edu.ftcphoenix.fw.spatial.TranslationSolution;
 
 /**
@@ -84,7 +84,7 @@ final class DriveGuidanceEvaluator {
             return Solution.invalid();
         }
 
-        SpatialQuerySample sample = sampleSpatialQuery(clock);
+        SpatialQueryResult sample = sampleSpatialQuery(clock);
         SpatialLaneResult lane = laneResult(sample, spec.localizationLaneIndex);
 
         TranslationSolve translation;
@@ -97,7 +97,7 @@ final class DriveGuidanceEvaluator {
             translationSelection = lane.translationSelection;
         }
 
-        AimSolve aim = toAimSolve(lane);
+        FacingSolve aim = toFacingSolve(lane);
         boolean valid = translation.canTranslate || aim.canOmega;
         return new Solution(
                 valid,
@@ -109,7 +109,7 @@ final class DriveGuidanceEvaluator {
                 translation.hasRangeInches,
                 translation.rangeInches,
                 translationSelection,
-                lane.aimSelection
+                lane.facingSelection
         );
     }
 
@@ -117,14 +117,14 @@ final class DriveGuidanceEvaluator {
      * Samples the shared spatial query for this loop, reusing the cached per-cycle sample when both
      * localization and AprilTag solve paths inspect it.
      */
-    private SpatialQuerySample sampleSpatialQuery(LoopClock clock) {
+    private SpatialQueryResult sampleSpatialQuery(LoopClock clock) {
         return spatialQuery != null ? spatialQuery.get(clock) : null;
     }
 
     /**
      * Returns one per-lane spatial result or a synthetic empty result when that lane is absent.
      */
-    private static SpatialLaneResult laneResult(SpatialQuerySample sample, int laneIndex) {
+    private static SpatialLaneResult laneResult(SpatialQueryResult sample, int laneIndex) {
         if (sample == null || laneIndex < 0 || laneIndex >= sample.laneCount()) {
             return SpatialLaneResult.none();
         }
@@ -135,10 +135,10 @@ final class DriveGuidanceEvaluator {
     /**
      * Converts one spatial lane result into the drive-guidance solution format.
      */
-    private Solution solutionFromLane(SpatialQuerySample sample, int laneIndex) {
+    private Solution solutionFromLane(SpatialQueryResult sample, int laneIndex) {
         SpatialLaneResult lane = laneResult(sample, laneIndex);
         TranslationSolve translation = toTranslationSolve(sample, lane);
-        AimSolve aim = toAimSolve(lane);
+        FacingSolve aim = toFacingSolve(lane);
         boolean valid = translation.canTranslate || aim.canOmega;
         return new Solution(
                 valid,
@@ -150,7 +150,7 @@ final class DriveGuidanceEvaluator {
                 translation.hasRangeInches,
                 translation.rangeInches,
                 lane.translationSelection,
-                lane.aimSelection
+                lane.facingSelection
         );
     }
 
@@ -163,7 +163,7 @@ final class DriveGuidanceEvaluator {
      * forward/left axes. This preserves existing drive behavior while still exposing richer frame
      * coordinates to non-drive consumers through {@link TranslationSolution}.</p>
      */
-    private static TranslationSolve toTranslationSolve(SpatialQuerySample sample, SpatialLaneResult lane) {
+    private static TranslationSolve toTranslationSolve(SpatialQueryResult sample, SpatialLaneResult lane) {
         if (sample == null || lane == null || lane.translation == null) {
             return TranslationSolve.invalid();
         }
@@ -180,12 +180,12 @@ final class DriveGuidanceEvaluator {
     /**
      * Converts one shared aim solution into DriveGuidance's omega-error convention.
      */
-    private static AimSolve toAimSolve(SpatialLaneResult lane) {
-        if (lane == null || lane.aim == null) {
-            return AimSolve.invalid();
+    private static FacingSolve toFacingSolve(SpatialLaneResult lane) {
+        if (lane == null || lane.facing == null) {
+            return FacingSolve.invalid();
         }
-        AimSolution aim = lane.aim;
-        return new AimSolve(true, aim.aimErrorRad);
+        FacingSolution aim = lane.facing;
+        return new FacingSolve(true, aim.facingErrorRad);
     }
 
     /**
@@ -194,7 +194,7 @@ final class DriveGuidanceEvaluator {
      */
     private TranslationSolve solveRobotRelativeTranslation(LoopClock clock,
                                                            DriveGuidanceSpec.Localization cfg,
-                                                           SpatialQuerySample sample) {
+                                                           SpatialQueryResult sample) {
         PoseEstimate est = cfg.poseEstimator.getEstimate();
         double estAgeSec = (est != null)
                 ? Math.max(est.ageSec, clock.nowSec() - est.timestampSec)
@@ -246,7 +246,7 @@ final class DriveGuidanceEvaluator {
         final boolean hasRangeInches;
         final double rangeInches;
         final TagSelectionResult translationSelection;
-        final TagSelectionResult aimSelection;
+        final TagSelectionResult facingSelection;
 
         Solution(boolean valid,
                  boolean canTranslate,
@@ -257,7 +257,7 @@ final class DriveGuidanceEvaluator {
                  boolean hasRangeInches,
                  double rangeInches,
                  TagSelectionResult translationSelection,
-                 TagSelectionResult aimSelection) {
+                 TagSelectionResult facingSelection) {
             this.valid = valid;
             this.canTranslate = canTranslate;
             this.canOmega = canOmega;
@@ -267,7 +267,7 @@ final class DriveGuidanceEvaluator {
             this.hasRangeInches = hasRangeInches;
             this.rangeInches = rangeInches;
             this.translationSelection = translationSelection != null ? translationSelection : NO_SELECTION;
-            this.aimSelection = aimSelection != null ? aimSelection : NO_SELECTION;
+            this.facingSelection = facingSelection != null ? facingSelection : NO_SELECTION;
         }
 
         static Solution invalid() {
@@ -299,17 +299,17 @@ final class DriveGuidanceEvaluator {
         }
     }
 
-    private static final class AimSolve {
+    private static final class FacingSolve {
         final boolean canOmega;
         final double omegaErrorRad;
 
-        AimSolve(boolean canOmega, double omegaErrorRad) {
+        FacingSolve(boolean canOmega, double omegaErrorRad) {
             this.canOmega = canOmega;
             this.omegaErrorRad = omegaErrorRad;
         }
 
-        static AimSolve invalid() {
-            return new AimSolve(false, 0.0);
+        static FacingSolve invalid() {
+            return new FacingSolve(false, 0.0);
         }
     }
 }

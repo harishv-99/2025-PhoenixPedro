@@ -138,7 +138,7 @@ final class DriveGuidanceCore {
         double omegaErr = 0.0;
 
         TagSelectionResult translationSelection = NO_SELECTION;
-        TagSelectionResult aimSelection = NO_SELECTION;
+        TagSelectionResult facingSelection = NO_SELECTION;
 
         if (wantTranslation) {
             if (hasLocalizationT && hasAprilTagsT) {
@@ -175,19 +175,19 @@ final class DriveGuidanceCore {
                 mask = mask.withOmega(true);
                 omegaErr = lerpAngleError(localization.omegaErrorRad, aprilTags.omegaErrorRad, blendTOmega);
                 hasOmegaErr = true;
-                aimSelection = (blendTOmega >= 0.5) ? aprilTags.aimSelection : localization.aimSelection;
+                facingSelection = (blendTOmega >= 0.5) ? aprilTags.facingSelection : localization.facingSelection;
             } else if (hasAprilTagsO) {
                 omega = aprilTags.signal.omega;
                 mask = mask.withOmega(true);
                 omegaErr = aprilTags.omegaErrorRad;
                 hasOmegaErr = true;
-                aimSelection = aprilTags.aimSelection;
+                facingSelection = aprilTags.facingSelection;
             } else if (hasLocalizationO) {
                 omega = localization.signal.omega;
                 mask = mask.withOmega(true);
                 omegaErr = localization.omegaErrorRad;
                 hasOmegaErr = true;
-                aimSelection = localization.aimSelection;
+                facingSelection = localization.facingSelection;
             }
         }
 
@@ -209,7 +209,7 @@ final class DriveGuidanceCore {
                     hasOmegaErr,
                     omegaErr,
                     translationSelection,
-                    aimSelection
+                    facingSelection
             );
         }
 
@@ -271,7 +271,7 @@ final class DriveGuidanceCore {
                 sol.leftErrorIn,
                 sol.omegaErrorRad,
                 sol.translationSelection,
-                sol.aimSelection
+                sol.facingSelection
         );
     }
 
@@ -310,7 +310,7 @@ final class DriveGuidanceCore {
                         requested.overridesOmega() && sol.canOmega,
                         sol.omegaErrorRad,
                         sol.translationSelection,
-                        sol.aimSelection
+                        sol.facingSelection
                 );
             }
         }
@@ -353,7 +353,7 @@ final class DriveGuidanceCore {
         final double leftErrorIn;
         final double omegaErrorRad;
         final TagSelectionResult translationSelection;
-        final TagSelectionResult aimSelection;
+        final TagSelectionResult facingSelection;
 
         CandidateSolution(boolean valid,
                           DriveSignal signal,
@@ -365,7 +365,7 @@ final class DriveGuidanceCore {
                           double leftErrorIn,
                           double omegaErrorRad,
                           TagSelectionResult translationSelection,
-                          TagSelectionResult aimSelection) {
+                          TagSelectionResult facingSelection) {
             this.valid = valid;
             this.signal = signal;
             this.canTranslate = canTranslate;
@@ -376,7 +376,7 @@ final class DriveGuidanceCore {
             this.leftErrorIn = leftErrorIn;
             this.omegaErrorRad = omegaErrorRad;
             this.translationSelection = translationSelection != null ? translationSelection : NO_SELECTION;
-            this.aimSelection = aimSelection != null ? aimSelection : NO_SELECTION;
+            this.facingSelection = facingSelection != null ? facingSelection : NO_SELECTION;
         }
 
         static CandidateSolution invalid() {
@@ -413,7 +413,7 @@ final class DriveGuidanceCore {
         final double omegaErrorRad;
 
         final TagSelectionResult translationSelection;
-        final TagSelectionResult aimSelection;
+        final TagSelectionResult facingSelection;
 
         Step(DriveOverlayOutput out,
              String mode,
@@ -428,7 +428,7 @@ final class DriveGuidanceCore {
              boolean hasOmegaError,
              double omegaErrorRad,
              TagSelectionResult translationSelection,
-             TagSelectionResult aimSelection) {
+             TagSelectionResult facingSelection) {
             this.out = out;
             this.mode = mode;
             this.localization = localization;
@@ -442,7 +442,7 @@ final class DriveGuidanceCore {
             this.hasOmegaError = hasOmegaError;
             this.omegaErrorRad = omegaErrorRad;
             this.translationSelection = translationSelection != null ? translationSelection : NO_SELECTION;
-            this.aimSelection = aimSelection != null ? aimSelection : NO_SELECTION;
+            this.facingSelection = facingSelection != null ? facingSelection : NO_SELECTION;
         }
 
         static Step noCommand(String mode) {

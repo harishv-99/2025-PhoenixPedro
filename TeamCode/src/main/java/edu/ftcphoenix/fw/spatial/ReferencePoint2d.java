@@ -13,9 +13,9 @@ package edu.ftcphoenix.fw.spatial;
  * ReferencePoint2d speakerAim = References.fieldPoint(48.0, 24.0);
  *
  * DriveGuidancePlan aimPlan = DriveGuidance.plan()
- *         .aimTo()
+ *         .faceTo()
  *             .point(speakerAim)
- *             .doneAimTo()
+ *             .doneFaceTo()
  *         .resolveWith()
  *             .localizationOnly()
  *             .localization(poseEstimator)

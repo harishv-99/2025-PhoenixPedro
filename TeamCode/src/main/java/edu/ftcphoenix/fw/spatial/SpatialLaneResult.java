@@ -6,6 +6,9 @@ import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelectionResult;
 
 /**
  * Per-lane result from one {@link SpatialQuery} sample.
+ *
+ * <p>A lane may solve translation, facing, both, or neither. The query deliberately keeps every
+ * lane result visible so higher-level consumers can apply their own selection/fusion policy.</p>
  */
 public final class SpatialLaneResult {
 
@@ -13,18 +16,18 @@ public final class SpatialLaneResult {
             TagSelectionResult.none(Collections.<Integer>emptySet());
 
     public final TranslationSolution translation;
-    public final AimSolution aim;
+    public final FacingSolution facing;
     public final TagSelectionResult translationSelection;
-    public final TagSelectionResult aimSelection;
+    public final TagSelectionResult facingSelection;
 
     private SpatialLaneResult(TranslationSolution translation,
-                              AimSolution aim,
+                              FacingSolution facing,
                               TagSelectionResult translationSelection,
-                              TagSelectionResult aimSelection) {
+                              TagSelectionResult facingSelection) {
         this.translation = translation;
-        this.aim = aim;
+        this.facing = facing;
         this.translationSelection = translationSelection != null ? translationSelection : NO_SELECTION;
-        this.aimSelection = aimSelection != null ? aimSelection : NO_SELECTION;
+        this.facingSelection = facingSelection != null ? facingSelection : NO_SELECTION;
     }
 
     /**
@@ -34,41 +37,35 @@ public final class SpatialLaneResult {
         return new SpatialLaneResult(null, null, NO_SELECTION, NO_SELECTION);
     }
 
-    /**
-     * Creates a lane result from the solved channel outputs and any selection snapshots.
-     */
+    /** Creates a lane result from solved channel outputs and selection snapshots. */
     public static SpatialLaneResult of(TranslationSolution translation,
-                                       AimSolution aim,
+                                       FacingSolution facing,
                                        TagSelectionResult translationSelection,
-                                       TagSelectionResult aimSelection) {
-        return new SpatialLaneResult(translation, aim, translationSelection, aimSelection);
+                                       TagSelectionResult facingSelection) {
+        return new SpatialLaneResult(translation, facing, translationSelection, facingSelection);
     }
 
-    /**
-     * Returns whether this lane solved the translation channel.
-     */
+    /** Returns whether this lane solved the translation channel. */
     public boolean hasTranslation() {
         return translation != null;
     }
 
     /**
-     * Returns whether this lane solved the aim channel.
+     * Returns whether this lane solved the facing channel.
      */
-    public boolean hasAim() {
-        return aim != null;
+    public boolean hasFacing() {
+        return facing != null;
     }
 
-    /**
-     * Returns whether this lane solved at least one requested channel.
-     */
+    /** Returns whether this lane solved at least one requested channel. */
     public boolean valid() {
-        return hasTranslation() || hasAim();
+        return hasTranslation() || hasFacing();
     }
 
     @Override
     public String toString() {
-        return "SpatialLaneResult{translation=" + translation + ", aim=" + aim
+        return "SpatialLaneResult{translation=" + translation + ", facing=" + facing
                 + ", translationSelection=" + translationSelection
-                + ", aimSelection=" + aimSelection + '}';
+                + ", facingSelection=" + facingSelection + '}';
     }
 }

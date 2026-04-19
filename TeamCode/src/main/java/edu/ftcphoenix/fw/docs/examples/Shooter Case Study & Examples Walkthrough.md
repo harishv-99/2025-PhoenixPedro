@@ -73,9 +73,9 @@ Example 05 is intentionally simple:
 ReferencePoint2d scoringRef = References.relativeToSelectedTagPoint(scoringSelection, 0.0, 0.0);
 
 DriveGuidancePlan aimPlan = DriveGuidance.plan()
-        .aimTo()
+        .faceTo()
             .point(scoringRef)
-            .doneAimTo()
+            .doneFaceTo()
         .resolveWith()
             .aprilTagsOnly()
             .aprilTags(tagSensor, cameraMount, MAX_TAG_AGE_SEC)

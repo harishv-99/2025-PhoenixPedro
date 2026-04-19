@@ -7,6 +7,8 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
+import edu.ftcphoenix.fw.core.time.LoopClock;
+
 /**
  * Immutable snapshot of the AprilTag detections produced from one processed camera frame.
  *
@@ -36,12 +38,20 @@ public final class AprilTagDetections {
     public final double ageSec;
 
     /**
+     * Timestamp of the underlying camera frame in the same timebase as LoopClock, or NaN when unknown.
+     *
+     * <p>When unknown, callers can compute an approximate timestamp as clock.nowSec() - ageSec.</p>
+     */
+    public final double timestampSec;
+
+    /**
      * Immutable observations from the frame, expressed in Phoenix framing.
      */
     public final List<AprilTagObservation> observations;
 
-    private AprilTagDetections(double ageSec, List<AprilTagObservation> observations) {
+    private AprilTagDetections(double ageSec, double timestampSec, List<AprilTagObservation> observations) {
         this.ageSec = ageSec;
+        this.timestampSec = timestampSec;
         this.observations = observations;
     }
 
@@ -56,7 +66,7 @@ public final class AprilTagDetections {
      * Returns an empty detections snapshot with a caller-provided age.
      */
     public static AprilTagDetections none(double ageSec) {
-        return new AprilTagDetections(ageSec, Collections.<AprilTagObservation>emptyList());
+        return new AprilTagDetections(ageSec, Double.NaN, Collections.<AprilTagObservation>emptyList());
     }
 
     /**
@@ -67,12 +77,43 @@ public final class AprilTagDetections {
      * @return immutable detections snapshot
      */
     public static AprilTagDetections of(double ageSec, List<AprilTagObservation> observations) {
+        return of(ageSec, Double.NaN, observations);
+    }
+
+    /**
+     * Creates a detections snapshot with an explicit frame timestamp.
+     * <p>
+     * ageSec       age of the underlying frame in seconds
+     * timestampSec timestamp of the frame in the LoopClock timebase, or NaN if unknown
+     * observations detections from that frame; may be empty but must not be null
+     * immutable detections snapshot
+     */
+    public static AprilTagDetections of(double ageSec, double timestampSec, List<AprilTagObservation> observations) {
         Objects.requireNonNull(observations, "observations");
         ArrayList<AprilTagObservation> copy = new ArrayList<AprilTagObservation>(observations.size());
         for (AprilTagObservation obs : observations) {
             copy.add(Objects.requireNonNull(obs, "observations must not contain null"));
         }
-        return new AprilTagDetections(ageSec, Collections.unmodifiableList(copy));
+        return new AprilTagDetections(ageSec, timestampSec, Collections.unmodifiableList(copy));
+    }
+
+    /**
+     * Returns the best available frame timestamp for this snapshot.
+     *
+     * <p>If timestampSec is known, it is returned directly. Otherwise this uses
+     * clock.nowSec() - ageSec when age is finite, or NaN when neither value is usable.</p>
+     *
+     * @param clock current loop clock
+     * @return timestamp in the LoopClock timebase, or NaN if unknown
+     */
+    public double frameTimestampSec(LoopClock clock) {
+        if (Double.isFinite(timestampSec)) {
+            return timestampSec;
+        }
+        if (clock != null && Double.isFinite(ageSec)) {
+            return clock.nowSec() - ageSec;
+        }
+        return Double.NaN;
     }
 
     /**

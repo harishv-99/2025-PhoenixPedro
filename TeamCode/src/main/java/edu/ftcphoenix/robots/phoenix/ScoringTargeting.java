@@ -157,9 +157,9 @@ public final class ScoringTargeting {
                 .withAimDeadbandRad(Math.toRadians(this.cfg.aimToleranceDeg));
 
         aimPlan = DriveGuidance.plan()
-                .aimTo()
+                .faceTo()
                 .point(References.relativeToSelectedTagPoint(scoringSelection, buildAimOffsetsByTag()))
-                .doneAimTo()
+                .doneFaceTo()
                 .tuning(aimTuning)
                 .resolveWith()
                 .adaptive()

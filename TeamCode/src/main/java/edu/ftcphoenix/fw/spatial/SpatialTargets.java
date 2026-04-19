@@ -10,7 +10,7 @@ public final class SpatialTargets {
     /**
      * Field point target used for translation or point-at aiming.
      */
-    public static final class FieldPoint implements TranslationTarget2d, AimTarget2d {
+    public static final class FieldPoint implements TranslationTarget2d, FacingTarget2d {
         public final double xInches;
         public final double yInches;
 
@@ -28,7 +28,7 @@ public final class SpatialTargets {
     /**
      * Absolute field heading target.
      */
-    public static final class FieldHeading implements AimTarget2d {
+    public static final class FieldHeading implements FacingTarget2d {
         public final double fieldHeadingRad;
 
         public FieldHeading(double fieldHeadingRad) {
@@ -44,7 +44,7 @@ public final class SpatialTargets {
     /**
      * Semantic reference point target.
      */
-    public static final class ReferencePointTarget implements TranslationTarget2d, AimTarget2d {
+    public static final class ReferencePointTarget implements TranslationTarget2d, FacingTarget2d {
         public final ReferencePoint2d reference;
 
         public ReferencePointTarget(ReferencePoint2d reference) {
@@ -60,7 +60,7 @@ public final class SpatialTargets {
     /**
      * Aligns the aim frame to a semantic reference-frame heading.
      */
-    public static final class ReferenceFrameHeadingTarget implements AimTarget2d {
+    public static final class ReferenceFrameHeadingTarget implements FacingTarget2d {
         public final ReferenceFrame2d reference;
         public final double headingOffsetRad;
 
