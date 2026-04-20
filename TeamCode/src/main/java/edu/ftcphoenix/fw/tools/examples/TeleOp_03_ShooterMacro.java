@@ -239,8 +239,11 @@ public final class TeleOp_03_ShooterMacro extends OpMode {
         shooter = FtcActuators.plant(hardwareMap)
                 .motor(HW_SHOOTER_LEFT, Direction.FORWARD)
                 .andMotor(HW_SHOOTER_RIGHT, Direction.REVERSE)
-                .velocity(FtcActuators.MotorVelocityControl.deviceManaged()
-                        .velocityTolerance(SHOOTER_VELOCITY_TOLERANCE_NATIVE))
+                .velocity()
+                .deviceManagedWithDefaults()
+                .bounded(0.0, SHOOTER_VELOCITY_NATIVE)
+                .nativeUnits()
+                .velocityTolerance(SHOOTER_VELOCITY_TOLERANCE_NATIVE)
                 .build();
 
         transfer = FtcActuators.plant(hardwareMap)

@@ -22,6 +22,10 @@ Use `edu.ftcphoenix.fw.ftc.FtcActuators` when you want to create a `Plant` from 
 Plant flywheel = FtcActuators.plant(hardwareMap)
         .motor("flywheel", Direction.FORWARD)
         .velocity()
+        .deviceManagedWithDefaults()
+        .bounded(0.0, 2600.0)
+        .nativeUnits()
+        .velocityTolerance(50.0)
         .build();
 
 PositionPlant pusher = FtcActuators.plant(hardwareMap)
@@ -48,21 +52,31 @@ For example, motor position wiring asks:
 7. How is the reference/offset known? `alreadyReferenced()`, `plantPositionMapsToNative(...)`, `assumeCurrentPositionIs(...)`, or `needsReference(...)`
 8. Optional plant-level tuning: `positionTolerance(...)`, `rateLimit(...)`, `build()`
 
-Velocity and power Plants stay simpler because they do not have position topology or homing/reference
-questions.
+Motor velocity wiring asks a parallel but smaller set of questions:
+
+1. Which hardware? `motor(...)`
+2. Which target domain? `velocity()`
+3. Who manages the velocity loop? `deviceManagedWithDefaults()`, `deviceManaged()...doneDeviceManaged()`, or `regulated().nativeFeedback(...).regulator(...)`
+4. What target bounds are legal? `bounded(min, max)` or `unbounded()`
+5. How do plant velocity units map to native velocity units? `nativeUnits()` or `scaleToNative(...)`
+6. Optional plant-level tuning: `velocityTolerance(...)`, `rateLimit(...)`, `build()`
+
+Velocity and power Plants stay simpler than position Plants because they do not have position
+geometry, periodicity, or homing/reference questions.
 
 ---
 
 ## 2. Plant units vs native units
 
-For position Plants, Phoenix distinguishes two coordinate systems:
+For position and velocity Plants, Phoenix distinguishes two coordinate systems:
 
-* **Plant units** are the public units used by robot code, `PositionPlant#setTarget(...)`, scalar
-  planner requests, target ranges, periods, reference values, and plant-level tolerances.
+* **Plant units** are the public units used by robot code, `Plant#setTarget(...)`, scalar planner
+  requests, target ranges, position periods, reference values, and plant-level tolerances.
 * **Native units** are the units used by the selected hardware/control path: servo raw fraction,
-  motor encoder ticks, external encoder ticks, or a caller-supplied feedback source.
+  motor encoder ticks, motor ticks/sec, external encoder units, or a caller-supplied feedback source.
 
-Public position APIs use **plant units** unless the method name explicitly says **Native**.
+Public position and velocity APIs use **plant units** unless the method name explicitly says
+**Native**.
 
 Examples:
 
@@ -500,24 +514,64 @@ This is an **optional FTC motor-controller override** for the motor's own target
 * use this only when you intentionally want to change the FTC motor controller's own completion threshold via `DcMotorEx.setTargetPositionTolerance(int)`
 * this does not change what `Plant.atSetpoint()` means unless your plant-level `positionTolerance(...)` happens to match it
 
-### Device-managed motor-velocity knobs
+## 12. Velocity bounds, mapping, and tuning
 
-Velocity Plants still use the existing value-object velocity control path:
+Motor velocity uses the same guided-builder rule as position: required conceptual questions are
+explicit, and optional controller tuning appears only after entering a tuning branch.
 
 ```java
 Plant shooter = FtcActuators.plant(hardwareMap)
         .motor("flywheel", Direction.FORWARD)
-        .velocity(FtcActuators.MotorVelocityControl.deviceManaged()
-                .velocityTolerance(100.0))
+        .velocity()
+        .deviceManagedWithDefaults()
+        .bounded(0.0, 2600.0)
+        .nativeUnits()
+        .velocityTolerance(50.0)
         .build();
 ```
 
-Velocity tolerance is in the velocity Plant's target units, typically ticks/sec for FTC motor
-velocity.
+If you need FTC motor velocity PIDF coefficients, deliberately enter the device-managed tuning
+branch:
+
+```java
+Plant shooter = FtcActuators.plant(hardwareMap)
+        .motor("flywheel", Direction.FORWARD)
+        .velocity()
+        .deviceManaged()
+            .velocityPidf(kP, kI, kD, kF)
+            .doneDeviceManaged()
+        .bounded(0.0, 2600.0)
+        .nativeUnits()
+        .velocityTolerance(50.0)
+        .build();
+```
+
+If robot code wants nicer plant velocity units, keep the controller native units explicit:
+
+```java
+Plant shooter = FtcActuators.plant(hardwareMap)
+        .motor("flywheel", Direction.FORWARD)
+        .velocity()
+        .deviceManagedWithDefaults()
+        .bounded(0.0, 5000.0)          // plant units: RPM
+        .scaleToNative(TICKS_PER_RPM)  // native units: FTC ticks/sec
+        .velocityTolerance(75.0)       // plant units: RPM
+        .build();
+```
+
+Velocity mapping is deliberately zero-preserving. Phoenix exposes `nativeUnits()` and
+`scaleToNative(...)`, but not `rangeMapsToNative(...)`, because a velocity target of `0.0` should
+always mean stop. Semantic mappings like “driver command 0..1 maps to useful shooter speeds” belong
+above the Plant in a robot service, table, or request source.
+
+Velocity bounds should represent hardware-safe target bounds, not scoring semantics. For example,
+if a shooter has a minimum useful scoring speed of 700 ticks/sec, the Plant range should usually
+still start at `0.0` so `setTarget(0.0)` stops the flywheel. Keep the 700 value in shooter selection
+logic, not in the Plant's legal target range.
 
 ---
 
-## 12. Multi-motor groups
+## 13. Multi-motor groups
 
 For grouped device-managed Plants, Phoenix supports per-child `scale(...)` / `bias(...)` and computes
 one aggregate measurement in group units.

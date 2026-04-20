@@ -60,17 +60,6 @@ public final class Shooter {
         this.selectedVelocityNative = cfg.velocityMin;
         this.readyLatch = DebounceBoolean.onAfterOffImmediately(cfg.readyStableSec);
 
-        FtcActuators.DeviceManagedMotorVelocityControl flywheelControl =
-                FtcActuators.MotorVelocityControl.deviceManaged()
-                        .velocityTolerance(cfg.velocityToleranceNative);
-        if (cfg.applyFlywheelVelocityPIDF) {
-            flywheelControl.velocityPidf(
-                    cfg.flywheelVelKp,
-                    cfg.flywheelVelKi,
-                    cfg.flywheelVelKd,
-                    cfg.flywheelVelKf
-            );
-        }
         flywheelPidfWarning = null;
 
         plantIntakeMotor = FtcActuators.plant(hardwareMap)
@@ -91,10 +80,31 @@ public final class Shooter {
                 .power()
                 .build();
 
-        plantFlywheel = FtcActuators.plant(hardwareMap)
-                .motor(cfg.nameMotorShooterWheel, cfg.directionMotorShooterWheel)
-                .velocity(flywheelControl)
-                .build();
+        if (cfg.applyFlywheelVelocityPIDF) {
+            plantFlywheel = FtcActuators.plant(hardwareMap)
+                    .motor(cfg.nameMotorShooterWheel, cfg.directionMotorShooterWheel)
+                    .velocity()
+                    .deviceManaged()
+                    .velocityPidf(
+                            cfg.flywheelVelKp,
+                            cfg.flywheelVelKi,
+                            cfg.flywheelVelKd,
+                            cfg.flywheelVelKf)
+                    .doneDeviceManaged()
+                    .bounded(0.0, cfg.velocityMax)
+                    .nativeUnits()
+                    .velocityTolerance(cfg.velocityToleranceNative)
+                    .build();
+        } else {
+            plantFlywheel = FtcActuators.plant(hardwareMap)
+                    .motor(cfg.nameMotorShooterWheel, cfg.directionMotorShooterWheel)
+                    .velocity()
+                    .deviceManagedWithDefaults()
+                    .bounded(0.0, cfg.velocityMax)
+                    .nativeUnits()
+                    .velocityTolerance(cfg.velocityToleranceNative)
+                    .build();
+        }
 
         flywheelReadySource = new BooleanSource() {
             private long lastCycle = Long.MIN_VALUE;

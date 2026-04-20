@@ -196,7 +196,11 @@ private void initShooterPlants() {
     shooter = FtcActuators.plant(hardwareMap)
             .motor("shooterLeftMotor", Direction.FORWARD)
             .andMotor("shooterRightMotor", Direction.REVERSE)
-            .velocity()     // default velocityTolerance = 100 ticks/sec
+            .velocity()
+            .deviceManagedWithDefaults()
+            .bounded(0.0, 2600.0)
+            .nativeUnits()
+            .velocityTolerance(100.0)
             .build();
 
     // Transfer: dual CR servos, power control.
@@ -229,7 +233,7 @@ The builder has three stages:
 2. **Pick the target domain**:
 
     * `.power()` – open-loop power (motors or CR servos).
-    * `.velocity()` – motor velocity control.
+    * `.velocity().deviceManagedWithDefaults().bounded(...).nativeUnits()` – motor velocity control.
     * `.position()` – position control.
 
 3. **For position Plants, answer guided position questions**:
@@ -331,7 +335,7 @@ For device-managed motor position plants there are **two different tolerance con
 Related defaults:
 
 * `maxPower(...)` default: **1.0**
-* `velocityTolerance(...)` default for motor velocity plants: **100 ticks/sec**
+* `velocityTolerance(...)` default for motor velocity plants: **100 plant velocity units**
 * `outerPositionP(...)`, `innerVelocityPidf(...)`, and `velocityPidf(...)`: **unchanged unless set**
 
 That separation keeps the common path simple: set the plant-level tolerance first, and only reach

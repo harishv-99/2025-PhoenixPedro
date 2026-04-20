@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Objects;
 
 import edu.ftcphoenix.fw.actuation.MappedPositionPlant;
+import edu.ftcphoenix.fw.actuation.MappedVelocityPlant;
 import edu.ftcphoenix.fw.actuation.MultiPlant;
 import edu.ftcphoenix.fw.actuation.Plant;
 import edu.ftcphoenix.fw.actuation.Plants;
@@ -19,6 +20,7 @@ import edu.ftcphoenix.fw.core.control.ScalarRegulator;
 import edu.ftcphoenix.fw.core.hal.Direction;
 import edu.ftcphoenix.fw.core.hal.PositionOutput;
 import edu.ftcphoenix.fw.core.hal.PowerOutput;
+import edu.ftcphoenix.fw.core.hal.VelocityOutput;
 import edu.ftcphoenix.fw.core.source.ScalarSource;
 
 /**
@@ -26,16 +28,16 @@ import edu.ftcphoenix.fw.core.source.ScalarSource;
  *
  * <p>The staged API is intentionally question-shaped. Required conceptual questions are answered
  * explicitly, while optional tuning only appears after the user deliberately enters a tuning branch.
- * For example, motor position control first asks who manages the loop, then asks what position
- * topology/bounds/units/reference the plant exposes.</p>
+ * For example, motor velocity and position control first ask who manages the loop, then ask the
+ * domain-specific questions about target bounds, units, and, for position, reference policy.</p>
  *
  * <h2>Units convention</h2>
  *
- * <p>Position builders distinguish <b>plant units</b> from <b>native units</b>. Plant units are what
- * robot code, planners, ranges, references, and {@link PositionPlant#setTarget(double)} use. Native
- * units are what the selected hardware/control path uses internally: motor ticks, external encoder
- * ticks, raw servo fractions, or a caller-supplied feedback source. Public methods use plant units
- * unless the method name explicitly says {@code Native}.</p>
+ * <p>Position and velocity builders distinguish <b>plant units</b> from <b>native units</b>. Plant
+ * units are what robot code, planners, ranges, references, and {@link Plant#setTarget(double)} use.
+ * Native units are what the selected hardware/control path uses internally: motor ticks,
+ * ticks/sec, external encoder units, raw servo fractions, or a caller-supplied feedback source.
+ * Public methods use plant units unless the method name explicitly says {@code Native}.</p>
  *
  * <h2>Typical usage</h2>
  *
@@ -51,6 +53,15 @@ import edu.ftcphoenix.fw.core.source.ScalarSource;
  *         .nativeUnits()
  *         .needsReference("lift not homed")
  *     .positionTolerance(20.0)
+ *     .build();
+ *
+ * Plant flywheel = FtcActuators.plant(hardwareMap)
+ *     .motor("flywheel", Direction.FORWARD)
+ *     .velocity()
+ *     .deviceManagedWithDefaults()
+ *     .bounded(0.0, 2600.0)
+ *     .nativeUnits()
+ *     .velocityTolerance(50.0)
  *     .build();
  *
  * PositionPlant claw = FtcActuators.plant(hardwareMap)
@@ -165,11 +176,13 @@ public final class FtcActuators {
         /** Build a direct power plant over the selected motor or motor group. */
         ModifiersStep power();
 
-        /** Build a motor velocity plant using the default device-managed FTC velocity path. */
-        ModifiersStep velocity();
-
-        /** Build a motor velocity plant using an explicit advanced velocity control specification. */
-        ModifiersStep velocity(MotorVelocityControl control);
+        /**
+         * Begin the guided motor-velocity builder.
+         *
+         * <p>The next required question is who manages the velocity loop: FTC device-managed
+         * velocity control or a Phoenix-regulated loop driven by native velocity feedback.</p>
+         */
+        MotorVelocityControlStep velocity();
 
         /**
          * Begin the guided motor-position builder.
@@ -194,6 +207,117 @@ public final class FtcActuators {
         default MotorGroupAddedStep scaleBias(double scale, double bias) {
             return scale(scale).bias(bias);
         }
+    }
+
+    /**
+     * First motor-velocity question: who manages the velocity loop?
+     */
+    public interface MotorVelocityControlStep {
+        /**
+         * Use FTC device-managed velocity control with Phoenix defaults and continue to velocity
+         * target bounds.
+         */
+        VelocityBoundsStep deviceManagedWithDefaults();
+
+        /**
+         * Enter the FTC device-managed velocity tuning branch before continuing to target bounds.
+         */
+        MotorDeviceManagedVelocityStep deviceManaged();
+
+        /**
+         * Use a Phoenix-regulated velocity loop that drives motor power from native velocity feedback.
+         */
+        MotorRegulatedVelocityFeedbackStep regulated();
+    }
+
+    /**
+     * Optional tuning branch for FTC device-managed motor velocity control.
+     */
+    public interface MotorDeviceManagedVelocityStep {
+        /**
+         * Override the FTC device-managed velocity PIDF coefficients.
+         */
+        MotorDeviceManagedVelocityStep velocityPidf(double p, double i, double d, double f);
+
+        /**
+         * Leave the device-managed velocity tuning branch and continue to target bounds.
+         */
+        VelocityBoundsStep doneDeviceManaged();
+    }
+
+    /**
+     * Required native-feedback question for regulated motor velocity control.
+     */
+    public interface MotorRegulatedVelocityFeedbackStep {
+        /**
+         * Select the native velocity feedback source used by the regulator.
+         */
+        MotorRegulatedVelocityRegulatorStep nativeFeedback(VelocityFeedback feedback);
+    }
+
+    /**
+     * Required regulator question for regulated motor velocity control.
+     */
+    public interface MotorRegulatedVelocityRegulatorStep {
+        /**
+         * Select the regulator that receives plant-unit velocity setpoint and measurement.
+         */
+        VelocityBoundsStep regulator(ScalarRegulator regulator);
+    }
+
+    /**
+     * Velocity target-bounds question.
+     */
+    public interface VelocityBoundsStep {
+        /**
+         * Declare a finite legal velocity target range in plant velocity units.
+         */
+        VelocityMappingStep bounded(double min, double max);
+
+        /**
+         * Declare that the velocity target has no software bounds.
+         */
+        VelocityMappingStep unbounded();
+    }
+
+    /**
+     * Velocity unit-mapping question.
+     */
+    public interface VelocityMappingStep {
+        /**
+         * Native velocity units and plant velocity units are the same.
+         */
+        VelocityBuildStep nativeUnits();
+
+        /**
+         * Convert plant velocity units to native velocity units using a zero-preserving scale.
+         */
+        VelocityBuildStep scaleToNative(double nativeUnitsPerPlantVelocityUnit);
+    }
+
+    /**
+     * Final builder step for motor velocity plants.
+     */
+    public interface VelocityBuildStep {
+        /**
+         * Set plant-level completion tolerance in plant velocity units.
+         */
+        VelocityBuildStep velocityTolerance(double tolerance);
+
+        /**
+         * Rate-limit plant-unit velocity target changes symmetrically.
+         */
+        VelocityBuildStep rateLimit(double maxDeltaPerSec);
+
+        /**
+         * Rate-limit plant-unit velocity target changes asymmetrically.
+         */
+        VelocityBuildStep rateLimit(double maxUpPerSec, double maxDownPerSec);
+
+        /**
+         * Finish the staged build.
+         */
+        Plant build();
     }
 
     /**
@@ -518,72 +642,20 @@ public final class FtcActuators {
             return this;
         }
 
-        @Override public Plant build() { return plant; }
+        @Override
+        public Plant build() {
+            return plant; }
     }
 
     // ---------------------------------------------------------------------------------------------
-    // Velocity control specs retained for velocity plants
+    // Velocity control configuration
     // ---------------------------------------------------------------------------------------------
 
-    /** Advanced control spec for motor velocity plants. */
-    public abstract static class MotorVelocityControl {
-        private MotorVelocityControl() {
-        }
-
-        /** Use the motor/controller's device-managed FTC velocity control. */
-        public static DeviceManagedMotorVelocityControl deviceManaged() { return new DeviceManagedMotorVelocityControl();
-        }
-
-        /**
-         * Use a framework-regulated velocity loop that drives motor power.
-         */
-        public static RegulatedMotorVelocityControl regulated(VelocityFeedback feedback, ScalarRegulator regulator) {
-            return new RegulatedMotorVelocityControl(feedback, regulator);
-        }
-    }
-
-    /** Device-managed FTC motor velocity control. */
-    public static final class DeviceManagedMotorVelocityControl extends MotorVelocityControl {
-        private double velocityTolerance = 100.0;
+    private static final class DeviceManagedVelocityConfig {
         private double[] velocityPidf;
-
-        private DeviceManagedMotorVelocityControl() { }
-
-        /** Set the Phoenix plant-level velocity completion band in plant velocity units. */
-        public DeviceManagedMotorVelocityControl velocityTolerance(double velocityTolerance) {
-            if (velocityTolerance < 0.0) throw new IllegalArgumentException("velocityTolerance must be >= 0");
-            this.velocityTolerance = velocityTolerance;
-            return this;
-        }
-
-        /** Override the FTC device-managed velocity PIDF coefficients. */
-        public DeviceManagedMotorVelocityControl velocityPidf(double p, double i, double d, double f) {
-            this.velocityPidf = new double[]{p, i, d, f};
-            return this;
-        }
     }
 
-    /** Framework-regulated motor velocity control using raw motor power and explicit feedback. */
-    public static final class RegulatedMotorVelocityControl extends MotorVelocityControl {
-        private final VelocityFeedback feedback;
-        private final ScalarRegulator regulator;
-        private double velocityTolerance = 100.0;
-
-        private RegulatedMotorVelocityControl(VelocityFeedback feedback, ScalarRegulator regulator) {
-            this.feedback = Objects.requireNonNull(feedback, "feedback");
-            this.regulator = Objects.requireNonNull(regulator, "regulator");
-        }
-
-        /**
-         * Set the plant-level velocity completion band in plant velocity units.
-         */
-        public RegulatedMotorVelocityControl velocityTolerance(double velocityTolerance) {
-            if (velocityTolerance < 0.0)
-                throw new IllegalArgumentException("velocityTolerance must be >= 0");
-            this.velocityTolerance = velocityTolerance;
-            return this;
-        }
-    }
+    private enum VelocityControlKind {DEVICE_MANAGED, REGULATED}
 
     // ---------------------------------------------------------------------------------------------
     // Feedback specs
@@ -635,7 +707,10 @@ public final class FtcActuators {
     }
 
     /**
-     * Builder-side selector for velocity feedback.
+     * Builder-side selector for native velocity feedback.
+     *
+     * <p>For velocity plants, this source reports <b>native units</b>. If the source already reports
+     * the desired plant velocity units, choose {@code nativeUnits()} in the later mapping stage.</p>
      */
     public abstract static class VelocityFeedback {
         private VelocityFeedback() {
@@ -655,12 +730,13 @@ public final class FtcActuators {
         public static VelocityFeedback averageInternalEncoders() { return new InternalVelocityFeedback(null, true); }
 
         /** Use an external encoder device velocity in ticks/sec. */
-        public static VelocityFeedback externalEncoder(String name) { return new ExternalVelocityFeedback(name, Direction.FORWARD); }
+        public static VelocityFeedback externalEncoder(String name) { return new ExternalVelocityFeedback(name, Direction.FORWARD);
+        }
 
         /** Use an external encoder device velocity in ticks/sec with an explicit logical direction. */
         public static VelocityFeedback externalEncoder(String name, Direction direction) { return new ExternalVelocityFeedback(name, direction); }
 
-        /** Use a caller-supplied velocity source in plant velocity units/sec. */
+        /** Use a caller-supplied native velocity source. */
         public static VelocityFeedback fromSource(ScalarSource source) {
             return new SourceVelocityFeedback(source);
         }
@@ -807,35 +883,9 @@ public final class FtcActuators {
             return new ModifiersStepImpl(b.build());
         }
 
-        @Override public ModifiersStep velocity() { return velocity(MotorVelocityControl.deviceManaged()); }
-
         @Override
-        public ModifiersStep velocity(MotorVelocityControl control) {
-            Objects.requireNonNull(control, "control");
-            if (control instanceof DeviceManagedMotorVelocityControl) {
-                DeviceManagedMotorVelocityControl cfg = (DeviceManagedMotorVelocityControl) control;
-                if (specs.size() == 1) {
-                    Spec spec = specs.get(0);
-                    DcMotorEx motor = hw.get(DcMotorEx.class, spec.name);
-                    applyDeviceManagedVelocityConfig(motor, spec.name, cfg.velocityPidf);
-                    return new ModifiersStepImpl(Plants.velocity(
-                            FtcHardware.motorVelocity(motor, spec.direction),
-                            FtcSensors.motorVelocityTicksPerSec(motor),
-                            cfg.velocityTolerance));
-                }
-                ensureFeedbackScalesNonZero("device-managed motor velocity");
-                MultiPlant.Builder b = MultiPlant.builder();
-                for (Spec spec : specs) {
-                    DcMotorEx motor = hw.get(DcMotorEx.class, spec.name);
-                    applyDeviceManagedVelocityConfig(motor, spec.name, cfg.velocityPidf);
-                    b.add(Plants.velocity(FtcHardware.motorVelocity(motor, spec.direction),
-                            FtcSensors.motorVelocityTicksPerSec(motor), cfg.velocityTolerance), spec.scale, spec.bias);
-                }
-                return new ModifiersStepImpl(b.build());
-            }
-            RegulatedMotorVelocityControl cfg = (RegulatedMotorVelocityControl) control;
-            requireDefaultGroupScalingForRegulated("velocity");
-            return new ModifiersStepImpl(Plants.velocityFromPower(groupedMotorPower(), cfg.feedback.resolve(hw, specs), cfg.regulator, cfg.velocityTolerance));
+        public MotorVelocityControlStep velocity() {
+            return new MotorVelocityBuilder(this);
         }
 
         @Override
@@ -851,6 +901,43 @@ public final class FtcActuators {
             List<PowerOutput> outs = new ArrayList<>();
             for (Spec spec : specs) outs.add(FtcHardware.motorPower(hw, spec.name, spec.direction));
             return new GroupedPowerOutput(outs);
+        }
+
+        private VelocityOutput groupedMotorVelocity(DeviceManagedVelocityConfig cfg) {
+            if (specs.size() == 1) {
+                Spec spec = specs.get(0);
+                DcMotorEx motor = hw.get(DcMotorEx.class, spec.name);
+                applyDeviceManagedVelocityConfig(motor, spec.name, cfg.velocityPidf);
+                return FtcHardware.motorVelocity(motor, spec.direction);
+            }
+            ensureFeedbackScalesNonZero("device-managed motor velocity");
+            List<VelocityOutput> outs = new ArrayList<>();
+            double[] scales = new double[specs.size()];
+            double[] biases = new double[specs.size()];
+            for (int i = 0; i < specs.size(); i++) {
+                Spec spec = specs.get(i);
+                DcMotorEx motor = hw.get(DcMotorEx.class, spec.name);
+                applyDeviceManagedVelocityConfig(motor, spec.name, cfg.velocityPidf);
+                outs.add(FtcHardware.motorVelocity(motor, spec.direction));
+                scales[i] = spec.scale;
+                biases[i] = spec.bias;
+            }
+            return new GroupedVelocityOutput(outs, scales, biases);
+        }
+
+        private ScalarSource groupedMotorVelocityMeasurement() {
+            if (specs.size() == 1)
+                return FtcSensors.motorVelocityTicksPerSec(hw, specs.get(0).name);
+            List<ScalarSource> sources = new ArrayList<>();
+            double[] scales = new double[specs.size()];
+            double[] biases = new double[specs.size()];
+            for (int i = 0; i < specs.size(); i++) {
+                Spec spec = specs.get(i);
+                sources.add(FtcSensors.motorVelocityTicksPerSec(hw, spec.name));
+                scales[i] = spec.scale;
+                biases[i] = spec.bias;
+            }
+            return averageInverseMappedSources(sources, scales, biases);
         }
 
         private PositionOutput groupedMotorPosition(DeviceManagedPositionConfig cfg) {
@@ -902,6 +989,145 @@ public final class FtcActuators {
             for (Spec spec : specs)
                 if (Math.abs(spec.scale) < 1e-9)
                     throw new IllegalStateException(mode + " requires non-zero per-motor scale");
+        }
+    }
+
+    private static final class MotorVelocityBuilder implements MotorVelocityControlStep, MotorDeviceManagedVelocityStep,
+            MotorRegulatedVelocityFeedbackStep, MotorRegulatedVelocityRegulatorStep, VelocityBoundsStep,
+            VelocityMappingStep, VelocityBuildStep {
+        private final MotorBuilder parent;
+        private final DeviceManagedVelocityConfig deviceConfig = new DeviceManagedVelocityConfig();
+        private VelocityControlKind controlKind;
+        private VelocityFeedback feedback;
+        private ScalarRegulator regulator;
+        private ScalarRange range;
+        private double nativePerPlantUnit = 1.0;
+        private double velocityTolerance = 100.0;
+        private Double rateUp;
+        private Double rateDown;
+
+        private MotorVelocityBuilder(MotorBuilder parent) {
+            this.parent = parent;
+        }
+
+        @Override
+        public VelocityBoundsStep deviceManagedWithDefaults() {
+            controlKind = VelocityControlKind.DEVICE_MANAGED;
+            return this;
+        }
+
+        @Override
+        public MotorDeviceManagedVelocityStep deviceManaged() {
+            controlKind = VelocityControlKind.DEVICE_MANAGED;
+            return this;
+        }
+
+        @Override
+        public MotorDeviceManagedVelocityStep velocityPidf(double p, double i, double d, double f) {
+            deviceConfig.velocityPidf = new double[]{p, i, d, f};
+            return this;
+        }
+
+        @Override
+        public VelocityBoundsStep doneDeviceManaged() {
+            return this;
+        }
+
+        @Override
+        public MotorRegulatedVelocityFeedbackStep regulated() {
+            controlKind = VelocityControlKind.REGULATED;
+            return this;
+        }
+
+        @Override
+        public MotorRegulatedVelocityRegulatorStep nativeFeedback(VelocityFeedback feedback) {
+            this.feedback = Objects.requireNonNull(feedback, "feedback");
+            return this;
+        }
+
+        @Override
+        public VelocityBoundsStep regulator(ScalarRegulator regulator) {
+            this.regulator = Objects.requireNonNull(regulator, "regulator");
+            return this;
+        }
+
+        @Override
+        public VelocityMappingStep bounded(double min, double max) {
+            range = ScalarRange.bounded(min, max);
+            return this;
+        }
+
+        @Override
+        public VelocityMappingStep unbounded() {
+            range = ScalarRange.unbounded();
+            return this;
+        }
+
+        @Override
+        public VelocityBuildStep nativeUnits() {
+            nativePerPlantUnit = 1.0;
+            return this;
+        }
+
+        @Override
+        public VelocityBuildStep scaleToNative(double nativeUnitsPerPlantVelocityUnit) {
+            nativePerPlantUnit = requireFiniteNonZero(nativeUnitsPerPlantVelocityUnit, "nativeUnitsPerPlantVelocityUnit");
+            return this;
+        }
+
+        @Override
+        public VelocityBuildStep velocityTolerance(double tolerance) {
+            if (tolerance < 0.0 || !Double.isFinite(tolerance))
+                throw new IllegalArgumentException("velocityTolerance must be finite and >= 0");
+            velocityTolerance = tolerance;
+            return this;
+        }
+
+        @Override
+        public VelocityBuildStep rateLimit(double maxDeltaPerSec) {
+            return rateLimit(maxDeltaPerSec, maxDeltaPerSec);
+        }
+
+        @Override
+        public VelocityBuildStep rateLimit(double maxUpPerSec, double maxDownPerSec) {
+            if (maxUpPerSec < 0.0 || maxDownPerSec < 0.0)
+                throw new IllegalArgumentException("rate limits must be >= 0");
+            rateUp = maxUpPerSec;
+            rateDown = maxDownPerSec;
+            return this;
+        }
+
+        @Override
+        public Plant build() {
+            if (controlKind == null)
+                throw new IllegalStateException("Motor velocity builder requires deviceManagedWithDefaults(), deviceManaged(), or regulated()");
+            if (range == null)
+                throw new IllegalStateException("Motor velocity builder requires bounded(...) or unbounded()");
+
+            MappedVelocityPlant plant;
+            if (controlKind == VelocityControlKind.DEVICE_MANAGED) {
+                plant = MappedVelocityPlant.velocityOutput(
+                                parent.groupedMotorVelocity(deviceConfig),
+                                parent.groupedMotorVelocityMeasurement())
+                        .range(range)
+                        .nativePerPlantUnit(nativePerPlantUnit)
+                        .velocityTolerance(velocityTolerance)
+                        .build();
+            } else {
+                parent.requireDefaultGroupScalingForRegulated("velocity");
+                if (feedback == null || regulator == null)
+                    throw new IllegalStateException("Regulated motor velocity requires nativeFeedback(...) and regulator(...)");
+                plant = MappedVelocityPlant.regulated(
+                                parent.groupedMotorPower(),
+                                feedback.resolve(parent.hw, parent.specs),
+                                regulator)
+                        .range(range)
+                        .nativePerPlantUnit(nativePerPlantUnit)
+                        .velocityTolerance(velocityTolerance)
+                        .build();
+            }
+            if (rateUp != null) return new RateLimitedPlant(plant, rateUp, rateDown);
+            return plant;
         }
     }
 
@@ -1442,6 +1668,39 @@ public final class FtcActuators {
         @Override
         public void stop() {
             for (PositionOutput output : outputs) output.stop();
+        }
+    }
+
+    private static final class GroupedVelocityOutput implements VelocityOutput {
+        private final List<VelocityOutput> outputs;
+        private final double[] scales;
+        private final double[] biases;
+        private double last;
+
+        private GroupedVelocityOutput(List<VelocityOutput> outputs, double[] scales, double[] biases) {
+            this.outputs = new ArrayList<>(Objects.requireNonNull(outputs, "outputs"));
+            this.scales = Objects.requireNonNull(scales, "scales");
+            this.biases = Objects.requireNonNull(biases, "biases");
+            if (this.outputs.isEmpty() || this.outputs.size() != scales.length || scales.length != biases.length)
+                throw new IllegalArgumentException("outputs/scales/biases must be non-empty and matching");
+        }
+
+        @Override
+        public void setVelocity(double velocity) {
+            last = velocity;
+            for (int i = 0; i < outputs.size(); i++)
+                outputs.get(i).setVelocity(scales[i] * velocity + biases[i]);
+        }
+
+        @Override
+        public double getCommandedVelocity() {
+            return last;
+        }
+
+        @Override
+        public void stop() {
+            for (VelocityOutput output : outputs) output.stop();
+            last = 0.0;
         }
     }
 

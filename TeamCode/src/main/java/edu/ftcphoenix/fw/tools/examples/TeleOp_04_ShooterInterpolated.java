@@ -211,8 +211,11 @@ public final class TeleOp_04_ShooterInterpolated extends OpMode {
         shooter = FtcActuators.plant(hardwareMap)
                 .motor(HW_SHOOTER_LEFT, Direction.FORWARD)
                 .andMotor(HW_SHOOTER_RIGHT, Direction.REVERSE)
-                .velocity(FtcActuators.MotorVelocityControl.deviceManaged()
-                        .velocityTolerance(/*toleranceNative=*/100.0))
+                .velocity()
+                .deviceManagedWithDefaults()
+                .bounded(0.0, 250.0)
+                .nativeUnits()
+                .velocityTolerance(/*toleranceNative=*/100.0)
                 .build();
 
         shooter.setTarget(0.0);

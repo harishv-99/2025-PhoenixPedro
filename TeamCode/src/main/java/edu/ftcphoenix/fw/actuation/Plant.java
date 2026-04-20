@@ -33,6 +33,10 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * Plant flywheel = FtcActuators.plant(hardwareMap)
  *     .motor("flywheel", Direction.FORWARD)
  *     .velocity()
+ *     .deviceManagedWithDefaults()
+ *     .bounded(0.0, 2600.0)
+ *     .nativeUnits()
+ *     .velocityTolerance(50.0)
  *     .build();
  *
  * LoopClock clock = new LoopClock();
