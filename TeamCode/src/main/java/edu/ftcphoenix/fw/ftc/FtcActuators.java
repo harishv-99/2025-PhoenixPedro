@@ -97,25 +97,39 @@ public final class FtcActuators {
      * First builder step: choose the primary actuator family and first named device.
      */
     public interface StartStep {
-        /** Start building a plant from one or more FTC motors. */
+        /**
+         * Start building a plant from one or more FTC motors.
+         */
         MotorSingleStep motor(String name, Direction direction);
 
-        /** Start building a plant from one or more FTC standard servos. */
+        /**
+         * Start building a plant from one or more FTC standard servos.
+         */
         ServoSingleStep servo(String name, Direction direction);
 
-        /** Start building a plant from one or more FTC continuous-rotation servos. */
+        /**
+         * Start building a plant from one or more FTC continuous-rotation servos.
+         */
         CrServoSingleStep crServo(String name, Direction direction);
     }
 
-    /** Final builder step for generic non-position plants. */
+    /**
+     * Final builder step for generic non-position plants.
+     */
     public interface ModifiersStep {
-        /** Wrap the current plant in a symmetric rate limiter using plant units per second. */
+        /**
+         * Wrap the current plant in a symmetric rate limiter using plant units per second.
+         */
         ModifiersStep rateLimit(double maxDeltaPerSec);
 
-        /** Wrap the current plant in an asymmetric rate limiter using plant units per second. */
+        /**
+         * Wrap the current plant in an asymmetric rate limiter using plant units per second.
+         */
         ModifiersStep rateLimit(double maxUpPerSec, double maxDownPerSec);
 
-        /** Finish the staged build. */
+        /**
+         * Finish the staged build.
+         */
         Plant build();
     }
 
@@ -168,12 +182,18 @@ public final class FtcActuators {
         PositionPlant build();
     }
 
-    /** Builder step for motor-backed plants. */
+    /**
+     * Builder step for motor-backed plants.
+     */
     public interface MotorSingleStep {
-        /** Add another motor to the same plant group. */
+        /**
+         * Add another motor to the same plant group.
+         */
         MotorGroupAddedStep andMotor(String name, Direction direction);
 
-        /** Build a direct power plant over the selected motor or motor group. */
+        /**
+         * Build a direct power plant over the selected motor or motor group.
+         */
         ModifiersStep power();
 
         /**
@@ -197,13 +217,19 @@ public final class FtcActuators {
      * Group-aware motor builder step that exposes per-child scale/bias configuration.
      */
     public interface MotorGroupAddedStep extends MotorSingleStep {
-        /** Set the scale applied to the most recently added motor in group target units. */
+        /**
+         * Set the scale applied to the most recently added motor in group target units.
+         */
         MotorGroupAddedStep scale(double scale);
 
-        /** Set the bias applied to the most recently added motor in group target units. */
+        /**
+         * Set the bias applied to the most recently added motor in group target units.
+         */
         MotorGroupAddedStep bias(double bias);
 
-        /** Convenience helper that applies both scale and bias to the most recently added motor. */
+        /**
+         * Convenience helper that applies both scale and bias to the most recently added motor.
+         */
         default MotorGroupAddedStep scaleBias(double scale, double bias) {
             return scale(scale).bias(bias);
         }
@@ -245,48 +271,78 @@ public final class FtcActuators {
         VelocityBoundsStep doneDeviceManaged();
     }
 
-    /** Required native-feedback question for regulated motor velocity control. */
+    /**
+     * Required native-feedback question for regulated motor velocity control.
+     */
     public interface MotorRegulatedVelocityFeedbackStep {
-        /** Select the native velocity feedback source used by the regulator. */
+        /**
+         * Select the native velocity feedback source used by the regulator.
+         */
         MotorRegulatedVelocityRegulatorStep nativeFeedback(VelocityFeedback feedback);
     }
 
-    /** Required regulator question for regulated motor velocity control. */
+    /**
+     * Required regulator question for regulated motor velocity control.
+     */
     public interface MotorRegulatedVelocityRegulatorStep {
-        /** Select the regulator that receives plant-unit velocity setpoint and measurement. */
+        /**
+         * Select the regulator that receives plant-unit velocity setpoint and measurement.
+         */
         VelocityBoundsStep regulator(ScalarRegulator regulator);
     }
 
-    /** Velocity target-bounds question. */
+    /**
+     * Velocity target-bounds question.
+     */
     public interface VelocityBoundsStep {
-        /** Declare a finite legal velocity target range in plant velocity units. */
+        /**
+         * Declare a finite legal velocity target range in plant velocity units.
+         */
         VelocityMappingStep bounded(double min, double max);
 
-        /** Declare that the velocity target has no software bounds. */
+        /**
+         * Declare that the velocity target has no software bounds.
+         */
         VelocityMappingStep unbounded();
     }
 
-    /** Velocity unit-mapping question. */
+    /**
+     * Velocity unit-mapping question.
+     */
     public interface VelocityMappingStep {
-        /** Native velocity units and plant velocity units are the same. */
+        /**
+         * Native velocity units and plant velocity units are the same.
+         */
         VelocityBuildStep nativeUnits();
 
-        /** Convert plant velocity units to native velocity units using a zero-preserving scale. */
+        /**
+         * Convert plant velocity units to native velocity units using a zero-preserving scale.
+         */
         VelocityBuildStep scaleToNative(double nativeUnitsPerPlantVelocityUnit);
     }
 
-    /** Final builder step for motor velocity plants. */
+    /**
+     * Final builder step for motor velocity plants.
+     */
     public interface VelocityBuildStep {
-        /** Set plant-level completion tolerance in plant velocity units. */
+        /**
+         * Set plant-level completion tolerance in plant velocity units.
+         */
         VelocityBuildStep velocityTolerance(double tolerance);
 
-        /** Rate-limit plant-unit velocity target changes symmetrically. */
+        /**
+         * Rate-limit plant-unit velocity target changes symmetrically.
+         */
         VelocityBuildStep rateLimit(double maxDeltaPerSec);
 
-        /** Rate-limit plant-unit velocity target changes asymmetrically. */
+        /**
+         * Rate-limit plant-unit velocity target changes asymmetrically.
+         */
         VelocityBuildStep rateLimit(double maxUpPerSec, double maxDownPerSec);
 
-        /** Finish the staged build. */
+        /**
+         * Finish the staged build.
+         */
         Plant build();
     }
 
@@ -360,7 +416,9 @@ public final class FtcActuators {
         PositionTopologyStep regulator(ScalarRegulator regulator);
     }
 
-    /** Builder step for standard-servo-backed plants. */
+    /**
+     * Builder step for standard-servo-backed plants.
+     */
     public interface ServoSingleStep {
         /**
          * Add another standard servo to the same plant group.
@@ -373,9 +431,13 @@ public final class FtcActuators {
         ServoPositionTopologyStep position();
     }
 
-    /** Group-aware servo builder step that exposes per-child scale/bias configuration. */
+    /**
+     * Group-aware servo builder step that exposes per-child scale/bias configuration.
+     */
     public interface ServoGroupAddedStep extends ServoSingleStep {
-        /** Set the scale applied to the most recently added servo in group target units. */
+        /**
+         * Set the scale applied to the most recently added servo in group target units.
+         */
         ServoGroupAddedStep scale(double scale);
 
         /**
@@ -405,11 +467,15 @@ public final class FtcActuators {
      * Standard servo bounds question.
      */
     public interface ServoPositionBoundsStep {
-        /** Declare the valid caller-facing servo plant range. */
+        /**
+         * Declare the valid caller-facing servo plant range.
+         */
         ServoBoundedPositionMappingStep bounded(double min, double max);
     }
 
-    /** Standard servo bounded mapping question. */
+    /**
+     * Standard servo bounded mapping question.
+     */
     public interface ServoBoundedPositionMappingStep {
         /**
          * Use raw servo positions as plant units.
@@ -422,12 +488,18 @@ public final class FtcActuators {
         ServoPositionBuildStep rangeMapsToNative(double nativeAtPlantMin, double nativeAtPlantMax);
     }
 
-    /** Builder step for continuous-rotation-servo-backed plants. */
+    /**
+     * Builder step for continuous-rotation-servo-backed plants.
+     */
     public interface CrServoSingleStep {
-        /** Add another continuous-rotation servo to the same plant group. */
+        /**
+         * Add another continuous-rotation servo to the same plant group.
+         */
         CrServoGroupAddedStep andCrServo(String name, Direction direction);
 
-        /** Build a direct power plant over the selected CR servo or group. */
+        /**
+         * Build a direct power plant over the selected CR servo or group.
+         */
         ModifiersStep power();
 
         /**
@@ -436,7 +508,9 @@ public final class FtcActuators {
         CrServoPositionControlStep position();
     }
 
-    /** Group-aware CR-servo builder step that exposes per-child scale/bias configuration. */
+    /**
+     * Group-aware CR-servo builder step that exposes per-child scale/bias configuration.
+     */
     public interface CrServoGroupAddedStep extends CrServoSingleStep {
         /**
          * Set the scale applied to the most recently added CR servo in group target units.
@@ -569,10 +643,14 @@ public final class FtcActuators {
          */
         PositionBuildStep plantPositionMapsToNative(double plantPosition, double nativePosition);
 
-        /** On first update, treat the current native feedback reading as this plant position. */
+        /**
+         * On first update, treat the current native feedback reading as this plant position.
+         */
         PositionBuildStep assumeCurrentPositionIs(double plantPosition);
 
-        /** Start invalid until a homing/indexing/manual task establishes a reference. */
+        /**
+         * Start invalid until a homing/indexing/manual task establishes a reference.
+         */
         PositionBuildStep needsReference(String reason);
     }
 
@@ -583,14 +661,19 @@ public final class FtcActuators {
             this.hw = Objects.requireNonNull(hw, "HardwareMap is required");
         }
 
-        @Override public MotorSingleStep motor(String name, Direction direction) { return new MotorBuilder(hw, name, direction);
+        @Override
+        public MotorSingleStep motor(String name, Direction direction) {
+            return new MotorBuilder(hw, name, direction);
         }
 
         @Override
-        public ServoSingleStep servo(String name, Direction direction) { return new ServoBuilder(hw, name, direction); }
+        public ServoSingleStep servo(String name, Direction direction) {
+            return new ServoBuilder(hw, name, direction);
+        }
 
         @Override
-        public CrServoSingleStep crServo(String name, Direction direction) { return new CrServoBuilder(hw, name, direction);
+        public CrServoSingleStep crServo(String name, Direction direction) {
+            return new CrServoBuilder(hw, name, direction);
         }
     }
 
@@ -608,13 +691,15 @@ public final class FtcActuators {
         }
 
         @Override
-        public ModifiersStep rateLimit(double maxUpPerSec, double maxDownPerSec) { plant = new RateLimitedPlant(plant, maxUpPerSec, maxDownPerSec);
+        public ModifiersStep rateLimit(double maxUpPerSec, double maxDownPerSec) {
+            plant = new RateLimitedPlant(plant, maxUpPerSec, maxDownPerSec);
             return this;
         }
 
         @Override
         public Plant build() {
-            return plant; }
+            return plant;
+        }
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -642,26 +727,37 @@ public final class FtcActuators {
         private PositionFeedback() {
         }
 
-        /** Use the selected motor's internal encoder position in native ticks. */
+        /**
+         * Use the selected motor's internal encoder position in native ticks.
+         */
         public static PositionFeedback internalEncoder() {
             return new InternalPositionFeedback(null, false);
         }
 
-        /** Use one named selected motor's internal encoder position in native ticks. */
+        /**
+         * Use one named selected motor's internal encoder position in native ticks.
+         */
         public static PositionFeedback internalEncoder(String motorName) {
-            return new InternalPositionFeedback(motorName, false); }
+            return new InternalPositionFeedback(motorName, false);
+        }
 
-        /** Use the average selected motor internal encoder position in native group ticks. */
+        /**
+         * Use the average selected motor internal encoder position in native group ticks.
+         */
         public static PositionFeedback averageInternalEncoders() {
             return new InternalPositionFeedback(null, true);
         }
 
-        /** Use an external encoder device position in native ticks. */
+        /**
+         * Use an external encoder device position in native ticks.
+         */
         public static PositionFeedback externalEncoder(String name) {
             return new ExternalPositionFeedback(name, Direction.FORWARD);
         }
 
-        /** Use an external encoder device position in native ticks with an explicit logical direction. */
+        /**
+         * Use an external encoder device position in native ticks with an explicit logical direction.
+         */
         public static PositionFeedback externalEncoder(String name, Direction direction) {
             return new ExternalPositionFeedback(name, direction);
         }
@@ -693,20 +789,37 @@ public final class FtcActuators {
             return new InternalVelocityFeedback(null, false);
         }
 
-        /** Use one named selected motor's internal encoder velocity in ticks/sec. */
-        public static VelocityFeedback internalEncoder(String motorName) { return new InternalVelocityFeedback(motorName, false); }
+        /**
+         * Use one named selected motor's internal encoder velocity in ticks/sec.
+         */
+        public static VelocityFeedback internalEncoder(String motorName) {
+            return new InternalVelocityFeedback(motorName, false);
+        }
 
-        /** Use the average selected motor internal encoder velocity in group ticks/sec. */
-        public static VelocityFeedback averageInternalEncoders() { return new InternalVelocityFeedback(null, true); }
+        /**
+         * Use the average selected motor internal encoder velocity in group ticks/sec.
+         */
+        public static VelocityFeedback averageInternalEncoders() {
+            return new InternalVelocityFeedback(null, true);
+        }
 
-        /** Use an external encoder device velocity in ticks/sec. */
+        /**
+         * Use an external encoder device velocity in ticks/sec.
+         */
         public static VelocityFeedback externalEncoder(String name) {
-            return new ExternalVelocityFeedback(name, Direction.FORWARD); }
+            return new ExternalVelocityFeedback(name, Direction.FORWARD);
+        }
 
-        /** Use an external encoder device velocity in ticks/sec with an explicit logical direction. */
-        public static VelocityFeedback externalEncoder(String name, Direction direction) { return new ExternalVelocityFeedback(name, direction); }
+        /**
+         * Use an external encoder device velocity in ticks/sec with an explicit logical direction.
+         */
+        public static VelocityFeedback externalEncoder(String name, Direction direction) {
+            return new ExternalVelocityFeedback(name, direction);
+        }
 
-        /** Use a caller-supplied native velocity source. */
+        /**
+         * Use a caller-supplied native velocity source.
+         */
         public static VelocityFeedback fromSource(ScalarSource source) {
             return new SourceVelocityFeedback(source);
         }
@@ -728,7 +841,8 @@ public final class FtcActuators {
             ensureMotorFeedbackAvailable(motorSpecs, "position");
             if (average) {
                 List<ScalarSource> sources = new ArrayList<>();
-                for (MotorBuilder.Spec spec : motorSpecs) sources.add(FtcSensors.motorPositionTicks(hw, spec.name));
+                for (MotorBuilder.Spec spec : motorSpecs)
+                    sources.add(FtcSensors.motorPositionTicks(hw, spec.name));
                 return averageSources(sources);
             }
             if (motorName != null) {
@@ -756,7 +870,9 @@ public final class FtcActuators {
         }
 
         @Override
-        ScalarSource resolve(HardwareMap hw, List<MotorBuilder.Spec> motorSpecs) { return FtcSensors.motorPositionTicks(hw, name, direction); }
+        ScalarSource resolve(HardwareMap hw, List<MotorBuilder.Spec> motorSpecs) {
+            return FtcSensors.motorPositionTicks(hw, name, direction);
+        }
     }
 
     private static final class SourcePositionFeedback extends PositionFeedback {
@@ -767,7 +883,9 @@ public final class FtcActuators {
         }
 
         @Override
-        ScalarSource resolve(HardwareMap hw, List<MotorBuilder.Spec> motorSpecs) { return source; }
+        ScalarSource resolve(HardwareMap hw, List<MotorBuilder.Spec> motorSpecs) {
+            return source;
+        }
     }
 
     private static final class InternalVelocityFeedback extends VelocityFeedback {
@@ -775,8 +893,12 @@ public final class FtcActuators {
         private final boolean average;
 
         private InternalVelocityFeedback(String motorName, boolean average) {
-            this.motorName = motorName; this.average = average; }
-        @Override ScalarSource resolve(HardwareMap hw, List<MotorBuilder.Spec> motorSpecs) {
+            this.motorName = motorName;
+            this.average = average;
+        }
+
+        @Override
+        ScalarSource resolve(HardwareMap hw, List<MotorBuilder.Spec> motorSpecs) {
             ensureMotorFeedbackAvailable(motorSpecs, "velocity");
             if (average) {
                 List<ScalarSource> sources = new ArrayList<>();
@@ -786,7 +908,8 @@ public final class FtcActuators {
             }
             if (motorName != null) {
                 for (MotorBuilder.Spec spec : motorSpecs)
-                    if (spec.name.equals(motorName)) return FtcSensors.motorVelocityTicksPerSec(hw, spec.name);
+                    if (spec.name.equals(motorName))
+                        return FtcSensors.motorVelocityTicksPerSec(hw, spec.name);
                 throw new IllegalStateException("VelocityFeedback.internalEncoder(\"" + motorName + "\") does not match any selected motor");
             }
             if (motorSpecs.size() != 1) {
@@ -800,16 +923,27 @@ public final class FtcActuators {
     private static final class ExternalVelocityFeedback extends VelocityFeedback {
         private final String name;
         private final Direction direction;
-        private ExternalVelocityFeedback(String name, Direction direction) { this.name = Objects.requireNonNull(name, "name"); this.direction = Objects.requireNonNull(direction, "direction"); }
-        @Override ScalarSource resolve(HardwareMap hw, List<MotorBuilder.Spec> motorSpecs) {
+
+        private ExternalVelocityFeedback(String name, Direction direction) {
+            this.name = Objects.requireNonNull(name, "name");
+            this.direction = Objects.requireNonNull(direction, "direction");
+        }
+
+        @Override
+        ScalarSource resolve(HardwareMap hw, List<MotorBuilder.Spec> motorSpecs) {
             return FtcSensors.motorVelocityTicksPerSec(hw, name, direction);
         }
     }
 
     private static final class SourceVelocityFeedback extends VelocityFeedback {
         private final ScalarSource source;
-        private SourceVelocityFeedback(ScalarSource source) { this.source = Objects.requireNonNull(source, "source"); }
-        @Override ScalarSource resolve(HardwareMap hw, List<MotorBuilder.Spec> motorSpecs) {
+
+        private SourceVelocityFeedback(ScalarSource source) {
+            this.source = Objects.requireNonNull(source, "source");
+        }
+
+        @Override
+        ScalarSource resolve(HardwareMap hw, List<MotorBuilder.Spec> motorSpecs) {
             return source;
         }
     }
@@ -828,7 +962,10 @@ public final class FtcActuators {
             private final Direction direction;
             private double scale = 1.0;
             private double bias = 0.0;
-            private Spec(String name, Direction direction) { this.name = Objects.requireNonNull(name, "name"); this.direction = Objects.requireNonNull(direction, "direction");
+
+            private Spec(String name, Direction direction) {
+                this.name = Objects.requireNonNull(name, "name");
+                this.direction = Objects.requireNonNull(direction, "direction");
             }
         }
 
@@ -837,10 +974,28 @@ public final class FtcActuators {
             addMotorInternal(name, direction);
         }
 
-        private void addMotorInternal(String name, Direction direction) { specs.add(new Spec(name, direction)); lastIndex = specs.size() - 1; }
-        @Override public MotorGroupAddedStep andMotor(String name, Direction direction) { addMotorInternal(name, direction); return this; }
-        @Override public MotorGroupAddedStep scale(double scale) { specs.get(lastIndex).scale = scale; return this; }
-        @Override public MotorGroupAddedStep bias(double bias) { specs.get(lastIndex).bias = bias; return this; }
+        private void addMotorInternal(String name, Direction direction) {
+            specs.add(new Spec(name, direction));
+            lastIndex = specs.size() - 1;
+        }
+
+        @Override
+        public MotorGroupAddedStep andMotor(String name, Direction direction) {
+            addMotorInternal(name, direction);
+            return this;
+        }
+
+        @Override
+        public MotorGroupAddedStep scale(double scale) {
+            specs.get(lastIndex).scale = scale;
+            return this;
+        }
+
+        @Override
+        public MotorGroupAddedStep bias(double bias) {
+            specs.get(lastIndex).bias = bias;
+            return this;
+        }
 
         @Override
         public ModifiersStep power() {
@@ -849,7 +1004,8 @@ public final class FtcActuators {
                 return new ModifiersStepImpl(Plants.power(FtcHardware.motorPower(hw, spec.name, spec.direction)));
             }
             MultiPlant.Builder b = MultiPlant.builder();
-            for (Spec spec : specs) b.add(Plants.power(FtcHardware.motorPower(hw, spec.name, spec.direction)), spec.scale, spec.bias);
+            for (Spec spec : specs)
+                b.add(Plants.power(FtcHardware.motorPower(hw, spec.name, spec.direction)), spec.scale, spec.bias);
             return new ModifiersStepImpl(b.build());
         }
 
@@ -896,7 +1052,8 @@ public final class FtcActuators {
         }
 
         private ScalarSource groupedMotorVelocityMeasurement() {
-            if (specs.size() == 1) return FtcSensors.motorVelocityTicksPerSec(hw, specs.get(0).name);
+            if (specs.size() == 1)
+                return FtcSensors.motorVelocityTicksPerSec(hw, specs.get(0).name);
             List<ScalarSource> sources = new ArrayList<>();
             double[] scales = new double[specs.size()];
             double[] biases = new double[specs.size()];
@@ -1472,8 +1629,21 @@ public final class FtcActuators {
             nativeReference = nativeAtPlantMin;
             return this;
         }
-        @Override public ServoPositionBuildStep rateLimit(double maxDeltaPerSec) { return rateLimit(maxDeltaPerSec, maxDeltaPerSec); }
-        @Override public ServoPositionBuildStep rateLimit(double maxUpPerSec, double maxDownPerSec) { if (maxUpPerSec < 0.0 || maxDownPerSec < 0.0) throw new IllegalArgumentException("rate limits must be >= 0"); rateUp = maxUpPerSec; rateDown = maxDownPerSec; return this; }
+
+        @Override
+        public ServoPositionBuildStep rateLimit(double maxDeltaPerSec) {
+            return rateLimit(maxDeltaPerSec, maxDeltaPerSec);
+        }
+
+        @Override
+        public ServoPositionBuildStep rateLimit(double maxUpPerSec, double maxDownPerSec) {
+            if (maxUpPerSec < 0.0 || maxDownPerSec < 0.0)
+                throw new IllegalArgumentException("rate limits must be >= 0");
+            rateUp = maxUpPerSec;
+            rateDown = maxDownPerSec;
+            return this;
+        }
+
         @Override
         public PositionPlant build() {
             if (range == null)
@@ -1499,20 +1669,35 @@ public final class FtcActuators {
         private int lastIndex;
 
         private CrServoBuilder(HardwareMap hw, String name, Direction direction) {
-            this.hw = Objects.requireNonNull(hw, "HardwareMap is required"); addCrServoInternal(name, direction);
+            this.hw = Objects.requireNonNull(hw, "HardwareMap is required");
+            addCrServoInternal(name, direction);
         }
 
         private void addCrServoInternal(String name, Direction direction) {
-            specs.add(new MotorBuilder.Spec(name, direction)); lastIndex = specs.size() - 1; }
-        @Override public CrServoGroupAddedStep andCrServo(String name, Direction direction) { addCrServoInternal(name, direction); return this; }
-        @Override public CrServoGroupAddedStep scale(double scale) { specs.get(lastIndex).scale = scale;
+            specs.add(new MotorBuilder.Spec(name, direction));
+            lastIndex = specs.size() - 1;
+        }
+
+        @Override
+        public CrServoGroupAddedStep andCrServo(String name, Direction direction) {
+            addCrServoInternal(name, direction);
+            return this;
+        }
+
+        @Override
+        public CrServoGroupAddedStep scale(double scale) {
+            specs.get(lastIndex).scale = scale;
             return this;
         }
 
         @Override
         public CrServoGroupAddedStep bias(double bias) {
-            specs.get(lastIndex).bias = bias; return this; }
-        @Override public ModifiersStep power() {
+            specs.get(lastIndex).bias = bias;
+            return this;
+        }
+
+        @Override
+        public ModifiersStep power() {
             if (specs.size() == 1) {
                 MotorBuilder.Spec spec = specs.get(0);
                 return new ModifiersStepImpl(Plants.power(FtcHardware.crServoPower(hw, spec.name, spec.direction)));
@@ -1552,8 +1737,13 @@ public final class FtcActuators {
         private final CrServoBuilder parent;
         private PositionFeedback feedback;
         private ScalarRegulator regulator;
-        private CrServoPositionBuilder(CrServoBuilder parent) { this.parent = parent; }
-        @Override public CrServoRegulatedPositionFeedbackStep regulated() {
+
+        private CrServoPositionBuilder(CrServoBuilder parent) {
+            this.parent = parent;
+        }
+
+        @Override
+        public CrServoRegulatedPositionFeedbackStep regulated() {
             return this;
         }
 
@@ -1614,6 +1804,7 @@ public final class FtcActuators {
         private final double[] scales;
         private final double[] biases;
         private double last;
+
         private GroupedPositionOutput(List<PositionOutput> outputs, double[] scales, double[] biases) {
             this.outputs = new ArrayList<>(Objects.requireNonNull(outputs, "outputs"));
             this.scales = Objects.requireNonNull(scales, "scales");
@@ -1690,7 +1881,8 @@ public final class FtcActuators {
         return new ScalarSource() {
             @Override
             public double getAsDouble(edu.ftcphoenix.fw.core.time.LoopClock clock) {
-                double sum = 0.0; int count = 0;
+                double sum = 0.0;
+                int count = 0;
                 for (ScalarSource source : copy) {
                     sum += source.getAsDouble(clock);
                     count++;
@@ -1698,7 +1890,9 @@ public final class FtcActuators {
                 return count > 0 ? sum / count : Double.NaN;
             }
 
-            @Override public void reset() { for (ScalarSource source : copy) source.reset();
+            @Override
+            public void reset() {
+                for (ScalarSource source : copy) source.reset();
             }
         }.memoized();
     }
@@ -1723,7 +1917,8 @@ public final class FtcActuators {
             }
 
             @Override
-            public void reset() { for (ScalarSource source : copy) source.reset();
+            public void reset() {
+                for (ScalarSource source : copy) source.reset();
             }
         }.memoized();
     }
@@ -1741,7 +1936,8 @@ public final class FtcActuators {
                 double[] c = cfg.innerVelocityPidf;
                 motor.setVelocityPIDFCoefficients(c[0], c[1], c[2], c[3]);
             }
-            if (cfg.devicePositionToleranceTicks != null) motor.setTargetPositionTolerance(cfg.devicePositionToleranceTicks);
+            if (cfg.devicePositionToleranceTicks != null)
+                motor.setTargetPositionTolerance(cfg.devicePositionToleranceTicks);
         } catch (RuntimeException ex) {
             throw new IllegalStateException("Failed to apply device-managed position config for motor '" + motorName + "'. Check that the motor supports the requested FTC SDK APIs.", ex);
         }
@@ -1749,7 +1945,8 @@ public final class FtcActuators {
 
     private static void applyDeviceManagedVelocityConfig(DcMotorEx motor, String motorName, double[] velocityPidf) {
         try {
-            if (velocityPidf != null) motor.setVelocityPIDFCoefficients(velocityPidf[0], velocityPidf[1], velocityPidf[2], velocityPidf[3]);
+            if (velocityPidf != null)
+                motor.setVelocityPIDFCoefficients(velocityPidf[0], velocityPidf[1], velocityPidf[2], velocityPidf[3]);
         } catch (RuntimeException ex) {
             throw new IllegalStateException("Failed to apply device-managed velocity config for motor '" + motorName + "'. Check that the motor supports the requested FTC SDK APIs.", ex);
         }

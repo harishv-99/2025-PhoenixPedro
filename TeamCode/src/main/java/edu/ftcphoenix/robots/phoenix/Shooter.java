@@ -34,7 +34,7 @@ public final class Shooter {
 
     private boolean flywheelEnabled = false;
     private double selectedVelocityNative;
-    private String flywheelPidfWarning;
+    private final String flywheelPidfWarning;
 
     private final OutputTaskRunner feedQueue = Tasks.outputQueue();
     private final DebounceBoolean readyLatch;
@@ -51,8 +51,8 @@ public final class Shooter {
      * Creates the Phoenix shooter subsystem and claims ownership of the shooter-path actuators.
      *
      * @param hardwareMap FTC hardware map used to resolve the configured devices
-     * @param config shooter configuration snapshot; copied on construction so callers can keep
-     *               editing profile objects without mutating the live subsystem
+     * @param config      shooter configuration snapshot; copied on construction so callers can keep
+     *                    editing profile objects without mutating the live subsystem
      */
     public Shooter(HardwareMap hardwareMap, PhoenixProfile.ShooterConfig config) {
         Objects.requireNonNull(hardwareMap, "hardwareMap");
@@ -222,7 +222,7 @@ public final class Shooter {
      * Returns the memoized flywheel-ready gate for the current loop.
      *
      * @return boolean source that predicts whether the flywheel will be within its ready band when a
-     *         ring reaches the shooter
+     * ring reaches the shooter
      */
     public BooleanSource flywheelReady() {
         return flywheelReadySource;

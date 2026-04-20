@@ -224,14 +224,18 @@ public final class TagSelections {
             return this;
         }
 
-        /** {@inheritDoc} */
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public ModeStep choose(TagSelectionPolicy policy) {
             this.policy = Objects.requireNonNull(policy, "policy");
             return this;
         }
 
-        /** {@inheritDoc} */
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public BuildStep continuous() {
             this.mode = Mode.CONTINUOUS;
@@ -251,7 +255,9 @@ public final class TagSelections {
             return this;
         }
 
-        /** {@inheritDoc} */
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public StickyUntilResetLossStep stickyUntilReset() {
             this.mode = Mode.STICKY_UNTIL_RESET;
@@ -295,7 +301,9 @@ public final class TagSelections {
             return this;
         }
 
-        /** {@inheritDoc} */
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public TagSelectionSource build() {
             if (candidateIds == null || candidateIds.isEmpty()) {
@@ -340,7 +348,7 @@ public final class TagSelections {
         private final double reacquireAfterLossSec;
 
         private long lastCycle = Long.MIN_VALUE;
-        private TagSelectionResult last = TagSelectionResult.none(Collections.<Integer>emptySet());
+        private TagSelectionResult last = TagSelectionResult.none(Collections.emptySet());
 
         private boolean prevEnabled = false;
         private int selectedTagId = -1;
@@ -574,7 +582,7 @@ public final class TagSelections {
                 enabled.reset();
             }
             lastCycle = Long.MIN_VALUE;
-            last = TagSelectionResult.none(Collections.<Integer>emptySet());
+            last = TagSelectionResult.none(Collections.emptySet());
             prevEnabled = false;
             clearSelection();
             lastPolicyName = "none";

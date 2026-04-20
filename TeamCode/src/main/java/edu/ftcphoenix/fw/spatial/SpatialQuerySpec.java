@@ -7,16 +7,20 @@ import edu.ftcphoenix.fw.field.TagLayout;
 /**
  * Immutable, controller-neutral description of a spatial relationship to solve.
  *
- * <p>A spec answers four questions:</p>
+ * <p>A spec answers these conceptual questions in order:</p>
  * <ol>
- *   <li><b>What translation relationship matters?</b> optionally a {@link TranslationTarget2d}</li>
- *   <li><b>What facing relationship matters?</b> optionally a {@link FacingTarget2d}</li>
- *   <li><b>Which robot-relative frames are controlled?</b> {@link SpatialControlFrames}</li>
- *   <li><b>Which solve lanes may answer the query?</b> {@link SpatialSolveSet}</li>
+ *   <li><b>What target relationship matters?</b> translation, facing, or both.</li>
+ *   <li><b>Which robot-relative frames are controlled?</b> defaults to robot center unless
+ *       {@link SpatialControlFrames} are supplied.</li>
+ *   <li><b>Which solve lanes may answer the query?</b> a non-empty {@link SpatialSolveSet}.</li>
+ *   <li><b>Is a fixed AprilTag layout needed?</b> optional, only for lanes/targets that use
+ *       trusted field-tag geometry.</li>
  * </ol>
  *
- * <p>Use {@link SpatialQuery#builder()} for the common case. Use this spec when you want to create
- * multiple independent runtime queries with the same immutable description.</p>
+ * <p>The staged builder intentionally does not expose {@code build()} until a target and a solve
+ * set are chosen. Use {@link SpatialQuery#builder()} for the common runtime source. Use this spec
+ * when you want to create multiple independent runtime queries with the same immutable
+ * description.</p>
  */
 public final class SpatialQuerySpec {
 
@@ -46,9 +50,114 @@ public final class SpatialQuerySpec {
 
     /**
      * Starts building a reusable immutable spatial query spec.
+     *
+     * <p>The first required question is which relationship the query solves. Choose
+     * {@link TargetChoice#translateTo(TranslationTarget2d)} for a translation-only query,
+     * {@link TargetChoice#faceTo(FacingTarget2d)} for a facing-only query, or add the second target
+     * through {@code andFaceTo(...)} / {@code andTranslateTo(...)} before choosing solve lanes.</p>
      */
-    public static Builder builder() {
+    public static TargetChoice builder() {
         return new Builder();
+    }
+
+    /**
+     * First builder stage: choose the target relationship solved by the query.
+     */
+    public interface TargetChoice {
+        /**
+         * Starts a translation query. Add facing later with {@link TranslationTargetStage#andFaceTo(FacingTarget2d)} when both channels matter.
+         */
+        TranslationTargetStage translateTo(TranslationTarget2d translationTarget);
+
+        /**
+         * Starts a facing query. Add translation later with {@link FacingTargetStage#andTranslateTo(TranslationTarget2d)} when both channels matter.
+         */
+        FacingTargetStage faceTo(FacingTarget2d facingTarget);
+    }
+
+    /**
+     * Builder stage for a query that currently has only a translation target.
+     */
+    public interface TranslationTargetStage {
+        /**
+         * Adds a facing target so the query solves both channels.
+         */
+        BothTargetStage andFaceTo(FacingTarget2d facingTarget);
+
+        /**
+         * Supplies robot-relative control frames. Defaults to {@link SpatialControlFrames#robotCenter()}.
+         */
+        TranslationTargetStage controlFrames(SpatialControlFrames controlFrames);
+
+        /**
+         * Supplies a trusted fixed AprilTag layout for lanes or targets that need field-tag geometry.
+         */
+        TranslationTargetStage fixedAprilTagLayout(TagLayout fixedAprilTagLayout);
+
+        /**
+         * Supplies the ordered non-empty solve-lane set and moves to the build stage.
+         */
+        ReadyStage solveWith(SpatialSolveSet solveSet);
+    }
+
+    /**
+     * Builder stage for a query that currently has only a facing target.
+     */
+    public interface FacingTargetStage {
+        /**
+         * Adds a translation target so the query solves both channels.
+         */
+        BothTargetStage andTranslateTo(TranslationTarget2d translationTarget);
+
+        /**
+         * Supplies robot-relative control frames. Defaults to {@link SpatialControlFrames#robotCenter()}.
+         */
+        FacingTargetStage controlFrames(SpatialControlFrames controlFrames);
+
+        /**
+         * Supplies a trusted fixed AprilTag layout for lanes or targets that need field-tag geometry.
+         */
+        FacingTargetStage fixedAprilTagLayout(TagLayout fixedAprilTagLayout);
+
+        /**
+         * Supplies the ordered non-empty solve-lane set and moves to the build stage.
+         */
+        ReadyStage solveWith(SpatialSolveSet solveSet);
+    }
+
+    /**
+     * Builder stage for a query that has both translation and facing targets.
+     */
+    public interface BothTargetStage {
+        /**
+         * Supplies robot-relative control frames. Defaults to {@link SpatialControlFrames#robotCenter()}.
+         */
+        BothTargetStage controlFrames(SpatialControlFrames controlFrames);
+
+        /**
+         * Supplies a trusted fixed AprilTag layout for lanes or targets that need field-tag geometry.
+         */
+        BothTargetStage fixedAprilTagLayout(TagLayout fixedAprilTagLayout);
+
+        /**
+         * Supplies the ordered non-empty solve-lane set and moves to the build stage.
+         */
+        ReadyStage solveWith(SpatialSolveSet solveSet);
+    }
+
+    /**
+     * Final stage: solve lanes are known, optional fixed layout may still be supplied, then build.
+     */
+    public interface ReadyStage {
+        /**
+         * Supplies a trusted fixed AprilTag layout for lanes or targets that need field-tag geometry.
+         */
+        ReadyStage fixedAprilTagLayout(TagLayout fixedAprilTagLayout);
+
+        /**
+         * Builds the immutable spec.
+         */
+        SpatialQuerySpec build();
     }
 
     /**
@@ -66,46 +175,67 @@ public final class SpatialQuerySpec {
     }
 
     /**
-     * Builder for immutable specs.
+     * Staged builder implementation. Users normally hold one of the stage interfaces returned by
+     * {@link #builder()} rather than this concrete class.
      */
-    public static final class Builder {
+    static final class Builder implements TargetChoice,
+            TranslationTargetStage,
+            FacingTargetStage,
+            BothTargetStage,
+            ReadyStage {
         private TranslationTarget2d translationTarget;
         private FacingTarget2d facingTarget;
         private SpatialControlFrames controlFrames = SpatialControlFrames.robotCenter();
         private SpatialSolveSet solveSet;
         private TagLayout fixedAprilTagLayout;
 
-        /** Configures the translation target, or {@code null} for facing-only queries. */
+        Builder() {
+            // staged builder; use SpatialQuerySpec.builder()
+        }
+
+        @Override
         public Builder translateTo(TranslationTarget2d translationTarget) {
-            this.translationTarget = translationTarget;
+            this.translationTarget = Objects.requireNonNull(translationTarget, "translationTarget");
             return this;
         }
 
-        /** Configures the facing target, or {@code null} for translation-only queries. */
+        @Override
         public Builder faceTo(FacingTarget2d facingTarget) {
-            this.facingTarget = facingTarget;
+            this.facingTarget = Objects.requireNonNull(facingTarget, "facingTarget");
             return this;
         }
 
-        /** Supplies robot-relative control frames used by the query. */
+        @Override
+        public Builder andFaceTo(FacingTarget2d facingTarget) {
+            this.facingTarget = Objects.requireNonNull(facingTarget, "facingTarget");
+            return this;
+        }
+
+        @Override
+        public Builder andTranslateTo(TranslationTarget2d translationTarget) {
+            this.translationTarget = Objects.requireNonNull(translationTarget, "translationTarget");
+            return this;
+        }
+
+        @Override
         public Builder controlFrames(SpatialControlFrames controlFrames) {
             this.controlFrames = Objects.requireNonNull(controlFrames, "controlFrames");
             return this;
         }
 
-        /** Supplies the ordered solve-lane set. */
+        @Override
         public Builder solveWith(SpatialSolveSet solveSet) {
             this.solveSet = Objects.requireNonNull(solveSet, "solveSet");
             return this;
         }
 
-        /** Supplies the trusted fixed AprilTag layout used by lanes that need field-tag geometry. */
+        @Override
         public Builder fixedAprilTagLayout(TagLayout fixedAprilTagLayout) {
             this.fixedAprilTagLayout = fixedAprilTagLayout;
             return this;
         }
 
-        /** Builds the immutable spec. */
+        @Override
         public SpatialQuerySpec build() {
             if (solveSet == null) {
                 throw new IllegalStateException("SpatialQuerySpec builder requires solveWith(...)");

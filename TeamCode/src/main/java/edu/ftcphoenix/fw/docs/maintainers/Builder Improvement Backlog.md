@@ -17,7 +17,7 @@ This running list tracks framework builders that should be reviewed against the 
 - [x] `drive/guidance/DriveGuidance`
 - [x] `ftc/FtcActuators` velocity builders
 - [x] `spatial/TagSelections`
-- [ ] `spatial/SpatialQuery` / `spatial/SpatialQuerySpec`
+- [x] `spatial/SpatialQuery` / `spatial/SpatialQuerySpec`
 - [ ] `actuation/PositionCalibrationTasks` (make timeout choice explicit: failAfter(...) or neverTimeout())
 - [ ] `spatial/SpatialSolveSet` (empty build should fail immediately)
 
@@ -66,9 +66,24 @@ position, but without position-only concepts like topology, reference, and homin
 The old `MotorVelocityControl` value-object API was removed instead of retained as a parallel path.
 Velocity uses a zero-preserving mapping only; no `rangeMapsToNative(...)` is exposed for velocity.
 
+### `spatial/SpatialQuery` / `spatial/SpatialQuerySpec`
+
+Completed in the fifth builder cleanup pass. Runtime queries and reusable specs now share the same
+staged shape:
+
+1. choose the target relationship (`translateTo(...)` or `faceTo(...)`)
+2. optionally add the other channel with `andFaceTo(...)` / `andTranslateTo(...)`
+3. optionally supply `controlFrames(...)` and `fixedAprilTagLayout(...)`
+4. choose solve lanes with `solveWith(...)`
+5. build
+
+`build()` is no longer visible before a target and a solve set are chosen. Facing-only and
+translation-only queries no longer rely on passing `null` into a broad config-bag builder; the staged
+API makes the target shape explicit.
+
 ## Recommended next builder
 
-Next likely target: `spatial/SpatialQuery` / `spatial/SpatialQuerySpec`. They are lower-level than DriveGuidance, but they still expose build() before all conceptual questions are answered.
+Next likely target: `actuation/PositionCalibrationTasks`, specifically making the timeout choice explicit with `failAfter(...)` or `neverTimeout()`.
 
 ### `spatial/TagSelections`
 

@@ -38,6 +38,10 @@ Planner/Guidance -> Status
 
 ## Builder shape
 
+`SpatialQuery` now follows the same guided-builder rule as Drive Guidance and Scalar Setpoint
+Planning: answer the required conceptual questions explicitly, and do not expose `build()` before the
+query has both a target and solve lanes.
+
 The common path builds a runtime query directly:
 
 ```java
@@ -57,7 +61,33 @@ SpatialQuery query = SpatialQuery.builder()
         .build();
 ```
 
-Use `SpatialQuerySpec.builder()` only when you need a reusable immutable description and separate runtime query instances:
+The first question is the target relationship:
+
+```java
+SpatialQuery facingOnly = SpatialQuery.builder()
+        .faceTo(SpatialTargets.fieldHeading(Math.PI))
+        .solveWith(solveSet)
+        .build();
+
+SpatialQuery translationOnly = SpatialQuery.builder()
+        .translateTo(SpatialTargets.fieldPoint(48.0, 24.0))
+        .solveWith(solveSet)
+        .build();
+
+SpatialQuery both = SpatialQuery.builder()
+        .translateTo(SpatialTargets.fieldPoint(48.0, 24.0))
+        .andFaceTo(SpatialTargets.fieldHeading(Math.PI))
+        .controlFrames(frames)
+        .solveWith(solveSet)
+        .build();
+```
+
+`controlFrames(...)` defaults to `SpatialControlFrames.robotCenter()`. `fixedAprilTagLayout(...)` is
+optional and should be supplied only when a lane or target reference needs trusted field-tag
+geometry.
+
+Use `SpatialQuerySpec.builder()` only when you need a reusable immutable description and separate
+runtime query instances:
 
 ```java
 SpatialQuerySpec spec = SpatialQuerySpec.builder()
@@ -70,7 +100,8 @@ SpatialQuery driveSide = SpatialQuery.from(spec);
 SpatialQuery telemetrySide = SpatialQuery.from(spec);
 ```
 
-Do not share one stateful `SpatialQuery` between independent owners if either owner may call `reset()`.
+Do not share one stateful `SpatialQuery` between independent owners if either owner may call
+`reset()`. Share a `SpatialQuerySpec` and create independent runtime queries from it.
 
 ## Control frame vs camera frame
 

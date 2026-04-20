@@ -119,13 +119,17 @@ public final class DriveGuidance {
             this.spec = Objects.requireNonNull(spec, "spec");
         }
 
-        /** {@inheritDoc} */
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public DriveTuningBranch driveTuning() {
             return new PlanFromSpecTuningStep(this);
         }
 
-        /** {@inheritDoc} */
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public DriveGuidancePlan build() {
             return new DriveGuidancePlan(spec, tuning);
@@ -154,10 +158,14 @@ public final class DriveGuidance {
      * Initial spec stage: choose translation, facing, or both.
      */
     public interface SpecBuilder0 {
-        /** Begins configuring the translation target. */
+        /**
+         * Begins configuring the translation target.
+         */
         TranslateToBuilder<SpecBuilder1> translateTo();
 
-        /** Begins configuring the facing target. */
+        /**
+         * Begins configuring the facing target.
+         */
         FaceToBuilder<SpecBuilder2> faceTo();
     }
 
@@ -165,33 +173,51 @@ public final class DriveGuidance {
      * Shared spec stage after at least one target has been configured.
      */
     public interface SpecConfiguredStage<SELF> {
-        /** Chooses which point(s) on the robot guidance should translate / face with respect to. */
+        /**
+         * Chooses which point(s) on the robot guidance should translate / face with respect to.
+         */
         SELF controlFrames(SpatialControlFrames frames);
 
-        /** Begins choosing the solve mode and solve lanes for this spec. */
+        /**
+         * Begins choosing the solve mode and solve lanes for this spec.
+         */
         ResolveModeChoice<SpecBuildStage> solveWith();
     }
 
-    /** Spec stage after translation has been configured. */
+    /**
+     * Spec stage after translation has been configured.
+     */
     public interface SpecBuilder1 extends SpecConfiguredStage<SpecBuilder1> {
-        /** Adds a facing target to the spec. */
+        /**
+         * Adds a facing target to the spec.
+         */
         FaceToBuilder<SpecBuilder3> faceTo();
     }
 
-    /** Spec stage after facing has been configured. */
+    /**
+     * Spec stage after facing has been configured.
+     */
     public interface SpecBuilder2 extends SpecConfiguredStage<SpecBuilder2> {
-        /** Adds a translation target to the spec. */
+        /**
+         * Adds a translation target to the spec.
+         */
         TranslateToBuilder<SpecBuilder3> translateTo();
     }
 
-    /** Final target stage after both translation and facing have been configured. */
+    /**
+     * Final target stage after both translation and facing have been configured.
+     */
     public interface SpecBuilder3 extends SpecConfiguredStage<SpecBuilder3> {
         // no-op
     }
 
-    /** Terminal spec stage after targets and solve mode have both been configured. */
+    /**
+     * Terminal spec stage after targets and solve mode have both been configured.
+     */
     public interface SpecBuildStage {
-        /** Builds the immutable controller-neutral spec. */
+        /**
+         * Builds the immutable controller-neutral spec.
+         */
         DriveGuidanceSpec build();
     }
 
@@ -203,10 +229,14 @@ public final class DriveGuidance {
      * Initial plan stage: choose translation, facing, or both.
      */
     public interface PlanBuilder0 {
-        /** Begins configuring the translation target. */
+        /**
+         * Begins configuring the translation target.
+         */
         TranslateToBuilder<PlanBuilder1> translateTo();
 
-        /** Begins configuring the facing target. */
+        /**
+         * Begins configuring the facing target.
+         */
         FaceToBuilder<PlanBuilder2> faceTo();
     }
 
@@ -214,66 +244,106 @@ public final class DriveGuidance {
      * Shared plan stage after at least one target has been configured.
      */
     public interface PlanConfiguredStage<SELF> {
-        /** Chooses which point(s) on the robot guidance should translate / face with respect to. */
+        /**
+         * Chooses which point(s) on the robot guidance should translate / face with respect to.
+         */
         SELF controlFrames(SpatialControlFrames frames);
 
-        /** Begins choosing the solve mode and solve lanes for this plan. */
+        /**
+         * Begins choosing the solve mode and solve lanes for this plan.
+         */
         ResolveModeChoice<PlanOptionalTuningStage> solveWith();
     }
 
-    /** Plan stage after translation has been configured. */
+    /**
+     * Plan stage after translation has been configured.
+     */
     public interface PlanBuilder1 extends PlanConfiguredStage<PlanBuilder1> {
-        /** Adds a facing target to the plan. */
+        /**
+         * Adds a facing target to the plan.
+         */
         FaceToBuilder<PlanBuilder3> faceTo();
     }
 
-    /** Plan stage after facing has been configured. */
+    /**
+     * Plan stage after facing has been configured.
+     */
     public interface PlanBuilder2 extends PlanConfiguredStage<PlanBuilder2> {
-        /** Adds a translation target to the plan. */
+        /**
+         * Adds a translation target to the plan.
+         */
         TranslateToBuilder<PlanBuilder3> translateTo();
     }
 
-    /** Final target stage after both translation and facing have been configured. */
+    /**
+     * Final target stage after both translation and facing have been configured.
+     */
     public interface PlanBuilder3 extends PlanConfiguredStage<PlanBuilder3> {
         // no-op
     }
 
-    /** Optional-tuning stage after target and solve mode have been chosen. */
+    /**
+     * Optional-tuning stage after target and solve mode have been chosen.
+     */
     public interface PlanOptionalTuningStage extends PlanBuildStage {
-        /** Enters optional controller tuning. Build immediately to use {@link DriveGuidancePlan.Tuning#defaults()}. */
+        /**
+         * Enters optional controller tuning. Build immediately to use {@link DriveGuidancePlan.Tuning#defaults()}.
+         */
         DriveTuningBranch driveTuning();
     }
 
-    /** Terminal plan stage that can build the immutable plan. */
+    /**
+     * Terminal plan stage that can build the immutable plan.
+     */
     public interface PlanBuildStage {
-        /** Builds the immutable plan. */
+        /**
+         * Builds the immutable plan.
+         */
         DriveGuidancePlan build();
     }
 
-    /** Optional branch for drivetrain-controller gains and command caps. */
+    /**
+     * Optional branch for drivetrain-controller gains and command caps.
+     */
     public interface DriveTuningBranch {
-        /** Replaces the current tuning bundle. */
+        /**
+         * Replaces the current tuning bundle.
+         */
         DriveTuningBranch use(DriveGuidancePlan.Tuning tuning);
 
-        /** Sets translation proportional gain, in drive command per inch of translation error. */
+        /**
+         * Sets translation proportional gain, in drive command per inch of translation error.
+         */
         DriveTuningBranch translateKp(double kPTranslate);
 
-        /** Sets maximum translation command magnitude. */
+        /**
+         * Sets maximum translation command magnitude.
+         */
         DriveTuningBranch maxTranslateCmd(double maxTranslateCmd);
 
-        /** Sets facing proportional gain, in omega command per radian of facing error. */
+        /**
+         * Sets facing proportional gain, in omega command per radian of facing error.
+         */
         DriveTuningBranch aimKp(double kPAim);
 
-        /** Sets maximum omega command magnitude. */
+        /**
+         * Sets maximum omega command magnitude.
+         */
         DriveTuningBranch maxOmegaCmd(double maxOmegaCmd);
 
-        /** Sets minimum omega command magnitude outside the aim deadband. */
+        /**
+         * Sets minimum omega command magnitude outside the aim deadband.
+         */
         DriveTuningBranch minOmegaCmd(double minOmegaCmd);
 
-        /** Sets the aim deadband in radians. */
+        /**
+         * Sets the aim deadband in radians.
+         */
         DriveTuningBranch aimDeadbandRad(double aimDeadbandRad);
 
-        /** Returns to the main plan builder after drive tuning. */
+        /**
+         * Returns to the main plan builder after drive tuning.
+         */
         PlanOptionalTuningStage doneDriveTuning();
     }
 
@@ -281,39 +351,63 @@ public final class DriveGuidance {
     // Target builders
     // ------------------------------------------------------------------------
 
-    /** Nested builder used to describe the translation goal. */
+    /**
+     * Nested builder used to describe the translation goal.
+     */
     public interface TranslateToBuilder<RETURN> {
-        /** Translates toward a field-fixed point, in field inches. */
+        /**
+         * Translates toward a field-fixed point, in field inches.
+         */
         TranslateToBuilder<RETURN> fieldPointInches(double xInches, double yInches);
 
-        /** Captures a robot-relative delta, in inches, when guidance enables. */
+        /**
+         * Captures a robot-relative delta, in inches, when guidance enables.
+         */
         TranslateToBuilder<RETURN> robotRelativePointInches(double forwardInches, double leftInches);
 
-        /** Translates toward a semantic point reference. */
+        /**
+         * Translates toward a semantic point reference.
+         */
         TranslateToBuilder<RETURN> point(ReferencePoint2d reference);
 
-        /** Returns to the parent builder stage. */
+        /**
+         * Returns to the parent builder stage.
+         */
         RETURN doneTranslateTo();
     }
 
-    /** Nested builder used to describe the facing / heading goal. */
+    /**
+     * Nested builder used to describe the facing / heading goal.
+     */
     public interface FaceToBuilder<RETURN> {
-        /** Faces a field-fixed point, in field inches. */
+        /**
+         * Faces a field-fixed point, in field inches.
+         */
         FaceToBuilder<RETURN> fieldPointInches(double xInches, double yInches);
 
-        /** Aligns to an absolute field heading in radians. */
+        /**
+         * Aligns to an absolute field heading in radians.
+         */
         FaceToBuilder<RETURN> fieldHeadingRad(double fieldHeadingRad);
 
-        /** Faces a semantic point reference. */
+        /**
+         * Faces a semantic point reference.
+         */
         FaceToBuilder<RETURN> point(ReferencePoint2d reference);
 
-        /** Aligns to the heading of a semantic reference frame. */
+        /**
+         * Aligns to the heading of a semantic reference frame.
+         */
         FaceToBuilder<RETURN> frameHeading(ReferenceFrame2d reference);
 
-        /** Aligns to the heading of a semantic reference frame plus an additional offset in radians. */
+        /**
+         * Aligns to the heading of a semantic reference frame plus an additional offset in radians.
+         */
         FaceToBuilder<RETURN> frameHeading(ReferenceFrame2d reference, double headingOffsetRad);
 
-        /** Returns to the parent builder stage. */
+        /**
+         * Returns to the parent builder stage.
+         */
         RETURN doneFaceTo();
     }
 
@@ -329,116 +423,188 @@ public final class DriveGuidance {
      * field layout, adaptive takeover, or loss policy.</p>
      */
     public interface ResolveModeChoice<RETURN> {
-        /** Uses localization only with default lane bounds and loss policy. */
+        /**
+         * Uses localization only with default lane bounds and loss policy.
+         */
         RETURN localizationOnlyWithDefaults(AbsolutePoseEstimator poseEstimator);
 
-        /** Enters the localization-only branch to configure lane bounds or loss policy. */
+        /**
+         * Enters the localization-only branch to configure lane bounds or loss policy.
+         */
         LocalizationOnlyEstimatorStage<RETURN> localizationOnly();
 
-        /** Uses live AprilTags only with default lane bounds and loss policy. */
+        /**
+         * Uses live AprilTags only with default lane bounds and loss policy.
+         */
         RETURN aprilTagsOnlyWithDefaults(AprilTagSensor aprilTags, CameraMountConfig cameraMount);
 
-        /** Enters the AprilTag-only branch to configure lane bounds, field layout, or loss policy. */
+        /**
+         * Enters the AprilTag-only branch to configure lane bounds, field layout, or loss policy.
+         */
         AprilTagsOnlySensorStage<RETURN> aprilTagsOnly();
 
-        /** Uses adaptive localization + AprilTag arbitration with default lane bounds and loss policy. */
+        /**
+         * Uses adaptive localization + AprilTag arbitration with default lane bounds and loss policy.
+         */
         RETURN adaptiveWithDefaults(AbsolutePoseEstimator poseEstimator,
                                     AprilTagSensor aprilTags,
                                     CameraMountConfig cameraMount);
 
-        /** Enters the adaptive branch to configure both lanes and adaptive policy. */
+        /**
+         * Enters the adaptive branch to configure both lanes and adaptive policy.
+         */
         AdaptiveLocalizationStage<RETURN> adaptive();
     }
 
-    /** Localization-only branch stage: provide the required pose estimator. */
+    /**
+     * Localization-only branch stage: provide the required pose estimator.
+     */
     public interface LocalizationOnlyEstimatorStage<RETURN> {
-        /** Supplies the localization lane used by localization-only guidance. */
+        /**
+         * Supplies the localization lane used by localization-only guidance.
+         */
         LocalizationOnlyTuningStage<RETURN> localization(AbsolutePoseEstimator poseEstimator);
     }
 
-    /** Localization-only optional tuning branch. */
+    /**
+     * Localization-only optional tuning branch.
+     */
     public interface LocalizationOnlyTuningStage<RETURN> {
-        /** Sets maximum accepted pose age in seconds. */
+        /**
+         * Sets maximum accepted pose age in seconds.
+         */
         LocalizationOnlyTuningStage<RETURN> maxAgeSec(double maxAgeSec);
 
-        /** Sets minimum accepted pose quality in [0, 1]. */
+        /**
+         * Sets minimum accepted pose quality in [0, 1].
+         */
         LocalizationOnlyTuningStage<RETURN> minQuality(double minQuality);
 
-        /** Supplies fixed field metadata so localization can resolve fixed-tag references. */
+        /**
+         * Supplies fixed field metadata so localization can resolve fixed-tag references.
+         */
         LocalizationOnlyTuningStage<RETURN> fixedAprilTagLayout(TagLayout tagLayout);
 
-        /** Chooses what guidance outputs when the requested channels cannot be solved. */
+        /**
+         * Chooses what guidance outputs when the requested channels cannot be solved.
+         */
         LocalizationOnlyTuningStage<RETURN> onLoss(DriveGuidanceSpec.LossPolicy onLoss);
 
-        /** Returns to the parent builder after localization-only configuration. */
+        /**
+         * Returns to the parent builder after localization-only configuration.
+         */
         RETURN doneLocalizationOnly();
     }
 
-    /** AprilTag-only branch stage: provide the required live AprilTag lane. */
+    /**
+     * AprilTag-only branch stage: provide the required live AprilTag lane.
+     */
     public interface AprilTagsOnlySensorStage<RETURN> {
-        /** Supplies the AprilTag sensor and the camera mount used by AprilTag-only guidance. */
+        /**
+         * Supplies the AprilTag sensor and the camera mount used by AprilTag-only guidance.
+         */
         AprilTagsOnlyTuningStage<RETURN> aprilTags(AprilTagSensor aprilTags, CameraMountConfig cameraMount);
     }
 
-    /** AprilTag-only optional tuning branch. */
+    /**
+     * AprilTag-only optional tuning branch.
+     */
     public interface AprilTagsOnlyTuningStage<RETURN> {
-        /** Sets maximum accepted AprilTag frame age in seconds. */
+        /**
+         * Sets maximum accepted AprilTag frame age in seconds.
+         */
         AprilTagsOnlyTuningStage<RETURN> maxAgeSec(double maxAgeSec);
 
-        /** Supplies fixed field metadata for field-fixed AprilTag solving. */
+        /**
+         * Supplies fixed field metadata for field-fixed AprilTag solving.
+         */
         AprilTagsOnlyTuningStage<RETURN> fixedAprilTagLayout(TagLayout tagLayout);
 
-        /** Overrides the shared multi-tag field-pose solver config for fixed-tag solving. */
+        /**
+         * Overrides the shared multi-tag field-pose solver config for fixed-tag solving.
+         */
         AprilTagsOnlyTuningStage<RETURN> aprilTagFieldPoseConfig(FixedTagFieldPoseSolver.Config cfg);
 
-        /** Chooses what guidance outputs when the requested channels cannot be solved. */
+        /**
+         * Chooses what guidance outputs when the requested channels cannot be solved.
+         */
         AprilTagsOnlyTuningStage<RETURN> onLoss(DriveGuidanceSpec.LossPolicy onLoss);
 
-        /** Returns to the parent builder after AprilTag-only configuration. */
+        /**
+         * Returns to the parent builder after AprilTag-only configuration.
+         */
         RETURN doneAprilTagsOnly();
     }
 
-    /** Adaptive branch stage: provide the required localization lane first. */
+    /**
+     * Adaptive branch stage: provide the required localization lane first.
+     */
     public interface AdaptiveLocalizationStage<RETURN> {
-        /** Supplies the localization lane used by adaptive guidance. */
+        /**
+         * Supplies the localization lane used by adaptive guidance.
+         */
         AdaptiveAprilTagsStage<RETURN> localization(AbsolutePoseEstimator poseEstimator);
     }
 
-    /** Adaptive branch stage: provide the required AprilTag lane. */
+    /**
+     * Adaptive branch stage: provide the required AprilTag lane.
+     */
     public interface AdaptiveAprilTagsStage<RETURN> {
-        /** Supplies the AprilTag sensor and camera mount used by adaptive guidance. */
+        /**
+         * Supplies the AprilTag sensor and camera mount used by adaptive guidance.
+         */
         AdaptiveTuningStage<RETURN> aprilTags(AprilTagSensor aprilTags, CameraMountConfig cameraMount);
     }
 
-    /** Adaptive optional tuning branch. */
+    /**
+     * Adaptive optional tuning branch.
+     */
     public interface AdaptiveTuningStage<RETURN> {
-        /** Sets maximum accepted localization pose age in seconds. */
+        /**
+         * Sets maximum accepted localization pose age in seconds.
+         */
         AdaptiveTuningStage<RETURN> localizationMaxAgeSec(double maxAgeSec);
 
-        /** Sets minimum accepted localization pose quality in [0, 1]. */
+        /**
+         * Sets minimum accepted localization pose quality in [0, 1].
+         */
         AdaptiveTuningStage<RETURN> localizationMinQuality(double minQuality);
 
-        /** Sets maximum accepted AprilTag frame age in seconds. */
+        /**
+         * Sets maximum accepted AprilTag frame age in seconds.
+         */
         AdaptiveTuningStage<RETURN> aprilTagMaxAgeSec(double maxAgeSec);
 
-        /** Supplies fixed field metadata for field-fixed AprilTag/localization reference solving. */
+        /**
+         * Supplies fixed field metadata for field-fixed AprilTag/localization reference solving.
+         */
         AdaptiveTuningStage<RETURN> fixedAprilTagLayout(TagLayout tagLayout);
 
-        /** Overrides the shared multi-tag field-pose solver config for fixed-tag solving. */
+        /**
+         * Overrides the shared multi-tag field-pose solver config for fixed-tag solving.
+         */
         AdaptiveTuningStage<RETURN> aprilTagFieldPoseConfig(FixedTagFieldPoseSolver.Config cfg);
 
-        /** Configures adaptive translation takeover hysteresis and blend timing, in inches/seconds. */
+        /**
+         * Configures adaptive translation takeover hysteresis and blend timing, in inches/seconds.
+         */
         AdaptiveTuningStage<RETURN> translationTakeover(double enterRangeInches,
                                                         double exitRangeInches,
                                                         double blendSec);
 
-        /** Configures adaptive omega arbitration. */
+        /**
+         * Configures adaptive omega arbitration.
+         */
         AdaptiveTuningStage<RETURN> omegaPolicy(DriveGuidanceSpec.OmegaPolicy omegaPolicy);
 
-        /** Chooses what guidance outputs when the requested channels cannot be solved. */
+        /**
+         * Chooses what guidance outputs when the requested channels cannot be solved.
+         */
         AdaptiveTuningStage<RETURN> onLoss(DriveGuidanceSpec.LossPolicy onLoss);
 
-        /** Returns to the parent builder after adaptive configuration. */
+        /**
+         * Returns to the parent builder after adaptive configuration.
+         */
         RETURN doneAdaptive();
     }
     // ------------------------------------------------------------------------
@@ -523,9 +689,23 @@ public final class DriveGuidance {
         TranslationTarget2d spatialTranslationTarget = (s.translationTarget instanceof DriveGuidanceSpec.RobotRelativePoint)
                 ? null
                 : s.translationTarget;
-        if (spatialTranslationTarget != null || s.facingTarget != null) {
+        if (spatialTranslationTarget != null && s.facingTarget != null) {
             spatialQuerySpec = SpatialQuerySpec.builder()
                     .translateTo(spatialTranslationTarget)
+                    .andFaceTo(s.facingTarget)
+                    .controlFrames(s.controlFrames)
+                    .solveWith(solveSetBuilder.build())
+                    .fixedAprilTagLayout(s.fixedAprilTagLayout)
+                    .build();
+        } else if (spatialTranslationTarget != null) {
+            spatialQuerySpec = SpatialQuerySpec.builder()
+                    .translateTo(spatialTranslationTarget)
+                    .controlFrames(s.controlFrames)
+                    .solveWith(solveSetBuilder.build())
+                    .fixedAprilTagLayout(s.fixedAprilTagLayout)
+                    .build();
+        } else if (s.facingTarget != null) {
+            spatialQuerySpec = SpatialQuerySpec.builder()
                     .faceTo(s.facingTarget)
                     .controlFrames(s.controlFrames)
                     .solveWith(solveSetBuilder.build())
@@ -623,13 +803,13 @@ public final class DriveGuidance {
             }
         }
 
-        boolean canLocT = s.translationTarget != null && hasLocalization
+        boolean canLocT = hasLocalization
                 && canSolveTranslationWithLocalization(s.translationTarget, s.fixedAprilTagLayout);
-        boolean canTagsT = s.translationTarget != null && hasAprilTags
+        boolean canTagsT = hasAprilTags
                 && canSolveTranslationWithAprilTags(s.translationTarget, hasLayout);
-        boolean canLocO = s.facingTarget != null && hasLocalization
+        boolean canLocO = hasLocalization
                 && canSolveAimWithLocalization(s.facingTarget, s.fixedAprilTagLayout);
-        boolean canTagsO = s.facingTarget != null && hasAprilTags
+        boolean canTagsO = hasAprilTags
                 && canSolveAimWithAprilTags(s.facingTarget, hasLayout);
 
         if (s.translationTarget instanceof DriveGuidanceSpec.RobotRelativePoint && !hasLocalization) {
@@ -698,7 +878,7 @@ public final class DriveGuidance {
     }
 
     private static String localizationFailureForFacingTarget(FacingTarget2d target,
-                                                          TagLayout layout) {
+                                                             TagLayout layout) {
         String base = "faceTo() target cannot be solved from localization(...)";
         if (target instanceof SpatialTargets.ReferencePointTarget) {
             return explainLocalizationPointFailure(
