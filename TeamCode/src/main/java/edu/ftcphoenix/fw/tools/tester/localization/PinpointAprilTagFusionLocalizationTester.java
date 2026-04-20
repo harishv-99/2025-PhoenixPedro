@@ -506,7 +506,7 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
 
         selection = TagSelections.from(tagSensor)
                 .among(ids)
-                .freshWithin(effectiveAprilTagMaxAgeSec())
+                .freshWithinSec(effectiveAprilTagMaxAgeSec())
                 .choose(TagSelectionPolicies.closestRange())
                 .continuous()
                 .build();

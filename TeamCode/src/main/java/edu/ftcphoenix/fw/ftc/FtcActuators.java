@@ -245,78 +245,48 @@ public final class FtcActuators {
         VelocityBoundsStep doneDeviceManaged();
     }
 
-    /**
-     * Required native-feedback question for regulated motor velocity control.
-     */
+    /** Required native-feedback question for regulated motor velocity control. */
     public interface MotorRegulatedVelocityFeedbackStep {
-        /**
-         * Select the native velocity feedback source used by the regulator.
-         */
+        /** Select the native velocity feedback source used by the regulator. */
         MotorRegulatedVelocityRegulatorStep nativeFeedback(VelocityFeedback feedback);
     }
 
-    /**
-     * Required regulator question for regulated motor velocity control.
-     */
+    /** Required regulator question for regulated motor velocity control. */
     public interface MotorRegulatedVelocityRegulatorStep {
-        /**
-         * Select the regulator that receives plant-unit velocity setpoint and measurement.
-         */
+        /** Select the regulator that receives plant-unit velocity setpoint and measurement. */
         VelocityBoundsStep regulator(ScalarRegulator regulator);
     }
 
-    /**
-     * Velocity target-bounds question.
-     */
+    /** Velocity target-bounds question. */
     public interface VelocityBoundsStep {
-        /**
-         * Declare a finite legal velocity target range in plant velocity units.
-         */
+        /** Declare a finite legal velocity target range in plant velocity units. */
         VelocityMappingStep bounded(double min, double max);
 
-        /**
-         * Declare that the velocity target has no software bounds.
-         */
+        /** Declare that the velocity target has no software bounds. */
         VelocityMappingStep unbounded();
     }
 
-    /**
-     * Velocity unit-mapping question.
-     */
+    /** Velocity unit-mapping question. */
     public interface VelocityMappingStep {
-        /**
-         * Native velocity units and plant velocity units are the same.
-         */
+        /** Native velocity units and plant velocity units are the same. */
         VelocityBuildStep nativeUnits();
 
-        /**
-         * Convert plant velocity units to native velocity units using a zero-preserving scale.
-         */
+        /** Convert plant velocity units to native velocity units using a zero-preserving scale. */
         VelocityBuildStep scaleToNative(double nativeUnitsPerPlantVelocityUnit);
     }
 
-    /**
-     * Final builder step for motor velocity plants.
-     */
+    /** Final builder step for motor velocity plants. */
     public interface VelocityBuildStep {
-        /**
-         * Set plant-level completion tolerance in plant velocity units.
-         */
+        /** Set plant-level completion tolerance in plant velocity units. */
         VelocityBuildStep velocityTolerance(double tolerance);
 
-        /**
-         * Rate-limit plant-unit velocity target changes symmetrically.
-         */
+        /** Rate-limit plant-unit velocity target changes symmetrically. */
         VelocityBuildStep rateLimit(double maxDeltaPerSec);
 
-        /**
-         * Rate-limit plant-unit velocity target changes asymmetrically.
-         */
+        /** Rate-limit plant-unit velocity target changes asymmetrically. */
         VelocityBuildStep rateLimit(double maxUpPerSec, double maxDownPerSec);
 
-        /**
-         * Finish the staged build.
-         */
+        /** Finish the staged build. */
         Plant build();
     }
 
@@ -730,8 +700,8 @@ public final class FtcActuators {
         public static VelocityFeedback averageInternalEncoders() { return new InternalVelocityFeedback(null, true); }
 
         /** Use an external encoder device velocity in ticks/sec. */
-        public static VelocityFeedback externalEncoder(String name) { return new ExternalVelocityFeedback(name, Direction.FORWARD);
-        }
+        public static VelocityFeedback externalEncoder(String name) {
+            return new ExternalVelocityFeedback(name, Direction.FORWARD); }
 
         /** Use an external encoder device velocity in ticks/sec with an explicit logical direction. */
         public static VelocityFeedback externalEncoder(String name, Direction direction) { return new ExternalVelocityFeedback(name, direction); }
@@ -926,8 +896,7 @@ public final class FtcActuators {
         }
 
         private ScalarSource groupedMotorVelocityMeasurement() {
-            if (specs.size() == 1)
-                return FtcSensors.motorVelocityTicksPerSec(hw, specs.get(0).name);
+            if (specs.size() == 1) return FtcSensors.motorVelocityTicksPerSec(hw, specs.get(0).name);
             List<ScalarSource> sources = new ArrayList<>();
             double[] scales = new double[specs.size()];
             double[] biases = new double[specs.size()];

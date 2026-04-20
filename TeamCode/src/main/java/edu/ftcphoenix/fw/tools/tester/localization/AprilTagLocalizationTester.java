@@ -460,7 +460,7 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
 
         selection = TagSelections.from(tagSensor)
                 .among(ids)
-                .freshWithin(effectiveMaxAgeSec)
+                .freshWithinSec(effectiveMaxAgeSec)
                 .choose(TagSelectionPolicies.closestRange())
                 .continuous()
                 .build();

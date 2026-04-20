@@ -16,7 +16,7 @@ This running list tracks framework builders that should be reviewed against the 
 - [x] `actuation/ScalarSetpointPlanner`
 - [x] `drive/guidance/DriveGuidance`
 - [x] `ftc/FtcActuators` velocity builders
-- [ ] `spatial/TagSelections`
+- [x] `spatial/TagSelections`
 - [ ] `spatial/SpatialQuery` / `spatial/SpatialQuerySpec`
 - [ ] `actuation/PositionCalibrationTasks` (make timeout choice explicit: failAfter(...) or neverTimeout())
 - [ ] `spatial/SpatialSolveSet` (empty build should fail immediately)
@@ -68,4 +68,17 @@ Velocity uses a zero-preserving mapping only; no `rangeMapsToNative(...)` is exp
 
 ## Recommended next builder
 
-Next likely target: `spatial/TagSelections`. It is user-facing and stateful, and its sticky vs continuous selection mode should be made explicit through staged choices.
+Next likely target: `spatial/SpatialQuery` / `spatial/SpatialQuerySpec`. They are lower-level than DriveGuidance, but they still expose build() before all conceptual questions are answered.
+
+### `spatial/TagSelections`
+
+Completed in the fourth builder cleanup pass. Tag selection now asks the stateful selection questions explicitly:
+
+1. choose candidate tag IDs with `among(...)`
+2. choose the detection freshness window with `freshWithinSec(...)`
+3. choose the stateless preview policy with `choose(...)`
+4. choose the state mode with `continuous()`, `stickyWhen(...)`, or `stickyUntilReset()`
+5. for sticky modes, explicitly choose loss behavior with `holdUntilDisabled()`, `holdUntilReset()`, or `reacquireAfterLossSec(...)`
+6. build
+
+The old hidden defaults for freshness, policy, and continuous mode were removed. Sticky-only loss behavior is no longer visible on continuous selectors, and units are explicit in methods that accept seconds.

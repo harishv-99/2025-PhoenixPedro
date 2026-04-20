@@ -196,9 +196,10 @@ public final class TeleOp_05_ShooterTagAimVision extends OpMode {
         // while the driver holds aim assist.
         scoringSelection = TagSelections.from(tagSensor)
                 .among(SCORING_TAG_IDS)
-                .freshWithin(MAX_TAG_AGE_SEC)
+                .freshWithinSec(MAX_TAG_AGE_SEC)
                 .choose(TagSelectionPolicies.smallestAbsRobotBearing(cameraMount))
                 .stickyWhen(gamepads.p1().leftBumper())
+                .holdUntilDisabled()
                 .build();
 
         // Build a vision-only auto-aim plan and overlay it on top of stick driving.

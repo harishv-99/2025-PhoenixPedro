@@ -144,10 +144,10 @@ public final class ScoringTargeting {
 
         scoringSelection = TagSelections.from(tagSensor)
                 .among(this.cfg.scoringTagIds())
-                .freshWithin(this.cfg.selectionMaxAgeSec)
+                .freshWithinSec(this.cfg.selectionMaxAgeSec)
                 .choose(TagSelectionPolicies.smallestAbsRobotBearing(this.cameraMountConfig))
                 .stickyWhen(this.autoAimEnabled)
-                .reacquireAfterLoss(this.cfg.selectionReacquireSec)
+                .reacquireAfterLossSec(this.cfg.selectionReacquireSec)
                 .build();
 
         DriveGuidancePlan.Tuning aimTuning = DriveGuidancePlan.Tuning.defaults()

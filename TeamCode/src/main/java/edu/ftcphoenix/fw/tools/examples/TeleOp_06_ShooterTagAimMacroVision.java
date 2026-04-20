@@ -256,9 +256,10 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
 
         scoringSelection = TagSelections.from(tagSensor)
                 .among(SCORING_TAG_IDS)
-                .freshWithin(MAX_TAG_AGE_SEC)
+                .freshWithinSec(MAX_TAG_AGE_SEC)
                 .choose(TagSelectionPolicies.smallestAbsRobotBearing(cameraMount))
                 .stickyWhen(gamepads.p1().leftBumper())
+                .holdUntilDisabled()
                 .build();
 
         // Wrap baseDrive with an auto-aim overlay: hold left bumper to auto-aim omega.

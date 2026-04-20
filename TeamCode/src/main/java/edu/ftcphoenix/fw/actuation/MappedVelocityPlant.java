@@ -128,9 +128,7 @@ public final class MappedVelocityPlant implements Plant {
             return this;
         }
 
-        /**
-         * Sets the plant-level completion tolerance in plant velocity units.
-         */
+        /** Sets the plant-level completion tolerance in plant velocity units. */
         public Builder velocityTolerance(double tolerance) {
             if (tolerance < 0.0 || !Double.isFinite(tolerance)) {
                 throw new IllegalArgumentException("velocityTolerance must be finite and >= 0");
@@ -139,9 +137,7 @@ public final class MappedVelocityPlant implements Plant {
             return this;
         }
 
-        /**
-         * Builds the mapped velocity plant.
-         */
+        /** Builds the mapped velocity plant. */
         public MappedVelocityPlant build() {
             return new MappedVelocityPlant(velocityOut,
                     regulatedPowerOut,
@@ -192,16 +188,12 @@ public final class MappedVelocityPlant implements Plant {
         return target;
     }
 
-    /**
-     * Returns the latest requested target before range clamping.
-     */
+    /** Returns the latest requested target before range clamping. */
     public double getDesiredTarget() {
         return desiredTarget;
     }
 
-    /**
-     * Returns the legal velocity target range in plant units.
-     */
+    /** Returns the legal velocity target range in plant units. */
     public ScalarRange targetRange() {
         return configuredRange;
     }

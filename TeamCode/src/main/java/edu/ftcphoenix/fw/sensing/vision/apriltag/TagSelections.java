@@ -14,14 +14,17 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
 /**
  * Factory helpers for building {@link TagSelectionSource}s.
  *
- * <p>The selector builder is intentionally small and principle-driven:</p>
- * <ul>
- *   <li><b>One loop, one heartbeat:</b> selectors are stateful sources, sampled once per loop.</li>
- *   <li><b>Selection is shared:</b> build one selector and reuse it for guidance, telemetry,
- *       shooter logic, and gating.</li>
- *   <li><b>Stickiness is explicit:</b> continuous preview, sticky-while-enabled, and sticky-until-
- *       reset are different workflows and should read differently at the call site.</li>
- * </ul>
+ * <p>A tag selector turns raw AprilTag detections into one semantic answer to "which tag does this
+ * behavior mean right now?" The staged builder intentionally asks the required questions in order:</p>
+ * <ol>
+ *   <li>which tag IDs are candidates,</li>
+ *   <li>how fresh a detection must be,</li>
+ *   <li>which policy chooses among visible candidates, and</li>
+ *   <li>whether the selector previews continuously or latches a sticky selection.</li>
+ * </ol>
+ *
+ * <p>Sticky-only loss behavior is only available after choosing a sticky mode. That keeps continuous
+ * preview selectors from seeing irrelevant options such as reacquisition timing.</p>
  */
 public final class TagSelections {
 
@@ -31,21 +34,155 @@ public final class TagSelections {
 
     /**
      * Starts building a selection source from raw detections.
+     *
+     * @param detections source of raw AprilTag detections sampled by this selector
+     * @return the first staged builder step, which requires candidate IDs
      */
-    public static Builder from(Source<AprilTagDetections> detections) {
+    public static CandidateStep from(Source<AprilTagDetections> detections) {
         return new Builder(detections);
     }
 
     /**
-     * Mutable builder used to assemble a tag selector.
+     * First selection-builder step. Choose the set of IDs the selector is allowed to consider.
      */
-    public static final class Builder {
+    public interface CandidateStep {
+        /**
+         * Candidate tag IDs to choose among.
+         *
+         * <p>The order is preserved for policies that care about configured priority, but the
+         * default policies may ignore order.</p>
+         *
+         * @param candidateIds non-empty set of non-negative AprilTag IDs
+         * @return the freshness step
+         */
+        FreshnessStep among(Set<Integer> candidateIds);
+    }
+
+    /**
+     * Freshness step. Choose how old a detection may be before it is ignored.
+     */
+    public interface FreshnessStep {
+        /**
+         * Uses only detections whose sensor-frame age is less than or equal to this many seconds.
+         *
+         * @param maxAgeSec maximum allowed detection age in seconds; must be finite and non-negative
+         * @return the policy step
+         */
+        PolicyStep freshWithinSec(double maxAgeSec);
+    }
+
+    /**
+     * Policy step. Choose how a preview winner is selected from the fresh candidates.
+     */
+    public interface PolicyStep {
+        /**
+         * Uses the supplied stateless policy to choose the preview winner each loop.
+         *
+         * @param policy policy that chooses among fresh candidate observations
+         * @return the mode step
+         */
+        ModeStep choose(TagSelectionPolicy policy);
+    }
+
+    /**
+     * Mode step. Choose whether selection is continuous or sticky.
+     */
+    public interface ModeStep {
+        /**
+         * Tracks the current preview every loop. The preview and selected tag are the same.
+         *
+         * @return a build step with no sticky-only options
+         */
+        BuildStep continuous();
+
+        /**
+         * Latches a selected tag while {@code enabled} is true and clears the selection while false.
+         *
+         * <p>After this choice, explicitly choose whether the selector should hold the original
+         * tag while enabled or reacquire a different visible tag after loss.</p>
+         *
+         * @param enabled source that owns the sticky-enabled lifecycle
+         * @return the sticky-while-enabled loss-behavior step
+         */
+        StickyWhenLossStep stickyWhen(BooleanSource enabled);
+
+        /**
+         * Latches the first valid tag and keeps selection state until {@link TagSelectionSource#reset()}
+         * or until the configured sticky loss behavior clears/reacquires it.
+         *
+         * @return the sticky-until-reset loss-behavior step
+         */
+        StickyUntilResetLossStep stickyUntilReset();
+    }
+
+    /**
+     * Loss-behavior step for selectors that are sticky only while an enable source is true.
+     */
+    public interface StickyWhenLossStep {
+        /**
+         * Keeps the selected tag identity while enabled, even if it is temporarily not fresh.
+         * The selected identity is cleared as soon as the enable source becomes false.
+         *
+         * @return the build step
+         */
+        BuildStep holdUntilDisabled();
+
+        /**
+         * Allows the selector to clear or reacquire after the selected tag has been lost for the
+         * supplied number of seconds while still enabled.
+         *
+         * @param reacquireAfterLossSec loss duration in seconds before a sticky selector may
+         *                              reacquire; must be finite and non-negative
+         * @return the build step
+         */
+        BuildStep reacquireAfterLossSec(double reacquireAfterLossSec);
+    }
+
+    /**
+     * Loss-behavior step for selectors that stay sticky until reset.
+     */
+    public interface StickyUntilResetLossStep {
+        /**
+         * Keeps the selected tag identity until {@link TagSelectionSource#reset()} is called.
+         *
+         * @return the build step
+         */
+        BuildStep holdUntilReset();
+
+        /**
+         * Allows the selector to clear or reacquire after the selected tag has been lost for the
+         * supplied number of seconds.
+         *
+         * @param reacquireAfterLossSec loss duration in seconds before a sticky selector may
+         *                              reacquire; must be finite and non-negative
+         * @return the build step
+         */
+        BuildStep reacquireAfterLossSec(double reacquireAfterLossSec);
+    }
+
+    /**
+     * Final build step. All required selection questions have been answered.
+     */
+    public interface BuildStep {
+        /**
+         * Builds the stateful selector source.
+         */
+        TagSelectionSource build();
+    }
+
+    private static final class Builder implements CandidateStep,
+            FreshnessStep,
+            PolicyStep,
+            ModeStep,
+            StickyWhenLossStep,
+            StickyUntilResetLossStep,
+            BuildStep {
         private final Source<AprilTagDetections> detections;
-        private Set<Integer> candidateIds = Collections.emptySet();
-        private double maxAgeSec = 0.25;
-        private TagSelectionPolicy policy = TagSelectionPolicies.closestRange();
-        private Mode mode = Mode.CONTINUOUS;
-        private BooleanSource enabled = null;
+        private Set<Integer> candidateIds;
+        private double maxAgeSec = Double.NaN;
+        private TagSelectionPolicy policy;
+        private Mode mode;
+        private BooleanSource enabled;
         private double reacquireAfterLossSec = Double.POSITIVE_INFINITY;
 
         Builder(Source<AprilTagDetections> detections) {
@@ -53,9 +190,10 @@ public final class TagSelections {
         }
 
         /**
-         * Candidate tag IDs to choose among.
+         * {@inheritDoc}
          */
-        public Builder among(Set<Integer> candidateIds) {
+        @Override
+        public FreshnessStep among(Set<Integer> candidateIds) {
             Objects.requireNonNull(candidateIds, "candidateIds");
             if (candidateIds.isEmpty()) {
                 throw new IllegalArgumentException("candidateIds must not be empty");
@@ -75,77 +213,114 @@ public final class TagSelections {
         }
 
         /**
-         * Freshness window for candidates.
+         * {@inheritDoc}
          */
-        public Builder freshWithin(double maxAgeSec) {
+        @Override
+        public PolicyStep freshWithinSec(double maxAgeSec) {
+            if (!Double.isFinite(maxAgeSec) || maxAgeSec < 0.0) {
+                throw new IllegalArgumentException("maxAgeSec must be finite and >= 0");
+            }
             this.maxAgeSec = maxAgeSec;
             return this;
         }
 
-        /**
-         * Selection policy.
-         */
-        public Builder choose(TagSelectionPolicy policy) {
+        /** {@inheritDoc} */
+        @Override
+        public ModeStep choose(TagSelectionPolicy policy) {
             this.policy = Objects.requireNonNull(policy, "policy");
             return this;
         }
 
-        /**
-         * The selected tag tracks the current preview every loop.
-         */
-        public Builder continuous() {
+        /** {@inheritDoc} */
+        @Override
+        public BuildStep continuous() {
             this.mode = Mode.CONTINUOUS;
             this.enabled = null;
+            this.reacquireAfterLossSec = Double.POSITIVE_INFINITY;
             return this;
         }
 
         /**
-         * Latch a tag while {@code enabled} is true, previewing while false.
+         * {@inheritDoc}
          */
-        public Builder stickyWhen(BooleanSource enabled) {
+        @Override
+        public StickyWhenLossStep stickyWhen(BooleanSource enabled) {
             this.mode = Mode.STICKY_WHEN;
             this.enabled = Objects.requireNonNull(enabled, "enabled");
+            this.reacquireAfterLossSec = Double.POSITIVE_INFINITY;
             return this;
         }
 
-        /**
-         * Latch the first valid tag and keep it until {@link TagSelectionSource#reset()} is called.
-         */
-        public Builder stickyUntilReset() {
+        /** {@inheritDoc} */
+        @Override
+        public StickyUntilResetLossStep stickyUntilReset() {
             this.mode = Mode.STICKY_UNTIL_RESET;
             this.enabled = null;
+            this.reacquireAfterLossSec = Double.POSITIVE_INFINITY;
             return this;
         }
 
         /**
-         * Allows a sticky selector to clear / reacquire after the selected tag has been lost for
-         * this long. Leave at positive infinity to keep the selected identity until reset.
+         * {@inheritDoc}
          */
-        public Builder reacquireAfterLoss(double reacquireAfterLossSec) {
+        @Override
+        public BuildStep holdUntilDisabled() {
+            requireMode(Mode.STICKY_WHEN, "holdUntilDisabled()");
+            this.reacquireAfterLossSec = Double.POSITIVE_INFINITY;
+            return this;
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public BuildStep holdUntilReset() {
+            requireMode(Mode.STICKY_UNTIL_RESET, "holdUntilReset()");
+            this.reacquireAfterLossSec = Double.POSITIVE_INFINITY;
+            return this;
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public BuildStep reacquireAfterLossSec(double reacquireAfterLossSec) {
+            if (this.mode != Mode.STICKY_WHEN && this.mode != Mode.STICKY_UNTIL_RESET) {
+                throw new IllegalStateException("reacquireAfterLossSec(...) is only valid after choosing a sticky mode");
+            }
+            if (!Double.isFinite(reacquireAfterLossSec) || reacquireAfterLossSec < 0.0) {
+                throw new IllegalArgumentException("reacquireAfterLossSec must be finite and >= 0");
+            }
             this.reacquireAfterLossSec = reacquireAfterLossSec;
             return this;
         }
 
-        /**
-         * Builds the selector.
-         */
+        /** {@inheritDoc} */
+        @Override
         public TagSelectionSource build() {
-            if (candidateIds.isEmpty()) {
+            if (candidateIds == null || candidateIds.isEmpty()) {
                 throw new IllegalStateException("TagSelections requires among(...) before build()");
             }
             if (!Double.isFinite(maxAgeSec) || maxAgeSec < 0.0) {
-                throw new IllegalStateException("freshWithin(...): maxAgeSec must be >= 0");
+                throw new IllegalStateException("TagSelections requires freshWithinSec(...) before build()");
             }
-            if (!Double.isFinite(reacquireAfterLossSec) && reacquireAfterLossSec != Double.POSITIVE_INFINITY) {
-                throw new IllegalStateException("reacquireAfterLoss(...): value must be finite or +infinity");
+            if (policy == null) {
+                throw new IllegalStateException("TagSelections requires choose(...) before build()");
             }
-            if (Double.isFinite(reacquireAfterLossSec) && reacquireAfterLossSec < 0.0) {
-                throw new IllegalStateException("reacquireAfterLoss(...): value must be >= 0");
+            if (mode == null) {
+                throw new IllegalStateException("TagSelections requires continuous(), stickyWhen(...), or stickyUntilReset() before build()");
             }
             if (mode == Mode.STICKY_WHEN && enabled == null) {
                 throw new IllegalStateException("stickyWhen(...) requires a BooleanSource");
             }
             return new BuiltSelectionSource(detections, candidateIds, maxAgeSec, policy, mode, enabled, reacquireAfterLossSec);
+        }
+
+        private void requireMode(Mode expected, String methodName) {
+            if (mode != expected) {
+                throw new IllegalStateException(methodName + " is only valid after "
+                        + (expected == Mode.STICKY_WHEN ? "stickyWhen(...)" : "stickyUntilReset()"));
+            }
         }
     }
 
@@ -419,6 +594,7 @@ public final class TagSelections {
                     .addData(p + ".mode", mode.name())
                     .addData(p + ".selectedTagId", selectedTagId)
                     .addData(p + ".latched", latched)
+                    .addData(p + ".reacquireAfterLossSec", reacquireAfterLossSec)
                     .addData(p + ".reason", lastReason)
                     .addData(p + ".metricValue", lastMetricValue);
             detections.debugDump(dbg, p + ".detections");

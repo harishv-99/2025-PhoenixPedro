@@ -43,9 +43,10 @@ The examples then build a selector like this:
 TagSelectionSource scoringSelection =
         TagSelections.from(tagSensor)
                 .among(SCORING_TAG_IDS)
-                .freshWithin(MAX_TAG_AGE_SEC)
+                .freshWithinSec(MAX_TAG_AGE_SEC)
                 .choose(TagSelectionPolicies.smallestAbsRobotBearing(cameraMount))
                 .stickyWhen(gamepads.p1().leftBumper())
+                .holdUntilDisabled()
                 .build();
 ```
 
@@ -53,6 +54,7 @@ That means:
 
 - before the driver holds aim, the selector previews the likely winner,
 - when aim is enabled, the selector latches the tag the robot is most directly facing,
+- `holdUntilDisabled()` keeps that identity while the driver keeps holding aim,
 - aim, shooter range, and telemetry all reuse that one decision.
 
 ---
@@ -213,10 +215,11 @@ Older versions often used a helper that silently picked the “best” tag.
 The current design deliberately avoids that hidden policy.
 
 Now the robot code states:
-
 - where detections come from,
+- which candidate IDs and freshness window are valid,
 - which selection policy is used,
-- when the tag becomes sticky,
+- whether selection is continuous or sticky,
+- how sticky selection behaves on tag loss,
 - and how guidance behaves on loss.
 
 That makes the examples easier to understand and much easier to debug.
