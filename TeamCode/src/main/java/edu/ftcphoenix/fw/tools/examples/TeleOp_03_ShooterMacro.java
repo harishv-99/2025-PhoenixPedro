@@ -252,6 +252,9 @@ public final class TeleOp_03_ShooterMacro extends OpMode {
         pusher = FtcActuators.plant(hardwareMap)
                 .servo(HW_PUSHER, Direction.FORWARD)
                 .position()
+                .linear()
+                .bounded(0.0, 1.0)
+                .nativeUnits()
                 .build();
 
         // Initialize mechanisms to a safe default.

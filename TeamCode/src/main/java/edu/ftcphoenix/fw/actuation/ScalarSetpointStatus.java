@@ -97,21 +97,21 @@ public final class ScalarSetpointStatus {
     }
 
     /**
-     * Returns the selected setpoint in native plant units.
+     * Returns the selected setpoint in plant units.
      */
     public double getSetpoint() {
         return setpoint;
     }
 
     /**
-     * Returns the measured value in native plant units.
+     * Returns the measured value in plant units.
      */
     public double getMeasurement() {
         return measurement;
     }
 
     /**
-     * Returns setpoint - measurement in native plant units.
+     * Returns setpoint - measurement in plant units.
      */
     public double getError() {
         return error;

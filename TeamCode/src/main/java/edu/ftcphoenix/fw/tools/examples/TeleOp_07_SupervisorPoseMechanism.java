@@ -69,6 +69,9 @@ public final class TeleOp_07_SupervisorPoseMechanism extends OpMode {
         Plant wristPlant = FtcActuators.plant(hardwareMap)
                 .servo(HW_WRIST, Direction.FORWARD)
                 .position()
+                .linear()
+                .bounded(0.0, 1.0)
+                .nativeUnits()
                 .build();
 
         wrist = new WristSubsystem(wristPlant);

@@ -122,7 +122,7 @@ fixedAprilTagLayout(...)
 The output boundary is different:
 
 - Drive Guidance maps spatial results to drivetrain `DriveSignal` commands.
-- Scalar Setpoint Planning maps requests to native-unit `Plant` setpoints.
+- Scalar Setpoint Planning maps requests to caller-facing plant-unit setpoints.
 
 The framework keeps this difference because a drivetrain command domain is known, but a mechanism may use ticks, inches, servo positions, rotations, or another scalar coordinate.
 

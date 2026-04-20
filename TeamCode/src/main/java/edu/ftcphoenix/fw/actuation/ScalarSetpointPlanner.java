@@ -22,7 +22,9 @@ import edu.ftcphoenix.fw.spatial.TranslationTarget2d;
  * Runtime planner that turns scalar requests into feasible plant-domain setpoints.
  *
  * <p>The planner is unit-agnostic. Requests, measurements, range limits, tolerances, and output
- * setpoints must all be in the same native coordinate used by the downstream {@link Plant}.</p>
+ * setpoints must all be in the same caller-facing coordinate used by the downstream {@link Plant}.
+ * For {@link PositionPlant}s created by the guided FTC builder, that means plant units, not
+ * hardware-native units unless the builder explicitly chose native units.</p>
  */
 public final class ScalarSetpointPlanner implements Source<ScalarSetpointStatus> {
 
@@ -44,6 +46,7 @@ public final class ScalarSetpointPlanner implements Source<ScalarSetpointStatus>
     private final Source<ScalarSetpointRequest> requestSource;
     private final ScalarSource measurementSource;
     private final Source<ScalarRange> rangeSource;
+    private final Source<Double> plantPeriodSource;
     private final Config config;
 
     private long lastCycle = Long.MIN_VALUE;
@@ -57,9 +60,18 @@ public final class ScalarSetpointPlanner implements Source<ScalarSetpointStatus>
                                  ScalarSource measurementSource,
                                  Source<ScalarRange> rangeSource,
                                  Config config) {
+        this(requestSource, measurementSource, rangeSource, null, config);
+    }
+
+    private ScalarSetpointPlanner(Source<ScalarSetpointRequest> requestSource,
+                                  ScalarSource measurementSource,
+                                  Source<ScalarRange> rangeSource,
+                                  Source<Double> plantPeriodSource,
+                                  Config config) {
         this.requestSource = Objects.requireNonNull(requestSource, "requestSource");
         this.measurementSource = Objects.requireNonNull(measurementSource, "measurementSource");
         this.rangeSource = rangeSource != null ? rangeSource : ScalarRange.unboundedSource();
+        this.plantPeriodSource = plantPeriodSource;
         this.config = config != null ? config.copy() : Config.defaults();
     }
 
@@ -81,6 +93,7 @@ public final class ScalarSetpointPlanner implements Source<ScalarSetpointStatus>
         if (lastStatus != null && lastCycle == clock.cycle()) {
             return lastStatus;
         }
+        lastClockForPeriod = clock;
         double measurement = measurementSource.getAsDouble(clock);
         ScalarRange range = rangeSource.get(clock);
         if (range == null || !range.valid) {
@@ -162,23 +175,28 @@ public final class ScalarSetpointPlanner implements Source<ScalarSetpointStatus>
             return null;
         }
 
+        double period = c.usesPlantPeriod ? currentPlantPeriod() : c.period;
+        if (!(period > 0.0) || !Double.isFinite(period)) {
+            return null;
+        }
+
         if (range.isUnbounded()) {
             double k;
             if (config.candidatePreference == CandidatePreference.PREFER_INCREASING) {
-                k = Math.ceil((measurement - base) / c.period);
+                k = Math.ceil((measurement - base) / period);
             } else if (config.candidatePreference == CandidatePreference.PREFER_DECREASING) {
-                k = Math.floor((measurement - base) / c.period);
+                k = Math.floor((measurement - base) / period);
             } else {
-                k = Math.rint((measurement - base) / c.period);
+                k = Math.rint((measurement - base) / period);
             }
-            return new CandidateChoice(c, base + k * c.period, true, false);
+            return new CandidateChoice(c, base + k * period, true, false);
         }
 
-        double minK = Double.isFinite(range.minValue) ? Math.ceil((range.minValue - base) / c.period) : Math.rint((measurement - base) / c.period) - 8;
-        double maxK = Double.isFinite(range.maxValue) ? Math.floor((range.maxValue - base) / c.period) : Math.rint((measurement - base) / c.period) + 8;
+        double minK = Double.isFinite(range.minValue) ? Math.ceil((range.minValue - base) / period) : Math.rint((measurement - base) / period) - 8;
+        double maxK = Double.isFinite(range.maxValue) ? Math.floor((range.maxValue - base) / period) : Math.rint((measurement - base) / period) + 8;
         CandidateChoice best = null;
         for (long k = (long) minK; k <= (long) maxK; k++) {
-            double v = base + k * c.period;
+            double v = base + k * period;
             if (!range.contains(v)) {
                 continue;
             }
@@ -195,6 +213,16 @@ public final class ScalarSetpointPlanner implements Source<ScalarSetpointStatus>
         }
         return null;
     }
+
+    private double currentPlantPeriod() {
+        if (plantPeriodSource == null || lastClockForPeriod == null) {
+            return Double.NaN;
+        }
+        Double period = plantPeriodSource.get(lastClockForPeriod);
+        return period != null ? period : Double.NaN;
+    }
+
+    private LoopClock lastClockForPeriod;
 
     private double score(CandidateChoice choice, double measurement, ScalarRange range) {
         if (config.candidatePreference == CandidatePreference.PREFER_INCREASING) {
@@ -222,6 +250,9 @@ public final class ScalarSetpointPlanner implements Source<ScalarSetpointStatus>
         requestSource.reset();
         measurementSource.reset();
         rangeSource.reset();
+        if (plantPeriodSource != null) {
+            plantPeriodSource.reset();
+        }
         lastCycle = Long.MIN_VALUE;
         lastStatus = null;
         lastSetpoint = Double.NaN;
@@ -341,6 +372,7 @@ public final class ScalarSetpointPlanner implements Source<ScalarSetpointStatus>
         private Source<ScalarSetpointRequest> request;
         private ScalarSource measurement;
         private Source<ScalarRange> range = ScalarRange.unboundedSource();
+        private Source<Double> plantPeriod;
         private Config config = Config.defaults();
 
         /**
@@ -352,7 +384,7 @@ public final class ScalarSetpointPlanner implements Source<ScalarSetpointStatus>
         }
 
         /**
-         * Supplies the current measurement in the same native units as the plant target.
+         * Supplies the current measurement in the same caller-facing units as the plant target.
          */
         public Builder measurement(ScalarSource measurement) {
             this.measurement = measurement;
@@ -372,6 +404,25 @@ public final class ScalarSetpointPlanner implements Source<ScalarSetpointStatus>
          */
         public Builder range(ScalarRange range) {
             this.range = clock -> range;
+            return this;
+        }
+
+        /**
+         * Uses a {@link PositionPlant} as the measurement/range/period source for this planner.
+         *
+         * <p>Planner requests remain in the plant's caller-facing position units. If a request uses
+         * {@link ScalarSetpointRequest#equivalentPosition(String, double)}, the planner expands
+         * equivalent candidates with the plant's declared period. Linear plants do not provide a
+         * period, so equivalent-position requests will be blocked rather than silently treated as
+         * exact targets.</p>
+         */
+        public Builder forPositionPlant(PositionPlant plant) {
+            Objects.requireNonNull(plant, "plant");
+            this.measurement = plant.positionSource();
+            this.range = plant.targetRangeSource();
+            this.plantPeriod = clock -> plant.topology() == PositionPlant.Topology.PERIODIC
+                    ? plant.period()
+                    : Double.NaN;
             return this;
         }
 
@@ -400,7 +451,7 @@ public final class ScalarSetpointPlanner implements Source<ScalarSetpointStatus>
         }
 
         /**
-         * Sets at-setpoint tolerance in native plant units.
+         * Sets at-setpoint tolerance in the same caller-facing units as the plant target.
          */
         public Builder atSetpointTolerance(double tol) {
             this.config = config.withAtSetpointTolerance(tol);
@@ -408,7 +459,7 @@ public final class ScalarSetpointPlanner implements Source<ScalarSetpointStatus>
         }
 
         /**
-         * Sets original-request satisfied tolerance in native plant units.
+         * Sets original-request satisfied tolerance in the same caller-facing units as the plant target.
          */
         public Builder requestSatisfiedTolerance(double tol) {
             this.config = config.withRequestSatisfiedTolerance(tol);
@@ -446,19 +497,19 @@ public final class ScalarSetpointPlanner implements Source<ScalarSetpointStatus>
                 throw new IllegalStateException("ScalarSetpointPlanner requires request(...)");
             if (measurement == null)
                 throw new IllegalStateException("ScalarSetpointPlanner requires measurement(...)");
-            return new ScalarSetpointPlanner(request, measurement, range, config);
+            return new ScalarSetpointPlanner(request, measurement, range, plantPeriod, config);
         }
     }
 
     /**
-     * Maps selected spatial facing into a native-unit scalar request.
+     * Maps selected spatial facing into a plant-domain scalar request.
      */
     public interface FacingRequestMapper {
         ScalarSetpointRequest map(SpatialFacingSelection facing, LoopClock clock);
     }
 
     /**
-     * Maps selected spatial translation into a native-unit scalar request.
+     * Maps selected spatial translation into a plant-domain scalar request.
      */
     public interface TranslationRequestMapper {
         ScalarSetpointRequest map(SpatialTranslationSelection translation, LoopClock clock);
@@ -531,7 +582,7 @@ public final class ScalarSetpointPlanner implements Source<ScalarSetpointStatus>
         }
 
         /**
-         * Maps selected facing result to a native-unit scalar request.
+         * Maps selected facing result to a plant-domain scalar request.
          */
         public SpatialRequestBuilder mapFacingToRequest(FacingRequestMapper mapper) {
             this.facingMapper = mapper;
@@ -539,7 +590,7 @@ public final class ScalarSetpointPlanner implements Source<ScalarSetpointStatus>
         }
 
         /**
-         * Maps selected translation result to a native-unit scalar request.
+         * Maps selected translation result to a plant-domain scalar request.
          */
         public SpatialRequestBuilder mapTranslationToRequest(TranslationRequestMapper mapper) {
             this.translationMapper = mapper;

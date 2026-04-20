@@ -1,36 +1,53 @@
 # Mechanism Setpoint Planning
 
-`ScalarSetpointPlanner` sits **above a `Plant`**. It turns semantic or computed requests into a feasible scalar setpoint in the plant's native units.
+`ScalarSetpointPlanner` sits **above a `Plant`**. It turns semantic or computed requests into a
+feasible scalar setpoint in the same caller-facing units as the downstream Plant target.
 
-It does not run the actuator PID. The `Plant` still owns low-level regulation. The planner decides which target value is safe and meaningful to command.
+It does not run the actuator PID. The `Plant` still owns low-level regulation. The planner decides
+which target value is safe and meaningful to command.
 
 ```text
 controller / service
     decides behavior is active
         ↓
 request source
-    exact, periodic, one-of, relative, or spatial-derived request
+    exact, equivalent-position, explicit-period, one-of, relative, or spatial-derived request
         ↓
 ScalarSetpointPlanner
     applies range, periodicity, candidate choice, loss policy
         ↓
 Plant.setTarget(...)
-    low-level regulation in native plant units
+    low-level regulation in the plant's public units
 ```
 
-## Native units only
+## Unit rule
 
-The scalar planner is unit-agnostic. These must all use the same coordinate system:
+The scalar planner is unit-agnostic. These must all use the same public plant coordinate:
 
 - request value
-- request period
+- request period, when an explicit period is supplied
 - measurement
 - range limits
 - tolerances
 - planner output setpoint
 - `Plant` target
 
-For a ticks-based turret, all values are ticks. For an inches-based extension, all values are inches. For a servo plant, all values are servo units. Calibration and unit conversion happen in robot/mechanism code before the request reaches the planner.
+For a ticks-based turret, all values may be ticks. For an inches-based extension, all values are
+inches. For a servo claw built with `rangeMapsToNative(0.30, 0.80)`, robot code and planner values
+can be logical `0.0..1.0` while the Plant maps those to raw servo fractions internally.
+
+For `PositionPlant`s built through `FtcActuators`, the preferred planner setup is:
+
+```java
+ScalarSetpointPlanner planner = ScalarSetpoints.plan()
+        .forPositionPlant(positionPlant)
+        .request(requestSource)
+        .build();
+```
+
+That pulls the plant-unit measurement, dynamic target range, and periodicity from the plant itself.
+If the plant still needs a reference, the range source is invalid and the planner blocks instead of
+producing an unsafe target.
 
 ## When to use the planner
 
@@ -49,42 +66,80 @@ liftPlant.setTarget(BASKET_TICKS);
 liftPlant.update(clock);
 ```
 
-That is fine for many beginner cases. Reach for the planner when the target is selected, constrained, periodic, or contextual.
+That is fine for many beginner cases. Reach for the planner when the target is selected,
+constrained, periodic, or contextual.
 
 ## Exact request: lift preset
 
 ```java
+PositionPlant lift = FtcActuators.plant(hardwareMap)
+        .motor("lift", Direction.FORWARD)
+        .position()
+        .deviceManagedWithDefaults()
+        .linear()
+            .bounded(0.0, 4200.0)
+            .nativeUnits()
+            .needsReference("lift not homed")
+        .positionTolerance(20.0)
+        .build();
+
 ScalarSetpointPlanner liftPlanner = ScalarSetpoints.plan()
+        .forPositionPlant(lift)
         .request(clock -> ScalarSetpointRequest.exact("basket", BASKET_TICKS))
-        .measurement(liftTicks)
-        .range(ScalarRange.bounded(LOWEST_TICKS, HIGHEST_TICKS))
         .atSetpointTolerance(20.0)
         .requestSatisfiedTolerance(20.0)
         .build();
-
-ScalarSetpointStatus s = liftPlanner.get(clock);
-if (s.hasSetpoint()) {
-    liftPlant.setTarget(s.getSetpoint());
-}
-liftPlant.update(clock);
 ```
 
-## Periodic request: free spinner
+Before homing, `lift.targetRangeSource()` reports `ScalarRange.invalid("lift not homed")`, so the
+planner blocks. After a homing task establishes the reference, the same planner produces bounded
+plant-unit setpoints.
 
-A free spinner has no cable limits. If one full revolution is `9000` ticks, the same alignment repeats every `9000` ticks.
+Loop usage:
 
 ```java
-ScalarSetpointPlanner spinnerPlanner = ScalarSetpoints.plan()
-        .request(clock -> ScalarSetpointRequest.periodic("align-mark", alignTicks, 9000.0))
-        .measurement(spinnerTicks)
-        .range(ScalarRange.unbounded())
+ScalarSetpointStatus s = liftPlanner.get(clock);
+if (s.hasSetpoint()) {
+    lift.setTarget(s.getSetpoint());
+}
+lift.update(clock);
+```
+
+## Equivalent-position request: free spinner or tray
+
+A free spinner/tray can declare its own period in plant units. If robot code wants to speak in
+degrees while the motor uses ticks, use `scaleToNative(...)`.
+
+```java
+PositionPlant tray = FtcActuators.plant(hardwareMap)
+        .motor("tray", Direction.FORWARD)
+        .position()
+        .deviceManagedWithDefaults()
+        .periodic(360.0)
+            .unbounded()
+            .scaleToNative(TRAY_TICKS_PER_DEGREE)
+            .needsReference("tray index mark not found")
+        .positionTolerance(2.0)
+        .build();
+```
+
+After the tray is indexed, a request can say "slot 2 is at 240 degrees modulo the plant's period":
+
+```java
+ScalarSetpointPlanner trayPlanner = ScalarSetpoints.plan()
+        .forPositionPlant(tray)
+        .request(clock -> ScalarSetpointRequest.equivalentPosition("slot-2", 240.0))
         .candidatePreference(ScalarSetpointPlanner.CandidatePreference.NEAREST_TO_MEASUREMENT)
         .build();
 ```
 
+The request does not repeat the period. The plant owns that topology. If the plant were linear,
+`equivalentPosition(...)` would not produce a setpoint because no plant period exists.
+
 ## One-of candidates: tray with colored artifacts
 
-A tray has three slots. Some slots may contain purple artifacts. The robot-specific tray service decides which slots are purple; the scalar planner chooses the nearest feasible slot alignment.
+A tray service can convert robot-specific inventory into plant-unit candidates. The planner chooses
+the nearest feasible representative.
 
 ```java
 Source<ScalarSetpointRequest> purpleToOutput = clock -> {
@@ -92,11 +147,10 @@ Source<ScalarSetpointRequest> purpleToOutput = clock -> {
 
     for (int slot = 0; slot < 3; slot++) {
         if (inventory.colorAt(slot) == ArtifactColor.PURPLE) {
-            double alignTicks = trayCalibration.alignSlotToOutputTicks(slot);
-            candidates.add(ScalarSetpointCandidate.periodic(
+            double alignDeg = trayModel.alignSlotToOutputDegrees(slot);
+            candidates.add(ScalarSetpointCandidate.equivalentPosition(
                     "slot-" + slot + "-purple",
-                    alignTicks,
-                    trayCalibration.ticksPerRevolution()
+                    alignDeg
             ));
         }
     }
@@ -107,15 +161,14 @@ Source<ScalarSetpointRequest> purpleToOutput = clock -> {
 };
 
 ScalarSetpointPlanner trayPlanner = ScalarSetpoints.plan()
+        .forPositionPlant(tray)
         .request(purpleToOutput)
-        .measurement(trayCalibration.positionTicksSource())
-        .range(ScalarRange.unbounded())
         .candidatePreference(ScalarSetpointPlanner.CandidatePreference.NEAREST_TO_MEASUREMENT)
-        .atSetpointTolerance(20.0)
+        .atSetpointTolerance(2.0)
         .build();
 ```
 
-The planner does not know what “purple” means. It only sees native-unit candidates.
+The planner does not know what “purple” means. It only sees plant-unit candidates.
 
 ## Spatial-derived request: turret with camera and localization fallback
 
@@ -124,9 +177,20 @@ A turret can use one `SpatialQuery` with two lanes:
 1. live AprilTags from the turret-mounted camera
 2. absolute pose / localization fallback
 
-Then the scalar builder maps the selected facing solution into native turret ticks.
+Then the scalar builder maps the selected facing solution into the turret Plant's public units.
 
 ```java
+PositionPlant turret = FtcActuators.plant(hardwareMap)
+        .motor("turret", Direction.FORWARD)
+        .position()
+        .deviceManagedWithDefaults()
+        .periodic(360.0)
+            .bounded(-225.0, 225.0)
+            .scaleToNative(TURRET_TICKS_PER_DEGREE)
+            .needsReference("turret not homed")
+        .positionTolerance(1.5)
+        .build();
+
 SpatialSolutionGate gate = SpatialSolutionGate.builder()
         .maxAgeSec(0.20)
         .minQuality(0.45)
@@ -150,45 +214,32 @@ ScalarSetpointPlanner turretPlanner = ScalarSetpoints.plan()
             .fixedAprilTagLayout(fixedTagLayout)
             .selectWith(gate)
             .mapFacingToRequest((facing, clock) -> {
-                double targetTicks = turretCalibration.zeroTicks()
-                        + turretCalibration.facingAngleRadToTicks(facing.facingErrorRad());
-
-                return ScalarSetpointRequest.periodic(
+                double targetDeg = Math.toDegrees(facing.facingErrorRad());
+                return ScalarSetpointRequest.equivalentPosition(
                         facing.sourceId(),
-                        targetTicks,
-                        turretCalibration.ticksPerTurn(),
+                        targetDeg,
                         facing.quality(),
                         facing.ageSec(),
                         facing.timestampSec()
                 );
             })
             .doneRequest()
-        .measurement(turretCalibration.positionTicksSource())
-        .range(turretCalibration.travelRangeTicksSource())
+        .forPositionPlant(turret)
         .candidatePreference(ScalarSetpointPlanner.CandidatePreference.NEAREST_TO_MEASUREMENT)
         .lossPolicy(ScalarSetpointPlanner.LossPolicy.HOLD_LAST_SETPOINT)
-        .atSetpointTolerance(25.0)
-        .requestSatisfiedTolerance(35.0)
+        .atSetpointTolerance(1.5)
+        .requestSatisfiedTolerance(2.0)
         .build();
 ```
 
-Loop usage stays short:
-
-```java
-ScalarSetpointStatus s = turretPlanner.get(clock);
-
-if (autoAimEnabled.getAsBoolean(clock) && s.hasSetpoint()) {
-    turretPlant.setTarget(s.getSetpoint());
-}
-
-turretPlant.update(clock);
-```
-
-`atSetpoint()` and `requestSatisfied()` are intentionally different. If cable limits force the setpoint to clamp, the plant may be at the clamped setpoint while the original request is not truly satisfied.
+`atSetpoint()` and `requestSatisfied()` are intentionally different. If cable limits force the
+setpoint to clamp, the plant may be at the clamped setpoint while the original request is not truly
+satisfied.
 
 ## Translation-derived request: extension toward a pickup point
 
-`requestFromSpatial().translateTo(...)` is for cases where field geometry should become a native scalar target through robot-specific kinematics.
+`requestFromSpatial().translateTo(...)` is for cases where field geometry should become a scalar
+target through robot-specific kinematics.
 
 ```java
 ScalarSetpointPlanner extensionPlanner = ScalarSetpoints.plan()
@@ -201,39 +252,44 @@ ScalarSetpointPlanner extensionPlanner = ScalarSetpoints.plan()
             .solveWith(solveSet)
             .selectWith(gate)
             .mapTranslationToRequest((translation, clock) -> {
-                double extensionTicks = pickupKinematics.extensionTicksFor(
+                double extensionInches = pickupKinematics.extensionInchesFor(
                         translation.solution.frameForwardInches(),
                         translation.solution.frameLeftInches()
                 );
                 return ScalarSetpointRequest.exact(
                         "pickup-extension",
-                        extensionTicks,
+                        extensionInches,
                         translation.quality(),
                         translation.ageSec(),
                         translation.timestampSec()
                 );
             })
             .doneRequest()
-        .measurement(extensionTicks)
-        .range(extensionTravelRange)
+        .forPositionPlant(extension)
         .build();
 ```
 
-The framework solves the spatial relationship. Robot-specific kinematics map that relationship into plant units.
+The framework solves the spatial relationship. Robot-specific kinematics map that relationship into
+plant units.
 
 ## Calibration belongs next to the mechanism
 
-The scalar planner assumes the mechanism coordinate is already meaningful. A turret service might track:
+The scalar planner assumes the mechanism coordinate is meaningful or that the PositionPlant will
+publish an invalid range until it becomes meaningful. A turret or lift service owns homing/indexing
+Tasks and semantic goals.
 
-- raw encoder ticks
-- zero ticks for the turret tool frame
-- ticks per full turret turn
-- homed left/right cable limits
-- whether travel range is valid yet
+```java
+Task homeLift = PositionCalibrationTasks.search(lift)
+        .withPower(-0.20)
+        .until(bottomSwitch)
+        .establishReferenceAt(0.0)
+        .thenHold(0.0)
+        .failAfter(3.0)
+        .build();
+```
 
-Before homing, publish `ScalarRange.invalid("turret not homed")`. After homing, publish `ScalarRange.bounded(leftTicks, rightTicks)`.
-
-The planner should not decide when zero is trustworthy. That is a robot/mechanism service responsibility.
+The planner should not decide when zero is trustworthy. Homing, indexing, manual zeroing, and
+semantic presets belong in the robot mechanism/service layer.
 
 ## Parallel with Drive Guidance
 
@@ -255,11 +311,11 @@ ScalarSetpointPlanner turretPlanner = ScalarSetpoints.plan()
             .controlFrames(SpatialControlFrames.robotCenter().withFacingFrame(robotToTurretFrame))
             .solveWith(solveSet)
             .fixedAprilTagLayout(tagLayout)
-            .mapFacingToRequest(turretNativeUnitMapper)
+            .mapFacingToRequest(turretFacingMapper)
             .doneRequest()
-        .measurement(turretTicks)
-        .range(turretRange)
+        .forPositionPlant(turret)
         .build();
 ```
 
-The principled difference is the output boundary: Drive Guidance knows how to turn a facing error into drivetrain omega. A scalar mechanism must map spatial geometry into its own native plant units.
+The principled difference is the output boundary: Drive Guidance knows how to turn a facing error
+into drivetrain omega. A scalar mechanism must map spatial geometry into its own public plant units.

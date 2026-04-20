@@ -232,45 +232,44 @@ The builder has three stages:
     * `.velocity()` – motor velocity control.
     * `.position()` – position control.
 
-3. **Optionally override the control strategy**:
+3. **For position Plants, answer guided position questions**:
 
-    * No-arg motor `.velocity()` / `.position()` use the device-managed FTC motor path.
-    * Advanced overloads let you switch to framework-regulated control:
-      * `.velocity(MotorVelocityControl.regulated(...))`
-      * `.position(MotorPositionControl.regulated(...))`
-      * `.position(CrServoPositionControl.regulated(...))` for CR servos.
+    * Motor position asks who manages the loop:
+      * `.deviceManagedWithDefaults()` for FTC `RUN_TO_POSITION` defaults.
+      * `.deviceManaged() ... .doneDeviceManaged()` when you want FTC motor tuning knobs.
+      * `.regulated() ... .regulator(...)` when Phoenix should drive raw power from explicit feedback.
+    * Position geometry asks topology and bounds:
+      * `.linear()` or `.periodic(period)`
+      * `.bounded(min, max)` or `.unbounded()`
+    * Unit mapping/reference asks how plant units relate to native units:
+      * `.nativeUnits()`, `.scaleToNative(...)`, or bounded-only `.rangeMapsToNative(...)`
+      * then `.alreadyReferenced()`, `.plantPositionMapsToNative(...)`, `.assumeCurrentPositionIs(...)`, or `.needsReference(...)` when a runtime reference is required.
 
-Then you may add modifiers like `.rateLimit(...)` and finish with `.build()`.
+Then you may add plant-level modifiers like `.positionTolerance(...)`, `.rateLimit(...)`, and finish with `.build()`.
 
 ### 3.2 Position semantics: motors vs servos
 
-The public builder surface stays parallel, but the behavior depends on the hardware and strategy:
+The public builder surface stays parallel, but each hardware family exposes only choices that make
+sense for it:
 
 * **Motor position**:
 
-    * `motor(...).position()` creates a **device-managed motor position plant**.
-    * `plant.hasFeedback() == true`.
-    * `plant.atSetpoint()` becomes true when the last sampled measurement is within the configured
-      `positionTolerance(...)` band.
-    * `plant.getMeasurement()` returns the authoritative measured position from the most recent
-      `plant.update(clock)`.
-    * `plant.reset()` clears transient controller state only. It does **not** redefine the encoder
-      zero or physical coordinate frame.
+    * `motor(...).position().deviceManagedWithDefaults()` uses FTC `RUN_TO_POSITION`.
+    * `motor(...).position().deviceManaged() ... .doneDeviceManaged()` exposes optional FTC tuning knobs.
+    * `motor(...).position().regulated().nativeFeedback(...).regulator(...)` uses a framework-owned regulator plus explicit native feedback.
+    * Feedback-capable motor position Plants report plant-unit measurement and `atSetpoint()` status after `plant.update(clock)`.
+    * `plant.reset()` clears transient controller state only. It does **not** redefine encoder zero or physical coordinate frame.
 
-* **Regulated motor / CR-servo position**:
+* **Regulated CR-servo position**:
 
-    * `position(MotorPositionControl.regulated(...))` or
-      `position(CrServoPositionControl.regulated(...))` uses a framework-owned regulator plus an
-      explicit feedback source.
-    * The feedback source can be an internal encoder, an external encoder, or a custom source.
+    * CR servos have no device-managed position mode, so `crServo(...).position().regulated().nativeFeedback(...).regulator(...)` is required.
+    * The feedback source can be an external encoder or custom source.
 
 * **Servo position**:
 
-    * `servo(...).position()` creates a commanded-position plant in the range `0.0..1.0`.
-    * This is an open-loop “set-and-hold” behavior.
-    * `plant.hasFeedback() == false`.
-    * `plant.getMeasurement()` returns `NaN`, because the framework does not pretend a standard FTC
-      servo has a true measured position.
+    * Standard servos are command-only position outputs. Their builder exposes linear bounded position mapping only.
+    * Use `.nativeUnits()` for raw servo units or `.rangeMapsToNative(...)` for logical units mapped to tuned raw endpoints.
+    * `plant.hasFeedback() == false` and `plant.getMeasurement()` returns `NaN`, because the framework does not pretend a standard FTC servo has a true measured position.
 
 Why this matters:
 
@@ -281,26 +280,35 @@ Why this matters:
 
 ### 3.3 Device-managed vs regulated motor control
 
-Use the no-arg motor builders for the common FTC path:
+Use `deviceManagedWithDefaults()` for the common FTC motor-position path:
 
 ```java
-Plant arm = FtcActuators.plant(hardwareMap)
+PositionPlant arm = FtcActuators.plant(hardwareMap)
         .motor("armMotor", Direction.FORWARD)
         .position()
+        .deviceManagedWithDefaults()
+        .linear()
+            .bounded(-300.0, 1200.0)
+            .nativeUnits()
+            .alreadyReferenced()
+        .positionTolerance(20.0)
         .build();
 ```
 
 Switch to a regulated path when you need an explicit feedback source or a custom regulator:
 
 ```java
-Plant arm = FtcActuators.plant(hardwareMap)
+PositionPlant arm = FtcActuators.plant(hardwareMap)
         .motor("armMotor", Direction.FORWARD)
-        .position(
-                FtcActuators.MotorPositionControl.regulated(
-                        FtcActuators.PositionFeedback.externalEncoder("armEncoder"),
-                        ScalarRegulators.pid(Pid.withGains(0.006, 0.0, 0.0002))
-                ).positionTolerance(20.0)
-        )
+        .position()
+        .regulated()
+            .nativeFeedback(FtcActuators.PositionFeedback.externalEncoder("armEncoder"))
+            .regulator(ScalarRegulators.pid(Pid.withGains(0.006, 0.0, 0.0002)))
+        .linear()
+            .bounded(-300.0, 1200.0)
+            .nativeUnits()
+            .alreadyReferenced()
+        .positionTolerance(20.0)
         .build();
 ```
 
@@ -474,8 +482,8 @@ The raw task classes (`InstantTask`, `RunForSecondsTask`, `WaitUntilTask`,
 
 * **Position semantics differ**:
 
-    * Motors + `.position()` (or `.position(MotorPositionControl.regulated(...))`) → feedback-capable position control.
-    * Servos + `.position()` → open‑loop set‑and‑hold.
+    * Motors + `.position().deviceManagedWithDefaults()` or `.position().regulated().nativeFeedback(...).regulator(...)` → feedback-capable position control.
+    * Servos + `.position().linear().bounded(...).nativeUnits()` or `.rangeMapsToNative(...)` → open-loop set-and-hold.
 
 * **PlantTasks** and **Tasks** provide factory helpers that build `Task`s for you.
 

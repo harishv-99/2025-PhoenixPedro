@@ -358,10 +358,10 @@ Phoenix currently uses the framework's Drive Guidance path for drivetrain-facing
 
 1. **`SpatialQuery`** solves field/robot geometry: target points, facing errors, translation errors, and alternate solve lanes such as live AprilTags vs global localization.
 2. **`DriveGuidancePlan` / `DriveGuidanceQuery`** consume spatial results and produce drivetrain omega/translation commands.
-3. **`ScalarSetpointPlanner`** consumes native-unit scalar requests and produces feasible mechanism setpoints for `Plant`s.
+3. **`ScalarSetpointPlanner`** consumes plant-unit scalar requests and produces feasible mechanism setpoints for `Plant`s.
 
-Phoenix scoring aim follows the drive path because the drivetrain turns the whole robot. A future turret, tray, arm, or extension should generally follow the scalar path: robot-owned calibration converts semantic intent or spatial geometry into native plant units, then the scalar planner handles candidates, periodic equivalents, travel range, and readiness status.
+Phoenix scoring aim follows the drive path because the drivetrain turns the whole robot. A future turret, tray, arm, or extension should generally follow the scalar path: robot-owned calibration/reference setup converts semantic intent or spatial geometry into the plant units exposed by the mechanism, then the scalar planner handles candidates, periodic equivalents, travel range, and readiness status.
 
-For example, a future turret with its own camera would use one spatial query with two solve lanes: a direct turret-camera AprilTag lane and a global-pose fallback lane. The turret service would map the selected facing solution into turret encoder ticks, and a `ScalarSetpointPlanner` would choose a reachable tick setpoint under cable limits before feeding the turret `Plant`.
+For example, a future turret with its own camera would use one spatial query with two solve lanes: a direct turret-camera AprilTag lane and a global-pose fallback lane. The turret service would map the selected facing solution into the turret `PositionPlant`'s public units, and a `ScalarSetpointPlanner` would choose a reachable setpoint under cable limits before feeding the turret `Plant`.
 
-Calibration remains robot-owned. Homing switches, encoder zero offsets, ticks-per-turn constants, and cable-limit ranges should be established by the mechanism service and exposed to the planner as native-unit measurements and `ScalarRange`s.
+Calibration remains robot-owned. Homing switches, encoder zero offsets, ticks-per-turn constants, and cable-limit ranges should be established by the mechanism service and exposed through `PositionPlant`/planner-facing plant-unit measurements and `ScalarRange`s.

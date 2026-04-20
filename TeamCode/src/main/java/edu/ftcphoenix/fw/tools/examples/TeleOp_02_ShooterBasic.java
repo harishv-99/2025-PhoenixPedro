@@ -45,7 +45,7 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
  *       <li>{@link FtcActuators#plant} to turn hardware into {@link Plant}s.</li>
  *       <li>{@code motor(...).andMotor(...).velocity(...).build()} for the shooter.</li>
  *       <li>{@code crServo(...).andCrServo(...).power().build()} for the transfer.</li>
- *       <li>{@code servo(...).position().build()} for the pusher.</li>
+ *       <li>{@code servo(...).position().linear().bounded(0.0, 1.0).nativeUnits().build()} for the pusher.</li>
  *     </ul>
  *   </li>
  *   <li><b>How to map buttons to simple modes</b> using
@@ -288,6 +288,9 @@ public final class TeleOp_02_ShooterBasic extends OpMode {
         pusher = FtcActuators.plant(hardwareMap)
                 .servo(HW_PUSHER, Direction.FORWARD)
                 .position()
+                .linear()
+                .bounded(0.0, 1.0)
+                .nativeUnits()
                 .build();
 
         // === 4) Bindings: map buttons to high-level modes (using lambdas) ===

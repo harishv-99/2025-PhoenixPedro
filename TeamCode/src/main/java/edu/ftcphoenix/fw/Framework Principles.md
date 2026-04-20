@@ -107,7 +107,23 @@ Phoenix is designed around a few core goals:
    When something is misconfigured, Phoenix should throw early (often at build-time) with an
    error message that tells a student what to change. Avoid silent no-ops.
 
-9. **Principle-driven evolution (breaking changes are OK)**
+9. **Guided builders ask one conceptual question at a time**
+
+   Staged builders should guide users through the small set of meaningful answers for the next
+   required decision. This is especially important at FTC boundaries where students are choosing
+   hardware, target domain, control strategy, position geometry, unit mapping, and calibration
+   policy.
+
+   * Each required conceptual question gets answered explicitly.
+   * Optional tuning only appears after the user deliberately enters a tuning branch.
+   * Builder steps should expose only options that make sense given previous answers. For example,
+     `rangeMapsToNative(...)` belongs after `bounded(...)`, not after `unbounded()`, and motor-only
+     tuning methods should not appear on a standard-servo position path.
+   * Default shortcuts are appropriate for optional tuning branches, such as
+     `deviceManagedWithDefaults()`, but they should not hide conceptual safety decisions like
+     whether a position coordinate needs a runtime reference.
+
+10. **Principle-driven evolution (breaking changes are OK)**
 
    Phoenix optimizes for a coherent, principle-driven API surface — not strict backwards compatibility.
 
@@ -174,7 +190,10 @@ Plant transfer = FtcActuators.plant(hardwareMap)
 
 Plant pusher = FtcActuators.plant(hardwareMap)
         .servo("pusherServo", Direction.FORWARD)
-        .position()   // servo commanded-position plant (open-loop)
+        .position()
+        .linear()
+            .bounded(0.0, 1.0)
+            .nativeUnits()   // servo raw 0..1 plant coordinate
         .build();
 ```
 
@@ -182,10 +201,12 @@ The builder is staged on purpose:
 
 1. **Pick hardware**: `motor` (optional `andMotor`), `servo` (optional `andServo`), `crServo` (optional `andCrServo`)
 2. **Pick target domain**: `power()`, `velocity()`, `position()`
-3. **Optional advanced strategy override**:
-   * device-managed motor control (the default for motor `position()` / `velocity()`)
-   * regulated control via `position(MotorPositionControl.regulated(...))` or `velocity(MotorVelocityControl.regulated(...))`
-4. **Optional modifiers**: `rateLimit(maxDeltaPerSec)`, then `build()`
+3. **For position Plants, answer guided position questions**:
+   * motor position control: `deviceManagedWithDefaults()`, `deviceManaged()...doneDeviceManaged()`, or `regulated().nativeFeedback(...).regulator(...)`
+   * topology: `linear()` or `periodic(period)`
+   * bounds: `bounded(min, max)` or `unbounded()`
+   * mapping/reference: `nativeUnits()`, `scaleToNative(...)`, bounded-only `rangeMapsToNative(...)`, then `alreadyReferenced()`, `plantPositionMapsToNative(...)`, `assumeCurrentPositionIs(...)`, or `needsReference(...)` when a runtime reference is required
+4. **Optional modifiers**: `positionTolerance(...)` for position Plants, `rateLimit(maxDeltaPerSec)`, then `build()`
 
 Internally, Phoenix also has lower-level `Plants` factory helpers, but student code should typically prefer `FtcActuators`.
 

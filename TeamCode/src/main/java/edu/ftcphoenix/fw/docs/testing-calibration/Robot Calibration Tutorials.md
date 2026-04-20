@@ -21,6 +21,91 @@ For the best experience:
 - bring a laptop open to `RobotConfig` so you can paste values immediately
 - change one thing at a time, then rerun the relevant tester
 
+## Mechanism position references
+
+### Why this matters
+
+A position Plant can have a clean public coordinate even when the raw hardware coordinate is awkward.
+A lift may use plant units of inches or ticks above the bottom, while the motor encoder starts at an
+arbitrary raw count. A tray may use degrees modulo one rotation, while a painted mark establishes
+where phase zero is. Standard servos may use logical `0.0..1.0` even though the useful raw servo
+range is `0.30..0.80`.
+
+Phoenix keeps those ideas separate:
+
+```text
+raw/native hardware coordinate
+    -> reference + unit mapping
+    -> public plant coordinate
+    -> ScalarSetpointPlanner
+    -> PositionPlant.setTarget(...)
+```
+
+`Plant.reset()` should not redefine physical zero. Homing, indexing, manual zeroing, and static
+endpoint scaling belong in the position-Plant reference/mapping layer and the robot mechanism
+service that decides when to run it.
+
+### Common initialization choices
+
+Use `alreadyReferenced()` when the selected native coordinate is already meaningful in the plant
+coordinate. Examples: a standard servo using raw `0..1`, an absolute/source measurement already in
+degrees, or a simulator source already in plant units.
+
+Use `plantPositionMapsToNative(plantPosition, nativePosition)` when the scale and one offset point are known in
+code. Example: arm degrees mapped to encoder ticks with a measured zero tick.
+
+Use `assumeCurrentPositionIs(value)` only when the robot is physically placed at a known pose before
+init. Example: the lift is manually collapsed before the match, so the first encoder sample becomes
+plant position `0.0`.
+
+Use `needsReference(reason)` when the mechanism must find a switch, index mark, hard stop, or custom
+sensor condition before position targets are safe.
+
+### Runtime homing/indexing task
+
+A reference search is a normal non-blocking `Task`:
+
+```java
+Task homeLift = PositionCalibrationTasks.search(lift)
+        .withPower(-0.20)
+        .until(bottomSwitch)
+        .establishReferenceAt(0.0)
+        .thenHold(0.0)
+        .failAfter(3.0)
+        .build();
+```
+
+For an indexer or tray, the condition can be a color detector, magnet sensor, beam break, or custom
+BooleanSource:
+
+```java
+Task indexTray = PositionCalibrationTasks.search(tray)
+        .withPower(0.12)
+        .until(paintedMarkSeen)
+        .establishReferenceAt(0.0)
+        .thenStop()
+        .failAfter(5.0)
+        .build();
+```
+
+For periodic Plants, `establishReferenceAt(...)` treats the supplied value as a reference within the
+period and preserves the nearest unwrapped equivalent. That makes repeated index marks useful for
+small drift corrections during a match.
+
+### What “good” looks like
+
+- before reference, the Plant reports an invalid target range with a clear reason such as `lift not homed`
+- the homing/indexing task has timeout and cancellation behavior
+- after reference, the public measurement matches the physical mechanism coordinate
+- presets, setpoint planner requests, and telemetry all use plant units rather than raw hardware surprises
+
+### Do not move on if
+
+- the mechanism can command outside its safe travel range
+- raw encoder offsets leak into presets throughout robot code
+- a periodic mechanism resets its unwrapped position to zero every time an index mark appears
+- drivers need to remember raw servo endpoint values instead of logical mechanism positions
+
 ## Drivetrain motor direction
 
 ### Why this comes first

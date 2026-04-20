@@ -235,7 +235,7 @@ Plant shooter = FtcActuators.plant(hardwareMap)
         .motor("shooterLeftMotor", Direction.FORWARD)
         .andMotor("shooterRightMotor", Direction.REVERSE)
         .velocity()            // default velocityTolerance = 100 ticks/sec
-        .rateLimit(500.0)      // max delta in native units per second
+        .rateLimit(500.0)      // max delta in plant units per second
         .build();
 
 // Transfer: CR servo power plant.
@@ -248,12 +248,16 @@ Plant transfer = FtcActuators.plant(hardwareMap)
 Plant pusher = FtcActuators.plant(hardwareMap)
         .servo("pusherServo", Direction.FORWARD)
         .position()
+        .linear()
+            .bounded(0.0, 1.0)
+            .nativeUnits()
         .build();
 ```
 
-The builder stays domain-first (`power()`, `position()`, `velocity()`) and offers advanced
-strategy overrides only when you need them, for example
-`motor(...).position(MotorPositionControl.regulated(...))`.
+The builder stays domain-first (`power()`, `position()`, `velocity()`). Position Plants then ask
+small guided questions about control strategy, topology, bounds, unit mapping, and reference policy.
+For example, a regulated motor position path uses `motor(...).position().regulated().nativeFeedback(...).regulator(...)`
+instead of hiding those choices inside a large argument object.
 
 **Important:** tasks can set targets on plants, but *your loop* must still call `plant.update(clock)` each cycle.
 

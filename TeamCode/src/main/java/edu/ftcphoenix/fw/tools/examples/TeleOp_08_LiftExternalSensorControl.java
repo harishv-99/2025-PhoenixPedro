@@ -4,7 +4,7 @@ import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 
-import edu.ftcphoenix.fw.actuation.Plant;
+import edu.ftcphoenix.fw.actuation.PositionPlant;
 import edu.ftcphoenix.fw.core.control.Pid;
 import edu.ftcphoenix.fw.core.control.ScalarRegulators;
 import edu.ftcphoenix.fw.core.hal.Direction;
@@ -41,7 +41,7 @@ public final class TeleOp_08_LiftExternalSensorControl extends OpMode {
     private final Bindings bindings = new Bindings();
 
     private Gamepads gamepads;
-    private Plant liftPlant;
+    private PositionPlant liftPlant;
     private ScalarSource liftHeightIn;
 
     private double desiredHeight = HEIGHT_LOW_IN;
@@ -66,12 +66,15 @@ public final class TeleOp_08_LiftExternalSensorControl extends OpMode {
 
         liftPlant = FtcActuators.plant(hardwareMap)
                 .motor(HW_LIFT_MOTOR, Direction.FORWARD)
-                .position(
-                        FtcActuators.MotorPositionControl.regulated(
-                                FtcActuators.PositionFeedback.fromSource(liftHeightIn),
-                                ScalarRegulators.pid(liftPid)
-                        ).positionTolerance(0.50)
-                )
+                .position()
+                .regulated()
+                .nativeFeedback(FtcActuators.PositionFeedback.fromSource(liftHeightIn))
+                .regulator(ScalarRegulators.pid(liftPid))
+                .linear()
+                .bounded(HEIGHT_MIN_IN, HEIGHT_MAX_IN)
+                .nativeUnits()
+                .alreadyReferenced()
+                .positionTolerance(0.50)
                 .build();
 
         bindings.onRise(gamepads.p1().a(), () -> desiredHeight = HEIGHT_LOW_IN);

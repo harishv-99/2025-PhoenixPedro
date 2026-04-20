@@ -493,14 +493,17 @@ With the current plant design, the clean implementation is a **regulated positio
 A typical plant construction would look like this:
 
 ```java
-Plant liftPlant = FtcActuators.plant(hardwareMap)
+PositionPlant liftPlant = FtcActuators.plant(hardwareMap)
         .motor("liftMotor", Direction.FORWARD)
-        .position(
-                FtcActuators.MotorPositionControl.regulated(
-                        FtcActuators.PositionFeedback.fromSource(measuredHeightIn),
-                        ScalarRegulators.pid(Pid.withGains(0.12, 0.0, 0.0).setOutputLimits(-0.55, 0.55))
-                ).positionTolerance(0.50)
-        )
+        .position()
+        .regulated()
+            .nativeFeedback(FtcActuators.PositionFeedback.fromSource(measuredHeightIn))
+            .regulator(ScalarRegulators.pid(Pid.withGains(0.12, 0.0, 0.0).setOutputLimits(-0.55, 0.55)))
+        .linear()
+            .bounded(0.0, 15.0)
+            .nativeUnits()
+            .alreadyReferenced()
+        .positionTolerance(0.50)
         .build();
 ```
 

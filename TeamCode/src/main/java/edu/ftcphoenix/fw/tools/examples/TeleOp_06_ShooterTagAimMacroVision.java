@@ -299,6 +299,9 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
         pusher = FtcActuators.plant(hardwareMap)
                 .servo(HW_PUSHER, Direction.FORWARD)
                 .position()
+                .linear()
+                .bounded(0.0, 1.0)
+                .nativeUnits()
                 .build();
 
         // Default safe targets when no macro is active.

@@ -9,8 +9,10 @@ import java.util.Objects;
 /**
  * Request describing the scalar target values that would satisfy a mechanism goal.
  *
- * <p>The request is still in the native units used by the downstream {@link Plant}. It does not
- * know whether those units are ticks, inches, servo positions, rotations, radians, or RPM.</p>
+ * <p>The request is in the same caller-facing units used by the downstream {@link Plant}. For a
+ * {@link PositionPlant}, that means plant units: inches, degrees, logical servo position, ticks, or
+ * whatever coordinate the position builder declared. The request does not know about field geometry,
+ * robot semantics, or hardware-native conversion.</p>
  */
 public final class ScalarSetpointRequest {
 
@@ -34,7 +36,7 @@ public final class ScalarSetpointRequest {
     }
 
     /**
-     * Creates a request satisfied by exactly one native-unit value.
+     * Creates a request satisfied by exactly one value in the downstream Plant's public units.
      */
     public static ScalarSetpointRequest exact(String id, double value) {
         return oneOf(ScalarSetpointCandidate.exact(id, value));
@@ -47,8 +49,31 @@ public final class ScalarSetpointRequest {
         return oneOf(ScalarSetpointCandidate.exact(id, value, quality, ageSec, timestampSec));
     }
 
+
+    /**
+     * Creates a request satisfied by {@code value + k * plant.period()}.
+     *
+     * <p>Use this with {@link ScalarSetpointPlanner.Builder#forPositionPlant(PositionPlant)} when a
+     * goal accepts periodic-equivalent positions but the period belongs to the plant/domain rather
+     * than the request itself.</p>
+     */
+    public static ScalarSetpointRequest equivalentPosition(String id, double value) {
+        return oneOf(ScalarSetpointCandidate.equivalentPosition(id, value));
+    }
+
+    /**
+     * Creates an equivalent-position request with quality/timing metadata.
+     */
+    public static ScalarSetpointRequest equivalentPosition(String id, double value, double quality, double ageSec, double timestampSec) {
+        return oneOf(ScalarSetpointCandidate.equivalentPosition(id, value, quality, ageSec, timestampSec));
+    }
+
     /**
      * Creates a request satisfied by {@code value + k*period}.
+     *
+     * <p>This explicit-period form is useful for standalone scalar planners. Prefer
+     * {@link #equivalentPosition(String, double)} when the planner is bound to a
+     * {@link PositionPlant} that declares its own period.</p>
      */
     public static ScalarSetpointRequest periodic(String id, double value, double period) {
         return oneOf(ScalarSetpointCandidate.periodic(id, value, period));
@@ -73,6 +98,13 @@ public final class ScalarSetpointRequest {
      */
     public static ScalarSetpointRequest relative(String id, double delta) {
         return oneOf(ScalarSetpointCandidate.relative(id, delta));
+    }
+
+    /**
+     * Creates a relative periodic-equivalent request using the downstream plant's period.
+     */
+    public static ScalarSetpointRequest relativeEquivalentPosition(String id, double delta, double quality, double ageSec, double timestampSec) {
+        return oneOf(ScalarSetpointCandidate.relativeEquivalentPosition(id, delta, quality, ageSec, timestampSec));
     }
 
     /**

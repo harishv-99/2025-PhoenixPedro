@@ -30,7 +30,57 @@ That ownership split matters during bring-up because fixes should land in the ow
 - predictor, AprilTag solve, and corrected-global localization tuning -> `PhoenixProfile.localization`
 - field-fixed tag policy or practice-field overrides -> `PhoenixProfile.field`
 
+
 ---
+
+## Mechanism position calibration pattern
+
+Phoenix mechanism services should use the framework position-Plant vocabulary when a mechanism needs
+software limits, logical units, homing, or indexing. The service owns the robot meaning of the
+positions; the framework Plant owns the public plant coordinate and the hardware-native mapping.
+
+Recommended builder flow:
+
+```java
+PositionPlant lift = FtcActuators.plant(hardwareMap)
+        .motor("liftMotor", Direction.FORWARD)
+        .position()
+        .deviceManagedWithDefaults()
+        .linear()
+            .bounded(0.0, 18.0)              // plant units: inches
+            .scaleToNative(TICKS_PER_INCH)   // native units: encoder ticks
+            .needsReference("lift not homed")
+        .positionTolerance(0.10)             // plant units
+        .build();
+```
+
+Use these rules when adding future Phoenix mechanisms:
+
+- **Plant units** are the units Phoenix services, presets, scalar planners, and telemetry should
+  speak in. They may be inches, degrees, logical servo units, or encoder ticks.
+- **Native units** are only mentioned by APIs with `Native` in the name, such as
+  `scaleToNative(...)`, `rangeMapsToNative(...)`, `plantPositionMapsToNative(...)`, or native FTC tuning
+  methods like `devicePositionToleranceTicks(...)`.
+- Use `alreadyReferenced()` only when the selected native coordinate is already meaningful at robot
+  init. For a relative motor encoder on a lift, prefer `needsReference(...)` plus a calibration task,
+  or `assumeCurrentPositionIs(...)` when the robot is physically placed at a known pose before init.
+- Runtime homing/indexing should be modeled as a `Task`, not as a `Plant.reset()` side effect.
+
+Example homing task:
+
+```java
+Task homeLift = PositionCalibrationTasks.search(lift)
+        .withPower(-0.20)
+        .until(bottomSwitch)
+        .establishReferenceAt(0.0)
+        .thenHold(0.0)
+        .failAfter(3.0)
+        .build();
+```
+
+For periodic mechanisms such as trays or turrets, `establishReferenceAt(...)` establishes the
+reference modulo the Plant period and preserves the nearest equivalent unwrapped position when the
+Plant was already referenced.
 
 ## 2. Where to start in the tester menu
 
