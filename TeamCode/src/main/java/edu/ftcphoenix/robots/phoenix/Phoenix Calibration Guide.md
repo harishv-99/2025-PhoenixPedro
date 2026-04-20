@@ -74,9 +74,11 @@ Task homeLift = PositionCalibrationTasks.search(lift)
         .until(bottomSwitch)
         .establishReferenceAt(0.0)
         .thenHold(0.0)
-        .failAfter(3.0)
+        .failAfterSec(3.0)
         .build();
 ```
+
+The timeout policy is explicit: use `failAfterSec(...)` for a bounded search or `neverTimeout()` only when another safety path is guaranteed to cancel the task.
 
 For periodic mechanisms such as trays or turrets, `establishReferenceAt(...)` establishes the
 reference modulo the Plant period and preserves the nearest equivalent unwrapped position when the

@@ -71,7 +71,7 @@ Task homeLift = PositionCalibrationTasks.search(lift)
         .until(bottomSwitch)
         .establishReferenceAt(0.0)
         .thenHold(0.0)
-        .failAfter(3.0)
+        .failAfterSec(3.0)
         .build();
 ```
 
@@ -84,9 +84,11 @@ Task indexTray = PositionCalibrationTasks.search(tray)
         .until(paintedMarkSeen)
         .establishReferenceAt(0.0)
         .thenStop()
-        .failAfter(5.0)
+        .failAfterSec(5.0)
         .build();
 ```
+
+Every reference search must explicitly choose timeout behavior. Prefer `failAfterSec(...)`; use `neverTimeout()` only when a driver button, scheduler, or other safety interlock is guaranteed to cancel the task.
 
 For periodic Plants, `establishReferenceAt(...)` treats the supplied value as a reference within the
 period and preserves the nearest unwrapped equivalent. That makes repeated index marks useful for

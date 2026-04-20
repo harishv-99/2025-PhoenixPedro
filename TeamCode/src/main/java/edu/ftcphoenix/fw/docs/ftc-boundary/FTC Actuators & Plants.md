@@ -351,9 +351,11 @@ Task homeLift = PositionCalibrationTasks.search(lift)
         .until(bottomSwitch)
         .establishReferenceAt(0.0)
         .thenHold(0.0)
-        .failAfter(3.0)
+        .failAfterSec(3.0)
         .build();
 ```
+
+The timeout policy is explicit: use `failAfterSec(...)` for a bounded search or `neverTimeout()` only when another safety path is guaranteed to cancel the task.
 
 For periodic mechanisms, `establishReferenceAt(...)` preserves the nearest equivalent unwrapped
 position. If a tray has period `360.0` degrees and the current estimate is `1081.5`, an index mark

@@ -18,7 +18,7 @@ This running list tracks framework builders that should be reviewed against the 
 - [x] `ftc/FtcActuators` velocity builders
 - [x] `spatial/TagSelections`
 - [x] `spatial/SpatialQuery` / `spatial/SpatialQuerySpec`
-- [ ] `actuation/PositionCalibrationTasks` (make timeout choice explicit: failAfter(...) or neverTimeout())
+- [x] `actuation/PositionCalibrationTasks`
 - [ ] `spatial/SpatialSolveSet` (empty build should fail immediately)
 
 ## Notes
@@ -83,7 +83,23 @@ API makes the target shape explicit.
 
 ## Recommended next builder
 
-Next likely target: `actuation/PositionCalibrationTasks`, specifically making the timeout choice explicit with `failAfter(...)` or `neverTimeout()`.
+Next likely target: `spatial/SpatialSolveSet`, specifically making an empty solve set fail immediately at build time.
+
+
+### `actuation/PositionCalibrationTasks`
+
+Completed in the sixth builder cleanup pass. Calibration search tasks now force the timeout question
+to be answered explicitly before `build()` is visible:
+
+1. choose search power with `withPower(...)`
+2. choose the reference condition with `until(...)`
+3. establish the plant-unit reference with `establishReferenceAt(...)`
+4. choose the post-reference action with `thenStop()` or `thenHold(...)`
+5. choose timeout behavior with `failAfterSec(...)` or `neverTimeout()`
+6. build
+
+The old optional `failAfter(...)` method was removed. Unit-bearing timeout methods now include the
+`Sec` suffix, and intentionally unbounded searches must be declared with `neverTimeout()`.
 
 ### `spatial/TagSelections`
 

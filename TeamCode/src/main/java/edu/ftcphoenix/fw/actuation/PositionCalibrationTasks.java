@@ -23,7 +23,7 @@ import edu.ftcphoenix.fw.task.TaskOutcome;
  *     .until(bottomSwitch)
  *     .establishReferenceAt(0.0)
  *     .thenHold(0.0)
- *     .failAfter(3.0)
+ *     .failAfterSec(3.0)
  *     .build();
  * }</pre>
  *
@@ -35,7 +35,7 @@ import edu.ftcphoenix.fw.task.TaskOutcome;
  *     .until(paintedMarkSeen)
  *     .establishReferenceAt(0.0)
  *     .thenStop()
- *     .failAfter(5.0)
+ *     .failAfterSec(5.0)
  *     .build();
  * }</pre>
  *
@@ -91,23 +91,40 @@ public final class PositionCalibrationTasks {
         /**
          * Stop the search output after a successful reference.
          */
-        SearchBuildStep thenStop();
+        SearchTimeoutStep thenStop();
 
         /**
          * Hold a plant-unit target after a successful reference.
          */
-        SearchBuildStep thenHold(double plantTarget);
+        SearchTimeoutStep thenHold(double plantTarget);
     }
 
     /**
-     * Optional timeout/build step.
+     * Final search-task question: when should an unfinished search fail?
+     *
+     * <p>Calibration searches often drive gently into a limit, mark, or other reference cue. The
+     * timeout behavior is required so callers deliberately choose between a bounded search and an
+     * intentionally unbounded one.</p>
+     */
+    public interface SearchTimeoutStep {
+        /**
+         * Fail with {@link TaskOutcome#TIMEOUT} if the condition is not found within this many seconds.
+         */
+        SearchBuildStep failAfterSec(double timeoutSec);
+
+        /**
+         * Allow the search to run until the reference is found or the task is cancelled.
+         *
+         * <p>Use this only when another scheduler, driver action, or safety interlock is guaranteed
+         * to stop the task if the reference cue cannot be found.</p>
+         */
+        SearchBuildStep neverTimeout();
+    }
+
+    /**
+     * Build step available only after the timeout policy has been answered explicitly.
      */
     public interface SearchBuildStep {
-        /**
-         * Fail with {@link TaskOutcome#TIMEOUT} if the condition is not found within this duration.
-         */
-        SearchBuildStep failAfter(double timeoutSec);
-
         /**
          * Build the non-blocking calibration task.
          */
@@ -115,7 +132,7 @@ public final class PositionCalibrationTasks {
     }
 
     private static final class Builder implements SearchPowerStep, SearchUntilStep, SearchReferenceStep,
-            SearchAfterStep, SearchBuildStep {
+            SearchAfterStep, SearchTimeoutStep, SearchBuildStep {
         private final PositionPlant plant;
         private double power;
         private BooleanSource condition;
@@ -152,23 +169,29 @@ public final class PositionCalibrationTasks {
         }
 
         @Override
-        public SearchBuildStep thenStop() {
+        public SearchTimeoutStep thenStop() {
             this.holdAfter = false;
             return this;
         }
 
         @Override
-        public SearchBuildStep thenHold(double plantTarget) {
+        public SearchTimeoutStep thenHold(double plantTarget) {
             this.holdAfter = true;
             this.holdTarget = plantTarget;
             return this;
         }
 
         @Override
-        public SearchBuildStep failAfter(double timeoutSec) {
+        public SearchBuildStep failAfterSec(double timeoutSec) {
             if (!(timeoutSec > 0.0) || !Double.isFinite(timeoutSec))
                 throw new IllegalArgumentException("timeoutSec must be finite and > 0");
             this.timeoutSec = timeoutSec;
+            return this;
+        }
+
+        @Override
+        public SearchBuildStep neverTimeout() {
+            this.timeoutSec = Double.POSITIVE_INFINITY;
             return this;
         }
 
