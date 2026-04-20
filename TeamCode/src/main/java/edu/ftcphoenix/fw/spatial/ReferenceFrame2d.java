@@ -38,7 +38,7 @@ package edu.ftcphoenix.fw.spatial;
  *         .translateTo()
  *             .point(References.framePoint(backdropFace, -6.0, 0.0))
  *             .doneTranslateTo()
- *         .faceTo()
+ *         .andFaceTo()
  *             .frameHeading(backdropFace)
  *             .doneFaceTo()
  *         .solveWith()

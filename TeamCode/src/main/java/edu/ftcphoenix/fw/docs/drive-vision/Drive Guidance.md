@@ -26,7 +26,7 @@ Drive overlay, task, or telemetry gate
 
 ```text
 DriveGuidance.plan()
-    target question: translateTo(), faceTo(), or both
+    target question: choose the first channel with translateTo() or faceTo(), then optionally add the other with andFaceTo() or andTranslateTo()
     optional frame question: controlFrames(...)
     solve question: solveWith().localizationOnly..., aprilTagsOnly..., or adaptive...
     optional tuning: driveTuning()
@@ -106,14 +106,14 @@ telemetry.addData("shooterFacing.ready", readyToShoot);
 
 ## Translation + facing
 
-A plan can solve translation, facing, or both:
+A plan can solve translation, facing, or both. Start with the first channel, then add the second with `andFaceTo()` or `andTranslateTo()`:
 
 ```java
 DriveGuidancePlan alignToSlot = DriveGuidance.plan()
         .translateTo()
             .point(References.framePoint(slotFrame, -6.0, 0.0))
             .doneTranslateTo()
-        .faceTo()
+        .andFaceTo()
             .frameHeading(slotFrame)
             .doneFaceTo()
         .controlFrames(SpatialControlFrames.robotCenter())

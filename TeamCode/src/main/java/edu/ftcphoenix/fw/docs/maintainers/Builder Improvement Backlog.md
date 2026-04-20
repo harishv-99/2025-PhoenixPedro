@@ -38,7 +38,7 @@ Completed in this pass. The builder now asks required questions in a staged orde
 
 Completed in the second builder cleanup pass. `DriveGuidance.plan()` now stays parallel with `ScalarSetpoints.plan()`:
 
-1. choose the requested drive target (`translateTo()`, `faceTo()`, or both)
+1. choose the first requested drive target (`translateTo()` or `faceTo()`), then optionally add the other with `andFaceTo()` / `andTranslateTo()`
 2. optionally choose `controlFrames(...)`
 3. choose one explicit solve mode in `solveWith()`
 4. optionally enter mode-specific solve-policy tuning and general `driveTuning()`

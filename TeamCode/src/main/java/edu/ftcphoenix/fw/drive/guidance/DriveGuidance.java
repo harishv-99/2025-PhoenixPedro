@@ -32,7 +32,7 @@ import edu.ftcphoenix.fw.spatial.TranslationTarget2d;
  * <p>The staged builder mirrors {@code ScalarSetpoints.plan()}: it asks the required conceptual
  * questions first, then exposes optional tuning branches:</p>
  * <ol>
- *   <li>choose translation and/or facing target,</li>
+ *   <li>choose the first translation or facing target, then optionally add the other channel,</li>
  *   <li>optionally choose controlled robot frames,</li>
  *   <li>choose the solve mode and required solve lanes,</li>
  *   <li>optionally enter drive tuning,</li>
@@ -52,7 +52,7 @@ import edu.ftcphoenix.fw.spatial.TranslationTarget2d;
  *         .translateTo()
  *             .point(References.framePoint(slotFace, -6.0, 0.0))
  *             .doneTranslateTo()
- *         .faceTo()
+ *         .andFaceTo()
  *             .frameHeading(slotFace)
  *             .doneFaceTo()
  *         .solveWith()
@@ -155,7 +155,7 @@ public final class DriveGuidance {
     // ------------------------------------------------------------------------
 
     /**
-     * Initial spec stage: choose translation, facing, or both.
+     * Initial spec stage: choose the first translation or facing target.
      */
     public interface SpecBuilder0 {
         /**
@@ -189,9 +189,9 @@ public final class DriveGuidance {
      */
     public interface SpecBuilder1 extends SpecConfiguredStage<SpecBuilder1> {
         /**
-         * Adds a facing target to the spec.
+         * Adds a facing target to a spec that already has translation.
          */
-        FaceToBuilder<SpecBuilder3> faceTo();
+        FaceToBuilder<SpecBuilder3> andFaceTo();
     }
 
     /**
@@ -199,9 +199,9 @@ public final class DriveGuidance {
      */
     public interface SpecBuilder2 extends SpecConfiguredStage<SpecBuilder2> {
         /**
-         * Adds a translation target to the spec.
+         * Adds a translation target to a spec that already has facing.
          */
-        TranslateToBuilder<SpecBuilder3> translateTo();
+        TranslateToBuilder<SpecBuilder3> andTranslateTo();
     }
 
     /**
@@ -226,7 +226,7 @@ public final class DriveGuidance {
     // ------------------------------------------------------------------------
 
     /**
-     * Initial plan stage: choose translation, facing, or both.
+     * Initial plan stage: choose the first translation or facing target.
      */
     public interface PlanBuilder0 {
         /**
@@ -260,9 +260,9 @@ public final class DriveGuidance {
      */
     public interface PlanBuilder1 extends PlanConfiguredStage<PlanBuilder1> {
         /**
-         * Adds a facing target to the plan.
+         * Adds a facing target to a plan that already has translation.
          */
-        FaceToBuilder<PlanBuilder3> faceTo();
+        FaceToBuilder<PlanBuilder3> andFaceTo();
     }
 
     /**
@@ -270,9 +270,9 @@ public final class DriveGuidance {
      */
     public interface PlanBuilder2 extends PlanConfiguredStage<PlanBuilder2> {
         /**
-         * Adds a translation target to the plan.
+         * Adds a translation target to a plan that already has facing.
          */
-        TranslateToBuilder<PlanBuilder3> translateTo();
+        TranslateToBuilder<PlanBuilder3> andTranslateTo();
     }
 
     /**
@@ -1135,7 +1135,7 @@ public final class DriveGuidance {
         }
 
         @Override
-        public FaceToBuilder<SpecBuilder3> faceTo() {
+        public FaceToBuilder<SpecBuilder3> andFaceTo() {
             return new FaceToStep<SpecBuilder3>(s, new Spec3(s));
         }
     }
@@ -1146,7 +1146,7 @@ public final class DriveGuidance {
         }
 
         @Override
-        public TranslateToBuilder<SpecBuilder3> translateTo() {
+        public TranslateToBuilder<SpecBuilder3> andTranslateTo() {
             return new TranslateToStep<SpecBuilder3>(s, new Spec3(s));
         }
     }
@@ -1194,7 +1194,7 @@ public final class DriveGuidance {
         }
 
         @Override
-        public FaceToBuilder<PlanBuilder3> faceTo() {
+        public FaceToBuilder<PlanBuilder3> andFaceTo() {
             return new FaceToStep<PlanBuilder3>(s, new Builder3(s));
         }
     }
@@ -1205,7 +1205,7 @@ public final class DriveGuidance {
         }
 
         @Override
-        public TranslateToBuilder<PlanBuilder3> translateTo() {
+        public TranslateToBuilder<PlanBuilder3> andTranslateTo() {
             return new TranslateToStep<PlanBuilder3>(s, new Builder3(s));
         }
     }

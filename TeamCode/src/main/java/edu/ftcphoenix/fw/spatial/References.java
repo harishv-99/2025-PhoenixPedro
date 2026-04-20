@@ -43,7 +43,7 @@ import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelectionSource;
  *         .translateTo()
  *             .point(settlePoint)
  *             .doneTranslateTo()
- *         .faceTo()
+ *         .andFaceTo()
  *             .frameHeading(slotFace)
  *             .doneFaceTo()
  *         .solveWith()
@@ -338,7 +338,7 @@ public final class References {
             }
         }
         return missing.isEmpty()
-                ? Collections.<Integer>emptySet()
+                ? Collections.emptySet()
                 : Collections.unmodifiableSet(missing);
     }
 
