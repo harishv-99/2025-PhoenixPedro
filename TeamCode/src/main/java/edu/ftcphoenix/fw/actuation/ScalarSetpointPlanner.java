@@ -78,8 +78,8 @@ public final class ScalarSetpointPlanner implements Source<ScalarSetpointStatus>
     /**
      * Starts a convenience builder for a scalar setpoint planner.
      */
-    public static Builder builder() {
-        return new Builder();
+    public static RequestStage builder() {
+        return new RootBuilder();
     }
 
     /**
@@ -366,142 +366,6 @@ public final class ScalarSetpointPlanner implements Source<ScalarSetpointStatus>
     }
 
     /**
-     * Builder for common scalar-setpoint planner setup.
-     */
-    public static final class Builder {
-        private Source<ScalarSetpointRequest> request;
-        private ScalarSource measurement;
-        private Source<ScalarRange> range = ScalarRange.unboundedSource();
-        private Source<Double> plantPeriod;
-        private Config config = Config.defaults();
-
-        /**
-         * Supplies an explicit scalar request source.
-         */
-        public Builder request(Source<ScalarSetpointRequest> request) {
-            this.request = request;
-            return this;
-        }
-
-        /**
-         * Supplies the current measurement in the same caller-facing units as the plant target.
-         */
-        public Builder measurement(ScalarSource measurement) {
-            this.measurement = measurement;
-            return this;
-        }
-
-        /**
-         * Supplies a dynamic legal range source.
-         */
-        public Builder range(Source<ScalarRange> range) {
-            this.range = range;
-            return this;
-        }
-
-        /**
-         * Supplies a fixed legal range.
-         */
-        public Builder range(ScalarRange range) {
-            this.range = clock -> range;
-            return this;
-        }
-
-        /**
-         * Uses a {@link PositionPlant} as the measurement/range/period source for this planner.
-         *
-         * <p>Planner requests remain in the plant's caller-facing position units. If a request uses
-         * {@link ScalarSetpointRequest#equivalentPosition(String, double)}, the planner expands
-         * equivalent candidates with the plant's declared period. Linear plants do not provide a
-         * period, so equivalent-position requests will be blocked rather than silently treated as
-         * exact targets.</p>
-         */
-        public Builder forPositionPlant(PositionPlant plant) {
-            Objects.requireNonNull(plant, "plant");
-            this.measurement = plant.positionSource();
-            this.range = plant.targetRangeSource();
-            this.plantPeriod = clock -> plant.topology() == PositionPlant.Topology.PERIODIC
-                    ? plant.period()
-                    : Double.NaN;
-            return this;
-        }
-
-        /**
-         * Sets candidate preference.
-         */
-        public Builder candidatePreference(CandidatePreference p) {
-            this.config = config.withCandidatePreference(p);
-            return this;
-        }
-
-        /**
-         * Sets loss policy.
-         */
-        public Builder lossPolicy(LossPolicy p) {
-            this.config = config.withLossPolicy(p);
-            return this;
-        }
-
-        /**
-         * Sets unreachable target policy.
-         */
-        public Builder unreachablePolicy(UnreachablePolicy p) {
-            this.config = config.withUnreachablePolicy(p);
-            return this;
-        }
-
-        /**
-         * Sets at-setpoint tolerance in the same caller-facing units as the plant target.
-         */
-        public Builder atSetpointTolerance(double tol) {
-            this.config = config.withAtSetpointTolerance(tol);
-            return this;
-        }
-
-        /**
-         * Sets original-request satisfied tolerance in the same caller-facing units as the plant target.
-         */
-        public Builder requestSatisfiedTolerance(double tol) {
-            this.config = config.withRequestSatisfiedTolerance(tol);
-            return this;
-        }
-
-        /**
-         * Sets maximum accepted request age.
-         */
-        public Builder maxRequestAgeSec(double age) {
-            this.config = config.withMaxRequestAgeSec(age);
-            return this;
-        }
-
-        /**
-         * Sets minimum accepted request quality.
-         */
-        public Builder minRequestQuality(double q) {
-            this.config = config.withMinRequestQuality(q);
-            return this;
-        }
-
-        /**
-         * Begins building a scalar request from a spatial query.
-         */
-        public SpatialRequestBuilder requestFromSpatial() {
-            return new SpatialRequestBuilder(this);
-        }
-
-        /**
-         * Builds the runtime planner.
-         */
-        public ScalarSetpointPlanner build() {
-            if (request == null)
-                throw new IllegalStateException("ScalarSetpointPlanner requires request(...)");
-            if (measurement == null)
-                throw new IllegalStateException("ScalarSetpointPlanner requires measurement(...)");
-            return new ScalarSetpointPlanner(request, measurement, range, plantPeriod, config);
-        }
-    }
-
-    /**
      * Maps selected spatial facing into a plant-domain scalar request.
      */
     public interface FacingRequestMapper {
@@ -516,114 +380,596 @@ public final class ScalarSetpointPlanner implements Source<ScalarSetpointStatus>
     }
 
     /**
-     * Nested builder for the common SpatialQuery -> ScalarSetpointRequest path.
+     * First builder stage: choose the scalar request source.
+     *
+     * <p>This required conceptual question is explicit on purpose. Choose either an existing
+     * scalar request source or derive one from a spatial query. The next stage asks what scalar
+     * domain the planner should command.</p>
      */
-    public static final class SpatialRequestBuilder {
-        private final Builder parent;
-        private TranslationTarget2d translationTarget;
-        private FacingTarget2d facingTarget;
-        private SpatialControlFrames controlFrames = SpatialControlFrames.robotCenter();
-        private SpatialSolveSet solveSet;
-        private TagLayout fixedAprilTagLayout;
-        private SpatialSolutionGate gate = SpatialSolutionGate.defaults();
-        private FacingRequestMapper facingMapper;
-        private TranslationRequestMapper translationMapper;
-
-        SpatialRequestBuilder(Builder parent) {
-            this.parent = parent;
-        }
+    public interface RequestStage {
+        /**
+         * Supplies an explicit scalar request source.
+         */
+        DomainStage request(Source<ScalarSetpointRequest> request);
 
         /**
-         * Requests a translation relationship.
+         * Begins deriving the request from a spatial query.
          */
-        public SpatialRequestBuilder translateTo(TranslationTarget2d target) {
-            this.translationTarget = target;
-            return this;
-        }
+        SpatialRequestChoice requestFromSpatial();
+    }
+
+    /**
+     * Second builder stage: choose the scalar domain the planner commands.
+     */
+    public interface DomainStage {
+        /**
+         * Uses a {@link PositionPlant} as the measurement/range/period source for this planner.
+         *
+         * <p>Planner requests remain in the plant's caller-facing position units. If a request uses
+         * {@link ScalarSetpointRequest#equivalentPosition(String, double)}, the planner expands
+         * equivalent candidates with the plant's declared period. Linear plants do not provide a
+         * period, so equivalent-position requests will be blocked rather than silently treated as
+         * exact targets.</p>
+         */
+        OptionalTuningStage forPositionPlant(PositionPlant plant);
 
         /**
-         * Requests a facing relationship.
+         * Begins explicitly supplying measurement/range/topology instead of reusing a
+         * {@link PositionPlant}'s domain.
          */
-        public SpatialRequestBuilder faceTo(FacingTarget2d target) {
-            this.facingTarget = target;
-            return this;
-        }
+        ExplicitDomainMeasurementStage explicitDomain();
+    }
 
+    /**
+     * Explicit-domain stage: provide the current scalar measurement in plant units.
+     */
+    public interface ExplicitDomainMeasurementStage {
+        /**
+         * Supplies the current measurement in the same caller-facing units as the planner output.
+         */
+        ExplicitDomainTopologyStage measurement(ScalarSource measurement);
+    }
+
+    /**
+     * Explicit-domain stage: choose whether the scalar domain is linear or periodic.
+     */
+    public interface ExplicitDomainTopologyStage {
+        /**
+         * Declares a linear scalar domain with no plant-owned period.
+         */
+        ExplicitDomainRangeStage linear();
+
+        /**
+         * Declares a periodic scalar domain with a fixed period in plant units.
+         */
+        ExplicitDomainRangeStage periodic(double period);
+
+        /**
+         * Declares a periodic scalar domain with a dynamic period in plant units.
+         */
+        ExplicitDomainRangeStage periodic(Source<Double> periodSource);
+    }
+
+    /**
+     * Explicit-domain stage: answer the legal-range question.
+     */
+    public interface ExplicitDomainRangeStage {
+        /**
+         * Supplies a dynamic legal range in plant units.
+         */
+        OptionalTuningStage range(Source<ScalarRange> range);
+
+        /**
+         * Supplies a fixed legal range in plant units.
+         */
+        OptionalTuningStage range(ScalarRange range);
+
+        /**
+         * Declares that the scalar domain is unbounded.
+         */
+        OptionalTuningStage unboundedRange();
+    }
+
+    /**
+     * Optional-tuning stage. Build immediately or enter a tuning branch.
+     */
+    public interface OptionalTuningStage extends BuildStage {
+        /**
+         * Enters request-selection and loss-policy tuning.
+         */
+        PolicyBranch policy();
+
+        /**
+         * Enters status/completion tuning.
+         */
+        CompletionBranch completion();
+    }
+
+    /**
+     * Terminal stage that can build the runtime planner.
+     */
+    public interface BuildStage {
+        /**
+         * Builds the runtime planner.
+         */
+        ScalarSetpointPlanner build();
+    }
+
+    /**
+     * Optional branch for request gating, candidate choice, and loss behavior.
+     */
+    public interface PolicyBranch {
+        /**
+         * Sets candidate preference.
+         */
+        PolicyBranch candidatePreference(CandidatePreference p);
+
+        /**
+         * Sets loss policy.
+         */
+        PolicyBranch lossPolicy(LossPolicy p);
+
+        /**
+         * Sets unreachable target policy.
+         */
+        PolicyBranch unreachablePolicy(UnreachablePolicy p);
+
+        /**
+         * Sets maximum accepted request age.
+         */
+        PolicyBranch maxRequestAgeSec(double age);
+
+        /**
+         * Sets minimum accepted request quality.
+         */
+        PolicyBranch minRequestQuality(double q);
+
+        /**
+         * Returns to the main builder after policy tuning.
+         */
+        OptionalTuningStage donePolicy();
+    }
+
+    /**
+     * Optional branch for plant-unit status and completion tolerances.
+     */
+    public interface CompletionBranch {
+        /**
+         * Sets at-setpoint tolerance in plant units.
+         */
+        CompletionBranch atSetpointTolerance(double tol);
+
+        /**
+         * Sets original-request satisfied tolerance in plant units.
+         */
+        CompletionBranch requestSatisfiedTolerance(double tol);
+
+        /**
+         * Returns to the main builder after completion tuning.
+         */
+        OptionalTuningStage doneCompletion();
+    }
+
+    /**
+     * First nested spatial-request stage: choose whether spatial output should come from facing or
+     * translation.
+     */
+    public interface SpatialRequestChoice {
+        /**
+         * Derives a scalar request from a spatial facing solution.
+         */
+        SpatialFacingRequestBuilder faceTo(FacingTarget2d target);
+
+        /**
+         * Derives a scalar request from a spatial translation solution.
+         */
+        SpatialTranslationRequestBuilder translateTo(TranslationTarget2d target);
+    }
+
+    /**
+     * Shared options available after the spatial mapper has been chosen.
+     */
+    public interface SpatialMappedRequestBuilder {
         /**
          * Supplies controlled frames.
          */
-        public SpatialRequestBuilder controlFrames(SpatialControlFrames frames) {
-            this.controlFrames = frames;
-            return this;
-        }
+        SpatialMappedRequestBuilder controlFrames(SpatialControlFrames frames);
 
         /**
          * Supplies solve lanes.
          */
-        public SpatialRequestBuilder solveWith(SpatialSolveSet lanes) {
-            this.solveSet = lanes;
-            return this;
-        }
+        SpatialMappedRequestBuilder solveWith(SpatialSolveSet lanes);
 
         /**
          * Supplies fixed tag layout for tag-relative field fallback.
          */
-        public SpatialRequestBuilder fixedAprilTagLayout(TagLayout layout) {
-            this.fixedAprilTagLayout = layout;
-            return this;
-        }
+        SpatialMappedRequestBuilder fixedAprilTagLayout(TagLayout layout);
 
         /**
          * Supplies selection gate shared with drive guidance.
          */
-        public SpatialRequestBuilder selectWith(SpatialSolutionGate gate) {
-            this.gate = gate;
-            return this;
-        }
-
-        /**
-         * Maps selected facing result to a plant-domain scalar request.
-         */
-        public SpatialRequestBuilder mapFacingToRequest(FacingRequestMapper mapper) {
-            this.facingMapper = mapper;
-            return this;
-        }
-
-        /**
-         * Maps selected translation result to a plant-domain scalar request.
-         */
-        public SpatialRequestBuilder mapTranslationToRequest(TranslationRequestMapper mapper) {
-            this.translationMapper = mapper;
-            return this;
-        }
+        SpatialMappedRequestBuilder selectWith(SpatialSolutionGate gate);
 
         /**
          * Finishes the nested request source and returns to the parent planner builder.
          */
-        public Builder doneRequest() {
-            if (solveSet == null)
-                throw new IllegalStateException("requestFromSpatial() requires solveWith(...)");
+        DomainStage doneRequest();
+    }
+
+    /**
+     * Nested builder for a facing-derived spatial request.
+     */
+    public interface SpatialFacingRequestBuilder {
+        /**
+         * Supplies controlled frames.
+         */
+        SpatialFacingRequestBuilder controlFrames(SpatialControlFrames frames);
+
+        /**
+         * Supplies solve lanes.
+         */
+        SpatialFacingRequestBuilder solveWith(SpatialSolveSet lanes);
+
+        /**
+         * Supplies fixed tag layout for tag-relative field fallback.
+         */
+        SpatialFacingRequestBuilder fixedAprilTagLayout(TagLayout layout);
+
+        /**
+         * Supplies selection gate shared with drive guidance.
+         */
+        SpatialFacingRequestBuilder selectWith(SpatialSolutionGate gate);
+
+        /**
+         * Maps the selected spatial facing result into a scalar request in plant units.
+         */
+        SpatialMappedRequestBuilder mapToRequest(FacingRequestMapper mapper);
+    }
+
+    /**
+     * Nested builder for a translation-derived spatial request.
+     */
+    public interface SpatialTranslationRequestBuilder {
+        /**
+         * Supplies controlled frames.
+         */
+        SpatialTranslationRequestBuilder controlFrames(SpatialControlFrames frames);
+
+        /**
+         * Supplies solve lanes.
+         */
+        SpatialTranslationRequestBuilder solveWith(SpatialSolveSet lanes);
+
+        /**
+         * Supplies fixed tag layout for tag-relative field fallback.
+         */
+        SpatialTranslationRequestBuilder fixedAprilTagLayout(TagLayout layout);
+
+        /**
+         * Supplies selection gate shared with drive guidance.
+         */
+        SpatialTranslationRequestBuilder selectWith(SpatialSolutionGate gate);
+
+        /**
+         * Maps the selected spatial translation result into a scalar request in plant units.
+         */
+        SpatialMappedRequestBuilder mapToRequest(TranslationRequestMapper mapper);
+    }
+
+    private static final class RootBuilder implements RequestStage, DomainStage, OptionalTuningStage, PolicyBranch, CompletionBranch {
+        private Source<ScalarSetpointRequest> request;
+        private ScalarSource measurement;
+        private Source<ScalarRange> range = ScalarRange.unboundedSource();
+        private Source<Double> plantPeriod;
+        private Config config = Config.defaults();
+
+        @Override
+        public DomainStage request(Source<ScalarSetpointRequest> request) {
+            this.request = request;
+            return this;
+        }
+
+        @Override
+        public SpatialRequestChoice requestFromSpatial() {
+            return new SpatialChoiceBuilder(this);
+        }
+
+        @Override
+        public OptionalTuningStage forPositionPlant(PositionPlant plant) {
+            Objects.requireNonNull(plant, "plant");
+            this.measurement = plant.positionSource();
+            this.range = plant.targetRangeSource();
+            this.plantPeriod = clock -> plant.topology() == PositionPlant.Topology.PERIODIC
+                    ? plant.period()
+                    : Double.NaN;
+            return this;
+        }
+
+        @Override
+        public ExplicitDomainMeasurementStage explicitDomain() {
+            return new ExplicitDomainBuilder(this);
+        }
+
+        @Override
+        public PolicyBranch policy() {
+            return this;
+        }
+
+        @Override
+        public CompletionBranch completion() {
+            return this;
+        }
+
+        @Override
+        public PolicyBranch candidatePreference(CandidatePreference p) {
+            this.config = config.withCandidatePreference(p);
+            return this;
+        }
+
+        @Override
+        public PolicyBranch lossPolicy(LossPolicy p) {
+            this.config = config.withLossPolicy(p);
+            return this;
+        }
+
+        @Override
+        public PolicyBranch unreachablePolicy(UnreachablePolicy p) {
+            this.config = config.withUnreachablePolicy(p);
+            return this;
+        }
+
+        @Override
+        public PolicyBranch maxRequestAgeSec(double age) {
+            this.config = config.withMaxRequestAgeSec(age);
+            return this;
+        }
+
+        @Override
+        public PolicyBranch minRequestQuality(double q) {
+            this.config = config.withMinRequestQuality(q);
+            return this;
+        }
+
+        @Override
+        public OptionalTuningStage donePolicy() {
+            return this;
+        }
+
+        @Override
+        public CompletionBranch atSetpointTolerance(double tol) {
+            this.config = config.withAtSetpointTolerance(tol);
+            return this;
+        }
+
+        @Override
+        public CompletionBranch requestSatisfiedTolerance(double tol) {
+            this.config = config.withRequestSatisfiedTolerance(tol);
+            return this;
+        }
+
+        @Override
+        public OptionalTuningStage doneCompletion() {
+            return this;
+        }
+
+        @Override
+        public ScalarSetpointPlanner build() {
+            if (request == null)
+                throw new IllegalStateException("ScalarSetpointPlanner requires request(...) or requestFromSpatial()...");
+            if (measurement == null)
+                throw new IllegalStateException("ScalarSetpointPlanner requires forPositionPlant(...) or explicitDomain()...");
+            return new ScalarSetpointPlanner(request, measurement, range, plantPeriod, config);
+        }
+    }
+
+    private static final class ExplicitDomainBuilder implements ExplicitDomainMeasurementStage, ExplicitDomainTopologyStage, ExplicitDomainRangeStage {
+        private final RootBuilder parent;
+
+        ExplicitDomainBuilder(RootBuilder parent) {
+            this.parent = parent;
+        }
+
+        @Override
+        public ExplicitDomainTopologyStage measurement(ScalarSource measurement) {
+            parent.measurement = Objects.requireNonNull(measurement, "measurement");
+            return this;
+        }
+
+        @Override
+        public ExplicitDomainRangeStage linear() {
+            parent.plantPeriod = null;
+            return this;
+        }
+
+        @Override
+        public ExplicitDomainRangeStage periodic(double period) {
+            if (!(period > 0.0) || !Double.isFinite(period)) {
+                throw new IllegalArgumentException("period must be finite and > 0");
+            }
+            parent.plantPeriod = clock -> period;
+            return this;
+        }
+
+        @Override
+        public ExplicitDomainRangeStage periodic(Source<Double> periodSource) {
+            parent.plantPeriod = Objects.requireNonNull(periodSource, "periodSource");
+            return this;
+        }
+
+        @Override
+        public OptionalTuningStage range(Source<ScalarRange> range) {
+            parent.range = Objects.requireNonNull(range, "range");
+            return parent;
+        }
+
+        @Override
+        public OptionalTuningStage range(ScalarRange range) {
+            parent.range = clock -> range;
+            return parent;
+        }
+
+        @Override
+        public OptionalTuningStage unboundedRange() {
+            parent.range = ScalarRange.unboundedSource();
+            return parent;
+        }
+    }
+
+    private static final class SpatialChoiceBuilder implements SpatialRequestChoice {
+        private final RootBuilder parent;
+
+        SpatialChoiceBuilder(RootBuilder parent) {
+            this.parent = parent;
+        }
+
+        @Override
+        public SpatialFacingRequestBuilder faceTo(FacingTarget2d target) {
+            return new FacingSpatialRequestBuilder(parent, Objects.requireNonNull(target, "target"));
+        }
+
+        @Override
+        public SpatialTranslationRequestBuilder translateTo(TranslationTarget2d target) {
+            return new TranslationSpatialRequestBuilder(parent, Objects.requireNonNull(target, "target"));
+        }
+    }
+
+    private static abstract class SpatialRequestState {
+        final RootBuilder parent;
+        SpatialControlFrames controlFrames = SpatialControlFrames.robotCenter();
+        SpatialSolveSet solveSet;
+        TagLayout fixedAprilTagLayout;
+        SpatialSolutionGate gate = SpatialSolutionGate.defaults();
+
+        SpatialRequestState(RootBuilder parent) {
+            this.parent = parent;
+        }
+
+        void validateBase(String requestLabel) {
+            if (solveSet == null) {
+                throw new IllegalStateException(requestLabel + " requires solveWith(...)");
+            }
+        }
+    }
+
+    private static final class FacingSpatialRequestBuilder extends SpatialRequestState implements SpatialFacingRequestBuilder, SpatialMappedRequestBuilder {
+        private final FacingTarget2d facingTarget;
+        private FacingRequestMapper mapper;
+
+        FacingSpatialRequestBuilder(RootBuilder parent, FacingTarget2d facingTarget) {
+            super(parent);
+            this.facingTarget = facingTarget;
+        }
+
+        @Override
+        public FacingSpatialRequestBuilder controlFrames(SpatialControlFrames frames) {
+            this.controlFrames = frames;
+            return this;
+        }
+
+        @Override
+        public FacingSpatialRequestBuilder solveWith(SpatialSolveSet lanes) {
+            this.solveSet = lanes;
+            return this;
+        }
+
+        @Override
+        public FacingSpatialRequestBuilder fixedAprilTagLayout(TagLayout layout) {
+            this.fixedAprilTagLayout = layout;
+            return this;
+        }
+
+        @Override
+        public FacingSpatialRequestBuilder selectWith(SpatialSolutionGate gate) {
+            this.gate = gate;
+            return this;
+        }
+
+        @Override
+        public FacingSpatialRequestBuilder mapToRequest(FacingRequestMapper mapper) {
+            this.mapper = Objects.requireNonNull(mapper, "mapper");
+            return this;
+        }
+
+        @Override
+        public DomainStage doneRequest() {
+            validateBase("requestFromSpatial().faceTo(...)");
+            if (mapper == null) {
+                throw new IllegalStateException("requestFromSpatial().faceTo(...) requires mapToRequest(...)");
+            }
             final SpatialQuery query = SpatialQuery.builder()
-                    .translateTo(translationTarget)
                     .faceTo(facingTarget)
                     .controlFrames(controlFrames)
                     .solveWith(solveSet)
                     .fixedAprilTagLayout(fixedAprilTagLayout)
                     .build();
-            if (facingMapper == null && translationMapper == null) {
-                throw new IllegalStateException("requestFromSpatial() requires mapFacingToRequest(...) or mapTranslationToRequest(...)");
-            }
             parent.request(clock -> {
                 SpatialQueryResult result = query.get(clock);
-                if (facingMapper != null) {
-                    SpatialFacingSelection facing = SpatialQuerySelectors.firstValidFacing(result, gate);
-                    if (facing != null) return facingMapper.map(facing, clock);
-                }
-                if (translationMapper != null) {
-                    SpatialTranslationSelection translation = SpatialQuerySelectors.firstValidTranslation(result, gate);
-                    if (translation != null) return translationMapper.map(translation, clock);
-                }
-                return ScalarSetpointRequest.none("no spatial solution passed selection gate");
+                SpatialFacingSelection facing = SpatialQuerySelectors.firstValidFacing(result, gate);
+                return facing != null
+                        ? mapper.map(facing, clock)
+                        : ScalarSetpointRequest.none("no spatial facing solution passed selection gate");
+            });
+            return parent;
+        }
+    }
+
+    private static final class TranslationSpatialRequestBuilder extends SpatialRequestState implements SpatialTranslationRequestBuilder, SpatialMappedRequestBuilder {
+        private final TranslationTarget2d translationTarget;
+        private TranslationRequestMapper mapper;
+
+        TranslationSpatialRequestBuilder(RootBuilder parent, TranslationTarget2d translationTarget) {
+            super(parent);
+            this.translationTarget = translationTarget;
+        }
+
+        @Override
+        public TranslationSpatialRequestBuilder controlFrames(SpatialControlFrames frames) {
+            this.controlFrames = frames;
+            return this;
+        }
+
+        @Override
+        public TranslationSpatialRequestBuilder solveWith(SpatialSolveSet lanes) {
+            this.solveSet = lanes;
+            return this;
+        }
+
+        @Override
+        public TranslationSpatialRequestBuilder fixedAprilTagLayout(TagLayout layout) {
+            this.fixedAprilTagLayout = layout;
+            return this;
+        }
+
+        @Override
+        public TranslationSpatialRequestBuilder selectWith(SpatialSolutionGate gate) {
+            this.gate = gate;
+            return this;
+        }
+
+        @Override
+        public TranslationSpatialRequestBuilder mapToRequest(TranslationRequestMapper mapper) {
+            this.mapper = Objects.requireNonNull(mapper, "mapper");
+            return this;
+        }
+
+        @Override
+        public DomainStage doneRequest() {
+            validateBase("requestFromSpatial().translateTo(...)");
+            if (mapper == null) {
+                throw new IllegalStateException("requestFromSpatial().translateTo(...) requires mapToRequest(...)");
+            }
+            final SpatialQuery query = SpatialQuery.builder()
+                    .translateTo(translationTarget)
+                    .controlFrames(controlFrames)
+                    .solveWith(solveSet)
+                    .fixedAprilTagLayout(fixedAprilTagLayout)
+                    .build();
+            parent.request(clock -> {
+                SpatialQueryResult result = query.get(clock);
+                SpatialTranslationSelection translation = SpatialQuerySelectors.firstValidTranslation(result, gate);
+                return translation != null
+                        ? mapper.map(translation, clock)
+                        : ScalarSetpointRequest.none("no spatial translation solution passed selection gate");
             });
             return parent;
         }

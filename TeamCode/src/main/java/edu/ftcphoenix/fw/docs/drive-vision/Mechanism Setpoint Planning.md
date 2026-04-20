@@ -40,10 +40,17 @@ For `PositionPlant`s built through `FtcActuators`, the preferred planner setup i
 
 ```java
 ScalarSetpointPlanner planner = ScalarSetpoints.plan()
-        .forPositionPlant(positionPlant)
         .request(requestSource)
+        .forPositionPlant(positionPlant)
         .build();
 ```
+
+The staged builder asks two required questions explicitly:
+
+1. where the request comes from (`request(...)` or `requestFromSpatial()`)
+2. what scalar domain the planner commands (`forPositionPlant(...)` or `explicitDomain()`)
+
+After those questions are answered, optional tuning lives in `policy()` and `completion()` branches instead of mixing directly into the required setup path.
 
 That pulls the plant-unit measurement, dynamic target range, and periodicity from the plant itself.
 If the plant still needs a reference, the range source is invalid and the planner blocks instead of
@@ -84,10 +91,12 @@ PositionPlant lift = FtcActuators.plant(hardwareMap)
         .build();
 
 ScalarSetpointPlanner liftPlanner = ScalarSetpoints.plan()
-        .forPositionPlant(lift)
         .request(clock -> ScalarSetpointRequest.exact("basket", BASKET_TICKS))
-        .atSetpointTolerance(20.0)
-        .requestSatisfiedTolerance(20.0)
+        .forPositionPlant(lift)
+        .completion()
+            .atSetpointTolerance(20.0)
+            .requestSatisfiedTolerance(20.0)
+            .doneCompletion()
         .build();
 ```
 
@@ -127,9 +136,11 @@ After the tray is indexed, a request can say "slot 2 is at 240 degrees modulo th
 
 ```java
 ScalarSetpointPlanner trayPlanner = ScalarSetpoints.plan()
-        .forPositionPlant(tray)
         .request(clock -> ScalarSetpointRequest.equivalentPosition("slot-2", 240.0))
-        .candidatePreference(ScalarSetpointPlanner.CandidatePreference.NEAREST_TO_MEASUREMENT)
+        .forPositionPlant(tray)
+        .policy()
+            .candidatePreference(ScalarSetpointPlanner.CandidatePreference.NEAREST_TO_MEASUREMENT)
+            .donePolicy()
         .build();
 ```
 
@@ -161,10 +172,14 @@ Source<ScalarSetpointRequest> purpleToOutput = clock -> {
 };
 
 ScalarSetpointPlanner trayPlanner = ScalarSetpoints.plan()
-        .forPositionPlant(tray)
         .request(purpleToOutput)
-        .candidatePreference(ScalarSetpointPlanner.CandidatePreference.NEAREST_TO_MEASUREMENT)
-        .atSetpointTolerance(2.0)
+        .forPositionPlant(tray)
+        .policy()
+            .candidatePreference(ScalarSetpointPlanner.CandidatePreference.NEAREST_TO_MEASUREMENT)
+            .donePolicy()
+        .completion()
+            .atSetpointTolerance(2.0)
+            .doneCompletion()
         .build();
 ```
 
@@ -213,7 +228,7 @@ ScalarSetpointPlanner turretPlanner = ScalarSetpoints.plan()
             )
             .fixedAprilTagLayout(fixedTagLayout)
             .selectWith(gate)
-            .mapFacingToRequest((facing, clock) -> {
+            .mapToRequest((facing, clock) -> {
                 double targetDeg = Math.toDegrees(facing.facingErrorRad());
                 return ScalarSetpointRequest.equivalentPosition(
                         facing.sourceId(),
@@ -225,10 +240,14 @@ ScalarSetpointPlanner turretPlanner = ScalarSetpoints.plan()
             })
             .doneRequest()
         .forPositionPlant(turret)
-        .candidatePreference(ScalarSetpointPlanner.CandidatePreference.NEAREST_TO_MEASUREMENT)
-        .lossPolicy(ScalarSetpointPlanner.LossPolicy.HOLD_LAST_SETPOINT)
-        .atSetpointTolerance(1.5)
-        .requestSatisfiedTolerance(2.0)
+        .policy()
+            .candidatePreference(ScalarSetpointPlanner.CandidatePreference.NEAREST_TO_MEASUREMENT)
+            .lossPolicy(ScalarSetpointPlanner.LossPolicy.HOLD_LAST_SETPOINT)
+            .donePolicy()
+        .completion()
+            .atSetpointTolerance(1.5)
+            .requestSatisfiedTolerance(2.0)
+            .doneCompletion()
         .build();
 ```
 
@@ -239,7 +258,9 @@ satisfied.
 ## Translation-derived request: extension toward a pickup point
 
 `requestFromSpatial().translateTo(...)` is for cases where field geometry should become a scalar
-target through robot-specific kinematics.
+target through robot-specific kinematics. The staged spatial-request builder makes the target kind
+explicit: choose either `faceTo(...)` or `translateTo(...)`, then provide the shared spatial solve
+configuration and a matching `mapToRequest(...)` function.
 
 ```java
 ScalarSetpointPlanner extensionPlanner = ScalarSetpoints.plan()
@@ -251,7 +272,7 @@ ScalarSetpointPlanner extensionPlanner = ScalarSetpoints.plan()
             )
             .solveWith(solveSet)
             .selectWith(gate)
-            .mapTranslationToRequest((translation, clock) -> {
+            .mapToRequest((translation, clock) -> {
                 double extensionInches = pickupKinematics.extensionInchesFor(
                         translation.solution.frameForwardInches(),
                         translation.solution.frameLeftInches()
@@ -311,7 +332,7 @@ ScalarSetpointPlanner turretPlanner = ScalarSetpoints.plan()
             .controlFrames(SpatialControlFrames.robotCenter().withFacingFrame(robotToTurretFrame))
             .solveWith(solveSet)
             .fixedAprilTagLayout(tagLayout)
-            .mapFacingToRequest(turretFacingMapper)
+            .mapToRequest(turretFacingMapper)
             .doneRequest()
         .forPositionPlant(turret)
         .build();

@@ -6,7 +6,8 @@ Use this section when evolving Phoenix itself.
 
 1. [`../../Framework Principles.md`](<../../Framework Principles.md>)
 2. [`Maintainer Notes.md`](<Maintainer Notes.md>)
-3. [`AprilTag Localization Follow-Ups.md`](<AprilTag Localization Follow-Ups.md>)
+3. [`Builder Improvement Backlog.md`](<Builder Improvement Backlog.md>)
+4. [`AprilTag Localization Follow-Ups.md`](<AprilTag Localization Follow-Ups.md>)
 
 ## Also relevant
 

@@ -200,7 +200,7 @@ Common choices:
 
 `PositionPlant.period()` is in plant units. A scalar setpoint request such as
 `ScalarSetpointRequest.equivalentPosition("slot-2", 240.0)` uses the plant's declared period when the
-planner is built with `ScalarSetpointPlanner.builder().forPositionPlant(tray)`.
+planner is built with `ScalarSetpoints.plan().request(...).forPositionPlant(tray)`.
 
 ---
 
@@ -475,7 +475,7 @@ telemetry.addData("atSetpoint", plant.atSetpoint());
 
 For `PositionPlant`, `getTarget()`, `getMeasurement()`, and `getError()` are all in plant units.
 `PositionPlant.positionSource()` is also in plant units and is the preferred measurement source for
-`ScalarSetpointPlanner.builder().forPositionPlant(plant)`.
+`ScalarSetpoints.plan().request(...).forPositionPlant(plant)`.
 
 ---
 

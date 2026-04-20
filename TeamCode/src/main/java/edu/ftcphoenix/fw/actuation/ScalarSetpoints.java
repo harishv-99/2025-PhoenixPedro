@@ -10,7 +10,7 @@ public final class ScalarSetpoints {
     /**
      * Starts building a {@link ScalarSetpointPlanner}.
      */
-    public static ScalarSetpointPlanner.Builder plan() {
+    public static ScalarSetpointPlanner.RequestStage plan() {
         return ScalarSetpointPlanner.builder();
     }
 }

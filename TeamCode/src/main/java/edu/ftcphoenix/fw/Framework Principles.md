@@ -122,6 +122,13 @@ Phoenix is designed around a few core goals:
    * Default shortcuts are appropriate for optional tuning branches, such as
      `deviceManagedWithDefaults()`, but they should not hide conceptual safety decisions like
      whether a position coordinate needs a runtime reference.
+   * Unit boundaries should be obvious from names. Methods without `native` in the name should
+     normally use the public plant coordinate; methods that cross the plant/native boundary should
+     say so explicitly.
+   * Prevent invalid combinations by types when practical, not merely by throwing at `build()`.
+     For example, if a request must choose between facing-derived and translation-derived spatial
+     sources, the staged builder should make that choice explicit instead of allowing both with
+     hidden precedence.
 
 10. **Principle-driven evolution (breaking changes are OK)**
 

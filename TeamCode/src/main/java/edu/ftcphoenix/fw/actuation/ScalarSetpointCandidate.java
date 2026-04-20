@@ -7,7 +7,7 @@ package edu.ftcphoenix.fw.actuation;
  * tray with several possible slots can issue a request with several candidates; a turret facing a
  * point usually issues one periodic-equivalent candidate.</p>
  *
- * <p>When a planner is built with {@link ScalarSetpointPlanner.Builder#forPositionPlant(PositionPlant)},
+ * <p>When a planner is built with {@link ScalarSetpointPlanner.DomainStage#forPositionPlant(PositionPlant)},
  * candidates created by {@link #equivalentPosition(String, double)} use the plant's declared period.
  * This keeps periodicity on the position plant/domain instead of repeating the period in every
  * request.</p>
@@ -67,7 +67,7 @@ public final class ScalarSetpointCandidate {
      * declared period.
      *
      * <p>Use this when the request is interpreted by a planner built with
-     * {@link ScalarSetpointPlanner.Builder#forPositionPlant(PositionPlant)}.</p>
+     * {@link ScalarSetpointPlanner.DomainStage#forPositionPlant(PositionPlant)}.</p>
      */
     public static ScalarSetpointCandidate equivalentPosition(String id, double value) {
         return equivalentPosition(id, value, 1.0, 0.0, Double.NaN);

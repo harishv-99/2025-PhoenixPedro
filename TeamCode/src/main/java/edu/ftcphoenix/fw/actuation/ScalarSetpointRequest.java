@@ -53,7 +53,7 @@ public final class ScalarSetpointRequest {
     /**
      * Creates a request satisfied by {@code value + k * plant.period()}.
      *
-     * <p>Use this with {@link ScalarSetpointPlanner.Builder#forPositionPlant(PositionPlant)} when a
+     * <p>Use this with {@link ScalarSetpointPlanner.DomainStage#forPositionPlant(PositionPlant)} when a
      * goal accepts periodic-equivalent positions but the period belongs to the plant/domain rather
      * than the request itself.</p>
      */
