@@ -42,7 +42,7 @@ Planner/Guidance -> Status
 Planning: answer the required conceptual questions explicitly, and do not expose `build()` before the
 query has both a target and solve lanes.
 
-The common path builds a runtime query directly:
+The common path builds a runtime query directly. `SpatialSolveSet.builder()` is also staged: it asks for at least one solve lane before `build()` is visible, because an empty solve set cannot answer a spatial query.
 
 ```java
 SpatialQuery query = SpatialQuery.builder()

@@ -19,7 +19,7 @@ This running list tracks framework builders that should be reviewed against the 
 - [x] `spatial/TagSelections`
 - [x] `spatial/SpatialQuery` / `spatial/SpatialQuerySpec`
 - [x] `actuation/PositionCalibrationTasks`
-- [ ] `spatial/SpatialSolveSet` (empty build should fail immediately)
+- [x] `spatial/SpatialSolveSet`
 
 ## Notes
 
@@ -83,7 +83,7 @@ API makes the target shape explicit.
 
 ## Recommended next builder
 
-Next likely target: `spatial/SpatialSolveSet`, specifically making an empty solve set fail immediately at build time.
+No active builder-backlog items remain. Keep this file as a lightweight maintainer audit trail and add newly discovered builder cleanup items here. If the completed history ever stops being useful, fold the summary into [`Maintainer Notes.md`](<Maintainer Notes.md>) before deleting this file.
 
 
 ### `actuation/PositionCalibrationTasks`
@@ -115,3 +115,11 @@ Completed in the fourth builder cleanup pass. Tag selection now asks the statefu
 6. build
 
 The old hidden defaults for freshness, policy, and continuous mode were removed. Sticky-only loss behavior is no longer visible on continuous selectors, and units are explicit in methods that accept seconds.
+
+### `spatial/SpatialSolveSet`
+
+Completed in the seventh builder cleanup pass. Solve sets are collection builders, but an empty solve
+set is not a meaningful spatial-solving configuration. `SpatialSolveSet.builder()` now returns a first-lane
+stage that exposes lane-adding methods but not `build()`. After the first lane is added, the returned
+non-empty stage exposes both additional lane methods and `build()`. This prevents the invalid empty
+solve-set combination by type rather than waiting for a later runtime validation.

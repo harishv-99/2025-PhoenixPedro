@@ -671,19 +671,29 @@ public final class DriveGuidance {
                 s.onLoss
         );
 
-        SpatialSolveSet.Builder solveSetBuilder = SpatialSolveSet.builder();
+        SpatialSolveSet.MoreLanesStep solveSetBuilder = null;
         int localizationLaneIndex = -1;
         int aprilTagsLaneIndex = -1;
         int nextLaneIndex = 0;
 
         if (localization != null) {
             localizationLaneIndex = nextLaneIndex++;
-            solveSetBuilder.absolutePose(localization.poseEstimator, localization.maxAgeSec, localization.minQuality);
+            solveSetBuilder = SpatialSolveSet.builder()
+                    .absolutePose(localization.poseEstimator, localization.maxAgeSec, localization.minQuality);
         }
         if (tags != null) {
             aprilTagsLaneIndex = nextLaneIndex++;
-            solveSetBuilder.aprilTags(tags.sensor, tags.cameraMount, tags.maxAgeSec, tags.fieldPoseSolverConfig);
+            if (solveSetBuilder == null) {
+                solveSetBuilder = SpatialSolveSet.builder()
+                        .aprilTags(tags.sensor, tags.cameraMount, tags.maxAgeSec, tags.fieldPoseSolverConfig);
+            } else {
+                solveSetBuilder.aprilTags(tags.sensor, tags.cameraMount, tags.maxAgeSec, tags.fieldPoseSolverConfig);
+            }
         }
+        if (solveSetBuilder == null) {
+            throw new IllegalStateException("DriveGuidance solveWith() must provide at least one solve lane");
+        }
+        SpatialSolveSet solveSet = solveSetBuilder.build();
 
         SpatialQuerySpec spatialQuerySpec = null;
         TranslationTarget2d spatialTranslationTarget = (s.translationTarget instanceof DriveGuidanceSpec.RobotRelativePoint)
@@ -694,21 +704,21 @@ public final class DriveGuidance {
                     .translateTo(spatialTranslationTarget)
                     .andFaceTo(s.facingTarget)
                     .controlFrames(s.controlFrames)
-                    .solveWith(solveSetBuilder.build())
+                    .solveWith(solveSet)
                     .fixedAprilTagLayout(s.fixedAprilTagLayout)
                     .build();
         } else if (spatialTranslationTarget != null) {
             spatialQuerySpec = SpatialQuerySpec.builder()
                     .translateTo(spatialTranslationTarget)
                     .controlFrames(s.controlFrames)
-                    .solveWith(solveSetBuilder.build())
+                    .solveWith(solveSet)
                     .fixedAprilTagLayout(s.fixedAprilTagLayout)
                     .build();
         } else if (s.facingTarget != null) {
             spatialQuerySpec = SpatialQuerySpec.builder()
                     .faceTo(s.facingTarget)
                     .controlFrames(s.controlFrames)
-                    .solveWith(solveSetBuilder.build())
+                    .solveWith(solveSet)
                     .fixedAprilTagLayout(s.fixedAprilTagLayout)
                     .build();
         }
