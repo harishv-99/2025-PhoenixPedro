@@ -76,11 +76,12 @@ DriveGuidancePlan aimPlan = DriveGuidance.plan()
         .faceTo()
             .point(scoringRef)
             .doneFaceTo()
-        .resolveWith()
+        .solveWith()
             .aprilTagsOnly()
-            .aprilTags(tagSensor, cameraMount, MAX_TAG_AGE_SEC)
+            .aprilTags(tagSensor, cameraMount)
+            .maxAgeSec(MAX_TAG_AGE_SEC)
             .onLoss(DriveGuidanceSpec.LossPolicy.PASS_THROUGH)
-            .doneResolveWith()
+            .doneAprilTagsOnly()
         .build();
 ```
 
@@ -231,11 +232,15 @@ These examples are a good base for several future directions:
 If the robot maintains a trusted field pose estimate, the same selected-tag reference can use:
 
 ```java
-.resolveWith()
+.solveWith()
     .adaptive()
-    .localization(fusedAbsolutePoseEstimator, 0.25, 0.0)
-    .aprilTags(tagSensor, cameraMount, 0.25)
+    .localization(fusedAbsolutePoseEstimator)
+    .aprilTags(tagSensor, cameraMount)
+    .localizationMaxAgeSec(0.25)
+    .localizationMinQuality(0.0)
+    .aprilTagMaxAgeSec(0.25)
     .fixedAprilTagLayout(gameTagLayout)
+    .doneAdaptive()
 ```
 
 That allows the robot to keep solving the same selected-tag-relative target even when the camera is briefly blocked.

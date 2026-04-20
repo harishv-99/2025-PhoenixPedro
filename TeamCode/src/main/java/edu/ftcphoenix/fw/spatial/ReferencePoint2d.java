@@ -16,10 +16,10 @@ package edu.ftcphoenix.fw.spatial;
  *         .faceTo()
  *             .point(speakerAim)
  *             .doneFaceTo()
- *         .resolveWith()
+ *         .solveWith()
  *             .localizationOnly()
  *             .localization(poseEstimator)
- *             .doneResolveWith()
+ *             .doneAprilTagsOnly()
  *         .build();
  * }</pre>
  *

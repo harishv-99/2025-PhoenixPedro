@@ -20,6 +20,21 @@ Drive overlay, task, or telemetry gate
 
 `DriveGuidancePlan` is a reusable behavior description: target, control frames, solve lanes, and drive tuning. `DriveGuidanceQuery` is the runtime source used for telemetry and readiness checks. Overlays, tasks, and queries use the same underlying evaluation logic.
 
+## Guided builder shape
+
+`DriveGuidance.plan()` intentionally parallels `ScalarSetpoints.plan()`: answer the required behavior question first, answer the solve/domain question second, then enter optional tuning branches only when you need them.
+
+```text
+DriveGuidance.plan()
+    target question: translateTo(), faceTo(), or both
+    optional frame question: controlFrames(...)
+    solve question: solveWith().localizationOnly..., aprilTagsOnly..., or adaptive...
+    optional tuning: driveTuning()
+    build()
+```
+
+`build()` is not visible until at least one target and one solve strategy are chosen. Adaptive-only knobs such as `translationTakeover(...)` and `omegaPolicy(...)` only appear in the adaptive branch.
+
 ## Common TeleOp pattern: button-held omega override
 
 This example keeps driver translation from the sticks, but overrides omega while the button is held so a shooter frame faces a scoring point offset from an AprilTag.
@@ -38,20 +53,26 @@ ReferencePoint2d scoringPoint = References.relativeToTagPoint(
 );
 
 DriveGuidancePlan shooterAim = DriveGuidance.plan()
-        .faceTo(SpatialTargets.point(scoringPoint))
+        .faceTo()
+            .point(scoringPoint)
+            .doneFaceTo()
         .controlFrames(
                 SpatialControlFrames.robotCenter()
                         .withFacingFrame(robotToShooterFrame)
         )
         .solveWith()
             .adaptive()
-            .aprilTags(tagSensor, cameraMount, 0.25)
-            .localization(globalPoseEstimator, 0.50, 0.10)
+            .localization(globalPoseEstimator)
+            .aprilTags(tagSensor, cameraMount)
+            .localizationMaxAgeSec(0.50)
+            .localizationMinQuality(0.10)
+            .aprilTagMaxAgeSec(0.25)
             .fixedAprilTagLayout(fixedTagLayout)
-            .doneSolveWith()
-        .tuning(DriveGuidancePlan.Tuning.defaults()
-                .withAimKp(2.5)
-                .withAimDeadbandRad(Math.toRadians(1.0)))
+            .doneAdaptive()
+        .driveTuning()
+            .aimKp(2.5)
+            .aimDeadbandRad(Math.toRadians(1.0))
+            .doneDriveTuning()
         .build();
 
 DriveSource drive = DriveOverlayStack.on(manualDrive)
@@ -89,13 +110,18 @@ A plan can solve translation, facing, or both:
 
 ```java
 DriveGuidancePlan alignToSlot = DriveGuidance.plan()
-        .translateTo(SpatialTargets.point(References.framePoint(slotFrame, -6.0, 0.0)))
-        .faceTo(SpatialTargets.frameHeading(slotFrame))
+        .translateTo()
+            .point(References.framePoint(slotFrame, -6.0, 0.0))
+            .doneTranslateTo()
+        .faceTo()
+            .frameHeading(slotFrame)
+            .doneFaceTo()
         .controlFrames(SpatialControlFrames.robotCenter())
         .solveWith()
+            .localizationOnly()
             .localization(globalPoseEstimator)
             .fixedAprilTagLayout(tagLayout)
-            .doneSolveWith()
+            .doneLocalizationOnly()
         .build();
 ```
 
@@ -132,8 +158,10 @@ For a fixed webcam or fixed Limelight, pass a fixed `CameraMountConfig`:
 
 ```java
 .solveWith()
-    .aprilTags(tagSensor, fixedCameraMount, 0.25)
-    .doneSolveWith()
+    .aprilTagsOnly()
+    .aprilTags(tagSensor, fixedCameraMount)
+    .maxAgeSec(0.25)
+    .doneAprilTagsOnly()
 ```
 
 For a moving camera used outside DriveGuidance, pass a timestamp-aware source through `SpatialSolveSet.aprilTags(...)`; see [`Spatial Queries.md`](<Spatial Queries.md>) and [`Mechanism Setpoint Planning.md`](<Mechanism Setpoint Planning.md>). This lets the AprilTag lane interpret delayed camera frames using the camera pose from the frame timestamp.

@@ -186,7 +186,11 @@ import edu.ftcphoenix.fw.ftc.FtcActuators;
 Plant shooter = FtcActuators.plant(hardwareMap)
         .motor("shooterLeftMotor", Direction.FORWARD)
         .andMotor("shooterRightMotor", Direction.REVERSE)
-        .velocity()   // default device-managed motor velocity control
+        .velocity()
+        .deviceManagedWithDefaults()
+        .bounded(0.0, 2600.0)
+        .nativeUnits()
+        .velocityTolerance(100.0)
         .build();
 
 Plant transfer = FtcActuators.plant(hardwareMap)
@@ -208,6 +212,7 @@ The builder is staged on purpose:
 
 1. **Pick hardware**: `motor` (optional `andMotor`), `servo` (optional `andServo`), `crServo` (optional `andCrServo`)
 2. **Pick target domain**: `power()`, `velocity()`, `position()`
+   * Velocity then asks loop ownership, bounds, and plant/native units.
 3. **For position Plants, answer guided position questions**:
    * motor position control: `deviceManagedWithDefaults()`, `deviceManaged()...doneDeviceManaged()`, or `regulated().nativeFeedback(...).regulator(...)`
    * topology: `linear()` or `periodic(period)`
@@ -599,7 +604,7 @@ Javadocs aren’t “nice to have” — they are part of the API.
 
 Phoenix frequently teaches through its exceptions.
 
-- Prefer errors like: “field heading targets require resolveWith().localization(...) or resolveWith().aprilTags(...)” over generic
+- Prefer errors like: “field heading targets require solveWith().localizationOnly(...) or solveWith().aprilTagsOnly(...)” over generic
   `NullPointerException` / “invalid state.”
 - If a configuration can never work, throw **at build time** rather than silently producing
   “no output” at runtime.

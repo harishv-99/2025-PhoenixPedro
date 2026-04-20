@@ -231,8 +231,8 @@ public final class DriveGuidancePlan {
      * <pre>{@code
      * DriveGuidancePlan plan = DriveGuidance.plan()
      *         .translateTo().fieldPointInches(48, 24).doneTranslateTo()
-     *         .resolveWith().localizationOnly().localization(poseEstimator).doneResolveWith()
-     *         .tuning(DriveGuidancePlan.Tuning.defaults())
+     *         .solveWith().localizationOnlyWithDefaults(poseEstimator)
+     *         .driveTuning().use(DriveGuidancePlan.Tuning.defaults()).doneDriveTuning()
      *         .build();
      *
      * runner.enqueue(plan.task(drivebase, new DriveGuidanceTask.Config()));

@@ -318,10 +318,16 @@ Both builders can consume the same spatial vocabulary:
 
 ```java
 DriveGuidancePlan drivePlan = DriveGuidance.plan()
-        .faceTo(SpatialTargets.point(scoringPoint))
+        .faceTo()
+            .point(scoringPoint)
+            .doneFaceTo()
         .controlFrames(SpatialControlFrames.robotCenter().withFacingFrame(robotToShooterFrame))
-        .solveWith(solveSet)
-        .fixedAprilTagLayout(tagLayout)
+        .solveWith()
+            .adaptive()
+            .localization(globalPoseEstimator)
+            .aprilTags(tagSensor, cameraMount)
+            .fixedAprilTagLayout(tagLayout)
+            .doneAdaptive()
         .build();
 ```
 

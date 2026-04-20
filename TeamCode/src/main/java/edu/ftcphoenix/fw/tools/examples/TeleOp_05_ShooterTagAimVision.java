@@ -209,11 +209,12 @@ public final class TeleOp_05_ShooterTagAimVision extends OpMode {
                 .faceTo()
                 .point(scoringRef)
                 .doneFaceTo()
-                .resolveWith()
+                .solveWith()
                 .aprilTagsOnly()
-                .aprilTags(tagSensor, cameraMount, MAX_TAG_AGE_SEC)
+                .aprilTags(tagSensor, cameraMount)
+                .maxAgeSec(MAX_TAG_AGE_SEC)
                 .onLoss(DriveGuidanceSpec.LossPolicy.PASS_THROUGH)
-                .doneResolveWith()
+                .doneAprilTagsOnly()
                 .build();
 
         // Apply the plan as an overlay: the driver keeps translation, and the overlay owns omega.
@@ -227,8 +228,11 @@ public final class TeleOp_05_ShooterTagAimVision extends OpMode {
         shooter = FtcActuators.plant(hardwareMap)
                 .motor(HW_SHOOTER_LEFT, Direction.FORWARD)
                 .andMotor(HW_SHOOTER_RIGHT, Direction.REVERSE)
-                .velocity(FtcActuators.MotorVelocityControl.deviceManaged()
-                        .velocityTolerance(/*toleranceNative=*/100.0))
+                .velocity()
+                .deviceManagedWithDefaults()
+                .bounded(0.0, 4200.0)
+                .nativeUnits()
+                .velocityTolerance(/*toleranceNative=*/100.0)
                 .build();
 
         shooter.setTarget(0.0);

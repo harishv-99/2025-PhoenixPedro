@@ -234,7 +234,11 @@ import edu.ftcphoenix.fw.actuation.Plant;
 Plant shooter = FtcActuators.plant(hardwareMap)
         .motor("shooterLeftMotor", Direction.FORWARD)
         .andMotor("shooterRightMotor", Direction.REVERSE)
-        .velocity()            // default velocityTolerance = 100 ticks/sec
+        .velocity()
+        .deviceManagedWithDefaults()
+        .bounded(0.0, 2600.0)
+        .nativeUnits()
+        .velocityTolerance(100.0)
         .rateLimit(500.0)      // max delta in plant units per second
         .build();
 
@@ -292,11 +296,12 @@ DriveGuidancePlan aimPlan = DriveGuidance.plan()
         .faceTo()
             .point(speakerAim)
             .doneFaceTo()
-        .resolveWith()
+        .solveWith()
             .aprilTagsOnly()
-            .aprilTags(tagSensor, cameraMount, 0.25)
+            .aprilTags(tagSensor, cameraMount)
+            .maxAgeSec(0.25)
             .onLoss(DriveGuidanceSpec.LossPolicy.PASS_THROUGH)
-            .doneResolveWith()
+            .doneAprilTagsOnly()
         .build();
 
 DriveSource driveWithAim = baseDrive.overlayWhen(

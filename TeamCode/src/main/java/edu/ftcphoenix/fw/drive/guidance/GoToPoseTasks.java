@@ -15,7 +15,7 @@ import edu.ftcphoenix.fw.task.Task;
  * {@link DriveGuidancePlan} infrastructure.
  *
  * <p>This keeps the “go to pose” concept (very common in autonomous) while reusing
- * the same aim/translate/resolveWith/tuning machinery as TeleOp DriveGuidance overlays.</p>
+ * the same aim/translate/solveWith/driveTuning machinery as TeleOp DriveGuidance overlays.</p>
  */
 public final class GoToPoseTasks {
 
@@ -45,11 +45,11 @@ public final class GoToPoseTasks {
                 .faceTo()
                 .fieldHeadingRad(targetFieldPose.headingRad)
                 .doneFaceTo()
-                .resolveWith()
-                .localizationOnly()
-                .localization(poseEstimator)
-                .doneResolveWith()
-                .tuning(tuning)
+                .solveWith()
+                .localizationOnlyWithDefaults(poseEstimator)
+                .driveTuning()
+                .use(tuning)
+                .doneDriveTuning()
                 .build();
 
         return new DriveGuidanceTask(drivebase, plan, taskCfg);
@@ -91,12 +91,14 @@ public final class GoToPoseTasks {
                 .faceTo()
                 .frameHeading(target)
                 .doneFaceTo()
-                .resolveWith()
+                .solveWith()
                 .localizationOnly()
                 .localization(poseEstimator)
                 .fixedAprilTagLayout(tagLayout)
-                .doneResolveWith()
-                .tuning(tuning)
+                .doneLocalizationOnly()
+                .driveTuning()
+                .use(tuning)
+                .doneDriveTuning()
                 .build();
 
         return new DriveGuidanceTask(drivebase, plan, taskCfg);
@@ -126,11 +128,11 @@ public final class GoToPoseTasks {
                 .faceTo()
                 .fieldHeadingRad(targetFieldHeadingRad)
                 .doneFaceTo()
-                .resolveWith()
-                .localizationOnly()
-                .localization(poseEstimator)
-                .doneResolveWith()
-                .tuning(tuning)
+                .solveWith()
+                .localizationOnlyWithDefaults(poseEstimator)
+                .driveTuning()
+                .use(tuning)
+                .doneDriveTuning()
                 .build();
 
         return new DriveGuidanceTask(drivebase, plan, taskCfg);
@@ -154,11 +156,11 @@ public final class GoToPoseTasks {
                 .faceTo()
                 .fieldHeadingRad(targetFieldHeadingRad)
                 .doneFaceTo()
-                .resolveWith()
-                .localizationOnly()
-                .localization(poseEstimator)
-                .doneResolveWith()
-                .tuning(tuning)
+                .solveWith()
+                .localizationOnlyWithDefaults(poseEstimator)
+                .driveTuning()
+                .use(tuning)
+                .doneDriveTuning()
                 .build();
 
         DriveGuidanceTask.Config cfg = taskCfg != null ? taskCfg : new DriveGuidanceTask.Config();

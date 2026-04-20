@@ -41,10 +41,10 @@ package edu.ftcphoenix.fw.spatial;
  *         .faceTo()
  *             .frameHeading(backdropFace)
  *             .doneFaceTo()
- *         .resolveWith()
+ *         .solveWith()
  *             .localizationOnly()
  *             .localization(poseEstimator)
- *             .doneResolveWith()
+ *             .doneAprilTagsOnly()
  *         .build();
  * }</pre>
  *

@@ -289,13 +289,17 @@ AprilTagPoseEstimator.Config tagCfg = profile.localization.aprilTags
 AprilTagPoseEstimator tagLocalizer = new AprilTagPoseEstimator(tags, fixedLayout, tagCfg);
 
 DriveGuidancePlan plan = DriveGuidance.plan()
-        .resolveWith()
+        .faceTo()
+            .fieldHeadingRad(0.0)
+            .doneFaceTo()
+        .solveWith()
             .adaptive()
             .localization(correctedLocalizer)
-            .aprilTags(tags, profile.vision.activeCameraMount(), 0.50)
+            .aprilTags(tags, profile.vision.activeCameraMount())
+            .aprilTagMaxAgeSec(0.50)
             .fixedAprilTagLayout(fixedLayout)
             .aprilTagFieldPoseConfig(tagCfg.toSolverConfig())
-            .doneResolveWith()
+            .doneAdaptive()
         .build();
 ```
 

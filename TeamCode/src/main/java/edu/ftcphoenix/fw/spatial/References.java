@@ -46,9 +46,9 @@ import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelectionSource;
  *         .faceTo()
  *             .frameHeading(slotFace)
  *             .doneFaceTo()
- *         .resolveWith()
+ *         .solveWith()
  *             .localization(poseEstimator)
- *             .doneResolveWith()
+ *             .doneAprilTagsOnly()
  *         .build();
  * }</pre>
  */
