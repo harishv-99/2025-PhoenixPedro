@@ -94,12 +94,14 @@ to be answered explicitly before `build()` is visible:
 1. choose search power with `withPower(...)`
 2. choose the reference condition with `until(...)`
 3. establish the plant-unit reference with `establishReferenceAt(...)`
-4. choose the post-reference action with `thenStop()` or `thenHold(...)`
+4. choose the post-reference action with `stopAfterReference()` or `holdAfterReference(...)`
 5. choose timeout behavior with `failAfterSec(...)` or `neverTimeout()`
 6. build
 
 The old optional `failAfter(...)` method was removed. Unit-bearing timeout methods now include the
-`Sec` suffix, and intentionally unbounded searches must be declared with `neverTimeout()`.
+`Sec` suffix, and intentionally unbounded searches must be declared with `neverTimeout()`. The
+post-reference actions are named around successful reference establishment rather than generic task
+completion: `stopAfterReference()` and `holdAfterReference(...)`.
 
 ### `spatial/TagSelections`
 

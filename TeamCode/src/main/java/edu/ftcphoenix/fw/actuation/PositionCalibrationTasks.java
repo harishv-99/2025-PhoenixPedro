@@ -22,7 +22,7 @@ import edu.ftcphoenix.fw.task.TaskOutcome;
  *     .withPower(-0.20)
  *     .until(bottomSwitch)
  *     .establishReferenceAt(0.0)
- *     .thenHold(0.0)
+ *     .holdAfterReference(0.0)
  *     .failAfterSec(3.0)
  *     .build();
  * }</pre>
@@ -34,7 +34,7 @@ import edu.ftcphoenix.fw.task.TaskOutcome;
  *     .withPower(0.12)
  *     .until(paintedMarkSeen)
  *     .establishReferenceAt(0.0)
- *     .thenStop()
+ *     .stopAfterReference()
  *     .failAfterSec(5.0)
  *     .build();
  * }</pre>
@@ -85,18 +85,28 @@ public final class PositionCalibrationTasks {
     }
 
     /**
-     * Fourth search-task question: what should happen after the reference is established?
+     * Fourth search-task question: what should happen after a reference is successfully established?
+     *
+     * <p>The search drive is always stopped on success, timeout, and cancel. This step only chooses
+     * whether a successful reference should leave the plant stopped or immediately holding a
+     * plant-unit target.</p>
      */
     public interface SearchAfterStep {
         /**
-         * Stop the search output after a successful reference.
+         * Stop after a successful reference without commanding a follow-up position target.
+         *
+         * <p>Timeout and cancel paths also stop the search drive; this method describes the
+         * success path after {@link SearchReferenceStep#establishReferenceAt(double)} succeeds.</p>
          */
-        SearchTimeoutStep thenStop();
+        SearchTimeoutStep stopAfterReference();
 
         /**
-         * Hold a plant-unit target after a successful reference.
+         * Hold {@code plantTarget} after a successful reference.
+         *
+         * <p>The target is expressed in plant units. Timeout and cancel paths still stop safely and
+         * do not command this hold target.</p>
          */
-        SearchTimeoutStep thenHold(double plantTarget);
+        SearchTimeoutStep holdAfterReference(double plantTarget);
     }
 
     /**
@@ -169,13 +179,13 @@ public final class PositionCalibrationTasks {
         }
 
         @Override
-        public SearchTimeoutStep thenStop() {
+        public SearchTimeoutStep stopAfterReference() {
             this.holdAfter = false;
             return this;
         }
 
         @Override
-        public SearchTimeoutStep thenHold(double plantTarget) {
+        public SearchTimeoutStep holdAfterReference(double plantTarget) {
             this.holdAfter = true;
             this.holdTarget = plantTarget;
             return this;

@@ -350,7 +350,7 @@ Task homeLift = PositionCalibrationTasks.search(lift)
         .withPower(-0.20)
         .until(bottomSwitch)
         .establishReferenceAt(0.0)
-        .thenHold(0.0)
+        .holdAfterReference(0.0)
         .failAfterSec(3.0)
         .build();
 ```
