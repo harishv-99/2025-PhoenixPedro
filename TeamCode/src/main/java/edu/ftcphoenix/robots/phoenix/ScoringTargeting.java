@@ -8,6 +8,7 @@ import java.util.Objects;
 import edu.ftcphoenix.fw.core.control.DebounceBoolean;
 import edu.ftcphoenix.fw.core.geometry.Pose2d;
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
+import edu.ftcphoenix.fw.core.math.InterpolatingTable1D;
 import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.drive.DriveCommandSink;
@@ -36,17 +37,73 @@ import edu.ftcphoenix.fw.task.Task;
  * Shared targeting service for Phoenix scoring.
  *
  * <p>This class owns selected-tag policy, the auto-aim guidance query, and range-based shot
- * suggestions. Higher-level code reads one cached {@link TargetingStatus} snapshot per loop instead
+ * suggestions. Higher-level code reads one cached {@link Status} snapshot per loop instead
  * of re-sampling the stateful guidance query in multiple places.</p>
  */
-public final class ScoringTargeting {
+public final class ScoringTargeting implements PhoenixCapabilities.Targeting {
+
+    /**
+     * Immutable status snapshot for Phoenix scoring-target selection and auto-aim.
+     */
+    public static final class Status {
+        public final boolean autoAimEnabled;
+        public final boolean aimReady;
+        public final boolean aimOkToShoot;
+        public final boolean aimOverride;
+        public final double aimToleranceDeg;
+        public final double aimReadyToleranceDeg;
+        public final TagSelectionResult selection;
+        public final DriveGuidanceStatus aimStatus;
+        public final String targetLabel;
+        public final double aimOffsetForwardInches;
+        public final double aimOffsetLeftInches;
+        public final boolean hasSuggestedVelocity;
+        public final double suggestedVelocityNative;
+        public final Pose3d fieldToSelectedTag;
+        public final Pose2d fieldToAimPoint;
+
+        /**
+         * Creates an immutable targeting snapshot.
+         */
+        public Status(boolean autoAimEnabled,
+                      boolean aimReady,
+                      boolean aimOkToShoot,
+                      boolean aimOverride,
+                      double aimToleranceDeg,
+                      double aimReadyToleranceDeg,
+                      TagSelectionResult selection,
+                      DriveGuidanceStatus aimStatus,
+                      String targetLabel,
+                      double aimOffsetForwardInches,
+                      double aimOffsetLeftInches,
+                      boolean hasSuggestedVelocity,
+                      double suggestedVelocityNative,
+                      Pose3d fieldToSelectedTag,
+                      Pose2d fieldToAimPoint) {
+            this.autoAimEnabled = autoAimEnabled;
+            this.aimReady = aimReady;
+            this.aimOkToShoot = aimOkToShoot;
+            this.aimOverride = aimOverride;
+            this.aimToleranceDeg = aimToleranceDeg;
+            this.aimReadyToleranceDeg = aimReadyToleranceDeg;
+            this.selection = selection;
+            this.aimStatus = aimStatus;
+            this.targetLabel = targetLabel != null ? targetLabel : "";
+            this.aimOffsetForwardInches = aimOffsetForwardInches;
+            this.aimOffsetLeftInches = aimOffsetLeftInches;
+            this.hasSuggestedVelocity = hasSuggestedVelocity;
+            this.suggestedVelocityNative = suggestedVelocityNative;
+            this.fieldToSelectedTag = fieldToSelectedTag;
+            this.fieldToAimPoint = fieldToAimPoint;
+        }
+    }
 
     private final PhoenixProfile.AutoAimConfig cfg;
     private final CameraMountConfig cameraMountConfig;
     private final TagLayout fieldTagLayout;
     private final BooleanSource autoAimEnabled;
     private final BooleanSource aimOverrideInput;
-    private final ShotVelocityModel shotVelocityModel;
+    private final InterpolatingTable1D shotVelocityTable;
     private final DebounceBoolean aimReadyDebouncer;
     private final TagSelectionSource scoringSelection;
     private final DriveGuidancePlan aimPlan;
@@ -74,14 +131,14 @@ public final class ScoringTargeting {
     };
 
     private long lastStatusCycle = Long.MIN_VALUE;
-    private TargetingStatus lastStatus = new TargetingStatus(
+    private Status lastStatus = new Status(
             false,
             true,
             true,
             false,
             0.0,
             0.0,
-            TagSelectionResult.none(Collections.<Integer>emptySet()),
+            TagSelectionResult.none(Collections.emptySet()),
             null,
             "",
             0.0,
@@ -95,15 +152,15 @@ public final class ScoringTargeting {
     /**
      * Creates the shared Phoenix scoring-targeting service.
      *
-     * @param config auto-aim configuration snapshot copied for local ownership
-     * @param aprilTagFieldPoseConfig AprilTag field-pose solve config used by the guidance plan
-     * @param tagSensor shared AprilTag sensor used for selection and guidance
-     * @param cameraMountConfig fixed camera extrinsics for the current robot profile
+     * @param config                      auto-aim configuration snapshot copied for local ownership
+     * @param aprilTagFieldPoseConfig     AprilTag field-pose solve config used by the guidance plan
+     * @param tagSensor                   shared AprilTag sensor used for selection and guidance
+     * @param cameraMountConfig           fixed camera extrinsics for the current robot profile
      * @param globalAbsolutePoseEstimator current global pose-estimator lane used by adaptive guidance
-     * @param fieldTagLayout fixed field tag layout for the current game
-     * @param autoAimEnabled driver enable source that activates sticky target selection and the aim overlay
-     * @param aimOverrideInput driver override source that bypasses aim readiness gates when held
-     * @param shotVelocityModel range-to-velocity model used for fresh target-based shot suggestions
+     * @param fieldTagLayout              fixed field tag layout for the current game
+     * @param autoAimEnabled              driver enable source that activates sticky target selection and the aim overlay
+     * @param aimOverrideInput            driver override source that bypasses aim readiness gates when held
+     * @param shotVelocityTable           range-to-velocity table used for fresh target-based shot suggestions
      */
     public ScoringTargeting(PhoenixProfile.AutoAimConfig config,
                             FixedTagFieldPoseSolver.Config aprilTagFieldPoseConfig,
@@ -113,7 +170,7 @@ public final class ScoringTargeting {
                             TagLayout fieldTagLayout,
                             BooleanSource autoAimEnabled,
                             BooleanSource aimOverrideInput,
-                            ShotVelocityModel shotVelocityModel) {
+                            InterpolatingTable1D shotVelocityTable) {
         this.cfg = Objects.requireNonNull(config, "config").copy();
         FixedTagFieldPoseSolver.Config fieldPoseCfg =
                 FixedTagFieldPoseSolver.Config.normalizedValidatedCopyOf(
@@ -126,7 +183,7 @@ public final class ScoringTargeting {
         this.fieldTagLayout = Objects.requireNonNull(fieldTagLayout, "fieldTagLayout");
         this.autoAimEnabled = Objects.requireNonNull(autoAimEnabled, "autoAimEnabled").memoized();
         this.aimOverrideInput = Objects.requireNonNull(aimOverrideInput, "aimOverrideInput").memoized();
-        this.shotVelocityModel = Objects.requireNonNull(shotVelocityModel, "shotVelocityModel");
+        this.shotVelocityTable = Objects.requireNonNull(shotVelocityTable, "shotVelocityTable");
         this.aimReadyDebouncer = DebounceBoolean.onAfterOffImmediately(this.cfg.aimReadyDebounceSec);
         this.aimReadyToleranceRad = Math.toRadians(this.cfg.aimReadyToleranceDeg);
 
@@ -198,9 +255,10 @@ public final class ScoringTargeting {
      * supplied {@link DriveCommandSink} directly until the aim task reaches its tolerance.</p>
      *
      * @param driveSink sink used to apply the aim command
-     * @param cfg task-level tolerances/timeouts; when {@code null}, defaults are used
+     * @param cfg       task-level tolerances/timeouts; when {@code null}, defaults are used
      * @return task that turns the robot toward the currently selected Phoenix scoring target
      */
+    @Override
     public Task aimTask(DriveCommandSink driveSink, DriveGuidanceTask.Config cfg) {
         return aimPlan.task(driveSink, cfg);
     }
@@ -239,7 +297,8 @@ public final class ScoringTargeting {
      * @param clock shared loop clock for the active OpMode cycle
      * @return cached targeting snapshot for the current cycle
      */
-    public TargetingStatus status(LoopClock clock) {
+    @Override
+    public Status status(LoopClock clock) {
         Objects.requireNonNull(clock, "clock");
         long cyc = clock.cycle();
         if (cyc == lastStatusCycle) {
@@ -251,7 +310,7 @@ public final class ScoringTargeting {
         boolean aimOverrideNow = aimOverrideInput.getAsBoolean(clock);
         TagSelectionResult selection = scoringSelection.get(clock);
         if (selection == null) {
-            selection = TagSelectionResult.none(Collections.<Integer>emptySet());
+            selection = TagSelectionResult.none(Collections.emptySet());
         }
 
         DriveGuidanceStatus aimStatus = aimQuery.sample(clock, DriveOverlayMask.OMEGA_ONLY);
@@ -262,7 +321,7 @@ public final class ScoringTargeting {
                         && aimStatus.hasOmegaError
                         && aimStatus.omegaWithin(aimReadyToleranceRad)
         );
-        boolean aimReadyNow = autoAimNow ? aimReadyDebouncer.update(clock, rawAimReady) : true;
+        boolean aimReadyNow = !autoAimNow || aimReadyDebouncer.update(clock, rawAimReady);
         boolean aimOkToShootNow = aimReadyNow || aimOverrideNow;
 
         PhoenixProfile.AutoAimConfig.ScoringTarget target = selection.hasSelection
@@ -271,7 +330,7 @@ public final class ScoringTargeting {
 
         boolean hasSuggestedVelocity = selection.hasFreshSelectedObservation && selection.selectedObservation.hasTarget;
         double suggestedVelocityNative = hasSuggestedVelocity
-                ? shotVelocityModel.velocityForRangeInches(selection.selectedObservation.cameraRangeInches())
+                ? shotVelocityTable.interpolate(selection.selectedObservation.cameraRangeInches())
                 : Double.NaN;
 
         Pose3d fieldToSelectedTag = null;
@@ -285,7 +344,7 @@ public final class ScoringTargeting {
             ).then(new Pose2d(target.aimOffset.forwardInches, target.aimOffset.leftInches, 0.0));
         }
 
-        lastStatus = new TargetingStatus(
+        lastStatus = new Status(
                 autoAimNow,
                 aimReadyNow,
                 aimOkToShootNow,
@@ -308,12 +367,12 @@ public final class ScoringTargeting {
     /**
      * Returns a target-derived velocity suggestion when a fresh selected observation exists.
      *
-     * @param clock shared loop clock for the active OpMode cycle
+     * @param clock                  shared loop clock for the active OpMode cycle
      * @param fallbackVelocityNative value to return when no fresh range observation is available
      * @return fresh target-derived velocity recommendation, or {@code fallbackVelocityNative} when unavailable
      */
     public double suggestedVelocityNative(LoopClock clock, double fallbackVelocityNative) {
-        TargetingStatus status = status(clock);
+        Status status = status(clock);
         return status.hasSuggestedVelocity ? status.suggestedVelocityNative : fallbackVelocityNative;
     }
 
@@ -327,14 +386,14 @@ public final class ScoringTargeting {
         aimOverrideInput.reset();
         aimReadyDebouncer.reset(false);
         lastStatusCycle = Long.MIN_VALUE;
-        lastStatus = new TargetingStatus(
+        lastStatus = new Status(
                 false,
                 true,
                 true,
                 false,
                 cfg.aimToleranceDeg,
                 cfg.aimReadyToleranceDeg,
-                TagSelectionResult.none(Collections.<Integer>emptySet()),
+                TagSelectionResult.none(Collections.emptySet()),
                 null,
                 "",
                 0.0,

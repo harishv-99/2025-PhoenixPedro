@@ -16,9 +16,8 @@ Phoenix keeps calibration ownership intentionally clean:
 - `PhoenixProfile.field` -> shared field facts such as the fixed AprilTag layout
 - `PhoenixCapabilities` -> shared mode-neutral robot API used by TeleOp and Auto
 - `PhoenixTeleOpControls` -> TeleOp stick/button semantics
-- `ShooterSupervisor` -> scoring policy and requests
-- `ScoringTargeting` -> selected-tag policy and aim status
-- `Shooter` -> mechanism actuation and status
+- `ScoringPath` -> scoring policy, requests, mechanism actuation, and status
+- `ScoringTargeting` -> selected-tag policy, aim status, and shot suggestions
 - `PhoenixRobot` -> composition root and loop owner
 
 That ownership split matters during bring-up because fixes should land in the owner of the behavior:

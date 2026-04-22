@@ -7,7 +7,7 @@ The governing rule is:
 
 > Stable hardware/resource ownership lives in framework lanes. Shared public robot vocabulary lives
 > in robot-owned capability families. Operator semantics live in TeleOp controls. Game-specific
-> reasoning lives in services, supervisors, and subsystems.
+> reasoning lives in cohesive robot services and subsystems.
 
 That split keeps Phoenix reusable as a template without pushing one season's strategy into the
 framework.
@@ -33,8 +33,7 @@ PhoenixRobot
   PhoenixTeleOpControls controls
   PhoenixDriveAssistService driveAssists
   ScoringTargeting targeting
-  Shooter shooter
-  ShooterSupervisor scoring
+  ScoringPath scoring
   TaskRunner autoRunner
   PhoenixTelemetryPresenter telemetry
 ```
@@ -56,6 +55,8 @@ Auto client:
 
 That is the intended parallelism. TeleOp and Auto are parallel **clients** of Phoenix, not
 different APIs layered directly onto internals.
+
+`PhoenixCapabilities` is now only a tiny aggregate of robot-owned capability families. It no longer has a separate delegating implementation class; `ScoringPath` implements the scoring family directly and `ScoringTargeting` implements the targeting family directly.
 
 ## Role map
 
@@ -86,15 +87,14 @@ vision lane or the localization lane.
 - `PhoenixCapabilities.targeting()`
 
 These are Phoenix's shared mode-neutral public API families. TeleOp controls and Auto plans should
-use them instead of touching `Shooter`, `ShooterSupervisor`, or `ScoringTargeting` directly.
+use them instead of touching `ScoringPath` or `ScoringTargeting` directly.
 
 ### Robot-owned objects
 
 - `PhoenixTeleOpControls`: all TeleOp input semantics, including stick mapping and scoring button semantics
 - `PhoenixDriveAssistService`: robot-specific drive assists that combine manual drive, scoring state, localization, and overlays
 - `ScoringTargeting`: selected-tag policy, auto-aim guidance, cached targeting status, and shot suggestions
-- `Shooter`: mechanism subsystem and single writer to scoring-path plants
-- `ShooterSupervisor`: policy/orchestration for scoring modes and requests
+- `ScoringPath`: scoring-path mechanism owner, single writer to scoring-path plants, and policy/orchestration for scoring modes and requests
 - `TaskRunner autoRunner`: autonomous task queue used when Phoenix is running Auto
 - `PhoenixTelemetryPresenter`: driver-facing presentation from snapshots
 - `PhoenixRobot`: composition root and loop owner
@@ -158,7 +158,7 @@ PhoenixProfile
   ├─ field        -> TagLayout
   ├─ controls     -> PhoenixTeleOpControls tuning
   ├─ driveAssist  -> PhoenixDriveAssistService tuning
-  ├─ shooter      -> Shooter config
+  ├─ scoring      -> ScoringPath config
   ├─ autoAim      -> ScoringTargeting / scoring policy config
   └─ auto         -> Auto route/aim/wait timing
 
@@ -166,12 +166,11 @@ PhoenixRobot
   ├─ drive lane
   ├─ vision lane
   ├─ localization lane
-  ├─ capabilities façade
+  ├─ capabilities aggregate
   ├─ controls owner
   ├─ drive-assist service
   ├─ targeting service
-  ├─ shooter subsystem
-  ├─ scoring supervisor
+  ├─ scoring path
   └─ telemetry presenter
 ```
 
@@ -220,8 +219,8 @@ Phoenix no longer spreads drive stick setup in one class and scoring bindings in
 - intake/flywheel/shoot/eject button semantics
 - selected-velocity nudge semantics
 
-The important boundary change is that TeleOp binds against `PhoenixCapabilities`, not against raw
-`Shooter` or `ShooterSupervisor` objects.
+The important boundary is that TeleOp binds against `PhoenixCapabilities`, not against raw
+`ScoringPath` or `ScoringTargeting` objects.
 
 `PhoenixDriveAssistService` then consumes those control-layer sources without taking ownership of the
 button layout itself. That keeps input semantics and drive-assist policy separate while still
@@ -229,7 +228,7 @@ letting them collaborate cleanly.
 
 ## Autonomous structure
 
-Phoenix Auto reuses the same targeting, shooter, and telemetry stack as TeleOp, but leaves route
+Phoenix Auto reuses the same targeting, scoring path, and telemetry stack as TeleOp, but leaves route
 ownership outside the robot container. The robot-owned spec/strategy objects now make the selected
 match setup explicit before any route or task sequence is built.
 
@@ -331,21 +330,19 @@ Phoenix keeps loop order explicit inside `PhoenixRobot.updateTeleOp()`:
 1. localization.update(clock)
 2. targeting.update(clock)
 3. controls.update(clock)
-4. shooterSupervisor.update(clock)
+4. scoringPath.update(clock)
 5. driveAssists.update(clock, scoringStatus)
 6. drive.update(clock)
 7. drive.drive(...)
-8. shooter.update(clock)
-9. telemetryPresenter.emitTeleOp(...snapshots...)
+8. telemetryPresenter.emitTeleOp(...snapshots...)
 ```
 
 That order reflects ownership:
 
 - lanes produce stable shared state first
 - controls update operator intent
-- supervisors translate intent into requests
+- the scoring path translates intent and writes scoring hardware
 - services reshape drive behavior
-- subsystems write hardware
 - presenters explain the result
 
 Phoenix keeps `updateAuto()` just as explicit:
@@ -354,12 +351,11 @@ Phoenix keeps `updateAuto()` just as explicit:
 1. localization.update(clock)
 2. targeting.update(clock)
 3. autoRunner.update(clock)
-4. shooterSupervisor.update(clock)
-5. shooter.update(clock)
-6. telemetryPresenter.emitAuto(...with Auto task and scoring snapshots...)
+4. scoringPath.update(clock)
+5. telemetryPresenter.emitAuto(...with Auto task and scoring snapshots...)
 ```
 
-Auto uses the same scoring and targeting services, but swaps TeleOp drive-assist policy for the
+Auto uses the same scoring path and targeting service, but swaps TeleOp drive-assist policy for the
 queued autonomous task runner and reports through the Auto-specific telemetry emitter.
 
 ## Recommended profile shape
@@ -372,8 +368,8 @@ PhoenixProfile
   field         -> fixed AprilTag layout
   controls      -> TeleOp control tuning
   driveAssist   -> shoot-brace / drive-assist tuning
-  shooter       -> mechanism config
-  autoAim       -> scoring target catalog + shot model + aim tuning
+  scoring       -> scoring-path mechanism config
+  autoAim       -> scoring target catalog + shot table + aim tuning
   auto          -> Auto route/aim/wait timing + red/blue Auto scoring tag ids
   calibration   -> human acknowledgements
 ```
@@ -389,8 +385,8 @@ order. It should not quietly absorb detailed scoring, targeting, or route-specif
 
 ### Letting TeleOp or Auto touch raw internals directly
 
-`PhoenixTeleOpControls` and auto plans should use `PhoenixCapabilities`, not `Shooter`,
-`ShooterSupervisor`, or `ScoringTargeting`.
+`PhoenixTeleOpControls` and auto plans should use `PhoenixCapabilities`, not `ScoringPath`
+or `ScoringTargeting`.
 
 ### Treating capability families like framework lanes
 
@@ -416,8 +412,7 @@ MyRobot
 
   MyDriveAssistService
   MyTargetingService
-  MySubsystem
-  MySupervisor
+  MyScoringPath / MySubsystem
   MyTelemetryPresenter
 ```
 

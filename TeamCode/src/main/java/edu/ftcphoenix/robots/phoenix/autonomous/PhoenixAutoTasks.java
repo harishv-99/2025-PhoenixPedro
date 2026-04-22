@@ -17,7 +17,7 @@ import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
  *
  * <p>These helpers are the Auto-side sibling of TeleOp button bindings: they describe high-level
  * Phoenix intents such as "aim and request one shot" without reaching into raw shooter, targeting,
- * or supervisor internals.</p>
+ * or scoring-path internals.</p>
  */
 public final class PhoenixAutoTasks {
 

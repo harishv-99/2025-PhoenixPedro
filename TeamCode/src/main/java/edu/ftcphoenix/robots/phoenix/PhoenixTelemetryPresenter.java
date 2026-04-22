@@ -29,72 +29,30 @@ public final class PhoenixTelemetryPresenter {
 
     /**
      * Emits the standard Phoenix TeleOp telemetry block.
-     *
-     * <p>This presenter intentionally consumes precomputed snapshots instead of reaching back into
-     * live subsystems. That keeps loop ownership explicit and makes the output easy to audit during
-     * refactors.</p>
-     *
-     * @param shooter     shooter subsystem status snapshot for the current loop
-     * @param scoring     scoring supervisor status snapshot for the current loop
-     * @param targeting   scoring-targeting status snapshot for the current loop
-     * @param driveAssist drive-assist status snapshot for the current loop
-     * @param globalPose  current fused/global pose estimate, or {@code null} if unavailable
-     * @param odomPose    current odometry-only pose estimate, or {@code null} if unavailable
      */
-    public void emitTeleOp(ShooterStatus shooter,
-                           ScoringStatus scoring,
-                           TargetingStatus targeting,
-                           DriveAssistStatus driveAssist,
+    public void emitTeleOp(ScoringPath.Status scoring,
+                           ScoringTargeting.Status targeting,
+                           PhoenixDriveAssistService.Status driveAssist,
                            PoseEstimate globalPose,
                            PoseEstimate odomPose) {
         if (telemetry == null) {
             return;
         }
 
-        emitShooterTelemetry(shooter, "shooter");
-        telemetry.addData("shoot.mode", scoring.mode);
-        telemetry.addData("feed.backlog", scoring.feedBacklog);
-        telemetry.addData("intake.enabled", scoring.intakeEnabled);
-        telemetry.addData("eject.requested", scoring.ejectRequested);
-        telemetry.addData("flywheel.requested", scoring.flywheelRequested);
-        telemetry.addData("shoot.requested", scoring.shootingRequested);
-        telemetry.addData("shoot.active", scoring.shootActive);
-        telemetry.addData("aim.ready", targeting.aimReady);
-        telemetry.addData("aim.okToShoot", targeting.aimOkToShoot);
-        telemetry.addData("aim.override", targeting.aimOverride);
-        telemetry.addData("aim.enabled", targeting.autoAimEnabled);
+        emitScoringTelemetry(scoring, "scoring");
+        emitScoringIntentTelemetry(scoring);
+        emitAimSummary(targeting);
         emitDriveAssistTelemetry(driveAssist);
-
-        if (globalPose != null) {
-            telemetry.addData("pose.global", globalPose);
-            telemetry.addData("pose.global.mode", profile.localization.correctedEstimatorMode);
-            telemetry.addData("pose.global.correctionSource", profile.localization.correctionSource.mode);
-        }
-        if (odomPose != null) {
-            telemetry.addData("pose.odom", odomPose);
-        }
-
+        emitPoseTelemetry(globalPose, odomPose);
         emitTargetTelemetry(targeting);
         telemetry.update();
     }
 
     /**
      * Emits the standard Phoenix Auto telemetry block.
-     *
-     * <p>Auto telemetry has its own entry point so {@code PhoenixRobot.updateAuto()} does not pretend
-     * to be a TeleOp loop with a missing drive-assist snapshot.</p>
-     *
-     * @param shooter         shooter subsystem status snapshot for the current loop
-     * @param scoring         scoring supervisor status snapshot for the current loop
-     * @param targeting       scoring-targeting status snapshot for the current loop
-     * @param currentAutoTask active autonomous task, or {@code null} when the runner is idle
-     * @param queuedAutoTasks number of tasks still queued behind the current task
-     * @param globalPose      current fused/global pose estimate, or {@code null} if unavailable
-     * @param odomPose        current odometry-only pose estimate, or {@code null} if unavailable
      */
-    public void emitAuto(ShooterStatus shooter,
-                         ScoringStatus scoring,
-                         TargetingStatus targeting,
+    public void emitAuto(ScoringPath.Status scoring,
+                         ScoringTargeting.Status targeting,
                          Task currentAutoTask,
                          int queuedAutoTasks,
                          PoseEstimate globalPose,
@@ -107,7 +65,49 @@ public final class PhoenixTelemetryPresenter {
         telemetry.addData("auto.currentOutcome", currentAutoTask != null ? currentAutoTask.getOutcome() : "IDLE");
         telemetry.addData("auto.queued", queuedAutoTasks);
 
-        emitShooterTelemetry(shooter, "shooter");
+        emitScoringTelemetry(scoring, "scoring");
+        emitScoringIntentTelemetry(scoring);
+        emitAimSummary(targeting);
+        emitPoseTelemetry(globalPose, odomPose);
+        emitTargetTelemetry(targeting);
+        telemetry.update();
+    }
+
+    private void emitScoringTelemetry(ScoringPath.Status scoring, String prefix) {
+        if (scoring == null) {
+            return;
+        }
+        String p = (prefix == null || prefix.isEmpty()) ? "scoring" : prefix;
+        telemetry.addData(p + ".flywheelEnabled", scoring.flywheelEnabled);
+        telemetry.addData(p + ".pidfEnabled", scoring.pidfEnabled);
+        if (scoring.pidfWarning != null && !scoring.pidfWarning.isEmpty()) {
+            telemetry.addData(p + ".pidfWarning", scoring.pidfWarning);
+        }
+        telemetry.addData(p + ".selectedVel", scoring.selectedVelocityNative);
+        telemetry.addData(p + ".flywheelTarget", scoring.flywheelTargetNative);
+        telemetry.addData(p + ".flywheelMeasured", scoring.flywheelMeasuredNative);
+        telemetry.addData(p + ".flywheelErr", scoring.flywheelErrorNative);
+        telemetry.addData(p + ".flywheelErrAbs", scoring.flywheelErrorAbsNative);
+        telemetry.addData(p + ".flywheelTol", scoring.flywheelToleranceNative);
+        telemetry.addData(p + ".flywheelTolBelow", scoring.flywheelToleranceBelowNative);
+        telemetry.addData(p + ".flywheelTolAbove", scoring.flywheelToleranceAboveNative);
+        telemetry.addData(p + ".flywheelAccel", scoring.flywheelAccelNativePerSec);
+        telemetry.addData(p + ".flywheelAccelAbs", scoring.flywheelAccelAbsNativePerSec);
+        telemetry.addData(p + ".readyLeadSec", scoring.readyLeadSec);
+        telemetry.addData(p + ".flywheelPredAbs", scoring.predictedFlywheelAbsNative);
+        telemetry.addData(p + ".flywheelPredErr", scoring.predictedFlywheelErrorNative);
+        telemetry.addData(p + ".flywheelAtSetpoint", scoring.flywheelAtSetpoint);
+        telemetry.addData(p + ".ready", scoring.ready);
+        telemetry.addData(p + ".feedBacklog", scoring.feedBacklog);
+        telemetry.addData(p + ".feedQueued", scoring.feedQueued);
+        telemetry.addData(p + ".feedActive", scoring.feedActive);
+        telemetry.addData(p + ".feedOut", scoring.feedOutput);
+    }
+
+    private void emitScoringIntentTelemetry(ScoringPath.Status scoring) {
+        if (scoring == null) {
+            return;
+        }
         telemetry.addData("shoot.mode", scoring.mode);
         telemetry.addData("feed.backlog", scoring.feedBacklog);
         telemetry.addData("intake.enabled", scoring.intakeEnabled);
@@ -115,54 +115,19 @@ public final class PhoenixTelemetryPresenter {
         telemetry.addData("flywheel.requested", scoring.flywheelRequested);
         telemetry.addData("shoot.requested", scoring.shootingRequested);
         telemetry.addData("shoot.active", scoring.shootActive);
+    }
+
+    private void emitAimSummary(ScoringTargeting.Status targeting) {
+        if (targeting == null) {
+            return;
+        }
         telemetry.addData("aim.ready", targeting.aimReady);
         telemetry.addData("aim.okToShoot", targeting.aimOkToShoot);
         telemetry.addData("aim.override", targeting.aimOverride);
         telemetry.addData("aim.enabled", targeting.autoAimEnabled);
-
-        if (globalPose != null) {
-            telemetry.addData("pose.global", globalPose);
-            telemetry.addData("pose.global.mode", profile.localization.correctedEstimatorMode);
-            telemetry.addData("pose.global.correctionSource", profile.localization.correctionSource.mode);
-        }
-        if (odomPose != null) {
-            telemetry.addData("pose.odom", odomPose);
-        }
-
-        emitTargetTelemetry(targeting);
-        telemetry.update();
     }
 
-    private void emitShooterTelemetry(ShooterStatus shooter, String prefix) {
-        String p = (prefix == null || prefix.isEmpty()) ? "shooter" : prefix;
-        telemetry.addData(p + ".flywheelEnabled", shooter.flywheelEnabled);
-        telemetry.addData(p + ".pidfEnabled", shooter.pidfEnabled);
-        if (shooter.pidfWarning != null && !shooter.pidfWarning.isEmpty()) {
-            telemetry.addData(p + ".pidfWarning", shooter.pidfWarning);
-        }
-        telemetry.addData(p + ".selectedVel", shooter.selectedVelocityNative);
-        telemetry.addData(p + ".flywheelTarget", shooter.flywheelTargetNative);
-        telemetry.addData(p + ".flywheelMeasured", shooter.flywheelMeasuredNative);
-        telemetry.addData(p + ".flywheelErr", shooter.flywheelErrorNative);
-        telemetry.addData(p + ".flywheelErrAbs", shooter.flywheelErrorAbsNative);
-        telemetry.addData(p + ".flywheelTol", shooter.flywheelToleranceNative);
-        telemetry.addData(p + ".flywheelTolBelow", shooter.flywheelToleranceBelowNative);
-        telemetry.addData(p + ".flywheelTolAbove", shooter.flywheelToleranceAboveNative);
-        telemetry.addData(p + ".flywheelAccel", shooter.flywheelAccelNativePerSec);
-        telemetry.addData(p + ".flywheelAccelAbs", shooter.flywheelAccelAbsNativePerSec);
-        telemetry.addData(p + ".readyLeadSec", shooter.readyLeadSec);
-        telemetry.addData(p + ".flywheelPredAbs", shooter.predictedFlywheelAbsNative);
-        telemetry.addData(p + ".flywheelPredErr", shooter.predictedFlywheelErrorNative);
-        telemetry.addData(p + ".flywheelAtSetpoint", shooter.flywheelAtSetpoint);
-        telemetry.addData(p + ".ready", shooter.ready);
-        telemetry.addData(p + ".feedBacklog", shooter.feedBacklog);
-        telemetry.addData(p + ".feedQueued", shooter.feedQueued);
-        telemetry.addData(p + ".feedActive", shooter.feedActive);
-        telemetry.addData(p + ".feedOut", shooter.feedOutput);
-    }
-
-
-    private void emitDriveAssistTelemetry(DriveAssistStatus driveAssist) {
+    private void emitDriveAssistTelemetry(PhoenixDriveAssistService.Status driveAssist) {
         if (driveAssist == null) {
             return;
         }
@@ -172,7 +137,18 @@ public final class PhoenixTelemetryPresenter {
         telemetry.addData("drive.manualTranslateMag", driveAssist.manualTranslateMagnitude);
     }
 
-    private void emitTargetTelemetry(TargetingStatus targeting) {
+    private void emitPoseTelemetry(PoseEstimate globalPose, PoseEstimate odomPose) {
+        if (globalPose != null) {
+            telemetry.addData("pose.global", globalPose);
+            telemetry.addData("pose.global.mode", profile.localization.correctedEstimatorMode);
+            telemetry.addData("pose.global.correctionSource", profile.localization.correctionSource.mode);
+        }
+        if (odomPose != null) {
+            telemetry.addData("pose.odom", odomPose);
+        }
+    }
+
+    private void emitTargetTelemetry(ScoringTargeting.Status targeting) {
         if (targeting == null) {
             return;
         }

@@ -34,7 +34,7 @@ import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
  *   <li>shared field facts: fixed AprilTag layout for the current game</li>
  *   <li>robot-owned controls: TeleOp stick shaping and slow-mode tuning</li>
  *   <li>robot-owned drive assists: scoring-related drive overlays and brace tuning</li>
- *   <li>robot-owned mechanisms and strategy: shooter, targeting, Auto timing, and calibration acknowledgements</li>
+ *   <li>robot-owned mechanisms and strategy: scoring path, targeting, Auto timing, and calibration acknowledgements</li>
  * </ul>
  */
 public final class PhoenixProfile {
@@ -72,9 +72,9 @@ public final class PhoenixProfile {
     public DriveAssistConfig driveAssist = new DriveAssistConfig();
 
     /**
-     * Shooter hardware + scoring-path tuning.
+     * Scoring-path hardware and policy tuning.
      */
-    public ShooterConfig shooter = new ShooterConfig();
+    public ScoringPathConfig scoring = new ScoringPathConfig();
 
     /**
      * Human-acknowledged calibration checkpoints.
@@ -133,7 +133,7 @@ public final class PhoenixProfile {
         copy.field = this.field.copy();
         copy.controls = this.controls.copy();
         copy.driveAssist = this.driveAssist.copy();
-        copy.shooter = this.shooter.copy();
+        copy.scoring = this.scoring.copy();
         copy.calibration = this.calibration.copy();
         copy.autoAim = this.autoAim.copy();
         copy.auto = this.auto.copy();
@@ -555,9 +555,9 @@ public final class PhoenixProfile {
     }
 
     /**
-     * Shooter hardware mapping, feed tuning, and flywheel calibration values.
+     * Scoring-path hardware mapping, feed tuning, and flywheel calibration values.
      */
-    public static final class ShooterConfig {
+    public static final class ScoringPathConfig {
         public String nameMotorIntake = "intakeMotor";
         public Direction directionMotorIntake = Direction.FORWARD;
 
@@ -602,26 +602,24 @@ public final class PhoenixProfile {
         public double shootFeedPower = 1.0;
         public double shootFeedPulseSec = 0.22;
         public double shootFeedCooldownSec = 0.06;
-        public double flywheelKeepAliveSec = 0.75;
-
         public double feedScaleIntakeMotor = 1.0;
         public double feedScaleIntakeTransfer = 1.0;
         public double feedScaleShooterTransfer = 1.0;
 
 
         /**
-         * Creates a shooter config initialized with Phoenix defaults.
+         * Creates a scoring-path config initialized with Phoenix defaults.
          */
-        public ShooterConfig() {
+        public ScoringPathConfig() {
         }
 
         /**
-         * Creates a deep copy of this shooter config.
+         * Creates a deep copy of this scoring-path config.
          *
-         * @return copied shooter config
+         * @return copied scoring-path config
          */
-        public ShooterConfig copy() {
-            ShooterConfig c = new ShooterConfig();
+        public ScoringPathConfig copy() {
+            ScoringPathConfig c = new ScoringPathConfig();
             c.nameMotorIntake = this.nameMotorIntake;
             c.directionMotorIntake = this.directionMotorIntake;
             c.nameCrServoIntakeTransfer = this.nameCrServoIntakeTransfer;
@@ -655,7 +653,6 @@ public final class PhoenixProfile {
             c.shootFeedPower = this.shootFeedPower;
             c.shootFeedPulseSec = this.shootFeedPulseSec;
             c.shootFeedCooldownSec = this.shootFeedCooldownSec;
-            c.flywheelKeepAliveSec = this.flywheelKeepAliveSec;
             c.feedScaleIntakeMotor = this.feedScaleIntakeMotor;
             c.feedScaleIntakeTransfer = this.feedScaleIntakeTransfer;
             c.feedScaleShooterTransfer = this.feedScaleShooterTransfer;
@@ -888,15 +885,6 @@ public final class PhoenixProfile {
          */
         public ScoringTarget defaultTargetProfile(int tagId) {
             return new ScoringTarget(tagId, tagId >= 0 ? ("Tag " + tagId) : "No target", defaultAimOffset.copy());
-        }
-
-        /**
-         * Builds the default range-to-velocity model for the targeting layer.
-         *
-         * @return new interpolating shot-velocity model backed by {@link #shotVelocityTable}
-         */
-        public ShotVelocityModel shotVelocityModel() {
-            return new InterpolatingShotVelocityModel(shotVelocityTable);
         }
 
         /**

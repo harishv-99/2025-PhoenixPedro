@@ -33,8 +33,7 @@ import edu.ftcphoenix.fw.task.TaskRunner;
  *   <li>{@link PhoenixTeleOpControls} owns all TeleOp input semantics, including drive controls.</li>
  *   <li>{@link ScoringTargeting} owns target selection, aim status, and shot suggestions.</li>
  *   <li>{@link PhoenixDriveAssistService} owns robot-specific drive-assist policy layered on top of manual drive.</li>
- *   <li>{@link ShooterSupervisor} owns scoring policy.</li>
- *   <li>{@link Shooter} remains the single writer to the scoring-path plants.</li>
+ *   <li>{@link ScoringPath} owns scoring policy and remains the single writer to scoring-path plants.</li>
  *   <li>{@link PhoenixTelemetryPresenter} owns driver-facing telemetry formatting.</li>
  * </ul>
  */
@@ -51,8 +50,7 @@ public final class PhoenixRobot {
     private FtcMecanumDriveLane drive;
     private AprilTagVisionLane vision;
     private FtcOdometryAprilTagLocalizationLane localization;
-    private Shooter shooter;
-    private ShooterSupervisor shooterSupervisor;
+    private ScoringPath scoringPath;
     private ScoringTargeting scoringTargeting;
     private PhoenixTeleOpControls teleOpControls;
     private PhoenixDriveAssistService driveAssists;
@@ -181,7 +179,6 @@ public final class PhoenixRobot {
                 profile.localization
         );
 
-        shooter = new Shooter(hardwareMap, profile.shooter);
         scoringTargeting = new ScoringTargeting(
                 profile.autoAim,
                 profile.localization.aprilTags.fieldPoseSolver.copy(),
@@ -191,22 +188,20 @@ public final class PhoenixRobot {
                 profile.field.fixedAprilTagLayout,
                 Objects.requireNonNull(autoAimEnabledSource, "autoAimEnabledSource"),
                 Objects.requireNonNull(aimOverrideSource, "aimOverrideSource"),
-                profile.autoAim.shotVelocityModel()
+                profile.autoAim.shotVelocityTable
         );
 
-        shooterSupervisor = new ShooterSupervisor(
-                shooter,
-                profile.shooter,
-                scoringTargeting.aimOkToShootSource(),
-                scoringTargeting.aimOverrideSource()
+        scoringPath = new ScoringPath(
+                hardwareMap,
+                profile.scoring,
+                scoringTargeting,
+                clock
         );
     }
 
     private PhoenixCapabilities createCapabilities() {
-        return new PhoenixRobotCapabilities(
-                clock,
-                requireShooter(),
-                requireShooterSupervisor(),
+        return new PhoenixCapabilities(
+                requireScoringPath(),
                 requireScoringTargeting()
         );
     }
@@ -253,15 +248,13 @@ public final class PhoenixRobot {
      * Advances one TeleOp loop.
      *
      * <p>
-     * Loop order is intentionally explicit: localization lane, targeting, controls, scoring
-     * supervisor, drive-assist service, drive lane, shooter subsystem, then telemetry presentation.
+     * Loop order is intentionally explicit: localization lane, targeting, controls, scoring path, drive-assist service, drive lane, then telemetry presentation.
      * </p>
      */
     public void updateTeleOp() {
         if (drive == null
                 || localization == null
-                || shooter == null
-                || shooterSupervisor == null
+                || scoringPath == null
                 || scoringTargeting == null
                 || teleOpControls == null
                 || driveAssists == null
@@ -273,23 +266,20 @@ public final class PhoenixRobot {
         scoringTargeting.update(clock);
         teleOpControls.update(clock);
 
-        shooterSupervisor.update(clock);
-        ScoringStatus scoringStatus = shooterSupervisor.status();
+        scoringPath.update(clock);
+        ScoringPath.Status scoringStatus = scoringPath.status();
 
         driveAssists.update(clock, scoringStatus);
         DriveSignal cmd = teleOpDriveSource.get(clock).clamped();
         drive.update(clock);
         drive.drive(cmd);
 
-        shooter.update(clock);
-        ShooterStatus shooterStatus = shooter.status(clock);
-        TargetingStatus targetingStatus = scoringTargeting.status(clock);
-        DriveAssistStatus driveAssistStatus = driveAssists.status();
+        ScoringTargeting.Status targetingStatus = scoringTargeting.status(clock);
+        PhoenixDriveAssistService.Status driveAssistStatus = driveAssists.status();
         PoseEstimate globalPose = localization.globalEstimator().getEstimate();
         PoseEstimate odomPose = localization.predictor().getEstimate();
 
         telemetryPresenter.emitTeleOp(
-                shooterStatus,
                 scoringStatus,
                 targetingStatus,
                 driveAssistStatus,
@@ -302,13 +292,11 @@ public final class PhoenixRobot {
      * Advances one autonomous loop.
      *
      * <p>Loop order is explicit and matches Phoenix ownership boundaries: localization first, then
-     * targeting, then queued autonomous tasks, then scoring policy, then the mechanism subsystem,
-     * and finally telemetry.</p>
+     * targeting, then queued autonomous tasks, then the scoring path, and finally telemetry.</p>
      */
     public void updateAuto() {
         if (localization == null
-                || shooter == null
-                || shooterSupervisor == null
+                || scoringPath == null
                 || scoringTargeting == null
                 || autoRunner == null) {
             return;
@@ -318,18 +306,15 @@ public final class PhoenixRobot {
         scoringTargeting.update(clock);
         autoRunner.update(clock);
 
-        shooterSupervisor.update(clock);
-        ScoringStatus scoringStatus = shooterSupervisor.status();
+        scoringPath.update(clock);
+        ScoringPath.Status scoringStatus = scoringPath.status();
 
-        shooter.update(clock);
-        ShooterStatus shooterStatus = shooter.status(clock);
-        TargetingStatus targetingStatus = scoringTargeting.status(clock);
+        ScoringTargeting.Status targetingStatus = scoringTargeting.status(clock);
         PoseEstimate globalPose = localization.globalEstimator().getEstimate();
         PoseEstimate odomPose = localization.predictor().getEstimate();
 
         Task currentAutoTask = autoRunner.currentTaskOrNull();
         telemetryPresenter.emitAuto(
-                shooterStatus,
                 scoringStatus,
                 targetingStatus,
                 currentAutoTask,
@@ -376,8 +361,8 @@ public final class PhoenixRobot {
         if (drive != null) {
             drive.stop();
         }
-        if (shooter != null) {
-            shooter.stop();
+        if (scoringPath != null) {
+            scoringPath.stop();
         }
     }
 
@@ -411,7 +396,7 @@ public final class PhoenixRobot {
     private void stopSharedRuntime() {
         capabilities = null;
         localization = null;
-        shooterSupervisor = null;
+        scoringPath = null;
         if (vision != null) {
             vision.close();
             vision = null;
@@ -429,18 +414,11 @@ public final class PhoenixRobot {
         return capabilities;
     }
 
-    private Shooter requireShooter() {
-        if (shooter == null) {
-            throw new IllegalStateException("Phoenix shooter runtime is not initialized");
+    private ScoringPath requireScoringPath() {
+        if (scoringPath == null) {
+            throw new IllegalStateException("Phoenix scoring path is not initialized");
         }
-        return shooter;
-    }
-
-    private ShooterSupervisor requireShooterSupervisor() {
-        if (shooterSupervisor == null) {
-            throw new IllegalStateException("Phoenix scoring supervisor is not initialized");
-        }
-        return shooterSupervisor;
+        return scoringPath;
     }
 
     private ScoringTargeting requireScoringTargeting() {
