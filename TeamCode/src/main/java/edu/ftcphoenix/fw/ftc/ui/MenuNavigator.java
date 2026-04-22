@@ -32,32 +32,72 @@ public final class MenuNavigator {
     private String controlsHint = null;
     private Runnable onRootBack = null;
 
-    /** Create an empty navigator. Call {@link #push(MenuScreen)} before rendering. */
+    /**
+     * Create an empty navigator. Call {@link #push(MenuScreen)} before rendering.
+     */
     public MenuNavigator() {
     }
 
-    /** Create a navigator with an initial root screen. */
+    /**
+     * Create a navigator with an initial root screen.
+     */
     public MenuNavigator(MenuScreen root) {
         push(root);
     }
 
-    /** Set the controls hint attached to automatically-created render contexts. */
+    /**
+     * Set the controls hint attached to automatically-created render contexts.
+     */
     public MenuNavigator setControlsHint(String controlsHint) {
         this.controlsHint = cleanOrNull(controlsHint);
         return this;
     }
 
-    /** Set an optional action to run when back is pressed on the root screen and the root does not consume it. */
+    /**
+     * Set an optional action to run when back is pressed on the root screen and the root does not consume it.
+     */
     public MenuNavigator setOnRootBack(Runnable onRootBack) {
         this.onRootBack = onRootBack;
         return this;
     }
 
-    /** Push a screen on top of the current screen and make it active. */
+    /**
+     * Push a screen on top of the current screen and make it active.
+     */
     public void push(MenuScreen screen) {
         if (screen == null) return;
         MenuScreen cur = currentOrNull();
         if (cur != null) cur.onExit();
+        stack.add(screen);
+        screen.onEnter();
+    }
+
+    /**
+     * Replace the entire stack with a new root screen.
+     *
+     * <p>This is useful for wizard-style flows where a choice changes the available future screens.
+     * Existing screens receive {@link MenuScreen#onExit()} before the new root receives
+     * {@link MenuScreen#onEnter()}.</p>
+     */
+    public void setRoot(MenuScreen screen) {
+        clear();
+        push(screen);
+    }
+
+    /**
+     * Replace only the active screen, preserving all lower stack entries.
+     *
+     * <p>Use this when a screen rebuilds itself after a choice changes but the surrounding path
+     * should remain intact.</p>
+     */
+    public void replaceTop(MenuScreen screen) {
+        if (screen == null) return;
+        if (stack.isEmpty()) {
+            push(screen);
+            return;
+        }
+        MenuScreen removed = stack.remove(stack.size() - 1);
+        removed.onExit();
         stack.add(screen);
         screen.onEnter();
     }
@@ -92,7 +132,9 @@ public final class MenuNavigator {
         return true;
     }
 
-    /** Remove all screens. */
+    /**
+     * Remove all screens.
+     */
     public void clear() {
         while (!stack.isEmpty()) {
             MenuScreen removed = stack.remove(stack.size() - 1);
@@ -100,7 +142,9 @@ public final class MenuNavigator {
         }
     }
 
-    /** Return the active screen, or null if the navigator is empty. */
+    /**
+     * Return the active screen, or null if the navigator is empty.
+     */
     public MenuScreen currentOrNull() {
         if (stack.isEmpty()) return null;
         return stack.get(stack.size() - 1);
@@ -119,17 +163,37 @@ public final class MenuNavigator {
         return cur;
     }
 
-    /** Number of screens on the stack. */
+    /**
+     * Number of screens on the stack.
+     */
     public int size() {
         return stack.size();
     }
 
-    /** Current nesting depth. Root is depth 0; empty navigators report -1. */
+    /**
+     * Return whether no screen has been pushed.
+     */
+    public boolean isEmpty() {
+        return stack.isEmpty();
+    }
+
+    /**
+     * Return whether {@link #pop()} would remove the current screen.
+     */
+    public boolean canPop() {
+        return stack.size() > 1;
+    }
+
+    /**
+     * Current nesting depth. Root is depth 0; empty navigators report -1.
+     */
     public int depth() {
         return stack.isEmpty() ? -1 : stack.size() - 1;
     }
 
-    /** Human-facing breadcrumb made from the screen titles in the stack. */
+    /**
+     * Human-facing breadcrumb made from the screen titles in the stack.
+     */
     public String breadcrumb() {
         StringBuilder b = new StringBuilder();
         for (int i = 0; i < stack.size(); i++) {
@@ -140,7 +204,9 @@ public final class MenuNavigator {
         return b.toString();
     }
 
-    /** Register navigator input dispatch with standard controls. */
+    /**
+     * Register navigator input dispatch with standard controls.
+     */
     public void bind(Bindings bindings, UiControls controls) {
         bind(bindings, controls, new BooleanSupplier() {
             @Override
@@ -150,7 +216,9 @@ public final class MenuNavigator {
         });
     }
 
-    /** Register navigator input dispatch with an enable predicate. */
+    /**
+     * Register navigator input dispatch with an enable predicate.
+     */
     public void bind(Bindings bindings, UiControls controls, BooleanSupplier enabled) {
         if (bindings == null || controls == null) return;
         final BooleanSupplier gate = enabled == null ? new BooleanSupplier() {

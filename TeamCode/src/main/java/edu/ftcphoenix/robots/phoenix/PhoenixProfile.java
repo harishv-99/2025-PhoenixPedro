@@ -34,7 +34,7 @@ import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
  *   <li>shared field facts: fixed AprilTag layout for the current game</li>
  *   <li>robot-owned controls: TeleOp stick shaping and slow-mode tuning</li>
  *   <li>robot-owned drive assists: scoring-related drive overlays and brace tuning</li>
- *   <li>robot-owned mechanisms and strategy: shooter, targeting, and calibration acknowledgements</li>
+ *   <li>robot-owned mechanisms and strategy: shooter, targeting, Auto timing, and calibration acknowledgements</li>
  * </ul>
  */
 public final class PhoenixProfile {
@@ -61,7 +61,9 @@ public final class PhoenixProfile {
      */
     public FieldConfig field = new FieldConfig();
 
-    /** TeleOp control-layer tuning owned by Phoenix's robot-specific controls object. */
+    /**
+     * TeleOp control-layer tuning owned by Phoenix's robot-specific controls object.
+     */
     public TeleOpControlsConfig controls = new TeleOpControlsConfig();
 
     /**
@@ -69,14 +71,25 @@ public final class PhoenixProfile {
      */
     public DriveAssistConfig driveAssist = new DriveAssistConfig();
 
-    /** Shooter hardware + scoring-path tuning. */
+    /**
+     * Shooter hardware + scoring-path tuning.
+     */
     public ShooterConfig shooter = new ShooterConfig();
 
-    /** Human-acknowledged calibration checkpoints. */
+    /**
+     * Human-acknowledged calibration checkpoints.
+     */
     public CalibrationConfig calibration = new CalibrationConfig();
 
-    /** Auto-aim / selected-tag tuning. */
+    /**
+     * Auto-aim / selected-tag tuning.
+     */
     public AutoAimConfig autoAim = new AutoAimConfig();
+
+    /**
+     * Autonomous route/aim/wait timing tuned by Phoenix Auto strategy code.
+     */
+    public AutoConfig auto = new AutoConfig();
 
     /**
      * Creates a Phoenix profile initialized with the checked-in defaults.
@@ -123,6 +136,7 @@ public final class PhoenixProfile {
         copy.shooter = this.shooter.copy();
         copy.calibration = this.calibration.copy();
         copy.autoAim = this.autoAim.copy();
+        copy.auto = this.auto.copy();
         return copy;
     }
 
@@ -252,7 +266,9 @@ public final class PhoenixProfile {
      */
     public static final class TeleOpControlsConfig {
 
-        /** Drive-stick shaping and slow-mode tuning for the manual drive source. */
+        /**
+         * Drive-stick shaping and slow-mode tuning for the manual drive source.
+         */
         public DriveControlsConfig drive = new DriveControlsConfig();
 
         /**
@@ -674,6 +690,73 @@ public final class PhoenixProfile {
     }
 
     /**
+     * Autonomous route-following, aim-task, and wait timing.
+     *
+     * <p>These values are consumed by Phoenix Auto plans and routine factories. Keeping them in a
+     * profile section avoids hardcoded timing literals in OpModes while still leaving route geometry
+     * and game strategy in robot-specific Auto code.</p>
+     */
+    public static final class AutoConfig {
+        /**
+         * Maximum time allowed for a single route segment before timing out.
+         */
+        public double routeTimeoutSec = 4.0;
+
+        /**
+         * Heading tolerance used by autonomous aim tasks, in degrees.
+         */
+        public double aimHeadingToleranceDeg = 2.0;
+
+        /**
+         * Overall timeout for autonomous aim tasks.
+         */
+        public double aimTimeoutSec = 1.75;
+
+        /**
+         * Maximum time an aim task may run without usable guidance before timing out.
+         */
+        public double aimMaxNoGuidanceSec = 0.75;
+
+        /**
+         * How long Auto waits for a scoring target selection before skipping aim/shoot work.
+         */
+        public double waitForTargetSec = 0.75;
+
+        /**
+         * How long Auto waits for a requested shot to drain from the scoring queue.
+         */
+        public double waitForShotCompleteSec = 2.5;
+
+        /**
+         * Distance used by the checked-in Pedro integration placeholder path.
+         */
+        public double pedroIntegrationTestDistanceIn = 12.0;
+
+        /**
+         * Creates an Auto config initialized with Phoenix defaults.
+         */
+        public AutoConfig() {
+        }
+
+        /**
+         * Creates a copy of this Auto config.
+         *
+         * @return copied Auto timing config
+         */
+        public AutoConfig copy() {
+            AutoConfig c = new AutoConfig();
+            c.routeTimeoutSec = this.routeTimeoutSec;
+            c.aimHeadingToleranceDeg = this.aimHeadingToleranceDeg;
+            c.aimTimeoutSec = this.aimTimeoutSec;
+            c.aimMaxNoGuidanceSec = this.aimMaxNoGuidanceSec;
+            c.waitForTargetSec = this.waitForTargetSec;
+            c.waitForShotCompleteSec = this.waitForShotCompleteSec;
+            c.pedroIntegrationTestDistanceIn = this.pedroIntegrationTestDistanceIn;
+            return c;
+        }
+    }
+
+    /**
      * Auto-aim / selected-tag profile values.
      *
      * <p>
@@ -699,7 +782,9 @@ public final class PhoenixProfile {
         public double selectionMaxAgeSec = 0.50;
         public double selectionReacquireSec = 0.20;
 
-        /** Default tag-local offset used when an unknown tag id is queried. */
+        /**
+         * Default tag-local offset used when an unknown tag id is queried.
+         */
         public AimOffset defaultAimOffset = new AimOffset(0.0, 0.0);
 
         /**
@@ -770,7 +855,7 @@ public final class PhoenixProfile {
          *
          * @param tagId AprilTag id to query
          * @return configured target profile, or a synthetic default profile when the tag id does not
-         *         match one of the explicit scoring targets
+         * match one of the explicit scoring targets
          */
         public ScoringTarget targetProfileForTag(int tagId) {
             ScoringTarget explicit = scoringTargets.get(tagId);
@@ -843,8 +928,8 @@ public final class PhoenixProfile {
             /**
              * Creates a scoring-target profile.
              *
-             * @param tagId AprilTag id that identifies the scoring target
-             * @param label human-readable label for telemetry and documentation
+             * @param tagId     AprilTag id that identifies the scoring target
+             * @param label     human-readable label for telemetry and documentation
              * @param aimOffset tag-local point offset used for auto-aim geometry
              */
             public ScoringTarget(int tagId, String label, AimOffset aimOffset) {
@@ -874,7 +959,7 @@ public final class PhoenixProfile {
              * Creates a tag-local aim offset.
              *
              * @param forwardInches forward offset from the tag frame, in inches
-             * @param leftInches left offset from the tag frame, in inches
+             * @param leftInches    left offset from the tag frame, in inches
              */
             public AimOffset(double forwardInches, double leftInches) {
                 this.forwardInches = forwardInches;

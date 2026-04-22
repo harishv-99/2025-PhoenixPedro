@@ -51,7 +51,7 @@ TeleOp client:
   PhoenixTeleOpControls -> PhoenixCapabilities -> Phoenix internals
 
 Auto client:
-  autonomous OpMode / PhoenixPedroAutoPlan -> PhoenixCapabilities -> Phoenix internals
+  PhoenixAutoSpec / PhoenixPedroAutoRoutineFactory -> PhoenixCapabilities -> Phoenix internals
 ```
 
 That is the intended parallelism. TeleOp and Auto are parallel **clients** of Phoenix, not
@@ -159,7 +159,8 @@ PhoenixProfile
   ├─ controls     -> PhoenixTeleOpControls tuning
   ├─ driveAssist  -> PhoenixDriveAssistService tuning
   ├─ shooter      -> Shooter config
-  └─ autoAim      -> ScoringTargeting / scoring policy config
+  ├─ autoAim      -> ScoringTargeting / scoring policy config
+  └─ auto         -> Auto route/aim/wait timing
 
 PhoenixRobot
   ├─ drive lane
@@ -229,9 +230,32 @@ letting them collaborate cleanly.
 ## Autonomous structure
 
 Phoenix Auto reuses the same targeting, shooter, and telemetry stack as TeleOp, but leaves route
-ownership outside the robot container.
+ownership outside the robot container. The robot-owned spec/strategy objects now make the selected
+match setup explicit before any route or task sequence is built.
 
-`PhoenixRobot.initAuto()` now does three things:
+The core Auto types are:
+
+```text
+PhoenixAutoSpec
+  alliance
+  startPosition
+  partnerPlan
+  strategy
+
+PhoenixAutoProfiles
+  spec + base profile -> Auto-specific profile snapshot
+
+PhoenixAutoTasks
+  reusable scoring/targeting task snippets over PhoenixCapabilities
+
+PhoenixPedroPathFactory
+  spec -> Pedro PathChain set
+
+PhoenixPedroAutoRoutineFactory
+  spec.strategy + context -> Task sequence
+```
+
+`PhoenixRobot.initAuto()` still does three things only:
 
 1. build the shared runtime used by Auto
 2. create `PhoenixCapabilities`
@@ -239,19 +263,33 @@ ownership outside the robot container.
 
 It intentionally does **not**:
 
-- create a drivetrain lane for a specific route library
+- choose alliance color
+- choose a starting side
+- choose a partner-coordination strategy
+- build Pedro paths
 - choose a specific autonomous routine
-- expose a pile of robot-container task helpers for one season's strategy
+- expose route-script helpers from the robot container
 
-The checked-in Pedro example now shows the intended pattern:
+Annotated Phoenix Driver Station entries live under:
 
-- `PhoenixPedroAutoTestOpMode` owns Pedro follower construction and path creation
-- `PhoenixPedroAutoPlan` is the auto-side mode client that composes tasks over `PhoenixCapabilities`
-- `PhoenixRobot` owns the shared runtime and task runner
-- `PedroPathingDriveAdapter` remains the framework bridge between Pedro and Phoenix seams
+```java
+edu.ftcphoenix.robots.phoenix.opmode
+```
 
-That split matches the framework principles: reusable bridges stay in the framework, project-specific
-route setup stays in robot code, and both modes share the same capability vocabulary.
+Implementation code stays by role under packages such as:
+
+```java
+edu.ftcphoenix.robots.phoenix.autonomous
+edu.ftcphoenix.robots.phoenix.autonomous.pedro
+edu.ftcphoenix.robots.phoenix.tester
+```
+
+That means OpModes are easy to find from the Driver Station perspective, while path factories,
+routine factories, tester implementations, and robot services remain grouped by responsibility.
+
+The checked-in Pedro routes are still placeholder integration geometry. Real alliance/start/partner
+paths should be added in `PhoenixPedroPathFactory`; high-level strategy decisions should stay in
+`PhoenixPedroAutoRoutineFactory`; reusable aim/shoot snippets should stay in `PhoenixAutoTasks`.
 
 ## Driver Station setup UI
 
@@ -260,13 +298,16 @@ selection mechanics into `PhoenixRobot` or individual OpModes. The intended spli
 
 - `edu.ftcphoenix.fw.ftc.ui.SelectionMenu` for one visible list of choices
 - `MenuNavigator` for nested setup flows, breadcrumbs, back/home behavior, and level display
+- `SelectionMenus` for compact enum-backed setup screens
+- `ConfirmationScreen` for final review before building a selected Auto routine
 - `HardwareNamePicker` for tester hardware selection, with `X` as refresh so `B` can remain
   available for back/cancel in richer flows
 - Phoenix robot code for the meaning of selected values, such as alliance, start position, partner
   plan, or autonomous strategy
 
-For Auto, the UI should eventually produce a robot-owned spec object such as
-`PhoenixAutoSpec`. OpMode classes should still stay thin: they choose or collect the spec, construct
+`PhoenixPedroAutoSelectorOpMode` is the first robot-specific user of this split. It produces a
+`PhoenixAutoSpec` during INIT, then delegates to the same Pedro/Phoenix lifecycle glue used by static
+Auto entries. OpMode classes should still stay thin: they choose or collect the spec, construct
 `PhoenixRobot`, and enqueue the selected routine. They should not become route scripts or hardware
 selection screens.
 
@@ -322,6 +363,7 @@ PhoenixProfile
   driveAssist   -> shoot-brace / drive-assist tuning
   shooter       -> mechanism config
   autoAim       -> scoring target catalog + shot model + aim tuning
+  auto          -> Auto route/aim/wait timing
   calibration   -> human acknowledgements
 ```
 

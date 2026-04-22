@@ -71,10 +71,51 @@ The navigator:
 
 - dispatches one shared set of bindings to the current screen
 - supports push/pop/home
+- supports `setRoot(...)` and `replaceTop(...)` for wizard-style flows
 - renders breadcrumb path and nesting level
 - avoids stale bindings from screens that are no longer active
 
 `SelectionMenu` remains useful inside the navigator because it implements `MenuScreen`.
+
+
+## `SelectionMenus`
+
+`SelectionMenus` contains convenience factories for common menu shapes. The first general helper is
+`forEnum(...)`, which turns an enum into one `SelectionMenu` row per value. This is especially useful
+for pre-start setup screens such as alliance, start position, partner plan, or strategy.
+
+```java
+SelectionMenu<Alliance> alliance = SelectionMenus.forEnum("Alliance", Alliance.class);
+```
+
+The helper can also accept a custom display adapter for labels, help text, tags, and disabled rows.
+The selected enum value still belongs to robot code; the framework only builds the list.
+
+## `ConfirmationScreen`
+
+`ConfirmationScreen` is a simple summary page for review-before-action flows. It renders labeled rows
+and treats standard UI actions consistently:
+
+```text
+A: confirm
+B/BACK: cancel/back
+Y: home/reset
+```
+
+Example:
+
+```java
+ConfirmationScreen confirm = ConfirmationScreen.builder("Confirm Auto")
+        .row("Alliance", "RED")
+        .row("Start", "AUDIENCE")
+        .row("Strategy", "Safe Preload")
+        .warning("Verify this before pressing START.")
+        .onConfirm(() -> buildSelectedAuto())
+        .build();
+```
+
+Use it after a multi-step selector, before building hardware-heavy runtime objects or applying a
+calibration reset.
 
 ## `UiControls`
 
@@ -114,7 +155,13 @@ SelectionMenu:
   one visible list screen
 
 MenuNavigator:
-  levels, breadcrumbs, back/home
+  levels, breadcrumbs, back/home, wizard root/top replacement
+
+SelectionMenus:
+  common row-building helpers such as enum-backed menus
+
+ConfirmationScreen:
+  final review before confirm/cancel flows
 
 HardwareNamePicker:
   FTC hardware-name enumeration
