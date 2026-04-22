@@ -728,6 +728,22 @@ public final class PhoenixProfile {
         public double waitForShotCompleteSec = 2.5;
 
         /**
+         * Scoring target id Auto should keep when a red-alliance spec narrows the targeting catalog.
+         *
+         * <p>The id stays in the profile rather than {@code PhoenixAutoProfiles} so field-specific
+         * target choices can be tuned in one checked-in robot config location.</p>
+         */
+        public int redAllianceScoringTagId = 24;
+
+        /**
+         * Scoring target id Auto should keep when a blue-alliance spec narrows the targeting catalog.
+         *
+         * <p>The id stays in the profile rather than {@code PhoenixAutoProfiles} so field-specific
+         * target choices can be tuned in one checked-in robot config location.</p>
+         */
+        public int blueAllianceScoringTagId = 20;
+
+        /**
          * Distance used by the checked-in Pedro integration placeholder path.
          */
         public double pedroIntegrationTestDistanceIn = 12.0;
@@ -751,6 +767,8 @@ public final class PhoenixProfile {
             c.aimMaxNoGuidanceSec = this.aimMaxNoGuidanceSec;
             c.waitForTargetSec = this.waitForTargetSec;
             c.waitForShotCompleteSec = this.waitForShotCompleteSec;
+            c.redAllianceScoringTagId = this.redAllianceScoringTagId;
+            c.blueAllianceScoringTagId = this.blueAllianceScoringTagId;
             c.pedroIntegrationTestDistanceIn = this.pedroIntegrationTestDistanceIn;
             return c;
         }

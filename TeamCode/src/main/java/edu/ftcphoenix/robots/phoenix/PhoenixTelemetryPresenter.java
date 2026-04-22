@@ -6,9 +6,10 @@ import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceStatus;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagObservation;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelectionResult;
+import edu.ftcphoenix.fw.task.Task;
 
 /**
- * Driver-facing telemetry formatting for Phoenix TeleOp.
+ * Driver-facing telemetry formatting for Phoenix TeleOp and Auto.
  */
 public final class PhoenixTelemetryPresenter {
 
@@ -19,7 +20,7 @@ public final class PhoenixTelemetryPresenter {
      * Creates a telemetry presenter bound to one telemetry sink and one Phoenix profile snapshot.
      *
      * @param telemetry FTC telemetry sink to write into; when {@code null}, emission becomes a no-op
-     * @param profile profile snapshot used to label values such as estimator mode
+     * @param profile   profile snapshot used to label values such as estimator mode
      */
     public PhoenixTelemetryPresenter(Telemetry telemetry, PhoenixProfile profile) {
         this.telemetry = telemetry;
@@ -33,12 +34,12 @@ public final class PhoenixTelemetryPresenter {
      * live subsystems. That keeps loop ownership explicit and makes the output easy to audit during
      * refactors.</p>
      *
-     * @param shooter shooter subsystem status snapshot for the current loop
-     * @param scoring scoring supervisor status snapshot for the current loop
-     * @param targeting scoring-targeting status snapshot for the current loop
+     * @param shooter     shooter subsystem status snapshot for the current loop
+     * @param scoring     scoring supervisor status snapshot for the current loop
+     * @param targeting   scoring-targeting status snapshot for the current loop
      * @param driveAssist drive-assist status snapshot for the current loop
-     * @param globalPose current fused/global pose estimate, or {@code null} if unavailable
-     * @param odomPose current odometry-only pose estimate, or {@code null} if unavailable
+     * @param globalPose  current fused/global pose estimate, or {@code null} if unavailable
+     * @param odomPose    current odometry-only pose estimate, or {@code null} if unavailable
      */
     public void emitTeleOp(ShooterStatus shooter,
                            ScoringStatus scoring,
@@ -63,6 +64,61 @@ public final class PhoenixTelemetryPresenter {
         telemetry.addData("aim.override", targeting.aimOverride);
         telemetry.addData("aim.enabled", targeting.autoAimEnabled);
         emitDriveAssistTelemetry(driveAssist);
+
+        if (globalPose != null) {
+            telemetry.addData("pose.global", globalPose);
+            telemetry.addData("pose.global.mode", profile.localization.correctedEstimatorMode);
+            telemetry.addData("pose.global.correctionSource", profile.localization.correctionSource.mode);
+        }
+        if (odomPose != null) {
+            telemetry.addData("pose.odom", odomPose);
+        }
+
+        emitTargetTelemetry(targeting);
+        telemetry.update();
+    }
+
+    /**
+     * Emits the standard Phoenix Auto telemetry block.
+     *
+     * <p>Auto telemetry has its own entry point so {@code PhoenixRobot.updateAuto()} does not pretend
+     * to be a TeleOp loop with a missing drive-assist snapshot.</p>
+     *
+     * @param shooter         shooter subsystem status snapshot for the current loop
+     * @param scoring         scoring supervisor status snapshot for the current loop
+     * @param targeting       scoring-targeting status snapshot for the current loop
+     * @param currentAutoTask active autonomous task, or {@code null} when the runner is idle
+     * @param queuedAutoTasks number of tasks still queued behind the current task
+     * @param globalPose      current fused/global pose estimate, or {@code null} if unavailable
+     * @param odomPose        current odometry-only pose estimate, or {@code null} if unavailable
+     */
+    public void emitAuto(ShooterStatus shooter,
+                         ScoringStatus scoring,
+                         TargetingStatus targeting,
+                         Task currentAutoTask,
+                         int queuedAutoTasks,
+                         PoseEstimate globalPose,
+                         PoseEstimate odomPose) {
+        if (telemetry == null) {
+            return;
+        }
+
+        telemetry.addData("auto.currentTask", currentAutoTask != null ? currentAutoTask.getDebugName() : "<idle>");
+        telemetry.addData("auto.currentOutcome", currentAutoTask != null ? currentAutoTask.getOutcome() : "IDLE");
+        telemetry.addData("auto.queued", queuedAutoTasks);
+
+        emitShooterTelemetry(shooter, "shooter");
+        telemetry.addData("shoot.mode", scoring.mode);
+        telemetry.addData("feed.backlog", scoring.feedBacklog);
+        telemetry.addData("intake.enabled", scoring.intakeEnabled);
+        telemetry.addData("eject.requested", scoring.ejectRequested);
+        telemetry.addData("flywheel.requested", scoring.flywheelRequested);
+        telemetry.addData("shoot.requested", scoring.shootingRequested);
+        telemetry.addData("shoot.active", scoring.shootActive);
+        telemetry.addData("aim.ready", targeting.aimReady);
+        telemetry.addData("aim.okToShoot", targeting.aimOkToShoot);
+        telemetry.addData("aim.override", targeting.aimOverride);
+        telemetry.addData("aim.enabled", targeting.autoAimEnabled);
 
         if (globalPose != null) {
             telemetry.addData("pose.global", globalPose);

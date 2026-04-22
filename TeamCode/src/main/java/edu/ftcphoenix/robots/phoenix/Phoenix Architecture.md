@@ -243,7 +243,7 @@ PhoenixAutoSpec
   strategy
 
 PhoenixAutoProfiles
-  spec + base profile -> Auto-specific profile snapshot
+  spec + base profile -> Auto-specific profile snapshot, using profile-owned red/blue Auto tag ids
 
 PhoenixAutoTasks
   reusable scoring/targeting task snippets over PhoenixCapabilities
@@ -300,14 +300,16 @@ selection mechanics into `PhoenixRobot` or individual OpModes. The intended spli
 - `MenuNavigator` for nested setup flows, breadcrumbs, back/home behavior, and level display
 - `SelectionMenus` for compact enum-backed setup screens
 - `ConfirmationScreen` for final review before building a selected Auto routine
+- `SummaryScreen` for locked summaries after a selected runtime has already been initialized
 - `HardwareNamePicker` for tester hardware selection, with `X` as refresh so `B` can remain
   available for back/cancel in richer flows
 - Phoenix robot code for the meaning of selected values, such as alliance, start position, partner
   plan, or autonomous strategy
 
 `PhoenixPedroAutoSelectorOpMode` is the first robot-specific user of this split. It produces a
-`PhoenixAutoSpec` during INIT, then delegates to the same Pedro/Phoenix lifecycle glue used by static
-Auto entries. OpMode classes should still stay thin: they choose or collect the spec, construct
+`PhoenixAutoSpec` during INIT, delegates to the same Pedro/Phoenix lifecycle glue used by static
+Auto entries, and then replaces the wizard with a locked summary so the menu cannot drift away from
+the queued routine. OpMode classes should still stay thin: they choose or collect the spec, construct
 `PhoenixRobot`, and enqueue the selected routine. They should not become route scripts or hardware
 selection screens.
 
@@ -345,11 +347,11 @@ Phoenix keeps `updateAuto()` just as explicit:
 3. autoRunner.update(clock)
 4. shooterSupervisor.update(clock)
 5. shooter.update(clock)
-6. telemetryPresenter.emitTeleOp(...with Auto snapshots...)
+6. telemetryPresenter.emitAuto(...with Auto task and scoring snapshots...)
 ```
 
 Auto uses the same scoring and targeting services, but swaps TeleOp drive-assist policy for the
-queued autonomous task runner.
+queued autonomous task runner and reports through the Auto-specific telemetry emitter.
 
 ## Recommended profile shape
 
@@ -363,7 +365,7 @@ PhoenixProfile
   driveAssist   -> shoot-brace / drive-assist tuning
   shooter       -> mechanism config
   autoAim       -> scoring target catalog + shot model + aim tuning
-  auto          -> Auto route/aim/wait timing
+  auto          -> Auto route/aim/wait timing + red/blue Auto scoring tag ids
   calibration   -> human acknowledgements
 ```
 

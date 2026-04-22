@@ -63,9 +63,9 @@ public final class PhoenixRobot {
      * Creates a Phoenix robot container using the shared checked-in Phoenix profile.
      *
      * @param hardwareMap FTC hardware map used to create robot hardware owners
-     * @param telemetry FTC telemetry sink for driver-facing status output
-     * @param gamepad1 first driver gamepad reference
-     * @param gamepad2 second driver gamepad reference
+     * @param telemetry   FTC telemetry sink for driver-facing status output
+     * @param gamepad1    first driver gamepad reference
+     * @param gamepad2    second driver gamepad reference
      */
     public PhoenixRobot(HardwareMap hardwareMap,
                         Telemetry telemetry,
@@ -78,10 +78,10 @@ public final class PhoenixRobot {
      * Creates a Phoenix robot container using an explicit profile snapshot.
      *
      * @param hardwareMap FTC hardware map used to create robot hardware owners
-     * @param telemetry FTC telemetry sink for driver-facing status output
-     * @param gamepad1 first driver gamepad reference
-     * @param gamepad2 second driver gamepad reference
-     * @param profile Phoenix profile to copy and own for the lifetime of this robot container
+     * @param telemetry   FTC telemetry sink for driver-facing status output
+     * @param gamepad1    first driver gamepad reference
+     * @param gamepad2    second driver gamepad reference
+     * @param profile     Phoenix profile to copy and own for the lifetime of this robot container
      */
     public PhoenixRobot(HardwareMap hardwareMap,
                         Telemetry telemetry,
@@ -160,7 +160,7 @@ public final class PhoenixRobot {
      * </p>
      *
      * @param autoAimEnabledSource source that controls whether target selection + aim gating are active
-     * @param aimOverrideSource source that bypasses aim-readiness gating when true
+     * @param aimOverrideSource    source that bypasses aim-readiness gating when true
      */
     public void initAuto(BooleanSource autoAimEnabledSource,
                          BooleanSource aimOverrideSource) {
@@ -328,15 +328,12 @@ public final class PhoenixRobot {
         PoseEstimate odomPose = localization.predictor().getEstimate();
 
         Task currentAutoTask = autoRunner.currentTaskOrNull();
-        telemetry.addData("auto.currentTask", currentAutoTask != null ? currentAutoTask.getDebugName() : "<idle>");
-        telemetry.addData("auto.currentOutcome", currentAutoTask != null ? currentAutoTask.getOutcome() : "IDLE");
-        telemetry.addData("auto.queued", autoRunner.queuedCount());
-
-        telemetryPresenter.emitTeleOp(
+        telemetryPresenter.emitAuto(
                 shooterStatus,
                 scoringStatus,
                 targetingStatus,
-                null,
+                currentAutoTask,
+                autoRunner.queuedCount(),
                 globalPose,
                 odomPose
         );

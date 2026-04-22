@@ -15,14 +15,14 @@ The related annotated OpModes are in `robots.phoenix.opmode`:
 
 - `PhoenixPedroAutoOpModeBase` owns shared FTC/Pedro/Phoenix lifecycle glue.
 - `PhoenixPedroAutoTestOpMode` keeps the original 12-inch integration test available.
-- `PhoenixPedroAutoSelectorOpMode` uses framework UI helpers to build a `PhoenixAutoSpec` during INIT.
+- `PhoenixPedroAutoSelectorOpMode` uses framework UI helpers to build a `PhoenixAutoSpec` during INIT, then locks the screen after successful Phoenix/Pedro initialization.
 - `PhoenixRedAudienceSafeAuto` and `PhoenixBlueAudienceSafeAuto` are static safe-match entries.
 
 The intended split is:
 
 - `PhoenixRobot` owns shared runtime, capability families, and the Auto task runner.
 - `PhoenixAutoSpec` owns the chosen match setup: alliance, start position, partner plan, and strategy.
-- `PhoenixAutoProfiles` derives an Auto-specific profile snapshot before constructing `PhoenixRobot`.
+- `PhoenixAutoProfiles` derives an Auto-specific profile snapshot before constructing `PhoenixRobot`, using profile-owned red/blue Auto scoring tag ids.
 - `PhoenixPedroPathFactory` owns Pedro geometry and placeholder path callbacks.
 - `PhoenixPedroAutoRoutineFactory` owns strategy-to-task-sequence mapping.
 - OpModes choose or collect a spec, then delegate.

@@ -10,6 +10,7 @@ import edu.ftcphoenix.fw.ftc.ui.MenuItem;
 import edu.ftcphoenix.fw.ftc.ui.MenuNavigator;
 import edu.ftcphoenix.fw.ftc.ui.SelectionMenu;
 import edu.ftcphoenix.fw.ftc.ui.SelectionMenus;
+import edu.ftcphoenix.fw.ftc.ui.SummaryScreen;
 import edu.ftcphoenix.fw.ftc.ui.UiControls;
 import edu.ftcphoenix.fw.input.Gamepads;
 import edu.ftcphoenix.fw.input.binding.Bindings;
@@ -21,8 +22,8 @@ import edu.ftcphoenix.robots.phoenix.autonomous.PhoenixAutoStrategyId;
  *
  * <p>The selector uses framework telemetry UI helpers to gather a {@link PhoenixAutoSpec} during
  * INIT. Once confirmed, the same Pedro/Phoenix initialization path used by static Auto entries is
- * executed. The selected values remain robot-owned; the framework UI only handles display,
- * navigation, and button dispatch.</p>
+ * executed and the selector is replaced by a locked summary screen. The selected values remain
+ * robot-owned; the framework UI only handles display, navigation, and button dispatch.</p>
  */
 @Autonomous(name = "Phoenix Auto Selector", group = "Phoenix")
 public final class PhoenixPedroAutoSelectorOpMode extends PhoenixPedroAutoOpModeBase {
@@ -307,6 +308,21 @@ public final class PhoenixPedroAutoSelectorOpMode extends PhoenixPedroAutoOpMode
         return menu;
     }
 
+    private SummaryScreen lockedSummaryScreen(PhoenixAutoSpec spec) {
+        return SummaryScreen.builder("Phoenix Auto Locked")
+                .status("LOCKED", "Phoenix + Pedro are initialized for this exact spec.")
+                .help("Choices are locked after initialization so the visible setup cannot drift away from the queued routine.")
+                .row("Alliance", spec.alliance.label())
+                .row("Start", spec.startPosition.label())
+                .row("Partner", spec.partnerPlan.label())
+                .row("Strategy", spec.strategy.label())
+                .row("Summary", spec.summary())
+                .controls("START: run selected Auto | B/BACK/Y: locked after initialization")
+                .consumeBack(true)
+                .consumeHome(true)
+                .build();
+    }
+
     private ConfirmationScreen confirmScreen() {
         PhoenixAutoSpec preview = builder.build();
         return ConfirmationScreen.builder("Confirm Phoenix Auto")
@@ -321,7 +337,9 @@ public final class PhoenixPedroAutoSelectorOpMode extends PhoenixPedroAutoOpMode
                     @Override
                     public void run() {
                         selectedSpec = builder.build();
-                        initializeRobotForSpec(selectedSpec);
+                        if (initializeRobotForSpec(selectedSpec)) {
+                            navigator.setRoot(lockedSummaryScreen(selectedSpec));
+                        }
                     }
                 })
                 .onReset(new Runnable() {

@@ -117,6 +117,32 @@ ConfirmationScreen confirm = ConfirmationScreen.builder("Confirm Auto")
 Use it after a multi-step selector, before building hardware-heavy runtime objects or applying a
 calibration reset.
 
+## `SummaryScreen`
+
+`SummaryScreen` is a read-only status page for after a setup flow has already produced or applied
+its result. It is useful when the visible UI must stop changing after the runtime object graph has
+been built.
+
+Example:
+
+```java
+SummaryScreen locked = SummaryScreen.builder("Phoenix Auto Locked")
+        .status("LOCKED", "Phoenix + Pedro are initialized for this spec.")
+        .row("Alliance", spec.alliance)
+        .row("Start", spec.startPosition)
+        .row("Strategy", spec.strategy)
+        .consumeBack(true)
+        .consumeHome(true)
+        .controls("START: run selected Auto | B/Y: locked after initialization")
+        .build();
+
+navigator.setRoot(locked);
+```
+
+Use it after confirmation when changing the previous choices would no longer rebuild the underlying
+robot runtime. That prevents a Driver Station menu from showing one setup while the already-created
+robot and route queue are using another.
+
 ## `UiControls`
 
 `UiControls` packages standard menu controls so screens do not each invent their own meanings.
@@ -162,6 +188,9 @@ SelectionMenus:
 
 ConfirmationScreen:
   final review before confirm/cancel flows
+
+SummaryScreen:
+  read-only status or locked-result pages after a setup flow has already applied
 
 HardwareNamePicker:
   FTC hardware-name enumeration
