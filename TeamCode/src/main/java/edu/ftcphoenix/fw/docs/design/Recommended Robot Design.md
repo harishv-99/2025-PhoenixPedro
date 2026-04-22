@@ -17,7 +17,7 @@ For larger robots, use this ownership pattern:
   - driver sticks
   - slow mode
   - auto-aim enable/override
-  - scoring buttons and edge/toggle behavior
+  - scoring signals and edge/change/toggle behavior
 - **robot-owned policy/services** for game-specific logic
   - targeting
   - supervisors
@@ -765,8 +765,7 @@ The important point of this example is the boundary:
 ### TeleOp interaction
 
 ```java
-bindings.whileTrue(pads.p1().rightBumper(), () -> intakeSupervisor.setIntakeEnabled(true));
-bindings.onFall(pads.p1().rightBumper(), () -> intakeSupervisor.setIntakeEnabled(false));
+bindings.mirrorOnChange(pads.p1().rightBumper(), intakeSupervisor::setIntakeEnabled);
 bindings.onRise(pads.p1().a(), intakeSupervisor::requestFeedOne);
 ```
 

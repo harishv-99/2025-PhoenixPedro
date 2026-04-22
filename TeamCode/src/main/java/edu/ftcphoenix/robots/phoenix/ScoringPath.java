@@ -286,6 +286,9 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
 
     @Override
     public void setIntakeEnabled(boolean enabled) {
+        if (intakeEnabled == enabled) {
+            return;
+        }
         intakeEnabled = enabled;
         if (enabled) {
             clearPendingShots();
@@ -294,6 +297,9 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
 
     @Override
     public void setFlywheelEnabled(boolean enabled) {
+        if (flywheelRequested == enabled) {
+            return;
+        }
         flywheelRequested = enabled;
         if (!enabled) {
             clearPendingShots();
@@ -303,6 +309,9 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
 
     @Override
     public void setShootingEnabled(boolean enabled) {
+        if (shootingRequested == enabled) {
+            return;
+        }
         shootingRequested = enabled;
         if (!enabled) {
             clearPendingShots();
@@ -311,6 +320,9 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
 
     @Override
     public void setEjectEnabled(boolean enabled) {
+        if (ejectRequested == enabled) {
+            return;
+        }
         ejectRequested = enabled;
         if (enabled) {
             clearPendingShots();

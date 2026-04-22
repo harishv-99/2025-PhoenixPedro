@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
+import java.util.function.DoubleConsumer;
 
 import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.source.BooleanSource;
@@ -20,13 +21,27 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * If called twice in the same loop cycle, the second call is a no-op. This prevents nested
  * code (e.g., a tester suite calling into a tester) from double-firing actions.</p>
  *
- * <h2>Edges and toggles</h2>
- * <p>Bindings are built on {@link BooleanSource} combinators:</p>
+ * <h2>When vs. what</h2>
+ * <p>The simple edge and level methods name only <em>when</em> an action runs:</p>
  * <ul>
- *   <li>{@link BooleanSource#risingEdge()} for “rise” actions (false → true)</li>
- *   <li>{@link BooleanSource#fallingEdge()} for “fall” actions (true → false)</li>
- *   <li>{@link BooleanSource#toggled()} for toggle state</li>
+ *   <li>{@link #onRise(BooleanSource, Runnable)} runs once on false → true.</li>
+ *   <li>{@link #onFall(BooleanSource, Runnable)} runs once on true → false.</li>
+ *   <li>{@link #whileHigh(BooleanSource, Runnable)} and {@link #whileLow(BooleanSource, Runnable)}
+ *       run every loop while a signal is in that level.</li>
  * </ul>
+ *
+ * <p>The stateful convenience methods name both <em>when</em> and <em>what</em>:</p>
+ * <ul>
+ *   <li>{@link #mirrorOnChange(BooleanSource, Consumer)} mirrors the current signal value to a setter.</li>
+ *   <li>{@link #toggleOnRise(BooleanSource, Consumer)} flips an owned toggle state on each rise.</li>
+ *   <li>{@link #nudgeOnRise(BooleanSource, BooleanSource, double, DoubleConsumer)} applies signed
+ *       step adjustments on rising edges.</li>
+ * </ul>
+ *
+ * <h2>Signal vocabulary</h2>
+ * <p>Bindings are intentionally written in terms of boolean signals, not buttons. A signal can come
+ * from a gamepad button, trigger threshold, sensor gate, software mode, or any other
+ * {@link BooleanSource}.</p>
  *
  * <p><b>Important:</b> Like any edge/toggle tracker, these sources must be sampled each loop
  * to avoid missing transitions. {@link Bindings#update(LoopClock)} performs that sampling for
@@ -34,13 +49,6 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  */
 public final class Bindings {
 
-    // ---------------------------------------------------------------------------------------------
-    // Binding record types
-    // ---------------------------------------------------------------------------------------------
-
-    /**
-     * Simple (edgeSource, action) pair for rising-edge actions.
-     */
     private static final class RiseBinding {
         final BooleanSource onRise;
         final Runnable action;
@@ -51,9 +59,6 @@ public final class Bindings {
         }
     }
 
-    /**
-     * Simple (edgeSource, action) pair for falling-edge actions.
-     */
     private static final class FallBinding {
         final BooleanSource onFall;
         final Runnable action;
@@ -64,61 +69,72 @@ public final class Bindings {
         }
     }
 
-    /**
-     * Binding that runs an action every loop while true and optionally once on fall.
-     */
-    private static final class WhileTrueBinding {
+    private static final class MirrorOnChangeBinding {
         final BooleanSource signal;
-        final Runnable whileTrue;
-        final BooleanSource onFall; // falling edge
-        final Runnable onFallAction; // may be null
+        final Consumer<Boolean> consumer;
 
-        WhileTrueBinding(BooleanSource signal, Runnable whileTrue, BooleanSource onFall, Runnable onFallAction) {
+        boolean initialized = false;
+        boolean lastState = false;
+
+        MirrorOnChangeBinding(BooleanSource signal, Consumer<Boolean> consumer) {
             this.signal = signal;
-            this.whileTrue = whileTrue;
-            this.onFall = onFall;
-            this.onFallAction = onFallAction;
+            this.consumer = consumer;
         }
     }
 
-    /**
-     * Binding that reports a toggle state to a consumer.
-     *
-     * <p>Toggle state is owned by the {@link BooleanSource} created with {@link BooleanSource#toggled()}.
-     * If you need the same toggle state in multiple places (e.g., as an enable gate <em>and</em> as a binding),
-     * create the toggled source once and share it.</p>
-     */
-    private static final class ToggleBinding {
+    private static final class LevelBinding {
+        final BooleanSource signal;
+        final boolean runWhenHigh;
+        final Runnable action;
+
+        LevelBinding(BooleanSource signal, boolean runWhenHigh, Runnable action) {
+            this.signal = signal;
+            this.runWhenHigh = runWhenHigh;
+            this.action = action;
+        }
+    }
+
+    private static final class ToggleOnRiseBinding {
         final BooleanSource toggled;
         final Consumer<Boolean> consumer;
 
         boolean initialized = false;
         boolean lastState = false;
 
-        ToggleBinding(BooleanSource toggled, Consumer<Boolean> consumer) {
+        ToggleOnRiseBinding(BooleanSource toggled, Consumer<Boolean> consumer) {
             this.toggled = toggled;
             this.consumer = consumer;
         }
     }
 
-    // ---------------------------------------------------------------------------------------------
-    // Binding storage
-    // ---------------------------------------------------------------------------------------------
+    private static final class NudgeOnRiseBinding {
+        final BooleanSource increaseRise;
+        final BooleanSource decreaseRise;
+        final double step;
+        final DoubleConsumer adjuster;
+
+        NudgeOnRiseBinding(BooleanSource increaseRise,
+                           BooleanSource decreaseRise,
+                           double step,
+                           DoubleConsumer adjuster) {
+            this.increaseRise = increaseRise;
+            this.decreaseRise = decreaseRise;
+            this.step = step;
+            this.adjuster = adjuster;
+        }
+    }
 
     private final List<RiseBinding> riseBindings = new ArrayList<>();
     private final List<FallBinding> fallBindings = new ArrayList<>();
-    private final List<WhileTrueBinding> whileTrueBindings = new ArrayList<>();
-    private final List<ToggleBinding> toggleBindings = new ArrayList<>();
+    private final List<MirrorOnChangeBinding> mirrorOnChangeBindings = new ArrayList<>();
+    private final List<LevelBinding> levelBindings = new ArrayList<>();
+    private final List<ToggleOnRiseBinding> toggleOnRiseBindings = new ArrayList<>();
+    private final List<NudgeOnRiseBinding> nudgeOnRiseBindings = new ArrayList<>();
 
-    /**
-     * Tracks which loop cycle we last updated for, to prevent double-firing actions.
-     */
     private long lastUpdatedCycle = Long.MIN_VALUE;
 
     /**
      * Register an action to run once whenever the given signal rises (false → true).
-     *
-     * <p>For a gamepad button, “rise” corresponds to “pressed”.</p>
      *
      * @param signal boolean signal to monitor (non-null)
      * @param action action to run once per rising edge (non-null)
@@ -132,8 +148,6 @@ public final class Bindings {
     /**
      * Register an action to run once whenever the given signal falls (true → false).
      *
-     * <p>For a gamepad button, “fall” corresponds to “released”.</p>
-     *
      * @param signal boolean signal to monitor (non-null)
      * @param action action to run once per falling edge (non-null)
      */
@@ -144,58 +158,114 @@ public final class Bindings {
     }
 
     /**
-     * Common pattern: run one action on rise (false → true) and another on fall (true → false).
+     * Mirror the signal's current value into a boolean consumer on the first update, then again whenever it changes.
      *
-     * <p>For a gamepad button, rise = pressed and fall = released.</p>
-     */
-    public void onRiseAndFall(BooleanSource signal, Runnable onRise, Runnable onFall) {
-        Objects.requireNonNull(signal, "signal is required");
-        Objects.requireNonNull(onRise, "onRise is required");
-        Objects.requireNonNull(onFall, "onFall is required");
-        onRise(signal, onRise);
-        onFall(signal, onFall);
-    }
-
-    /**
-     * Register an action to run every loop while the signal is true.
+     * <p>This is the preferred binding when a signal should directly control, or mirror into, a boolean setter:</p>
      *
-     * <p>For a gamepad button, this corresponds to “while held”.</p>
+     * <pre>{@code
+     * bindings.mirrorOnChange(operator.b(), scoring::setShootingEnabled);
+     * }</pre>
+     *
+     * <p>The first sample is treated as a change from an uninitialized state, so the consumer is
+     * called once with the current high/low value. Later calls happen only when the value changes.</p>
+     *
+     * @param signal   boolean signal to mirror (non-null)
+     * @param consumer receives the mirrored signal value on first sample and later changes (non-null)
      */
-    public void whileTrue(BooleanSource signal, Runnable whileTrue) {
-        whileTrue(signal, whileTrue, null);
-    }
-
-    /**
-     * Register an action to run every loop while true and another action once on fall.
-     */
-    public void whileTrue(BooleanSource signal, Runnable whileTrue, Runnable onFall) {
+    public void mirrorOnChange(BooleanSource signal, Consumer<Boolean> consumer) {
         Objects.requireNonNull(signal, "signal is required");
-        Objects.requireNonNull(whileTrue, "whileTrue is required");
-        BooleanSource falling = signal.fallingEdge();
-        whileTrueBindings.add(new WhileTrueBinding(signal, whileTrue, falling, onFall));
+        Objects.requireNonNull(consumer, "consumer is required");
+        mirrorOnChangeBindings.add(new MirrorOnChangeBinding(signal, consumer));
     }
 
     /**
-     * Register a toggle binding: each time the button is pressed, toggle state flips and
-     * the appropriate callback runs.
+     * Register an action to run every loop while the signal is high/true.
+     *
+     * @param signal boolean signal to monitor (non-null)
+     * @param action action to run every high loop (non-null)
      */
-    public void onToggle(BooleanSource button, Runnable onEnabled, Runnable onDisabled) {
+    public void whileHigh(BooleanSource signal, Runnable action) {
+        addLevelBinding(signal, true, action);
+    }
+
+    /**
+     * Register an action to run every loop while the signal is low/false.
+     *
+     * @param signal boolean signal to monitor (non-null)
+     * @param action action to run every low loop (non-null)
+     */
+    public void whileLow(BooleanSource signal, Runnable action) {
+        addLevelBinding(signal, false, action);
+    }
+
+    private void addLevelBinding(BooleanSource signal, boolean runWhenHigh, Runnable action) {
+        Objects.requireNonNull(signal, "signal is required");
+        Objects.requireNonNull(action, "action is required");
+        levelBindings.add(new LevelBinding(signal, runWhenHigh, action));
+    }
+
+    /**
+     * Register a toggle binding: each time the signal rises, toggle state flips and the appropriate
+     * callback runs.
+     *
+     * @param signal     boolean signal to monitor (non-null)
+     * @param onEnabled  action to run when the owned toggle state becomes true (non-null)
+     * @param onDisabled action to run when the owned toggle state becomes false (non-null)
+     */
+    public void toggleOnRise(BooleanSource signal, Runnable onEnabled, Runnable onDisabled) {
         Objects.requireNonNull(onEnabled, "onEnabled is required");
         Objects.requireNonNull(onDisabled, "onDisabled is required");
-        onToggle(button, enabled -> {
+        toggleOnRise(signal, enabled -> {
             if (enabled) onEnabled.run();
             else onDisabled.run();
         });
     }
 
     /**
-     * Register a toggle binding: each time the button is pressed, toggle state flips and the
-     * consumer is invoked with the new state.
+     * Register a toggle binding: each time the signal rises, toggle state flips and the consumer is
+     * invoked with the new state.
+     *
+     * <p>The initial toggle state is false. The first sample establishes the edge baseline and does
+     * not call the consumer.</p>
+     *
+     * @param signal   boolean signal to monitor (non-null)
+     * @param consumer receives the owned toggle state after each rising-edge flip (non-null)
      */
-    public void onToggle(BooleanSource button, Consumer<Boolean> consumer) {
-        Objects.requireNonNull(button, "button is required");
+    public void toggleOnRise(BooleanSource signal, Consumer<Boolean> consumer) {
+        Objects.requireNonNull(signal, "signal is required");
         Objects.requireNonNull(consumer, "consumer is required");
-        toggleBindings.add(new ToggleBinding(button.toggled(), consumer));
+        toggleOnRiseBindings.add(new ToggleOnRiseBinding(signal.toggled(), consumer));
+    }
+
+    /**
+     * Apply signed step adjustments when either nudge signal rises.
+     *
+     * <p>When {@code increaseSignal} rises, {@code adjuster.accept(+step)} is called. When
+     * {@code decreaseSignal} rises, {@code adjuster.accept(-step)} is called. If both rise in the
+     * same loop, their deltas are combined before the adjuster is called, so equal and opposite
+     * nudges cancel out.</p>
+     *
+     * @param increaseSignal signal that nudges upward on rise (non-null)
+     * @param decreaseSignal signal that nudges downward on rise (non-null)
+     * @param step           adjustment size; sign is interpreted relative to the two signals
+     * @param adjuster       receives the combined signed adjustment for the loop (non-null)
+     */
+    public void nudgeOnRise(BooleanSource increaseSignal,
+                            BooleanSource decreaseSignal,
+                            double step,
+                            DoubleConsumer adjuster) {
+        Objects.requireNonNull(increaseSignal, "increaseSignal is required");
+        Objects.requireNonNull(decreaseSignal, "decreaseSignal is required");
+        Objects.requireNonNull(adjuster, "adjuster is required");
+        if (Double.isNaN(step) || Double.isInfinite(step)) {
+            throw new IllegalArgumentException("step must be finite");
+        }
+        nudgeOnRiseBindings.add(new NudgeOnRiseBinding(
+                increaseSignal.risingEdge(),
+                decreaseSignal.risingEdge(),
+                Math.abs(step),
+                adjuster
+        ));
     }
 
     /**
@@ -212,7 +282,6 @@ public final class Bindings {
         }
         lastUpdatedCycle = cyc;
 
-        // Rise
         for (int i = 0; i < riseBindings.size(); i++) {
             RiseBinding b = riseBindings.get(i);
             if (b.onRise.getAsBoolean(clock)) {
@@ -220,7 +289,6 @@ public final class Bindings {
             }
         }
 
-        // Fall
         for (int i = 0; i < fallBindings.size(); i++) {
             FallBinding b = fallBindings.get(i);
             if (b.onFall.getAsBoolean(clock)) {
@@ -228,20 +296,25 @@ public final class Bindings {
             }
         }
 
-        // While true + optional fall callback
-        for (int i = 0; i < whileTrueBindings.size(); i++) {
-            WhileTrueBinding b = whileTrueBindings.get(i);
-            if (b.signal.getAsBoolean(clock)) {
-                b.whileTrue.run();
-            }
-            if (b.onFallAction != null && b.onFall.getAsBoolean(clock)) {
-                b.onFallAction.run();
+        for (int i = 0; i < mirrorOnChangeBindings.size(); i++) {
+            MirrorOnChangeBinding b = mirrorOnChangeBindings.get(i);
+            boolean cur = b.signal.getAsBoolean(clock);
+            if (!b.initialized || cur != b.lastState) {
+                b.initialized = true;
+                b.lastState = cur;
+                b.consumer.accept(cur);
             }
         }
 
-        // Toggle
-        for (int i = 0; i < toggleBindings.size(); i++) {
-            ToggleBinding b = toggleBindings.get(i);
+        for (int i = 0; i < levelBindings.size(); i++) {
+            LevelBinding b = levelBindings.get(i);
+            if (b.signal.getAsBoolean(clock) == b.runWhenHigh) {
+                b.action.run();
+            }
+        }
+
+        for (int i = 0; i < toggleOnRiseBindings.size(); i++) {
+            ToggleOnRiseBinding b = toggleOnRiseBindings.get(i);
             boolean cur = b.toggled.getAsBoolean(clock);
             if (!b.initialized) {
                 b.initialized = true;
@@ -251,6 +324,20 @@ public final class Bindings {
             if (cur != b.lastState) {
                 b.lastState = cur;
                 b.consumer.accept(cur);
+            }
+        }
+
+        for (int i = 0; i < nudgeOnRiseBindings.size(); i++) {
+            NudgeOnRiseBinding b = nudgeOnRiseBindings.get(i);
+            double delta = 0.0;
+            if (b.increaseRise.getAsBoolean(clock)) {
+                delta += b.step;
+            }
+            if (b.decreaseRise.getAsBoolean(clock)) {
+                delta -= b.step;
+            }
+            if (delta != 0.0) {
+                b.adjuster.accept(delta);
             }
         }
     }
@@ -266,8 +353,10 @@ public final class Bindings {
         dbg.addData(p + ".class", "Bindings");
         dbg.addData(p + ".rise", riseBindings.size());
         dbg.addData(p + ".fall", fallBindings.size());
-        dbg.addData(p + ".whileTrue", whileTrueBindings.size());
-        dbg.addData(p + ".toggle", toggleBindings.size());
+        dbg.addData(p + ".mirrorOnChange", mirrorOnChangeBindings.size());
+        dbg.addData(p + ".level", levelBindings.size());
+        dbg.addData(p + ".toggleOnRise", toggleOnRiseBindings.size());
+        dbg.addData(p + ".nudgeOnRise", nudgeOnRiseBindings.size());
     }
 
     /**
@@ -278,8 +367,10 @@ public final class Bindings {
     public void clear() {
         riseBindings.clear();
         fallBindings.clear();
-        whileTrueBindings.clear();
-        toggleBindings.clear();
+        mirrorOnChangeBindings.clear();
+        levelBindings.clear();
+        toggleOnRiseBindings.clear();
+        nudgeOnRiseBindings.clear();
         lastUpdatedCycle = Long.MIN_VALUE;
     }
 }

@@ -1,6 +1,8 @@
 package edu.ftcphoenix.fw.task;
 
 import java.util.Objects;
+import java.util.function.DoubleFunction;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 import edu.ftcphoenix.fw.core.source.BooleanSource;
@@ -20,14 +22,14 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
  * TaskBindings tb = TaskBindings.of(bindings, runner);
  *
  * tb.onRise(gamepads.p2().y(), shooter::instantStartShooter);
- * tb.onToggle(gamepads.p2().rightBumper(), shooter::instantStartShooter, shooter::instantStopShooter);
- * tb.onRiseAndFall(gamepads.p2().b(),
- *         () -> shooter.instantStartTransfer(Shooter.TransferDirection.FORWARD),
- *         shooter::instantStopTransfer);
+ * tb.toggleOnRise(gamepads.p2().rightBumper(), shooter::instantStartShooter, shooter::instantStopShooter);
+ * tb.mirrorOnChange(gamepads.p2().b(), high -> high
+ *         ? shooter.instantStartTransfer(Shooter.TransferDirection.FORWARD)
+ *         : shooter.instantStopTransfer());
  * }</pre>
  *
  * <p><b>Important:</b> Tasks are generally single-use. For that reason, this API
- * takes {@link Supplier} factories so each button event can create a fresh {@link Task}.</p>
+ * takes {@link Supplier} factories so each signal event can create a fresh {@link Task}.</p>
  */
 public final class TaskBindings {
 
@@ -65,41 +67,67 @@ public final class TaskBindings {
     }
 
     /**
-     * Common pattern: enqueue one task on rise and another on fall.
+     * Enqueue a task that mirrors the signal value on the first sample and whenever the signal changes.
+     *
+     * <p>The factory receives the current high/low value so it can create the appropriate task.</p>
      */
-    public void onRiseAndFall(BooleanSource signal, Supplier<Task> onRise, Supplier<Task> onFall) {
+    public void mirrorOnChange(BooleanSource signal, Function<Boolean, Task> taskFactory) {
         Objects.requireNonNull(signal, "signal is required");
-        Objects.requireNonNull(onRise, "onRise is required");
-        Objects.requireNonNull(onFall, "onFall is required");
-        bindings.onRiseAndFall(
-                signal,
-                () -> runner.enqueue(onRise.get()),
-                () -> runner.enqueue(onFall.get())
-        );
+        Objects.requireNonNull(taskFactory, "taskFactory is required");
+        bindings.mirrorOnChange(signal, high -> runner.enqueue(taskFactory.apply(high)));
     }
 
     /**
-     * Enqueue a task every loop while the signal is true.
+     * Enqueue a task every loop while the signal is high/true.
      *
      * <p>This is best used for <b>instant</b> tasks (set a target, update a mode, etc.).
      * If the returned task takes time, repeatedly enqueuing a new instance each loop will
      * create a backlog in the runner.</p>
      */
-    public void whileTrue(BooleanSource signal, Supplier<Task> taskFactory) {
+    public void whileHigh(BooleanSource signal, Supplier<Task> taskFactory) {
         Objects.requireNonNull(signal, "signal is required");
         Objects.requireNonNull(taskFactory, "taskFactory is required");
-        bindings.whileTrue(signal, () -> runner.enqueue(taskFactory.get()));
+        bindings.whileHigh(signal, () -> runner.enqueue(taskFactory.get()));
     }
 
     /**
-     * Toggle: when the button is pressed, enqueue {@code onEnable} if the toggle is now on,
+     * Enqueue a task every loop while the signal is low/false.
+     *
+     * <p>This is best used for <b>instant</b> tasks (set a target, update a mode, etc.).
+     * If the returned task takes time, repeatedly enqueuing a new instance each loop will
+     * create a backlog in the runner.</p>
+     */
+    public void whileLow(BooleanSource signal, Supplier<Task> taskFactory) {
+        Objects.requireNonNull(signal, "signal is required");
+        Objects.requireNonNull(taskFactory, "taskFactory is required");
+        bindings.whileLow(signal, () -> runner.enqueue(taskFactory.get()));
+    }
+
+    /**
+     * Toggle: when the signal rises, enqueue {@code onEnable} if the toggle is now on,
      * otherwise enqueue {@code onDisable}.
      */
-    public void onToggle(BooleanSource button, Supplier<Task> onEnable, Supplier<Task> onDisable) {
-        Objects.requireNonNull(button, "button is required");
+    public void toggleOnRise(BooleanSource signal, Supplier<Task> onEnable, Supplier<Task> onDisable) {
+        Objects.requireNonNull(signal, "signal is required");
         Objects.requireNonNull(onEnable, "onEnable is required");
         Objects.requireNonNull(onDisable, "onDisable is required");
 
-        bindings.onToggle(button, isOn -> runner.enqueue(isOn ? onEnable.get() : onDisable.get()));
+        bindings.toggleOnRise(signal, isOn -> runner.enqueue(isOn ? onEnable.get() : onDisable.get()));
+    }
+
+    /**
+     * Enqueue a task when either nudge signal rises.
+     *
+     * <p>The factory receives the signed adjustment for the loop.</p>
+     */
+    public void nudgeOnRise(BooleanSource increaseSignal,
+                            BooleanSource decreaseSignal,
+                            double step,
+                            DoubleFunction<Task> taskFactory) {
+        Objects.requireNonNull(increaseSignal, "increaseSignal is required");
+        Objects.requireNonNull(decreaseSignal, "decreaseSignal is required");
+        Objects.requireNonNull(taskFactory, "taskFactory is required");
+        bindings.nudgeOnRise(increaseSignal, decreaseSignal, step,
+                delta -> runner.enqueue(taskFactory.apply(delta)));
     }
 }

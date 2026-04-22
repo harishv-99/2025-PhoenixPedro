@@ -223,7 +223,7 @@ public final class TeleOp_04_ShooterInterpolated extends OpMode {
         // 4) Bindings: shooter enable + distance adjust
 
         // LB: toggle shooter on/off.
-        bindings.onToggle(
+        bindings.toggleOnRise(
                 gamepads.p1().leftBumper(),
                 () -> shooterEnabled = true,
                 () -> shooterEnabled = false

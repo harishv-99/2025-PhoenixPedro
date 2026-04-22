@@ -118,7 +118,7 @@ It should own:
 
 - stick mapping
 - slow mode
-- button edges, toggles, and holds
+- signal edges, changes, levels, toggles, and nudges
 - enable and override semantics
 - conversion from gamepad input into robot intents and reusable sources
 
@@ -521,22 +521,8 @@ public final class MyTeleOpControls {
     public void bind(MyCapabilities capabilities) {
         MyCapabilities.GamePiece gamePiece = capabilities.gamePiece();
 
-        bindings.onToggle(operator.a(), gamePiece::setIntakeEnabled);
-        bindings.onRiseAndFall(
-                operator.b(),
-                new Runnable() {
-                    @Override
-                    public void run() {
-                        gamePiece.setActionEnabled(true);
-                    }
-                },
-                new Runnable() {
-                    @Override
-                    public void run() {
-                        gamePiece.setActionEnabled(false);
-                    }
-                }
-        );
+        bindings.toggleOnRise(operator.a(), gamePiece::setIntakeEnabled);
+        bindings.mirrorOnChange(operator.b(), gamePiece::setActionEnabled);
     }
 
     public DriveSource manualDriveSource() {

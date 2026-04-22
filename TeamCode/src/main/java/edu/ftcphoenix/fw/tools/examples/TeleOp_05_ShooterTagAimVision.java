@@ -239,7 +239,7 @@ public final class TeleOp_05_ShooterTagAimVision extends OpMode {
         shooter.setTarget(0.0);
 
         // 5) Bindings: shooter toggle.
-        bindings.onToggle(
+        bindings.toggleOnRise(
                 gamepads.p1().a(),
                 () -> shooterEnabled = true,
                 () -> shooterEnabled = false

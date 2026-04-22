@@ -81,21 +81,17 @@ public final class DrivetrainMotorDirectionTester extends BaseTeleOpTester {
                 .power()
                 .build();
 
-        bindings.whileTrue(gamepads.p1().x(),
-                () -> plantFL.setTarget(TEST_POWER),
-                () -> plantFL.setTarget(0.0));
+        bindings.mirrorOnChange(gamepads.p1().x(),
+                high -> plantFL.setTarget(high ? TEST_POWER : 0.0));
 
-        bindings.whileTrue(gamepads.p1().y(),
-                () -> plantFR.setTarget(TEST_POWER),
-                () -> plantFR.setTarget(0.0));
+        bindings.mirrorOnChange(gamepads.p1().y(),
+                high -> plantFR.setTarget(high ? TEST_POWER : 0.0));
 
-        bindings.whileTrue(gamepads.p1().a(),
-                () -> plantBL.setTarget(TEST_POWER),
-                () -> plantBL.setTarget(0.0));
+        bindings.mirrorOnChange(gamepads.p1().a(),
+                high -> plantBL.setTarget(high ? TEST_POWER : 0.0));
 
-        bindings.whileTrue(gamepads.p1().b(),
-                () -> plantBR.setTarget(TEST_POWER),
-                () -> plantBR.setTarget(0.0));
+        bindings.mirrorOnChange(gamepads.p1().b(),
+                high -> plantBR.setTarget(high ? TEST_POWER : 0.0));
 
         stopAll();
     }

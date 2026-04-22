@@ -50,7 +50,7 @@ public final class PhoenixTeleOpControls {
      * </p>
      *
      * @param gamepads wrapped gamepad sources used to map driver/operator controls
-     * @param config TeleOp control-layer config; defensively copied for local ownership
+     * @param config   TeleOp control-layer config; defensively copied for local ownership
      */
     public PhoenixTeleOpControls(Gamepads gamepads,
                                  PhoenixProfile.TeleOpControlsConfig config) {
@@ -91,27 +91,20 @@ public final class PhoenixTeleOpControls {
         PhoenixCapabilities.Scoring scoring =
                 Objects.requireNonNull(capabilities, "capabilities").scoring();
 
-        bindings.onToggle(operator.a(), scoring::setIntakeEnabled);
-        bindings.onToggle(operator.rightBumper(), scoring::setFlywheelEnabled);
+        bindings.toggleOnRise(operator.a(), scoring::setIntakeEnabled);
+        bindings.toggleOnRise(operator.rightBumper(), scoring::setFlywheelEnabled);
 
         bindings.onRise(operator.leftBumper(), scoring::captureSuggestedShotVelocity);
 
-        bindings.onRiseAndFall(
-                operator.b(),
-                () -> scoring.setShootingEnabled(true),
-                () -> scoring.setShootingEnabled(false)
-        );
+        bindings.mirrorOnChange(operator.b(), scoring::setShootingEnabled);
+        bindings.mirrorOnChange(operator.x(), scoring::setEjectEnabled);
 
-        bindings.onRiseAndFall(
-                operator.x(),
-                () -> scoring.setEjectEnabled(true),
-                () -> scoring.setEjectEnabled(false)
+        bindings.nudgeOnRise(
+                operator.dpadUp(),
+                operator.dpadDown(),
+                cfg.selectedVelocityStepNative,
+                scoring::adjustSelectedVelocityNative
         );
-
-        bindings.onRise(operator.dpadUp(),
-                () -> scoring.adjustSelectedVelocityNative(cfg.selectedVelocityStepNative));
-        bindings.onRise(operator.dpadDown(),
-                () -> scoring.adjustSelectedVelocityNative(-cfg.selectedVelocityStepNative));
     }
 
     /**

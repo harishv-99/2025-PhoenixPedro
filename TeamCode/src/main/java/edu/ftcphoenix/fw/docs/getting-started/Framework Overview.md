@@ -19,7 +19,7 @@ Phoenix is organized by **robot concepts**, not by FTC SDK details.
 Most robot code should only need imports from these packages:
 
 * `edu.ftcphoenix.fw.input` — gamepad wrappers (`Gamepads`, `GamepadDevice`) that expose axes as `ScalarSource` and buttons as `BooleanSource`.
-* `edu.ftcphoenix.fw.input.binding` — `Bindings`: map button edges to actions.
+* `edu.ftcphoenix.fw.input.binding` — `Bindings`: map boolean signal events and levels to actions.
 * `edu.ftcphoenix.fw.task` — `Task`, `TaskRunner`, `Tasks`: non-blocking macros over time.
 * `edu.ftcphoenix.fw.actuation` — `Plant`, `Plants`, `PlantTasks`: mechanism/runtime abstractions you command with numeric targets.
 * `edu.ftcphoenix.fw.drive` — `DriveSignal`, `DriveSource`, `DriveCommandSink`, `MecanumDrivebase` (FTC-independent drive logic).
@@ -158,11 +158,11 @@ Think of Phoenix as a few thin layers you stack:
 2. **Input** (`fw.input`)
 
     * `Gamepads`, `GamepadDevice`, `ScalarSource`, `BooleanSource`.
-    * `BooleanSource` supports edge detection (`risingEdge`/`fallingEdge`) and press-to-toggle state
+    * `BooleanSource` supports edge detection (`risingEdge`/`fallingEdge`) and rise-to-toggle state
       via `BooleanSource.toggled()` (useful when enabling drive overlays).
 3. **Bindings** (`fw.input.binding`)
 
-    * `Bindings` turns button edges into actions (often: enqueue a macro).
+    * `Bindings` turns boolean signal edges, changes, levels, toggles, and nudges into actions.
 4. **Tasks / Macros** (`fw.task`, plus helpers in other packages)
 
     * `Task`, `TaskRunner`, `Tasks`, `PlantTasks`, `DriveTasks`.
@@ -428,9 +428,14 @@ If you need edges/toggles, use `risingEdge()` / `fallingEdge()` / `toggled()` (o
 
 ### `Bindings`
 
-`Bindings` lets you map button edges to actions.
+`Bindings` maps boolean signals to actions. The core names are signal-based, not button-specific:
 
-Most commonly: **enqueue a macro** on press.
+* `onRise(...)` and `onFall(...)` run once on edges.
+* `mirrorOnChange(...)` mirrors the current high/low value to a setter, including the first sample.
+* `whileHigh(...)` and `whileLow(...)` run every loop while a level is active.
+* `toggleOnRise(...)` and `nudgeOnRise(...)` combine an edge trigger with a stateful helper.
+
+Most commonly: **enqueue a macro** on rise.
 
 ```java
 import edu.ftcphoenix.fw.input.binding.Bindings;

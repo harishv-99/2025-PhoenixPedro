@@ -299,7 +299,7 @@ public final class TeleOp_02_ShooterBasic extends OpMode {
         // === 4) Bindings: map buttons to high-level modes (using lambdas) ===
 
         // Toggle shooter on/off with left bumper.
-        bindings.onToggle(
+        bindings.toggleOnRise(
                 gamepads.p1().leftBumper(),
                 () -> shooterEnabled = true,
                 () -> shooterEnabled = false
