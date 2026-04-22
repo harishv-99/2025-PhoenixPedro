@@ -29,6 +29,10 @@ import edu.ftcphoenix.robots.phoenix.autonomous.pedro.PhoenixPedroPathFactory;
  * Pedro constants package is project-specific TeamCode setup. If a team stores Pedro constants in a
  * different package, update {@link #createPedroFollower(HardwareMap)} in one place instead of every
  * static autonomous entry.</p>
+ *
+ * <p>Initialization is retry-safe during INIT. A failed attempt tears down any partially-created
+ * Phoenix or Pedro runtime before another spec is built, which keeps selector telemetry, queued
+ * tasks, and live hardware owners from drifting apart.</p>
  */
 public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
 
@@ -82,7 +86,11 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
     }
 
     /**
-     * Advance the Phoenix Auto loop and Pedro debug telemetry.
+     * Advance the Phoenix Auto loop and compose Pedro debug rows into the same telemetry frame.
+     *
+     * <p>Phoenix's Auto telemetry presenter owns the final {@code telemetry.update()} call. Pedro
+     * path/spec rows are added first so the Driver Station sees one coherent frame instead of a
+     * Phoenix frame followed by a second Pedro-only update.</p>
      */
     @Override
     public void loop() {
@@ -99,39 +107,17 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
         }
 
         robot.updateAny(getRuntime());
+        emitPedroDebugTelemetry();
         robot.updateAuto();
-
-        if (activeSpec != null) {
-            telemetry.addData("auto.spec", activeSpec.summary());
-        }
-        if (pathLabel != null) {
-            telemetry.addData("auto.paths", pathLabel);
-        }
-        if (follower != null) {
-            telemetry.addData("pedro.busy", follower.isBusy());
-            telemetry.addData("pedro.x", follower.getPose().getX());
-            telemetry.addData("pedro.y", follower.getPose().getY());
-            telemetry.addData("pedro.headingDeg", Math.toDegrees(follower.getPose().getHeading()));
-        }
-        telemetry.update();
     }
 
     /**
-     * Stop Phoenix Auto and the Pedro adapter.
+     * Stop Phoenix Auto, the Pedro adapter, and any runtime left from a failed INIT retry.
      */
     @Override
     public void stop() {
-        if (robot != null) {
-            robot.stopAuto();
-            robot.stopAny();
-            robot = null;
-        }
-        if (driveAdapter != null) {
-            driveAdapter.stop();
-            driveAdapter = null;
-        }
-        follower = null;
-        capabilities = null;
+        clearAutoRuntime();
+        initError = null;
     }
 
     /**
@@ -160,37 +146,52 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
      *
      * <p>Selector OpModes may call this from {@code init_loop()} once the operator confirms a spec.
      * Repeated calls after a successful initialization are ignored so a second press of confirm does
-     * not allocate another robot graph.</p>
+     * not allocate another robot graph. If a previous attempt failed, this method clears the error,
+     * tears down any partial runtime, and tries again from a clean state.</p>
      */
     protected final boolean initializeRobotForSpec(PhoenixAutoSpec spec) {
         if (isAutoInitialized()) {
             return true;
         }
 
+        PhoenixAutoSpec requestedSpec = Objects.requireNonNull(spec, "spec");
+        clearAutoRuntime();
+        initError = null;
+
+        PhoenixRobot builtRobot = null;
+        Follower builtFollower = null;
+        PedroPathingDriveAdapter builtDriveAdapter = null;
+
         try {
-            activeSpec = Objects.requireNonNull(spec, "spec");
-            activeProfile = PhoenixAutoProfiles.profileFor(activeSpec, PhoenixProfile.current());
+            PhoenixProfile builtProfile = PhoenixAutoProfiles.profileFor(requestedSpec, PhoenixProfile.current());
 
-            robot = new PhoenixRobot(hardwareMap, telemetry, gamepad1, gamepad2, activeProfile);
-            robot.initAny();
-            robot.initAuto();
-            capabilities = robot.capabilities();
+            builtRobot = new PhoenixRobot(hardwareMap, telemetry, gamepad1, gamepad2, builtProfile);
+            builtRobot.initAny();
+            builtRobot.initAuto();
+            PhoenixCapabilities builtCapabilities = builtRobot.capabilities();
 
-            follower = createPedroFollower(hardwareMap);
-            driveAdapter = new PedroPathingDriveAdapter(follower);
+            builtFollower = createPedroFollower(hardwareMap);
+            builtDriveAdapter = new PedroPathingDriveAdapter(builtFollower);
 
-            PhoenixPedroPathFactory pathFactory = new PhoenixPedroPathFactory(follower, activeProfile.auto);
-            PhoenixPedroPathFactory.Paths paths = pathFactory.build(activeSpec, capabilities);
-            pathLabel = paths.label;
+            PhoenixPedroPathFactory pathFactory = new PhoenixPedroPathFactory(builtFollower, builtProfile.auto);
+            PhoenixPedroPathFactory.Paths paths = pathFactory.build(requestedSpec, builtCapabilities);
 
             PhoenixPedroAutoContext ctx = new PhoenixPedroAutoContext(
-                    activeSpec,
-                    activeProfile,
-                    capabilities,
-                    driveAdapter,
+                    requestedSpec,
+                    builtProfile,
+                    builtCapabilities,
+                    builtDriveAdapter,
                     paths
             );
-            robot.enqueueAuto(PhoenixPedroAutoRoutineFactory.build(ctx));
+            builtRobot.enqueueAuto(PhoenixPedroAutoRoutineFactory.build(ctx));
+
+            activeSpec = requestedSpec;
+            activeProfile = builtProfile;
+            robot = builtRobot;
+            capabilities = builtCapabilities;
+            follower = builtFollower;
+            driveAdapter = builtDriveAdapter;
+            pathLabel = paths.label;
 
             telemetry.addLine("Phoenix Pedro auto ready");
             telemetry.addData("auto.spec", activeSpec.summary());
@@ -200,6 +201,10 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
             return true;
         } catch (RuntimeException e) {
             initError = buildInitError(e);
+            safeStopDriveAdapter(builtDriveAdapter);
+            safeStopRobot(builtRobot);
+            clearRuntimeReferences();
+
             telemetry.addLine("Phoenix Pedro auto init failed");
             telemetry.addLine(initError);
             telemetry.update();
@@ -212,6 +217,64 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
      */
     protected Follower createPedroFollower(HardwareMap hardwareMap) {
         return Constants.createFollower(Objects.requireNonNull(hardwareMap, "hardwareMap"));
+    }
+
+    private void emitPedroDebugTelemetry() {
+        if (activeSpec != null) {
+            telemetry.addData("auto.spec", activeSpec.summary());
+        }
+        if (pathLabel != null) {
+            telemetry.addData("auto.paths", pathLabel);
+        }
+        if (follower != null) {
+            telemetry.addData("pedro.busy", follower.isBusy());
+            telemetry.addData("pedro.x", follower.getPose().getX());
+            telemetry.addData("pedro.y", follower.getPose().getY());
+            telemetry.addData("pedro.headingDeg", Math.toDegrees(follower.getPose().getHeading()));
+        }
+    }
+
+    private void clearAutoRuntime() {
+        safeStopDriveAdapter(driveAdapter);
+        safeStopRobot(robot);
+        clearRuntimeReferences();
+    }
+
+    private void clearRuntimeReferences() {
+        robot = null;
+        capabilities = null;
+        follower = null;
+        driveAdapter = null;
+        activeSpec = null;
+        activeProfile = null;
+        pathLabel = null;
+    }
+
+    private static void safeStopDriveAdapter(PedroPathingDriveAdapter adapter) {
+        if (adapter == null) {
+            return;
+        }
+        try {
+            adapter.stop();
+        } catch (RuntimeException ignored) {
+            // Cleanup should never hide the original initialization or OpMode-stop reason.
+        }
+    }
+
+    private static void safeStopRobot(PhoenixRobot runtime) {
+        if (runtime == null) {
+            return;
+        }
+        try {
+            runtime.stopAuto();
+        } catch (RuntimeException ignored) {
+            // Continue stopping hardware owners even if the autonomous runner was only partly built.
+        }
+        try {
+            runtime.stopAny();
+        } catch (RuntimeException ignored) {
+            // Cleanup should be best-effort during failed INIT retries and OpMode shutdown.
+        }
     }
 
     private static String buildInitError(RuntimeException e) {

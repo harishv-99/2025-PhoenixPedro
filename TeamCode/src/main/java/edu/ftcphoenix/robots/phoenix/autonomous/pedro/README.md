@@ -27,6 +27,17 @@ The intended split is:
 - `PhoenixPedroAutoRoutineFactory` owns strategy-to-task-sequence mapping.
 - OpModes choose or collect a spec, then delegate.
 
+`PhoenixPedroAutoOpModeBase` is retry-safe during INIT. If selector confirmation fails partway
+through Phoenix or Pedro construction, the base class stops any partially-created adapter/robot,
+clears runtime references, records the error, and allows a later confirmation attempt to rebuild from
+a clean state. Successful initialization still locks the selector summary so driver-visible choices
+cannot drift away from the queued routine.
+
+Pedro debug rows are added before `PhoenixRobot.updateAuto()` emits the standard Phoenix Auto block.
+That keeps `auto.spec`, `auto.paths`, Pedro pose/busy state, task status, scoring status, targeting
+status, and pose estimates in one telemetry update instead of splitting the Driver Station display
+across two frames.
+
 The checked-in geometry is still a placeholder based on the old 12-inch Pedro integration path. Real
 alliance/start/partner routes should replace the branches inside `PhoenixPedroPathFactory`, while
 reusable scoring snippets should stay in `PhoenixAutoTasks` and high-level strategy mapping should

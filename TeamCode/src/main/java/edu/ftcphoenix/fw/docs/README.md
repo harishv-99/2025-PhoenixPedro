@@ -70,6 +70,7 @@ If you are new to Phoenix, read in this order:
 - [`maintainers/README.md`](<maintainers/README.md>)
 - [`../Framework Principles.md`](<../Framework Principles.md>)
 - [`maintainers/Maintainer Notes.md`](<maintainers/Maintainer Notes.md>)
+- [`maintainers/Future Robot Boilerplate Helpers.md`](<maintainers/Future Robot Boilerplate Helpers.md>)
 - [`maintainers/AprilTag Localization Follow-Ups.md`](<maintainers/AprilTag Localization Follow-Ups.md>)
 - [`../integrations/pedro/README.md`](<../integrations/pedro/README.md>)
 

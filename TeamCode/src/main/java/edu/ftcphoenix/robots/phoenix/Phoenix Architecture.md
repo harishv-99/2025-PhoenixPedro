@@ -313,6 +313,15 @@ the queued routine. OpMode classes should still stay thin: they choose or collec
 `PhoenixRobot`, and enqueue the selected routine. They should not become route scripts or hardware
 selection screens.
 
+`PhoenixPedroAutoOpModeBase` also treats INIT failures as retryable setup failures, not as
+half-built robot states. Before each new build attempt it clears any previous error and stops any
+partial Phoenix/Pedro runtime left by an earlier failure; after a successful build it preserves the
+active spec, profile, paths, robot, and adapter as one consistent set.
+
+Pedro debug telemetry is composed into the same frame as Phoenix Auto telemetry. The OpMode adds
+`auto.spec`, `auto.paths`, and Pedro pose/busy rows before `PhoenixRobot.updateAuto()` calls the
+Auto telemetry presenter, so the Driver Station sees one coherent Auto status page per loop.
+
 
 ## Loop order
 
