@@ -28,7 +28,7 @@ import edu.ftcphoenix.fw.localization.apriltag.AprilTagPoseEstimator;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
 import edu.ftcphoenix.fw.tools.tester.BaseTeleOpTester;
-import edu.ftcphoenix.fw.tools.tester.ui.HardwareNamePicker;
+import edu.ftcphoenix.fw.ftc.ui.HardwareNamePicker;
 
 /**
  * Calibrates goBILDA Pinpoint odometry pod offsets by observing translation drift while rotating in place.
@@ -424,13 +424,13 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
                 String pickerTitle = (cfg.visionPickerTitle == null || cfg.visionPickerTitle.trim().isEmpty())
                         ? "Select Vision Device"
                         : cfg.visionPickerTitle;
-                visionPicker = new HardwareNamePicker(ctx.hw, deviceType, pickerTitle, "Dpad: highlight | A: choose | B: refresh");
+                visionPicker = new HardwareNamePicker(ctx.hw, deviceType, pickerTitle, "Dpad: highlight | A: choose | X: refresh");
                 visionPicker.bind(
                         bindings,
                         gamepads.p1().dpadUp(),
                         gamepads.p1().dpadDown(),
                         gamepads.p1().a(),
-                        gamepads.p1().b(),
+                        gamepads.p1().x(),
                         () -> tagSensor == null,
                         name -> selectedVisionDeviceName = name
                 );

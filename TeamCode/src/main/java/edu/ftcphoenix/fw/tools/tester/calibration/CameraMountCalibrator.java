@@ -21,7 +21,7 @@ import edu.ftcphoenix.fw.ftc.vision.FtcWebcamAprilTagVisionLane;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagObservation;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
 import edu.ftcphoenix.fw.tools.tester.BaseTeleOpTester;
-import edu.ftcphoenix.fw.tools.tester.ui.HardwareNamePicker;
+import edu.ftcphoenix.fw.ftc.ui.HardwareNamePicker;
 
 /**
  * Calibrates {@code robotToCameraPose} (camera mount extrinsics) using:
@@ -45,7 +45,7 @@ import edu.ftcphoenix.fw.tools.tester.ui.HardwareNamePicker;
  *
  * <h2>Controls (gamepad1)</h2>
  * <ul>
- *   <li><b>PICKER (no camera chosen yet)</b>: Dpad Up/Down highlight, A choose, B refresh</li>
+ *   <li><b>PICKER (no camera chosen yet)</b>: Dpad Up/Down highlight, A choose, X refresh</li>
  *   <li><b>CALIBRATE (camera chosen)</b>:
  *     <ul>
  *       <li>Y/X: increment/decrement tag ID</li>
@@ -247,7 +247,7 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
                 ctx.hw,
                 cameraDeviceType,
                 cameraPickerTitle,
-                "Dpad: highlight | A: choose | B: refresh"
+                "Dpad: highlight | A: choose | X: refresh"
         );
         cameraPicker.refresh();
         if (selectedCameraName != null && !selectedCameraName.isEmpty()) {
@@ -260,7 +260,7 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
                 gamepads.p1().dpadUp(),
                 gamepads.p1().dpadDown(),
                 gamepads.p1().a(),
-                gamepads.p1().b(),
+                gamepads.p1().x(),
                 () -> !visionReady,
                 chosen -> {
                     selectedCameraName = chosen;

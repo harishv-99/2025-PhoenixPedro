@@ -10,7 +10,7 @@ import edu.ftcphoenix.fw.core.color.Rgba;
 import edu.ftcphoenix.fw.core.source.Source;
 import edu.ftcphoenix.fw.ftc.FtcSensors;
 import edu.ftcphoenix.fw.tools.tester.BaseTeleOpTester;
-import edu.ftcphoenix.fw.tools.tester.ui.HardwareNamePicker;
+import edu.ftcphoenix.fw.ftc.ui.HardwareNamePicker;
 import edu.ftcphoenix.fw.tools.tester.ui.ScalarTuner;
 
 /**
@@ -29,7 +29,7 @@ import edu.ftcphoenix.fw.tools.tester.ui.ScalarTuner;
  *
  * <h2>Controls (gamepad1)</h2>
  * <ul>
- *   <li><b>PICKER (no sensor chosen yet)</b>: Dpad Up/Down highlight, A choose, B refresh</li>
+ *   <li><b>PICKER (no sensor chosen yet)</b>: Dpad Up/Down highlight, A choose, X refresh</li>
  *   <li><b>RUN (sensor chosen)</b>:
  *     <ul>
  *       <li><b>X</b>: toggle PRIMARY / DETAIL telemetry view</li>
@@ -130,7 +130,7 @@ public final class NormalizedColorSensorTester extends BaseTeleOpTester {
                 ctx.hw,
                 NormalizedColorSensor.class,
                 "Select Color Sensor",
-                "Dpad: highlight | A: choose | B: refresh"
+                "Dpad: highlight | A: choose | X: refresh"
         );
         picker.refresh();
 
@@ -144,7 +144,7 @@ public final class NormalizedColorSensorTester extends BaseTeleOpTester {
                 gamepads.p1().dpadUp(),
                 gamepads.p1().dpadDown(),
                 gamepads.p1().a(),
-                gamepads.p1().b(),
+                gamepads.p1().x(),
                 () -> !ready,
                 chosen -> {
                     sensorName = chosen;

@@ -5,7 +5,7 @@ import com.qualcomm.robotcore.hardware.CRServo;
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 
 import edu.ftcphoenix.fw.tools.tester.BaseTeleOpTester;
-import edu.ftcphoenix.fw.tools.tester.ui.HardwareNamePicker;
+import edu.ftcphoenix.fw.ftc.ui.HardwareNamePicker;
 import edu.ftcphoenix.fw.tools.tester.ui.ScalarTuner;
 
 /**
@@ -17,7 +17,7 @@ import edu.ftcphoenix.fw.tools.tester.ui.ScalarTuner;
  *
  * <h2>Controls (gamepad1)</h2>
  * <ul>
- *   <li><b>PICKER (no device chosen yet)</b>: Dpad Up/Down highlight, A choose, B refresh</li>
+ *   <li><b>PICKER (no device chosen yet)</b>: Dpad Up/Down highlight, A choose, X refresh</li>
  *   <li><b>RUN (device chosen)</b>:
  *     <ul>
  *       <li>A: enable/disable output</li>
@@ -83,7 +83,7 @@ public final class CrServoPowerTester extends BaseTeleOpTester {
                 ctx.hw,
                 CRServo.class,
                 "Select CRServo",
-                "Dpad: highlight | A: choose | B: refresh"
+                "Dpad: highlight | A: choose | X: refresh"
         );
         picker.refresh();
 
@@ -99,7 +99,7 @@ public final class CrServoPowerTester extends BaseTeleOpTester {
                 gamepads.p1().dpadUp(),
                 gamepads.p1().dpadDown(),
                 gamepads.p1().a(),
-                gamepads.p1().b(),
+                gamepads.p1().x(),
                 () -> !ready,
                 chosen -> {
                     servoName = chosen;

@@ -6,7 +6,7 @@ import com.qualcomm.robotcore.hardware.DcMotorEx;
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 
 import edu.ftcphoenix.fw.tools.tester.BaseTeleOpTester;
-import edu.ftcphoenix.fw.tools.tester.ui.HardwareNamePicker;
+import edu.ftcphoenix.fw.ftc.ui.HardwareNamePicker;
 import edu.ftcphoenix.fw.tools.tester.ui.IntTuner;
 import edu.ftcphoenix.fw.tools.tester.ui.ScalarTuner;
 
@@ -20,7 +20,7 @@ import edu.ftcphoenix.fw.tools.tester.ui.ScalarTuner;
  *
  * <h2>Controls (gamepad1)</h2>
  * <ul>
- *   <li><b>PICKER (no motor chosen yet)</b>: Dpad Up/Down highlight, A choose, B refresh</li>
+ *   <li><b>PICKER (no motor chosen yet)</b>: Dpad Up/Down highlight, A choose, X refresh</li>
  *   <li><b>RUN (motor selected)</b>:
  *     <ul>
  *       <li><b>A</b>: enable/disable (RUN_TO_POSITION active)</li>
@@ -140,7 +140,7 @@ public final class DcMotorPositionTester extends BaseTeleOpTester {
                 ctx.hw,
                 DcMotor.class,
                 "Select Motor",
-                "Dpad: highlight | A: choose | B: refresh"
+                "Dpad: highlight | A: choose | X: refresh"
         );
         picker.refresh();
 
@@ -161,7 +161,7 @@ public final class DcMotorPositionTester extends BaseTeleOpTester {
                 gamepads.p1().dpadUp(),
                 gamepads.p1().dpadDown(),
                 gamepads.p1().a(),
-                gamepads.p1().b(),
+                gamepads.p1().x(),
                 () -> !ready,
                 chosen -> {
                     motorName = chosen;

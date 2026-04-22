@@ -67,6 +67,7 @@ A builder that produces a normal `TesterSuite`, but with a few calibration-speci
 - steps are shown in the order you add them
 - tracked steps can show `OK` / `TODO`
 - the first incomplete tracked step is selected by default
+- status tags are passed to the shared `SelectionMenu` item model instead of being embedded in labels
 - robot projects do not have to hand-roll the menu boilerplate
 
 ## Typical pattern for a robot project

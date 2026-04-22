@@ -5,7 +5,7 @@ import com.qualcomm.robotcore.hardware.HardwareDevice;
 import java.util.Objects;
 import java.util.function.Function;
 
-import edu.ftcphoenix.fw.tools.tester.ui.HardwareNamePicker;
+import edu.ftcphoenix.fw.ftc.ui.HardwareNamePicker;
 
 /**
  * Small wrapper that selects a hardware device name before launching an inner tester.
@@ -71,7 +71,7 @@ public final class HardwareSelectingTester extends BaseTeleOpTester {
                 ? ("Select " + deviceType.getSimpleName())
                 : pickerTitle.trim();
         String help = (pickerHelp == null || pickerHelp.trim().isEmpty())
-                ? "Dpad: highlight | A: choose | B: refresh"
+                ? "Dpad: highlight | A: choose | X: refresh"
                 : pickerHelp.trim();
 
         picker = new HardwareNamePicker(ctx.hw, deviceType, title, help);
@@ -85,7 +85,7 @@ public final class HardwareSelectingTester extends BaseTeleOpTester {
                 gamepads.p1().dpadUp(),
                 gamepads.p1().dpadDown(),
                 gamepads.p1().a(),
-                gamepads.p1().b(),
+                gamepads.p1().x(),
                 () -> active == null,
                 this::enter
         );

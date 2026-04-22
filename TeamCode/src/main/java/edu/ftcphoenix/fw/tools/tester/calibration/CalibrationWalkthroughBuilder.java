@@ -14,10 +14,14 @@ import edu.ftcphoenix.fw.tools.tester.TesterSuite;
  * a few opinionated rules that we want robot projects to reuse consistently:</p>
  * <ul>
  *   <li>show steps in a fixed recommended order</li>
- *   <li>surface a compact "OK" / "TODO" status next to steps when possible</li>
+ *   <li>surface compact {@code OK} / {@code TODO} status tags next to steps when possible</li>
  *   <li>default the selection to the first incomplete tracked step</li>
  *   <li>keep the robot-side glue small and declarative</li>
  * </ul>
+ *
+ * <p>Status is now passed to the shared framework menu as an item tag instead of being embedded in
+ * the label text. That keeps step labels stable while still making completion state easy to scan on
+ * the Driver Station.</p>
  */
 public final class CalibrationWalkthroughBuilder {
 
@@ -43,43 +47,35 @@ public final class CalibrationWalkthroughBuilder {
     private int maxVisibleItems = 8;
     private int fallbackSelectedIndex = 0;
 
-    private final List<Step> steps = new ArrayList<>();
+    private final List<Step> steps = new ArrayList<Step>();
 
-    /**
-     * Create a builder for a named walkthrough.
-     */
+    /** Create a builder for a named walkthrough. */
     public CalibrationWalkthroughBuilder(String title) {
         this.title = (title == null || title.trim().isEmpty())
                 ? "Calibration Walkthrough"
                 : title.trim();
     }
 
-    /**
-     * Set the suite-level help line.
-     */
+    /** Set the suite-level help line. */
     public CalibrationWalkthroughBuilder setHelp(String help) {
         this.help = help;
         return this;
     }
 
-    /**
-     * Set how many items the suite renders at once.
-     */
+    /** Set how many items the suite renders at once. */
     public CalibrationWalkthroughBuilder setMaxVisibleItems(int maxVisibleItems) {
         this.maxVisibleItems = maxVisibleItems;
         return this;
     }
 
-    /**
-     * Set which step should be highlighted if all tracked steps already look complete.
-     */
+    /** Set which step should be highlighted if all tracked steps already look complete. */
     public CalibrationWalkthroughBuilder setFallbackSelectedIndex(int fallbackSelectedIndex) {
         this.fallbackSelectedIndex = fallbackSelectedIndex;
         return this;
     }
 
     /**
-     * Add an informational step that is always shown without an "OK" / "TODO" tag.
+     * Add an informational step that is always shown without an {@code OK} / {@code TODO} tag.
      *
      * @return the zero-based step index
      */
@@ -91,7 +87,7 @@ public final class CalibrationWalkthroughBuilder {
     }
 
     /**
-     * Add a tracked step whose status contributes to the initial selection.
+     * Add a tracked step whose status contributes to the initial selection and item tag.
      *
      * @return the zero-based step index
      */
@@ -103,9 +99,7 @@ public final class CalibrationWalkthroughBuilder {
         return steps.size() - 1;
     }
 
-    /**
-     * Build the guided suite.
-     */
+    /** Build the guided suite. */
     public TesterSuite build() {
         TesterSuite suite = new TesterSuite()
                 .setTitle(title)
@@ -124,23 +118,20 @@ public final class CalibrationWalkthroughBuilder {
                 foundIncomplete = true;
             }
 
-            String label = numberedLabel(i, step.label, status);
+            String label = numberedLabel(i, step.label);
             String itemHelp = combinedHelp(step.help, status);
+            String tag = status == null ? null : status.menuTag();
 
-            suite.add(label, itemHelp, step.testerFactory);
+            suite.add(label, itemHelp, tag, step.testerFactory);
         }
 
         suite.setSelectedIndex(selectedIndex);
         return suite;
     }
 
-    private static String numberedLabel(int index, String label, CalibrationStatus status) {
+    private static String numberedLabel(int index, String label) {
         String base = (label == null) ? "Step" : label;
-        int displayIndex = index + 1;
-        if (status == null) {
-            return displayIndex + ") " + base;
-        }
-        return displayIndex + ") [" + status.menuTag() + "] " + base;
+        return (index + 1) + ") " + base;
     }
 
     private static String combinedHelp(String help, CalibrationStatus status) {

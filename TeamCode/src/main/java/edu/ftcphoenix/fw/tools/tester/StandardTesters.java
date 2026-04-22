@@ -355,7 +355,7 @@ public final class StandardTesters {
                 "Pinpoint Axis Check",
                 GoBildaPinpointDriver.class,
                 "Select Pinpoint",
-                "Dpad: highlight | A: choose | B: refresh",
+                "Dpad: highlight | A: choose | X: refresh",
                 PinpointOdometryPredictor.Config.defaults().hardwareMapName,
                 hardwareName -> {
                     PinpointAxisDirectionTester.Config cfg = PinpointAxisDirectionTester.Config.defaults();
@@ -370,7 +370,7 @@ public final class StandardTesters {
                 "Pinpoint Pod Offset Calibrator",
                 GoBildaPinpointDriver.class,
                 "Select Pinpoint",
-                "Dpad: highlight | A: choose | B: refresh",
+                "Dpad: highlight | A: choose | X: refresh",
                 PinpointOdometryPredictor.Config.defaults().hardwareMapName,
                 hardwareName -> {
                     PinpointPodOffsetCalibrator.Config cfg = PinpointPodOffsetCalibrator.Config.defaults();
@@ -385,7 +385,7 @@ public final class StandardTesters {
                 "Pinpoint + Field Corrections (Webcam)",
                 GoBildaPinpointDriver.class,
                 "Select Pinpoint",
-                "Dpad: highlight | A: choose | B: refresh",
+                "Dpad: highlight | A: choose | X: refresh",
                 PinpointOdometryPredictor.Config.defaults().hardwareMapName,
                 hardwareName -> new PinpointAprilTagFusionLocalizationTester(
                         null,
@@ -400,7 +400,7 @@ public final class StandardTesters {
                 "Pinpoint + Field Corrections (Limelight)",
                 GoBildaPinpointDriver.class,
                 "Select Pinpoint",
-                "Dpad: highlight | A: choose | B: refresh",
+                "Dpad: highlight | A: choose | X: refresh",
                 PinpointOdometryPredictor.Config.defaults().hardwareMapName,
                 hardwareName -> new PinpointAprilTagFusionLocalizationTester(
                         null,

@@ -39,7 +39,7 @@ import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelectionResult;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelectionSource;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelections;
 import edu.ftcphoenix.fw.tools.tester.BaseTeleOpTester;
-import edu.ftcphoenix.fw.tools.tester.ui.HardwareNamePicker;
+import edu.ftcphoenix.fw.ftc.ui.HardwareNamePicker;
 
 /**
  * End-to-end tester for Phoenix's corrected-global-localization stack.
@@ -62,7 +62,7 @@ import edu.ftcphoenix.fw.tools.tester.ui.HardwareNamePicker;
  *
  * <h2>Controls (gamepad1)</h2>
  * <ul>
- *   <li><b>PICKER</b>: Dpad Up/Down highlight, A choose, B refresh</li>
+ *   <li><b>PICKER</b>: Dpad Up/Down highlight, A choose, X refresh</li>
  *   <li><b>RUN</b>:
  *     <ul>
  *       <li>START: toggle tracking mode (ANY tag in layout vs SINGLE chosen ID)</li>
@@ -298,7 +298,7 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
                 ctx.hw,
                 visionDeviceType,
                 visionPickerTitle,
-                "Dpad: highlight | A: choose | B: refresh"
+                "Dpad: highlight | A: choose | X: refresh"
         );
         visionPicker.refresh();
 
@@ -313,7 +313,7 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
                 gamepads.p1().dpadUp(),
                 gamepads.p1().dpadDown(),
                 gamepads.p1().a(),
-                gamepads.p1().b(),
+                gamepads.p1().x(),
                 () -> !ready,
                 chosen -> {
                     selectedVisionDeviceName = chosen;

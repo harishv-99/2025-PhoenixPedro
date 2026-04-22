@@ -24,6 +24,7 @@ Most robot code should only need imports from these packages:
 * `edu.ftcphoenix.fw.actuation` — `Plant`, `Plants`, `PlantTasks`: mechanism/runtime abstractions you command with numeric targets.
 * `edu.ftcphoenix.fw.drive` — `DriveSignal`, `DriveSource`, `DriveCommandSink`, `MecanumDrivebase` (FTC-independent drive logic).
 * `edu.ftcphoenix.fw.ftc` — FTC entrypoints/adapters (e.g. `FtcDrives` for drivetrain wiring).
+* `edu.ftcphoenix.fw.ftc.ui` — telemetry UI helpers such as `SelectionMenu`, `MenuNavigator`, and `HardwareNamePicker`.
 * `edu.ftcphoenix.fw.sensing` — sensor-facing wrappers (vision, odometry, etc.).
 * `edu.ftcphoenix.fw.localization` — pose estimation (AprilTags, odometry, lightweight fusion, optional EKF-style fusion).
 * `edu.ftcphoenix.fw.field` — field metadata (tag layouts, constants).
@@ -49,6 +50,7 @@ These exist so the student-facing packages stay small and consistent:
 
 * `edu.ftcphoenix.fw.core.*` — shared plumbing: time, math, geometry, control, debug, and the HAL.
 * `edu.ftcphoenix.fw.ftc.*` — the **FTC SDK boundary** (hardware adapters, frame conversions, FTC vision plumbing). Most teams only touch a couple entrypoints like `FtcDrives`.
+* `edu.ftcphoenix.fw.ftc.ui` — FTC telemetry UI helpers for menus, breadcrumbs, hardware-name pickers, and pre-start selectors.
 * `edu.ftcphoenix.fw.tools.*` — testers and examples you can copy.
 
 ### Tester menus and calibration flows

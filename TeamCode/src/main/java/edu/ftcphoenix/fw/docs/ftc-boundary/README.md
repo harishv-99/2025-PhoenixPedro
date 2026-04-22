@@ -6,6 +6,7 @@ This section covers Phoenix's FTC SDK boundary adapters and where sensor logic s
 
 1. [`FTC Actuators & Plants.md`](<FTC Actuators & Plants.md>)
 2. [`FTC Sensors.md`](<FTC Sensors.md>)
+3. [`FTC UI Helpers.md`](<FTC UI Helpers.md>)
 
 ## Pair with
 

@@ -253,6 +253,24 @@ The checked-in Pedro example now shows the intended pattern:
 That split matches the framework principles: reusable bridges stay in the framework, project-specific
 route setup stays in robot code, and both modes share the same capability vocabulary.
 
+## Driver Station setup UI
+
+Phoenix should use the framework FTC UI helpers for future pre-start selectors rather than building
+selection mechanics into `PhoenixRobot` or individual OpModes. The intended split is:
+
+- `edu.ftcphoenix.fw.ftc.ui.SelectionMenu` for one visible list of choices
+- `MenuNavigator` for nested setup flows, breadcrumbs, back/home behavior, and level display
+- `HardwareNamePicker` for tester hardware selection, with `X` as refresh so `B` can remain
+  available for back/cancel in richer flows
+- Phoenix robot code for the meaning of selected values, such as alliance, start position, partner
+  plan, or autonomous strategy
+
+For Auto, the UI should eventually produce a robot-owned spec object such as
+`PhoenixAutoSpec`. OpMode classes should still stay thin: they choose or collect the spec, construct
+`PhoenixRobot`, and enqueue the selected routine. They should not become route scripts or hardware
+selection screens.
+
+
 ## Loop order
 
 Phoenix keeps loop order explicit inside `PhoenixRobot.updateTeleOp()`:
