@@ -125,6 +125,10 @@ Phoenix is designed around a few core goals:
    * Unit boundaries should be obvious from names. Methods without `native` in the name should
      normally use the public plant coordinate; methods that cross the plant/native boundary should
      say so explicitly.
+   * Velocity mapping should stay zero-preserving. Position may need affine endpoint mapping and a
+     separate reference/offset policy; velocity should keep `0.0` meaning stop in every unit
+     system, so the velocity builder should expose scale-only mapping rather than offset-based
+     endpoint maps.
    * Prevent invalid combinations by types when practical, not merely by throwing at `build()`.
      For example, if a request must choose between facing-derived and translation-derived spatial
      sources, the staged builder should make that choice explicit instead of allowing both with

@@ -34,10 +34,19 @@ import edu.ftcphoenix.fw.core.source.ScalarSource;
  * <h2>Units convention</h2>
  *
  * <p>Position and velocity builders distinguish <b>plant units</b> from <b>native units</b>. Plant
- * units are what robot code, planners, ranges, references, and {@link Plant#setTarget(double)} use.
- * Native units are what the selected hardware/control path uses internally: motor ticks,
- * ticks/sec, external encoder units, raw servo fractions, or a caller-supplied feedback source.
- * Public methods use plant units unless the method name explicitly says {@code Native}.</p>
+ * units are what robot code, planners, ranges, references, tolerances, and
+ * {@link Plant#setTarget(double)} use. Native units are what the selected hardware/control path
+ * uses internally: motor ticks, ticks/sec, external encoder units, raw servo fractions, or a
+ * caller-supplied feedback source. Public methods use plant units unless the method name
+ * explicitly says {@code Native} or a controller-native unit such as {@code Ticks}. That means
+ * methods like {@code bounded(...)}, {@code periodic(...)}, {@code positionTolerance(...)}, and
+ * {@code velocityTolerance(...)} use plant units, while mapping methods such as
+ * {@code scaleToNative(...)}, {@code rangeMapsToNative(...)}, and device methods such as
+ * {@code devicePositionToleranceTicks(...)} take native/controller quantities explicitly.</p>
+ *
+ * <p>Velocity mappings are intentionally zero-preserving: plant velocity {@code 0.0} always maps
+ * to native velocity {@code 0.0}. Phoenix therefore exposes velocity {@code nativeUnits()} and
+ * {@code scaleToNative(...)} mappings, but not an offset-based velocity endpoint map.</p>
  *
  * <h2>Typical usage</h2>
  *
@@ -297,6 +306,9 @@ public final class FtcActuators {
     public interface VelocityBoundsStep {
         /**
          * Declare a finite legal velocity target range in plant velocity units.
+         *
+         * <p>The supplied values are the same public units used by {@link Plant#setTarget(double)}
+         * after the velocity plant is built, not native/controller units.</p>
          */
         VelocityMappingStep bounded(double min, double max);
 
@@ -317,6 +329,10 @@ public final class FtcActuators {
 
         /**
          * Convert plant velocity units to native velocity units using a zero-preserving scale.
+         *
+         * <p>Velocity mappings intentionally have no offset: plant velocity {@code 0.0} maps to
+         * native velocity {@code 0.0}, so stop semantics stay obvious. That is why velocity does
+         * not expose {@code rangeMapsToNative(...)}.</p>
          */
         VelocityBuildStep scaleToNative(double nativeUnitsPerPlantVelocityUnit);
     }
@@ -468,7 +484,7 @@ public final class FtcActuators {
      */
     public interface ServoPositionBoundsStep {
         /**
-         * Declare the valid caller-facing servo plant range.
+         * Declare the valid caller-facing servo plant range in plant units.
          */
         ServoBoundedPositionMappingStep bounded(double min, double max);
     }
@@ -484,6 +500,12 @@ public final class FtcActuators {
 
         /**
          * Map the declared plant range to raw servo endpoints.
+         *
+         * <p>The arguments are <b>native raw servo values</b> at the plant-range endpoints chosen by
+         * {@link ServoPositionBoundsStep#bounded(double, double)}. They are not plant values. In
+         * other words, if the declared plant range is {@code [min, max]}, then this method means
+         * "plant {@code min} -> native {@code nativeAtPlantMin}" and
+         * "plant {@code max} -> native {@code nativeAtPlantMax}".</p>
          */
         ServoPositionBuildStep rangeMapsToNative(double nativeAtPlantMin, double nativeAtPlantMax);
     }
@@ -581,6 +603,9 @@ public final class FtcActuators {
     public interface PositionBoundsStep {
         /**
          * Declare a finite legal target range in plant units.
+         *
+         * <p>The supplied values are the same public units used by {@link Plant#setTarget(double)}
+         * after the position plant is built, not native hardware/controller units.</p>
          */
         BoundedPositionMappingStep bounded(double min, double max);
 
@@ -609,7 +634,11 @@ public final class FtcActuators {
          *
          * <p>This static affine map establishes both scale and offset, so no later reference step is
          * required. It is available only after {@link #bounded(double, double)} because unbounded
-         * coordinates do not have finite endpoints to map.</p>
+         * coordinates do not have finite endpoints to map. The arguments are <b>native</b> values
+         * evaluated at the bounded plant minimum and bounded plant maximum; they are not plant
+         * values. In other words, if the declared plant range is {@code [min, max]}, then this
+         * method means "plant {@code min} -> native {@code nativeAtPlantMin}" and
+         * "plant {@code max} -> native {@code nativeAtPlantMax}".</p>
          */
         PositionBuildStep rangeMapsToNative(double nativeAtPlantMin, double nativeAtPlantMax);
     }
@@ -640,11 +669,15 @@ public final class FtcActuators {
 
         /**
          * Declare a static mapping between one plant position and one native position.
+         *
+         * <p>The first argument is in plant units. The second argument is in native units.</p>
          */
         PositionBuildStep plantPositionMapsToNative(double plantPosition, double nativePosition);
 
         /**
          * On first update, treat the current native feedback reading as this plant position.
+         *
+         * <p>The argument is in plant units.</p>
          */
         PositionBuildStep assumeCurrentPositionIs(double plantPosition);
 

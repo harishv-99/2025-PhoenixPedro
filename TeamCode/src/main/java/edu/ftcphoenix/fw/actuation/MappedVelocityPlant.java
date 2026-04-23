@@ -21,9 +21,16 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * <p>All public plant APIs use <b>plant velocity units</b>: {@link #setTarget(double)},
  * {@link #getTarget()}, {@link #getMeasurement()}, {@link #getError()}, and the configured target
  * range/tolerance. The native feedback and native velocity output use hardware/controller units such
- * as encoder ticks per second. {@code nativePerPlantUnit} converts plant velocity into native
- * velocity. Velocity maps intentionally have no offset: plant velocity {@code 0.0} maps to native
- * velocity {@code 0.0} so stop semantics stay obvious.</p>
+ * as encoder ticks per second.</p>
+ *
+ * <p>The plant/native map is intentionally zero-preserving:</p>
+ *
+ * <pre>{@code
+ * nativeVelocity = nativePerPlantUnit * plantVelocity
+ * }</pre>
+ *
+ * <p>Velocity maps deliberately have no offset. Plant velocity {@code 0.0} maps to native velocity
+ * {@code 0.0} so stop semantics stay obvious in every unit system.</p>
  */
 public final class MappedVelocityPlant implements Plant {
 
@@ -119,6 +126,9 @@ public final class MappedVelocityPlant implements Plant {
 
         /**
          * Sets how many native velocity units correspond to one plant velocity unit.
+         *
+         * <p>This is a zero-preserving scale only; velocity plants intentionally do not support a
+         * native offset.</p>
          */
         public Builder nativePerPlantUnit(double nativePerPlantUnit) {
             if (!Double.isFinite(nativePerPlantUnit) || Math.abs(nativePerPlantUnit) < 1.0e-12) {

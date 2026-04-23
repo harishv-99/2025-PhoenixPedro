@@ -249,6 +249,12 @@ The builder has three stages:
       * `.nativeUnits()`, `.scaleToNative(...)`, or bounded-only `.rangeMapsToNative(...)`
       * then `.alreadyReferenced()`, `.plantPositionMapsToNative(...)`, `.assumeCurrentPositionIs(...)`, or `.needsReference(...)` when a runtime reference is required.
 
+Rule of thumb: builder values are in **plant units** unless the API explicitly says `Native` (or a
+native/controller-specific unit like `Ticks`). So `bounded(...)`, `periodic(...)`, tolerances, and
+later `setTarget(...)` all use plant units. `rangeMapsToNative(...)` takes native endpoint values.
+Velocity mapping is deliberately simpler: `scaleToNative(...)` changes only scale, not zero, so
+plant velocity `0.0` still means stop.
+
 Then you may add plant-level modifiers like `.positionTolerance(...)`, `.rateLimit(...)`, and finish with `.build()`.
 
 ### 3.2 Position semantics: motors vs servos

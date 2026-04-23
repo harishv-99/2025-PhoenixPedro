@@ -78,6 +78,15 @@ For position and velocity Plants, Phoenix distinguishes two coordinate systems:
 Public position and velocity APIs use **plant units** unless the method name explicitly says
 **Native**.
 
+As a rule of thumb:
+
+* `bounded(...)`, `unbounded()`, `periodic(...)`, `setTarget(...)`, `getTarget()`,
+  `getMeasurement()`, `positionTolerance(...)`, and `velocityTolerance(...)` all speak in
+  **plant units**.
+* Methods that cross the plant/native boundary say so explicitly in the name or docs, for example
+  `nativeUnits()`, `scaleToNative(...)`, `rangeMapsToNative(...)`,
+  `plantPositionMapsToNative(...)`, and `devicePositionToleranceTicks(...)`.
+
 Examples:
 
 ```java
@@ -253,7 +262,25 @@ establishes the offset.
 ### `rangeMapsToNative(...)`
 
 Use this only after `bounded(...)`. It maps the declared plant-range endpoints to native endpoints
-and therefore establishes both scale and offset statically:
+and therefore establishes both scale and offset statically.
+
+The two arguments are **native values**, not plant values:
+
+* `nativeAtPlantMin` = the native coordinate at the plant minimum from `bounded(min, max)`
+* `nativeAtPlantMax` = the native coordinate at the plant maximum from `bounded(min, max)`
+
+With declared plant bounds `plantMin` and `plantMax`, Phoenix builds the affine map:
+
+```text
+native = nativeAtPlantMin
+       + ((plant - plantMin) / (plantMax - plantMin))
+         * (nativeAtPlantMax - nativeAtPlantMin)
+```
+
+So for a servo declared as `bounded(-45.0, 90.0)`, calling `rangeMapsToNative(0.22, 0.76)` means
+“plant `-45.0` maps to raw servo `0.22`, and plant `90.0` maps to raw servo `0.76`.”
+
+Example:
 
 ```java
 PositionPlant claw = FtcActuators.plant(hardwareMap)
@@ -548,6 +575,10 @@ Plant shooter = FtcActuators.plant(hardwareMap)
         .build();
 ```
 
+The velocity tuning branch intentionally exposes only `velocityPidf(...)`. The separate FTC
+position-loop gain (`outerPositionP(...)`) belongs to device-managed motor **position** mode, not
+pure velocity mode.
+
 If robot code wants nicer plant velocity units, keep the controller native units explicit:
 
 ```java
@@ -565,6 +596,11 @@ Velocity mapping is deliberately zero-preserving. Phoenix exposes `nativeUnits()
 `scaleToNative(...)`, but not `rangeMapsToNative(...)`, because a velocity target of `0.0` should
 always mean stop. Semantic mappings like “driver command 0..1 maps to useful shooter speeds” belong
 above the Plant in a robot service, table, or request source.
+
+That also means `bounded(min, max)` still uses **plant velocity units**, even when the next step is
+`scaleToNative(...)`. The scale changes how Phoenix converts plant velocity to native velocity, but
+it does not create a velocity offset or separate reference question. In every supported velocity
+mapping, plant `0.0` means stationary.
 
 Velocity bounds should represent hardware-safe target bounds, not scoring semantics. For example,
 if a shooter has a minimum useful scoring speed of 700 ticks/sec, the Plant range should usually

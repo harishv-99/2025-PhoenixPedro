@@ -65,6 +65,8 @@ position, but without position-only concepts like topology, reference, and homin
 
 The old `MotorVelocityControl` value-object API was removed instead of retained as a parallel path.
 Velocity uses a zero-preserving mapping only; no `rangeMapsToNative(...)` is exposed for velocity.
+As with the rest of the plant API, `bounded(...)`, tolerances, and `setTarget(...)` remain plant
+units unless a method name explicitly calls out native/controller units.
 
 ### `spatial/SpatialQuery` / `spatial/SpatialQuerySpec`
 
