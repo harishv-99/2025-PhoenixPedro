@@ -14,12 +14,20 @@ import edu.ftcphoenix.fw.ftc.FtcActuators;
 import edu.ftcphoenix.fw.ftc.FtcSensors;
 import edu.ftcphoenix.fw.input.Gamepads;
 import edu.ftcphoenix.fw.input.binding.Bindings;
+import edu.ftcphoenix.fw.supervisor.HeldValue;
 
 /**
- * <h1>Example 08: External Sensor + Regulated Position Plant</h1>
+ * <h1>Example 08: Lift with Held Height Selection + External Sensor Feedback</h1>
  *
- * <p>This example shows the new regulated-plant path: a raw motor-power actuator, a regulator, and
- * an external feedback source packaged into one position plant.</p>
+ * <p>This example shows a simple layered mechanism without a lot of ceremony:</p>
+ * <ul>
+ *   <li><b>Held selection</b>: A/B/Y choose a desired lift height that stays active until replaced.</li>
+ *   <li><b>Trivial execution</b>: the example simply says “hold the selected height.”</li>
+ *   <li><b>Plant-owned realization</b>: a regulated position plant closes the loop using an external analog sensor.</li>
+ * </ul>
+ *
+ * <p>It is intentionally simple. The point is to show that the framework's layering philosophy
+ * still applies even when the middle execution step is almost a pass-through.</p>
  */
 @TeleOp(name = "FW Ex 08: Lift External Sensor", group = "Framework Examples")
 @Disabled
@@ -44,7 +52,7 @@ public final class TeleOp_08_LiftExternalSensorControl extends OpMode {
     private PositionPlant liftPlant;
     private ScalarSource liftHeightIn;
 
-    private double desiredHeight = HEIGHT_LOW_IN;
+    private final HeldValue<Double> desiredHeightIn = new HeldValue<Double>(HEIGHT_LOW_IN);
 
     @Override
     public void init() {
@@ -77,9 +85,9 @@ public final class TeleOp_08_LiftExternalSensorControl extends OpMode {
                 .positionTolerance(0.50)
                 .build();
 
-        bindings.onRise(gamepads.p1().a(), () -> desiredHeight = HEIGHT_LOW_IN);
-        bindings.onRise(gamepads.p1().b(), () -> desiredHeight = HEIGHT_MID_IN);
-        bindings.onRise(gamepads.p1().y(), () -> desiredHeight = HEIGHT_HIGH_IN);
+        bindings.onRise(gamepads.p1().a(), () -> desiredHeightIn.set(HEIGHT_LOW_IN));
+        bindings.onRise(gamepads.p1().b(), () -> desiredHeightIn.set(HEIGHT_MID_IN));
+        bindings.onRise(gamepads.p1().y(), () -> desiredHeightIn.set(HEIGHT_HIGH_IN));
     }
 
     @Override
@@ -87,7 +95,8 @@ public final class TeleOp_08_LiftExternalSensorControl extends OpMode {
         clock.update(getRuntime());
         bindings.update(clock);
 
-        liftPlant.setTarget(desiredHeight);
+        // Execution is intentionally trivial here: hold the currently selected height.
+        liftPlant.setTarget(desiredHeightIn.get());
         liftPlant.update(clock);
 
         telemetry.addData("lift.targetIn", liftPlant.getTarget());

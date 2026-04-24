@@ -1,11 +1,17 @@
 # Examples & case studies
 
-Use this section when you want a concrete, end-to-end Phoenix example.
+Use this section when you want concrete, runnable framework examples plus the design reasoning behind them.
+
+The examples folder now has two complementary docs:
+
+- a progression guide for the full `TeleOp_01` → `TeleOp_08` sequence, especially the newer mechanism-layering examples,
+- and a shooter-focused case study for the AprilTag aim-assist examples.
 
 ## Read in this order
 
-1. [`Shooter Case Study & Examples Walkthrough.md`](<Shooter Case Study & Examples Walkthrough.md>)
-2. [`../../tools/examples/`](<../../tools/examples/>)
+1. [`Examples Progression & Layered Mechanisms.md`](<Examples Progression & Layered Mechanisms.md>)
+2. [`Shooter Case Study & Examples Walkthrough.md`](<Shooter Case Study & Examples Walkthrough.md>)
+3. [`../../tools/examples/`](<../../tools/examples/>)
 
 ## Pair with
 

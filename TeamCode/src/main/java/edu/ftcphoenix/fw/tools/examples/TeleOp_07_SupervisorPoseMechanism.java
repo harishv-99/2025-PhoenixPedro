@@ -11,6 +11,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.ftc.FtcActuators;
 import edu.ftcphoenix.fw.input.Gamepads;
 import edu.ftcphoenix.fw.input.binding.Bindings;
+import edu.ftcphoenix.fw.supervisor.HeldValue;
 import edu.ftcphoenix.fw.task.OutputTaskRunner;
 import edu.ftcphoenix.fw.task.Tasks;
 
@@ -22,8 +23,8 @@ import edu.ftcphoenix.fw.task.Tasks;
  *
  * <p>It shows two ideas:</p>
  * <ul>
- *   <li><b>Pose requests are state</b>: last request wins, no queue needed.</li>
- *   <li><b>Temporary overrides use an OutputTaskRunner</b>: a short pulse can override the base pose.</li>
+ *   <li><b>Pose requests are held state</b>: last request wins and stays active until replaced.</li>
+ *   <li><b>Temporary overrides use an OutputTaskRunner</b>: a short pulse can override the base pose without permanently changing the held request.</li>
  * </ul>
  *
  * <h2>Controls</h2>
@@ -113,7 +114,7 @@ public final class TeleOp_07_SupervisorPoseMechanism extends OpMode {
         enum Pose {STOW, INTAKE, SCORE}
 
         private final Plant plant;
-        private Pose desiredPose = Pose.STOW;
+        private final HeldValue<Pose> desiredPose = new HeldValue<Pose>(Pose.STOW);
 
         // Optional: temporary overrides (pulses, jogs, etc.)
         private final OutputTaskRunner overrides = Tasks.outputQueue(0.0);
@@ -123,11 +124,11 @@ public final class TeleOp_07_SupervisorPoseMechanism extends OpMode {
         }
 
         Pose desiredPose() {
-            return desiredPose;
+            return desiredPose.get();
         }
 
         void requestPose(Pose pose) {
-            desiredPose = pose;
+            desiredPose.set(pose);
         }
 
         void enqueueOverride(double target, double seconds) {
@@ -143,7 +144,7 @@ public final class TeleOp_07_SupervisorPoseMechanism extends OpMode {
             overrides.update(clock);
 
             // 2) Base target from desired pose.
-            double baseTarget = poseTarget(desiredPose);
+            double baseTarget = poseTarget(desiredPose.get());
 
             // 3) Arbitration: override wins while active, otherwise base.
             ScalarSource base = ScalarSource.constant(baseTarget);

@@ -1,8 +1,8 @@
 # Shooter Case Study & Examples Walkthrough
 
-This walkthrough explains the current shooter + auto-aim examples using the selector-based AprilTag model.
+This walkthrough is the shooter-focused companion to [`Examples Progression & Layered Mechanisms.md`](<Examples Progression & Layered Mechanisms.md>).
 
-It covers the two example OpModes:
+It explains the current shooter + auto-aim examples using the selector-based AprilTag model, and it specifically covers the two shooter/vision example OpModes:
 
 - `TeleOp_05_ShooterTagAimVision`
 - `TeleOp_06_ShooterTagAimMacroVision`
