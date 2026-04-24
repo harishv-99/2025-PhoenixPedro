@@ -428,12 +428,13 @@ If you need edges/toggles, use `risingEdge()` / `fallingEdge()` / `toggled()` (o
 
 ### `Bindings`
 
-`Bindings` maps boolean signals to actions. The core names are signal-based, not button-specific:
+`Bindings` is still boolean-first, but it now has one small continuous-copy helper as well. The core names are signal-based, not button-specific:
 
 * `onRise(...)` and `onFall(...)` run once on edges.
 * `mirrorOnChange(...)` mirrors the current high/low value to a setter, including the first sample.
 * `whileHigh(...)` and `whileLow(...)` run every loop while a level is active.
 * `toggleOnRise(...)` and `nudgeOnRise(...)` combine an edge trigger with a stateful helper.
+* `copyEachCycle(...)` forwards a scalar value every loop. This is the standard pairing with frame-valued capability commands.
 
 Most commonly: **enqueue a macro** on rise.
 
@@ -446,6 +447,15 @@ TaskRunner macros = new TaskRunner();
 
 bindings.onRise(gamepads.p1().y(), () ->
         macros.enqueue(buildShootOneDiscMacro(shooter, transfer))
+);
+```
+
+For a continuous non-drive mechanism command, bind the scalar each loop instead of writing directly to a plant:
+
+```java
+bindings.copyEachCycle(
+        gamepads.p2().leftY().deadbandNormalized(0.08, -1.0, 1.0),
+        lift::commandManualPower
 );
 ```
 

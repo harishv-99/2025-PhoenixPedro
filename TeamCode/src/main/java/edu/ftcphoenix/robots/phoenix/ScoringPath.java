@@ -11,6 +11,8 @@ import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.source.ScalarSource;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.ftc.FtcActuators;
+import edu.ftcphoenix.fw.supervisor.HeldValue;
+import edu.ftcphoenix.fw.supervisor.RequestCounter;
 import edu.ftcphoenix.fw.task.OutputTask;
 import edu.ftcphoenix.fw.task.OutputTaskRunner;
 import edu.ftcphoenix.fw.task.Tasks;
@@ -18,10 +20,16 @@ import edu.ftcphoenix.fw.task.Tasks;
 /**
  * Phoenix scoring path: intake, transfer, flywheel, and scoring policy in one owner.
  *
- * <p>This class is the single writer to the scoring-path plants. It also owns the small amount of
- * scoring policy that used to live in a separate policy object: intake/eject/shoot priority, queued
- * shot requests, flywheel enable state, and shot-feed pulses. Keeping those pieces together makes
- * the student-facing object graph smaller without allowing multiple writers to fight over hardware.</p>
+ * <p>This class is still the single writer to the scoring-path plants, but it now keeps its mutable
+ * state in three internal roles that mirror Phoenix's recommended mechanism layering:</p>
+ * <ul>
+ *   <li><b>Inputs</b>: caller-owned held and pending values written through the shared capability surface.</li>
+ *   <li><b>Execution</b>: robot-owned priority, queueing, gates, and transient behavior state.</li>
+ *   <li><b>Realization</b>: plant ownership, final target writes, and flywheel readback.</li>
+ * </ul>
+ *
+ * <p>Keeping those roles explicit makes it easier for TeleOp and Auto to share the same public API
+ * without allowing plant writes or queue state to leak out through capability methods.</p>
  */
 public final class ScoringPath implements PhoenixCapabilities.Scoring {
 
@@ -134,41 +142,514 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
         }
     }
 
+    /**
+     * Layer-1 caller-owned input memory.
+     *
+     * <p>These values are written by capability methods and then interpreted later by execution
+     * policy. Held values keep the last explicit selection, while request counters hold pending
+     * one-shot work until execution consumes or clears it.</p>
+     */
+    private static final class Inputs {
+        final HeldValue<Boolean> intakeRequested = new HeldValue<>(false);
+        final HeldValue<Boolean> ejectRequested = new HeldValue<>(false);
+        final HeldValue<Boolean> shootingRequested = new HeldValue<>(false);
+        final HeldValue<Boolean> flywheelRequested = new HeldValue<>(false);
+        final HeldValue<Double> selectedVelocityNative;
+        final RequestCounter shotRequests = new RequestCounter();
+        final RequestCounter transientCancelRequests = new RequestCounter(1);
+
+        Inputs(double initialSelectedVelocityNative) {
+            this.selectedVelocityNative = new HeldValue<>(initialSelectedVelocityNative);
+        }
+
+        void stopMotionRequests() {
+            intakeRequested.set(false);
+            ejectRequested.set(false);
+            shootingRequested.set(false);
+            flywheelRequested.set(false);
+            shotRequests.clear();
+            transientCancelRequests.clear();
+        }
+
+        void debugDump(DebugSink dbg, String prefix) {
+            if (dbg == null) {
+                return;
+            }
+            String p = (prefix == null || prefix.isEmpty()) ? "inputs" : prefix;
+            dbg.addData(p + ".class", "ScoringInputs");
+            intakeRequested.debugDump(dbg, p + ".intakeRequested");
+            ejectRequested.debugDump(dbg, p + ".ejectRequested");
+            shootingRequested.debugDump(dbg, p + ".shootingRequested");
+            flywheelRequested.debugDump(dbg, p + ".flywheelRequested");
+            selectedVelocityNative.debugDump(dbg, p + ".selectedVelocityNative");
+            shotRequests.debugDump(dbg, p + ".shotRequests");
+            transientCancelRequests.debugDump(dbg, p + ".transientCancelRequests");
+        }
+    }
+
+    /**
+     * Layer-2 robot-owned execution state.
+     *
+     * <p>This is where Phoenix decides what scoring behavior is active, which queued shot work is
+     * admitted, and whether the feed queue is currently overriding the base feed powers.</p>
+     */
+    private final class Execution {
+        private final OutputTaskRunner feedQueue = Tasks.outputQueue();
+
+        private FeedMode lastFeedMode = FeedMode.IDLE;
+        private boolean flywheelEnabled = false;
+
+        private boolean prevIntakeRequested = false;
+        private boolean prevEjectRequested = false;
+        private boolean prevShootingRequested = false;
+        private boolean prevFlywheelRequested = false;
+
+        private double baseIntakeMotorPower = 0.0;
+        private double baseIntakeTransferPower = 0.0;
+        private double baseShooterTransferPower = 0.0;
+
+        private boolean feedOverrideActive = false;
+        private double feedOverride = 0.0;
+
+        void updateBeforeFlywheel(LoopClock clock) {
+            Objects.requireNonNull(clock, "clock");
+            handleInputTransitions();
+            setFlywheelEnabled(inputs.flywheelRequested.get() && !inputs.ejectRequested.get());
+            applyFeedPolicy(clock);
+        }
+
+        void updateAfterFlywheel(LoopClock clock) {
+            Objects.requireNonNull(clock, "clock");
+            feedQueue.update(clock);
+            feedOverrideActive = feedQueue.hasActiveTask();
+            feedOverride = feedQueue.getAsDouble(clock);
+        }
+
+        boolean isFlywheelEnabled() {
+            return flywheelEnabled;
+        }
+
+        String modeName() {
+            return lastFeedMode.debugName;
+        }
+
+        double baseIntakeMotorPower() {
+            return baseIntakeMotorPower;
+        }
+
+        double baseIntakeTransferPower() {
+            return baseIntakeTransferPower;
+        }
+
+        double baseShooterTransferPower() {
+            return baseShooterTransferPower;
+        }
+
+        boolean isFeedOverrideActive() {
+            return feedOverrideActive;
+        }
+
+        double feedOverride() {
+            return feedOverride;
+        }
+
+        int queuedFeedTasks() {
+            return feedQueue.queuedCount();
+        }
+
+        int feedBacklogCount() {
+            return feedQueue.backlogCount() + inputs.shotRequests.count();
+        }
+
+        boolean hasPendingShots() {
+            return inputs.shotRequests.count() > 0 || feedQueue.backlogCount() > 0;
+        }
+
+        void stop() {
+            clearTransientShotWork();
+            setFlywheelEnabled(false);
+            applyIdleFeedBase();
+            lastFeedMode = FeedMode.IDLE;
+            prevIntakeRequested = false;
+            prevEjectRequested = false;
+            prevShootingRequested = false;
+            prevFlywheelRequested = false;
+        }
+
+        void debugDump(DebugSink dbg, String prefix) {
+            if (dbg == null) {
+                return;
+            }
+            String p = (prefix == null || prefix.isEmpty()) ? "execution" : prefix;
+            dbg.addData(p + ".class", "ScoringExecution")
+                    .addData(p + ".mode", lastFeedMode.debugName)
+                    .addData(p + ".flywheelEnabled", flywheelEnabled)
+                    .addData(p + ".baseIntakeMotorPower", baseIntakeMotorPower)
+                    .addData(p + ".baseIntakeTransferPower", baseIntakeTransferPower)
+                    .addData(p + ".baseShooterTransferPower", baseShooterTransferPower)
+                    .addData(p + ".feedOverrideActive", feedOverrideActive)
+                    .addData(p + ".feedOverride", feedOverride);
+            feedQueue.debugDump(dbg, p + ".feedQueue");
+        }
+
+        private void handleInputTransitions() {
+            boolean intakeCur = inputs.intakeRequested.get();
+            boolean ejectCur = inputs.ejectRequested.get();
+            boolean shootingCur = inputs.shootingRequested.get();
+            boolean flywheelCur = inputs.flywheelRequested.get();
+
+            boolean clearTransients = false;
+            if (!prevIntakeRequested && intakeCur) {
+                clearTransients = true;
+            }
+            if (!prevEjectRequested && ejectCur) {
+                clearTransients = true;
+            }
+            if (prevShootingRequested && !shootingCur) {
+                clearTransients = true;
+            }
+            if (prevFlywheelRequested && !flywheelCur) {
+                clearTransients = true;
+            }
+            if (inputs.transientCancelRequests.consumeAll() > 0) {
+                clearTransients = true;
+            }
+            if (clearTransients) {
+                clearTransientShotWork();
+            }
+
+            prevIntakeRequested = intakeCur;
+            prevEjectRequested = ejectCur;
+            prevShootingRequested = shootingCur;
+            prevFlywheelRequested = flywheelCur;
+        }
+
+        private void clearTransientShotWork() {
+            inputs.shotRequests.clear();
+            inputs.transientCancelRequests.clear();
+            feedQueue.cancelAndClear();
+            feedOverrideActive = false;
+            feedOverride = 0.0;
+        }
+
+        private void setFlywheelEnabled(boolean enabled) {
+            if (flywheelEnabled == enabled) {
+                return;
+            }
+            flywheelEnabled = enabled;
+            if (!enabled) {
+                realization.resetFlywheelReady();
+            }
+        }
+
+        private void applyFeedPolicy(LoopClock clock) {
+            int backlog = feedQueue.backlogCount();
+            FeedMode mode = selectFeedMode(backlog);
+            lastFeedMode = mode;
+
+            switch (mode) {
+                case EJECT:
+                    applyEjectFeedBase();
+                    break;
+
+                case SHOOT:
+                    int desiredBacklog;
+                    if (inputs.shootingRequested.get()) {
+                        inputs.shotRequests.clear();
+                        desiredBacklog = Math.max(1, backlog);
+                    } else {
+                        desiredBacklog = backlog + inputs.shotRequests.consumeAll();
+                    }
+                    feedQueue.ensureBacklog(clock, desiredBacklog, this::shootOneTask);
+                    applyIdleFeedBase();
+                    break;
+
+                case INTAKE:
+                    applyIntakeFeedBase();
+                    break;
+
+                case IDLE:
+                default:
+                    inputs.shotRequests.clear();
+                    applyIdleFeedBase();
+                    break;
+            }
+        }
+
+        private OutputTask shootOneTask() {
+            BooleanSource flywheelArmed = BooleanSource.of(this::isFlywheelEnabled);
+            BooleanSource flywheelOkToFeed = realization.flywheelReadySource().or(shootOverride.and(flywheelArmed));
+            BooleanSource startWhen = flywheelOkToFeed.and(aimOkToShoot);
+            BooleanSource doneWhen = BooleanSource.constant(true);
+
+            return Tasks.gatedOutputUntil(
+                    "shootOne",
+                    startWhen,
+                    doneWhen,
+                    ScalarSource.constant(cfg.shootFeedPower),
+                    0.0,
+                    cfg.shootFeedPulseSec,
+                    cfg.shootFeedPulseSec + 1.0,
+                    cfg.shootFeedCooldownSec
+            );
+        }
+
+        private FeedMode selectFeedMode(int backlog) {
+            if (inputs.ejectRequested.get()) {
+                return FeedMode.EJECT;
+            }
+            if (inputs.shootingRequested.get() || backlog > 0 || inputs.shotRequests.count() > 0) {
+                return FeedMode.SHOOT;
+            }
+            if (inputs.intakeRequested.get()) {
+                return FeedMode.INTAKE;
+            }
+            return FeedMode.IDLE;
+        }
+
+        private void applyIntakeFeedBase() {
+            baseIntakeMotorPower = clampPower(cfg.intakeMotorPower);
+            baseIntakeTransferPower = clampPower(cfg.intakeTransferPower);
+            baseShooterTransferPower = clampPower(-cfg.intakeShooterTransferHoldBackPower);
+        }
+
+        private void applyEjectFeedBase() {
+            baseIntakeMotorPower = clampPower(-cfg.ejectMotorPower);
+            baseIntakeTransferPower = clampPower(-cfg.ejectTransferPower);
+            baseShooterTransferPower = clampPower(-cfg.ejectShooterTransferPower);
+        }
+
+        private void applyIdleFeedBase() {
+            baseIntakeMotorPower = 0.0;
+            baseIntakeTransferPower = 0.0;
+            baseShooterTransferPower = 0.0;
+        }
+    }
+
+    /**
+     * Layer-3 plant realization and readback.
+     *
+     * <p>This is the only owner that touches the scoring-path plants. It turns execution outputs into
+     * final plant targets and maintains flywheel measurement state used by readiness gates and status.</p>
+     */
+    private final class Realization {
+        private final Plant plantIntakeMotor;
+        private final Plant plantIntakeTransfer;
+        private final Plant plantShooterTransfer;
+        private final Plant plantFlywheel;
+
+        private final DebounceBoolean readyLatch = DebounceBoolean.onAfterOffImmediately(cfg.readyStableSec);
+        private final BooleanSource flywheelReadySource;
+
+        private double flywheelTargetNative = 0.0;
+        private double flywheelMeasuredNative = 0.0;
+        private double flywheelMeasuredAbs = 0.0;
+        private double flywheelMeasuredAccel = 0.0;
+        private double flywheelMeasuredAccelAbs = 0.0;
+        private double prevFlywheelMeasuredAbs = 0.0;
+
+        Realization(HardwareMap hardwareMap) {
+            plantIntakeMotor = FtcActuators.plant(hardwareMap)
+                    .motor(cfg.nameMotorIntake, cfg.directionMotorIntake)
+                    .power()
+                    .build();
+
+            plantIntakeTransfer = FtcActuators.plant(hardwareMap)
+                    .crServo(cfg.nameCrServoIntakeTransfer, cfg.directionCrServoIntakeTransfer)
+                    .power()
+                    .build();
+
+            plantShooterTransfer = FtcActuators.plant(hardwareMap)
+                    .crServo(cfg.nameCrServoShooterTransferRight, cfg.directionCrServoShooterTransferRight)
+                    .andCrServo(cfg.nameCrServoShooterTransferLeft, cfg.directionCrServoShooterTransferLeft)
+                    .scale(cfg.shooterTransferLeftScale)
+                    .bias(cfg.shooterTransferLeftBias)
+                    .power()
+                    .build();
+
+            if (cfg.applyFlywheelVelocityPIDF) {
+                plantFlywheel = FtcActuators.plant(hardwareMap)
+                        .motor(cfg.nameMotorShooterWheel, cfg.directionMotorShooterWheel)
+                        .velocity()
+                        .deviceManaged()
+                        .velocityPidf(
+                                cfg.flywheelVelKp,
+                                cfg.flywheelVelKi,
+                                cfg.flywheelVelKd,
+                                cfg.flywheelVelKf)
+                        .doneDeviceManaged()
+                        .bounded(0.0, cfg.velocityMax)
+                        .nativeUnits()
+                        .velocityTolerance(cfg.velocityToleranceNative)
+                        .build();
+            } else {
+                plantFlywheel = FtcActuators.plant(hardwareMap)
+                        .motor(cfg.nameMotorShooterWheel, cfg.directionMotorShooterWheel)
+                        .velocity()
+                        .deviceManagedWithDefaults()
+                        .bounded(0.0, cfg.velocityMax)
+                        .nativeUnits()
+                        .velocityTolerance(cfg.velocityToleranceNative)
+                        .build();
+            }
+
+            flywheelReadySource = new BooleanSource() {
+                private long lastCycle = Long.MIN_VALUE;
+                private boolean last = false;
+
+                @Override
+                public boolean getAsBoolean(LoopClock clock) {
+                    long cyc = clock.cycle();
+                    if (cyc == lastCycle) {
+                        return last;
+                    }
+                    lastCycle = cyc;
+
+                    if (!execution.isFlywheelEnabled()) {
+                        last = false;
+                        readyLatch.reset(false);
+                        return false;
+                    }
+
+                    double target = Math.abs(flywheelTargetNative);
+                    boolean enabled = target > 1e-6;
+                    double leadSec = Math.max(0.0, cfg.readyPredictLeadSec);
+                    double predicted = flywheelMeasuredAbs + flywheelMeasuredAccel * leadSec;
+                    if (predicted < 0.0) {
+                        predicted = 0.0;
+                    }
+
+                    double errAtContact = predicted - target;
+                    boolean withinBand = enabled
+                            && errAtContact >= -cfg.velocityToleranceBelowNative
+                            && errAtContact <= cfg.velocityToleranceAboveNative;
+
+                    last = readyLatch.update(clock, withinBand);
+                    return last;
+                }
+
+                @Override
+                public void reset() {
+                    lastCycle = Long.MIN_VALUE;
+                    last = false;
+                    readyLatch.reset(false);
+                }
+            };
+        }
+
+        BooleanSource flywheelReadySource() {
+            return flywheelReadySource;
+        }
+
+        void resetFlywheelReady() {
+            flywheelReadySource.reset();
+        }
+
+        void updateFlywheel(LoopClock clock) {
+            flywheelTargetNative = execution.isFlywheelEnabled() ? inputs.selectedVelocityNative.get() : 0.0;
+            plantFlywheel.setTarget(flywheelTargetNative);
+            plantFlywheel.update(clock);
+
+            flywheelMeasuredNative = plantFlywheel.getMeasurement();
+            if (!Double.isFinite(flywheelMeasuredNative)) {
+                flywheelMeasuredNative = 0.0;
+            }
+            flywheelMeasuredAbs = Math.abs(flywheelMeasuredNative);
+
+            double dt = clock.dtSec();
+            if (dt > 1e-6 && Double.isFinite(dt)) {
+                flywheelMeasuredAccel = (flywheelMeasuredAbs - prevFlywheelMeasuredAbs) / dt;
+                flywheelMeasuredAccelAbs = Math.abs(flywheelMeasuredAccel);
+            } else {
+                flywheelMeasuredAccel = 0.0;
+                flywheelMeasuredAccelAbs = 0.0;
+            }
+            prevFlywheelMeasuredAbs = flywheelMeasuredAbs;
+        }
+
+        void updateFeedAndTransfer(LoopClock clock) {
+            double intakeMotorTarget = execution.isFeedOverrideActive()
+                    ? execution.feedOverride() * cfg.feedScaleIntakeMotor
+                    : execution.baseIntakeMotorPower();
+
+            double intakeTransferTarget = execution.isFeedOverrideActive()
+                    ? execution.feedOverride() * cfg.feedScaleIntakeTransfer
+                    : execution.baseIntakeTransferPower();
+
+            double shooterTransferTarget = execution.isFeedOverrideActive()
+                    ? execution.feedOverride() * cfg.feedScaleShooterTransfer
+                    : execution.baseShooterTransferPower();
+
+            plantIntakeMotor.setTarget(intakeMotorTarget);
+            plantIntakeTransfer.setTarget(intakeTransferTarget);
+            plantShooterTransfer.setTarget(shooterTransferTarget);
+
+            plantIntakeMotor.update(clock);
+            plantIntakeTransfer.update(clock);
+            plantShooterTransfer.update(clock);
+        }
+
+        double flywheelTargetNative() {
+            return flywheelTargetNative;
+        }
+
+        double flywheelMeasuredNative() {
+            return flywheelMeasuredNative;
+        }
+
+        double flywheelMeasuredAbs() {
+            return flywheelMeasuredAbs;
+        }
+
+        double flywheelMeasuredAccel() {
+            return flywheelMeasuredAccel;
+        }
+
+        double flywheelMeasuredAccelAbs() {
+            return flywheelMeasuredAccelAbs;
+        }
+
+        boolean flywheelAtSetpoint() {
+            return plantFlywheel.atSetpoint();
+        }
+
+        void stop() {
+            resetFlywheelReady();
+            flywheelTargetNative = 0.0;
+            flywheelMeasuredNative = 0.0;
+            flywheelMeasuredAbs = 0.0;
+            flywheelMeasuredAccel = 0.0;
+            flywheelMeasuredAccelAbs = 0.0;
+            prevFlywheelMeasuredAbs = 0.0;
+            plantFlywheel.stop();
+            plantIntakeMotor.stop();
+            plantIntakeTransfer.stop();
+            plantShooterTransfer.stop();
+        }
+
+        void debugDump(DebugSink dbg, String prefix) {
+            if (dbg == null) {
+                return;
+            }
+            String p = (prefix == null || prefix.isEmpty()) ? "realization" : prefix;
+            dbg.addData(p + ".class", "ScoringRealization")
+                    .addData(p + ".flywheelTargetNative", flywheelTargetNative)
+                    .addData(p + ".flywheelMeasuredNative", flywheelMeasuredNative)
+                    .addData(p + ".flywheelMeasuredAccel", flywheelMeasuredAccel)
+                    .addData(p + ".flywheelMeasuredAccelAbs", flywheelMeasuredAccelAbs);
+        }
+    }
+
     private final PhoenixProfile.ScoringPathConfig cfg;
     private final LoopClock clock;
     private final ScoringTargeting targeting;
     private final BooleanSource aimOkToShoot;
     private final BooleanSource shootOverride;
-
-    private final Plant plantIntakeMotor;
-    private final Plant plantIntakeTransfer;
-    private final Plant plantShooterTransfer;
-    private final Plant plantFlywheel;
-
-    private final OutputTaskRunner feedQueue = Tasks.outputQueue();
-    private final DebounceBoolean readyLatch;
-    private final BooleanSource flywheelReadySource;
     private final String flywheelPidfWarning;
 
-    private boolean intakeEnabled = false;
-    private boolean ejectRequested = false;
-    private boolean shootingRequested = false;
-    private boolean flywheelRequested = false;
-    private boolean flywheelEnabled = false;
-    private int queuedShotRequests = 0;
-    private FeedMode lastFeedMode = FeedMode.IDLE;
-
-    private double manualIntakeMotorPower = 0.0;
-    private double manualIntakeTransferPower = 0.0;
-    private double manualShooterTransferPower = 0.0;
-    private double selectedVelocityNative;
-
-    private double flywheelTargetNative = 0.0;
-    private double flywheelMeasuredNative = 0.0;
-    private double flywheelMeasuredAbs = 0.0;
-    private double flywheelMeasuredAccel = 0.0;
-    private double flywheelMeasuredAccelAbs = 0.0;
-    private double prevFlywheelMeasuredAbs = 0.0;
+    private final Inputs inputs;
+    private final Execution execution;
+    private final Realization realization;
 
     private Status lastStatus;
 
@@ -190,143 +671,44 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
         this.clock = Objects.requireNonNull(clock, "clock");
         this.aimOkToShoot = targeting.aimOkToShootSource().memoized();
         this.shootOverride = targeting.aimOverrideSource().memoized();
-        this.selectedVelocityNative = cfg.velocityMin;
-        this.readyLatch = DebounceBoolean.onAfterOffImmediately(cfg.readyStableSec);
         this.flywheelPidfWarning = null;
 
-        plantIntakeMotor = FtcActuators.plant(hardwareMap)
-                .motor(cfg.nameMotorIntake, cfg.directionMotorIntake)
-                .power()
-                .build();
-
-        plantIntakeTransfer = FtcActuators.plant(hardwareMap)
-                .crServo(cfg.nameCrServoIntakeTransfer, cfg.directionCrServoIntakeTransfer)
-                .power()
-                .build();
-
-        plantShooterTransfer = FtcActuators.plant(hardwareMap)
-                .crServo(cfg.nameCrServoShooterTransferRight, cfg.directionCrServoShooterTransferRight)
-                .andCrServo(cfg.nameCrServoShooterTransferLeft, cfg.directionCrServoShooterTransferLeft)
-                .scale(cfg.shooterTransferLeftScale)
-                .bias(cfg.shooterTransferLeftBias)
-                .power()
-                .build();
-
-        if (cfg.applyFlywheelVelocityPIDF) {
-            plantFlywheel = FtcActuators.plant(hardwareMap)
-                    .motor(cfg.nameMotorShooterWheel, cfg.directionMotorShooterWheel)
-                    .velocity()
-                    .deviceManaged()
-                    .velocityPidf(
-                            cfg.flywheelVelKp,
-                            cfg.flywheelVelKi,
-                            cfg.flywheelVelKd,
-                            cfg.flywheelVelKf)
-                    .doneDeviceManaged()
-                    .bounded(0.0, cfg.velocityMax)
-                    .nativeUnits()
-                    .velocityTolerance(cfg.velocityToleranceNative)
-                    .build();
-        } else {
-            plantFlywheel = FtcActuators.plant(hardwareMap)
-                    .motor(cfg.nameMotorShooterWheel, cfg.directionMotorShooterWheel)
-                    .velocity()
-                    .deviceManagedWithDefaults()
-                    .bounded(0.0, cfg.velocityMax)
-                    .nativeUnits()
-                    .velocityTolerance(cfg.velocityToleranceNative)
-                    .build();
-        }
-
-        flywheelReadySource = new BooleanSource() {
-            private long lastCycle = Long.MIN_VALUE;
-            private boolean last = false;
-
-            @Override
-            public boolean getAsBoolean(LoopClock clock) {
-                long cyc = clock.cycle();
-                if (cyc == lastCycle) {
-                    return last;
-                }
-                lastCycle = cyc;
-
-                if (!flywheelEnabled) {
-                    last = false;
-                    readyLatch.reset(false);
-                    return false;
-                }
-
-                double target = Math.abs(flywheelTargetNative);
-                boolean enabled = target > 1e-6;
-                double leadSec = Math.max(0.0, cfg.readyPredictLeadSec);
-                double predicted = flywheelMeasuredAbs + flywheelMeasuredAccel * leadSec;
-                if (predicted < 0.0) {
-                    predicted = 0.0;
-                }
-
-                double errAtContact = predicted - target;
-                boolean withinBand = enabled
-                        && errAtContact >= -cfg.velocityToleranceBelowNative
-                        && errAtContact <= cfg.velocityToleranceAboveNative;
-
-                last = readyLatch.update(clock, withinBand);
-                return last;
-            }
-
-            @Override
-            public void reset() {
-                lastCycle = Long.MIN_VALUE;
-                last = false;
-                readyLatch.reset(false);
-            }
-        };
-
-        lastStatus = buildStatus(null);
+        this.inputs = new Inputs(cfg.velocityMin);
+        this.execution = new Execution();
+        this.realization = new Realization(hardwareMap);
+        this.lastStatus = buildStatus(null);
     }
 
     @Override
     public void setIntakeEnabled(boolean enabled) {
-        if (intakeEnabled == enabled) {
+        if (inputs.intakeRequested.get() == enabled) {
             return;
         }
-        intakeEnabled = enabled;
-        if (enabled) {
-            clearPendingShots();
-        }
+        inputs.intakeRequested.set(enabled);
     }
 
     @Override
     public void setFlywheelEnabled(boolean enabled) {
-        if (flywheelRequested == enabled) {
+        if (inputs.flywheelRequested.get() == enabled) {
             return;
         }
-        flywheelRequested = enabled;
-        if (!enabled) {
-            clearPendingShots();
-            setFlywheelEnabledInternal(false);
-        }
+        inputs.flywheelRequested.set(enabled);
     }
 
     @Override
     public void setShootingEnabled(boolean enabled) {
-        if (shootingRequested == enabled) {
+        if (inputs.shootingRequested.get() == enabled) {
             return;
         }
-        shootingRequested = enabled;
-        if (!enabled) {
-            clearPendingShots();
-        }
+        inputs.shootingRequested.set(enabled);
     }
 
     @Override
     public void setEjectEnabled(boolean enabled) {
-        if (ejectRequested == enabled) {
+        if (inputs.ejectRequested.get() == enabled) {
             return;
         }
-        ejectRequested = enabled;
-        if (enabled) {
-            clearPendingShots();
-        }
+        inputs.ejectRequested.set(enabled);
     }
 
     @Override
@@ -336,35 +718,32 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
 
     @Override
     public void requestShots(int shotCount) {
-        if (shotCount <= 0) {
-            return;
-        }
-        queuedShotRequests += shotCount;
+        inputs.shotRequests.request(shotCount);
     }
 
     @Override
     public void cancelTransientActions() {
-        clearPendingShots();
+        inputs.transientCancelRequests.request();
     }
 
     @Override
     public void setSelectedVelocityNative(double velocityNative) {
-        selectedVelocityNative = clampVelocity(velocityNative);
+        inputs.selectedVelocityNative.set(clampVelocity(velocityNative));
     }
 
     @Override
     public void adjustSelectedVelocityNative(double deltaNative) {
-        setSelectedVelocityNative(selectedVelocityNative + deltaNative);
+        setSelectedVelocityNative(inputs.selectedVelocityNative.get() + deltaNative);
     }
 
     @Override
     public void captureSuggestedShotVelocity() {
-        setSelectedVelocityNative(targeting.suggestedVelocityNative(clock, selectedVelocityNative));
+        setSelectedVelocityNative(targeting.suggestedVelocityNative(clock, inputs.selectedVelocityNative.get()));
     }
 
     @Override
     public boolean hasPendingShots() {
-        return queuedShotRequests > 0 || feedQueue.backlogCount() > 0;
+        return execution.hasPendingShots();
     }
 
     @Override
@@ -376,19 +755,24 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
      * Returns the memoized flywheel-ready gate for the current loop.
      */
     public BooleanSource flywheelReady() {
-        return flywheelReadySource;
+        return realization.flywheelReadySource();
     }
 
     /**
-     * Advances scoring policy, feed tasks, flywheel control, and all scoring-path actuator outputs.
+     * Advances scoring inputs, execution policy, flywheel readback, and final actuator writes.
+     *
+     * <p>The update is intentionally split into two execution/realization phases:
+     * execution first resolves held and pending inputs into flywheel/feed behavior, realization then
+     * updates the flywheel, execution advances the feed queue using that fresh flywheel readback,
+     * and realization finally writes the feed plants.</p>
      */
     public void update(LoopClock clock) {
         Objects.requireNonNull(clock, "clock");
 
-        setFlywheelEnabledInternal(flywheelRequested && !ejectRequested);
-        applyFeedPolicy(clock);
-        updateFlywheel(clock);
-        updateFeedAndTransfer(clock);
+        execution.updateBeforeFlywheel(clock);
+        realization.updateFlywheel(clock);
+        execution.updateAfterFlywheel(clock);
+        realization.updateFeedAndTransfer(clock);
         lastStatus = buildStatus(clock);
     }
 
@@ -412,215 +796,67 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
                 .addData(p + ".flywheelTargetNative", s.flywheelTargetNative)
                 .addData(p + ".flywheelMeasuredNative", s.flywheelMeasuredNative)
                 .addData(p + ".ready", s.ready);
+        inputs.debugDump(dbg, p + ".inputs");
+        execution.debugDump(dbg, p + ".execution");
+        realization.debugDump(dbg, p + ".realization");
     }
 
     /**
      * Stops all scoring-path outputs and clears transient loop state.
+     *
+     * <p>This clears held motion requests and pending shot work, but it intentionally preserves the
+     * selected flywheel velocity so the next activation can reuse the operator's last selection.</p>
      */
     public void stop() {
-        intakeEnabled = false;
-        ejectRequested = false;
-        shootingRequested = false;
-        flywheelRequested = false;
-        setFlywheelEnabledInternal(false);
-        manualIntakeMotorPower = 0.0;
-        manualIntakeTransferPower = 0.0;
-        manualShooterTransferPower = 0.0;
-        clearPendingShots();
-        plantFlywheel.stop();
-        plantIntakeMotor.stop();
-        plantIntakeTransfer.stop();
-        plantShooterTransfer.stop();
-        lastFeedMode = FeedMode.IDLE;
+        inputs.stopMotionRequests();
+        execution.stop();
+        realization.stop();
         lastStatus = buildStatus(null);
     }
 
-    private void applyFeedPolicy(LoopClock clock) {
-        int backlog = feedQueue.backlogCount();
-        FeedMode mode = selectFeedMode(backlog);
-        lastFeedMode = mode;
-
-        switch (mode) {
-            case EJECT:
-                applyEject();
-                break;
-
-            case SHOOT:
-                int desiredBacklog = shootingRequested ? Math.max(1, backlog) : backlog + queuedShotRequests;
-                feedQueue.ensureBacklog(clock, desiredBacklog, this::shootOneTask);
-                queuedShotRequests = 0;
-                applyIdleFeeds();
-                break;
-
-            case INTAKE:
-                applyIntake();
-                break;
-
-            case IDLE:
-            default:
-                queuedShotRequests = 0;
-                applyIdleFeeds();
-                break;
-        }
-    }
-
-    private OutputTask shootOneTask() {
-        BooleanSource flywheelArmed = BooleanSource.of(this::flywheelEnabled);
-        BooleanSource flywheelOkToFeed = flywheelReady().or(shootOverride.and(flywheelArmed));
-        BooleanSource startWhen = flywheelOkToFeed.and(aimOkToShoot);
-        BooleanSource doneWhen = BooleanSource.constant(true);
-
-        return Tasks.gatedOutputUntil(
-                "shootOne",
-                startWhen,
-                doneWhen,
-                ScalarSource.constant(cfg.shootFeedPower),
-                0.0,
-                cfg.shootFeedPulseSec,
-                cfg.shootFeedPulseSec + 1.0,
-                cfg.shootFeedCooldownSec
-        );
-    }
-
-    private FeedMode selectFeedMode(int backlog) {
-        if (ejectRequested) {
-            return FeedMode.EJECT;
-        }
-        if (shootingRequested || backlog > 0 || queuedShotRequests > 0) {
-            return FeedMode.SHOOT;
-        }
-        if (intakeEnabled) {
-            return FeedMode.INTAKE;
-        }
-        return FeedMode.IDLE;
-    }
-
-    private void updateFlywheel(LoopClock clock) {
-        flywheelTargetNative = flywheelEnabled ? selectedVelocityNative : 0.0;
-        plantFlywheel.setTarget(flywheelTargetNative);
-        plantFlywheel.update(clock);
-
-        flywheelMeasuredNative = plantFlywheel.getMeasurement();
-        if (!Double.isFinite(flywheelMeasuredNative)) {
-            flywheelMeasuredNative = 0.0;
-        }
-        flywheelMeasuredAbs = Math.abs(flywheelMeasuredNative);
-
-        double dt = clock.dtSec();
-        if (dt > 1e-6 && Double.isFinite(dt)) {
-            flywheelMeasuredAccel = (flywheelMeasuredAbs - prevFlywheelMeasuredAbs) / dt;
-            flywheelMeasuredAccelAbs = Math.abs(flywheelMeasuredAccel);
-        } else {
-            flywheelMeasuredAccel = 0.0;
-            flywheelMeasuredAccelAbs = 0.0;
-        }
-        prevFlywheelMeasuredAbs = flywheelMeasuredAbs;
-    }
-
-    private void updateFeedAndTransfer(LoopClock clock) {
-        feedQueue.update(clock);
-
-        boolean feedOverrideActive = feedQueue.hasActiveTask();
-        double feedOverride = feedQueue.getAsDouble(clock);
-
-        double intakeMotorTarget = feedOverrideActive
-                ? feedOverride * cfg.feedScaleIntakeMotor
-                : manualIntakeMotorPower;
-
-        double intakeTransferTarget = feedOverrideActive
-                ? feedOverride * cfg.feedScaleIntakeTransfer
-                : manualIntakeTransferPower;
-
-        double shooterTransferTarget = feedOverrideActive
-                ? feedOverride * cfg.feedScaleShooterTransfer
-                : manualShooterTransferPower;
-
-        plantIntakeMotor.setTarget(intakeMotorTarget);
-        plantIntakeTransfer.setTarget(intakeTransferTarget);
-        plantShooterTransfer.setTarget(shooterTransferTarget);
-
-        plantIntakeMotor.update(clock);
-        plantIntakeTransfer.update(clock);
-        plantShooterTransfer.update(clock);
-    }
-
     private Status buildStatus(LoopClock clockOrNull) {
-        double err = flywheelMeasuredNative - flywheelTargetNative;
-        double targetAbs = Math.abs(flywheelTargetNative);
+        double err = realization.flywheelMeasuredNative() - realization.flywheelTargetNative();
+        double targetAbs = Math.abs(realization.flywheelTargetNative());
         double leadSec = Math.max(0.0, cfg.readyPredictLeadSec);
-        double predictedAbs = flywheelMeasuredAbs + flywheelMeasuredAccel * leadSec;
+        double predictedAbs = realization.flywheelMeasuredAbs() + realization.flywheelMeasuredAccel() * leadSec;
         if (predictedAbs < 0.0) {
             predictedAbs = 0.0;
         }
 
-        int feedBacklog = feedQueue.backlogCount() + queuedShotRequests;
-        boolean shootActive = shootingRequested || hasPendingShots();
+        int feedBacklog = execution.feedBacklogCount();
+        boolean shootActive = inputs.shootingRequested.get() || execution.hasPendingShots();
         boolean ready = clockOrNull != null && flywheelReady().getAsBoolean(clockOrNull);
 
         return new Status(
-                intakeEnabled,
-                ejectRequested,
-                shootingRequested,
-                flywheelRequested,
+                inputs.intakeRequested.get(),
+                inputs.ejectRequested.get(),
+                inputs.shootingRequested.get(),
+                inputs.flywheelRequested.get(),
                 shootActive,
                 feedBacklog,
-                lastFeedMode.debugName,
-                flywheelEnabled,
+                execution.modeName(),
+                execution.isFlywheelEnabled(),
                 cfg.applyFlywheelVelocityPIDF,
                 flywheelPidfWarning,
-                selectedVelocityNative,
-                flywheelTargetNative,
-                flywheelMeasuredNative,
+                inputs.selectedVelocityNative.get(),
+                realization.flywheelTargetNative(),
+                realization.flywheelMeasuredNative(),
                 err,
                 Math.abs(err),
                 cfg.velocityToleranceNative,
                 cfg.velocityToleranceBelowNative,
                 cfg.velocityToleranceAboveNative,
-                flywheelMeasuredAccel,
-                flywheelMeasuredAccelAbs,
+                realization.flywheelMeasuredAccel(),
+                realization.flywheelMeasuredAccelAbs(),
                 leadSec,
                 predictedAbs,
                 predictedAbs - targetAbs,
-                plantFlywheel.atSetpoint(),
+                realization.flywheelAtSetpoint(),
                 ready,
-                feedQueue.queuedCount(),
-                feedQueue.hasActiveTask(),
-                clockOrNull != null ? feedQueue.getAsDouble(clockOrNull) : 0.0
+                execution.queuedFeedTasks(),
+                execution.isFeedOverrideActive(),
+                clockOrNull != null ? execution.feedOverride() : 0.0
         );
-    }
-
-    private void setFlywheelEnabledInternal(boolean enabled) {
-        flywheelEnabled = enabled;
-        if (!enabled) {
-            flywheelReadySource.reset();
-        }
-    }
-
-    private boolean flywheelEnabled() {
-        return flywheelEnabled;
-    }
-
-    private void clearPendingShots() {
-        queuedShotRequests = 0;
-        feedQueue.cancelAndClear();
-    }
-
-    private void applyIntake() {
-        manualIntakeMotorPower = clampPower(cfg.intakeMotorPower);
-        manualIntakeTransferPower = clampPower(cfg.intakeTransferPower);
-        manualShooterTransferPower = clampPower(-cfg.intakeShooterTransferHoldBackPower);
-    }
-
-    private void applyEject() {
-        manualIntakeMotorPower = clampPower(-cfg.ejectMotorPower);
-        manualIntakeTransferPower = clampPower(-cfg.ejectTransferPower);
-        manualShooterTransferPower = clampPower(-cfg.ejectShooterTransferPower);
-    }
-
-    private void applyIdleFeeds() {
-        manualIntakeMotorPower = 0.0;
-        manualIntakeTransferPower = 0.0;
-        manualShooterTransferPower = 0.0;
     }
 
     private static double clampPower(double power) {

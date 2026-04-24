@@ -77,12 +77,13 @@ public final class PhoenixTeleOpControls {
     }
 
     /**
-     * Registers the Phoenix scoring button semantics with this controls owner.
+     * Registers the Phoenix scoring control semantics with this controls owner.
      *
      * <p>
      * TeleOp binds against the shared robot capability families instead of directly depending on
      * Phoenix internals. That keeps the control layer mode-neutral and leaves room for Auto to use
-     * the same vocabulary through tasks instead of button bindings.
+     * the same vocabulary through tasks instead of button bindings. Future frame-valued manual
+     * mechanism commands should also be registered here via {@code Bindings.copyEachCycle(...)}.
      * </p>
      *
      * @param capabilities shared Phoenix capability families exposed by the robot container

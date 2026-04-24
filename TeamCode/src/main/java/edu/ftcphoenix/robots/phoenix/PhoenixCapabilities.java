@@ -42,6 +42,13 @@ public final class PhoenixCapabilities {
 
     /**
      * Capability family for scoring-path mechanism intents and status.
+     *
+     * <p>Phoenix follows the framework's public-method vocabulary here:</p>
+     * <ul>
+     *   <li>{@code set...(...)} methods update held caller-owned inputs.</li>
+     *   <li>{@code request...(...)} methods add pending one-shot work.</li>
+     *   <li>Future {@code command...(...)} methods should be reserved for frame-valued manual inputs.</li>
+     * </ul>
      */
     public interface Scoring {
 

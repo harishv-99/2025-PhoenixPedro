@@ -331,12 +331,17 @@ This style keeps the number of things the rest of the robot needs to know very s
 
 Use these as the default vocabulary:
 
-- **Persistent goals**
+- **Held values / selections**
   - `setPose(...)`
   - `setTargetHeightIn(...)`
   - `setFlywheelEnabled(boolean)`
+  - `selectPreset(...)`
 
-- **Momentary requests**
+- **Frame commands**
+  - `commandManualPower(...)`
+  - `commandJog(...)`
+
+- **Pending requests**
   - `requestSingleShot()`
   - `home()`
   - `captureCurrentHeading()`
@@ -367,9 +372,10 @@ Prefer:
 
 - `setFlywheelEnabled(boolean)` instead of only `toggleFlywheel()`
 - `requestSingleShot()` instead of exposing a button-shaped queue detail
+- `commandManualPower(double)` for per-loop manual control instead of writing raw stick values directly to a plant
 - `beginShooting()` / `endShooting()` instead of only `setShootHeld(...)`
 
-TeleOp bindings can always build toggles or hold behavior on top of a cleaner public API.
+TeleOp bindings can always build toggles, hold behavior, or `copyEachCycle(...)` mappings on top of a cleaner public API.
 
 ---
 

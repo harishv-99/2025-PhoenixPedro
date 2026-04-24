@@ -168,6 +168,32 @@ Benefits:
 - automation logic is reusable (Auto can call the same methods)
 - supervisors remain the place where policy lives
 
+### Pattern B: pick one small input-memory shape before adding logic
+
+When a mechanism grows past one boolean, it helps to make the caller-owned memory explicit.
+Phoenix now has three small helpers for the most common cases:
+
+- **`HeldValue<T>`** — the value stays until another call changes it.
+- **`FrameValue<T>`** — the value is fresh only for the current loop, then falls back automatically.
+- **`RequestCounter`** — pending work tokens that supervisors consume later.
+
+Typical pairings:
+
+```java
+HeldValue<Boolean> flywheelRequested = new HeldValue<>(false);
+HeldValue<Double> selectedVelocity = new HeldValue<>(1800.0);
+FrameValue<Double> manualLiftPower = new FrameValue<>(clock::cycle, 0.0);
+RequestCounter shotRequests = new RequestCounter(3);
+```
+
+A good default vocabulary is:
+
+- `set...(...)` / `select...(...)` for held values
+- `command...(...)` for frame values
+- `request...(...)` for pending work in a `RequestCounter`
+
+This keeps layer-1 input memory small and obvious before the supervisor starts deciding what to do with it.
+
 ---
 
 ## What a subsystem does going forward
@@ -312,8 +338,8 @@ If you allow queueing, best practices:
 Phoenix provides a tiny helper for the "cap" part: `RequestCounter`.
 Supervisors typically:
 
-- `request()` on `onRise`
-- `consume()` when the real-world event happens (e.g., ball leaves)
+- `request()` or `request(n)` on `onRise`
+- `consume()` or `consumeAll()` when the real-world event happens (e.g., ball leaves)
 
 ### 6) Hold-to-repeat pulses (repeat while held)
 

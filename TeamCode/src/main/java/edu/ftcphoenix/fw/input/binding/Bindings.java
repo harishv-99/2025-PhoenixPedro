@@ -8,10 +8,11 @@ import java.util.function.DoubleConsumer;
 
 import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.source.BooleanSource;
+import edu.ftcphoenix.fw.core.source.ScalarSource;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 
 /**
- * Binding manager that maps {@link BooleanSource} inputs to higher-level behavior.
+ * Binding manager that maps boolean and scalar sources to higher-level behavior.
  *
  * <p>Phoenix uses a polled input model: call {@link #update(LoopClock)} once per loop cycle to
  * evaluate bindings and run actions.</p>
@@ -36,12 +37,15 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *   <li>{@link #toggleOnRise(BooleanSource, Consumer)} flips an owned toggle state on each rise.</li>
  *   <li>{@link #nudgeOnRise(BooleanSource, BooleanSource, double, DoubleConsumer)} applies signed
  *       step adjustments on rising edges.</li>
+ *   <li>{@link #copyEachCycle(ScalarSource, DoubleConsumer)} forwards a scalar value every loop.
+ *       This is the standard pairing with frame-valued capability commands.</li>
  * </ul>
  *
  * <h2>Signal vocabulary</h2>
- * <p>Bindings are intentionally written in terms of boolean signals, not buttons. A signal can come
- * from a gamepad button, trigger threshold, sensor gate, software mode, or any other
- * {@link BooleanSource}.</p>
+ * <p>Bindings are intentionally written in terms of source semantics, not button names. Boolean
+ * bindings can come from a gamepad button, trigger threshold, sensor gate, software mode, or any
+ * other {@link BooleanSource}. Continuous copy bindings typically come from a {@link ScalarSource}
+ * such as a stick, trigger amount, or shaped manual command source.</p>
  *
  * <p><b>Important:</b> Like any edge/toggle tracker, these sources must be sampled each loop
  * to avoid missing transitions. {@link Bindings#update(LoopClock)} performs that sampling for
@@ -124,12 +128,23 @@ public final class Bindings {
         }
     }
 
+    private static final class ScalarCopyBinding {
+        final ScalarSource source;
+        final DoubleConsumer consumer;
+
+        ScalarCopyBinding(ScalarSource source, DoubleConsumer consumer) {
+            this.source = source;
+            this.consumer = consumer;
+        }
+    }
+
     private final List<RiseBinding> riseBindings = new ArrayList<>();
     private final List<FallBinding> fallBindings = new ArrayList<>();
     private final List<MirrorOnChangeBinding> mirrorOnChangeBindings = new ArrayList<>();
     private final List<LevelBinding> levelBindings = new ArrayList<>();
     private final List<ToggleOnRiseBinding> toggleOnRiseBindings = new ArrayList<>();
     private final List<NudgeOnRiseBinding> nudgeOnRiseBindings = new ArrayList<>();
+    private final List<ScalarCopyBinding> scalarCopyBindings = new ArrayList<>();
 
     private long lastUpdatedCycle = Long.MIN_VALUE;
 
@@ -269,6 +284,30 @@ public final class Bindings {
     }
 
     /**
+     * Copy the current scalar value into a consumer every loop.
+     *
+     * <p>This is the preferred binding for continuous non-drive mechanism commands that are modeled
+     * as frame-valued capability methods:</p>
+     *
+     * <pre>{@code
+     * bindings.copyEachCycle(operator.leftY().deadbandNormalized(0.08, -1.0, 1.0),
+     *         lift::commandManualPower);
+     * }</pre>
+     *
+     * <p>The consumer is called once per loop with the current sampled value. This pairs naturally
+     * with helpers such as {@code FrameValue<T>}, where missing writes on later cycles should fall
+     * back automatically to a default.</p>
+     *
+     * @param source   scalar source to sample every loop (non-null)
+     * @param consumer consumer that receives the sampled value every loop (non-null)
+     */
+    public void copyEachCycle(ScalarSource source, DoubleConsumer consumer) {
+        Objects.requireNonNull(source, "source is required");
+        Objects.requireNonNull(consumer, "consumer is required");
+        scalarCopyBindings.add(new ScalarCopyBinding(source, consumer));
+    }
+
+    /**
      * Run all registered bindings for the current loop.
      *
      * <p>This method is safe to call multiple times in the same cycle: only the first call does work.</p>
@@ -340,6 +379,11 @@ public final class Bindings {
                 b.adjuster.accept(delta);
             }
         }
+
+        for (int i = 0; i < scalarCopyBindings.size(); i++) {
+            ScalarCopyBinding b = scalarCopyBindings.get(i);
+            b.consumer.accept(b.source.getAsDouble(clock));
+        }
     }
 
     /**
@@ -357,6 +401,7 @@ public final class Bindings {
         dbg.addData(p + ".level", levelBindings.size());
         dbg.addData(p + ".toggleOnRise", toggleOnRiseBindings.size());
         dbg.addData(p + ".nudgeOnRise", nudgeOnRiseBindings.size());
+        dbg.addData(p + ".copyEachCycle", scalarCopyBindings.size());
     }
 
     /**
@@ -371,6 +416,7 @@ public final class Bindings {
         levelBindings.clear();
         toggleOnRiseBindings.clear();
         nudgeOnRiseBindings.clear();
+        scalarCopyBindings.clear();
         lastUpdatedCycle = Long.MIN_VALUE;
     }
 }

@@ -520,9 +520,14 @@ public final class MyTeleOpControls {
 
     public void bind(MyCapabilities capabilities) {
         MyCapabilities.GamePiece gamePiece = capabilities.gamePiece();
+        MyCapabilities.Lift lift = capabilities.lift();
 
         bindings.toggleOnRise(operator.a(), gamePiece::setIntakeEnabled);
         bindings.mirrorOnChange(operator.b(), gamePiece::setActionEnabled);
+        bindings.copyEachCycle(
+                operator.leftY().deadbandNormalized(0.08, -1.0, 1.0),
+                lift::commandManualPower
+        );
     }
 
     public DriveSource manualDriveSource() {

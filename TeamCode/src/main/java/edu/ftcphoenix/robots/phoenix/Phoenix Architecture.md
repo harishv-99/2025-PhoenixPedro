@@ -91,10 +91,10 @@ use them instead of touching `ScoringPath` or `ScoringTargeting` directly.
 
 ### Robot-owned objects
 
-- `PhoenixTeleOpControls`: all TeleOp input semantics, including stick mapping and scoring button semantics
+- `PhoenixTeleOpControls`: all TeleOp input semantics, including stick mapping and scoring bindings
 - `PhoenixDriveAssistService`: robot-specific drive assists that combine manual drive, scoring state, localization, and overlays
 - `ScoringTargeting`: selected-tag policy, auto-aim guidance, cached targeting status, and shot suggestions
-- `ScoringPath`: scoring-path mechanism owner, single writer to scoring-path plants, and policy/orchestration for scoring modes and requests
+- `ScoringPath`: scoring-path mechanism owner, single writer to scoring-path plants, internally layered as inputs → execution → realization
 - `TaskRunner autoRunner`: autonomous task queue used when Phoenix is running Auto
 - `PhoenixTelemetryPresenter`: driver-facing presentation from snapshots
 - `PhoenixRobot`: composition root and loop owner
@@ -222,9 +222,27 @@ Phoenix no longer spreads drive stick setup in one class and scoring bindings in
 The important boundary is that TeleOp binds against `PhoenixCapabilities`, not against raw
 `ScoringPath` or `ScoringTargeting` objects.
 
+Phoenix still keeps drivetrain control on the dedicated drive-source path because manual drive is a
+continuous stream that benefits from source composition and overlays. Non-drive continuous mechanism
+controls should generally go through capabilities as frame-valued commands and be registered with
+`Bindings.copyEachCycle(...)` when Phoenix adds those commands.
+
 `PhoenixDriveAssistService` then consumes those control-layer sources without taking ownership of the
 button layout itself. That keeps input semantics and drive-assist policy separate while still
 letting them collaborate cleanly.
+
+## ScoringPath internal layering
+
+`ScoringPath` now keeps its mutable state split into the same three roles Phoenix wants future
+mechanisms to follow:
+
+- **Inputs**: held caller-owned selections and pending request counters written by capability methods
+- **Execution**: priority rules, queue admission, cancellation rules, and transient shot behavior
+- **Realization**: plant ownership, final actuator targets, and flywheel readback used for readiness
+
+That internal split matters more than file count. `ScoringPath` is still one public mechanism owner,
+but the code now makes it much harder to accidentally mix caller-owned intent with robot-owned queue
+state or plant readback.
 
 ## Autonomous structure
 
