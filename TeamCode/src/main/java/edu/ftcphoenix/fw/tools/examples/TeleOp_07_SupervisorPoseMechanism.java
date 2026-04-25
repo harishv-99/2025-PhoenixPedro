@@ -19,7 +19,8 @@ import edu.ftcphoenix.fw.task.Tasks;
  * <h1>Example 07: Supervisor + Subsystem (Discrete Poses)</h1>
  *
  * <p>This example demonstrates the recommended Phoenix architecture when you have a mechanism that
- * supports a small set of valid positions (poses).</p>
+ * supports a small set of valid positions (poses). It is the stepping stone to the fully
+ * explicit three-layer example in <b>Example 09</b>.</p>
  *
  * <p>It shows two ideas:</p>
  * <ul>

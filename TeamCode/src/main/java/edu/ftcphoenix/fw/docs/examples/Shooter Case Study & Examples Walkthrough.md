@@ -2,6 +2,9 @@
 
 This walkthrough is the shooter-focused companion to [`Examples Progression & Layered Mechanisms.md`](<Examples Progression & Layered Mechanisms.md>).
 
+If you want the smaller architecture-first shooter example that explicitly spells out
+`Requests → Behavior → Realization`, read [`Layered Shooter Example.md`](<Layered Shooter Example.md>) first.
+
 It explains the current shooter + auto-aim examples using the selector-based AprilTag model, and it specifically covers the two shooter/vision example OpModes:
 
 - `TeleOp_05_ShooterTagAimVision`

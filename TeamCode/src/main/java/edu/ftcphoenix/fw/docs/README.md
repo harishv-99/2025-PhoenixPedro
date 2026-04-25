@@ -63,6 +63,7 @@ If you are new to Phoenix, read in this order:
 
 - [`examples/README.md`](<examples/README.md>)
 - [`examples/Examples Progression & Layered Mechanisms.md`](<examples/Examples Progression & Layered Mechanisms.md>)
+- [`examples/Layered Shooter Example.md`](<examples/Layered Shooter Example.md>)
 - [`examples/Shooter Case Study & Examples Walkthrough.md`](<examples/Shooter Case Study & Examples Walkthrough.md>)
 - [`../tools/examples/`](<../tools/examples/>)
 

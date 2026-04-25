@@ -27,7 +27,9 @@ import edu.ftcphoenix.fw.supervisor.HeldValue;
  * </ul>
  *
  * <p>It is intentionally simple. The point is to show that the framework's layering philosophy
- * still applies even when the middle execution step is almost a pass-through.</p>
+ * still applies even when the middle execution step is almost a pass-through. If you want
+ * the same philosophy written with explicit <b>Requests → Behavior → Realization</b> classes,
+ * continue to <b>Example 09</b>.</p>
  */
 @TeleOp(name = "FW Ex 08: Lift External Sensor", group = "Framework Examples")
 @Disabled

@@ -512,5 +512,6 @@ public void loop() {
 * [`Framework Principles`](<../../Framework Principles.md>) — the rules of thumb Phoenix expects you to follow.
 * [`Loop Structure`](<../core-concepts/Loop Structure.md>) — deeper reasoning about update order and idempotency.
 * [`Tasks & Macros Quickstart`](<../design/Tasks & Macros Quickstart.md>) — how to build task graphs quickly.
-* [`Examples Progression & Layered Mechanisms`](<../examples/Examples Progression & Layered Mechanisms.md>) — shows how the full `TeleOp_01` → `TeleOp_08` sequence fits together.
+* [`Examples Progression & Layered Mechanisms`](<../examples/Examples Progression & Layered Mechanisms.md>) — shows how the full `TeleOp_01` → `TeleOp_09` sequence fits together.
+* [`Layered Shooter Example`](<../examples/Layered Shooter Example.md>) — walks through the first explicit `Requests → Behavior → Realization` mechanism example (`TeleOp_09`).
 * [`Shooter Case Study & Examples Walkthrough`](<../examples/Shooter Case Study & Examples Walkthrough.md>) — dives into the shooter + vision examples (`TeleOp_05` and `TeleOp_06`).

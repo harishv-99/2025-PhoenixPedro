@@ -505,6 +505,7 @@ Next steps:
 
 * Read [`Recommended Robot Design`](<../design/Recommended Robot Design.md>) for the shared TeleOp + Auto interaction model.
 * Read [`Tasks & Macros Quickstart`](<../design/Tasks & Macros Quickstart.md>) for deeper task patterns.
-* Read [`Examples Progression & Layered Mechanisms`](<../examples/Examples Progression & Layered Mechanisms.md>) for the full examples roadmap, especially Examples 07-08.
+* Read [`Examples Progression & Layered Mechanisms`](<../examples/Examples Progression & Layered Mechanisms.md>) for the full examples roadmap, especially Examples 07-09, with Example 09 as the first explicit request/behavior/realization example.
+* Read [`Layered Shooter Example`](<../examples/Layered Shooter Example.md>) for the first explicit requests/behavior/realization mechanism walkthrough.
 * Read [`Shooter Case Study & Examples Walkthrough`](<../examples/Shooter Case Study & Examples Walkthrough.md>) for the shooter + vision case study.
 * Explore other examples (drive, tag aim, vision) — they all follow the same loop shape.
