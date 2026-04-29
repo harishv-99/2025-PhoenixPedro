@@ -33,7 +33,7 @@ import edu.ftcphoenix.fw.task.TaskRunner;
  *   <li>{@link PhoenixTeleOpControls} owns all TeleOp input semantics, including drive controls.</li>
  *   <li>{@link ScoringTargeting} owns target selection, aim status, and shot suggestions.</li>
  *   <li>{@link PhoenixDriveAssistService} owns robot-specific drive-assist policy layered on top of manual drive.</li>
- *   <li>{@link ScoringPath} owns scoring policy and remains the single writer to scoring-path plants.</li>
+ *   <li>{@link ScoringPath} owns scoring policy, final target-source composition, and scoring-path Plant update order.</li>
  *   <li>{@link PhoenixTelemetryPresenter} owns driver-facing telemetry formatting.</li>
  * </ul>
  */

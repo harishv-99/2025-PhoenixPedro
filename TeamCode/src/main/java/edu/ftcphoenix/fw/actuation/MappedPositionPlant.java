@@ -386,6 +386,7 @@ public final class MappedPositionPlant implements PositionPlant {
         if (regulatedPowerOut != null) regulatedPowerOut.stop();
         if (searchPowerOut != null) searchPowerOut.stop();
         if (regulator != null) regulator.reset();
+        targetGuards.reset();
         searchActive = false;
         lastRegulatorOutput = 0.0;
         targetStatus = PlantTargetStatus.STOPPED;

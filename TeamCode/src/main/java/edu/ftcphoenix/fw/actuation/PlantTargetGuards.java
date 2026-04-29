@@ -18,6 +18,12 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * {@code ScalarSource.fallbackUnless(...)}. Target guards decide what a specific piece of hardware
  * may safely apply after that behavior target has been sampled.</p>
  *
+ * <p>A max-rate guard initializes directly to the first guarded candidate it sees, then limits
+ * subsequent changes using the actual elapsed loop time. That avoids surprising first-loop jumps to
+ * an arbitrary zero. If startup must be physically rate-limited from a measured position, initialize
+ * the command target from that measurement or use a position reference policy such as
+ * {@code assumeCurrentPositionIs(...)} before requesting a distant target.</p>
+ *
  * <h2>Common builder usage</h2>
  * <pre>{@code
  * PositionPlant lift = FtcActuators.plant(hardwareMap)
@@ -213,19 +219,11 @@ public final class PlantTargetGuards {
         }
 
         if (limiter != null) {
-            if (!hasApplied) {
-                limiter.reset(previousApplied, clock);
-                if (Math.abs(out - previousApplied) > 1e-9) {
-                    status = PlantTargetStatus.rateLimited("rate limited from previous applied target");
-                }
-                out = previousApplied;
-            } else {
-                double limited = limiter.calculate(out, clock);
-                if (limiter.wasLimited()) {
-                    status = PlantTargetStatus.rateLimited("rate limited toward target");
-                }
-                out = limited;
+            double limited = limiter.calculate(out, clock);
+            if (limiter.wasLimited()) {
+                status = PlantTargetStatus.rateLimited("rate limited toward target");
             }
+            out = limited;
         }
 
         hasApplied = true;

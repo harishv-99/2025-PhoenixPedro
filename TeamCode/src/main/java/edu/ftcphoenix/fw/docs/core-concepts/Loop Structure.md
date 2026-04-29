@@ -232,7 +232,7 @@ while (!shooter.atTarget()) { }
 
 Good:
 
-* use `PlantTasks.moveTo(...)` or `Tasks.waitUntil(...)` and run it in a `TaskRunner`.
+* use `PlantTasks.move(plant).to(...).build()` or `Tasks.waitUntil(...)` and run it in a `TaskRunner`.
 
 ### Mistake: missing edges by not sampling
 

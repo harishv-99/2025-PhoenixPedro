@@ -20,9 +20,133 @@ import edu.ftcphoenix.fw.task.TaskOutcome;
  * {@code targetedByDefaultWritable(...)}, or {@code targetedBy(readOnlySource).writableTarget(...)}.
  * If a plant has only a read-only composed source, these helpers throw a clear error because there
  * is no single command variable for the task to write.</p>
+ *
+ * <h2>Guided builder usage</h2>
+ * <pre>{@code
+ * Task spinUp = PlantTasks.move(shooter)
+ *         .to(3200.0)
+ *         .stableFor(0.15)
+ *         .timeout(1.5)
+ *         .build();
+ *
+ * Task feed = PlantTasks.write(transfer)
+ *         .to(1.0)
+ *         .forSeconds(0.20)
+ *         .then(0.0)
+ *         .build();
+ * }</pre>
  */
 public final class PlantTasks {
     private PlantTasks() {
+    }
+
+    /**
+     * Start a guided builder for writing a plant's registered target.
+     *
+     * <p>This is the plant-aware sibling of {@link ScalarTasks#write(ScalarTarget)}. It retrieves
+     * the writable target from the plant, so callers cannot accidentally pass a different target
+     * variable than the one the plant actually follows.</p>
+     */
+    public static ScalarTasks.WriteValueStep write(final Plant plant) {
+        return ScalarTasks.write(writableTargetOf(plant, "write"));
+    }
+
+    /**
+     * Start a guided builder for a feedback-aware move.
+     *
+     * <p>The resulting task writes the plant's registered target, then waits for
+     * {@link Plant#atTarget(double)}. Optional builder steps add a stability requirement, timeout,
+     * or final target to write after completion.</p>
+     *
+     * @param plant feedback-capable plant with a registered writable target
+     * @return first builder step asking which target to request
+     */
+    public static MoveTargetStep move(final Plant plant) {
+        ensureFeedbackPlant(plant, "move");
+        return new MoveBuilder(plant);
+    }
+
+    /**
+     * First feedback-move builder step: choose the target to request.
+     */
+    public interface MoveTargetStep {
+        /**
+         * Set the target that the task should request and wait for.
+         */
+        MoveReadyStep to(double target);
+    }
+
+    /**
+     * Final feedback-move step with optional completion modifiers.
+     */
+    public interface MoveReadyStep {
+        /**
+         * Require {@link Plant#atTarget(double)} to stay true for {@code stableSec}.
+         */
+        MoveReadyStep stableFor(double stableSec);
+
+        /**
+         * Finish with {@link TaskOutcome#TIMEOUT} if the plant has not reached the target in time.
+         */
+        MoveReadyStep timeout(double timeoutSec);
+
+        /**
+         * Write {@code finalTarget} once after success or timeout.
+         */
+        MoveReadyStep thenTarget(double finalTarget);
+
+        /**
+         * Build the configured feedback-aware move task.
+         */
+        Task build();
+    }
+
+    private static final class MoveBuilder implements MoveTargetStep, MoveReadyStep {
+        private final Plant plant;
+        private double target = Double.NaN;
+        private double stableSec = 0.0;
+        private double timeoutSec = -1.0;
+        private double finalTarget = Double.NaN;
+
+        private MoveBuilder(Plant plant) {
+            this.plant = Objects.requireNonNull(plant, "plant");
+        }
+
+        @Override
+        public MoveReadyStep to(double target) {
+            requireFinite(target, "target");
+            this.target = target;
+            return this;
+        }
+
+        @Override
+        public MoveReadyStep stableFor(double stableSec) {
+            requireNonNegative(stableSec, "stableSec");
+            this.stableSec = stableSec;
+            return this;
+        }
+
+        @Override
+        public MoveReadyStep timeout(double timeoutSec) {
+            requirePositive(timeoutSec, "timeoutSec");
+            this.timeoutSec = timeoutSec;
+            return this;
+        }
+
+        @Override
+        public MoveReadyStep thenTarget(double finalTarget) {
+            requireFinite(finalTarget, "finalTarget");
+            this.finalTarget = finalTarget;
+            return this;
+        }
+
+        @Override
+        public Task build() {
+            if (!Double.isFinite(target)) {
+                throw new IllegalStateException("PlantTasks.move(...).to(target) is required before build()");
+            }
+            return new MoveTask(plant, target, stableSec, timeoutSec, finalTarget);
+        }
     }
 
     /**
@@ -50,55 +174,42 @@ public final class PlantTasks {
      * Move a feedback plant to {@code target} and finish when it is truly at that target.
      */
     public static Task moveTo(final Plant plant, final double target) {
-        ensureFeedbackPlant(plant, "moveTo");
-        return new MoveTask(plant, target, 0.0, -1.0, Double.NaN);
+        return move(plant).to(target).build();
     }
 
     /**
      * Move a feedback plant to {@code target}, finishing on success or timeout.
      */
     public static Task moveTo(final Plant plant, final double target, final double timeoutSec) {
-        ensureFeedbackPlant(plant, "moveTo");
-        requirePositive(timeoutSec, "timeoutSec");
-        return new MoveTask(plant, target, 0.0, timeoutSec, Double.NaN);
+        return move(plant).to(target).timeout(timeoutSec).build();
     }
 
     /**
      * Move to {@code target} and require the condition to remain true for {@code stableSec}.
      */
     public static Task moveToStable(final Plant plant, final double target, final double stableSec) {
-        ensureFeedbackPlant(plant, "moveToStable");
-        requireNonNegative(stableSec, "stableSec");
-        return new MoveTask(plant, target, stableSec, -1.0, Double.NaN);
+        return move(plant).to(target).stableFor(stableSec).build();
     }
 
     /**
      * Move to {@code target}, require stability, and give up after {@code timeoutSec}.
      */
     public static Task moveToStable(final Plant plant, final double target, final double stableSec, final double timeoutSec) {
-        ensureFeedbackPlant(plant, "moveToStable");
-        requireNonNegative(stableSec, "stableSec");
-        requirePositive(timeoutSec, "timeoutSec");
-        return new MoveTask(plant, target, stableSec, timeoutSec, Double.NaN);
+        return move(plant).to(target).stableFor(stableSec).timeout(timeoutSec).build();
     }
 
     /**
      * Move to {@code target}, then set {@code finalTarget} once after success or timeout.
      */
     public static Task moveToThen(final Plant plant, final double target, final double timeoutSec, final double finalTarget) {
-        ensureFeedbackPlant(plant, "moveToThen");
-        requirePositive(timeoutSec, "timeoutSec");
-        return new MoveTask(plant, target, 0.0, timeoutSec, finalTarget);
+        return move(plant).to(target).timeout(timeoutSec).thenTarget(finalTarget).build();
     }
 
     /**
      * Move to {@code target}, require stability, then set {@code finalTarget} once.
      */
     public static Task moveToThen(final Plant plant, final double target, final double stableSec, final double timeoutSec, final double finalTarget) {
-        ensureFeedbackPlant(plant, "moveToThen");
-        requireNonNegative(stableSec, "stableSec");
-        requirePositive(timeoutSec, "timeoutSec");
-        return new MoveTask(plant, target, stableSec, timeoutSec, finalTarget);
+        return move(plant).to(target).stableFor(stableSec).timeout(timeoutSec).thenTarget(finalTarget).build();
     }
 
     private static ScalarTarget writableTargetOf(Plant plant, String method) {
@@ -114,6 +225,11 @@ public final class PlantTasks {
         if (!plant.hasFeedback()) {
             throw new IllegalStateException("PlantTasks." + method + " requires feedback so plant.atTarget(value) is meaningful.");
         }
+    }
+
+    private static void requireFinite(double value, String name) {
+        if (!Double.isFinite(value))
+            throw new IllegalArgumentException(name + " must be finite, got " + value);
     }
 
     private static void requirePositive(double value, String name) {
@@ -196,7 +312,7 @@ public final class PlantTasks {
 
         @Override
         public String getDebugName() {
-            return "PlantTasks.moveTo(" + target + ")";
+            return "PlantTasks.move(" + target + ")";
         }
     }
 }

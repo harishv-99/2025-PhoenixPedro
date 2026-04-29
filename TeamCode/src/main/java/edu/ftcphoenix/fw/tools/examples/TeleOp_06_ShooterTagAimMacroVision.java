@@ -525,39 +525,34 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
      */
     private Task buildShootOneBallMacro(double shooterTargetVel) {
         // Step 1: set shooter target and wait for atTarget() or timeout.
-        Task spinUp = PlantTasks.moveTo(
-                shooter,
-                shooterTargetVel,
-                SHOOTER_SPINUP_TIMEOUT_SEC
-        );
+        Task spinUp = PlantTasks.move(shooter)
+                .to(shooterTargetVel)
+                .timeout(SHOOTER_SPINUP_TIMEOUT_SEC)
+                .build();
 
         // Step 2: feed one ball.
         //
         //  - Transfer runs at shoot power for TRANSFER_PULSE_SEC, then stops.
         //  - Pusher steps through LOAD → SHOOT → RETRACT positions.
-        Task feedTransfer = PlantTasks.holdTargetFor(
-                transfer,
-                TRANSFER_POWER_SHOOT,
-                TRANSFER_PULSE_SEC
-        );
+        Task feedTransfer = PlantTasks.write(transfer)
+                .to(TRANSFER_POWER_SHOOT)
+                .forSeconds(TRANSFER_PULSE_SEC)
+                .build();
 
-        Task pusherLoad = PlantTasks.holdTargetFor(
-                pusher,
-                PUSHER_POS_LOAD,
-                PUSHER_STAGE_SEC
-        );
+        Task pusherLoad = PlantTasks.write(pusher)
+                .to(PUSHER_POS_LOAD)
+                .forSeconds(PUSHER_STAGE_SEC)
+                .build();
 
-        Task pusherShoot = PlantTasks.holdTargetFor(
-                pusher,
-                PUSHER_POS_SHOOT,
-                PUSHER_STAGE_SEC
-        );
+        Task pusherShoot = PlantTasks.write(pusher)
+                .to(PUSHER_POS_SHOOT)
+                .forSeconds(PUSHER_STAGE_SEC)
+                .build();
 
-        Task pusherRetract = PlantTasks.holdTargetFor(
-                pusher,
-                PUSHER_POS_RETRACT,
-                PUSHER_STAGE_SEC
-        );
+        Task pusherRetract = PlantTasks.write(pusher)
+                .to(PUSHER_POS_RETRACT)
+                .forSeconds(PUSHER_STAGE_SEC)
+                .build();
 
         Task feedPusher = SequenceTask.of(
                 pusherLoad,
@@ -571,13 +566,14 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
         );
 
         // Step 3: optionally hold shooter briefly, then spin down to 0.
-        Task holdBeforeSpinDown = PlantTasks.holdTargetFor(
-                shooter,
-                shooterTargetVel,
-                SHOOTER_SPINDOWN_HOLD_SEC
-        );
+        Task holdBeforeSpinDown = PlantTasks.write(shooter)
+                .to(shooterTargetVel)
+                .forSeconds(SHOOTER_SPINDOWN_HOLD_SEC)
+                .build();
 
-        Task spinDown = PlantTasks.setTarget(shooter, 0.0);
+        Task spinDown = PlantTasks.write(shooter)
+                .to(0.0)
+                .build();
 
         return SequenceTask.of(
                 spinUp,

@@ -178,128 +178,125 @@ Common factories (high‑level view):
 
 ---
 
-## 4. Mechanisms: `PlantTasks` for common patterns
+## 4. Mechanisms: `PlantTasks` and `ScalarTasks` for common patterns
 
 For mechanism plants (motors, servos, shooters, arms, etc.), start with `edu.ftcphoenix.fw.actuation.PlantTasks`.
 
-`PlantTasks` focuses on **two big categories**:
+The source-driven plant rule is:
 
-1. **Time‑based commands** – “run this plant at value X for N seconds”.
-2. **Feedback‑based moves** – “move this plant to a target and wait until it arrives”.
-
-### 4.1 Time‑based helpers (work with any plant)
-
-These work with *both* feedback and non‑feedback plants (for example, power plants, servo position plants, etc.).
-
-* **Hold then change target**
-
-  ```java
-  Task t = PlantTasks.holdTargetForThen(plant,
-                                  +1.0,  // target during pulse
-                                  0.7,   // seconds
-                                  0.0);  // final target
-  ```
-
-  Behavior:
-
-    * At start: set target to `+1.0`.
-    * For `0.7` seconds: keep holding `+1.0`.
-    * When time elapses: set target once to `0.0` and complete.
-
-* **Hold and keep target**
-
-  ```java
-  Task t = PlantTasks.holdTargetFor(plant, +1.0, 0.7);
-  ```
-
-  Behavior:
-
-    * Same as above, **but** the final target stays at `+1.0`.
-    * Think: “run for at least this long, but keep that command afterward.”
-
-### 4.2 Feedback‑based move helpers (require feedback)
-
-These helpers rely on `plant.hasFeedback() == true` and `plant.atTarget()` being meaningful. They are designed for encoder‑backed motor plants (position or velocity) created via `FtcActuators.plant(...).motor(...).position(...)` or `.velocity(...)`.
-
-* **Move to target and hold**
-
-  ```java
-  Task spinUp = PlantTasks.moveTo(shooterPlant, SHOOTER_VELOCITY_NATIVE);
-  ```
-
-  Behavior:
-
-    * On start: set shooter target once.
-    * Each loop: task checks `plant.atTarget()`.
-    * When at target: task completes and leaves the target as‑is.
-
-* **Move to target with timeout**
-
-  ```java
-  Task spinUpWithTimeout = PlantTasks.moveTo(
-      shooterPlant,
-      SHOOTER_VELOCITY_NATIVE,
-      1.5  // timeoutSec
-  );
-  ```
-
-  Behavior:
-
-    * Same as `moveTo(...)`, but if `atTarget()` never becomes true, the task
-      finishes after `1.5` seconds with `TaskOutcome.TIMEOUT`.
-
-* **Move then change target**
-
-  ```java
-  Task moveAndStow = PlantTasks.moveToThen(
-      armPlant,
-      ARM_SCORE_POS,
-      1.0,          // timeout
-      ARM_STOW_POS  // finalTarget
-  );
-  ```
-
-  Behavior:
-
-    * Move to `ARM_SCORE_POS` (or until timeout), then set target once to `ARM_STOW_POS`.
-
-> If you accidentally call `moveTo...` on an open‑loop plant (for example, a simple servo position plant), `PlantTasks` will throw an exception at runtime to make the bug obvious.
-
-* **Move to target (stable-ready) and hold**
-
-  Flywheels and velocity plants can sometimes flicker “at target” for a single loop.
-  If you want a more robust notion of readiness, use the stable variant:
-
-  ```java
-  Task spinUpStable = PlantTasks.moveToStable(
-      shooterPlant,
-      SHOOTER_VELOCITY_NATIVE,
-      0.15 // stableSec (seconds atTarget() must remain true)
-  );
-  ```
-
-  Behavior:
-
-    * On start: set shooter target once.
-    * Task only completes after `atTarget()` has been true continuously for `stableSec`.
-
-  There is also a timeout overload: `moveToStable(plant, target, stableSec, timeoutSec)`.
-
-### 4.3 Instant target helper
-
-Sometimes you just want to set a plant target once and be done:
-
-```java
-Task stopShooter = PlantTasks.setTarget(shooterPlant, 0.0);
+```text
+Task writes the plant's registered ScalarTarget
+    ↓
+Plant samples its final ScalarSource each loop
+    ↓
+Plant target guards protect hardware
+    ↓
+Plant reports atTarget(requestedValue) when feedback confirms arrival
 ```
 
-This task:
+`PlantTasks` retrieves the writable target from the `Plant` itself. That is safer than passing a separate `ScalarTarget` into every task: the task cannot accidentally write a different target variable than the one the plant actually follows.
 
-* Sets the target in `start(...)`.
-* Completes immediately.
-* Leaves the plant holding `0.0`.
+### 4.1 Guided writes for time-based commands
+
+Use `PlantTasks.write(plant)` for open-loop pulses and simple target writes. These work with feedback and non-feedback plants.
+
+```java
+Task intakePulse = PlantTasks.write(intake)
+        .to(+1.0)
+        .forSeconds(0.7)
+        .then(0.0)
+        .build();
+```
+
+Behavior:
+
+* At start: write `+1.0` to the plant's registered target.
+* For `0.7` seconds: keep writing `+1.0`.
+* When time elapses: write `0.0` once and complete.
+
+To hold and leave the target there:
+
+```java
+Task ensureSpinUp = PlantTasks.write(shooter)
+        .to(SHOOTER_VELOCITY_NATIVE)
+        .forSeconds(0.5)
+        .build();
+```
+
+To set once and finish immediately:
+
+```java
+Task stopShooter = PlantTasks.write(shooter)
+        .to(0.0)
+        .build();
+```
+
+The compact helpers still exist for short code:
+
+```java
+PlantTasks.holdTargetForThen(intake, +1.0, 0.7, 0.0);
+PlantTasks.setTarget(shooter, 0.0);
+```
+
+### 4.2 Guided feedback moves
+
+Use `PlantTasks.move(plant)` when the plant has feedback and the task should wait for physical arrival.
+
+```java
+Task spinUp = PlantTasks.move(shooter)
+        .to(SHOOTER_VELOCITY_NATIVE)
+        .timeout(1.5)
+        .build();
+```
+
+Behavior:
+
+* On start: write the requested target to the plant's registered target.
+* Each loop: check `plant.atTarget(SHOOTER_VELOCITY_NATIVE)`.
+* If a behavior overlay, clamp, fallback, or target guard keeps the plant from truly following that value, the task does **not** complete early.
+* If the timeout elapses first, the task completes with `TaskOutcome.TIMEOUT`.
+
+For readiness that must remain stable for a short period:
+
+```java
+Task spinUpStable = PlantTasks.move(shooter)
+        .to(SHOOTER_VELOCITY_NATIVE)
+        .stableFor(0.15)
+        .timeout(1.5)
+        .build();
+```
+
+To request a final target after success or timeout:
+
+```java
+Task moveAndStow = PlantTasks.move(arm)
+        .to(ARM_SCORE_POS)
+        .timeout(1.0)
+        .thenTarget(ARM_STOW_POS)
+        .build();
+```
+
+The compact helpers remain available:
+
+```java
+PlantTasks.moveTo(shooter, SHOOTER_VELOCITY_NATIVE, 1.5);
+PlantTasks.moveToThen(arm, ARM_SCORE_POS, 1.0, ARM_STOW_POS);
+```
+
+> If you accidentally call a feedback move on an open-loop plant, `PlantTasks` throws an exception at runtime. Use `PlantTasks.write(...)` for timed open-loop behavior.
+
+### 4.3 Standalone scalar targets
+
+Use `ScalarTasks` when the writable value is not attached to a plant, such as a behavior variable or a command target that feeds a larger source graph.
+
+```java
+Task setShotVelocity = ScalarTasks.write(selectedVelocity)
+        .to(3200.0)
+        .build();
+```
 
 ---
+
 
 ## 5. TeleOp macros: putting it together
 
@@ -321,25 +318,25 @@ A simple “shoot one disc” macro could look like:
 
 ```java
 private Task createShootOneDiscMacro() {
-    Task spinUp = PlantTasks.moveTo(
-        shooter,
-        SHOOTER_VELOCITY_NATIVE,
-        SHOOTER_SPINUP_TIMEOUT_SEC
-    );
+    Task spinUp = PlantTasks.move(shooter)
+            .to(SHOOTER_VELOCITY_NATIVE)
+            .timeout(SHOOTER_SPINUP_TIMEOUT_SEC)
+            .build();
 
-    Task feed = PlantTasks.holdTargetFor(
-        transfer,
-        TRANSFER_POWER_SHOOT,
-        TRANSFER_PULSE_SEC
-    );
+    Task feed = PlantTasks.write(transfer)
+            .to(TRANSFER_POWER_SHOOT)
+            .forSeconds(TRANSFER_PULSE_SEC)
+            .then(0.0)
+            .build();
 
-    Task holdBeforeSpinDown = PlantTasks.holdTargetFor(
-        shooter,
-        SHOOTER_VELOCITY_NATIVE,
-        SHOOTER_SPINDOWN_HOLD_SEC
-    );
+    Task holdBeforeSpinDown = PlantTasks.write(shooter)
+            .to(SHOOTER_VELOCITY_NATIVE)
+            .forSeconds(SHOOTER_SPINDOWN_HOLD_SEC)
+            .build();
 
-    Task spinDown = PlantTasks.setTarget(shooter, 0.0);
+    Task spinDown = PlantTasks.write(shooter)
+            .to(0.0)
+            .build();
 
     return Tasks.sequence(
         spinUp,
@@ -473,13 +470,13 @@ For the full design rationale and more examples, see [`Output Tasks & Queues`](<
 
 * **Use feedback‑based helpers only on feedback plants.**
 
-    * `PlantTasks.moveTo*` require `plant.hasFeedback() == true`.
-    * For servos and other open‑loop outputs, use `holdTargetFor`, `holdTargetForThen`, or `setTarget`.
+    * `PlantTasks.move(...)` and the compact `moveTo*` helpers require `plant.hasFeedback() == true`.
+    * For servos and other open-loop outputs, use `PlantTasks.write(plant)` or compact helpers such as `holdTargetFor(...)`, `holdTargetForThen(...)`, and `setTarget(...)`.
 
 * **Be intentional about final targets.**
 
-    * `holdTargetFor(...)` keeps the same target after the timer.
-    * `holdTargetForThen(...)` lets you explicitly set a different final target (often zero).
+    * `PlantTasks.write(plant).to(...).forSeconds(...).build()` keeps the same target after the timer.
+    * `.then(...)` or compact `holdTargetForThen(...)` lets you explicitly set a different final target (often zero).
 
 ---
 
@@ -488,7 +485,7 @@ For the full design rationale and more examples, see [`Output Tasks & Queues`](<
 * **`Task`** is the basic unit of non‑blocking behavior over time.
 * **`TaskRunner`** manages a queue of tasks and advances them with `update(clock)`. Use `cancelAndClear()` when you want cooperative interruption instead of abrupt forgetting.
 * **`Tasks` factories** (`instant`, `waitForSeconds`, `waitUntil`, `sequence`, `parallelAll`, `noop`, ...) are the main building blocks you should reach for first.
-* **`PlantTasks`** provide common mechanism patterns: time‑based holds and feedback‑based moves.
+* **`PlantTasks`** provide common mechanism patterns: `write(plant)` for time-based writes and `move(plant)` for feedback-based moves.
 * **`DriveTasks`** provide simple drive‑related building blocks.
 * The core task classes – `InstantTask`, `RunForSecondsTask`, `WaitUntilTask`, `SequenceTask`, `ParallelAllTask` – are there when you need lower‑level control.
 * TeleOp macros and Autonomous routines both use the same task patterns; only the triggers change (buttons vs. init/start).

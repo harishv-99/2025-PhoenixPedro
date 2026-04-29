@@ -178,6 +178,13 @@ public final class Plants {
             targetStatus = PlantTargetStatus.STOPPED;
         }
 
+        /**
+         * Reset dynamic guard state after a hard stop so later updates start from a clean guard chain.
+         */
+        protected final void resetTargetGuards() {
+            guards.reset();
+        }
+
         @Override
         public void debugDump(DebugSink dbg, String prefix) {
             Plant.super.debugDump(dbg, prefix);
@@ -202,6 +209,7 @@ public final class Plants {
         @Override
         public void stop() {
             out.stop();
+            resetTargetGuards();
             markStopped(0.0);
         }
     }
@@ -222,6 +230,7 @@ public final class Plants {
         @Override
         public void stop() {
             out.stop();
+            resetTargetGuards();
             markStopped(getAppliedTarget());
         }
     }
@@ -309,6 +318,7 @@ public final class Plants {
         @Override
         public void stop() {
             out.stop();
+            resetTargetGuards();
             markStopped(getAppliedTarget());
         }
     }
@@ -330,6 +340,7 @@ public final class Plants {
         @Override
         public void stop() {
             out.stop();
+            resetTargetGuards();
             markStopped(0.0);
         }
     }
@@ -368,6 +379,7 @@ public final class Plants {
         public void stop() {
             out.stop();
             regulator.reset();
+            resetTargetGuards();
             lastOutput = 0.0;
             markStopped(0.0);
         }

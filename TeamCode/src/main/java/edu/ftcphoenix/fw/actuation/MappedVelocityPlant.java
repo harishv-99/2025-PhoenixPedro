@@ -242,6 +242,7 @@ public final class MappedVelocityPlant implements Plant {
         if (velocityOut != null) velocityOut.stop();
         if (regulatedPowerOut != null) regulatedPowerOut.stop();
         if (regulator != null) regulator.reset();
+        targetGuards.reset();
         appliedTarget = 0.0;
         lastRegulatorOutput = 0.0;
         targetStatus = PlantTargetStatus.STOPPED;

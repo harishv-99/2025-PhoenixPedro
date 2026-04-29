@@ -70,7 +70,63 @@ geometry, periodicity, or homing/reference questions.
 
 ---
 
-## 2. Plant units vs native units
+## 2. Behavior sources vs Plant target guards
+
+Every robot-facing Plant is source-driven:
+
+```text
+behavior ScalarSource
+    ↓
+Plant static range / reference policy
+    ↓
+Plant targetGuards() hardware protection
+    ↓
+applied target sent to hardware/control
+```
+
+Use behavior sources for robot policy:
+
+```java
+ScalarSource finalFeeder = ScalarOverlayStack.on(baseFeeder)
+        .add("feedPulse", feedQueue.activeSource(), feedQueue)
+        .add("eject", ejectRequested, ScalarSource.constant(-1.0))
+        .build();
+```
+
+Use `targetGuards()` only for Plant-level protection that should apply no matter which behavior
+requested the target:
+
+```java
+PositionPlant lift = FtcActuators.plant(hardwareMap)
+        .motor("lift", Direction.FORWARD)
+        .position()
+        .deviceManagedWithDefaults()
+        .linear()
+            .bounded(0.0, 4200.0)
+            .nativeUnits()
+            .needsReference("lift not homed")
+        .positionTolerance(20.0)
+        .targetGuards()
+            .maxTargetRate(1200.0)
+            .holdLastTargetUnless("wristClear", wristClear)
+            .doneTargetGuards()
+        .targetedByDefaultWritable(0.0)
+        .build();
+```
+
+`bounded(...)` is also a hardware limit, but it is kept outside `targetGuards()` because it defines
+the Plant's legal coordinate system. Dynamic guards such as rate limits, hold-last interlocks, and
+fallback targets live in `targetGuards()`.
+
+A max-rate guard uses actual elapsed loop time; it does not predict the future loop period. The first
+sample initializes directly to the first guarded candidate, and `stop()`/`reset()` clear dynamic guard
+state. If a mechanism needs startup limiting from a known physical position, initialize the writable
+target from that measurement or use an appropriate reference policy before requesting a far-away
+target.
+
+---
+
+## 3. Plant units vs native units
 
 For position and velocity Plants, Phoenix distinguishes two coordinate systems:
 
@@ -110,7 +166,7 @@ This convention keeps common robot code readable while making boundary-crossing 
 
 ---
 
-## 3. Motor position control: device-managed or regulated
+## 4. Motor position control: device-managed or regulated
 
 After `motor(...).position()`, Phoenix asks who manages the position loop.
 
@@ -196,7 +252,7 @@ before the regulator runs.
 
 ---
 
-## 4. Position topology and bounds
+## 5. Position topology and bounds
 
 Every declared position Plant answers two separate questions:
 
@@ -234,7 +290,7 @@ planner is built with `ScalarSetpoints.plan().request(...).forPositionPlant(tray
 
 ---
 
-## 5. Mapping plant units to native units
+## 6. Mapping plant units to native units
 
 After topology and bounds, the builder asks how the public plant coordinate maps to the selected
 native coordinate.
@@ -315,7 +371,7 @@ finite plant range to map from.
 
 ---
 
-## 6. Reference policy and runtime calibration
+## 7. Reference policy and runtime calibration
 
 After `nativeUnits()` or `scaleToNative(...)`, the builder asks how the native/plant reference is
 known.
@@ -401,7 +457,7 @@ for reference `0.0` corrects the estimate to `1080.0`, not all the way back to z
 
 ---
 
-## 7. Standard servo position Plants
+## 8. Standard servo position Plants
 
 Standard servos are command-only position outputs. They do not expose motor control strategy,
 open-loop calibration search, or unbounded travel.
@@ -436,7 +492,7 @@ Robot code can now command degrees, while the servo receives raw fractions.
 
 ---
 
-## 8. Regulated CR-servo position Plants
+## 9. Regulated CR-servo position Plants
 
 CR servos do not have a device-managed position mode. Position control requires native feedback and
 a regulator:
@@ -462,7 +518,7 @@ be driven with temporary open-loop power while looking for a reference.
 
 ---
 
-## 9. Feedback selectors
+## 10. Feedback selectors
 
 Builder feedback selectors are typed so errors are caught early.
 
@@ -494,7 +550,7 @@ The built-in encoder helpers use native FTC units:
 
 ---
 
-## 10. Measurement readback
+## 11. Measurement readback
 
 Phoenix separates **commands** from **measurements**.
 
@@ -536,7 +592,7 @@ For `PositionPlant`, `getRequestedTarget()`, `getAppliedTarget()`, `getMeasureme
 
 ---
 
-## 11. Position tolerances and FTC motor tuning
+## 12. Position tolerances and FTC motor tuning
 
 For device-managed motor position control there are two different tolerance concepts.
 
@@ -557,7 +613,7 @@ This is an **optional FTC motor-controller override** for the motor's own target
 * use this only when you intentionally want to change the FTC motor controller's own completion threshold via `DcMotorEx.setTargetPositionTolerance(int)`
 * this does not change what `Plant.atTarget()` means unless your plant-level `positionTolerance(...)` happens to match it
 
-## 12. Velocity bounds, mapping, and tuning
+## 13. Velocity bounds, mapping, and tuning
 
 Motor velocity uses the same guided-builder rule as position: required conceptual questions are
 explicit, and optional controller tuning appears only after entering a tuning branch.
@@ -626,7 +682,7 @@ logic, not in the Plant's legal target range.
 
 ---
 
-## 13. Multi-motor groups
+## 14. Multi-motor groups
 
 For grouped device-managed Plants, Phoenix supports per-child `scale(...)` / `bias(...)` and computes
 one aggregate measurement in group units.

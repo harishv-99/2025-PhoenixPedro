@@ -57,14 +57,14 @@ A robot container is a class that:
 
 Many Phoenix robots start with a single `Robot` class used by TeleOp and Auto OpModes.
 
-### 2) Subsystem (single writer)
+### 2) Subsystem (target-source owner)
 
 A subsystem is responsible for:
 
 - owning hardware objects for a mechanism (plants + sensor Sources)
 - exposing **signals** (`BooleanSource`, `ScalarSource`, `PlantSources`) to the rest of the robot
 - owning **output queues** (`OutputTaskRunner`) when needed
-- computing the **final plant targets** (base + overrides) and applying them each loop
+- computing the **final plant target sources** (base + overrides) and updating the Plants each loop
 
 A subsystem should not contain “match strategy” or cross-subsystem policy.
 
@@ -198,7 +198,7 @@ This keeps layer-1 input memory small and obvious before the supervisor starts d
 
 ## What a subsystem does going forward
 
-Subsystems are still the single writer.
+Subsystems still own their target sources and Plant update order.
 
 A typical subsystem update looks like:
 
@@ -287,7 +287,7 @@ intake.update(clock);
 Best practices:
 
 - apply shaping/clamping in the source graph (`deadband`, `scaled`, `clamped`)
-- keep the subsystem as the single writer
+- keep the subsystem as the owner of target sources and Plant updates
 
 ### 2) Hold-to-run
 
@@ -416,7 +416,7 @@ Phoenix provides `EnumStateMachine<S extends Enum<S>>`:
 - stores the current enum state
 - records entry time (so you can write time-based transitions)
 
-Best practice: keep transition logic in a supervisor and keep the subsystem as a single writer.
+Best practice: keep transition logic in a supervisor and keep the subsystem as the owner of target sources and Plant updates.
 
 ---
 

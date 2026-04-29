@@ -60,13 +60,10 @@ import edu.ftcphoenix.fw.task.TaskRunner;
  *   </li>
  *   <li><b>How to use {@link PlantTasks}</b> to create plant-related tasks:
  *     <ul>
- *       <li>{@link PlantTasks#moveTo(Plant, double, double)}
- *           – set a target and wait until {@code atTarget()} (with timeout).</li>
- *       <li>{@link PlantTasks#holdTargetFor(Plant, double, double)}
- *           and the overload with a final target – hold a value for a fixed
- *           time and then go to a final value.</li>
- *       <li>{@link PlantTasks#setTarget(Plant, double)}
- *           – set a target once and finish immediately.</li>
+ *       <li>{@link PlantTasks#move(Plant)} – guided feedback moves that request a target
+ *           and wait until {@code atTarget(requestedValue)}.</li>
+ *       <li>{@link PlantTasks#write(Plant)} – guided open-loop writes such as
+ *           “hold this transfer power for 0.2 seconds, then stop”.</li>
  *     </ul>
  *   </li>
  *   <li><b>How macros interact with the main loop</b>:
@@ -415,34 +412,30 @@ public final class TeleOp_03_ShooterMacro extends OpMode {
      */
     private Task buildShootOneBallMacro() {
         // Step 1: set shooter target and wait for atTarget() or timeout.
-        Task spinUp = PlantTasks.moveTo(
-                shooter,
-                SHOOTER_VELOCITY_NATIVE,
-                SHOOTER_SPINUP_TIMEOUT_SEC
-        );
+        Task spinUp = PlantTasks.move(shooter)
+                .to(SHOOTER_VELOCITY_NATIVE)
+                .timeout(SHOOTER_SPINUP_TIMEOUT_SEC)
+                .build();
 
         // Step 2: feed one ball.
         //
         //  - Transfer runs at shoot power for TRANSFER_PULSE_SEC, then stops.
         //  - Pusher steps through LOAD → SHOOT → RETRACT positions.
-        Task feedTransfer = PlantTasks.holdTargetFor(
-                transfer,
-                TRANSFER_POWER_SHOOT,
-                TRANSFER_PULSE_SEC
-        );
+        Task feedTransfer = PlantTasks.write(transfer)
+                .to(TRANSFER_POWER_SHOOT)
+                .forSeconds(TRANSFER_PULSE_SEC)
+                .build();
 
-        Task pusherLoad = PlantTasks.holdTargetFor(
-                pusher,
-                PUSHER_POS_LOAD,
-                PUSHER_STAGE_SEC
-        );
+        Task pusherLoad = PlantTasks.write(pusher)
+                .to(PUSHER_POS_LOAD)
+                .forSeconds(PUSHER_STAGE_SEC)
+                .build();
 
-        Task pusherShoot = PlantTasks.holdTargetForThen(
-                pusher,
-                PUSHER_POS_SHOOT,
-                PUSHER_STAGE_SEC,
-                PUSHER_POS_RETRACT
-        );
+        Task pusherShoot = PlantTasks.write(pusher)
+                .to(PUSHER_POS_SHOOT)
+                .forSeconds(PUSHER_STAGE_SEC)
+                .then(PUSHER_POS_RETRACT)
+                .build();
 
         Task feedPusher = SequenceTask.of(
                 pusherLoad,
@@ -455,13 +448,14 @@ public final class TeleOp_03_ShooterMacro extends OpMode {
         );
 
         // Step 3: optionally hold shooter briefly, then spin down to 0.
-        Task holdBeforeSpinDown = PlantTasks.holdTargetFor(
-                shooter,
-                SHOOTER_VELOCITY_NATIVE,
-                SHOOTER_SPINDOWN_HOLD_SEC
-        );
+        Task holdBeforeSpinDown = PlantTasks.write(shooter)
+                .to(SHOOTER_VELOCITY_NATIVE)
+                .forSeconds(SHOOTER_SPINDOWN_HOLD_SEC)
+                .build();
 
-        Task spinDown = PlantTasks.setTarget(shooter, 0.0);
+        Task spinDown = PlantTasks.write(shooter)
+                .to(0.0)
+                .build();
 
         return SequenceTask.of(
                 spinUp,

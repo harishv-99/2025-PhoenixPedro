@@ -114,7 +114,7 @@ important case study, but the final examples are teaching robot structure more d
 - the driver requests one of a few semantic poses,
 - the subsystem remembers that pose,
 - a short temporary override can win for a moment,
-- and the subsystem remains the single writer to the hardware plant.
+- and the subsystem owns the final target source and Plant update order.
 
 The example is intentionally small, but it shows three important ideas.
 
@@ -131,14 +131,14 @@ The “pulse open” command is modeled as a short-lived override. It temporaril
 mechanism naturally falls back to the remembered base pose.
 
 This is exactly the kind of situation where output queues or task runners help: behavior owns the
-short-lived execution, and the plant owner still remains the final writer.
+short-lived execution, and the plant owner still owns the final source and update order.
 
-### 3.3 The subsystem is still the single writer
+### 3.3 The subsystem still owns the target sources and Plant update order
 
-Even though a supervisor is involved, the supervisor does not write the hardware directly. The
-subsystem still computes the final target and updates the plant.
+Even though a supervisor is involved, the supervisor does not command hardware directly. The
+subsystem still computes the final target source and updates the Plant.
 
-That matches the framework principle of keeping one plant owner per mechanism.
+That matches the framework principle of keeping one Plant/source owner per mechanism.
 
 ---
 
@@ -202,7 +202,7 @@ Then it makes the next two layers explicit.
 
 ### 5.1 Requests only remember caller intent
 
-The request layer does not know anything about timing, pulse duration, or plant writes.
+The request layer does not know anything about timing, pulse duration, or final target-source composition.
 
 Its only job is to remember:
 

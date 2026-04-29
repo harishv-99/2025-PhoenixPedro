@@ -38,7 +38,7 @@ TeleOp and Auto.
 The short version is:
 
 - **TeleOp bindings and Auto routines should talk to the robot through the same small intent API.**
-- **Subsystems should remain the single writers to plants.**
+- **Subsystems should own their Plant target sources and update order.**
 - **Supervisors should own policy, timing, requests, and queueing.**
 - **Status snapshots should be the normal way to observe a mechanism from the outside.**
 - **Use the behavior lane that matches the problem instead of forcing everything into one pattern.**
@@ -223,7 +223,7 @@ place where each mechanism's detailed behavior should live.
 
 ### Subsystem
 
-A subsystem is the single writer for one mechanism or one tightly-coupled hardware group.
+A subsystem owns the target sources and Plant update order for one mechanism or one tightly-coupled hardware group.
 
 A subsystem should usually own:
 
@@ -256,7 +256,7 @@ A supervisor should usually own:
 - a compact status/debug snapshot for higher-level code
 
 A supervisor should usually **not** write plants directly. It should decide what should happen,
-then let the subsystem remain the single writer.
+then let the subsystem remain the owner of the mechanism target sources and Plant update order.
 
 ### TeleOp and Auto
 
@@ -521,12 +521,12 @@ public final class Lift {
     public static final class Status {
         private final double targetHeightIn;
         private final double measuredHeightIn;
-        private final boolean atGoal;
+        private final boolean atTarget;
 
-        public Status(double targetHeightIn, double measuredHeightIn, boolean atGoal) {
+        public Status(double targetHeightIn, double measuredHeightIn, boolean atTarget) {
             this.targetHeightIn = targetHeightIn;
             this.measuredHeightIn = measuredHeightIn;
-            this.atGoal = atGoal;
+            this.atTarget = atTarget;
         }
 
         public double targetHeightIn() {
@@ -537,8 +537,8 @@ public final class Lift {
             return measuredHeightIn;
         }
 
-        public boolean atGoal() {
-            return atGoal;
+        public boolean atTarget() {
+            return atTarget;
         }
     }
 
@@ -556,8 +556,8 @@ public final class Lift {
 
     public Status status() {
         double measured = liftPlant.getMeasurement();
-        boolean atGoal = liftPlant.atTarget();
-        return new Status(targetHeightIn, measured, atGoal);
+        boolean atTarget = liftPlant.atTarget();
+        return new Status(targetHeightIn, measured, atTarget);
     }
 
     public void update(LoopClock clock) {
@@ -579,14 +579,14 @@ bindings.onRise(pads.p2().dpadDown(), () -> lift.setTargetHeightIn(0.0));
 ```java
 Task liftToHigh = Tasks.sequence(
         Tasks.runOnce(() -> lift.setTargetHeightIn(24.0)),
-        Tasks.waitUntil(() -> lift.status().atGoal(), 2.0)
+        Tasks.waitUntil(() -> lift.status().atTarget(), 2.0)
 );
 ```
 
 ### Why this is the recommended design
 
 - Auto and TeleOp share the same intent method
-- the subsystem still owns the controller and final plant writes
+- the subsystem still owns the command target, source composition, and Plant update order
 - `status()` gives Auto a clean wait condition
 - the rest of the robot never needs to know about the PID internals
 
@@ -697,7 +697,7 @@ public final class Intake {
 
 The exact `status()` implementation can vary. In real code you would usually cache whatever values
 outside callers need while the subsystem is updating. The important point is the shape: small
-external status, single writer inside the subsystem.
+external status, target-source ownership inside the subsystem.
 
 ### Recommended supervisor shape
 
@@ -767,7 +767,7 @@ public final class IntakeSupervisor {
 The important point of this example is the boundary:
 
 - supervisor owns requests and queueing policy
-- subsystem remains the single writer to the feeder plant
+- subsystem remains the single owner of the feeder target source and Plant update order
 
 ### TeleOp interaction
 
@@ -920,7 +920,7 @@ Even though drive is special, the rest of the robot should still follow the same
 Task scoreCycle = Tasks.sequence(
         roadRunnerAdapter.follow(preloadPath),
         Tasks.runOnce(() -> lift.setTargetHeightIn(24.0)),
-        Tasks.waitUntil(() -> lift.status().atGoal(), 1.5),
+        Tasks.waitUntil(() -> lift.status().atTarget(), 1.5),
         Tasks.runOnce(shooter::requestSingleShot)
 );
 ```
@@ -960,7 +960,7 @@ These are usually time-shaped or condition-shaped actions layered on top of a ba
 
 Good examples:
 
-- set lift height, then wait until at goal
+- set lift height, then wait until at target
 - run intake until piece is seen
 - follow a route and then score
 
@@ -988,7 +988,7 @@ Good status fields are things like:
 
 - desired pose / target height / mode
 - measured position or velocity
-- whether the mechanism is at goal
+- whether the mechanism is at target
 - whether a piece is present
 - whether a transient action is active
 - whether an assist is ready or blocked
@@ -1007,13 +1007,13 @@ Good external status design:
 public final class LiftStatus {
     private final double targetHeightIn;
     private final double measuredHeightIn;
-    private final boolean atGoal;
+    private final boolean atTarget;
     private final boolean homed;
 
-    public LiftStatus(double targetHeightIn, double measuredHeightIn, boolean atGoal, boolean homed) {
+    public LiftStatus(double targetHeightIn, double measuredHeightIn, boolean atTarget, boolean homed) {
         this.targetHeightIn = targetHeightIn;
         this.measuredHeightIn = measuredHeightIn;
-        this.atGoal = atGoal;
+        this.atTarget = atTarget;
         this.homed = homed;
     }
 
@@ -1025,8 +1025,8 @@ public final class LiftStatus {
         return measuredHeightIn;
     }
 
-    public boolean atGoal() {
-        return atGoal;
+    public boolean atTarget() {
+        return atTarget;
     }
 
     public boolean homed() {
@@ -1143,7 +1143,7 @@ Usually that includes:
 - current measured value or readiness
 - whether the mechanism is done / ready / blocked
 
-### 4. Who is the single writer?
+### 4. Who owns the target sources and Plant updates?
 
 Make sure exactly one place computes the final plant target.
 
@@ -1160,7 +1160,7 @@ If you can answer those five questions clearly, the mechanism will usually fit t
 If you are unsure how to structure a new robot, start here:
 
 - expose **intent methods + status snapshots**
-- keep **subsystems as single writers**
+- keep **subsystems as the owners of target sources and Plant updates**
 - keep **supervisors as the policy layer**
 - use the **behavior lanes** to choose the internals
 - let **TeleOp bindings and Auto routines call the same public mechanism vocabulary**

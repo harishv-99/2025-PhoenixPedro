@@ -183,6 +183,13 @@ Key methods (see `edu.ftcphoenix.fw.actuation.Plant`):
 
 A Plant may be open-loop (power, commanded servo position), device-managed closed-loop (for example FTC motor velocity/position), or framework-regulated closed-loop over a raw actuator command. The public rule is the same for all of them: **behavior shapes sources; Plants protect and apply one target per loop**.
 
+Behavior guards and Plant guards are intentionally parallel, but they attach at different layers:
+
+* **Behavior guards** shape the `ScalarSource` before the Plant sees it: `BooleanSource.choose(...)`, `ScalarOverlayStack`, `ScalarSource.fallbackUnless(...)`, `ScalarSource.holdLastUnless(...)`, output queues, and command targets. These answer “what does the robot want?”
+* **Plant target guards** live in the builder's `targetGuards()` branch and protect hardware after the behavior source is sampled: max target rate, hold-last interlocks, and fallback targets. These answer “what may this hardware safely apply?”
+
+Keep static range declarations such as `bounded(min, max)` close to the Plant topology because they define the legal plant coordinate system. Keep dynamic protection such as rate limits and interlocks in `targetGuards()`.
+
 ### 2.3 The beginner entrypoint: `FtcActuators.plant(...)`
 
 `edu.ftcphoenix.fw.ftc.FtcActuators` is the recommended way to create Plants from FTC hardware. It lives in the FTC boundary because it depends directly on `HardwareMap`, FTC device classes, and FTC-specific motor tuning APIs.
@@ -434,7 +441,7 @@ A key design choice: `TaskRunner.update(clock)` is **idempotent by `clock.cycle(
 Robot code should rarely implement raw tasks directly. Prefer:
 
 * `Tasks.*` for generic composition (`sequence`, `parallelAll`, `waitForSeconds`, `waitUntil`, ...)
-* `ScalarTasks.*` for writing standalone `ScalarTarget`s and `PlantTasks.*` for a Plant's registered writable target (`setTarget`, `holdTargetFor`, `moveTo`, ...)
+* `ScalarTasks.write(...)` for standalone `ScalarTarget`s, `PlantTasks.write(plant)` for time-based writes to a Plant's registered target, and `PlantTasks.move(plant)` for feedback-aware moves
 * `Tasks.outputPulse(...)` + `OutputTaskRunner` for short output-producing pulses that are overlaid into a final Plant target source
 * `DriveTasks.*` for drive behaviors
 
@@ -465,8 +472,8 @@ Phoenix distinguishes:
 
 Important consequence:
 
-* `PlantTasks.moveTo(...)` / `moveTo(..., timeout)` / `moveToThen(...)` **require** `plant.hasFeedback() == true` and will throw if used on an open-loop plant.
-* Time-based helpers like `holdTargetFor(...)` / `holdTargetForThen(...)` work on any Plant with a registered writable target.
+* `PlantTasks.move(plant)` and compact feedback helpers such as `moveTo(...)` / `moveToThen(...)` **require** `plant.hasFeedback() == true` and will throw if used on an open-loop plant.
+* Time-based helpers such as `PlantTasks.write(plant).to(...).forSeconds(...)` and compact `holdTargetFor(...)` helpers work on any Plant with a registered writable target.
 
 This makes it hard to accidentally write a “wait for target” macro on a mechanism that has no feedback.
 

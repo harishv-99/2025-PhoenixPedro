@@ -362,55 +362,63 @@ for device-specific overrides when you actually need them.
 Once you have Plants, the easiest way to create behaviors is
 `edu.ftcphoenix.fw.actuation.PlantTasks`.
 
-These are **factory helpers** that build `Task`s for you.
+A Plant is source-driven, so a task does not write hardware directly. It writes the Plant's registered `ScalarTarget`; the Plant samples its final target source and applies hardware guards during `plant.update(clock)`.
 
-### 4.1 Time‑based helpers (work with any Plant)
+### 4.1 Time-based writes
 
-These helpers do **not** depend on `plant.atTarget()`, so they work with
-feedback plants and open-loop plants.
-
-* **Run for N seconds, then change target**
-
-  ```java
-  // Intake: run at +1.0 for 0.7 seconds, then stop.
-  Task intakePulse = PlantTasks.holdTargetForThen(intake, +1.0, 0.7, 0.0);
-  ```
-
-* **Run for N seconds and keep that target afterward**
-
-  ```java
-  // Run shooter at target for at least 0.5 seconds, then keep holding it.
-  Task ensureSpinUp = PlantTasks.holdTargetFor(shooter, SHOOTER_VELOCITY_NATIVE, 0.5);
-  ```
-
-### 4.2 Feedback‑based move helpers (require feedback)
-
-These helpers require `plant.hasFeedback() == true`.
+These helpers do **not** depend on `plant.atTarget(...)`, so they work with feedback plants and open-loop plants.
 
 ```java
-// Move shooter to a target velocity and wait until it is at target (or timeout).
-Task spinUp = PlantTasks.moveTo(shooter, SHOOTER_VELOCITY_NATIVE, 1.2);
-
-// Move arm to a setpoint, then command a final target right after.
-Task moveAndStow = PlantTasks.moveToThen(arm, ARM_SCORE_POS, 1.0, ARM_STOW_POS);
+// Intake: run at +1.0 for 0.7 seconds, then stop.
+Task intakePulse = PlantTasks.write(intake)
+        .to(+1.0)
+        .forSeconds(0.7)
+        .then(0.0)
+        .build();
 ```
 
-If you accidentally call a feedback-based helper on an open-loop plant (like a
-simple servo position plant), `PlantTasks` throws an exception at runtime so the
-mistake is obvious.
-
-### 4.3 Instant target helper
-
-For one‑shot changes:
+To run for a fixed time and leave the target there:
 
 ```java
-Task stopShooter = PlantTasks.setTarget(shooter, 0.0);
+Task ensureSpinUp = PlantTasks.write(shooter)
+        .to(SHOOTER_VELOCITY_NATIVE)
+        .forSeconds(0.5)
+        .build();
 ```
 
-This sets the target once in `start(...)`, finishes immediately, and leaves
-that target in place.
+To set once and finish immediately:
+
+```java
+Task stopShooter = PlantTasks.write(shooter)
+        .to(0.0)
+        .build();
+```
+
+### 4.2 Feedback moves
+
+Use `PlantTasks.move(...)` when the Plant has feedback and the task should wait for the mechanism to actually reach the requested target.
+
+```java
+Task spinUp = PlantTasks.move(shooter)
+        .to(SHOOTER_VELOCITY_NATIVE)
+        .timeout(1.2)
+        .build();
+```
+
+A feedback move waits for `plant.atTarget(requestedValue)`, not just the current source output. That matters when behavior overlays, bounds, fallbacks, or target guards are active.
+
+```java
+Task moveAndStow = PlantTasks.move(arm)
+        .to(ARM_SCORE_POS)
+        .timeout(1.0)
+        .thenTarget(ARM_STOW_POS)
+        .build();
+```
+
+If you accidentally call a feedback move on an open-loop plant, `PlantTasks` throws an exception at runtime so the mistake is obvious.
 
 ---
+
 
 ## 5. Using `Tasks` factories for general behavior
 
@@ -439,25 +447,25 @@ Assume you already created `shooter`, `transfer`, and a `TaskRunner` named
 
 ```java
 private Task buildShootOneDiscMacro() {
-    Task spinUp = PlantTasks.moveTo(
-            shooter,
-            SHOOTER_VELOCITY_NATIVE,
-            SHOOTER_SPINUP_TIMEOUT_SEC
-    );
+    Task spinUp = PlantTasks.move(shooter)
+            .to(SHOOTER_VELOCITY_NATIVE)
+            .timeout(SHOOTER_SPINUP_TIMEOUT_SEC)
+            .build();
 
-    Task feedTransfer = PlantTasks.holdTargetFor(
-            transfer,
-            TRANSFER_POWER_SHOOT,
-            TRANSFER_PULSE_SEC
-    );
+    Task feedTransfer = PlantTasks.write(transfer)
+            .to(TRANSFER_POWER_SHOOT)
+            .forSeconds(TRANSFER_PULSE_SEC)
+            .then(0.0)
+            .build();
 
-    Task holdBeforeSpinDown = PlantTasks.holdTargetFor(
-            shooter,
-            SHOOTER_VELOCITY_NATIVE,
-            SHOOTER_SPINDOWN_HOLD_SEC
-    );
+    Task holdBeforeSpinDown = PlantTasks.write(shooter)
+            .to(SHOOTER_VELOCITY_NATIVE)
+            .forSeconds(SHOOTER_SPINDOWN_HOLD_SEC)
+            .build();
 
-    Task spinDown = PlantTasks.setTarget(shooter, 0.0);
+    Task spinDown = PlantTasks.write(shooter)
+            .to(0.0)
+            .build();
 
     return Tasks.sequence(spinUp, feedTransfer, holdBeforeSpinDown, spinDown);
 }

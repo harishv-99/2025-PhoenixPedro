@@ -396,7 +396,7 @@ If you want to abort automation, prefer `cancelAndClear()` over `clear()`. `clea
 Phoenix gives you factories so your code reads like intent:
 
 * `Tasks` — general composition (`sequence`, `parallelAll`, `waitForSeconds`, `waitUntil`, `runOnce`, …)
-* `PlantTasks` — patterns that write a Plant's registered target (`setTarget`, `holdTargetFor`, `moveTo`, …)
+* `PlantTasks` — guided patterns that write a Plant's registered target (`write`, `move`, plus compact helpers)
 * `DriveTasks` — simple patterns that command a `DriveCommandSink` (`driveForSeconds`, `stop`, …)
 * `DriveGuidanceTasks` — execute a `DriveGuidancePlan` as a Task (autonomous-style guidance)
 * `RouteTasks` — follow an external route through a generic `RouteFollower<RouteT>` adapter
@@ -412,9 +412,15 @@ import edu.ftcphoenix.fw.task.Tasks;
 
 private Task buildShootOneDiscMacro(Plant shooter, Plant transfer) {
     return Tasks.sequence(
-            PlantTasks.setTarget(shooter, 3200.0),
-            Tasks.waitUntil(shooter::atTarget, 1.0),
-            PlantTasks.holdTargetForThen(transfer, 1.0, 0.20, 0.0)
+            PlantTasks.move(shooter)
+                    .to(3200.0)
+                    .timeout(1.0)
+                    .build(),
+            PlantTasks.write(transfer)
+                    .to(1.0)
+                    .forSeconds(0.20)
+                    .then(0.0)
+                    .build()
     );
 }
 ```
