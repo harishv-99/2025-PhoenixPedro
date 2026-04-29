@@ -227,7 +227,7 @@ Use a consistent prefix so logs are easy to scan, for example:
 Bad:
 
 ```java
-while (!shooter.atSetpoint()) { }
+while (!shooter.atTarget()) { }
 ```
 
 Good:

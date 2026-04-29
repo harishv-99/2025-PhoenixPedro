@@ -74,6 +74,7 @@ public final class TeleOp_07_SupervisorPoseMechanism extends OpMode {
                 .linear()
                 .bounded(0.0, 1.0)
                 .nativeUnits()
+                .targetedByDefaultWritable(0.0)
                 .build();
 
         wrist = new WristSubsystem(wristPlant);
@@ -152,7 +153,7 @@ public final class TeleOp_07_SupervisorPoseMechanism extends OpMode {
             ScalarSource finalTarget = overrides.activeSource().choose(overrides, base);
 
             // 4) Apply to plant.
-            plant.setTarget(finalTarget.getAsDouble(clock));
+            plant.writableTarget().set(finalTarget.getAsDouble(clock));
             plant.update(clock);
         }
 

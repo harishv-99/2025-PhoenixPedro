@@ -26,7 +26,8 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * ScalarSource liftPower = ScalarControllers.pid(desiredHeightIn, measuredHeightIn, pid);
  *
  * // In the loop:
- * liftPlant.setTarget(liftPower.getAsDouble(clock));
+ * liftTarget.set(liftPower.getAsDouble(clock));
+ * liftPlant.update(clock);
  * liftPlant.update(clock);
  * }</pre>
  *

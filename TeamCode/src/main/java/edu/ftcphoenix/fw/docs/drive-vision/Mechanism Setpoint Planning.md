@@ -16,7 +16,7 @@ request source
 ScalarSetpointPlanner
     applies range, periodicity, candidate choice, loss policy
         ↓
-Plant.setTarget(...)
+Plant target source
     low-level regulation in the plant's public units
 ```
 
@@ -63,13 +63,13 @@ Use `ScalarSetpointPlanner` when it adds value:
 - the mechanism has travel limits or homing-dependent limits
 - the request may be periodic, such as a spinner or turret
 - several candidates are acceptable, such as multiple tray slots
-- you want consistent `atSetpoint()` vs `requestSatisfied()` status
+- you want consistent `atTarget()` vs `requestSatisfied()` status
 - you need loss behavior like holding the last setpoint
 
-Control the `Plant` directly when the request is already simple and always legal:
+Use a simple `ScalarTarget` when the request is already simple and always legal:
 
 ```java
-liftPlant.setTarget(BASKET_TICKS);
+liftTarget.set(BASKET_TICKS);
 liftPlant.update(clock);
 ```
 
@@ -88,13 +88,14 @@ PositionPlant lift = FtcActuators.plant(hardwareMap)
             .nativeUnits()
             .needsReference("lift not homed")
         .positionTolerance(20.0)
+        .targetedByDefaultWritable(0.0)
         .build();
 
 ScalarSetpointPlanner liftPlanner = ScalarSetpoints.plan()
         .request(clock -> ScalarSetpointRequest.exact("basket", BASKET_TICKS))
         .forPositionPlant(lift)
         .completion()
-            .atSetpointTolerance(20.0)
+            .atTargetTolerance(20.0)
             .requestSatisfiedTolerance(20.0)
             .doneCompletion()
         .build();
@@ -109,7 +110,7 @@ Loop usage:
 ```java
 ScalarSetpointStatus s = liftPlanner.get(clock);
 if (s.hasSetpoint()) {
-    lift.setTarget(s.getSetpoint());
+    lift.writableTarget().set(s.getSetpoint());
 }
 lift.update(clock);
 ```
@@ -129,6 +130,7 @@ PositionPlant tray = FtcActuators.plant(hardwareMap)
             .scaleToNative(TRAY_TICKS_PER_DEGREE)
             .needsReference("tray index mark not found")
         .positionTolerance(2.0)
+        .targetedByDefaultWritable(0.0)
         .build();
 ```
 
@@ -178,7 +180,7 @@ ScalarSetpointPlanner trayPlanner = ScalarSetpoints.plan()
             .candidatePreference(ScalarSetpointPlanner.CandidatePreference.NEAREST_TO_MEASUREMENT)
             .donePolicy()
         .completion()
-            .atSetpointTolerance(2.0)
+            .atTargetTolerance(2.0)
             .doneCompletion()
         .build();
 ```
@@ -204,6 +206,7 @@ PositionPlant turret = FtcActuators.plant(hardwareMap)
             .scaleToNative(TURRET_TICKS_PER_DEGREE)
             .needsReference("turret not homed")
         .positionTolerance(1.5)
+        .targetedByDefaultWritable(0.0)
         .build();
 
 SpatialSolutionGate gate = SpatialSolutionGate.builder()
@@ -245,13 +248,13 @@ ScalarSetpointPlanner turretPlanner = ScalarSetpoints.plan()
             .lossPolicy(ScalarSetpointPlanner.LossPolicy.HOLD_LAST_SETPOINT)
             .donePolicy()
         .completion()
-            .atSetpointTolerance(1.5)
+            .atTargetTolerance(1.5)
             .requestSatisfiedTolerance(2.0)
             .doneCompletion()
         .build();
 ```
 
-`atSetpoint()` and `requestSatisfied()` are intentionally different. If cable limits force the
+`atTarget()` and `requestSatisfied()` are intentionally different. If cable limits force the
 setpoint to clamp, the plant may be at the clamped setpoint while the original request is not truly
 satisfied.
 

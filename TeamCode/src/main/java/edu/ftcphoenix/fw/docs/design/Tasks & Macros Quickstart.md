@@ -194,7 +194,7 @@ These work with *both* feedback and non‑feedback plants (for example, power pl
 * **Hold then change target**
 
   ```java
-  Task t = PlantTasks.holdForThen(plant,
+  Task t = PlantTasks.holdTargetForThen(plant,
                                   +1.0,  // target during pulse
                                   0.7,   // seconds
                                   0.0);  // final target
@@ -209,7 +209,7 @@ These work with *both* feedback and non‑feedback plants (for example, power pl
 * **Hold and keep target**
 
   ```java
-  Task t = PlantTasks.holdFor(plant, +1.0, 0.7);
+  Task t = PlantTasks.holdTargetFor(plant, +1.0, 0.7);
   ```
 
   Behavior:
@@ -219,7 +219,7 @@ These work with *both* feedback and non‑feedback plants (for example, power pl
 
 ### 4.2 Feedback‑based move helpers (require feedback)
 
-These helpers rely on `plant.hasFeedback() == true` and `plant.atSetpoint()` being meaningful. They are designed for encoder‑backed motor plants (position or velocity) created via `FtcActuators.plant(...).motor(...).position(...)` or `.velocity(...)`.
+These helpers rely on `plant.hasFeedback() == true` and `plant.atTarget()` being meaningful. They are designed for encoder‑backed motor plants (position or velocity) created via `FtcActuators.plant(...).motor(...).position(...)` or `.velocity(...)`.
 
 * **Move to setpoint and hold**
 
@@ -230,7 +230,7 @@ These helpers rely on `plant.hasFeedback() == true` and `plant.atSetpoint()` bei
   Behavior:
 
     * On start: set shooter target once.
-    * Each loop: task checks `plant.atSetpoint()`.
+    * Each loop: task checks `plant.atTarget()`.
     * When at setpoint: task completes and leaves the target as‑is.
 
 * **Move to setpoint with timeout**
@@ -245,7 +245,7 @@ These helpers rely on `plant.hasFeedback() == true` and `plant.atSetpoint()` bei
 
   Behavior:
 
-    * Same as `moveTo(...)`, but if `atSetpoint()` never becomes true, the task
+    * Same as `moveTo(...)`, but if `atTarget()` never becomes true, the task
       finishes after `1.5` seconds with `TaskOutcome.TIMEOUT`.
 
 * **Move then change target**
@@ -274,14 +274,14 @@ These helpers rely on `plant.hasFeedback() == true` and `plant.atSetpoint()` bei
   Task spinUpStable = PlantTasks.moveToStable(
       shooterPlant,
       SHOOTER_VELOCITY_NATIVE,
-      0.15 // stableSec (seconds atSetpoint() must remain true)
+      0.15 // stableSec (seconds atTarget() must remain true)
   );
   ```
 
   Behavior:
 
     * On start: set shooter target once.
-    * Task only completes after `atSetpoint()` has been true continuously for `stableSec`.
+    * Task only completes after `atTarget()` has been true continuously for `stableSec`.
 
   There is also a timeout overload: `moveToStable(plant, target, stableSec, timeoutSec)`.
 
@@ -290,7 +290,7 @@ These helpers rely on `plant.hasFeedback() == true` and `plant.atSetpoint()` bei
 Sometimes you just want to set a plant target once and be done:
 
 ```java
-Task stopShooter = PlantTasks.setInstant(shooterPlant, 0.0);
+Task stopShooter = PlantTasks.setTarget(shooterPlant, 0.0);
 ```
 
 This task:
@@ -327,19 +327,19 @@ private Task createShootOneDiscMacro() {
         SHOOTER_SPINUP_TIMEOUT_SEC
     );
 
-    Task feed = PlantTasks.holdFor(
+    Task feed = PlantTasks.holdTargetFor(
         transfer,
         TRANSFER_POWER_SHOOT,
         TRANSFER_PULSE_SEC
     );
 
-    Task holdBeforeSpinDown = PlantTasks.holdFor(
+    Task holdBeforeSpinDown = PlantTasks.holdTargetFor(
         shooter,
         SHOOTER_VELOCITY_NATIVE,
         SHOOTER_SPINDOWN_HOLD_SEC
     );
 
-    Task spinDown = PlantTasks.setInstant(shooter, 0.0);
+    Task spinDown = PlantTasks.setTarget(shooter, 0.0);
 
     return Tasks.sequence(
         spinUp,
@@ -416,7 +416,7 @@ A good rule of thumb:
 Sometimes you want **continuous logic** (e.g. staging balls, holding a gate, keeping a mechanism ready)
 *and* short **pulses** (feed one ball, spit out wrong color, etc.).
 
-If both pieces of code directly write `plant.setTarget(...)`, they will fight.
+If both pieces of code try to own the same target variable, they will fight.
 
 Phoenix provides a clean, single-writer pattern:
 
@@ -436,7 +436,7 @@ BooleanSource ballLeftGate = ballAtGate.fallingEdge();
 // In your loop:
 // Keep one "feedOne" buffered while the driver requests shooting.
 // The task waits in WAIT until fireAllowed is true.
-feederQueue.whileTrue(
+feederQueue.whileHigh(
         clock,
         requestShoot,
         1,
@@ -449,9 +449,11 @@ feederQueue.whileTrue(
                 0.30
         )
 );
-double base = 0.0;
-double finalTarget = feederQueue.activeSource().getAsBoolean(clock) ? feederQueue.getAsDouble(clock) : base;
-transferShooterPlant.setTarget(finalTarget);
+ScalarSource base = ScalarSource.constant(0.0);
+ScalarSource finalTarget = feederQueue.activeSource().choose(feederQueue, base);
+
+// Build the Plant with finalTarget during init, then the loop only updates it.
+transferShooterPlant.update(clock);
 ```
 
 For the full design rationale and more examples, see [`Output Tasks & Queues`](<Output Tasks & Queues.md>) and [`Recommended Robot Design`](<Recommended Robot Design.md>).
@@ -472,12 +474,12 @@ For the full design rationale and more examples, see [`Output Tasks & Queues`](<
 * **Use feedback‑based helpers only on feedback plants.**
 
     * `PlantTasks.moveTo*` require `plant.hasFeedback() == true`.
-    * For servos and other open‑loop outputs, use `holdFor`, `holdForThen`, or `setInstant`.
+    * For servos and other open‑loop outputs, use `holdTargetFor`, `holdTargetForThen`, or `setTarget`.
 
 * **Be intentional about final targets.**
 
-    * `holdFor(...)` keeps the same target after the timer.
-    * `holdForThen(...)` lets you explicitly set a different final target (often zero).
+    * `holdTargetFor(...)` keeps the same target after the timer.
+    * `holdTargetForThen(...)` lets you explicitly set a different final target (often zero).
 
 ---
 

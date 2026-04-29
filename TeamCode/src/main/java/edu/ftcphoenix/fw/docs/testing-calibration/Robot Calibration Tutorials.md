@@ -38,7 +38,7 @@ raw/native hardware coordinate
     -> reference + unit mapping
     -> public plant coordinate
     -> ScalarSetpointPlanner
-    -> PositionPlant.setTarget(...)
+    -> PositionPlant target source
 ```
 
 `Plant.reset()` should not redefine physical zero. Homing, indexing, manual zeroing, and static

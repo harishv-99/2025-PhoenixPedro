@@ -84,27 +84,26 @@ Common transforms:
 
 Plants are "sinks" you command, but it is often useful to treat a plant's state as a signal:
 
-- **Is this mechanism at its target?** (`Plant.atSetpoint()`) → a `BooleanSource`
-- **What target is currently commanded?** (`Plant.getTarget()`) → a `ScalarSource`
+- **Is this mechanism at its target?** (`Plant.atTarget()`) → a `BooleanSource`
+- **What target is currently commanded?** (`Plant.getRequestedTarget()`) → a `ScalarSource`
 
 Phoenix provides a tiny, obvious adapter class: `PlantSources`.
 
 ```java
 import edu.ftcphoenix.fw.actuation.PlantSources;
 
-BooleanSource shooterAtSetpoint = PlantSources.atSetpoint(shooterPlant);
-BooleanSource shooterReadyStable = shooterAtSetpoint.debouncedOn(0.15);
+BooleanSource shooterAtTarget = PlantSources.atTarget(shooterPlant);
+BooleanSource shooterReadyStable = shooterAtTarget.debouncedOn(0.15);
 
-ScalarSource shooterTarget = PlantSources.target(shooterPlant);
+ScalarSource requestedTarget = PlantSources.requestedTarget(shooterPlant);
+ScalarSource appliedTarget = PlantSources.appliedTarget(shooterPlant);
 BooleanSource feedbackCapable = PlantSources.hasFeedback(shooterPlant);
 ```
 
 Notes:
 
-- `PlantSources.atSetpoint(...)` is **memoized per loop cycle** so the plant is sampled at most once
-  per `LoopClock.cycle()`.
-- `PlantSources.target(...)` is **not memoized** by default so you can still observe changes within
-  a loop (useful while migrating toward single-writer ownership).
+- `PlantSources.atTarget(...)` reads the plant's cached status from the most recent `plant.update(clock)`.
+- `PlantSources.requestedTarget(...)` shows what behavior asked for; `appliedTarget(...)` shows what the Plant actually applied after bounds and target guards.
 
 ---
 
@@ -156,7 +155,7 @@ BooleanSource aimLocked = headingErrorAbsDeg.hysteresisBelow(2.0, 3.0).debounced
 
 // Shooter-ready can be any boolean you compute; debouncedOn makes it stable.
 // For plants, prefer the tiny adapter helpers from PlantSources.
-BooleanSource shooterReadyStable = PlantSources.atSetpoint(shooterPlant).debouncedOn(0.15);
+BooleanSource shooterReadyStable = PlantSources.atTarget(shooterPlant).debouncedOn(0.15);
 
 BooleanSource fireAllowed = shootHeld.and(aimLocked).and(shooterReadyStable);
 BooleanSource startFiring = fireAllowed.risingEdge();

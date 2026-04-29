@@ -7,30 +7,16 @@ import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.hal.PowerOutput;
 import edu.ftcphoenix.fw.core.hal.VelocityOutput;
 import edu.ftcphoenix.fw.core.source.ScalarSource;
+import edu.ftcphoenix.fw.core.source.ScalarTarget;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 
 /**
- * Velocity {@link Plant} adapter that presents a caller-facing plant-unit velocity coordinate while
- * driving a native velocity output or a framework-regulated power output.
+ * Source-driven velocity {@link Plant} that maps plant velocity units to native hardware units.
  *
- * <p>Robot code should normally build these through {@code FtcActuators}. This class exists as the
- * advanced boundary adapter for custom hardware integrations.</p>
- *
- * <h2>Units</h2>
- *
- * <p>All public plant APIs use <b>plant velocity units</b>: {@link #setTarget(double)},
- * {@link #getTarget()}, {@link #getMeasurement()}, {@link #getError()}, and the configured target
- * range/tolerance. The native feedback and native velocity output use hardware/controller units such
- * as encoder ticks per second.</p>
- *
- * <p>The plant/native map is intentionally zero-preserving:</p>
- *
- * <pre>{@code
- * nativeVelocity = nativePerPlantUnit * plantVelocity
- * }</pre>
- *
- * <p>Velocity maps deliberately have no offset. Plant velocity {@code 0.0} maps to native velocity
- * {@code 0.0} so stop semantics stay obvious in every unit system.</p>
+ * <p>Robot code normally builds these through {@code FtcActuators}. This class is the advanced
+ * boundary adapter for custom hardware integrations. The plant samples one target source every
+ * update, clamps it to the configured velocity range, applies dynamic plant target guards, and then
+ * commands either a native velocity output or a framework-owned regulator over raw power.</p>
  */
 public final class MappedVelocityPlant implements Plant {
 
@@ -38,22 +24,28 @@ public final class MappedVelocityPlant implements Plant {
     private final PowerOutput regulatedPowerOut;
     private final ScalarRegulator regulator;
     private final ScalarSource nativeMeasurement;
+    private final ScalarSource targetSource;
+    private final ScalarTarget writableTarget;
+    private final PlantTargetGuards targetGuards;
     private final ScalarRange configuredRange;
     private final double nativePerPlantUnit;
     private final double tolerance;
 
-    private double target;
-    private double desiredTarget;
+    private double requestedTarget;
+    private double appliedTarget;
     private double lastMeasurement = Double.NaN;
     private double lastNativeMeasurement = Double.NaN;
-    private boolean lastAtSetpoint;
+    private boolean lastAtTarget;
     private double lastRegulatorOutput;
-    private String lastBlockReason = "";
+    private PlantTargetStatus targetStatus = PlantTargetStatus.STOPPED;
 
     private MappedVelocityPlant(VelocityOutput velocityOut,
                                 PowerOutput regulatedPowerOut,
                                 ScalarRegulator regulator,
                                 ScalarSource nativeMeasurement,
+                                ScalarSource targetSource,
+                                ScalarTarget writableTarget,
+                                PlantTargetGuards targetGuards,
                                 ScalarRange configuredRange,
                                 double nativePerPlantUnit,
                                 double tolerance) {
@@ -61,6 +53,9 @@ public final class MappedVelocityPlant implements Plant {
         this.regulatedPowerOut = regulatedPowerOut;
         this.regulator = regulator;
         this.nativeMeasurement = Objects.requireNonNull(nativeMeasurement, "nativeMeasurement").memoized();
+        this.targetSource = Objects.requireNonNull(targetSource, "targetSource").memoized();
+        this.writableTarget = writableTarget;
+        this.targetGuards = targetGuards == null ? PlantTargetGuards.none() : targetGuards;
         this.configuredRange = Objects.requireNonNull(configuredRange, "configuredRange");
         this.nativePerPlantUnit = nativePerPlantUnit;
         this.tolerance = tolerance;
@@ -68,10 +63,7 @@ public final class MappedVelocityPlant implements Plant {
     }
 
     /**
-     * Starts configuring a device-managed native velocity-output plant.
-     *
-     * @param out               native velocity command channel
-     * @param nativeMeasurement authoritative native velocity measurement source
+     * Start configuring a device-managed native velocity-output plant.
      */
     public static Builder velocityOutput(VelocityOutput out, ScalarSource nativeMeasurement) {
         return new Builder(Objects.requireNonNull(out, "out"), null, null,
@@ -79,10 +71,7 @@ public final class MappedVelocityPlant implements Plant {
     }
 
     /**
-     * Starts configuring a framework-regulated velocity plant that drives raw power.
-     *
-     * <p>The regulator receives setpoint and measurement in plant velocity units. The native
-     * measurement is converted into plant units before the regulator is updated.</p>
+     * Start configuring a framework-regulated velocity plant that drives raw power.
      */
     public static Builder regulated(PowerOutput powerOut,
                                     ScalarSource nativeMeasurement,
@@ -94,8 +83,7 @@ public final class MappedVelocityPlant implements Plant {
     }
 
     /**
-     * Builder for advanced velocity boundary adapters. Robot code should normally use
-     * {@code FtcActuators} so the staged FTC builder can ask the required conceptual questions.
+     * Advanced builder. FTC robot code should normally use {@code FtcActuators}.
      */
     public static final class Builder {
         private final VelocityOutput velocityOut;
@@ -105,6 +93,9 @@ public final class MappedVelocityPlant implements Plant {
         private ScalarRange configuredRange = ScalarRange.unbounded();
         private double nativePerPlantUnit = 1.0;
         private double tolerance = 100.0;
+        private ScalarSource targetSource;
+        private ScalarTarget writableTarget;
+        private PlantTargetGuards targetGuards = PlantTargetGuards.none();
 
         private Builder(VelocityOutput velocityOut,
                         PowerOutput regulatedPowerOut,
@@ -126,9 +117,6 @@ public final class MappedVelocityPlant implements Plant {
 
         /**
          * Sets how many native velocity units correspond to one plant velocity unit.
-         *
-         * <p>This is a zero-preserving scale only; velocity plants intentionally do not support a
-         * native offset.</p>
          */
         public Builder nativePerPlantUnit(double nativePerPlantUnit) {
             if (!Double.isFinite(nativePerPlantUnit) || Math.abs(nativePerPlantUnit) < 1.0e-12) {
@@ -142,10 +130,35 @@ public final class MappedVelocityPlant implements Plant {
          * Sets the plant-level completion tolerance in plant velocity units.
          */
         public Builder velocityTolerance(double tolerance) {
-            if (tolerance < 0.0 || !Double.isFinite(tolerance)) {
+            if (tolerance < 0.0 || !Double.isFinite(tolerance))
                 throw new IllegalArgumentException("velocityTolerance must be finite and >= 0");
-            }
             this.tolerance = tolerance;
+            return this;
+        }
+
+        /**
+         * Sets dynamic plant-level target guards.
+         */
+        public Builder targetGuards(PlantTargetGuards targetGuards) {
+            this.targetGuards = targetGuards == null ? PlantTargetGuards.none() : targetGuards;
+            return this;
+        }
+
+        /**
+         * Use a read-only final target source.
+         */
+        public Builder targetedBy(ScalarSource targetSource) {
+            this.targetSource = Objects.requireNonNull(targetSource, "targetSource");
+            if (targetSource instanceof ScalarTarget)
+                this.writableTarget = (ScalarTarget) targetSource;
+            return this;
+        }
+
+        /**
+         * Register the command target that plant tasks may write when the final source is composed.
+         */
+        public Builder writableTarget(ScalarTarget writableTarget) {
+            this.writableTarget = Objects.requireNonNull(writableTarget, "writableTarget");
             return this;
         }
 
@@ -153,64 +166,28 @@ public final class MappedVelocityPlant implements Plant {
          * Builds the mapped velocity plant.
          */
         public MappedVelocityPlant build() {
-            return new MappedVelocityPlant(velocityOut,
-                    regulatedPowerOut,
-                    regulator,
-                    nativeMeasurement,
-                    configuredRange,
-                    nativePerPlantUnit,
-                    tolerance);
+            if (targetSource == null)
+                throw new IllegalStateException("MappedVelocityPlant requires targetedBy(...)");
+            return new MappedVelocityPlant(velocityOut, regulatedPowerOut, regulator, nativeMeasurement,
+                    targetSource, writableTarget, targetGuards, configuredRange, nativePerPlantUnit, tolerance);
         }
     }
 
     private void validate() {
-        if (velocityOut == null && regulatedPowerOut == null) {
+        if (velocityOut == null && regulatedPowerOut == null)
             throw new IllegalStateException("MappedVelocityPlant requires either a velocity output or regulated power output");
-        }
-        if (velocityOut != null && regulatedPowerOut != null) {
+        if (velocityOut != null && regulatedPowerOut != null)
             throw new IllegalStateException("MappedVelocityPlant cannot use both velocity output and regulated power output");
-        }
-        if (regulatedPowerOut != null && regulator == null) {
+        if (regulatedPowerOut != null && regulator == null)
             throw new IllegalStateException("Regulated velocity plants require a regulator");
-        }
-        if (!Double.isFinite(nativePerPlantUnit) || Math.abs(nativePerPlantUnit) < 1.0e-12) {
+        if (!Double.isFinite(nativePerPlantUnit) || Math.abs(nativePerPlantUnit) < 1.0e-12)
             throw new IllegalArgumentException("nativePerPlantUnit must be finite and non-zero");
-        }
-        if (tolerance < 0.0 || !Double.isFinite(tolerance)) {
+        if (tolerance < 0.0 || !Double.isFinite(tolerance))
             throw new IllegalArgumentException("velocityTolerance must be finite and >= 0");
-        }
-    }
-
-    @Override
-    public void setTarget(double target) {
-        desiredTarget = target;
-        ScalarRange range = targetRange();
-        if (!range.valid) {
-            lastBlockReason = range.reason;
-            return;
-        }
-        double applied = range.clamp(target);
-        this.target = applied;
-        lastBlockReason = applied == target ? "" : "target clamped to plant range";
-        if (velocityOut != null) {
-            velocityOut.setVelocity(toNative(applied));
-        }
-    }
-
-    @Override
-    public double getTarget() {
-        return target;
     }
 
     /**
-     * Returns the latest requested target before range clamping.
-     */
-    public double getDesiredTarget() {
-        return desiredTarget;
-    }
-
-    /**
-     * Returns the legal velocity target range in plant units.
+     * Legal velocity target range in plant units.
      */
     public ScalarRange targetRange() {
         return configuredRange;
@@ -218,48 +195,82 @@ public final class MappedVelocityPlant implements Plant {
 
     @Override
     public void update(LoopClock clock) {
-        if (clock == null) {
-            return;
+        requestedTarget = targetSource.getAsDouble(clock);
+        double candidate = Double.isFinite(requestedTarget) ? requestedTarget : 0.0;
+        PlantTargetStatus status = PlantTargetStatus.ACCEPTED;
+        ScalarRange range = targetRange();
+        if (!range.valid) {
+            candidate = appliedTarget;
+            status = PlantTargetStatus.referenceNotEstablished(range.reason);
+        } else {
+            double clamped = range.clamp(candidate);
+            if (Math.abs(clamped - candidate) > 1e-9)
+                status = PlantTargetStatus.clampedToRange("target clamped to velocity range");
+            candidate = clamped;
         }
+        PlantTargetGuards.Result guarded = targetGuards.apply(candidate, status, appliedTarget, clock);
+        appliedTarget = guarded.target;
+        targetStatus = guarded.status;
+
         samplePlantMeasurement(clock);
-        if (regulatedPowerOut != null) {
-            lastRegulatorOutput = regulator.update(target, lastMeasurement, clock);
+        if (velocityOut != null) {
+            velocityOut.setVelocity(toNative(appliedTarget));
+        } else {
+            lastRegulatorOutput = regulator.update(appliedTarget, lastMeasurement, clock);
             regulatedPowerOut.setPower(lastRegulatorOutput);
         }
-        lastAtSetpoint = Double.isFinite(lastMeasurement) && Math.abs(target - lastMeasurement) <= tolerance;
+        lastAtTarget = atTarget(requestedTarget);
     }
 
     @Override
     public void reset() {
+        targetSource.reset();
         nativeMeasurement.reset();
-        if (regulator != null) {
-            regulator.reset();
-        }
+        targetGuards.reset();
+        if (regulator != null) regulator.reset();
+        requestedTarget = 0.0;
+        appliedTarget = 0.0;
         lastMeasurement = Double.NaN;
         lastNativeMeasurement = Double.NaN;
-        lastAtSetpoint = false;
+        lastAtTarget = false;
         lastRegulatorOutput = 0.0;
+        targetStatus = PlantTargetStatus.STOPPED;
     }
 
     @Override
     public void stop() {
-        if (velocityOut != null) {
-            velocityOut.stop();
-        }
-        if (regulatedPowerOut != null) {
-            regulatedPowerOut.stop();
-        }
-        if (regulator != null) {
-            regulator.reset();
-        }
-        target = 0.0;
-        desiredTarget = 0.0;
+        if (velocityOut != null) velocityOut.stop();
+        if (regulatedPowerOut != null) regulatedPowerOut.stop();
+        if (regulator != null) regulator.reset();
+        appliedTarget = 0.0;
         lastRegulatorOutput = 0.0;
+        targetStatus = PlantTargetStatus.STOPPED;
     }
 
     @Override
-    public boolean atSetpoint() {
-        return lastAtSetpoint;
+    public double getRequestedTarget() {
+        return requestedTarget;
+    }
+
+    @Override
+    public double getAppliedTarget() {
+        return appliedTarget;
+    }
+
+    @Override
+    public PlantTargetStatus getTargetStatus() {
+        return targetStatus;
+    }
+
+    @Override
+    public boolean hasWritableTarget() {
+        return writableTarget != null;
+    }
+
+    @Override
+    public ScalarTarget writableTarget() {
+        if (writableTarget == null) return Plant.super.writableTarget();
+        return writableTarget;
     }
 
     @Override
@@ -272,38 +283,44 @@ public final class MappedVelocityPlant implements Plant {
         return lastMeasurement;
     }
 
+    @Override
+    public boolean atTarget() {
+        return lastAtTarget;
+    }
+
+    @Override
+    public boolean atTarget(double target) {
+        return Double.isFinite(target)
+                && Double.isFinite(lastMeasurement)
+                && Math.abs(requestedTarget - target) <= tolerance
+                && Math.abs(appliedTarget - target) <= tolerance
+                && Math.abs(lastMeasurement - target) <= tolerance
+                && targetStatus.kind() == PlantTargetStatus.Kind.ACCEPTED;
+    }
+
     private void samplePlantMeasurement(LoopClock clock) {
         lastNativeMeasurement = nativeMeasurement.getAsDouble(clock);
-        lastMeasurement = Double.isFinite(lastNativeMeasurement) ? toPlant(lastNativeMeasurement) : Double.NaN;
+        lastMeasurement = fromNative(lastNativeMeasurement);
     }
 
     private double toNative(double plantVelocity) {
         return plantVelocity * nativePerPlantUnit;
     }
 
-    private double toPlant(double nativeVelocity) {
+    private double fromNative(double nativeVelocity) {
         return nativeVelocity / nativePerPlantUnit;
     }
 
     @Override
     public void debugDump(DebugSink dbg, String prefix) {
-        if (dbg == null) {
-            return;
-        }
+        if (dbg == null) return;
+        Plant.super.debugDump(dbg, prefix);
         String p = (prefix == null || prefix.isEmpty()) ? "velocityPlant" : prefix;
-        dbg.addData(p + ".target", getTarget())
-                .addData(p + ".desiredTarget", desiredTarget)
-                .addData(p + ".measurement", getMeasurement())
-                .addData(p + ".error", getError())
-                .addData(p + ".atSetpoint", atSetpoint())
-                .addData(p + ".hasFeedback", hasFeedback())
-                .addData(p + ".range", targetRange())
-                .addData(p + ".nativePerPlantUnit", nativePerPlantUnit)
-                .addData(p + ".lastNativeMeasurement", lastNativeMeasurement)
-                .addData(p + ".lastRegulatorOutput", lastRegulatorOutput)
-                .addData(p + ".lastBlockReason", lastBlockReason);
-        if (regulator != null) {
-            regulator.debugDump(dbg, p + ".regulator");
-        }
+        dbg.addData(p + ".nativePerPlantUnit", nativePerPlantUnit)
+                .addData(p + ".nativeMeasurement", lastNativeMeasurement)
+                .addData(p + ".regulatorOutput", lastRegulatorOutput)
+                .addData(p + ".targetRange", targetRange());
+        targetGuards.debugDump(dbg, p + ".targetGuards");
+        if (regulator != null) regulator.debugDump(dbg, p + ".regulator");
     }
 }

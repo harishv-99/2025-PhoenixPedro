@@ -241,13 +241,17 @@ Plant shooter = FtcActuators.plant(hardwareMap)
         .bounded(0.0, 2600.0)
         .nativeUnits()
         .velocityTolerance(100.0)
-        .rateLimit(500.0)      // max delta in plant units per second
+        .targetGuards()
+            .maxTargetRate(500.0)    // max delta in plant units per second
+            .doneTargetGuards()
+        .targetedByDefaultWritable(0.0)
         .build();
 
 // Transfer: CR servo power plant.
 Plant transfer = FtcActuators.plant(hardwareMap)
         .crServo("transferServo", Direction.FORWARD)
         .power()
+        .targetedByDefaultWritable(0.0)
         .build();
 
 // Pusher: positional servo plant (0..1).
@@ -257,6 +261,7 @@ Plant pusher = FtcActuators.plant(hardwareMap)
         .linear()
             .bounded(0.0, 1.0)
             .nativeUnits()
+        .targetedByDefaultWritable(0.0)
         .build();
 ```
 
@@ -265,7 +270,7 @@ small guided questions about control strategy, topology, bounds, unit mapping, a
 For example, a regulated motor position path uses `motor(...).position().regulated().nativeFeedback(...).regulator(...)`
 instead of hiding those choices inside a large argument object.
 
-**Important:** tasks can set targets on plants, but *your loop* must still call `plant.update(clock)` each cycle.
+**Important:** tasks write the Plant's registered `ScalarTarget`; *your loop* must still call `plant.update(clock)` each cycle so the Plant samples that source and applies hardware guards.
 
 ---
 
@@ -391,7 +396,7 @@ If you want to abort automation, prefer `cancelAndClear()` over `clear()`. `clea
 Phoenix gives you factories so your code reads like intent:
 
 * `Tasks` — general composition (`sequence`, `parallelAll`, `waitForSeconds`, `waitUntil`, `runOnce`, …)
-* `PlantTasks` — patterns that command a `Plant` (`setInstant`, `holdFor`, `moveTo`, …)
+* `PlantTasks` — patterns that write a Plant's registered target (`setTarget`, `holdTargetFor`, `moveTo`, …)
 * `DriveTasks` — simple patterns that command a `DriveCommandSink` (`driveForSeconds`, `stop`, …)
 * `DriveGuidanceTasks` — execute a `DriveGuidancePlan` as a Task (autonomous-style guidance)
 * `RouteTasks` — follow an external route through a generic `RouteFollower<RouteT>` adapter
@@ -407,9 +412,9 @@ import edu.ftcphoenix.fw.task.Tasks;
 
 private Task buildShootOneDiscMacro(Plant shooter, Plant transfer) {
     return Tasks.sequence(
-            PlantTasks.setInstant(shooter, 3200.0),
-            Tasks.waitUntil(shooter::atSetpoint, 1.0),
-            PlantTasks.holdForThen(transfer, 1.0, 0.20, 0.0)
+            PlantTasks.setTarget(shooter, 3200.0),
+            Tasks.waitUntil(shooter::atTarget, 1.0),
+            PlantTasks.holdTargetForThen(transfer, 1.0, 0.20, 0.0)
     );
 }
 ```

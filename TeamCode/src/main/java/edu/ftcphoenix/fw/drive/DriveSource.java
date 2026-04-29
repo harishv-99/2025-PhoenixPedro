@@ -2,6 +2,7 @@ package edu.ftcphoenix.fw.drive;
 
 import java.util.Objects;
 
+import edu.ftcphoenix.fw.core.control.SlewRateLimiter;
 import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.source.Source;
@@ -45,6 +46,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *   <li>{@link #overlayWhen(BooleanSource, DriveOverlay, DriveOverlayMask)} – conditionally
  *       apply a {@link DriveOverlay} to override one or more components of this source.</li>
  *   <li>{@link #overlayStack()} – build a readable stack of multiple overlays.</li>
+ *   <li>{@link #rateLimited(double, double)} – smooth drive commands at the source layer.</li>
  *   <li>{@link #blendedWith(DriveSource, double)} – blend this source with another using
  *       {@link DriveSignal#lerp(DriveSignal, double)}.</li>
  * </ul>
@@ -220,6 +222,81 @@ public interface DriveSource extends Source<DriveSignal> {
                         .addData(p + ".scaled.omegaScale", omegaScale)
                         .addData(p + ".scaled.lastBase", lastBase)
                         .addData(p + ".scaled.lastOut", lastOut);
+                self.debugDump(dbg, p + ".source");
+            }
+        };
+    }
+
+    /**
+     * Return a new {@link DriveSource} that limits how quickly drive commands change.
+     *
+     * <p>This is the drive equivalent of {@code ScalarSource.rateLimited(...)}. Rate limiting
+     * belongs at the source layer because it shapes robot behavior before the command reaches the
+     * drivebase. The drivebase can then stay a simple mixer/sink that turns one current
+     * {@link DriveSignal} into wheel powers.</p>
+     *
+     * <p>The limiter uses the elapsed time reported by {@link LoopClock}; it does not guess future
+     * loop timing. Multiple reads during the same loop are idempotent because the underlying
+     * {@link SlewRateLimiter}s are cycle-aware.</p>
+     *
+     * @param maxTranslationDeltaPerSec maximum axial/lateral command change per second
+     * @param maxOmegaDeltaPerSec       maximum rotational command change per second
+     * @return wrapped source with per-axis slew-rate limiting
+     */
+    default DriveSource rateLimited(double maxTranslationDeltaPerSec, double maxOmegaDeltaPerSec) {
+        return rateLimited(maxTranslationDeltaPerSec, maxTranslationDeltaPerSec, maxOmegaDeltaPerSec);
+    }
+
+    /**
+     * Return a new {@link DriveSource} with independent axial, lateral, and omega rate limits.
+     *
+     * @param maxAxialDeltaPerSec   maximum axial command change per second
+     * @param maxLateralDeltaPerSec maximum lateral command change per second
+     * @param maxOmegaDeltaPerSec   maximum rotational command change per second
+     */
+    default DriveSource rateLimited(double maxAxialDeltaPerSec,
+                                    double maxLateralDeltaPerSec,
+                                    double maxOmegaDeltaPerSec) {
+        DriveSource self = this;
+        return new DriveSource() {
+            private final SlewRateLimiter axialLimiter = new SlewRateLimiter(maxAxialDeltaPerSec);
+            private final SlewRateLimiter lateralLimiter = new SlewRateLimiter(maxLateralDeltaPerSec);
+            private final SlewRateLimiter omegaLimiter = new SlewRateLimiter(maxOmegaDeltaPerSec);
+            private DriveSignal lastBase = DriveSignal.zero();
+            private DriveSignal lastOut = DriveSignal.zero();
+
+            @Override
+            public DriveSignal get(LoopClock clock) {
+                lastBase = self.get(clock);
+                lastOut = new DriveSignal(
+                        axialLimiter.calculate(lastBase.axial, clock),
+                        lateralLimiter.calculate(lastBase.lateral, clock),
+                        omegaLimiter.calculate(lastBase.omega, clock));
+                return lastOut;
+            }
+
+            @Override
+            public void reset() {
+                self.reset();
+                axialLimiter.reset();
+                lateralLimiter.reset();
+                omegaLimiter.reset();
+                lastBase = DriveSignal.zero();
+                lastOut = DriveSignal.zero();
+            }
+
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) {
+                    return;
+                }
+                String p = (prefix == null || prefix.isEmpty()) ? "drive" : prefix;
+                dbg.addData(p + ".class", "RateLimitedDriveSource")
+                        .addData(p + ".rateLimited.lastBase", lastBase)
+                        .addData(p + ".rateLimited.lastOut", lastOut);
+                axialLimiter.debugDump(dbg, p + ".rateLimited.axial");
+                lateralLimiter.debugDump(dbg, p + ".rateLimited.lateral");
+                omegaLimiter.debugDump(dbg, p + ".rateLimited.omega");
                 self.debugDump(dbg, p + ".source");
             }
         };

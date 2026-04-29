@@ -265,7 +265,8 @@ public final class TeleOp_02_ShooterBasic extends OpMode {
                 gamepads.p1().leftY(),
                 gamepads.p1().rightX(),
                 GamepadDriveSource.Config.defaults()
-        ).scaledWhen(gamepads.p1().rightBumper(), 0.35, 0.20);
+        ).scaledWhen(gamepads.p1().rightBumper(), 0.35, 0.20)
+                .rateLimited(4.0, 4.0, 6.0);
 
         // === 3) Mechanism wiring using FtcActuators ===
 
@@ -278,6 +279,7 @@ public final class TeleOp_02_ShooterBasic extends OpMode {
                 .bounded(0.0, SHOOTER_VELOCITY_NATIVE)
                 .nativeUnits()
                 .velocityTolerance(SHOOTER_VELOCITY_TOLERANCE_NATIVE)
+                .targetedByDefaultWritable(0.0)
                 .build();
 
         // Transfer: two CR servos, power-controlled pair.
@@ -285,6 +287,7 @@ public final class TeleOp_02_ShooterBasic extends OpMode {
                 .crServo(HW_TRANSFER_LEFT, Direction.FORWARD)
                 .andCrServo(HW_TRANSFER_RIGHT, Direction.REVERSE)
                 .power()
+                .targetedByDefaultWritable(0.0)
                 .build();
 
         // Pusher: single positional servo, 0..1 position plant.
@@ -294,6 +297,7 @@ public final class TeleOp_02_ShooterBasic extends OpMode {
                 .linear()
                 .bounded(0.0, 1.0)
                 .nativeUnits()
+                .targetedByDefaultWritable(0.0)
                 .build();
 
         // === 4) Bindings: map buttons to high-level modes (using lambdas) ===
@@ -369,33 +373,33 @@ public final class TeleOp_02_ShooterBasic extends OpMode {
         // --- 4) Mechanism logic: map modes to plant targets ---
 
         // Shooter
-        shooter.setTarget(shooterEnabled ? SHOOTER_VELOCITY_NATIVE : 0.0);
+        shooter.writableTarget().set(shooterEnabled ? SHOOTER_VELOCITY_NATIVE : 0.0);
 
         // Transfer
         switch (transferMode) {
             case LOAD:
-                transfer.setTarget(TRANSFER_POWER_LOAD);
+                transfer.writableTarget().set(TRANSFER_POWER_LOAD);
                 break;
             case SHOOT:
-                transfer.setTarget(TRANSFER_POWER_SHOOT);
+                transfer.writableTarget().set(TRANSFER_POWER_SHOOT);
                 break;
             case OFF:
             default:
-                transfer.setTarget(0.0);
+                transfer.writableTarget().set(0.0);
                 break;
         }
 
         // Pusher
         switch (pusherMode) {
             case LOAD:
-                pusher.setTarget(PUSHER_POS_LOAD);
+                pusher.writableTarget().set(PUSHER_POS_LOAD);
                 break;
             case SHOOT:
-                pusher.setTarget(PUSHER_POS_SHOOT);
+                pusher.writableTarget().set(PUSHER_POS_SHOOT);
                 break;
             case RETRACT:
             default:
-                pusher.setTarget(PUSHER_POS_RETRACT);
+                pusher.writableTarget().set(PUSHER_POS_RETRACT);
                 break;
         }
 
@@ -412,12 +416,12 @@ public final class TeleOp_02_ShooterBasic extends OpMode {
         telemetry.addLine("FW Example 02: Shooter Basic");
         telemetry.addData("drive.cmd", driveCmd);
         telemetry.addData("shooter.enabled", shooterEnabled);
-        telemetry.addData("shooter.targetNative", shooter.getTarget());
-        telemetry.addData("shooter.atSetpoint", shooter.atSetpoint());
+        telemetry.addData("shooter.targetNative", shooter.getRequestedTarget());
+        telemetry.addData("shooter.atTarget", shooter.atTarget());
         telemetry.addData("transfer.mode", transferMode);
-        telemetry.addData("transfer.target", transfer.getTarget());
+        telemetry.addData("transfer.target", transfer.getRequestedTarget());
         telemetry.addData("pusher.mode", pusherMode);
-        telemetry.addData("pusher.target", pusher.getTarget());
+        telemetry.addData("pusher.target", pusher.getRequestedTarget());
         telemetry.addData("debug.enabled", DEBUG);
 
         // --- 7) Optional debug (can be disabled without breaking required telemetry) ---
@@ -446,9 +450,9 @@ public final class TeleOp_02_ShooterBasic extends OpMode {
     @Override
     public void stop() {
         // Safely stop mechanisms and drive.
-        shooter.setTarget(0.0);
-        transfer.setTarget(0.0);
-        pusher.setTarget(PUSHER_POS_RETRACT);
+        shooter.writableTarget().set(0.0);
+        transfer.writableTarget().set(0.0);
+        pusher.writableTarget().set(PUSHER_POS_RETRACT);
 
         shooter.stop();
         transfer.stop();

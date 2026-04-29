@@ -315,6 +315,21 @@ public final class PhoenixProfile {
             public double slowTranslateScale = 0.35;
 
             /**
+             * Maximum axial command change per second for the behavior-layer drive source.
+             */
+            public double maxAxialRatePerSec = 4.0;
+
+            /**
+             * Maximum lateral command change per second for the behavior-layer drive source.
+             */
+            public double maxLateralRatePerSec = 4.0;
+
+            /**
+             * Maximum rotational command change per second for the behavior-layer drive source.
+             */
+            public double maxOmegaRatePerSec = 6.0;
+
+            /**
              * Rotation scale applied while the Phoenix slow-mode button is held.
              */
             public double slowOmegaScale = 0.20;
@@ -335,6 +350,9 @@ public final class PhoenixProfile {
                 c.manualDrive = this.manualDrive.copy();
                 c.slowTranslateScale = this.slowTranslateScale;
                 c.slowOmegaScale = this.slowOmegaScale;
+                c.maxAxialRatePerSec = this.maxAxialRatePerSec;
+                c.maxLateralRatePerSec = this.maxLateralRatePerSec;
+                c.maxOmegaRatePerSec = this.maxOmegaRatePerSec;
                 return c;
             }
         }

@@ -85,6 +85,7 @@ public final class TeleOp_08_LiftExternalSensorControl extends OpMode {
                 .nativeUnits()
                 .alreadyReferenced()
                 .positionTolerance(0.50)
+                .targetedByDefaultWritable(0.0)
                 .build();
 
         bindings.onRise(gamepads.p1().a(), () -> desiredHeightIn.set(HEIGHT_LOW_IN));
@@ -98,13 +99,13 @@ public final class TeleOp_08_LiftExternalSensorControl extends OpMode {
         bindings.update(clock);
 
         // Execution is intentionally trivial here: hold the currently selected height.
-        liftPlant.setTarget(desiredHeightIn.get());
+        liftPlant.writableTarget().set(desiredHeightIn.get());
         liftPlant.update(clock);
 
-        telemetry.addData("lift.targetIn", liftPlant.getTarget());
+        telemetry.addData("lift.targetIn", liftPlant.getRequestedTarget());
         telemetry.addData("lift.heightIn", liftPlant.getMeasurement());
-        telemetry.addData("lift.errorIn", liftPlant.getError());
-        telemetry.addData("lift.atSetpoint", liftPlant.atSetpoint());
+        telemetry.addData("lift.targetErrorIn", liftPlant.getTargetError());
+        telemetry.addData("lift.atTarget", liftPlant.atTarget());
         telemetry.update();
     }
 

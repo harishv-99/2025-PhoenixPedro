@@ -24,7 +24,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * // In your loop:
  * feederQueue.update(clock);            // idempotent by clock.cycle()
  * double feederPower = feederQueue.getAsDouble(clock);
- * transferShooterPlant.setTarget(feederPower);
+ * transferShooterTarget.set(feederPower);
  * }
  * </pre>
  *
@@ -113,7 +113,7 @@ public final class OutputTaskRunner implements ScalarSource {
      * <p>This is intentional: callers should control when {@link #update(LoopClock)} happens so
      * task progression doesn't occur "accidentally" in a helper like this. That matters when the
      * queued tasks depend on other subsystem state (for example a shooter feed task that waits on
-     * {@code Plant.atSetpoint()} after the shooter flywheel target is updated for the current loop).
+     * {@code Plant.atTarget()} after the shooter flywheel target is updated for the current loop).
      *
      * <p>If you need {@code desiredBacklog} to reflect tasks that might complete in the current
      * loop, call {@link #update(LoopClock)} earlier in the cycle before calling this method.</p>
@@ -147,45 +147,24 @@ public final class OutputTaskRunner implements ScalarSource {
     }
 
     /**
-     * Repeat an output-producing action while a request signal is true.
+     * Maintain a queue backlog while a request signal is high; cancel and clear when it is low.
      *
-     * <p>This is the common TeleOp pattern:</p>
-     * <ul>
-     *   <li>Driver holds a trigger to request repeated shots / repeats.</li>
-     *   <li>You keep exactly N tasks buffered so repeats happen quickly but you don't "queue spam".</li>
-     *   <li>When the request is released, the queue is cleared immediately.</li>
-     * </ul>
-     *
-     * <p>Typical usage for "repeat while held" shooting:</p>
+     * <p>Example:</p>
      * <pre>{@code
-     * // Request signal: held trigger.
-     * BooleanSource requestShoot = gamepads.p2().rightTrigger().above(0.50);
-     *
-     * // Task factory: each task waits for readiness and then feeds one shot.
-     * Supplier<OutputTask> feedOneFactory = () -> Tasks.gatedOutputUntil(
-     *         "feedOne",
-     *         canShootNow,
-     *         ballLeftGate,
-     *         0.90,
-     *         0.05,
-     *         0.30
-     * );
-     *
-     * feederQueue.whileTrue(clock, requestShoot, 1, feedOneFactory);
-     * }
-     * </pre>
+     * feederQueue.whileHigh(clock, requestShoot, 1, feedOneFactory);
+     * }</pre>
      *
      * <p><b>Design note:</b> {@code request} should usually be a <em>request</em> signal
      * (driver intent), not a readiness gate. Readiness should live inside the produced task
      * (for example as {@code startWhen}). That way, the task can wait safely without producing
-     * output, and your code keeps one buffered "feedOne" ready to run the moment sensors allow.</p>
+     * output, and your code keeps one buffered task ready to run the moment sensors allow.</p>
      *
      * @param clock       loop clock (required)
-     * @param request     request signal; when false, the queue is cleared (required)
+     * @param request     request signal; when low, the queue is cleared (required)
      * @param backlog     number of tasks to keep buffered while requested (>= 0)
      * @param taskFactory factory that produces a <b>new</b> task instance each time (required)
      */
-    public void whileTrue(
+    public void whileHigh(
             LoopClock clock,
             BooleanSource request,
             int backlog,
@@ -199,6 +178,33 @@ public final class OutputTaskRunner implements ScalarSource {
         }
 
         if (!request.getAsBoolean(clock)) {
+            cancelAndClear();
+            return;
+        }
+
+        ensureBacklog(clock, backlog, taskFactory);
+    }
+
+    /**
+     * Maintain a queue backlog while a request signal is low; cancel and clear when it is high.
+     *
+     * <p>This mirrors {@code Bindings.whileLow(...)} and keeps boolean signal vocabulary parallel
+     * across input bindings and output queues.</p>
+     */
+    public void whileLow(
+            LoopClock clock,
+            BooleanSource request,
+            int backlog,
+            Supplier<? extends OutputTask> taskFactory
+    ) {
+        Objects.requireNonNull(clock, "clock");
+        Objects.requireNonNull(request, "request");
+        Objects.requireNonNull(taskFactory, "taskFactory");
+        if (backlog < 0) {
+            throw new IllegalArgumentException("backlog must be >= 0, got " + backlog);
+        }
+
+        if (request.getAsBoolean(clock)) {
             cancelAndClear();
             return;
         }

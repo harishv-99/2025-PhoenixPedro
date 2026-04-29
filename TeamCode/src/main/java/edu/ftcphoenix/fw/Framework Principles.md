@@ -166,18 +166,22 @@ Most robot code should **not** use these directly.
 
 ### 2.2 Plants
 
-A **Plant** is the low-level sink you command with a scalar target.
+A **Plant** is a source-driven scalar target follower. Robot behavior does not call
+`plant.setTarget(...)` every loop. Instead, every robot-facing Plant is constructed with one
+`ScalarSource` target. During `plant.update(clock)`, the Plant samples that source once, applies
+plant-level hardware guards, sends one safe target to hardware/control, and refreshes status.
 
 Key methods (see `edu.ftcphoenix.fw.actuation.Plant`):
 
-* `setTarget(double)` / `getTarget()`
-* `update(LoopClock clock)`
-* `stop()`
-* `atSetpoint()` / `hasFeedback()`
-* `getMeasurement()` / `getError()` for feedback-capable plants
-* optional `reset()` and `debugDump(...)`
+* `update(LoopClock clock)` — sample the configured target source and command hardware/control.
+* `getRequestedTarget()` — what behavior asked for this loop.
+* `getAppliedTarget()` — what the Plant actually applied after bounds and target guards.
+* `getTargetStatus()` — why requested and applied target may differ.
+* `atTarget()` / `atTarget(value)` / `hasFeedback()` — feedback-based readiness.
+* `getMeasurement()`, `getTargetError()`, and `getAppliedTargetError()` for feedback-capable plants.
+* optional `writableTarget()`, `reset()`, and `debugDump(...)`.
 
-A Plant may be open-loop (power, commanded servo position), device-managed closed-loop (for example FTC motor velocity/position), or framework-regulated closed-loop over a raw actuator command.
+A Plant may be open-loop (power, commanded servo position), device-managed closed-loop (for example FTC motor velocity/position), or framework-regulated closed-loop over a raw actuator command. The public rule is the same for all of them: **behavior shapes sources; Plants protect and apply one target per loop**.
 
 ### 2.3 The beginner entrypoint: `FtcActuators.plant(...)`
 
@@ -187,6 +191,8 @@ A Plant may be open-loop (power, commanded servo position), device-managed close
 import edu.ftcphoenix.fw.core.hal.Direction;
 import edu.ftcphoenix.fw.ftc.FtcActuators;
 
+ScalarTarget shooterTarget = ScalarTarget.held(0.0);
+
 Plant shooter = FtcActuators.plant(hardwareMap)
         .motor("shooterLeftMotor", Direction.FORWARD)
         .andMotor("shooterRightMotor", Direction.REVERSE)
@@ -195,12 +201,14 @@ Plant shooter = FtcActuators.plant(hardwareMap)
         .bounded(0.0, 2600.0)
         .nativeUnits()
         .velocityTolerance(100.0)
+        .targetedBy(shooterTarget)
         .build();
 
 Plant transfer = FtcActuators.plant(hardwareMap)
         .crServo("transferLeftServo", Direction.FORWARD)
         .andCrServo("transferRightServo", Direction.REVERSE)
         .power()
+        .targetedByDefaultWritable(0.0)
         .build();
 
 Plant pusher = FtcActuators.plant(hardwareMap)
@@ -209,6 +217,7 @@ Plant pusher = FtcActuators.plant(hardwareMap)
         .linear()
             .bounded(0.0, 1.0)
             .nativeUnits()   // servo raw 0..1 plant coordinate
+        .targetedByDefaultWritable(0.0)
         .build();
 ```
 
@@ -222,7 +231,8 @@ The builder is staged on purpose:
    * topology: `linear()` or `periodic(period)`
    * bounds: `bounded(min, max)` or `unbounded()`
    * mapping/reference: `nativeUnits()`, `scaleToNative(...)`, bounded-only `rangeMapsToNative(...)`, then `alreadyReferenced()`, `plantPositionMapsToNative(...)`, `assumeCurrentPositionIs(...)`, or `needsReference(...)` when a runtime reference is required
-4. **Optional modifiers**: `positionTolerance(...)` for position Plants, `rateLimit(maxDeltaPerSec)`, then `build()`
+4. **Optional hardware guards**: enter `targetGuards()` for dynamic Plant-level protection such as `maxTargetRate(...)`, `holdLastTargetUnless(...)`, or `fallbackTargetUnless(...)`.
+5. **Target binding**: finish with `targetedBy(ScalarTarget)`, `targetedBy(readOnlySource)`, or `targetedByDefaultWritable(initialTarget)`, then `build()`.
 
 Internally, Phoenix also has lower-level `Plants` factory helpers, but student code should typically prefer `FtcActuators`.
 
@@ -254,16 +264,18 @@ Driver-facing conversions (e.g., “stick right means strafe right”) happen **
 
 `MecanumDrivebase` mixes a `DriveSignal` into four wheel powers.
 
-If you use rate limiting, call `update(clock)` **before** `drive(signal)` so it uses the most recent `dtSec`:
+Drive behavior shaping belongs upstream in the source graph. For example, smooth a manual drive source with `DriveSource.rateLimited(...)` before the command reaches the drivebase:
 
 ```java
-DriveSignal s = driveSource.get(clock).clamped();
+DriveSource manual = gamepadDrive
+        .scaledWhen(driver.rightBumper(), 0.35, 0.20)
+        .rateLimited(4.0, 4.0, 6.0);
 
-drivebase.update(clock);
+DriveSignal s = manual.get(clock).clamped();
 drivebase.drive(s);
 ```
 
-Configuration is via `MecanumDrivebase.Config`. The drivebase makes a **defensive copy** of the config at construction time, so mutating the config object later won’t change an already-created drivebase.
+Configuration is via `MecanumDrivebase.Config` for drivebase scaling and physical-speed mapping. The drivebase makes a **defensive copy** of the config at construction time, so mutating the config object later won’t change an already-created drivebase.
 
 
 
@@ -422,7 +434,7 @@ A key design choice: `TaskRunner.update(clock)` is **idempotent by `clock.cycle(
 Robot code should rarely implement raw tasks directly. Prefer:
 
 * `Tasks.*` for generic composition (`sequence`, `parallelAll`, `waitForSeconds`, `waitUntil`, ...)
-* `PlantTasks.*` for commanding Plants (`setInstant`, `holdFor`, `moveTo`, ...)
+* `ScalarTasks.*` for writing standalone `ScalarTarget`s and `PlantTasks.*` for a Plant's registered writable target (`setTarget`, `holdTargetFor`, `moveTo`, ...)
 * `DriveTasks.*` for drive behaviors
 
 ---
@@ -431,15 +443,15 @@ Robot code should rarely implement raw tasks directly. Prefer:
 
 Phoenix distinguishes:
 
-* **Feedback-capable plants** – implement a meaningful `atSetpoint()` and override `hasFeedback()` to return `true` (motor position/velocity plants).
+* **Feedback-capable plants** – implement meaningful `atTarget()` / `atTarget(value)` and override `hasFeedback()` to return `true` (motor position/velocity plants).
 * **Open-loop plants** – do not expose sensor-based completion and leave `hasFeedback() == false` (power plants, servo set-and-hold plants).
 
 Important consequence:
 
 * `PlantTasks.moveTo(...)` / `moveTo(..., timeout)` / `moveToThen(...)` **require** `plant.hasFeedback() == true` and will throw if used on an open-loop plant.
-* Time-based helpers like `holdFor(...)` / `holdForThen(...)` work on any Plant.
+* Time-based helpers like `holdTargetFor(...)` / `holdTargetForThen(...)` work on any Plant with a registered writable target.
 
-This makes it hard to accidentally write a “wait for setpoint” macro on a mechanism that has no feedback.
+This makes it hard to accidentally write a “wait for target” macro on a mechanism that has no feedback.
 
 ---
 

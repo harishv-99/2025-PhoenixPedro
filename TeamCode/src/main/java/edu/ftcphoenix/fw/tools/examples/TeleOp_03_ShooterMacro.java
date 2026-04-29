@@ -35,7 +35,7 @@ import edu.ftcphoenix.fw.task.TaskRunner;
  *
  * <ol>
  *   <li>Spin up shooter to a target velocity and wait until
- *       {@link Plant#atSetpoint()} (with a timeout for safety).</li>
+ *       {@link Plant#atTarget()} (with a timeout for safety).</li>
  *   <li>Once shooter is ready, in parallel:
  *     <ul>
  *       <li>Run transfer at shoot power for a short pulse.</li>
@@ -61,7 +61,7 @@ import edu.ftcphoenix.fw.task.TaskRunner;
  *   <li><b>How to use {@link PlantTasks}</b> to create plant-related tasks:
  *     <ul>
  *       <li>{@link PlantTasks#moveTo(Plant, double, double)}
- *           – set a target and wait until {@code atSetpoint()} (with timeout).</li>
+ *           – set a target and wait until {@code atTarget()} (with timeout).</li>
  *       <li>{@link PlantTasks#holdFor(Plant, double, double)}
  *           and the overload with a final target – hold a value for a fixed
  *           time and then go to a final value.</li>
@@ -232,7 +232,8 @@ public final class TeleOp_03_ShooterMacro extends OpMode {
                 gamepads.p1().leftY(),
                 gamepads.p1().rightX(),
                 GamepadDriveSource.Config.defaults()
-        ).scaledWhen(gamepads.p1().rightBumper(), 0.35, 0.20);
+        ).scaledWhen(gamepads.p1().rightBumper(), 0.35, 0.20)
+                .rateLimited(4.0, 4.0, 6.0);
 
         // === 3) Mechanism wiring using FtcActuators ===
 
@@ -244,12 +245,14 @@ public final class TeleOp_03_ShooterMacro extends OpMode {
                 .bounded(0.0, SHOOTER_VELOCITY_NATIVE)
                 .nativeUnits()
                 .velocityTolerance(SHOOTER_VELOCITY_TOLERANCE_NATIVE)
+                .targetedByDefaultWritable(0.0)
                 .build();
 
         transfer = FtcActuators.plant(hardwareMap)
                 .crServo(HW_TRANSFER_LEFT, Direction.FORWARD)
                 .andCrServo(HW_TRANSFER_RIGHT, Direction.REVERSE)
                 .power()
+                .targetedByDefaultWritable(0.0)
                 .build();
 
         pusher = FtcActuators.plant(hardwareMap)
@@ -258,12 +261,13 @@ public final class TeleOp_03_ShooterMacro extends OpMode {
                 .linear()
                 .bounded(0.0, 1.0)
                 .nativeUnits()
+                .targetedByDefaultWritable(0.0)
                 .build();
 
         // Initialize mechanisms to a safe default.
-        shooter.setTarget(0.0);
-        transfer.setTarget(0.0);
-        pusher.setTarget(PUSHER_POS_RETRACT);
+        shooter.writableTarget().set(0.0);
+        transfer.writableTarget().set(0.0);
+        pusher.writableTarget().set(PUSHER_POS_RETRACT);
 
         // === 4) Bindings: hook buttons to macro actions ===
 
@@ -313,9 +317,9 @@ public final class TeleOp_03_ShooterMacro extends OpMode {
 
         // When no macro is active, hold a safe default state.
         if (!macroRunner.hasActiveTask()) {
-            shooter.setTarget(0.0);
-            transfer.setTarget(0.0);
-            pusher.setTarget(PUSHER_POS_RETRACT);
+            shooter.writableTarget().set(0.0);
+            transfer.writableTarget().set(0.0);
+            pusher.writableTarget().set(PUSHER_POS_RETRACT);
         }
 
         // --- 4) Drive: always under manual control ---
@@ -335,10 +339,10 @@ public final class TeleOp_03_ShooterMacro extends OpMode {
         telemetry.addData("drive.cmd", driveCmd);
         telemetry.addData("macro.active", macroRunner.hasActiveTask());
         telemetry.addData("macro.queued", macroRunner.queuedCount());
-        telemetry.addData("shooter.targetNative", shooter.getTarget());
-        telemetry.addData("shooter.atSetpoint", shooter.atSetpoint());
-        telemetry.addData("transfer.target", transfer.getTarget());
-        telemetry.addData("pusher.target", pusher.getTarget());
+        telemetry.addData("shooter.targetNative", shooter.getRequestedTarget());
+        telemetry.addData("shooter.atTarget", shooter.atTarget());
+        telemetry.addData("transfer.target", transfer.getRequestedTarget());
+        telemetry.addData("pusher.target", pusher.getRequestedTarget());
         telemetry.addData("debug.enabled", DEBUG);
 
         // --- 7) Optional debug (can be disabled without breaking required telemetry) ---
@@ -395,22 +399,22 @@ public final class TeleOp_03_ShooterMacro extends OpMode {
      */
     private void cancelShootMacros() {
         macroRunner.cancelAndClear();
-        shooter.setTarget(0.0);
-        transfer.setTarget(0.0);
-        pusher.setTarget(PUSHER_POS_RETRACT);
+        shooter.writableTarget().set(0.0);
+        transfer.writableTarget().set(0.0);
+        pusher.writableTarget().set(PUSHER_POS_RETRACT);
     }
 
     /**
      * Build a macro that:
      *
      * <ol>
-     *   <li>Spins up the shooter and waits for atSetpoint (with timeout).</li>
+     *   <li>Spins up the shooter and waits for atTarget (with timeout).</li>
      *   <li>Feeds one ball using transfer + pusher in parallel.</li>
      *   <li>Spins the shooter down to 0.</li>
      * </ol>
      */
     private Task buildShootOneBallMacro() {
-        // Step 1: set shooter target and wait for atSetpoint() or timeout.
+        // Step 1: set shooter target and wait for atTarget() or timeout.
         Task spinUp = PlantTasks.moveTo(
                 shooter,
                 SHOOTER_VELOCITY_NATIVE,
@@ -421,19 +425,19 @@ public final class TeleOp_03_ShooterMacro extends OpMode {
         //
         //  - Transfer runs at shoot power for TRANSFER_PULSE_SEC, then stops.
         //  - Pusher steps through LOAD → SHOOT → RETRACT positions.
-        Task feedTransfer = PlantTasks.holdFor(
+        Task feedTransfer = PlantTasks.holdTargetFor(
                 transfer,
                 TRANSFER_POWER_SHOOT,
                 TRANSFER_PULSE_SEC
         );
 
-        Task pusherLoad = PlantTasks.holdFor(
+        Task pusherLoad = PlantTasks.holdTargetFor(
                 pusher,
                 PUSHER_POS_LOAD,
                 PUSHER_STAGE_SEC
         );
 
-        Task pusherShoot = PlantTasks.holdForThen(
+        Task pusherShoot = PlantTasks.holdTargetForThen(
                 pusher,
                 PUSHER_POS_SHOOT,
                 PUSHER_STAGE_SEC,
@@ -451,13 +455,13 @@ public final class TeleOp_03_ShooterMacro extends OpMode {
         );
 
         // Step 3: optionally hold shooter briefly, then spin down to 0.
-        Task holdBeforeSpinDown = PlantTasks.holdFor(
+        Task holdBeforeSpinDown = PlantTasks.holdTargetFor(
                 shooter,
                 SHOOTER_VELOCITY_NATIVE,
                 SHOOTER_SPINDOWN_HOLD_SEC
         );
 
-        Task spinDown = PlantTasks.setInstant(shooter, 0.0);
+        Task spinDown = PlantTasks.setTarget(shooter, 0.0);
 
         return SequenceTask.of(
                 spinUp,

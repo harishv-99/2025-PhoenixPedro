@@ -1,14 +1,15 @@
 package edu.ftcphoenix.fw.tools.examples;
 
-import java.util.function.LongSupplier;
-
 import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 
+import java.util.function.LongSupplier;
+
 import edu.ftcphoenix.fw.actuation.Plant;
 import edu.ftcphoenix.fw.core.hal.Direction;
 import edu.ftcphoenix.fw.core.math.MathUtil;
+import edu.ftcphoenix.fw.core.source.ScalarTarget;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.ftc.FtcActuators;
 import edu.ftcphoenix.fw.input.Gamepads;
@@ -91,6 +92,9 @@ public final class TeleOp_09_LayeredShooterMechanism extends OpMode {
     public void init() {
         gamepads = Gamepads.create(gamepad1, gamepad2);
 
+        ScalarTarget flywheelTarget = ScalarTarget.held(0.0);
+        ScalarTarget feederTarget = ScalarTarget.held(0.0);
+
         Plant flywheelPlant = FtcActuators.plant(hardwareMap)
                 .motor(HW_SHOOTER_LEFT, Direction.FORWARD)
                 .andMotor(HW_SHOOTER_RIGHT, Direction.REVERSE)
@@ -99,15 +103,17 @@ public final class TeleOp_09_LayeredShooterMechanism extends OpMode {
                 .bounded(0.0, FLYWHEEL_MAX_VELOCITY_NATIVE)
                 .nativeUnits()
                 .velocityTolerance(FLYWHEEL_READY_TOLERANCE_NATIVE)
+                .targetedBy(flywheelTarget)
                 .build();
 
         Plant feederPlant = FtcActuators.plant(hardwareMap)
                 .crServo(HW_FEED_LEFT, Direction.FORWARD)
                 .andCrServo(HW_FEED_RIGHT, Direction.REVERSE)
                 .power()
+                .targetedBy(feederTarget)
                 .build();
 
-        shooter = new LayeredShooter(clock::cycle, flywheelPlant, feederPlant);
+        shooter = new LayeredShooter(clock::cycle, flywheelPlant, flywheelTarget, feederPlant, feederTarget);
 
         // Held requests.
         bindings.toggleOnRise(gamepads.p1().leftBumper(), shooter::setFlywheelHeld);
@@ -177,9 +183,13 @@ public final class TeleOp_09_LayeredShooterMechanism extends OpMode {
         private final Behavior behavior = new Behavior();
         private final Realization realization;
 
-        LayeredShooter(LongSupplier cycleSource, Plant flywheelPlant, Plant feederPlant) {
+        LayeredShooter(LongSupplier cycleSource,
+                       Plant flywheelPlant,
+                       ScalarTarget flywheelTarget,
+                       Plant feederPlant,
+                       ScalarTarget feederTarget) {
             requests = new Requests(cycleSource);
-            realization = new Realization(flywheelPlant, feederPlant);
+            realization = new Realization(flywheelPlant, flywheelTarget, feederPlant, feederTarget);
         }
 
         // ------------------------------------------------------------------
@@ -446,35 +456,39 @@ public final class TeleOp_09_LayeredShooterMechanism extends OpMode {
      */
     private static final class Realization {
         private final Plant flywheel;
+        private final ScalarTarget flywheelTarget;
         private final Plant feeder;
+        private final ScalarTarget feederTarget;
 
-        Realization(Plant flywheel, Plant feeder) {
+        Realization(Plant flywheel, ScalarTarget flywheelTarget, Plant feeder, ScalarTarget feederTarget) {
             this.flywheel = flywheel;
+            this.flywheelTarget = flywheelTarget;
             this.feeder = feeder;
+            this.feederTarget = feederTarget;
         }
 
         Readback readback() {
             return new Readback(
-                    flywheel.atSetpoint(),
-                    flywheel.getTarget(),
+                    flywheel.atTarget(),
+                    flywheel.getRequestedTarget(),
                     flywheel.getMeasurement()
             );
         }
 
         void apply(LoopClock clock, BehaviorOutput out) {
-            flywheel.setTarget(out.flywheelTargetNative);
-            feeder.setTarget(out.feedPower);
+            flywheelTarget.set(out.flywheelTargetNative);
+            feederTarget.set(out.feedPower);
 
             flywheel.update(clock);
             feeder.update(clock);
         }
 
         double flywheelTargetNative() {
-            return flywheel.getTarget();
+            return flywheel.getRequestedTarget();
         }
 
         double feedTargetPower() {
-            return feeder.getTarget();
+            return feeder.getRequestedTarget();
         }
 
         void stop() {

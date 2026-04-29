@@ -207,6 +207,11 @@ public final class PositionCalibrationTasks {
 
         @Override
         public Task build() {
+            if (holdAfter && !plant.hasWritableTarget()) {
+                throw new IllegalStateException("holdAfterReference(...) requires a PositionPlant with a registered writable target. "
+                        + "Build the plant with targetedBy(ScalarTarget), targetedByDefaultWritable(...), "
+                        + "or targetedBy(readOnlySource).writableTarget(commandTarget).");
+            }
             return new SearchTask(plant, power, condition, reference, holdAfter, holdTarget, timeoutSec);
         }
     }
@@ -257,7 +262,7 @@ public final class PositionCalibrationTasks {
             if (condition.getAsBoolean(clock)) {
                 plant.establishReferenceAt(reference, clock);
                 plant.endCalibrationSearch(true);
-                if (holdAfter) plant.setTarget(holdTarget);
+                if (holdAfter) plant.writableTarget().set(holdTarget);
                 outcome = TaskOutcome.SUCCESS;
                 complete = true;
                 return;

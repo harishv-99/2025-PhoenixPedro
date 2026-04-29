@@ -60,12 +60,12 @@ position, but without position-only concepts like topology, reference, and homin
 1. choose velocity loop ownership (`deviceManagedWithDefaults()`, `deviceManaged()...doneDeviceManaged()`, or `regulated().nativeFeedback(...).regulator(...)`)
 2. choose legal velocity target bounds (`bounded(...)` or `unbounded()`)
 3. choose plant/native velocity mapping (`nativeUnits()` or `scaleToNative(...)`)
-4. optionally set plant-level `velocityTolerance(...)` and `rateLimit(...)`
+4. optionally set plant-level `velocityTolerance(...)` and `targetGuards().maxTargetRate(...)`
 5. build
 
 The old `MotorVelocityControl` value-object API was removed instead of retained as a parallel path.
 Velocity uses a zero-preserving mapping only; no `rangeMapsToNative(...)` is exposed for velocity.
-As with the rest of the plant API, `bounded(...)`, tolerances, and `setTarget(...)` remain plant
+As with the rest of the plant API, `bounded(...)`, tolerances, and `targetedBy(...)` target sources remain in plant
 units unless a method name explicitly calls out native/controller units.
 
 ### `spatial/SpatialQuery` / `spatial/SpatialQuerySpec`

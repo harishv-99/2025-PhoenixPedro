@@ -4,7 +4,7 @@ package edu.ftcphoenix.fw.task;
  * A {@link Task} that produces a scalar output value while it runs.
  *
  * <p>This is Phoenix's principled replacement for "action controllers" that directly write hardware.
- * Instead of calling {@code plant.setTarget(...)} inside a task, an {@code OutputTask} exposes an
+ * Instead of writing a plant directly inside a task, an {@code OutputTask} exposes an
  * output value (typically a Plant target such as power, velocity, or position) and lets your
  * subsystem decide how to apply it.
  *

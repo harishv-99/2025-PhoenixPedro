@@ -70,7 +70,8 @@ public final class TeleOp_01_MecanumBasic extends OpMode {
                 gamepads.p1().leftY(),
                 gamepads.p1().rightX(),
                 GamepadDriveSource.Config.defaults()
-        ).scaledWhen(gamepads.p1().rightBumper(), 0.35, 0.20);
+        ).scaledWhen(gamepads.p1().rightBumper(), 0.35, 0.20)
+                .rateLimited(4.0, 4.0, 6.0);
     }
 
     /**
@@ -96,7 +97,7 @@ public final class TeleOp_01_MecanumBasic extends OpMode {
         DriveSignal cmd = stickDrive.get(clock).clamped();
         lastDrive = cmd;
 
-        // --- 4) Actuation: update drivebase timing, then send command ---
+        // --- 4) Actuation: send the already-shaped command ---
         drivebase.update(clock);
         drivebase.drive(cmd);
 

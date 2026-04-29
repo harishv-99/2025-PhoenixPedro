@@ -37,7 +37,8 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *     .add("eject", ejectRequested, ScalarSource.constant(-1.0))
  *     .build();
  *
- * feederPlant.setTarget(finalFeeder.getAsDouble(clock));
+ * Plant feederPlant = ...targetedBy(finalFeeder).build();
+ * feederPlant.update(clock);
  * }</pre>
  */
 public final class ScalarOverlayStack {

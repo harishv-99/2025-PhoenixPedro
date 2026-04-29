@@ -9,19 +9,19 @@ import java.util.Objects;
 
 import edu.ftcphoenix.fw.actuation.MappedPositionPlant;
 import edu.ftcphoenix.fw.actuation.MappedVelocityPlant;
-import edu.ftcphoenix.fw.actuation.MultiPlant;
 import edu.ftcphoenix.fw.actuation.Plant;
+import edu.ftcphoenix.fw.actuation.PlantTargetGuards;
 import edu.ftcphoenix.fw.actuation.Plants;
 import edu.ftcphoenix.fw.actuation.PositionPlant;
-import edu.ftcphoenix.fw.actuation.RateLimitedPlant;
-import edu.ftcphoenix.fw.actuation.RateLimitedPositionPlant;
 import edu.ftcphoenix.fw.actuation.ScalarRange;
 import edu.ftcphoenix.fw.core.control.ScalarRegulator;
 import edu.ftcphoenix.fw.core.hal.Direction;
 import edu.ftcphoenix.fw.core.hal.PositionOutput;
 import edu.ftcphoenix.fw.core.hal.PowerOutput;
 import edu.ftcphoenix.fw.core.hal.VelocityOutput;
+import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.source.ScalarSource;
+import edu.ftcphoenix.fw.core.source.ScalarTarget;
 
 /**
  * Beginner-friendly FTC boundary builder for wiring hardware into {@link Plant} instances.
@@ -35,7 +35,7 @@ import edu.ftcphoenix.fw.core.source.ScalarSource;
  *
  * <p>Position and velocity builders distinguish <b>plant units</b> from <b>native units</b>. Plant
  * units are what robot code, planners, ranges, references, tolerances, and
- * {@link Plant#setTarget(double)} use. Native units are what the selected hardware/control path
+ * {@link Plant#getRequestedTarget()} use. Native units are what the selected hardware/control path
  * uses internally: motor ticks, ticks/sec, external encoder units, raw servo fractions, or a
  * caller-supplied feedback source. Public methods use plant units unless the method name
  * explicitly says {@code Native} or a controller-native unit such as {@code Ticks}. That means
@@ -62,6 +62,7 @@ import edu.ftcphoenix.fw.core.source.ScalarSource;
  *         .nativeUnits()
  *         .needsReference("lift not homed")
  *     .positionTolerance(20.0)
+ *     .targetedByDefaultWritable(0.0)
  *     .build();
  *
  * Plant flywheel = FtcActuators.plant(hardwareMap)
@@ -71,6 +72,7 @@ import edu.ftcphoenix.fw.core.source.ScalarSource;
  *     .bounded(0.0, 2600.0)
  *     .nativeUnits()
  *     .velocityTolerance(50.0)
+ *     .targetedByDefaultWritable(0.0)
  *     .build();
  *
  * PositionPlant claw = FtcActuators.plant(hardwareMap)
@@ -79,6 +81,7 @@ import edu.ftcphoenix.fw.core.source.ScalarSource;
  *     .linear()
  *         .bounded(0.0, 1.0)
  *         .rangeMapsToNative(0.30, 0.80)
+ *     .targetedByDefaultWritable(0.0)
  *     .build();
  * }</pre>
  */
@@ -123,19 +126,48 @@ public final class FtcActuators {
     }
 
     /**
-     * Final builder step for generic non-position plants.
+     * Target-selection step for non-position plants.
+     *
+     * <p>The staged builder deliberately asks: “where does this plant's target come from?” A
+     * writable {@link ScalarTarget} is auto-registered for {@link edu.ftcphoenix.fw.actuation.PlantTasks};
+     * a read-only {@link ScalarSource} may optionally register a separate writable command target.</p>
      */
-    public interface ModifiersStep {
+    public interface PlantTargetStep {
         /**
-         * Wrap the current plant in a symmetric rate limiter using plant units per second.
+         * Enter the optional dynamic hardware-guard branch.
          */
-        ModifiersStep rateLimit(double maxDeltaPerSec);
+        PlantTargetGuardStep targetGuards();
 
         /**
-         * Wrap the current plant in an asymmetric rate limiter using plant units per second.
+         * Use a writable target source; this target is automatically registered for PlantTasks.
          */
-        ModifiersStep rateLimit(double maxUpPerSec, double maxDownPerSec);
+        PlantBuildStep targetedBy(ScalarTarget target);
 
+        /**
+         * Use a read-only final target source.
+         */
+        PlantReadOnlyTargetBuildStep targetedBy(ScalarSource source);
+
+        /**
+         * Create and register an internal held target initialized to {@code initialTarget}.
+         */
+        PlantBuildStep targetedByDefaultWritable(double initialTarget);
+    }
+
+    /**
+     * Build step for non-position plants whose final source is read-only.
+     */
+    public interface PlantReadOnlyTargetBuildStep extends PlantBuildStep {
+        /**
+         * Register the writable command target that task helpers should write.
+         */
+        PlantBuildStep writableTarget(ScalarTarget commandTarget);
+    }
+
+    /**
+     * Final build step for non-position plants.
+     */
+    public interface PlantBuildStep {
         /**
          * Finish the staged build.
          */
@@ -143,28 +175,74 @@ public final class FtcActuators {
     }
 
     /**
-     * Final builder step for position plants.
+     * Optional dynamic hardware guards for non-position plants.
      */
-    public interface PositionBuildStep {
+    public interface PlantTargetGuardStep {
         /**
-         * Set plant-level completion tolerance in plant units.
-         *
-         * <p>This affects {@link PositionPlant#atSetpoint()} and planner/task completion. It is not
-         * the FTC motor controller's internal target-position tolerance; that native device setting
-         * is configured inside {@link MotorDeviceManagedPositionStep#devicePositionToleranceTicks(int)}.</p>
+         * Limit how quickly the applied target may change in plant units/sec.
          */
-        PositionBuildStep positionTolerance(double tolerance);
+        PlantTargetGuardStep maxTargetRate(double maxDeltaPerSec);
 
         /**
-         * Rate-limit plant-unit position target changes symmetrically.
+         * Limit applied target changes with separate positive and negative rates.
          */
-        PositionBuildStep rateLimit(double maxDeltaPerSec);
+        PlantTargetGuardStep maxTargetRates(double maxUpPerSec, double maxDownPerSec);
 
         /**
-         * Rate-limit plant-unit position target changes asymmetrically.
+         * Hold the previous applied target while {@code allowed} is low.
          */
-        PositionBuildStep rateLimit(double maxUpPerSec, double maxDownPerSec);
+        PlantTargetGuardStep holdLastTargetUnless(String name, BooleanSource allowed);
 
+        /**
+         * Replace the target with {@code fallbackTarget} while {@code allowed} is low.
+         */
+        PlantTargetGuardStep fallbackTargetUnless(String name, BooleanSource allowed, double fallbackTarget);
+
+        /**
+         * Return to the target-selection step.
+         */
+        PlantTargetStep doneTargetGuards();
+    }
+
+    /**
+     * Target-selection step for position plants.
+     */
+    public interface PositionTargetStep {
+        /**
+         * Enter the optional dynamic hardware-guard branch.
+         */
+        PositionTargetGuardStep targetGuards();
+
+        /**
+         * Use a writable target source; this target is automatically registered for PlantTasks.
+         */
+        PositionPlantBuildStep targetedBy(ScalarTarget target);
+
+        /**
+         * Use a read-only final target source.
+         */
+        PositionPlantReadOnlyTargetBuildStep targetedBy(ScalarSource source);
+
+        /**
+         * Create and register an internal held target initialized to {@code initialTarget}.
+         */
+        PositionPlantBuildStep targetedByDefaultWritable(double initialTarget);
+    }
+
+    /**
+     * Build step for position plants whose final source is read-only.
+     */
+    public interface PositionPlantReadOnlyTargetBuildStep extends PositionPlantBuildStep {
+        /**
+         * Register the writable command target that task helpers should write.
+         */
+        PositionPlantBuildStep writableTarget(ScalarTarget commandTarget);
+    }
+
+    /**
+     * Final build step for position plants.
+     */
+    public interface PositionPlantBuildStep {
         /**
          * Finish the staged build and return a position-aware plant.
          */
@@ -172,23 +250,33 @@ public final class FtcActuators {
     }
 
     /**
-     * Final builder step for standard-servo position plants.
+     * Optional dynamic hardware guards for position plants.
      */
-    public interface ServoPositionBuildStep {
+    public interface PositionTargetGuardStep {
         /**
-         * Rate-limit plant-unit servo target changes symmetrically.
+         * Limit how quickly the applied target may change in plant units/sec.
          */
-        ServoPositionBuildStep rateLimit(double maxDeltaPerSec);
+        PositionTargetGuardStep maxTargetRate(double maxDeltaPerSec);
 
         /**
-         * Rate-limit plant-unit servo target changes asymmetrically.
+         * Limit applied target changes with separate positive and negative rates.
          */
-        ServoPositionBuildStep rateLimit(double maxUpPerSec, double maxDownPerSec);
+        PositionTargetGuardStep maxTargetRates(double maxUpPerSec, double maxDownPerSec);
 
         /**
-         * Finish the staged build and return a position-aware plant.
+         * Hold the previous applied target while {@code allowed} is low.
          */
-        PositionPlant build();
+        PositionTargetGuardStep holdLastTargetUnless(String name, BooleanSource allowed);
+
+        /**
+         * Replace the target with {@code fallbackTarget} while {@code allowed} is low.
+         */
+        PositionTargetGuardStep fallbackTargetUnless(String name, BooleanSource allowed, double fallbackTarget);
+
+        /**
+         * Return to the position target-selection step.
+         */
+        PositionTargetStep doneTargetGuards();
     }
 
     /**
@@ -203,7 +291,7 @@ public final class FtcActuators {
         /**
          * Build a direct power plant over the selected motor or motor group.
          */
-        ModifiersStep power();
+        PlantTargetStep power();
 
         /**
          * Begin the guided motor-velocity builder.
@@ -307,7 +395,7 @@ public final class FtcActuators {
         /**
          * Declare a finite legal velocity target range in plant velocity units.
          *
-         * <p>The supplied values are the same public units used by {@link Plant#setTarget(double)}
+         * <p>The supplied values are the same public units used by {@link Plant#getRequestedTarget()}
          * after the velocity plant is built, not native/controller units.</p>
          */
         VelocityMappingStep bounded(double min, double max);
@@ -340,26 +428,27 @@ public final class FtcActuators {
     /**
      * Final builder step for motor velocity plants.
      */
-    public interface VelocityBuildStep {
+    public interface VelocityBuildStep extends PlantTargetStep {
         /**
          * Set plant-level completion tolerance in plant velocity units.
          */
         VelocityBuildStep velocityTolerance(double tolerance);
+    }
 
+    /**
+     * Final builder step for motor/CR-servo position plants before target binding.
+     */
+    public interface PositionBuildStep extends PositionTargetStep {
         /**
-         * Rate-limit plant-unit velocity target changes symmetrically.
+         * Set plant-level completion tolerance in plant units.
          */
-        VelocityBuildStep rateLimit(double maxDeltaPerSec);
+        PositionBuildStep positionTolerance(double tolerance);
+    }
 
-        /**
-         * Rate-limit plant-unit velocity target changes asymmetrically.
-         */
-        VelocityBuildStep rateLimit(double maxUpPerSec, double maxDownPerSec);
-
-        /**
-         * Finish the staged build.
-         */
-        Plant build();
+    /**
+     * Final builder step for standard-servo position plants before target binding.
+     */
+    public interface ServoPositionBuildStep extends PositionTargetStep {
     }
 
     /**
@@ -522,7 +611,7 @@ public final class FtcActuators {
         /**
          * Build a direct power plant over the selected CR servo or group.
          */
-        ModifiersStep power();
+        PlantTargetStep power();
 
         /**
          * Begin the guided regulated CR-servo position builder.
@@ -604,7 +693,7 @@ public final class FtcActuators {
         /**
          * Declare a finite legal target range in plant units.
          *
-         * <p>The supplied values are the same public units used by {@link Plant#setTarget(double)}
+         * <p>The supplied values are the same public units used by {@link Plant#getRequestedTarget()}
          * after the position plant is built, not native hardware/controller units.</p>
          */
         BoundedPositionMappingStep bounded(double min, double max);
@@ -710,28 +799,264 @@ public final class FtcActuators {
         }
     }
 
-    private static final class ModifiersStepImpl implements ModifiersStep {
-        private Plant plant;
+    private static final class PowerTargetBuilder implements PlantTargetStep, PlantReadOnlyTargetBuildStep, PlantBuildStep {
+        private final PowerOutput output;
+        private PlantTargetGuards guards = PlantTargetGuards.none();
+        private ScalarSource source;
+        private ScalarTarget writable;
 
-        private ModifiersStepImpl(Plant plant) {
-            this.plant = Objects.requireNonNull(plant, "plant");
+        private PowerTargetBuilder(PowerOutput output) {
+            this.output = Objects.requireNonNull(output, "output");
         }
 
         @Override
-        public ModifiersStep rateLimit(double maxDeltaPerSec) {
-            plant = new RateLimitedPlant(plant, maxDeltaPerSec);
+        public PlantTargetGuardStep targetGuards() {
+            return new GenericPowerGuardBuilder(this);
+        }
+
+        @Override
+        public PlantBuildStep targetedBy(ScalarTarget target) {
+            source = Objects.requireNonNull(target, "target");
+            writable = target;
             return this;
         }
 
         @Override
-        public ModifiersStep rateLimit(double maxUpPerSec, double maxDownPerSec) {
-            plant = new RateLimitedPlant(plant, maxUpPerSec, maxDownPerSec);
+        public PlantReadOnlyTargetBuildStep targetedBy(ScalarSource source) {
+            this.source = Objects.requireNonNull(source, "source");
+            return this;
+        }
+
+        @Override
+        public PlantBuildStep targetedByDefaultWritable(double initialTarget) {
+            return targetedBy(ScalarTarget.held(initialTarget));
+        }
+
+        @Override
+        public PlantBuildStep writableTarget(ScalarTarget commandTarget) {
+            writable = Objects.requireNonNull(commandTarget, "commandTarget");
             return this;
         }
 
         @Override
         public Plant build() {
-            return plant;
+            if (source == null)
+                throw new IllegalStateException("Power plant requires targetedBy(...)");
+            return Plants.power(output, source, writable, guards);
+        }
+    }
+
+    private static final class GenericPowerGuardBuilder implements PlantTargetGuardStep {
+        private final PowerTargetBuilder owner;
+        private final PlantTargetGuards.Builder builder = PlantTargetGuards.builder();
+
+        private GenericPowerGuardBuilder(PowerTargetBuilder owner) {
+            this.owner = owner;
+        }
+
+        @Override
+        public PlantTargetGuardStep maxTargetRate(double maxDeltaPerSec) {
+            builder.maxTargetRate(maxDeltaPerSec);
+            return this;
+        }
+
+        @Override
+        public PlantTargetGuardStep maxTargetRates(double maxUpPerSec, double maxDownPerSec) {
+            builder.maxTargetRates(maxUpPerSec, maxDownPerSec);
+            return this;
+        }
+
+        @Override
+        public PlantTargetGuardStep holdLastTargetUnless(String name, BooleanSource allowed) {
+            builder.holdLastTargetUnless(name, allowed);
+            return this;
+        }
+
+        @Override
+        public PlantTargetGuardStep fallbackTargetUnless(String name, BooleanSource allowed, double fallbackTarget) {
+            builder.fallbackTargetUnless(name, allowed, fallbackTarget);
+            return this;
+        }
+
+        @Override
+        public PlantTargetStep doneTargetGuards() {
+            owner.guards = builder.build();
+            return owner;
+        }
+    }
+
+    private abstract static class BaseTargetedPlantBuilder implements PlantTargetStep, PlantReadOnlyTargetBuildStep, PlantBuildStep {
+        protected PlantTargetGuards guards = PlantTargetGuards.none();
+        protected ScalarSource source;
+        protected ScalarTarget writable;
+
+        @Override
+        public PlantTargetGuardStep targetGuards() {
+            return new GenericPlantGuardBuilder(this);
+        }
+
+        @Override
+        public PlantBuildStep targetedBy(ScalarTarget target) {
+            source = Objects.requireNonNull(target, "target");
+            writable = target;
+            return this;
+        }
+
+        @Override
+        public PlantReadOnlyTargetBuildStep targetedBy(ScalarSource source) {
+            this.source = Objects.requireNonNull(source, "source");
+            return this;
+        }
+
+        @Override
+        public PlantBuildStep targetedByDefaultWritable(double initialTarget) {
+            return targetedBy(ScalarTarget.held(initialTarget));
+        }
+
+        @Override
+        public PlantBuildStep writableTarget(ScalarTarget commandTarget) {
+            writable = Objects.requireNonNull(commandTarget, "commandTarget");
+            return this;
+        }
+
+        @Override
+        public Plant build() {
+            if (source == null) throw new IllegalStateException("Plant requires targetedBy(...)");
+            return buildPlant(source, writable, guards);
+        }
+
+        protected abstract Plant buildPlant(ScalarSource source, ScalarTarget writable, PlantTargetGuards guards);
+    }
+
+    private static final class GenericPlantGuardBuilder implements PlantTargetGuardStep {
+        private final BaseTargetedPlantBuilder owner;
+        private final PlantTargetGuards.Builder builder = PlantTargetGuards.builder();
+
+        private GenericPlantGuardBuilder(BaseTargetedPlantBuilder owner) {
+            this.owner = owner;
+        }
+
+        @Override
+        public PlantTargetGuardStep maxTargetRate(double maxDeltaPerSec) {
+            builder.maxTargetRate(maxDeltaPerSec);
+            return this;
+        }
+
+        @Override
+        public PlantTargetGuardStep maxTargetRates(double maxUpPerSec, double maxDownPerSec) {
+            builder.maxTargetRates(maxUpPerSec, maxDownPerSec);
+            return this;
+        }
+
+        @Override
+        public PlantTargetGuardStep holdLastTargetUnless(String name, BooleanSource allowed) {
+            builder.holdLastTargetUnless(name, allowed);
+            return this;
+        }
+
+        @Override
+        public PlantTargetGuardStep fallbackTargetUnless(String name, BooleanSource allowed, double fallbackTarget) {
+            builder.fallbackTargetUnless(name, allowed, fallbackTarget);
+            return this;
+        }
+
+        @Override
+        public PlantTargetStep doneTargetGuards() {
+            owner.guards = builder.build();
+            return owner;
+        }
+    }
+
+    private abstract static class BaseTargetedPositionBuilder implements PositionBuildStep, ServoPositionBuildStep,
+            PositionPlantReadOnlyTargetBuildStep, PositionPlantBuildStep {
+        protected PlantTargetGuards guards = PlantTargetGuards.none();
+        protected ScalarSource source;
+        protected ScalarTarget writable;
+        protected double positionTolerance = 10.0;
+
+        @Override
+        public PositionBuildStep positionTolerance(double tolerance) {
+            if (tolerance < 0.0 || !Double.isFinite(tolerance))
+                throw new IllegalArgumentException("positionTolerance must be finite and >= 0");
+            positionTolerance = tolerance;
+            return this;
+        }
+
+        @Override
+        public PositionTargetGuardStep targetGuards() {
+            return new PositionGuardBuilder(this);
+        }
+
+        @Override
+        public PositionPlantBuildStep targetedBy(ScalarTarget target) {
+            source = Objects.requireNonNull(target, "target");
+            writable = target;
+            return this;
+        }
+
+        @Override
+        public PositionPlantReadOnlyTargetBuildStep targetedBy(ScalarSource source) {
+            this.source = Objects.requireNonNull(source, "source");
+            return this;
+        }
+
+        @Override
+        public PositionPlantBuildStep targetedByDefaultWritable(double initialTarget) {
+            return targetedBy(ScalarTarget.held(initialTarget));
+        }
+
+        @Override
+        public PositionPlantBuildStep writableTarget(ScalarTarget commandTarget) {
+            writable = Objects.requireNonNull(commandTarget, "commandTarget");
+            return this;
+        }
+
+        @Override
+        public PositionPlant build() {
+            if (source == null)
+                throw new IllegalStateException("Position plant requires targetedBy(...)");
+            return buildPositionPlant(source, writable, guards);
+        }
+
+        protected abstract PositionPlant buildPositionPlant(ScalarSource source, ScalarTarget writable, PlantTargetGuards guards);
+    }
+
+    private static final class PositionGuardBuilder implements PositionTargetGuardStep {
+        private final BaseTargetedPositionBuilder owner;
+        private final PlantTargetGuards.Builder builder = PlantTargetGuards.builder();
+
+        private PositionGuardBuilder(BaseTargetedPositionBuilder owner) {
+            this.owner = owner;
+        }
+
+        @Override
+        public PositionTargetGuardStep maxTargetRate(double maxDeltaPerSec) {
+            builder.maxTargetRate(maxDeltaPerSec);
+            return this;
+        }
+
+        @Override
+        public PositionTargetGuardStep maxTargetRates(double maxUpPerSec, double maxDownPerSec) {
+            builder.maxTargetRates(maxUpPerSec, maxDownPerSec);
+            return this;
+        }
+
+        @Override
+        public PositionTargetGuardStep holdLastTargetUnless(String name, BooleanSource allowed) {
+            builder.holdLastTargetUnless(name, allowed);
+            return this;
+        }
+
+        @Override
+        public PositionTargetGuardStep fallbackTargetUnless(String name, BooleanSource allowed, double fallbackTarget) {
+            builder.fallbackTargetUnless(name, allowed, fallbackTarget);
+            return this;
+        }
+
+        @Override
+        public PositionTargetStep doneTargetGuards() {
+            owner.guards = builder.build();
+            return owner;
         }
     }
 
@@ -1031,15 +1356,8 @@ public final class FtcActuators {
         }
 
         @Override
-        public ModifiersStep power() {
-            if (specs.size() == 1) {
-                Spec spec = specs.get(0);
-                return new ModifiersStepImpl(Plants.power(FtcHardware.motorPower(hw, spec.name, spec.direction)));
-            }
-            MultiPlant.Builder b = MultiPlant.builder();
-            for (Spec spec : specs)
-                b.add(Plants.power(FtcHardware.motorPower(hw, spec.name, spec.direction)), spec.scale, spec.bias);
-            return new ModifiersStepImpl(b.build());
+        public PlantTargetStep power() {
+            return new PowerTargetBuilder(groupedMotorPowerWithMappings());
         }
 
         @Override
@@ -1060,6 +1378,23 @@ public final class FtcActuators {
             List<PowerOutput> outs = new ArrayList<>();
             for (Spec spec : specs) outs.add(FtcHardware.motorPower(hw, spec.name, spec.direction));
             return new GroupedPowerOutput(outs);
+        }
+
+        private PowerOutput groupedMotorPowerWithMappings() {
+            if (specs.size() == 1) {
+                Spec spec = specs.get(0);
+                return new ScaledBiasedPowerOutput(FtcHardware.motorPower(hw, spec.name, spec.direction), spec.scale, spec.bias);
+            }
+            List<PowerOutput> outs = new ArrayList<>();
+            double[] scales = new double[specs.size()];
+            double[] biases = new double[specs.size()];
+            for (int i = 0; i < specs.size(); i++) {
+                Spec spec = specs.get(i);
+                outs.add(FtcHardware.motorPower(hw, spec.name, spec.direction));
+                scales[i] = spec.scale;
+                biases[i] = spec.bias;
+            }
+            return new GroupedPowerOutput(outs, scales, biases);
         }
 
         private VelocityOutput groupedMotorVelocity(DeviceManagedVelocityConfig cfg) {
@@ -1151,9 +1486,9 @@ public final class FtcActuators {
         }
     }
 
-    private static final class MotorVelocityBuilder implements MotorVelocityControlStep, MotorDeviceManagedVelocityStep,
-            MotorRegulatedVelocityFeedbackStep, MotorRegulatedVelocityRegulatorStep, VelocityBoundsStep,
-            VelocityMappingStep, VelocityBuildStep {
+    private static final class MotorVelocityBuilder extends BaseTargetedPlantBuilder implements MotorVelocityControlStep,
+            MotorDeviceManagedVelocityStep, MotorRegulatedVelocityFeedbackStep, MotorRegulatedVelocityRegulatorStep,
+            VelocityBoundsStep, VelocityMappingStep, VelocityBuildStep {
         private final MotorBuilder parent;
         private final DeviceManagedVelocityConfig deviceConfig = new DeviceManagedVelocityConfig();
         private VelocityControlKind controlKind;
@@ -1162,8 +1497,6 @@ public final class FtcActuators {
         private ScalarRange range;
         private double nativePerPlantUnit = 1.0;
         private double velocityTolerance = 100.0;
-        private Double rateUp;
-        private Double rateDown;
 
         private MotorVelocityBuilder(MotorBuilder parent) {
             this.parent = parent;
@@ -1243,50 +1576,23 @@ public final class FtcActuators {
         }
 
         @Override
-        public VelocityBuildStep rateLimit(double maxDeltaPerSec) {
-            return rateLimit(maxDeltaPerSec, maxDeltaPerSec);
-        }
-
-        @Override
-        public VelocityBuildStep rateLimit(double maxUpPerSec, double maxDownPerSec) {
-            if (maxUpPerSec < 0.0 || maxDownPerSec < 0.0)
-                throw new IllegalArgumentException("rate limits must be >= 0");
-            rateUp = maxUpPerSec;
-            rateDown = maxDownPerSec;
-            return this;
-        }
-
-        @Override
-        public Plant build() {
+        protected Plant buildPlant(ScalarSource source, ScalarTarget writable, PlantTargetGuards guards) {
             if (controlKind == null)
                 throw new IllegalStateException("Motor velocity builder requires deviceManagedWithDefaults(), deviceManaged(), or regulated()");
             if (range == null)
                 throw new IllegalStateException("Motor velocity builder requires bounded(...) or unbounded()");
-
-            MappedVelocityPlant plant;
+            MappedVelocityPlant.Builder b;
             if (controlKind == VelocityControlKind.DEVICE_MANAGED) {
-                plant = MappedVelocityPlant.velocityOutput(
-                                parent.groupedMotorVelocity(deviceConfig),
-                                parent.groupedMotorVelocityMeasurement())
-                        .range(range)
-                        .nativePerPlantUnit(nativePerPlantUnit)
-                        .velocityTolerance(velocityTolerance)
-                        .build();
+                b = MappedVelocityPlant.velocityOutput(parent.groupedMotorVelocity(deviceConfig), parent.groupedMotorVelocityMeasurement());
             } else {
                 parent.requireDefaultGroupScalingForRegulated("velocity");
                 if (feedback == null || regulator == null)
                     throw new IllegalStateException("Regulated motor velocity requires nativeFeedback(...) and regulator(...)");
-                plant = MappedVelocityPlant.regulated(
-                                parent.groupedMotorPower(),
-                                feedback.resolve(parent.hw, parent.specs),
-                                regulator)
-                        .range(range)
-                        .nativePerPlantUnit(nativePerPlantUnit)
-                        .velocityTolerance(velocityTolerance)
-                        .build();
+                b = MappedVelocityPlant.regulated(parent.groupedMotorPower(), feedback.resolve(parent.hw, parent.specs), regulator);
             }
-            if (rateUp != null) return new RateLimitedPlant(plant, rateUp, rateDown);
-            return plant;
+            b.range(range).nativePerPlantUnit(nativePerPlantUnit).velocityTolerance(velocityTolerance).targetGuards(guards).targetedBy(source);
+            if (writable != null) b.writableTarget(writable);
+            return b.build();
         }
     }
 
@@ -1299,8 +1605,8 @@ public final class FtcActuators {
 
     private enum PositionControlKind {DEVICE_MANAGED, REGULATED}
 
-    private abstract static class BasePositionBuilder<T extends BasePositionBuilder<T>> implements PositionTopologyStep, PositionBoundsStep,
-            BoundedPositionMappingStep, UnboundedPositionMappingStep, PositionReferenceStep, PositionBuildStep {
+    private abstract static class BasePositionBuilder extends BaseTargetedPositionBuilder implements PositionTopologyStep, PositionBoundsStep,
+            BoundedPositionMappingStep, UnboundedPositionMappingStep, PositionReferenceStep {
         protected PositionPlant.Topology topology;
         protected double period = Double.NaN;
         protected ScalarRange range;
@@ -1313,14 +1619,6 @@ public final class FtcActuators {
         protected double nativeReference = 0.0;
         protected double assumePlantPosition = 0.0;
         protected String referenceReason = "position reference not established";
-        protected double positionTolerance = 10.0;
-        protected Double rateUp;
-        protected Double rateDown;
-
-        @SuppressWarnings("unchecked")
-        private T self() {
-            return (T) this;
-        }
 
         @Override
         public PositionBoundsStep linear() {
@@ -1362,7 +1660,7 @@ public final class FtcActuators {
 
         @Override
         public PositionReferenceStep scaleToNative(double nativeUnitsPerPlantUnit) {
-            nativePerPlantUnit = requireFiniteNonZero(nativeUnitsPerPlantUnit, "nativeUnitsPerPlantUnit");
+            this.nativePerPlantUnit = requireFiniteNonZero(nativeUnitsPerPlantUnit, "nativeUnitsPerPlantUnit");
             return this;
         }
 
@@ -1411,29 +1709,10 @@ public final class FtcActuators {
             return this;
         }
 
-        @Override
-        public PositionBuildStep positionTolerance(double tolerance) {
-            if (tolerance < 0.0 || !Double.isFinite(tolerance))
-                throw new IllegalArgumentException("positionTolerance must be finite and >= 0");
-            positionTolerance = tolerance;
-            return this;
-        }
-
-        @Override
-        public PositionBuildStep rateLimit(double maxDeltaPerSec) {
-            return rateLimit(maxDeltaPerSec, maxDeltaPerSec);
-        }
-
-        @Override
-        public PositionBuildStep rateLimit(double maxUpPerSec, double maxDownPerSec) {
-            if (maxUpPerSec < 0.0 || maxDownPerSec < 0.0)
-                throw new IllegalArgumentException("rate limits must be >= 0");
-            rateUp = maxUpPerSec;
-            rateDown = maxDownPerSec;
-            return this;
-        }
-
-        protected MappedPositionPlant.Builder applyCommon(MappedPositionPlant.Builder b) {
+        protected MappedPositionPlant.Builder applyCommon(MappedPositionPlant.Builder b,
+                                                          ScalarSource source,
+                                                          ScalarTarget writable,
+                                                          PlantTargetGuards guards) {
             if (topology == null)
                 throw new IllegalStateException("Position builder requires linear() or periodic(period)");
             if (range == null)
@@ -1441,7 +1720,12 @@ public final class FtcActuators {
             b.topology(topology, period)
                     .range(range)
                     .nativePerPlantUnit(nativePerPlantUnit)
-                    .positionTolerance(positionTolerance);
+                    .positionTolerance(positionTolerance)
+                    .targetGuards(guards)
+                    .targetedBy(source);
+            if (writable != null) {
+                b.writableTarget(writable);
+            }
             if (referenceMode == MappedPositionPlant.ReferenceMode.STATIC)
                 b.plantPositionMapsToNative(plantReference, nativeReference);
             else if (referenceMode == MappedPositionPlant.ReferenceMode.ASSUME_CURRENT)
@@ -1449,14 +1733,9 @@ public final class FtcActuators {
             else b.needsReference(referenceReason);
             return b;
         }
-
-        protected PositionPlant maybeRateLimit(PositionPlant plant) {
-            if (rateUp != null) return new RateLimitedPositionPlant(plant, rateUp, rateDown);
-            return plant;
-        }
     }
 
-    private static final class MotorPositionBuilder extends BasePositionBuilder<MotorPositionBuilder> implements MotorPositionControlStep,
+    private static final class MotorPositionBuilder extends BasePositionBuilder implements MotorPositionControlStep,
             MotorDeviceManagedPositionStep, MotorRegulatedPositionFeedbackStep, MotorRegulatedPositionRegulatorStep {
         private final MotorBuilder parent;
         private final DeviceManagedPositionConfig deviceConfig = new DeviceManagedPositionConfig();
@@ -1531,24 +1810,21 @@ public final class FtcActuators {
         }
 
         @Override
-        public PositionPlant build() {
+        protected PositionPlant buildPositionPlant(ScalarSource source, ScalarTarget writable, PlantTargetGuards guards) {
             if (controlKind == null)
                 throw new IllegalStateException("Motor position builder requires deviceManagedWithDefaults(), deviceManaged(), or regulated()");
-            MappedPositionPlant plant;
             if (controlKind == PositionControlKind.DEVICE_MANAGED) {
                 PositionOutput out = parent.groupedMotorPosition(deviceConfig);
                 ScalarSource nativeMeasurement = parent.groupedMotorPositionMeasurement();
-                plant = applyCommon(MappedPositionPlant.positionOutput(out, nativeMeasurement)
-                        .searchPowerOutput(parent.groupedMotorPower())).build();
-            } else {
-                parent.requireDefaultGroupScalingForRegulated("position");
-                if (feedback == null || regulator == null)
-                    throw new IllegalStateException("Regulated motor position requires nativeFeedback(...) and regulator(...)");
-                PowerOutput power = parent.groupedMotorPower();
-                plant = applyCommon(MappedPositionPlant.regulated(power, feedback.resolve(parent.hw, parent.specs), regulator)
-                        .searchPowerOutput(power)).build();
+                return applyCommon(MappedPositionPlant.positionOutput(out, nativeMeasurement)
+                        .searchPowerOutput(parent.groupedMotorPower()), source, writable, guards).build();
             }
-            return maybeRateLimit(plant);
+            parent.requireDefaultGroupScalingForRegulated("position");
+            if (feedback == null || regulator == null)
+                throw new IllegalStateException("Regulated motor position requires nativeFeedback(...) and regulator(...)");
+            PowerOutput power = parent.groupedMotorPower();
+            return applyCommon(MappedPositionPlant.regulated(power, feedback.resolve(parent.hw, parent.specs), regulator)
+                    .searchPowerOutput(power), source, writable, guards).build();
         }
     }
 
@@ -1612,8 +1888,8 @@ public final class FtcActuators {
         }
     }
 
-    private static final class ServoPositionBuilder implements ServoPositionTopologyStep, ServoPositionBoundsStep,
-            ServoBoundedPositionMappingStep, ServoPositionBuildStep {
+    private static final class ServoPositionBuilder extends BaseTargetedPositionBuilder implements ServoPositionTopologyStep,
+            ServoPositionBoundsStep, ServoBoundedPositionMappingStep {
         private final ServoBuilder parent;
         private ScalarRange range;
         private double plantMin;
@@ -1621,8 +1897,6 @@ public final class FtcActuators {
         private double nativePerPlantUnit = 1.0;
         private double plantReference = 0.0;
         private double nativeReference = 0.0;
-        private Double rateUp;
-        private Double rateDown;
 
         private ServoPositionBuilder(ServoBuilder parent) {
             this.parent = parent;
@@ -1664,31 +1938,21 @@ public final class FtcActuators {
         }
 
         @Override
-        public ServoPositionBuildStep rateLimit(double maxDeltaPerSec) {
-            return rateLimit(maxDeltaPerSec, maxDeltaPerSec);
-        }
-
-        @Override
-        public ServoPositionBuildStep rateLimit(double maxUpPerSec, double maxDownPerSec) {
-            if (maxUpPerSec < 0.0 || maxDownPerSec < 0.0)
-                throw new IllegalArgumentException("rate limits must be >= 0");
-            rateUp = maxUpPerSec;
-            rateDown = maxDownPerSec;
-            return this;
-        }
-
-        @Override
-        public PositionPlant build() {
+        protected PositionPlant buildPositionPlant(ScalarSource source, ScalarTarget writable, PlantTargetGuards guards) {
             if (range == null)
                 throw new IllegalStateException("Servo position builder requires bounded(...)");
-            MappedPositionPlant plant = MappedPositionPlant.commanded(parent.groupedServoPosition())
+            MappedPositionPlant.Builder b = MappedPositionPlant.commanded(parent.groupedServoPosition())
                     .topology(PositionPlant.Topology.LINEAR, Double.NaN)
                     .range(range)
                     .nativePerPlantUnit(nativePerPlantUnit)
+                    .positionTolerance(positionTolerance)
                     .plantPositionMapsToNative(plantReference, nativeReference)
-                    .build();
-            if (rateUp != null) return new RateLimitedPositionPlant(plant, rateUp, rateDown);
-            return plant;
+                    .targetGuards(guards)
+                    .targetedBy(source);
+            if (writable != null) {
+                b.writableTarget(writable);
+            }
+            return b.build();
         }
     }
 
@@ -1730,15 +1994,8 @@ public final class FtcActuators {
         }
 
         @Override
-        public ModifiersStep power() {
-            if (specs.size() == 1) {
-                MotorBuilder.Spec spec = specs.get(0);
-                return new ModifiersStepImpl(Plants.power(FtcHardware.crServoPower(hw, spec.name, spec.direction)));
-            }
-            MultiPlant.Builder b = MultiPlant.builder();
-            for (MotorBuilder.Spec spec : specs)
-                b.add(Plants.power(FtcHardware.crServoPower(hw, spec.name, spec.direction)), spec.scale, spec.bias);
-            return new ModifiersStepImpl(b.build());
+        public PlantTargetStep power() {
+            return new PowerTargetBuilder(groupedCrServoPowerWithMappings());
         }
 
         @Override
@@ -1757,6 +2014,23 @@ public final class FtcActuators {
             return new GroupedPowerOutput(outs);
         }
 
+        private PowerOutput groupedCrServoPowerWithMappings() {
+            if (specs.size() == 1) {
+                MotorBuilder.Spec spec = specs.get(0);
+                return new ScaledBiasedPowerOutput(FtcHardware.crServoPower(hw, spec.name, spec.direction), spec.scale, spec.bias);
+            }
+            List<PowerOutput> outs = new ArrayList<>();
+            double[] scales = new double[specs.size()];
+            double[] biases = new double[specs.size()];
+            for (int i = 0; i < specs.size(); i++) {
+                MotorBuilder.Spec spec = specs.get(i);
+                outs.add(FtcHardware.crServoPower(hw, spec.name, spec.direction));
+                scales[i] = spec.scale;
+                biases[i] = spec.bias;
+            }
+            return new GroupedPowerOutput(outs, scales, biases);
+        }
+
         private void requireDefaultGroupScalingForRegulated() {
             if (specs.size() <= 1) return;
             for (MotorBuilder.Spec spec : specs)
@@ -1765,7 +2039,7 @@ public final class FtcActuators {
         }
     }
 
-    private static final class CrServoPositionBuilder extends BasePositionBuilder<CrServoPositionBuilder> implements CrServoPositionControlStep,
+    private static final class CrServoPositionBuilder extends BasePositionBuilder implements CrServoPositionControlStep,
             CrServoRegulatedPositionFeedbackStep, CrServoRegulatedPositionRegulatorStep {
         private final CrServoBuilder parent;
         private PositionFeedback feedback;
@@ -1793,31 +2067,76 @@ public final class FtcActuators {
         }
 
         @Override
-        public PositionPlant build() {
+        protected PositionPlant buildPositionPlant(ScalarSource source, ScalarTarget writable, PlantTargetGuards guards) {
             parent.requireDefaultGroupScalingForRegulated();
             if (feedback == null || regulator == null)
                 throw new IllegalStateException("Regulated CR-servo position requires nativeFeedback(...) and regulator(...)");
             PowerOutput power = parent.groupedCrServoPower();
-            MappedPositionPlant plant = applyCommon(MappedPositionPlant.regulated(power, feedback.resolve(parent.hw, null), regulator)
-                    .searchPowerOutput(power)).build();
-            return maybeRateLimit(plant);
+            return applyCommon(MappedPositionPlant.regulated(power, feedback.resolve(parent.hw, null), regulator)
+                    .searchPowerOutput(power), source, writable, guards).build();
         }
     }
 
-    private static final class GroupedPowerOutput implements PowerOutput {
-        private final List<PowerOutput> outputs;
+    private static final class ScaledBiasedPowerOutput implements PowerOutput {
+        private final PowerOutput output;
+        private final double scale;
+        private final double bias;
         private double last;
 
-        private GroupedPowerOutput(List<PowerOutput> outputs) {
-            this.outputs = new ArrayList<>(Objects.requireNonNull(outputs, "outputs"));
-            if (this.outputs.isEmpty())
-                throw new IllegalArgumentException("outputs must not be empty");
+        private ScaledBiasedPowerOutput(PowerOutput output, double scale, double bias) {
+            this.output = Objects.requireNonNull(output, "output");
+            this.scale = scale;
+            this.bias = bias;
         }
 
         @Override
         public void setPower(double power) {
             last = power;
-            for (PowerOutput output : outputs) output.setPower(power);
+            output.setPower(scale * power + bias);
+        }
+
+        @Override
+        public double getCommandedPower() {
+            return last;
+        }
+
+        @Override
+        public void stop() {
+            output.stop();
+            last = 0.0;
+        }
+    }
+
+    private static final class GroupedPowerOutput implements PowerOutput {
+        private final List<PowerOutput> outputs;
+        private final double[] scales;
+        private final double[] biases;
+        private double last;
+
+        private GroupedPowerOutput(List<PowerOutput> outputs) {
+            this(outputs, null, null);
+        }
+
+        private GroupedPowerOutput(List<PowerOutput> outputs, double[] scales, double[] biases) {
+            this.outputs = new ArrayList<>(Objects.requireNonNull(outputs, "outputs"));
+            if (this.outputs.isEmpty())
+                throw new IllegalArgumentException("outputs must not be empty");
+            this.scales = scales != null ? scales.clone() : null;
+            this.biases = biases != null ? biases.clone() : null;
+            if ((this.scales != null && this.scales.length != this.outputs.size())
+                    || (this.biases != null && this.biases.length != this.outputs.size())) {
+                throw new IllegalArgumentException("outputs/scales/biases must have matching lengths");
+            }
+        }
+
+        @Override
+        public void setPower(double power) {
+            last = power;
+            for (int i = 0; i < outputs.size(); i++) {
+                double childPower = power;
+                if (scales != null) childPower = scales[i] * power + biases[i];
+                outputs.get(i).setPower(childPower);
+            }
         }
 
         @Override

@@ -8,239 +8,251 @@ import edu.ftcphoenix.fw.core.hal.PositionOutput;
 import edu.ftcphoenix.fw.core.hal.PowerOutput;
 import edu.ftcphoenix.fw.core.hal.VelocityOutput;
 import edu.ftcphoenix.fw.core.source.ScalarSource;
+import edu.ftcphoenix.fw.core.source.ScalarTarget;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 
 /**
- * Factories for constructing {@link Plant} implementations from low-level actuator command
- * channels plus optional measurement/regulator ingredients.
+ * Ingredient-level factories for source-driven {@link Plant} implementations.
  *
- * <p>This class is intentionally ingredient-based. Callers choose the command channel and, when
- * needed, the measurement and control law. Higher-level staged builders (such as
- * {@code FtcActuators}) can then present beginner-friendly defaults on top of these primitives.</p>
+ * <p>Most FTC robot code should use the staged {@code FtcActuators.plant(...)} builder. These
+ * factories are the lower-level boundary for custom hardware adapters and tests.</p>
  */
 public final class Plants {
 
     private Plants() {
-        // utility class
     }
 
     /**
-     * Create a direct power plant over a {@link PowerOutput}.
-     *
-     * @param out raw power command channel that the returned plant should drive directly
-     * @return power plant whose target domain matches the supplied output's power command domain
+     * Create a direct power plant.
      */
-    public static Plant power(PowerOutput out) {
-        Objects.requireNonNull(out, "out");
-        return new PowerPlant(out);
+    public static Plant power(PowerOutput out, ScalarSource target) {
+        return power(out, target, target instanceof ScalarTarget ? (ScalarTarget) target : null, PlantTargetGuards.none());
     }
 
     /**
-     * Create a commanded-position plant over a {@link PositionOutput} with no authoritative
-     * feedback.
-     *
-     * <p>This is the right fit for standard FTC servos and other set-and-hold outputs where the
-     * framework does not have a meaningful measured position.</p>
-     *
-     * @param out raw position command channel that the returned plant should drive directly
-     * @return position plant that reports commanded targets but no authoritative feedback
+     * Create a direct power plant with an optional registered writable target and target guards.
      */
-    public static Plant position(PositionOutput out) {
-        Objects.requireNonNull(out, "out");
-        return new CommandedPositionPlant(out);
+    public static Plant power(PowerOutput out, ScalarSource target, ScalarTarget writable, PlantTargetGuards guards) {
+        return new PowerPlant(out, target, writable, guards);
     }
 
     /**
-     * Create a device-managed or otherwise externally regulated position plant over a
-     * {@link PositionOutput} plus an authoritative position measurement source.
-     *
-     * <p>{@code positionTolerance} is the plant-level completion band used by
-     * {@link Plant#atSetpoint()}.</p>
-     *
-     * @param out               raw position command channel that the returned plant should drive
-     * @param measurement       authoritative position measurement source in the same units as the plant target
-     * @param positionTolerance absolute completion band used for {@link Plant#atSetpoint()}
-     * @return feedback-capable position plant backed by the supplied command channel and measurement
+     * Create a commanded-position plant with no authoritative feedback.
+     */
+    public static Plant position(PositionOutput out, ScalarSource target) {
+        return position(out, target, target instanceof ScalarTarget ? (ScalarTarget) target : null, PlantTargetGuards.none());
+    }
+
+    /**
+     * Create a commanded-position plant with optional guards.
+     */
+    public static Plant position(PositionOutput out, ScalarSource target, ScalarTarget writable, PlantTargetGuards guards) {
+        return new CommandedPositionPlant(out, target, writable, guards);
+    }
+
+    /**
+     * Create a device-managed position plant with feedback.
      */
     public static Plant position(PositionOutput out,
+                                 ScalarSource target,
+                                 ScalarTarget writable,
+                                 PlantTargetGuards guards,
                                  ScalarSource measurement,
                                  double positionTolerance) {
-        Objects.requireNonNull(out, "out");
-        Objects.requireNonNull(measurement, "measurement");
-        if (positionTolerance < 0.0) {
-            throw new IllegalArgumentException("positionTolerance must be >= 0, got " + positionTolerance);
-        }
-        return new DeviceManagedPositionPlant(out, measurement.memoized(), positionTolerance);
+        return new DeviceManagedPositionPlant(out, target, writable, guards, measurement, positionTolerance);
     }
 
     /**
-     * Create a device-managed or otherwise externally regulated velocity plant over a
-     * {@link VelocityOutput} plus an authoritative velocity measurement source.
-     *
-     * @param out               raw velocity command channel that the returned plant should drive
-     * @param measurement       authoritative velocity measurement source in the same units as the plant target
-     * @param velocityTolerance absolute completion band used for {@link Plant#atSetpoint()}
-     * @return feedback-capable velocity plant backed by the supplied command channel and measurement
+     * Create a device-managed velocity plant with feedback.
      */
     public static Plant velocity(VelocityOutput out,
+                                 ScalarSource target,
+                                 ScalarTarget writable,
+                                 PlantTargetGuards guards,
                                  ScalarSource measurement,
                                  double velocityTolerance) {
-        Objects.requireNonNull(out, "out");
-        Objects.requireNonNull(measurement, "measurement");
-        if (velocityTolerance < 0.0) {
-            throw new IllegalArgumentException("velocityTolerance must be >= 0, got " + velocityTolerance);
-        }
-        return new DeviceManagedVelocityPlant(out, measurement.memoized(), velocityTolerance);
+        return new DeviceManagedVelocityPlant(out, target, writable, guards, measurement, velocityTolerance);
     }
 
     /**
-     * Create a framework-regulated position plant that uses raw power as the actuation lever.
-     *
-     * @param powerOut raw power command channel driven by the returned plant
-     * @param measurement authoritative position measurement source in the same units as the plant target
-     * @param regulator framework-owned control law that converts position error into power commands
-     * @param positionTolerance absolute completion band used for {@link Plant#atSetpoint()}
-     * @return feedback-capable regulated position plant that drives power from the supplied measurement
+     * Create a framework-regulated position plant that drives raw power.
      */
     public static Plant positionFromPower(PowerOutput powerOut,
+                                          ScalarSource target,
+                                          ScalarTarget writable,
+                                          PlantTargetGuards guards,
                                           ScalarSource measurement,
                                           ScalarRegulator regulator,
                                           double positionTolerance) {
-        Objects.requireNonNull(powerOut, "powerOut");
-        Objects.requireNonNull(measurement, "measurement");
-        Objects.requireNonNull(regulator, "regulator");
-        if (positionTolerance < 0.0) {
-            throw new IllegalArgumentException("positionTolerance must be >= 0, got " + positionTolerance);
-        }
-        return new RegulatedPositionPlant(powerOut, measurement.memoized(), regulator, positionTolerance);
+        return new RegulatedPositionPlant(powerOut, target, writable, guards, measurement, regulator, positionTolerance);
     }
 
     /**
-     * Create a framework-regulated velocity plant that uses raw power as the actuation lever.
-     *
-     * @param powerOut          raw power command channel driven by the returned plant
-     * @param measurement       authoritative velocity measurement source in the same units as the plant target
-     * @param regulator         framework-owned control law that converts velocity error into power commands
-     * @param velocityTolerance absolute completion band used for {@link Plant#atSetpoint()}
-     * @return feedback-capable regulated velocity plant that drives power from the supplied measurement
+     * Create a framework-regulated velocity plant that drives raw power.
      */
     public static Plant velocityFromPower(PowerOutput powerOut,
+                                          ScalarSource target,
+                                          ScalarTarget writable,
+                                          PlantTargetGuards guards,
                                           ScalarSource measurement,
                                           ScalarRegulator regulator,
                                           double velocityTolerance) {
-        Objects.requireNonNull(powerOut, "powerOut");
-        Objects.requireNonNull(measurement, "measurement");
-        Objects.requireNonNull(regulator, "regulator");
-        if (velocityTolerance < 0.0) {
-            throw new IllegalArgumentException("velocityTolerance must be >= 0, got " + velocityTolerance);
-        }
-        return new RegulatedVelocityPlant(powerOut, measurement.memoized(), regulator, velocityTolerance);
+        return new RegulatedVelocityPlant(powerOut, target, writable, guards, measurement, regulator, velocityTolerance);
     }
 
-    private static final class PowerPlant implements Plant {
-        private final PowerOutput out;
-        private double target;
+    private abstract static class AbstractSourceDrivenPlant implements Plant {
+        private final ScalarSource targetSource;
+        private final ScalarTarget writableTarget;
+        private final PlantTargetGuards guards;
 
-        private PowerPlant(PowerOutput out) {
-            this.out = out;
+        private double requestedTarget;
+        private double appliedTarget;
+        private PlantTargetStatus targetStatus = PlantTargetStatus.STOPPED;
+
+        AbstractSourceDrivenPlant(ScalarSource targetSource, ScalarTarget writableTarget, PlantTargetGuards guards) {
+            this.targetSource = Objects.requireNonNull(targetSource, "targetSource").memoized();
+            this.writableTarget = writableTarget;
+            this.guards = guards == null ? PlantTargetGuards.none() : guards;
         }
 
         @Override
-        public void setTarget(double target) {
-            this.target = target;
-            out.setPower(target);
+        public final void update(LoopClock clock) {
+            requestedTarget = targetSource.getAsDouble(clock);
+            double candidate = sanitizeRequestedTarget(requestedTarget);
+            PlantTargetStatus status = candidate == requestedTarget
+                    ? PlantTargetStatus.ACCEPTED
+                    : PlantTargetStatus.clampedToRange("target sanitized to finite value");
+            PlantTargetGuards.Result result = guards.apply(candidate, status, appliedTarget, clock);
+            appliedTarget = result.target;
+            targetStatus = result.status;
+            applyTarget(appliedTarget, clock);
+            updateStatus(clock);
+        }
+
+        protected double sanitizeRequestedTarget(double request) {
+            return Double.isFinite(request) ? request : 0.0;
+        }
+
+        protected abstract void applyTarget(double target, LoopClock clock);
+
+        protected void updateStatus(LoopClock clock) {
         }
 
         @Override
-        public double getTarget() {
-            return target;
+        public final double getRequestedTarget() {
+            return requestedTarget;
         }
 
         @Override
-        public void update(LoopClock clock) {
-            // direct command plant; nothing else to do
+        public final double getAppliedTarget() {
+            return appliedTarget;
         }
 
         @Override
-        public void stop() {
-            out.stop();
-            target = 0.0;
+        public final PlantTargetStatus getTargetStatus() {
+            return targetStatus;
+        }
+
+        @Override
+        public final boolean hasWritableTarget() {
+            return writableTarget != null;
+        }
+
+        @Override
+        public final ScalarTarget writableTarget() {
+            if (writableTarget == null) return Plant.super.writableTarget();
+            return writableTarget;
+        }
+
+        @Override
+        public void reset() {
+            targetSource.reset();
+            guards.reset();
+            requestedTarget = 0.0;
+            appliedTarget = 0.0;
+            targetStatus = PlantTargetStatus.STOPPED;
+        }
+
+        protected final void markStopped(double appliedAfterStop) {
+            appliedTarget = appliedAfterStop;
+            targetStatus = PlantTargetStatus.STOPPED;
         }
 
         @Override
         public void debugDump(DebugSink dbg, String prefix) {
             Plant.super.debugDump(dbg, prefix);
+            if (dbg != null)
+                guards.debugDump(dbg, ((prefix == null || prefix.isEmpty()) ? "plant" : prefix) + ".targetGuards");
         }
     }
 
-    private static final class CommandedPositionPlant implements Plant {
-        private final PositionOutput out;
-        private double target;
+    private static final class PowerPlant extends AbstractSourceDrivenPlant {
+        private final PowerOutput out;
 
-        private CommandedPositionPlant(PositionOutput out) {
-            this.out = out;
+        PowerPlant(PowerOutput out, ScalarSource target, ScalarTarget writable, PlantTargetGuards guards) {
+            super(target, writable, guards);
+            this.out = Objects.requireNonNull(out, "out");
         }
 
         @Override
-        public void setTarget(double target) {
-            this.target = target;
-            out.setPosition(target);
-        }
-
-        @Override
-        public double getTarget() {
-            return target;
-        }
-
-        @Override
-        public void update(LoopClock clock) {
-            // commanded-position plant; no authoritative feedback
+        protected void applyTarget(double target, LoopClock clock) {
+            out.setPower(target);
         }
 
         @Override
         public void stop() {
             out.stop();
+            markStopped(0.0);
         }
     }
 
-    private abstract static class AbstractFeedbackPlant implements Plant {
+    private static final class CommandedPositionPlant extends AbstractSourceDrivenPlant {
+        private final PositionOutput out;
+
+        CommandedPositionPlant(PositionOutput out, ScalarSource target, ScalarTarget writable, PlantTargetGuards guards) {
+            super(target, writable, guards);
+            this.out = Objects.requireNonNull(out, "out");
+        }
+
+        @Override
+        protected void applyTarget(double target, LoopClock clock) {
+            out.setPosition(target);
+        }
+
+        @Override
+        public void stop() {
+            out.stop();
+            markStopped(getAppliedTarget());
+        }
+    }
+
+    private abstract static class AbstractFeedbackPlant extends AbstractSourceDrivenPlant {
         private final ScalarSource measurement;
         private final double tolerance;
-        private double target;
         private double lastMeasurement = Double.NaN;
-        private boolean lastAtSetpoint;
+        private boolean lastAtTarget;
 
-        private AbstractFeedbackPlant(ScalarSource measurement, double tolerance) {
-            this.measurement = measurement;
+        AbstractFeedbackPlant(ScalarSource target,
+                              ScalarTarget writable,
+                              PlantTargetGuards guards,
+                              ScalarSource measurement,
+                              double tolerance) {
+            super(target, writable, guards);
+            this.measurement = Objects.requireNonNull(measurement, "measurement").memoized();
+            if (tolerance < 0.0 || !Double.isFinite(tolerance)) {
+                throw new IllegalArgumentException("tolerance must be finite and >= 0");
+            }
             this.tolerance = tolerance;
         }
 
         @Override
-        public final void setTarget(double target) {
-            this.target = target;
-            onSetTarget(target);
-        }
-
-        @Override
-        public final double getTarget() {
-            return target;
-        }
-
-        @Override
-        public final void update(LoopClock clock) {
+        protected final void updateStatus(LoopClock clock) {
             lastMeasurement = measurement.getAsDouble(clock);
-            onUpdate(clock, lastMeasurement);
-            lastAtSetpoint = Double.isFinite(lastMeasurement)
-                    && Math.abs(target - lastMeasurement) <= tolerance;
+            onFeedbackUpdate(clock, lastMeasurement);
+            lastAtTarget = atTarget(getRequestedTarget());
         }
 
-        protected abstract void onSetTarget(double target);
-
-        protected abstract void onUpdate(LoopClock clock, double measurement);
-
-        @Override
-        public final boolean atSetpoint() {
-            return lastAtSetpoint;
+        protected void onFeedbackUpdate(LoopClock clock, double measurement) {
         }
 
         @Override
@@ -253,56 +265,72 @@ public final class Plants {
             return lastMeasurement;
         }
 
+        @Override
+        public final boolean atTarget() {
+            return lastAtTarget;
+        }
+
+        @Override
+        public final boolean atTarget(double target) {
+            return Double.isFinite(lastMeasurement)
+                    && Math.abs(getRequestedTarget() - target) <= tolerance
+                    && Math.abs(getAppliedTarget() - target) <= tolerance
+                    && Math.abs(lastMeasurement - target) <= tolerance
+                    && getTargetStatus().kind() == PlantTargetStatus.Kind.ACCEPTED;
+        }
+
         protected final double tolerance() {
             return tolerance;
+        }
+
+        @Override
+        public void reset() {
+            super.reset();
+            measurement.reset();
+            lastMeasurement = Double.NaN;
+            lastAtTarget = false;
         }
     }
 
     private static final class DeviceManagedPositionPlant extends AbstractFeedbackPlant {
         private final PositionOutput out;
 
-        private DeviceManagedPositionPlant(PositionOutput out, ScalarSource measurement, double tolerance) {
-            super(measurement, tolerance);
-            this.out = out;
+        DeviceManagedPositionPlant(PositionOutput out, ScalarSource target, ScalarTarget writable,
+                                   PlantTargetGuards guards, ScalarSource measurement, double tolerance) {
+            super(target, writable, guards, measurement, tolerance);
+            this.out = Objects.requireNonNull(out, "out");
         }
 
         @Override
-        protected void onSetTarget(double target) {
+        protected void applyTarget(double target, LoopClock clock) {
             out.setPosition(target);
-        }
-
-        @Override
-        protected void onUpdate(LoopClock clock, double measurement) {
-            // device owns the loop; measurement is sampled for plant status only
         }
 
         @Override
         public void stop() {
             out.stop();
+            markStopped(getAppliedTarget());
         }
     }
 
     private static final class DeviceManagedVelocityPlant extends AbstractFeedbackPlant {
         private final VelocityOutput out;
 
-        private DeviceManagedVelocityPlant(VelocityOutput out, ScalarSource measurement, double tolerance) {
-            super(measurement, tolerance);
-            this.out = out;
+        DeviceManagedVelocityPlant(VelocityOutput out, ScalarSource target, ScalarTarget writable,
+                                   PlantTargetGuards guards, ScalarSource measurement, double tolerance) {
+            super(target, writable, guards, measurement, tolerance);
+            this.out = Objects.requireNonNull(out, "out");
         }
 
         @Override
-        protected void onSetTarget(double target) {
+        protected void applyTarget(double target, LoopClock clock) {
             out.setVelocity(target);
-        }
-
-        @Override
-        protected void onUpdate(LoopClock clock, double measurement) {
-            // device owns the loop; measurement is sampled for plant status only
         }
 
         @Override
         public void stop() {
             out.stop();
+            markStopped(0.0);
         }
     }
 
@@ -311,29 +339,29 @@ public final class Plants {
         private final ScalarRegulator regulator;
         private double lastOutput;
 
-        private AbstractRegulatedPlant(PowerOutput out,
-                                       ScalarSource measurement,
-                                       ScalarRegulator regulator,
-                                       double tolerance) {
-            super(measurement, tolerance);
-            this.out = out;
-            this.regulator = regulator;
+        AbstractRegulatedPlant(PowerOutput out, ScalarSource target, ScalarTarget writable,
+                               PlantTargetGuards guards, ScalarSource measurement,
+                               ScalarRegulator regulator, double tolerance) {
+            super(target, writable, guards, measurement, tolerance);
+            this.out = Objects.requireNonNull(out, "out");
+            this.regulator = Objects.requireNonNull(regulator, "regulator");
         }
 
         @Override
-        protected final void onSetTarget(double target) {
-            // no immediate action; command happens during update with a fresh measurement
+        protected final void applyTarget(double target, LoopClock clock) {
         }
 
         @Override
-        protected final void onUpdate(LoopClock clock, double measurement) {
-            lastOutput = regulator.update(getTarget(), measurement, clock);
+        protected final void onFeedbackUpdate(LoopClock clock, double measurement) {
+            lastOutput = regulator.update(getAppliedTarget(), measurement, clock);
             out.setPower(lastOutput);
         }
 
         @Override
         public void reset() {
+            super.reset();
             regulator.reset();
+            lastOutput = 0.0;
         }
 
         @Override
@@ -341,39 +369,32 @@ public final class Plants {
             out.stop();
             regulator.reset();
             lastOutput = 0.0;
+            markStopped(0.0);
         }
 
         @Override
         public void debugDump(DebugSink dbg, String prefix) {
-            if (dbg == null) {
-                return;
-            }
+            super.debugDump(dbg, prefix);
+            if (dbg == null) return;
             String p = (prefix == null || prefix.isEmpty()) ? "plant" : prefix;
-            dbg.addData(p + ".target", getTarget())
-                    .addData(p + ".hasFeedback", hasFeedback())
-                    .addData(p + ".atSetpoint", atSetpoint())
-                    .addData(p + ".measurement", getMeasurement())
-                    .addData(p + ".error", getError())
-                    .addData(p + ".output", lastOutput);
+            dbg.addData(p + ".output", lastOutput);
             regulator.debugDump(dbg, p + ".regulator");
         }
     }
 
     private static final class RegulatedPositionPlant extends AbstractRegulatedPlant {
-        private RegulatedPositionPlant(PowerOutput out,
-                                       ScalarSource measurement,
-                                       ScalarRegulator regulator,
-                                       double tolerance) {
-            super(out, measurement, regulator, tolerance);
+        RegulatedPositionPlant(PowerOutput out, ScalarSource target, ScalarTarget writable,
+                               PlantTargetGuards guards, ScalarSource measurement,
+                               ScalarRegulator regulator, double tolerance) {
+            super(out, target, writable, guards, measurement, regulator, tolerance);
         }
     }
 
     private static final class RegulatedVelocityPlant extends AbstractRegulatedPlant {
-        private RegulatedVelocityPlant(PowerOutput out,
-                                       ScalarSource measurement,
-                                       ScalarRegulator regulator,
-                                       double tolerance) {
-            super(out, measurement, regulator, tolerance);
+        RegulatedVelocityPlant(PowerOutput out, ScalarSource target, ScalarTarget writable,
+                               PlantTargetGuards guards, ScalarSource measurement,
+                               ScalarRegulator regulator, double tolerance) {
+            super(out, target, writable, guards, measurement, regulator, tolerance);
         }
     }
 }

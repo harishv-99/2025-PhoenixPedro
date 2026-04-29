@@ -231,7 +231,7 @@ A subsystem should usually own:
 - the sensor sources most closely tied to that mechanism
 - the mechanism's long-lived desired state
 - output queues used as temporary overrides
-- the final `plant.setTarget(...)` calls
+- the final target source that each Plant follows
 - a small `status()` snapshot
 
 A subsystem should usually **not** own:
@@ -451,7 +451,7 @@ public final class Wrist {
         }
 
         lastAppliedTarget = target;
-        plant.setTarget(target);
+        plant.writableTarget().set(target);
         plant.update(clock);
     }
 }
@@ -510,6 +510,7 @@ PositionPlant liftPlant = FtcActuators.plant(hardwareMap)
             .nativeUnits()
             .alreadyReferenced()
         .positionTolerance(0.50)
+        .targetedByDefaultWritable(0.0)
         .build();
 ```
 
@@ -550,12 +551,12 @@ public final class Lift {
 
     public void setTargetHeightIn(double heightIn) {
         targetHeightIn = Math.max(0.0, Math.min(heightIn, 30.0));
-        liftPlant.setTarget(targetHeightIn);
+        liftPlant.writableTarget().set(targetHeightIn);
     }
 
     public Status status() {
         double measured = liftPlant.getMeasurement();
-        boolean atGoal = liftPlant.atSetpoint();
+        boolean atGoal = liftPlant.atTarget();
         return new Status(targetHeightIn, measured, atGoal);
     }
 
@@ -683,12 +684,12 @@ public final class Intake {
         lastPiecePresent = piecePresent.getAsBoolean(clock);
         feedQueue.update(clock);
 
-        intakePlant.setTarget(intakeEnabled ? 1.0 : 0.0);
+        intakePlant.writableTarget().set(intakeEnabled ? 1.0 : 0.0);
         intakePlant.update(clock);
 
         double feederCmd = feedQueue.activeSource().choose(feedQueue, ScalarSource.constant(0.0))
                 .getAsDouble(clock);
-        feederPlant.setTarget(feederCmd);
+        feederPlant.writableTarget().set(feederCmd);
         feederPlant.update(clock);
     }
 }
@@ -1065,7 +1066,7 @@ Bad:
 
 ```java
 if (gamepad1.a) {
-    liftPlant.setTarget(0.7);
+    liftPlant.writableTarget().set(0.7); // still wrong place: OpMode is bypassing mechanism policy
 }
 ```
 

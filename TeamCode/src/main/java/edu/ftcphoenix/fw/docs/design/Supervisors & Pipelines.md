@@ -116,7 +116,7 @@ switch (pose) {
   default:     target = 0.10; break;
 }
 
-wristPlant.setTarget(target);
+wristPlant.writableTarget().set(target);
 wristPlant.update(clock);
 ```
 
@@ -218,7 +218,9 @@ overrideQueue.update(clock);
 ScalarSource base = ScalarSource.constant(baseTarget);
 ScalarSource finalTarget = overrideQueue.activeSource().choose(overrideQueue, base);
 
-plant.setTarget(finalTarget.getAsDouble(clock));
+// Prefer building the Plant with finalTarget:
+// FtcActuators.plant(...).power().targetedBy(finalTarget).build();
+plant.update(clock);
 ```
 
 ### Base + multiple overrides
@@ -274,7 +276,12 @@ Example: motor power from a trigger.
 
 ```java
 ScalarSource intakePower = pads.p1().rightTrigger().scaled(1.0);
-plant.setTarget(intakePower.getAsDouble(clock));
+Plant intake = FtcActuators.plant(hardwareMap)
+        .motor("intake", Direction.FORWARD)
+        .power()
+        .targetedBy(intakePower)
+        .build();
+intake.update(clock);
 ```
 
 Best practices:
@@ -293,7 +300,7 @@ BooleanSource request = pads.p1().rightBumper();
 ScalarSource out = request.choose(ScalarSource.constant(1.0), ScalarSource.constant(0.0));
 ```
 
-If you need a repeated action, use `OutputTaskRunner.whileTrue(...)` (see recipe #5).
+If you need a repeated action, use `OutputTaskRunner.whileHigh(...)` (see recipe #5).
 
 ### 3) Toggle modes (latched behavior)
 
@@ -343,7 +350,7 @@ Supervisors typically:
 
 ### 6) Hold-to-repeat pulses (repeat while held)
 
-**Use:** `OutputTaskRunner.whileTrue(clock, request, backlog, factory)`
+**Use:** `OutputTaskRunner.whileHigh(clock, request, backlog, factory)`
 
 Typical pattern:
 

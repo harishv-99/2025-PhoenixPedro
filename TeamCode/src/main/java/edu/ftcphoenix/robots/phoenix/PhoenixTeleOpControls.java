@@ -70,6 +70,10 @@ public final class PhoenixTeleOpControls {
                 driver.rightBumper(),
                 this.cfg.drive.slowTranslateScale,
                 this.cfg.drive.slowOmegaScale
+        ).rateLimited(
+                this.cfg.drive.maxAxialRatePerSec,
+                this.cfg.drive.maxLateralRatePerSec,
+                this.cfg.drive.maxOmegaRatePerSec
         );
 
         autoAimEnabled = operator.leftBumper().memoized();

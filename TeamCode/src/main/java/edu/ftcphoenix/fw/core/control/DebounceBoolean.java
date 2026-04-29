@@ -18,7 +18,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *
  * <h2>Common uses</h2>
  * <ul>
- *   <li><b>Shooter ready</b>: require {@code atSetpoint()} to be true continuously for
+ *   <li><b>Shooter ready</b>: require {@code atTarget()} to be true continuously for
  *       0.10–0.20s before feeding a ring.</li>
  *   <li><b>Sensor validity</b>: require a vision target to be present for N frames/time before
  *       trusting it.</li>

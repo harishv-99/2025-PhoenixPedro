@@ -6,69 +6,73 @@ import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.source.ScalarSource;
 
 /**
- * Helper adapters that expose common {@link Plant} state as Phoenix sources.
- *
- * <p>These adapters are useful when higher-level logic wants to compose plant status into source
- * pipelines, debouncers, or tasks without reaching into the plant implementation directly.</p>
+ * Source views for plant status.
  */
 public final class PlantSources {
-
     private PlantSources() {
-        // utility class
     }
 
     /**
-     * Create a scalar source view of {@link Plant#getTarget()}.
-     *
-     * @param plant plant whose target should be exposed as a source
-     * @return scalar source that reports the plant's current target value
+     * Boolean source view of {@link Plant#atTarget()}.
      */
-    public static ScalarSource target(Plant plant) {
+    public static BooleanSource atTarget(Plant plant) {
         Objects.requireNonNull(plant, "plant");
-        return ScalarSource.of(plant::getTarget);
+        return clock -> plant.atTarget();
     }
 
     /**
-     * Create a scalar source view of {@link Plant#getMeasurement()}.
-     *
-     * @param plant plant whose authoritative measurement should be exposed as a source
-     * @return scalar source that reports the plant's last cached measurement value
+     * Boolean source view of {@link Plant#atTarget(double)} for a specific target value.
+     */
+    public static BooleanSource atTarget(Plant plant, double target) {
+        Objects.requireNonNull(plant, "plant");
+        return clock -> plant.atTarget(target);
+    }
+
+    /**
+     * Source view of {@link Plant#getRequestedTarget()}.
+     */
+    public static ScalarSource requestedTarget(Plant plant) {
+        Objects.requireNonNull(plant, "plant");
+        return clock -> plant.getRequestedTarget();
+    }
+
+    /**
+     * Source view of {@link Plant#getAppliedTarget()}.
+     */
+    public static ScalarSource appliedTarget(Plant plant) {
+        Objects.requireNonNull(plant, "plant");
+        return clock -> plant.getAppliedTarget();
+    }
+
+    /**
+     * Source view of {@link Plant#getMeasurement()}.
      */
     public static ScalarSource measurement(Plant plant) {
         Objects.requireNonNull(plant, "plant");
-        return ScalarSource.of(plant::getMeasurement);
+        return clock -> plant.getMeasurement();
     }
 
     /**
-     * Create a scalar source view of {@link Plant#getError()}.
-     *
-     * @param plant plant whose target-minus-measurement error should be exposed as a source
-     * @return scalar source that reports the plant's last cached error value
+     * Source view of requested-target error, {@link Plant#getTargetError()}.
      */
-    public static ScalarSource error(Plant plant) {
+    public static ScalarSource targetError(Plant plant) {
         Objects.requireNonNull(plant, "plant");
-        return ScalarSource.of(plant::getError);
+        return clock -> plant.getTargetError();
     }
 
     /**
-     * Create a boolean source view of {@link Plant#atSetpoint()}.
-     *
-     * @param plant plant whose at-setpoint status should be exposed as a source
-     * @return boolean source that reports whether the plant was at setpoint on its last update
+     * Source view of applied-target error, {@link Plant#getAppliedTargetError()}.
      */
-    public static BooleanSource atSetpoint(Plant plant) {
+    public static ScalarSource appliedTargetError(Plant plant) {
         Objects.requireNonNull(plant, "plant");
-        return BooleanSource.of(plant::atSetpoint);
+        return clock -> plant.getAppliedTargetError();
     }
 
     /**
-     * Create a boolean source view of {@link Plant#hasFeedback()}.
-     *
-     * @param plant plant whose feedback capability should be exposed as a source
-     * @return boolean source that reports whether the plant exposes meaningful feedback
+     * Boolean source that is high when the plant has feedback.
      */
     public static BooleanSource hasFeedback(Plant plant) {
         Objects.requireNonNull(plant, "plant");
-        return BooleanSource.of(plant::hasFeedback);
+        return clock -> plant.hasFeedback();
     }
 }

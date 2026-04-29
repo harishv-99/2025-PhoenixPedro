@@ -5,6 +5,7 @@ import java.util.function.DoublePredicate;
 import java.util.function.DoubleSupplier;
 
 import edu.ftcphoenix.fw.core.control.HysteresisBoolean;
+import edu.ftcphoenix.fw.core.control.SlewRateLimiter;
 import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.math.MathUtil;
 import edu.ftcphoenix.fw.core.time.LoopClock;
@@ -630,6 +631,142 @@ public interface ScalarSource extends Source<Double> {
         };
     }
 
+
+    /**
+     * Rate-limit this source as behavior-level source shaping.
+     *
+     * <p>This is different from a plant target guard. Use source rate limiting when the behavior
+     * request itself should be smoothed (for example driver throttle shaping). Use
+     * {@code targetGuards().maxTargetRate(...)} when the plant must enforce a hardware protection
+     * rule regardless of the behavior source.</p>
+     */
+    default ScalarSource rateLimited(double maxDeltaPerSec) {
+        return rateLimited(maxDeltaPerSec, maxDeltaPerSec);
+    }
+
+    /**
+     * Rate-limit this source with separate positive and negative rates.
+     */
+    default ScalarSource rateLimited(double maxUpPerSec, double maxDownPerSec) {
+        ScalarSource self = this;
+        SlewRateLimiter limiter = new SlewRateLimiter(maxUpPerSec, maxDownPerSec);
+        return new ScalarSource() {
+            @Override
+            public double getAsDouble(LoopClock clock) {
+                return limiter.calculate(self.getAsDouble(clock), clock);
+            }
+
+            @Override
+            public void reset() {
+                self.reset();
+                limiter.reset();
+            }
+
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) return;
+                String p = (prefix == null || prefix.isEmpty()) ? "rateLimitedScalar" : prefix;
+                dbg.addData(p + ".class", "RateLimitedScalar");
+                limiter.debugDump(dbg, p + ".limiter");
+                self.debugDump(dbg, p + ".src");
+            }
+        };
+    }
+
+    /**
+     * Return this source while {@code allowed} is high; otherwise return {@code fallback}.
+     *
+     * <p>This is a behavior-level guard for target-source construction. Plant-level hardware
+     * protection should use plant target guards instead.</p>
+     */
+    default ScalarSource fallbackUnless(BooleanSource allowed, double fallback) {
+        return fallbackUnless(allowed, ScalarSource.constant(fallback));
+    }
+
+    /**
+     * Return this source while {@code allowed} is high; otherwise return {@code fallback}.
+     */
+    default ScalarSource fallbackUnless(BooleanSource allowed, ScalarSource fallback) {
+        Objects.requireNonNull(allowed, "allowed");
+        Objects.requireNonNull(fallback, "fallback");
+        ScalarSource self = this;
+        return new ScalarSource() {
+            @Override
+            public double getAsDouble(LoopClock clock) {
+                return allowed.getAsBoolean(clock) ? self.getAsDouble(clock) : fallback.getAsDouble(clock);
+            }
+
+            @Override
+            public void reset() {
+                self.reset();
+                allowed.reset();
+                fallback.reset();
+            }
+
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) return;
+                String p = (prefix == null || prefix.isEmpty()) ? "fallbackUnless" : prefix;
+                dbg.addData(p + ".class", "FallbackUnlessScalar");
+                allowed.debugDump(dbg, p + ".allowed");
+                self.debugDump(dbg, p + ".src");
+                fallback.debugDump(dbg, p + ".fallback");
+            }
+        };
+    }
+
+    /**
+     * Hold the last output while {@code allowed} is low.
+     *
+     * <p>The first sampled value before any allowed sample is {@code initialValue}. This is a
+     * behavior-level source transform; plant hardware interlocks should use target guards.</p>
+     */
+    default ScalarSource holdLastUnless(BooleanSource allowed, double initialValue) {
+        Objects.requireNonNull(allowed, "allowed");
+        ScalarSource self = this;
+        return new ScalarSource() {
+            private double last = initialValue;
+            private boolean hasAllowedSample = false;
+            private long lastCycle = Long.MIN_VALUE;
+
+            @Override
+            public double getAsDouble(LoopClock clock) {
+                long cycle = clock != null ? clock.cycle() : Long.MIN_VALUE;
+                if (clock != null && cycle == lastCycle) {
+                    return last;
+                }
+                if (clock != null) lastCycle = cycle;
+                if (allowed.getAsBoolean(clock)) {
+                    last = self.getAsDouble(clock);
+                    hasAllowedSample = true;
+                } else if (!hasAllowedSample) {
+                    last = initialValue;
+                }
+                return last;
+            }
+
+            @Override
+            public void reset() {
+                self.reset();
+                allowed.reset();
+                last = initialValue;
+                hasAllowedSample = false;
+                lastCycle = Long.MIN_VALUE;
+            }
+
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) return;
+                String p = (prefix == null || prefix.isEmpty()) ? "holdLastUnless" : prefix;
+                dbg.addData(p + ".class", "HoldLastUnlessScalar")
+                        .addData(p + ".last", last)
+                        .addData(p + ".hasAllowedSample", hasAllowedSample);
+                allowed.debugDump(dbg, p + ".allowed");
+                self.debugDump(dbg, p + ".src");
+            }
+        };
+    }
+
     // ---------------------------------------------------------------------------------------------
     // Factories
     // ---------------------------------------------------------------------------------------------
@@ -661,6 +798,17 @@ public interface ScalarSource extends Source<Double> {
                 dbg.addData(p + ".class", "RawScalar");
             }
         };
+    }
+
+    /**
+     * Create a writable held scalar target.
+     *
+     * <p>This is a convenience for {@link ScalarTarget#held(double)}. Use it when robot behavior
+     * needs a persistent scalar request that can also be supplied anywhere a {@code ScalarSource}
+     * is expected.</p>
+     */
+    static ScalarTarget mutable(double initialValue) {
+        return ScalarTarget.held(initialValue);
     }
 
     /**

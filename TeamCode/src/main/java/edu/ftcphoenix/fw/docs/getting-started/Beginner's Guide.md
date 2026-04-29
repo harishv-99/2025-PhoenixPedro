@@ -201,6 +201,7 @@ private void initShooterPlants() {
             .bounded(0.0, 2600.0)
             .nativeUnits()
             .velocityTolerance(100.0)
+            .targetedByDefaultWritable(0.0)
             .build();
 
     // Transfer: dual CR servos, power control.
@@ -208,12 +209,17 @@ private void initShooterPlants() {
             .crServo("transferLeftServo", Direction.FORWARD)
             .andCrServo("transferRightServo", Direction.REVERSE)
             .power()
+            .targetedByDefaultWritable(0.0)
             .build();
 
     // Pusher: positional servo, commanded-position set-and-hold.
     pusher = FtcActuators.plant(hardwareMap)
             .servo("pusherServo", Direction.FORWARD)
             .position()
+            .linear()
+                .bounded(0.0, 1.0)
+                .nativeUnits()
+            .targetedByDefaultWritable(0.0)
             .build();
 }
 ```
@@ -251,11 +257,11 @@ The builder has three stages:
 
 Rule of thumb: builder values are in **plant units** unless the API explicitly says `Native` (or a
 native/controller-specific unit like `Ticks`). So `bounded(...)`, `periodic(...)`, tolerances, and
-later `setTarget(...)` all use plant units. `rangeMapsToNative(...)` takes native endpoint values.
+later target-source values all use plant units. `rangeMapsToNative(...)` takes native endpoint values.
 Velocity mapping is deliberately simpler: `scaleToNative(...)` changes only scale, not zero, so
 plant velocity `0.0` still means stop.
 
-Then you may add plant-level modifiers like `.positionTolerance(...)`, `.rateLimit(...)`, and finish with `.build()`.
+Then you may add plant-level tuning like `.positionTolerance(...)`, optional dynamic guards through `.targetGuards()...doneTargetGuards()`, and finally bind a target source with `.targetedBy(...)` or `.targetedByDefaultWritable(...)` before `.build()`.
 
 ### 3.2 Position semantics: motors vs servos
 
@@ -267,7 +273,7 @@ sense for it:
     * `motor(...).position().deviceManagedWithDefaults()` uses FTC `RUN_TO_POSITION`.
     * `motor(...).position().deviceManaged() ... .doneDeviceManaged()` exposes optional FTC tuning knobs.
     * `motor(...).position().regulated().nativeFeedback(...).regulator(...)` uses a framework-owned regulator plus explicit native feedback.
-    * Feedback-capable motor position Plants report plant-unit measurement and `atSetpoint()` status after `plant.update(clock)`.
+    * Feedback-capable motor position Plants report plant-unit measurement and `atTarget()` status after `plant.update(clock)`.
     * `plant.reset()` clears transient controller state only. It does **not** redefine encoder zero or physical coordinate frame.
 
 * **Regulated CR-servo position**:
@@ -302,6 +308,7 @@ PositionPlant arm = FtcActuators.plant(hardwareMap)
             .nativeUnits()
             .alreadyReferenced()
         .positionTolerance(20.0)
+        .targetedByDefaultWritable(0.0)
         .build();
 ```
 
@@ -319,6 +326,7 @@ PositionPlant arm = FtcActuators.plant(hardwareMap)
             .nativeUnits()
             .alreadyReferenced()
         .positionTolerance(20.0)
+        .targetedByDefaultWritable(0.0)
         .build();
 ```
 
@@ -327,7 +335,7 @@ PositionPlant arm = FtcActuators.plant(hardwareMap)
 For device-managed motor position plants there are **two different tolerance concepts**:
 
 * `positionTolerance(...)`
-    * Plant-level completion band used by `plant.atSetpoint()`.
+    * Plant-level completion band used by `plant.atTarget()`.
     * Default: **10 ticks** for the built-in motor-position helpers.
     * This is the normal knob to use when you want to say “close enough for robot logic.”
 
@@ -358,21 +366,21 @@ These are **factory helpers** that build `Task`s for you.
 
 ### 4.1 Time‑based helpers (work with any Plant)
 
-These helpers do **not** depend on `plant.atSetpoint()`, so they work with
+These helpers do **not** depend on `plant.atTarget()`, so they work with
 feedback plants and open-loop plants.
 
 * **Run for N seconds, then change target**
 
   ```java
   // Intake: run at +1.0 for 0.7 seconds, then stop.
-  Task intakePulse = PlantTasks.holdForThen(intake, +1.0, 0.7, 0.0);
+  Task intakePulse = PlantTasks.holdTargetForThen(intake, +1.0, 0.7, 0.0);
   ```
 
 * **Run for N seconds and keep that target afterward**
 
   ```java
   // Run shooter at target for at least 0.5 seconds, then keep holding it.
-  Task ensureSpinUp = PlantTasks.holdFor(shooter, SHOOTER_VELOCITY_NATIVE, 0.5);
+  Task ensureSpinUp = PlantTasks.holdTargetFor(shooter, SHOOTER_VELOCITY_NATIVE, 0.5);
   ```
 
 ### 4.2 Feedback‑based move helpers (require feedback)
@@ -396,7 +404,7 @@ mistake is obvious.
 For one‑shot changes:
 
 ```java
-Task stopShooter = PlantTasks.setInstant(shooter, 0.0);
+Task stopShooter = PlantTasks.setTarget(shooter, 0.0);
 ```
 
 This sets the target once in `start(...)`, finishes immediately, and leaves
@@ -437,19 +445,19 @@ private Task buildShootOneDiscMacro() {
             SHOOTER_SPINUP_TIMEOUT_SEC
     );
 
-    Task feedTransfer = PlantTasks.holdFor(
+    Task feedTransfer = PlantTasks.holdTargetFor(
             transfer,
             TRANSFER_POWER_SHOOT,
             TRANSFER_PULSE_SEC
     );
 
-    Task holdBeforeSpinDown = PlantTasks.holdFor(
+    Task holdBeforeSpinDown = PlantTasks.holdTargetFor(
             shooter,
             SHOOTER_VELOCITY_NATIVE,
             SHOOTER_SPINDOWN_HOLD_SEC
     );
 
-    Task spinDown = PlantTasks.setInstant(shooter, 0.0);
+    Task spinDown = PlantTasks.setTarget(shooter, 0.0);
 
     return Tasks.sequence(spinUp, feedTransfer, holdBeforeSpinDown, spinDown);
 }

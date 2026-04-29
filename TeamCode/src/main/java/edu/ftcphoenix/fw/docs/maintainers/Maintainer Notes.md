@@ -38,8 +38,8 @@ Instead, keep it explicit in your robot logic:
 
 When it helps clarity, use plant wrappers:
 
-- `RateLimitedPlant` to smooth target changes
-- `InterlockPlant` to enforce simple safety rules
+- `targetGuards().maxTargetRate(...)` to smooth target changes
+- `targetGuards().holdLastTargetUnless(...)` to enforce simple safety rules
 
 ### 1.3 AprilTag policy layering
 

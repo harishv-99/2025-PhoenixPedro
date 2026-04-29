@@ -52,14 +52,13 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *
  * <pre>{@code
  * MecanumDrivebase.Config cfg = MecanumDrivebase.Config.defaults();
- * cfg.maxOmega = 0.8;                 // example: slightly slower rotation
- * cfg.maxLateralRatePerSec = 4.0;     // example: smoother strafing
+ * cfg.maxOmega = 0.8;          // example: cap rotation before wheel mixing
  *
  * MecanumDrivebase drive = new MecanumDrivebase(fl, fr, bl, br, cfg);
  *
- * // In the main loop:
- * drive.update(clock);        // update dt used for rate limiting
- * drive.drive(signal);        // applies motor power immediately
+ * // Shape behavior upstream, then let the drivebase mix and apply it:
+ * DriveSource manual = gamepadDrive.rateLimited(4.0, 4.0, 6.0);
+ * drive.drive(manual.get(clock).clamped());
  * }</pre>
  */
 public final class MecanumDrivebase implements DriveCommandSink {
@@ -136,40 +135,6 @@ public final class MecanumDrivebase implements DriveCommandSink {
          */
         public double maxOmegaRadPerSec = Math.toRadians(180.0);
 
-        // --------------------------------------------------------------------
-        // Optional per-axis rate limiting (advanced)
-        // --------------------------------------------------------------------
-
-        /**
-         * Maximum change in axial command per second (command units/sec).
-         *
-         * <p>Domain: any value &gt; 0 enables a limit; {@code <= 0} disables it.</p>
-         *
-         * <p>Default: {@code 0.0} (no limit).</p>
-         */
-        public double maxAxialRatePerSec = 0.0;
-
-        /**
-         * Maximum change in lateral command per second (command units/sec).
-         *
-         * <p>Domain: any value &gt; 0 enables a limit; {@code <= 0} disables it.</p>
-         *
-         * <p>
-         * Default: {@code 4.0}. A typical Phoenix tuning might set this to a small
-         * value like {@code 4.0} to smooth strafing.
-         * </p>
-         */
-        public double maxLateralRatePerSec = 4.0;
-
-        /**
-         * Maximum change in omega command per second (command units/sec).
-         *
-         * <p>Domain: any value &gt; 0 enables a limit; {@code <= 0} disables it.</p>
-         *
-         * <p>Default: {@code 0.0} (no limit).</p>
-         */
-        public double maxOmegaRatePerSec = 0.0;
-
         private Config() {
             // Defaults assigned in field initializers.
         }
@@ -194,9 +159,6 @@ public final class MecanumDrivebase implements DriveCommandSink {
             c.maxVyInchesPerSec = this.maxVyInchesPerSec;
             c.maxOmegaRadPerSec = this.maxOmegaRadPerSec;
 
-            c.maxAxialRatePerSec = this.maxAxialRatePerSec;
-            c.maxLateralRatePerSec = this.maxLateralRatePerSec;
-            c.maxOmegaRatePerSec = this.maxOmegaRatePerSec;
             return c;
         }
     }
@@ -208,7 +170,7 @@ public final class MecanumDrivebase implements DriveCommandSink {
 
     private final Config cfg;
 
-    // Last commanded drive components (after scaling and rate limiting).
+    // Last commanded drive components after drivebase scaling.
     private double lastAxialCmd;
     private double lastLateralCmd;
     private double lastOmegaCmd;
@@ -219,9 +181,6 @@ public final class MecanumDrivebase implements DriveCommandSink {
     private double lastBlPower;
     private double lastBrPower;
 
-    // Last dt (seconds) used for rate limiting.
-    private double lastDtSec;
-
     /**
      * Construct a new mecanum drivebase.
      *
@@ -229,7 +188,7 @@ public final class MecanumDrivebase implements DriveCommandSink {
      * @param frPower power output for the front-right wheel (non-null)
      * @param blPower power output for the back-left wheel (non-null)
      * @param brPower power output for the back-right wheel (non-null)
-     * @param cfg     configuration for scaling and rate limiting (may be {@code null})
+     * @param cfg     configuration for drivebase scaling and speed mapping (may be {@code null})
      */
     public MecanumDrivebase(PowerOutput flPower,
                             PowerOutput frPower,
@@ -263,9 +222,8 @@ public final class MecanumDrivebase implements DriveCommandSink {
      * <p><b>Actuation timing:</b> this method ultimately calls {@link #drive(DriveSignal)},
      * which <b>immediately</b> sends wheel power commands to the hardware outputs.</p>
      *
-     * <p><b>Rate limiting:</b> if you enable rate limiting in {@link Config}, call
-     * {@link #update(LoopClock)} once per loop <b>before</b> calling this method so the
-     * current loop's {@code dtSec} is used.</p>
+     * <p><b>Rate limiting:</b> shape the {@link DriveSource} upstream with
+     * {@link DriveSource#rateLimited(double, double)} if you want smoother drive behavior.</p>
      *
      * @param speeds desired chassis speeds (robot-centric) (must not be {@code null})
      * @throws IllegalStateException if any of the speed-mapping max values are <= 0
@@ -303,7 +261,6 @@ public final class MecanumDrivebase implements DriveCommandSink {
      * </p>
      * <ol>
      *   <li>Scales {@code axial}, {@code lateral}, {@code omega} by config scales.</li>
-     *   <li>Optionally rate-limits each component based on the most recent {@link #update(LoopClock)}.</li>
      *   <li>Computes mecanum wheel powers using the standard mix.</li>
      *   <li>Normalizes wheel powers if any magnitude exceeds 1.0.</li>
      *   <li>Clamps wheel powers to [-1, +1] and sends them to the hardware.</li>
@@ -313,9 +270,8 @@ public final class MecanumDrivebase implements DriveCommandSink {
      * to the hardware outputs (via {@link PowerOutput#setPower(double)}). It does not
      * "latch" the command for a later update.</p>
      *
-     * <p><b>Rate limiting:</b> if rate limiting is enabled in {@link Config}, call
-     * {@link #update(LoopClock)} once per loop <b>before</b> calling this method so the
-     * current loop's {@code dtSec} is used.</p>
+     * <p><b>Rate limiting:</b> {@code MecanumDrivebase} is intentionally a sink, not a behavior
+     * shaper. Use {@link DriveSource#rateLimited(double, double)} before calling this method.</p>
      *
      * @param s drive command (must not be {@code null})
      */
@@ -323,22 +279,16 @@ public final class MecanumDrivebase implements DriveCommandSink {
     public void drive(DriveSignal s) {
         Objects.requireNonNull(s, "s");
 
-        // 1) Apply per-axis scaling from the config.
-        double desiredAxial = s.axial * cfg.maxAxial;
-        double desiredLateral = s.lateral * cfg.maxLateral;
-        double desiredOmega = s.omega * cfg.maxOmega;
-
-        // 2) Optionally apply per-axis rate limiting based on lastDtSec.
-        double dt = lastDtSec;
-        double axialCmd = limitRate(desiredAxial, lastAxialCmd, cfg.maxAxialRatePerSec, dt);
-        double lateralCmd = limitRate(desiredLateral, lastLateralCmd, cfg.maxLateralRatePerSec, dt);
-        double omegaCmd = limitRate(desiredOmega, lastOmegaCmd, cfg.maxOmegaRatePerSec, dt);
+        // 1) Apply drivebase-level scaling from the config.
+        double axialCmd = s.axial * cfg.maxAxial;
+        double lateralCmd = s.lateral * cfg.maxLateral;
+        double omegaCmd = s.omega * cfg.maxOmega;
 
         lastAxialCmd = axialCmd;
         lastLateralCmd = lateralCmd;
         lastOmegaCmd = omegaCmd;
 
-        // 3) Basic mecanum mixing with the (possibly rate-limited) components.
+        // 2) Basic mecanum mixing with the scaled components.
         //    Sign conventions (robot-centric):
         //      axial   > 0 -> forward
         //      lateral > 0 -> left
@@ -348,7 +298,7 @@ public final class MecanumDrivebase implements DriveCommandSink {
         double blP = axialCmd + lateralCmd - omegaCmd;
         double brP = axialCmd - lateralCmd + omegaCmd;
 
-        // 4) Normalize wheel powers if any exceeds |1.0| to preserve direction.
+        // 3) Normalize wheel powers if any exceeds |1.0| to preserve direction.
         double maxMag = Math.max(
                 1.0,
                 Math.max(
@@ -361,7 +311,7 @@ public final class MecanumDrivebase implements DriveCommandSink {
         blP /= maxMag;
         brP /= maxMag;
 
-        // 5) Final clamp (mainly for numerical safety) and apply,
+        // 4) Final clamp (mainly for numerical safety) and apply,
         //    while tracking last commanded values.
         lastFlPower = MathUtil.clamp(flP, -1.0, 1.0);
         lastFrPower = MathUtil.clamp(frP, -1.0, 1.0);
@@ -375,52 +325,12 @@ public final class MecanumDrivebase implements DriveCommandSink {
     }
 
     /**
-     * Internal helper to limit the rate of change of a command.
-     *
-     * <p>
-     * If {@code maxRatePerSec} is &lt;= 0 or {@code dtSec} is &lt;= 0, this
-     * method returns {@code desired} unchanged.
-     * </p>
-     */
-    private static double limitRate(double desired,
-                                    double previous,
-                                    double maxRatePerSec,
-                                    double dtSec) {
-        if (maxRatePerSec <= 0.0 || dtSec <= 0.0) {
-            return desired;
-        }
-        double maxDelta = maxRatePerSec * dtSec;
-        double delta = desired - previous;
-
-        if (delta > maxDelta) {
-            return previous + maxDelta;
-        } else if (delta < -maxDelta) {
-            return previous - maxDelta;
-        }
-        return desired;
-    }
-
-    /**
-     * Update loop timing information used for rate limiting.
-     *
-     * <p>
-     * This method only records loop timing ({@code dtSec}) for optional rate limiting.
-     * It does <b>not</b> command motors.
-     * </p>
-     *
-     * <p>
-     * Call this once per loop <b>before</b> calling {@link #drive(DriveSignal)} (or
-     * {@link #drive(ChassisSpeeds)}) if you want rate limiting to use the most recent dt.
-     * </p>
-     *
-     * @param clock loop timing helper (may be {@code null})
+     * MecanumDrivebase has no per-loop behavior state to update. Drive command shaping, including
+     * rate limiting, belongs in the {@link DriveSource} graph that feeds this sink.
      */
     @Override
     public void update(LoopClock clock) {
-        if (clock == null) {
-            return;
-        }
-        lastDtSec = clock.dtSec();
+        // no-op
     }
 
     /**
@@ -476,8 +386,6 @@ public final class MecanumDrivebase implements DriveCommandSink {
         dbg.addData(p + "lastAxialCmd", lastAxialCmd);
         dbg.addData(p + "lastLateralCmd", lastLateralCmd);
         dbg.addData(p + "lastOmegaCmd", lastOmegaCmd);
-
-        dbg.addData(p + "lastDtSec", lastDtSec);
     }
 
     // ------------------------------------------------------------------------
@@ -485,21 +393,21 @@ public final class MecanumDrivebase implements DriveCommandSink {
     // ------------------------------------------------------------------------
 
     /**
-     * @return last commanded (scaled and rate-limited) axial command.
+     * @return last commanded scaled axial command.
      */
     public double getLastAxialCmd() {
         return lastAxialCmd;
     }
 
     /**
-     * @return last commanded (scaled and rate-limited) lateral command.
+     * @return last commanded scaled lateral command.
      */
     public double getLastLateralCmd() {
         return lastLateralCmd;
     }
 
     /**
-     * @return last commanded (scaled and rate-limited) omega command.
+     * @return last commanded scaled omega command.
      */
     public double getLastOmegaCmd() {
         return lastOmegaCmd;

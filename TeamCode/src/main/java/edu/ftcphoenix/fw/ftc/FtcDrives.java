@@ -59,8 +59,8 @@ import edu.ftcphoenix.fw.drive.MecanumDrivebase;
  * <p>More advanced teams can:</p>
  *
  * <ul>
- *   <li>Pass a custom {@link MecanumDrivebase.Config} to enable rate limiting or other
- *       tuning options.</li>
+ *   <li>Pass a custom {@link MecanumDrivebase.Config} for drivebase scaling or physical-speed
+ *       mapping. Smooth driver behavior with {@code DriveSource.rateLimited(...)} upstream.</li>
  *   <li>Use the overloads that accept custom motor names if they do not
  *       follow the standard naming convention.</li>
  *   <li>Bypass this helper entirely and construct {@link MecanumDrivebase}
@@ -357,14 +357,15 @@ public final class FtcDrives {
     }
 
     // ------------------------------------------------------------------
-    // Overloads that accept a custom MecanumDrivebase.Config (rate limiting, etc.)
+    // Overloads that accept a custom MecanumDrivebase.Config
     // ------------------------------------------------------------------
 
     /**
      * Create a mecanum drivebase using standard motor names, default directions, and a custom config.
      *
-     * <p>This is the easiest way to enable optional tuning (for example, drive rate limiting)
-     * while still using the standard wiring assumptions.</p>
+     * <p>This is the easiest way to tune drivebase scaling and physical-speed mapping while still
+     * using the standard wiring assumptions. Source shaping such as rate limiting belongs on the
+     * {@code DriveSource} that feeds the drivebase.</p>
      *
      * @param hw     FTC {@link HardwareMap} used to look up configured motors
      * @param config configuration/tuning for the drivebase; if {@code null}, defaults are used

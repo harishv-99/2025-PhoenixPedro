@@ -20,12 +20,12 @@ import edu.ftcphoenix.fw.task.Tasks;
 /**
  * Phoenix scoring path: intake, transfer, flywheel, and scoring policy in one owner.
  *
- * <p>This class is still the single writer to the scoring-path plants, but it now keeps its mutable
+ * <p>This class is still the single owner of the scoring-path source graph and plants, but it now keeps its mutable
  * state in three internal roles that mirror Phoenix's recommended mechanism layering:</p>
  * <ul>
  *   <li><b>Inputs</b>: caller-owned held and pending values written through the shared capability surface.</li>
  *   <li><b>Execution</b>: robot-owned priority, queueing, gates, and transient behavior state.</li>
- *   <li><b>Realization</b>: plant ownership, final target writes, and flywheel readback.</li>
+ *   <li><b>Realization</b>: plant ownership, final target sources, and flywheel readback.</li>
  * </ul>
  *
  * <p>Keeping those roles explicit makes it easier for TeleOp and Auto to share the same public API
@@ -298,10 +298,7 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
             boolean shootingCur = inputs.shootingRequested.get();
             boolean flywheelCur = inputs.flywheelRequested.get();
 
-            boolean clearTransients = false;
-            if (!prevIntakeRequested && intakeCur) {
-                clearTransients = true;
-            }
+            boolean clearTransients = !prevIntakeRequested && intakeCur;
             if (!prevEjectRequested && ejectCur) {
                 clearTransients = true;
             }
@@ -438,6 +435,11 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
         private final Plant plantShooterTransfer;
         private final Plant plantFlywheel;
 
+        private final ScalarSource intakeMotorTargetSource;
+        private final ScalarSource intakeTransferTargetSource;
+        private final ScalarSource shooterTransferTargetSource;
+        private final ScalarSource flywheelTargetSource;
+
         private final DebounceBoolean readyLatch = DebounceBoolean.onAfterOffImmediately(cfg.readyStableSec);
         private final BooleanSource flywheelReadySource;
 
@@ -449,14 +451,34 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
         private double prevFlywheelMeasuredAbs = 0.0;
 
         Realization(HardwareMap hardwareMap) {
+            flywheelTargetSource = ScalarSource.of(() ->
+                    execution.isFlywheelEnabled() ? inputs.selectedVelocityNative.get() : 0.0);
+
+            intakeMotorTargetSource = ScalarSource.of(() ->
+                    execution.isFeedOverrideActive()
+                            ? execution.feedOverride() * cfg.feedScaleIntakeMotor
+                            : execution.baseIntakeMotorPower());
+
+            intakeTransferTargetSource = ScalarSource.of(() ->
+                    execution.isFeedOverrideActive()
+                            ? execution.feedOverride() * cfg.feedScaleIntakeTransfer
+                            : execution.baseIntakeTransferPower());
+
+            shooterTransferTargetSource = ScalarSource.of(() ->
+                    execution.isFeedOverrideActive()
+                            ? execution.feedOverride() * cfg.feedScaleShooterTransfer
+                            : execution.baseShooterTransferPower());
+
             plantIntakeMotor = FtcActuators.plant(hardwareMap)
                     .motor(cfg.nameMotorIntake, cfg.directionMotorIntake)
                     .power()
+                    .targetedBy(intakeMotorTargetSource)
                     .build();
 
             plantIntakeTransfer = FtcActuators.plant(hardwareMap)
                     .crServo(cfg.nameCrServoIntakeTransfer, cfg.directionCrServoIntakeTransfer)
                     .power()
+                    .targetedBy(intakeTransferTargetSource)
                     .build();
 
             plantShooterTransfer = FtcActuators.plant(hardwareMap)
@@ -465,6 +487,7 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
                     .scale(cfg.shooterTransferLeftScale)
                     .bias(cfg.shooterTransferLeftBias)
                     .power()
+                    .targetedBy(shooterTransferTargetSource)
                     .build();
 
             if (cfg.applyFlywheelVelocityPIDF) {
@@ -481,6 +504,7 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
                         .bounded(0.0, cfg.velocityMax)
                         .nativeUnits()
                         .velocityTolerance(cfg.velocityToleranceNative)
+                        .targetedBy(flywheelTargetSource)
                         .build();
             } else {
                 plantFlywheel = FtcActuators.plant(hardwareMap)
@@ -490,6 +514,7 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
                         .bounded(0.0, cfg.velocityMax)
                         .nativeUnits()
                         .velocityTolerance(cfg.velocityToleranceNative)
+                        .targetedBy(flywheelTargetSource)
                         .build();
             }
 
@@ -546,9 +571,8 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
         }
 
         void updateFlywheel(LoopClock clock) {
-            flywheelTargetNative = execution.isFlywheelEnabled() ? inputs.selectedVelocityNative.get() : 0.0;
-            plantFlywheel.setTarget(flywheelTargetNative);
             plantFlywheel.update(clock);
+            flywheelTargetNative = plantFlywheel.getRequestedTarget();
 
             flywheelMeasuredNative = plantFlywheel.getMeasurement();
             if (!Double.isFinite(flywheelMeasuredNative)) {
@@ -568,22 +592,6 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
         }
 
         void updateFeedAndTransfer(LoopClock clock) {
-            double intakeMotorTarget = execution.isFeedOverrideActive()
-                    ? execution.feedOverride() * cfg.feedScaleIntakeMotor
-                    : execution.baseIntakeMotorPower();
-
-            double intakeTransferTarget = execution.isFeedOverrideActive()
-                    ? execution.feedOverride() * cfg.feedScaleIntakeTransfer
-                    : execution.baseIntakeTransferPower();
-
-            double shooterTransferTarget = execution.isFeedOverrideActive()
-                    ? execution.feedOverride() * cfg.feedScaleShooterTransfer
-                    : execution.baseShooterTransferPower();
-
-            plantIntakeMotor.setTarget(intakeMotorTarget);
-            plantIntakeTransfer.setTarget(intakeTransferTarget);
-            plantShooterTransfer.setTarget(shooterTransferTarget);
-
             plantIntakeMotor.update(clock);
             plantIntakeTransfer.update(clock);
             plantShooterTransfer.update(clock);
@@ -610,7 +618,7 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
         }
 
         boolean flywheelAtSetpoint() {
-            return plantFlywheel.atSetpoint();
+            return plantFlywheel.atTarget();
         }
 
         void stop() {

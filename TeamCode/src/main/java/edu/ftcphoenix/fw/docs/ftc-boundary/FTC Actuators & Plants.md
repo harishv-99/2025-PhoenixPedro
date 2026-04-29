@@ -26,6 +26,7 @@ Plant flywheel = FtcActuators.plant(hardwareMap)
         .bounded(0.0, 2600.0)
         .nativeUnits()
         .velocityTolerance(50.0)
+        .targetedByDefaultWritable(0.0)
         .build();
 
 PositionPlant pusher = FtcActuators.plant(hardwareMap)
@@ -34,6 +35,7 @@ PositionPlant pusher = FtcActuators.plant(hardwareMap)
         .linear()
             .bounded(0.0, 1.0)
             .nativeUnits()
+        .targetedByDefaultWritable(0.0)
         .build();
 ```
 
@@ -50,7 +52,8 @@ For example, motor position wiring asks:
 5. What bounds? `bounded(min, max)` or `unbounded()`
 6. How do plant units map to native units? `nativeUnits()`, `scaleToNative(...)`, or bounded-only `rangeMapsToNative(...)`
 7. How is the reference/offset known? `alreadyReferenced()`, `plantPositionMapsToNative(...)`, `assumeCurrentPositionIs(...)`, or `needsReference(...)`
-8. Optional plant-level tuning: `positionTolerance(...)`, `rateLimit(...)`, `build()`
+8. Optional dynamic hardware guards: `targetGuards().maxTargetRate(...)`, `holdLastTargetUnless(...)`, `fallbackTargetUnless(...)`
+9. Target binding: `targetedBy(ScalarTarget)`, `targetedBy(readOnlySource)`, or `targetedByDefaultWritable(initialTarget)`, then `build()`
 
 Motor velocity wiring asks a parallel but smaller set of questions:
 
@@ -59,7 +62,8 @@ Motor velocity wiring asks a parallel but smaller set of questions:
 3. Who manages the velocity loop? `deviceManagedWithDefaults()`, `deviceManaged()...doneDeviceManaged()`, or `regulated().nativeFeedback(...).regulator(...)`
 4. What target bounds are legal? `bounded(min, max)` or `unbounded()`
 5. How do plant velocity units map to native velocity units? `nativeUnits()` or `scaleToNative(...)`
-6. Optional plant-level tuning: `velocityTolerance(...)`, `rateLimit(...)`, `build()`
+6. Optional dynamic hardware guards: `targetGuards().maxTargetRate(...)`, `holdLastTargetUnless(...)`, `fallbackTargetUnless(...)`
+7. Target binding: `targetedBy(ScalarTarget)`, `targetedBy(readOnlySource)`, or `targetedByDefaultWritable(initialTarget)`, then `build()`
 
 Velocity and power Plants stay simpler than position Plants because they do not have position
 geometry, periodicity, or homing/reference questions.
@@ -70,8 +74,8 @@ geometry, periodicity, or homing/reference questions.
 
 For position and velocity Plants, Phoenix distinguishes two coordinate systems:
 
-* **Plant units** are the public units used by robot code, `Plant#setTarget(...)`, scalar planner
-  requests, target ranges, position periods, reference values, and plant-level tolerances.
+* **Plant units** are the public units used by robot code, `ScalarTarget` requests, Plant target
+  sources, scalar planner requests, target ranges, position periods, reference values, and plant-level tolerances.
 * **Native units** are the units used by the selected hardware/control path: servo raw fraction,
   motor encoder ticks, motor ticks/sec, external encoder units, or a caller-supplied feedback source.
 
@@ -80,8 +84,8 @@ Public position and velocity APIs use **plant units** unless the method name exp
 
 As a rule of thumb:
 
-* `bounded(...)`, `unbounded()`, `periodic(...)`, `setTarget(...)`, `getTarget()`,
-  `getMeasurement()`, `positionTolerance(...)`, and `velocityTolerance(...)` all speak in
+* `bounded(...)`, `unbounded()`, `periodic(...)`, `targetedBy(...)`, `getRequestedTarget()`,
+  `getAppliedTarget()`, `getMeasurement()`, `positionTolerance(...)`, and `velocityTolerance(...)` all speak in
   **plant units**.
 * Methods that cross the plant/native boundary say so explicitly in the name or docs, for example
   `nativeUnits()`, `scaleToNative(...)`, `rangeMapsToNative(...)`,
@@ -124,6 +128,7 @@ PositionPlant lift = FtcActuators.plant(hardwareMap)
             .nativeUnits()
             .needsReference("lift not homed")
         .positionTolerance(20.0)
+        .targetedByDefaultWritable(0.0)
         .build();
 ```
 
@@ -150,6 +155,7 @@ PositionPlant lift = FtcActuators.plant(hardwareMap)
             .nativeUnits()
             .needsReference("lift not homed")
         .positionTolerance(20.0)
+        .targetedByDefaultWritable(0.0)
         .build();
 ```
 
@@ -180,6 +186,7 @@ PositionPlant arm = FtcActuators.plant(hardwareMap)
             .nativeUnits()
             .alreadyReferenced()
         .positionTolerance(20.0)
+        .targetedByDefaultWritable(0.0)
         .build();
 ```
 
@@ -283,20 +290,24 @@ So for a servo declared as `bounded(-45.0, 90.0)`, calling `rangeMapsToNative(0.
 Example:
 
 ```java
+ScalarTarget clawTarget = ScalarTarget.held(0.0);
+
 PositionPlant claw = FtcActuators.plant(hardwareMap)
         .servo("clawServo", Direction.FORWARD)
         .position()
         .linear()
             .bounded(0.0, 1.0)
             .rangeMapsToNative(0.30, 0.80)
+        .targetedBy(clawTarget)
         .build();
 ```
 
-Robot code now uses logical claw units:
+Robot code now writes the logical claw target source:
 
 ```java
-claw.setTarget(0.0); // raw servo 0.30
-claw.setTarget(1.0); // raw servo 0.80
+clawTarget.set(0.0); // raw servo 0.30
+clawTarget.set(1.0); // raw servo 0.80
+claw.update(clock);
 ```
 
 `rangeMapsToNative(...)` is intentionally not available after `unbounded()` because there is no
@@ -404,6 +415,7 @@ PositionPlant wrist = FtcActuators.plant(hardwareMap)
         .linear()
             .bounded(0.0, 1.0)
             .nativeUnits()
+        .targetedByDefaultWritable(0.0)
         .build();
 ```
 
@@ -416,6 +428,7 @@ PositionPlant wrist = FtcActuators.plant(hardwareMap)
         .linear()
             .bounded(-45.0, 90.0)
             .rangeMapsToNative(0.22, 0.76)
+        .targetedByDefaultWritable(0.0)
         .build();
 ```
 
@@ -440,6 +453,7 @@ PositionPlant turret = FtcActuators.plant(hardwareMap)
             .nativeUnits()
             .needsReference("turret not homed")
         .positionTolerance(8.0)
+        .targetedByDefaultWritable(0.0)
         .build();
 ```
 
@@ -510,13 +524,13 @@ Feedback-capable plants expose their authoritative measurement through the plant
 ```java
 plant.update(clock);
 
-telemetry.addData("target", plant.getTarget());
+telemetry.addData("target", plant.getRequestedTarget());
 telemetry.addData("measurement", plant.getMeasurement());
-telemetry.addData("error", plant.getError());
-telemetry.addData("atSetpoint", plant.atSetpoint());
+telemetry.addData("error", plant.getTargetError());
+telemetry.addData("atTarget", plant.atTarget());
 ```
 
-For `PositionPlant`, `getTarget()`, `getMeasurement()`, and `getError()` are all in plant units.
+For `PositionPlant`, `getRequestedTarget()`, `getAppliedTarget()`, `getMeasurement()`, and `getTargetError()` are all in plant units.
 `PositionPlant.positionSource()` is also in plant units and is the preferred measurement source for
 `ScalarSetpoints.plan().request(...).forPositionPlant(plant)`.
 
@@ -528,7 +542,7 @@ For device-managed motor position control there are two different tolerance conc
 
 ### `positionTolerance(...)`
 
-This is the **plant-level** completion band used by `Plant.atSetpoint()`.
+This is the **plant-level** completion band used by `Plant.atTarget()`.
 
 * units: plant position units
 * use this first when you want to define “close enough for robot logic”
@@ -541,7 +555,7 @@ This is an **optional FTC motor-controller override** for the motor's own target
 * default in Phoenix: unchanged unless you call it
 * units: native encoder ticks
 * use this only when you intentionally want to change the FTC motor controller's own completion threshold via `DcMotorEx.setTargetPositionTolerance(int)`
-* this does not change what `Plant.atSetpoint()` means unless your plant-level `positionTolerance(...)` happens to match it
+* this does not change what `Plant.atTarget()` means unless your plant-level `positionTolerance(...)` happens to match it
 
 ## 12. Velocity bounds, mapping, and tuning
 
@@ -556,6 +570,7 @@ Plant shooter = FtcActuators.plant(hardwareMap)
         .bounded(0.0, 2600.0)
         .nativeUnits()
         .velocityTolerance(50.0)
+        .targetedByDefaultWritable(0.0)
         .build();
 ```
 
@@ -572,6 +587,7 @@ Plant shooter = FtcActuators.plant(hardwareMap)
         .bounded(0.0, 2600.0)
         .nativeUnits()
         .velocityTolerance(50.0)
+        .targetedByDefaultWritable(0.0)
         .build();
 ```
 
@@ -589,6 +605,7 @@ Plant shooter = FtcActuators.plant(hardwareMap)
         .bounded(0.0, 5000.0)          // plant units: RPM
         .scaleToNative(TICKS_PER_RPM)  // native units: FTC ticks/sec
         .velocityTolerance(75.0)       // plant units: RPM
+        .targetedByDefaultWritable(0.0)
         .build();
 ```
 
@@ -604,7 +621,7 @@ mapping, plant `0.0` means stationary.
 
 Velocity bounds should represent hardware-safe target bounds, not scoring semantics. For example,
 if a shooter has a minimum useful scoring speed of 700 ticks/sec, the Plant range should usually
-still start at `0.0` so `setTarget(0.0)` stops the flywheel. Keep the 700 value in shooter selection
+still start at `0.0` so setting the flywheel target source to `0.0` stops the flywheel. Keep the 700 value in shooter selection
 logic, not in the Plant's legal target range.
 
 ---

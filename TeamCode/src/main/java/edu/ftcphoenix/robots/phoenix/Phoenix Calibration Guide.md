@@ -50,6 +50,7 @@ PositionPlant lift = FtcActuators.plant(hardwareMap)
             .scaleToNative(TICKS_PER_INCH)   // native units: encoder ticks
             .needsReference("lift not homed")
         .positionTolerance(0.10)             // plant units
+        .targetedByDefaultWritable(0.0)
         .build();
 ```
 

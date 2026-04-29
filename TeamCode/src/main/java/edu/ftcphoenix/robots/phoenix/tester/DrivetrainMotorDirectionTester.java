@@ -64,34 +64,38 @@ public final class DrivetrainMotorDirectionTester extends BaseTeleOpTester {
         plantFL = FtcActuators.plant(ctx.hw)
                 .motor(drive.wiring.frontLeftName, drive.wiring.frontLeftDirection)
                 .power()
+                .targetedByDefaultWritable(0.0)
                 .build();
 
         plantFR = FtcActuators.plant(ctx.hw)
                 .motor(drive.wiring.frontRightName, drive.wiring.frontRightDirection)
                 .power()
+                .targetedByDefaultWritable(0.0)
                 .build();
 
         plantBL = FtcActuators.plant(ctx.hw)
                 .motor(drive.wiring.backLeftName, drive.wiring.backLeftDirection)
                 .power()
+                .targetedByDefaultWritable(0.0)
                 .build();
 
         plantBR = FtcActuators.plant(ctx.hw)
                 .motor(drive.wiring.backRightName, drive.wiring.backRightDirection)
                 .power()
+                .targetedByDefaultWritable(0.0)
                 .build();
 
         bindings.mirrorOnChange(gamepads.p1().x(),
-                high -> plantFL.setTarget(high ? TEST_POWER : 0.0));
+                high -> plantFL.writableTarget().set(high ? TEST_POWER : 0.0));
 
         bindings.mirrorOnChange(gamepads.p1().y(),
-                high -> plantFR.setTarget(high ? TEST_POWER : 0.0));
+                high -> plantFR.writableTarget().set(high ? TEST_POWER : 0.0));
 
         bindings.mirrorOnChange(gamepads.p1().a(),
-                high -> plantBL.setTarget(high ? TEST_POWER : 0.0));
+                high -> plantBL.writableTarget().set(high ? TEST_POWER : 0.0));
 
         bindings.mirrorOnChange(gamepads.p1().b(),
-                high -> plantBR.setTarget(high ? TEST_POWER : 0.0));
+                high -> plantBR.writableTarget().set(high ? TEST_POWER : 0.0));
 
         stopAll();
     }

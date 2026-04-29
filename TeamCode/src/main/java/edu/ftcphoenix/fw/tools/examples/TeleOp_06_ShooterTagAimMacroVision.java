@@ -82,7 +82,7 @@ import edu.ftcphoenix.fw.task.TaskRunner;
  *         <ol>
  *           <li>Read current tag distance from the shared {@link TagSelectionSource}.</li>
  *           <li>Look up shooter velocity from {@link #SHOOTER_VELOCITY_TABLE}.</li>
- *           <li>Spin up shooter and wait for atSetpoint (with timeout).</li>
+ *           <li>Spin up shooter and wait for atTarget (with timeout).</li>
  *           <li>Feed one ball using transfer + pusher in parallel.</li>
  *           <li>Hold briefly, then spin shooter down to 0.</li>
  *         </ol>
@@ -233,7 +233,8 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
                 gamepads.p1().leftY(),
                 gamepads.p1().rightX(),
                 GamepadDriveSource.Config.defaults()
-        ).scaledWhen(gamepads.p1().rightBumper(), 0.35, 0.20);
+        ).scaledWhen(gamepads.p1().rightBumper(), 0.35, 0.20)
+                .rateLimited(4.0, 4.0, 6.0);
 
         // 3) Tag sensor: FTC VisionPortal + AprilTagProcessor adapter.
         //
@@ -293,12 +294,14 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
                 .bounded(0.0, 250.0)
                 .nativeUnits()
                 .velocityTolerance(SHOOTER_VELOCITY_TOLERANCE_NATIVE)
+                .targetedByDefaultWritable(0.0)
                 .build();
 
         transfer = FtcActuators.plant(hardwareMap)
                 .crServo(HW_TRANSFER_LEFT, Direction.FORWARD)
                 .andCrServo(HW_TRANSFER_RIGHT, Direction.REVERSE)
                 .power()
+                .targetedByDefaultWritable(0.0)
                 .build();
 
         pusher = FtcActuators.plant(hardwareMap)
@@ -307,12 +310,13 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
                 .linear()
                 .bounded(0.0, 1.0)
                 .nativeUnits()
+                .targetedByDefaultWritable(0.0)
                 .build();
 
         // Default safe targets when no macro is active.
-        shooter.setTarget(0.0);
-        transfer.setTarget(0.0);
-        pusher.setTarget(PUSHER_POS_RETRACT);
+        shooter.writableTarget().set(0.0);
+        transfer.writableTarget().set(0.0);
+        pusher.writableTarget().set(PUSHER_POS_RETRACT);
 
         // 5) Bindings: macro controls.
 
@@ -385,9 +389,9 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
 
         // When no macro is active, choose safe default targets.
         if (!macroRunner.hasActiveTask()) {
-            shooter.setTarget(0.0);
-            transfer.setTarget(0.0);
-            pusher.setTarget(PUSHER_POS_RETRACT);
+            shooter.writableTarget().set(0.0);
+            transfer.writableTarget().set(0.0);
+            pusher.writableTarget().set(PUSHER_POS_RETRACT);
         }
 
         // ------------------------------------------------------------------
@@ -499,9 +503,9 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
      */
     private void cancelShootMacros() {
         macroRunner.cancelAndClear();
-        shooter.setTarget(0.0);
-        transfer.setTarget(0.0);
-        pusher.setTarget(PUSHER_POS_RETRACT);
+        shooter.writableTarget().set(0.0);
+        transfer.writableTarget().set(0.0);
+        pusher.writableTarget().set(PUSHER_POS_RETRACT);
         lastShooterMacroTargetVel = 0.0;
         lastMacroStatus = "cancelled";
     }
@@ -511,7 +515,7 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
      *
      * <ol>
      *   <li>Spins up the shooter to {@code shooterTargetVel} and waits for
-     *       atSetpoint (with timeout).</li>
+     *       atTarget (with timeout).</li>
      *   <li>Feeds one ball using transfer + pusher in parallel.</li>
      *   <li>Holds shooter briefly, then spins down to 0.</li>
      * </ol>
@@ -520,7 +524,7 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
      * @return a {@link Task} representing the macro
      */
     private Task buildShootOneBallMacro(double shooterTargetVel) {
-        // Step 1: set shooter target and wait for atSetpoint() or timeout.
+        // Step 1: set shooter target and wait for atTarget() or timeout.
         Task spinUp = PlantTasks.moveTo(
                 shooter,
                 shooterTargetVel,
@@ -531,25 +535,25 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
         //
         //  - Transfer runs at shoot power for TRANSFER_PULSE_SEC, then stops.
         //  - Pusher steps through LOAD → SHOOT → RETRACT positions.
-        Task feedTransfer = PlantTasks.holdFor(
+        Task feedTransfer = PlantTasks.holdTargetFor(
                 transfer,
                 TRANSFER_POWER_SHOOT,
                 TRANSFER_PULSE_SEC
         );
 
-        Task pusherLoad = PlantTasks.holdFor(
+        Task pusherLoad = PlantTasks.holdTargetFor(
                 pusher,
                 PUSHER_POS_LOAD,
                 PUSHER_STAGE_SEC
         );
 
-        Task pusherShoot = PlantTasks.holdFor(
+        Task pusherShoot = PlantTasks.holdTargetFor(
                 pusher,
                 PUSHER_POS_SHOOT,
                 PUSHER_STAGE_SEC
         );
 
-        Task pusherRetract = PlantTasks.holdFor(
+        Task pusherRetract = PlantTasks.holdTargetFor(
                 pusher,
                 PUSHER_POS_RETRACT,
                 PUSHER_STAGE_SEC
@@ -567,13 +571,13 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
         );
 
         // Step 3: optionally hold shooter briefly, then spin down to 0.
-        Task holdBeforeSpinDown = PlantTasks.holdFor(
+        Task holdBeforeSpinDown = PlantTasks.holdTargetFor(
                 shooter,
                 shooterTargetVel,
                 SHOOTER_SPINDOWN_HOLD_SEC
         );
 
-        Task spinDown = PlantTasks.setInstant(shooter, 0.0);
+        Task spinDown = PlantTasks.setTarget(shooter, 0.0);
 
         return SequenceTask.of(
                 spinUp,

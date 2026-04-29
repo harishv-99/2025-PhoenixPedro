@@ -2,8 +2,8 @@
 
 Phoenix has two common ways to express "behavior over time":
 
-1. **Tasks that directly write Plants** (`PlantTasks`)
-2. **Tasks that *produce an output* you apply in your loop** (`OutputTask` + `OutputTaskRunner`)
+1. **Tasks that write a Plant's registered `ScalarTarget`** (`PlantTasks`)
+2. **Tasks that *produce an output source* you overlay into a final target** (`OutputTask` + `OutputTaskRunner`)
 
 This document describes option (2), which is the recommended pattern when you want:
 
@@ -23,7 +23,7 @@ In a real robot, you usually have:
 - a **continuous base behavior** (hold something, stage balls forward, keep a mechanism ready)
 - occasional **short overrides** (pulse a feeder, spit out a bad game piece, jog a transfer)
 
-If both behaviors directly call `plant.setTarget(...)`, you get conflicts:
+If both behaviors try to own the same target variable, you get conflicts:
 
 - your base loop sets target to 0
 - a macro sets target to +1
@@ -78,21 +78,27 @@ You can now enforce a **single writer** for the Plant:
 
 ## 4. Common pattern: base target + queued override
 
-A typical plant update becomes:
+A typical plant setup becomes:
 
 ```java
-// 1) Update your queues first
+// Continuous behavior source. This could also read a HeldValue, enum state, or planner.
+ScalarSource baseTarget = ScalarSource.of(() -> stagingEnabled ? 0.20 : 0.0);
+
+// Priority rule: queued override wins while active, otherwise the base source wins.
+ScalarSource finalTarget = feederQueue.activeSource().choose(feederQueue, baseTarget);
+
+Plant transferShooterPlant = FtcActuators.plant(hardwareMap)
+        .crServo("transfer", Direction.FORWARD)
+        .power()
+        .targetedBy(finalTarget)
+        .build();
+```
+
+Then the loop is small:
+
+```java
 feederQueue.update(clock);
-
-// 2) Compute a base target (continuous behavior)
-double base = 0.0; // e.g. staging logic
-
-// 3) Apply a priority rule
-// (You can use hasActiveTask(), or the signal-friendly activeSource() helper.)
-boolean overrideActive = feederQueue.activeSource().getAsBoolean(clock);
-double finalTarget = overrideActive ? feederQueue.getAsDouble(clock) : base;
-
-transferShooterPlant.setTarget(finalTarget);
+transferShooterPlant.update(clock);
 ```
 
 That priority rule is explicit, debuggable, and easy to change.
@@ -114,7 +120,7 @@ It has three phases:
 ### Sensor-based example (distance sensor at the shooter gate)
 
 ```java
-BooleanSource shooterReady = PlantSources.atSetpoint(shooterPlant).debouncedOn(0.15);
+BooleanSource shooterReady = PlantSources.atTarget(shooterPlant).debouncedOn(0.15);
 BooleanSource aimLocked = ...; // from your auto-facing error source + hysteresis/debounce
 BooleanSource fireAllowed = shooterReady.and(aimLocked);
 
@@ -156,7 +162,7 @@ BooleanSource requestShoot = gamepads.p2().rightTrigger().above(0.50);
 BooleanSource canShootNow = fireAllowed.and(ballAtGate);
 BooleanSource ballLeftGate = ballAtGate.fallingEdge();
 
-feederQueue.whileTrue(
+feederQueue.whileHigh(
         clock,
         requestShoot,
         1, // keep exactly one task buffered
@@ -170,7 +176,7 @@ feederQueue.whileTrue(
         )
 );
 
-// Note: whileTrue(...) only manages the backlog. When the request goes false it uses cancelAndClear()
+// Note: whileHigh(...) only manages the backlog. When the request goes false it uses cancelAndClear()
 // so the active output task can stop cleanly before the queue is emptied.
 // Your loop still needs to advance the queue each cycle by calling:
 //   feederQueue.update(clock)

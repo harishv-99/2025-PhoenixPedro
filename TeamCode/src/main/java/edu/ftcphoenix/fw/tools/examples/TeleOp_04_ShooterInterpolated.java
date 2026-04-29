@@ -205,7 +205,8 @@ public final class TeleOp_04_ShooterInterpolated extends OpMode {
                 gamepads.p1().leftY(),
                 gamepads.p1().rightX(),
                 GamepadDriveSource.Config.defaults()
-        ).scaledWhen(gamepads.p1().rightBumper(), 0.35, 0.20);
+        ).scaledWhen(gamepads.p1().rightBumper(), 0.35, 0.20)
+                .rateLimited(4.0, 4.0, 6.0);
 
         // 3) Shooter wiring using FtcActuators
         shooter = FtcActuators.plant(hardwareMap)
@@ -216,9 +217,10 @@ public final class TeleOp_04_ShooterInterpolated extends OpMode {
                 .bounded(0.0, 250.0)
                 .nativeUnits()
                 .velocityTolerance(/*toleranceNative=*/100.0)
+                .targetedByDefaultWritable(0.0)
                 .build();
 
-        shooter.setTarget(0.0);
+        shooter.writableTarget().set(0.0);
 
         // 4) Bindings: shooter enable + distance adjust
 
@@ -287,10 +289,10 @@ public final class TeleOp_04_ShooterInterpolated extends OpMode {
             // Look up velocity from the table (with clamping + interpolation).
             double targetVel = SHOOTER_VELOCITY_TABLE.interpolate(distanceInches);
             lastShooterTarget = targetVel;
-            shooter.setTarget(targetVel);
+            shooter.writableTarget().set(targetVel);
         } else {
             lastShooterTarget = 0.0;
-            shooter.setTarget(0.0);
+            shooter.writableTarget().set(0.0);
         }
 
         // Update shooter plant once per loop.
@@ -302,7 +304,7 @@ public final class TeleOp_04_ShooterInterpolated extends OpMode {
         telemetry.addData("shooter.enabled", shooterEnabled);
         telemetry.addData("range.in", distanceInches);
         telemetry.addData("shooter.targetNative", lastShooterTarget);
-        telemetry.addData("shooter.atSetpoint", shooter.atSetpoint());
+        telemetry.addData("shooter.atTarget", shooter.atTarget());
         telemetry.addData("debug.enabled", DEBUG);
 
         // --- 6) Optional debug (can be disabled without breaking required telemetry) ---
@@ -329,7 +331,7 @@ public final class TeleOp_04_ShooterInterpolated extends OpMode {
     @Override
     public void stop() {
         shooterEnabled = false;
-        shooter.setTarget(0.0);
+        shooter.writableTarget().set(0.0);
         shooter.stop();
         drivebase.stop();
     }

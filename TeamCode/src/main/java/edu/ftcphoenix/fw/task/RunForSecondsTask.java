@@ -40,9 +40,9 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * // Example: run intakePlant at +1.0 for 0.7 seconds, then stop.
  * Task intakePulse = new RunForSecondsTask(
  *     0.7,
- *     () -> intakePlant.setTarget(+1.0),
+ *     () -> intakeTarget.set(+1.0),
  *     null,
- *     () -> intakePlant.setTarget(0.0)
+ *     () -> intakeTarget.set(0.0)
  * );
  *
  * TaskRunner runner = new TaskRunner();
@@ -113,7 +113,9 @@ public final class RunForSecondsTask implements Task {
         }
     }
 
-    /** {@inheritDoc} */
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void update(LoopClock clock) {
         if (!started || finished) {
@@ -144,7 +146,9 @@ public final class RunForSecondsTask implements Task {
         finished = true;
     }
 
-    /** {@inheritDoc} */
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public boolean isComplete() {
         return finished;
@@ -164,7 +168,9 @@ public final class RunForSecondsTask implements Task {
         return cancelled ? TaskOutcome.CANCELLED : TaskOutcome.SUCCESS;
     }
 
-    /** {@inheritDoc} */
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void debugDump(DebugSink dbg, String prefix) {
         if (dbg == null) {
