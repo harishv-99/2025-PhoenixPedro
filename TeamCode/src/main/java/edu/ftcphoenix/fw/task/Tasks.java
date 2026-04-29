@@ -185,6 +185,253 @@ public final class Tasks {
     }
 
     /**
+     * Start a guided builder for a reusable output pulse recipe.
+     *
+     * <p>The builder asks the common robot questions in order: when may the pulse start, what
+     * output should it produce, how should it end, and whether it needs a cooldown. It returns an
+     * {@link OutputTaskFactory} because queued pulses must be fresh task instances.</p>
+     *
+     * <pre>{@code
+     * OutputTaskFactory feedOne = Tasks.outputPulse("feedOne")
+     *         .startWhen(canShootNow)
+     *         .runOutput(0.90)
+     *         .forSeconds(0.12)
+     *         .cooldownSec(0.05)
+     *         .build();
+     *
+     * feederQueue.whileHigh(clock, shootHeld, 1, feedOne);
+     * }</pre>
+     *
+     * @param name debug label used by created tasks
+     * @return first pulse-builder step
+     */
+    public static OutputPulseStartStep outputPulse(String name) {
+        return new OutputPulseBuilder(name);
+    }
+
+    /**
+     * First output-pulse builder step: choose the start gate.
+     */
+    public interface OutputPulseStartStep {
+        /**
+         * Wait in the task's idle phase until {@code startWhen} is high.
+         */
+        OutputPulseOutputStep startWhen(BooleanSource startWhen);
+
+        /**
+         * Start the pulse as soon as the task begins running.
+         */
+        OutputPulseOutputStep startImmediately();
+    }
+
+    /**
+     * Second output-pulse builder step: choose the output while the pulse is running.
+     */
+    public interface OutputPulseOutputStep {
+        /**
+         * Use a constant scalar output while the pulse is running.
+         */
+        OutputPulseEndStep runOutput(double output);
+
+        /**
+         * Use a source-shaped scalar output while the pulse is running.
+         */
+        OutputPulseEndStep runOutput(ScalarSource output);
+    }
+
+    /**
+     * Third output-pulse builder step: choose how the pulse ends.
+     */
+    public interface OutputPulseEndStep {
+        /**
+         * Run for exactly {@code durationSec} seconds after the start gate opens.
+         */
+        OutputPulseReadyStep forSeconds(double durationSec);
+
+        /**
+         * Run until {@code doneWhen} is high, with a required max-run safety cap.
+         */
+        OutputPulseUntilStep until(BooleanSource doneWhen);
+    }
+
+    /**
+     * Sensor-ended pulse step before the required max-run cap has been supplied.
+     */
+    public interface OutputPulseUntilStep {
+        /**
+         * Require the pulse to run for at least {@code minRunSec}, then require {@link #maxRunSec(double)}.
+         */
+        OutputPulseUntilMaxStep minRunSec(double minRunSec);
+
+        /**
+         * Set the max-run safety cap with an implicit minimum run time of zero.
+         */
+        OutputPulseReadyStep maxRunSec(double maxRunSec);
+
+        /**
+         * Set both minimum and maximum run times at once.
+         */
+        OutputPulseReadyStep runWindow(double minRunSec, double maxRunSec);
+    }
+
+    /**
+     * Sensor-ended pulse step after the minimum run time has been supplied.
+     */
+    public interface OutputPulseUntilMaxStep {
+        /**
+         * Set the max-run safety cap and continue to optional idle/cooldown choices.
+         */
+        OutputPulseReadyStep maxRunSec(double maxRunSec);
+    }
+
+    /**
+     * Final output-pulse builder step: optional idle/cooldown choices, then build.
+     */
+    public interface OutputPulseReadyStep {
+        /**
+         * Output returned while waiting, cooling down, or idle after completion. Defaults to 0.0.
+         */
+        OutputPulseReadyStep idleOutput(double idleOutput);
+
+        /**
+         * Add a cooldown phase after the pulse finishes. Defaults to 0.0 seconds.
+         */
+        OutputPulseReadyStep cooldownSec(double cooldownSec);
+
+        /**
+         * Build a reusable factory that creates a fresh output task each time.
+         */
+        OutputTaskFactory build();
+
+        /**
+         * Build one fresh task immediately for one-shot enqueueing.
+         */
+        OutputTask buildTask();
+    }
+
+    private static final class OutputPulseBuilder implements OutputPulseStartStep,
+            OutputPulseOutputStep, OutputPulseEndStep, OutputPulseUntilStep,
+            OutputPulseUntilMaxStep, OutputPulseReadyStep {
+        private final String name;
+        private BooleanSource startWhen;
+        private ScalarSource runOutput;
+        private BooleanSource doneWhen;
+        private double idleOutput = 0.0;
+        private double minRunSec = 0.0;
+        private double maxRunSec = Double.NaN;
+        private double cooldownSec = 0.0;
+
+        OutputPulseBuilder(String name) {
+            this.name = (name == null || name.trim().isEmpty()) ? "outputPulse" : name.trim();
+        }
+
+        @Override
+        public OutputPulseOutputStep startWhen(BooleanSource startWhen) {
+            this.startWhen = Objects.requireNonNull(startWhen, "startWhen");
+            return this;
+        }
+
+        @Override
+        public OutputPulseOutputStep startImmediately() {
+            return startWhen(BooleanSource.constant(true));
+        }
+
+        @Override
+        public OutputPulseEndStep runOutput(double output) {
+            return runOutput(ScalarSource.constant(output));
+        }
+
+        @Override
+        public OutputPulseEndStep runOutput(ScalarSource output) {
+            this.runOutput = Objects.requireNonNull(output, "output");
+            return this;
+        }
+
+        @Override
+        public OutputPulseReadyStep forSeconds(double durationSec) {
+            requireNonNegativeFinite(durationSec, "durationSec");
+            this.doneWhen = BooleanSource.constant(true);
+            this.minRunSec = durationSec;
+            this.maxRunSec = durationSec;
+            return this;
+        }
+
+        @Override
+        public OutputPulseUntilStep until(BooleanSource doneWhen) {
+            this.doneWhen = Objects.requireNonNull(doneWhen, "doneWhen");
+            this.minRunSec = 0.0;
+            this.maxRunSec = Double.NaN;
+            return this;
+        }
+
+        @Override
+        public OutputPulseUntilMaxStep minRunSec(double minRunSec) {
+            requireNonNegativeFinite(minRunSec, "minRunSec");
+            this.minRunSec = minRunSec;
+            return this;
+        }
+
+        @Override
+        public OutputPulseReadyStep maxRunSec(double maxRunSec) {
+            requireNonNegativeFinite(maxRunSec, "maxRunSec");
+            if (maxRunSec < minRunSec) {
+                throw new IllegalArgumentException("maxRunSec must be >= minRunSec, got max=" + maxRunSec + " min=" + minRunSec);
+            }
+            this.maxRunSec = maxRunSec;
+            return this;
+        }
+
+        @Override
+        public OutputPulseReadyStep runWindow(double minRunSec, double maxRunSec) {
+            this.minRunSec(minRunSec);
+            return this.maxRunSec(maxRunSec);
+        }
+
+        @Override
+        public OutputPulseReadyStep idleOutput(double idleOutput) {
+            if (!Double.isFinite(idleOutput)) {
+                throw new IllegalArgumentException("idleOutput must be finite, got " + idleOutput);
+            }
+            this.idleOutput = idleOutput;
+            return this;
+        }
+
+        @Override
+        public OutputPulseReadyStep cooldownSec(double cooldownSec) {
+            requireNonNegativeFinite(cooldownSec, "cooldownSec");
+            this.cooldownSec = cooldownSec;
+            return this;
+        }
+
+        @Override
+        public OutputTaskFactory build() {
+            final String taskName = name;
+            final BooleanSource start = Objects.requireNonNull(startWhen, "startWhen");
+            final BooleanSource done = Objects.requireNonNull(doneWhen, "doneWhen");
+            final ScalarSource output = Objects.requireNonNull(runOutput, "runOutput");
+            final double idle = idleOutput;
+            final double min = minRunSec;
+            final double max = maxRunSec;
+            final double cooldown = cooldownSec;
+            if (!Double.isFinite(max)) {
+                throw new IllegalStateException("Output pulse requires forSeconds(...) or until(...).maxRunSec(...)");
+            }
+            return () -> new GatedOutputUntilTask(taskName, start, done, output, idle, min, max, cooldown);
+        }
+
+        @Override
+        public OutputTask buildTask() {
+            return build().create();
+        }
+
+        private static void requireNonNegativeFinite(double value, String name) {
+            if (value < 0.0 || !Double.isFinite(value)) {
+                throw new IllegalArgumentException(name + " must be finite and >= 0, got " + value);
+            }
+        }
+    }
+
+    /**
      * Output a constant value for a fixed duration.
      */
     public static OutputTask outputForSeconds(String name, double output, double durationSec) {

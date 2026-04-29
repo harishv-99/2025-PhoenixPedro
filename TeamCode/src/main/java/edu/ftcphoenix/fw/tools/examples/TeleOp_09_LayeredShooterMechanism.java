@@ -9,6 +9,8 @@ import java.util.function.LongSupplier;
 import edu.ftcphoenix.fw.actuation.Plant;
 import edu.ftcphoenix.fw.core.hal.Direction;
 import edu.ftcphoenix.fw.core.math.MathUtil;
+import edu.ftcphoenix.fw.core.source.ScalarOverlayStack;
+import edu.ftcphoenix.fw.core.source.ScalarSource;
 import edu.ftcphoenix.fw.core.source.ScalarTarget;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.ftc.FtcActuators;
@@ -17,6 +19,9 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
 import edu.ftcphoenix.fw.supervisor.FrameValue;
 import edu.ftcphoenix.fw.supervisor.HeldValue;
 import edu.ftcphoenix.fw.supervisor.RequestCounter;
+import edu.ftcphoenix.fw.task.OutputTaskFactory;
+import edu.ftcphoenix.fw.task.OutputTaskRunner;
+import edu.ftcphoenix.fw.task.Tasks;
 
 /**
  * <h1>Example 09: Explicit Layered Shooter (Requests → Behavior → Realization)</h1>
@@ -93,7 +98,11 @@ public final class TeleOp_09_LayeredShooterMechanism extends OpMode {
         gamepads = Gamepads.create(gamepad1, gamepad2);
 
         ScalarTarget flywheelTarget = ScalarTarget.held(0.0);
-        ScalarTarget feederTarget = ScalarTarget.held(0.0);
+        ScalarTarget feederBaseTarget = ScalarTarget.held(0.0);
+        OutputTaskRunner feederPulseQueue = Tasks.outputQueue(0.0);
+        ScalarSource finalFeederTarget = ScalarOverlayStack.on(feederBaseTarget)
+                .add("feedPulse", feederPulseQueue.activeSource(), feederPulseQueue)
+                .build();
 
         Plant flywheelPlant = FtcActuators.plant(hardwareMap)
                 .motor(HW_SHOOTER_LEFT, Direction.FORWARD)
@@ -110,10 +119,12 @@ public final class TeleOp_09_LayeredShooterMechanism extends OpMode {
                 .crServo(HW_FEED_LEFT, Direction.FORWARD)
                 .andCrServo(HW_FEED_RIGHT, Direction.REVERSE)
                 .power()
-                .targetedBy(feederTarget)
+                .targetedBy(finalFeederTarget)
+                .writableTarget(feederBaseTarget)
                 .build();
 
-        shooter = new LayeredShooter(clock::cycle, flywheelPlant, flywheelTarget, feederPlant, feederTarget);
+        shooter = new LayeredShooter(clock::cycle, flywheelPlant, flywheelTarget,
+                feederPlant, feederBaseTarget, feederPulseQueue);
 
         // Held requests.
         bindings.toggleOnRise(gamepads.p1().leftBumper(), shooter::setFlywheelHeld);
@@ -187,9 +198,11 @@ public final class TeleOp_09_LayeredShooterMechanism extends OpMode {
                        Plant flywheelPlant,
                        ScalarTarget flywheelTarget,
                        Plant feederPlant,
-                       ScalarTarget feederTarget) {
+                       ScalarTarget feederBaseTarget,
+                       OutputTaskRunner feederPulseQueue) {
             requests = new Requests(cycleSource);
-            realization = new Realization(flywheelPlant, flywheelTarget, feederPlant, feederTarget);
+            behavior.setFeedPulseQueue(feederPulseQueue);
+            realization = new Realization(flywheelPlant, flywheelTarget, feederPlant, feederBaseTarget);
         }
 
         // ------------------------------------------------------------------
@@ -237,6 +250,7 @@ public final class TeleOp_09_LayeredShooterMechanism extends OpMode {
         }
 
         void stop() {
+            behavior.cancelTransientActions();
             realization.stop();
         }
 
@@ -278,7 +292,7 @@ public final class TeleOp_09_LayeredShooterMechanism extends OpMode {
         }
 
         boolean feedPulseActive(LoopClock clock) {
-            return behavior.isFeedPulseActive(clock);
+            return behavior.isFeedPulseActive();
         }
 
         double flywheelTargetNative() {
@@ -330,8 +344,9 @@ public final class TeleOp_09_LayeredShooterMechanism extends OpMode {
     /**
      * Layer 2: robot-owned behavior.
      *
-     * <p>This layer decides when pending shots may start, owns the feed pulse timing, and chooses
-     * which feed behavior currently wins: pulse, manual frame command, or idle.</p>
+     * <p>This layer decides when pending shots may start, owns the feed pulse queue, and chooses
+     * the baseline feed target. Realization overlays the active queue output on top of that baseline
+     * before the feeder Plant samples its final target source.</p>
      */
     private static final class Behavior {
 
@@ -347,32 +362,49 @@ public final class TeleOp_09_LayeredShooterMechanism extends OpMode {
             WAITING_FOR_FLYWHEEL
         }
 
+        private final OutputTaskFactory feedPulseFactory = Tasks.outputPulse("feedOne")
+                .startImmediately()
+                .runOutput(FEED_PULSE_POWER)
+                .forSeconds(FEED_PULSE_SEC)
+                .build();
+
+        private OutputTaskRunner feedPulseQueue;
         private FeedMode feedMode = FeedMode.IDLE;
         private BlockedReason blockedReason = BlockedReason.NONE;
 
         private boolean flywheelWanted = false;
+        private double baseFeedPower = 0.0;
         private double feedPower = 0.0;
-        private double activeFeedPulseUntilSec = Double.NEGATIVE_INFINITY;
+
+        void setFeedPulseQueue(OutputTaskRunner feedPulseQueue) {
+            this.feedPulseQueue = feedPulseQueue;
+        }
 
         BehaviorOutput update(LoopClock clock, Requests requests, Readback readback) {
-            boolean pulseActive = isFeedPulseActive(clock);
+            if (feedPulseQueue == null) {
+                throw new IllegalStateException("Behavior requires a feed pulse queue before update().");
+            }
+
+            boolean pulseActiveBeforeUpdate = feedPulseQueue.hasActiveTask();
             double manualFeedPower = MathUtil.clamp(requests.manualFeedPower.get(), -1.0, 1.0);
             boolean manualFeedActive = Math.abs(manualFeedPower) > MANUAL_FEED_ACTIVE_THRESHOLD;
 
             blockedReason = BlockedReason.NONE;
 
-            if (!pulseActive && requests.shotRequests.hasRequest()) {
+            if (!pulseActiveBeforeUpdate && feedPulseQueue.queuedCount() == 0 && requests.shotRequests.hasRequest()) {
                 if (manualFeedActive) {
                     blockedReason = BlockedReason.MANUAL_OVERRIDE;
                 } else if (readback.flywheelReadyForSelectedVelocity(
                         requests.selectedVelocityNative.get())) {
                     requests.shotRequests.consume();
-                    activeFeedPulseUntilSec = clock.nowSec() + FEED_PULSE_SEC;
-                    pulseActive = true;
+                    feedPulseQueue.enqueue(feedPulseFactory.create());
                 } else {
                     blockedReason = BlockedReason.WAITING_FOR_FLYWHEEL;
                 }
             }
+
+            feedPulseQueue.update(clock);
+            boolean pulseActive = feedPulseQueue.hasActiveTask();
 
             flywheelWanted = requests.flywheelHeld.get()
                     || requests.shotRequests.hasRequest()
@@ -383,26 +415,32 @@ public final class TeleOp_09_LayeredShooterMechanism extends OpMode {
 
             if (pulseActive) {
                 feedMode = FeedMode.PULSE;
-                feedPower = FEED_PULSE_POWER;
+                baseFeedPower = 0.0;
+                feedPower = feedPulseQueue.output(clock);
             } else if (manualFeedActive) {
                 feedMode = FeedMode.MANUAL;
+                baseFeedPower = manualFeedPower;
                 feedPower = manualFeedPower;
             } else {
                 feedMode = FeedMode.IDLE;
+                baseFeedPower = 0.0;
                 feedPower = 0.0;
             }
 
-            return new BehaviorOutput(flywheelTargetNative, feedPower);
+            return new BehaviorOutput(flywheelTargetNative, baseFeedPower);
         }
 
-        boolean isFeedPulseActive(LoopClock clock) {
-            return clock.nowSec() < activeFeedPulseUntilSec;
+        boolean isFeedPulseActive() {
+            return feedPulseQueue != null && feedPulseQueue.hasActiveTask();
         }
 
         void cancelTransientActions() {
-            activeFeedPulseUntilSec = Double.NEGATIVE_INFINITY;
+            if (feedPulseQueue != null) {
+                feedPulseQueue.cancelAndClear();
+            }
             blockedReason = BlockedReason.NONE;
             feedMode = FeedMode.IDLE;
+            baseFeedPower = 0.0;
             feedPower = 0.0;
         }
     }
@@ -412,11 +450,11 @@ public final class TeleOp_09_LayeredShooterMechanism extends OpMode {
      */
     private static final class BehaviorOutput {
         final double flywheelTargetNative;
-        final double feedPower;
+        final double baseFeedPower;
 
-        BehaviorOutput(double flywheelTargetNative, double feedPower) {
+        BehaviorOutput(double flywheelTargetNative, double baseFeedPower) {
             this.flywheelTargetNative = flywheelTargetNative;
-            this.feedPower = feedPower;
+            this.baseFeedPower = baseFeedPower;
         }
     }
 
@@ -428,20 +466,20 @@ public final class TeleOp_09_LayeredShooterMechanism extends OpMode {
      * needs.</p>
      */
     private static final class Readback {
-        final boolean flywheelAtSetpoint;
+        final boolean flywheelAtTarget;
         final double flywheelTargetNative;
         final double flywheelMeasurementNative;
 
-        Readback(boolean flywheelAtSetpoint,
+        Readback(boolean flywheelAtTarget,
                  double flywheelTargetNative,
                  double flywheelMeasurementNative) {
-            this.flywheelAtSetpoint = flywheelAtSetpoint;
+            this.flywheelAtTarget = flywheelAtTarget;
             this.flywheelTargetNative = flywheelTargetNative;
             this.flywheelMeasurementNative = flywheelMeasurementNative;
         }
 
         boolean flywheelReadyForSelectedVelocity(double selectedVelocityNative) {
-            return flywheelAtSetpoint
+            return flywheelAtTarget
                     && flywheelTargetNative > 0.0
                     && Math.abs(flywheelTargetNative - selectedVelocityNative) < 1e-6;
         }
@@ -450,9 +488,9 @@ public final class TeleOp_09_LayeredShooterMechanism extends OpMode {
     /**
      * Layer 3: plant realization.
      *
-     * <p>This is the only layer allowed to touch Plants. It reads the behavior output, writes the
-     * final plant targets, updates the plants, and exports a small readback snapshot for the next
-     * loop.</p>
+     * <p>This is the only layer allowed to touch Plants. It updates the registered command targets,
+     * lets the feeder Plant consume its final overlaid target source, updates the Plants, and exports
+     * a small readback snapshot for the next loop.</p>
      */
     private static final class Realization {
         private final Plant flywheel;
@@ -477,7 +515,7 @@ public final class TeleOp_09_LayeredShooterMechanism extends OpMode {
 
         void apply(LoopClock clock, BehaviorOutput out) {
             flywheelTarget.set(out.flywheelTargetNative);
-            feederTarget.set(out.feedPower);
+            feederTarget.set(out.baseFeedPower);
 
             flywheel.update(clock);
             feeder.update(clock);

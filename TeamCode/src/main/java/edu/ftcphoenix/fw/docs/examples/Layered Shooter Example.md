@@ -134,7 +134,7 @@ Behavior needs to know whether the flywheel is ready before it consumes a pendin
 
 That is why realization exports a small `Readback` snapshot containing:
 
-- whether the flywheel is at setpoint,
+- whether the flywheel is at target,
 - what flywheel target the plant was actually holding,
 - and the measured flywheel velocity.
 
@@ -148,17 +148,23 @@ That keeps plant details out of the request layer while still allowing behavior 
 
 The example intentionally uses a simple priority rule:
 
-1. `PULSE` wins first
-2. then `MANUAL`
-3. otherwise `IDLE`
+1. the queued `PULSE` output wins while active
+2. otherwise the baseline feed target can be `MANUAL`
+3. otherwise the baseline is `IDLE`
 
 That means:
 
-- an active shot pulse will keep ownership of the feed until it ends,
+- an active shot pulse overrides the feeder baseline until it ends,
 - manual feed power works whenever no pulse is active,
 - and queued shots do not start while manual feed is active.
 
-This is a good small example of behavior arbitration.
+The code expresses that priority in two places with two different responsibilities:
+
+- `Behavior` owns the `OutputTaskRunner` and decides when to enqueue a pulse.
+- `Realization` builds the feeder Plant from a final `ScalarSource` created by `ScalarOverlayStack`.
+
+That is the important source-driven lesson: behavior proposes temporary outputs; the final source
+arbitrates; the Plant consumes one target.
 
 ---
 
@@ -171,15 +177,37 @@ In Example 09, realization owns two Plants:
 - a velocity plant for the flywheel
 - a power plant for the feeder
 
-Its code is intentionally small:
+The flywheel uses a simple writable `ScalarTarget`. The feeder uses a richer final source:
+
+```java
+ScalarSource finalFeederTarget = ScalarOverlayStack.on(feederBaseTarget)
+        .add("feedPulse", feederPulseQueue.activeSource(), feederPulseQueue)
+        .build();
+```
+
+The feeder Plant is then built with that final target source. The baseline target is still registered
+as the writable command target so task helpers could write it if needed:
+
+```java
+Plant feederPlant = FtcActuators.plant(hardwareMap)
+        .crServo("transferLeftServo", Direction.FORWARD)
+        .andCrServo("transferRightServo", Direction.REVERSE)
+        .power()
+        .targetedBy(finalFeederTarget)
+        .writableTarget(feederBaseTarget)
+        .build();
+```
+
+Its loop code is intentionally small:
 
 1. receive the behavior output
-2. set plant targets
-3. update the plants
+2. update the writable baseline targets
+3. update the plants, letting each Plant sample its final source
 4. export readback for the next loop
 
 That smallness is the whole point. The single-writer rule becomes obvious because only realization
-has the plant references.
+has the plant references, and the feeder's pulse-vs-baseline priority is expressed in the source
+graph instead of as hidden plant state.
 
 ---
 

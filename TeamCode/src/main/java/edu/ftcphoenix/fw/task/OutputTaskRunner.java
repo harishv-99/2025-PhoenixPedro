@@ -18,13 +18,26 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * <pre>{@code
  * OutputTaskRunner feederQueue = new OutputTaskRunner(0.0);
  *
- * // Enqueue a "feed one" pulse or any other output-producing task.
- * feederQueue.enqueue(Tasks.outputForSeconds("feed", 0.9, 0.12));
+ * OutputTaskFactory feedOne = Tasks.outputPulse("feed")
+ *         .startWhen(shooterReady.and(aimLocked))
+ *         .runOutput(0.9)
+ *         .forSeconds(0.12)
+ *         .build();
  *
- * // In your loop:
- * feederQueue.update(clock);            // idempotent by clock.cycle()
- * double feederPower = feederQueue.getAsDouble(clock);
- * transferShooterTarget.set(feederPower);
+ * ScalarSource finalTransferTarget = ScalarOverlayStack.on(baseTransferTarget)
+ *         .add("feedPulse", feederQueue.activeSource(), feederQueue)
+ *         .build();
+ *
+ * Plant transfer = FtcActuators.plant(hardwareMap)
+ *         .crServo("transfer", Direction.FORWARD)
+ *         .power()
+ *         .targetedBy(finalTransferTarget)
+ *         .build();
+ *
+ * // In your loop: manage requests, advance the queue, then update the Plant.
+ * feederQueue.whileHigh(clock, shootHeld, 1, feedOne);
+ * feederQueue.update(clock);
+ * transfer.update(clock);
  * }
  * </pre>
  *
@@ -122,7 +135,9 @@ public final class OutputTaskRunner implements ScalarSource {
      * backlog is below {@code desiredBacklog}.</p>
      *
      * <p><b>Important:</b> tasks are assumed to be single-use, so {@code taskFactory} must produce
-     * a <em>new</em> {@link OutputTask} instance each time it is called.</p>
+     * a <em>new</em> {@link OutputTask} instance each time it is called. A reusable
+     * {@link OutputTaskFactory} from {@link Tasks#outputPulse(String)} is the usual way to satisfy
+     * that rule for repeated pulses.</p>
      *
      * @param clock          loop clock (required)
      * @param desiredBacklog minimum number of tasks to keep active+queued (>= 0)
@@ -237,10 +252,9 @@ public final class OutputTaskRunner implements ScalarSource {
      * A {@link BooleanSource} view of {@link #hasActiveTask()}.
      *
      * <p>This is useful for building clean, declarative output selection rules:
-     * "if the queue is active, use queue output; otherwise use base output".
-     * Because this is a {@code BooleanSource}, you can combine it with other signals
-     * and use {@link BooleanSource#choose(edu.ftcphoenix.fw.core.source.ScalarSource, edu.ftcphoenix.fw.core.source.ScalarSource)}.
-     * </p>
+     * "if the queue is active, let the queue override the base target". Because this is a
+     * {@code BooleanSource}, it can be used directly as an enable condition in a
+     * {@code ScalarOverlayStack} layer.</p>
      *
      * <p>The returned source calls {@link #update(LoopClock)} and memoizes by
      * {@link LoopClock#cycle()} so it stays consistent within a loop.</p>

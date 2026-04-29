@@ -262,11 +262,17 @@ public interface DriveSource extends Source<DriveSignal> {
             private final SlewRateLimiter axialLimiter = new SlewRateLimiter(maxAxialDeltaPerSec);
             private final SlewRateLimiter lateralLimiter = new SlewRateLimiter(maxLateralDeltaPerSec);
             private final SlewRateLimiter omegaLimiter = new SlewRateLimiter(maxOmegaDeltaPerSec);
+            private long lastCycle = Long.MIN_VALUE;
             private DriveSignal lastBase = DriveSignal.zero();
             private DriveSignal lastOut = DriveSignal.zero();
 
             @Override
             public DriveSignal get(LoopClock clock) {
+                long cycle = clock != null ? clock.cycle() : Long.MIN_VALUE;
+                if (clock != null && cycle == lastCycle) {
+                    return lastOut;
+                }
+                lastCycle = cycle;
                 lastBase = self.get(clock);
                 lastOut = new DriveSignal(
                         axialLimiter.calculate(lastBase.axial, clock),
@@ -281,6 +287,7 @@ public interface DriveSource extends Source<DriveSignal> {
                 axialLimiter.reset();
                 lateralLimiter.reset();
                 omegaLimiter.reset();
+                lastCycle = Long.MIN_VALUE;
                 lastBase = DriveSignal.zero();
                 lastOut = DriveSignal.zero();
             }

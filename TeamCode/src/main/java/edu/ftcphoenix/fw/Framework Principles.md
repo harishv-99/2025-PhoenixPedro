@@ -435,7 +435,24 @@ Robot code should rarely implement raw tasks directly. Prefer:
 
 * `Tasks.*` for generic composition (`sequence`, `parallelAll`, `waitForSeconds`, `waitUntil`, ...)
 * `ScalarTasks.*` for writing standalone `ScalarTarget`s and `PlantTasks.*` for a Plant's registered writable target (`setTarget`, `holdTargetFor`, `moveTo`, ...)
+* `Tasks.outputPulse(...)` + `OutputTaskRunner` for short output-producing pulses that are overlaid into a final Plant target source
 * `DriveTasks.*` for drive behaviors
+
+### 4.4 Output pulses are source proposals, not Plant writers
+
+Output queues follow the same source-driven philosophy as Plants. A queue owns timing and returns a scalar output, but it does not own the Plant. The usual pattern is:
+
+```text
+base ScalarSource
+    + OutputTaskRunner layer while active
+    + other behavior overrides
+    ↓
+ScalarOverlayStack final source
+    ↓
+Plant targetedBy(final source)
+```
+
+This keeps repeated robot behaviors such as feeder pulses systematic without reintroducing multiple writers to the same mechanism.
 
 ---
 

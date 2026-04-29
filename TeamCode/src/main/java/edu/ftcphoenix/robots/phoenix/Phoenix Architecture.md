@@ -94,7 +94,7 @@ use them instead of touching `ScoringPath` or `ScoringTargeting` directly.
 - `PhoenixTeleOpControls`: all TeleOp input semantics, including stick mapping and scoring bindings
 - `PhoenixDriveAssistService`: robot-specific drive assists that combine manual drive, scoring state, localization, and overlays
 - `ScoringTargeting`: selected-tag policy, auto-aim guidance, cached targeting status, and shot suggestions
-- `ScoringPath`: scoring-path mechanism owner, single writer to scoring-path plants, internally layered as inputs → execution → realization
+- `ScoringPath`: scoring-path mechanism owner, source-driven scoring Plants, internally layered as inputs → execution → realization
 - `TaskRunner autoRunner`: autonomous task queue used when Phoenix is running Auto
 - `PhoenixTelemetryPresenter`: driver-facing presentation from snapshots
 - `PhoenixRobot`: composition root and loop owner
@@ -243,6 +243,23 @@ mechanisms to follow:
 That internal split matters more than file count. `ScoringPath` is still one public mechanism owner,
 but the code now makes it much harder to accidentally mix caller-owned intent with robot-owned queue
 state or plant readback.
+
+The realization layer no longer imperatively chooses and writes plant targets every loop. Instead,
+each scoring Plant is built with a final `ScalarSource`. Continuous baseline feed behavior is a
+source, the behavior-owned feed pulse queue is another source, and `ScalarOverlayStack` expresses
+the priority rule. The Plant samples the final source during `update(clock)` and then applies its
+own hardware guards.
+
+That distinction is important:
+
+```text
+behavior guard: source shaping and overlay priority
+Plant guard: hardware protection after the final source is sampled
+```
+
+`ScoringPath` uses the feed pulse queue as a behavior pattern, not as a Plant wrapper. One logical
+shot pulse can therefore fan out into the intake motor, intake transfer, and shooter transfer through
+separate scaled overlay layers while still preserving one final target source per Plant.
 
 ## Autonomous structure
 

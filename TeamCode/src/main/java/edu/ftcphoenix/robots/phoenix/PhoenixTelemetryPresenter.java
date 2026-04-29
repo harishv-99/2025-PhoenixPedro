@@ -96,7 +96,7 @@ public final class PhoenixTelemetryPresenter {
         telemetry.addData(p + ".readyLeadSec", scoring.readyLeadSec);
         telemetry.addData(p + ".flywheelPredAbs", scoring.predictedFlywheelAbsNative);
         telemetry.addData(p + ".flywheelPredErr", scoring.predictedFlywheelErrorNative);
-        telemetry.addData(p + ".flywheelAtSetpoint", scoring.flywheelAtSetpoint);
+        telemetry.addData(p + ".flywheelAtTarget", scoring.flywheelAtTarget);
         telemetry.addData(p + ".ready", scoring.ready);
         telemetry.addData(p + ".feedBacklog", scoring.feedBacklog);
         telemetry.addData(p + ".feedQueued", scoring.feedQueued);

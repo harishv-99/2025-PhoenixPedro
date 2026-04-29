@@ -1,214 +1,229 @@
 # Output Tasks & Queues
 
-Phoenix has two common ways to express "behavior over time":
+Phoenix has two common ways to express mechanism behavior over time:
 
 1. **Tasks that write a Plant's registered `ScalarTarget`** (`PlantTasks`)
-2. **Tasks that *produce an output source* you overlay into a final target** (`OutputTask` + `OutputTaskRunner`)
+2. **Tasks that produce a temporary scalar output** (`OutputTask` + `OutputTaskRunner`)
 
-This document describes option (2), which is the recommended pattern when you want:
+This document is about the second pattern. Use it when a short behavior should temporarily influence a Plant target without becoming a second Plant writer.
 
 For the broader robot-design context, read [`Recommended Robot Design`](<Recommended Robot Design.md>) and [`Supervisors & Pipelines`](<Supervisors & Pipelines.md>).
 
-
-- sensor‑gated, reactive automation in **TeleOp** (intake/shooter pipelines, staged feeding)
-- the *same* logic to work in **autonomous** without duplicating sensor rules
-- to avoid multiple pieces of code "fighting" by writing targets to the same Plant
-
 ---
 
-## 1. The problem: multiple writers fight
+## 1. The core idea
 
-In a real robot, you usually have:
+A source-driven Plant follows one final `ScalarSource` target each loop:
 
-- a **continuous base behavior** (hold something, stage balls forward, keep a mechanism ready)
-- occasional **short overrides** (pulse a feeder, spit out a bad game piece, jog a transfer)
+```text
+behavior sources / queues / overlays
+        ↓
+one final ScalarSource
+        ↓
+Plant.update(clock)
+```
 
-If both behaviors try to own the same target variable, you get conflicts:
+An `OutputTask` does **not** write a Plant. It proposes a temporary scalar output. The subsystem then uses a source-composition tool such as `ScalarOverlayStack` to decide whether that output overrides the normal baseline.
 
-- your base loop sets target to 0
-- a macro sets target to +1
-- base loop runs again and immediately sets it back to 0
+That keeps the single-writer rule intact:
 
-To solve this cleanly, Phoenix introduces **output‑producing tasks**.
+```text
+many things may propose target values
+one ScalarSource arbitrates
+one Plant consumes the final target
+```
 
 ---
 
 ## 2. `OutputTask`: a Task that proposes a scalar output
 
-An `OutputTask` is still a normal `Task`:
+An `OutputTask` is still a normal non-blocking Phoenix `Task`:
 
 - `start(clock)` once
 - `update(clock)` once per loop
 - `isComplete()` ends it
 
-…but it also exposes:
+It also exposes:
 
-- `double getOutput()` — the output value for this loop
+- `getOutput()` — the scalar output for this loop
 
-**Key idea:** the task does **not** write hardware. It only proposes an output.
+Common examples:
+
+- feed one game piece into a shooter
+- pulse a transfer servo
+- run an eject motor for a short window
+- wait until a readiness gate opens, then run an output until a sensor changes
 
 ---
 
-## 3. `OutputTaskRunner`: TaskRunner + output, exposed as a ScalarSource
+## 3. `OutputTaskRunner`: queue + scalar source
 
-`OutputTaskRunner` runs `OutputTask`s sequentially (FIFO), using the same scheduling rules as `TaskRunner`.
-
-It also implements `ScalarSource`, so you can treat its output like any other signal:
+`OutputTaskRunner` runs `OutputTask`s sequentially and also implements `ScalarSource`.
 
 ```java
-OutputTaskRunner feederQueue = new OutputTaskRunner(0.0); // idle output
-
-// Later: enqueue a pulse
-feederQueue.enqueue(Tasks.outputForSeconds("feed", 0.9, 0.12));
-
-// In your loop
-feederQueue.update(clock);
-double feederOverride = feederQueue.getAsDouble(clock);
+OutputTaskRunner feederQueue = Tasks.outputQueue(0.0); // idle output
 ```
 
-### Why this matters
+The queue can be sampled anywhere a `ScalarSource` is expected:
 
-You can now enforce a **single writer** for the Plant:
+```java
+ScalarSource queuedOutput = feederQueue;
+BooleanSource queueActive = feederQueue.activeSource();
+```
 
-- base target comes from continuous logic (Sources)
-- override target comes from an OutputTaskRunner
-- one place decides the final target
+Call `feederQueue.update(clock)` once per loop before updating Plants that depend on its current output. Sampling `feederQueue.getAsDouble(clock)` also advances the queue, but explicit `update(clock)` keeps loop order easier to read.
 
 ---
 
-## 4. Common pattern: base target + queued override
+## 4. Standard realization pattern: base target + queued override
 
-A typical plant setup becomes:
+Use `ScalarOverlayStack` when a queued output should temporarily override a baseline target.
 
 ```java
-// Continuous behavior source. This could also read a HeldValue, enum state, or planner.
-ScalarSource baseTarget = ScalarSource.of(() -> stagingEnabled ? 0.20 : 0.0);
+OutputTaskRunner feederQueue = Tasks.outputQueue(0.0);
 
-// Priority rule: queued override wins while active, otherwise the base source wins.
-ScalarSource finalTarget = feederQueue.activeSource().choose(feederQueue, baseTarget);
+ScalarSource baseTransferTarget = ScalarSource.of(() -> stagingEnabled ? 0.20 : 0.0);
 
-Plant transferShooterPlant = FtcActuators.plant(hardwareMap)
+ScalarSource finalTransferTarget = ScalarOverlayStack.on(baseTransferTarget)
+        .add("feedPulse", feederQueue.activeSource(), feederQueue)
+        .build();
+
+Plant transfer = FtcActuators.plant(hardwareMap)
         .crServo("transfer", Direction.FORWARD)
         .power()
-        .targetedBy(finalTarget)
+        .targetedBy(finalTransferTarget)
         .build();
 ```
 
-Then the loop is small:
+Then the loop remains simple:
 
 ```java
 feederQueue.update(clock);
-transferShooterPlant.update(clock);
+transfer.update(clock);
 ```
 
-That priority rule is explicit, debuggable, and easy to change.
+The queue proposes. The overlay arbitrates. The Plant follows the final source.
 
 ---
 
-## 5. Gated feeding: sensors optional
+## 5. Guided pulse recipes
 
-Phoenix includes a generic gating task:
-
-- `GatedOutputUntilTask`
-
-It has three phases:
-
-1. WAIT: output idle until `startWhen` becomes true
-2. RUN: output run value until `doneWhen` is true (and min time elapsed)
-3. COOLDOWN (optional): output idle for a short cooldown
-
-### Sensor-based example (distance sensor at the shooter gate)
+A pulse is common enough that Phoenix provides a staged builder:
 
 ```java
-BooleanSource shooterReady = PlantSources.atTarget(shooterPlant).debouncedOn(0.15);
-BooleanSource aimLocked = ...; // from your auto-facing error source + hysteresis/debounce
-BooleanSource fireAllowed = shooterReady.and(aimLocked);
+OutputTaskFactory feedOne = Tasks.outputPulse("feedOne")
+        .startWhen(canShootNow)
+        .runOutput(0.90)
+        .forSeconds(0.12)
+        .cooldownSec(0.05)
+        .build();
+```
 
+The builder asks the stable robot questions in order:
+
+```text
+When may this pulse start?
+What output does it produce?
+How does it end?
+Does it need cooldown time?
+```
+
+It returns an `OutputTaskFactory`, not a single task, because queued tasks are single-use. Each call to `feedOne.create()` or `feedOne.get()` creates a fresh pulse task.
+
+### Sensor-ended pulse
+
+When a sensor can prove that the mechanism finished moving a game piece, use `until(...)` with a max-run safety cap:
+
+```java
 BooleanSource ballAtGate = gateDistanceCm
         .hysteresisBelow(6.0, 7.0)
         .debouncedOnOff(0.05, 0.05)
         .memoized();
 
-// "done" when the ball leaves the gate
 BooleanSource ballLeftGate = ballAtGate.fallingEdge();
 
-OutputTask feedOne = Tasks.gatedOutputUntil(
-        "feedOne",
-        fireAllowed.and(ballAtGate),   // startWhen
-        ballLeftGate,                  // doneWhen
-        0.90,                           // run output
-        0.05,                           // min run sec
-        0.30                            // max run sec (safety cap)
-);
-
-feederQueue.enqueue(feedOne);
+OutputTaskFactory feedOne = Tasks.outputPulse("feedOne")
+        .startWhen(canShootNow.and(ballAtGate))
+        .runOutput(0.90)
+        .until(ballLeftGate)
+        .minRunSec(0.05)
+        .maxRunSec(0.30)
+        .cooldownSec(0.05)
+        .build();
 ```
 
-### Fast repeat shooting: keep one "feed" buffered while held
+The max-run cap is required for sensor-ended pulses so a failed or disconnected sensor cannot leave an output running forever.
 
-To shoot quickly while maintaining accuracy, a common pattern is:
+### Timed fallback
 
-1. driver holds a trigger to request shots
-2. you <b>only feed</b> when (a) aimed and (b) shooter is stably at speed and (c) a ball is present
-3. you keep exactly <b>one</b> feed task buffered so the next shot starts immediately
+When there is no reliable done sensor, use a timed pulse:
 
-Phoenix provides a small helper on {@code OutputTaskRunner}:
+```java
+OutputTaskFactory feedOne = Tasks.outputPulse("feedOne")
+        .startWhen(canShootNow)
+        .runOutput(0.90)
+        .forSeconds(0.12)
+        .build();
+```
+
+`Tasks.outputForSeconds(...)` still exists for low-level one-off tasks, but `Tasks.outputPulse(...)` is the preferred student-facing pattern because it captures start gates, output, ending policy, and cooldown in one guided builder.
+
+---
+
+## 6. Repeating while a request is held
+
+Use queue-level `whileHigh(...)` / `whileLow(...)` to keep a bounded backlog while a request signal has the desired level.
 
 ```java
 BooleanSource requestShoot = gamepads.p2().rightTrigger().above(0.50);
 
-// Readiness lives inside the task. That way, the task can sit in WAIT without output,
-// and you still keep one "feedOne" buffered and ready to run.
-BooleanSource canShootNow = fireAllowed.and(ballAtGate);
-BooleanSource ballLeftGate = ballAtGate.fallingEdge();
-
 feederQueue.whileHigh(
         clock,
         requestShoot,
-        1, // keep exactly one task buffered
-        () -> Tasks.gatedOutputUntil(
-                "feedOne",
-                canShootNow,   // startWhen
-                ballLeftGate,  // doneWhen
-                0.90,
-                0.05,
-                0.30
-        )
+        1,       // keep exactly one active-or-queued pulse while the request is high
+        feedOne  // OutputTaskFactory creates fresh tasks
 );
-
-// Note: whileHigh(...) only manages the backlog. When the request goes false it uses cancelAndClear()
-// so the active output task can stop cleanly before the queue is emptied.
-// Your loop still needs to advance the queue each cycle by calling:
-//   feederQueue.update(clock)
-// or by sampling its output via feederQueue.getAsDouble(clock).
 ```
 
-This keeps your loop logic small and prevents "queue spam" (hundreds of pulses queued up)
-when a trigger is held.
+Important separation:
 
-### Sensorless fallback (no done condition)
+- The `requestShoot` signal says whether the driver or auton wants shots.
+- The pulse's `startWhen(...)` gate says when feeding is actually safe.
+- The final `ScalarOverlayStack` says how the active pulse affects the Plant target.
 
-```java
-OutputTask feedPulse = Tasks.outputForSeconds("feedPulse", 0.9, 0.12);
-feederQueue.enqueue(feedPulse);
-```
+When `requestShoot` goes low, `whileHigh(...)` cancels and clears the queue. This prevents old pulses from firing after the operator changed modes.
+
+`whileLow(...)` is the exact signal-level mirror: maintain backlog while the signal is low, cancel and clear while it is high. Phoenix uses `high`/`low` vocabulary consistently with input bindings (`onRise`, `onFall`, `whileHigh`, `whileLow`).
 
 ---
 
-## 6. Auton reuse: wait on the same signals
+## 7. TeleOp and autonomous reuse
 
-Because readiness and ball‑present logic are `BooleanSource`s, auton can wait on them without
-re‑implementing them:
+Because readiness, sensors, and queue outputs are all Sources, TeleOp and autonomous code can reuse the same pieces.
+
+TeleOp can maintain a queue while a trigger is held:
 
 ```java
-Task waitForReady = Tasks.waitUntil(fireAllowed, 2.0);
+feederQueue.whileHigh(clock, requestShoot, 1, feedOne);
 ```
 
-And auton can request shots by enqueueing the same `OutputTask`s your TeleOp automation uses.
+Autonomous can enqueue exactly one pulse:
+
+```java
+feederQueue.enqueue(feedOne.create());
+```
+
+Autonomous can also wait on the same readiness signal:
+
+```java
+Task waitForReady = Tasks.waitUntil(canShootNow, 2.0);
+```
+
+No duplicate sensor logic is needed.
 
 ---
 
-## 6.5 Aborting an output queue
+## 8. Aborting an output queue
 
 When a driver lets go of a trigger, changes mode, or an autonomous step is interrupted, prefer:
 
@@ -216,8 +231,7 @@ When a driver lets go of a trigger, changes mode, or an autonomous step is inter
 feederQueue.cancelAndClear();
 ```
 
-Use plain `clear()` only when you intentionally want to forget queue state without invoking
-task cancellation hooks. Most robot code should reach for `cancelAndClear()`.
+Use plain `clear()` only when you intentionally want to forget queue state without invoking cancellation hooks. Most robot code should reach for `cancelAndClear()`.
 
 Typical abort situations:
 
@@ -227,17 +241,24 @@ Typical abort situations:
 
 ---
 
-## 7. When to use PlantTasks vs Output tasks
+## 9. When to use PlantTasks vs Output tasks
 
 Use **PlantTasks** when:
 
-- a macro "owns" a plant for a while
-- you are writing a simple autonomous sequence
-- it is okay for a task to directly set targets
+- one task should change a Plant's registered writable target
+- the task may wait on Plant feedback using `plant.atTarget(value)`
+- the behavior is naturally “move this mechanism target and wait”
 
 Use **OutputTaskRunner** when:
 
-- you have continuous logic + short overrides
-- you need sensor‑gated pulses that work in TeleOp and auton
-- you want to avoid multi‑writer conflicts
+- continuous baseline behavior and short temporary outputs both influence the same final Plant target
+- you need sensor-gated pulses that work in TeleOp and auton
+- a single logical pulse should fan out into multiple Plants through scaled overlay layers
 
+Rule of thumb:
+
+```text
+PlantTasks change a command target.
+OutputTaskRunner proposes a temporary output.
+ScalarOverlayStack decides the final Plant target.
+```

@@ -62,18 +62,18 @@ import edu.ftcphoenix.fw.task.TaskRunner;
  *     <ul>
  *       <li>{@link PlantTasks#moveTo(Plant, double, double)}
  *           – set a target and wait until {@code atTarget()} (with timeout).</li>
- *       <li>{@link PlantTasks#holdFor(Plant, double, double)}
+ *       <li>{@link PlantTasks#holdTargetFor(Plant, double, double)}
  *           and the overload with a final target – hold a value for a fixed
  *           time and then go to a final value.</li>
- *       <li>{@link PlantTasks#setInstant(Plant, double)}
+ *       <li>{@link PlantTasks#setTarget(Plant, double)}
  *           – set a target once and finish immediately.</li>
  *     </ul>
  *   </li>
  *   <li><b>How macros interact with the main loop</b>:
  *     <ul>
- *       <li>Macros only call {@link Plant#setTarget(double)}.</li>
+ *       <li>Macros write source targets through {@link PlantTasks}; they do not write hardware directly.</li>
  *       <li>The main loop is still responsible for calling
- *           {@link Plant#update(double)} once per loop.</li>
+ *           {@link Plant#update(LoopClock)} once per loop.</li>
  *       <li>When no macro is active, we apply a simple “safe default” for
  *           the shooter/transfer/pusher.</li>
  *     </ul>

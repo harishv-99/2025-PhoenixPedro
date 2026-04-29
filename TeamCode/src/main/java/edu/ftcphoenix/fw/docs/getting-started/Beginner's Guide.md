@@ -388,7 +388,7 @@ feedback plants and open-loop plants.
 These helpers require `plant.hasFeedback() == true`.
 
 ```java
-// Move shooter to a target velocity and wait until it's at setpoint (or timeout).
+// Move shooter to a target velocity and wait until it is at target (or timeout).
 Task spinUp = PlantTasks.moveTo(shooter, SHOOTER_VELOCITY_NATIVE, 1.2);
 
 // Move arm to a setpoint, then command a final target right after.

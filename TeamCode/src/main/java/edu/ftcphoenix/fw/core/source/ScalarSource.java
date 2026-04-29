@@ -648,7 +648,7 @@ public interface ScalarSource extends Source<Double> {
      * Rate-limit this source with separate positive and negative rates.
      */
     default ScalarSource rateLimited(double maxUpPerSec, double maxDownPerSec) {
-        ScalarSource self = this;
+        ScalarSource self = this.memoized();
         SlewRateLimiter limiter = new SlewRateLimiter(maxUpPerSec, maxDownPerSec);
         return new ScalarSource() {
             @Override

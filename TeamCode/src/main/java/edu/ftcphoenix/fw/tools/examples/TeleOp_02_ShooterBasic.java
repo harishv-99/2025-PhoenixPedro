@@ -64,7 +64,7 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
  *       <li>Convert modes → targets for {@link Plant}s.</li>
  *       <li>Call {@link MecanumDrivebase#update(LoopClock)} then
  *           {@link MecanumDrivebase#drive(DriveSignal)}, and call
- *           {@link Plant#update(double)}.</li>
+ *           {@link Plant#update(LoopClock)}.</li>
  *       <li>Send telemetry.</li>
  *     </ol>
  *   </li>

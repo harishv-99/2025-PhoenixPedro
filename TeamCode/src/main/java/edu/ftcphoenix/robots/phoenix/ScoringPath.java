@@ -8,12 +8,14 @@ import edu.ftcphoenix.fw.actuation.Plant;
 import edu.ftcphoenix.fw.core.control.DebounceBoolean;
 import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.source.BooleanSource;
+import edu.ftcphoenix.fw.core.source.ScalarOverlayStack;
 import edu.ftcphoenix.fw.core.source.ScalarSource;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.ftc.FtcActuators;
 import edu.ftcphoenix.fw.supervisor.HeldValue;
 import edu.ftcphoenix.fw.supervisor.RequestCounter;
 import edu.ftcphoenix.fw.task.OutputTask;
+import edu.ftcphoenix.fw.task.OutputTaskFactory;
 import edu.ftcphoenix.fw.task.OutputTaskRunner;
 import edu.ftcphoenix.fw.task.Tasks;
 
@@ -74,7 +76,7 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
         public final double readyLeadSec;
         public final double predictedFlywheelAbsNative;
         public final double predictedFlywheelErrorNative;
-        public final boolean flywheelAtSetpoint;
+        public final boolean flywheelAtTarget;
         public final boolean ready;
         public final int feedQueued;
         public final boolean feedActive;
@@ -106,7 +108,7 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
                       double readyLeadSec,
                       double predictedFlywheelAbsNative,
                       double predictedFlywheelErrorNative,
-                      boolean flywheelAtSetpoint,
+                      boolean flywheelAtTarget,
                       boolean ready,
                       int feedQueued,
                       boolean feedActive,
@@ -134,7 +136,7 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
             this.readyLeadSec = readyLeadSec;
             this.predictedFlywheelAbsNative = predictedFlywheelAbsNative;
             this.predictedFlywheelErrorNative = predictedFlywheelErrorNative;
-            this.flywheelAtSetpoint = flywheelAtSetpoint;
+            this.flywheelAtTarget = flywheelAtTarget;
             this.ready = ready;
             this.feedQueued = feedQueued;
             this.feedActive = feedActive;
@@ -208,8 +210,9 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
         private double baseIntakeTransferPower = 0.0;
         private double baseShooterTransferPower = 0.0;
 
-        private boolean feedOverrideActive = false;
-        private double feedOverride = 0.0;
+        private final BooleanSource feedPulseActive = feedQueue.activeSource();
+        private final ScalarSource feedPulseOutput = feedQueue;
+        private double lastFeedOutput = 0.0;
 
         void updateBeforeFlywheel(LoopClock clock) {
             Objects.requireNonNull(clock, "clock");
@@ -221,8 +224,7 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
         void updateAfterFlywheel(LoopClock clock) {
             Objects.requireNonNull(clock, "clock");
             feedQueue.update(clock);
-            feedOverrideActive = feedQueue.hasActiveTask();
-            feedOverride = feedQueue.getAsDouble(clock);
+            lastFeedOutput = feedQueue.getAsDouble(clock);
         }
 
         boolean isFlywheelEnabled() {
@@ -245,12 +247,20 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
             return baseShooterTransferPower;
         }
 
-        boolean isFeedOverrideActive() {
-            return feedOverrideActive;
+        boolean isFeedPulseActive() {
+            return feedQueue.hasActiveTask();
         }
 
-        double feedOverride() {
-            return feedOverride;
+        double feedPulseOutput() {
+            return lastFeedOutput;
+        }
+
+        BooleanSource feedPulseActiveSource() {
+            return feedPulseActive;
+        }
+
+        ScalarSource feedPulseOutputSource() {
+            return feedPulseOutput;
         }
 
         int queuedFeedTasks() {
@@ -287,8 +297,8 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
                     .addData(p + ".baseIntakeMotorPower", baseIntakeMotorPower)
                     .addData(p + ".baseIntakeTransferPower", baseIntakeTransferPower)
                     .addData(p + ".baseShooterTransferPower", baseShooterTransferPower)
-                    .addData(p + ".feedOverrideActive", feedOverrideActive)
-                    .addData(p + ".feedOverride", feedOverride);
+                    .addData(p + ".feedPulseActive", isFeedPulseActive())
+                    .addData(p + ".feedPulseOutput", lastFeedOutput);
             feedQueue.debugDump(dbg, p + ".feedQueue");
         }
 
@@ -325,8 +335,7 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
             inputs.shotRequests.clear();
             inputs.transientCancelRequests.clear();
             feedQueue.cancelAndClear();
-            feedOverrideActive = false;
-            feedOverride = 0.0;
+            lastFeedOutput = 0.0;
         }
 
         private void setFlywheelEnabled(boolean enabled) {
@@ -377,18 +386,14 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
             BooleanSource flywheelArmed = BooleanSource.of(this::isFlywheelEnabled);
             BooleanSource flywheelOkToFeed = realization.flywheelReadySource().or(shootOverride.and(flywheelArmed));
             BooleanSource startWhen = flywheelOkToFeed.and(aimOkToShoot);
-            BooleanSource doneWhen = BooleanSource.constant(true);
 
-            return Tasks.gatedOutputUntil(
-                    "shootOne",
-                    startWhen,
-                    doneWhen,
-                    ScalarSource.constant(cfg.shootFeedPower),
-                    0.0,
-                    cfg.shootFeedPulseSec,
-                    cfg.shootFeedPulseSec + 1.0,
-                    cfg.shootFeedCooldownSec
-            );
+            OutputTaskFactory factory = Tasks.outputPulse("shootOne")
+                    .startWhen(startWhen)
+                    .runOutput(cfg.shootFeedPower)
+                    .forSeconds(cfg.shootFeedPulseSec)
+                    .cooldownSec(cfg.shootFeedCooldownSec)
+                    .build();
+            return factory.create();
         }
 
         private FeedMode selectFeedMode(int backlog) {
@@ -454,20 +459,20 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
             flywheelTargetSource = ScalarSource.of(() ->
                     execution.isFlywheelEnabled() ? inputs.selectedVelocityNative.get() : 0.0);
 
-            intakeMotorTargetSource = ScalarSource.of(() ->
-                    execution.isFeedOverrideActive()
-                            ? execution.feedOverride() * cfg.feedScaleIntakeMotor
-                            : execution.baseIntakeMotorPower());
+            intakeMotorTargetSource = ScalarOverlayStack.on(ScalarSource.of(execution::baseIntakeMotorPower))
+                    .add("feedPulse", execution.feedPulseActiveSource(),
+                            execution.feedPulseOutputSource().scaled(cfg.feedScaleIntakeMotor))
+                    .build();
 
-            intakeTransferTargetSource = ScalarSource.of(() ->
-                    execution.isFeedOverrideActive()
-                            ? execution.feedOverride() * cfg.feedScaleIntakeTransfer
-                            : execution.baseIntakeTransferPower());
+            intakeTransferTargetSource = ScalarOverlayStack.on(ScalarSource.of(execution::baseIntakeTransferPower))
+                    .add("feedPulse", execution.feedPulseActiveSource(),
+                            execution.feedPulseOutputSource().scaled(cfg.feedScaleIntakeTransfer))
+                    .build();
 
-            shooterTransferTargetSource = ScalarSource.of(() ->
-                    execution.isFeedOverrideActive()
-                            ? execution.feedOverride() * cfg.feedScaleShooterTransfer
-                            : execution.baseShooterTransferPower());
+            shooterTransferTargetSource = ScalarOverlayStack.on(ScalarSource.of(execution::baseShooterTransferPower))
+                    .add("feedPulse", execution.feedPulseActiveSource(),
+                            execution.feedPulseOutputSource().scaled(cfg.feedScaleShooterTransfer))
+                    .build();
 
             plantIntakeMotor = FtcActuators.plant(hardwareMap)
                     .motor(cfg.nameMotorIntake, cfg.directionMotorIntake)
@@ -617,7 +622,7 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
             return flywheelMeasuredAccelAbs;
         }
 
-        boolean flywheelAtSetpoint() {
+        boolean flywheelAtTarget() {
             return plantFlywheel.atTarget();
         }
 
@@ -859,11 +864,11 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
                 leadSec,
                 predictedAbs,
                 predictedAbs - targetAbs,
-                realization.flywheelAtSetpoint(),
+                realization.flywheelAtTarget(),
                 ready,
                 execution.queuedFeedTasks(),
-                execution.isFeedOverrideActive(),
-                clockOrNull != null ? execution.feedOverride() : 0.0
+                execution.isFeedPulseActive(),
+                clockOrNull != null ? execution.feedPulseOutput() : 0.0
         );
     }
 

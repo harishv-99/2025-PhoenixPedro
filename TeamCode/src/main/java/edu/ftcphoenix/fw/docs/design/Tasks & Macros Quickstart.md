@@ -185,7 +185,7 @@ For mechanism plants (motors, servos, shooters, arms, etc.), start with `edu.ftc
 `PlantTasks` focuses on **two big categories**:
 
 1. **Time‑based commands** – “run this plant at value X for N seconds”.
-2. **Feedback‑based moves** – “move this plant to a setpoint and wait until it arrives”.
+2. **Feedback‑based moves** – “move this plant to a target and wait until it arrives”.
 
 ### 4.1 Time‑based helpers (work with any plant)
 
@@ -221,7 +221,7 @@ These work with *both* feedback and non‑feedback plants (for example, power pl
 
 These helpers rely on `plant.hasFeedback() == true` and `plant.atTarget()` being meaningful. They are designed for encoder‑backed motor plants (position or velocity) created via `FtcActuators.plant(...).motor(...).position(...)` or `.velocity(...)`.
 
-* **Move to setpoint and hold**
+* **Move to target and hold**
 
   ```java
   Task spinUp = PlantTasks.moveTo(shooterPlant, SHOOTER_VELOCITY_NATIVE);
@@ -231,9 +231,9 @@ These helpers rely on `plant.hasFeedback() == true` and `plant.atTarget()` being
 
     * On start: set shooter target once.
     * Each loop: task checks `plant.atTarget()`.
-    * When at setpoint: task completes and leaves the target as‑is.
+    * When at target: task completes and leaves the target as‑is.
 
-* **Move to setpoint with timeout**
+* **Move to target with timeout**
 
   ```java
   Task spinUpWithTimeout = PlantTasks.moveTo(
@@ -265,9 +265,9 @@ These helpers rely on `plant.hasFeedback() == true` and `plant.atTarget()` being
 
 > If you accidentally call `moveTo...` on an open‑loop plant (for example, a simple servo position plant), `PlantTasks` will throw an exception at runtime to make the bug obvious.
 
-* **Move to setpoint (stable-ready) and hold**
+* **Move to target (stable-ready) and hold**
 
-  Flywheels and velocity plants can sometimes flicker “at setpoint” for a single loop.
+  Flywheels and velocity plants can sometimes flicker “at target” for a single loop.
   If you want a more robust notion of readiness, use the stable variant:
 
   ```java
