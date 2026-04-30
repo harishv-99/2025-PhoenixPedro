@@ -37,14 +37,12 @@ package edu.ftcphoenix.fw.spatial;
  * DriveGuidancePlan scoreAlign = DriveGuidance.plan()
  *         .translateTo()
  *             .point(References.framePoint(backdropFace, -6.0, 0.0))
- *             .doneTranslateTo()
  *         .andFaceTo()
  *             .frameHeading(backdropFace)
- *             .doneFaceTo()
  *         .solveWith()
  *             .localizationOnly()
  *             .localization(poseEstimator)
- *             .doneAprilTagsOnly()
+ *             .doneLocalizationOnly()
  *         .build();
  * }</pre>
  *

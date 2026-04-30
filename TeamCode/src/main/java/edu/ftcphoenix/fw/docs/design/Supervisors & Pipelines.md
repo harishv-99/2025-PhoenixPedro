@@ -226,7 +226,7 @@ PlantTargetSource finalTarget = PlantTargets.overlay(base)
 plant.update(clock);
 ```
 
-Semantics: base always runs; enabled layers override; **last enabled target-producing layer wins**. If an enabled layer cannot produce a target, the overlay reports that layer as unavailable instead of silently ignoring it.
+Semantics: base always runs; enabled layers override; **last enabled target-producing layer wins**. If an enabled `add(...)` layer cannot produce a target, the overlay reports that layer as unavailable instead of silently ignoring it. Use `addIfAvailable(...)` only when an enabled layer is intentionally allowed to fall through to the lower-priority winner.
 
 ---
 

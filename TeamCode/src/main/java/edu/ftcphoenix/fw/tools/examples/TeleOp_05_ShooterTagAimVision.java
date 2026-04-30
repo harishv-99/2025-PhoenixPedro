@@ -210,7 +210,6 @@ public final class TeleOp_05_ShooterTagAimVision extends OpMode {
         DriveGuidancePlan aimPlan = DriveGuidance.plan()
                 .faceTo()
                 .point(scoringRef)
-                .doneFaceTo()
                 .solveWith()
                 .aprilTagsOnly()
                 .aprilTags(tagSensor, cameraMount)

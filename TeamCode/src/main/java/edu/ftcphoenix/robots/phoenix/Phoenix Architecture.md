@@ -248,7 +248,8 @@ The realization layer no longer imperatively chooses and writes plant targets ev
 each scoring Plant is built with a final `PlantTargetSource`. Continuous baseline feed behavior is a
 source, the behavior-owned feed pulse queue is another source, and `PlantTargets.overlay(...)` expresses
 the priority rule. The Plant samples the final target source during `update(clock)` and then applies
-its own hardware guards.
+its own hardware guards. Telemetry/debug output can now separate `getTargetPlan()` (“which behavior
+target won?”) from `getTargetStatus()` (“how did hardware guards apply it?”).
 
 That distinction is important:
 

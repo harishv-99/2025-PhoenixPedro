@@ -38,6 +38,7 @@ public final class MappedVelocityPlant implements Plant {
     private boolean lastAtTarget;
     private double lastRegulatorOutput;
     private PlantTargetStatus targetStatus = PlantTargetStatus.STOPPED;
+    private PlantTargetPlan targetPlan = PlantTargetPlan.unavailable("not sampled");
 
     private MappedVelocityPlant(VelocityOutput velocityOut,
                                 PowerOutput regulatedPowerOut,
@@ -215,17 +216,17 @@ public final class MappedVelocityPlant implements Plant {
     public void update(LoopClock clock) {
         samplePlantMeasurement(clock);
         PlantTargetContext context = PlantTargetContext.simple(true, lastMeasurement, targetRange(), requestedTarget, appliedTarget);
-        PlantTargetPlan plan = targetSource.resolve(context, clock);
-        if (plan != null && plan.hasTarget()) {
-            requestedTarget = plan.target();
+        targetPlan = targetSource.resolve(context, clock);
+        if (targetPlan != null && targetPlan.hasTarget()) {
+            requestedTarget = targetPlan.target();
         } else {
             requestedTarget = appliedTarget;
         }
 
         double candidate = Double.isFinite(requestedTarget) ? requestedTarget : appliedTarget;
-        PlantTargetStatus status = (plan != null && plan.hasTarget())
+        PlantTargetStatus status = (targetPlan != null && targetPlan.hasTarget())
                 ? PlantTargetStatus.ACCEPTED
-                : PlantTargetStatus.targetUnavailable(plan != null ? plan.reason() : "missing plant target plan");
+                : PlantTargetStatus.targetUnavailable(targetPlan != null ? targetPlan.reason() : "missing plant target plan");
         ScalarRange range = targetRange();
         if (!range.valid) {
             candidate = appliedTarget;
@@ -261,6 +262,7 @@ public final class MappedVelocityPlant implements Plant {
         lastAtTarget = false;
         lastRegulatorOutput = 0.0;
         targetStatus = PlantTargetStatus.STOPPED;
+        targetPlan = PlantTargetPlan.unavailable("not sampled");
     }
 
     @Override
@@ -272,6 +274,7 @@ public final class MappedVelocityPlant implements Plant {
         appliedTarget = 0.0;
         lastRegulatorOutput = 0.0;
         targetStatus = PlantTargetStatus.STOPPED;
+        targetPlan = PlantTargetPlan.unavailable("plant stopped");
     }
 
     @Override
@@ -282,6 +285,11 @@ public final class MappedVelocityPlant implements Plant {
     @Override
     public double getAppliedTarget() {
         return appliedTarget;
+    }
+
+    @Override
+    public PlantTargetPlan getTargetPlan() {
+        return targetPlan;
     }
 
     @Override
@@ -347,6 +355,7 @@ public final class MappedVelocityPlant implements Plant {
                 .addData(p + ".nativeMeasurement", lastNativeMeasurement)
                 .addData(p + ".regulatorOutput", lastRegulatorOutput)
                 .addData(p + ".targetRange", targetRange());
+        targetSource.debugDump(dbg, p + ".targetSource");
         targetGuards.debugDump(dbg, p + ".targetGuards");
         if (regulator != null) regulator.debugDump(dbg, p + ".regulator");
     }

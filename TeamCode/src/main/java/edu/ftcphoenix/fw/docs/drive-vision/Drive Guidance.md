@@ -22,7 +22,7 @@ Drive overlay, task, or telemetry gate
 
 ## Guided builder shape
 
-`DriveGuidance.plan()` intentionally parallels `PlantTargets.plan()`: answer the required behavior question first, then enter optional tuning branches only when you need them.
+`DriveGuidance.plan()` intentionally parallels `PlantTargets.plan()`: answer required questions in order, then enter optional tuning branches only when you need them.
 
 ```text
 DriveGuidance.plan()
@@ -33,7 +33,7 @@ DriveGuidance.plan()
     build()
 ```
 
-`build()` is not visible until at least one target and one solve strategy are chosen. Adaptive-only knobs such as `translationTakeover(...)` and `omegaPolicy(...)` only appear in the adaptive branch.
+`build()` is not visible until at least one target and one solve strategy are chosen. Target choice methods such as `point(...)`, `fieldPointInches(...)`, and `frameHeading(...)` return to the parent stage immediately because they answer exactly one choice. Adaptive-only knobs such as `translationTakeover(...)` and `omegaPolicy(...)` only appear in the adaptive branch, and multi-setting tuning branches still use explicit `done...()` methods.
 
 ## Common TeleOp pattern: button-held omega override
 
@@ -55,7 +55,6 @@ ReferencePoint2d scoringPoint = References.relativeToTagPoint(
 DriveGuidancePlan shooterAim = DriveGuidance.plan()
         .faceTo()
             .point(scoringPoint)
-            .doneFaceTo()
         .controlFrames(
                 SpatialControlFrames.robotCenter()
                         .withFacingFrame(robotToShooterFrame)
@@ -112,10 +111,8 @@ A plan can solve translation, facing, or both. Start with the first channel, the
 DriveGuidancePlan alignToSlot = DriveGuidance.plan()
         .translateTo()
             .point(References.framePoint(slotFrame, -6.0, 0.0))
-            .doneTranslateTo()
         .andFaceTo()
             .frameHeading(slotFrame)
-            .doneFaceTo()
         .controlFrames(SpatialControlFrames.robotCenter())
         .solveWith()
             .localizationOnly()

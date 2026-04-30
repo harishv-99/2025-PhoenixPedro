@@ -166,11 +166,39 @@ Plant feeder = FtcActuators.plant(hardwareMap)
         .build();
 ```
 
-The Boolean on each layer means “this behavior is requested.” If an enabled layer cannot produce a target,
-the overlay reports that layer as unavailable instead of silently falling through. Do not hide target
-validity inside the Boolean unless that is truly the behavior you want. It is usually easier to debug
-when the layer is enabled and its target source reports why it used a fallback, hold target, or explicit
-unavailable result.
+The Boolean on each layer means “this behavior is requested.” If an enabled `add(...)` layer cannot
+produce a target, the overlay reports that layer as unavailable instead of silently falling through.
+Do not hide target validity inside the Boolean unless that is truly the behavior you want. It is
+usually easier to debug when the layer is enabled and its target source reports why it used a fallback,
+hold target, or explicit unavailable result.
+
+When the desired behavior really is “try this layer, but keep the lower-priority target if it cannot
+produce a value,” say that explicitly:
+
+```java
+PlantTargetSource turretTarget = PlantTargets.overlay(PlantTargets.holdMeasuredTargetOnEntry(0.0))
+        .addIfAvailable("visionAim", visionAimRequested, visionAimPlanner)
+        .add("manual", manualActive, manualAngleTarget)
+        .build();
+```
+
+`addIfAvailable(...)` is intentionally named differently from `add(...)` because it changes the
+meaning of an enabled-but-unavailable layer. Debug output records that the layer was enabled and fell
+through, so this is not a hidden Boolean filter.
+
+## Target-plan diagnostics
+
+Plants now report two different target diagnostics:
+
+```java
+plant.getTargetPlan();    // how PlantTargets selected the requested target
+plant.getTargetStatus();  // how the Plant turned requested target into applied target
+```
+
+For example, a turret planner may report `PLANNED_CANDIDATE` with candidate `"slot-2-purple"`,
+while the Plant status reports `RATE_LIMITED` because the applied target is still walking toward the
+requested target. This separation keeps behavior target generation separate from hardware protection
+while making telemetry easier to read.
 
 ## Smart planning: equivalent and candidate targets
 
@@ -182,6 +210,11 @@ object. During `plant.update(clock)`, the Plant supplies:
 - legal target range
 - linear/periodic topology and period
 - previous requested/applied targets
+
+The planner builder intentionally asks one required question at a time: `request(...)`, then one
+candidate preference, then one unreachable-candidate policy, then `whenUnavailable()`. Optional
+request-age/quality tuning lives in `accept()...doneAccept()` after the required motion-semantics
+choices have been made.
 
 A free spinner or tray can declare its own period in Plant units:
 
@@ -198,8 +231,8 @@ PositionPlant tray = FtcActuators.plant(hardwareMap)
         .targetedBy(
                 PlantTargets.plan()
                         .request(clock -> PlantTargetRequest.equivalentPosition("slot-2", 240.0))
-                        .select().nearestToMeasurement().doneSelect()
-                        .unreachable().reject().doneUnreachable()
+                        .nearestToMeasurement()
+                        .rejectUnreachable()
                         .whenUnavailable().holdMeasuredTargetOnEntry(0.0)
         )
         .build();
@@ -234,12 +267,15 @@ Source<PlantTargetRequest> purpleToOutput = clock -> {
 
 PlantTargetSource trayTarget = PlantTargets.plan()
         .request(purpleToOutput)
-        .select().nearestToMeasurement().doneSelect()
-        .unreachable().reject().doneUnreachable()
+        .nearestToMeasurement()
+        .rejectUnreachable()
         .whenUnavailable().holdLastTarget(0.0);
 ```
 
-The planner does not know what “purple” means. It only sees Plant-unit candidates.
+The planner does not know what “purple” means. It only sees Plant-unit candidates. Notice that
+`nearestToMeasurement()` and `rejectUnreachable()` are staged single-answer questions: after one
+choice, the returned type exposes only the next question. There is no later-replacement model. Branches that may set several independent tuning values, such as
+`accept()`, still end with an explicit `doneAccept()`.
 
 ## `whenUnavailable()` versus overlay
 
@@ -258,8 +294,8 @@ For a smart planner used directly as the Plant target, choose a total unavailabl
 ```java
 PlantTargetSource turretTarget = PlantTargets.plan()
         .request(autoAimRequest)
-        .select().nearestToMeasurement().doneSelect()
-        .unreachable().reject().doneUnreachable()
+        .nearestToMeasurement()
+        .rejectUnreachable()
         .whenUnavailable().holdMeasuredTargetOnEntry(0.0);
 ```
 
@@ -270,8 +306,8 @@ PlantTargetSource turretTarget = PlantTargets.overlay(PlantTargets.holdMeasuredT
         .add("autoAim", autoAimRequested,
                 PlantTargets.plan()
                         .request(autoAimRequest)
-                        .select().nearestToMeasurement().doneSelect()
-                        .unreachable().reject().doneUnreachable()
+                        .nearestToMeasurement()
+                        .rejectUnreachable()
                         .whenUnavailable().holdLastTarget(0.0))
         .add("manual", manualActive, manualAngleTarget)
         .add("stow", stowRequested, 0.0)
@@ -306,9 +342,9 @@ Source<PlantTargetRequest> turretFacingRequest = clock -> {
 
 PlantTargetSource turretTarget = PlantTargets.plan()
         .request(turretFacingRequest)
+        .nearestToMeasurement()
+        .rejectUnreachable()
         .accept().maxRequestAgeSec(0.20).minQuality(0.45).doneAccept()
-        .select().nearestToMeasurement().doneSelect()
-        .unreachable().reject().doneUnreachable()
         .whenUnavailable().holdMeasuredTargetOnEntry(0.0);
 ```
 

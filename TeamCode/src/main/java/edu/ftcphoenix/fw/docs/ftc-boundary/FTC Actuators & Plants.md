@@ -75,14 +75,21 @@ geometry, periodicity, or homing/reference questions.
 Every robot-facing Plant is source-driven:
 
 ```text
-behavior ScalarSource
+behavior PlantTargetSource
+    ↓
+requested target + PlantTargetPlan
     ↓
 Plant static range / reference policy
     ↓
 Plant targetGuards() hardware protection
     ↓
-applied target sent to hardware/control
+applied target + PlantTargetStatus
+    ↓
+hardware/control
 ```
+
+`getTargetPlan()` explains how behavior selected the requested target. `getTargetStatus()` explains
+how the Plant protected and applied that request.
 
 Use behavior sources for robot policy:
 

@@ -16,7 +16,9 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * <p>{@code PlantTargets} is the central place to generate values for {@link Plant}s. It keeps one
  * student-facing rule: <b>anything intended to become a Plant target should be expressed as a
  * {@link PlantTargetSource}</b>. Simple values are lifted with {@link #exact(double)} or
- * {@link #exact(ScalarSource)}. Behavior arbitration uses {@link #overlay(PlantTargetSource)}.
+ * {@link #exact(ScalarSource)}. Behavior arbitration uses {@link #overlay(PlantTargetSource)}:
+ * layers added with {@code add(...)} must produce a target when enabled, while
+ * {@code addIfAvailable(...)} is the explicit opt-in for enabled layers that may fall through.
  * Periodic/equivalent target selection uses {@link #plan()}.</p>
  *
  * <h2>Typical exact target</h2>
@@ -42,8 +44,8 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * <pre>{@code
  * PlantTargetSource turretTarget = PlantTargets.plan()
  *     .request(clock -> PlantTargetRequest.equivalentPosition("faceGoal", desiredAngleDeg.get()))
- *     .select().nearestToMeasurement().doneSelect()
- *     .unreachable().reject().doneUnreachable()
+ *     .nearestToMeasurement()
+ *     .rejectUnreachable()
  *     .whenUnavailable().holdMeasuredTargetOnEntry(0.0);
  * }</pre>
  */
@@ -86,6 +88,20 @@ public final class PlantTargets {
          * Clamp unreachable candidates into the plant's legal range.
          */
         CLAMP_TO_RANGE
+    }
+
+    /**
+     * What an overlay should do when an enabled layer cannot produce a target.
+     */
+    private enum LayerUnavailablePolicy {
+        /**
+         * Stop resolution and report the enabled layer as unavailable.
+         */
+        REPORT_UNAVAILABLE,
+        /**
+         * Keep the lower-priority winner and record that this layer explicitly fell through.
+         */
+        FALL_THROUGH
     }
 
     /**
@@ -151,6 +167,11 @@ public final class PlantTargets {
 
     /**
      * Start a smart target planner.
+     *
+     * <p>The staged builder asks required questions in order: request source, candidate
+     * preference, unreachable-candidate policy, then unavailable-target policy. Optional
+     * request-age/quality tuning is available after the required preference and unreachable
+     * answers. This shape avoids hidden defaults for choices that affect motion semantics.</p>
      */
     public static PlanRequestStage plan() {
         return new PlannerBuilder();
@@ -255,10 +276,10 @@ public final class PlantTargets {
      *
      * <p>The base target should be total. Layers are evaluated in insertion order; each enabled
      * layer that produces a target replaces the current winner, so later enabled layers have higher
-     * priority. If an enabled layer is unavailable, the overlay returns an unavailable plan for that
-     * layer instead of silently falling through. Give smart layer sources their own
-     * {@code whenUnavailable()} policy when an active behavior should hold, fallback, or explicitly
-     * report unavailability.</p>
+     * priority. Layers added with {@link #add(String, BooleanSource, PlantTargetSource)} must
+     * produce a target when enabled; unavailable active layers report an unavailable plan instead of
+     * silently falling through. Use {@link #addIfAvailable(String, BooleanSource, PlantTargetSource)}
+     * only when an enabled-but-unavailable layer should explicitly keep the lower-priority winner.</p>
      */
     public static final class OverlayBuilder {
         private final PlantTargetSource base;
@@ -283,10 +304,43 @@ public final class PlantTargets {
         }
 
         /**
-         * Add an enabled layer with a plant-aware target source.
+         * Add an enabled layer that must produce a target when its Boolean is high.
+         *
+         * <p>This is the normal overlay behavior. The Boolean means “this behavior is requested.”
+         * If the target source cannot produce a target, the overlay reports that failure instead of
+         * silently falling through to a lower-priority behavior.</p>
          */
         public OverlayBuilder add(String name, BooleanSource enabled, PlantTargetSource target) {
-            layers.add(new Layer(cleanName(name), Objects.requireNonNull(enabled, "enabled"), Objects.requireNonNull(target, "target")));
+            layers.add(new Layer(cleanName(name), Objects.requireNonNull(enabled, "enabled"),
+                    Objects.requireNonNull(target, "target"), LayerUnavailablePolicy.REPORT_UNAVAILABLE));
+            return this;
+        }
+
+        /**
+         * Add a fall-through layer with a constant target.
+         */
+        public OverlayBuilder addIfAvailable(String name, BooleanSource enabled, double target) {
+            return addIfAvailable(name, enabled, exact(target));
+        }
+
+        /**
+         * Add a fall-through layer with an exact scalar target.
+         */
+        public OverlayBuilder addIfAvailable(String name, BooleanSource enabled, ScalarSource target) {
+            return addIfAvailable(name, enabled, exact(target));
+        }
+
+        /**
+         * Add an enabled layer that may explicitly fall through when unavailable.
+         *
+         * <p>Use this only when “requested but no valid target” should let lower-priority behavior
+         * continue. Debug output still records that the layer was enabled, unavailable, and skipped.
+         * For most behavior layers, prefer {@link #add(String, BooleanSource, PlantTargetSource)} so
+         * missing targets are visible as failures.</p>
+         */
+        public OverlayBuilder addIfAvailable(String name, BooleanSource enabled, PlantTargetSource target) {
+            layers.add(new Layer(cleanName(name), Objects.requireNonNull(enabled, "enabled"),
+                    Objects.requireNonNull(target, "target"), LayerUnavailablePolicy.FALL_THROUGH));
             return this;
         }
 
@@ -302,13 +356,19 @@ public final class PlantTargets {
         final String name;
         final BooleanSource enabled;
         final PlantTargetSource target;
+        final LayerUnavailablePolicy unavailablePolicy;
         boolean lastEnabled;
+        boolean lastFellThrough;
         PlantTargetPlan lastPlan = PlantTargetPlan.unavailable("not sampled");
 
-        Layer(String name, BooleanSource enabled, PlantTargetSource target) {
+        Layer(String name,
+              BooleanSource enabled,
+              PlantTargetSource target,
+              LayerUnavailablePolicy unavailablePolicy) {
             this.name = name;
             this.enabled = enabled.memoized();
             this.target = target;
+            this.unavailablePolicy = unavailablePolicy;
         }
     }
 
@@ -330,17 +390,23 @@ public final class PlantTargets {
             for (Layer layer : layers) {
                 boolean enabled = layer.enabled.getAsBoolean(clock);
                 layer.lastEnabled = enabled;
+                layer.lastFellThrough = false;
                 if (!enabled) {
                     layer.lastPlan = PlantTargetPlan.unavailable("layer disabled");
                     continue;
                 }
                 PlantTargetPlan plan = layer.target.resolve(context, clock);
                 layer.lastPlan = plan;
-                lastWinner = layer.name;
                 if (!plan.hasTarget()) {
+                    if (layer.unavailablePolicy == LayerUnavailablePolicy.FALL_THROUGH) {
+                        layer.lastFellThrough = true;
+                        continue;
+                    }
+                    lastWinner = layer.name + " unavailable";
                     winner = PlantTargetPlan.unavailable("enabled plant target layer '" + layer.name + "' produced no target: " + plan.reason());
                     break;
                 }
+                lastWinner = layer.name;
                 winner = plan;
             }
             lastPlan = winner;
@@ -354,6 +420,7 @@ public final class PlantTargets {
                 layer.enabled.reset();
                 layer.target.reset();
                 layer.lastEnabled = false;
+                layer.lastFellThrough = false;
                 layer.lastPlan = PlantTargetPlan.unavailable("not sampled");
             }
             lastPlan = PlantTargetPlan.unavailable("not sampled");
@@ -374,6 +441,8 @@ public final class PlantTargets {
                 String lp = p + ".layer" + i;
                 dbg.addData(lp + ".name", layer.name)
                         .addData(lp + ".enabled", layer.lastEnabled)
+                        .addData(lp + ".unavailablePolicy", layer.unavailablePolicy)
+                        .addData(lp + ".fellThrough", layer.lastFellThrough)
                         .addData(lp + ".plan", layer.lastPlan);
                 layer.target.debugDump(dbg, lp + ".target");
             }
@@ -386,28 +455,66 @@ public final class PlantTargets {
     public interface PlanRequestStage {
         /**
          * Supply a source of plant target requests.
+         *
+         * <p>The next stage asks how reachable candidates should be preferred. There is no generic
+         * {@code select()} entry method because this is a single required choice: pick one answer,
+         * then continue to the unreachable-candidate policy question.</p>
          */
-        PlanOptionalStage request(Source<PlantTargetRequest> request);
+        PlanPreferenceStage request(Source<PlantTargetRequest> request);
     }
 
     /**
-     * Main planner builder stage after the request source has been supplied.
+     * Required planner question: how should reachable candidates be preferred?
+     *
+     * <p>Each method answers the preference question and advances to the next required question. The
+     * returned type intentionally hides the other preference methods so a later call cannot silently
+     * replace an earlier answer.</p>
      */
-    public interface PlanOptionalStage {
+    public interface PlanPreferenceStage {
         /**
-         * Enter candidate-selection tuning.
+         * Choose the reachable candidate nearest to the current measurement.
          */
-        PlanSelectBranch select();
+        PlanUnreachableStage nearestToMeasurement();
 
         /**
-         * Enter request-acceptance tuning.
+         * Prefer candidates that move upward/increasing from the current measurement.
+         */
+        PlanUnreachableStage preferIncreasing();
+
+        /**
+         * Prefer candidates that move downward/decreasing from the current measurement.
+         */
+        PlanUnreachableStage preferDecreasing();
+
+        /**
+         * Prefer candidates closest to the legal range center.
+         */
+        PlanUnreachableStage preferRangeCenter();
+    }
+
+    /**
+     * Required planner question: what should happen to finite candidates outside the legal range?
+     */
+    public interface PlanUnreachableStage {
+        /**
+         * Reject unreachable candidates and let the unavailable policy produce the target.
+         */
+        PlanReadyStage rejectUnreachable();
+
+        /**
+         * Clamp unreachable candidates into the legal range before scoring them.
+         */
+        PlanReadyStage clampUnreachableToRange();
+    }
+
+    /**
+     * Main planner stage after required request, preference, and unreachable-policy answers.
+     */
+    public interface PlanReadyStage {
+        /**
+         * Enter optional request-acceptance tuning.
          */
         PlanAcceptBranch accept();
-
-        /**
-         * Enter unreachable-candidate policy tuning.
-         */
-        PlanUnreachableBranch unreachable();
 
         /**
          * Enter the required unavailable-target policy branch.
@@ -416,37 +523,7 @@ public final class PlantTargets {
     }
 
     /**
-     * Candidate-selection branch.
-     */
-    public interface PlanSelectBranch {
-        /**
-         * Choose the reachable candidate nearest to the current measurement.
-         */
-        PlanSelectBranch nearestToMeasurement();
-
-        /**
-         * Prefer increasing moves when possible.
-         */
-        PlanSelectBranch preferIncreasing();
-
-        /**
-         * Prefer decreasing moves when possible.
-         */
-        PlanSelectBranch preferDecreasing();
-
-        /**
-         * Prefer candidates closest to the legal range center.
-         */
-        PlanSelectBranch preferRangeCenter();
-
-        /**
-         * Return to the main planner builder.
-         */
-        PlanOptionalStage doneSelect();
-    }
-
-    /**
-     * Request age/quality acceptance branch.
+     * Request age/quality acceptance tuning branch.
      */
     public interface PlanAcceptBranch {
         /**
@@ -460,29 +537,9 @@ public final class PlantTargets {
         PlanAcceptBranch minQuality(double quality);
 
         /**
-         * Return to the main planner builder.
+         * Return to the main planner builder after optional acceptance tuning.
          */
-        PlanOptionalStage doneAccept();
-    }
-
-    /**
-     * Unreachable-candidate branch.
-     */
-    public interface PlanUnreachableBranch {
-        /**
-         * Reject unreachable candidates and let unavailable policy handle the layer.
-         */
-        PlanUnreachableBranch reject();
-
-        /**
-         * Clamp unreachable candidates into the legal range.
-         */
-        PlanUnreachableBranch clampToRange();
-
-        /**
-         * Return to the main planner builder.
-         */
-        PlanOptionalStage doneUnreachable();
+        PlanReadyStage doneAccept();
     }
 
     /**
@@ -512,22 +569,53 @@ public final class PlantTargets {
 
     private enum UnavailableKind {FALLBACK, HOLD_LAST, HOLD_MEASURED, REJECT}
 
-    private static final class PlannerBuilder implements PlanRequestStage, PlanOptionalStage,
-            PlanSelectBranch, PlanAcceptBranch, PlanUnreachableBranch, PlanUnavailableBranch {
+    private static final class PlannerBuilder implements PlanRequestStage, PlanPreferenceStage,
+            PlanUnreachableStage, PlanReadyStage, PlanAcceptBranch, PlanUnavailableBranch {
         private Source<PlantTargetRequest> request;
-        private CandidatePreference preference = CandidatePreference.NEAREST_TO_MEASUREMENT;
-        private UnreachablePolicy unreachablePolicy = UnreachablePolicy.REJECT;
+        private CandidatePreference preference;
+        private UnreachablePolicy unreachablePolicy;
         private double maxRequestAgeSec = Double.POSITIVE_INFINITY;
         private double minQuality = 0.0;
 
         @Override
-        public PlanOptionalStage request(Source<PlantTargetRequest> request) {
+        public PlanPreferenceStage request(Source<PlantTargetRequest> request) {
             this.request = Objects.requireNonNull(request, "request");
             return this;
         }
 
         @Override
-        public PlanSelectBranch select() {
+        public PlanUnreachableStage nearestToMeasurement() {
+            preference = CandidatePreference.NEAREST_TO_MEASUREMENT;
+            return this;
+        }
+
+        @Override
+        public PlanUnreachableStage preferIncreasing() {
+            preference = CandidatePreference.PREFER_INCREASING;
+            return this;
+        }
+
+        @Override
+        public PlanUnreachableStage preferDecreasing() {
+            preference = CandidatePreference.PREFER_DECREASING;
+            return this;
+        }
+
+        @Override
+        public PlanUnreachableStage preferRangeCenter() {
+            preference = CandidatePreference.PREFER_RANGE_CENTER;
+            return this;
+        }
+
+        @Override
+        public PlanReadyStage rejectUnreachable() {
+            unreachablePolicy = UnreachablePolicy.REJECT;
+            return this;
+        }
+
+        @Override
+        public PlanReadyStage clampUnreachableToRange() {
+            unreachablePolicy = UnreachablePolicy.CLAMP_TO_RANGE;
             return this;
         }
 
@@ -537,41 +625,7 @@ public final class PlantTargets {
         }
 
         @Override
-        public PlanUnreachableBranch unreachable() {
-            return this;
-        }
-
-        @Override
         public PlanUnavailableBranch whenUnavailable() {
-            return this;
-        }
-
-        @Override
-        public PlanSelectBranch nearestToMeasurement() {
-            preference = CandidatePreference.NEAREST_TO_MEASUREMENT;
-            return this;
-        }
-
-        @Override
-        public PlanSelectBranch preferIncreasing() {
-            preference = CandidatePreference.PREFER_INCREASING;
-            return this;
-        }
-
-        @Override
-        public PlanSelectBranch preferDecreasing() {
-            preference = CandidatePreference.PREFER_DECREASING;
-            return this;
-        }
-
-        @Override
-        public PlanSelectBranch preferRangeCenter() {
-            preference = CandidatePreference.PREFER_RANGE_CENTER;
-            return this;
-        }
-
-        @Override
-        public PlanOptionalStage doneSelect() {
             return this;
         }
 
@@ -590,24 +644,7 @@ public final class PlantTargets {
         }
 
         @Override
-        public PlanOptionalStage doneAccept() {
-            return this;
-        }
-
-        @Override
-        public PlanUnreachableBranch reject() {
-            unreachablePolicy = UnreachablePolicy.REJECT;
-            return this;
-        }
-
-        @Override
-        public PlanUnreachableBranch clampToRange() {
-            unreachablePolicy = UnreachablePolicy.CLAMP_TO_RANGE;
-            return this;
-        }
-
-        @Override
-        public PlanOptionalStage doneUnreachable() {
+        public PlanReadyStage doneAccept() {
             return this;
         }
 
@@ -641,7 +678,11 @@ public final class PlantTargets {
 
         private void validateRequest() {
             if (request == null)
-                throw new IllegalStateException("PlantTargets.plan() requires request(...) before whenUnavailable()");
+                throw new IllegalStateException("PlantTargets.plan() requires request(...)");
+            if (preference == null)
+                throw new IllegalStateException("PlantTargets.plan() requires a preference choice such as nearestToMeasurement() before whenUnavailable()");
+            if (unreachablePolicy == null)
+                throw new IllegalStateException("PlantTargets.plan() requires rejectUnreachable() or clampUnreachableToRange() before whenUnavailable()");
         }
     }
 

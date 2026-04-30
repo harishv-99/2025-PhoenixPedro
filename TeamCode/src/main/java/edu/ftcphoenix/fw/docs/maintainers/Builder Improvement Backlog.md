@@ -5,10 +5,13 @@ This running list tracks framework builders that should be reviewed against the 
 ## Principles to apply
 
 1. Each required conceptual question gets answered explicitly.
-2. Optional tuning only appears after entering a tuning branch.
-3. A stage exposes only options that make sense after prior answers.
-4. Unit boundaries are obvious from names.
-5. Invalid combinations are prevented by types when practical, not merely rejected at build().
+2. Mutually-exclusive required choices get their own stage; the stage exposes only the valid answer methods, and each answer advances to the next question.
+3. Avoid APIs where a later answer silently replaces an earlier answer for the same required question.
+4. Optional tuning only appears after entering a tuning branch.
+5. Use `done...()` only for multi-setting tuning branches where several independent knobs may be set before returning.
+6. A stage exposes only options that make sense after prior answers.
+7. Unit boundaries are obvious from names.
+8. Invalid combinations are prevented by types when practical, not merely rejected at build().
 
 ## Current status
 
@@ -32,18 +35,29 @@ place to generate values intended for a Plant target:
 2. use `PlantTargets.overlay(...)` for base + behavior-layer arbitration
 3. use `PlantTargets.plan()` for equivalent/candidate target requests that need Plant context
 4. choose an explicit `whenUnavailable()` policy for smart planners
+5. use `addIfAvailable(...)` only when an enabled overlay layer should explicitly fall through
+
+The planner builder now applies the stricter staged-choice rule: after `request(...)`, the user
+must answer exactly one preference question (`nearestToMeasurement()`, `preferIncreasing()`,
+`preferDecreasing()`, or `preferRangeCenter()`), then exactly one unreachable-candidate question
+(`rejectUnreachable()` or `clampUnreachableToRange()`). Each answer returns a type that exposes
+only the next question, so a later call cannot silently replace an earlier choice. `doneAccept()`
+remains because `accept()` is a multi-setting optional tuning branch (`maxRequestAgeSec(...)`,
+`minQuality(...)`).
 
 The older target-planner family and scalar overlay helper were removed instead of kept as parallel
 paths. Plain `ScalarSource`s still exist as primitive number streams, but Plant target arbitration now
-happens in Plant-target space.
+happens in Plant-target space. The normal overlay method is still `add(...)`: an enabled layer is
+expected to produce a target. The separate `addIfAvailable(...)` name is reserved for explicit
+fall-through layers so target availability does not become a hidden Boolean filter.
 
 ### `drive/guidance/DriveGuidance`
 
 Completed in the second builder cleanup pass. `DriveGuidance.plan()` now stays parallel with
-`PlantTargets.plan()` in spirit: answer required behavior questions first, then enter optional tuning
+`PlantTargets.plan()` in spirit: answer required behavior questions in order, then enter optional tuning
 branches only when needed.
 
-1. choose the first requested drive target (`translateTo()` or `faceTo()`), then optionally add the other with `andFaceTo()` / `andTranslateTo()`
+1. choose the first requested drive target (`translateTo()` or `faceTo()`), then optionally add the other with `andFaceTo()` / `andTranslateTo()`; target choice methods such as `fieldPointInches(...)`, `point(...)`, and `frameHeading(...)` return directly to the parent stage
 2. optionally choose `controlFrames(...)`
 3. choose one explicit solve mode in `solveWith()`
 4. optionally enter mode-specific solve-policy tuning and general `driveTuning()`
@@ -57,7 +71,9 @@ branches only when needed.
 
 Mode-specific optional policy stays inside the matching branch. Adaptive-only controls such as
 `translationTakeover(...)` and `omegaPolicy(...)` are only visible in the adaptive branch. General
-drivetrain tuning stays inside `driveTuning()`.
+drivetrain tuning stays inside `driveTuning()`. The review intentionally kept `doneLocalizationOnly()`,
+`doneAprilTagsOnly()`, `doneAdaptive()`, and `doneDriveTuning()` because those branches can set several
+independent optional tuning values before returning.
 
 ### `ftc/FtcActuators` velocity builders
 

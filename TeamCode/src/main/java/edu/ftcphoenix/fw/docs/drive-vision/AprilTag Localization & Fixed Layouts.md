@@ -291,7 +291,6 @@ AprilTagPoseEstimator tagLocalizer = new AprilTagPoseEstimator(tags, fixedLayout
 DriveGuidancePlan plan = DriveGuidance.plan()
         .faceTo()
             .fieldHeadingRad(0.0)
-            .doneFaceTo()
         .solveWith()
             .adaptive()
             .localization(correctedLocalizer)

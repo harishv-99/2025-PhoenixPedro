@@ -188,6 +188,11 @@ public final class Plants {
         }
 
         @Override
+        public final PlantTargetPlan getTargetPlan() {
+            return targetPlan;
+        }
+
+        @Override
         public final PlantTargetStatus getTargetStatus() {
             return targetStatus;
         }
@@ -230,7 +235,6 @@ public final class Plants {
             Plant.super.debugDump(dbg, prefix);
             if (dbg == null) return;
             String p = (prefix == null || prefix.isEmpty()) ? "plant" : prefix;
-            dbg.addData(p + ".targetPlan", targetPlan);
             targetSource.debugDump(dbg, p + ".targetSource");
             guards.debugDump(dbg, p + ".targetGuards");
         }

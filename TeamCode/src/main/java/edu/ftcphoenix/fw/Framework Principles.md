@@ -115,7 +115,17 @@ Phoenix is designed around a few core goals:
    policy.
 
    * Each required conceptual question gets answered explicitly.
+   * When a required question has mutually exclusive answers, the stage should expose only those
+     answer methods, and each answer should return the next stage. Avoid a model where a later answer
+     silently replaces an earlier answer. For example, after a target request is supplied, a planner
+     preference stage may expose `nearestToMeasurement()`, `preferIncreasing()`, `preferDecreasing()`,
+     and `preferRangeCenter()`, and each method should advance to the unreachable-policy question.
    * Optional tuning only appears after the user deliberately enters a tuning branch.
+   * Use a `done...()` method only for a multi-setting tuning branch where the user may reasonably
+     set several options before returning. One-answer policy choices should advance immediately;
+     multi-setting sections such as
+     `targetGuards().maxTargetRate(...).holdLastTargetUnless(...).doneTargetGuards()` should keep
+     an explicit return method.
    * Builder steps should expose only options that make sense given previous answers. For example,
      `rangeMapsToNative(...)` belongs after `bounded(...)`, not after `unbounded()`, and motor-only
      tuning methods should not appear on a standard-servo position path.
@@ -168,14 +178,17 @@ Most robot code should **not** use these directly.
 
 A **Plant** is a source-driven scalar target follower. Robot behavior does not call
 `plant.setTarget(...)` every loop. Instead, every robot-facing Plant is constructed with one
-`ScalarSource` target. During `plant.update(clock)`, the Plant samples that source once, applies
-plant-level hardware guards, sends one safe target to hardware/control, and refreshes status.
+`PlantTargetSource`. Simple scalar values are lifted with `PlantTargets.exact(...)`, and richer
+behavior targets use `PlantTargets.overlay(...)` or `PlantTargets.plan(...)`. During
+`plant.update(clock)`, the Plant resolves that target source once, applies plant-level hardware
+guards, sends one safe target to hardware/control, and refreshes status.
 
 Key methods (see `edu.ftcphoenix.fw.actuation.Plant`):
 
 * `update(LoopClock clock)` — sample the configured target source and command hardware/control.
 * `getRequestedTarget()` — what behavior asked for this loop.
 * `getAppliedTarget()` — what the Plant actually applied after bounds and target guards.
+* `getTargetPlan()` — how the `PlantTargets` graph selected the requested target.
 * `getTargetStatus()` — why requested and applied target may differ.
 * `atTarget()` / `atTarget(value)` / `hasFeedback()` — feedback-based readiness.
 * `getMeasurement()`, `getTargetError()`, and `getAppliedTargetError()` for feedback-capable plants.

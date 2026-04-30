@@ -15,11 +15,10 @@ package edu.ftcphoenix.fw.spatial;
  * DriveGuidancePlan aimPlan = DriveGuidance.plan()
  *         .faceTo()
  *             .point(speakerAim)
- *             .doneFaceTo()
  *         .solveWith()
  *             .localizationOnly()
  *             .localization(poseEstimator)
- *             .doneAprilTagsOnly()
+ *             .doneLocalizationOnly()
  *         .build();
  * }</pre>
  *

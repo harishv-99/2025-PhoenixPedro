@@ -29,8 +29,8 @@ import edu.ftcphoenix.fw.spatial.TranslationTarget2d;
  *   <li>{@link DriveGuidancePlan}: spec + {@link DriveGuidancePlan.Tuning} (<b>how strongly</b>)</li>
  * </ul>
  *
- * <p>The staged builder mirrors {@code PlantTargets.plan()}: it asks the required conceptual
- * questions first, then exposes optional tuning branches:</p>
+ * <p>The staged builder follows the same principle as {@code PlantTargets.plan()}: answer required conceptual
+ * questions in order, then expose optional tuning branches:</p>
  * <ol>
  *   <li>choose the first translation or facing target, then optionally add the other channel,</li>
  *   <li>optionally choose controlled robot frames,</li>
@@ -39,8 +39,10 @@ import edu.ftcphoenix.fw.spatial.TranslationTarget2d;
  *   <li>build the reusable plan.</li>
  * </ol>
  *
- * <p>Build is not visible until a target and solve mode have been configured. Solver policy knobs
- * only appear inside the selected solve-mode branch, and drive-controller tuning only appears after
+ * <p>Build is not visible until a target and solve mode have been configured. Target choice methods
+ * such as {@code point(...)}, {@code fieldPointInches(...)}, and {@code frameHeading(...)} return
+ * directly to the parent stage because they answer one required choice. Solver policy knobs only
+ * appear inside the selected solve-mode branch, and drive-controller tuning only appears after
  * entering {@link PlanOptionalTuningStage#driveTuning()}.</p>
  *
  * <h2>Common usage</h2>
@@ -51,10 +53,8 @@ import edu.ftcphoenix.fw.spatial.TranslationTarget2d;
  * DriveGuidancePlan alignPlan = DriveGuidance.plan()
  *         .translateTo()
  *             .point(References.framePoint(slotFace, -6.0, 0.0))
- *             .doneTranslateTo()
  *         .andFaceTo()
  *             .frameHeading(slotFace)
- *             .doneFaceTo()
  *         .solveWith()
  *             .adaptive()
  *                 .localization(poseEstimator)
@@ -356,24 +356,20 @@ public final class DriveGuidance {
      */
     public interface TranslateToBuilder<RETURN> {
         /**
-         * Translates toward a field-fixed point, in field inches.
+         * Translates toward a field-fixed point, in field inches, then returns to the parent stage.
          */
-        TranslateToBuilder<RETURN> fieldPointInches(double xInches, double yInches);
+        RETURN fieldPointInches(double xInches, double yInches);
 
         /**
-         * Captures a robot-relative delta, in inches, when guidance enables.
+         * Captures a robot-relative delta, in inches, when guidance enables, then returns to the parent stage.
          */
-        TranslateToBuilder<RETURN> robotRelativePointInches(double forwardInches, double leftInches);
+        RETURN robotRelativePointInches(double forwardInches, double leftInches);
 
         /**
-         * Translates toward a semantic point reference.
+         * Translates toward a semantic point reference, then returns to the parent stage.
          */
-        TranslateToBuilder<RETURN> point(ReferencePoint2d reference);
+        RETURN point(ReferencePoint2d reference);
 
-        /**
-         * Returns to the parent builder stage.
-         */
-        RETURN doneTranslateTo();
     }
 
     /**
@@ -381,34 +377,31 @@ public final class DriveGuidance {
      */
     public interface FaceToBuilder<RETURN> {
         /**
-         * Faces a field-fixed point, in field inches.
+         * Faces a field-fixed point, in field inches, then returns to the parent stage.
          */
-        FaceToBuilder<RETURN> fieldPointInches(double xInches, double yInches);
+        RETURN fieldPointInches(double xInches, double yInches);
 
         /**
-         * Aligns to an absolute field heading in radians.
+         * Aligns to an absolute field heading in radians, then returns to the parent stage.
          */
-        FaceToBuilder<RETURN> fieldHeadingRad(double fieldHeadingRad);
+        RETURN fieldHeadingRad(double fieldHeadingRad);
 
         /**
-         * Faces a semantic point reference.
+         * Faces a semantic point reference, then returns to the parent stage.
          */
-        FaceToBuilder<RETURN> point(ReferencePoint2d reference);
+        RETURN point(ReferencePoint2d reference);
 
         /**
-         * Aligns to the heading of a semantic reference frame.
+         * Aligns to the heading of a semantic reference frame, then returns to the parent stage.
          */
-        FaceToBuilder<RETURN> frameHeading(ReferenceFrame2d reference);
+        RETURN frameHeading(ReferenceFrame2d reference);
 
         /**
-         * Aligns to the heading of a semantic reference frame plus an additional offset in radians.
+         * Aligns to the heading of a semantic reference frame plus an additional offset in radians,
+         * then returns to the parent stage.
          */
-        FaceToBuilder<RETURN> frameHeading(ReferenceFrame2d reference, double headingOffsetRad);
+        RETURN frameHeading(ReferenceFrame2d reference, double headingOffsetRad);
 
-        /**
-         * Returns to the parent builder stage.
-         */
-        RETURN doneFaceTo();
     }
 
     // ------------------------------------------------------------------------
@@ -1254,39 +1247,32 @@ public final class DriveGuidance {
         }
 
         @Override
-        public TranslateToBuilder<RETURN> fieldPointInches(double xInches, double yInches) {
+        public RETURN fieldPointInches(double xInches, double yInches) {
             if (s.translationTarget != null) {
                 throw new IllegalStateException("translateTo() target already configured; choose only one target method");
             }
             s.translationTarget = SpatialTargets.fieldPoint(xInches, yInches);
-            return this;
+            return ret;
         }
 
         @Override
-        public TranslateToBuilder<RETURN> robotRelativePointInches(double forwardInches, double leftInches) {
+        public RETURN robotRelativePointInches(double forwardInches, double leftInches) {
             if (s.translationTarget != null) {
                 throw new IllegalStateException("translateTo() target already configured; choose only one target method");
             }
             s.translationTarget = new DriveGuidanceSpec.RobotRelativePoint(forwardInches, leftInches);
-            return this;
+            return ret;
         }
 
         @Override
-        public TranslateToBuilder<RETURN> point(ReferencePoint2d reference) {
+        public RETURN point(ReferencePoint2d reference) {
             if (s.translationTarget != null) {
                 throw new IllegalStateException("translateTo() target already configured; choose only one target method");
             }
             s.translationTarget = SpatialTargets.point(Objects.requireNonNull(reference, "reference"));
-            return this;
-        }
-
-        @Override
-        public RETURN doneTranslateTo() {
-            if (s.translationTarget == null) {
-                throw new IllegalStateException("translateTo() requires a target before doneTranslateTo()");
-            }
             return ret;
         }
+
     }
 
     private static final class FaceToStep<RETURN> implements FaceToBuilder<RETURN> {
@@ -1299,53 +1285,46 @@ public final class DriveGuidance {
         }
 
         @Override
-        public FaceToBuilder<RETURN> fieldPointInches(double xInches, double yInches) {
+        public RETURN fieldPointInches(double xInches, double yInches) {
             if (s.facingTarget != null) {
                 throw new IllegalStateException("faceTo() target already configured; choose only one target method");
             }
             s.facingTarget = SpatialTargets.fieldPoint(xInches, yInches);
-            return this;
+            return ret;
         }
 
         @Override
-        public FaceToBuilder<RETURN> fieldHeadingRad(double fieldHeadingRad) {
+        public RETURN fieldHeadingRad(double fieldHeadingRad) {
             if (s.facingTarget != null) {
                 throw new IllegalStateException("faceTo() target already configured; choose only one target method");
             }
             s.facingTarget = SpatialTargets.fieldHeading(fieldHeadingRad);
-            return this;
+            return ret;
         }
 
         @Override
-        public FaceToBuilder<RETURN> point(ReferencePoint2d reference) {
+        public RETURN point(ReferencePoint2d reference) {
             if (s.facingTarget != null) {
                 throw new IllegalStateException("faceTo() target already configured; choose only one target method");
             }
             s.facingTarget = SpatialTargets.point(Objects.requireNonNull(reference, "reference"));
-            return this;
+            return ret;
         }
 
         @Override
-        public FaceToBuilder<RETURN> frameHeading(ReferenceFrame2d reference) {
+        public RETURN frameHeading(ReferenceFrame2d reference) {
             return frameHeading(reference, 0.0);
         }
 
         @Override
-        public FaceToBuilder<RETURN> frameHeading(ReferenceFrame2d reference, double headingOffsetRad) {
+        public RETURN frameHeading(ReferenceFrame2d reference, double headingOffsetRad) {
             if (s.facingTarget != null) {
                 throw new IllegalStateException("faceTo() target already configured; choose only one target method");
             }
             s.facingTarget = SpatialTargets.frameHeading(Objects.requireNonNull(reference, "reference"), headingOffsetRad);
-            return this;
-        }
-
-        @Override
-        public RETURN doneFaceTo() {
-            if (s.facingTarget == null) {
-                throw new IllegalStateException("faceTo() requires a target before doneFaceTo()");
-            }
             return ret;
         }
+
     }
 
     private static final class ResolveModeChoiceStep<RETURN> implements ResolveModeChoice<RETURN> {

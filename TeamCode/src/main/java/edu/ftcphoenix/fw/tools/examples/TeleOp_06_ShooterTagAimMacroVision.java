@@ -268,7 +268,6 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
         DriveGuidancePlan aimPlan = DriveGuidance.plan()
                 .faceTo()
                 .point(scoringRef)
-                .doneFaceTo()
                 .solveWith()
                 .aprilTagsOnly()
                 .aprilTags(tagSensor, cameraMount)

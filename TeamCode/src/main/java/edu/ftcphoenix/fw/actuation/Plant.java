@@ -63,6 +63,17 @@ public interface Plant {
     double getAppliedTarget();
 
     /**
+     * Diagnostic explanation of how this plant's target source selected the requested target.
+     *
+     * <p>The plan is about target selection only: exact target, planned candidate, fallback, hold,
+     * or unavailable. Physical arrival still belongs to {@link #atTarget()} and
+     * {@link #atTarget(double)}.</p>
+     */
+    default PlantTargetPlan getTargetPlan() {
+        return PlantTargetPlan.unavailable("plant has not reported a target plan");
+    }
+
+    /**
      * Diagnostic explanation of how requested target became applied target on the last update.
      */
     PlantTargetStatus getTargetStatus();
@@ -152,6 +163,7 @@ public interface Plant {
         String p = (prefix == null || prefix.isEmpty()) ? "plant" : prefix;
         dbg.addData(p + ".requestedTarget", getRequestedTarget())
                 .addData(p + ".appliedTarget", getAppliedTarget())
+                .addData(p + ".targetPlan", getTargetPlan().toString())
                 .addData(p + ".targetStatus", getTargetStatus().toString())
                 .addData(p + ".hasWritableTarget", hasWritableTarget())
                 .addData(p + ".hasFeedback", hasFeedback())

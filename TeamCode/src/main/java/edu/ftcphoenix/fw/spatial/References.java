@@ -42,13 +42,12 @@ import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelectionSource;
  * DriveGuidancePlan alignPlan = DriveGuidance.plan()
  *         .translateTo()
  *             .point(settlePoint)
- *             .doneTranslateTo()
  *         .andFaceTo()
  *             .frameHeading(slotFace)
- *             .doneFaceTo()
  *         .solveWith()
+ *             .localizationOnly()
  *             .localization(poseEstimator)
- *             .doneAprilTagsOnly()
+ *             .doneLocalizationOnly()
  *         .build();
  * }</pre>
  */

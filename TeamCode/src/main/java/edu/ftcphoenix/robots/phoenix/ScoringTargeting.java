@@ -216,7 +216,6 @@ public final class ScoringTargeting implements PhoenixCapabilities.Targeting {
         aimPlan = DriveGuidance.plan()
                 .faceTo()
                 .point(References.relativeToSelectedTagPoint(scoringSelection, buildAimOffsetsByTag()))
-                .doneFaceTo()
                 .solveWith()
                 .adaptive()
                 .localization(globalAbsolutePoseEstimator)

@@ -80,7 +80,6 @@ ReferencePoint2d scoringRef = References.relativeToSelectedTagPoint(scoringSelec
 DriveGuidancePlan aimPlan = DriveGuidance.plan()
         .faceTo()
             .point(scoringRef)
-            .doneFaceTo()
         .solveWith()
             .aprilTagsOnly()
             .aprilTags(tagSensor, cameraMount)

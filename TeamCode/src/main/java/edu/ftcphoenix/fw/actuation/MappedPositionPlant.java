@@ -77,6 +77,7 @@ public final class MappedPositionPlant implements PositionPlant {
     private double searchPower;
     private double lastRegulatorOutput;
     private PlantTargetStatus targetStatus = PlantTargetStatus.STOPPED;
+    private PlantTargetPlan targetPlan = PlantTargetPlan.unavailable("not sampled");
 
     private MappedPositionPlant(PositionOutput positionOut,
                                 PowerOutput regulatedPowerOut,
@@ -340,6 +341,7 @@ public final class MappedPositionPlant implements PositionPlant {
         if (searchActive) {
             samplePlantMeasurement(clock);
             if (searchPowerOut != null) searchPowerOut.setPower(searchPower);
+            targetPlan = PlantTargetPlan.holdLast(appliedTarget, "calibration search active");
             lastAtTarget = false;
             targetStatus = PlantTargetStatus.holdingLast("calibration search active");
             return;
@@ -349,17 +351,17 @@ public final class MappedPositionPlant implements PositionPlant {
         ScalarRange range = targetRange();
         PlantTargetContext context = PlantTargetContext.position(hasFeedback(), lastMeasurement,
                 range, topology, period(), requestedTarget, appliedTarget);
-        PlantTargetPlan plan = targetSource.resolve(context, clock);
-        if (plan != null && plan.hasTarget()) {
-            requestedTarget = plan.target();
+        targetPlan = targetSource.resolve(context, clock);
+        if (targetPlan != null && targetPlan.hasTarget()) {
+            requestedTarget = targetPlan.target();
         } else {
             requestedTarget = appliedTarget;
         }
 
         double candidate = Double.isFinite(requestedTarget) ? requestedTarget : appliedTarget;
-        PlantTargetStatus status = (plan != null && plan.hasTarget())
+        PlantTargetStatus status = (targetPlan != null && targetPlan.hasTarget())
                 ? PlantTargetStatus.ACCEPTED
-                : PlantTargetStatus.targetUnavailable(plan != null ? plan.reason() : "missing plant target plan");
+                : PlantTargetStatus.targetUnavailable(targetPlan != null ? targetPlan.reason() : "missing plant target plan");
         if (!range.valid) {
             status = PlantTargetStatus.referenceNotEstablished(range.reason);
             candidate = appliedTarget;
@@ -399,6 +401,7 @@ public final class MappedPositionPlant implements PositionPlant {
         lastAtTarget = false;
         lastRegulatorOutput = 0.0;
         targetStatus = PlantTargetStatus.STOPPED;
+        targetPlan = PlantTargetPlan.unavailable("not sampled");
         if (referenceMode == ReferenceMode.ASSUME_CURRENT) {
             referenced = false;
             pendingAssume = true;
@@ -415,6 +418,7 @@ public final class MappedPositionPlant implements PositionPlant {
         searchActive = false;
         lastRegulatorOutput = 0.0;
         targetStatus = PlantTargetStatus.STOPPED;
+        targetPlan = PlantTargetPlan.unavailable("plant stopped");
     }
 
     @Override
@@ -425,6 +429,11 @@ public final class MappedPositionPlant implements PositionPlant {
     @Override
     public double getAppliedTarget() {
         return appliedTarget;
+    }
+
+    @Override
+    public PlantTargetPlan getTargetPlan() {
+        return targetPlan;
     }
 
     @Override
@@ -592,6 +601,7 @@ public final class MappedPositionPlant implements PositionPlant {
                 .addData(p + ".lastNativeMeasurement", lastNativeMeasurement)
                 .addData(p + ".searchActive", searchActive)
                 .addData(p + ".lastRegulatorOutput", lastRegulatorOutput);
+        targetSource.debugDump(dbg, p + ".targetSource");
         targetGuards.debugDump(dbg, p + ".targetGuards");
         if (regulator != null) regulator.debugDump(dbg, p + ".regulator");
     }

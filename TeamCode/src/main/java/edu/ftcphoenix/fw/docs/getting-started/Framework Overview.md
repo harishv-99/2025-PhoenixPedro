@@ -302,7 +302,6 @@ ReferencePoint2d speakerAim = References.relativeToTagPoint(5, 0.0, 0.0);
 DriveGuidancePlan aimPlan = DriveGuidance.plan()
         .faceTo()
             .point(speakerAim)
-            .doneFaceTo()
         .solveWith()
             .aprilTagsOnly()
             .aprilTags(tagSensor, cameraMount)
