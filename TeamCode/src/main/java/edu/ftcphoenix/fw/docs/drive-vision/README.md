@@ -1,17 +1,13 @@
-# Drive & vision
+# Drive, Vision, and Mechanism Targeting
 
-Use this section for drive guidance, AprilTag localization, and practice-field setup.
+Read these documents in this order when using spatial data or guided targeting:
 
-## Read in this order
-
-1. [`Drive Guidance.md`](<Drive Guidance.md>)
-2. [`Spatial Queries.md`](<Spatial Queries.md>)
-3. [`Mechanism Setpoint Planning.md`](<Mechanism Setpoint Planning.md>)
+1. [`Spatial Queries.md`](<Spatial Queries.md>)
+2. [`Drive Guidance.md`](<Drive Guidance.md>)
+3. [`Mechanism Target Planning.md`](<Mechanism Target Planning.md>)
 4. [`AprilTag Localization & Fixed Layouts.md`](<AprilTag Localization & Fixed Layouts.md>)
 5. [`AprilTag Practice Setup.md`](<AprilTag Practice Setup.md>)
 
-## Pair with
-
-- [`../testing-calibration/Robot Calibration Tutorials.md`](<../testing-calibration/Robot Calibration Tutorials.md>)
-- [`../design/Recommended Robot Design.md`](<../design/Recommended Robot Design.md>)
-- [`../../integrations/pedro/README.md`](<../../integrations/pedro/README.md>) when Phoenix is sharing the field with an external route stack
+Use Drive Guidance when the drivetrain should move. Use Mechanism Target Planning when a Plant should
+consume a target generated from scalar requests, equivalent positions, overlays, or spatial-derived
+mechanism goals.

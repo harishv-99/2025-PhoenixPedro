@@ -11,6 +11,8 @@ import edu.ftcphoenix.fw.actuation.MappedPositionPlant;
 import edu.ftcphoenix.fw.actuation.MappedVelocityPlant;
 import edu.ftcphoenix.fw.actuation.Plant;
 import edu.ftcphoenix.fw.actuation.PlantTargetGuards;
+import edu.ftcphoenix.fw.actuation.PlantTargetSource;
+import edu.ftcphoenix.fw.actuation.PlantTargets;
 import edu.ftcphoenix.fw.actuation.Plants;
 import edu.ftcphoenix.fw.actuation.PositionPlant;
 import edu.ftcphoenix.fw.actuation.ScalarRange;
@@ -144,7 +146,13 @@ public final class FtcActuators {
         PlantBuildStep targetedBy(ScalarTarget target);
 
         /**
-         * Use a read-only final target source.
+         * Use a plant-aware final target source such as {@link PlantTargets#overlay(PlantTargetSource)}
+         * or {@link PlantTargets#plan()}.
+         */
+        PlantReadOnlyTargetBuildStep targetedBy(PlantTargetSource source);
+
+        /**
+         * Use a read-only scalar source as an exact plant target.
          */
         PlantReadOnlyTargetBuildStep targetedBy(ScalarSource source);
 
@@ -219,7 +227,13 @@ public final class FtcActuators {
         PositionPlantBuildStep targetedBy(ScalarTarget target);
 
         /**
-         * Use a read-only final target source.
+         * Use a plant-aware final target source such as {@link PlantTargets#overlay(PlantTargetSource)}
+         * or {@link PlantTargets#plan()}.
+         */
+        PositionPlantReadOnlyTargetBuildStep targetedBy(PlantTargetSource source);
+
+        /**
+         * Use a read-only scalar source as an exact plant target.
          */
         PositionPlantReadOnlyTargetBuildStep targetedBy(ScalarSource source);
 
@@ -802,7 +816,7 @@ public final class FtcActuators {
     private static final class PowerTargetBuilder implements PlantTargetStep, PlantReadOnlyTargetBuildStep, PlantBuildStep {
         private final PowerOutput output;
         private PlantTargetGuards guards = PlantTargetGuards.none();
-        private ScalarSource source;
+        private PlantTargetSource source;
         private ScalarTarget writable;
 
         private PowerTargetBuilder(PowerOutput output) {
@@ -816,14 +830,20 @@ public final class FtcActuators {
 
         @Override
         public PlantBuildStep targetedBy(ScalarTarget target) {
-            source = Objects.requireNonNull(target, "target");
+            source = PlantTargets.exact(Objects.requireNonNull(target, "target"));
             writable = target;
             return this;
         }
 
         @Override
-        public PlantReadOnlyTargetBuildStep targetedBy(ScalarSource source) {
+        public PlantReadOnlyTargetBuildStep targetedBy(PlantTargetSource source) {
             this.source = Objects.requireNonNull(source, "source");
+            return this;
+        }
+
+        @Override
+        public PlantReadOnlyTargetBuildStep targetedBy(ScalarSource source) {
+            this.source = PlantTargets.exact(Objects.requireNonNull(source, "source"));
             return this;
         }
 
@@ -887,7 +907,7 @@ public final class FtcActuators {
 
     private abstract static class BaseTargetedPlantBuilder implements PlantTargetStep, PlantReadOnlyTargetBuildStep, PlantBuildStep {
         protected PlantTargetGuards guards = PlantTargetGuards.none();
-        protected ScalarSource source;
+        protected PlantTargetSource source;
         protected ScalarTarget writable;
 
         @Override
@@ -897,14 +917,20 @@ public final class FtcActuators {
 
         @Override
         public PlantBuildStep targetedBy(ScalarTarget target) {
-            source = Objects.requireNonNull(target, "target");
+            source = PlantTargets.exact(Objects.requireNonNull(target, "target"));
             writable = target;
             return this;
         }
 
         @Override
-        public PlantReadOnlyTargetBuildStep targetedBy(ScalarSource source) {
+        public PlantReadOnlyTargetBuildStep targetedBy(PlantTargetSource source) {
             this.source = Objects.requireNonNull(source, "source");
+            return this;
+        }
+
+        @Override
+        public PlantReadOnlyTargetBuildStep targetedBy(ScalarSource source) {
+            this.source = PlantTargets.exact(Objects.requireNonNull(source, "source"));
             return this;
         }
 
@@ -925,7 +951,7 @@ public final class FtcActuators {
             return buildPlant(source, writable, guards);
         }
 
-        protected abstract Plant buildPlant(ScalarSource source, ScalarTarget writable, PlantTargetGuards guards);
+        protected abstract Plant buildPlant(PlantTargetSource source, ScalarTarget writable, PlantTargetGuards guards);
     }
 
     private static final class GenericPlantGuardBuilder implements PlantTargetGuardStep {
@@ -970,7 +996,7 @@ public final class FtcActuators {
     private abstract static class BaseTargetedPositionBuilder implements PositionBuildStep, ServoPositionBuildStep,
             PositionPlantReadOnlyTargetBuildStep, PositionPlantBuildStep {
         protected PlantTargetGuards guards = PlantTargetGuards.none();
-        protected ScalarSource source;
+        protected PlantTargetSource source;
         protected ScalarTarget writable;
         protected double positionTolerance = 10.0;
 
@@ -989,14 +1015,20 @@ public final class FtcActuators {
 
         @Override
         public PositionPlantBuildStep targetedBy(ScalarTarget target) {
-            source = Objects.requireNonNull(target, "target");
+            source = PlantTargets.exact(Objects.requireNonNull(target, "target"));
             writable = target;
             return this;
         }
 
         @Override
-        public PositionPlantReadOnlyTargetBuildStep targetedBy(ScalarSource source) {
+        public PositionPlantReadOnlyTargetBuildStep targetedBy(PlantTargetSource source) {
             this.source = Objects.requireNonNull(source, "source");
+            return this;
+        }
+
+        @Override
+        public PositionPlantReadOnlyTargetBuildStep targetedBy(ScalarSource source) {
+            this.source = PlantTargets.exact(Objects.requireNonNull(source, "source"));
             return this;
         }
 
@@ -1018,7 +1050,7 @@ public final class FtcActuators {
             return buildPositionPlant(source, writable, guards);
         }
 
-        protected abstract PositionPlant buildPositionPlant(ScalarSource source, ScalarTarget writable, PlantTargetGuards guards);
+        protected abstract PositionPlant buildPositionPlant(PlantTargetSource source, ScalarTarget writable, PlantTargetGuards guards);
     }
 
     private static final class PositionGuardBuilder implements PositionTargetGuardStep {
@@ -1576,7 +1608,7 @@ public final class FtcActuators {
         }
 
         @Override
-        protected Plant buildPlant(ScalarSource source, ScalarTarget writable, PlantTargetGuards guards) {
+        protected Plant buildPlant(PlantTargetSource source, ScalarTarget writable, PlantTargetGuards guards) {
             if (controlKind == null)
                 throw new IllegalStateException("Motor velocity builder requires deviceManagedWithDefaults(), deviceManaged(), or regulated()");
             if (range == null)
@@ -1710,7 +1742,7 @@ public final class FtcActuators {
         }
 
         protected MappedPositionPlant.Builder applyCommon(MappedPositionPlant.Builder b,
-                                                          ScalarSource source,
+                                                          PlantTargetSource source,
                                                           ScalarTarget writable,
                                                           PlantTargetGuards guards) {
             if (topology == null)
@@ -1810,7 +1842,7 @@ public final class FtcActuators {
         }
 
         @Override
-        protected PositionPlant buildPositionPlant(ScalarSource source, ScalarTarget writable, PlantTargetGuards guards) {
+        protected PositionPlant buildPositionPlant(PlantTargetSource source, ScalarTarget writable, PlantTargetGuards guards) {
             if (controlKind == null)
                 throw new IllegalStateException("Motor position builder requires deviceManagedWithDefaults(), deviceManaged(), or regulated()");
             if (controlKind == PositionControlKind.DEVICE_MANAGED) {
@@ -1938,7 +1970,7 @@ public final class FtcActuators {
         }
 
         @Override
-        protected PositionPlant buildPositionPlant(ScalarSource source, ScalarTarget writable, PlantTargetGuards guards) {
+        protected PositionPlant buildPositionPlant(PlantTargetSource source, ScalarTarget writable, PlantTargetGuards guards) {
             if (range == null)
                 throw new IllegalStateException("Servo position builder requires bounded(...)");
             MappedPositionPlant.Builder b = MappedPositionPlant.commanded(parent.groupedServoPosition())
@@ -2067,7 +2099,7 @@ public final class FtcActuators {
         }
 
         @Override
-        protected PositionPlant buildPositionPlant(ScalarSource source, ScalarTarget writable, PlantTargetGuards guards) {
+        protected PositionPlant buildPositionPlant(PlantTargetSource source, ScalarTarget writable, PlantTargetGuards guards) {
             parent.requireDefaultGroupScalingForRegulated();
             if (feedback == null || regulator == null)
                 throw new IllegalStateException("Regulated CR-servo position requires nativeFeedback(...) and regulator(...)");

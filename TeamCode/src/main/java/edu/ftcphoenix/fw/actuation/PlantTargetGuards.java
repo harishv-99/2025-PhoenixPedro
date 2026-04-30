@@ -14,7 +14,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *
  * <p>Target guards are for hardware protection, not ordinary robot behavior policy. Behavior
  * should decide what the robot wants by composing {@code ScalarSource}s, using tools such as
- * {@code BooleanSource.choose(...)}, {@code ScalarOverlayStack}, and
+ * {@code BooleanSource.choose(...)}, {@code PlantTargets.overlay(...)}, and
  * {@code ScalarSource.fallbackUnless(...)}. Target guards decide what a specific piece of hardware
  * may safely apply after that behavior target has been sampled.</p>
  *

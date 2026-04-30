@@ -10,13 +10,13 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * <p>A {@code Plant} owns the hardware/control details for one scalar mechanism output: motor
  * power, servo position, motor velocity, lift position, flywheel velocity, and similar targets.
  * Robot behavior does <b>not</b> imperatively set a plant every loop. Instead, each plant is built
- * with one target source. During {@link #update(LoopClock)}, the plant samples that source once,
+ * with one PlantTargetSource. During {@link #update(LoopClock)}, the plant samples that source once,
  * applies plant-level hardware guards, sends one safe target to hardware/control, and refreshes
  * feedback/status.</p>
  *
  * <h2>Target vocabulary</h2>
  * <ul>
- *   <li><b>Requested target</b>: raw value sampled from the behavior target source this loop.</li>
+ *   <li><b>Requested target</b>: raw value sampled from the behavior PlantTargetSource this loop.</li>
  *   <li><b>Applied target</b>: value actually sent to hardware/control after static bounds,
  *       reference checks, target guards, and rate limits.</li>
  *   <li><b>Writable target</b>: optional {@link ScalarTarget} registered with the plant so
@@ -46,7 +46,7 @@ public interface Plant {
     /**
      * Update this plant once for the current loop.
      *
-     * <p>Implementations should sample their configured target source, compute their applied target,
+     * <p>Implementations should sample their configured PlantTargetSource, compute their applied target,
      * command hardware/control, and refresh measurement/status caches. Robot code should call this
      * once per loop after updating the shared {@link LoopClock}.</p>
      */
@@ -130,7 +130,7 @@ public interface Plant {
      *                               registered command target
      */
     default ScalarTarget writableTarget() {
-        throw new IllegalStateException("This plant has no writable target. Build it with targetedBy(ScalarTarget), targetedByDefaultWritable(...), or targetedBy(readOnlySource).writableTarget(commandTarget).");
+        throw new IllegalStateException("This plant has no writable target. Build it with targetedBy(ScalarTarget), targetedByDefaultWritable(...), or targetedBy(PlantTargetSource).writableTarget(commandTarget) or targetedBy(ScalarSource).writableTarget(commandTarget).");
     }
 
     /**

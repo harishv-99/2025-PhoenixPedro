@@ -161,9 +161,9 @@ That means:
 The code expresses that priority in two places with two different responsibilities:
 
 - `Behavior` owns the `OutputTaskRunner` and decides when to enqueue a pulse.
-- `Realization` builds the feeder Plant from a final `ScalarSource` created by `ScalarOverlayStack`.
+- `Realization` builds the feeder Plant from a final `PlantTargetSource` created by `PlantTargets.overlay(...)`.
 
-That is the important source-driven lesson: behavior proposes temporary outputs; the final source
+That is the important source-driven lesson: behavior proposes temporary outputs; the final target source
 arbitrates; the Plant consumes one target.
 
 ---
@@ -177,10 +177,10 @@ In Example 09, realization owns two Plants:
 - a velocity plant for the flywheel
 - a power plant for the feeder
 
-The flywheel uses a simple writable `ScalarTarget`. The feeder uses a richer final source:
+The flywheel uses a simple writable `ScalarTarget`. The feeder uses a richer final target source:
 
 ```java
-ScalarSource finalFeederTarget = ScalarOverlayStack.on(feederBaseTarget)
+PlantTargetSource finalFeederTarget = PlantTargets.overlay(feederBaseTarget)
         .add("feedPulse", feederPulseQueue.activeSource(), feederPulseQueue)
         .build();
 ```
@@ -202,10 +202,10 @@ Its loop code is intentionally small:
 
 1. receive the behavior output
 2. update the writable baseline targets
-3. update the plants, letting each Plant sample its final source
+3. update the plants, letting each Plant sample its final target source
 4. export readback for the next loop
 
-That smallness is the whole point. The single-writer rule becomes obvious because only realization
+That smallness is the whole point. The target-source ownership rule becomes obvious because only realization owns the final target sources and
 has the plant references, and the feeder's pulse-vs-baseline priority is expressed in the source
 graph instead of as hidden plant state.
 

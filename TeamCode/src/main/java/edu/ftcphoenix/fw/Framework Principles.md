@@ -185,8 +185,8 @@ A Plant may be open-loop (power, commanded servo position), device-managed close
 
 Behavior guards and Plant guards are intentionally parallel, but they attach at different layers:
 
-* **Behavior guards** shape the `ScalarSource` before the Plant sees it: `BooleanSource.choose(...)`, `ScalarOverlayStack`, `ScalarSource.fallbackUnless(...)`, `ScalarSource.holdLastUnless(...)`, output queues, and command targets. These answer “what does the robot want?”
-* **Plant target guards** live in the builder's `targetGuards()` branch and protect hardware after the behavior source is sampled: max target rate, hold-last interlocks, and fallback targets. These answer “what may this hardware safely apply?”
+* **Behavior target generation** happens before the Plant protects hardware. Use `PlantTargets.exact(...)`, `PlantTargets.overlay(...)`, `PlantTargets.plan(...)`, `ScalarTarget`, and output queues to answer “what target does the robot want?” Plain `ScalarSource`s are still useful number streams, but anything that will become a Plant target should be lifted into `PlantTargets`.
+* **Plant target guards** live in the builder's `targetGuards()` branch and protect hardware after the requested target is resolved: max target rate, hold-last interlocks, and fallback targets. These answer “what may this hardware safely apply?”
 
 Keep static range declarations such as `bounded(min, max)` close to the Plant topology because they define the legal plant coordinate system. Keep dynamic protection such as rate limits and interlocks in `targetGuards()`.
 
@@ -450,13 +450,13 @@ Robot code should rarely implement raw tasks directly. Prefer:
 Output queues follow the same source-driven philosophy as Plants. A queue owns timing and returns a scalar output, but it does not own the Plant. The usual pattern is:
 
 ```text
-base ScalarSource
+base PlantTargetSource
     + OutputTaskRunner layer while active
     + other behavior overrides
     ↓
-ScalarOverlayStack final source
+PlantTargets.overlay(...) final target source
     ↓
-Plant targetedBy(final source)
+Plant targetedBy(final target source)
 ```
 
 This keeps repeated robot behaviors such as feeder pulses systematic without reintroducing multiple writers to the same mechanism.

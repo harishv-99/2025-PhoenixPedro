@@ -13,23 +13,23 @@ For the broader robot-design context, read [`Recommended Robot Design`](<Recomme
 
 ## 1. The core idea
 
-A source-driven Plant follows one final `ScalarSource` target each loop:
+A source-driven Plant follows one final `PlantTargetSource` target each loop:
 
 ```text
 behavior sources / queues / overlays
         ↓
-one final ScalarSource
+one final PlantTargetSource
         ↓
 Plant.update(clock)
 ```
 
-An `OutputTask` does **not** write a Plant. It proposes a temporary scalar output. The subsystem then uses a source-composition tool such as `ScalarOverlayStack` to decide whether that output overrides the normal baseline.
+An `OutputTask` does **not** write a Plant. It proposes a temporary scalar output. The subsystem then uses `PlantTargets.overlay(...)` to decide whether that output overrides the normal baseline target.
 
-That keeps the single-writer rule intact:
+That keeps the target-source ownership rule intact:
 
 ```text
 many things may propose target values
-one ScalarSource arbitrates
+one PlantTargetSource arbitrates
 one Plant consumes the final target
 ```
 
@@ -77,14 +77,14 @@ Call `feederQueue.update(clock)` once per loop before updating Plants that depen
 
 ## 4. Standard realization pattern: base target + queued override
 
-Use `ScalarOverlayStack` when a queued output should temporarily override a baseline target.
+Use `PlantTargets.overlay(...)` when a queued output should temporarily override a baseline target.
 
 ```java
 OutputTaskRunner feederQueue = Tasks.outputQueue(0.0);
 
 ScalarSource baseTransferTarget = ScalarSource.of(() -> stagingEnabled ? 0.20 : 0.0);
 
-ScalarSource finalTransferTarget = ScalarOverlayStack.on(baseTransferTarget)
+PlantTargetSource finalTransferTarget = PlantTargets.overlay(baseTransferTarget)
         .add("feedPulse", feederQueue.activeSource(), feederQueue)
         .build();
 
@@ -102,7 +102,7 @@ feederQueue.update(clock);
 transfer.update(clock);
 ```
 
-The queue proposes. The overlay arbitrates. The Plant follows the final source.
+The queue proposes. `PlantTargets.overlay(...)` arbitrates. The Plant follows the final target source.
 
 ---
 
@@ -189,7 +189,7 @@ Important separation:
 
 - The `requestShoot` signal says whether the driver or auton wants shots.
 - The pulse's `startWhen(...)` gate says when feeding is actually safe.
-- The final `ScalarOverlayStack` says how the active pulse affects the Plant target.
+- The final `PlantTargets.overlay(...)` says how the active pulse affects the Plant target.
 
 When `requestShoot` goes low, `whileHigh(...)` cancels and clears the queue. This prevents old pulses from firing after the operator changed modes.
 
@@ -260,5 +260,5 @@ Rule of thumb:
 ```text
 PlantTasks change a command target.
 OutputTaskRunner proposes a temporary output.
-ScalarOverlayStack decides the final Plant target.
+PlantTargets.overlay(...) decides the final Plant target.
 ```

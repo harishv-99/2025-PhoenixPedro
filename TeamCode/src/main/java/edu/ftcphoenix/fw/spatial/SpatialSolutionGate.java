@@ -4,7 +4,7 @@ package edu.ftcphoenix.fw.spatial;
  * Shared freshness/quality gate for selecting spatial lane solutions.
  *
  * <p>The gate is deliberately small and stateless. Higher-level planners can use it consistently
- * for drive guidance, scalar setpoint requests, and custom mechanism logic.</p>
+ * for drive guidance, Plant target requests, and custom mechanism logic.</p>
  */
 public final class SpatialSolutionGate {
 

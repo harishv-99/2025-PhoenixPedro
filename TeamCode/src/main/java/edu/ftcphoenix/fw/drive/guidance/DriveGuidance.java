@@ -29,7 +29,7 @@ import edu.ftcphoenix.fw.spatial.TranslationTarget2d;
  *   <li>{@link DriveGuidancePlan}: spec + {@link DriveGuidancePlan.Tuning} (<b>how strongly</b>)</li>
  * </ul>
  *
- * <p>The staged builder mirrors {@code ScalarSetpoints.plan()}: it asks the required conceptual
+ * <p>The staged builder mirrors {@code PlantTargets.plan()}: it asks the required conceptual
  * questions first, then exposes optional tuning branches:</p>
  * <ol>
  *   <li>choose the first translation or facing target, then optionally add the other channel,</li>

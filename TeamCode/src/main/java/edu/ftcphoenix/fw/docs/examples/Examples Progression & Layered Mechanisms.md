@@ -131,7 +131,7 @@ The “pulse open” command is modeled as a short-lived override. It temporaril
 mechanism naturally falls back to the remembered base pose.
 
 This is exactly the kind of situation where output queues or task runners help: behavior owns the
-short-lived execution, and the plant owner still owns the final source and update order.
+short-lived execution, and the plant owner still owns the final target source and update order.
 
 ### 3.3 The subsystem still owns the target sources and Plant update order
 
@@ -231,7 +231,7 @@ The realization layer is intentionally boring:
 - updates the plants,
 - and exports a small readback snapshot for the next loop.
 
-That simplicity is a feature. It keeps the single-writer rule obvious.
+That simplicity is a feature. It keeps the target-source ownership rule obvious.
 
 For a deeper walkthrough of Example 09, read
 [`Layered Shooter Example.md`](<Layered Shooter Example.md>).

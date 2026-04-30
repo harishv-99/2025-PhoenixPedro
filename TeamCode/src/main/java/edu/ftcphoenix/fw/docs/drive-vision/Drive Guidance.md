@@ -2,7 +2,7 @@
 
 `DriveGuidance` is the drivetrain consumer of the shared spatial-query layer. It turns field/robot geometry into a `DriveSignal` overlay or autonomous task.
 
-Use Drive Guidance when the **drivetrain** should correct translation, heading/facing, or both. Use [`Spatial Queries.md`](<Spatial Queries.md>) directly when you only want raw geometry. Use [`Mechanism Setpoint Planning.md`](<Mechanism Setpoint Planning.md>) when a **mechanism Plant** should move independently to a scalar setpoint.
+Use Drive Guidance when the **drivetrain** should correct translation, heading/facing, or both. Use [`Spatial Queries.md`](<Spatial Queries.md>) directly when you only want raw geometry. Use [`Mechanism Target Planning.md`](<Mechanism Target Planning.md>) when a **mechanism Plant** should move independently to a scalar target.
 
 ## Mental model
 
@@ -22,7 +22,7 @@ Drive overlay, task, or telemetry gate
 
 ## Guided builder shape
 
-`DriveGuidance.plan()` intentionally parallels `ScalarSetpoints.plan()`: answer the required behavior question first, answer the solve/domain question second, then enter optional tuning branches only when you need them.
+`DriveGuidance.plan()` intentionally parallels `PlantTargets.plan()`: answer the required behavior question first, then enter optional tuning branches only when you need them.
 
 ```text
 DriveGuidance.plan()
@@ -148,7 +148,7 @@ fixedAprilTagLayout(...)
 The output boundary is different:
 
 - Drive Guidance maps spatial results to drivetrain `DriveSignal` commands.
-- Scalar Setpoint Planning maps requests to caller-facing plant-unit setpoints.
+- Mechanism Target Planning maps requests to caller-facing Plant-unit targets.
 
 The framework keeps this difference because a drivetrain command domain is known, but a mechanism may use ticks, inches, servo positions, rotations, or another scalar coordinate.
 
@@ -164,7 +164,7 @@ For a fixed webcam or fixed Limelight, pass a fixed `CameraMountConfig`:
     .doneAprilTagsOnly()
 ```
 
-For a moving camera used outside DriveGuidance, pass a timestamp-aware source through `SpatialSolveSet.builder().aprilTags(...)`; see [`Spatial Queries.md`](<Spatial Queries.md>) and [`Mechanism Setpoint Planning.md`](<Mechanism Setpoint Planning.md>). This lets the AprilTag lane interpret delayed camera frames using the camera pose from the frame timestamp.
+For a moving camera used outside DriveGuidance, pass a timestamp-aware source through `SpatialSolveSet.builder().aprilTags(...)`; see [`Spatial Queries.md`](<Spatial Queries.md>) and [`Mechanism Target Planning.md`](<Mechanism Target Planning.md>). This lets the AprilTag lane interpret delayed camera frames using the camera pose from the frame timestamp.
 
 ## Control frames and off-center facing
 
@@ -183,8 +183,8 @@ Meaning:
 - the turret pivot/tool frame is 7" forward and 2.5" left of robot center
 - when the turret mechanism coordinate is zero, its tool +X points 10° left of robot forward
 
-For a turret with its own Plant, do not use Drive Guidance to turn the robot. Use `SpatialQuery` plus `ScalarSetpointPlanner` as shown in [`Mechanism Setpoint Planning.md`](<Mechanism Setpoint Planning.md>).
+For a turret with its own Plant, do not use Drive Guidance to turn the robot. Use `SpatialQuery` plus `PlantTargets.plan()` as shown in [`Mechanism Target Planning.md`](<Mechanism Target Planning.md>).
 
 ## When not to use Drive Guidance
 
-Use a direct `DriveSource` when the driver or autonomous routine already knows the desired drive command. Use a direct `Plant` or `ScalarSetpointPlanner` when a mechanism should move independently of the drivetrain. Use `SpatialQuery` directly when you need geometry but want to apply your own PID or mechanism logic.
+Use a direct `DriveSource` when the driver or autonomous routine already knows the desired drive command. Use a direct `Plant` target or `PlantTargets.plan()` when a mechanism should move independently of the drivetrain. Use `SpatialQuery` directly when you need geometry but want to apply your own PID or mechanism logic.

@@ -52,7 +52,7 @@ public final class MappedPositionPlant implements PositionPlant {
     private final ScalarRegulator regulator;
     private final ScalarSource nativeMeasurement;
     private final PowerOutput searchPowerOut;
-    private final ScalarSource targetSource;
+    private final PlantTargetSource targetSource;
     private final ScalarTarget writableTarget;
     private final PlantTargetGuards targetGuards;
     private final Topology topology;
@@ -83,7 +83,7 @@ public final class MappedPositionPlant implements PositionPlant {
                                 ScalarRegulator regulator,
                                 ScalarSource nativeMeasurement,
                                 PowerOutput searchPowerOut,
-                                ScalarSource targetSource,
+                                PlantTargetSource targetSource,
                                 ScalarTarget writableTarget,
                                 PlantTargetGuards targetGuards,
                                 Topology topology,
@@ -101,7 +101,7 @@ public final class MappedPositionPlant implements PositionPlant {
         this.regulator = regulator;
         this.nativeMeasurement = nativeMeasurement != null ? nativeMeasurement.memoized() : null;
         this.searchPowerOut = searchPowerOut;
-        this.targetSource = Objects.requireNonNull(targetSource, "targetSource").memoized();
+        this.targetSource = Objects.requireNonNull(targetSource, "targetSource");
         this.writableTarget = writableTarget;
         this.targetGuards = targetGuards == null ? PlantTargetGuards.none() : targetGuards;
         this.topology = Objects.requireNonNull(topology, "topology");
@@ -157,7 +157,7 @@ public final class MappedPositionPlant implements PositionPlant {
         private final ScalarRegulator regulator;
         private final ScalarSource nativeMeasurement;
         private PowerOutput searchPowerOut;
-        private ScalarSource targetSource;
+        private PlantTargetSource targetSource;
         private ScalarTarget writableTarget;
         private PlantTargetGuards targetGuards = PlantTargetGuards.none();
         private Topology topology = Topology.LINEAR;
@@ -263,12 +263,30 @@ public final class MappedPositionPlant implements PositionPlant {
         }
 
         /**
-         * Use a final target source. If the source is a {@link ScalarTarget}, it is auto-registered for tasks.
+         * Use a writable exact target source and register it for PlantTasks.
+         */
+        public Builder targetedBy(ScalarTarget targetSource) {
+            this.targetSource = PlantTargets.exact(Objects.requireNonNull(targetSource, "targetSource"));
+            this.writableTarget = targetSource;
+            return this;
+        }
+
+        /**
+         * Use a read-only scalar source as an exact target.
+         *
+         * <p>The scalar is lifted into plant-target space. Because it is read-only, no
+         * writable target is registered unless writableTarget(...) is called.</p>
          */
         public Builder targetedBy(ScalarSource targetSource) {
+            this.targetSource = PlantTargets.exact(Objects.requireNonNull(targetSource, "targetSource"));
+            return this;
+        }
+
+        /**
+         * Use a plant-aware final target source.
+         */
+        public Builder targetedBy(PlantTargetSource targetSource) {
             this.targetSource = Objects.requireNonNull(targetSource, "targetSource");
-            if (targetSource instanceof ScalarTarget)
-                this.writableTarget = (ScalarTarget) targetSource;
             return this;
         }
 
@@ -319,8 +337,6 @@ public final class MappedPositionPlant implements PositionPlant {
                 establishReferenceFromNative(assumedPlantPosition, nativeNow);
         }
 
-        requestedTarget = targetSource.getAsDouble(clock);
-
         if (searchActive) {
             samplePlantMeasurement(clock);
             if (searchPowerOut != null) searchPowerOut.setPower(searchPower);
@@ -329,9 +345,21 @@ public final class MappedPositionPlant implements PositionPlant {
             return;
         }
 
+        samplePlantMeasurement(clock);
         ScalarRange range = targetRange();
+        PlantTargetContext context = PlantTargetContext.position(hasFeedback(), lastMeasurement,
+                range, topology, period(), requestedTarget, appliedTarget);
+        PlantTargetPlan plan = targetSource.resolve(context, clock);
+        if (plan != null && plan.hasTarget()) {
+            requestedTarget = plan.target();
+        } else {
+            requestedTarget = appliedTarget;
+        }
+
         double candidate = Double.isFinite(requestedTarget) ? requestedTarget : appliedTarget;
-        PlantTargetStatus status = PlantTargetStatus.ACCEPTED;
+        PlantTargetStatus status = (plan != null && plan.hasTarget())
+                ? PlantTargetStatus.ACCEPTED
+                : PlantTargetStatus.targetUnavailable(plan != null ? plan.reason() : "missing plant target plan");
         if (!range.valid) {
             status = PlantTargetStatus.referenceNotEstablished(range.reason);
             candidate = appliedTarget;
@@ -348,12 +376,9 @@ public final class MappedPositionPlant implements PositionPlant {
 
         if (!isReferenced()) {
             stopNormalPositionOutput();
-            samplePlantMeasurement(clock);
             lastAtTarget = false;
             return;
         }
-
-        samplePlantMeasurement(clock);
         if (positionOut != null) {
             positionOut.setPosition(toNative(appliedTarget));
         } else if (regulatedPowerOut != null) {

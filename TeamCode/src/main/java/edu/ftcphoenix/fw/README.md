@@ -62,6 +62,7 @@ Phoenix's long-lived design reference.
 - [`docs/core-concepts/README.md`](<docs/core-concepts/README.md>)
 - [`docs/design/README.md`](<docs/design/README.md>)
 - [`docs/drive-vision/README.md`](<docs/drive-vision/README.md>)
+- [`docs/drive-vision/Mechanism Target Planning.md`](<docs/drive-vision/Mechanism Target Planning.md>)
 - [`docs/testing-calibration/README.md`](<docs/testing-calibration/README.md>)
 - [`docs/ftc-boundary/README.md`](<docs/ftc-boundary/README.md>)
 - [`docs/examples/README.md`](<docs/examples/README.md>)

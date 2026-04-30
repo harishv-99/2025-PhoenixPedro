@@ -24,7 +24,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *         .forSeconds(0.12)
  *         .build();
  *
- * ScalarSource finalTransferTarget = ScalarOverlayStack.on(baseTransferTarget)
+ * PlantTargetSource finalTransferTarget = PlantTargets.overlay(baseTransferTarget)
  *         .add("feedPulse", feederQueue.activeSource(), feederQueue)
  *         .build();
  *
@@ -254,7 +254,7 @@ public final class OutputTaskRunner implements ScalarSource {
      * <p>This is useful for building clean, declarative output selection rules:
      * "if the queue is active, let the queue override the base target". Because this is a
      * {@code BooleanSource}, it can be used directly as an enable condition in a
-     * {@code ScalarOverlayStack} layer.</p>
+     * {@code PlantTargets.overlay(...)} layer.</p>
      *
      * <p>The returned source calls {@link #update(LoopClock)} and memoizes by
      * {@link LoopClock#cycle()} so it stays consistent within a loop.</p>

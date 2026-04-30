@@ -24,7 +24,7 @@ public final class MappedVelocityPlant implements Plant {
     private final PowerOutput regulatedPowerOut;
     private final ScalarRegulator regulator;
     private final ScalarSource nativeMeasurement;
-    private final ScalarSource targetSource;
+    private final PlantTargetSource targetSource;
     private final ScalarTarget writableTarget;
     private final PlantTargetGuards targetGuards;
     private final ScalarRange configuredRange;
@@ -43,7 +43,7 @@ public final class MappedVelocityPlant implements Plant {
                                 PowerOutput regulatedPowerOut,
                                 ScalarRegulator regulator,
                                 ScalarSource nativeMeasurement,
-                                ScalarSource targetSource,
+                                PlantTargetSource targetSource,
                                 ScalarTarget writableTarget,
                                 PlantTargetGuards targetGuards,
                                 ScalarRange configuredRange,
@@ -53,7 +53,7 @@ public final class MappedVelocityPlant implements Plant {
         this.regulatedPowerOut = regulatedPowerOut;
         this.regulator = regulator;
         this.nativeMeasurement = Objects.requireNonNull(nativeMeasurement, "nativeMeasurement").memoized();
-        this.targetSource = Objects.requireNonNull(targetSource, "targetSource").memoized();
+        this.targetSource = Objects.requireNonNull(targetSource, "targetSource");
         this.writableTarget = writableTarget;
         this.targetGuards = targetGuards == null ? PlantTargetGuards.none() : targetGuards;
         this.configuredRange = Objects.requireNonNull(configuredRange, "configuredRange");
@@ -93,7 +93,7 @@ public final class MappedVelocityPlant implements Plant {
         private ScalarRange configuredRange = ScalarRange.unbounded();
         private double nativePerPlantUnit = 1.0;
         private double tolerance = 100.0;
-        private ScalarSource targetSource;
+        private PlantTargetSource targetSource;
         private ScalarTarget writableTarget;
         private PlantTargetGuards targetGuards = PlantTargetGuards.none();
 
@@ -145,12 +145,30 @@ public final class MappedVelocityPlant implements Plant {
         }
 
         /**
-         * Use a read-only final target source.
+         * Use a writable exact target source and register it for PlantTasks.
+         */
+        public Builder targetedBy(ScalarTarget targetSource) {
+            this.targetSource = PlantTargets.exact(Objects.requireNonNull(targetSource, "targetSource"));
+            this.writableTarget = targetSource;
+            return this;
+        }
+
+        /**
+         * Use a read-only scalar source as an exact target.
+         *
+         * <p>The scalar is lifted into plant-target space. Because it is read-only, no
+         * writable target is registered unless writableTarget(...) is called.</p>
          */
         public Builder targetedBy(ScalarSource targetSource) {
+            this.targetSource = PlantTargets.exact(Objects.requireNonNull(targetSource, "targetSource"));
+            return this;
+        }
+
+        /**
+         * Use a plant-aware final target source.
+         */
+        public Builder targetedBy(PlantTargetSource targetSource) {
             this.targetSource = Objects.requireNonNull(targetSource, "targetSource");
-            if (targetSource instanceof ScalarTarget)
-                this.writableTarget = (ScalarTarget) targetSource;
             return this;
         }
 
@@ -195,9 +213,19 @@ public final class MappedVelocityPlant implements Plant {
 
     @Override
     public void update(LoopClock clock) {
-        requestedTarget = targetSource.getAsDouble(clock);
-        double candidate = Double.isFinite(requestedTarget) ? requestedTarget : 0.0;
-        PlantTargetStatus status = PlantTargetStatus.ACCEPTED;
+        samplePlantMeasurement(clock);
+        PlantTargetContext context = PlantTargetContext.simple(true, lastMeasurement, targetRange(), requestedTarget, appliedTarget);
+        PlantTargetPlan plan = targetSource.resolve(context, clock);
+        if (plan != null && plan.hasTarget()) {
+            requestedTarget = plan.target();
+        } else {
+            requestedTarget = appliedTarget;
+        }
+
+        double candidate = Double.isFinite(requestedTarget) ? requestedTarget : appliedTarget;
+        PlantTargetStatus status = (plan != null && plan.hasTarget())
+                ? PlantTargetStatus.ACCEPTED
+                : PlantTargetStatus.targetUnavailable(plan != null ? plan.reason() : "missing plant target plan");
         ScalarRange range = targetRange();
         if (!range.valid) {
             candidate = appliedTarget;
@@ -211,8 +239,6 @@ public final class MappedVelocityPlant implements Plant {
         PlantTargetGuards.Result guarded = targetGuards.apply(candidate, status, appliedTarget, clock);
         appliedTarget = guarded.target;
         targetStatus = guarded.status;
-
-        samplePlantMeasurement(clock);
         if (velocityOut != null) {
             velocityOut.setVelocity(toNative(appliedTarget));
         } else {

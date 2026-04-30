@@ -7,7 +7,7 @@ This document explains the implementation-side architecture for:
 
 - **Subsystems** (hardware + one place that writes plant targets)
 - **Supervisors** (policy + orchestration, usually built from signals and tasks)
-- **Pipelines** (how to combine base targets and temporary overrides without violating the single-writer rule)
+- **Pipelines** (how to combine base targets and temporary overrides without violating the target-source ownership rule)
 
 If you're brand new, read these first:
 
@@ -18,7 +18,7 @@ If you're brand new, read these first:
 
 A useful companion is [`Recommended Robot Design`](<Recommended Robot Design.md>). Before adding structure, decide which lane the behavior belongs to:
 
-- local setpoint (`Plant`)
+- local target (`Plant`)
 - scalar regulation (`ScalarSource` + controller + `Plant`)
 - event/classification supervision (`BooleanSource` / `Source<T>` + supervisor/task)
 - spatial guidance (`DriveGuidance` today)
@@ -33,7 +33,7 @@ That decision keeps subsystems smaller and stops drive-specific abstractions fro
 A **Plant** is a mechanism sink: it accepts a scalar target (power / position / velocity)
 and drives hardware toward it.
 
-> **Single-writer rule:** Each plant's final target should be computed in one place.
+> **Target-source ownership rule:** Each plant's final target source should be owned in one place.
 > That place is typically the subsystem.
 
 Why this matters:
@@ -205,36 +205,28 @@ A typical subsystem update looks like:
 1. update output queues
 2. compute base target (from state)
 3. apply pipeline/priority rules (base vs overrides)
-4. write the final target to the plant
+4. update the Plant after its target source is ready
 
-### Base + override pipeline (no extra framework types)
+### Base + behavior overrides
 
-Phoenix already has a clean selector: `BooleanSource.choose(...)`.
+For Plant targets, use `PlantTargets.overlay(...)`. It keeps simple scalar baselines, queued pulse outputs, and smarter plant-aware target sources in the same target-generation lane.
 
 ```java
 // In the subsystem
 overrideQueue.update(clock);
 
 ScalarSource base = ScalarSource.constant(baseTarget);
-ScalarSource finalTarget = overrideQueue.activeSource().choose(overrideQueue, base);
+PlantTargetSource finalTarget = PlantTargets.overlay(base)
+    .add("queue", overrideQueue.activeSource(), overrideQueue)
+    .add("eject", ejectRequested, -1.0)
+    .build();
 
 // Prefer building the Plant with finalTarget:
 // FtcActuators.plant(...).power().targetedBy(finalTarget).build();
 plant.update(clock);
 ```
 
-### Base + multiple overrides
-
-If you have more than one override, use `ScalarOverlayStack`:
-
-```java
-ScalarSource finalTarget = ScalarOverlayStack.on(base)
-    .add("queue", overrideQueue.activeSource(), overrideQueue)
-    .add("eject", ejectRequested, ScalarSource.constant(-1.0))
-    .build();
-```
-
-Semantics: base always runs; enabled layers override; **last enabled wins**.
+Semantics: base always runs; enabled layers override; **last enabled target-producing layer wins**. If an enabled layer cannot produce a target, the overlay reports that layer as unavailable instead of silently ignoring it.
 
 ---
 
@@ -242,7 +234,7 @@ Semantics: base always runs; enabled layers override; **last enabled wins**.
 
 ### You usually do NOT need a queue for discrete poses
 
-A “pose” (STOW / INTAKE / SCORE) is a long-lived setpoint.
+A “pose” (STOW / INTAKE / SCORE) is a long-lived target.
 The expected driver behavior is usually:
 
 - **last request wins immediately**
@@ -448,5 +440,5 @@ The architecture remains:
 
 - **robot container** wires and binds
 - **supervisors** translate intent + signals into actions
-- **subsystems** apply final plant targets (single-writer)
+- **subsystems** own final Plant target sources and update order
 

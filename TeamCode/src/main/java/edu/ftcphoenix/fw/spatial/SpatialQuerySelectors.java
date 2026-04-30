@@ -4,7 +4,7 @@ package edu.ftcphoenix.fw.spatial;
  * Shared selectors for choosing one acceptable lane result from a {@link SpatialQueryResult}.
  *
  * <p>The base {@link SpatialQuery} intentionally returns every lane result. Selectors are used by
- * higher-level consumers such as drive guidance and scalar setpoint request builders when they need
+ * higher-level consumers such as drive guidance and mechanism target request builders when they need
  * a simple priority choice. More advanced consumers may inspect all lanes directly.</p>
  */
 public final class SpatialQuerySelectors {

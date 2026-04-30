@@ -39,6 +39,10 @@ public final class PlantTargetStatus {
          */
         REFERENCE_NOT_ESTABLISHED,
         /**
+         * The final plant target source did not produce a requested target this loop.
+         */
+        TARGET_UNAVAILABLE,
+        /**
          * Plant has been stopped.
          */
         STOPPED
@@ -89,6 +93,14 @@ public final class PlantTargetStatus {
     public static PlantTargetStatus referenceNotEstablished(String reason) {
         return new PlantTargetStatus(Kind.REFERENCE_NOT_ESTABLISHED,
                 clean(reason, "position reference not established"));
+    }
+
+    /**
+     * Create a status indicating that the final target source failed to produce a target.
+     */
+    public static PlantTargetStatus targetUnavailable(String reason) {
+        return new PlantTargetStatus(Kind.TARGET_UNAVAILABLE,
+                clean(reason, "plant target source unavailable"));
     }
 
     /**

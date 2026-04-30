@@ -31,8 +31,8 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *
  * <p>Some position coordinates are immediately meaningful: a standard servo command, an absolute
  * encoder already converted into degrees, or a simulator source. Others need homing/indexing before
- * ranges and setpoints are safe. Until the coordinate is referenced, {@link #targetRange()} should
- * return an invalid range and position setpoints should not be applied to hardware.</p>
+ * ranges and targets are safe. Until the coordinate is referenced, {@link #targetRange()} should
+ * return an invalid range and position targets should not be applied to hardware.</p>
  */
 public interface PositionPlant extends Plant {
 

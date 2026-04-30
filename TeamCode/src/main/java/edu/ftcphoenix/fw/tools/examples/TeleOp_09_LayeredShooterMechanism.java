@@ -7,10 +7,10 @@ import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import java.util.function.LongSupplier;
 
 import edu.ftcphoenix.fw.actuation.Plant;
+import edu.ftcphoenix.fw.actuation.PlantTargetSource;
+import edu.ftcphoenix.fw.actuation.PlantTargets;
 import edu.ftcphoenix.fw.core.hal.Direction;
 import edu.ftcphoenix.fw.core.math.MathUtil;
-import edu.ftcphoenix.fw.core.source.ScalarOverlayStack;
-import edu.ftcphoenix.fw.core.source.ScalarSource;
 import edu.ftcphoenix.fw.core.source.ScalarTarget;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.ftc.FtcActuators;
@@ -100,7 +100,7 @@ public final class TeleOp_09_LayeredShooterMechanism extends OpMode {
         ScalarTarget flywheelTarget = ScalarTarget.held(0.0);
         ScalarTarget feederBaseTarget = ScalarTarget.held(0.0);
         OutputTaskRunner feederPulseQueue = Tasks.outputQueue(0.0);
-        ScalarSource finalFeederTarget = ScalarOverlayStack.on(feederBaseTarget)
+        PlantTargetSource finalFeederTarget = PlantTargets.overlay(feederBaseTarget)
                 .add("feedPulse", feederPulseQueue.activeSource(), feederPulseQueue)
                 .build();
 

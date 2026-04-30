@@ -20,7 +20,7 @@ import edu.ftcphoenix.fw.field.TagLayout;
  * <h2>When to use it directly</h2>
  * <p>Use {@code SpatialQuery} directly when robot code needs raw geometry: a tag-relative point,
  * a facing error, a translation error, or a comparison between solve lanes. Use higher-level
- * planners such as drive guidance or scalar setpoint planning when you want a command or a plant
+ * planners such as drive guidance or Plant target planning when you want a command or a plant
  * setpoint.</p>
  */
 public final class SpatialQuery implements Source<SpatialQueryResult> {

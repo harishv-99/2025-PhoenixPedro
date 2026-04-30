@@ -245,16 +245,16 @@ but the code now makes it much harder to accidentally mix caller-owned intent wi
 state or plant readback.
 
 The realization layer no longer imperatively chooses and writes plant targets every loop. Instead,
-each scoring Plant is built with a final `ScalarSource`. Continuous baseline feed behavior is a
-source, the behavior-owned feed pulse queue is another source, and `ScalarOverlayStack` expresses
-the priority rule. The Plant samples the final source during `update(clock)` and then applies its
-own hardware guards.
+each scoring Plant is built with a final `PlantTargetSource`. Continuous baseline feed behavior is a
+source, the behavior-owned feed pulse queue is another source, and `PlantTargets.overlay(...)` expresses
+the priority rule. The Plant samples the final target source during `update(clock)` and then applies
+its own hardware guards.
 
 That distinction is important:
 
 ```text
 behavior guard: source shaping and overlay priority
-Plant guard: hardware protection after the final source is sampled
+Plant guard: hardware protection after the final target source is sampled
 ```
 
 `ScoringPath` uses the feed pulse queue as a behavior pattern, not as a Plant wrapper. One logical
@@ -453,16 +453,16 @@ MyRobot
 
 Then read the framework docs for the full split philosophy and role glossary.
 
-## Spatial guidance and scalar setpoint planning notes
+## Spatial guidance and mechanism target planning notes
 
 Phoenix currently uses the framework's Drive Guidance path for drivetrain-facing behaviors such as scoring aim. The same framework layer now separates three concepts that robot code should keep distinct:
 
 1. **`SpatialQuery`** solves field/robot geometry: target points, facing errors, translation errors, and alternate solve lanes such as live AprilTags vs global localization.
 2. **`DriveGuidancePlan` / `DriveGuidanceQuery`** consume spatial results and produce drivetrain omega/translation commands.
-3. **`ScalarSetpointPlanner`** consumes plant-unit scalar requests and produces feasible mechanism setpoints for `Plant`s.
+3. **`PlantTargets.plan()`** consumes plant-unit target requests and produces feasible requested targets for `Plant`s.
 
-Phoenix scoring aim follows the drive path because the drivetrain turns the whole robot. A future turret, tray, arm, or extension should generally follow the scalar path: robot-owned calibration/reference setup converts semantic intent or spatial geometry into the plant units exposed by the mechanism, then the scalar planner handles candidates, periodic equivalents, travel range, and readiness status.
+Phoenix scoring aim follows the drive path because the drivetrain turns the whole robot. A future turret, tray, arm, or extension should generally follow the Plant target path: robot-owned calibration/reference setup converts semantic intent or spatial geometry into the plant units exposed by the mechanism, then `PlantTargets.plan()` handles candidates, periodic equivalents, travel range, and fallback/hold policy. Physical readiness remains `Plant.atTarget(...)`.
 
-For example, a future turret with its own camera would use one spatial query with two solve lanes: a direct turret-camera AprilTag lane and a global-pose fallback lane. The turret service would map the selected facing solution into the turret `PositionPlant`'s public units, and a `ScalarSetpointPlanner` would choose a reachable setpoint under cable limits before feeding the turret `Plant`.
+For example, a future turret with its own camera would use one spatial query with two solve lanes: a direct turret-camera AprilTag lane and a global-pose fallback lane. The turret service would map the selected facing solution into a `PlantTargetRequest`, and `PlantTargets.plan()` would choose a reachable requested target under cable limits as part of the turret Plant's target source.
 
-Calibration remains robot-owned. Homing switches, encoder zero offsets, ticks-per-turn constants, and cable-limit ranges should be established by the mechanism service and exposed through `PositionPlant`/planner-facing plant-unit measurements and `ScalarRange`s.
+Calibration remains robot-owned. Homing switches, encoder zero offsets, ticks-per-turn constants, and cable-limit ranges should be established by the mechanism service and exposed through `PositionPlant`/Plant target context measurements and `ScalarRange`s.

@@ -5,10 +5,11 @@ import com.qualcomm.robotcore.hardware.HardwareMap;
 import java.util.Objects;
 
 import edu.ftcphoenix.fw.actuation.Plant;
+import edu.ftcphoenix.fw.actuation.PlantTargetSource;
+import edu.ftcphoenix.fw.actuation.PlantTargets;
 import edu.ftcphoenix.fw.core.control.DebounceBoolean;
 import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.source.BooleanSource;
-import edu.ftcphoenix.fw.core.source.ScalarOverlayStack;
 import edu.ftcphoenix.fw.core.source.ScalarSource;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.ftc.FtcActuators;
@@ -440,10 +441,10 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
         private final Plant plantShooterTransfer;
         private final Plant plantFlywheel;
 
-        private final ScalarSource intakeMotorTargetSource;
-        private final ScalarSource intakeTransferTargetSource;
-        private final ScalarSource shooterTransferTargetSource;
-        private final ScalarSource flywheelTargetSource;
+        private final PlantTargetSource intakeMotorTargetSource;
+        private final PlantTargetSource intakeTransferTargetSource;
+        private final PlantTargetSource shooterTransferTargetSource;
+        private final PlantTargetSource flywheelTargetSource;
 
         private final DebounceBoolean readyLatch = DebounceBoolean.onAfterOffImmediately(cfg.readyStableSec);
         private final BooleanSource flywheelReadySource;
@@ -456,20 +457,20 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
         private double prevFlywheelMeasuredAbs = 0.0;
 
         Realization(HardwareMap hardwareMap) {
-            flywheelTargetSource = ScalarSource.of(() ->
-                    execution.isFlywheelEnabled() ? inputs.selectedVelocityNative.get() : 0.0);
+            flywheelTargetSource = PlantTargets.exact(ScalarSource.of(() ->
+                    execution.isFlywheelEnabled() ? inputs.selectedVelocityNative.get() : 0.0));
 
-            intakeMotorTargetSource = ScalarOverlayStack.on(ScalarSource.of(execution::baseIntakeMotorPower))
+            intakeMotorTargetSource = PlantTargets.overlay(ScalarSource.of(execution::baseIntakeMotorPower))
                     .add("feedPulse", execution.feedPulseActiveSource(),
                             execution.feedPulseOutputSource().scaled(cfg.feedScaleIntakeMotor))
                     .build();
 
-            intakeTransferTargetSource = ScalarOverlayStack.on(ScalarSource.of(execution::baseIntakeTransferPower))
+            intakeTransferTargetSource = PlantTargets.overlay(ScalarSource.of(execution::baseIntakeTransferPower))
                     .add("feedPulse", execution.feedPulseActiveSource(),
                             execution.feedPulseOutputSource().scaled(cfg.feedScaleIntakeTransfer))
                     .build();
 
-            shooterTransferTargetSource = ScalarOverlayStack.on(ScalarSource.of(execution::baseShooterTransferPower))
+            shooterTransferTargetSource = PlantTargets.overlay(ScalarSource.of(execution::baseShooterTransferPower))
                     .add("feedPulse", execution.feedPulseActiveSource(),
                             execution.feedPulseOutputSource().scaled(cfg.feedScaleShooterTransfer))
                     .build();

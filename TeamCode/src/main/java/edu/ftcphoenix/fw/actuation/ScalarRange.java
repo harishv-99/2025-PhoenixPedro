@@ -6,7 +6,7 @@ import edu.ftcphoenix.fw.core.source.Source;
  * Legal scalar travel range for a mechanism in the same units as its {@link Plant} target.
  *
  * <p>A range may be unbounded, bounded, half-bounded, or invalid. Invalid ranges are useful before
- * homing/calibration is complete; a setpoint planner should refuse to command a mechanism when its
+ * homing/calibration is complete; a target planner should refuse to command a mechanism when its
  * range is invalid.</p>
  */
 public final class ScalarRange {

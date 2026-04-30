@@ -215,7 +215,7 @@ public final class PlantTasks {
     private static ScalarTarget writableTargetOf(Plant plant, String method) {
         Objects.requireNonNull(plant, "plant");
         if (!plant.hasWritableTarget()) {
-            throw new IllegalStateException("PlantTasks." + method + " requires a plant with a registered writable target. Build it with targetedBy(ScalarTarget), targetedByDefaultWritable(...), or targetedBy(readOnlySource).writableTarget(commandTarget).");
+            throw new IllegalStateException("PlantTasks." + method + " requires a plant with a registered writable target. Build it with targetedBy(ScalarTarget), targetedByDefaultWritable(...), or targetedBy(PlantTargetSource).writableTarget(commandTarget) or targetedBy(ScalarSource).writableTarget(commandTarget).");
         }
         return plant.writableTarget();
     }

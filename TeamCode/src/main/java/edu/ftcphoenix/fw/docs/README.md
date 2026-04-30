@@ -47,6 +47,7 @@ If you are new to Phoenix, read in this order:
 
 - [`drive-vision/README.md`](<drive-vision/README.md>)
 - [`drive-vision/Drive Guidance.md`](<drive-vision/Drive Guidance.md>)
+- [`drive-vision/Mechanism Target Planning.md`](<drive-vision/Mechanism Target Planning.md>)
 - [`drive-vision/AprilTag Localization & Fixed Layouts.md`](<drive-vision/AprilTag Localization & Fixed Layouts.md>)
 - [`drive-vision/AprilTag Practice Setup.md`](<drive-vision/AprilTag Practice Setup.md>)
 - [`testing-calibration/Robot Calibration Tutorials.md`](<testing-calibration/Robot Calibration Tutorials.md>)

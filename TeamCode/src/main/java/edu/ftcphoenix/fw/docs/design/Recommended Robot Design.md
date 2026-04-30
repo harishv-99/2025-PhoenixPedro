@@ -82,7 +82,7 @@ Think of a robot as four layers:
    - supervisors own policy, timing, state machines, and queueing
 
 4. **Framework lane internals**
-   - local setpoints
+   - local targets
    - scalar regulation
    - event/classification supervision
    - spatial relation guidance
@@ -109,15 +109,15 @@ mechanism into one abstraction.
 
 Use this quick decision rule:
 
-1. **Am I commanding a local actuator setpoint directly?** Use a `Plant`.
-2. **Am I regulating one measured scalar toward a setpoint?** Use a scalar controller source.
+1. **Am I commanding a local actuator target directly?** Use a `Plant`.
+2. **Am I regulating one measured scalar toward a target?** Use a scalar controller source.
 3. **Am I reacting to an event or classification?** Use `BooleanSource` / `Source<T>` with a
    supervisor or task.
 4. **Am I solving a 2D frame-to-target relation?** Use drive guidance or a similar spatial layer.
 5. **Am I following an external route package?** Adapt it into Phoenix tasks and status; do not
    duplicate the planner.
 
-### Lane 1: local setpoint
+### Lane 1: local target
 
 Examples:
 
@@ -137,7 +137,7 @@ Examples:
 - arm angle from an analog sensor
 - local turret hold from an encoder
 
-This is still a **local scalar** problem. One measured variable is driven toward one setpoint.
+This is still a **local scalar** problem. One measured variable is driven toward one target.
 Phoenix's `ScalarControllers` helper packages the common pattern:
 
 ```java
@@ -255,7 +255,7 @@ A supervisor should usually own:
 - "do X only when Y is true" rules
 - a compact status/debug snapshot for higher-level code
 
-A supervisor should usually **not** write plants directly. It should decide what should happen,
+A supervisor should usually **not** command Plants directly. It should decide what should happen,
 then let the subsystem remain the owner of the mechanism target sources and Plant update order.
 
 ### TeleOp and Auto
@@ -379,7 +379,7 @@ TeleOp bindings can always build toggles, hold behavior, or `copyEachCycle(...)`
 
 ---
 
-## Detailed example 1: wrist poses (lane 1: local setpoint)
+## Detailed example 1: wrist poses (lane 1: local target)
 
 This is the simplest pattern and the one beginners should reach for first.
 
@@ -391,7 +391,7 @@ A wrist servo has three valid poses:
 - `INTAKE`
 - `SCORE`
 
-The wrist is just a local setpoint problem. It does not need a controller loop or an output queue.
+The wrist is just a local target problem. It does not need a controller loop or an output queue.
 
 ### Recommended subsystem shape
 
@@ -490,7 +490,7 @@ way for Auto to invoke the same intent.
 A lift is driven by motor power, but the desired quantity is **height in inches**. A distance sensor
 or potentiometer gives the measured height.
 
-This is not a spatial problem. It is one scalar measured variable driven toward a scalar setpoint.
+This is not a spatial problem. It is one scalar measured variable driven toward a scalar target.
 
 With the current plant design, the clean implementation is a **regulated position plant**: a raw actuator command (motor power), a controller/regulator, and a feedback source packaged into one plant owned by the subsystem.
 
@@ -791,7 +791,7 @@ Task acquirePiece = Tasks.sequence(
 - event logic stays out of the subsystem's final target calculation
 - the queue stays encapsulated; callers request feed actions instead of manipulating plant targets
 - Auto and TeleOp both reuse the same supervisor methods and status
-- temporary overrides do not break the single-writer rule
+- temporary overrides do not break the target-source ownership rule
 
 ---
 
@@ -1120,7 +1120,7 @@ When adding a mechanism, ask these questions in order.
 
 ### 1. Which lane is the mechanism internally?
 
-- local setpoint?
+- local target?
 - scalar regulation?
 - event/classification supervision?
 - spatial guidance?

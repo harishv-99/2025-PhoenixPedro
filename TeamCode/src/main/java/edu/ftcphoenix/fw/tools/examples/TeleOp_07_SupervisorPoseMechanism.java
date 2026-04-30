@@ -3,8 +3,11 @@ package edu.ftcphoenix.fw.tools.examples;
 import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+import com.qualcomm.robotcore.hardware.HardwareMap;
 
 import edu.ftcphoenix.fw.actuation.Plant;
+import edu.ftcphoenix.fw.actuation.PlantTargetSource;
+import edu.ftcphoenix.fw.actuation.PlantTargets;
 import edu.ftcphoenix.fw.core.hal.Direction;
 import edu.ftcphoenix.fw.core.source.ScalarSource;
 import edu.ftcphoenix.fw.core.time.LoopClock;
@@ -68,16 +71,7 @@ public final class TeleOp_07_SupervisorPoseMechanism extends OpMode {
     public void init() {
         gamepads = Gamepads.create(gamepad1, gamepad2);
 
-        Plant wristPlant = FtcActuators.plant(hardwareMap)
-                .servo(HW_WRIST, Direction.FORWARD)
-                .position()
-                .linear()
-                .bounded(0.0, 1.0)
-                .nativeUnits()
-                .targetedByDefaultWritable(0.0)
-                .build();
-
-        wrist = new WristSubsystem(wristPlant);
+        wrist = new WristSubsystem(hardwareMap);
         supervisor = new WristSupervisor(wrist);
 
         // Pattern A: bindings call supervisor intent methods.
@@ -100,7 +94,7 @@ public final class TeleOp_07_SupervisorPoseMechanism extends OpMode {
         // In more complex robots, supervisors may have periodic update logic.
         supervisor.update(clock);
 
-        // Subsystem is the single writer for its plant.
+        // The subsystem updates the source-driven Plant it owns.
         wrist.update(clock);
 
         telemetry.addData("wrist.pose", wrist.desiredPose());
@@ -109,20 +103,31 @@ public final class TeleOp_07_SupervisorPoseMechanism extends OpMode {
     }
 
     // ----------------------------------------------------------------------
-    // Subsystem: owns hardware + single-writer target application
+    // Subsystem: owns hardware + final Plant target source
     // ----------------------------------------------------------------------
 
     private static final class WristSubsystem {
         enum Pose {STOW, INTAKE, SCORE}
 
-        private final Plant plant;
         private final HeldValue<Pose> desiredPose = new HeldValue<Pose>(Pose.STOW);
 
         // Optional: temporary overrides (pulses, jogs, etc.)
         private final OutputTaskRunner overrides = Tasks.outputQueue(0.0);
+        private final Plant plant;
 
-        WristSubsystem(Plant plant) {
-            this.plant = plant;
+        WristSubsystem(HardwareMap hardwareMap) {
+            PlantTargetSource finalTarget = PlantTargets.overlay(ScalarSource.of(() -> poseTarget(desiredPose.get())))
+                    .add("openPulse", overrides.activeSource(), overrides)
+                    .build();
+
+            this.plant = FtcActuators.plant(hardwareMap)
+                    .servo(HW_WRIST, Direction.FORWARD)
+                    .position()
+                    .linear()
+                    .bounded(0.0, 1.0)
+                    .nativeUnits()
+                    .targetedBy(finalTarget)
+                    .build();
         }
 
         Pose desiredPose() {
@@ -142,18 +147,10 @@ public final class TeleOp_07_SupervisorPoseMechanism extends OpMode {
         }
 
         void update(LoopClock clock) {
-            // 1) Update override queue.
+            // Update override queue so the overlay sees this loop's pulse output.
             overrides.update(clock);
 
-            // 2) Base target from desired pose.
-            double baseTarget = poseTarget(desiredPose.get());
-
-            // 3) Arbitration: override wins while active, otherwise base.
-            ScalarSource base = ScalarSource.constant(baseTarget);
-            ScalarSource finalTarget = overrides.activeSource().choose(overrides, base);
-
-            // 4) Apply to plant.
-            plant.writableTarget().set(finalTarget.getAsDouble(clock));
+            // The Plant samples its PlantTargets.overlay(...) source and applies one safe target.
             plant.update(clock);
         }
 

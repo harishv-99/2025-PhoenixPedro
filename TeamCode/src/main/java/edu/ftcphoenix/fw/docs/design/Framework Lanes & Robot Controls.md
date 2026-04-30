@@ -726,7 +726,7 @@ public final class IntakeShooterSubsystem {
     }
 
     public void update(LoopClock clock) {
-        // compute final outputs and write plants here
+        // update queues/sources and then update source-driven Plants here
     }
 
     public Status status(LoopClock clock) {
@@ -782,7 +782,7 @@ status objects. The exact fields will vary by mechanism; the important point is 
 consumers such as drive-assist services or telemetry should read a narrow status object instead of
 peeking into supervisor internals.
 
-A supervisor should usually not be the final plant writer.
+A supervisor should usually not be the final Plant target owner.
 
 ## Step 6: put shared reasoning into a service
 

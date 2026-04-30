@@ -87,9 +87,9 @@ applied target sent to hardware/control
 Use behavior sources for robot policy:
 
 ```java
-ScalarSource finalFeeder = ScalarOverlayStack.on(baseFeeder)
+PlantTargetSource finalFeeder = PlantTargets.overlay(baseFeeder)
         .add("feedPulse", feedQueue.activeSource(), feedQueue)
-        .add("eject", ejectRequested, ScalarSource.constant(-1.0))
+        .add("eject", ejectRequested, -1.0)
         .build();
 ```
 
@@ -284,9 +284,9 @@ Common choices:
     .unbounded()
 ```
 
-`PositionPlant.period()` is in plant units. A scalar setpoint request such as
-`ScalarSetpointRequest.equivalentPosition("slot-2", 240.0)` uses the plant's declared period when the
-planner is built with `ScalarSetpoints.plan().request(...).forPositionPlant(tray)`.
+`PositionPlant.period()` is in plant units. A target request such as
+`PlantTargetRequest.equivalentPosition("slot-2", 240.0)` uses the consuming plant's declared period when
+it is resolved by `PlantTargets.plan()` during `plant.update(clock)`.
 
 ---
 
@@ -434,8 +434,8 @@ Use this when the mechanism must be homed/indexed before position targets are me
 ```
 
 Before the reference is established, `PositionPlant.targetRange(...)` returns an invalid range with
-that reason. Scalar setpoint planners built with `forPositionPlant(...)` block rather than producing
-unsafe setpoints.
+that reason. `PlantTargets.plan()` sources see that invalid range during `plant.update(clock)` and use
+their explicit `whenUnavailable()` policy instead of producing unsafe requested targets.
 
 Use `PositionCalibrationTasks` to establish the reference:
 
@@ -587,8 +587,9 @@ telemetry.addData("atTarget", plant.atTarget());
 ```
 
 For `PositionPlant`, `getRequestedTarget()`, `getAppliedTarget()`, `getMeasurement()`, and `getTargetError()` are all in plant units.
-`PositionPlant.positionSource()` is also in plant units and is the preferred measurement source for
-`ScalarSetpoints.plan().request(...).forPositionPlant(plant)`.
+`PositionPlant.positionSource()` is also in plant units. Smart target sources such as
+`PlantTargets.plan()` receive the Plant measurement and range automatically through the Plant target
+context during `update(clock)`.
 
 ---
 

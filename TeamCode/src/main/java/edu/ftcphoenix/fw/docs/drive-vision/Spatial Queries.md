@@ -4,7 +4,7 @@
 
 > Given a target, a controlled robot frame, and one or more solve lanes, what translation or facing relationship can each lane solve this loop?
 
-It does **not** decide which lane wins, and it does **not** command a drivetrain or mechanism. That policy belongs to consumers such as Drive Guidance or Scalar Setpoint Planning.
+It does **not** decide which lane wins, and it does **not** command a drivetrain or mechanism. That policy belongs to consumers such as Drive Guidance or Mechanism Target Planning.
 
 ## When to use `SpatialQuery`
 
@@ -15,7 +15,7 @@ Use `SpatialQuery` directly when you need raw geometry:
 - inspect translation/facing solutions for telemetry
 - build a robot-specific mechanism planner that needs field-relative context
 
-Do not use `SpatialQuery` when the target is already a plant-unit value. A lift preset such as `1420 ticks` should go straight to a `ScalarSetpointPlanner` or directly to a `Plant`.
+Do not use `SpatialQuery` when the target is already a plant-unit value. A lift preset such as `1420 ticks` should go straight to a `ScalarTarget`, `PlantTargets.plan()`, or directly to a Plant target builder.
 
 ## Main vocabulary
 
@@ -31,14 +31,14 @@ The key naming rule is:
 
 ```text
 Query -> Result
-Planner/Guidance -> Status
+Planner/Guidance -> Plan or Status
 ```
 
-`SpatialQuery` produces a `SpatialQueryResult`. `DriveGuidanceQuery` and `ScalarSetpointPlanner` produce status objects because they apply policy and choose commands/setpoints.
+`SpatialQuery` produces a `SpatialQueryResult`. `DriveGuidanceQuery` produces drive status, and `PlantTargets.plan()` produces a `PlantTargetPlan` because it applies policy and chooses a requested target.
 
 ## Builder shape
 
-`SpatialQuery` now follows the same guided-builder rule as Drive Guidance and Scalar Setpoint
+`SpatialQuery` now follows the same guided-builder rule as Drive Guidance and Mechanism Target
 Planning: answer the required conceptual questions explicitly, and do not expose `build()` before the
 query has both a target and solve lanes.
 
@@ -154,11 +154,11 @@ SpatialQueryResult result = query.get(clock);
 SpatialFacingSelection facing = SpatialQuerySelectors.firstValidFacing(result, gate);
 ```
 
-The same selector/gate concepts should be used by Drive Guidance and scalar setpoint request builders so “valid enough” means the same thing across the framework.
+The same selector/gate concepts should be used by Drive Guidance and mechanism target request builders so “valid enough” means the same thing across the framework.
 
 ## Direct query example: simple turret visual PID
 
-A quick visual-servo turret can use the facing error directly and skip scalar setpoint planning:
+A quick visual-servo turret can use the facing error directly and skip Plant target planning:
 
 ```java
 SpatialQueryResult result = turretTagQuery.get(clock);
@@ -172,4 +172,4 @@ if (facing != null) {
 }
 ```
 
-This is simple, but you must handle cable limits, unreachable targets, and loss behavior yourself. For a position-controlled turret, prefer the scalar setpoint planner path described in [`Mechanism Setpoint Planning.md`](<Mechanism Setpoint Planning.md>).
+This is simple, but you must handle cable limits, unreachable targets, and loss behavior yourself. For a position-controlled turret, prefer the Plant target planning path described in [`Mechanism Target Planning.md`](<Mechanism Target Planning.md>).

@@ -13,7 +13,7 @@ This running list tracks framework builders that should be reviewed against the 
 ## Current status
 
 - [x] `ftc/FtcActuators` position builders
-- [x] `actuation/ScalarSetpointPlanner`
+- [x] `actuation/PlantTargets`
 - [x] `drive/guidance/DriveGuidance`
 - [x] `ftc/FtcActuators` velocity builders
 - [x] `spatial/TagSelections`
@@ -23,20 +23,25 @@ This running list tracks framework builders that should be reviewed against the 
 
 ## Notes
 
-### `actuation/ScalarSetpointPlanner`
+### `actuation/PlantTargets`
 
-Completed in this pass. The builder now asks required questions in a staged order:
+Completed in the Plant-target consolidation pass. `PlantTargets` is now the single student-facing
+place to generate values intended for a Plant target:
 
-1. choose the request source (`request(...)` or `requestFromSpatial()`)
-2. choose the scalar domain (`forPositionPlant(...)` or `explicitDomain()`)
-3. optionally enter policy/completion tuning branches
-4. build
+1. use `PlantTargets.exact(...)` for simple constants or scalar sources
+2. use `PlantTargets.overlay(...)` for base + behavior-layer arbitration
+3. use `PlantTargets.plan()` for equivalent/candidate target requests that need Plant context
+4. choose an explicit `whenUnavailable()` policy for smart planners
 
-`requestFromSpatial()` now forces an explicit choice between a facing-derived request and a translation-derived request. That removes the previous hidden precedence where both mappers could be configured and facing silently won.
+The older target-planner family and scalar overlay helper were removed instead of kept as parallel
+paths. Plain `ScalarSource`s still exist as primitive number streams, but Plant target arbitration now
+happens in Plant-target space.
 
 ### `drive/guidance/DriveGuidance`
 
-Completed in the second builder cleanup pass. `DriveGuidance.plan()` now stays parallel with `ScalarSetpoints.plan()`:
+Completed in the second builder cleanup pass. `DriveGuidance.plan()` now stays parallel with
+`PlantTargets.plan()` in spirit: answer required behavior questions first, then enter optional tuning
+branches only when needed.
 
 1. choose the first requested drive target (`translateTo()` or `faceTo()`), then optionally add the other with `andFaceTo()` / `andTranslateTo()`
 2. optionally choose `controlFrames(...)`
@@ -50,7 +55,9 @@ Completed in the second builder cleanup pass. `DriveGuidance.plan()` now stays p
 - `aprilTagsOnlyWithDefaults(...)` or `aprilTagsOnly()...doneAprilTagsOnly()`
 - `adaptiveWithDefaults(...)` or `adaptive()...doneAdaptive()`
 
-Mode-specific optional policy stays inside the matching branch. Adaptive-only controls such as `translationTakeover(...)` and `omegaPolicy(...)` are only visible in the adaptive branch. General drivetrain tuning stays inside `driveTuning()`, paralleling `ScalarSetpoints.plan().policy()` / `completion()`.
+Mode-specific optional policy stays inside the matching branch. Adaptive-only controls such as
+`translationTakeover(...)` and `omegaPolicy(...)` are only visible in the adaptive branch. General
+drivetrain tuning stays inside `driveTuning()`.
 
 ### `ftc/FtcActuators` velocity builders
 
@@ -61,11 +68,11 @@ position, but without position-only concepts like topology, reference, and homin
 2. choose legal velocity target bounds (`bounded(...)` or `unbounded()`)
 3. choose plant/native velocity mapping (`nativeUnits()` or `scaleToNative(...)`)
 4. optionally set plant-level `velocityTolerance(...)` and `targetGuards().maxTargetRate(...)`
-5. build
+5. bind a target with `targetedBy(...)`, `targetedBy(ScalarSource)`, or `targetedByDefaultWritable(...)`
 
 The old `MotorVelocityControl` value-object API was removed instead of retained as a parallel path.
 Velocity uses a zero-preserving mapping only; no `rangeMapsToNative(...)` is exposed for velocity.
-As with the rest of the plant API, `bounded(...)`, tolerances, and `targetedBy(...)` target sources remain in plant
+As with the rest of the plant API, `bounded(...)`, tolerances, and target sources remain in plant
 units unless a method name explicitly calls out native/controller units.
 
 ### `spatial/SpatialQuery` / `spatial/SpatialQuerySpec`
@@ -78,50 +85,3 @@ staged shape:
 3. optionally supply `controlFrames(...)` and `fixedAprilTagLayout(...)`
 4. choose solve lanes with `solveWith(...)`
 5. build
-
-`build()` is no longer visible before a target and a solve set are chosen. Facing-only and
-translation-only queries no longer rely on passing `null` into a broad config-bag builder; the staged
-API makes the target shape explicit.
-
-## Recommended next builder
-
-No active builder-backlog items remain. Keep this file as a lightweight maintainer audit trail and add newly discovered builder cleanup items here. If the completed history ever stops being useful, fold the summary into [`Maintainer Notes.md`](<Maintainer Notes.md>) before deleting this file.
-
-
-### `actuation/PositionCalibrationTasks`
-
-Completed in the sixth builder cleanup pass. Calibration search tasks now force the timeout question
-to be answered explicitly before `build()` is visible:
-
-1. choose search power with `withPower(...)`
-2. choose the reference condition with `until(...)`
-3. establish the plant-unit reference with `establishReferenceAt(...)`
-4. choose the post-reference action with `stopAfterReference()` or `holdAfterReference(...)`
-5. choose timeout behavior with `failAfterSec(...)` or `neverTimeout()`
-6. build
-
-The old optional `failAfter(...)` method was removed. Unit-bearing timeout methods now include the
-`Sec` suffix, and intentionally unbounded searches must be declared with `neverTimeout()`. The
-post-reference actions are named around successful reference establishment rather than generic task
-completion: `stopAfterReference()` and `holdAfterReference(...)`.
-
-### `spatial/TagSelections`
-
-Completed in the fourth builder cleanup pass. Tag selection now asks the stateful selection questions explicitly:
-
-1. choose candidate tag IDs with `among(...)`
-2. choose the detection freshness window with `freshWithinSec(...)`
-3. choose the stateless preview policy with `choose(...)`
-4. choose the state mode with `continuous()`, `stickyWhen(...)`, or `stickyUntilReset()`
-5. for sticky modes, explicitly choose loss behavior with `holdUntilDisabled()`, `holdUntilReset()`, or `reacquireAfterLossSec(...)`
-6. build
-
-The old hidden defaults for freshness, policy, and continuous mode were removed. Sticky-only loss behavior is no longer visible on continuous selectors, and units are explicit in methods that accept seconds.
-
-### `spatial/SpatialSolveSet`
-
-Completed in the seventh builder cleanup pass. Solve sets are collection builders, but an empty solve
-set is not a meaningful spatial-solving configuration. `SpatialSolveSet.builder()` now returns a first-lane
-stage that exposes lane-adding methods but not `build()`. After the first lane is added, the returned
-non-empty stage exposes both additional lane methods and `build()`. This prevents the invalid empty
-solve-set combination by type rather than waiting for a later runtime validation.
