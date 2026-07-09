@@ -11,8 +11,8 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * velocity-from-power plants.</p>
  *
  * <p>This interface is intentionally broader than plain PID. A PID controller is one possible
- * implementation, but so are feedforward-plus-PID blends, asymmetric up/down regulators, or other
- * custom scalar control laws.</p>
+ * implementation, but so are feedforward-plus-PID blends, asymmetric up/down regulators, voltage
+ * compensation decorators, or other custom scalar control laws.</p>
  *
  * <h2>Typical usage</h2>
  *

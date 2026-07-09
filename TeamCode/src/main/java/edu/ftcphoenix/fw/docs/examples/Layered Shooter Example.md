@@ -177,7 +177,13 @@ In Example 09, realization owns two Plants:
 - a velocity plant for the flywheel
 - a power plant for the feeder
 
-The flywheel uses a simple writable `ScalarTarget`. The feeder uses a richer final target source:
+The flywheel uses a simple writable `ScalarTarget`. Its Plant can be either FTC device-managed
+velocity control or a Phoenix-regulated velocity loop. If the robot uses a power-based PID/PIDF
+flywheel with battery-voltage compensation, that compensation belongs in the flywheel
+`ScalarRegulator` inside realization; requests and behavior still only talk in selected velocity
+targets and readiness readback.
+
+The feeder uses a richer final target source:
 
 ```java
 PlantTargetSource finalFeederTarget = PlantTargets.overlay(feederBaseTarget)

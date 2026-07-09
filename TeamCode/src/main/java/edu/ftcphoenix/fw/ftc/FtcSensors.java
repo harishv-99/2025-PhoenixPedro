@@ -10,11 +10,13 @@ import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.hardware.NormalizedColorSensor;
 import com.qualcomm.robotcore.hardware.NormalizedRGBA;
 import com.qualcomm.robotcore.hardware.TouchSensor;
+import com.qualcomm.robotcore.hardware.VoltageSensor;
 
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 
 import edu.ftcphoenix.fw.core.color.NormalizedRgba;
 import edu.ftcphoenix.fw.core.color.Rgba;
+import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.hal.Direction;
 import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.source.ScalarSource;
@@ -40,6 +42,93 @@ public final class FtcSensors {
 
     private FtcSensors() {
         // utility class
+    }
+
+    // ------------------------------------------------------------------------------------------------
+    // Battery / supply voltage
+    // ------------------------------------------------------------------------------------------------
+
+    /**
+     * Create a memoized scalar source that reads the robot battery voltage from the FTC hardware map.
+     *
+     * <p>The FTC SDK may expose more than one {@link VoltageSensor} when a robot has multiple hubs.
+     * Phoenix returns the lowest positive finite reading because that is the most conservative estimate
+     * of the supply voltage available to actuators. Readings that are {@code NaN}, infinite, zero, or
+     * negative are ignored. If no usable reading exists, the source returns {@link Double#NaN} so the
+     * consumer can choose an explicit fallback policy.</p>
+     *
+     * @param hw FTC hardware map whose voltage sensors should be sampled
+     * @return memoized scalar source producing battery voltage in volts
+     */
+    public static ScalarSource batteryVoltage(HardwareMap hw) {
+        if (hw == null) {
+            throw new IllegalArgumentException("HardwareMap is required");
+        }
+        return batteryVoltage(hw.voltageSensor);
+    }
+
+    /**
+     * Create a memoized scalar source that reads the lowest positive finite voltage from a set of FTC
+     * voltage sensors.
+     *
+     * <p>This overload is useful for tests, simulators, or advanced hardware wrappers that want to pass
+     * a specific sensor collection instead of a full {@link HardwareMap}.</p>
+     *
+     * @param voltageSensors voltage sensors to sample
+     * @return memoized scalar source producing supply voltage in volts, or {@link Double#NaN} if none
+     * are usable
+     */
+    public static ScalarSource batteryVoltage(Iterable<? extends VoltageSensor> voltageSensors) {
+        if (voltageSensors == null) {
+            throw new IllegalArgumentException("voltageSensors is required");
+        }
+
+        return new ScalarSource() {
+            private double lastVoltage = Double.NaN;
+            private int lastSensorCount;
+            private int lastUsableSensorCount;
+
+            @Override
+            public double getAsDouble(LoopClock clock) {
+                double best = Double.POSITIVE_INFINITY;
+                int sensorCount = 0;
+                int usableCount = 0;
+
+                for (VoltageSensor sensor : voltageSensors) {
+                    if (sensor == null) {
+                        continue;
+                    }
+                    sensorCount++;
+                    double voltage = sensor.getVoltage();
+                    if (Double.isFinite(voltage) && voltage > 0.0) {
+                        usableCount++;
+                        best = Math.min(best, voltage);
+                    }
+                }
+
+                lastSensorCount = sensorCount;
+                lastUsableSensorCount = usableCount;
+                lastVoltage = usableCount > 0 ? best : Double.NaN;
+                return lastVoltage;
+            }
+
+            @Override
+            public void reset() {
+                lastVoltage = Double.NaN;
+                lastSensorCount = 0;
+                lastUsableSensorCount = 0;
+            }
+
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) return;
+                String p = (prefix == null || prefix.isEmpty()) ? "batteryVoltage" : prefix;
+                dbg.addData(p + ".class", "FtcBatteryVoltageSource")
+                        .addData(p + ".lastVoltage", lastVoltage)
+                        .addData(p + ".lastSensorCount", lastSensorCount)
+                        .addData(p + ".lastUsableSensorCount", lastUsableSensorCount);
+            }
+        }.memoized();
     }
 
     // ------------------------------------------------------------------------------------------------

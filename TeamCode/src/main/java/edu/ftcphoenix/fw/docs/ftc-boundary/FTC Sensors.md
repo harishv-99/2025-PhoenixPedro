@@ -21,6 +21,33 @@ The goal is to make sensor reads participate in Phoenix's **one loop, one heartb
 
 ---
 
+## Battery voltage
+
+Battery voltage is represented as a `ScalarSource` in volts. This is useful for debug telemetry and
+for framework-regulated mechanisms that intentionally compensate power commands as battery voltage
+sags.
+
+```java
+import edu.ftcphoenix.fw.core.source.ScalarSource;
+import edu.ftcphoenix.fw.ftc.FtcSensors;
+
+// Memoized per loop by default.
+ScalarSource batteryVoltage = FtcSensors.batteryVoltage(hardwareMap);
+```
+
+Notes:
+
+* `FtcSensors.batteryVoltage(hardwareMap)` samples the FTC `VoltageSensor` entries exposed by the
+  hardware map and returns the lowest positive finite reading. That is the conservative value when
+  multiple hubs report voltage.
+* Invalid readings (`NaN`, infinity, zero, or negative values) are ignored. If no usable reading is
+  available, the source returns `Double.NaN` instead of inventing a voltage.
+* Keep compensation policy outside the raw sensor adapter. For example,
+  `ScalarRegulators.voltageCompensated(...)` decides how to handle an invalid reading and how much
+  scaling is allowed.
+
+---
+
 ## Distance sensors
 
 Distance sensors are represented as a `ScalarSource` in your chosen unit.

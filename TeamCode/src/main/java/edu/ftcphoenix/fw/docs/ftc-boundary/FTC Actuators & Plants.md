@@ -659,6 +659,60 @@ The velocity tuning branch intentionally exposes only `velocityPidf(...)`. The s
 position-loop gain (`outerPositionP(...)`) belongs to device-managed motor **position** mode, not
 pure velocity mode.
 
+Use `regulated()` when Phoenix should own the velocity loop and command raw motor power. This is the
+right path for custom power-based flywheel control, including optional battery-voltage compensation:
+
+```java
+import edu.ftcphoenix.fw.actuation.Plant;
+import edu.ftcphoenix.fw.core.control.Pid;
+import edu.ftcphoenix.fw.core.control.ScalarRegulator;
+import edu.ftcphoenix.fw.core.control.ScalarRegulators;
+import edu.ftcphoenix.fw.core.hal.Direction;
+import edu.ftcphoenix.fw.core.source.ScalarSource;
+import edu.ftcphoenix.fw.ftc.FtcActuators;
+import edu.ftcphoenix.fw.ftc.FtcSensors;
+
+static final double TICKS_PER_FLYWHEEL_REV = 28.0;
+static final double TICKS_PER_RPM = TICKS_PER_FLYWHEEL_REV / 60.0;
+
+ScalarSource batteryVoltage = FtcSensors.batteryVoltage(hardwareMap);
+
+ScalarRegulator nominalFlywheel = ScalarRegulators.pidf(
+        Pid.withGains(kP, kI, kD).setIntegralLimits(-0.15, 0.15),
+        rpm -> kV * rpm
+);
+
+ScalarRegulator compensatedFlywheel = ScalarRegulators.voltageCompensated(
+        nominalFlywheel,
+        batteryVoltage,
+        13.0,  // reference voltage used while tuning
+        9.0,   // denominator floor for low/noisy readings
+        1.4    // maximum multiplier
+);
+
+Plant shooter = FtcActuators.plant(hardwareMap)
+        .motor("flywheel", Direction.FORWARD)
+        .velocity()
+        .regulated()
+            .nativeFeedback(FtcActuators.VelocityFeedback.internalEncoder())
+            .regulator(compensatedFlywheel)
+        .bounded(0.0, 5000.0)          // plant units: RPM
+        .scaleToNative(TICKS_PER_RPM)  // native units: FTC ticks/sec
+        .velocityTolerance(75.0)       // plant units: RPM
+        .targetedByDefaultWritable(0.0)
+        .build();
+```
+
+The old-style formula
+`(referenceVoltage / measuredVoltage) * controllerOutput` belongs in the regulator decorator, not in
+the OpMode loop. The Plant still owns target sampling, target bounds, unit conversion, feedback
+measurement, and final hardware output. The regulator receives setpoint and measurement in plant
+units, so in the example above both values are RPM even though the native encoder reports ticks/sec.
+
+`ScalarRegulators.voltageCompensated(...)` is intentionally a generic core decorator rather than a
+flywheel-only builder method. It can wrap PID, PIDF, or a custom `ScalarRegulator`, and regulated
+Plants automatically include its debug fields under `plantPrefix.regulator`.
+
 If robot code wants nicer plant velocity units, keep the controller native units explicit:
 
 ```java
