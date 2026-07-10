@@ -62,7 +62,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 
 | Order | ID | Item | Status | Current leading hypothesis (not yet a decision) |
 |---:|---|---|---|---|
-| 1 | TEST-01 | Pure framework test harness | Proposed | Establish fake-clock and pure unit-test support before behavior changes. |
+| 1 | TEST-01 | Pure framework test harness | Done | Establish fake-clock and pure unit-test support before behavior changes. |
 | 2 | PHX-01 | Phoenix shutdown ordering | Proposed | Make shutdown one idempotent, correctly ordered owner operation. |
 | 3 | SAFE-01 | Final Plant target invariant | Proposed | Validate finite/range-safe output after all dynamic guards. |
 | 4 | SAFE-02 | Power Plant applied-target truth | Proposed | Clamp normalized power in the Plant and report the clamp. |
@@ -106,7 +106,34 @@ core semantics it depends on.
   environment prevents fast pure tests.
 - **Completion:** fake-clock fixture plus representative tests compile and run; test commands are
   documented. No production behavior changes.
-- **Decision record:** _Pending._
+- **Decision record (2026-07-10):**
+  - **Confirmed behavior:** `TeamCode` had no local unit-test source set content or test dependency.
+    Its pure framework packages contain deterministic logic that can be exercised without a robot,
+    but there was no executable regression harness for it.
+  - **Current callers:** this change does not migrate production or student robot callers. Tests
+    exercise the existing framework APIs through their public contracts.
+  - **Alternatives considered:** no change/documentation-only, a custom assertion runner, Android
+    instrumentation tests, JUnit 5, Robolectric/mocking, local JUnit 4 tests under `TeamCode/src/test`,
+    and a new pure-Java framework module.
+  - **Simplicity comparison:** local JUnit 4 tests add one test-scoped dependency and use Android
+    Studio's standard gutter/Gradle test workflow. A new module would require moving or duplicating
+    production sources and introduce a repository boundary unrelated to robot code. Instrumentation
+    would require a device; JUnit 5, Robolectric, mocks, or a custom runner add setup without helping
+    these pure tests.
+  - **Chosen design:** use JUnit 4.13.2 in `TeamCode/src/test`. Add a test-only controlled-clock
+    fixture that advances the real final `LoopClock`; do not change the production clock API merely
+    for testing. Add narrow representative tests for clock behavior, source memoization, and
+    `TaskRunner` same-cycle idempotency.
+  - **Rejected designs:** defer a pure-Java module until measured test latency/dependency friction or
+    the independently reviewed FTC-boundary work justifies it. Do not enable Android stub default
+    returns because that could hide an accidental SDK dependency in code intended to be pure. Do not
+    encode known disputed behavior from later tracker items as expected behavior in this baseline.
+  - **Verification plan:** run `:TeamCode:testDebugUnitTest`, confirm the new tests are discoverable in
+    Android Studio, document the command in maintainer guidance, and verify that no production Java
+    file changes as part of TEST-01.
+  - **Automated verification:** `:TeamCode:testDebugUnitTest` passed on 2026-07-10 with three tests,
+    zero failures, and zero errors. The scope check found no production Java changes. Android Studio
+    inspection was confirmed by the user on 2026-07-10.
 
 ### PHX-01 - Phoenix shutdown ordering
 

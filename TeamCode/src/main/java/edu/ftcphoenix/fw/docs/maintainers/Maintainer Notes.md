@@ -77,3 +77,24 @@ Keep the docs easy to navigate from three places:
 - the local section `README.md` in whatever docs folder you are editing
 
 If you add or move a maintainer-facing doc that lives outside `docs/`, link it back into the hub so it stays visible to future maintainers.
+
+### 1.6 Automated framework unit tests
+
+Pure framework behavior is tested locally under `TeamCode/src/test/java`. These tests run on the
+development computer and do not require a Control Hub, phone, emulator, or connected robot.
+
+On Windows, run the complete local framework suite from the repository root with:
+
+```powershell
+.\gradlew.bat :TeamCode:testDebugUnitTest
+```
+
+In Android Studio, either use the gutter run icon beside a test class/method or open the Gradle tool
+window and run **TeamCode → verification → testDebugUnitTest**.
+
+Tests that depend on loop time should use the test-only `ManualLoopClock`, which advances the real
+framework `LoopClock` deterministically. Keep tests focused on documented contracts, and do not use
+Android stub default-return settings to conceal an accidental FTC/Android dependency in code that is
+supposed to remain pure Java.
+
+Local unit tests complement rather than replace the on-robot testers and calibration walkthroughs.
