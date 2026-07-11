@@ -65,7 +65,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 1 | TEST-01 | Pure framework test harness | Done | Establish fake-clock and pure unit-test support before behavior changes. |
 | 2 | PHX-01 | Phoenix shutdown ordering | Done | Make shutdown one idempotent, correctly ordered owner operation. |
 | 3 | SAFE-01 | Final Plant target invariant | Done | Validate finite/range-safe output after all dynamic guards. |
-| 4 | SAFE-02 | Power Plant applied-target truth | Proposed | Clamp normalized power in the Plant and report the clamp. |
+| 4 | SAFE-02 | Power Plant applied-target truth | Done | Clamp normalized power in the Plant and report the clamp. |
 | 5 | TASK-01 | Timed-task start semantics | Proposed | Measure elapsed time from task start, not the preceding loop interval. |
 | 6 | TASK-02 | Task reuse contract | Proposed | Enforce the documented single-use contract consistently. |
 | 7 | TASK-03 | Clear and cancellation semantics | Proposed | Remove unsafe drop-without-cancel behavior and make Plant cancellation explicit. |
@@ -277,7 +277,68 @@ core semantics it depends on.
   the Plant level while retaining hardware-boundary defense.
 - **Completion:** `getAppliedTarget()` equals the command received by the output for finite values,
   with explicit status for clamping and safe behavior for NaN/infinity.
-- **Decision record:** _Pending._
+- **Decision record (2026-07-10):**
+  - **Confirmed behavior:** `FtcActuators...power()` delegates to `Plants.PowerPlant`, whose target
+    context is currently unbounded. A finite request of `2.0` therefore remains
+    `getAppliedTarget() == 2.0` with `ACCEPTED` status and is passed to `PowerOutput.setPower(2.0)`.
+    Standard FTC motor and CR-servo adapters then clamp/cache `1.0`, so Plant telemetry and the
+    hardware-boundary command disagree. The SAFE-01 exclusion test intentionally captures the
+    current unbounded behavior.
+  - **Current callers:** production and modern examples reach `Plants.power(...)` through the same
+    staged `FtcActuators` path: three Phoenix scoring Plants, four drivetrain-direction tester
+    Plants, and four framework examples. Their intended logical targets are normalized already;
+    direct lower-level `Plants.power(...)` callers are tests. Group scale/bias intentionally maps a
+    logical group target into per-child commands and is not another Plant applied target.
+  - **Alternatives considered:** document the mismatch without changing behavior; give PowerPlant a
+    fixed semantic normalized range; read a possibly clamped value back from `PowerOutput`; ask for a
+    range in the staged builder; inject a range only in `FtcActuators`; reject dynamic out-of-range
+    requests; or add a constrained public power value type.
+  - **Simplicity comparison:** a fixed internal range adds no student calls or concepts and gives
+    target-aware sources the true legal domain before the write. Output readback creates a second
+    truth channel after hardware has already been called and is ambiguous for grouped/mapped
+    outputs. A builder range asks students a redundant question with only one correct answer, while
+    runtime rejection can crash ordinary loop-time composition where saturation is conventional.
+  - **Chosen design:** only the direct logical PowerPlant owns a private fixed `[-1.0, +1.0]`
+    `ScalarRange` in its `PlantTargetContext`. Reuse SAFE-01's final-safety path so finite dynamic
+    requests and guard output clamp before `setPower(...)`. Report `CLAMPED_TO_RANGE` when that
+    clamp remains the active final transform; a later rate limit, interlock, or fallback may report
+    its more specific status instead. Validate a constant guard fallback against the fixed range
+    when the PowerPlant is constructed. Keep the FTC adapter clamp as cheap boundary defense. This
+    changes no public interface, builder stage, or normal robot call site and is not a major API
+    decision.
+  - **Rejected designs:** do not add PowerOutput result/status feedback, a public range choice, or a
+    parallel FTC-only semantic path. Do not reject dynamic power saturation or add a constrained
+    value type. Do not change drive normalization, regulated position/velocity controller output,
+    calibration-search output, or grouped child scale/bias mapping; those do not represent a direct
+    PowerPlant's applied target. Raw HAL/regulator NaN sanitation is a separate hardware-boundary
+    concern and is not claimed as fixed by this item.
+  - **Verification plan:** replace the SAFE-01 power exclusion test with positive/negative clamp and
+    output-equality assertions; cover exact boundaries/in-range acceptance, unavailable NaN/infinity
+    sources, normalized target context, guard candidate/rate semantics, valid fallback status, and
+    actionable out-of-range fallback rejection. Move the existing unbounded limiter-overflow
+    regression from `Plants.power(...)` to `Plants.position(...)` so SAFE-01 coverage remains real.
+    Run `:TeamCode:testDebugUnitTest` and `:TeamCode:compileDebugJavaWithJavac`, search all power
+    callers, synchronize Javadocs/principles/guides, inspect the focused diff, and request Android
+    Studio verification. FTC/group boundary behavior remains for normal on-robot observation.
+  - **Implementation:** direct `Plants.power(...)` Plants now publish the fixed normalized
+    `[-1.0, +1.0]` range to target sources and reuse the SAFE-01 final-safety pipeline before calling
+    `PowerOutput`. Finite requests and dynamic guard output saturate to that range; unavailable
+    non-finite sources retain a finite safe command; and an out-of-range static fallback fails when
+    the Plant is constructed with the guard name, value, Plant, and legal range in the message. The
+    FTC adapter remains a defensive boundary clamp. No public interface, staged-builder step,
+    Phoenix call site, or normal student call shape changed.
+  - **Automated verification (2026-07-10):** `:TeamCode:testDebugUnitTest` and
+    `:TeamCode:compileDebugJavaWithJavac` pass. Thirty-two tests across eight suites ran with zero
+    failures or errors. Focused coverage verifies positive and negative saturation, exact boundaries
+    and in-range acceptance, normalized target context, first-cycle and subsequent NaN/infinity
+    safety, pre-guard normalization, fallback validation/status, and rate limiting toward a clamped
+    boundary; the SAFE-01 unbounded limiter-overflow regression remains covered through a position
+    Plant. Repository search confirms production constructs direct power Plants only through
+    `FtcActuators`; the three Phoenix, four tester, and four modern-example call sites need no
+    migration. `git diff --check` passes, and three independent final reviews found no remaining
+    code, test, documentation, scope, or student-simplicity issues. The user confirmed Android
+    Studio inspection on 2026-07-10. Physical actuator behavior should also be observed during the
+    next normal on-robot bring-up.
 
 ### TASK-01 - Timed-task start semantics
 

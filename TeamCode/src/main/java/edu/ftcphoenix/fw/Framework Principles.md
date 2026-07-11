@@ -200,9 +200,9 @@ A Plant may be open-loop (power, commanded servo position), device-managed close
 Behavior guards and Plant guards are intentionally parallel, but they attach at different layers:
 
 * **Behavior target generation** happens before the Plant protects hardware. Use `PlantTargets.exact(...)`, `PlantTargets.overlay(...)`, `PlantTargets.plan(...)`, `ScalarTarget`, and output queues to answer “what target does the robot want?” Plain `ScalarSource`s are still useful number streams, but anything that will become a Plant target should be lifted into `PlantTargets`.
-* **Plant target guards** live in the builder's `targetGuards()` branch and protect hardware after the requested target is resolved: max target rate, hold-last interlocks, and fallback targets. These answer “what may this hardware safely apply?” A mapped Plant rejects a static fallback outside its declared range when built, and every Plant rechecks the dynamic guard result before it becomes the applied target.
+* **Plant target guards** live in the builder's `targetGuards()` branch and protect hardware after the requested target is resolved: max target rate, hold-last interlocks, and fallback targets. These answer “what may this hardware safely apply?” A Plant with a fixed declared range rejects a static fallback outside that range when built, and every Plant rechecks the dynamic guard result before it becomes the applied target.
 
-Keep static range declarations such as `bounded(min, max)` close to the Plant topology because they define the legal plant coordinate system. Keep dynamic protection such as rate limits and interlocks in `targetGuards()`.
+Keep static range declarations such as `bounded(min, max)` close to the Plant topology because they define the legal plant coordinate system. Direct power Plants are the simpler fixed-domain case: their normalized range is always `[-1, +1]`, so the builder does not ask students to declare it. Keep dynamic protection such as rate limits and interlocks in `targetGuards()`.
 
 ### 2.3 The beginner entrypoint: `FtcActuators.plant(...)`
 
@@ -246,6 +246,8 @@ The builder is staged on purpose:
 
 1. **Pick hardware**: `motor` (optional `andMotor`), `servo` (optional `andServo`), `crServo` (optional `andCrServo`)
 2. **Pick target domain**: `power()`, `velocity()`, `position()`
+   * Power has the fixed normalized range `[-1, +1]`; out-of-range requests clamp before output.
+     `CLAMPED_TO_RANGE` is the active status unless a later guard supplies a more specific status.
    * Velocity then asks loop ownership, bounds, and plant/native units.
 3. **For position Plants, answer guided position questions**:
    * motor position control: `deviceManagedWithDefaults()`, `deviceManaged()...doneDeviceManaged()`, or `regulated().nativeFeedback(...).regulator(...)`

@@ -238,7 +238,9 @@ The builder has three stages:
 
 2. **Pick the target domain**:
 
-    * `.power()` – open-loop power (motors or CR servos).
+    * `.power()` – open-loop normalized power in `[-1.0, +1.0]` (motors or CR servos). The Plant
+      clamps an out-of-range request before the output. `getTargetStatus()` reports that clamp
+      unless a later safety guard has a more specific active status.
     * `.velocity().deviceManagedWithDefaults().bounded(...).nativeUnits()` – motor velocity control.
     * `.position()` – position control.
 
@@ -259,7 +261,8 @@ Rule of thumb: builder values are in **plant units** unless the API explicitly s
 native/controller-specific unit like `Ticks`). So `bounded(...)`, `periodic(...)`, tolerances, and
 later target-source values all use plant units. `rangeMapsToNative(...)` takes native endpoint values.
 Velocity mapping is deliberately simpler: `scaleToNative(...)` changes only scale, not zero, so
-plant velocity `0.0` still means stop.
+plant velocity `0.0` still means stop. Power target values are always normalized `[-1.0, +1.0]`, so
+the power builder does not ask for bounds.
 
 Then you may add plant-level tuning like `.positionTolerance(...)`, optional dynamic guards through `.targetGuards()...doneTargetGuards()`, and finally bind a target source with `.targetedBy(...)` or `.targetedByDefaultWritable(...)` before `.build()`.
 

@@ -270,6 +270,10 @@ small guided questions about control strategy, topology, bounds, unit mapping, a
 For example, a regulated motor position path uses `motor(...).position().regulated().nativeFeedback(...).regulator(...)`
 instead of hiding those choices inside a large argument object.
 
+A direct power Plant already knows its only legal domain: normalized `[-1.0, +1.0]`. It clamps a
+finite out-of-range request before calling `PowerOutput`, while the FTC adapter keeps its own clamp
+as final boundary defense.
+
 **Important:** tasks write the Plant's registered `ScalarTarget`; *your loop* must still call `plant.update(clock)` each cycle so the Plant samples that source and applies hardware guards.
 
 ---

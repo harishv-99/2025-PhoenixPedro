@@ -203,7 +203,7 @@ public final class FtcActuators {
 
         /**
          * Replace the target with {@code fallbackTarget} while {@code allowed} is low.
-         * Bounded velocity Plants reject an out-of-range fallback when built.
+         * Power Plants and bounded velocity Plants reject an out-of-range fallback when built.
          */
         PlantTargetGuardStep fallbackTargetUnless(String name, BooleanSource allowed, double fallbackTarget);
 
@@ -305,7 +305,8 @@ public final class FtcActuators {
         MotorGroupAddedStep andMotor(String name, Direction direction);
 
         /**
-         * Build a direct power plant over the selected motor or motor group.
+         * Build a direct normalized-power Plant over the selected motor or motor group. Its logical
+         * target range is always {@code [-1.0, +1.0]}.
          */
         PlantTargetStep power();
 
@@ -625,7 +626,8 @@ public final class FtcActuators {
         CrServoGroupAddedStep andCrServo(String name, Direction direction);
 
         /**
-         * Build a direct power plant over the selected CR servo or group.
+         * Build a direct normalized-power Plant over the selected CR servo or group. Its logical
+         * target range is always {@code [-1.0, +1.0]}.
          */
         PlantTargetStep power();
 

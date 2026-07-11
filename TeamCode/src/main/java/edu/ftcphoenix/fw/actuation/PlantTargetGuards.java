@@ -24,9 +24,10 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * the command target from that measurement or use a position reference policy such as
  * {@code assumeCurrentPositionIs(...)} before requesting a distant target.</p>
  *
- * <p>When a mapped Plant is built, every constant fallback is checked against that Plant's declared
- * plant-unit range. Plant implementations also enforce a final finite/range postcondition after this
- * guard chain runs, because hold-last and rate-limiter state are dynamic.</p>
+ * <p>When a Plant with a fixed range is built, every constant fallback is checked against that
+ * Plant's declared range. This includes mapped position/velocity Plants and normalized power Plants.
+ * Plant implementations also enforce a final finite/range postcondition after this guard chain
+ * runs, because hold-last and rate-limiter state are dynamic.</p>
  *
  * <h2>Common builder usage</h2>
  * <pre>{@code
@@ -111,8 +112,8 @@ public final class PlantTargetGuards {
 
         /**
          * Replace the candidate with {@code fallbackTarget} while {@code allowed} is low.
-         * A bounded mapped Plant rejects this guard at build time if the fallback is outside its
-         * declared plant-unit range.
+         * A Plant with a fixed range rejects this guard at build time if the fallback is outside its
+         * declared target range.
          */
         public Builder fallbackTargetUnless(String name, BooleanSource allowed, double fallbackTarget) {
             Objects.requireNonNull(allowed, "allowed");
@@ -121,8 +122,8 @@ public final class PlantTargetGuards {
 
         /**
          * Replace the candidate with {@code fallbackTarget} while the target-aware gate rejects it.
-         * A bounded mapped Plant rejects this guard at build time if the fallback is outside its
-         * declared plant-unit range.
+         * A Plant with a fixed range rejects this guard at build time if the fallback is outside its
+         * declared target range.
          */
         public Builder fallbackTargetUnless(String name, TargetGate gate, double fallbackTarget) {
             if (!Double.isFinite(fallbackTarget)) {
@@ -244,7 +245,7 @@ public final class PlantTargetGuards {
     }
 
     /**
-     * Validate static fallback rules after a mapped Plant binds this guard chain to its range.
+     * Validate static fallback rules after a Plant binds this guard chain to its fixed range.
      */
     void validateFallbackTargets(ScalarRange configuredRange, String plantName) {
         Objects.requireNonNull(configuredRange, "configuredRange");
