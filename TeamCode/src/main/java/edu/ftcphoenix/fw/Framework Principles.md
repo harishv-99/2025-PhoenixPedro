@@ -446,9 +446,17 @@ A `Task` is a cooperative unit of work driven by the main loop:
 * `isComplete()` – true when finished
 * `getOutcome()` – optional richer completion info (`TaskOutcome`)
 
+Each `Task` **instance is single-use**: it may enter `start(clock)` once. A framework Task records
+that attempt before starting children, controllers, or hardware effects and throws an actionable
+error if the same object is started again. When behavior should repeat, create a fresh graph from a
+macro/builder method, `Supplier<Task>`, or `OutputTaskFactory`; do not reset or re-enqueue the old
+object. Composites reject obvious duplicate child identities before starting any child.
+
 ### 4.2 The `TaskRunner`
 
-`TaskRunner` runs tasks sequentially (FIFO). Tasks are assumed to be **single-use**.
+`TaskRunner` runs tasks sequentially (FIFO). It rejects the same Task identity when that object is
+already current or queued. It does not retain an ever-seen registry; framework Task start guards also
+catch reuse after completion or through another runner.
 
 A key design choice: `TaskRunner.update(clock)` is **idempotent by `clock.cycle()`**. If nested code accidentally calls `update()` twice in the same loop cycle, tasks do not advance twice.
 

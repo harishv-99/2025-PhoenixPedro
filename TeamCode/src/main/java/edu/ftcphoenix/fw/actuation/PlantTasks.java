@@ -97,7 +97,9 @@ public final class PlantTasks {
         MoveReadyStep thenTarget(double finalTarget);
 
         /**
-         * Build the configured feedback-aware move task.
+         * Build a new single-use feedback-aware move task.
+         *
+         * <p>Build a fresh task or macro for each repeated move request.</p>
          */
         Task build();
     }
@@ -251,6 +253,7 @@ public final class PlantTasks {
         private final double timeoutSec;
         private final double finalTarget;
         private final boolean hasFinalTarget;
+        private boolean startAttempted;
         private boolean started;
         private boolean complete;
         private double startSec;
@@ -270,6 +273,13 @@ public final class PlantTasks {
 
         @Override
         public void start(LoopClock clock) {
+            if (startAttempted) {
+                throw new IllegalStateException("PlantTasks.move(" + target + ") is single-use and "
+                        + "cannot be started more than once. Create a fresh Task with "
+                        + "PlantTasks.move(...).to(...).build() or rebuild the macro; use a "
+                        + "Supplier<Task> for repeated scheduling.");
+            }
+            startAttempted = true;
             started = true;
             complete = false;
             startSec = nowSec(clock, 0.0);

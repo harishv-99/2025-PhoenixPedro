@@ -156,15 +156,26 @@ public final class ScalarTasks {
 
     /**
      * Set a scalar target once and complete immediately.
+     *
+     * <p>The returned task is single-use. Create a fresh task by calling this factory again when
+     * the same write should be scheduled more than once.</p>
      */
     public static Task set(final ScalarTarget target, final double value) {
         Objects.requireNonNull(target, "target");
         requireFinite(value, "value");
         return new Task() {
+            private boolean startAttempted;
             private boolean done;
 
             @Override
             public void start(LoopClock clock) {
+                if (startAttempted) {
+                    throw new IllegalStateException("ScalarTasks.set(" + value + ") is single-use and "
+                            + "cannot be started more than once. Create a fresh Task by calling "
+                            + "ScalarTasks.set(...) again or by rebuilding the macro; use a "
+                            + "Supplier<Task> for repeated scheduling.");
+                }
+                startAttempted = true;
                 target.set(value);
                 done = true;
             }

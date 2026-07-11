@@ -28,6 +28,10 @@ import edu.ftcphoenix.fw.task.TaskOutcome;
  *
  * <p>The task can be interrupted cleanly via {@link #cancel()} or by calling
  * {@link edu.ftcphoenix.fw.task.TaskRunner#cancelAndClear()} on the owning runner.</p>
+ *
+ * <p>A {@code DriveGuidanceTask} instance is single-use. Create a fresh task with
+ * {@link DriveGuidancePlan#task(DriveCommandSink, Config)}, a fresh macro builder, or a
+ * {@code Supplier<Task>} each time guidance should run.</p>
  */
 public final class DriveGuidanceTask implements Task {
 
@@ -75,6 +79,7 @@ public final class DriveGuidanceTask implements Task {
 
     private final DriveGuidanceCore core;
 
+    private boolean startAttempted = false;
     private boolean started = false;
     private boolean complete = false;
     private TaskOutcome outcome = TaskOutcome.NOT_DONE;
@@ -122,6 +127,13 @@ public final class DriveGuidanceTask implements Task {
      */
     @Override
     public void start(LoopClock clock) {
+        if (startAttempted) {
+            throw new IllegalStateException("DriveGuidanceTask '" + debugName
+                    + "' is single-use and has already been started. Create a fresh task with "
+                    + "DriveGuidancePlan.task(...), a fresh macro builder, or a Supplier<Task> "
+                    + "for each run.");
+        }
+        startAttempted = true;
         started = true;
         complete = false;
         outcome = TaskOutcome.NOT_DONE;

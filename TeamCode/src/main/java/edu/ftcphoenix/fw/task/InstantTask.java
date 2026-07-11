@@ -17,8 +17,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * <p>Semantics:</p>
  * <ul>
  *   <li>The provided {@link Runnable} is guaranteed to run at most once.</li>
- *   <li>If {@link #start(LoopClock)} is called multiple times due to user error, the action still
- *       only runs on the first call.</li>
+ *   <li>A second {@link #start(LoopClock)} call is rejected instead of being silently ignored.</li>
  *   <li>{@link #update(LoopClock)} does nothing; the task is considered complete as soon as the
  *       action has been run.</li>
  *   <li>If {@link #cancel()} is called before the task starts, the action is skipped and the task
@@ -31,6 +30,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
 public final class InstantTask implements Task {
 
     private final Runnable action;
+    private boolean startAttempted = false;
     private boolean finished = false;
     private boolean cancelled = false;
 
@@ -48,6 +48,7 @@ public final class InstantTask implements Task {
      */
     @Override
     public void start(LoopClock clock) {
+        markStartAttempt();
         if (finished) {
             return;
         }
@@ -94,5 +95,16 @@ public final class InstantTask implements Task {
             return TaskOutcome.NOT_DONE;
         }
         return cancelled ? TaskOutcome.CANCELLED : TaskOutcome.SUCCESS;
+    }
+
+    /** Record the single permitted start attempt before running the user action. */
+    private void markStartAttempt() {
+        if (startAttempted) {
+            throw new IllegalStateException(
+                    "InstantTask is single-use and start(...) was called more than once. "
+                            + "Create a fresh task with its builder or macro method, a "
+                            + "Supplier<Task>, or an OutputTaskFactory.");
+        }
+        startAttempted = true;
     }
 }

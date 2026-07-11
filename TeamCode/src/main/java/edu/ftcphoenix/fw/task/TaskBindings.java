@@ -28,8 +28,8 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
  *         : shooter.instantStopTransfer());
  * }</pre>
  *
- * <p><b>Important:</b> Tasks are generally single-use. For that reason, this API
- * takes {@link Supplier} factories so each signal event can create a fresh {@link Task}.</p>
+ * <p><b>Important:</b> Tasks are single-use. For that reason, this API takes {@link Supplier}
+ * factories; each invocation must return a new Task instance for that signal event.</p>
  */
 public final class TaskBindings {
 

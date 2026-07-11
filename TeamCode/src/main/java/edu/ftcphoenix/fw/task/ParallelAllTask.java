@@ -28,10 +28,14 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *     new OutputForSecondsTask("intakePulse", 1.0, 0.20)
  * ));
  * }</pre>
+ *
+ * <p>A parallel group is single-use, and each child position must contain a distinct Task
+ * instance. Repeated behavior should construct a fresh group with fresh children.</p>
  */
 public final class ParallelAllTask implements Task {
 
     private final List<Task> tasks = new ArrayList<>();
+    private boolean startAttempted = false;
     private boolean started = false;
     private boolean finished = false;
     private boolean cancelled = false;
@@ -42,20 +46,22 @@ public final class ParallelAllTask implements Task {
      * <p>The list is copied; subsequent modifications to {@code tasks} do not affect this parallel
      * group.</p>
      *
-     * @param tasks list of child tasks to run in parallel; must not be {@code null}
+     * @param tasks list of distinct child tasks to run in parallel; must not be {@code null} or
+     *              contain {@code null} or duplicate instances
      */
     public ParallelAllTask(List<Task> tasks) {
         if (tasks == null) {
             throw new IllegalArgumentException("tasks is required");
         }
+        validateDistinctChildren(tasks);
         this.tasks.addAll(tasks);
     }
 
     /**
      * Convenience factory for a parallel group from varargs.
      *
-     * @param tasks child tasks to run in parallel; must not be {@code null} and must not contain
-     *              {@code null} elements
+     * @param tasks distinct child tasks to run in parallel; must not be {@code null} or contain
+     *              {@code null} or duplicate instances
      * @return a new {@link ParallelAllTask} containing the given children
      */
     public static ParallelAllTask of(Task... tasks) {
@@ -80,6 +86,7 @@ public final class ParallelAllTask implements Task {
      */
     @Override
     public void start(LoopClock clock) {
+        markStartAttempt();
         if (started) {
             return;
         }
@@ -214,5 +221,37 @@ public final class ParallelAllTask implements Task {
             }
         }
         return true;
+    }
+
+    /** Reject child aliases that would start or update one stateful Task instance twice. */
+    private static void validateDistinctChildren(List<Task> children) {
+        for (int i = 0; i < children.size(); i++) {
+            Task child = children.get(i);
+            if (child == null) {
+                throw new IllegalArgumentException(
+                        "ParallelAllTask children must not contain null; found null at index " + i);
+            }
+            for (int previous = 0; previous < i; previous++) {
+                if (child == children.get(previous)) {
+                    throw new IllegalArgumentException(
+                            "ParallelAllTask child at index " + i
+                                    + " reuses the same Task instance as index " + previous + ". "
+                                    + "Each child must be a distinct, fresh task; create it with "
+                                    + "its builder or macro method, a Supplier<Task>, or an "
+                                    + "OutputTaskFactory.");
+                }
+            }
+        }
+    }
+
+    /** Record the single permitted start attempt before starting any child. */
+    private void markStartAttempt() {
+        if (startAttempted) {
+            throw new IllegalStateException(
+                    "ParallelAllTask is single-use and start(...) was called more than once. "
+                            + "Create a fresh task with its builder or macro method, a "
+                            + "Supplier<Task>, or an OutputTaskFactory.");
+        }
+        startAttempted = true;
     }
 }

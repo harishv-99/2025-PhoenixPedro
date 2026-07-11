@@ -61,6 +61,7 @@ public final class GatedOutputUntilTask implements OutputTask {
     private final double maxRunSec;
     private final double cooldownSec;
 
+    private boolean startAttempted = false;
     private Phase phase = Phase.WAIT;
     private double runStartedSec = 0.0;
     private double runElapsedSec = 0.0;
@@ -118,6 +119,7 @@ public final class GatedOutputUntilTask implements OutputTask {
      */
     @Override
     public void start(LoopClock clock) {
+        markStartAttempt();
         phase = Phase.WAIT;
         runStartedSec = 0.0;
         runElapsedSec = 0.0;
@@ -282,5 +284,16 @@ public final class GatedOutputUntilTask implements OutputTask {
         startWhen.debugDump(dbg, p + ".startWhen");
         doneWhen.debugDump(dbg, p + ".doneWhen");
         runOutput.debugDump(dbg, p + ".runOutput");
+    }
+
+    /** Record the single permitted start attempt before resetting task state or sampling sources. */
+    private void markStartAttempt() {
+        if (startAttempted) {
+            throw new IllegalStateException(
+                    name + " is a single-use GatedOutputUntilTask and start(...) was called "
+                            + "more than once. Create a fresh task with its builder or macro "
+                            + "method, a Supplier<Task>, or an OutputTaskFactory.");
+        }
+        startAttempted = true;
     }
 }
