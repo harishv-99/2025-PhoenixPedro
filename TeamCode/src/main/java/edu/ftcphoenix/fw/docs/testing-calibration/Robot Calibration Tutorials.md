@@ -75,6 +75,9 @@ Task homeLift = PositionCalibrationTasks.search(lift)
         .build();
 ```
 
+Build a fresh search Task for every homing attempt. A search Task that has begun is not restarted;
+the same builder recipe can create the next attempt.
+
 For an indexer or tray, the condition can be a color detector, magnet sensor, beam break, or custom
 BooleanSource:
 

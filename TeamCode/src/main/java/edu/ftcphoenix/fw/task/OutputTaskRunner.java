@@ -73,6 +73,10 @@ public final class OutputTaskRunner implements ScalarSource {
 
     /**
      * Enqueue an output-producing task.
+     *
+     * @throws IllegalStateException if this exact instance is already current or queued; repeated
+     *                               output behavior requires a fresh task from an
+     *                               {@link OutputTaskFactory}
      */
     public void enqueue(OutputTask task) {
         runner.enqueue(task);
@@ -139,8 +143,10 @@ public final class OutputTaskRunner implements ScalarSource {
      * <p>Safe to call multiple times. This method only enqueues tasks when the current
      * backlog is below {@code desiredBacklog}.</p>
      *
-     * <p><b>Important:</b> tasks are assumed to be single-use, so {@code taskFactory} must produce
-     * a <em>new</em> {@link OutputTask} instance each time it is called. A reusable
+     * <p><b>Important:</b> tasks are single-use, so {@code taskFactory} must produce a
+     * <em>new</em> {@link OutputTask} instance each time it is called. Duplicate instances are
+     * rejected while current or queued, and a previously-started framework task rejects another
+     * start. A reusable
      * {@link OutputTaskFactory} from {@link Tasks#outputPulse(String)} is the usual way to satisfy
      * that rule for repeated pulses.</p>
      *

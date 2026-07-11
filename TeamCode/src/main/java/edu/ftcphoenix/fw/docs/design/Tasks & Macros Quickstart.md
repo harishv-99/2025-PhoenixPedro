@@ -99,6 +99,10 @@ public interface Task {
 Rules:
 
 * `start(...)` and `update(...)` must **return quickly** (no blocking).
+* A `Task` object is **single-use**: it may enter `start(...)` once. To repeat behavior, call the
+  macro/builder again or use a `Supplier<Task>` so each run receives a fresh object. Framework
+  Tasks throw a clear error on a second start; custom Task implementations must honor the same
+  contract.
 * Use fields inside the task to remember your own state.
 * `isComplete()` becomes `true` when the task is done.
 * `cancel()` is the cooperative early-stop hook. Use it when automation should stop cleanly.
@@ -114,6 +118,7 @@ Rules:
 
 * It keeps an internal queue of `Task`s.
 * You call `runner.enqueue(task)` to add new work.
+* It rejects the same object if that identity is already current or queued.
 * Each loop you call `runner.update(clock)`, and it:
 
     * Starts the next task when the previous one completes.
@@ -133,6 +138,9 @@ Two queue-management methods matter in practice:
 * `cancelAndClear()` — ask the active task to stop cleanly, then clear the queue.
 
 For driver override, mode switches, and route interruption, prefer `cancelAndClear()`.
+
+Clearing or cancelling does not reset a Task that has already started. If the behavior is requested
+later, enqueue a new task built by the same macro method or factory.
 
 Example:
 
@@ -479,6 +487,12 @@ For the full design rationale and more examples, see [`Output Tasks & Queues`](<
 
     * Never call `Thread.sleep(...)` or spin in `while(!condition)` loops.
     * Use `Tasks.waitForSeconds(...)` or `Tasks.waitUntil(...)` instead.
+
+* **Do not save and restart a Task object.**
+
+    * Task instances are single-use, including sequences and parallel groups.
+    * Save a macro method, `Supplier<Task>`, or `OutputTaskFactory` and ask it for a fresh task each
+      time instead.
 
 * **Always call `runner.update(clock)` once per loop.**
 

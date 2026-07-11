@@ -392,6 +392,11 @@ A `Task` is non-blocking work that progresses over multiple loop cycles.
 
 A `TaskRunner` runs tasks **sequentially** (FIFO): start one task, update it each cycle until it completes, then move to the next.
 
+Each Task object is single-use. A repeated driver request should call the macro/builder again (or a
+`Supplier<Task>` / `OutputTaskFactory`) to create a fresh graph. The runner rejects one object being
+current or queued twice, and framework Tasks throw a clear error if an already-started object reaches
+`start(...)` again after completion or through another runner.
+
 The runner may start and update a new task in the same loop. Framework timed tasks anchor their
 durations and timeouts to that start timestamp, so the preceding loop's `dtSec()` cannot erase a
 short wait or command. Every positive-duration drive/output/Plant command is available to the later

@@ -67,7 +67,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 3 | SAFE-01 | Final Plant target invariant | Done | Validate finite/range-safe output after all dynamic guards. |
 | 4 | SAFE-02 | Power Plant applied-target truth | Done | Clamp normalized power in the Plant and report the clamp. |
 | 5 | TASK-01 | Timed-task start semantics | Done | Measure elapsed time from task start, not the preceding loop interval. |
-| 6 | TASK-02 | Task reuse contract | Proposed | Enforce the documented single-use contract consistently. |
+| 6 | TASK-02 | Task reuse contract | Done | Enforce the documented single-use contract consistently. |
 | 7 | TASK-03 | Clear and cancellation semantics | Proposed | Remove unsafe drop-without-cancel behavior and make Plant cancellation explicit. |
 | 8 | DRIVE-01 | Drive task ownership | Proposed | Separate exclusive Auto sink ownership from TeleOp drive-source proposals. |
 | 9 | TARGET-01 | Lazy Plant target overlay selection | Proposed | Resolve the selected highest-priority layer first and avoid sampling shadowed layers. |
@@ -441,7 +441,101 @@ core semantics it depends on.
   partially consumed task graphs.
 - **Completion:** all built-ins and composites follow one documented rule; repeated start/enqueue has
   deterministic tests and a useful error.
-- **Decision record:** _Pending._
+- **Decision record (2026-07-10):**
+  - **Confirmed behavior:** built-in Task instances currently have three incompatible second-start
+    behaviors. `InstantTask`, `RunForSecondsTask`, and `ParallelAllTask` silently no-op;
+    `WaitUntilTask`, `OutputForSecondsTask`, `GatedOutputUntilTask`, `SequenceTask`, the anonymous
+    `Tasks.branchOnOutcome(...)` and scalar-set tasks, `PlantTasks.MoveTask`, calibration search,
+    `RouteTask`, and `DriveGuidanceTask` reset/restart. A reused sequence or outcome branch can
+    partially restart because its children independently no-op, restart, or remain terminal.
+    `Tasks.noop()` is terminal even before `start()`. `TaskRunner.enqueue(...)` accepts the same
+    identity more than once, so misuse may be silent, partial, or delayed until a task graph runs.
+    Existing tests use each instance once and do not define repeated-start behavior.
+  - **Current callers:** repository production and modern examples already follow fresh-instance
+    patterns. Phoenix Auto creates and enqueues one routine graph; TeleOp 03/06 rebuild macro graphs
+    for each activation; TeleOp 07 creates a new direct output task per request; Phoenix
+    `ScoringPath` and TeleOp 09 use `OutputTaskFactory`/factory methods; and `TaskBindings` already
+    accepts `Supplier<Task>` or value-to-Task factories. No executable caller re-enqueues or directly
+    restarts a Task instance, so the common student call sites need no migration.
+  - **Alternatives considered:** keep the mixed behavior and document it; make every Task safely
+    restartable; make a second start idempotent; enforce reuse only in `TaskRunner`; retain every
+    ever-enqueued identity; replace or overload enqueue with supplier-only APIs; add a public marker,
+    lifecycle/base class, reset method, or general `TaskFactory`; or enforce a one-shot lifecycle in
+    each framework Task while using existing suppliers/factories for repetition.
+  - **Simplicity comparison:** documentation or silent idempotence preserves skipped/partial macros.
+    Universal restartability requires every child graph, source, route follower, controller,
+    hardware owner, outcome, and cancellation state to reset perfectly, yet still cannot safely put
+    one object under parallel owners. Supplier-only enqueue adds ceremony to ordinary one-shot Auto,
+    while an overload creates two normal paths. A permanent runner identity ledger can cover custom
+    Tasks but retains every fresh pulse/macro for the runner lifetime. Local one-shot guards change
+    no normal robot call, and existing `Supplier<Task>`/macro builders plus `OutputTaskFactory`
+    already make repetition explicit and discoverable.
+  - **Chosen design:** define one public contract: a Task instance may enter `start(clock)` once.
+    Every framework built-in, anonymous Task, and composite records that attempt before child or
+    hardware side effects; another start while active or after any terminal outcome throws an
+    actionable `IllegalStateException` naming the Task and instructing the caller to create a fresh
+    instance with a builder/macro method, `Supplier<Task>`, or `OutputTaskFactory`. Keep repeated
+    `cancel()` and terminal `update()` behavior unchanged. `TaskRunner.enqueue(Task)` remains the
+    single enqueue API but rejects the same identity when it is already current or queued, without
+    retaining an unbounded history. Sequence, parallel, and outcome-branch construction reject
+    obvious duplicate child identities before any child starts; nested aliases still fail through
+    the child's own start guard. Repetition continues through existing factories—no new public
+    lifecycle type, base class, reset API, factory type, builder step, or enqueue overload.
+  - **Rejected designs:** do not make Task instances restartable, because stateful child/resource
+    graphs cannot offer that guarantee through the current narrow interface. Do not silently ignore
+    a second start, since it hides skipped behavior. Do not enforce only at the runner, because
+    direct/composite/cross-runner starts bypass it; do not keep a permanent/weak global ownership
+    registry. Do not remove the convenient direct `enqueue(Task)` path or add a parallel supplier
+    overload. Direct cancel-before-first-start and update-before-start policy remain TASK-03 scope;
+    this item is narrowly about start/re-enqueue reuse and leaves those first-use effects unchanged.
+    Correct `SequenceTask.fromSuppliers(...)` documentation to say its suppliers run once while
+    constructing one single-use sequence; it is not a restart mechanism.
+  - **Verification plan:** add focused tests for direct second start while active and after terminal
+    completion across instant/noop, timed wait/run, direct/gated output, scalar/Plant tasks,
+    calibration, route, guidance, sequence, parallel, and outcome branch families. Test immediate
+    identity rejection for a duplicate queued/current Task; delayed built-in rejection after
+    completion and across runners; duplicate composite children; partial-progress/completed
+    composite restart; a repeated backlog supplier returning one instance; and successful execution
+    of two genuinely fresh supplier/`OutputTaskFactory` results. Assert error messages identify the
+    Task and explain the fresh-instance fix. Preserve all first-run, TASK-01 timing, outcome, and
+    same-cycle tests; run `:TeamCode:testDebugUnitTest` and
+    `:TeamCode:compileDebugJavaWithJavac`; search callers; synchronize Framework Principles,
+    Javadocs, task/output guides, beginner/overview docs, calibration guidance, and repository
+    instructions; inspect the focused diff; then request Android Studio verification.
+  - **Approval gate:** although signatures and normal call sites remain unchanged, this deliberately
+    changes the public lifecycle semantics of every framework Task and composite. Treat it as a
+    major API-semantic decision and obtain user approval before moving to **In progress**.
+  - **Approval:** the user approved the TASK-02 design on 2026-07-10.
+  - **Implementation (2026-07-10):** every framework-owned Task implementation now records a
+    private start attempt before its action, child, controller, source reset, target write, route,
+    guidance, or calibration side effects and throws an actionable single-use error on another
+    start. `TaskRunner` identity-rejects a duplicate current/queued object without retaining
+    history. Sequence, parallel, and outcome-branch construction reject direct child aliases, while
+    nested aliases fall through to the leaf guard. Start/reuse exceptions still propagate with the
+    runner's existing state; this item does not guess whether a partially started graph should be
+    cancelled or dropped, because that failure-cleanup policy belongs with TASK-03. Existing macro
+    methods, `Supplier<Task>`, and `OutputTaskFactory` remain the repetition path; no public
+    lifecycle type, reset method, marker, builder step, enqueue overload, or normal Phoenix caller
+    migration was added. Framework Principles, repository instructions, Javadocs,
+    task/output/beginner/overview guides, and calibration guidance now state the same start-attempt
+    contract without deciding TASK-03's cancel-before-first-start policy.
+  - **Automated verification (2026-07-10):** four new suites add 32 tests across the core Task,
+    actuation/calibration, route, and guidance families. They cover active, terminal, failed, and
+    partial second starts; guard-before-side-effect behavior; direct and nested composite aliases;
+    duplicate queued/current identities; completed and cross-runner reuse; eager/fresh suppliers
+    and output factories; repeated and invalid backlog suppliers; repeated cancellation/terminal
+    updates; and preserved cancel-before-first-start and TASK-01 timing behavior.
+    `:TeamCode:testDebugUnitTest` passes all 87 tests in 15 suites with zero
+    failures, errors, or skips, and `:TeamCode:compileDebugJavaWithJavac` succeeds. Static inspection
+    finds a guard in every framework-owned `start(LoopClock)` implementation, modern Phoenix/example
+    callers already construct fresh tasks, and `git diff --check` plus the trailing-whitespace scan
+    pass. Only the repository's existing JDK 21/source-8 and deprecation warnings remain. Independent
+    reviews corrected three cancellation-wording overstatements, the current-versus-active wording,
+    and an attempted failed-start cleanup that would have preempted TASK-03's safety decision; final
+    re-review reports no remaining scoped issue.
+  - **Manual verification:** the user confirmed the Android Studio review on 2026-07-10. No
+    robot-hardware validation is required for this misuse contract; normal behavior call sites and
+    hardware commands are unchanged.
 
 ### TASK-03 - Clear and cancellation semantics
 

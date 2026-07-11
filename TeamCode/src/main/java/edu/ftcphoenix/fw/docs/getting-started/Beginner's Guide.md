@@ -449,6 +449,10 @@ Phoenix's timed factories measure durations and timeouts from the task's actual 
 If you write a custom timed Task, capture `clock.nowSec()` in `start(...)` and compare later clock
 timestamps rather than counting the `dtSec()` that arrived before the Task started.
 
+A Task object can be started only once. If a button or autonomous routine should run the same
+behavior again, call your macro method or task builder again and enqueue the new object. Framework
+Tasks report accidental reuse immediately instead of silently skipping part of a macro.
+
 ---
 
 ## 6. Example: a simple shooter macro

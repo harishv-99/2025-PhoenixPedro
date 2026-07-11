@@ -17,8 +17,12 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *   <li>Expose a small API to enqueue, cancel, clear, and inspect tasks.</li>
  * </ul>
  *
- * <p>Tasks are assumed to be single-use: once a {@link Task} has completed
- * ({@link Task#isComplete()} returns true), it should not be enqueued again.</p>
+ * <p>Framework Tasks enforce a single-use start lifecycle. This runner additionally rejects the
+ * same object identity when that Task is already current or queued, catching aliases before they
+ * reach {@link Task#start(LoopClock)}. The runner deliberately keeps no permanent identity
+ * history; once an instance is no longer owned here it can be enqueued, but a previously-started
+ * framework Task will reject the later start attempt. Use a builder or macro method,
+ * {@code Supplier<Task>}, or {@link OutputTaskFactory} to create fresh instances for repetition.</p>
  *
  * <h2>Per-cycle idempotency</h2>
  * <p>{@link #update(LoopClock)} is idempotent by {@link LoopClock#cycle()}.</p>
@@ -61,10 +65,19 @@ public final class TaskRunner {
      * Enqueue a task to be run after all currently queued tasks.
      *
      * @param task task to enqueue (must not be {@code null})
+     * @throws IllegalStateException if this exact instance is already current or queued
      */
     public void enqueue(Task task) {
         if (task == null) {
             throw new IllegalArgumentException("task must not be null");
+        }
+        if (task == current) {
+            throw alreadyOwned(task, "the current task");
+        }
+        for (Task queued : queue) {
+            if (task == queued) {
+                throw alreadyOwned(task, "the queue");
+            }
         }
         queue.add(task);
     }
@@ -86,7 +99,7 @@ public final class TaskRunner {
      * Cancel the active task, if any, while leaving queued tasks intact.
      *
      * <p>This is useful when the caller wants to stop the current action but keep later queued
-     * work available for retry or reuse.</p>
+     * work available for later execution.</p>
      *
      * @return {@code true} if a task was active and received {@link Task#cancel()}; otherwise
      * {@code false}
@@ -225,5 +238,21 @@ public final class TaskRunner {
                     .addData(p + ".nextClass", next.getClass().getSimpleName())
                     .addData(p + ".queuedCount", queue.size());
         }
+    }
+
+    /** Build an actionable duplicate-identity error without retaining task history. */
+    private static IllegalStateException alreadyOwned(Task task, String location) {
+        String name = task.getDebugName();
+        if (name == null || name.isEmpty()) {
+            name = task.getClass().getSimpleName();
+        }
+        if (name == null || name.isEmpty()) {
+            name = "unnamed Task";
+        }
+        return new IllegalStateException(
+                "TaskRunner already owns task \"" + name + "\" in " + location
+                        + "; the same Task instance cannot be enqueued twice at once. "
+                        + "Create a fresh task with its builder or macro method, a "
+                        + "Supplier<Task>, or an OutputTaskFactory.");
     }
 }

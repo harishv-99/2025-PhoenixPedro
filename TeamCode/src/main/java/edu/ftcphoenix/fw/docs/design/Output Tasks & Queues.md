@@ -43,6 +43,11 @@ An `OutputTask` is still a normal non-blocking Phoenix `Task`:
 - `update(clock)` once per loop
 - `isComplete()` ends it
 
+The object itself is single-use once it has attempted `start(clock)`. Do not put an already-started
+or completed pulse object back into a queue; create a fresh pulse from its `OutputTaskFactory`.
+Reusing the same object fails with a clear error instead of silently skipping or partially
+restarting output behavior.
+
 It also exposes:
 
 - `getOutput()` — the scalar output for this loop
@@ -133,7 +138,9 @@ How does it end?
 Does it need cooldown time?
 ```
 
-It returns an `OutputTaskFactory`, not a single task, because queued tasks are single-use. Each call to `feedOne.create()` or `feedOne.get()` creates a fresh pulse task.
+It returns an `OutputTaskFactory`, not a single task, because queued tasks are single-use. Keep the
+factory and call `feedOne.create()` or `feedOne.get()` for every enqueue; each call creates a fresh
+pulse task.
 
 ### Sensor-ended pulse
 

@@ -35,6 +35,7 @@ public final class WaitUntilTask implements Task {
     private final BooleanSource condition;
     private final double timeoutSec;
 
+    private boolean startAttempted = false;
     private boolean finished = false;
     private boolean timedOut = false;
     private boolean cancelled = false;
@@ -69,6 +70,7 @@ public final class WaitUntilTask implements Task {
     /** {@inheritDoc} */
     @Override
     public void start(LoopClock clock) {
+        markStartAttempt();
         finished = false;
         timedOut = false;
         cancelled = false;
@@ -157,5 +159,16 @@ public final class WaitUntilTask implements Task {
      */
     public boolean isTimedOut() {
         return timedOut;
+    }
+
+    /** Record the single permitted start attempt before resetting task state. */
+    private void markStartAttempt() {
+        if (startAttempted) {
+            throw new IllegalStateException(
+                    "WaitUntilTask is single-use and start(...) was called more than once. "
+                            + "Create a fresh task with its builder or macro method, a "
+                            + "Supplier<Task>, or an OutputTaskFactory.");
+        }
+        startAttempted = true;
     }
 }

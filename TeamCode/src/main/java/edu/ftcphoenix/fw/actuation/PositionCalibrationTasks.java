@@ -136,7 +136,9 @@ public final class PositionCalibrationTasks {
      */
     public interface SearchBuildStep {
         /**
-         * Build the non-blocking calibration task.
+         * Build a new single-use non-blocking calibration task.
+         *
+         * <p>Build a fresh search task if calibration must be scheduled again.</p>
          */
         Task build();
     }
@@ -224,6 +226,7 @@ public final class PositionCalibrationTasks {
         private final boolean holdAfter;
         private final double holdTarget;
         private final double timeoutSec;
+        private boolean startAttempted;
         private boolean started;
         private boolean complete;
         private double startSec;
@@ -247,6 +250,12 @@ public final class PositionCalibrationTasks {
 
         @Override
         public void start(LoopClock clock) {
+            if (startAttempted) {
+                throw new IllegalStateException("PositionCalibrationTasks.search(...) is single-use "
+                        + "and cannot be started more than once. Create a fresh Task by rebuilding "
+                        + "the calibration search; use a Supplier<Task> for repeated scheduling.");
+            }
+            startAttempted = true;
             started = true;
             complete = false;
             startSec = clock != null ? clock.nowSec() : 0.0;

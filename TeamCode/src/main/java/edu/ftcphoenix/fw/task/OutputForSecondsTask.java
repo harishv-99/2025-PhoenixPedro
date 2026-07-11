@@ -23,6 +23,7 @@ public final class OutputForSecondsTask implements OutputTask {
     private final double output;
     private final double durationSec;
 
+    private boolean startAttempted = false;
     private boolean finished = false;
     private boolean cancelled = false;
     private double startSec = 0.0;
@@ -49,6 +50,7 @@ public final class OutputForSecondsTask implements OutputTask {
      */
     @Override
     public void start(LoopClock clock) {
+        markStartAttempt();
         finished = (durationSec == 0.0);
         cancelled = false;
         startSec = clock.nowSec();
@@ -135,5 +137,16 @@ public final class OutputForSecondsTask implements OutputTask {
                 .addData(p + ".cancelled", cancelled)
                 .addData(p + ".complete", finished)
                 .addData(p + ".outcome", getOutcome());
+    }
+
+    /** Record the single permitted start attempt before resetting task state. */
+    private void markStartAttempt() {
+        if (startAttempted) {
+            throw new IllegalStateException(
+                    name + " is a single-use OutputForSecondsTask and start(...) was called "
+                            + "more than once. Create a fresh task with its builder or macro "
+                            + "method, a Supplier<Task>, or an OutputTaskFactory.");
+        }
+        startAttempted = true;
     }
 }

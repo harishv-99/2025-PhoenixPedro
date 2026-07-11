@@ -64,6 +64,7 @@ public final class RunForSecondsTask implements Task {
     private final Consumer<LoopClock> onUpdate;
     private final Runnable onFinish;
 
+    private boolean startAttempted = false;
     private boolean started = false;
     private boolean finished = false;
     private boolean cancelled = false;
@@ -102,6 +103,7 @@ public final class RunForSecondsTask implements Task {
      */
     @Override
     public void start(LoopClock clock) {
+        markStartAttempt();
         if (started) {
             return;
         }
@@ -230,5 +232,16 @@ public final class RunForSecondsTask implements Task {
         if (onFinish != null) {
             onFinish.run();
         }
+    }
+
+    /** Record the single permitted start attempt before invoking any callback. */
+    private void markStartAttempt() {
+        if (startAttempted) {
+            throw new IllegalStateException(
+                    "RunForSecondsTask is single-use and start(...) was called more than once. "
+                            + "Create a fresh task with its builder or macro method, a "
+                            + "Supplier<Task>, or an OutputTaskFactory.");
+        }
+        startAttempted = true;
     }
 }

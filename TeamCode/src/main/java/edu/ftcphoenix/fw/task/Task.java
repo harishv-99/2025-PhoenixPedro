@@ -20,6 +20,12 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * <p>Tasks are intended to be used with a runner such as {@link TaskRunner}, which manages calling
  * {@code start()}, {@code update()}, and checking {@code isComplete()} each iteration.</p>
  *
+ * <h2>Single-use lifecycle</h2>
+ * <p>A Task instance may enter {@link #start(LoopClock)} once. Framework Tasks throw an actionable
+ * {@link IllegalStateException} if the same instance is started again, whether it is still active
+ * or already complete. Build a fresh Task for repeated behavior using the relevant builder or
+ * macro method, a {@code Supplier<Task>}, or an {@link OutputTaskFactory}.</p>
+ *
  * <p>A runner may call {@code start(clock)} and the first {@code update(clock)} in the same loop
  * cycle. In that case {@link LoopClock#dtSec()} describes the loop interval before the task
  * started. A task-owned timer should capture {@link LoopClock#nowSec()} when its interval begins
@@ -43,7 +49,8 @@ public interface Task {
      * Called once when the task is first started.
      *
      * <p>Implementations should perform any initialization here, including capturing the initial
-     * time from {@link LoopClock} if needed.</p>
+     * time from {@link LoopClock} if needed. Framework implementations are single-use and reject a
+     * second call rather than silently restarting or skipping behavior.</p>
      *
      * @param clock loop timing information for the current iteration
      */

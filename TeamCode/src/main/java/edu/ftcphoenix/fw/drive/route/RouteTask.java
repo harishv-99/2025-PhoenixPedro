@@ -13,6 +13,10 @@ import edu.ftcphoenix.fw.task.TaskOutcome;
  * <p>This lets Phoenix task runners sequence route following together with mechanism actions,
  * waits, and other tasks without the framework taking ownership of a specific route library.</p>
  *
+ * <p>A {@code RouteTask} instance is single-use. Create a fresh task with
+ * {@link RouteTasks#follow(String, RouteFollower, Object, Config)} or a
+ * {@code Supplier<Task>} each time a route should run.</p>
+ *
  * <p>Typical usage:</p>
  * <pre>{@code
  * RouteTask.Config cfg = new RouteTask.Config();
@@ -47,6 +51,7 @@ public final class RouteTask<R> implements Task {
     private final R route;
     private final Config cfg;
 
+    private boolean startAttempted = false;
     private boolean started = false;
     private boolean complete = false;
     private TaskOutcome outcome = TaskOutcome.NOT_DONE;
@@ -86,6 +91,12 @@ public final class RouteTask<R> implements Task {
 
     @Override
     public void start(LoopClock clock) {
+        if (startAttempted) {
+            throw new IllegalStateException("RouteTask '" + debugName
+                    + "' is single-use and has already been started. Create a fresh task with "
+                    + "RouteTasks.follow(...) or a Supplier<Task> for each run.");
+        }
+        startAttempted = true;
         started = true;
         complete = false;
         outcome = TaskOutcome.NOT_DONE;

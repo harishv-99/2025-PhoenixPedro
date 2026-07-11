@@ -78,6 +78,9 @@ Task homeLift = PositionCalibrationTasks.search(lift)
         .build();
 ```
 
+Create a fresh search Task for each homing attempt. Search Task objects follow the framework's
+single-use lifecycle and are not restarted after they have begun.
+
 The timeout policy is explicit: use `failAfterSec(...)` for a bounded search or `neverTimeout()` only when another safety path is guaranteed to cancel the task.
 
 For periodic mechanisms such as trays or turrets, `establishReferenceAt(...)` establishes the

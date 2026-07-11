@@ -40,6 +40,10 @@ the framework API.
 - A timed Task or timed Task phase starts at its own `clock.nowSec()` boundary. Never charge it the
   `dtSec()` interval that elapsed before it started, and keep every positive-duration command
   observable by the documented downstream loop phase at least once.
+- Treat every `Task` instance as single-use. A task may enter `start(clock)` once; framework tasks
+  must fail fast on another start before repeating child, controller, or hardware side effects.
+  Build a fresh task from a macro method, `Supplier<Task>`, or `OutputTaskFactory` whenever behavior
+  should run again, and reject obvious duplicate child identities when composing task graphs.
 - Preserve per-cycle semantics. Stateful sources, bindings, task runners, and similar components
   must be safe against repeated sampling or updating in the same `clock.cycle()` where required.
 - Maintain clear ownership:

@@ -16,6 +16,9 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * robot code more expressive and readable, without hiding the underlying
  * primitives.</p>
  *
+ * <p>Each returned Task is single-use. Call these helpers again, or retain a task-producing
+ * supplier or factory, when behavior must repeat.</p>
+ *
  * <p>Typical usage:</p>
  *
  * <pre>{@code
@@ -70,10 +73,18 @@ public final class Tasks {
      */
     public static Task noop() {
         return new Task() {
+            private boolean startAttempted = false;
+
             /** {@inheritDoc} */
             @Override
             public void start(LoopClock clock) {
-                // no-op
+                if (startAttempted) {
+                    throw new IllegalStateException(
+                            "Tasks.noop is single-use and start(...) was called more than once. "
+                                    + "Create a fresh task with its builder or macro method, a "
+                                    + "Supplier<Task>, or an OutputTaskFactory.");
+                }
+                startAttempted = true;
             }
 
             /** {@inheritDoc} */
@@ -93,6 +104,12 @@ public final class Tasks {
             public TaskOutcome getOutcome() {
                 // A no-op task is always considered a successful no-op.
                 return TaskOutcome.SUCCESS;
+            }
+
+            /** {@inheritDoc} */
+            @Override
+            public String getDebugName() {
+                return "Tasks.noop";
             }
         };
     }
@@ -520,7 +537,8 @@ public final class Tasks {
      *
      * <p>This is a thin wrapper around {@link SequenceTask#of(Task...)}.</p>
      *
-     * @param tasks tasks to run in order; must not be {@code null} or contain nulls
+     * @param tasks distinct Task instances to run in order; must not be {@code null} or contain
+     *              nulls or duplicate identities
      */
     public static Task sequence(Task... tasks) {
         return SequenceTask.of(tasks);
@@ -532,7 +550,8 @@ public final class Tasks {
      *
      * <p>This is a thin wrapper around {@link ParallelAllTask#of(Task...)}.</p>
      *
-     * @param tasks tasks to run in parallel; must not be {@code null} or contain nulls
+     * @param tasks distinct Task instances to run in parallel; must not be {@code null} or contain
+     *              nulls or duplicate identities
      */
     public static Task parallelAll(Task... tasks) {
         return ParallelAllTask.of(tasks);
@@ -567,6 +586,10 @@ public final class Tasks {
      * by running {@code onTimeout}, and from the outside, what matters is
      * whether that timeout-handling branch ultimately succeeded or not.</p>
      *
+     * <p>{@code move}, {@code onSuccess}, and {@code onTimeout} must be distinct Task instances.
+     * A nested alias that cannot be seen here is still rejected if it causes a Task to start a
+     * second time.</p>
+     *
      * @param move      the task to run first
      * @param onSuccess task to run if the move succeeds or completes normally
      * @param onTimeout task to run if the move ends with {@link TaskOutcome#TIMEOUT}
@@ -578,8 +601,10 @@ public final class Tasks {
         Objects.requireNonNull(move, "move is required");
         Objects.requireNonNull(onSuccess, "onSuccess is required");
         Objects.requireNonNull(onTimeout, "onTimeout is required");
+        requireDistinctBranchTasks(move, onSuccess, onTimeout);
 
         return new Task() {
+            private boolean startAttempted = false;
             private BranchPhase phase = BranchPhase.MOVE;
             private Task current = move;
 
@@ -588,6 +613,7 @@ public final class Tasks {
             /** {@inheritDoc} */
             @Override
             public void start(LoopClock clock) {
+                markStartAttempt();
                 phase = BranchPhase.MOVE;
                 current = move;
                 branchOutcome = TaskOutcome.UNKNOWN;
@@ -680,6 +706,41 @@ public final class Tasks {
             public String getDebugName() {
                 return "BranchOnOutcome(" + move.getDebugName() + ")";
             }
+
+            /** Record the single permitted wrapper start before starting either child phase. */
+            private void markStartAttempt() {
+                if (startAttempted) {
+                    throw new IllegalStateException(
+                            getDebugName()
+                                    + " is single-use and start(...) was called more than once. "
+                                    + "Create a fresh task with its builder or macro method, a "
+                                    + "Supplier<Task>, or an OutputTaskFactory.");
+                }
+                startAttempted = true;
+            }
         };
+    }
+
+    /** Reject direct aliases among the three retained branch children. */
+    private static void requireDistinctBranchTasks(Task move, Task onSuccess, Task onTimeout) {
+        if (move == onSuccess) {
+            throw duplicateBranchChild("move", "onSuccess");
+        }
+        if (move == onTimeout) {
+            throw duplicateBranchChild("move", "onTimeout");
+        }
+        if (onSuccess == onTimeout) {
+            throw duplicateBranchChild("onSuccess", "onTimeout");
+        }
+    }
+
+    /** Build one actionable direct-alias error for branch construction. */
+    private static IllegalArgumentException duplicateBranchChild(String firstRole,
+                                                                  String secondRole) {
+        return new IllegalArgumentException(
+                "branchOnOutcome requires distinct Task instances, but " + firstRole + " and "
+                        + secondRole + " reference the same object. Create each child as a fresh "
+                        + "task with its builder or macro method, a Supplier<Task>, or an "
+                        + "OutputTaskFactory.");
     }
 }
