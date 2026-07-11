@@ -11,9 +11,9 @@ import edu.ftcphoenix.fw.task.TaskOutcome;
  * Task helpers for source-driven {@link Plant}s.
  *
  * <p>A plant task writes the plant's registered {@link ScalarTarget}; it never calls a plant setter.
- * Feedback-aware helpers such as {@link #moveTo(Plant, double)} then wait for
- * {@link Plant#atTarget(double)}, which prevents false success when a behavior overlay, static
- * bounds, target guard, or rate limiter is making the plant follow a different value.</p>
+ * Feedback-aware moves then wait for {@link Plant#atTarget(double)}, which prevents false success
+ * when a behavior overlay, static bounds, target guard, or rate limiter is making the plant follow
+ * a different value.</p>
  *
  * <p>Build a task-driven plant with {@code targetedBy(ScalarTarget)},
  * {@code targetedByDefaultWritable(...)}, or {@code targetedBy(readOnlySource).writableTarget(...)}.
@@ -24,6 +24,7 @@ import edu.ftcphoenix.fw.task.TaskOutcome;
  * <pre>{@code
  * Task spinUp = PlantTasks.move(shooter)
  *         .to(3200.0)
+ *         .cancelTo(0.0)
  *         .stableFor(0.15)
  *         .timeout(1.5)
  *         .build();
@@ -54,8 +55,10 @@ public final class PlantTasks {
      * Start a guided builder for a feedback-aware move.
      *
      * <p>The resulting task writes the plant's registered target, then waits for
-     * {@link Plant#atTarget(double)}. Optional builder steps add a stability requirement, timeout,
-     * or final target to write after completion.</p>
+     * {@link Plant#atTarget(double)}. After choosing the move target, callers must explicitly
+     * choose whether active cancellation writes a different Plant-unit request or deliberately
+     * leaves the move request in place. Optional builder steps then add a stability requirement,
+     * timeout, or final target to write after successful/timeout completion.</p>
      *
      * @param plant feedback-capable plant with a registered writable target
      * @return first builder step asking which target to request
@@ -71,8 +74,38 @@ public final class PlantTasks {
     public interface MoveTargetStep {
         /**
          * Set the target that the task should request and wait for.
+         *
+         * @param target finite requested target expressed in Plant units
+         * @throws IllegalArgumentException if {@code target} is not finite
          */
-        MoveReadyStep to(double target);
+        MoveCancellationStep to(double target);
+    }
+
+    /**
+     * Required feedback-move step: choose what happens if the active task is cancelled.
+     *
+     * <p>Cancellation changes the Plant's registered behavior request; the Plant still owns final
+     * target resolution, bounds, guards, and hardware application on its next update.</p>
+     */
+    public interface MoveCancellationStep {
+        /**
+         * On active cancellation, write {@code target} once to the Plant's registered target.
+         *
+         * @param target finite cancellation request expressed in Plant units
+         * @return optional completion-modifier step
+         * @throws IllegalArgumentException if {@code target} is not finite
+         */
+        MoveReadyStep cancelTo(double target);
+
+        /**
+         * Deliberately leave the requested move target unchanged on cancellation.
+         *
+         * <p>The mechanism may continue moving unless a robot-owned coordinator changes the final
+         * target source or otherwise disables the behavior.</p>
+         *
+         * @return optional completion-modifier step
+         */
+        MoveReadyStep leaveTargetOnCancel();
     }
 
     /**
@@ -92,7 +125,10 @@ public final class PlantTasks {
         MoveReadyStep timeout(double timeoutSec);
 
         /**
-         * Write {@code finalTarget} once after success or timeout.
+         * Write {@code finalTarget} once after success or timeout, never because of cancellation.
+         *
+         * @param finalTarget finite completion request expressed in Plant units
+         * @throws IllegalArgumentException if {@code finalTarget} is not finite
          */
         MoveReadyStep thenTarget(double finalTarget);
 
@@ -104,9 +140,11 @@ public final class PlantTasks {
         Task build();
     }
 
-    private static final class MoveBuilder implements MoveTargetStep, MoveReadyStep {
+    private static final class MoveBuilder implements MoveTargetStep, MoveCancellationStep, MoveReadyStep {
         private final Plant plant;
         private double target = Double.NaN;
+        private boolean hasCancellationTarget;
+        private double cancellationTarget = Double.NaN;
         private double stableSec = 0.0;
         private double timeoutSec = -1.0;
         private double finalTarget = Double.NaN;
@@ -116,9 +154,24 @@ public final class PlantTasks {
         }
 
         @Override
-        public MoveReadyStep to(double target) {
+        public MoveCancellationStep to(double target) {
             requireFinite(target, "target");
             this.target = target;
+            return this;
+        }
+
+        @Override
+        public MoveReadyStep cancelTo(double target) {
+            requireFinite(target, "cancellation target");
+            this.hasCancellationTarget = true;
+            this.cancellationTarget = target;
+            return this;
+        }
+
+        @Override
+        public MoveReadyStep leaveTargetOnCancel() {
+            this.hasCancellationTarget = false;
+            this.cancellationTarget = Double.NaN;
             return this;
         }
 
@@ -148,7 +201,8 @@ public final class PlantTasks {
             if (!Double.isFinite(target)) {
                 throw new IllegalStateException("PlantTasks.move(...).to(target) is required before build()");
             }
-            return new MoveTask(plant, target, stableSec, timeoutSec, finalTarget);
+            return new MoveTask(plant, target, hasCancellationTarget, cancellationTarget,
+                    stableSec, timeoutSec, finalTarget);
         }
     }
 
@@ -161,58 +215,18 @@ public final class PlantTasks {
 
     /**
      * Hold the plant's writable target at {@code target} for {@code seconds}, then leave it there.
+     * Active cancellation also leaves the registered request at {@code target}.
      */
     public static Task holdTargetFor(final Plant plant, final double target, final double seconds) {
         return ScalarTasks.holdFor(writableTargetOf(plant, "holdTargetFor"), target, seconds);
     }
 
     /**
-     * Hold the plant's writable target at {@code target} for {@code seconds}, then set {@code finalTarget}.
+     * Hold the plant's writable target at {@code target} for {@code seconds}, then set
+     * {@code finalTarget}. Active cancellation also applies {@code finalTarget}.
      */
     public static Task holdTargetForThen(final Plant plant, final double target, final double seconds, final double finalTarget) {
         return ScalarTasks.holdForThen(writableTargetOf(plant, "holdTargetForThen"), target, seconds, finalTarget);
-    }
-
-    /**
-     * Move a feedback plant to {@code target} and finish when it is truly at that target.
-     */
-    public static Task moveTo(final Plant plant, final double target) {
-        return move(plant).to(target).build();
-    }
-
-    /**
-     * Move a feedback plant to {@code target}, finishing on success or timeout.
-     */
-    public static Task moveTo(final Plant plant, final double target, final double timeoutSec) {
-        return move(plant).to(target).timeout(timeoutSec).build();
-    }
-
-    /**
-     * Move to {@code target} and require the condition to remain true for {@code stableSec}.
-     */
-    public static Task moveToStable(final Plant plant, final double target, final double stableSec) {
-        return move(plant).to(target).stableFor(stableSec).build();
-    }
-
-    /**
-     * Move to {@code target}, require stability, and give up after {@code timeoutSec}.
-     */
-    public static Task moveToStable(final Plant plant, final double target, final double stableSec, final double timeoutSec) {
-        return move(plant).to(target).stableFor(stableSec).timeout(timeoutSec).build();
-    }
-
-    /**
-     * Move to {@code target}, then set {@code finalTarget} once after success or timeout.
-     */
-    public static Task moveToThen(final Plant plant, final double target, final double timeoutSec, final double finalTarget) {
-        return move(plant).to(target).timeout(timeoutSec).thenTarget(finalTarget).build();
-    }
-
-    /**
-     * Move to {@code target}, require stability, then set {@code finalTarget} once.
-     */
-    public static Task moveToThen(final Plant plant, final double target, final double stableSec, final double timeoutSec, final double finalTarget) {
-        return move(plant).to(target).stableFor(stableSec).timeout(timeoutSec).thenTarget(finalTarget).build();
     }
 
     private static ScalarTarget writableTargetOf(Plant plant, String method) {
@@ -249,6 +263,8 @@ public final class PlantTasks {
         private final Plant plant;
         private final ScalarTarget writableTarget;
         private final double target;
+        private final boolean hasCancellationTarget;
+        private final double cancellationTarget;
         private final double stableSec;
         private final double timeoutSec;
         private final double finalTarget;
@@ -261,10 +277,18 @@ public final class PlantTasks {
         private double elapsedSec;
         private TaskOutcome outcome = TaskOutcome.NOT_DONE;
 
-        MoveTask(Plant plant, double target, double stableSec, double timeoutSec, double finalTarget) {
+        MoveTask(Plant plant,
+                 double target,
+                 boolean hasCancellationTarget,
+                 double cancellationTarget,
+                 double stableSec,
+                 double timeoutSec,
+                 double finalTarget) {
             this.plant = Objects.requireNonNull(plant, "plant");
             this.writableTarget = writableTargetOf(plant, "move");
             this.target = target;
+            this.hasCancellationTarget = hasCancellationTarget;
+            this.cancellationTarget = cancellationTarget;
             this.stableSec = stableSec;
             this.timeoutSec = timeoutSec;
             this.finalTarget = finalTarget;
@@ -276,7 +300,7 @@ public final class PlantTasks {
             if (startAttempted) {
                 throw new IllegalStateException("PlantTasks.move(" + target + ") is single-use and "
                         + "cannot be started more than once. Create a fresh Task with "
-                        + "PlantTasks.move(...).to(...).build() or rebuild the macro; use a "
+                        + "the guided PlantTasks.move(...) builder or rebuild the macro; use a "
                         + "Supplier<Task> for repeated scheduling.");
             }
             startAttempted = true;
@@ -291,10 +315,16 @@ public final class PlantTasks {
 
         @Override
         public void update(LoopClock clock) {
-            if (!started || complete) return;
+            if (!started) {
+                throw new IllegalStateException("PlantTasks.move(" + target + ") cannot be updated "
+                        + "before start(clock). Start it first, normally by enqueueing it in a "
+                        + "TaskRunner.");
+            }
+            if (complete) return;
             double nowSec = nowSec(clock, startSec);
             elapsedSec = elapsedSince(startSec, nowSec);
             boolean reached = plant.atTarget(target);
+            if (complete) return;
             boolean done;
             if (stableSec <= 0.0) {
                 done = reached;
@@ -320,17 +350,23 @@ public final class PlantTasks {
         }
 
         private void finish(TaskOutcome result) {
-            if (hasFinalTarget) writableTarget.set(finalTarget);
+            if (hasFinalTarget) {
+                writableTarget.set(finalTarget);
+                if (complete) return;
+            }
             outcome = result;
             complete = true;
         }
 
         @Override
         public void cancel() {
-            if (!complete) {
-                outcome = TaskOutcome.CANCELLED;
-                complete = true;
-            }
+            if (!started || complete) return;
+
+            // Become terminal before the optional external write so a throwing target is not
+            // written again by repeated cancellation or runner failure cleanup.
+            outcome = TaskOutcome.CANCELLED;
+            complete = true;
+            if (hasCancellationTarget) writableTarget.set(cancellationTarget);
         }
 
         @Override

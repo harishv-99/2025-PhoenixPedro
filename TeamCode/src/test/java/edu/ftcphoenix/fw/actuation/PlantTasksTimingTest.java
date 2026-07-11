@@ -47,6 +47,7 @@ public final class PlantTasksTimingTest {
         FakeFeedbackPlant plant = new FakeFeedbackPlant();
         Task move = PlantTasks.move(plant)
                 .to(8.0)
+                .leaveTargetOnCancel()
                 .timeout(0.10)
                 .thenTarget(-2.0)
                 .build();
@@ -75,6 +76,7 @@ public final class PlantTasksTimingTest {
         FakeFeedbackPlant plant = new FakeFeedbackPlant();
         Task move = PlantTasks.move(plant)
                 .to(12.0)
+                .leaveTargetOnCancel()
                 .stableFor(0.10)
                 .timeout(1.0)
                 .thenTarget(3.0)
@@ -107,6 +109,7 @@ public final class PlantTasksTimingTest {
         plant.reached = true;
         Task move = PlantTasks.move(plant)
                 .to(4.0)
+                .leaveTargetOnCancel()
                 .stableFor(0.10)
                 .build();
 
@@ -143,6 +146,7 @@ public final class PlantTasksTimingTest {
         plant.reached = true;
         Task move = PlantTasks.move(plant)
                 .to(6.0)
+                .leaveTargetOnCancel()
                 .stableFor(0.10)
                 .timeout(0.10)
                 .thenTarget(1.0)
@@ -164,6 +168,7 @@ public final class PlantTasksTimingTest {
         FakeFeedbackPlant plant = new FakeFeedbackPlant();
         Task move = PlantTasks.move(plant)
                 .to(5.0)
+                .leaveTargetOnCancel()
                 .timeout(1.0)
                 .thenTarget(-1.0)
                 .build();

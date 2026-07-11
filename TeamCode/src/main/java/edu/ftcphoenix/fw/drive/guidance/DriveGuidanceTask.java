@@ -145,6 +145,9 @@ public final class DriveGuidanceTask implements Task {
         lastOmegaErrorRad = Double.NaN;
 
         core.onEnable();
+        if (complete) {
+            return;
+        }
         drivebase.stop();
     }
 
@@ -153,11 +156,13 @@ public final class DriveGuidanceTask implements Task {
      */
     @Override
     public void update(LoopClock clock) {
+        if (!started) {
+            throw new IllegalStateException("DriveGuidanceTask '" + debugName + "' cannot be "
+                    + "updated before start(clock). Start it first, normally by enqueueing it in "
+                    + "a TaskRunner.");
+        }
         if (complete) {
             return;
-        }
-        if (!started) {
-            start(clock);
         }
         if (clock == null) {
             // Defensive: no clock means no safe control.
@@ -166,22 +171,31 @@ public final class DriveGuidanceTask implements Task {
         }
 
         drivebase.update(clock);
+        if (complete) {
+            return;
+        }
 
         // Hard timeout.
         double elapsed = clock.nowSec() - startTimeSec;
         if (cfg.timeoutSec > 0.0 && elapsed > cfg.timeoutSec) {
-            drivebase.stop();
             complete = true;
             outcome = TaskOutcome.TIMEOUT;
+            drivebase.stop();
             return;
         }
 
         DriveOverlayMask requested = (cfg.requestedMask != null) ? cfg.requestedMask : plan.requestedMask();
         DriveGuidanceCore.Step step = core.step(clock, requested);
+        if (complete) {
+            return;
+        }
 
         // No usable command this loop.
         if (step.out.mask.isNone()) {
             drivebase.stop();
+            if (complete) {
+                return;
+            }
             if (!Double.isFinite(noGuidanceStartSec)) {
                 noGuidanceStartSec = clock.nowSec();
             }
@@ -196,6 +210,9 @@ public final class DriveGuidanceTask implements Task {
         noGuidanceStartSec = Double.NaN;
         noGuidanceSec = 0.0;
         drivebase.drive(step.out.signal);
+        if (complete) {
+            return;
+        }
 
         // Update error bookkeeping for debug.
         lastTranslationErrorIn = step.hasTranslationError
@@ -212,9 +229,9 @@ public final class DriveGuidanceTask implements Task {
                 || (step.hasOmegaError && Math.abs(lastOmegaErrorRad) <= cfg.headingTolRad);
 
         if (translationOk && omegaOk) {
-            drivebase.stop();
             complete = true;
             outcome = TaskOutcome.SUCCESS;
+            drivebase.stop();
         }
     }
 
@@ -223,12 +240,12 @@ public final class DriveGuidanceTask implements Task {
      */
     @Override
     public void cancel() {
-        if (complete) {
+        if (!started || complete) {
             return;
         }
-        drivebase.stop();
         complete = true;
         outcome = TaskOutcome.CANCELLED;
+        drivebase.stop();
     }
 
     /**

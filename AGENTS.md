@@ -44,6 +44,11 @@ the framework API.
   must fail fast on another start before repeating child, controller, or hardware side effects.
   Build a fresh task from a macro method, `Supplier<Task>`, or `OutputTaskFactory` whenever behavior
   should run again, and reject obvious duplicate child identities when composing task graphs.
+- Keep Task cancellation active-only and idempotent: cancellation before `start(clock)` has no
+  effect, active cancellation is terminal, and terminal/repeated cancellation does nothing. Reject
+  direct updates before start; `Tasks.noop()` is the intentional terminal-at-construction exception.
+  A total runner abort or lifecycle failure must best-effort cancel its current Task and clear
+  pending work; never expose a drop-without-cancel queue operation.
 - Preserve per-cycle semantics. Stateful sources, bindings, task runners, and similar components
   must be safe against repeated sampling or updating in the same `clock.cycle()` where required.
 - Maintain clear ownership:
@@ -62,7 +67,9 @@ the framework API.
   `PlantTargets.exact(...)`, `overlay(...)`, or `plan(...)`, then let the Plant apply hardware
   bounds, references, and guards. Direct power Plants own the normalized `[-1, +1]` target range.
   Reject static guard fallbacks outside any Plant's declared range and keep every final guarded
-  target finite and inside that range. Do not introduce competing imperative writers.
+  target finite and inside that range. A feedback move must explicitly choose whether active
+  cancellation writes a caller-selected target or leaves its persistent request unchanged. Do not
+  introduce competing imperative writers or claim that Task cancellation bypasses the source graph.
 - Prefer framework task factories (`Tasks`, `PlantTasks`, `DriveTasks`, guidance/route task helpers)
   over hand-written task state machines unless a new state machine is genuinely needed.
 - Keep drive intent and actuation separate: `DriveSource` produces robot-centric `DriveSignal`s;

@@ -129,7 +129,10 @@ public final class RunForSecondsTask implements Task {
      */
     @Override
     public void update(LoopClock clock) {
-        if (!started || finished) {
+        if (!started) {
+            throw TaskLifecycle.updateBeforeStart("RunForSecondsTask");
+        }
+        if (finished) {
             return;
         }
 
@@ -139,8 +142,8 @@ public final class RunForSecondsTask implements Task {
 
         elapsedSec = elapsedSinceStart(clock);
         if (elapsedSec >= durationSec) {
-            callFinishOnce();
             finished = true;
+            callFinishOnce();
         }
     }
 
@@ -153,8 +156,8 @@ public final class RunForSecondsTask implements Task {
             return;
         }
         cancelled = true;
-        callFinishOnce();
         finished = true;
+        callFinishOnce();
     }
 
     /**

@@ -605,6 +605,7 @@ public final class Tasks {
 
         return new Task() {
             private boolean startAttempted = false;
+            private boolean started = false;
             private BranchPhase phase = BranchPhase.MOVE;
             private Task current = move;
 
@@ -614,6 +615,7 @@ public final class Tasks {
             @Override
             public void start(LoopClock clock) {
                 markStartAttempt();
+                started = true;
                 phase = BranchPhase.MOVE;
                 current = move;
                 branchOutcome = TaskOutcome.UNKNOWN;
@@ -623,13 +625,23 @@ public final class Tasks {
             /** {@inheritDoc} */
             @Override
             public void update(LoopClock clock) {
+                if (!started) {
+                    throw TaskLifecycle.updateBeforeStart(getDebugName());
+                }
                 if (phase == BranchPhase.DONE) {
                     return;
                 }
 
                 current.update(clock);
+                if (phase == BranchPhase.DONE) {
+                    return;
+                }
 
-                if (!current.isComplete()) {
+                boolean childComplete = current.isComplete();
+                if (phase == BranchPhase.DONE) {
+                    return;
+                }
+                if (!childComplete) {
                     return;
                 }
 
@@ -637,23 +649,30 @@ public final class Tasks {
                     case MOVE:
                         // Decide which branch to run based on the move's outcome.
                         TaskOutcome moveOutcome = move.getOutcome();
+                        if (phase == BranchPhase.DONE) {
+                            return;
+                        }
                         if (moveOutcome == TaskOutcome.TIMEOUT) {
                             current = onTimeout;
-                            current.start(clock);
                             phase = BranchPhase.BRANCH;
+                            current.start(clock);
                         } else if (moveOutcome == TaskOutcome.CANCELLED) {
                             branchOutcome = TaskOutcome.CANCELLED;
                             phase = BranchPhase.DONE;
                         } else {
                             current = onSuccess;
-                            current.start(clock);
                             phase = BranchPhase.BRANCH;
+                            current.start(clock);
                         }
                         break;
 
                     case BRANCH:
                         // Finished running the chosen branch.
-                        branchOutcome = current.getOutcome();
+                        TaskOutcome outcome = current.getOutcome();
+                        if (phase == BranchPhase.DONE) {
+                            return;
+                        }
+                        branchOutcome = outcome;
                         phase = BranchPhase.DONE;
                         break;
 
@@ -667,14 +686,16 @@ public final class Tasks {
              */
             @Override
             public void cancel() {
-                if (phase == BranchPhase.DONE) {
+                if (!started || phase == BranchPhase.DONE) {
                     return;
                 }
-                if (current != null && !current.isComplete()) {
-                    current.cancel();
-                }
+                Task taskToCancel = current;
                 branchOutcome = TaskOutcome.CANCELLED;
                 phase = BranchPhase.DONE;
+                // Do not re-query completion while cleaning up a failed child lifecycle query.
+                if (taskToCancel != null) {
+                    taskToCancel.cancel();
+                }
             }
 
             /** {@inheritDoc} */
@@ -690,7 +711,8 @@ public final class Tasks {
                     case MOVE:
                     case BRANCH:
                         // While executing, mirror the active child.
-                        return current.getOutcome();
+                        TaskOutcome outcome = current.getOutcome();
+                        return phase == BranchPhase.DONE ? branchOutcome : outcome;
 
                     case DONE:
                     default:

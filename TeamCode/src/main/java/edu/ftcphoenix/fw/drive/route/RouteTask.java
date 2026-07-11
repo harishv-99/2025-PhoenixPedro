@@ -106,26 +106,35 @@ public final class RouteTask<R> implements Task {
 
     @Override
     public void update(LoopClock clock) {
+        if (!started) {
+            throw new IllegalStateException("RouteTask '" + debugName + "' cannot be updated "
+                    + "before start(clock). Start it first, normally by enqueueing it in a "
+                    + "TaskRunner.");
+        }
         if (complete) {
             return;
-        }
-        if (!started) {
-            start(clock);
         }
         if (clock == null) {
             return;
         }
 
         follower.update(clock);
-
-        if (cfg.timeoutSec > 0.0 && (clock.nowSec() - startTimeSec) > cfg.timeoutSec) {
-            follower.cancel();
-            complete = true;
-            outcome = TaskOutcome.TIMEOUT;
+        if (complete) {
             return;
         }
 
-        if (!follower.isBusy()) {
+        if (cfg.timeoutSec > 0.0 && (clock.nowSec() - startTimeSec) > cfg.timeoutSec) {
+            complete = true;
+            outcome = TaskOutcome.TIMEOUT;
+            follower.cancel();
+            return;
+        }
+
+        boolean busy = follower.isBusy();
+        if (complete) {
+            return;
+        }
+        if (!busy) {
             complete = true;
             outcome = TaskOutcome.SUCCESS;
         }
@@ -133,12 +142,12 @@ public final class RouteTask<R> implements Task {
 
     @Override
     public void cancel() {
-        if (complete) {
+        if (!started || complete) {
             return;
         }
-        follower.cancel();
         complete = true;
         outcome = TaskOutcome.CANCELLED;
+        follower.cancel();
     }
 
     @Override

@@ -24,7 +24,8 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * runner.enqueue(new WaitUntilTask(ready, 2.0));
  * }</pre>
  *
- * <p>Cancellation ends the wait immediately and reports {@link TaskOutcome#CANCELLED}.</p>
+ * <p>Active cancellation ends the wait immediately and reports
+ * {@link TaskOutcome#CANCELLED}; pre-start and terminal cancellation are no-ops.</p>
  *
  * <p>Timeout elapsed time is measured from the {@link LoopClock#nowSec()} captured at task start,
  * so the loop interval before scheduling is never charged to the wait. The condition is sampled
@@ -36,6 +37,7 @@ public final class WaitUntilTask implements Task {
     private final double timeoutSec;
 
     private boolean startAttempted = false;
+    private boolean started = false;
     private boolean finished = false;
     private boolean timedOut = false;
     private boolean cancelled = false;
@@ -71,6 +73,7 @@ public final class WaitUntilTask implements Task {
     @Override
     public void start(LoopClock clock) {
         markStartAttempt();
+        started = true;
         finished = false;
         timedOut = false;
         cancelled = false;
@@ -82,10 +85,16 @@ public final class WaitUntilTask implements Task {
     /** {@inheritDoc} */
     @Override
     public void update(LoopClock clock) {
+        if (!started) {
+            throw TaskLifecycle.updateBeforeStart("WaitUntilTask");
+        }
         if (finished) {
             return;
         }
         boolean cond = condition.getAsBoolean(clock);
+        if (finished) {
+            return;
+        }
         lastCondition = cond;
         if (cond) {
             finished = true;
@@ -103,7 +112,7 @@ public final class WaitUntilTask implements Task {
      */
     @Override
     public void cancel() {
-        if (finished) {
+        if (!started || finished) {
             return;
         }
         finished = true;

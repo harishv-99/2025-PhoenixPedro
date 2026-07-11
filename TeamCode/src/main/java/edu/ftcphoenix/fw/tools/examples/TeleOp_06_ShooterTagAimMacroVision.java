@@ -526,6 +526,7 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
         // Step 1: set shooter target and wait for atTarget() or timeout.
         Task spinUp = PlantTasks.move(shooter)
                 .to(shooterTargetVel)
+                .cancelTo(0.0)
                 .timeout(SHOOTER_SPINUP_TIMEOUT_SEC)
                 .build();
 
@@ -536,6 +537,7 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
         Task feedTransfer = PlantTasks.write(transfer)
                 .to(TRANSFER_POWER_SHOOT)
                 .forSeconds(TRANSFER_PULSE_SEC)
+                .then(0.0)
                 .build();
 
         Task pusherLoad = PlantTasks.write(pusher)

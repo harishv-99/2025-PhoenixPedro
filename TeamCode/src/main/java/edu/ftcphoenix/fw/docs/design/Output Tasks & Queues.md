@@ -247,7 +247,15 @@ When a driver lets go of a trigger, changes mode, or an autonomous step is inter
 feederQueue.cancelAndClear();
 ```
 
-Use plain `clear()` only when you intentionally want to forget queue state without invoking cancellation hooks. Most robot code should reach for `cancelAndClear()`.
+`cancelAndClear()` is the total-abort operation: it cooperatively cancels the active output Task,
+always discards every queued Task, invalidates any cached active output, and reports the queue's
+configured idle value. Queued Tasks have not started and receive no cancellation callback. There is
+no abrupt queue-forgetting operation that can silently abandon active work.
+
+The same fail-stop rule applies if start, update, completion checking, or cancellation throws a
+`RuntimeException`. The runner best-effort cancels active or partially started work, clears all
+owned work and cached output, then rethrows the original failure with any cleanup failure
+suppressed.
 
 Typical abort situations:
 

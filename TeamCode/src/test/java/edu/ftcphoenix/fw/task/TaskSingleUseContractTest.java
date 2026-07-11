@@ -209,21 +209,22 @@ public final class TaskSingleUseContractTest {
     }
 
     @Test
-    public void cancelBeforeStartKeepsEstablishedFirstStartEffects() {
+    public void cancelBeforeStartIsNoOpAndDoesNotConsumeFirstStart() {
         ManualLoopClock manualClock = new ManualLoopClock();
         LoopClock clock = manualClock.clock();
 
         AtomicInteger instantActions = new AtomicInteger();
         Task instant = new InstantTask(instantActions::incrementAndGet);
         instant.cancel();
+        assertFalse(instant.isComplete());
         instant.start(clock);
-        assertEquals(0, instantActions.get());
-        assertEquals(TaskOutcome.CANCELLED, instant.getOutcome());
+        assertEquals(1, instantActions.get());
+        assertEquals(TaskOutcome.SUCCESS, instant.getOutcome());
         assertSingleUseStartRejected(instant, clock, "InstantTask");
 
         Task wait = new WaitUntilTask(BooleanSource.constant(false));
         wait.cancel();
-        assertTrue(wait.isComplete());
+        assertFalse(wait.isComplete());
         wait.start(clock);
         assertFalse(wait.isComplete());
         assertSingleUseStartRejected(wait, clock, "WaitUntilTask");
@@ -240,8 +241,8 @@ public final class TaskSingleUseContractTest {
         Task parallel = Tasks.parallelAll(Tasks.runOnce(parallelActions::incrementAndGet));
         parallel.cancel();
         parallel.start(clock);
-        assertEquals(0, parallelActions.get());
-        assertEquals(TaskOutcome.CANCELLED, parallel.getOutcome());
+        assertEquals(1, parallelActions.get());
+        assertEquals(TaskOutcome.SUCCESS, parallel.getOutcome());
         assertSingleUseStartRejected(parallel, clock, "ParallelAllTask");
     }
 

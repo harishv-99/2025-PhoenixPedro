@@ -452,6 +452,13 @@ error if the same object is started again. When behavior should repeat, create a
 macro/builder method, `Supplier<Task>`, or `OutputTaskFactory`; do not reset or re-enqueue the old
 object. Composites reject obvious duplicate child identities before starting any child.
 
+Cancellation is active-only. Calling `cancel()` before the first `start(clock)` is a
+side-effect-free no-op; cancelling an active Task makes it terminal; and cancelling a terminal Task
+or cancelling repeatedly is a no-op. Calling `update(clock)` directly before `start(clock)` is a
+lifecycle error and framework Tasks fail with an actionable message rather than guessing whether
+to start themselves. `Tasks.noop()` is the intentional exception: it is already successfully
+complete when created, so direct update and cancellation are harmless no-ops.
+
 ### 4.2 The `TaskRunner`
 
 `TaskRunner` runs tasks sequentially (FIFO). It rejects the same Task identity when that object is
@@ -466,6 +473,15 @@ timeout, or phase timer from `clock.nowSec()` rather than charging that precedin
 positive-duration command must remain available to the documented downstream drive/output/Plant
 phase for at least one loop observation; a zero-duration command may complete immediately.
 
+`cancelAndClear()` is the normal total-abort operation: it cancels the active Task, if any, and
+always discards every queued Task. Queued Tasks never receive a pre-start cancellation callback.
+There is no abrupt queue-forgetting path that can silently abandon active work. If `start()`,
+`update()`, `isComplete()`, or a cancellation hook throws a `RuntimeException`, the runner fails
+closed: it detaches and best-effort cancels active or partially started work, clears the queue,
+resets its state, and rethrows the original failure with any cleanup failure suppressed.
+`OutputTaskRunner` also invalidates its source caches and returns to its configured idle output on
+total-abort and fail-stop paths.
+
 ### 4.3 Prefer factory helpers
 
 Robot code should rarely implement raw tasks directly. Prefer:
@@ -474,6 +490,10 @@ Robot code should rarely implement raw tasks directly. Prefer:
 * `ScalarTasks.write(...)` for standalone `ScalarTarget`s, `PlantTasks.write(plant)` for time-based writes to a Plant's registered target, and `PlantTasks.move(plant)` for feedback-aware moves
 * `Tasks.outputPulse(...)` + `OutputTaskRunner` for short output-producing pulses that are overlaid into a final Plant target source
 * `DriveTasks.*` for drive behaviors
+
+For a timed scalar or Plant write, `.then(value)` applies that final registered request after normal
+completion **and active cancellation**. Omitting `.then(...)`, or selecting `.leaveThere()`, leaves
+the held request in place. Choose deliberately; neither behavior is an imperative hardware stop.
 
 ### 4.4 Output pulses are source proposals, not Plant writers
 
@@ -502,8 +522,23 @@ Phoenix distinguishes:
 
 Important consequence:
 
-* `PlantTasks.move(plant)` and compact feedback helpers such as `moveTo(...)` / `moveToThen(...)` **require** `plant.hasFeedback() == true` and will throw if used on an open-loop plant.
+* `PlantTasks.move(plant)` **requires** `plant.hasFeedback() == true` and will throw if used on an open-loop plant.
 * Time-based helpers such as `PlantTasks.write(plant).to(...).forSeconds(...)` and compact `holdTargetFor(...)` helpers work on any Plant with a registered writable target.
+
+A feedback move must answer its cancellation question immediately after `.to(target)`:
+
+* `.cancelTo(cancelTarget)` writes that finite Plant-unit request once on active cancellation.
+* `.leaveTargetOnCancel()` deliberately leaves the move request in place, so motion may continue.
+
+After that required choice, robot code may add `.stableFor(...)`, `.timeout(...)`,
+`.thenTarget(...)`, and `.build()`. The completion target from `.thenTarget(...)` applies to success
+or timeout, not cancellation; use `.cancelTo(...)` when those outcomes need different requests.
+
+`cancelTo(...)` only changes the registered target request. The Plant still owns the final write,
+and overlays, bounds, references, and guards may mask or transform that request. Cancelling one
+Task also cannot undo persistent requests left by earlier completed macro steps. Robot-owned
+shutdown must still cancel queues, disable relevant overlays, and reset every related mechanism
+request for coordinated or emergency cleanup.
 
 This makes it hard to accidentally write a “wait for target” macro on a mechanism that has no feedback.
 

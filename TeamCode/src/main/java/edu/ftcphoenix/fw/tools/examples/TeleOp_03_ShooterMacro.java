@@ -414,6 +414,7 @@ public final class TeleOp_03_ShooterMacro extends OpMode {
         // Step 1: set shooter target and wait for atTarget() or timeout.
         Task spinUp = PlantTasks.move(shooter)
                 .to(SHOOTER_VELOCITY_NATIVE)
+                .cancelTo(0.0)
                 .timeout(SHOOTER_SPINUP_TIMEOUT_SEC)
                 .build();
 
@@ -424,6 +425,7 @@ public final class TeleOp_03_ShooterMacro extends OpMode {
         Task feedTransfer = PlantTasks.write(transfer)
                 .to(TRANSFER_POWER_SHOOT)
                 .forSeconds(TRANSFER_PULSE_SEC)
+                .then(0.0)
                 .build();
 
         Task pusherLoad = PlantTasks.write(pusher)

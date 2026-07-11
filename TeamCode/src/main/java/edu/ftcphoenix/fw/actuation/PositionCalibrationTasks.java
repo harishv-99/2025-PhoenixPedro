@@ -228,6 +228,7 @@ public final class PositionCalibrationTasks {
         private final double timeoutSec;
         private boolean startAttempted;
         private boolean started;
+        private boolean searchAttempted;
         private boolean complete;
         private double startSec;
         private TaskOutcome outcome = TaskOutcome.NOT_DONE;
@@ -257,39 +258,54 @@ public final class PositionCalibrationTasks {
             }
             startAttempted = true;
             started = true;
+            searchAttempted = false;
             complete = false;
             startSec = clock != null ? clock.nowSec() : 0.0;
             outcome = TaskOutcome.NOT_DONE;
             condition.reset();
+            if (complete) return;
+            // Mark immediately before acquisition so a failed begin still gets one cleanup
+            // attempt, while a condition-reset failure cannot release an unacquired search.
+            searchAttempted = true;
             plant.beginCalibrationSearch(power);
         }
 
         @Override
         public void update(LoopClock clock) {
-            if (!started || complete) return;
+            if (!started) {
+                throw new IllegalStateException("PositionCalibrationTasks.search(...) cannot be "
+                        + "updated before start(clock). Start it first, normally by enqueueing it "
+                        + "in a TaskRunner.");
+            }
+            if (complete) return;
             plant.update(clock);
-            if (condition.getAsBoolean(clock)) {
+            if (complete) return;
+            boolean referenceFound = condition.getAsBoolean(clock);
+            if (complete) return;
+            if (referenceFound) {
                 plant.establishReferenceAt(reference, clock);
-                plant.endCalibrationSearch(true);
-                if (holdAfter) plant.writableTarget().set(holdTarget);
+                if (complete) return;
                 outcome = TaskOutcome.SUCCESS;
                 complete = true;
+                plant.endCalibrationSearch(true);
+                if (holdAfter) plant.writableTarget().set(holdTarget);
                 return;
             }
             if (Double.isFinite(timeoutSec) && clock != null && clock.nowSec() - startSec >= timeoutSec) {
-                plant.endCalibrationSearch(true);
                 outcome = TaskOutcome.TIMEOUT;
                 complete = true;
+                plant.endCalibrationSearch(true);
             }
         }
 
         @Override
         public void cancel() {
-            if (!complete) {
-                plant.endCalibrationSearch(true);
-                outcome = TaskOutcome.CANCELLED;
-                complete = true;
-            }
+            if (!started || complete) return;
+
+            // Mark terminal before external cleanup so a throwing Plant cleanup is not repeated.
+            outcome = TaskOutcome.CANCELLED;
+            complete = true;
+            if (searchAttempted) plant.endCalibrationSearch(true);
         }
 
         @Override
