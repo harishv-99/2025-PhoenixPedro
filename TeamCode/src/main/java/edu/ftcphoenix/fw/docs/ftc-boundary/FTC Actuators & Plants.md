@@ -83,6 +83,8 @@ Plant static range / reference policy
     ↓
 Plant targetGuards() hardware protection
     ↓
+final finite / declared-range defense
+    ↓
 applied target + PlantTargetStatus
     ↓
 hardware/control
@@ -123,13 +125,18 @@ PositionPlant lift = FtcActuators.plant(hardwareMap)
 
 `bounded(...)` is also a hardware limit, but it is kept outside `targetGuards()` because it defines
 the Plant's legal coordinate system. Dynamic guards such as rate limits, hold-last interlocks, and
-fallback targets live in `targetGuards()`.
+fallback targets live in `targetGuards()`. When a mapped Plant is built, each static fallback must
+lie inside that declared range or `build()` reports which guard and value to fix. After dynamic
+guards run, the Plant verifies the result is still finite and inside the range before updating
+`getAppliedTarget()` or commanding hardware. If that final defense changes a result, status explains
+the correction and any rate limiter is reconciled to the command that was actually applied.
 
 A max-rate guard uses actual elapsed loop time; it does not predict the future loop period. The first
 sample initializes directly to the first guarded candidate, and `stop()`/`reset()` clear dynamic guard
-state. If a mechanism needs startup limiting from a known physical position, initialize the writable
-target from that measurement or use an appropriate reference policy before requesting a far-away
-target.
+state. If loop time is temporarily non-finite, it holds the last output until a finite time baseline
+has been restored. If a mechanism needs startup limiting from a known physical position, initialize
+the writable target from that measurement or use an appropriate reference policy before requesting
+a far-away target.
 
 ---
 

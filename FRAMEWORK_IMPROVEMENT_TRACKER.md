@@ -64,7 +64,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 |---:|---|---|---|---|
 | 1 | TEST-01 | Pure framework test harness | Done | Establish fake-clock and pure unit-test support before behavior changes. |
 | 2 | PHX-01 | Phoenix shutdown ordering | Done | Make shutdown one idempotent, correctly ordered owner operation. |
-| 3 | SAFE-01 | Final Plant target invariant | Proposed | Validate finite/range-safe output after all dynamic guards. |
+| 3 | SAFE-01 | Final Plant target invariant | Done | Validate finite/range-safe output after all dynamic guards. |
 | 4 | SAFE-02 | Power Plant applied-target truth | Proposed | Clamp normalized power in the Plant and report the clamp. |
 | 5 | TASK-01 | Timed-task start semantics | Proposed | Measure elapsed time from task start, not the preceding loop interval. |
 | 6 | TASK-02 | Task reuse contract | Proposed | Enforce the documented single-use contract consistently. |
@@ -206,7 +206,66 @@ core semantics it depends on.
   Plant-level finite/range check as defense in depth.
 - **Completion:** no Plant command can leave its declared legal range or become non-finite after any
   guard; requested/applied status explains the result.
-- **Decision record:** _Pending._
+- **Decision record (2026-07-10):**
+  - **Confirmed behavior:** `MappedPositionPlant` and `MappedVelocityPlant` clamp the sampled target
+    before `PlantTargetGuards.apply(...)`, but a fallback, hold-last value, or rate limiter can then
+    replace that candidate and reach the output without a final finite/range check. For example, a
+    bounded `[10, 20]` Plant starts with an applied-target field of `0`; a rejecting first-cycle
+    hold-last guard can therefore return `0`. A finite static fallback may also lie outside the
+    consuming Plant's range, and finite limiter inputs can overflow to a non-finite result.
+  - **Current callers:** the three in-repository guard-application paths are the shared low-level
+    `Plants` implementation, `MappedPositionPlant`, and `MappedVelocityPlant`. FTC staged builders
+    ultimately use the mapped Plants; no Phoenix robot behavior currently calls
+    `fallbackTargetUnless(...)` directly. The normal student-facing builder syntax does not need to
+    change.
+  - **Alternatives considered:** leave behavior unchanged and document the hazard; validate only
+    static fallback configuration; add only a final re-sanitize/re-clamp; make guard output a new
+    constrained target type; or combine build-time fallback validation with one internal final
+    Plant-target defense.
+  - **Simplicity comparison:** documentation alone does not enforce hardware safety. Validation-only
+    cannot protect dynamic hold-last or limiter state, while final-defense-only silently accepts a
+    fallback typo that can be explained when the Plant is built. A constrained value type would add
+    another concept and builder plumbing yet still require runtime checks. The combined design adds
+    no robot-code calls or public interfaces and gives students an actionable build error.
+  - **Chosen design:** when a mapped Plant binds guards to its configured plant-unit range, validate
+    that the range can contain finite commands and that every static fallback lies inside it. Route
+    all three internal Plant pipelines through one package-private final-safety helper after dynamic
+    guards. Preserve an unchanged guard status when its result is safe; otherwise retain the
+    previous finite command (clamped into a valid range), report the correction with an existing
+    non-accepted status, and reconcile rate-limiter state to the value hardware actually receives.
+    If loop time becomes non-finite, the limiter holds that value until a finite time baseline has
+    been re-established instead of bypassing its rate on the recovery cycle.
+    Temporarily unreferenced position Plants continue to stop their normal output without advancing
+    dynamic guards.
+  - **Rejected designs:** do not expose a new constrained target/result type or add another staged
+    builder choice because neither simplifies normal robot code nor removes the runtime postcondition.
+    Do not rely only on output-adapter clamping because `getAppliedTarget()` and status must describe
+    the Plant command. Do not add normalized `[-1, 1]` power semantics here; that remains SAFE-02.
+    Native-unit mapping overflow and broader servo/owner validation remain API-03.
+  - **Verification plan:** add focused pure tests for mapped position and velocity fallback rejection,
+    safe fallback status, first-cycle hold-last repair, limiter-state reconciliation, non-finite
+    requested/guard output handling, non-finite clock recovery, exact boundary-clamp status, and the
+    shared low-level `Plants` path. Confirm a finite power target outside `[-1, 1]` remains unchanged
+    in this item. Run `:TeamCode:testDebugUnitTest` and
+    `:TeamCode:compileDebugJavaWithJavac`, search all guard-application callers, update Javadocs and
+    the actuator/Plant guide, inspect the focused diff, and request Android Studio verification.
+  - **Implementation:** mapped position and velocity Plants now reject unusable configured ranges
+    and out-of-range static fallbacks at build. All three framework guard-application paths use one
+    package-private final-safety helper that retains a finite in-range recovery target, reports the
+    correction, and reconciles limiter state. `SlewRateLimiter` safely holds through a non-finite
+    clock sample and baseline recovery. The staged student builder API is unchanged, and finite
+    power remains unbounded at the Plant layer pending SAFE-02.
+  - **Automated verification (2026-07-10):** `:TeamCode:testDebugUnitTest` and
+    `:TeamCode:compileDebugJavaWithJavac` pass. Twenty-four tests across eight suites ran with zero
+    failures or errors. Targeted coverage includes both mapped Plant types, the shared lower-level
+    Plant path, fallback validation/status, exact range boundaries and signed zero, initial
+    hold-last repair, limiter overflow/state recovery, non-finite clock recovery, and explicit
+    SAFE-02 exclusion. Repository search finds one remaining `PlantTargetGuards.apply(...)` call,
+    inside the shared final-safety helper, and no Phoenix/tool fallback callers to migrate.
+    `git diff --check` passes, and three independent final diff reviews found no remaining code,
+    test, documentation, scope, or student-simplicity issues. The user confirmed Android Studio
+    inspection on 2026-07-10. Physical actuator behavior should also be observed during the next
+    normal on-robot bring-up.
 
 ### SAFE-02 - Power Plant applied-target truth
 

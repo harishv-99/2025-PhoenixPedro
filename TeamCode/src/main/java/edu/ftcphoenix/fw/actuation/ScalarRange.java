@@ -7,7 +7,8 @@ import edu.ftcphoenix.fw.core.source.Source;
  *
  * <p>A range may be unbounded, bounded, half-bounded, or invalid. Invalid ranges are useful before
  * homing/calibration is complete; a target planner should refuse to command a mechanism when its
- * range is invalid.</p>
+ * range is invalid. Mapped Plant builders require a valid configured range; a position Plant that
+ * still needs a reference publishes a temporary invalid runtime range itself.</p>
  */
 public final class ScalarRange {
 

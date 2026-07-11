@@ -203,6 +203,7 @@ public final class FtcActuators {
 
         /**
          * Replace the target with {@code fallbackTarget} while {@code allowed} is low.
+         * Bounded velocity Plants reject an out-of-range fallback when built.
          */
         PlantTargetGuardStep fallbackTargetUnless(String name, BooleanSource allowed, double fallbackTarget);
 
@@ -284,6 +285,7 @@ public final class FtcActuators {
 
         /**
          * Replace the target with {@code fallbackTarget} while {@code allowed} is low.
+         * Bounded position Plants reject an out-of-range fallback when built.
          */
         PositionTargetGuardStep fallbackTargetUnless(String name, BooleanSource allowed, double fallbackTarget);
 

@@ -16,7 +16,8 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * <p>Robot code normally builds these through {@code FtcActuators}. This class is the advanced
  * boundary adapter for custom hardware integrations. The plant samples one target source every
  * update, clamps it to the configured velocity range, applies dynamic plant target guards, and then
- * commands either a native velocity output or a framework-owned regulator over raw power.</p>
+ * rechecks the final guarded target for finiteness and range before commanding either a native
+ * velocity output or a framework-owned regulator over raw power.</p>
  */
 public final class MappedVelocityPlant implements Plant {
 
@@ -109,7 +110,8 @@ public final class MappedVelocityPlant implements Plant {
         }
 
         /**
-         * Sets the legal target range in plant velocity units.
+         * Sets the legal target range in plant velocity units. The configured range must be valid
+         * and contain at least one finite command.
          */
         public Builder range(ScalarRange range) {
             this.configuredRange = Objects.requireNonNull(range, "range");
@@ -183,6 +185,9 @@ public final class MappedVelocityPlant implements Plant {
 
         /**
          * Builds the mapped velocity plant.
+         *
+         * @throws IllegalArgumentException if the configured range cannot contain a finite command
+         *                                  or a static guard fallback lies outside that range
          */
         public MappedVelocityPlant build() {
             if (targetSource == null)
@@ -203,6 +208,8 @@ public final class MappedVelocityPlant implements Plant {
             throw new IllegalArgumentException("nativePerPlantUnit must be finite and non-zero");
         if (tolerance < 0.0 || !Double.isFinite(tolerance))
             throw new IllegalArgumentException("velocityTolerance must be finite and >= 0");
+        PlantTargetSafety.requireUsableConfiguredRange(configuredRange, "MappedVelocityPlant");
+        targetGuards.validateFallbackTargets(configuredRange, "MappedVelocityPlant");
     }
 
     /**
@@ -233,11 +240,12 @@ public final class MappedVelocityPlant implements Plant {
             status = PlantTargetStatus.referenceNotEstablished(range.reason);
         } else {
             double clamped = range.clamp(candidate);
-            if (Math.abs(clamped - candidate) > 1e-9)
+            if (!range.contains(candidate))
                 status = PlantTargetStatus.clampedToRange("target clamped to velocity range");
             candidate = clamped;
         }
-        PlantTargetGuards.Result guarded = targetGuards.apply(candidate, status, appliedTarget, clock);
+        PlantTargetGuards.Result guarded = PlantTargetSafety.applyGuards(
+                targetGuards, candidate, status, appliedTarget, range, "velocity", clock);
         appliedTarget = guarded.target;
         targetStatus = guarded.status;
         if (velocityOut != null) {

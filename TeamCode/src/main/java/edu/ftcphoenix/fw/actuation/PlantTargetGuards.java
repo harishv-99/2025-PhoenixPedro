@@ -24,6 +24,10 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * the command target from that measurement or use a position reference policy such as
  * {@code assumeCurrentPositionIs(...)} before requesting a distant target.</p>
  *
+ * <p>When a mapped Plant is built, every constant fallback is checked against that Plant's declared
+ * plant-unit range. Plant implementations also enforce a final finite/range postcondition after this
+ * guard chain runs, because hold-last and rate-limiter state are dynamic.</p>
+ *
  * <h2>Common builder usage</h2>
  * <pre>{@code
  * PositionPlant lift = FtcActuators.plant(hardwareMap)
@@ -57,7 +61,7 @@ public final class PlantTargetGuards {
         public final double target;
         public final PlantTargetStatus status;
 
-        private Result(double target, PlantTargetStatus status) {
+        Result(double target, PlantTargetStatus status) {
             this.target = target;
             this.status = Objects.requireNonNull(status, "status");
         }
@@ -107,6 +111,8 @@ public final class PlantTargetGuards {
 
         /**
          * Replace the candidate with {@code fallbackTarget} while {@code allowed} is low.
+         * A bounded mapped Plant rejects this guard at build time if the fallback is outside its
+         * declared plant-unit range.
          */
         public Builder fallbackTargetUnless(String name, BooleanSource allowed, double fallbackTarget) {
             Objects.requireNonNull(allowed, "allowed");
@@ -115,6 +121,8 @@ public final class PlantTargetGuards {
 
         /**
          * Replace the candidate with {@code fallbackTarget} while the target-aware gate rejects it.
+         * A bounded mapped Plant rejects this guard at build time if the fallback is outside its
+         * declared plant-unit range.
          */
         public Builder fallbackTargetUnless(String name, TargetGate gate, double fallbackTarget) {
             if (!Double.isFinite(fallbackTarget)) {
@@ -193,6 +201,9 @@ public final class PlantTargetGuards {
     /**
      * Apply the guard chain to a candidate target.
      *
+     * <p>This method applies the dynamic chain itself. Framework Plant implementations additionally
+     * verify the returned target against their final finite/range invariant before hardware writes.</p>
+     *
      * @param candidate       candidate after behavior sampling and static range/reference handling
      * @param currentStatus   status before dynamic guards, usually accepted or clamped
      * @param previousApplied previous applied plant target
@@ -230,6 +241,37 @@ public final class PlantTargetGuards {
         lastOut = out;
         lastStatus = status;
         return new Result(out, status);
+    }
+
+    /**
+     * Validate static fallback rules after a mapped Plant binds this guard chain to its range.
+     */
+    void validateFallbackTargets(ScalarRange configuredRange, String plantName) {
+        Objects.requireNonNull(configuredRange, "configuredRange");
+        String owner = cleanName(plantName);
+        for (GuardRule rule : rules) {
+            if (rule.kind != RuleKind.FALLBACK || configuredRange.contains(rule.fallbackTarget)) {
+                continue;
+            }
+            throw new IllegalArgumentException(owner + " target guard '" + rule.name
+                    + "' has fallback target " + rule.fallbackTarget
+                    + " outside configured plant-unit range [" + configuredRange.minValue
+                    + ", " + configuredRange.maxValue + "]. Choose a fallback inside the Plant's"
+                    + " declared range.");
+        }
+    }
+
+    /**
+     * Reconcile dynamic guard state when the Plant's final safety check changes the actual target.
+     */
+    void reconcileAppliedTarget(double target, PlantTargetStatus status, LoopClock clock) {
+        if (!Double.isFinite(target)) {
+            throw new IllegalArgumentException("final applied Plant target must be finite, got " + target);
+        }
+        if (limiter != null) limiter.reset(target, clock);
+        hasApplied = true;
+        lastOut = target;
+        lastStatus = Objects.requireNonNull(status, "status");
     }
 
     /**

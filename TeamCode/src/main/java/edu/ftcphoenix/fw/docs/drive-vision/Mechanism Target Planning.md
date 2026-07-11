@@ -376,6 +376,8 @@ PositionPlant lift = FtcActuators.plant(hardwareMap)
 `bounded(...)` defines the static legal target range. `targetGuards()` handles dynamic protection
 such as interlocks, fallback targets, and maximum target rate. If behavior asks for an impossible
 or temporarily unsafe target, telemetry can show both the requested target and the applied target.
+A bounded mapped Plant rejects a configured fallback outside its range at build time and rechecks
+the final dynamic-guard result before sending it to hardware.
 
 ## Calibration belongs next to the mechanism
 
