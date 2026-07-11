@@ -47,6 +47,11 @@ It also exposes:
 
 - `getOutput()` — the scalar output for this loop
 
+Timed output phases measure from the loop timestamp at which that phase begins, not from the
+preceding loop's `dtSec()`. When a positive-duration pulse's start gate opens, its run output is
+available to the downstream overlay/Plant phase in that loop before the pulse can finish. A
+zero-duration run is an immediate no-output operation; any configured cooldown still follows it.
+
 Common examples:
 
 - feed one game piece into a shooter
@@ -167,6 +172,10 @@ OutputTaskFactory feedOne = Tasks.outputPulse("feedOne")
 ```
 
 `Tasks.outputForSeconds(...)` still exists for low-level one-off tasks, but `Tasks.outputPulse(...)` is the preferred student-facing pattern because it captures start gates, output, ending policy, and cooldown in one guided builder.
+
+For a positive `.forSeconds(...)` duration, the run output is observable in at least the gate-open
+loop even when the next loop arrives after the requested duration. Time elapsed before the gate
+opened never shortens the pulse.
 
 ---
 

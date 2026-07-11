@@ -20,6 +20,10 @@ package edu.ftcphoenix.fw.task;
  *
  * <p>Use {@link OutputTaskRunner} to run {@code OutputTask}s sequentially (FIFO) and expose their
  * current output as a {@link edu.ftcphoenix.fw.core.source.ScalarSource}.</p>
+ *
+ * <p>A positive-duration output window must remain active long enough for the downstream output
+ * or Plant phase to observe its run value in at least one runner cycle. A zero-duration run window
+ * stays idle; surrounding phases such as a configured cooldown may still remain active.</p>
  */
 public interface OutputTask extends Task {
 
@@ -31,6 +35,7 @@ public interface OutputTask extends Task {
      *   <li>Must be safe to call multiple times per loop.</li>
      *   <li>Should reflect the most recent {@link #update(edu.ftcphoenix.fw.core.time.LoopClock)} call.</li>
      *   <li>Should return a sensible value even while waiting (for example, 0 power while gated).</li>
+     *   <li>A positive-duration run should expose its run value on the cycle when that interval begins.</li>
      * </ul>
      */
     double getOutput();

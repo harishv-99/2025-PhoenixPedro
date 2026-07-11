@@ -46,6 +46,11 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * {@code double out = queue.getAsDouble(clock);}.
  * Prefer calling {@link #update(LoopClock)} explicitly near the top of your loop so ordering is
  * obvious.</p>
+ *
+ * <p>Built-in positive-duration output tasks remain active with their run output available for at
+ * least one runner cycle, even when their configured duration is shorter than one loop. A
+ * zero-duration run never replaces {@code idleOutput}; a configured cooldown may keep its task
+ * active at that idle value.</p>
  */
 public final class OutputTaskRunner implements ScalarSource {
 

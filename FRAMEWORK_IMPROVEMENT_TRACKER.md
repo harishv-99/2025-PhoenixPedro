@@ -66,7 +66,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 2 | PHX-01 | Phoenix shutdown ordering | Done | Make shutdown one idempotent, correctly ordered owner operation. |
 | 3 | SAFE-01 | Final Plant target invariant | Done | Validate finite/range-safe output after all dynamic guards. |
 | 4 | SAFE-02 | Power Plant applied-target truth | Done | Clamp normalized power in the Plant and report the clamp. |
-| 5 | TASK-01 | Timed-task start semantics | Proposed | Measure elapsed time from task start, not the preceding loop interval. |
+| 5 | TASK-01 | Timed-task start semantics | Done | Measure elapsed time from task start, not the preceding loop interval. |
 | 6 | TASK-02 | Task reuse contract | Proposed | Enforce the documented single-use contract consistently. |
 | 7 | TASK-03 | Clear and cancellation semantics | Proposed | Remove unsafe drop-without-cancel behavior and make Plant cancellation explicit. |
 | 8 | DRIVE-01 | Drive task ownership | Proposed | Separate exclusive Auto sink ownership from TeleOp drive-source proposals. |
@@ -350,7 +350,86 @@ core semantics it depends on.
   output tasks must additionally guarantee a positive-duration command is observable.
 - **Completion:** focused tests cover zero duration, duration below one loop, normal duration, large
   first-loop `dt`, and duplicate same-cycle updates.
-- **Decision record:** _Pending._
+- **Decision record (2026-07-10):**
+  - **Confirmed behavior:** `LoopClock.dtSec()` describes the interval ending at the current loop,
+    but `TaskRunner.update(...)` starts a newly dequeued task and immediately updates it with that
+    same clock. A `0.02` second task first scheduled on a loop whose preceding `dtSec()` is `0.10`
+    therefore consumes `0.10` seconds before it has existed. A timed Plant write can run its start
+    and finish callbacks before the later Plant phase samples the requested target, while an
+    `OutputForSecondsTask` can become inactive before `OutputTaskRunner` exposes its output.
+    `GatedOutputUntilTask` does not consume the task-start delta in WAIT, but it leaves idle output
+    on the gate-open cycle and can restore idle on its first RUN update, so a positive pulse shorter
+    than one loop can still be invisible. Existing task tests cover only runner cycle idempotency.
+  - **Current callers:** the affected common paths are `Tasks.waitForSeconds(...)`, timed
+    `Tasks.waitUntil(...)`, `DriveTasks.driveForSeconds(...)`, `ScalarTasks` and `PlantTasks` timed
+    writes, `PlantTasks.move(...)` timeout/stability, `Tasks.outputForSeconds(...)`, and the preferred
+    `Tasks.outputPulse(...)` builder. Phoenix Auto owns a `TaskRunner` and timed waits/guidance;
+    Phoenix `ScoringPath` owns the production feed-pulse queue. Modern examples exercise feedback
+    moves, timed Plant writes, direct output pulses, and guided output pulses. Direct timed-task
+    constructors are otherwise framework internals, tests, or documentation examples. No caller
+    syntax needs to change.
+  - **Alternatives considered:** leave the behavior unchanged and document the scheduling detail;
+    fix only disappearing output tasks; skip the first update in each timed task; separate
+    `TaskRunner` start and update into different cycles; introduce a marker/interface or public
+    timer type; or keep same-cycle scheduling while measuring every task-owned interval from its
+    actual absolute start time and separately guaranteeing positive output observability.
+  - **Simplicity comparison:** documentation cannot make an erased command safe. An output-only fix
+    leaves waits, timeouts, feedback stability, and drive commands pre-charged. Blindly skipping a
+    first update is wrong when direct code starts a task in one cycle and first updates it in the
+    next. Runner-level separation is a smaller edit but adds one-loop latency to every condition,
+    route, guidance, and custom task, makes correctness depend on one scheduler, and still does not
+    publish a gated pulse on its gate-open cycle. Private start timestamps add no student concept or
+    call-site step and follow the existing `Task.start(...)` contract.
+  - **Chosen design:** preserve `TaskRunner`'s same-cycle start/update behavior. Capture
+    `clock.nowSec()` whenever a task-owned timed interval actually begins and derive elapsed time
+    from that timestamp for `RunForSecondsTask`, `OutputForSecondsTask`, `WaitUntilTask` timeout,
+    gated RUN/COOLDOWN phases, `PlantTasks.MoveTask` timeout/stability, and
+    `DriveGuidanceTask`'s no-guidance interval. Existing absolute-time route, calibration, and
+    guidance hard timeouts remain unchanged. A positive required output window must expose its run
+    command to the documented downstream output/Plant phase for at least one runner cycle; zero
+    duration remains immediate with no pulse. Preserve condition-before-timeout precedence and the
+    existing inclusive duration boundary. This adds no public API, builder step, or robot-code
+    concept and is not a major API decision.
+  - **Rejected designs:** do not change the global runner lifecycle, add a timed-task marker, or
+    publish a new timer abstraction for this local invariant. Do not modify `LoopClock`, generic
+    debouncers/rate limiters, shared drive-guidance blend timing, task reuse, cancellation/clear
+    policy, drive ownership, or external route-follower timing; those are separate lifecycle or
+    cycle-safety concerns. Handle feedback-move stability locally instead of broadening
+    `DebounceBoolean` semantics. Preserve the unchanged shared clock passed to an advanced
+    `RunForSecondsTask.onUpdate` callback: if its first callback shares the start cycle,
+    `dtSec()` still predates the task, so callback-owned timers must anchor to `nowSec()` as the
+    Task contract documents. In-repository callbacks only reassert values and do not integrate it.
+  - **Verification plan:** add focused `ManualLoopClock` tests for zero and sub-loop durations,
+    normal/exact-boundary duration, a large delta already present at start, and duplicate same-cycle
+    updates. Cover callback ordering, timed waits and condition precedence, direct and guided output
+    visibility through `OutputTaskRunner`, zero-duration idle behavior, sequence/parallel child
+    starts, timed scalar/Plant writes, feedback-move timeout/stability, drive command visibility,
+    and the guidance no-command timeout. Run `:TeamCode:testDebugUnitTest` and
+    `:TeamCode:compileDebugJavaWithJavac`; search all timed-task callers; synchronize Framework
+    Principles, Javadocs, task/output guides, beginner/overview timing notes, and examples where
+    prose changes; inspect the focused diff; then request Android Studio verification.
+  - **Implementation:** `TaskRunner` retains its existing same-cycle start/update lifecycle. Core
+    waits, callback runs, direct output tasks, and timed wait-until tasks now derive elapsed time
+    from `nowSec()` captured at task start. Guided output tasks independently anchor RUN and
+    COOLDOWN; a positive required run publishes on the gate-open cycle, a sensor already done with
+    no minimum completes at idle, and a zero run emits no output while any configured cooldown
+    still applies. Feedback moves anchor timeout at task start and stability at the first reached
+    observation, resetting stability when feedback leaves the target. Guidance's consecutive
+    no-command timeout has its own start/recovery anchor. No public signature, builder, runner
+    ordering, or robot call site changed.
+  - **Automated verification (2026-07-10):** `:TeamCode:testDebugUnitTest` and
+    `:TeamCode:compileDebugJavaWithJavac` pass. Fifty-five tests across eleven suites ran with zero
+    failures or errors, including twenty-three new focused tests. Coverage includes large pre-start
+    deltas; zero, sub-loop, normal, and exact-boundary durations; same-cycle idempotency; callback
+    ordering; wait condition precedence; direct/guided output visibility; done-at-gate behavior;
+    zero-run cooldown; sequence/parallel children; timed Plant writes; drive command visibility;
+    feedback-move timeout/stability/reset/tie semantics; and guidance-loss recovery. Repository
+    search finds no remaining task-owned elapsed timer in the scoped task, Plant-move, or guidance
+    paths that accumulates `dtSec()`, and all production/example caller syntax remains unchanged.
+    `git diff --check` passes. Three independent final reviews found no remaining correctness,
+    Framework-Principles, API-scope, documentation, test, or student-simplicity issue after their
+    cleanup findings were addressed. The user confirmed Android Studio inspection on 2026-07-10.
+    Timing behavior should also be observed during the next normal on-robot bring-up.
 
 ### TASK-02 - Task reuse contract
 

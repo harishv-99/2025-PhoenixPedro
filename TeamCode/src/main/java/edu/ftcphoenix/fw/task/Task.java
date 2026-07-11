@@ -20,6 +20,11 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * <p>Tasks are intended to be used with a runner such as {@link TaskRunner}, which manages calling
  * {@code start()}, {@code update()}, and checking {@code isComplete()} each iteration.</p>
  *
+ * <p>A runner may call {@code start(clock)} and the first {@code update(clock)} in the same loop
+ * cycle. In that case {@link LoopClock#dtSec()} describes the loop interval before the task
+ * started. A task-owned timer should capture {@link LoopClock#nowSec()} when its interval begins
+ * and compare later {@code nowSec()} values instead of charging that pre-start delta.</p>
+ *
  * <p>Typical usage:</p>
  * <pre>{@code
  * Task task = Tasks.sequence(
@@ -49,7 +54,9 @@ public interface Task {
      *
      * <p>Implementations should advance their internal state based on the information in
      * {@link LoopClock}, and may mark themselves complete by causing {@link #isComplete()} to
-     * return {@code true}.</p>
+     * return {@code true}. The first update may share a cycle with {@link #start(LoopClock)}, so
+     * task-owned elapsed intervals should be measured from a start-time anchor rather than assuming
+     * the current {@link LoopClock#dtSec()} occurred while the task was active.</p>
      *
      * @param clock loop timing information for the current iteration
      */

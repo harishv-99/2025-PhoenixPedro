@@ -103,6 +103,10 @@ Rules:
 * `isComplete()` becomes `true` when the task is done.
 * `cancel()` is the cooperative early-stop hook. Use it when automation should stop cleanly.
 * `getOutcome()` lets tasks report *why* they finished (success, timeout, cancelled, etc.).
+* If a custom task owns a duration or timeout, capture `clock.nowSec()` when that interval starts.
+  On a first `update(...)` that shares the start cycle, the current `dtSec()` began before
+  `start(...)` and must not be counted as task runtime. The advanced `RunForSecondsTask.onUpdate`
+  callback receives that unchanged clock too, so callback-owned timers follow the same rule.
 
 ### 2.2 `TaskRunner`
 
@@ -114,6 +118,12 @@ Rules:
 
     * Starts the next task when the previous one completes.
     * Calls `start(...)` once and then `update(...)` every loop.
+
+The first `update(...)` may happen immediately after `start(...)` in the same runner call. Phoenix's
+timed factories account for that: a long loop immediately before scheduling does not consume the
+new task's duration. Positive-duration drive, output, and Plant commands remain available to the
+later realization phase for at least one loop. A zero-duration interval itself is immediate, though
+an explicitly configured follow-up or cooldown still runs.
 
 You almost never subclass `TaskRunner`. You just feed it tasks.
 
@@ -213,6 +223,10 @@ Behavior:
 * At start: write `+1.0` to the plant's registered target.
 * For `0.7` seconds: keep writing `+1.0`.
 * When time elapses: write `0.0` once and complete.
+
+The `0.7` seconds begin when this task starts. Even if the preceding loop was unusually long, the
+new `+1.0` target is still available for the following `plant.update(clock)` call before a positive
+duration may finish.
 
 To hold and leave the target there:
 

@@ -452,6 +452,12 @@ A `Task` is a cooperative unit of work driven by the main loop:
 
 A key design choice: `TaskRunner.update(clock)` is **idempotent by `clock.cycle()`**. If nested code accidentally calls `update()` twice in the same loop cycle, tasks do not advance twice.
 
+The runner may call a newly started task's `update(clock)` in that same cycle. Because
+`clock.dtSec()` describes the interval before the current loop, a Task must start its own duration,
+timeout, or phase timer from `clock.nowSec()` rather than charging that preceding delta. A
+positive-duration command must remain available to the documented downstream drive/output/Plant
+phase for at least one loop observation; a zero-duration command may complete immediately.
+
 ### 4.3 Prefer factory helpers
 
 Robot code should rarely implement raw tasks directly. Prefer:

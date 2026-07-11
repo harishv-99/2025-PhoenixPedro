@@ -31,6 +31,10 @@ public final class DriveTasks {
      * Create a {@link Task} that holds a given {@link DriveSignal} for a fixed amount of time, then
      * stops the drive sink.
      *
+     * <p>The duration begins when the task starts. For a positive duration, the command remains
+     * active through at least that start cycle even if the preceding loop delta was longer than
+     * the requested duration.</p>
+     *
      * @param drivebase   the sink to command
      * @param signal      the drive signal to hold (robot-centric, normalized)
      * @param durationSec how long to hold the signal, in seconds (must be {@code >= 0})
