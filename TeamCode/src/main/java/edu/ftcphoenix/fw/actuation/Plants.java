@@ -21,28 +21,35 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  */
 public final class Plants {
 
+    private static final ScalarRange NORMALIZED_POWER_RANGE = ScalarRange.bounded(-1.0, 1.0);
+
     private Plants() {
     }
 
     /**
-     * Create a direct power plant from a plain exact scalar source.
+     * Create a direct normalized-power plant from a plain exact scalar source.
+     * Requests are constrained to {@code [-1.0, +1.0]} before reaching the output.
      */
     public static Plant power(PowerOutput out, ScalarSource target) {
         return power(out, PlantTargets.exact(target), target instanceof ScalarTarget ? (ScalarTarget) target : null, PlantTargetGuards.none());
     }
 
     /**
-     * Create a direct power plant from a plant-aware target source.
+     * Create a direct normalized-power plant from a plant-aware target source.
+     * The source sees {@code [-1.0, +1.0]} as the Plant's legal target range.
      */
     public static Plant power(PowerOutput out, PlantTargetSource target) {
         return power(out, target, null, PlantTargetGuards.none());
     }
 
     /**
-     * Create a direct power plant with an optional registered writable target and target guards.
+     * Create a direct normalized-power plant with an optional registered writable target and target
+     * guards. Static guard fallbacks must lie inside {@code [-1.0, +1.0]}.
      */
     public static Plant power(PowerOutput out, PlantTargetSource target, ScalarTarget writable, PlantTargetGuards guards) {
-        return new PowerPlant(out, target, writable, guards);
+        PlantTargetGuards actualGuards = guards == null ? PlantTargetGuards.none() : guards;
+        actualGuards.validateFallbackTargets(NORMALIZED_POWER_RANGE, "PowerPlant");
+        return new PowerPlant(out, target, writable, actualGuards);
     }
 
     /**
@@ -247,6 +254,12 @@ public final class Plants {
         PowerPlant(PowerOutput out, PlantTargetSource target, ScalarTarget writable, PlantTargetGuards guards) {
             super(target, writable, guards);
             this.out = Objects.requireNonNull(out, "out");
+        }
+
+        @Override
+        protected PlantTargetContext targetContext(LoopClock clock) {
+            return PlantTargetContext.simple(false, Double.NaN, NORMALIZED_POWER_RANGE,
+                    getRequestedTarget(), getAppliedTarget());
         }
 
         @Override

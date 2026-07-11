@@ -66,7 +66,11 @@ Motor velocity wiring asks a parallel but smaller set of questions:
 7. Target binding: `targetedBy(ScalarTarget)`, `targetedBy(readOnlySource)`, or `targetedByDefaultWritable(initialTarget)`, then `build()`
 
 Velocity and power Plants stay simpler than position Plants because they do not have position
-geometry, periodicity, or homing/reference questions.
+geometry, periodicity, or homing/reference questions. Power is simpler still: every direct power
+Plant has the fixed normalized range `[-1.0, +1.0]`, so there is no redundant bounds step in the
+builder. A finite request outside that range clamps before the output. The Plant reports
+`CLAMPED_TO_RANGE` when that clamp remains the active final transform; a later rate limit,
+interlock, or fallback may report its more specific status instead.
 
 ---
 
@@ -124,12 +128,13 @@ PositionPlant lift = FtcActuators.plant(hardwareMap)
 ```
 
 `bounded(...)` is also a hardware limit, but it is kept outside `targetGuards()` because it defines
-the Plant's legal coordinate system. Dynamic guards such as rate limits, hold-last interlocks, and
-fallback targets live in `targetGuards()`. When a mapped Plant is built, each static fallback must
-lie inside that declared range or `build()` reports which guard and value to fix. After dynamic
-guards run, the Plant verifies the result is still finite and inside the range before updating
-`getAppliedTarget()` or commanding hardware. If that final defense changes a result, status explains
-the correction and any rate limiter is reconciled to the command that was actually applied.
+the Plant's legal coordinate system. A direct power Plant declares its normalized `[-1.0, +1.0]`
+range internally. Dynamic guards such as rate limits, hold-last interlocks, and fallback targets
+live in `targetGuards()`. When a Plant has a fixed range, each static fallback must lie inside that
+range or `build()` reports which guard and value to fix. After dynamic guards run, the Plant verifies
+the result is still finite and inside the range before updating `getAppliedTarget()` or commanding
+hardware. If that final defense changes a result, status explains the correction and any rate
+limiter is reconciled to the command that was actually applied.
 
 A max-rate guard uses actual elapsed loop time; it does not predict the future loop period. The first
 sample initializes directly to the first guarded candidate, and `stop()`/`reset()` clear dynamic guard
