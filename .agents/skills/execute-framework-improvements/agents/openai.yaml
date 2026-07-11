@@ -1,0 +1,4 @@
+interface:
+  display_name: "Phoenix Framework Improvements"
+  short_description: "Run Phoenix framework improvements safely"
+  default_prompt: "Use $execute-framework-improvements to advance the next item in FRAMEWORK_IMPROVEMENT_TRACKER.md through its required gate."
