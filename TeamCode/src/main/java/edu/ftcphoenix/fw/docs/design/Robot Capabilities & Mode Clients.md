@@ -301,19 +301,21 @@ Recommended shape:
 4. update subsystems
 5. emit telemetry/presentation
 
-### `stopTeleOp()` / `stopAuto()`
+### `stop()`
 
-Only mode-owned cleanup.
+When the robot composition root has the same lifetime as one FTC OpMode, prefer one public,
+idempotent owner-level stop operation. It should sequence all cleanup internally:
 
-Examples:
+1. clear or cancel mode-owned behavior such as bindings and task runners
+2. perform the final hardware-safe stop for physical sinks
+3. reset/release supporting services and resources
 
-- clear button binding state
-- cancel the auto task runner
-- stop/reset route-library adapters owned by the Auto mode client
+Mode clients still stop resources they own separately. For example, a Pedro Auto client should stop
+its route adapter as well as the robot because that adapter is not owned by the robot container.
 
-### `stopAny()`
-
-Final hardware-safe stop for physical sinks.
+Use separate public mode-specific stop phases only when those phases have independently useful
+lifetimes. Do not expose multiple methods merely to make every OpMode remember a required shutdown
+order.
 
 ---
 

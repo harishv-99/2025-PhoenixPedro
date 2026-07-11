@@ -40,6 +40,7 @@ import edu.ftcphoenix.fw.task.TaskRunner;
 public final class PhoenixRobot {
 
     private final LoopClock clock = new LoopClock();
+    private final PhoenixShutdown shutdown = new PhoenixShutdown();
     private final HardwareMap hardwareMap;
     private final Telemetry telemetry;
     private final Gamepads gamepads;
@@ -111,9 +112,22 @@ public final class PhoenixRobot {
      * This method wires the framework lanes, shared Phoenix capability families, robot-specific
      * controls, scoring services, drive overlays, and driver-facing telemetry help text. Call it
      * once while the OpMode is in INIT before any TeleOp updates begin.
+     * If construction fails, every Phoenix owner that was successfully created is stopped before
+     * the original failure is rethrown.
      * </p>
      */
     public void initTeleOp() {
+        shutdown.ensureOpen("initTeleOp");
+        try {
+            initTeleOpRuntime();
+        } catch (RuntimeException initializationFailure) {
+            stopAfterInitializationFailure(initializationFailure);
+            throw initializationFailure;
+        }
+    }
+
+    /** Build the TeleOp-owned and shared runtime after lifecycle validation. */
+    private void initTeleOpRuntime() {
         drive = new FtcMecanumDriveLane(hardwareMap, profile.drive);
         teleOpControls = new PhoenixTeleOpControls(gamepads, profile.controls);
         initSharedRuntime(
@@ -155,6 +169,8 @@ public final class PhoenixRobot {
      * <p>
      * This creates the same shared runtime and {@link PhoenixCapabilities} surface used in TeleOp,
      * but leaves route ownership and autonomous task composition outside the robot container.
+     * If construction fails, every Phoenix owner that was successfully created is stopped before
+     * the original failure is rethrown.
      * </p>
      *
      * @param autoAimEnabledSource source that controls whether target selection + aim gating are active
@@ -162,11 +178,17 @@ public final class PhoenixRobot {
      */
     public void initAuto(BooleanSource autoAimEnabledSource,
                          BooleanSource aimOverrideSource) {
-        initSharedRuntime(autoAimEnabledSource, aimOverrideSource);
-        capabilities = createCapabilities();
-        autoRunner = new TaskRunner();
-        telemetry.addLine("Phoenix auto ready");
-        telemetry.update();
+        shutdown.ensureOpen("initAuto");
+        try {
+            initSharedRuntime(autoAimEnabledSource, aimOverrideSource);
+            capabilities = createCapabilities();
+            autoRunner = new TaskRunner();
+            telemetry.addLine("Phoenix auto ready");
+            telemetry.update();
+        } catch (RuntimeException initializationFailure) {
+            stopAfterInitializationFailure(initializationFailure);
+            throw initializationFailure;
+        }
     }
 
     private void initSharedRuntime(BooleanSource autoAimEnabledSource,
@@ -355,55 +377,62 @@ public final class PhoenixRobot {
     }
 
     /**
-     * Stops mode-agnostic hardware owners.
+     * Stops the complete Phoenix runtime exactly once.
+     *
+     * <p>Behavior owners are canceled first, physical scoring and drive outputs are stopped next,
+     * and supporting targeting/vision resources are released afterward. All ownership references
+     * are detached before cleanup begins, making repeated or reentrant calls harmless.</p>
+     *
+     * <p>If one owner throws, the remaining cleanup actions still run. The first runtime failure is
+     * rethrown after cleanup, with later failures attached as suppressed exceptions.</p>
      */
-    public void stopAny() {
-        if (drive != null) {
-            drive.stop();
-        }
-        if (scoringPath != null) {
-            scoringPath.stop();
-        }
-    }
+    public void stop() {
+        TaskRunner runnerToStop = autoRunner;
+        PhoenixTeleOpControls controlsToStop = teleOpControls;
+        PhoenixDriveAssistService assistsToStop = driveAssists;
+        ScoringPath scoringToStop = scoringPath;
+        FtcMecanumDriveLane driveToStop = drive;
+        ScoringTargeting targetingToStop = scoringTargeting;
+        AprilTagVisionLane visionToStop = vision;
 
-    /**
-     * Stops TeleOp-specific resources and releases vision/localization helpers.
-     */
-    public void stopTeleOp() {
-        if (teleOpControls != null) {
-            teleOpControls.clear();
-            teleOpControls = null;
-        }
-        if (driveAssists != null) {
-            driveAssists.reset();
-            driveAssists = null;
-        }
+        autoRunner = null;
+        teleOpControls = null;
+        driveAssists = null;
         teleOpDriveSource = null;
-        stopSharedRuntime();
-    }
-
-    /**
-     * Stops autonomous-specific resources and cancels the shared autonomous task queue.
-     */
-    public void stopAuto() {
-        if (autoRunner != null) {
-            autoRunner.cancelAndClear();
-            autoRunner = null;
-        }
-        stopSharedRuntime();
-    }
-
-    private void stopSharedRuntime() {
+        scoringPath = null;
+        drive = null;
+        scoringTargeting = null;
+        vision = null;
         capabilities = null;
         localization = null;
-        scoringPath = null;
-        if (vision != null) {
-            vision.close();
-            vision = null;
-        }
-        if (scoringTargeting != null) {
-            scoringTargeting.reset();
-            scoringTargeting = null;
+
+        Runnable cancelAuto = runnerToStop == null ? null : runnerToStop::cancelAndClear;
+        Runnable clearControls = controlsToStop == null ? null : controlsToStop::clear;
+        Runnable resetAssists = assistsToStop == null ? null : assistsToStop::reset;
+        Runnable stopScoring = scoringToStop == null ? null : scoringToStop::stop;
+        Runnable stopDrive = driveToStop == null ? null : driveToStop::stop;
+        Runnable resetTargeting = targetingToStop == null ? null : targetingToStop::reset;
+        Runnable closeVision = visionToStop == null ? null : visionToStop::close;
+
+        shutdown.run(
+                cancelAuto,
+                clearControls,
+                resetAssists,
+                stopScoring,
+                stopDrive,
+                resetTargeting,
+                closeVision
+        );
+    }
+
+    /** Preserve an initialization failure while attaching any best-effort cleanup failure. */
+    private void stopAfterInitializationFailure(RuntimeException initializationFailure) {
+        try {
+            stop();
+        } catch (RuntimeException cleanupFailure) {
+            if (cleanupFailure != initializationFailure) {
+                initializationFailure.addSuppressed(cleanupFailure);
+            }
         }
     }
 

@@ -49,10 +49,10 @@ public final class PhoenixTeleOp extends OpMode {
      */
     @Override
     public void stop() {
-        if (robot != null) {
-            robot.stopTeleOp();
-            robot.stopAny();
-            robot = null;
+        PhoenixRobot runtime = robot;
+        robot = null;
+        if (runtime != null) {
+            runtime.stop();
         }
     }
 }
