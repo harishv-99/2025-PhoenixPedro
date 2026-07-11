@@ -31,6 +31,13 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * started. A task-owned timer should capture {@link LoopClock#nowSec()} when its interval begins
  * and compare later {@code nowSec()} values instead of charging that pre-start delta.</p>
  *
+ * <h2>Cancellation and direct-call lifecycle</h2>
+ * <p>Framework Tasks treat cancellation before their first start as a side-effect-free no-op.
+ * Cancellation while active is terminal, and cancellation after completion or repeated
+ * cancellation is also a no-op. A direct {@link #update(LoopClock)} before start is a lifecycle
+ * error; {@link Tasks#noop()} is the intentional always-success exception. Custom Tasks should
+ * follow the same rules so runners and composites can clean them up predictably.</p>
+ *
  * <p>Typical usage:</p>
  * <pre>{@code
  * Task task = Tasks.sequence(
@@ -63,21 +70,28 @@ public interface Task {
      * {@link LoopClock}, and may mark themselves complete by causing {@link #isComplete()} to
      * return {@code true}. The first update may share a cycle with {@link #start(LoopClock)}, so
      * task-owned elapsed intervals should be measured from a start-time anchor rather than assuming
-     * the current {@link LoopClock#dtSec()} occurred while the task was active.</p>
+     * the current {@link LoopClock#dtSec()} occurred while the task was active. Framework Tasks
+     * other than the already-complete {@link Tasks#noop()} reject a direct update before their
+     * first start with an actionable lifecycle error.</p>
      *
      * @param clock loop timing information for the current iteration
+     * @throws IllegalStateException if a framework Task other than {@link Tasks#noop()} is updated
+     *                               before its first start
      */
     void update(LoopClock clock);
 
     /**
      * Optional early-stop hook.
      *
-     * <p>The default implementation is a no-op, which is appropriate for tasks that do not own any
-     * temporary external state beyond what their normal completion path already handles.</p>
+     * <p>The default implementation is a no-op, which is appropriate for tasks that complete in
+     * {@link #start(LoopClock)} and own no temporary external state. Any custom Task that can remain
+     * active after start must override this method so active cancellation makes its own lifecycle
+     * terminal, even when runner detachment would otherwise stop later updates.</p>
      *
      * <p>Tasks that command hardware, own child tasks, or need to report a cancellation outcome
-     * should override this method. A cancellation implementation should be safe to call even if the
-     * task has already completed.</p>
+     * should override this method. Cancellation before start must not acquire, release, or mutate
+     * task-owned resources. Active cancellation must make the task terminal before cleanup that may
+     * throw. Cancellation after completion and repeated cancellation must be no-ops.</p>
      */
     default void cancel() {
         // default no-op

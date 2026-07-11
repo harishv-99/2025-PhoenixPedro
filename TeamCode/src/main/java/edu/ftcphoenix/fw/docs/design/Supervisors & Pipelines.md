@@ -331,8 +331,8 @@ You have two design choices:
 If you allow queueing, best practices:
 
 - cap it (e.g. max 3) so spam cannot queue 50 actions
-- provide a cancel/clear button
-- clear on mode changes (e.g., shooter disabled)
+- provide a total-abort button that calls `cancelAndClear()`
+- call `cancelAndClear()` on mode changes (e.g., shooter disabled)
 
 Phoenix provides a tiny helper for the "cap" part: `RequestCounter`.
 Supervisors typically:
@@ -350,7 +350,7 @@ Typical pattern:
 - the task itself contains readiness gates (`gatedOutputUntil`)
 - backlog is usually 1 (keep one action buffered)
 
-When request becomes false, the queue is cleared automatically.
+When request becomes false, the active Task is cancelled and the queue is cleared automatically.
 
 ### 6b) Cooldowns (don't do a thing too often)
 
@@ -374,18 +374,19 @@ if (ballLeft.getAsBoolean(clock)) {
 }
 ```
 
-### 7) Cancel / clear behavior
+### 7) Total-abort behavior
 
-Clearing a queue means “cancel pending automation”.
+`cancelAndClear()` means “cancel active automation and discard all pending automation.” Queued Tasks
+never start and receive no cancellation callback.
 
-Good times to clear:
+Good times to abort:
 
 - the request is released (hold-to-repeat)
 - user hits a cancel button
 - mode changes (shooter off, climb mode, etc.)
 - safety trips (jam detection)
 
-Avoid clearing queues randomly: it makes intent hard to reason about.
+Avoid aborting queues randomly: it makes intent hard to reason about.
 
 ### 8) Autonomous vs TeleOp
 
@@ -441,4 +442,3 @@ The architecture remains:
 - **robot container** wires and binds
 - **supervisors** translate intent + signals into actions
 - **subsystems** own final Plant target sources and update order
-

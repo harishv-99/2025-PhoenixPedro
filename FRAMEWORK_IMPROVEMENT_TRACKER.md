@@ -1,6 +1,6 @@
 # Framework Improvement Tracker
 
-Last updated: 2026-07-10
+Last updated: 2026-07-11
 
 This file tracks proposed Phoenix framework improvements. It is deliberately a planning document:
 an item being listed here does **not** mean its current proposed solution has been approved. Each
@@ -68,7 +68,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 4 | SAFE-02 | Power Plant applied-target truth | Done | Clamp normalized power in the Plant and report the clamp. |
 | 5 | TASK-01 | Timed-task start semantics | Done | Measure elapsed time from task start, not the preceding loop interval. |
 | 6 | TASK-02 | Task reuse contract | Done | Enforce the documented single-use contract consistently. |
-| 7 | TASK-03 | Clear and cancellation semantics | Proposed | Remove unsafe drop-without-cancel behavior and make Plant cancellation explicit. |
+| 7 | TASK-03 | Clear and cancellation semantics | Done | Remove unsafe drop-without-cancel behavior and make Plant cancellation explicit. |
 | 8 | DRIVE-01 | Drive task ownership | Proposed | Separate exclusive Auto sink ownership from TeleOp drive-source proposals. |
 | 9 | TARGET-01 | Lazy Plant target overlay selection | Proposed | Resolve the selected highest-priority layer first and avoid sampling shadowed layers. |
 | 10 | TARGET-02 | Candidate freshness | Proposed | Compute effective age from the loop clock and timestamp, with validation. |
@@ -548,7 +548,136 @@ core semantics it depends on.
   at task construction rather than globally guessing what is safe.
 - **Completion:** no queue operation silently abandons active output; tests cover cancel before
   start, during motion, after completion, and repeated cancellation.
-- **Decision record:** _Pending._
+- **Decision record (2026-07-11):**
+  - **Confirmed behavior:** `TaskRunner.clear()` clears its queue and drops its current Task without
+    calling `cancel()`; `OutputTaskRunner.clear()` exposes the same operation and immediately
+    reports idle output. A feedback move writes a persistent `ScalarTarget` when it starts, but
+    `PlantTasks.MoveTask.cancel()` only changes outcome/completion state, so the Plant continues
+    requesting that move target. `PlantTasksTimingTest` explicitly preserves this today even when
+    `.thenTarget(...)` is configured. The focused baseline `PlantTasksTimingTest` and
+    `TaskRunnerTest` run passes all seven tests with zero failures, errors, or skips.
+  - **Lifecycle gaps confirmed:** framework Tasks disagree about cancellation before `start()`:
+    some make the task terminal, some reopen and run later, some do nothing, and calibration,
+    route, or guidance Tasks may call an external cleanup operation before acquiring the resource.
+    Direct `update()` before `start()` likewise auto-starts some Tasks while other Tasks no-op or
+    mutate default state. `TaskRunner.update()` leaves a Task current, its follow-up queue intact,
+    and the cycle marked updated when `start()`, `update()`, or `isComplete()` throws. A throwing
+    cancellation hook also prevents today's `cancelAndClear()` from clearing the queue. TASK-02
+    deliberately deferred these first-use and failed-start policies to this item.
+  - **Current callers:** there are no executable in-repository callers of either runner's
+    `clear()` and no direct caller of `cancelCurrent()`. Every real total-abort path already uses
+    `cancelAndClear()`: Phoenix Auto shutdown, `ScoringPath`'s feed queue, and modern examples 03,
+    06, and 09. Modern Phoenix has no raw `PlantTasks.move(...)` caller. The student-facing move
+    callers are framework examples, tests, and guides. The six compact `moveTo*` helpers have no
+    executable caller outside `PlantTasks` itself. Examples 03 and 06 also say their timed transfer
+    pulse stops, but omit `.then(0.0)`, so normal completion currently leaves shoot power requested;
+    their owner-level cancellation methods correctly reset every related mechanism target.
+  - **Alternatives considered:** retain/document or deprecate abrupt `clear()`; redefine it as
+    cancellation; remove it; add `clearPending()`; make cancellation before start a terminal state,
+    an error, or an active-only operation; retain automatic update-start behavior or reject it;
+    preserve, drop, or fail-stop a runner after lifecycle exceptions; and use a universal zero,
+    current measurement, previous target, `Plant.stop()`, `.thenTarget(...)`, an optional fixed
+    cancellation target, a required two-choice builder stage, a public policy type, or an arbitrary
+    callback for Plant move cancellation.
+  - **Simplicity comparison:** removing `clear()` subtracts two unsafe public methods and leaves the
+    already-used `cancelAndClear()` as the one obvious total abort; no caller needs
+    `clearPending()`. Active-only cancellation needs no extra Task state or robot call: before start
+    there is no acquired resource to release, while queued work is withdrawn by its runner.
+    Making pre-start cancellation terminal and silently skipping it could let a sequence feed after
+    a cancelled prerequisite; throwing on the later first start adds another lifecycle state.
+    Rejecting update-before-start gives advanced callers one actionable rule without changing
+    runner-managed robot code. For a Plant move, one required autocomplete-guided cancellation
+    choice adds one meaningful line but no named policy object; making it optional would preserve
+    the unsafe omission, while a policy interface/callback or adjacent-`double` helper overloads add
+    more concepts. Removing the compact helpers leaves one clear move API instead of a bypass around
+    that safety question.
+  - **Chosen runner and Task lifecycle:** remove public `clear()` from both runners, add no
+    `clearPending()`, retain the distinct `cancelCurrent()`, and keep `cancelAndClear()` as the
+    normal total abort. Framework Task cancellation before the first `start()` is a side-effect-free
+    no-op; cancellation while active is terminal; cancellation after completion and repeated
+    cancellation are no-ops. A direct framework Task `update()` before start fails with an
+    actionable lifecycle error rather than auto-starting or silently mutating state;
+    `Tasks.noop()` is the intentional terminal-at-construction exception. On a Task
+    lifecycle `RuntimeException`, a runner detaches and best-effort cancels the current/partially
+    started Task, clears all pending work, resets its owned state, and rethrows the original failure
+    with a cleanup failure suppressed. Total abort must leave the runner empty even when cancellation
+    throws or re-enters it; a failed `cancelCurrent()` also clears pending work rather than allowing
+    a follow-up to run after failed cleanup. `OutputTaskRunner` invalidates cached output and reports
+    its configured idle value after every abort/failure path.
+  - **Chosen Plant move API:** after `.to(target)`, require exactly one staged answer:
+    `.cancelTo(target)` writes that finite Plant-unit request on active cancellation, or
+    `.leaveTargetOnCancel()` deliberately performs no cancellation write and warns that motion may
+    continue. Either answer returns the existing optional stability/timeout/completion step.
+    `.thenTarget(...)` remains success/timeout behavior because a shooter commonly must keep speed
+    after successful readiness but command zero only when cancelled. Cancellation never writes a
+    move or cancellation target before start; active cancellation establishes terminal state before
+    its one cancellation write; terminal/repeated cancellation never writes again. Remove the six
+    compact `moveTo`, `moveToStable`, and `moveToThen` overloads because they cannot express the
+    required choice without hidden policy or ambiguous arguments. Do not add a Plant capability
+    interface, Plant-builder setting, public policy enum, or arbitrary cleanup callback.
+  - **Ownership boundary:** `cancelTo(...)` changes the registered behavior request; it does not
+    imperatively stop hardware. The next Plant update still owns final resolution, overlays may mask
+    the request, and Plant bounds/guards may transform it. Cancelling one active child also cannot
+    undo persistent requests left by earlier completed macro children. Robot capability/subsystem
+    owners must still cancel queues, disable overlays, and reset every related mechanism request for
+    coordinated or emergency shutdown. API-01 still owns writable-target provenance.
+  - **Rejected/deferred scope:** do not apply `.thenTarget(...)` on cancellation because it cannot
+    express different success and cancellation behavior. Do not guess zero, measurement, previous
+    target, or `Plant.stop()` because none is safe across position and velocity Plants and a direct
+    stop is overwritten by the source on the next loop. Do not make `ensureBacklog()` transactional
+    in this item: factory/admission atomicity is separable from active cancellation, cannot roll back
+    factory side effects, and its current partial-admission behavior is already explicit in a
+    TASK-02 test. Do not add a failure outcome enum or promise cleanup for arbitrary custom Tasks
+    whose default cancellation hook owns no cleanup.
+  - **Verification plan:** add focused runner tests for active/queued/terminal/repeated cancellation,
+    queued discard without pre-start hooks, cancellation-hook failure and reentrancy, start/update/
+    completion-check failure cleanup, suppressed cleanup exceptions, and OutputTaskRunner idle-cache
+    recovery. Replace the TASK-02 compatibility assertions with a common pre-start/no-op,
+    update-before-start rejection, active cancellation, terminal cancellation, and repeated
+    cancellation matrix across core, composite, scalar/Plant, calibration, route, and guidance Task
+    families. Test both required Plant cancellation choices, finite-value validation, exactly-once
+    writes, a throwing cancellation target, success/timeout independence, and timed-write `.then(...)`
+    cancellation. Migrate the two compiling shooter examples, all affected Javadocs, Framework
+    Principles, task/output/beginner/overview/target-planning guides, and every compact-helper
+    reference. Run `:TeamCode:testDebugUnitTest`, `:TeamCode:compileDebugJavaWithJavac`, XML result
+    counts, exhaustive caller searches, `git diff --check`, trailing-whitespace checks, adversarial
+    reviews, and Android Studio inspection. On-robot observation should confirm cancellation requests
+    pass through real overlays/guards and coordinated shutdown still stops scoring and drive.
+  - **Approval gate:** this design removes public runner and Plant convenience APIs and changes the
+    lifecycle contract of every framework Task. It remains consistent with the leading hypothesis,
+    but it is a major API/semantic decision and requires explicit user approval before moving to
+    **In progress**.
+  - **Approval:** the user approved the TASK-03 design on 2026-07-11.
+  - **Implementation (2026-07-11):** removed the unsafe `clear()` operation from both runners and
+    added no replacement drop-without-cancel path. `cancelCurrent()` now acts only on a genuinely
+    active Task, while total abort and lifecycle `RuntimeException` paths fail closed, withstand
+    throwing/reentrant cleanup, and do not recursively advance replacement work. Output queues
+    invalidate scalar and active-source caches on every abort/failure boundary and keep diagnostics
+    live without propagating Task lifecycle failures. Framework-owned Tasks now share active-only,
+    idempotent cancellation and actionable update-before-start behavior, with the documented
+    terminal-at-construction `Tasks.noop()` exception. Composite, source, target, calibration,
+    route, and guidance callbacks preserve terminal cancellation even when they re-enter an owning
+    runner. Feedback moves now require `.cancelTo(...)` or `.leaveTargetOnCancel()` immediately
+    after `.to(...)`; `.thenTarget(...)` remains success/timeout-only, and all six policy-bypassing
+    compact `moveTo*` helpers are gone. Examples 03 and 06 explicitly stop their transfer pulse,
+    and Framework Principles, repository instructions, Javadocs, guides, and examples describe the
+    same lifecycle and ownership boundary.
+  - **Automated verification (2026-07-11):** `:TeamCode:testDebugUnitTest` passes all 135 tests in
+    17 suites with zero failures, errors, or skips, and `:TeamCode:compileDebugJavaWithJavac`
+    succeeds. Focused tests cover pre-start/active/terminal/repeated cancellation; throwing and
+    reentrant abort/fail-stop cleanup; same-cycle output and active-source invalidation; diagnostic
+    failure handling; composite cleanup and start/update reentrancy; calibration acquisition;
+    route/guidance cleanup; both Plant move cancellation policies; finite validation; throwing and
+    reentrant target writes; and success/timeout independence. Exhaustive searches find no caller
+    of the removed runner or compact Plant APIs and no feedback-move chain missing its explicit
+    cancellation choice. `git diff --check` passes. Three independent adversarial reviews corrected
+    callback reentrancy, composite cleanup, cached-source, diagnostic, acquisition-order, and
+    documentation issues; final re-review reports no remaining scoped finding. Only the existing
+    JDK 21/source-8 and deprecation warnings remain.
+  - **Manual verification:** the user confirmed the Android Studio review on 2026-07-11. On-robot
+    observation is recommended during the next normal bring-up to confirm that cancellation
+    requests pass through the real Plant overlays/guards and that coordinated scoring/drive
+    shutdown still reaches safe hardware output.
 
 ### DRIVE-01 - Drive task ownership
 

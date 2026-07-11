@@ -51,6 +51,12 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * least one runner cycle, even when their configured duration is shorter than one loop. A
  * zero-duration run never replaces {@code idleOutput}; a configured cooldown may keep its task
  * active at that idle value.</p>
+ *
+ * <p>Total cancellation and lifecycle-failure paths invalidate per-cycle source caches
+ * immediately and report the configured {@code idleOutput}, even if active output was sampled
+ * earlier in the same cycle. {@link #cancelCurrent()} also invalidates caches, but intentionally
+ * retains queued work; a later update, including another top-level update in the same cycle, may
+ * therefore start the next queued output Task.</p>
  */
 public final class OutputTaskRunner implements ScalarSource {
 
@@ -60,6 +66,9 @@ public final class OutputTaskRunner implements ScalarSource {
     // Cache output per cycle so debug + multiple consumers don't re-read and risk ordering confusion.
     private long lastOutputCycle = Long.MIN_VALUE;
     private double lastOutput = 0.0;
+
+    /** Shared revision lets every retained activeSource observe abort/failure invalidation. */
+    private long invalidationRevision = 0L;
 
     /**
      * Create a queue with a fixed idle output.
@@ -83,33 +92,29 @@ public final class OutputTaskRunner implements ScalarSource {
     }
 
     /**
-     * Clear the queue and forget the current task without invoking cancellation hooks.
-     *
-     * <p>Prefer {@link #cancelAndClear()} when aborting automation.</p>
-     */
-    public void clear() {
-        runner.clear();
-        lastOutputCycle = Long.MIN_VALUE;
-        lastOutput = idleOutput;
-    }
-
-    /**
      * Cancel the active task, if any, and keep queued tasks intact.
+     *
+     * <p>If cancellation throws, queued work is discarded and the failure is rethrown.</p>
      */
     public boolean cancelCurrent() {
-        boolean cancelled = runner.cancelCurrent();
-        lastOutputCycle = Long.MIN_VALUE;
-        lastOutput = idleOutput;
-        return cancelled;
+        try {
+            return runner.cancelCurrent();
+        } finally {
+            invalidateOutput();
+        }
     }
 
     /**
      * Cancel the active task (if any) and clear queued tasks.
+     *
+     * <p>The runner is empty afterward even if the cancellation hook throws.</p>
      */
     public void cancelAndClear() {
-        runner.cancelAndClear();
-        lastOutputCycle = Long.MIN_VALUE;
-        lastOutput = idleOutput;
+        try {
+            runner.cancelAndClear();
+        } finally {
+            invalidateOutput();
+        }
     }
 
     /**
@@ -119,7 +124,12 @@ public final class OutputTaskRunner implements ScalarSource {
      * trigger is held, without accidentally queueing up dozens of pulses.</p>
      */
     public int backlogCount() {
-        return (runner.hasActiveTask() ? 1 : 0) + runner.queuedCount();
+        try {
+            return (runner.hasActiveTask() ? 1 : 0) + runner.queuedCount();
+        } catch (RuntimeException failure) {
+            invalidateOutput();
+            throw failure;
+        }
     }
 
     /**
@@ -256,7 +266,12 @@ public final class OutputTaskRunner implements ScalarSource {
      * @return true if a task is currently active (started and not complete).
      */
     public boolean hasActiveTask() {
-        return runner.hasActiveTask();
+        try {
+            return runner.hasActiveTask();
+        } catch (RuntimeException failure) {
+            invalidateOutput();
+            throw failure;
+        }
     }
 
     /**
@@ -274,6 +289,7 @@ public final class OutputTaskRunner implements ScalarSource {
         OutputTaskRunner self = this;
         return new BooleanSource() {
             private long lastCycle = Long.MIN_VALUE;
+            private long lastRevision = Long.MIN_VALUE;
             private boolean last = false;
 
             /**
@@ -282,15 +298,26 @@ public final class OutputTaskRunner implements ScalarSource {
             @Override
             public boolean getAsBoolean(LoopClock clock) {
                 long cyc = clock.cycle();
-                if (cyc == lastCycle) {
+                long revision = self.invalidationRevision;
+                if (cyc == lastCycle && revision == lastRevision) {
                     return last;
                 }
                 lastCycle = cyc;
+                lastRevision = revision;
 
-                // Ensure the queue state is current.
-                self.update(clock);
-                last = self.hasActiveTask();
-                return last;
+                try {
+                    // Ensure the queue state is current.
+                    self.update(clock);
+                    last = self.hasActiveTask();
+                    lastRevision = self.invalidationRevision;
+                    return last;
+                } catch (RuntimeException failure) {
+                    // A failed sample must be retryable in the same cycle after fail-stop cleanup.
+                    lastCycle = Long.MIN_VALUE;
+                    lastRevision = Long.MIN_VALUE;
+                    last = false;
+                    throw failure;
+                }
             }
 
             /**
@@ -298,9 +325,13 @@ public final class OutputTaskRunner implements ScalarSource {
              */
             @Override
             public void reset() {
-                self.reset();
-                lastCycle = Long.MIN_VALUE;
-                last = false;
+                try {
+                    self.reset();
+                } finally {
+                    lastCycle = Long.MIN_VALUE;
+                    lastRevision = Long.MIN_VALUE;
+                    last = false;
+                }
             }
 
             /**
@@ -312,8 +343,18 @@ public final class OutputTaskRunner implements ScalarSource {
                     return;
                 }
                 String p = (prefix == null || prefix.isEmpty()) ? "active" : prefix;
+                boolean liveActive = false;
+                String stateDebugError = null;
+                try {
+                    liveActive = self.hasActiveTask();
+                } catch (RuntimeException failure) {
+                    stateDebugError = describeFailure(failure);
+                }
                 dbg.addData(p + ".class", "OutputQueueActive")
-                        .addData(p + ".active", last);
+                        .addData(p + ".active", liveActive);
+                if (stateDebugError != null) {
+                    dbg.addData(p + ".stateDebugError", stateDebugError);
+                }
                 self.debugDump(dbg, p + ".queue");
             }
         };
@@ -326,7 +367,12 @@ public final class OutputTaskRunner implements ScalarSource {
      * is idempotent.</p>
      */
     public void update(LoopClock clock) {
-        runner.update(clock);
+        try {
+            runner.update(clock);
+        } catch (RuntimeException failure) {
+            invalidateOutput();
+            throw failure;
+        }
     }
 
     /**
@@ -342,19 +388,24 @@ public final class OutputTaskRunner implements ScalarSource {
         }
         lastOutputCycle = cyc;
 
-        if (!runner.hasActiveTask()) {
-            lastOutput = idleOutput;
-            return lastOutput;
-        }
+        try {
+            if (!runner.hasActiveTask()) {
+                lastOutput = idleOutput;
+                return lastOutput;
+            }
 
-        Task cur = runner.currentTaskOrNull();
-        if (cur instanceof OutputTask) {
-            lastOutput = ((OutputTask) cur).getOutput();
-        } else {
-            // This should never happen because we only enqueue OutputTask, but fail safe.
-            lastOutput = idleOutput;
+            Task cur = runner.currentTaskOrNull();
+            if (cur instanceof OutputTask) {
+                lastOutput = ((OutputTask) cur).getOutput();
+            } else {
+                // This should never happen because we only enqueue OutputTask, but fail safe.
+                lastOutput = idleOutput;
+            }
+            return lastOutput;
+        } catch (RuntimeException failure) {
+            invalidateOutput();
+            throw failure;
         }
-        return lastOutput;
     }
 
     /**
@@ -386,13 +437,42 @@ public final class OutputTaskRunner implements ScalarSource {
         }
         String p = (prefix == null || prefix.isEmpty()) ? "outputQueue" : prefix;
 
+        boolean hasActive = false;
+        String stateDebugError = null;
+        try {
+            hasActive = runner.hasActiveTask();
+        } catch (RuntimeException failure) {
+            // The runner has already fail-stopped. Keep diagnostics non-throwing and describe the
+            // lifecycle failure while reporting the now-idle state.
+            invalidateOutput();
+            stateDebugError = describeFailure(failure);
+        }
+        int queued = runner.queuedCount();
+
         dbg.addLine(p)
                 .addData(p + ".idleOutput", idleOutput)
                 .addData(p + ".lastOutput", lastOutput)
-                .addData(p + ".hasActive", runner.hasActiveTask())
-                .addData(p + ".queuedCount", runner.queuedCount())
-                .addData(p + ".backlogCount", backlogCount());
+                .addData(p + ".hasActive", hasActive)
+                .addData(p + ".queuedCount", queued)
+                .addData(p + ".backlogCount", (hasActive ? 1 : 0) + queued);
+        if (stateDebugError != null) {
+            dbg.addData(p + ".stateDebugError", stateDebugError);
+        }
 
         runner.debugDump(dbg, p + ".runner");
+    }
+
+    /** Return output sampling to the configured idle state, including within the current cycle. */
+    private void invalidateOutput() {
+        lastOutputCycle = Long.MIN_VALUE;
+        lastOutput = idleOutput;
+        invalidationRevision++;
+    }
+
+    /** Compact diagnostic text that avoids invoking arbitrary task formatting code. */
+    private static String describeFailure(RuntimeException failure) {
+        String message = failure.getMessage();
+        return failure.getClass().getSimpleName()
+                + ((message == null || message.isEmpty()) ? "" : ": " + message);
     }
 }

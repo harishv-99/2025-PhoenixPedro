@@ -16,8 +16,8 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *   <li>On each {@link #update(LoopClock)}, all children that are not yet finished are updated
  *       once.</li>
  *   <li>The parallel group finishes when every child task reports complete.</li>
- *   <li>{@link #cancel()} propagates cancellation to every unfinished child, then marks the group
- *       itself as {@link TaskOutcome#CANCELLED}.</li>
+ *   <li>Active {@link #cancel()} marks the group terminal, then asks every child to cancel.
+ *       Pre-start and terminal child cancellation are no-ops.</li>
  * </ul>
  *
  * <p>Typical usage:</p>
@@ -94,9 +94,13 @@ public final class ParallelAllTask implements Task {
         finished = false;
         cancelled = false;
         for (Task t : tasks) {
+            if (finished) {
+                // A child's start callback may have reentrantly cancelled this group.
+                break;
+            }
             t.start(clock);
         }
-        if (allFinished()) {
+        if (!finished && allFinished()) {
             finished = true;
         }
     }
@@ -109,15 +113,25 @@ public final class ParallelAllTask implements Task {
      */
     @Override
     public void update(LoopClock clock) {
-        if (!started || finished) {
+        if (!started) {
+            throw TaskLifecycle.updateBeforeStart("ParallelAllTask");
+        }
+        if (finished) {
             return;
         }
         for (Task t : tasks) {
-            if (!t.isComplete()) {
+            if (finished) {
+                break;
+            }
+            boolean childComplete = t.isComplete();
+            if (finished) {
+                break;
+            }
+            if (!childComplete) {
                 t.update(clock);
             }
         }
-        if (allFinished()) {
+        if (!finished && allFinished()) {
             finished = true;
         }
     }
@@ -125,21 +139,37 @@ public final class ParallelAllTask implements Task {
     /**
      * {@inheritDoc}
      *
-     * <p>Cancellation is propagated to each unfinished child before the group is marked complete.</p>
+     * <p>The group becomes terminal first, then cancellation is best-effort propagated to every
+     * child. Pre-start and terminal child cancellation are defined no-ops, so this avoids querying
+     * a child's possibly-failed completion hook during cleanup. If multiple child cleanup hooks
+     * throw, the later failures are suppressed on the first.</p>
      */
     @Override
     public void cancel() {
-        if (finished) {
+        if (!started || finished) {
             return;
         }
-        for (Task t : tasks) {
-            if (!t.isComplete()) {
-                t.cancel();
-            }
-        }
+
+        // Establish terminal state before child cleanup and still give every child a cleanup
+        // attempt when an earlier hook fails.
         cancelled = true;
         finished = true;
-        started = true;
+        RuntimeException firstFailure = null;
+        for (Task t : tasks) {
+            try {
+                // A child's isComplete() may be the lifecycle hook whose failure led here.
+                t.cancel();
+            } catch (RuntimeException failure) {
+                if (firstFailure == null) {
+                    firstFailure = failure;
+                } else if (failure != firstFailure) {
+                    firstFailure.addSuppressed(failure);
+                }
+            }
+        }
+        if (firstFailure != null) {
+            throw firstFailure;
+        }
     }
 
     /**
@@ -218,6 +248,9 @@ public final class ParallelAllTask implements Task {
         for (Task t : tasks) {
             if (!t.isComplete()) {
                 return false;
+            }
+            if (finished) {
+                return true;
             }
         }
         return true;

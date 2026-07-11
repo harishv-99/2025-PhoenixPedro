@@ -402,14 +402,24 @@ durations and timeouts to that start timestamp, so the preceding loop's `dtSec()
 short wait or command. Every positive-duration drive/output/Plant command is available to the later
 realization phase for at least one loop; zero-duration intervals may finish immediately.
 
-If you want to abort automation, prefer `cancelAndClear()` over `clear()`. `clear()` forgets the current task without calling its cancellation hook; `cancelAndClear()` lets the task stop outputs cleanly and reports `TaskOutcome.CANCELLED`.
+Use `cancelAndClear()` to abort automation. It cooperatively cancels the active Task, if any, and
+always discards every queued Task; queued Tasks receive no pre-start cancellation callback. There
+is no abrupt queue-forgetting path that can silently abandon active work. Framework Task
+cancellation is active-only: it is a no-op before start, terminal while active, and a no-op after
+completion or when repeated. Calling `update(...)` before `start(...)` is an actionable lifecycle
+error; `Tasks.noop()` is the intentional exception because it is already successfully complete when
+created.
+
+If task start, update, completion checking, or cancellation throws a `RuntimeException`, the runner
+fails closed: it best-effort cancels active or partially started work, clears its queue and state,
+and rethrows the original failure with any cleanup failure suppressed.
 
 ### Factories: `Tasks`, `PlantTasks`, `DriveTasks`
 
 Phoenix gives you factories so your code reads like intent:
 
 * `Tasks` — general composition (`sequence`, `parallelAll`, `waitForSeconds`, `waitUntil`, `runOnce`, …)
-* `PlantTasks` — guided patterns that write a Plant's registered target (`write`, `move`, plus compact helpers)
+* `PlantTasks` — guided patterns that write a Plant's registered target (`write` and `move`)
 * `DriveTasks` — simple patterns that command a `DriveCommandSink` (`driveForSeconds`, `stop`, …)
 * `DriveGuidanceTasks` — execute a `DriveGuidancePlan` as a Task (autonomous-style guidance)
 * `RouteTasks` — follow an external route through a generic `RouteFollower<RouteT>` adapter
@@ -427,6 +437,7 @@ private Task buildShootOneDiscMacro(Plant shooter, Plant transfer) {
     return Tasks.sequence(
             PlantTasks.move(shooter)
                     .to(3200.0)
+                    .cancelTo(0.0)
                     .timeout(1.0)
                     .build(),
             PlantTasks.write(transfer)
@@ -437,6 +448,13 @@ private Task buildShootOneDiscMacro(Plant shooter, Plant transfer) {
     );
 }
 ```
+
+A feedback move must choose `.cancelTo(value)` or `.leaveTargetOnCancel()` immediately after
+`.to(...)`. `cancelTo(...)` changes the registered request in Plant units; it does not bypass the
+Plant's overlays, bounds, references, or guards and therefore is not a guaranteed hardware stop.
+Robot-owned coordinated cleanup must still cancel related behavior and reset every related target.
+For timed writes, `.then(value)` runs on active cancellation as well as normal completion; omitting
+it or selecting `.leaveThere()` leaves the current request in place.
 
 ---
 

@@ -38,9 +38,10 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * cooldown) without publishing the run value.</p>
  *
  * <h2>Cancellation</h2>
- * <p>{@link #cancel()} immediately transitions the task to DONE, restores {@code idleOutput}, and
- * reports {@link TaskOutcome#CANCELLED}. This makes it safe to clear queued output tasks during
- * driver override, mechanism shutdown, or mode transitions.</p>
+ * <p>Active {@link #cancel()} immediately transitions the task to DONE, restores
+ * {@code idleOutput}, and reports {@link TaskOutcome#CANCELLED}. Pre-start and terminal
+ * cancellation are no-ops. This makes active output safe to abort during driver override,
+ * mechanism shutdown, or mode transitions.</p>
  */
 public final class GatedOutputUntilTask implements OutputTask {
 
@@ -62,6 +63,7 @@ public final class GatedOutputUntilTask implements OutputTask {
     private final double cooldownSec;
 
     private boolean startAttempted = false;
+    private boolean started = false;
     private Phase phase = Phase.WAIT;
     private double runStartedSec = 0.0;
     private double runElapsedSec = 0.0;
@@ -120,6 +122,7 @@ public final class GatedOutputUntilTask implements OutputTask {
     @Override
     public void start(LoopClock clock) {
         markStartAttempt();
+        started = true;
         phase = Phase.WAIT;
         runStartedSec = 0.0;
         runElapsedSec = 0.0;
@@ -134,17 +137,31 @@ public final class GatedOutputUntilTask implements OutputTask {
      */
     @Override
     public void update(LoopClock clock) {
+        if (!started) {
+            throw TaskLifecycle.updateBeforeStart(name);
+        }
         switch (phase) {
             case WAIT:
                 currentOutput = idleOutput;
-                if (startWhen.getAsBoolean(clock)) {
+                boolean start = startWhen.getAsBoolean(clock);
+                if (phase == Phase.DONE) {
+                    break;
+                }
+                if (start) {
                     beginRun(clock);
                 }
                 break;
             case RUN:
                 runElapsedSec = elapsedSince(runStartedSec, clock);
-                currentOutput = runOutput.getAsDouble(clock);
+                double output = runOutput.getAsDouble(clock);
+                if (phase == Phase.DONE) {
+                    break;
+                }
+                currentOutput = output;
                 boolean done = doneWhen.getAsBoolean(clock);
+                if (phase == Phase.DONE) {
+                    break;
+                }
                 if (done && runElapsedSec >= minRunSec) {
                     finishRun(TaskOutcome.SUCCESS, clock);
                     break;
@@ -181,6 +198,9 @@ public final class GatedOutputUntilTask implements OutputTask {
         runElapsedSec = 0.0;
 
         boolean done = doneWhen.getAsBoolean(clock);
+        if (phase == Phase.DONE) {
+            return;
+        }
         if (done && minRunSec <= 0.0) {
             finishRun(TaskOutcome.SUCCESS, clock);
             return;
@@ -191,7 +211,12 @@ public final class GatedOutputUntilTask implements OutputTask {
             return;
         }
 
-        currentOutput = runOutput.getAsDouble(clock);
+        double output = runOutput.getAsDouble(clock);
+        if (phase == Phase.DONE) {
+            currentOutput = idleOutput;
+            return;
+        }
+        currentOutput = output;
     }
 
     /** End RUN and either begin cooldown or complete immediately. */
@@ -217,7 +242,7 @@ public final class GatedOutputUntilTask implements OutputTask {
      */
     @Override
     public void cancel() {
-        if (phase == Phase.DONE) {
+        if (!started || phase == Phase.DONE) {
             return;
         }
         phase = Phase.DONE;

@@ -47,6 +47,7 @@ public final class DriveGuidanceTaskSingleUseTest {
 
         task.start(manualClock.clock());
         task.cancel();
+        task.cancel();
         assertTrue(task.isComplete());
         assertEquals(TaskOutcome.CANCELLED, task.getOutcome());
         assertEquals(2, drive.stopCount);
@@ -76,21 +77,96 @@ public final class DriveGuidanceTaskSingleUseTest {
     }
 
     @Test
-    public void cancelBeforeFirstStartKeepsExistingGuidanceBehavior() {
+    public void cancelBeforeFirstStartIsNoOpAndUpdateBeforeStartFails() {
         ManualLoopClock manualClock = new ManualLoopClock();
         RecordingDriveSink drive = new RecordingDriveSink();
         DriveGuidanceTask task = new DriveGuidanceTask(
                 "cancelBeforeStart", drive, unavailablePlan(manualClock.clock().nowSec()), config());
 
+        try {
+            task.update(manualClock.clock());
+            fail("Expected update before start to fail");
+        } catch (IllegalStateException expected) {
+            assertTrue(expected.getMessage().contains("cancelBeforeStart"));
+            assertTrue(expected.getMessage().contains("before start"));
+            assertTrue(expected.getMessage().contains("TaskRunner"));
+        }
+
         task.cancel();
-        assertTrue(task.isComplete());
-        assertEquals(1, drive.stopCount);
+        assertFalse(task.isComplete());
+        assertEquals(TaskOutcome.NOT_DONE, task.getOutcome());
+        assertEquals(0, drive.stopCount);
 
         task.start(manualClock.clock());
 
-        assertEquals(2, drive.stopCount);
+        assertEquals(1, drive.stopCount);
         assertFalse(task.isComplete());
         assertEquals(TaskOutcome.NOT_DONE, task.getOutcome());
+    }
+
+    @Test
+    public void cancellationAfterTimeoutDoesNotStopDriveAgain() {
+        ManualLoopClock manualClock = new ManualLoopClock();
+        RecordingDriveSink drive = new RecordingDriveSink();
+        DriveGuidanceTask.Config cfg = config();
+        cfg.timeoutSec = 0.1;
+        DriveGuidanceTask task = new DriveGuidanceTask(
+                "timeout", drive, unavailablePlan(manualClock.clock().nowSec()), cfg);
+
+        task.start(manualClock.clock());
+        manualClock.nextCycle(0.11);
+        task.update(manualClock.clock());
+        int terminalStopCount = drive.stopCount;
+        task.cancel();
+
+        assertTrue(task.isComplete());
+        assertEquals(TaskOutcome.TIMEOUT, task.getOutcome());
+        assertEquals(terminalStopCount, drive.stopCount);
+    }
+
+    @Test
+    public void failedStartStillAllowsExactlyOneDriveCleanupAttempt() {
+        ManualLoopClock manualClock = new ManualLoopClock();
+        RecordingDriveSink drive = new RecordingDriveSink();
+        drive.throwOnStopNumber = 1;
+        DriveGuidanceTask task = new DriveGuidanceTask(
+                "failedStart", drive, unavailablePlan(manualClock.clock().nowSec()), config());
+
+        try {
+            task.start(manualClock.clock());
+            fail("expected start stop to fail");
+        } catch (IllegalStateException expected) {
+            assertTrue(expected.getMessage().contains("test stop"));
+        }
+
+        task.cancel();
+        task.cancel();
+        assertTrue(task.isComplete());
+        assertEquals(TaskOutcome.CANCELLED, task.getOutcome());
+        assertEquals(2, drive.stopCount);
+    }
+
+    @Test
+    public void throwingCancelLeavesGuidanceTaskTerminalAndIsNotRetried() {
+        ManualLoopClock manualClock = new ManualLoopClock();
+        RecordingDriveSink drive = new RecordingDriveSink();
+        drive.throwOnStopNumber = 2;
+        DriveGuidanceTask task = new DriveGuidanceTask(
+                "throwingCancel", drive, unavailablePlan(manualClock.clock().nowSec()), config());
+        task.start(manualClock.clock());
+
+        try {
+            task.cancel();
+            fail("expected cancellation stop to fail");
+        } catch (IllegalStateException expected) {
+            assertTrue(expected.getMessage().contains("test stop"));
+        }
+
+        assertTrue(task.isComplete());
+        assertEquals(TaskOutcome.CANCELLED, task.getOutcome());
+        assertEquals(2, drive.stopCount);
+        task.cancel();
+        assertEquals(2, drive.stopCount);
     }
 
     private static IllegalStateException expectSecondStartFailure(Task task, LoopClock clock) {
@@ -148,6 +224,7 @@ public final class DriveGuidanceTaskSingleUseTest {
     private static final class RecordingDriveSink implements DriveCommandSink {
         private int driveCount;
         private int stopCount;
+        private int throwOnStopNumber;
 
         @Override
         public void drive(DriveSignal signal) {
@@ -157,6 +234,9 @@ public final class DriveGuidanceTaskSingleUseTest {
         @Override
         public void stop() {
             stopCount++;
+            if (stopCount == throwOnStopNumber) {
+                throw new IllegalStateException("test stop failure");
+            }
         }
     }
 }

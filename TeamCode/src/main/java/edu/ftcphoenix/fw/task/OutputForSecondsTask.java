@@ -10,7 +10,8 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * pulses such as "run feeder for 120ms" and for sensorless fallback behavior when no real
  * completion sensor exists.</p>
  *
- * <p>Cancellation ends the pulse immediately and reports {@link TaskOutcome#CANCELLED}.</p>
+ * <p>Active cancellation ends the pulse immediately and reports
+ * {@link TaskOutcome#CANCELLED}; pre-start and terminal cancellation are no-ops.</p>
  *
  * <p>Elapsed time is measured from the {@link LoopClock#nowSec()} captured at start. Consequently,
  * a positive duration remains active and exposes {@link #getOutput()} for at least its start cycle,
@@ -24,6 +25,7 @@ public final class OutputForSecondsTask implements OutputTask {
     private final double durationSec;
 
     private boolean startAttempted = false;
+    private boolean started = false;
     private boolean finished = false;
     private boolean cancelled = false;
     private double startSec = 0.0;
@@ -51,6 +53,7 @@ public final class OutputForSecondsTask implements OutputTask {
     @Override
     public void start(LoopClock clock) {
         markStartAttempt();
+        started = true;
         finished = (durationSec == 0.0);
         cancelled = false;
         startSec = clock.nowSec();
@@ -60,6 +63,9 @@ public final class OutputForSecondsTask implements OutputTask {
     /** {@inheritDoc} */
     @Override
     public void update(LoopClock clock) {
+        if (!started) {
+            throw TaskLifecycle.updateBeforeStart(name);
+        }
         if (finished) {
             return;
         }
@@ -74,7 +80,7 @@ public final class OutputForSecondsTask implements OutputTask {
      */
     @Override
     public void cancel() {
-        if (finished) {
+        if (!started || finished) {
             return;
         }
         cancelled = true;

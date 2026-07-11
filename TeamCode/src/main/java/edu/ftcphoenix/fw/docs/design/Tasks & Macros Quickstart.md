@@ -105,7 +105,12 @@ Rules:
   contract.
 * Use fields inside the task to remember your own state.
 * `isComplete()` becomes `true` when the task is done.
-* `cancel()` is the cooperative early-stop hook. Use it when automation should stop cleanly.
+* `cancel()` is the cooperative early-stop hook. Before `start(...)` it is a side-effect-free
+  no-op; while active it makes the Task terminal; after completion and on repeated calls it is a
+  no-op.
+* Calling `update(...)` directly before `start(...)` is a lifecycle error. Framework Tasks report
+  it with an actionable exception instead of silently starting or mutating state. `Tasks.noop()`
+  is the intentional exception because it is already successfully complete when created.
 * `getOutcome()` lets tasks report *why* they finished (success, timeout, cancelled, etc.).
 * If a custom task owns a duration or timeout, capture `clock.nowSec()` when that interval starts.
   On a first `update(...)` that shares the start cycle, the current `dtSec()` began before
@@ -132,15 +137,18 @@ an explicitly configured follow-up or cooldown still runs.
 
 You almost never subclass `TaskRunner`. You just feed it tasks.
 
-Two queue-management methods matter in practice:
+Use `cancelAndClear()` for driver override, mode switches, route interruption, and other total
+aborts. It asks the active Task to stop, if there is one, and always discards every queued Task.
+Queued Tasks have not acquired resources and do not receive a pre-start cancellation callback.
+There is no abrupt queue-forgetting operation that can silently abandon the active Task.
 
-* `clear()` — forget the current task and queued tasks immediately without calling task cancellation hooks.
-* `cancelAndClear()` — ask the active task to stop cleanly, then clear the queue.
+The runners also fail closed on lifecycle `RuntimeException`s. If starting, updating, checking
+completion, or cancelling active work throws one, the runner detaches and best-effort cancels that
+work, clears all pending work, resets its state, and rethrows the original exception. A cleanup
+exception is attached as suppressed rather than replacing the original failure.
 
-For driver override, mode switches, and route interruption, prefer `cancelAndClear()`.
-
-Clearing or cancelling does not reset a Task that has already started. If the behavior is requested
-later, enqueue a new task built by the same macro method or factory.
+Aborting a runner or cancelling a Task does not make a started Task reusable. If the behavior is
+requested later, enqueue a new Task built by the same macro method or factory.
 
 Example:
 
@@ -148,7 +156,8 @@ Example:
 bindings.onRise(gamepads.p1().b(), runner::cancelAndClear);
 ```
 
-That calls the task's cooperative cancellation path first, then forgets any queued follow-up work.
+That calls the active Task's cooperative cancellation path first, then forgets any queued follow-up
+work. The runner is empty afterward even if the cancellation hook fails.
 
 ---
 
@@ -232,6 +241,10 @@ Behavior:
 * For `0.7` seconds: keep writing `+1.0`.
 * When time elapses: write `0.0` once and complete.
 
+The `.then(0.0)` also runs if this timed write is cancelled while active. That makes the registered
+request return to zero; the Plant still applies that request on its next update. If the Task is
+still queued and never started, discarding it has no target side effects.
+
 The `0.7` seconds begin when this task starts. Even if the preceding loop was unusually long, the
 new `+1.0` target is still available for the following `plant.update(clock)` call before a positive
 duration may finish.
@@ -242,8 +255,12 @@ To hold and leave the target there:
 Task ensureSpinUp = PlantTasks.write(shooter)
         .to(SHOOTER_VELOCITY_NATIVE)
         .forSeconds(0.5)
+        .leaveThere()
         .build();
 ```
+
+Calling `build()` directly after `forSeconds(...)` has the same leave-there behavior. In either
+form, normal completion and active cancellation keep the held request.
 
 To set once and finish immediately:
 
@@ -267,6 +284,7 @@ Use `PlantTasks.move(plant)` when the plant has feedback and the task should wai
 ```java
 Task spinUp = PlantTasks.move(shooter)
         .to(SHOOTER_VELOCITY_NATIVE)
+        .cancelTo(0.0)
         .timeout(1.5)
         .build();
 ```
@@ -277,33 +295,42 @@ Behavior:
 * Each loop: check `plant.atTarget(SHOOTER_VELOCITY_NATIVE)`.
 * If a behavior overlay, clamp, fallback, or target guard keeps the plant from truly following that value, the task does **not** complete early.
 * If the timeout elapses first, the task completes with `TaskOutcome.TIMEOUT`.
+* If actively cancelled, the registered shooter request changes to `0.0` once.
 
 For readiness that must remain stable for a short period:
 
 ```java
 Task spinUpStable = PlantTasks.move(shooter)
         .to(SHOOTER_VELOCITY_NATIVE)
+        .leaveTargetOnCancel()
         .stableFor(0.15)
         .timeout(1.5)
         .build();
 ```
+
+Every feedback move must choose one cancellation behavior immediately after `.to(...)`:
+
+* `.cancelTo(value)` writes that finite value, in the Plant's units, to its registered target when
+  an active move is cancelled.
+* `.leaveTargetOnCancel()` deliberately leaves the move request unchanged, so motion may continue.
+
+Neither choice is a direct hardware stop. The Plant's next update still resolves overlays and
+applies bounds, references, and guards. The robot owner must still cancel related queues, disable
+overlays, and reset every mechanism request needed for coordinated shutdown.
 
 To request a final target after success or timeout:
 
 ```java
 Task moveAndStow = PlantTasks.move(arm)
         .to(ARM_SCORE_POS)
+        .cancelTo(ARM_STOW_POS)
         .timeout(1.0)
         .thenTarget(ARM_STOW_POS)
         .build();
 ```
 
-The compact helpers remain available:
-
-```java
-PlantTasks.moveTo(shooter, SHOOTER_VELOCITY_NATIVE, 1.5);
-PlantTasks.moveToThen(arm, ARM_SCORE_POS, 1.0, ARM_STOW_POS);
-```
+Here `.thenTarget(...)` handles success or timeout, while `.cancelTo(...)` independently handles
+active cancellation.
 
 > If you accidentally call a feedback move on an open-loop plant, `PlantTasks` throws an exception at runtime. Use `PlantTasks.write(...)` for timed open-loop behavior.
 
@@ -342,6 +369,7 @@ A simple “shoot one disc” macro could look like:
 private Task createShootOneDiscMacro() {
     Task spinUp = PlantTasks.move(shooter)
             .to(SHOOTER_VELOCITY_NATIVE)
+            .cancelTo(0.0)
             .timeout(SHOOTER_SPINUP_TIMEOUT_SEC)
             .build();
 
@@ -440,7 +468,7 @@ If both pieces of code try to own the same target variable, they will fight.
 Phoenix provides a clean target-source ownership pattern:
 
 - **`OutputTask`** — a `Task` that produces a scalar output (`getOutput()`).
-- **`OutputTaskRunner`** — runs `OutputTask`s sequentially and exposes the active output as a `ScalarSource`. Use `cancelAndClear()` when you need to abort the active output task cleanly. This is the right default for feed queues, pulse queues, and “repeat while held” helpers because it lets the current task stop cooperatively before the queue is cleared.
+- **`OutputTaskRunner`** — runs `OutputTask`s sequentially and exposes the active output as a `ScalarSource`. Use `cancelAndClear()` when you need to abort the active output task cleanly. This is the right default for feed queues, pulse queues, and “repeat while held” helpers because it lets the current task stop cooperatively, always clears the queue, and returns the source to its configured idle output even when task lifecycle cleanup fails.
 
 That lets your subsystem loop decide the final plant target in one place:
 
@@ -500,20 +528,25 @@ For the full design rationale and more examples, see [`Output Tasks & Queues`](<
 
 * **Use feedback‑based helpers only on feedback plants.**
 
-    * `PlantTasks.move(...)` and the compact `moveTo*` helpers require `plant.hasFeedback() == true`.
+    * `PlantTasks.move(...)` requires `plant.hasFeedback() == true`.
     * For servos and other open-loop outputs, use `PlantTasks.write(plant)` or compact helpers such as `holdTargetFor(...)`, `holdTargetForThen(...)`, and `setTarget(...)`.
 
-* **Be intentional about final targets.**
+* **Be intentional about completion and cancellation targets.**
 
     * `PlantTasks.write(plant).to(...).forSeconds(...).build()` keeps the same target after the timer.
-    * `.then(...)` or compact `holdTargetForThen(...)` lets you explicitly set a different final target (often zero).
+    * `.then(...)` or compact `holdTargetForThen(...)` sets a different final target after time
+      elapses and on active cancellation.
+    * Every feedback move requires `.cancelTo(...)` or `.leaveTargetOnCancel()` immediately after
+      `.to(...)`; `.thenTarget(...)` remains the success/timeout choice.
 
 ---
 
 ## 10. Summary
 
 * **`Task`** is the basic unit of non‑blocking behavior over time.
-* **`TaskRunner`** manages a queue of tasks and advances them with `update(clock)`. Use `cancelAndClear()` when you want cooperative interruption instead of abrupt forgetting.
+* **`TaskRunner`** manages a queue of tasks and advances them with `update(clock)`.
+  `cancelAndClear()` is the total-abort operation and lifecycle failures clear owned work before
+  they are rethrown.
 * **`Tasks` factories** (`instant`, `waitForSeconds`, `waitUntil`, `sequence`, `parallelAll`, `noop`, ...) are the main building blocks you should reach for first.
 * **`PlantTasks`** provide common mechanism patterns: `write(plant)` for time-based writes and `move(plant)` for feedback-based moves.
 * **`DriveTasks`** provide simple drive‑related building blocks.

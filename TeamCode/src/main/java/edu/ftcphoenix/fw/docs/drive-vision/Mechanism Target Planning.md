@@ -102,9 +102,17 @@ PositionPlant arm = FtcActuators.plant(hardwareMap)
         .build();
 ```
 
-`PlantTasks.moveTo(arm, HIGH)` writes the registered `armCommand`, then waits for
-`arm.atTarget(HIGH)`. If `autoStow` or `manual` wins the overlay, the task does not complete early,
-because the Plant is not actually at the requested `HIGH` target.
+```java
+Task raiseArm = PlantTasks.move(arm)
+        .to(HIGH)
+        .cancelTo(STOWED)
+        .build();
+```
+
+This writes the registered `armCommand`, then waits for `arm.atTarget(HIGH)`. If `autoStow` or
+`manual` wins the overlay, the task does not complete early, because the Plant is not actually at
+the requested `HIGH` target. If the active move is cancelled, it changes `armCommand` to the
+explicit Plant-unit `STOWED` request once.
 
 ## Exact targets
 
@@ -144,8 +152,17 @@ PositionPlant lift = FtcActuators.plant(hardwareMap)
         .targetedByDefaultWritable(0.0)
         .build();
 
-Task raiseLift = PlantTasks.moveTo(lift, BASKET_TICKS);
+Task raiseLift = PlantTasks.move(lift)
+        .to(BASKET_TICKS)
+        .cancelTo(0.0)
+        .build();
 ```
+
+Every feedback move must choose `.cancelTo(value)` or `.leaveTargetOnCancel()` immediately after
+`.to(...)`. The latter deliberately leaves the move request in place, so motion may continue.
+Neither option imperatively stops hardware: `cancelTo(...)` changes the registered request, while
+the final target still flows through overlays, bounds, references, and guards on the next Plant
+update. An owner-level shutdown must coordinate every related request and behavior layer.
 
 ## Overlays: behavior priority in target space
 

@@ -79,12 +79,12 @@ public final class ScalarTasks {
      */
     public interface WriteTimedStep {
         /**
-         * After the duration, leave the scalar target at the held value.
+         * After the duration or active cancellation, leave the scalar target at the held value.
          */
         WriteCompleteStep leaveThere();
 
         /**
-         * After the duration, write {@code finalValue}.
+         * After the duration or active cancellation, write {@code finalValue}.
          */
         WriteCompleteStep then(double finalValue);
 
@@ -166,6 +166,7 @@ public final class ScalarTasks {
         return new Task() {
             private boolean startAttempted;
             private boolean done;
+            private TaskOutcome outcome = TaskOutcome.NOT_DONE;
 
             @Override
             public void start(LoopClock clock) {
@@ -176,12 +177,30 @@ public final class ScalarTasks {
                             + "Supplier<Task> for repeated scheduling.");
                 }
                 startAttempted = true;
+                done = false;
+                outcome = TaskOutcome.NOT_DONE;
                 target.set(value);
-                done = true;
+                // Preserve terminal cancellation if the target callback re-entered its runner.
+                if (!done) {
+                    outcome = TaskOutcome.SUCCESS;
+                    done = true;
+                }
             }
 
             @Override
             public void update(LoopClock clock) {
+                if (!startAttempted) {
+                    throw new IllegalStateException("ScalarTasks.set(" + value + ") cannot be "
+                            + "updated before start(clock). Start it first, normally by enqueueing "
+                            + "it in a TaskRunner.");
+                }
+            }
+
+            @Override
+            public void cancel() {
+                if (!startAttempted || done) return;
+                outcome = TaskOutcome.CANCELLED;
+                done = true;
             }
 
             @Override
@@ -191,7 +210,7 @@ public final class ScalarTasks {
 
             @Override
             public TaskOutcome getOutcome() {
-                return done ? TaskOutcome.SUCCESS : TaskOutcome.NOT_DONE;
+                return done ? outcome : TaskOutcome.NOT_DONE;
             }
 
             @Override
@@ -203,7 +222,8 @@ public final class ScalarTasks {
 
     /**
      * Hold a scalar target at {@code value} from the task's actual start timestamp, then leave it
-     * there. A positive duration leaves the value observable for at least the start cycle.
+     * there. Active cancellation also leaves it there. A positive duration leaves the value
+     * observable for at least the start cycle.
      */
     public static Task holdFor(final ScalarTarget target, final double value, final double seconds) {
         Objects.requireNonNull(target, "target");
@@ -214,8 +234,9 @@ public final class ScalarTasks {
 
     /**
      * Hold a scalar target at {@code value} from the task's actual start timestamp, then set
-     * {@code finalValue}. A positive duration leaves {@code value} observable for at least the
-     * start cycle before the final value is applied.
+     * {@code finalValue}. Active cancellation also applies {@code finalValue}. A positive duration
+     * leaves {@code value} observable for at least the start cycle before the final value is
+     * applied.
      */
     public static Task holdForThen(final ScalarTarget target,
                                    final double value,

@@ -384,6 +384,10 @@ Task intakePulse = PlantTasks.write(intake)
         .build();
 ```
 
+The `.then(0.0)` runs when the timer finishes and when this write is cancelled while active. If you
+omit `.then(...)`, or call `.leaveThere()`, completion and active cancellation leave the held request
+in place. A queued write that never starts has no target side effects.
+
 To run for a fixed time and leave the target there:
 
 ```java
@@ -408,6 +412,7 @@ Use `PlantTasks.move(...)` when the Plant has feedback and the task should wait 
 ```java
 Task spinUp = PlantTasks.move(shooter)
         .to(SHOOTER_VELOCITY_NATIVE)
+        .cancelTo(0.0)
         .timeout(1.2)
         .build();
 ```
@@ -417,10 +422,21 @@ A feedback move waits for `plant.atTarget(requestedValue)`, not just the current
 ```java
 Task moveAndStow = PlantTasks.move(arm)
         .to(ARM_SCORE_POS)
+        .cancelTo(ARM_STOW_POS)
         .timeout(1.0)
         .thenTarget(ARM_STOW_POS)
         .build();
 ```
+
+Every feedback move must choose its cancellation behavior immediately after `.to(...)`:
+
+* `.cancelTo(value)` writes that finite Plant-unit request once when an active move is cancelled.
+* `.leaveTargetOnCancel()` deliberately keeps the move request, so motion may continue.
+
+`.thenTarget(...)` is separate: it applies after success or timeout, not cancellation.
+`cancelTo(...)` changes a registered target request; it does not write hardware directly or bypass
+overlays and Plant guards. The robot owner still needs a coordinated cancel method that stops queues,
+disables relevant overlays, and resets every related mechanism request.
 
 If you accidentally call a feedback move on an open-loop plant, `PlantTasks` throws an exception at runtime so the mistake is obvious.
 
@@ -464,6 +480,7 @@ Assume you already created `shooter`, `transfer`, and a `TaskRunner` named
 private Task buildShootOneDiscMacro() {
     Task spinUp = PlantTasks.move(shooter)
             .to(SHOOTER_VELOCITY_NATIVE)
+            .cancelTo(0.0)
             .timeout(SHOOTER_SPINUP_TIMEOUT_SEC)
             .build();
 

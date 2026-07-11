@@ -18,10 +18,10 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * <ul>
  *   <li>The provided {@link Runnable} is guaranteed to run at most once.</li>
  *   <li>A second {@link #start(LoopClock)} call is rejected instead of being silently ignored.</li>
- *   <li>{@link #update(LoopClock)} does nothing; the task is considered complete as soon as the
- *       action has been run.</li>
- *   <li>If {@link #cancel()} is called before the task starts, the action is skipped and the task
- *       reports {@link TaskOutcome#CANCELLED}.</li>
+ *   <li>After start, {@link #update(LoopClock)} does nothing; a direct pre-start update is a
+ *       lifecycle error. The task is considered complete as soon as the action has been run.</li>
+ *   <li>Cancellation before start and after completion is a no-op. The action therefore still runs
+ *       after a pre-start cancellation request.</li>
  *   <li>{@link #getOutcome()} reports {@link TaskOutcome#NOT_DONE} before the action has run,
  *       {@link TaskOutcome#SUCCESS} after a normal run, and
  *       {@link TaskOutcome#CANCELLED} after an early cancellation.</li>
@@ -31,6 +31,7 @@ public final class InstantTask implements Task {
 
     private final Runnable action;
     private boolean startAttempted = false;
+    private boolean started = false;
     private boolean finished = false;
     private boolean cancelled = false;
 
@@ -49,17 +50,20 @@ public final class InstantTask implements Task {
     @Override
     public void start(LoopClock clock) {
         markStartAttempt();
-        if (finished) {
-            return;
-        }
-        action.run();
-        finished = true;
+        started = true;
+        finished = false;
         cancelled = false;
+        action.run();
+        // A callback may have reentrantly cancelled this Task through its owning runner.
+        finished = true;
     }
 
     /** {@inheritDoc} */
     @Override
     public void update(LoopClock clock) {
+        if (!started) {
+            throw TaskLifecycle.updateBeforeStart("InstantTask");
+        }
         // No periodic work; instant tasks finish in start().
     }
 
@@ -68,7 +72,7 @@ public final class InstantTask implements Task {
      */
     @Override
     public void cancel() {
-        if (finished) {
+        if (!started || finished) {
             return;
         }
         finished = true;
@@ -84,9 +88,10 @@ public final class InstantTask implements Task {
     /**
      * Outcome semantics for an instant task:
      * <ul>
-     *   <li>Before the task has run or been cancelled: {@link TaskOutcome#NOT_DONE}.</li>
+     *   <li>Before the task has run: {@link TaskOutcome#NOT_DONE}.</li>
      *   <li>After normal execution: {@link TaskOutcome#SUCCESS}.</li>
-     *   <li>After cancellation before execution: {@link TaskOutcome#CANCELLED}.</li>
+     *   <li>After cancellation of a start attempt whose action failed:
+     *       {@link TaskOutcome#CANCELLED}.</li>
      * </ul>
      */
     @Override

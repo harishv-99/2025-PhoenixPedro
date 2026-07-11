@@ -306,7 +306,8 @@ Recommended shape:
 When the robot composition root has the same lifetime as one FTC OpMode, prefer one public,
 idempotent owner-level stop operation. It should sequence all cleanup internally:
 
-1. clear or cancel mode-owned behavior such as bindings and task runners
+1. cancel mode-owned behavior such as bindings and task runners (`cancelAndClear()` is the runner's
+   total-abort operation)
 2. perform the final hardware-safe stop for physical sinks
 3. reset/release supporting services and resources
 

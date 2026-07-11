@@ -14,7 +14,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *   <li>Maintain a queue of {@link Task} instances.</li>
  *   <li>Start tasks one at a time in FIFO order.</li>
  *   <li>Update the current task each loop until it reports complete.</li>
- *   <li>Expose a small API to enqueue, cancel, clear, and inspect tasks.</li>
+ *   <li>Expose a small API to enqueue, cancel, and inspect tasks.</li>
  * </ul>
  *
  * <p>Framework Tasks enforce a single-use start lifecycle. This runner additionally rejects the
@@ -36,6 +36,14 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * same call. Timed task implementations therefore anchor their own intervals to
  * {@link LoopClock#nowSec()}; the current {@link LoopClock#dtSec()} belongs to the interval before
  * that newly started task.</p>
+ *
+ * <h2>Failure semantics</h2>
+ * <p>If a task throws a {@link RuntimeException} from {@code start(...)}, {@code update(...)}, or
+ * {@code isComplete()}, the runner fails closed: it detaches and best-effort cancels that task,
+ * discards every queued or reentrantly-enqueued follow-up, resets its cycle state, and rethrows the
+ * original exception. If cancellation also throws, that cleanup failure is attached to the
+ * original as a suppressed exception. If an explicit {@link #cancelCurrent()} hook throws, its
+ * queued follow-ups are also discarded; {@link #cancelAndClear()} always ends empty.</p>
  *
  * <h2>Typical usage</h2>
  * <pre>{@code
@@ -61,6 +69,12 @@ public final class TaskRunner {
      */
     private long lastUpdatedCycle = Long.MIN_VALUE;
 
+    /** Prevent reentrant updates from starting follow-up work while cancellation is in progress. */
+    private boolean suppressUpdates = false;
+
+    /** Prevent lifecycle callbacks from recursively advancing this same runner. */
+    private boolean updateInProgress = false;
+
     /**
      * Enqueue a task to be run after all currently queued tasks.
      *
@@ -83,35 +97,51 @@ public final class TaskRunner {
     }
 
     /**
-     * Clear the queue and forget any current task without invoking cancellation hooks.
-     *
-     * <p>This is mainly a legacy "drop everything immediately" helper. Prefer
-     * {@link #cancelAndClear()} when aborting automation so the active task can release hardware,
-     * stop child tasks, and report {@link TaskOutcome#CANCELLED} cleanly.</p>
-     */
-    public void clear() {
-        queue.clear();
-        current = null;
-        lastUpdatedCycle = Long.MIN_VALUE;
-    }
-
-    /**
      * Cancel the active task, if any, while leaving queued tasks intact.
      *
      * <p>This is useful when the caller wants to stop the current action but keep later queued
-     * work available for later execution.</p>
+     * work available for later execution. If the current Task already completed, it is detached
+     * without another cancellation callback and this method returns {@code false}. If active
+     * cancellation throws, queued follow-ups are cleared and the failure is rethrown so work cannot
+     * continue after failed cleanup.</p>
      *
      * @return {@code true} if a task was active and received {@link Task#cancel()}; otherwise
      * {@code false}
      */
     public boolean cancelCurrent() {
-        if (current == null) {
+        Task task = current;
+        if (task == null) {
             return false;
         }
-        current.cancel();
+
+        boolean complete = checkComplete(task);
+        if (current != task) {
+            // A custom completion query re-entered the runner and changed ownership.
+            return false;
+        }
+        if (complete) {
+            current = null;
+            lastUpdatedCycle = Long.MIN_VALUE;
+            return false;
+        }
+
         current = null;
         lastUpdatedCycle = Long.MIN_VALUE;
-        return true;
+
+        boolean previousSuppressUpdates = suppressUpdates;
+        suppressUpdates = true;
+        try {
+            task.cancel();
+            return true;
+        } catch (RuntimeException failure) {
+            // A follow-up must not run after cleanup of its prerequisite failed.
+            queue.clear();
+            current = null;
+            lastUpdatedCycle = Long.MIN_VALUE;
+            throw failure;
+        } finally {
+            suppressUpdates = previousSuppressUpdates;
+        }
     }
 
     /**
@@ -121,9 +151,25 @@ public final class TaskRunner {
      * and route interruptions.</p>
      */
     public void cancelAndClear() {
-        cancelCurrent();
+        Task task = current;
+        // Detach first so cancellation cannot observe itself as still owned. Clear both before and
+        // after the hook so reentrant enqueue/cancel calls cannot escape a total abort.
+        current = null;
         queue.clear();
         lastUpdatedCycle = Long.MIN_VALUE;
+
+        boolean previousSuppressUpdates = suppressUpdates;
+        suppressUpdates = true;
+        try {
+            if (task != null) {
+                task.cancel();
+            }
+        } finally {
+            current = null;
+            queue.clear();
+            lastUpdatedCycle = Long.MIN_VALUE;
+            suppressUpdates = previousSuppressUpdates;
+        }
     }
 
     /**
@@ -144,7 +190,8 @@ public final class TaskRunner {
      * @return true if a task is currently active (started and not complete).
      */
     public boolean hasActiveTask() {
-        return current != null && !current.isComplete();
+        Task task = current;
+        return task != null && !checkComplete(task);
     }
 
     /**
@@ -188,22 +235,42 @@ public final class TaskRunner {
             throw new IllegalArgumentException("clock must not be null");
         }
 
+        if (suppressUpdates || updateInProgress) {
+            return;
+        }
+
         long c = clock.cycle();
         if (c == lastUpdatedCycle) {
             return;
         }
         lastUpdatedCycle = c;
 
-        while ((current == null || current.isComplete()) && !queue.isEmpty()) {
-            current = queue.remove(0);
-            current.start(clock);
-            if (current.isComplete()) {
-                current = null;
-            }
-        }
+        updateInProgress = true;
+        try {
+            while (current == null || checkComplete(current)) {
+                if (current != null) {
+                    current = null;
+                }
+                if (queue.isEmpty()) {
+                    break;
+                }
 
-        if (current != null && !current.isComplete()) {
-            current.update(clock);
+                Task next = queue.remove(0);
+                current = next;
+                startTask(next, clock);
+
+                // A lifecycle callback may cooperatively abort or otherwise detach itself.
+                if (current != next) {
+                    continue;
+                }
+            }
+
+            Task task = current;
+            if (task != null && !checkComplete(task)) {
+                updateTask(task, clock);
+            }
+        } finally {
+            updateInProgress = false;
         }
     }
 
@@ -224,19 +291,43 @@ public final class TaskRunner {
                 .addData(p + ".hasCurrent", current != null)
                 .addData(p + ".lastUpdatedCycle", lastUpdatedCycle);
 
-        if (current != null) {
-            dbg.addData(p + ".currentName", current.getDebugName())
-                    .addData(p + ".currentClass", current.getClass().getSimpleName())
-                    .addData(p + ".currentComplete", current.isComplete())
-                    .addData(p + ".currentOutcome", current.getOutcome());
-            current.debugDump(dbg, p + ".current");
+        Task task = current;
+        if (task != null) {
+            dbg.addData(p + ".currentClass", task.getClass().getSimpleName());
+            try {
+                dbg.addData(p + ".currentName", task.getDebugName());
+            } catch (RuntimeException failure) {
+                dbg.addData(p + ".currentNameError", describeFailure(failure));
+            }
+
+            boolean lifecycleReadable = true;
+            try {
+                // Completion is a Task lifecycle query even when telemetry requests it. Preserve
+                // fail-stop cleanup, but report rather than propagate the programming failure.
+                dbg.addData(p + ".currentComplete", checkComplete(task))
+                        .addData(p + ".currentOutcome", task.getOutcome());
+            } catch (RuntimeException failure) {
+                lifecycleReadable = false;
+                dbg.addData(p + ".currentDebugError", describeFailure(failure));
+            }
+            if (lifecycleReadable) {
+                try {
+                    task.debugDump(dbg, p + ".current");
+                } catch (RuntimeException failure) {
+                    dbg.addData(p + ".currentDumpError", describeFailure(failure));
+                }
+            }
         }
 
         if (!queue.isEmpty()) {
             Task next = queue.get(0);
-            dbg.addData(p + ".nextName", next.getDebugName())
-                    .addData(p + ".nextClass", next.getClass().getSimpleName())
+            dbg.addData(p + ".nextClass", next.getClass().getSimpleName())
                     .addData(p + ".queuedCount", queue.size());
+            try {
+                dbg.addData(p + ".nextName", next.getDebugName());
+            } catch (RuntimeException failure) {
+                dbg.addData(p + ".nextDebugError", describeFailure(failure));
+            }
         }
     }
 
@@ -254,5 +345,68 @@ public final class TaskRunner {
                         + "; the same Task instance cannot be enqueued twice at once. "
                         + "Create a fresh task with its builder or macro method, a "
                         + "Supplier<Task>, or an OutputTaskFactory.");
+    }
+
+    /** Compact diagnostic text that avoids invoking arbitrary task formatting code. */
+    private static String describeFailure(RuntimeException failure) {
+        String message = failure.getMessage();
+        return failure.getClass().getSimpleName()
+                + ((message == null || message.isEmpty()) ? "" : ": " + message);
+    }
+
+    /** Invoke one start hook and fail-stop the runner if it throws. */
+    private void startTask(Task task, LoopClock clock) {
+        try {
+            task.start(clock);
+        } catch (RuntimeException failure) {
+            throw failStop(task, failure);
+        }
+    }
+
+    /** Invoke one update hook and fail-stop the runner if it throws. */
+    private void updateTask(Task task, LoopClock clock) {
+        try {
+            task.update(clock);
+        } catch (RuntimeException failure) {
+            throw failStop(task, failure);
+        }
+    }
+
+    /** Query completion and fail-stop the runner if the query throws. */
+    private boolean checkComplete(Task task) {
+        try {
+            return task.isComplete();
+        } catch (RuntimeException failure) {
+            throw failStop(task, failure);
+        }
+    }
+
+    /**
+     * Reset all runner-owned state, best-effort cancel the failed task, and preserve the original
+     * lifecycle failure as the exception visible to the caller.
+     */
+    private RuntimeException failStop(Task failedTask, RuntimeException failure) {
+        current = null;
+        queue.clear();
+        lastUpdatedCycle = Long.MIN_VALUE;
+
+        boolean previousSuppressUpdates = suppressUpdates;
+        suppressUpdates = true;
+        try {
+            if (failedTask != null) {
+                failedTask.cancel();
+            }
+        } catch (RuntimeException cleanupFailure) {
+            if (cleanupFailure != failure) {
+                failure.addSuppressed(cleanupFailure);
+            }
+        } finally {
+            // Cancellation is user code: clear again in case it re-entered enqueue/cancel APIs.
+            current = null;
+            queue.clear();
+            lastUpdatedCycle = Long.MIN_VALUE;
+            suppressUpdates = previousSuppressUpdates;
+        }
+        return failure;
     }
 }

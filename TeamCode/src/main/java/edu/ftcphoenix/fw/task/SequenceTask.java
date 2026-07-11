@@ -17,8 +17,8 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *   <li>When the current child finishes, the next child is started on the following update, or
  *       immediately if the child finishes in its own {@code start()} method.</li>
  *   <li>The sequence finishes when all children have finished.</li>
- *   <li>{@link #cancel()} cancels the currently running child, if any, and then marks the sequence
- *       as {@link TaskOutcome#CANCELLED}.</li>
+ *   <li>Active {@link #cancel()} marks the sequence terminal, then asks its current child to
+ *       cancel. Pre-start and terminal cancellation are no-ops.</li>
  * </ul>
  *
  * <p>Typical usage:</p>
@@ -145,8 +145,7 @@ public final class SequenceTask implements Task {
     @Override
     public void update(LoopClock clock) {
         if (!started) {
-            start(clock);
-            return;
+            throw TaskLifecycle.updateBeforeStart("SequenceTask");
         }
         Task current = getCurrentTask();
         if (current == null) {
@@ -161,21 +160,23 @@ public final class SequenceTask implements Task {
     /**
      * {@inheritDoc}
      *
-     * <p>Cancels the current child if one is active, then marks the whole sequence complete with
-     * {@link TaskOutcome#CANCELLED}. Later children are never started.</p>
+     * <p>Marks the whole sequence complete with {@link TaskOutcome#CANCELLED}, then asks the
+     * current child to cancel. Later children are never started.</p>
      */
     @Override
     public void cancel() {
-        if (isComplete()) {
+        if (!started || isComplete()) {
             return;
         }
         Task current = getCurrentTask();
-        if (current != null && !current.isComplete()) {
+        // Establish terminal state before child cleanup so a throwing hook cannot reopen the graph.
+        cancelled = true;
+        index = tasks.size();
+        // The Task contract makes pre-start and terminal cancellation safe no-ops. Do not query
+        // child completion here: this path may be cleaning up that exact failed lifecycle query.
+        if (current != null) {
             current.cancel();
         }
-        cancelled = true;
-        started = true;
-        index = tasks.size();
     }
 
     /**
