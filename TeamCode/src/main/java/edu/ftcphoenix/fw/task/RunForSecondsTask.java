@@ -11,6 +11,10 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * <p>This is a small building block for things like macros: "drive with this command for
  * 0.8 seconds", "run intake for 0.5 seconds", and similar time-boxed actions.</p>
  *
+ * <p>Elapsed time is measured from the {@link LoopClock#nowSec()} captured in
+ * {@link #start(LoopClock)}. This matters because {@link TaskRunner} starts and first updates a task
+ * in one call, while that loop's {@link LoopClock#dtSec()} describes time before the task started.</p>
+ *
  * <h2>Lifecycle</h2>
  * <ul>
  *   <li>{@link #start(LoopClock)} is called once when the task begins.
@@ -24,7 +28,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *   <li>{@link #update(LoopClock)} is called every loop while the task is active.
  *       <ul>
  *         <li>Runs the {@code onUpdate} callback if non-null.</li>
- *         <li>Subtracts {@code clock.dtSec()} from the remaining time.</li>
+ *         <li>Measures elapsed time from the {@code clock.nowSec()} value captured at start.</li>
  *         <li>When time reaches zero, runs {@code onFinish} if non-null and marks the task
  *             finished.</li>
  *       </ul>
@@ -64,7 +68,8 @@ public final class RunForSecondsTask implements Task {
     private boolean finished = false;
     private boolean cancelled = false;
     private boolean finishCalled = false;
-    private double remainingSec = 0.0;
+    private double startSec = 0.0;
+    private double elapsedSec = 0.0;
 
     /**
      * Create a new timed task.
@@ -72,7 +77,10 @@ public final class RunForSecondsTask implements Task {
      * @param durationSec how long the task should run in seconds; must be {@code >= 0}
      * @param onStart     optional callback run once when the task starts; may be {@code null}
      * @param onUpdate    optional callback run each loop while the task is active; may be
-     *                    {@code null}. Receives the current {@link LoopClock}.
+     *                    {@code null}. Receives the unchanged current {@link LoopClock}; on a
+     *                    first update that shares the start cycle, its {@code dtSec()} predates
+     *                    this task. Callback-owned timers should capture and compare
+     *                    {@code nowSec()} instead.
      * @param onFinish    optional callback run once when time elapses or the task is cancelled;
      *                    may be {@code null}
      */
@@ -101,13 +109,14 @@ public final class RunForSecondsTask implements Task {
         finished = false;
         cancelled = false;
         finishCalled = false;
-        remainingSec = durationSec;
+        startSec = clock.nowSec();
+        elapsedSec = 0.0;
 
         if (onStart != null) {
             onStart.run();
         }
 
-        if (remainingSec <= 0.0) {
+        if (durationSec <= 0.0) {
             callFinishOnce();
             finished = true;
         }
@@ -126,8 +135,8 @@ public final class RunForSecondsTask implements Task {
             onUpdate.accept(clock);
         }
 
-        remainingSec -= clock.dtSec();
-        if (remainingSec <= 0.0) {
+        elapsedSec = elapsedSinceStart(clock);
+        if (elapsedSec >= durationSec) {
             callFinishOnce();
             finished = true;
         }
@@ -182,6 +191,8 @@ public final class RunForSecondsTask implements Task {
                 .addData(p + ".started", started)
                 .addData(p + ".finished", finished)
                 .addData(p + ".cancelled", cancelled)
+                .addData(p + ".startSec", startSec)
+                .addData(p + ".elapsedSec", elapsedSec)
                 .addData(p + ".remainingSec", getRemainingSec())
                 .addData(p + ".hasOnStart", onStart != null)
                 .addData(p + ".hasOnUpdate", onUpdate != null)
@@ -189,15 +200,22 @@ public final class RunForSecondsTask implements Task {
     }
 
     /**
-     * @return remaining time in seconds, clamped at 0, once the task has started; or 0 if the
-     * task is finished or has not yet been started. This is mainly intended for debugging and
-     * telemetry.
+     * @return remaining time in seconds, clamped at 0, once the task has started; or 0 if the task
+     * is finished or has not yet been started. The value is based on elapsed absolute loop time
+     * since start and is mainly intended for debugging and telemetry.
      */
     public double getRemainingSec() {
         if (!started || finished) {
             return 0.0;
         }
-        return Math.max(remainingSec, 0.0);
+        return Math.max(durationSec - elapsedSec, 0.0);
+    }
+
+    /**
+     * Return time elapsed since {@link #start(LoopClock)}, excluding any interval before start.
+     */
+    private double elapsedSinceStart(LoopClock clock) {
+        return Math.max(0.0, clock.nowSec() - startSec);
     }
 
     /**

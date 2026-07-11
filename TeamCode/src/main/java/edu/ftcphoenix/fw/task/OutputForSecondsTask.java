@@ -11,6 +11,11 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * completion sensor exists.</p>
  *
  * <p>Cancellation ends the pulse immediately and reports {@link TaskOutcome#CANCELLED}.</p>
+ *
+ * <p>Elapsed time is measured from the {@link LoopClock#nowSec()} captured at start. Consequently,
+ * a positive duration remains active and exposes {@link #getOutput()} for at least its start cycle,
+ * even when the preceding loop delta is larger than the duration. A zero duration completes at
+ * start and is never selected by {@link OutputTaskRunner}.</p>
  */
 public final class OutputForSecondsTask implements OutputTask {
 
@@ -20,6 +25,7 @@ public final class OutputForSecondsTask implements OutputTask {
 
     private boolean finished = false;
     private boolean cancelled = false;
+    private double startSec = 0.0;
     private double elapsedSec = 0.0;
 
     /**
@@ -45,6 +51,7 @@ public final class OutputForSecondsTask implements OutputTask {
     public void start(LoopClock clock) {
         finished = (durationSec == 0.0);
         cancelled = false;
+        startSec = clock.nowSec();
         elapsedSec = 0.0;
     }
 
@@ -54,7 +61,7 @@ public final class OutputForSecondsTask implements OutputTask {
         if (finished) {
             return;
         }
-        elapsedSec += clock.dtSec();
+        elapsedSec = Math.max(0.0, clock.nowSec() - startSec);
         if (elapsedSec >= durationSec) {
             finished = true;
         }
@@ -122,6 +129,7 @@ public final class OutputForSecondsTask implements OutputTask {
 
         dbg.addData(p + ".name", name)
                 .addData(p + ".output", output)
+                .addData(p + ".startSec", startSec)
                 .addData(p + ".elapsedSec", elapsedSec)
                 .addData(p + ".durationSec", durationSec)
                 .addData(p + ".cancelled", cancelled)

@@ -100,6 +100,9 @@ public final class Tasks {
     /**
      * Create a {@link Task} that waits for a fixed amount of time.
      *
+     * <p>The duration begins when the returned task starts; it does not include the loop interval
+     * immediately before scheduling.</p>
+     *
      * @param seconds duration in seconds; must be {@code >= 0}
      */
     public static Task waitForSeconds(double seconds) {
@@ -244,7 +247,11 @@ public final class Tasks {
      */
     public interface OutputPulseEndStep {
         /**
-         * Run for exactly {@code durationSec} seconds after the start gate opens.
+         * Run for {@code durationSec} seconds after the start gate opens.
+         *
+         * <p>A positive duration publishes the run output in the gate-opening cycle and is
+         * therefore observable at least once even when shorter than one loop. Zero duration stays
+         * idle; a configured cooldown still follows that empty run window.</p>
          */
         OutputPulseReadyStep forSeconds(double durationSec);
 
@@ -433,6 +440,9 @@ public final class Tasks {
 
     /**
      * Output a constant value for a fixed duration.
+     *
+     * <p>A positive duration remains observable for at least its start cycle; zero duration remains
+     * idle.</p>
      */
     public static OutputTask outputForSeconds(String name, double output, double durationSec) {
         return new OutputForSecondsTask(name, output, durationSec);
@@ -441,6 +451,10 @@ public final class Tasks {
     /**
      * Wait for {@code startWhen}, then output {@code runOutput} until {@code doneWhen} is satisfied
      * (and {@code minRunSec} has elapsed), or until {@code maxRunSec} elapses.
+     *
+     * <p>RUN and cooldown timing begin at their own start timestamps. If the done condition is
+     * already satisfied and no positive minimum is required, the task completes at idle. Otherwise
+     * a positive required run is exposed in the gate-opening cycle.</p>
      */
     public static OutputTask gatedOutputUntil(String name,
                                               BooleanSource startWhen,
@@ -479,7 +493,8 @@ public final class Tasks {
     }
 
     /**
-     * Convenience overload: output while a condition is true, up to a timeout.
+     * Convenience overload: output until a condition is satisfied, up to a timeout. Its run
+     * interval begins when the task's immediate start gate opens.
      */
     public static OutputTask outputUntil(String name,
                                          BooleanSource doneWhen,

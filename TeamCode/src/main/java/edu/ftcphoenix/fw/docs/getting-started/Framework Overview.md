@@ -392,6 +392,11 @@ A `Task` is non-blocking work that progresses over multiple loop cycles.
 
 A `TaskRunner` runs tasks **sequentially** (FIFO): start one task, update it each cycle until it completes, then move to the next.
 
+The runner may start and update a new task in the same loop. Framework timed tasks anchor their
+durations and timeouts to that start timestamp, so the preceding loop's `dtSec()` cannot erase a
+short wait or command. Every positive-duration drive/output/Plant command is available to the later
+realization phase for at least one loop; zero-duration intervals may finish immediately.
+
 If you want to abort automation, prefer `cancelAndClear()` over `clear()`. `clear()` forgets the current task without calling its cancellation hook; `cancelAndClear()` lets the task stop outputs cleanly and reports `TaskOutcome.CANCELLED`.
 
 ### Factories: `Tasks`, `PlantTasks`, `DriveTasks`

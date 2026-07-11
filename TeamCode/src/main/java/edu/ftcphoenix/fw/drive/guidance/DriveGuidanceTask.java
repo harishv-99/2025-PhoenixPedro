@@ -53,6 +53,10 @@ public final class DriveGuidanceTask implements Task {
 
         /**
          * How long we will tolerate having no usable guidance command before timing out.
+         *
+         * <p>The consecutive interval begins when the task starts, or on the first no-command
+         * loop after usable guidance was last available. Time from before that boundary is not
+         * charged to this timeout.</p>
          */
         public double maxNoGuidanceSec = 0.35;
 
@@ -76,6 +80,7 @@ public final class DriveGuidanceTask implements Task {
     private TaskOutcome outcome = TaskOutcome.NOT_DONE;
 
     private double startTimeSec = 0.0;
+    private double noGuidanceStartSec = Double.NaN;
     private double noGuidanceSec = 0.0;
 
     private double lastTranslationErrorIn = Double.NaN;
@@ -122,6 +127,7 @@ public final class DriveGuidanceTask implements Task {
         outcome = TaskOutcome.NOT_DONE;
 
         startTimeSec = (clock != null) ? clock.nowSec() : 0.0;
+        noGuidanceStartSec = (clock != null) ? clock.nowSec() : Double.NaN;
         noGuidanceSec = 0.0;
         lastTranslationErrorIn = Double.NaN;
         lastOmegaErrorRad = Double.NaN;
@@ -164,7 +170,10 @@ public final class DriveGuidanceTask implements Task {
         // No usable command this loop.
         if (step.out.mask.isNone()) {
             drivebase.stop();
-            noGuidanceSec += clock.dtSec();
+            if (!Double.isFinite(noGuidanceStartSec)) {
+                noGuidanceStartSec = clock.nowSec();
+            }
+            noGuidanceSec = Math.max(0.0, clock.nowSec() - noGuidanceStartSec);
             if (cfg.maxNoGuidanceSec > 0.0 && noGuidanceSec > cfg.maxNoGuidanceSec) {
                 complete = true;
                 outcome = TaskOutcome.TIMEOUT;
@@ -172,6 +181,7 @@ public final class DriveGuidanceTask implements Task {
             return;
         }
 
+        noGuidanceStartSec = Double.NaN;
         noGuidanceSec = 0.0;
         drivebase.drive(step.out.signal);
 
@@ -248,6 +258,9 @@ public final class DriveGuidanceTask implements Task {
         if (!Double.isNaN(lastOmegaErrorRad)) {
             dbg.addData(p + ".omegaErrorRad", lastOmegaErrorRad);
         }
+
+        dbg.addData(p + ".noGuidanceSec", noGuidanceSec)
+                .addData(p + ".maxNoGuidanceSec", cfg.maxNoGuidanceSec);
 
         // Helpful if you want to tune takeover.
         dbg.addData(p + ".aprilTagsInRangeForTranslation", core.aprilTagsInRangeForTranslation());

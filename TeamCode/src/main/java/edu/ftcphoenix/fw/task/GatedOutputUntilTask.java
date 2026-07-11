@@ -30,6 +30,13 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *   <li><b>COOLDOWN</b> (optional): output {@code idleOutput} for {@code cooldownSec} seconds.</li>
  * </ol>
  *
+ * <p>RUN and COOLDOWN each capture their own {@link LoopClock#nowSec()} anchor. When a gate opens,
+ * a condition that is already done with no required minimum run completes at idle. Otherwise a
+ * positive required RUN window publishes {@code runOutput} in that same runner cycle, guaranteeing
+ * one downstream observation even when the configured duration is shorter than the next loop. A
+ * zero RUN window stays at {@code idleOutput} and completes immediately (or enters its configured
+ * cooldown) without publishing the run value.</p>
+ *
  * <h2>Cancellation</h2>
  * <p>{@link #cancel()} immediately transitions the task to DONE, restores {@code idleOutput}, and
  * reports {@link TaskOutcome#CANCELLED}. This makes it safe to clear queued output tasks during
@@ -55,7 +62,9 @@ public final class GatedOutputUntilTask implements OutputTask {
     private final double cooldownSec;
 
     private Phase phase = Phase.WAIT;
+    private double runStartedSec = 0.0;
     private double runElapsedSec = 0.0;
+    private double cooldownStartedSec = 0.0;
     private double cooldownElapsedSec = 0.0;
     private double currentOutput = 0.0;
     private TaskOutcome finalOutcome = TaskOutcome.NOT_DONE;
@@ -110,7 +119,9 @@ public final class GatedOutputUntilTask implements OutputTask {
     @Override
     public void start(LoopClock clock) {
         phase = Phase.WAIT;
+        runStartedSec = 0.0;
         runElapsedSec = 0.0;
+        cooldownStartedSec = 0.0;
         cooldownElapsedSec = 0.0;
         currentOutput = idleOutput;
         finalOutcome = TaskOutcome.NOT_DONE;
@@ -125,41 +136,24 @@ public final class GatedOutputUntilTask implements OutputTask {
             case WAIT:
                 currentOutput = idleOutput;
                 if (startWhen.getAsBoolean(clock)) {
-                    phase = Phase.RUN;
-                    runElapsedSec = 0.0;
+                    beginRun(clock);
                 }
                 break;
             case RUN:
-                runElapsedSec += clock.dtSec();
+                runElapsedSec = elapsedSince(runStartedSec, clock);
                 currentOutput = runOutput.getAsDouble(clock);
                 boolean done = doneWhen.getAsBoolean(clock);
                 if (done && runElapsedSec >= minRunSec) {
-                    finalOutcome = TaskOutcome.SUCCESS;
-                    if (cooldownSec > 0.0) {
-                        phase = Phase.COOLDOWN;
-                        cooldownElapsedSec = 0.0;
-                        currentOutput = idleOutput;
-                    } else {
-                        phase = Phase.DONE;
-                        currentOutput = idleOutput;
-                    }
+                    finishRun(TaskOutcome.SUCCESS, clock);
                     break;
                 }
                 if (runElapsedSec >= maxRunSec) {
-                    finalOutcome = TaskOutcome.TIMEOUT;
-                    if (cooldownSec > 0.0) {
-                        phase = Phase.COOLDOWN;
-                        cooldownElapsedSec = 0.0;
-                        currentOutput = idleOutput;
-                    } else {
-                        phase = Phase.DONE;
-                        currentOutput = idleOutput;
-                    }
+                    finishRun(TaskOutcome.TIMEOUT, clock);
                 }
                 break;
             case COOLDOWN:
                 currentOutput = idleOutput;
-                cooldownElapsedSec += clock.dtSec();
+                cooldownElapsedSec = elapsedSince(cooldownStartedSec, clock);
                 if (cooldownElapsedSec >= cooldownSec) {
                     phase = Phase.DONE;
                 }
@@ -169,6 +163,51 @@ public final class GatedOutputUntilTask implements OutputTask {
                 currentOutput = idleOutput;
                 break;
         }
+    }
+
+    /**
+     * Enter the RUN phase at the current absolute loop time.
+     *
+     * <p>An already-satisfied done condition with no positive minimum completes at idle. Otherwise
+     * a positive required run window publishes its output immediately so the downstream
+     * output/Plant phase can observe it in this runner cycle. A zero run window completes without
+     * ever publishing the run output.</p>
+     */
+    private void beginRun(LoopClock clock) {
+        phase = Phase.RUN;
+        runStartedSec = clock.nowSec();
+        runElapsedSec = 0.0;
+
+        boolean done = doneWhen.getAsBoolean(clock);
+        if (done && minRunSec <= 0.0) {
+            finishRun(TaskOutcome.SUCCESS, clock);
+            return;
+        }
+
+        if (maxRunSec <= 0.0) {
+            finishRun(TaskOutcome.TIMEOUT, clock);
+            return;
+        }
+
+        currentOutput = runOutput.getAsDouble(clock);
+    }
+
+    /** End RUN and either begin cooldown or complete immediately. */
+    private void finishRun(TaskOutcome outcome, LoopClock clock) {
+        finalOutcome = outcome;
+        currentOutput = idleOutput;
+        if (cooldownSec > 0.0) {
+            phase = Phase.COOLDOWN;
+            cooldownStartedSec = clock.nowSec();
+            cooldownElapsedSec = 0.0;
+        } else {
+            phase = Phase.DONE;
+        }
+    }
+
+    /** Return non-negative elapsed time from one task-owned interval anchor. */
+    private static double elapsedSince(double startedSec, LoopClock clock) {
+        return Math.max(0.0, clock.nowSec() - startedSec);
     }
 
     /**
@@ -231,7 +270,9 @@ public final class GatedOutputUntilTask implements OutputTask {
         dbg.addData(p + ".name", name)
                 .addData(p + ".phase", phase)
                 .addData(p + ".output", currentOutput)
+                .addData(p + ".runStartedSec", runStartedSec)
                 .addData(p + ".runElapsedSec", runElapsedSec)
+                .addData(p + ".cooldownStartedSec", cooldownStartedSec)
                 .addData(p + ".cooldownElapsedSec", cooldownElapsedSec)
                 .addData(p + ".minRunSec", minRunSec)
                 .addData(p + ".maxRunSec", maxRunSec)

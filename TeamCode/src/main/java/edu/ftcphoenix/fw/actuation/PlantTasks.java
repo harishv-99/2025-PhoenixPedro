@@ -2,7 +2,6 @@ package edu.ftcphoenix.fw.actuation;
 
 import java.util.Objects;
 
-import edu.ftcphoenix.fw.core.control.DebounceBoolean;
 import edu.ftcphoenix.fw.core.source.ScalarTarget;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.task.Task;
@@ -81,12 +80,14 @@ public final class PlantTasks {
      */
     public interface MoveReadyStep {
         /**
-         * Require {@link Plant#atTarget(double)} to stay true for {@code stableSec}.
+         * Require {@link Plant#atTarget(double)} to stay true for {@code stableSec}, measured from
+         * the first loop that observes the plant at the requested target.
          */
         MoveReadyStep stableFor(double stableSec);
 
         /**
-         * Finish with {@link TaskOutcome#TIMEOUT} if the plant has not reached the target in time.
+         * Finish with {@link TaskOutcome#TIMEOUT} if the plant has not reached the target within
+         * {@code timeoutSec} after this task starts. Time before the start call is not counted.
          */
         MoveReadyStep timeout(double timeoutSec);
 
@@ -250,9 +251,10 @@ public final class PlantTasks {
         private final double timeoutSec;
         private final double finalTarget;
         private final boolean hasFinalTarget;
-        private DebounceBoolean stableLatch;
         private boolean started;
         private boolean complete;
+        private double startSec;
+        private double stableSinceSec;
         private double elapsedSec;
         private TaskOutcome outcome = TaskOutcome.NOT_DONE;
 
@@ -270,20 +272,41 @@ public final class PlantTasks {
         public void start(LoopClock clock) {
             started = true;
             complete = false;
+            startSec = nowSec(clock, 0.0);
+            stableSinceSec = Double.NaN;
             elapsedSec = 0.0;
             outcome = TaskOutcome.NOT_DONE;
             writableTarget.set(target);
-            stableLatch = stableSec > 0.0 ? DebounceBoolean.onAfterOffImmediately(stableSec) : null;
         }
 
         @Override
         public void update(LoopClock clock) {
             if (!started || complete) return;
-            elapsedSec += clock != null ? clock.dtSec() : 0.0;
+            double nowSec = nowSec(clock, startSec);
+            elapsedSec = elapsedSince(startSec, nowSec);
             boolean reached = plant.atTarget(target);
-            boolean done = stableLatch != null ? stableLatch.update(clock, reached) : reached;
+            boolean done;
+            if (stableSec <= 0.0) {
+                done = reached;
+            } else if (!reached) {
+                stableSinceSec = Double.NaN;
+                done = false;
+            } else {
+                if (!Double.isFinite(stableSinceSec)) {
+                    stableSinceSec = nowSec;
+                }
+                done = elapsedSince(stableSinceSec, nowSec) >= stableSec;
+            }
             if (done) finish(TaskOutcome.SUCCESS);
             else if (timeoutSec > 0.0 && elapsedSec >= timeoutSec) finish(TaskOutcome.TIMEOUT);
+        }
+
+        private static double nowSec(LoopClock clock, double fallbackSec) {
+            return clock != null ? clock.nowSec() : fallbackSec;
+        }
+
+        private static double elapsedSince(double intervalStartSec, double nowSec) {
+            return Math.max(0.0, nowSec - intervalStartSec);
         }
 
         private void finish(TaskOutcome result) {

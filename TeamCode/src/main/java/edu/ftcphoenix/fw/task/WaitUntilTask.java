@@ -25,6 +25,10 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * }</pre>
  *
  * <p>Cancellation ends the wait immediately and reports {@link TaskOutcome#CANCELLED}.</p>
+ *
+ * <p>Timeout elapsed time is measured from the {@link LoopClock#nowSec()} captured at task start,
+ * so the loop interval before scheduling is never charged to the wait. The condition is sampled
+ * before the timeout comparison, including at the exact timeout boundary.</p>
  */
 public final class WaitUntilTask implements Task {
 
@@ -34,6 +38,7 @@ public final class WaitUntilTask implements Task {
     private boolean finished = false;
     private boolean timedOut = false;
     private boolean cancelled = false;
+    private double startSec = 0.0;
     private double elapsedSec = 0.0;
     /**
      * Last observed condition value, sampled during {@link #update(LoopClock)}.
@@ -67,6 +72,7 @@ public final class WaitUntilTask implements Task {
         finished = false;
         timedOut = false;
         cancelled = false;
+        startSec = clock.nowSec();
         elapsedSec = 0.0;
         lastCondition = false;
     }
@@ -83,7 +89,7 @@ public final class WaitUntilTask implements Task {
             finished = true;
             return;
         }
-        elapsedSec += clock.dtSec();
+        elapsedSec = Math.max(0.0, clock.nowSec() - startSec);
         if (elapsedSec >= timeoutSec) {
             finished = true;
             timedOut = true;
@@ -139,6 +145,7 @@ public final class WaitUntilTask implements Task {
                 .addData(p + ".timedOut", timedOut)
                 .addData(p + ".cancelled", cancelled)
                 .addData(p + ".condition", lastCondition)
+                .addData(p + ".startSec", startSec)
                 .addData(p + ".elapsedSec", elapsedSec)
                 .addData(p + ".timeoutSec", timeoutSec);
 

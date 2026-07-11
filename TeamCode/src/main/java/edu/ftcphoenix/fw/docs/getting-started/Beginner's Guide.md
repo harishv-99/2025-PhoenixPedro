@@ -371,6 +371,10 @@ A Plant is source-driven, so a task does not write hardware directly. It writes 
 
 These helpers do **not** depend on `plant.atTarget(...)`, so they work with feedback plants and open-loop plants.
 
+The timer begins when the task starts, not during the loop interval before it was scheduled. A
+positive-duration target is therefore available to `plant.update(clock)` at least once even after
+an unusually long loop; a zero-duration write remains immediate.
+
 ```java
 // Intake: run at +1.0 for 0.7 seconds, then stop.
 Task intakePulse = PlantTasks.write(intake)
@@ -440,6 +444,10 @@ Task parallel = Tasks.parallelAll(moveArm, runIntake);
 
 In student code, prefer the factories (`Tasks.*`, `PlantTasks.*`, `DriveTasks.*`)
 over constructing task classes directly.
+
+Phoenix's timed factories measure durations and timeouts from the task's actual start timestamp.
+If you write a custom timed Task, capture `clock.nowSec()` in `start(...)` and compare later clock
+timestamps rather than counting the `dtSec()` that arrived before the Task started.
 
 ---
 

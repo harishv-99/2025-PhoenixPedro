@@ -67,7 +67,9 @@ public final class ScalarTasks {
         Task build();
 
         /**
-         * Hold the value for {@code seconds} before completing.
+         * Hold the value for {@code seconds} from the task's actual start timestamp before
+         * completing. A positive duration leaves the value observable for at least the start
+         * cycle; zero duration completes immediately.
          */
         WriteTimedStep forSeconds(double seconds);
     }
@@ -189,7 +191,8 @@ public final class ScalarTasks {
     }
 
     /**
-     * Hold a scalar target at {@code value} for a duration, then leave it there.
+     * Hold a scalar target at {@code value} from the task's actual start timestamp, then leave it
+     * there. A positive duration leaves the value observable for at least the start cycle.
      */
     public static Task holdFor(final ScalarTarget target, final double value, final double seconds) {
         Objects.requireNonNull(target, "target");
@@ -199,7 +202,9 @@ public final class ScalarTasks {
     }
 
     /**
-     * Hold a scalar target at {@code value} for a duration, then set {@code finalValue}.
+     * Hold a scalar target at {@code value} from the task's actual start timestamp, then set
+     * {@code finalValue}. A positive duration leaves {@code value} observable for at least the
+     * start cycle before the final value is applied.
      */
     public static Task holdForThen(final ScalarTarget target,
                                    final double value,

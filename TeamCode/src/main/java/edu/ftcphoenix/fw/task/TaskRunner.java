@@ -28,6 +28,11 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * idempotency, a double-update can cause tasks to advance twice as fast, timeouts to
  * elapse early, or short tasks to be skipped unexpectedly.</p>
  *
+ * <p>When a queued task starts, the runner also gives it its first {@code update(clock)} in the
+ * same call. Timed task implementations therefore anchor their own intervals to
+ * {@link LoopClock#nowSec()}; the current {@link LoopClock#dtSec()} belongs to the interval before
+ * that newly started task.</p>
+ *
  * <h2>Typical usage</h2>
  * <pre>{@code
  * TaskRunner runner = new TaskRunner();
@@ -156,7 +161,8 @@ public final class TaskRunner {
      *   <li>If the task completes immediately in {@code start()}, the runner will advance to the
      *       next queued task (if any) before returning.</li>
      *   <li>If there is an active (not complete) current task after this process, its
-     *       {@link Task#update(LoopClock)} method is called exactly once.</li>
+     *       {@link Task#update(LoopClock)} method is called exactly once, including when it was
+     *       started earlier in this same runner call.</li>
      * </ul>
      *
      * <p>This method is idempotent by {@link LoopClock#cycle()}: if called twice in the same loop

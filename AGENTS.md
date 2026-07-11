@@ -37,6 +37,9 @@ the framework API.
   or Auto behavior. Represent work over time with cooperative `Task`s updated by the main loop.
 - Use one `LoopClock` heartbeat. Advance it exactly once per OpMode cycle; other components read it
   but never advance their own competing timebase.
+- A timed Task or timed Task phase starts at its own `clock.nowSec()` boundary. Never charge it the
+  `dtSec()` interval that elapsed before it started, and keep every positive-duration command
+  observable by the documented downstream loop phase at least once.
 - Preserve per-cycle semantics. Stateful sources, bindings, task runners, and similar components
   must be safe against repeated sampling or updating in the same `clock.cycle()` where required.
 - Maintain clear ownership:
