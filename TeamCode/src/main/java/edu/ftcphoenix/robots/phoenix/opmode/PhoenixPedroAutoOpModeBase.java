@@ -266,12 +266,7 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
             return;
         }
         try {
-            runtime.stopAuto();
-        } catch (RuntimeException ignored) {
-            // Continue stopping hardware owners even if the autonomous runner was only partly built.
-        }
-        try {
-            runtime.stopAny();
+            runtime.stop();
         } catch (RuntimeException ignored) {
             // Cleanup should be best-effort during failed INIT retries and OpMode shutdown.
         }

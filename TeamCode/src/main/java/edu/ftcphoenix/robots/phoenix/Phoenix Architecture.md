@@ -394,6 +394,17 @@ Phoenix keeps `updateAuto()` just as explicit:
 Auto uses the same scoring path and targeting service, but swaps TeleOp drive-assist policy for the
 queued autonomous task runner and reports through the Auto-specific telemetry emitter.
 
+## Shutdown ownership
+
+`PhoenixRobot.stop()` is the one public shutdown operation for both TeleOp and Auto. It is
+idempotent and owns the complete Phoenix sequence: cancel behavior producers, stop scoring and drive
+outputs, reset targeting, release vision, and clear the composition-root references. Initialization
+failures use the same operation so every successfully constructed Phoenix owner is cleaned before
+the original error is reported.
+
+Mode clients still stop resources outside the Phoenix object graph. In Pedro Auto, the OpMode owns
+and stops the Pedro drive adapter separately before stopping `PhoenixRobot`.
+
 ## Recommended profile shape
 
 ```text

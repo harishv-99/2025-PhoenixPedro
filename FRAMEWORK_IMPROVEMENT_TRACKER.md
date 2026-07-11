@@ -63,7 +63,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | Order | ID | Item | Status | Current leading hypothesis (not yet a decision) |
 |---:|---|---|---|---|
 | 1 | TEST-01 | Pure framework test harness | Done | Establish fake-clock and pure unit-test support before behavior changes. |
-| 2 | PHX-01 | Phoenix shutdown ordering | Proposed | Make shutdown one idempotent, correctly ordered owner operation. |
+| 2 | PHX-01 | Phoenix shutdown ordering | Done | Make shutdown one idempotent, correctly ordered owner operation. |
 | 3 | SAFE-01 | Final Plant target invariant | Proposed | Validate finite/range-safe output after all dynamic guards. |
 | 4 | SAFE-02 | Power Plant applied-target truth | Proposed | Clamp normalized power in the Plant and report the clamp. |
 | 5 | TASK-01 | Timed-task start semantics | Proposed | Measure elapsed time from task start, not the preceding loop interval. |
@@ -145,7 +145,56 @@ core semantics it depends on.
   to call incorrectly.
 - **Completion:** every initialized resource is stopped exactly once for TeleOp, Auto, partial init,
   repeated stop, and init failure.
-- **Decision record:** _Pending._
+- **Decision record (2026-07-10, approved):**
+  - **Confirmed behavior:** both `PhoenixTeleOp.stop()` and the Pedro Auto cleanup call the
+    mode-specific stop first. That stop clears `scoringPath`, so the following `stopAny()` cannot
+    call `ScoringPath.stop()`. This affects normal TeleOp, normal Auto, and Auto initialization
+    failures that occur after Phoenix construction but during follower/path/routine setup.
+  - **Current callers:** only `PhoenixTeleOp` and `PhoenixPedroAutoOpModeBase` use the three public
+    Phoenix stop methods. The Pedro drive adapter remains owned and stopped separately by the Auto
+    mode client.
+  - **Alternatives considered:** reverse the two calls; move scoring cleanup into
+    `stopSharedRuntime()`; make both mode-specific stops comprehensive; keep public lifecycle phases
+    with stricter documentation; add a mode enum, cleanup registry, `AutoCloseable`, or framework
+    lifecycle abstraction; or expose one complete `stop()` operation.
+  - **Simplicity comparison:** reversing calls or repairing the shared helper leaves an order-sensitive
+    two-call protocol that future thin OpModes can repeat incorrectly. Two comprehensive mode methods
+    duplicate one object-lifetime operation and make partial initialization choose a mode. A mode
+    enum, public lifecycle interface, cleanup registry, or `close()` alias adds concepts without a
+    second lifetime. One `stop()` matches FTC vocabulary and gives students one obvious call.
+  - **Chosen design:** replace `stopTeleOp()`, `stopAuto()`, and `stopAny()` with one public,
+    idempotent `PhoenixRobot.stop()`. Internally cancel the Auto runner and TeleOp behavior owners,
+    stop scoring and drive sinks while their references are still available, reset targeting, close
+    vision last, and clear reference-only state. Move each field to a local and null it before its
+    cleanup call so repeated/reentrant stops act exactly once. Continue after individual cleanup
+    failures, then rethrow the first failure with later failures suppressed.
+  - **Initialization failure policy:** wrap `initTeleOp()` and the explicit-source `initAuto(...)` so
+    a construction failure invokes the same idempotent stop, attaches any cleanup failure to the
+    original exception, and rethrows the original cause. Successfully constructed owners are then
+    cleaned even when a later owner or telemetry step fails.
+  - **Rejected designs:** do not keep deprecated aliases because all callers are in-repository and
+    breaking changes are allowed for one coherent API. Do not add `AutoCloseable`, a mode state
+    machine, a generic framework helper, mocking dependency, injection graph, or test-only lifecycle
+    interface for this bounded robot fix; `COMMON-01` separately evaluates reusable initialization
+    ceremony.
+  - **Implementation refinement:** a package-private pure-Java `PhoenixShutdown` executor enforces
+    ordered, one-shot, best-effort action execution without becoming a cleanup registry or public
+    robot concept. The complete owner-to-action mapping remains visible in `PhoenixRobot.stop()`.
+  - **Verification plan:** migrate both callers and lifecycle documentation; confirm no references to
+    the removed methods remain; unit-test the internal executor's declared ordering, missing-owner,
+    repeated-stop, cleanup-failure, and post-stop-init behavior; run `:TeamCode:testDebugUnitTest` and
+    `:TeamCode:compileDebugJavaWithJavac`; and inspect the concrete acquisition/cleanup matrix for
+    no-init, TeleOp, Auto, and partial-init paths. Direct JVM construction of the concrete FTC Phoenix
+    graph would require disproportionate production seams, so perform a later on-robot check that
+    drive and scoring outputs reach zero and vision can reinitialize after STOP.
+  - **Approval checkpoint:** the user approved this public API reduction on 2026-07-10.
+  - **Automated verification:** `:TeamCode:testDebugUnitTest` and
+    `:TeamCode:compileDebugJavaWithJavac` passed on 2026-07-10. Six tests ran with zero failures and
+    zero errors, including three focused shutdown tests. Repository search found no executable
+    callers of the removed lifecycle methods, and three independent diff reviews found no lifecycle,
+    API, documentation, or test issues. The user confirmed Android Studio inspection on 2026-07-10.
+    Actual motor-zero and vision-reinitialization behavior should also be confirmed during the next
+    on-robot bring-up.
 
 ### SAFE-01 - Final Plant target invariant
 
