@@ -53,7 +53,9 @@ the framework API.
   Phoenix abstractions, not directly on `com.qualcomm.*` or third-party route-library types.
 - Keep Plants source-driven. Each Plant has one final `PlantTargetSource`; compose behavior with
   `PlantTargets.exact(...)`, `overlay(...)`, or `plan(...)`, then let the Plant apply hardware
-  bounds, references, and guards. Do not introduce competing imperative writers.
+  bounds, references, and guards. Reject static guard fallbacks outside a mapped Plant's range and
+  keep every final guarded target finite and inside its declared range. Do not introduce competing
+  imperative writers.
 - Prefer framework task factories (`Tasks`, `PlantTasks`, `DriveTasks`, guidance/route task helpers)
   over hand-written task state machines unless a new state machine is genuinely needed.
 - Keep drive intent and actuation separate: `DriveSource` produces robot-centric `DriveSignal`s;

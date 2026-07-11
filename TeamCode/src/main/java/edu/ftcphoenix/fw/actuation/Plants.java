@@ -17,7 +17,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * <p>Most FTC robot code should use the staged {@code FtcActuators.plant(...)} builder. These
  * factories are the lower-level boundary for custom hardware adapters and tests. All factories
  * normalize their target input into a {@link PlantTargetSource}; plain scalar sources are treated as
- * exact targets.</p>
+ * exact targets. Their shared update path enforces a final finite target after dynamic guards.</p>
  */
 public final class Plants {
 
@@ -154,7 +154,8 @@ public final class Plants {
                         : PlantTargetStatus.clampedToRange("target sanitized to finite value");
             }
 
-            PlantTargetGuards.Result result = guards.apply(candidate, status, appliedTarget, clock);
+            PlantTargetGuards.Result result = PlantTargetSafety.applyGuards(
+                    guards, candidate, status, appliedTarget, context.targetRange(), "Plant", clock);
             appliedTarget = result.target;
             targetStatus = result.status;
             applyTarget(appliedTarget, clock);

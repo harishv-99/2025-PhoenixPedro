@@ -180,8 +180,9 @@ A **Plant** is a source-driven scalar target follower. Robot behavior does not c
 `plant.setTarget(...)` every loop. Instead, every robot-facing Plant is constructed with one
 `PlantTargetSource`. Simple scalar values are lifted with `PlantTargets.exact(...)`, and richer
 behavior targets use `PlantTargets.overlay(...)` or `PlantTargets.plan(...)`. During
-`plant.update(clock)`, the Plant resolves that target source once, applies plant-level hardware
-guards, sends one safe target to hardware/control, and refreshes status.
+`plant.update(clock)`, the Plant resolves that target source once, applies static bounds and
+plant-level hardware guards, verifies the final target is finite and still inside the declared
+plant-unit range, sends that one safe target to hardware/control, and refreshes status.
 
 Key methods (see `edu.ftcphoenix.fw.actuation.Plant`):
 
@@ -199,7 +200,7 @@ A Plant may be open-loop (power, commanded servo position), device-managed close
 Behavior guards and Plant guards are intentionally parallel, but they attach at different layers:
 
 * **Behavior target generation** happens before the Plant protects hardware. Use `PlantTargets.exact(...)`, `PlantTargets.overlay(...)`, `PlantTargets.plan(...)`, `ScalarTarget`, and output queues to answer “what target does the robot want?” Plain `ScalarSource`s are still useful number streams, but anything that will become a Plant target should be lifted into `PlantTargets`.
-* **Plant target guards** live in the builder's `targetGuards()` branch and protect hardware after the requested target is resolved: max target rate, hold-last interlocks, and fallback targets. These answer “what may this hardware safely apply?”
+* **Plant target guards** live in the builder's `targetGuards()` branch and protect hardware after the requested target is resolved: max target rate, hold-last interlocks, and fallback targets. These answer “what may this hardware safely apply?” A mapped Plant rejects a static fallback outside its declared range when built, and every Plant rechecks the dynamic guard result before it becomes the applied target.
 
 Keep static range declarations such as `bounded(min, max)` close to the Plant topology because they define the legal plant coordinate system. Keep dynamic protection such as rate limits and interlocks in `targetGuards()`.
 

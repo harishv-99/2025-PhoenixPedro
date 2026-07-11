@@ -13,6 +13,10 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * <p>The limiter is idempotent for a single {@link LoopClock#cycle()}: multiple calls with the
  * same cycle return the same output and do not advance the limiter twice. That makes it safe to
  * use inside source graphs that may be sampled by multiple consumers in one robot loop.</p>
+ *
+ * <p>If the loop clock temporarily reports a non-finite time, the limiter retains its previous
+ * output. The first later finite sample re-establishes the time baseline without moving; normal
+ * rate-limited motion resumes on the following cycle.</p>
  */
 public final class SlewRateLimiter {
     private final double maxUpPerSec;
@@ -75,13 +79,23 @@ public final class SlewRateLimiter {
         lastInput = input;
 
         double now = clock.nowSec();
-        if (!initialized || !Double.isFinite(lastSec)) {
+        if (!initialized) {
             initialized = true;
             lastSec = now;
             lastOutput = input;
             lastDelta = 0.0;
             lastDtSec = 0.0;
             lastLimited = false;
+            return lastOutput;
+        }
+
+        if (!Double.isFinite(now) || !Double.isFinite(lastSec)) {
+            // Keep the previous output until a finite timestamp establishes a new rate baseline.
+            // Jumping straight to input here would bypass the configured rate after a bad clock.
+            lastSec = now;
+            lastDelta = 0.0;
+            lastDtSec = 0.0;
+            lastLimited = Math.abs(input - lastOutput) > 1e-9;
             return lastOutput;
         }
 

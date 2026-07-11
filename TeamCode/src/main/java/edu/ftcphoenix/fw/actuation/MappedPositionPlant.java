@@ -24,8 +24,9 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *
  * <p>The target source is sampled once per {@link #update(LoopClock)}. Static plant range and
  * reference validity are enforced first; dynamic hardware protection such as interlocks and target
- * rate limits are applied by {@link PlantTargetGuards}; then one applied target is sent to hardware
- * or the framework regulator.</p>
+ * rate limits are applied by {@link PlantTargetGuards}; the result is checked once more for the
+ * final finite/range invariant; then one applied target is sent to hardware or the framework
+ * regulator.</p>
  */
 public final class MappedPositionPlant implements PositionPlant {
 
@@ -192,7 +193,9 @@ public final class MappedPositionPlant implements PositionPlant {
         }
 
         /**
-         * Sets the static legal target range in plant units.
+         * Sets the static legal target range in plant units. The configured range must be valid
+         * and contain at least one finite command; use {@link #needsReference(String)} when only the
+         * position reference is temporarily unavailable.
          */
         public Builder range(ScalarRange range) {
             this.configuredRange = Objects.requireNonNull(range, "range");
@@ -301,6 +304,9 @@ public final class MappedPositionPlant implements PositionPlant {
 
         /**
          * Builds the mapped position plant.
+         *
+         * @throws IllegalArgumentException if the configured range cannot contain a finite command
+         *                                  or a static guard fallback lies outside that range
          */
         public MappedPositionPlant build() {
             if (targetSource == null)
@@ -325,6 +331,8 @@ public final class MappedPositionPlant implements PositionPlant {
             throw new IllegalArgumentException("nativePerPlantUnit must be finite and non-zero");
         if (tolerance < 0.0 || !Double.isFinite(tolerance))
             throw new IllegalArgumentException("positionTolerance must be finite and >= 0");
+        PlantTargetSafety.requireUsableConfiguredRange(configuredRange, "MappedPositionPlant");
+        targetGuards.validateFallbackTargets(configuredRange, "MappedPositionPlant");
         if ((referenceMode == ReferenceMode.ASSUME_CURRENT || referenceMode == ReferenceMode.NEEDS_REFERENCE) && nativeMeasurement == null) {
             throw new IllegalStateException(referenceMode + " requires native feedback so a reference can be established");
         }
@@ -367,12 +375,13 @@ public final class MappedPositionPlant implements PositionPlant {
             candidate = appliedTarget;
         } else {
             double clamped = range.clamp(candidate);
-            if (Math.abs(clamped - candidate) > 1e-9)
+            if (!range.contains(candidate))
                 status = PlantTargetStatus.clampedToRange("target clamped to position range");
             candidate = clamped;
         }
 
-        PlantTargetGuards.Result guarded = targetGuards.apply(candidate, status, appliedTarget, clock);
+        PlantTargetGuards.Result guarded = PlantTargetSafety.applyGuards(
+                targetGuards, candidate, status, appliedTarget, range, "position", clock);
         appliedTarget = guarded.target;
         targetStatus = guarded.status;
 

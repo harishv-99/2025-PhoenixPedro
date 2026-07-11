@@ -19,7 +19,7 @@ public final class PlantTargetStatus {
          */
         ACCEPTED,
         /**
-         * Requested target was clamped to the plant's legal static range.
+         * A target was clamped to the plant's legal static range before or after dynamic guards.
          */
         CLAMPED_TO_RANGE,
         /**
@@ -39,7 +39,7 @@ public final class PlantTargetStatus {
          */
         REFERENCE_NOT_ESTABLISHED,
         /**
-         * The final plant target source did not produce a requested target this loop.
+         * The target pipeline did not produce a safe finite target this loop.
          */
         TARGET_UNAVAILABLE,
         /**
@@ -96,7 +96,7 @@ public final class PlantTargetStatus {
     }
 
     /**
-     * Create a status indicating that the final target source failed to produce a target.
+     * Create a status indicating that the target pipeline failed to produce a safe finite target.
      */
     public static PlantTargetStatus targetUnavailable(String reason) {
         return new PlantTargetStatus(Kind.TARGET_UNAVAILABLE,
