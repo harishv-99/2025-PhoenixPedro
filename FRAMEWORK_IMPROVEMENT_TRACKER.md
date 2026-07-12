@@ -69,30 +69,157 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 5 | TASK-01 | Timed-task start semantics | Done | Measure elapsed time from task start, not the preceding loop interval. |
 | 6 | TASK-02 | Task reuse contract | Done | Enforce the documented single-use contract consistently. |
 | 7 | TASK-03 | Clear and cancellation semantics | Done | Remove unsafe drop-without-cancel behavior and make Plant cancellation explicit. |
-| 8 | DRIVE-01 | Drive task ownership | Proposed | Separate exclusive Auto sink ownership from TeleOp drive-source proposals. |
-| 9 | TARGET-01 | Lazy Plant target overlay selection | Proposed | Resolve the selected highest-priority layer first and avoid sampling shadowed layers. |
-| 10 | TARGET-02 | Candidate freshness | Proposed | Compute effective age from the loop clock and timestamp, with validation. |
-| 11 | TARGET-03 | Periodic planner complexity | Proposed | Replace range iteration with constant-time candidate mathematics. |
-| 12 | CYCLE-01 | Stateful drive-source cycle safety | Proposed | Memoize stateful composition once per `clock.cycle()` and propagate reset deliberately. |
-| 13 | CYCLE-02 | Localization cycle safety | Proposed | Guard predictors/estimators against duplicate same-cycle updates. |
-| 14 | SOURCE-01 | Boolean composition sampling | Proposed | Sample both operands once per cycle before combining stateful results. |
-| 15 | API-01 | Writable Plant command binding | Proposed | Keep one simple `Plant` if builder provenance can prevent silent no-op writes. |
-| 16 | API-02 | Feedback tolerance choice | Proposed | Ask for tolerance after unit mapping; retain an explicitly named native default only if useful. |
-| 17 | API-03 | Servo and owner-config validation | Proposed | Reject invalid configuration at build/owner construction with device-specific messages. |
-| 18 | API-04 | Binding execution order | Proposed | Preserve declaration order unless explicit phases are proven necessary. |
-| 19 | API-05 | One beginner drive entry point | Proposed | Teach the lane as the robot-facing path and keep the raw factory as a lower-level tool. |
-| 20 | COMMON-01 | Initialization runtime helper | Proposed | Extract only repeated retry/error/cleanup ceremony; avoid a robot base class. |
-| 21 | COMMON-02 | Telemetry commit ownership | Proposed | Renderers add data; the composition root commits once. |
-| 22 | EXAMPLE-01 | Compiling modern starter robot | Proposed | Add a small multi-file reference, not an inheritance framework. |
-| 23 | BOUNDARY-01 | FTC boundary enforcement | Proposed | Fix existing import leaks, then add a focused forbidden-import check. |
-| 24 | DOC-01 | Stale and non-compiling documentation | Proposed | Correct loop/API examples and validate links/examples where practical. |
-| 25 | CI-01 | Framework verification in CI | Proposed | Run focused unit tests, TeamCode compilation, docs checks, and boundary checks. |
-| 26 | CLEAN-01 | Alias and risky convenience cleanup | Proposed | Remove only APIs proven redundant or unsafe by caller search. |
-| 27 | PHX-02 | Phoenix runtime readiness | Proposed | Validate calibration, routes, alliance facts, and required services before enabling assists/Auto. |
+| 8 | PEDRO-01 | Follower heartbeat and stopped-state ownership | Proposed | Advance one Pedro follower once per Auto loop outside individual Tasks; Tasks select behavior but do not own the heartbeat. |
+| 9 | PEDRO-02 | Pedro drivetrain, localization, and pose authority | Proposed | Build one valid Pedro runtime with one hardware/localization owner and an explicit Pedro-to-Phoenix field-pose contract. |
+| 10 | ROUTE-02 | Truthful route terminal status | Proposed | Do not infer route success solely from `!isBusy()`; preserve completion, interruption, timeout, and failure meaning. |
+| 11 | ROUTE-01 | Start-time route construction | Proposed | Resolve a route once when its Task starts so live pose and vision can select geometry safely. |
+| 12 | FIELD-01 | Explicit alliance field transforms | Proposed | Define field geometry once and apply a named, tested transform instead of duplicating red/blue path code. |
+| 13 | DRIVE-01 | Drive task ownership | Ready | Keep an exclusive Auto-only timed sink Task, after Pedro's outer-loop ownership is made correct. |
+| 14 | TASK-04 | Parallel deadline composition | Proposed | Add one cancellation-safe deadline primitive only if route-plus-companion callers justify it. |
+| 15 | PHX-03 | Explicit Auto route-failure policy | Proposed | Keep generic sequence semantics and make continue/fallback/abort policy visible in the robot routine. |
+| 16 | PHX-04 | Match-time fallback takeover | Proposed | Let one robot-owned Auto supervisor safely cancel any active phase and start a fresh park route. |
+| 17 | PHX-02 | Phoenix runtime readiness | Proposed | Validate calibration, Pedro construction, routes, alliance facts, and required services before enabling assists/Auto. |
+| 18 | MATCH-01 | Explicit Auto-to-TeleOp handoff | Proposed | Carry one typed immutable robot snapshot across the FTC mode boundary without string maps or stale globals. |
+| 19 | DRIVE-02 | Shared drivetrain actuator handoff | Proposed | Preserve one motor writer when a PTO reuses drivetrain motors for an endgame mechanism. |
+| 20 | VISION-01 | Custom VisionPortal ownership | Proposed | Reuse camera/processor lifecycle without forcing robot-specific detections through AprilTag APIs. |
+| 21 | SENSOR-01 | Motor-current sensing | Proposed | Expose cycle-memoized current in amps as a Source; keep jam, homing, and power-budget policy robot-owned. |
+| 22 | INPUT-01 | Safe contextual control activation | Proposed | Support optional control modes without turning held controls into phantom press edges. |
+| 23 | HAPTIC-01 | Driver haptic feedback boundary | Proposed | Expose small rate-safe rumble output while controls retain the meaning of each notification. |
+| 24 | PERF-01 | FTC hub bulk-cache ownership | Proposed | Evaluate one optional, cycle-idempotent manual bulk-cache heartbeat against SDK automatic caching. |
+| 25 | PERF-02 | Loop phase diagnostics | Proposed | Measure named loop phases with a lightweight diagnostic that does not own timing or sleep. |
+| 26 | PERF-03 | Contract-safe hardware write deduplication | Proposed | Add write caching only where measurements justify it and stop/Plant truth remain exact. |
+| 27 | TUNE-01 | Live tuning to checked-in profile | Proposed | Keep production snapshots stable while providing an explicit, optional live-tuning workflow. |
+| 28 | TARGET-01 | Lazy Plant target overlay selection | Proposed | Resolve the selected highest-priority layer first and avoid sampling shadowed layers. |
+| 29 | TARGET-02 | Candidate freshness | Proposed | Compute effective age from the loop clock and timestamp, with validation. |
+| 30 | TARGET-03 | Periodic planner complexity | Proposed | Replace range iteration with constant-time candidate mathematics. |
+| 31 | CYCLE-01 | Stateful drive-source cycle safety | Proposed | Memoize stateful composition once per `clock.cycle()` and propagate reset deliberately. |
+| 32 | CYCLE-02 | Localization cycle safety | Proposed | Guard predictors/estimators against duplicate same-cycle updates. |
+| 33 | SOURCE-01 | Boolean composition sampling | Proposed | Sample both operands once per cycle before combining stateful results. |
+| 34 | API-01 | Writable Plant command binding | Proposed | Keep one simple `Plant` if builder provenance can prevent silent no-op writes. |
+| 35 | API-02 | Feedback tolerance choice | Proposed | Ask for tolerance after unit mapping; retain an explicitly named native default only if useful. |
+| 36 | API-03 | Servo and owner-config validation | Proposed | Reject invalid configuration at build/owner construction with device-specific messages. |
+| 37 | API-04 | Binding execution order | Proposed | Preserve declaration order unless explicit phases are proven necessary. |
+| 38 | API-05 | One beginner drive entry point | Proposed | Teach the lane as the robot-facing path and keep the raw factory as a lower-level tool. |
+| 39 | COMMON-01 | Initialization runtime helper | Proposed | Extract only repeated retry/error/cleanup ceremony; avoid a robot base class. |
+| 40 | COMMON-02 | Telemetry commit ownership | Proposed | Renderers add data; the composition root commits once. |
+| 41 | CHECK-01 | Staged whole-robot system check | Proposed | Compose a safe pre-match check from robot capabilities without hardware reflection or a base robot. |
+| 42 | EXAMPLE-01 | Compiling modern starter robot | Proposed | Add a small multi-file reference, not an inheritance framework. |
+| 43 | EXAMPLE-02 | Compiling Pedro autonomous reference | Proposed | Show one small real path, capability Tasks, one follower heartbeat, explicit fallback, and a thin OpMode. |
+| 44 | EXAMPLE-03 | Advanced moving-target reference | Proposed | Prove progress-triggered scoring and a bounded moving turret without putting game physics in the framework. |
+| 45 | BOUNDARY-01 | FTC boundary enforcement | Proposed | Fix existing import leaks, then add a focused forbidden-import check. |
+| 46 | DOC-01 | Stale and non-compiling documentation | Proposed | Correct loop/API examples and validate links/examples where practical. |
+| 47 | CI-01 | Framework verification in CI | Proposed | Run focused unit tests, TeamCode compilation, docs checks, and boundary checks. |
+| 48 | CLEAN-01 | Alias and risky convenience cleanup | Proposed | Remove only APIs proven redundant or unsafe by caller search. |
 
-The order is intentionally front-loaded with testability, a known robot lifecycle defect, actuator
-safety, and deterministic task behavior. Later API cleanup should not begin until tests protect the
-core semantics it depends on.
+The order is intentionally front-loaded with testability, robot lifecycle, actuator safety, and
+deterministic Task behavior. The Pedro review added two runtime-ownership gates before DRIVE-01:
+the checked-in Auto must first have one continuous follower heartbeat and one valid drivetrain/
+localization authority. The Cuttlefish review then added route truth and deferred construction ahead
+of the higher-level Auto policies that depend on them. The expanded Worlds-source review added one
+mode-boundary handoff and one missing FTC sensor primitive, while deliberately leaving robot power,
+jam, calibration, and match strategy out of the framework. Later API cleanup should not begin until
+tests protect the core semantics it depends on.
+
+## External competition capability benchmark (2026-07-11)
+
+The tracker was re-reviewed against the public Worlds-season source for
+[6165 MSET Cuttlefish Decode at commit `1a9ff399`](https://github.com/6165-MSET-Cuttlefish/Decode/tree/1a9ff399298a95639c08daf0434463d9b035d383),
+not just against framework style preferences. The team's
+[official 2025 results page](https://ftc-events.firstinspires.org/2025/team/6165) confirms that this
+is competition-proven code worth treating as a capability benchmark. The goal is not to copy its
+architecture or season vocabulary. The goal is for Phoenix to express the same useful robot
+behaviors with fewer lifecycle hazards and a smaller student-facing programming surface.
+
+| Cuttlefish capability/evidence | Phoenix assessment | Tracker consequence |
+|---|---|---|
+| One configured Pedro `Follower` is built with mecanum and Pinpoint configuration, then advanced by the outer OpMode loop independently of route scheduling ([Constants](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/architecture/auto/Constants.java), [EnhancedOpMode](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/core/EnhancedOpMode.java)). | This validates Phoenix's intended single-owner direction, but the checked-in Phoenix Pedro runtime does not yet satisfy it. | Keep PEDRO-01 and PEDRO-02 ahead of DRIVE-01. |
+| Routes can be constructed when execution begins from the live follower pose and current vision selection ([PathActionBuilder](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/architecture/auto/pathaction/PathActionBuilder.java), [Far Auto](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/opmodes/auto/Far.java)). | Phoenix's eager `RouteTask` cannot naturally express live start geometry without rebuilding the surrounding routine. | Add ROUTE-01. |
+| Route progress callbacks coordinate intake, turret, and scoring, while the scheduler also handles replacement, built-in path interruption, and manual skipping ([Close Auto](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/opmodes/auto/Close.java), [PathActionScheduler](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/architecture/auto/pathaction/PathActionScheduler.java)). | Pedro already supplies useful progress callbacks, and Phoenix Tasks can own companion work. The real gap is that `!isBusy()` alone cannot distinguish success from interruption or failure. | Add ROUTE-02; retain TASK-04 and PHX-03. Do not add a second scheduler or generic callback DSL. |
+| A global match-time rule can preempt whatever Auto phase is active and start a park route from the current pose ([Far Auto](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/opmodes/auto/Far.java)). | A route-local branch or deadline child does not by itself express a one-shot whole-routine takeover cleanly. | Add PHX-04 as robot-owned policy over the existing TaskRunner. |
+| Red/blue geometry is derived from one field-pose definition ([FieldPose](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/architecture/auto/FieldPose.java)). | Phoenix currently makes alliance-specific path duplication too attractive. | Add FIELD-01, with Phoenix coordinates and no global alliance state. |
+| A PTO reuses drivetrain motors and encoders for the lift/endgame, with explicit mode changes and TeleOp drive suppression ([RobotActions](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/core/RobotActions.java), [Endgame](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/modules/Endgame.java)). | The standard Phoenix drive lane hides the shared actuator/readback seam, so a robot can do this only by bypassing normal ownership. This is distinct from timed drive Tasks. | Add DRIVE-02; do not broaden DRIVE-01 into resource arbitration. |
+| Layered controls suppress held-button edges on activation and add rate-limited gamepad rumble ([TeleOp](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/opmodes/tele/Tele.java), [LayeredGamepad](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/architecture/input/LayeredGamepad.java)). | Flat Phoenix controls remain the beginner default, but advanced robots need optional safe contextual activation and a separate driver-feedback output boundary. | Add INPUT-01 and HAPTIC-01. |
+| Custom vision processors, manual bulk-cache clearing, output write caching, phase profiling, Dashboard tuning, and a staged whole-robot check are all used in normal development ([ClusterDetectionProcessor](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/vision/ClusterDetectionProcessor.java), [WriteCache](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/architecture/hardware/WriteCache.java), [LoopProfiler](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/core/LoopProfiler.java), [SystemCheck](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/opmodes/test/SystemCheck.java)). | Phoenix has useful device testers and stable profile snapshots, but lacks reusable ownership for custom VisionPortal lifecycles, measured loop diagnostics, a safe live-to-checked-in tuning path, and a staged robot check. | Add VISION-01, PERF-01, PERF-02, PERF-03, TUNE-01, and CHECK-01 as separate decision gates. |
+| Moving-target turret lead and magazine sorting combine pose/velocity/sensor facts with bounded hardware realization ([Context](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/core/Context.java), [Turret](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/modules/Turret.java)). | Existing Phoenix spatial queries, timestamped sources, robot-owned services/supervisors, capabilities, and bounded Plants can express these behaviors cleanly. The missing piece is a compact compiling proof. | Add EXAMPLE-03; do not add projectile physics, game-piece sorting, or scoring vocabulary to the framework. |
+
+Cuttlefish's asynchronous action helper runs robot behavior on background coroutines. Phoenix should
+not copy that execution model: cooperative Tasks on the OpMode heartbeat preserve FTC hardware
+thread ownership and make cancellation and loop order visible. Its standalone `DecodeSim` also
+duplicates a simplified robot rather than executing the production ownership graph, so simulator
+work remains deferred until a fake hardware boundary can exercise real Phoenix composition.
+
+### Additional public Worlds-source review
+
+FIRST does not publish one objective first-through-fifth robot ranking. For a reproducible "top"
+set, this review first used the official 2026 Championship
+[winning and finalist alliance awards](https://ftc-events.firstinspires.org/2025/FTCCMP1/awards).
+The two fielded finalist pairs are also visible in
+[Final 1](https://ftc-events.firstinspires.org/2025/FTCCMP1/playoff/16/1) and
+[Final 2](https://ftc-events.firstinspires.org/2025/FTCCMP1/playoff/16/2). A focused GitHub and team-
+site search did not find public, season-matching DECODE robot source for the six awarded alliance
+teams (30030, 21087, 11228, 18270, 20265, and 7172). The tracker therefore does not pretend that a
+different public repository belongs to a championship finalist.
+
+The code comparison instead uses three additional public repositories with exact snapshots from
+the Worlds event, selected for verifiable Worlds performance and usable production source. These
+are evidence-bearing public-source benchmarks, not a replacement placement ranking:
+
+| Public Worlds source | Student-facing shape and competition evidence | Phoenix consequence |
+|---|---|---|
+| [21936 SaMoTech at its final Worlds commit `c8ff047c`](https://github.com/SaMoTechRobotics/FTC-Decode/tree/c8ff047c4245f79d934e622c05481269b5cc42da), ranked 10th at [Edison](https://ftc-events.firstinspires.org/2025/FTCCMP1EDIS/rankings) | Named routines are readable arrays of semantic [`AutoStep`s](https://github.com/SaMoTechRobotics/FTC-Decode/blob/c8ff047c4245f79d934e622c05481269b5cc42da/TeamCode/src/main/java/auto/config/AutoStep.java), and live vision/pose can generate the next pickup path. Internally, [`BaseAuto`](https://github.com/SaMoTechRobotics/FTC-Decode/blob/c8ff047c4245f79d934e622c05481269b5cc42da/TeamCode/src/main/java/auto/config/BaseAuto.java) runs blocking helpers on a background thread, while [`Robot`](https://github.com/SaMoTechRobotics/FTC-Decode/blob/c8ff047c4245f79d934e622c05481269b5cc42da/TeamCode/src/main/java/robot/Robot.java) owns additional blocking loops and timer callbacks. | Preserve the short semantic plan through capability/route Tasks, ROUTE-01/02, PHX-03/04, and PERF-02. Do not copy the thread, blocking loops, timer callbacks, or a season-wide Auto DSL. |
+| [19411 Tech Tigers at Worlds commit `0bec90bb`](https://github.com/techtigers-ftc/decode/tree/0bec90bb2523368c122d8d8361b56261d85cdfe2), ranked 14th at [Jackson](https://ftc-events.firstinspires.org/2025/FTCCMP1JACK/rankings) | A leaf Auto such as [`RedNearTripleGate`](https://github.com/techtigers-ftc/decode/blob/0bec90bb2523368c122d8d8361b56261d85cdfe2/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/opmodes/auto/RedNearTripleGate.java) supplies a compact list of cycle facts. That simplicity hides a large [`AutoOpMode`](https://github.com/techtigers-ftc/decode/blob/0bec90bb2523368c122d8d8361b56261d85cdfe2/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/opmodes/auto/AutoOpMode.java) and fixed-shape [`StateMachineBuilder`](https://github.com/techtigers-ftc/decode/blob/0bec90bb2523368c122d8d8361b56261d85cdfe2/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/configurators/StateMachineBuilder.java). | Phoenix should keep the small specification but express the graph with normal route and capability Task factories. This independently supports DRIVE-01, TASK-04, route outcome policy, whole-routine park policy, FIELD-01, performance tooling, and system checks; it does not justify a base OpMode or generic state-machine language. |
+| [25609 LOAD Robotics at Worlds commit `35a74bfb`](https://github.com/LOAD-Robotics/Decode-Robot-Code/tree/35a74bfba7d5cc9eeede5ecfdd71123869bd4f17), ranked 16th at [Goodall](https://ftc-events.firstinspires.org/2025/FTCCMP1GOOD/rankings) | [`Auto_Main_`](https://github.com/LOAD-Robotics/Decode-Robot-Code/blob/35a74bfba7d5cc9eeede5ecfdd71123869bd4f17/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/LOADCode/Main_/Auto_/Auto_Main_.java) uses especially readable Pedro/NextFTC semantic sequences and selectable partner-specific plans. [`Commands`](https://github.com/LOAD-Robotics/Decode-Robot-Code/blob/35a74bfba7d5cc9eeede5ecfdd71123869bd4f17/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/LOADCode/Main_/Hardware_/Commands.java) also races routes against timeout/stall and constructs a late park after a global time limit. | This is close to the desired Phoenix routine surface: one init specification plus a readable `Tasks.sequence(...)` of route and capability factories. Truthful route results, start-time park geometry, one deadline primitive, and one Auto supervisor should replace loose race semantics without adding NextFTC/Ivy beside Phoenix Tasks. |
+
+Across all three new repositories, motor current is a first-class behavior input: SaMoTech estimates
+intake state from it; LOAD detects intake jams and protects turret homing; Tech Tigers observes
+subsystem load before robot-owned drive derating. Phoenix documentation already names current spikes
+as useful sensor facts, but `FtcSensors` has no current source. That repeated gap adds SENSOR-01. It
+does **not** justify a universal power manager: thresholds, priorities, jam recovery, homing, and
+brownout policy remain robot-owned.
+
+All three also deliberately carry match state from Auto into TeleOp: pose in every case, plus turret
+offset, calibration, game-piece inventory, motif, or alliance where useful. Their static fields or
+string-keyed global stores work, but invite stale values and casts. That repeated mode-boundary need
+adds MATCH-01 for one typed immutable handoff, while the snapshot fields remain robot-specific.
+
+The expanded review also reinforces TASK-04, ROUTE-01/02, PHX-03/04, FIELD-01, PERF-02, TARGET-02,
+CYCLE-02, CHECK-01, and EXAMPLE-02/03. One LOAD articulated-camera localization implementation is
+not enough evidence for another framework lane; revisit dynamic localization camera mounts only if
+a second concrete robot cannot use the existing time-aware mount and estimator boundaries cleanly.
+No reviewed code justifies a second scheduler, generic command requirements, global mutable robot
+state, a generated Auto language, or background hardware behavior.
+
+### Recommended autonomous ownership structure
+
+The competition review supports this student-facing Auto shape after its prerequisite items land:
+
+1. A thin OpMode/specification chooses alliance, start, routine, delay, and explicitly allowed
+   fallback policy. It constructs the runtime, forwards FTC lifecycle calls, and closes it.
+2. One Pedro integration owner builds the configured Follower, owns Pinpoint/localization and the
+   Phoenix-coordinate pose/motion bridge, advances Pedro once per loop, and performs the final drive
+   stop. Routine code never owns another Follower heartbeat.
+3. A robot path factory owns field geometry and Pedro types. It can return fixed routes or a
+   start-time supplier using current pose/vision. Pedro parametric callbacks may request a narrow
+   robot capability; they do not write mechanisms or run a second scheduler.
+4. Robot capability families provide fresh single-use Tasks and persistent mode-neutral intent for
+   intake, scoring, endgame, and other mechanisms. Services/supervisors own season calculations;
+   source-driven Plants remain the final bounded hardware realization.
+5. A robot routine factory composes readable `Tasks.sequence(...)`, the justified deadline helper,
+   route Tasks, capability Tasks, and explicit route-outcome branches. It contains strategy but no
+   hardware-map calls, raw motors, or follower update loop.
+6. One robot Auto supervisor observes the shared match budget and can perform the explicit
+   cancel -> safe-capabilities -> fresh deferred park takeover. It uses the same TaskRunner rather
+   than another command system.
+7. At mode transition, the Auto composition root may publish one immutable robot-defined handoff
+   snapshot before owned resources close. TeleOp consumes it once or uses its explicit configured
+   fallback; no hardware object, Task, follower, or vendor pose crosses the boundary.
+
+The canonical active loop remains visible: advance `LoopClock` once; clear optional manual bulk
+caches; sample inputs and advance the one Pedro/localization owner once; update robot services and
+the TaskRunner; realize each Plant once in documented order; render diagnostics; commit telemetry
+once. This keeps
+the simple routine call site while preserving the Framework Principles' single heartbeat, one final
+writer, and explicit lifecycle ownership.
 
 ## Task definitions and decision records
 
@@ -679,6 +806,171 @@ core semantics it depends on.
     requests pass through the real Plant overlays/guards and that coordinated scoring/drive
     shutdown still reaches safe hardware output.
 
+### PEDRO-01 - Follower heartbeat and stopped-state ownership
+
+- **Problem to confirm:** Phoenix advances the Pedro `Follower` only from active route/guidance
+  Tasks, while Pedro's supported lifecycle advances one follower every OpMode loop independently of
+  the scheduled command. A route that transitions into Pedro hold-end becomes `isBusy() == false`,
+  so `RouteTask` completes and stops calling `follower.update()`. A following mechanism/wait Task
+  therefore loses hold and pose updates. In manual/guidance mode, `setTeleOpDrive(0, 0, 0)` changes
+  requested vectors but does not itself apply zero motor output, so the current adapter's `stop()`
+  may leave the last nonzero output applied when the next Task does not update Pedro.
+- **External evidence:** Pedro's
+  [official Auto example](https://pedropathing.com/docs/pathing/examples/auto) calls
+  `follower.update()` once every loop separately from scheduler execution. The
+  [v2.1.2 Follower](https://github.com/Pedro-Pathing/PedroPathing/blob/v2.1.2/core/src/main/java/com/pedropathing/follower/Follower.java)
+  applies drivetrain output inside `update()`, continues hold-point control after `isBusy()` becomes
+  false, and stops immediately through `breakFollowing()`. Worlds-level Pedro/Ivy code follows the
+  same pattern: one recurring robot/follower periodic owner and route commands that only start and
+  observe path completion. Cuttlefish makes this separation explicit by calling
+  [`follower.update()` from its outer loop](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/core/EnhancedOpMode.java)
+  independently of `PathActionScheduler.update()`.
+- **Alternatives to compare:** retain Task-owned updates and force hold-end off; call raw
+  `follower.update()` globally while leaving Task updates unchanged; make `drive()`/`stop()` force
+  hidden follower updates; or introduce one small Pedro runtime/lane that owns the Follower
+  heartbeat, immediate stop, and cycle deduplication while Tasks only select route/manual/hold
+  behavior.
+- **Leading hypothesis:** one Pedro integration owner, called by the Auto composition root before
+  the Phoenix TaskRunner, should advance the single Follower exactly once per OpMode cycle whether a
+  route, guidance, mechanism, wait, or hold phase is active. Route and drive Tasks may request
+  behavior but must not create a second heartbeat. Adapter cancellation/stop should use the pinned
+  typed Pedro stop operation and satisfy `DriveCommandSink.stop()` immediately. Do not add Ivy or a
+  second scheduler to Phoenix robot code.
+- **Completion:** tests or a version-pinned integration harness cover exactly one follower update per
+  cycle; route -> hold-end -> mechanism wait; route completion/cancellation/timeout; guidance ->
+  scoring wait; next-route transition; immediate stop; repeated shutdown; and callback/update
+  reentrancy. The route -> manual transition is included explicitly because Pedro's
+  `startTeleopDrive()` may perform an update internally; switching modes must not advance Pedro
+  twice in one Phoenix cycle. The common routine call site stays unchanged, and documentation shows
+  the one explicit Pedro loop owner.
+- **Decision record:** _Pending._
+
+### PEDRO-02 - Pedro drivetrain, localization, and pose authority
+
+- **Problem to confirm:** checked-in `Constants.createFollower(...)` supplies only path constraints;
+  its declared mecanum and Pinpoint configs are not passed to `FollowerBuilder`, so the pinned Pedro
+  runtime does not currently have a valid configured drivetrain/localizer. Enabling the commented
+  Pinpoint path naively would let both Pedro and `FtcOdometryAprilTagLocalizationLane` own/update the
+  same Pinpoint hardware. Pedro pathing/debugging and Phoenix targeting would also consume separate
+  poses in different field-coordinate conventions without an explicit synchronization, correction,
+  or drift policy.
+- **External evidence:** Pedro's
+  [setup guide](https://pedropathing.com/docs/pathing/tuning/setup) requires drivetrain construction,
+  its [custom-localizer guide](https://pedropathing.com/docs/pathing/custom/localizer) puts hardware
+  ownership in one localizer, and its
+  [coordinate guide](https://pedropathing.com/docs/pathing/reference/coordinates) requires explicit
+  conversion between Pedro and FTC field frames. Cuttlefish provides a concrete valid caller by
+  wiring both
+  [mecanum and Pinpoint configuration into one Follower](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/architecture/auto/Constants.java),
+  then using the same owner's pose and motion in pathing and shot-on-the-move calculations.
+- **Alternatives to compare:** Phoenix owns Pinpoint and feeds Pedro through a custom localizer;
+  Pedro owns Pinpoint and exposes pose/deltas through a Phoenix predictor adapter; deliberately use
+  separate sensors/estimators with synchronization and drift diagnostics; or create a Pedro-specific
+  integration lane that owns construction plus the explicit pose bridge. Compare whether AprilTag
+  corrections should affect targeting only or also reset/correct Pedro's path pose.
+- **Leading hypothesis:** do not allow two implicit owners. Build one Pedro Auto integration lane
+  around a valid pinned Follower configuration and one odometry hardware owner, then expose an
+  explicit converted field-pose and coherent timestamped motion/delta contract to Phoenix consumers.
+  The decision gate must choose which side owns Pinpoint only after tracing Pedro's custom-localizer/
+  reset APIs and Phoenix correction requirements; student routine code should not see that choice.
+- **Completion:** `FollowerBuilder.build()` succeeds with the real drivetrain/localizer; exactly one
+  owner initializes, updates, resets, and closes each hardware resource; Pedro and Phoenix start
+  poses map through a tested named transform; path following and targeting consume a coherent pose,
+  translational velocity/delta, and angular velocity/delta snapshot; correction/reset/drift behavior
+  is documented and observable; invalid or placeholder config fails during INIT with an actionable
+  readiness message.
+- **Decision record:** _Pending._
+
+### ROUTE-02 - Truthful route terminal status
+
+- **Problem to confirm:** `RouteTask` currently converts any post-update `!follower.isBusy()` state
+  into `TaskOutcome.SUCCESS`. A follower may instead become not busy because it reached the endpoint,
+  tripped a path timeout/stall safeguard, was broken by a callback or obstacle policy, was replaced,
+  or failed internally. PHX-03 cannot choose a safe continue/fallback/abort policy if those states
+  are collapsed before robot strategy sees them.
+- **External evidence:** Cuttlefish deliberately skips routes after its bonk detector fires, replaces
+  active paths, attaches velocity/parametric break conditions, and performs a match-time takeover.
+  Its
+  [path scheduler](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/architecture/auto/pathaction/PathActionScheduler.java)
+  also demonstrates the danger of reconstructing terminal meaning from loose booleans: deferred
+  paths and hold-end stopping follow different branches and can be stopped or restarted
+  inconsistently.
+- **Expanded Worlds evidence:** SaMoTech's intake route can end because it filled, timed out, stalled,
+  or invoked obstacle recovery. LOAD races `FollowPath` against a delayed low-velocity condition,
+  which otherwise makes an interrupted/stalled route indistinguishable from success. Tech Tigers
+  detects some drive timeouts but maps several of them back into ordinary state-complete events.
+  Three different implementations therefore reconstruct strategy from terminal side effects; the
+  route integration boundary needs to preserve the reason once.
+- **Alternatives to compare:** document that `!isBusy()` means success; add a route endpoint
+  predicate in each robot routine; extend `RouteFollower` with a small status/terminal-result
+  contract; keep status Pedro-specific in its integration lane; or broaden generic `TaskOutcome`.
+  Compare which layer can reliably distinguish a route generation and terminal reason without
+  exposing vendor state to routine code.
+- **Leading hypothesis:** the integration owner that starts and stops a route should retain its
+  generation and terminal reason, and `RouteTask` should consume one narrow backend-neutral route
+  result. The normal follow call should stay short. Do not add generic `FAILED` outcomes or a large
+  route event model unless the decision gate proves existing Task outcomes cannot carry the required
+  policy safely.
+- **Completion:** focused tests distinguish natural endpoint completion, follower timeout/stall,
+  callback break, external replacement, Task timeout, active cancellation, and unknown terminal
+  state; stale status from a prior route cannot complete a new one; PHX-03 branches on truthful data;
+  and telemetry names the terminal reason without leaking Pedro types.
+- **Decision record:** _Pending._
+
+### ROUTE-01 - Start-time route construction
+
+- **Problem to confirm:** `RouteTask` stores an already-built route. Competitive Autos often need to
+  choose a target from INIT vision and construct the next path from the follower's actual pose at
+  the moment that phase begins, after earlier path error or a global fallback decision. Prebuilding
+  every variant or rebuilding the whole routine duplicates strategy and makes stale start geometry
+  easy to use.
+- **External evidence:** Cuttlefish's
+  [deferred path builder](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/architecture/auto/pathaction/PathActionBuilder.java)
+  resolves suppliers when a path action starts, and its
+  [Far Auto](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/opmodes/auto/Far.java)
+  builds cycle and park geometry from live pose and vision state.
+- **Expanded Worlds evidence:** SaMoTech generates an intake route from the current follower pose and
+  live vision selection when that step executes. LOAD's match-time leave wrapper demonstrates the
+  opposite failure mode: it asks for a fallback after the timer wins, but assembles the park path
+  from follower pose while the wrapper is built, so the encoded start can already be stale.
+- **Alternatives to compare:** prebuild every route; rebuild the containing routine; write a custom
+  Pedro Task at each call site; add an eager route-start-pose correction; or add one explicit
+  start-time `Supplier<R>` route factory. Also compare one general `Tasks.defer(Supplier<Task>)`
+  lifecycle wrapper: it may avoid repeating deferred-child semantics, but it should not broaden the
+  beginner API without a non-route caller. Compare generic `RouteTasks` ownership with a Pedro-only
+  helper and define how construction failures become visible.
+- **Leading hypothesis:** add an explicitly named deferred/generated route factory that resolves its
+  supplier exactly once at the Task's own `start(clock)` boundary and then uses the normal route
+  lifecycle. Geometry creation and sensor-to-target decisions remain robot-owned path-factory work;
+  core Tasks see no Pedro type and gain no Auto DSL.
+- **Completion:** tests cover sampling current pose/vision exactly once at start, sequence start in a
+  sub-loop, null/throwing factories, cancellation, route timeout, truthful terminal status, and
+  debug naming. A compiling example shows both eager fixed geometry and a current-pose fallback
+  without exposing the raw follower throughout the routine.
+- **Decision record:** _Pending._
+
+### FIELD-01 - Explicit alliance field transforms
+
+- **Problem to confirm:** Phoenix's path selector describes alliance mirroring, but the current path
+  factory manually branches between red and blue coordinates. That duplicates field facts and lets
+  headings, control points, and target poses drift apart as routes evolve.
+- **External evidence:** Cuttlefish's
+  [`FieldPose`](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/architecture/auto/FieldPose.java)
+  defines one pose and derives the alliance variant, demonstrating the student-facing benefit even
+  though Phoenix should avoid its global color state and use Phoenix's documented frame.
+- **Alternatives to compare:** continue explicit red/blue path definitions; use Pedro's color helper
+  directly; store alliance in global mutable context; add robot-local coordinate helper methods; or
+  add a small immutable Phoenix-coordinate field transform driven by explicit field facts.
+- **Leading hypothesis:** define a tiny backend-neutral 2D pose/vector transform with explicit field
+  dimensions/origin and no global alliance. Robot path factories select the transform, apply it to
+  poses/headings/control points, and convert to Pedro only at the integration boundary. Do not add
+  season route names or alliance strategy to the framework.
+- **Completion:** tests cover pose, vector, heading, and control-point transformation; reflection
+  boundaries and heading normalization; applying the alliance transform twice where mathematically
+  applicable; explicit no-transform/default behavior; and Pedro boundary conversion. One route is
+  defined once for both alliances in the compiling Auto reference.
+- **Decision record:** _Pending._
+
 ### DRIVE-01 - Drive task ownership
 
 - **Problem to confirm:** timed drive tasks write only on start even though the sink command is
@@ -689,6 +981,482 @@ core semantics it depends on.
   TeleOp macros remain source/overlay proposals consumed by the single final writer.
 - **Completion:** ownership and loop order are obvious at call sites; watchdog-style sinks receive a
   command each required loop; TeleOp retains one final drive writer.
+- **Decision record (2026-07-11):**
+  - **Confirmed behavior:** `DriveTasks.driveForSeconds(...)` builds a `RunForSecondsTask` whose
+    start callback calls `sink.drive(signal)`, whose per-loop callback is `null`, and whose finish
+    callback calls `sink.stop()`. The nonzero command is therefore written exactly once rather than
+    refreshed during the timed interval. `DriveCommandSink.drive(...)` defines its command as
+    current-loop state and exposes `update(clock)` for per-loop housekeeping, so the helper does not
+    satisfy the generic sink contract. The focused
+    `TimedTaskStartSemanticsTest.publicDriveTaskCommandSurvivesItsSubLoopStartCycle` baseline passes
+    one test with zero failures/errors/skips while explicitly asserting that the drive count stays
+    at one; this confirms rather than protects against the defect.
+  - **Loop and caller trace:** the documented TeleOp loop runs Tasks before one final
+    `DriveSource -> DriveCommandSink` write. Phoenix and compiling examples 03 and 06 follow that
+    order, so a direct Task write is overwritten later in the same cycle and its later `stop()` is
+    overwritten too. Phoenix Auto has no competing final drive phase: its active Auto Task owns the
+    drive resource. Existing `DriveGuidanceTask` and `RouteTask` already model that exclusive path by
+    updating their sink/follower each active loop. `MecanumDrivebase` happens to latch immediate
+    motor power and has a no-op update, which masks the bug when uncontested; the Pedro adapter needs
+    `update(clock)` to advance its follower and receives no separate update from Phoenix Auto.
+  - **Current callers:** there is no production Phoenix, framework-tool example, Auto, or TeleOp
+    caller of `DriveTasks`. The only executable caller is the baseline unit test. Student-facing
+    references are concentrated in `DriveTasks`, `DriveCommandSink`, `Tasks`, Framework Principles,
+    the Beginner's Guide, Framework Overview, Loop Structure, and Tasks & Macros Quickstart.
+    `driveInstant(...)` has no caller outside its declaration, and `DriveTasks.stop(...)` appears
+    only in one documentation sketch.
+  - **Alternatives considered:** document the current latch behavior; silently refresh under the
+    existing mode-neutral name; expose timed drive entirely as a `DriveSource`; add a drive-specific
+    output Task and runner; delete all direct drive helpers; or keep one explicitly exclusive direct
+    sink Task and delete one-shot helpers whose ownership/duration cannot be portable.
+  - **Simplicity comparison:** a single exclusive helper remains one short line in an Auto
+    `Tasks.sequence(...)`, composes with mechanism, guidance, and route Tasks, and adds no concept to
+    the student path. A source-only timed behavior needs separate lifecycle/enable state before it
+    can be sequenced. A drive-output runner adds another Task type, runner, active-source contract,
+    and cross-runner coordination even though no current caller needs a timed TeleOp drive macro.
+    Deleting every helper pushes a beginner's simple timed Auto move into a raw Task or blocking
+    code. Keeping the old name or compatibility aliases leaves an attractive API that still looks
+    safe inside TeleOp even though another writer wins.
+  - **Chosen public API:** replace `driveForSeconds(...)` with the ownership-explicit
+    `DriveTasks.driveExclusivelyForSeconds(sink, signal, durationSec)`. Do not retain a deprecated
+    alias. Remove `driveInstant(...)`: one nonzero write either latches indefinitely or is
+    overwritten immediately, so it has no portable Task meaning. Remove `DriveTasks.stop(...)` as
+    well: the timed/guidance Tasks own their cleanup, robot owners call `DriveCommandSink.stop()`
+    directly for shutdown, and an advanced sequence can deliberately use
+    `Tasks.runOnce(sink::stop)` without presenting a mode-neutral drive macro to beginners. The
+    resulting `DriveTasks` surface has one safe, discoverable purpose.
+  - **Chosen ownership rule:** the exclusive helper is for an Auto-style runner or tester that is
+    the only owner updating and commanding that sink while the Task is active. Each unexpired active
+    cycle asks `sink.update(clock)` and then calls `sink.drive(signal)` exactly once. A stable sink
+    lane that already owns a once-per-cycle heartbeat must make the same-cycle update idempotent;
+    the Task-local call is not a substitute for an outer lifecycle owner such as Pedro requires. A
+    positive duration publishes its command during the TaskRunner's start cycle; normal completion
+    and active cancellation stop exactly once. A zero duration publishes no motion and stops
+    immediately. TeleOp macros and assists remain `DriveSource`/overlay proposals consumed by the
+    composition root's one final writer; they must not use the exclusive helper before that writer.
+  - **Chosen lifecycle implementation:** use a private purpose-specific Task behind the factory,
+    not a new public type or builder. It anchors elapsed time at its own `clock.nowSec()` boundary,
+    deduplicates by `clock.cycle()`, and becomes terminal before invoking `stop()`. It checks for
+    reentrant cancellation after `sink.update(clock)` so cancellation cannot stop and then allow a
+    stale nonzero write. This small internal state machine avoids `RunForSecondsTask`'s unavoidable
+    update-then-stop write on the expiry cycle and its callback reentrancy gap while keeping robot
+    code to one factory call. Reject non-finite or negative durations and null sink/signal inputs
+    with actionable errors; do not add a public ownership policy type.
+  - **External architecture re-review (2026-07-11):** BettaFish's Road Runner trajectory action,
+    Pedro's official Follower/Ivy model, Astra Machina 16010's Worlds Pedro code, Golden Fish 13093's
+    Worlds-finalist manual drive loop, and Cuttlefish's outer-loop Follower owner all recompute or
+    reassert the active drivetrain output every loop under one drive owner. The successful
+    command-based examples compose short semantic sequences/parallel groups; the manual FSM remains
+    competitive but carries substantially more duplicated state and timing plumbing. Cuttlefish's
+    PTO further reinforces the word **exclusive**: a timed drive Task must never overlap the owner
+    that has reassigned those motors to endgame. This strengthens the exclusive per-loop command and
+    source-driven TeleOp split. It does not justify a drive-output runner, Ivy dependency, generic
+    Task resource scheduler, or making timed open-loop drive the normal Auto path; route Tasks
+    remain the common autonomous movement primitive, and shared-actuator handoff stays in DRIVE-02.
+    The expanded Worlds set leaves that judgment unchanged. Tech Tigers' `FollowerCommand` computes
+    and writes drive output every scheduler tick, while SaMoTech and LOAD use Pedro routes as the
+    normal Auto movement inside short semantic plans. SaMoTech's blocking drive helpers demonstrate
+    the lifecycle hazards Phoenix Tasks should remove; LOAD's readable route/capability sequences
+    demonstrate that doing so need not make the student routine longer. None of the three needs a
+    general direct-drive runner or makes timed open-loop drive the normal autonomous API.
+  - **Pedro dependency discovered by the re-review:** the current Phoenix adapter does not yet meet
+    the lifecycle assumed by this generic design. Pedro requires an outer-loop Follower heartbeat,
+    immediate stopped-state behavior, a valid drivetrain/localizer, and explicit coordinate/pose
+    authority. Those are now tracked as PEDRO-01 and PEDRO-02 ahead of DRIVE-01. DRIVE-01 must not
+    claim to fix Pedro hold-end, pose updates, or stopped output by itself.
+  - **Rejected/deferred scope:** do not convert route followers or autonomous guidance into
+    `DriveSource`s; their direct lifecycle ownership is already explicit. Do not add a generic or
+    drive-specific output runner until a real recurring TeleOp timed-drive use case demonstrates
+    that the extra abstraction is simpler than robot-owned source/overlay state. Do not add runtime
+    resource arbitration for parallel Tasks in this item; exclusive ownership is a composition-root
+    rule shared with existing guidance and route Tasks. Do not change `DriveSignal` range policy or
+    unrelated stale documentation beyond text needed to make drive ownership and loop order true.
+  - **Verification plan:** replace the bug-preserving assertion with focused tests for
+    update-before-drive ordering, one refresh per active cycle, same-cycle idempotency, start inside
+    a sequence, positive/zero duration, expiry, active/repeated cancellation, reentrant cancellation
+    during sink update, drive/update failures, exactly-once stop, and suppressed cleanup failures
+    through `TaskRunner`. Add an explicit competing-final-writer test or traced example showing why
+    the exclusive helper is not a TeleOp proposal. Migrate every API/Javadoc/guide reference, verify
+    exhaustive searches find no removed calls, then run `:TeamCode:testDebugUnitTest`,
+    `:TeamCode:compileDebugJavaWithJavac`, XML result counts, `git diff --check`, adversarial review,
+    and Android Studio inspection. Generic watchdog/recording-sink behavior belongs in DRIVE-01;
+    Pedro hold, heartbeat, cancellation, and stopped-output hardware checks belong in PEDRO-01 after
+    PEDRO-02 supplies a valid runtime.
+  - **Approval gate:** this confirms the tracker's leading ownership split, but it renames/removes
+    public drive-task APIs and defines a new exclusive lifecycle contract. It is therefore a major
+    API decision and requires explicit user approval before moving to **In progress**.
+
+### TASK-04 - Parallel deadline composition
+
+- **Problem to confirm:** Phoenix has `sequence(...)` and `parallelAll(...)`, but a realistic Auto
+  often needs one route to determine phase completion while an intake, aiming preparation, or other
+  companion behavior runs alongside it and is cancelled when the route ends. `parallelAll(...)`
+  cannot express that ownership: a persistent companion prevents completion. The reviewed
+  BettaFish Auto contains exactly this trap with Road Runner Actions that always return running.
+  Cuttlefish provides two more concrete caller shapes: a route paired with a bounded asynchronous
+  intake action, and a routine that is cancelled when the match-time park deadline wins.
+- **Expanded Worlds evidence:** Tech Tigers uses a `ParallelRaceGroup` where transfer completion
+  ends a phase and cancels perpetual shooter preparation; LOAD uses races mainly to express route
+  timeouts, stall exits, and bounded mechanism work. The first is a true deadline caller. The latter
+  should prefer truthful route timeout/status and bounded wait helpers, so it does not justify a
+  symmetric arbitrary-race API.
+- **Alternatives to compare:** require every companion to be finite; set/clear capability state
+  before and after the route; use Pedro parametric callbacks; create robot-specific phase macros;
+  add one `Tasks.parallelDeadline(primary, companions...)` primitive; or copy Ivy's full race,
+  deadline, repeat, loop, requirements, and priority model.
+- **Leading hypothesis:** persistent baseline mechanisms should remain source/capability state, not
+  forever Tasks. If real Phoenix route-plus-finite-companion callers remain after that simplification,
+  add one small deadline composition whose primary child controls completion and whose still-active
+  companions receive normal active cancellation. Add symmetric race/repeat/requirements only after
+  separate caller evidence; do not import Ivy or create a second scheduler.
+- **Completion:** the common Auto phase is one readable factory call; start, same-cycle completion,
+  primary success/timeout/cancellation, companion early completion, exactly-once companion cleanup,
+  throwing/reentrant cancellation, duplicate identities, outcomes, and single-use behavior are
+  specified and tested. Documentation distinguishes held capability state from bounded companion
+  Tasks.
+- **Decision record:** _Pending._
+
+### PHX-03 - Explicit Auto route-failure policy
+
+- **Problem to confirm:** `SequenceTask` deliberately advances after a child timeout and only reports
+  the aggregate timeout when the whole sequence ends. Phoenix's current routines directly sequence
+  outbound route -> aim/shoot -> return, so an outbound route timeout can still trigger scoring from
+  the wrong location. Pedro's completion guidance also recommends explicit time/failsafe policy for
+  paths that cannot satisfy endpoint constraints. Cuttlefish's bonk handling intentionally breaks a
+  path and continues to a different phase, further showing that the robot must state what each
+  non-normal route ending means. ROUTE-02 must land first so that policy receives truthful status.
+- **Alternatives to compare:** accept aggregate sequence behavior; change every generic sequence to
+  short-circuit; wrap each route with existing `Tasks.branchOnOutcome(...)`; add a generic
+  success-only sequence; or add a small robot-owned route helper that chooses continue, fallback
+  park, or abort for each strategy.
+- **Leading hypothesis:** preserve generic `Tasks.sequence(...)` because timeout is not universally
+  fatal. Make route outcome policy visible in `PhoenixPedroAutoRoutineFactory`, using existing
+  outcome branching first and extracting a tiny Phoenix helper only if several routines repeat the
+  same shape. Fallback selection remains robot strategy, not framework route policy.
+- **Completion:** every route timeout/cancellation has an explicit continue/fallback/abort result;
+  no routine silently aims or shoots after a failed prerequisite; the fallback is visible in task
+  telemetry; tests cover outbound failure, scoring failure, return failure, cancellation, and a
+  successful routine without changing generic sequence semantics.
+- **Decision record:** _Pending._
+
+### PHX-04 - Match-time fallback takeover
+
+- **Problem to confirm:** a competitive Auto may need to abandon whatever phase is active when the
+  remaining match budget reaches a threshold, put mechanisms in a known safe state, and generate a
+  park route from the current pose. A route-local timeout or branch does not preempt a mechanism
+  phase elsewhere in the routine, while wrapping the whole routine in an ordinary deadline does not
+  by itself sequence the safe-state transition and replacement park exactly once.
+- **External evidence:** Cuttlefish's
+  [Far Auto time override](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/opmodes/auto/Far.java)
+  interrupts its active path/action sequence after the global threshold and starts a park path from
+  the live follower pose. This is effective strategy but depends on scheduler-global mutation that
+  Phoenix should keep behind a robot-owned policy owner.
+- **Expanded Worlds evidence:** LOAD wraps the selected whole routine in a timed leave command, while
+  SaMoTech tracks expected/actual step duration and Tech Tigers repeats park-time checks in selected
+  drive states. These are three variations of the same match-wide policy. One robot Auto supervisor
+  is clearer than scattered state checks, but the takeover threshold and park choice remain routine
+  facts.
+- **Alternatives to compare:** repeat raw time checks inside every routine phase; use only a route
+  timeout; wrap the entire routine in TASK-04 and place park after it; add generic Task race/preempt
+  primitives; or add one Phoenix Auto supervisor that owns the one-shot takeover over the existing
+  `TaskRunner`. Compare how normal routine completion, Task cleanup failures, and safe mechanism
+  requests are handled.
+- **Leading hypothesis:** keep one scheduler and one `LoopClock`. A robot-owned Auto supervisor reads
+  the shared match time, calls the TaskRunner's total cancel-and-clear path once, requests safe
+  capability state, creates a fresh deferred park Task from the current pose, and starts it through
+  the same runner. The time threshold, park choice, and mechanism policy remain routine/robot facts;
+  no generic framework emergency strategy or hidden background timer is added.
+- **Completion:** tests cover takeover during routes, companion work, mechanism waits, and idle/end
+  state; exactly-once triggering at the threshold; active-child cancellation and cleanup failure;
+  safe mechanism requests; truthful route failure; unavailable park geometry; repeated loop calls;
+  and shutdown. Telemetry distinguishes normal completion, time takeover, fallback construction
+  failure, and park outcome.
+- **Decision record:** _Pending._
+
+### PHX-02 - Phoenix runtime readiness
+
+- **Problem to confirm:** placeholder routes, uncalibrated localization values, missing alliance tag
+  facts, unavailable services, or an incompletely configured Pedro `FollowerBuilder` may still allow
+  assists/Auto to attempt initialization. The Pedro review found declared drivetrain/Pinpoint
+  configs that are not actually supplied to `Constants.createFollower(...)`. Cuttlefish also checks
+  the live initialized follower pose against the selected route start and emits an unmistakable
+  warning when they disagree, a useful readiness check that Phoenix currently lacks.
+- **Alternatives to compare:** robot-owned validation report; scattered constructor checks; disabling
+  individual features; or framework-generic validation primitives.
+- **Leading hypothesis:** Phoenix owns the actual readiness rules, while the Pedro integration owner
+  reports whether its pinned drivetrain/localizer and coordinate contract are complete. Readiness
+  compares the selected route start with the live pose under explicit distance/heading tolerances
+  and a documented warn-versus-refuse-to-arm policy. A tiny generic validation report is worth
+  extracting only if another framework caller needs the same aggregation behavior; active staged
+  hardware motion remains CHECK-01, not INIT validation.
+- **Completion:** unsafe modes fail before start with actionable telemetry; valid partial-feature
+  configurations remain possible when explicitly selected; placeholder routes, invalid Pedro
+  construction, and an unsafe selected-start/live-pose mismatch cannot be armed as a match Auto.
+- **Decision record:** _Pending._
+
+### MATCH-01 - Explicit Auto-to-TeleOp handoff
+
+- **Problem to confirm:** FTC starts TeleOp with a new OpMode and robot runtime, but a competitive
+  robot often needs the Auto's final pose or calibration state. Without an explicit boundary,
+  students reach for public static fields, string-keyed global maps, or disk persistence. Those
+  approaches make stale match data, unchecked casts, and ownership/clear timing easy to miss.
+- **External evidence:** SaMoTech carries final pose and turret offset through
+  [`PoseStorage`](https://github.com/SaMoTechRobotics/FTC-Decode/blob/c8ff047c4245f79d934e622c05481269b5cc42da/TeamCode/src/main/java/robot/chassis/PoseStorage.java).
+  LOAD carries final pose and alliance through public static fields consumed by TeleOp. Tech Tigers
+  publishes pose, game-piece inventory, motif, and calibration flags through a string-keyed
+  `RobotSaveState` and restores them with casts/fallback exceptions. Three unrelated Worlds robots
+  therefore need the boundary even though their payload fields differ.
+- **Alternatives to compare:** no framework change plus a documented robot-local static holder; an
+  immutable Phoenix-specific holder; a tiny typed process-local FTC handoff; any suitable facility
+  already present in the pinned SDK; a string/object blackboard; or serialized preferences/files.
+  Compare missing, wrong-type, stale, already-consumed, process-restart, diagnostic/test OpMode, and
+  Auto-init/stop-failure behavior. Do not assume a cross-mode `LoopClock` instance exists.
+- **Leading hypothesis:** the robot defines one immutable data-only snapshot containing only the
+  facts its next mode may accept. A narrow FTC-boundary, typed, one-shot carrier publishes that
+  snapshot from the Auto composition root and lets TeleOp consume it or use an explicit configured
+  fallback. It records enough producer/freshness metadata to reject stale or wrong-mode data and
+  has an explicit clear operation. Keep hardware objects, Tasks, vendor poses, services, and season
+  strategy out of the carrier; convert poses at the publishing boundary. Prefer a robot-named
+  wrapper at the call site, and do not introduce a global robot-state map or event bus.
+- **Completion:** tests cover publish/consume once, missing data, explicit fallback, wrong type,
+  stale data, repeated Auto/TeleOp/test OpModes in one app process, explicit clear, process-local
+  limitations, concurrent misuse, Auto cleanup failure, and defensive immutability. The Phoenix
+  Auto and TeleOp each need one obvious handoff call, and ordinary robots that do not carry state
+  gain no required setup.
+- **Decision record:** _Pending._
+
+### DRIVE-02 - Shared drivetrain actuator handoff
+
+- **Problem to confirm:** some competitive robots mechanically reuse drivetrain motors and encoders
+  through a PTO for a lift or endgame mechanism. `FtcMecanumDriveLane` deliberately hides its four
+  motor writers/readbacks, so a Phoenix robot currently must either bypass the lane, create a second
+  competing owner, or make a mechanism pretend to be a `DriveSource`. None preserves one obvious
+  final actuator owner.
+- **External evidence:** Cuttlefish's
+  [PTO transition](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/core/RobotActions.java)
+  resets drivetrain motor modes/encoders and engages the PTO, while its
+  [Endgame](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/modules/Endgame.java)
+  reads the shared encoders and writes lift output through the drivetrain owner. TeleOp explicitly
+  suppresses normal driving during the handoff.
+- **Alternatives to compare:** expose raw motors from the standard lane; build separate drive and lift
+  Plants over the same motors; model lift as a drive signal; create a robot-specific shared hardware
+  owner; add an explicit multi-mode extension seam to the standard lane; or add generic resource
+  arbitration. Include motor run-mode/encoder reset, servo PWM, follower stop, and failed-transition
+  behavior in the comparison.
+- **Leading hypothesis:** one robot-owned FTC realization should retain exclusive ownership of every
+  shared motor and encoder and expose explicit mutually exclusive `DRIVE` and `ENDGAME` capability
+  modes. The transition stops Pedro before changing hardware modes and fails closed before enabling
+  the new writer. Extract a narrow reusable lane/seam only if caller analysis shows it keeps the
+  ordinary four-motor drive path just as simple; do not add raw-motor getters or generic Task
+  resource priorities.
+- **Completion:** tests/fakes prove exactly one writer in each mode; no same-cycle stale drive after
+  PTO engagement; ordered follower stop, zero output, motor-mode/encoder transition, and PTO actuation;
+  safe rollback on failure; repeated/idempotent transitions; explicit drive reinitialization; useful
+  readback for the endgame Plant; and unchanged student code for robots without shared actuators.
+- **Decision record:** _Pending._
+
+### VISION-01 - Custom VisionPortal ownership
+
+- **Problem to confirm:** Phoenix's reusable FTC vision owners are AprilTag-specific. A robot that
+  adds a color/cluster/game-piece `VisionProcessor` must repeat webcam/portal construction, processor
+  enablement, streaming state, failure reporting, and close/retry behavior or incorrectly force
+  robot-specific results through `AprilTagVisionLane`.
+- **External evidence:** Cuttlefish's Far Auto creates and closes a custom cluster-detection portal,
+  and its
+  [`ClusterDetectionProcessor`](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/vision/ClusterDetectionProcessor.java)
+  publishes detection facts that affect route construction. The lifecycle is reusable; the cluster
+  vocabulary and OpenCV algorithm are not. Tech Tigers also shares one physical Limelight among
+  object, motif, and localization pipelines. Its robot-specific pipeline meanings should not be
+  generalized, but the decision gate must specify one-device ownership, enable/switch settling,
+  readiness, and stale-result behavior rather than treating a requested pipeline as immediately
+  usable.
+- **Alternatives to compare:** keep every custom portal robot-owned; generalize the AprilTag lane;
+  expose raw `VisionPortal` from a factory; create a small FTC portal resource owner around supplied
+  processors; or define generic detection/result interfaces. Confirm whether existing `FtcVision`
+  already removes enough ceremony before adding another public type.
+- **Leading hypothesis:** if at least two real callers share the lifecycle, add one small `fw.ftc`
+  resource owner for camera/processor construction, enable/disable state, readiness diagnostics,
+  retry, and close. Algorithms and immutable timestamped result snapshots stay robot-owned and typed;
+  framework routines never depend on `VisionProcessor`, OpenCV, or an arbitrary generic detection
+  map.
+- **Completion:** a fake or FTC-boundary test covers partial construction, processor enable/disable,
+  streaming/readiness, retry, close after failure, repeated close, and stale-result policy. AprilTag
+  code remains coherent, a compiling custom processor example has one clear owner, and no SDK/vendor
+  type leaks into core Tasks or robot strategy.
+- **Decision record:** _Pending._
+
+### SENSOR-01 - Motor-current sensing
+
+- **Problem to confirm:** `FtcSensors` exposes battery voltage plus motor position and velocity, but
+  not `DcMotorEx` current. Robot code that needs a jam, hard-stop, load, or homing fact must therefore
+  retain the raw SDK motor and remember units/sampling behavior, even though the framework guide
+  already recommends current spikes as a useful sensor condition.
+- **External evidence:** SaMoTech samples intake current in
+  [`Intake`](https://github.com/SaMoTechRobotics/FTC-Decode/blob/c8ff047c4245f79d934e622c05481269b5cc42da/TeamCode/src/main/java/robot/intake/Intake.java).
+  LOAD uses current both for intake jam recovery in
+  [`Commands`](https://github.com/LOAD-Robotics/Decode-Robot-Code/blob/35a74bfba7d5cc9eeede5ecfdd71123869bd4f17/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/LOADCode/Main_/Hardware_/Commands.java)
+  and as a turret-homing safeguard in
+  [`Turret`](https://github.com/LOAD-Robotics/Decode-Robot-Code/blob/35a74bfba7d5cc9eeede5ecfdd71123869bd4f17/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/LOADCode/Main_/Hardware_/Actuators_/Turret.java).
+  Tech Tigers observes drive, intake, and shooter load before applying its robot-specific policy in
+  [`CurrentManagementCalculator`](https://github.com/techtigers-ftc/decode/blob/0bec90bb2523368c122d8d8361b56261d85cdfe2/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/utils/CurrentManagementCalculator.java).
+- **Alternatives to compare:** leave direct SDK reads in each robot; add only
+  `FtcSensors.motorCurrentAmps(...)`; expose readback from a combined actuator owner; use the SDK's
+  motor current-alert facility; add a sampled multi-motor load snapshot; or create a framework power
+  manager. Measure current-read cost and behavior under AUTO versus MANUAL bulk caching, and define
+  unsupported/unavailable readings before choosing more than one simple source.
+- **Leading hypothesis:** add `DcMotorEx` and named-hardware overloads returning a
+  cycle-memoized `ScalarSource` in explicit amps, matching the existing position/velocity source
+  pattern. Robot code composes it with existing `above(...)`/hysteresis/filter primitives and owns
+  the threshold, persistence, jam recovery, calibration, and subsystem priority. A read-only source
+  never becomes another motor writer. Do not add a new current interface, universal limit, hidden
+  automatic derating, or current-policy methods to `Plant`.
+- **Completion:** tests/fakes cover one hardware sample per `LoopClock.cycle()`, repeated consumers,
+  explicit amp units, reset, invalid/null configuration, unavailable/non-finite readings, and debug
+  output; hardware measurements record polling cost and SDK/controller assumptions. Examples show
+  one jam condition and one `PositionCalibrationTasks` stop condition while keeping recovery policy
+  in the robot capability/supervisor. Existing robots need no migration.
+- **Decision record:** _Pending._
+
+### INPUT-01 - Safe contextual control activation
+
+- **Problem to confirm:** advanced TeleOp code sometimes changes the meaning of controls by robot
+  mode. Simply enabling a new group while a button is held can manufacture a fresh press edge and
+  trigger a dangerous action; recreating `Bindings` or scattering mode checks also makes ownership
+  and precedence hard to audit.
+- **External evidence:** Cuttlefish's
+  [`LayeredGamepad`](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/architecture/input/LayeredGamepad.java)
+  primes newly activated controls from their current physical state so held buttons do not appear as
+  new presses. Its TeleOp uses this for distinct normal, manual, and endgame mappings.
+- **Alternatives to compare:** retain explicit mode guards in each control callback; construct one
+  independent `Bindings` object per mode; add enable/disable to individual bindings; add a small
+  ordered contextual group with rearm semantics; or build a general input-layer stack with
+  priorities. Compare held buttons, analog neutral thresholds, precedence, and the flat common path.
+- **Leading hypothesis:** keep today's flat declarations as the default. If repeated Phoenix callers
+  justify extraction, allow an optional robot-owned binding group/context whose activation samples
+  current controls and requires release/neutral before its edge bindings rearm. Declaration order
+  stays visible; no global control-mode state, implicit priority stack, or automatic subsystem
+  arbitration enters the framework.
+- **Completion:** tests cover activation/deactivation while pressed, release/repress, analog neutral,
+  toggle and hold bindings, multiple enabled contexts, same-cycle transitions, and cancellation of
+  context-owned Tasks. A normal TeleOp remains unchanged, while an advanced example makes each
+  mode's meanings and precedence obvious in one controls owner.
+- **Decision record:** _Pending._
+
+### HAPTIC-01 - Driver haptic feedback boundary
+
+- **Problem to confirm:** Cuttlefish uses gamepad rumble for readiness, intake-full, relocalization,
+  mode, warning, and endgame events. Phoenix controls can read through framework sources but have no
+  corresponding narrow output seam, so robot code must retain raw FTC `Gamepad` references and
+  repeatedly implement controller selection and cooldown policy.
+- **External evidence:** Cuttlefish's
+  [TeleOp haptic helpers](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/opmodes/tele/Tele.java)
+  rate-limit rumble independently for each driver and use it across many meaningful robot events.
+- **Alternatives to compare:** keep direct FTC calls in the OpMode; add rumble methods to
+  `GamepadDevice`; define a tiny core-facing haptic sink with one FTC adapter; put rate limiting in
+  every controls owner; or add a generic notification/event bus. Coordinate this with BOUNDARY-01 so
+  fixing output does not preserve an existing SDK import leak.
+- **Leading hypothesis:** expose one small haptic output contract with an FTC adapter and a reusable
+  cooldown/debounce wrapper only if it shortens real callers. Robot controls/presenters retain the
+  meaning, pattern choice, and recipient of each signal. Do not create a framework notification bus,
+  background thread, or scoring-specific feedback API.
+- **Completion:** tests cover per-controller cooldown, immediate safety warnings where selected,
+  repeated events, disabled/unavailable rumble, stop, and loop-thread ownership. The common call site
+  is one obvious feedback request and core robot policy has no FTC SDK dependency.
+- **Decision record:** _Pending._
+
+### PERF-01 - FTC hub bulk-cache ownership
+
+- **Problem to confirm:** Phoenix has no explicit owner for Lynx bulk-caching policy. On sensor-heavy
+  robots, SDK automatic behavior may be sufficient, while manual caching can reduce repeated hub I/O
+  only if every hub is configured and cleared exactly once per OpMode cycle. Scattered clears make
+  same-cycle readings inconsistent.
+- **External evidence:** Cuttlefish configures all Lynx modules for manual bulk caching during init
+  and clears them once at the beginning of every outer loop in
+  [`EnhancedOpMode`](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/core/EnhancedOpMode.java).
+- **Alternatives to compare:** rely on SDK `AUTO`; configure manual caching directly in Phoenix;
+  create a tiny optional `fw.ftc` cycle owner; or hide it in a base OpMode/lifecycle framework.
+  Measure real loop I/O before selecting a default and specify INIT, repeated same-cycle calls, and
+  shutdown restoration.
+- **Leading hypothesis:** retain SDK automatic caching for the beginner path unless measurements show
+  a meaningful benefit. If manual mode is justified, one optional FTC composition-root owner discovers
+  the hubs, configures them once, and clears them idempotently by `LoopClock.cycle()`. No subsystem
+  clears a cache and no base OpMode, global singleton, or loop-rate sleep is added.
+- **Completion:** benchmark results and hardware assumptions are recorded; fake/FTC tests cover all
+  hubs, one clear per cycle, duplicate calls, INIT/active transitions, partial failure, and stop;
+  documentation places the owner at one explicit loop phase; robots that do not opt in need no extra
+  concepts.
+- **Decision record:** _Pending._
+
+### PERF-02 - Loop phase diagnostics
+
+- **Problem to confirm:** Phoenix can report overall loop timing but cannot identify whether input,
+  localization, services, Tasks, Plant realization, vision, or telemetry owns a slow cycle. Students
+  therefore troubleshoot performance with ad hoc timers or by commenting out behavior.
+- **External evidence:** Cuttlefish's
+  [`LoopProfiler`](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/core/LoopProfiler.java)
+  records named segment durations and surfaces bottlenecks during robot development. SaMoTech's
+  [`TaskTimer`](https://github.com/SaMoTechRobotics/FTC-Decode/blob/c8ff047c4245f79d934e622c05481269b5cc42da/TeamCode/src/main/java/util/TaskTimer.java)
+  independently times named chassis, shooter, turret, indicator, and drawing phases, while its Auto
+  records expected versus actual semantic-step duration. This supports observation and snapshots,
+  not another scheduler or clock.
+- **Alternatives to compare:** document manual timing; add local timers only to Phoenix; create a
+  lightweight named-phase diagnostic; integrate with telemetry/tracing libraries; or let a profiler
+  own the loop clock and rate. Measure allocation and telemetry overhead before choosing defaults.
+- **Leading hypothesis:** an optional diagnostic may observe a supplied monotonic time source and
+  aggregate named phase timings, but it never advances `LoopClock`, sleeps, schedules work, or hides
+  loop order. The composition root marks only useful high-level boundaries, and presenters decide
+  when to render a snapshot.
+- **Completion:** tests cover phase order, repeated names, nested/unfinished phases, cycle rollover,
+  bounded allocation/history, disabled overhead, and immutable snapshots. A Phoenix diagnostic
+  example identifies a simulated slow phase without changing behavior or the one-clock contract.
+- **Decision record:** _Pending._
+
+### PERF-03 - Contract-safe hardware write deduplication
+
+- **Problem to confirm:** FTC adapters may resend an unchanged motor/servo command every cycle even
+  when the controller already holds it. Avoiding redundant bus writes can improve loop time, but a
+  generic cache can suppress a required zero, run-mode transition, watchdog refresh, or truthful
+  Plant applied-target update.
+- **External evidence:** Cuttlefish wraps motor output with
+  [`WriteCache`](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/architecture/hardware/WriteCache.java).
+  That proves the optimization is useful enough to evaluate, not that its threshold and latching
+  assumptions satisfy every Phoenix actuator contract.
+- **Alternatives to compare:** no change; exact deduplication inside individual FTC adapters;
+  tolerance-based motor/servo wrappers; cache at Plant output; or rely on SDK/controller behavior.
+  Benchmark each affected hardware type and trace stop, rail/clamp, mode/configuration, watchdog,
+  reconnect, and telemetry semantics separately.
+- **Leading hypothesis:** make no framework API change without measured benefit. If justified, keep
+  caching at the narrow hardware boundary with device-specific invalidation and force-write rules;
+  Plants still evaluate and report every cycle, normalized limits remain exact, and safety stop/zero
+  is never skipped merely because a stale cache matches.
+- **Completion:** before/after measurements are recorded; tests cover first write, unchanged write,
+  tiny changes, zero/stop, limits, mode/config changes, invalidation/reconnect, write failure, NaN
+  rejection, and Plant applied-target truth. Each supported adapter opts in explicitly; no generic
+  source or Task behavior changes.
+- **Decision record:** _Pending._
+
+### TUNE-01 - Live tuning to checked-in profile
+
+- **Problem to confirm:** competition robots benefit from live Dashboard tuning, but Phoenix profiles
+  are intentionally data-only and defensively copied by long-lived owners. Directly reading mutable
+  static `@Config` fields throughout production would make behavior change mid-cycle, bypass staged
+  validation, and leave the tuned values outside version-controlled robot configuration.
+- **External evidence:** Cuttlefish exposes many mechanism, control, and Auto parameters through FTC
+  Dashboard configuration during development. Its use demonstrates the speed benefit while also
+  showing why mutable globals should not become Phoenix's production configuration authority.
+- **Alternatives to compare:** edit/redeploy checked-in profiles only; let production owners read
+  mutable Dashboard statics continuously; rebuild individual owners from a tuning snapshot; provide
+  dedicated calibration/tester bridges; or emit/copy validated values into the profile. Consider
+  which parameter changes are safe while hardware is active.
+- **Leading hypothesis:** keep production Phoenix owners on immutable defensive snapshots. An
+  optional FTC/Dashboard tuning owner is used only by explicit tuning/tester modes, validates a
+  complete candidate, applies it at a visible rebuild boundary or through an already-safe calibrated
+  source, and reports values in a form that can be copied into the checked-in profile. No hidden
+  mutable global becomes a match dependency.
+- **Completion:** tests cover invalid/non-finite edits, atomic snapshot/apply, active-output safety,
+  rollback, rebuild/close ordering, and emitted profile values. Documentation gives students one
+  repeatable tune -> validate -> record -> production workflow, and match OpModes fail readiness if
+  they depend on unrecorded live state.
 - **Decision record:** _Pending._
 
 ### TARGET-01 - Lazy Plant target overlay selection
@@ -858,6 +1626,32 @@ core semantics it depends on.
   lifecycle is documented in the canonical loop.
 - **Decision record:** _Pending._
 
+### CHECK-01 - Staged whole-robot system check
+
+- **Problem to confirm:** Phoenix has strong individual device testers and PHX-02 can report static
+  readiness, but there is no one pre-match procedure that safely exercises the assembled robot in
+  stages, records pass/warn/fail evidence, asks for human confirmation where measurement is
+  impossible, and guarantees cleanup after cancellation or failure.
+- **External evidence:** Cuttlefish's non-blocking
+  [`SystemCheck`](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/opmodes/test/SystemCheck.java)
+  advances through sensor, vision, odometry, drivetrain, turret, shooter, intake, magazine, and
+  manual-confirmation stages, then consolidates results and cleans up outputs.
+- **Alternatives to compare:** keep separate tester OpModes; write one Phoenix-only check directly;
+  compose existing Tasks in a robot check specification; add a small staged check/result runner; or
+  reflect over hardware/subsystems automatically. Separate passive readiness from motion-producing
+  checks and define explicit operator confirmation before each hazardous stage.
+- **Leading hypothesis:** Phoenix owns the check list, expected ranges, capability actions, and safe
+  state because those are robot facts. Reuse existing tester lifecycle and Task cancellation. Extract
+  only a small stage/result/report/presenter abstraction if it removes repeated sequencing and
+  cleanup without hiding which hardware will move; do not add reflection, hardware auto-discovery,
+  or a generic `BaseRobot`.
+- **Completion:** a check can run, skip, retry, cancel, and stop from every stage; motion stages require
+  visible consent; every active capability returns safely after success, failure, exception, or
+  OpMode stop; results include measured value, expectation, severity, and actionable advice; PHX-02
+  may reference the latest report without running hardware automatically; and a fake-HAL test covers
+  the complete sequence.
+- **Decision record:** _Pending._
+
 ### EXAMPLE-01 - Compiling modern starter robot
 
 - **Problem to confirm:** current beginner material jumps from a flat OpMode to a large layered
@@ -868,6 +1662,64 @@ core semantics it depends on.
   A generator or base class is unjustified until repeated manual use proves a need.
 - **Completion:** one profile, mechanism, capability family, controls owner, composition root, thin
   TeleOp, and tiny Auto; no vision or season strategy.
+- **Decision record:** _Pending._
+
+### EXAMPLE-02 - Compiling Pedro autonomous reference
+
+- **Problem to confirm:** Phoenix has a large season-specific Pedro graph and placeholder paths, but
+  no small compiling reference that teaches the complete supported lifecycle. A student cannot yet
+  see, in one bounded example, where Pedro poses live, who updates the Follower, how route Tasks
+  compose with capability Tasks, how route failure branches, and which owner stops hardware.
+- **External evidence:** LOAD's Worlds routines show the target readability directly: init selects
+  alliance/plan, and each routine reads as a short semantic sequence of follow-path, intake, and
+  shoot factories. SaMoTech's named `AutoStep[]` plans and Tech Tigers' short
+  `CycleConfiguration[]` leaf OpModes reach a similar surface but require much larger hidden custom
+  machinery. The Phoenix example should achieve the short surface with the ordinary framework
+  vocabulary rather than teaching a generated plan language or fixed-cycle state builder.
+- **Alternatives to compare:** rely on Pedro's Ivy example; expand Markdown snippets only; make the
+  full Phoenix Decode Auto the starter; add a code generator/base OpMode; or add one small compiling
+  Pedro-specific robot-side example after PEDRO-01/02 establish the correct integration contract.
+- **Leading hypothesis:** add a compact multi-file example and guide, not a new Auto DSL or base
+  robot. It should show one configured follower/integration owner, a tiny immutable path set, one
+  reusable mechanism capability Task, a readable routine composition, explicit route fallback, a
+  thin OpMode, one LoopClock/follower heartbeat, and deterministic cancellation. Keep Pedro types at
+  the integration/path boundary and use Phoenix Tasks rather than teaching Ivy beside them.
+- **Completion:** the example compiles against the pinned Pedro version, runs in a pure/fake adapter
+  test where practical, contains no placeholder hardware config, and documents the exact files a
+  student normally edits for a new alliance/path/routine. Android Studio and on-robot walkthroughs
+  confirm the normal programming path is shorter and clearer than copying the full Phoenix season
+  graph. After their prerequisite items land, an advanced companion section demonstrates one
+  alliance transform, a route supplier resolved at start, one Pedro progress callback that requests
+  a robot capability, deadline-bounded intake, truthful route branching, vision fallback, and a
+  match-time park takeover without introducing a second scheduler or Auto DSL.
+- **Decision record:** _Pending._
+
+### EXAMPLE-03 - Advanced moving-target reference
+
+- **Problem to confirm:** Phoenix architecture documents describe spatial targeting and bounded
+  realization, but there is no small compiling reference proving that a competition-style moving
+  turret/shot-on-the-move service and route-progress scoring event fit the existing source, Plant,
+  capability, and Task vocabulary. Without that proof, students may copy mutable global calculations
+  or conclude the framework needs season-specific shooter APIs.
+- **External evidence:** Cuttlefish computes lead from robot pose, translational/angular motion, and
+  target geometry in
+  [`Context`](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/core/Context.java),
+  applies a bounded turret realization in
+  [`Turret`](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/modules/Turret.java),
+  and uses Pedro parametric callbacks to request mechanism actions while routes continue.
+- **Alternatives to compare:** rely on architecture prose; put generic projectile/lead equations in
+  the framework; create shooter/turret capability interfaces; add a standalone tested cookbook; or
+  extend the compiling Pedro example with one advanced robot-owned service and fake-HAL realization.
+- **Leading hypothesis:** add a bounded compiling/tested advanced example, not new game vocabulary.
+  A robot-owned service combines timestamped field/motion facts into a desired target; a periodic
+  source and `PlantTargets.plan(...)` feed one bounded PositionPlant; readiness/status stays in a
+  robot capability; and a Pedro progress callback only requests that capability. Physics policy,
+  target choice, and fallback remain in the example robot.
+- **Completion:** fake-HAL tests cover motion compensation inputs, stale/unavailable localization,
+  reachable/unreachable target range, bounded output, fallback, readiness, route callback
+  idempotency, cancellation, and safe stop. The guide identifies the few student edit points and
+  explains why no direct writer, background coroutine, projectile framework, or scoring API is
+  required.
 - **Decision record:** _Pending._
 
 ### BOUNDARY-01 - FTC boundary enforcement
@@ -916,18 +1768,6 @@ core semantics it depends on.
   churn is bundled with behavioral work.
 - **Decision record:** _Pending._
 
-### PHX-02 - Phoenix runtime readiness
-
-- **Problem to confirm:** placeholder routes, uncalibrated localization values, missing alliance tag
-  facts, or unavailable services may still allow assists/Auto to initialize.
-- **Alternatives to compare:** robot-owned validation report; scattered constructor checks; disabling
-  individual features; or framework-generic validation primitives.
-- **Leading hypothesis:** Phoenix owns the actual readiness rules. A tiny generic validation report is
-  worth extracting only if another framework caller needs the same aggregation behavior.
-- **Completion:** unsafe modes fail before start with actionable telemetry; valid partial-feature
-  configurations remain possible when explicitly selected.
-- **Decision record:** _Pending._
-
 ## Explicitly deferred architectural ideas
 
 These are not implementation tasks without new evidence:
@@ -938,13 +1778,37 @@ These are not implementation tasks without new evidence:
 - A large framework module reorganization before focused tests exist.
 - Setup/code-generation wizards before the compiling starter has been used and evaluated.
 - A generic route host or season strategy layer based only on Phoenix's current needs.
+- A monolithic autonomous path/action DSL, generic route-progress callback language, or wrapper over
+  every Pedro feature. Keep Pedro geometry/constraints/callbacks at the path boundary and use Phoenix
+  Tasks/capabilities for robot meaning.
+- An Ivy/Phoenix command bridge or two schedulers in one OpMode; Phoenix Tasks remain the one robot
+  behavior vocabulary unless a concrete integration cannot be expressed safely through a leaf
+  adapter.
+- Background coroutine/thread execution for FTC hardware behavior; cooperative Tasks remain owned by
+  the OpMode heartbeat.
+- Generic Task resource requirements, priorities, suspension, or arbitration based only on command-
+  framework parity. Explicit composition and one visible drive owner remain simpler until a real
+  Phoenix caller requires dynamic conflict resolution.
+- Framework projectile physics, shooter/magazine sorting policy, or arbitrary generic vision-result
+  maps. Robot services and typed snapshots already provide the correct ownership boundary.
+- A framework-wide electrical power allocator or automatic motor-current response. SENSOR-01 may
+  expose the missing measurement; each robot still owns its thresholds, subsystem priorities,
+  derating, jam recovery, and calibration policy.
+- A persistent/string-keyed global robot-state blackboard. MATCH-01 evaluates only a typed,
+  short-lived Auto-to-TeleOp handoff with explicit fallback and clearing.
+- A new articulated-camera localization lane based on one LOAD implementation. Reconsider only if a
+  second robot cannot express its timestamped mount/measurement through the existing time-aware
+  camera-mount and localization boundaries.
+- A standalone simulator that duplicates a simplified robot. Reconsider simulation when a fake FTC
+  hardware boundary can execute the production Phoenix composition, lifecycle, and Task graph.
 
 ## Recommended Codex workflow
 
 The safest workflow is one Codex task and one branch per tracker item. This keeps each design review,
 diff, verification result, and rollback boundary small.
 
-1. Start with `TEST-01` on a branch such as `codex/test-01-framework-harness`.
+1. Start with the next incomplete item in the recommended order, currently `PEDRO-01`, on its own
+   `codex/` branch.
 2. Ask Codex to perform the decision gate first and update this tracker. It should stop for direction
    if the chosen design materially differs from the leading hypothesis.
 3. After the decision record is accepted, implement only that ID, update callers/docs/examples, run
