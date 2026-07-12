@@ -1,12 +1,12 @@
 package edu.ftcphoenix.robots.phoenix.autonomous.pedro;
 
-import com.pedropathing.follower.Follower;
 import com.pedropathing.geometry.BezierLine;
 import com.pedropathing.geometry.Pose;
 import com.pedropathing.paths.PathChain;
 
 import java.util.Objects;
 
+import edu.ftcphoenix.fw.integrations.pedro.PedroPathingRuntime;
 import edu.ftcphoenix.robots.phoenix.PhoenixCapabilities;
 import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
 import edu.ftcphoenix.robots.phoenix.autonomous.PhoenixAutoSpec;
@@ -28,7 +28,7 @@ public final class PhoenixPedroPathFactory {
         /**
          * Starting Pedro pose for the selected spec.
          */
-        public final Pose startPose;
+        public final Pose pedroStartPose;
         /**
          * First placeholder outbound/preload path.
          */
@@ -42,25 +42,26 @@ public final class PhoenixPedroPathFactory {
          */
         public final String label;
 
-        private Paths(Pose startPose, PathChain outboundPath, PathChain returnPath, String label) {
-            this.startPose = startPose;
+        private Paths(Pose pedroStartPose, PathChain outboundPath, PathChain returnPath, String label) {
+            this.pedroStartPose = pedroStartPose;
             this.outboundPath = outboundPath;
             this.returnPath = returnPath;
             this.label = label;
         }
     }
 
-    private final Follower follower;
+    private final PedroPathingRuntime pedroRuntime;
     private final PhoenixProfile.AutoConfig autoCfg;
 
     /**
-     * Create a path factory around the Pedro follower used by the OpMode.
+     * Create a path factory around the validated Pedro runtime used by the OpMode.
      *
-     * @param follower Pedro follower used for path building and execution
+     * @param pedroRuntime Pedro runtime that applies its validated path constraints explicitly
      * @param autoCfg  Phoenix Auto timing/path-placeholder config
      */
-    public PhoenixPedroPathFactory(Follower follower, PhoenixProfile.AutoConfig autoCfg) {
-        this.follower = Objects.requireNonNull(follower, "follower");
+    public PhoenixPedroPathFactory(PedroPathingRuntime pedroRuntime,
+                                   PhoenixProfile.AutoConfig autoCfg) {
+        this.pedroRuntime = Objects.requireNonNull(pedroRuntime, "pedroRuntime");
         this.autoCfg = autoCfg == null ? new PhoenixProfile.AutoConfig() : autoCfg;
     }
 
@@ -69,32 +70,34 @@ public final class PhoenixPedroPathFactory {
      *
      * <p>The path labels and start pose already depend on the spec, but the geometry is still the
      * old twelve-inch Pedro integration route. Replace this method's geometry branches when real
-     * Decode routes are ready. This method sets Pedro's starting pose but deliberately does not
-     * advance the Follower; {@link edu.ftcphoenix.robots.phoenix.PhoenixRobot} owns the runtime
-     * heartbeat after Auto initialization.</p>
+     * Decode routes are ready. The returned {@link Paths#pedroStartPose} is applied by the Auto
+     * composition root through the Pedro integration lane so Pedro and Phoenix start from one
+     * synchronized pose. This factory never advances the Follower.</p>
      */
     public Paths build(PhoenixAutoSpec spec, PhoenixCapabilities capabilities) {
         Objects.requireNonNull(spec, "spec");
         Objects.requireNonNull(capabilities, "capabilities");
 
         double distanceIn = autoCfg.pedroIntegrationTestDistanceIn;
-        Pose startPose = startPoseFor(spec);
-        Pose forwardPose = new Pose(startPose.getX() + distanceIn, startPose.getY(), startPose.getHeading());
+        Pose pedroStartPose = startPoseFor(spec);
+        Pose forwardPose = new Pose(
+                pedroStartPose.getX() + distanceIn,
+                pedroStartPose.getY(),
+                pedroStartPose.getHeading()
+        );
 
-        follower.setStartingPose(startPose);
-
-        PathChain outbound = follower.pathBuilder()
-                .addPath(new BezierLine(startPose, forwardPose))
-                .setLinearHeadingInterpolation(startPose.getHeading(), forwardPose.getHeading())
+        PathChain outbound = pedroRuntime.pathBuilder()
+                .addPath(new BezierLine(pedroStartPose, forwardPose))
+                .setLinearHeadingInterpolation(pedroStartPose.getHeading(), forwardPose.getHeading())
                 .addParametricCallback(0.50, spinUpCallback(capabilities))
                 .build();
 
-        PathChain back = follower.pathBuilder()
-                .addPath(new BezierLine(forwardPose, startPose))
-                .setLinearHeadingInterpolation(forwardPose.getHeading(), startPose.getHeading())
+        PathChain back = pedroRuntime.pathBuilder()
+                .addPath(new BezierLine(forwardPose, pedroStartPose))
+                .setLinearHeadingInterpolation(forwardPose.getHeading(), pedroStartPose.getHeading())
                 .build();
 
-        return new Paths(startPose, outbound, back, labelFor(spec, distanceIn));
+        return new Paths(pedroStartPose, outbound, back, labelFor(spec, distanceIn));
     }
 
     private Runnable spinUpCallback(final PhoenixCapabilities capabilities) {

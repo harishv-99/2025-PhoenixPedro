@@ -24,6 +24,7 @@ import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLaneFactories;
 import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLaneFactory;
 import edu.ftcphoenix.fw.ftc.vision.FtcWebcamAprilTagVisionLane;
 import edu.ftcphoenix.fw.localization.AbsolutePoseEstimator;
+import edu.ftcphoenix.fw.localization.MotionPredictor;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
 import edu.ftcphoenix.fw.localization.apriltag.AprilTagPoseEstimator;
 import edu.ftcphoenix.fw.localization.apriltag.FixedTagFieldPoseSolver;
@@ -550,7 +551,7 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
 
         localizationLane.update(clock);
 
-        PinpointOdometryPredictor predictor = localizationLane.predictor();
+        MotionPredictor predictor = localizationLane.predictor();
         AprilTagPoseEstimator aprilTagEstimator = localizationLane.aprilTagPoseEstimator();
         LimelightFieldPoseEstimator limelightEstimator = localizationLane.limelightFieldPoseEstimator();
         AbsolutePoseEstimator correctionEstimator = localizationLane.correctionEstimator();

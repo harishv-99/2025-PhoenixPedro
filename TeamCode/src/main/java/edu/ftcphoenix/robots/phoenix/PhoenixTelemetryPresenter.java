@@ -2,6 +2,7 @@ package edu.ftcphoenix.robots.phoenix;
 
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 
+import edu.ftcphoenix.fw.core.math.MathUtil;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceStatus;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagObservation;
@@ -145,6 +146,15 @@ public final class PhoenixTelemetryPresenter {
         }
         if (odomPose != null) {
             telemetry.addData("pose.odom", odomPose);
+        }
+        if (globalPose != null && globalPose.hasPose && odomPose != null && odomPose.hasPose) {
+            double dxIn = globalPose.fieldToRobotPose.xInches - odomPose.fieldToRobotPose.xInches;
+            double dyIn = globalPose.fieldToRobotPose.yInches - odomPose.fieldToRobotPose.yInches;
+            double headingDriftRad = MathUtil.wrapToPi(
+                    globalPose.fieldToRobotPose.yawRad - odomPose.fieldToRobotPose.yawRad
+            );
+            telemetry.addData("pose.drift.in", Math.hypot(dxIn, dyIn));
+            telemetry.addData("pose.drift.headingDeg", Math.toDegrees(headingDriftRad));
         }
     }
 

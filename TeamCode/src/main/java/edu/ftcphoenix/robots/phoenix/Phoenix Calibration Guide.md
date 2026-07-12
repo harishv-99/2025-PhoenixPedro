@@ -157,6 +157,13 @@ FtcOdometryAprilTagLocalizationLane localization =
         );
 ```
 
+That constructor is the normal TeleOp/calibration path and creates the profile-configured Pinpoint
+predictor. Phoenix Pedro Auto instead creates one `PedroPathingRuntime` from the same profile and
+passes its predictor into `FtcOdometryAprilTagLocalizationLane.withPredictor(...)`; it must not
+construct Pedro's native Pinpoint localizer as a second production owner. Pedro's generated tuning
+menu uses the clearly named tool-only native factory, which derives the same hardware name, offsets,
+resolution, directions, and yaw scalar from this profile.
+
 The backend only changes which concrete AprilTag lane is created:
 
 - `Backend.WEBCAM` -> `FtcWebcamAprilTagVisionLane`
@@ -374,11 +381,11 @@ Examples of future additions that would fit this model naturally:
 
 ## 6. Related docs
 
-- [`Framework Overview`](<../fw/docs/getting-started/Framework Overview.md>)
-- [`AprilTag Localization & Fixed Layouts`](<../fw/docs/drive-vision/AprilTag Localization & Fixed Layouts.md>)
-- [`Framework Lanes & Robot Controls`](<../fw/docs/design/Framework Lanes & Robot Controls.md>)
-- [`Robot Calibration Tutorials`](<../fw/docs/testing-calibration/Robot Calibration Tutorials.md>)
-- [`Guided Calibration Walkthroughs`](<../fw/docs/testing-calibration/Guided Calibration Walkthroughs.md>)
+- [`Framework Overview`](<../../fw/docs/getting-started/Framework Overview.md>)
+- [`AprilTag Localization & Fixed Layouts`](<../../fw/docs/drive-vision/AprilTag Localization & Fixed Layouts.md>)
+- [`Framework Lanes & Robot Controls`](<../../fw/docs/design/Framework Lanes & Robot Controls.md>)
+- [`Robot Calibration Tutorials`](<../../fw/docs/testing-calibration/Robot Calibration Tutorials.md>)
+- [`Guided Calibration Walkthroughs`](<../../fw/docs/testing-calibration/Guided Calibration Walkthroughs.md>)
 
 ## Future mechanism calibration pattern
 

@@ -1,6 +1,6 @@
 # Framework Improvement Tracker
 
-Last updated: 2026-07-11
+Last updated: 2026-07-12
 
 This file tracks proposed Phoenix framework improvements. It is deliberately a planning document:
 an item being listed here does **not** mean its current proposed solution has been approved. Each
@@ -70,7 +70,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 6 | TASK-02 | Task reuse contract | Done | Enforce the documented single-use contract consistently. |
 | 7 | TASK-03 | Clear and cancellation semantics | Done | Remove unsafe drop-without-cancel behavior and make Plant cancellation explicit. |
 | 8 | PEDRO-01 | Follower heartbeat and stopped-state ownership | Done | Advance one Pedro follower once per Auto loop outside individual Tasks; Tasks select behavior but do not own the heartbeat. |
-| 9 | PEDRO-02 | Pedro drivetrain, localization, and pose authority | Proposed | Build one valid Pedro runtime with one hardware/localization owner and an explicit Pedro-to-Phoenix field-pose contract. |
+| 9 | PEDRO-02 | Pedro drivetrain, localization, and pose authority | Done | Build one valid Pedro runtime with one hardware/localization owner and an explicit Pedro-to-Phoenix field-pose contract. |
 | 10 | ROUTE-02 | Truthful route terminal status | Proposed | Do not infer route success solely from `!isBusy()`; preserve completion, interruption, timeout, and failure meaning. |
 | 11 | ROUTE-01 | Start-time route construction | Proposed | Resolve a route once when its Task starts so live pose and vision can select geometry safely. |
 | 12 | FIELD-01 | Explicit alliance field transforms | Proposed | Define field geometry once and apply a named, tested transform instead of duplicating red/blue path code. |
@@ -1032,7 +1032,192 @@ writer, and explicit lifecycle ownership.
   translational velocity/delta, and angular velocity/delta snapshot; correction/reset/drift behavior
   is documented and observable; invalid or placeholder config fails during INIT with an actionable
   readiness message.
-- **Decision record:** _Pending._
+- **Decision record (2026-07-11):**
+  - **Confirmed behavior:** the checked-in `Constants.createFollower(...)` calls only
+    `pathConstraints(...)`. In pinned Pedro 2.1.2, `FollowerBuilder` leaves both `localizer` and
+    `drivetrain` null and performs no build validation. `build()` passes those nulls to `Follower`;
+    `PoseTracker` immediately calls `localizer.resetIMU()`, and `Follower.breakFollowing()` also
+    immediately reaches the drivetrain. The current production factory therefore cannot construct
+    a usable follower and fails with a vendor null dereference rather than an actionable INIT error.
+    Adding both missing builder calls would construct a follower, but the native Pedro
+    `PinpointLocalizer.update()` polls Pinpoint inside every `Follower.update()`, while Phoenix's
+    existing localization lane independently constructs, configures, resets, and polls another
+    `PinpointOdometryPredictor` for the same hardware name. That is two implicit owners. The two
+    stacks also publish different poses: Pedro's 144-inch field with origin `(72, 72)` and Phoenix's
+    current FTC field frame.
+  - **Pinned lifecycle trace:** Pedro's native Pinpoint localizer owns hardware configuration, pose,
+    instantaneous translational/angular velocity, unwrapped total heading, start/current pose
+    mutation, IMU reset, and tuning accessors. `Follower.update()` couples its localizer update to
+    path control and the final drivetrain write. `Follower.setPose(...)` is not a safe same-cycle
+    correction primitive in 2.1.2 because `PoseTracker.setPose(...)` does not invalidate its cached
+    current pose. Pedro provides no timestamped AprilTag-fusion API, but its supported custom-
+    localizer seam is `FollowerBuilder.setLocalizer(...)`. Phoenix's existing
+    `PinpointOdometryPredictor` already owns the desired hardware config, timestamped pose/delta,
+    reset path, correction replay, and push-back behavior; it currently lacks only the same-sample
+    raw velocity and unwrapped-heading snapshot required to satisfy Pedro's passive `Localizer`
+    contract without guessing from a correction-bearing pose delta.
+  - **Current callers and common path:** `Constants.createFollower(hardwareMap)` is called by the
+    generated `Tuning` menu, the standalone `PedroTest`, and
+    `PhoenixPedroAutoOpModeBase`. Phoenix's annotated Autos all flow through that base; student
+    route code lives in `PhoenixPedroPathFactory`, and routine code continues to use the existing
+    adapter through `RouteTask`, guidance Tasks, and `PhoenixCapabilities`. The base is the only
+    production setup call site. `PhoenixRobot`, both Pedro guides, framework drive/route examples,
+    telemetry, and the localization tester are the other affected API/documentation consumers.
+  - **Alternatives considered:** leave the invalid runtime and document it; add only
+    `.mecanumDrivetrain(...)` and `.pinpointLocalizer(...)`; let Phoenix own Pinpoint and implement a
+    passive Pedro `Localizer`; let Pedro own Pinpoint and expose a Phoenix predictor/reset view;
+    use separate physical localization systems with synchronization/drift diagnostics; add a new
+    generic combined drive/localization runtime interface or value; or keep the ownership choice
+    implicit and infer a predictor from the drive sink at runtime.
+  - **Simplicity comparison:** documentation cannot make the current factory run, and the two-line
+    builder fix hides duplicate resets/polls and disagreeing field frames. Native Pedro ownership is
+    the lower-code runner-up and keeps generated tuning unchanged, but it makes the Follower write
+    drive output before Phoenix localization/correction, applies a correction to path control one
+    cycle later, moves Auto calibration out of the established Phoenix lane, and needs a vendor
+    PoseTracker cache/offset workaround for same-cycle route starts. A passive Pedro view over the
+    Phoenix owner adds integration code but no route/routine concept: one same-cycle kinematic
+    snapshot supplies the exact velocity/heading data, the current localization-first loop stays
+    true, and TeleOp/Auto use one checked-in Pinpoint configuration. Standalone Pedro tuning is a
+    clearly named tool-only native factory derived from that same physical config, not a second
+    production choice. Two sensors add hardware and drift policy. A generic combined runtime
+    interface adds a concept to every route integration without improving the Phoenix common path.
+  - **Chosen hardware and integration ownership:** construct one Pedro Auto integration lane around
+    one `PinpointOdometryPredictor`, one passive Pedro `Localizer` view, one valid native Pedro
+    mecanum drivetrain, one Follower, and the existing `PedroPathingDriveAdapter`. The predictor is
+    the sole object that acquires, configures, resets, polls, and rebases Pinpoint. Its immutable
+    same-cycle kinematic snapshot adds field-frame X/Y velocity, angular velocity, unwrapped physical
+    heading, cycle, and timestamp alongside its existing pose/delta. The passive Pedro view never
+    polls hardware: it verifies that the predictor has a current snapshot, converts pose and
+    velocity explicitly, and supplies Pedro's read/reset/start contract through the lane. The
+    adapter remains the sole Follower heartbeat and drivetrain-stop owner. Do not create a second
+    Pinpoint localizer, expose the raw driver, add a broad velocity interface to core, use reflection,
+    or select ownership with `instanceof`.
+  - **Phoenix API and loop ownership:** replace the one-argument Auto initialization path with the
+    explicit backend-neutral pair `robot.initAuto(adapter, pedroRuntime.motionPredictor())`; the
+    advanced overload receives the same predictor before its aim-enable/override sources. Do not
+    retain the old normal path. `FtcOdometryAprilTagLocalizationLane` gains an injected-
+    `MotionPredictor` construction path for Auto while its ordinary FTC/TeleOp construction still
+    creates the same configured `PinpointOdometryPredictor`. Preserve the current explicit Auto
+    order: `localization/predictor/correction -> targeting -> owned Pedro heartbeat -> TaskRunner ->
+    scoring -> telemetry`. The passive Pedro localizer consumes the already-current snapshot, so
+    Follower control sees an accepted pushed correction in that same heartbeat. Phoenix remains
+    unaware of Pedro types, and route geometry/strategy remains outside `PhoenixRobot`.
+  - **One configuration story:** the project-specific factory must build the complete production
+    lane and validate it before calling the unvalidated vendor builder. Motor names/directions and
+    Pinpoint name/offsets/resolution/directions/yaw scalar come from the selected defensive
+    `PhoenixProfile` snapshot; `Constants` retains only Pedro-specific follower/controller/path
+    tuning. Standalone Pedro `Tuning`/`PedroTest` use an explicitly named tool-only native-localizer
+    factory derived from the same profile, while Phoenix production has one lane factory. Reject
+    blank/duplicate motor names, a blank Pinpoint name, a missing field transform, non-finite
+    tuning/offsets, unsupported reset assumptions, and failed hardware lookup with a message naming
+    the exact setting. Broader calibration acknowledgements and route readiness remain PHX-02.
+  - **Coordinate, time, and motion contract:** require one named, inverse-tested Pedro-to-Phoenix
+    field transform when the lane is built; Phoenix Decode selects the inverted FTC convention
+    explicitly. Never infer the season frame or trust the pinned `FTCCoordinates`/
+    `InvertedFTCCoordinates` implementation without regression tests—the 2.1.2 source applies the
+    same signed quarter-turn in both conversion directions. Convert pose origin, axes, and absolute
+    heading at the integration boundary; rotate velocity components without applying field-origin
+    translation. Phoenix snapshots use inches, radians, CCW-positive yaw, and the shared
+    `LoopClock` cycle/time. The first predictor sample and every deliberate pose rebase publish
+    `MotionDelta.none(...)`; raw same-sample velocity/physical heading remain correction-spike-free.
+    Name vendor-frame values such as `pedroStartPose` explicitly.
+  - **Start, correction, and drift policy:** starting pose assignment goes through the integration
+    lane before the first heartbeat so the predictor/global initializer and passive Pedro view share
+    one pose. The lane consumes only Pedro's constructor-triggered duplicate `resetIMU()` after the
+    predictor's controlled INIT reset; later reset attempts either use one coordinated lane operation
+    or fail with an instruction naming it, never silently no-op. By default the existing corrected-
+    estimator option `enablePushCorrectedPoseToPredictor = true` pushes each accepted filtered
+    correction through the shared predictor, so the passive view gives path following the corrected
+    pose in the same downstream heartbeat. Keeping it false is the explicit advanced targeting-only
+    policy; telemetry then shows raw predictor pose, corrected global pose, and drift. Start/reset/
+    correction rebases clear the motion delta while preserving or explicitly resetting physical
+    velocity and accumulated heading; they must not look like robot motion.
+  - **Rejected designs:** reject the local two-builder-call fix because it leaves two hardware
+    owners; reject native Pedro production ownership because it weakens Phoenix's established
+    localization-first graph and same-cycle correction for less internal code but no routine-code
+    gain; reject an active/passive mode hidden inside one standalone follower factory; reject
+    independent estimators because Phoenix has no requirement worth their hardware/drift complexity;
+    reject a generic combined runtime interface because two existing narrow seams express the
+    production dependency; and reject legacy overloads/runtime inference because they allow the
+    invalid ownership graph to return.
+  - **Verification plan:** use the real pinned Follower with fake localizer/drivetrain boundaries
+    plus focused adapter/localization/Phoenix tests. Cover valid construction and each actionable
+    config failure; exactly one Pinpoint configuration, controlled INIT reset and poll plus one
+    drivetrain writer; a passive localizer that never polls; first/next/reset kinematic snapshots,
+    raw velocities, physical total heading, timestamps, translation/yaw deltas, wraparound, invalid
+    poses, and correction rebasing; named Pedro-to-
+    Phoenix round trips for center, axes, headings, velocity, and Decode's inverted FTC frame;
+    default correction-to-path behavior, targeting-only drift, and a route starting in the same
+    cycle as a correction; starting-pose synchronization; INIT retry/shutdown; and unchanged routine
+    Task call sites. Migrate `Constants`, `Tuning`, `PedroTest`, the Phoenix Auto base/path factory,
+    telemetry, localization tester, all Javadocs/guides/examples, and exhaustive caller searches.
+    Run `:TeamCode:testDebugUnitTest`, `:TeamCode:compileDebugJavaWithJavac`, XML result counts,
+    `git diff --check`, static ownership/frame searches, adversarial review, and Android Studio
+    inspection. On robot, confirm valid INIT, coordinate signs from known poses, one Pinpoint update
+    per cycle, path response to an accepted correction, targeting-only drift telemetry, hold behavior,
+    and immediate stopped motor output.
+  - **Approval gate:** the leading hypothesis remains viable and deliberately left the Pinpoint
+    owner open, so this is not a material departure from the tracker. The design nevertheless changes
+    Phoenix's public Auto initialization and establishes cross-library pose/correction authority.
+    It is a major API/lifecycle decision and requires explicit user approval before moving this item
+    to **In progress** or editing Java code.
+  - **Approval:** the user approved the PEDRO-02 design on 2026-07-11.
+  - **Implementation (2026-07-12):** production Phoenix Pedro Auto now constructs one
+    `PedroPathingRuntime` containing one profile-configured `PinpointOdometryPredictor`, one passive
+    Pedro localizer, one native mecanum/Follower graph, and the existing cycle-aware
+    `PedroPathingDriveAdapter`. The predictor is the sole physical Pinpoint owner. Its immutable
+    `PinpointKinematicSnapshot` publishes one cycle/time-tagged field pose, raw field velocity,
+    angular velocity, and unwrapped physical heading; polling is same-cycle idempotent, and pose
+    rebases clear correction-shaped deltas while retaining physical motion values. The passive
+    localizer never touches hardware, consumes only the current Phoenix cycle, converts through the
+    inverse-tested named Decode field transform, permits the one pinned Follower-constructor reset,
+    and rejects later uncoordinated pose/reset/update calls with actionable errors.
+  - **Phoenix ownership and configuration:** `PhoenixRobot.initAuto(...)` now requires the explicit
+    backend-neutral pair `DriveCommandSink` plus `MotionPredictor`; the injected predictor feeds the
+    normal localization lane before targeting and the adapter heartbeat. The project `Constants`
+    factory derives physical motor and Pinpoint configuration from a defensive `PhoenixProfile`,
+    retains Pedro-only controller/path tuning, validates configuration before hardware use, and
+    separates the production runtime from the clearly named tool-only native Follower used by
+    generated Pedro tuning and `PedroTest`. The Auto base applies the explicitly named
+    `pedroStartPose` before the first heartbeat, keeps route strategy outside `PhoenixRobot`, and
+    preserves `localization/correction -> targeting -> Pedro heartbeat -> TaskRunner -> scoring ->
+    telemetry`. Telemetry now exposes raw/global translation and heading drift.
+  - **Pinned Pedro path-constraint containment:** final audit found that Pedro 2.1.2 first reads a
+    process-wide default in its no-argument path builder and then, even when explicit constraints
+    are supplied, `PathBuilder.build()` replaces every path's constraints with that same global
+    default through `PathChain`. `PedroPathingRuntime.pathBuilder()` now contains both vendor defects
+    in a private version-pinned subclass: it owns copied defaults, preserves deliberate per-path
+    overrides across `build()`, retains Pedro's braking-start semantics, and fails fast if the
+    pinned construction behavior changes. Student path code keeps the normal
+    `runtime.pathBuilder()...build()` shape; it does not mutate global state or require a repair
+    step.
+  - **Documentation:** framework overview/design/loop/localization guides, drive and route
+    Javadocs, both Pedro guides, Phoenix Architecture and calibration guidance, the localization
+    tester, Auto base/path factory, and telemetry documentation now describe the same owner, field,
+    timing, correction, start-pose, tuning-tool, and shutdown contracts. All local links in the 11
+    modified Markdown files resolve.
+  - **Automated verification (2026-07-12):** `:TeamCode:testDebugUnitTest` and
+    `:TeamCode:compileDebugJavaWithJavac` pass. XML reports 179 tests across 24 suites with zero
+    failures, errors, or skips. New focused tests cover Pinpoint configuration and same-cycle
+    kinematic snapshots; pose/velocity/heading transforms and round trips; the real pinned Follower
+    with passive-localizer reset, heartbeat, stale-sample, rebase, and raw-mutation contracts;
+    runtime validation and actionable failures; profile-to-mecanum/Pinpoint mapping; and copied
+    builder defaults plus multiple paths and per-path constraint overrides. Existing JDK
+    21/source-8 and SDK deprecation warnings remain unchanged.
+  - **Static and independent verification:** exhaustive caller searches find one production runtime
+    factory and adapter construction, no legacy one-argument Auto initializer, no native Pedro
+    Pinpoint owner in production Auto, and no raw production Follower heartbeat outside the adapter;
+    raw updates/localizer construction remain only in the explicitly tool-only Pedro programs.
+    `git diff --check` and the changed/untracked trailing-whitespace scan pass. Independent reviews
+    confirmed the pinned PathChain overwrite from source and bytecode, then found no blocking
+    correctness, ownership, Framework Principles, documentation, or student-simplicity issue in the
+    contained workaround or the completed PEDRO-02 graph.
+  - **Manual verification:** the user approved the Android Studio review on 2026-07-12. On-robot
+    observation remains recommended during the next normal bring-up: confirm successful INIT with
+    the selected profile; known-pose X/Y/heading signs; one physical Pinpoint poll per loop;
+    same-cycle path response to an accepted pushed correction; understandable targeting-only drift
+    when push-back is disabled; route hold behavior; and immediate/stable motor zero on cancellation
+    and stop.
 
 ### ROUTE-02 - Truthful route terminal status
 

@@ -28,9 +28,12 @@ import edu.ftcphoenix.fw.drive.route.RouteFollower;
  *
  * <p>Typical usage:</p>
  * <pre>{@code
- * Follower follower = Constants.createFollower(hardwareMap);
- * PedroPathingDriveAdapter adapter = new PedroPathingDriveAdapter(follower);
- * robot.initAuto(adapter); // composition root owns every-loop update + final stop
+ * PedroPathingRuntime runtime =
+ *         Constants.createPhoenixAutoRuntime(hardwareMap, profile);
+ * PedroPathingDriveAdapter adapter = runtime.driveAdapter();
+ * robot.initAuto(adapter, runtime.motionPredictor());
+ * runtime.setStartingPose(pedroStartPose);
+ * // Phoenix now owns every-loop adapter update and final stop.
  *
  * Task auto = Tasks.sequence(
  *         RouteTasks.follow(adapter, outboundPath, new RouteTask.Config()),
@@ -42,6 +45,11 @@ import edu.ftcphoenix.fw.drive.route.RouteFollower;
  */
 public final class PedroPathingDriveAdapter implements RouteFollower<PathChain>, DriveCommandSink {
 
+    /** Internal hook used by a production Pedro runtime immediately before its owned heartbeat. */
+    interface HeartbeatPreparation {
+        void prepare(LoopClock clock);
+    }
+
     /** Internal Pedro behavior selected for the next owned heartbeat. */
     private enum Mode {
         FOLLOWER,
@@ -50,6 +58,7 @@ public final class PedroPathingDriveAdapter implements RouteFollower<PathChain>,
     }
 
     private final Follower follower;
+    private final HeartbeatPreparation heartbeatPreparation;
     private DriveSignal requestedManualDrive = DriveSignal.zero();
     private Mode mode = Mode.FOLLOWER;
     private long lastUpdateCycle = Long.MIN_VALUE;
@@ -62,7 +71,20 @@ public final class PedroPathingDriveAdapter implements RouteFollower<PathChain>,
      * @param follower Pedro follower to wrap
      */
     public PedroPathingDriveAdapter(Follower follower) {
+        this(follower, null);
+    }
+
+    /**
+     * Internal constructor that binds a passive localization preparation step to this heartbeat.
+     *
+     * <p>The public adapter remains usable with an independently configured Follower. Production
+     * runtimes that share Phoenix localization use this package-private path so the passive Pedro
+     * localizer receives the same {@link LoopClock} immediately before the one vendor update.</p>
+     */
+    PedroPathingDriveAdapter(Follower follower,
+                             HeartbeatPreparation heartbeatPreparation) {
         this.follower = Objects.requireNonNull(follower, "follower");
+        this.heartbeatPreparation = heartbeatPreparation;
     }
 
     /**
@@ -102,6 +124,9 @@ public final class PedroPathingDriveAdapter implements RouteFollower<PathChain>,
         RuntimeException failure = null;
 
         try {
+            if (heartbeatPreparation != null) {
+                heartbeatPreparation.prepare(currentClock);
+            }
             if (mode == Mode.MANUAL_START_PENDING) {
                 // Pedro 2.1.2 calls Follower.update() internally here. Do not update again.
                 follower.startTeleopDrive();

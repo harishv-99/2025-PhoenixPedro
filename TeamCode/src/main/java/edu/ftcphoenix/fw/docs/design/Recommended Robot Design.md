@@ -916,14 +916,15 @@ For a stateful adapter such as Pedro, give the same object to the robot composit
 Auto initialization:
 
 ```java
-PedroPathingDriveAdapter pedro = new PedroPathingDriveAdapter(follower);
-robot.initAuto(pedro);
+PedroPathingRuntime pedro = Constants.createPhoenixAutoRuntime(hardwareMap, profile);
+robot.initAuto(pedro.driveAdapter(), pedro.motionPredictor());
 ```
 
-The robot owns `pedro.update(clock)` on every Auto loop and the final `pedro.stop()`. The routine
-still uses `RouteTasks.follow(pedro, route, cfg)` and guidance Tasks normally; the adapter makes
-their same-cycle update calls harmless. This keeps mechanism/wait phases from freezing follower
-hold or pose without adding another scheduler to student Auto code.
+The robot owns `pedro.driveAdapter().update(clock)` on every Auto loop and its final stop. The
+routine still uses `RouteTasks.follow(pedro.driveAdapter(), route, cfg)` and guidance Tasks normally;
+the adapter makes their same-cycle update calls harmless. The runtime's passive Pedro localizer
+reads the same current-cycle predictor that Phoenix localization updates, so this also avoids a
+second odometry owner without adding another scheduler or pose API to student Auto code.
 
 ### What still stays common
 

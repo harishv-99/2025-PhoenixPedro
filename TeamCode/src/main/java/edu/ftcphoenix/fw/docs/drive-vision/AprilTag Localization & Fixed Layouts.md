@@ -244,7 +244,27 @@ This gives you two absolute pose views side by side:
 
 and the corrected/global estimator will use the configured correction source.
 
-### 5.4 Which one should I start with?
+### 5.4 Reusing an external Auto predictor
+
+When an Auto integration already owns physical odometry, inject its backend-neutral predictor
+instead of constructing another Pinpoint instance:
+
+```java
+FtcOdometryAprilTagLocalizationLane localization =
+        FtcOdometryAprilTagLocalizationLane.withPredictor(
+                autoRuntime.motionPredictor(),
+                vision,
+                fixedFieldTagLayout,
+                locCfg
+        );
+```
+
+`locCfg.predictor` applies only to the ordinary `HardwareMap` constructor; the injected path assumes
+the external owner already configured that predictor. All AprilTag, correction-source, and
+corrected-estimator configuration still applies. Phoenix Pedro Auto uses this path so Pinpoint is
+configured, reset, polled, and corrected by one owner while Pedro consumes a passive converted view.
+
+### 5.5 Which one should I start with?
 
 Recommended order:
 

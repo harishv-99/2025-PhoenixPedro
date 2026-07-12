@@ -29,20 +29,26 @@ import edu.ftcphoenix.fw.localization.PoseResetter;
  *   <li>Pinpoint produces a smooth absolute odometry pose.</li>
  *   <li>Pinpoint also produces the incremental motion that global localizers want to replay between
  *       absolute corrections.</li>
+ *   <li>{@link PinpointKinematicSnapshot} preserves the same physical poll's velocity and unwrapped
+ *       heading for passive integration consumers without giving them another hardware update path.</li>
  * </ul>
  *
  * <h2>Units</h2>
  * <ul>
  *   <li>All positions are expressed in <b>inches</b>.</li>
+ *   <li>Translational velocity is expressed in <b>inches per second</b>.</li>
  *   <li>Heading is expressed in <b>radians</b>, wrapped to (-pi, pi].</li>
+ *   <li>Angular velocity is expressed in <b>radians per second</b>.</li>
  * </ul>
  *
- * <h2>Pose convention</h2>
- * <p>The output pose follows Phoenix conventions:</p>
+ * <h2>Field-pose convention</h2>
+ * <p>The output pose and translational velocity use Phoenix's current FTC season field frame:</p>
  * <ul>
- *   <li><b>+X</b> forward</li>
- *   <li><b>+Y</b> left</li>
- *   <li><b>headingRad</b> is CCW-positive (turn left)</li>
+ *   <li>field X/Y meanings come from the current FTC field coordinate convention, not the robot
+ *       frame;</li>
+ *   <li>heading/yaw is measured about field +Z and is CCW-positive;</li>
+ *   <li>the pod-offset names below use robot-relative forward/left directions only for physical
+ *       sensor placement.</li>
  * </ul>
  *
  * <h2>Pinpoint offsets (naming matters)</h2>
@@ -277,6 +283,16 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
 
     private PoseEstimate lastEstimate = PoseEstimate.noPose(0.0);
     private MotionDelta lastMotionDelta = MotionDelta.none(0.0);
+    private PinpointKinematicSnapshot lastKinematicSnapshot =
+            PinpointKinematicSnapshot.unavailable(
+                    PinpointKinematicSnapshot.NO_CYCLE,
+                    0.0,
+                    0.0
+            );
+    private long lastUpdateCycle = Long.MIN_VALUE;
+    private boolean hasPreviousPhysicalHeading;
+    private double previousPhysicalHeadingRad;
+    private double totalHeadingRad;
 
     /**
      * Creates a Pinpoint-backed motion predictor.
@@ -332,31 +348,94 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
     }
 
     /**
-     * Polls the Pinpoint, updates the absolute odometry pose, and publishes the latest motion delta.
+     * Returns a defensive copy of the hardware/configuration snapshot owned by this predictor.
      *
-     * <p>Typical usage is to call this once per loop before reading either {@link #getEstimate()} or
-     * {@link #getLatestMotionDelta()}.</p>
+     * <p>Integration owners may use this to validate lifecycle assumptions such as a controlled
+     * INIT reset without acquiring or configuring the raw Pinpoint driver themselves.</p>
+     */
+    public Config config() {
+        return cfg.copy();
+    }
+
+    /**
+     * Polls Pinpoint once for the supplied cycle and publishes pose, motion, and kinematics.
+     *
+     * <p>Repeated calls with the same non-null {@link LoopClock#cycle()} are no-ops, so layered
+     * estimator/integration code cannot poll the hardware twice in one robot loop. A null clock is
+     * retained only for lower-level tools: each null-clock call polls, timestamps the sample at
+     * {@code 0.0}, and marks its cycle as {@link PinpointKinematicSnapshot#NO_CYCLE}, so it cannot
+     * claim normal same-cycle freshness.</p>
+     *
+     * @param clock shared robot loop clock, or {@code null} only for lower-level untimed tools
      */
     @Override
     public void update(LoopClock clock) {
+        final long cycle;
+        final double nowSec;
+        if (clock != null) {
+            cycle = clock.cycle();
+            nowSec = clock.nowSec();
+            if (lastUpdateCycle == cycle) {
+                return;
+            }
+            // Record the attempt before touching hardware so a reentrant/failing call cannot poll twice.
+            lastUpdateCycle = cycle;
+        } else {
+            cycle = PinpointKinematicSnapshot.NO_CYCLE;
+            nowSec = 0.0;
+            // Untimed tooling cannot participate in or poison the normal LoopClock cycle guard.
+            lastUpdateCycle = Long.MIN_VALUE;
+        }
+
         odo.update();
         Pose2D pos = odo.getPosition();
-        double nowSec = clock != null ? clock.nowSec() : 0.0;
 
         if (pos == null) {
             lastEstimate = PoseEstimate.noPose(nowSec);
             lastMotionDelta = MotionDelta.none(nowSec);
+            lastKinematicSnapshot = PinpointKinematicSnapshot.unavailable(
+                    cycle,
+                    nowSec,
+                    totalHeadingRad
+            );
             return;
         }
 
         double xIn = pos.getX(DistanceUnit.INCH);
         double yIn = pos.getY(DistanceUnit.INCH);
-        double headingRad = pos.getHeading(AngleUnit.RADIANS);
+        double headingRad = normalizeDriverHeadingRad(pos.getHeading(AngleUnit.RADIANS));
 
-        if (Math.abs(headingRad) > Math.PI * 2.0 + 0.5) {
-            headingRad = Math.toRadians(headingRad);
+        if (!isFinite(xIn, yIn, headingRad)) {
+            lastEstimate = PoseEstimate.noPose(nowSec);
+            lastMotionDelta = MotionDelta.none(nowSec);
+            lastKinematicSnapshot = PinpointKinematicSnapshot.unavailable(
+                    cycle,
+                    nowSec,
+                    totalHeadingRad
+            );
+            return;
         }
-        headingRad = MathUtil.wrapToPi(headingRad);
+
+        if (hasPreviousPhysicalHeading) {
+            totalHeadingRad = accumulateUnwrappedHeadingRad(
+                    totalHeadingRad,
+                    previousPhysicalHeadingRad,
+                    headingRad
+            );
+        }
+        previousPhysicalHeadingRad = headingRad;
+        hasPreviousPhysicalHeading = true;
+
+        double fieldVelocityXInchesPerSec = odo.getVelX(DistanceUnit.INCH);
+        double fieldVelocityYInchesPerSec = odo.getVelY(DistanceUnit.INCH);
+        double angularVelocityRadPerSec = odo.getHeadingVelocity(
+                AngleUnit.RADIANS.getUnnormalized()
+        );
+        boolean hasVelocity = isFinite(
+                fieldVelocityXInchesPerSec,
+                fieldVelocityYInchesPerSec,
+                angularVelocityRadPerSec
+        );
 
         Pose3d pose = new Pose3d(xIn, yIn, 0.0, headingRad, 0.0, 0.0);
         PoseEstimate previous = lastEstimate;
@@ -375,6 +454,16 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
         }
 
         lastEstimate = new PoseEstimate(pose, true, cfg.quality, 0.0, nowSec);
+        lastKinematicSnapshot = PinpointKinematicSnapshot.sampled(
+                pose.toPose2d(),
+                hasVelocity,
+                cycle,
+                nowSec,
+                fieldVelocityXInchesPerSec,
+                fieldVelocityYInchesPerSec,
+                angularVelocityRadPerSec,
+                totalHeadingRad
+        );
     }
 
     /**
@@ -394,6 +483,17 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
     }
 
     /**
+     * Returns the immutable kinematic sample produced by the latest physical Pinpoint poll.
+     *
+     * <p>A deliberate {@link #setPose(Pose2d)} may rebase the snapshot pose afterward, but preserves
+     * the measured velocity, physical total heading, cycle, and poll timestamp. Callers that require
+     * current-loop data should also check {@link PinpointKinematicSnapshot#isCurrentFor(LoopClock)}.</p>
+     */
+    public PinpointKinematicSnapshot getKinematicSnapshot() {
+        return lastKinematicSnapshot;
+    }
+
+    /**
      * Resets the Pinpoint IMU and pose back to 0,0,0.
      */
     public void resetPosAndIMU() {
@@ -401,6 +501,14 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
         double ts = (lastEstimate != null && Double.isFinite(lastEstimate.timestampSec)) ? lastEstimate.timestampSec : 0.0;
         lastEstimate = PoseEstimate.noPose(ts);
         lastMotionDelta = MotionDelta.none(ts);
+        hasPreviousPhysicalHeading = false;
+        previousPhysicalHeadingRad = 0.0;
+        totalHeadingRad = 0.0;
+        lastKinematicSnapshot = PinpointKinematicSnapshot.unavailable(
+                lastKinematicSnapshot.cycle,
+                ts,
+                0.0
+        );
     }
 
     /**
@@ -410,6 +518,9 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
         odo.recalibrateIMU();
         double ts = (lastEstimate != null && Double.isFinite(lastEstimate.timestampSec)) ? lastEstimate.timestampSec : 0.0;
         lastMotionDelta = MotionDelta.none(ts);
+        // Establish a new physical-heading baseline after calibration; a calibration jump is not motion.
+        hasPreviousPhysicalHeading = false;
+        lastKinematicSnapshot = lastKinematicSnapshot.withoutVelocity();
     }
 
     /**
@@ -420,18 +531,60 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
         if (pose == null) {
             return;
         }
-        Pose2D set = new Pose2D(DistanceUnit.INCH, pose.xInches, pose.yInches, AngleUnit.RADIANS, pose.headingRad);
+        requireFinitePose(pose);
+        double headingRad = MathUtil.wrapToPi(pose.headingRad);
+        Pose2d rebasedPose = new Pose2d(pose.xInches, pose.yInches, headingRad);
+        Pose2D set = new Pose2D(
+                DistanceUnit.INCH,
+                rebasedPose.xInches,
+                rebasedPose.yInches,
+                AngleUnit.RADIANS,
+                rebasedPose.headingRad
+        );
         odo.setPosition(set);
         double ts = (lastEstimate != null && Double.isFinite(lastEstimate.timestampSec)) ? lastEstimate.timestampSec : 0.0;
         lastEstimate = new PoseEstimate(new Pose3d(
-                pose.xInches,
-                pose.yInches,
+                rebasedPose.xInches,
+                rebasedPose.yInches,
                 0.0,
-                MathUtil.wrapToPi(pose.headingRad),
+                rebasedPose.headingRad,
                 0.0,
                 0.0
         ), true, cfg.quality, 0.0, ts);
         lastMotionDelta = MotionDelta.none(ts);
+        // A coordinate correction is not physical motion; retain the last measured velocity/turn.
+        previousPhysicalHeadingRad = rebasedPose.headingRad;
+        hasPreviousPhysicalHeading = true;
+        lastKinematicSnapshot = lastKinematicSnapshot.withRebasedPose(rebasedPose);
+    }
+
+    /** Accumulate the shortest signed physical turn across a wrapped-heading boundary. */
+    static double accumulateUnwrappedHeadingRad(double totalHeadingRad,
+                                                double previousHeadingRad,
+                                                double currentHeadingRad) {
+        return totalHeadingRad + MathUtil.wrapToPi(currentHeadingRad - previousHeadingRad);
+    }
+
+    private static double normalizeDriverHeadingRad(double headingRad) {
+        if (Math.abs(headingRad) > Math.PI * 2.0 + 0.5) {
+            headingRad = Math.toRadians(headingRad);
+        }
+        return MathUtil.wrapToPi(headingRad);
+    }
+
+    private static boolean isFinite(double... values) {
+        for (double value : values) {
+            if (!Double.isFinite(value)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static void requireFinitePose(Pose2d pose) {
+        if (!isFinite(pose.xInches, pose.yInches, pose.headingRad)) {
+            throw new IllegalArgumentException("Pinpoint pose must contain finite inches/radians: " + pose);
+        }
     }
 
     /**
@@ -446,7 +599,9 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
         dbg.addData(p + ".class", getClass().getSimpleName())
                 .addData(p + ".driverStatus", odo.getDeviceStatus())
                 .addData(p + ".lastEstimate", lastEstimate)
-                .addData(p + ".lastMotionDelta", lastMotionDelta);
+                .addData(p + ".lastMotionDelta", lastMotionDelta)
+                .addData(p + ".lastKinematicSnapshot", lastKinematicSnapshot)
+                .addData(p + ".lastUpdateCycle", lastUpdateCycle);
         cfg.debugDump(dbg, p + ".cfg");
     }
 }

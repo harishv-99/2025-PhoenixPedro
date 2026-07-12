@@ -162,6 +162,11 @@ Phoenix Pedro Auto uses this explicit order:
 Clock → Localization → Targeting → Pedro heartbeat → Auto Tasks → Scoring Plants → Telemetry
 ```
 
+The production Pedro runtime shares the localization phase's one Pinpoint predictor. Its Pedro
+`Localizer` is passive: the downstream heartbeat verifies and consumes that current-cycle snapshot
+instead of polling odometry again. Accepted corrections pushed into the predictor are therefore
+visible to path control in the same heartbeat.
+
 The heartbeat precedes the Task runner so route completion/callback state is current when Tasks are
 evaluated. A route selected by the runner begins advancing on the next loop. A Pedro manual-mode
 transition uses that next loop's vendor-hidden zero update, then applies its retained nonzero command

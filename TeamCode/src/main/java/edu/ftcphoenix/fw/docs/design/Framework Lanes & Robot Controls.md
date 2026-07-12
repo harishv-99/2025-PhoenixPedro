@@ -479,6 +479,21 @@ FtcOdometryAprilTagLocalizationLane localization =
         );
 ```
 
+That convenience path owns Pinpoint construction. If an external Auto runtime already owns the
+physical predictor, make the alternate ownership explicit instead:
+
+```java
+FtcOdometryAprilTagLocalizationLane localization =
+        FtcOdometryAprilTagLocalizationLane.withPredictor(
+                autoRuntime.motionPredictor(),
+                vision,
+                profile.field.fixedAprilTagLayout,
+                profile.localization
+        );
+```
+
+Do not let both paths acquire the same odometry device.
+
 This split is intentional:
 
 - `vision` owns the camera rig

@@ -10,6 +10,8 @@ import java.util.Objects;
 
 import edu.ftcphoenix.fw.drive.DriveCommandSink;
 import edu.ftcphoenix.fw.integrations.pedro.PedroPathingDriveAdapter;
+import edu.ftcphoenix.fw.integrations.pedro.PedroPathingRuntime;
+import edu.ftcphoenix.fw.localization.MotionPredictor;
 import edu.ftcphoenix.robots.phoenix.PhoenixCapabilities;
 import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
 import edu.ftcphoenix.robots.phoenix.PhoenixRobot;
@@ -26,19 +28,21 @@ import edu.ftcphoenix.robots.phoenix.autonomous.pedro.PhoenixPedroPathFactory;
  * base class build the profile, Phoenix robot container, Pedro follower, path set, and routine. The
  * goal is to keep annotated OpModes as named entry points, not strategy scripts.</p>
  *
- * <p>The direct dependency on {@code Constants.createFollower(hardwareMap)} remains here because the
- * Pedro constants package is project-specific TeamCode setup. If a team stores Pedro constants in a
- * different package, update {@link #createPedroFollower(HardwareMap)} in one place instead of every
- * static autonomous entry.</p>
+ * <p>The direct dependency on {@code Constants.createPhoenixAutoRuntime(hardwareMap, profile)}
+ * remains here because the Pedro constants package is project-specific TeamCode setup. If a team
+ * stores Pedro constants in a different package, update
+ * {@link #createPedroRuntime(HardwareMap, PhoenixProfile)} in one place instead of every static
+ * autonomous entry.</p>
  *
  * <p>Initialization is retry-safe during INIT. A failed attempt tears down any partially-created
  * Phoenix or Pedro runtime before another spec is built, which keeps selector telemetry, queued
  * tasks, and live hardware owners from drifting apart.</p>
  *
- * <p>This mode client constructs the team-specific Follower and adapter, then transfers the
- * adapter's recurring update and final-stop lifecycle to
- * {@link PhoenixRobot#initAuto(DriveCommandSink)}. Route geometry and routine composition remain
- * here on the Auto side; the OpMode does not create a second Pedro heartbeat or shutdown path.</p>
+ * <p>This mode client asks the project factory for the team-specific runtime, then transfers its
+ * adapter's recurring update/final-stop lifecycle and its one shared motion predictor to
+ * {@link PhoenixRobot#initAuto(DriveCommandSink, MotionPredictor)}. Route geometry and routine
+ * composition remain here on the Auto side; the OpMode does not create a second Pedro heartbeat,
+ * Pinpoint owner, or shutdown path.</p>
  */
 public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
 
@@ -167,7 +171,8 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
         initError = null;
 
         PhoenixRobot builtRobot = null;
-        Follower builtFollower = null;
+        Follower builtFollower;
+        PedroPathingRuntime builtPedroRuntime;
         PedroPathingDriveAdapter builtDriveAdapter = null;
 
         try {
@@ -176,13 +181,21 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
             builtRobot = new PhoenixRobot(hardwareMap, telemetry, gamepad1, gamepad2, builtProfile);
             builtRobot.initAny();
 
-            builtFollower = createPedroFollower(hardwareMap);
-            builtDriveAdapter = new PedroPathingDriveAdapter(builtFollower);
-            builtRobot.initAuto(builtDriveAdapter);
+            builtPedroRuntime = createPedroRuntime(hardwareMap, builtProfile);
+            builtFollower = builtPedroRuntime.follower();
+            builtDriveAdapter = builtPedroRuntime.driveAdapter();
+            builtRobot.initAuto(
+                    builtDriveAdapter,
+                    builtPedroRuntime.motionPredictor()
+            );
             PhoenixCapabilities builtCapabilities = builtRobot.capabilities();
 
-            PhoenixPedroPathFactory pathFactory = new PhoenixPedroPathFactory(builtFollower, builtProfile.auto);
+            PhoenixPedroPathFactory pathFactory = new PhoenixPedroPathFactory(
+                    builtPedroRuntime,
+                    builtProfile.auto
+            );
             PhoenixPedroPathFactory.Paths paths = pathFactory.build(requestedSpec, builtCapabilities);
+            builtPedroRuntime.setStartingPose(paths.pedroStartPose);
 
             PhoenixPedroAutoContext ctx = new PhoenixPedroAutoContext(
                     requestedSpec,
@@ -203,7 +216,7 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
             telemetry.addLine("Phoenix Pedro auto ready");
             telemetry.addData("auto.spec", activeSpec.summary());
             telemetry.addData("auto.paths", pathLabel);
-            telemetry.addLine("Follower factory: Constants.createFollower(hardwareMap)");
+            telemetry.addLine("Pedro runtime: one Phoenix Pinpoint owner + passive Follower localizer");
             telemetry.update();
             return true;
         } catch (RuntimeException e) {
@@ -219,10 +232,14 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
     }
 
     /**
-     * Factory hook for the project-specific Pedro follower.
+     * Factory hook for the project-specific single-owner Pedro Auto runtime.
      */
-    protected Follower createPedroFollower(HardwareMap hardwareMap) {
-        return Constants.createFollower(Objects.requireNonNull(hardwareMap, "hardwareMap"));
+    protected PedroPathingRuntime createPedroRuntime(HardwareMap hardwareMap,
+                                                     PhoenixProfile profile) {
+        return Constants.createPhoenixAutoRuntime(
+                Objects.requireNonNull(hardwareMap, "hardwareMap"),
+                Objects.requireNonNull(profile, "profile")
+        );
     }
 
     private void emitPedroDebugTelemetry() {
@@ -270,6 +287,8 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
         if (message == null || message.isEmpty()) {
             message = e.getClass().getSimpleName();
         }
-        return message + " | Check the Pedro Constants import or createPedroFollower(...) if your project uses a different package.";
+        return message
+                + " | Check PhoenixProfile drive/Pinpoint wiring or createPedroRuntime(...) "
+                + "if your project uses a different Pedro constants package.";
     }
 }

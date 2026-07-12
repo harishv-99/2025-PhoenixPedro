@@ -14,9 +14,9 @@ framework.
 
 Useful framework references:
 
-- [`Framework Lanes & Robot Controls`](<../fw/docs/design/Framework Lanes & Robot Controls.md>)
-- [`Robot Capabilities & Mode Clients`](<../fw/docs/design/Robot Capabilities & Mode Clients.md>)
-- [`Recommended Robot Design`](<../fw/docs/design/Recommended Robot Design.md>)
+- [`Framework Lanes & Robot Controls`](<../../fw/docs/design/Framework Lanes & Robot Controls.md>)
+- [`Robot Capabilities & Mode Clients`](<../../fw/docs/design/Robot Capabilities & Mode Clients.md>)
+- [`Recommended Robot Design`](<../../fw/docs/design/Recommended Robot Design.md>)
 
 ## Big-picture structure
 
@@ -29,6 +29,7 @@ PhoenixRobot
   FtcMecanumDriveLane drive
   AprilTagVisionLane vision   (selected by PhoenixVisionFactory from the active profile backend)
   FtcOdometryAprilTagLocalizationLane localization
+    (constructs TeleOp predictor or retains the predictor supplied for Auto)
 
   PhoenixTeleOpControls controls
   PhoenixDriveAssistService driveAssists
@@ -73,7 +74,9 @@ different APIs layered directly onto internals.
 
 - `FtcMecanumDriveLane`: owns mecanum hardware wiring, brake behavior, drivebase construction, and drive lifecycle
 - `AprilTagVisionLane` plus a concrete FTC-boundary implementation such as `FtcWebcamAprilTagVisionLane` or `FtcLimelightAprilTagVisionLane`: Phoenix consumes the backend-neutral seam while `PhoenixVisionFactory` chooses the active backend
-- `FtcOdometryAprilTagLocalizationLane`: owns predictor + AprilTag localization strategy, correction-source selection, corrected-estimator selection, and pose production
+- `FtcOdometryAprilTagLocalizationLane`: owns predictor wiring + AprilTag localization strategy,
+  correction-source selection, corrected-estimator selection, and pose production; it constructs
+  Pinpoint for ordinary TeleOp or consumes an explicitly supplied Auto predictor
 
 ### Shared field facts
 
@@ -168,7 +171,7 @@ PhoenixProfile
 PhoenixRobot
   ├─ drive lane
   ├─ vision lane
-  ├─ localization lane
+  ├─ localization lane (retains the predictor supplied for Auto)
   ├─ capabilities aggregate
   ├─ controls owner
   ├─ drive-assist service
@@ -193,7 +196,9 @@ the camera rig is not only for localization.
 
 ### `FtcOdometryAprilTagLocalizationLane` owns
 
-- Pinpoint odometry
+- the motion-predictor seam and its correction integration
+- ordinary FTC/TeleOp construction of Pinpoint, or an explicitly injected Auto predictor without
+  constructing a competing hardware owner
 - raw AprilTag field solver
 - optional direct Limelight field pose
 - correction-source and corrected/global estimator selection
@@ -296,10 +301,10 @@ PhoenixPedroAutoRoutineFactory
   spec.strategy + context -> Task sequence
 ```
 
-`PhoenixRobot.initAuto(autoDrive)` does four things only:
+`PhoenixRobot.initAuto(autoDrive, motionPredictor)` does four things only:
 
 1. retain the required backend-neutral Auto drive lifecycle owner supplied by the mode client
-2. build the shared runtime used by Auto
+2. build shared Auto localization around the explicitly supplied backend-neutral predictor
 3. create `PhoenixCapabilities`
 4. create the shared `TaskRunner autoRunner`
 
@@ -307,15 +312,18 @@ Each `PhoenixRobot` accepts one mode initialization for its lifetime. A repeated
 TeleOp/Auto cross-init fails before replacing any retained owner; a different mode/runtime uses a
 new robot container.
 
-For Pedro, `PhoenixPedroAutoOpModeBase` constructs the team-configured `Follower` and its one
-`PedroPathingDriveAdapter`, then calls `robot.initAuto(adapter)`. The adapter remains available to
-route and guidance Tasks for behavior requests, but Phoenix owns its recurring update and final
-stop. The adapter uses `LoopClock.cycle()` to make the root update and later same-cycle generic Task
-hooks one physical Pedro heartbeat.
+For Pedro, `PhoenixPedroAutoOpModeBase` asks the project constants factory for one
+`PedroPathingRuntime`. That runtime contains one configured Pinpoint predictor, one passive Pedro
+localizer view, one Follower/native mecanum drivetrain, and one `PedroPathingDriveAdapter`. The mode
+client calls `robot.initAuto(runtime.driveAdapter(), runtime.motionPredictor())`, then applies the
+selected Pedro start pose through the runtime before the first heartbeat. The adapter remains
+available to route and guidance Tasks for behavior requests, but Phoenix owns its recurring update
+and final stop. The adapter uses `LoopClock.cycle()` to make the root update and later same-cycle
+generic Task hooks one physical Pedro heartbeat.
 
 It intentionally does **not**:
 
-- construct or configure a Pedro `Follower`
+- construct or configure a Pedro `Follower` (the project-specific runtime factory does that)
 - choose alliance color
 - choose a starting side
 - choose a partner-coordination strategy
@@ -416,7 +424,8 @@ retained Auto drive heartbeat plus queued autonomous task runner. The heartbeat 
 targeting state is available and before Tasks observe route completion or select their next drive
 behavior. A cycle-aware Pedro adapter makes the later generic `RouteTask` or guidance update hook a
 no-op in that same cycle, while continuing hold, pose, and stopped-state updates during mechanism or
-wait Tasks.
+wait Tasks. Its passive localizer verifies that the Pinpoint snapshot belongs to the current Phoenix
+cycle before Pedro computes or writes drive output.
 
 ## Shutdown ownership
 
@@ -432,10 +441,14 @@ idempotent and leaves one stable motionless state. The OpMode therefore stops `P
 adapter separately. Mode clients still stop only resources that they did not supply to and transfer
 into the robot lifecycle.
 
-This ownership change deliberately does not decide Pedro drivetrain construction, Pinpoint sharing,
-field/robot-frame conversion, or whether Pedro or Phoenix supplies corrected pose. Those decisions
-remain deferred to `PEDRO-02`; they do not belong in `PhoenixRobot` route strategy or in this
-heartbeat contract.
+Phoenix Pedro production uses one physical pose authority. The selected profile configures the
+single `PinpointOdometryPredictor`; an explicit `PedroFieldTransform.decodeInvertedFtc()` converts
+pose origin/axes/heading and velocity axes at the integration boundary; and Pedro reads that
+predictor passively after Phoenix localization. The default corrected estimator pushes accepted
+AprilTag corrections back into the shared predictor, so targeting and path following see one pose
+in the same downstream heartbeat. Disabling correction push is the explicit targeting-only policy;
+telemetry keeps raw predictor pose, corrected global pose, and their translation/heading drift
+visible in either mode.
 
 ## Recommended profile shape
 
