@@ -13,6 +13,11 @@ import edu.ftcphoenix.fw.task.TaskOutcome;
  * <p>This lets Phoenix task runners sequence route following together with mechanism actions,
  * waits, and other tasks without the framework taking ownership of a specific route library.</p>
  *
+ * <p>This Task calls the follower's update hook while it is active, but it is not a persistent
+ * lifecycle owner. An external follower that must keep updating during hold-end, mechanism, or
+ * wait phases needs one composition-root heartbeat; its adapter should deduplicate the Task's
+ * same-cycle call.</p>
+ *
  * <p>A {@code RouteTask} instance is single-use. Create a fresh task with
  * {@link RouteTasks#follow(String, RouteFollower, Object, Config)} or a
  * {@code Supplier<Task>} each time a route should run.</p>

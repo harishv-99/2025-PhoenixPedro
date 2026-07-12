@@ -188,6 +188,12 @@ Examples:
 Phoenix should not reimplement those planners. Wrap them in tasks, let Phoenix own mechanism
 supervision around them, and use Phoenix cancellation seams to interrupt them cleanly.
 
+Separate behavior selection from lifecycle ownership. If the vendor follower owns pose, callbacks,
+hold, or drive realization outside a busy route, the robot composition root must advance its
+adapter every Auto loop. Route and guidance Tasks may call the same hook while active, so the
+adapter must deduplicate by `LoopClock.cycle()`. Its `stop()` must apply a physical stopped state
+immediately; storing zero for a future heartbeat is not enough.
+
 In a single-module codebase, keep that lane-5 code at the edges:
 
 - framework-owned bridges in `fw/integrations/<library>/`
@@ -905,6 +911,19 @@ Task followCyclePath = RouteTasks.follow(roadRunnerAdapter, cyclePath, new Route
 ```
 
 The adapter is still project-specific, but Phoenix now provides the generic `RouteFollower<RouteT>` / `RouteTask<RouteT>` seam so the rest of your Auto can stay inside the normal task vocabulary.
+
+For a stateful adapter such as Pedro, give the same object to the robot composition root once during
+Auto initialization:
+
+```java
+PedroPathingDriveAdapter pedro = new PedroPathingDriveAdapter(follower);
+robot.initAuto(pedro);
+```
+
+The robot owns `pedro.update(clock)` on every Auto loop and the final `pedro.stop()`. The routine
+still uses `RouteTasks.follow(pedro, route, cfg)` and guidance Tasks normally; the adapter makes
+their same-cycle update calls harmless. This keeps mechanism/wait phases from freezing follower
+hold or pose without adding another scheduler to student Auto code.
 
 ### What still stays common
 

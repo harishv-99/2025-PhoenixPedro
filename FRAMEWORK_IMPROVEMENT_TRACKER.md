@@ -69,7 +69,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 5 | TASK-01 | Timed-task start semantics | Done | Measure elapsed time from task start, not the preceding loop interval. |
 | 6 | TASK-02 | Task reuse contract | Done | Enforce the documented single-use contract consistently. |
 | 7 | TASK-03 | Clear and cancellation semantics | Done | Remove unsafe drop-without-cancel behavior and make Plant cancellation explicit. |
-| 8 | PEDRO-01 | Follower heartbeat and stopped-state ownership | Proposed | Advance one Pedro follower once per Auto loop outside individual Tasks; Tasks select behavior but do not own the heartbeat. |
+| 8 | PEDRO-01 | Follower heartbeat and stopped-state ownership | Done | Advance one Pedro follower once per Auto loop outside individual Tasks; Tasks select behavior but do not own the heartbeat. |
 | 9 | PEDRO-02 | Pedro drivetrain, localization, and pose authority | Proposed | Build one valid Pedro runtime with one hardware/localization owner and an explicit Pedro-to-Phoenix field-pose contract. |
 | 10 | ROUTE-02 | Truthful route terminal status | Proposed | Do not infer route success solely from `!isBusy()`; preserve completion, interruption, timeout, and failure meaning. |
 | 11 | ROUTE-01 | Start-time route construction | Proposed | Resolve a route once when its Task starts so live pose and vision can select geometry safely. |
@@ -843,7 +843,160 @@ writer, and explicit lifecycle ownership.
   `startTeleopDrive()` may perform an update internally; switching modes must not advance Pedro
   twice in one Phoenix cycle. The common routine call site stays unchanged, and documentation shows
   the one explicit Pedro loop owner.
-- **Decision record:** _Pending._
+- **Decision record (2026-07-11):**
+  - **Confirmed pinned behavior:** Phoenix pins Pedro FTC/core `2.1.2`. In that version,
+    `followPath(...)` starts a route but does not advance it; `Follower.update()` is the recurring
+    pose, callback, hold, and drivetrain heartbeat. Natural hold-end completion sets
+    `isBusy() == false` while hold control still requires later updates. `setTeleOpDrive(...)` only
+    stores requested vectors, `startTeleopDrive()` performs a hidden `Follower.update()`, and
+    `breakFollowing()` synchronously reaches Pedro's mecanum stop and writes zero to all four drive
+    motors. Phoenix does not override Pedro's default automatic hold-end setting. The current
+    adapter's `follow(route, false)` accidentally calls the default-hold overload, its reflective
+    compatibility paths are unnecessary against the exact pin, and its manual-mode `stop()` stores
+    zero without applying another heartbeat.
+  - **Confirmed failure paths:** `RouteTask` is currently the only route heartbeat owner. Once a
+    route reaches hold-end it observes `!isBusy()`, completes, and a following mechanism or wait
+    Task leaves Pedro pose and hold correction frozen while the last motor output remains applied.
+    `DriveGuidanceTask` likewise updates Pedro before storing its next manual vector; success,
+    timeout, or cancellation can then leave the previous nonzero output applied throughout the
+    following scoring wait. Adding an unconditional root update without deduplication would create
+    two updates on route/guidance cycles and can create a third-party hidden update during the
+    route-to-manual transition. A callback can also reenter cancellation from inside
+    `Follower.update()` and Pedro's enclosing update can otherwise write motion again after the
+    cancellation stop.
+  - **Current callers and lifecycle:** `PedroPathingDriveAdapter` is the one object shared by
+    `RouteTask` and `DriveGuidanceTask`; Phoenix constructs it only in
+    `PhoenixPedroAutoOpModeBase`, passes it through `PhoenixPedroAutoContext` and the routine
+    factory, and currently advances it only through those active Tasks. `PhoenixRobot.updateAuto()`
+    owns the stable localization -> targeting -> TaskRunner -> scoring loop, while the OpMode owns a
+    separate adapter stop. `PhoenixPedroPathFactory` also performs one raw `follower.update()`
+    during INIT after setting the start pose. The concrete selector/static Auto entries and their
+    routine call sites need no change. Pedro tuning/sample OpModes own raw Followers independently
+    and are not modern Phoenix integration callers. Affected API documentation includes the Pedro
+    adapter and integration guide, `DriveCommandSink`, route/guidance Javadocs, Framework Overview,
+    Robot Capabilities & Mode Clients, Recommended Robot Design, Phoenix Architecture, and the
+    Phoenix Pedro guide.
+  - **Alternatives considered:** document the current behavior or force hold-end off; retain
+    Task-owned heartbeats; add a raw global `follower.update()` beside Task updates; make
+    `drive()`/`stop()` perform hidden updates; pass the adapter into every `updateAuto(...)` call;
+    expose the robot's mutable `LoopClock`; split Task-facing no-op views from a second Pedro
+    runtime/lane; add a generic external-route host or another scheduler; or make the existing
+    adapter cycle-aware and give it to the Phoenix Auto composition root at initialization.
+  - **Simplicity comparison:** documentation and disabling hold do not repair stale pose or stopped
+    output. Task ownership fails during ordinary mechanism/wait phases, while raw parallel updates
+    duplicate stateful third-party work. Imperative hidden updates make output timing depend on
+    which method happened to be called and conflict with Pedro's own hidden transition update.
+    Passing the sink on every loop repeats a stable ownership choice and leaves shutdown split
+    between owners; exposing the clock weakens the one-heartbeat boundary. A new Pedro lane or
+    Task-specific view set could make command timing more specialized, but adds objects and concepts
+    before PEDRO-02 decides drivetrain/localization authority. Reusing the existing adapter and
+    existing backend-neutral `DriveCommandSink` seam adds no concept to routine code and leaves the
+    normal student sequence unchanged.
+  - **Chosen integration ownership:** evolve `PedroPathingDriveAdapter` into the sole cycle-aware
+    owner of its Follower. Supply it as the required backend-neutral Auto drive owner when
+    initializing `PhoenixRobot`; the robot retains it, advances it with the shared clock after
+    localization/targeting and before `autoRunner`, and stops it in the same idempotent shutdown
+    graph after behavior cancellation. Remove the parallel no-drive Phoenix Auto initialization
+    path rather than create two normal lifecycle choices. Pedro types, route geometry, alliance,
+    and routine selection remain outside `PhoenixRobot`; concrete Auto routines continue using the
+    same adapter-backed `RouteTasks` and guidance factories.
+  - **Chosen adapter lifecycle:** make `update(clock)` idempotent by `clock.cycle()` and record the
+    cycle/in-progress state before entering Pedro so same-cycle Task calls and callback reentry
+    cannot repeat the heartbeat. Use the pinned typed `followPath(route, holdEnd)`,
+    `startTeleopDrive()`, `setTeleOpDrive(...)`, and `breakFollowing()` APIs and remove reflection.
+    Stage a manual-mode request so `startTeleopDrive()` runs only inside the owned heartbeat and its
+    internal vendor update counts as that cycle's one update; retain the requested command for the
+    next heartbeat instead of forcing a second update. `stop()` and route cancellation replace any
+    pending motion with a zero-manual stopped request and call `breakFollowing()` immediately; a
+    stop requested reentrantly is enforced again after the active update returns, and the next
+    owned heartbeat enters/stays in stable zero-manual mode rather than resurrecting a retained
+    route. If the owned vendor update throws, best-effort break the follower before rethrowing. Fix
+    explicit `holdEnd == false`, and remove the raw INIT update from `PhoenixPedroPathFactory`
+    because `setStartingPose(...)` establishes the starting pose without consuming a runtime
+    heartbeat.
+  - **Preserved generic behavior and deferred scope:** keep `RouteFollower.update(...)`,
+    `RouteTask`, `DriveCommandSink.update(...)`, and `DriveGuidanceTask` semantics unchanged so
+    non-Pedro integrations can still own Task-local work; the Pedro adapter makes their later
+    same-cycle calls no-ops. Do not add Ivy, a second scheduler, a background thread, a generic
+    external-route runtime, or a public heartbeat interface. Do not decide PEDRO-02's drivetrain,
+    Pinpoint, localization, field transform, or pose-correction authority; on-robot validation of a
+    fully configured Follower remains dependent on that item. Do not change truthful route terminal
+    outcomes (ROUTE-02) or drive-task ownership (DRIVE-01) here.
+  - **Verification plan:** add a version-pinned Pedro harness with fake drivetrain/localization and
+    focused adapter/Phoenix lifecycle tests for one update per clock cycle, same-cycle root plus
+    RouteTask/guidance calls, hold-end through mechanism waits, explicit no-hold, route completion,
+    timeout and cancellation, route-to-manual transition including Pedro's hidden update, guidance
+    to scoring wait, immediate physical zero, stable stopped heartbeats, next-route startup,
+    repeated shutdown/INIT cleanup, callback reentry, reentrant stop, and thrown update cleanup.
+    Verify the required loop order and unchanged routine surface; synchronize every affected
+    Javadoc/guide; run `:TeamCode:testDebugUnitTest` and `:TeamCode:compileDebugJavaWithJavac`, count
+    XML results, search for every raw follower update and old Auto-init caller, run
+    `git diff --check`, perform adversarial reviews, and request Android Studio inspection. Real
+    drivetrain/hold behavior should be observed on hardware after PEDRO-02 supplies the valid
+    production runtime.
+  - **Approval gate:** the leading hypothesis remains the smallest robust design and ordinary Auto
+    routine code stays unchanged. Requiring Phoenix Auto initialization to receive and own the
+    external drive lifecycle is nevertheless a major public lifecycle/API decision, so explicit
+    user approval is required before moving this item to **In progress** or editing Java code.
+  - **Approval:** the user approved the PEDRO-01 design on 2026-07-11.
+  - **Implementation (2026-07-11):** `PedroPathingDriveAdapter` is now the one cycle-aware owner of
+    its pinned Pedro `Follower`. A private follower/manual-pending/manual state machine records
+    `LoopClock.cycle()` before entering Pedro, counts `startTeleopDrive()`'s hidden vendor update as
+    the transition heartbeat, stages manual vectors without forcing another update, keeps route
+    hold/pose updates alive outside route Tasks, and uses typed Pedro 2.1.2 APIs instead of
+    reflection. Explicit `holdEnd == false` now reaches the exact boolean overload. Cancellation,
+    stop, route-start failure, and update failure stage stable zero-manual state and call
+    `breakFollowing()` immediately; callback-time stops are reasserted after the enclosing vendor
+    update, repeated owner stops retry the physical break, and the original failure retains any
+    cleanup failure as suppressed. Route starts are rejected from inside an active heartbeat, and
+    callback-initializer stop/manual requests deliberately win over the outer route start.
+  - **Phoenix ownership and API:** Phoenix Auto initialization now requires a backend-neutral
+    `DriveCommandSink`. `PhoenixRobot` retains it, updates it after localization/targeting and before
+    the Auto runner, and stops it after behavior cancellation as part of the existing one-shot
+    shutdown graph. The Pedro OpMode constructs the follower/adapter before
+    `initAuto(adapter)` and no longer owns a parallel adapter stop. `PhoenixShutdown` now also
+    rejects repeated or TeleOp/Auto cross-initialization before an active ownership graph can be
+    overwritten. The path factory sets the starting pose without consuming a raw INIT update.
+    Concrete route/routine factories, contexts, annotated Auto entries, and student task sequences
+    remain unchanged; Pedro drivetrain/localization/pose authority remains PEDRO-02 scope.
+  - **Documentation:** Framework Principles, repository instructions, Loop Structure, Framework
+    Overview, Recommended Robot Design, Robot Capabilities & Mode Clients, drive/route/guidance
+    Javadocs, both Pedro guides, Phoenix Architecture, and Phoenix lifecycle/path Javadocs now state
+    the same qualified rule: only an integration whose supported lifecycle needs updates beyond an
+    active Task gets a persistent root heartbeat, same-cycle Task calls deduplicate, and stop means
+    immediate physical output rather than a staged zero request.
+  - **Automated verification (2026-07-11):**
+    `:TeamCode:testDebugUnitTest` and `:TeamCode:compileDebugJavaWithJavac` pass. The XML reports 152
+    tests across 18 suites with zero failures, errors, or skips. Sixteen new version-pinned adapter
+    tests instantiate Pedro core 2.1.2's real `Follower`, paths, callbacks, and guidance with fake
+    `Localizer`/`Drivetrain` boundaries. They cover root plus RouteTask/guidance same-cycle
+    deduplication; hold-end through a root-only wait; explicit no-hold; normal completion, timeout,
+    cancellation, next-route recovery, and route-start failure; the hidden manual transition;
+    guidance success followed by root-only scoring-wait cycles; immediate/stable/repeated stop;
+    callback update reentry, callback-initializer stop, callback route-start rejection, and
+    post-callback final break; failed-cycle consumption; and primary/suppressed failure plus later
+    owner-stop retry. Four Phoenix lifecycle tests cover declared shutdown order, best-effort error
+    aggregation, post-stop rejection, and repeated/cross-mode initialization without losing the
+    original graph.
+  - **Static and external-boundary verification:** exhaustive searches find the one production
+    adapter construction and `initAuto(adapter)` call, no no-argument Auto initializer, no separate
+    OpMode adapter stop, no reflective/legacy Pedro compatibility path, and no raw Follower update
+    in modern Phoenix code outside the adapter. Source inspection confirms the explicit Phoenix
+    order `localization -> targeting -> autonomousDrive -> autoRunner -> scoring` and shutdown order
+    `cancel behavior -> stop scoring -> stop autonomous drive -> release support`. The pinned Pedro
+    2.1.2 FTC `Mecanum.breakFollowing()` source writes zero to every motor synchronously before
+    selecting FLOAT. `git diff --check` and the changed/untracked trailing-whitespace scan pass.
+    Three independent final reviews report no remaining correctness, lifecycle, Framework
+    Principles, student-simplicity, API-scope, documentation, or test-validity issue after their
+    findings were corrected. Existing JDK 21/source-8 and deprecation warnings remain unchanged.
+    The fake drivetrain proves that the adapter reaches Pedro's typed stop and leaves its boundary
+    at zero; actual FTC motor-controller output, hold behavior, and the production Follower graph
+    still require on-robot observation after PEDRO-02 supplies the valid drivetrain/localization
+    runtime.
+  - **Manual verification:** the user confirmed the Android Studio review on 2026-07-11. No
+    PEDRO-01 hardware test is required before publication because PEDRO-02 still owns the unresolved
+    production drivetrain/localization construction; perform the recorded physical hold and motor-
+    zero observations after that runtime is valid.
 
 ### PEDRO-02 - Pedro drivetrain, localization, and pose authority
 
