@@ -15,10 +15,11 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *
  * <p>A follower whose heartbeat must continue during mechanism and wait Tasks needs a stable
  * composition-root owner in addition to this Task-facing seam. Its {@link #update(LoopClock)}
- * implementation must be cycle-idempotent so both callers are safe. For Pedro, use the checked-in
- * {@code PedroPathingDriveAdapter} rather than duplicating the vendor lifecycle:</p>
+ * implementation must be cycle-idempotent so both callers are safe. Phoenix production Pedro code
+ * gets the checked-in adapter from its validated runtime rather than independently constructing a
+ * Follower/localizer graph:</p>
  * <pre>{@code
- * RouteFollower<PathChain> routes = new PedroPathingDriveAdapter(follower);
+ * RouteFollower<PathChain> routes = pedroRuntime.driveAdapter();
  * }</pre>
  *
  * @param <R> route object type owned by the external route library

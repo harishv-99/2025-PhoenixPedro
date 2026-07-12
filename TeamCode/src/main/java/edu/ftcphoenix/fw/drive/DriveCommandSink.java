@@ -20,8 +20,8 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * DriveCommandSink sink = drivebase; // MecanumDrivebase implements it
  * Task nudge = DriveTasks.driveForSeconds(sink, new DriveSignal(0.2, 0.0, 0.0), 0.15);
  *
- * // A cycle-owned external adapter is also one sink:
- * DriveCommandSink autoDrive = new PedroPathingDriveAdapter(follower);
+ * // A validated production runtime can supply a cycle-owned external sink:
+ * DriveCommandSink autoDrive = pedroRuntime.driveAdapter();
  * autoDrive.update(clock); // composition-root heartbeat, every Auto loop
  * }</pre>
  */

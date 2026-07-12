@@ -16,6 +16,7 @@ import edu.ftcphoenix.fw.ftc.drive.FtcMecanumDriveLane;
 import edu.ftcphoenix.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane;
 import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLane;
 import edu.ftcphoenix.fw.input.Gamepads;
+import edu.ftcphoenix.fw.localization.MotionPredictor;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
 import edu.ftcphoenix.fw.task.Task;
 import edu.ftcphoenix.fw.task.TaskRunner;
@@ -34,7 +35,8 @@ import edu.ftcphoenix.fw.task.TaskRunner;
  *   <li>{@link PhoenixTeleOpControls} owns all TeleOp input semantics, including drive controls.</li>
  *   <li>{@link ScoringTargeting} owns target selection, aim status, and shot suggestions.</li>
  *   <li>{@link PhoenixDriveAssistService} owns robot-specific drive-assist policy layered on top of manual drive.</li>
- *   <li>The Auto {@link DriveCommandSink} stays vendor-neutral while Phoenix owns its loop and shutdown lifecycle.</li>
+ *   <li>The Auto {@link DriveCommandSink} and {@link MotionPredictor} stay vendor-neutral while
+ *       Phoenix owns loop order and drive shutdown lifecycle.</li>
  *   <li>{@link ScoringPath} owns scoring policy, final target-source composition, and scoring-path Plant update order.</li>
  *   <li>{@link PhoenixTelemetryPresenter} owns driver-facing telemetry formatting.</li>
  * </ul>
@@ -133,7 +135,7 @@ public final class PhoenixRobot {
     private void initTeleOpRuntime() {
         drive = new FtcMecanumDriveLane(hardwareMap, profile.drive);
         teleOpControls = new PhoenixTeleOpControls(gamepads, profile.controls);
-        initSharedRuntime(
+        initSharedRuntimeWithOwnedPredictor(
                 teleOpControls.autoAimEnabledSource(),
                 teleOpControls.aimOverrideSource()
         );
@@ -165,11 +167,18 @@ public final class PhoenixRobot {
      * {@link DriveCommandSink#stop()} for this robot lifetime. Call one mode initialization exactly
      * once per {@code PhoenixRobot}; create a new robot container for another mode/runtime.</p>
      *
+     * <p>The drive sink and predictor are supplied as an explicit pair because an external route
+     * runtime may own both drivetrain actuation and the physical odometry resource. Requiring both
+     * seams prevents Phoenix from silently constructing a second hardware predictor for Auto.</p>
+     *
      * @param autonomousDrive external Auto drive owner; must not be null
+     * @param motionPredictor predictor owned by the same Auto runtime; must not be null
      */
-    public void initAuto(DriveCommandSink autonomousDrive) {
+    public void initAuto(DriveCommandSink autonomousDrive,
+                         MotionPredictor motionPredictor) {
         initAuto(
                 autonomousDrive,
+                motionPredictor,
                 BooleanSource.constant(true),
                 BooleanSource.constant(false)
         );
@@ -189,10 +198,12 @@ public final class PhoenixRobot {
      * </p>
      *
      * @param autonomousDrive     external Auto drive owner; must not be null
+     * @param motionPredictor     predictor owned by the same Auto runtime; must not be null
      * @param autoAimEnabledSource source that controls whether target selection + aim gating are active
      * @param aimOverrideSource    source that bypasses aim-readiness gating when true
      */
     public void initAuto(DriveCommandSink autonomousDrive,
+                         MotionPredictor motionPredictor,
                          BooleanSource autoAimEnabledSource,
                          BooleanSource aimOverrideSource) {
         shutdown.beginInitialization("initAuto");
@@ -201,7 +212,11 @@ public final class PhoenixRobot {
                     autonomousDrive,
                     "autonomousDrive"
             );
-            initSharedRuntime(autoAimEnabledSource, aimOverrideSource);
+            initSharedRuntimeWithPredictor(
+                    Objects.requireNonNull(motionPredictor, "motionPredictor"),
+                    autoAimEnabledSource,
+                    aimOverrideSource
+            );
             capabilities = createCapabilities();
             autoRunner = new TaskRunner();
             telemetry.addLine("Phoenix auto ready");
@@ -212,8 +227,9 @@ public final class PhoenixRobot {
         }
     }
 
-    private void initSharedRuntime(BooleanSource autoAimEnabledSource,
-                                   BooleanSource aimOverrideSource) {
+    /** Build the ordinary TeleOp localization lane, including its owned Pinpoint predictor. */
+    private void initSharedRuntimeWithOwnedPredictor(BooleanSource autoAimEnabledSource,
+                                                     BooleanSource aimOverrideSource) {
         vision = PhoenixVisionFactory.create(hardwareMap, profile.vision);
         localization = new FtcOdometryAprilTagLocalizationLane(
                 hardwareMap,
@@ -221,6 +237,28 @@ public final class PhoenixRobot {
                 profile.field.fixedAprilTagLayout,
                 profile.localization
         );
+
+        initSharedServices(autoAimEnabledSource, aimOverrideSource);
+    }
+
+    /** Build Auto localization around the predictor already owned by the external drive runtime. */
+    private void initSharedRuntimeWithPredictor(MotionPredictor motionPredictor,
+                                                BooleanSource autoAimEnabledSource,
+                                                BooleanSource aimOverrideSource) {
+        vision = PhoenixVisionFactory.create(hardwareMap, profile.vision);
+        localization = FtcOdometryAprilTagLocalizationLane.withPredictor(
+                Objects.requireNonNull(motionPredictor, "motionPredictor"),
+                vision,
+                profile.field.fixedAprilTagLayout,
+                profile.localization
+        );
+
+        initSharedServices(autoAimEnabledSource, aimOverrideSource);
+    }
+
+    /** Build the mode-neutral Phoenix services after vision and localization ownership is fixed. */
+    private void initSharedServices(BooleanSource autoAimEnabledSource,
+                                    BooleanSource aimOverrideSource) {
 
         scoringTargeting = new ScoringTargeting(
                 profile.autoAim,

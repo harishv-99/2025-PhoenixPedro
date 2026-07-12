@@ -1,68 +1,66 @@
 # Phoenix Pedro autonomous structure
 
-This folder contains Pedro-specific autonomous implementation code. Annotated Driver Station entries
-live in `edu.ftcphoenix.robots.phoenix.opmode`; this package owns the Pedro path/routine pieces that
-those entries call.
+This package owns Phoenix's Pedro-specific path and routine implementation. Annotated Driver
+Station entries remain in `edu.ftcphoenix.robots.phoenix.opmode`; they delegate here instead of
+becoming strategy scripts.
 
-Current files:
+Current roles:
 
-- `PhoenixPedroPathFactory` builds Pedro `PathChain` objects from a robot-owned `PhoenixAutoSpec`.
-- `PhoenixPedroAutoContext` carries the selected spec, profile snapshot, capabilities, drive adapter,
-  and built path set into routine factories.
-- `PhoenixPedroAutoRoutineFactory` maps strategy ids to Phoenix task sequences.
+- `PhoenixPedroPathFactory` builds Pedro `PathChain` values through the runtime's checked
+  `pathBuilder()` and returns the explicitly named `pedroStartPose` for the selected
+  `PhoenixAutoSpec`.
+- `PhoenixPedroAutoContext` carries the selected spec, profile snapshot, Phoenix capabilities,
+  drive adapter, and built path set into routine factories.
+- `PhoenixPedroAutoRoutineFactory` maps strategy ids to Phoenix Task sequences.
+- `PhoenixPedroAutoOpModeBase` owns shared FTC/Pedro/Phoenix construction and lifecycle glue.
+- Concrete selector/static OpModes choose or collect a spec, then delegate.
 
-The related annotated OpModes are in `robots.phoenix.opmode`:
+## Construction and ownership
 
-- `PhoenixPedroAutoOpModeBase` owns shared FTC/Pedro/Phoenix lifecycle glue.
-- `PhoenixPedroAutoTestOpMode` keeps the original 12-inch integration test available.
-- `PhoenixPedroAutoSelectorOpMode` uses framework UI helpers to build a `PhoenixAutoSpec` during INIT, then locks the screen after successful Phoenix/Pedro initialization.
-- `PhoenixRedAudienceSafeAuto` and `PhoenixBlueAudienceSafeAuto` are static safe-match entries.
+`PhoenixPedroAutoOpModeBase` performs the production setup once during INIT:
 
-The intended split is:
+1. derive an Auto-specific defensive `PhoenixProfile` snapshot;
+2. ask project `Constants` for one complete `PedroPathingRuntime`;
+3. pass `runtime.driveAdapter()` and `runtime.motionPredictor()` into `PhoenixRobot.initAuto(...)`;
+4. build paths and apply `paths.pedroStartPose` through `runtime.setStartingPose(...)`;
+5. build and enqueue the selected routine over `PhoenixCapabilities` and the same drive adapter.
 
-- `PhoenixRobot` owns shared runtime, capability families, the Auto task runner, and the recurring
-  lifecycle of one required backend-neutral Auto `DriveCommandSink`.
-- `PhoenixAutoSpec` owns the chosen match setup: alliance, start position, partner plan, and strategy.
-- `PhoenixAutoProfiles` derives an Auto-specific profile snapshot before constructing `PhoenixRobot`, using profile-owned red/blue Auto scoring tag ids.
-- `PhoenixPedroPathFactory` owns Pedro geometry and placeholder path callbacks.
-- `PhoenixPedroAutoRoutineFactory` owns strategy-to-task-sequence mapping.
-- `PhoenixPedroAutoOpModeBase` constructs the team-configured follower and adapter, supplies the
-  adapter once with `PhoenixRobot.initAuto(adapter)`, and then delegates its heartbeat and final
-  stop to the robot.
-- Concrete OpModes choose or collect a spec, then delegate. They do not update or stop the adapter
-  separately.
+The runtime owns one profile-configured Pinpoint predictor, one passive Pedro localizer view, one
+native Pedro mecanum/Follower graph, and one adapter. Phoenix owns localization/correction before
+the adapter heartbeat and owns the adapter's final stop. The OpMode never calls raw
+`Follower.update()`, constructs a second Pinpoint localizer, or stops the adapter separately.
 
 The adapter remains in `PhoenixPedroAutoContext` because route and guidance Tasks command it through
-`RouteFollower<PathChain>` and `DriveCommandSink`. That command access does not create another
-lifecycle owner. `PhoenixRobot.updateAuto()` advances the adapter after localization/targeting and
-before the Auto task runner. The adapter deduplicates update requests by the shared
-`LoopClock.cycle()`, so Task-local update hooks cannot create a second Pedro heartbeat in the same
-loop.
+`RouteFollower<PathChain>` and `DriveCommandSink`. That command access is not another lifecycle
+owner. Same-cycle Task update hooks are harmless because the adapter deduplicates by the shared
+`LoopClock.cycle()`.
 
-`PhoenixPedroAutoOpModeBase` is retry-safe during INIT. If selector confirmation fails partway
-through Phoenix or Pedro construction, the base class asks the active `PhoenixRobot` lifecycle owner
-to stop its retained adapter and all other partially-created runtime owners, clears runtime
-references, records the error, and allows a later confirmation attempt to rebuild from a clean
-state. Successful initialization still locks the selector summary so driver-visible choices cannot
-drift away from the queued routine.
-
-Pedro debug rows are added before `PhoenixRobot.updateAuto()` emits the standard Phoenix Auto block.
-That keeps `auto.spec`, `auto.paths`, Pedro pose/busy state, task status, scoring status, targeting
-status, and pose estimates in one telemetry update instead of splitting the Driver Station display
-across two frames.
-
-The recurring Auto order is intentionally one-owner and explicit:
+The recurring Auto order is:
 
 ```text
-Phoenix localization -> targeting -> Pedro adapter heartbeat -> Auto TaskRunner -> scoring -> telemetry
+Phoenix localization/correction -> targeting -> Pedro adapter heartbeat
+-> Auto TaskRunner -> scoring -> telemetry
 ```
 
-This item establishes only heartbeat and stopped-state ownership. Pedro drivetrain construction,
-Pinpoint/localization ownership, coordinate conversion, and pose-correction authority remain
-separate `PEDRO-02` work; path and routine structure should not work around those undecided
-boundaries.
+The passive Pedro localizer verifies the predictor snapshot belongs to that exact Phoenix cycle.
+The default correction policy pushes accepted AprilTag corrections into the shared predictor, so
+Pedro path control and Phoenix targeting see one corrected pose in the same heartbeat.
 
-The checked-in geometry is still a placeholder based on the old 12-inch Pedro integration path. Real
-alliance/start/partner routes should replace the branches inside `PhoenixPedroPathFactory`, while
-reusable scoring snippets should stay in `PhoenixAutoTasks` and high-level strategy mapping should
-stay in `PhoenixPedroAutoRoutineFactory`.
+## INIT retry and telemetry
+
+The base is retry-safe during INIT. A failed attempt asks the partially initialized `PhoenixRobot`
+to stop every retained owner, clears runtime references, records an actionable error, and allows a
+later selector confirmation to rebuild cleanly. Successful initialization keeps the selected spec,
+profile, paths, robot, and adapter as one consistent graph.
+
+Pedro debug rows are added before `PhoenixRobot.updateAuto()` emits the standard Auto block. The
+Driver Station therefore gets one coherent frame containing spec/path labels, Pedro pose/busy state,
+Task/scoring/targeting status, raw predictor pose, corrected global pose, and pose drift.
+
+## Where students add real Auto behavior
+
+The checked-in geometry is still the small placeholder integration route. Replace geometry branches
+inside `PhoenixPedroPathFactory` with real alliance/start/partner paths. Keep high-level strategy
+selection in `PhoenixPedroAutoRoutineFactory`, and keep reusable scoring/targeting snippets in
+`PhoenixAutoTasks`. Routine Tasks continue using the existing adapter and `PhoenixCapabilities`;
+they do not need a separate localization API.

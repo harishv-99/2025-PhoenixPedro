@@ -333,21 +333,31 @@ example, keeps hold-end control, pose updates, callbacks, and manual drive insid
 deduplicates any same-cycle update made by `RouteTask` or `DriveGuidanceTask`:
 
 ```java
-PedroPathingDriveAdapter pedroAdapter = new PedroPathingDriveAdapter(follower);
-robot.initAuto(pedroAdapter); // Phoenix owns update(clock) every Auto loop and final stop()
+PedroPathingRuntime pedro = Constants.createPhoenixAutoRuntime(hardwareMap, profile);
+robot.initAuto(pedro.driveAdapter(), pedro.motionPredictor());
 ```
+
+The runtime owns one configured Pinpoint predictor and gives Pedro a passive localizer view of that
+same predictor. Phoenix therefore owns the localization/correction update first, Pedro sees that
+current-cycle pose in its downstream heartbeat, and no second Pinpoint object resets or polls the
+device. Apply the route's Pedro start pose through `pedro.setStartingPose(...)` before the first
+heartbeat.
 
 Tasks still select routes and guidance; they do not become the only Pedro lifecycle owner. The
 adapter also uses Pedro's immediate typed break operation for cancellation/shutdown instead of
 merely storing a zero vector for a future update.
 
-Even in a one-module repo, keep those adapters in a library-specific edge folder/package such as `fw/integrations/pedro/`, and keep robot-specific examples in a matching robot-side folder such as `autonomous/pedro/`. The folder split does not make the dependency optional by itself, but it keeps the boundary obvious and makes later source-set or module extraction mechanical.
+Even in a one-module repo, keep those adapters and runtime bridges in a library-specific edge
+folder/package such as `fw/integrations/pedro/`, and keep robot-specific examples in a matching
+robot-side folder such as `autonomous/pedro/`. The folder split does not make the dependency
+optional by itself, but it keeps the boundary obvious and makes later source-set or module
+extraction mechanical.
 
 ```java
 Task auto = Tasks.sequence(
-        RouteTasks.follow(pedroAdapter, outboundPath, new RouteTask.Config()),
+        RouteTasks.follow(pedro.driveAdapter(), outboundPath, new RouteTask.Config()),
         Tasks.runOnce(scoringSupervisor::requestSingleShot),
-        RouteTasks.follow(pedroAdapter, returnPath, new RouteTask.Config())
+        RouteTasks.follow(pedro.driveAdapter(), returnPath, new RouteTask.Config())
 );
 ```
 
