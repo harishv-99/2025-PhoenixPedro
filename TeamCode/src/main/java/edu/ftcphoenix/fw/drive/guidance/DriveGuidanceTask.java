@@ -29,6 +29,10 @@ import edu.ftcphoenix.fw.task.TaskOutcome;
  * <p>The task can be interrupted cleanly via {@link #cancel()} or by calling
  * {@link edu.ftcphoenix.fw.task.TaskRunner#cancelAndClear()} on the owning runner.</p>
  *
+ * <p>The Task calls {@link DriveCommandSink#update(LoopClock)} while active. A stateful external
+ * drive adapter that also needs a heartbeat during mechanism/wait phases must have one stable
+ * composition-root owner and make same-cycle calls idempotent.</p>
+ *
  * <p>A {@code DriveGuidanceTask} instance is single-use. Create a fresh task with
  * {@link DriveGuidancePlan#task(DriveCommandSink, Config)}, a fresh macro builder, or a
  * {@code Supplier<Task>} each time guidance should run.</p>

@@ -19,17 +19,23 @@ public final class PhoenixShutdownTest {
         PhoenixShutdown shutdown = new PhoenixShutdown();
         List<String> actions = new ArrayList<>();
 
-        shutdown.ensureOpen("initTeleOp");
+        shutdown.beginInitialization("initTeleOp");
         shutdown.run(
                 () -> actions.add("cancel behavior"),
                 null,
                 () -> actions.add("stop scoring"),
+                () -> actions.add("stop auto drive"),
                 () -> actions.add("close vision")
         );
         shutdown.run(() -> actions.add("unexpected second stop"));
 
         assertEquals(
-                Arrays.asList("cancel behavior", "stop scoring", "close vision"),
+                Arrays.asList(
+                        "cancel behavior",
+                        "stop scoring",
+                        "stop auto drive",
+                        "close vision"
+                ),
                 actions
         );
     }
@@ -74,5 +80,23 @@ public final class PhoenixShutdownTest {
         } catch (IllegalStateException expected) {
             assertTrue(expected.getMessage().contains("create a new PhoenixRobot"));
         }
+    }
+
+    @Test
+    public void repeatedOrCrossModeInitializationCannotOverwriteTheActiveGraph() {
+        PhoenixShutdown shutdown = new PhoenixShutdown();
+        List<String> actions = new ArrayList<>();
+        shutdown.beginInitialization("initAuto");
+
+        try {
+            shutdown.beginInitialization("initTeleOp");
+            fail("Expected a second mode initialization to be rejected");
+        } catch (IllegalStateException expected) {
+            assertTrue(expected.getMessage().contains("already initialized"));
+            assertTrue(expected.getMessage().contains("create a new PhoenixRobot"));
+        }
+
+        shutdown.run(() -> actions.add("stop original graph"));
+        assertEquals(Arrays.asList("stop original graph"), actions);
     }
 }

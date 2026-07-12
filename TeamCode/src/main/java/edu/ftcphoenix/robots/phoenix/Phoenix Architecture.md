@@ -34,6 +34,7 @@ PhoenixRobot
   PhoenixDriveAssistService driveAssists
   ScoringTargeting targeting
   ScoringPath scoring
+  DriveCommandSink autoDrive   (Auto only; supplied by the Auto mode client)
   TaskRunner autoRunner
   PhoenixTelemetryPresenter telemetry
 ```
@@ -95,6 +96,8 @@ use them instead of touching `ScoringPath` or `ScoringTargeting` directly.
 - `PhoenixDriveAssistService`: robot-specific drive assists that combine manual drive, scoring state, localization, and overlays
 - `ScoringTargeting`: selected-tag policy, auto-aim guidance, cached targeting status, and shot suggestions
 - `ScoringPath`: scoring-path mechanism owner, source-driven scoring Plants, internally layered as inputs → execution → realization
+- `DriveCommandSink autoDrive`: required Auto drive lifecycle owner supplied through a
+  backend-neutral seam; Phoenix advances and stops it without owning route-library strategy
 - `TaskRunner autoRunner`: autonomous task queue used when Phoenix is running Auto
 - `PhoenixTelemetryPresenter`: driver-facing presentation from snapshots
 - `PhoenixRobot`: composition root and loop owner
@@ -171,6 +174,7 @@ PhoenixRobot
   ├─ drive-assist service
   ├─ targeting service
   ├─ scoring path
+  ├─ retained Auto DriveCommandSink lifecycle owner
   └─ telemetry presenter
 ```
 
@@ -264,9 +268,11 @@ separate scaled overlay layers while still preserving one final target source pe
 
 ## Autonomous structure
 
-Phoenix Auto reuses the same targeting, scoring path, and telemetry stack as TeleOp, but leaves route
-ownership outside the robot container. The robot-owned spec/strategy objects now make the selected
-match setup explicit before any route or task sequence is built.
+Phoenix Auto reuses the same targeting, scoring path, and telemetry stack as TeleOp. Route-library
+configuration, route geometry, and strategy remain outside the robot container, while the robot
+composition root retains the supplied backend-neutral Auto `DriveCommandSink` as the one recurring
+heartbeat and shutdown owner. The robot-owned spec/strategy objects make the selected match setup
+explicit before any route or task sequence is built.
 
 The core Auto types are:
 
@@ -290,14 +296,26 @@ PhoenixPedroAutoRoutineFactory
   spec.strategy + context -> Task sequence
 ```
 
-`PhoenixRobot.initAuto()` still does three things only:
+`PhoenixRobot.initAuto(autoDrive)` does four things only:
 
-1. build the shared runtime used by Auto
-2. create `PhoenixCapabilities`
-3. create the shared `TaskRunner autoRunner`
+1. retain the required backend-neutral Auto drive lifecycle owner supplied by the mode client
+2. build the shared runtime used by Auto
+3. create `PhoenixCapabilities`
+4. create the shared `TaskRunner autoRunner`
+
+Each `PhoenixRobot` accepts one mode initialization for its lifetime. A repeated Auto init or a
+TeleOp/Auto cross-init fails before replacing any retained owner; a different mode/runtime uses a
+new robot container.
+
+For Pedro, `PhoenixPedroAutoOpModeBase` constructs the team-configured `Follower` and its one
+`PedroPathingDriveAdapter`, then calls `robot.initAuto(adapter)`. The adapter remains available to
+route and guidance Tasks for behavior requests, but Phoenix owns its recurring update and final
+stop. The adapter uses `LoopClock.cycle()` to make the root update and later same-cycle generic Task
+hooks one physical Pedro heartbeat.
 
 It intentionally does **not**:
 
+- construct or configure a Pedro `Follower`
 - choose alliance color
 - choose a starting side
 - choose a partner-coordination strategy
@@ -349,9 +367,10 @@ the queued routine. OpMode classes should still stay thin: they choose or collec
 selection screens.
 
 `PhoenixPedroAutoOpModeBase` also treats INIT failures as retryable setup failures, not as
-half-built robot states. Before each new build attempt it clears any previous error and stops any
-partial Phoenix/Pedro runtime left by an earlier failure; after a successful build it preserves the
-active spec, profile, paths, robot, and adapter as one consistent set.
+half-built robot states. Before each new build attempt it clears any previous error and asks the
+active `PhoenixRobot` to stop its retained Auto drive owner and other partial runtime owners; after a
+successful build it preserves the active spec, profile, paths, robot, and adapter as one consistent
+set.
 
 Pedro debug telemetry is composed into the same frame as Phoenix Auto telemetry. The OpMode adds
 `auto.spec`, `auto.paths`, and Pedro pose/busy rows before `PhoenixRobot.updateAuto()` calls the
@@ -386,13 +405,18 @@ Phoenix keeps `updateAuto()` just as explicit:
 ```text
 1. localization.update(clock)
 2. targeting.update(clock)
-3. autoRunner.update(clock)
-4. scoringPath.update(clock)
-5. telemetryPresenter.emitAuto(...with Auto task and scoring snapshots...)
+3. autoDrive.update(clock)
+4. autoRunner.update(clock)
+5. scoringPath.update(clock)
+6. telemetryPresenter.emitAuto(...with Auto task and scoring snapshots...)
 ```
 
 Auto uses the same scoring path and targeting service, but swaps TeleOp drive-assist policy for the
-queued autonomous task runner and reports through the Auto-specific telemetry emitter.
+retained Auto drive heartbeat plus queued autonomous task runner. The heartbeat runs after current
+targeting state is available and before Tasks observe route completion or select their next drive
+behavior. A cycle-aware Pedro adapter makes the later generic `RouteTask` or guidance update hook a
+no-op in that same cycle, while continuing hold, pose, and stopped-state updates during mechanism or
+wait Tasks.
 
 ## Shutdown ownership
 
@@ -402,8 +426,16 @@ outputs, reset targeting, release vision, and clear the composition-root referen
 failures use the same operation so every successfully constructed Phoenix owner is cleaned before
 the original error is reported.
 
-Mode clients still stop resources outside the Phoenix object graph. In Pedro Auto, the OpMode owns
-and stops the Pedro drive adapter separately before stopping `PhoenixRobot`.
+In Auto, task cancellation happens before the retained drive owner's final `stop()`. Pedro task
+cancellation may already stop the adapter immediately; the later owner-level stop is intentionally
+idempotent and leaves one stable motionless state. The OpMode therefore stops `PhoenixRobot`, not the
+adapter separately. Mode clients still stop only resources that they did not supply to and transfer
+into the robot lifecycle.
+
+This ownership change deliberately does not decide Pedro drivetrain construction, Pinpoint sharing,
+field/robot-frame conversion, or whether Pedro or Phoenix supplies corrected pose. Those decisions
+remain deferred to `PEDRO-02`; they do not belong in `PhoenixRobot` route strategy or in this
+heartbeat contract.
 
 ## Recommended profile shape
 

@@ -8,6 +8,7 @@ import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
 
 import java.util.Objects;
 
+import edu.ftcphoenix.fw.drive.DriveCommandSink;
 import edu.ftcphoenix.fw.integrations.pedro.PedroPathingDriveAdapter;
 import edu.ftcphoenix.robots.phoenix.PhoenixCapabilities;
 import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
@@ -33,13 +34,17 @@ import edu.ftcphoenix.robots.phoenix.autonomous.pedro.PhoenixPedroPathFactory;
  * <p>Initialization is retry-safe during INIT. A failed attempt tears down any partially-created
  * Phoenix or Pedro runtime before another spec is built, which keeps selector telemetry, queued
  * tasks, and live hardware owners from drifting apart.</p>
+ *
+ * <p>This mode client constructs the team-specific Follower and adapter, then transfers the
+ * adapter's recurring update and final-stop lifecycle to
+ * {@link PhoenixRobot#initAuto(DriveCommandSink)}. Route geometry and routine composition remain
+ * here on the Auto side; the OpMode does not create a second Pedro heartbeat or shutdown path.</p>
  */
 public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
 
     private PhoenixRobot robot;
     private PhoenixCapabilities capabilities;
     private Follower follower;
-    private PedroPathingDriveAdapter driveAdapter;
     private PhoenixAutoSpec activeSpec;
     private PhoenixProfile activeProfile;
     private String pathLabel;
@@ -112,7 +117,10 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
     }
 
     /**
-     * Stop Phoenix Auto, the Pedro adapter, and any runtime left from a failed INIT retry.
+     * Stop Phoenix Auto and any runtime left from a failed INIT retry.
+     *
+     * <p>The successfully initialized {@link PhoenixRobot} owns the Pedro adapter's recurring
+     * heartbeat and final stop.</p>
      */
     @Override
     public void stop() {
@@ -167,11 +175,11 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
 
             builtRobot = new PhoenixRobot(hardwareMap, telemetry, gamepad1, gamepad2, builtProfile);
             builtRobot.initAny();
-            builtRobot.initAuto();
-            PhoenixCapabilities builtCapabilities = builtRobot.capabilities();
 
             builtFollower = createPedroFollower(hardwareMap);
             builtDriveAdapter = new PedroPathingDriveAdapter(builtFollower);
+            builtRobot.initAuto(builtDriveAdapter);
+            PhoenixCapabilities builtCapabilities = builtRobot.capabilities();
 
             PhoenixPedroPathFactory pathFactory = new PhoenixPedroPathFactory(builtFollower, builtProfile.auto);
             PhoenixPedroPathFactory.Paths paths = pathFactory.build(requestedSpec, builtCapabilities);
@@ -190,7 +198,6 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
             robot = builtRobot;
             capabilities = builtCapabilities;
             follower = builtFollower;
-            driveAdapter = builtDriveAdapter;
             pathLabel = paths.label;
 
             telemetry.addLine("Phoenix Pedro auto ready");
@@ -201,7 +208,6 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
             return true;
         } catch (RuntimeException e) {
             initError = buildInitError(e);
-            safeStopDriveAdapter(builtDriveAdapter);
             safeStopRobot(builtRobot);
             clearRuntimeReferences();
 
@@ -235,7 +241,6 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
     }
 
     private void clearAutoRuntime() {
-        safeStopDriveAdapter(driveAdapter);
         safeStopRobot(robot);
         clearRuntimeReferences();
     }
@@ -244,21 +249,9 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
         robot = null;
         capabilities = null;
         follower = null;
-        driveAdapter = null;
         activeSpec = null;
         activeProfile = null;
         pathLabel = null;
-    }
-
-    private static void safeStopDriveAdapter(PedroPathingDriveAdapter adapter) {
-        if (adapter == null) {
-            return;
-        }
-        try {
-            adapter.stop();
-        } catch (RuntimeException ignored) {
-            // Cleanup should never hide the original initialization or OpMode-stop reason.
-        }
     }
 
     private static void safeStopRobot(PhoenixRobot runtime) {

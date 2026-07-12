@@ -69,7 +69,9 @@ public final class PhoenixPedroPathFactory {
      *
      * <p>The path labels and start pose already depend on the spec, but the geometry is still the
      * old twelve-inch Pedro integration route. Replace this method's geometry branches when real
-     * Decode routes are ready.</p>
+     * Decode routes are ready. This method sets Pedro's starting pose but deliberately does not
+     * advance the Follower; {@link edu.ftcphoenix.robots.phoenix.PhoenixRobot} owns the runtime
+     * heartbeat after Auto initialization.</p>
      */
     public Paths build(PhoenixAutoSpec spec, PhoenixCapabilities capabilities) {
         Objects.requireNonNull(spec, "spec");
@@ -80,7 +82,6 @@ public final class PhoenixPedroPathFactory {
         Pose forwardPose = new Pose(startPose.getX() + distanceIn, startPose.getY(), startPose.getHeading());
 
         follower.setStartingPose(startPose);
-        follower.update();
 
         PathChain outbound = follower.pathBuilder()
                 .addPath(new BezierLine(startPose, forwardPose))

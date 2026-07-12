@@ -66,6 +66,11 @@ Phoenix is designed around a few core goals:
 
    Phoenix assumes a single loop heartbeat (`LoopClock`) that everything else uses.
    This enables robust button edge detection, predictable task timing, and consistent rate limiting.
+   When a third-party follower's supported lifecycle requires updates beyond active route/guidance
+   Tasks, it also needs one stable composition-root heartbeat every relevant OpMode loop; those
+   Tasks may select behavior but must not become its only lifecycle owner. If both layers can reach
+   the same update hook, the adapter must deduplicate by `clock.cycle()` and count any vendor-hidden
+   update as that cycle's one heartbeat.
 
 7. **Docs are part of the API**
 
@@ -561,8 +566,13 @@ Several core systems are **idempotent by cycle**:
 * `Bindings.update(clock)`
 * `TaskRunner.update(clock)`
 * Stateful source wrappers like `memoized()`, `risingEdge()`, and `toggled()` (idempotent when sampled with the same clock/cycle)
+* Third-party adapters whose required lifecycle lets both a composition root and active Tasks call their update hook
 
 Idempotency prevents subtle bugs when code is layered (menus, testers, helpers) and multiple layers try to “helpfully” update the same system.
+
+For an external drive/follower integration, stopping is a separate safety invariant: `stop()` must
+apply a physical stopped state immediately. Staging zero for a future heartbeat is not sufficient,
+and a callback-time stop must still be the final output after the enclosing vendor update returns.
 
 ---
 

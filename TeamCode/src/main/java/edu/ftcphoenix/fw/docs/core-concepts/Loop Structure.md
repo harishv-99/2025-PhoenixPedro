@@ -145,6 +145,29 @@ For buttons, the most common way to ensure sampling is to register a binding and
 
 This is critical because advancing tasks twice effectively doubles loop speed and breaks timeouts.
 
+### 4.4 Stateful external followers need a persistent owner
+
+A route Task is active only while its route reports busy. Some vendor followers still need updates
+after that point—for example, Pedro hold-end control and pose tracking continue while a later
+mechanism or wait Task runs.
+
+Give such an adapter one stable composition-root heartbeat every Auto loop. If `RouteTask` or
+`DriveGuidanceTask` can also reach the same update hook, make the adapter idempotent by
+`clock.cycle()` so the root and Task calls still produce exactly one vendor update. Vendor methods
+that secretly perform an update during a mode transition must count as that cycle's heartbeat.
+
+Phoenix Pedro Auto uses this explicit order:
+
+```text
+Clock → Localization → Targeting → Pedro heartbeat → Auto Tasks → Scoring Plants → Telemetry
+```
+
+The heartbeat precedes the Task runner so route completion/callback state is current when Tasks are
+evaluated. A route selected by the runner begins advancing on the next loop. A Pedro manual-mode
+transition uses that next loop's vendor-hidden zero update, then applies its retained nonzero command
+on the following heartbeat. This small, predictable staging delay is preferable to a hidden second
+follower update.
+
 ---
 
 ## 5. Where time comes from (and where it must not come from)
@@ -246,6 +269,12 @@ Fix: make sure edge/toggle sources are sampled once per loop (e.g., by wiring th
 ### Mistake: double-running task updates
 
 If two helpers both call `macroRunner.update(clock)`, Phoenix prevents double-advancement in the same cycle — but the better design is still: update it exactly once, in your main loop.
+
+### Mistake: making a route Task the only follower heartbeat
+
+If a vendor follower owns pose, hold, callbacks, or final drive output outside its busy route phase,
+do not stop updating it when `RouteTask` completes. Keep the composition-root heartbeat running and
+let the adapter deduplicate the Task-facing update.
 
 ---
 

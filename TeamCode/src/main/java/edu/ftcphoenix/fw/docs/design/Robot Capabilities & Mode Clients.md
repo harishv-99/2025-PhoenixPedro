@@ -257,6 +257,19 @@ Usually owns:
 - create the shared runtime internals needed in Auto
 - create the shared capability families
 - create the shared auto runner, if the robot owns one
+- retain the lifecycle of a required external Auto drive sink when the mode client supplies one
+  through a backend-neutral seam
+
+Treat mode initialization as one-shot for a robot-container lifetime. A second Auto initialization
+or a TeleOp/Auto cross-initialization should fail before it can overwrite the active ownership
+graph; construct a new robot container for another mode/runtime.
+
+For example, Phoenix's Pedro mode client constructs the team-specific follower and adapter, then
+calls `robot.initAuto(adapter)`. `PhoenixRobot` depends only on `DriveCommandSink`: it does not learn
+Pedro route types or follower configuration. Once accepted, the robot advances that sink from its
+explicit Auto loop and includes its final stop in robot shutdown. The mode client may still pass the
+same object to route/guidance Tasks for behavior commands, but it does not become a second lifecycle
+owner.
 
 Usually does **not** own:
 
@@ -296,10 +309,16 @@ Recommended shape:
 Recommended shape:
 
 1. update shared state producers
-2. update the auto task runner / routine
-3. update supervisors/services that consume those results
-4. update subsystems
-5. emit telemetry/presentation
+2. update any retained external drive heartbeat that needs the current shared state
+3. update the auto task runner / routine
+4. update supervisors/services that consume those results
+5. update subsystems
+6. emit telemetry/presentation
+
+If generic route or guidance Tasks also invoke the same stateful drive sink's update hook, that sink
+must make repeated calls in one `LoopClock.cycle()` idempotent. The composition root remains the
+recurring owner; Tasks select behavior and may perform a same-cycle no-op update for compatibility
+with integrations whose work is genuinely Task-local.
 
 ### `stop()`
 
@@ -311,8 +330,15 @@ idempotent owner-level stop operation. It should sequence all cleanup internally
 2. perform the final hardware-safe stop for physical sinks
 3. reset/release supporting services and resources
 
-Mode clients still stop resources they own separately. For example, a Pedro Auto client should stop
-its route adapter as well as the robot because that adapter is not owned by the robot container.
+Mode clients still stop resources they own separately. They must not separately stop a resource
+whose lifecycle they supplied to and transferred into the robot container. For example, Phoenix
+Pedro Auto passes its adapter to `initAuto(adapter)`, so `PhoenixRobot.stop()` cancels the task runner
+and then performs the adapter's final idempotent stop; the OpMode does not duplicate that sequence.
+
+This lifecycle ownership does not imply ownership of route strategy or every vendor subsystem. The
+Auto mode client still chooses routes and routines. In Phoenix, Pedro drivetrain/localizer setup and
+pose-correction authority remain explicitly deferred to `PEDRO-02` rather than being hidden inside
+the capability or robot-container API.
 
 Use separate public mode-specific stop phases only when those phases have independently useful
 lifetimes. Do not expose multiple methods merely to make every OpMode remember a required shutdown

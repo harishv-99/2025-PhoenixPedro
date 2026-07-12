@@ -9,6 +9,7 @@ import java.util.Objects;
 
 import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.time.LoopClock;
+import edu.ftcphoenix.fw.drive.DriveCommandSink;
 import edu.ftcphoenix.fw.drive.DriveSignal;
 import edu.ftcphoenix.fw.drive.DriveSource;
 import edu.ftcphoenix.fw.ftc.drive.FtcMecanumDriveLane;
@@ -33,6 +34,7 @@ import edu.ftcphoenix.fw.task.TaskRunner;
  *   <li>{@link PhoenixTeleOpControls} owns all TeleOp input semantics, including drive controls.</li>
  *   <li>{@link ScoringTargeting} owns target selection, aim status, and shot suggestions.</li>
  *   <li>{@link PhoenixDriveAssistService} owns robot-specific drive-assist policy layered on top of manual drive.</li>
+ *   <li>The Auto {@link DriveCommandSink} stays vendor-neutral while Phoenix owns its loop and shutdown lifecycle.</li>
  *   <li>{@link ScoringPath} owns scoring policy, final target-source composition, and scoring-path Plant update order.</li>
  *   <li>{@link PhoenixTelemetryPresenter} owns driver-facing telemetry formatting.</li>
  * </ul>
@@ -57,6 +59,7 @@ public final class PhoenixRobot {
     private PhoenixDriveAssistService driveAssists;
     private DriveSource teleOpDriveSource;
     private TaskRunner autoRunner;
+    private DriveCommandSink autonomousDrive;
 
     /**
      * Creates a Phoenix robot container using the shared checked-in Phoenix profile.
@@ -117,7 +120,7 @@ public final class PhoenixRobot {
      * </p>
      */
     public void initTeleOp() {
-        shutdown.ensureOpen("initTeleOp");
+        shutdown.beginInitialization("initTeleOp");
         try {
             initTeleOpRuntime();
         } catch (RuntimeException initializationFailure) {
@@ -153,33 +156,51 @@ public final class PhoenixRobot {
     }
 
     /**
-     * Initializes the Phoenix autonomous runtime using always-on auto-aim and no manual override.
+     * Initializes the Phoenix autonomous runtime using one owned external drive lifecycle,
+     * always-on auto-aim, and no manual override.
      *
-     * <p>This mode intentionally omits a drivetrain lane so Phoenix Auto can be paired with an
-     * external route package such as Pedro Pathing through the framework's small route and drive
-     * seams.</p>
+     * <p>Phoenix depends only on {@link DriveCommandSink}; a Pedro, Road Runner, or custom adapter
+     * remains responsible for its vendor-specific behavior. Phoenix owns the supplied sink's
+     * recurring {@link DriveCommandSink#update(LoopClock)} call and final
+     * {@link DriveCommandSink#stop()} for this robot lifetime. Call one mode initialization exactly
+     * once per {@code PhoenixRobot}; create a new robot container for another mode/runtime.</p>
+     *
+     * @param autonomousDrive external Auto drive owner; must not be null
      */
-    public void initAuto() {
-        initAuto(BooleanSource.constant(true), BooleanSource.constant(false));
+    public void initAuto(DriveCommandSink autonomousDrive) {
+        initAuto(
+                autonomousDrive,
+                BooleanSource.constant(true),
+                BooleanSource.constant(false)
+        );
     }
 
     /**
-     * Initializes the Phoenix autonomous runtime with explicit auto-aim enable / override sources.
+     * Initializes the Phoenix autonomous runtime with an owned external drive lifecycle and
+     * explicit auto-aim enable / override sources.
      *
      * <p>
      * This creates the same shared runtime and {@link PhoenixCapabilities} surface used in TeleOp,
-     * but leaves route ownership and autonomous task composition outside the robot container.
+     * owns the supplied drive sink's per-loop update and shutdown, and leaves route geometry plus
+     * autonomous task composition outside the robot container.
      * If construction fails, every Phoenix owner that was successfully created is stopped before
-     * the original failure is rethrown.
+     * the original failure is rethrown. Repeated or cross-mode initialization is rejected before
+     * the active ownership graph can be overwritten.
      * </p>
      *
+     * @param autonomousDrive     external Auto drive owner; must not be null
      * @param autoAimEnabledSource source that controls whether target selection + aim gating are active
      * @param aimOverrideSource    source that bypasses aim-readiness gating when true
      */
-    public void initAuto(BooleanSource autoAimEnabledSource,
+    public void initAuto(DriveCommandSink autonomousDrive,
+                         BooleanSource autoAimEnabledSource,
                          BooleanSource aimOverrideSource) {
-        shutdown.ensureOpen("initAuto");
+        shutdown.beginInitialization("initAuto");
         try {
+            this.autonomousDrive = Objects.requireNonNull(
+                    autonomousDrive,
+                    "autonomousDrive"
+            );
             initSharedRuntime(autoAimEnabledSource, aimOverrideSource);
             capabilities = createCapabilities();
             autoRunner = new TaskRunner();
@@ -314,18 +335,21 @@ public final class PhoenixRobot {
      * Advances one autonomous loop.
      *
      * <p>Loop order is explicit and matches Phoenix ownership boundaries: localization first, then
-     * targeting, then queued autonomous tasks, then the scoring path, and finally telemetry.</p>
+     * targeting, the continuously owned external drive heartbeat, queued autonomous tasks, the
+     * scoring path, and finally telemetry.</p>
      */
     public void updateAuto() {
         if (localization == null
                 || scoringPath == null
                 || scoringTargeting == null
-                || autoRunner == null) {
+                || autoRunner == null
+                || autonomousDrive == null) {
             return;
         }
 
         localization.update(clock);
         scoringTargeting.update(clock);
+        autonomousDrive.update(clock);
         autoRunner.update(clock);
 
         scoringPath.update(clock);
@@ -391,6 +415,7 @@ public final class PhoenixRobot {
         PhoenixTeleOpControls controlsToStop = teleOpControls;
         PhoenixDriveAssistService assistsToStop = driveAssists;
         ScoringPath scoringToStop = scoringPath;
+        DriveCommandSink autonomousDriveToStop = autonomousDrive;
         FtcMecanumDriveLane driveToStop = drive;
         ScoringTargeting targetingToStop = scoringTargeting;
         AprilTagVisionLane visionToStop = vision;
@@ -399,6 +424,7 @@ public final class PhoenixRobot {
         teleOpControls = null;
         driveAssists = null;
         teleOpDriveSource = null;
+        autonomousDrive = null;
         scoringPath = null;
         drive = null;
         scoringTargeting = null;
@@ -410,6 +436,9 @@ public final class PhoenixRobot {
         Runnable clearControls = controlsToStop == null ? null : controlsToStop::clear;
         Runnable resetAssists = assistsToStop == null ? null : assistsToStop::reset;
         Runnable stopScoring = scoringToStop == null ? null : scoringToStop::stop;
+        Runnable stopAutonomousDrive = autonomousDriveToStop == null
+                ? null
+                : autonomousDriveToStop::stop;
         Runnable stopDrive = driveToStop == null ? null : driveToStop::stop;
         Runnable resetTargeting = targetingToStop == null ? null : targetingToStop::reset;
         Runnable closeVision = visionToStop == null ? null : visionToStop::close;
@@ -419,6 +448,7 @@ public final class PhoenixRobot {
                 clearControls,
                 resetAssists,
                 stopScoring,
+                stopAutonomousDrive,
                 stopDrive,
                 resetTargeting,
                 closeVision

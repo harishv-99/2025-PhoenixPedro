@@ -74,6 +74,11 @@ the framework API.
   over hand-written task state machines unless a new state machine is genuinely needed.
 - Keep drive intent and actuation separate: `DriveSource` produces robot-centric `DriveSignal`s;
   overlays reshape selected components; a `DriveCommandSink` performs the final write.
+- When a third-party follower's supported lifecycle requires updates beyond active route/guidance
+  Tasks, give it one stable composition-root heartbeat throughout the relevant OpMode loop. Its
+  adapter must deduplicate same-cycle Task/root calls, count vendor-hidden updates, and make
+  `stop()` apply physical zero immediately (including after reentrant callbacks), rather than
+  merely stage zero for later.
 - Preserve the documented coordinate contract: robot frame `+X` forward, `+Y` left, `+Z` up;
   yaw/omega counter-clockwise positive; distances in inches; angles in radians. Put frames and
   units in names where ambiguity is possible, and convert third-party conventions at boundaries.

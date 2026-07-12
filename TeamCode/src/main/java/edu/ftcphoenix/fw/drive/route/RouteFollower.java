@@ -13,35 +13,12 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * <p>The goal is the same as {@link edu.ftcphoenix.fw.drive.DriveCommandSink}: keep framework code
  * dependent on the smallest useful seam instead of depending on one specific route library.</p>
  *
- * <p>Typical usage:</p>
+ * <p>A follower whose heartbeat must continue during mechanism and wait Tasks needs a stable
+ * composition-root owner in addition to this Task-facing seam. Its {@link #update(LoopClock)}
+ * implementation must be cycle-idempotent so both callers are safe. For Pedro, use the checked-in
+ * {@code PedroPathingDriveAdapter} rather than duplicating the vendor lifecycle:</p>
  * <pre>{@code
- * public final class PedroRouteAdapter implements RouteFollower<PathChain> {
- *     private final Follower follower;
- *
- *     public PedroRouteAdapter(Follower follower) {
- *         this.follower = follower;
- *     }
- *
- *     @Override
- *     public void update(LoopClock clock) {
- *         follower.update();
- *     }
- *
- *     @Override
- *     public void follow(PathChain route) {
- *         follower.followPath(route);
- *     }
- *
- *     @Override
- *     public boolean isBusy() {
- *         return follower.isBusy();
- *     }
- *
- *     @Override
- *     public void cancel() {
- *         follower.breakFollowing();
- *     }
- * }
+ * RouteFollower<PathChain> routes = new PedroPathingDriveAdapter(follower);
  * }</pre>
  *
  * @param <R> route object type owned by the external route library
@@ -49,10 +26,12 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
 public interface RouteFollower<R> {
 
     /**
-     * Optional lifecycle hook for per-loop updates.
+     * Optional Task-facing lifecycle hook for per-loop updates.
      *
      * <p>The default implementation is a no-op so simple adapters only need to implement it when
-     * their follower must be advanced each loop.</p>
+     * their follower must be advanced while the route Task is active. A vendor follower that must
+     * continue updating during later mechanism/wait Tasks also needs a composition-root owner;
+     * implement this hook idempotently by {@link LoopClock#cycle()} in that case.</p>
      *
      * @param clock shared loop clock for the current cycle
      */
