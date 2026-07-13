@@ -321,6 +321,17 @@ available to route and guidance Tasks for behavior requests, but Phoenix owns it
 and final stop. The adapter uses `LoopClock.cycle()` to make the root update and later same-cycle
 generic Task hooks one physical Pedro heartbeat.
 
+Each route start returns a backend-neutral `RouteExecution` whose status and cancellation remain
+bound to that run. During its owned heartbeat, the Pedro adapter classifies natural completion,
+follower timeout/stall, interruption, replacement, failure, or an unknown terminal transition
+before Pedro clears the evidence. `RouteTask.getRouteStatus()` also distinguishes Task timeout and
+active cancellation. This keeps the routine call short while preventing an old Task from completing
+from, or cancelling, a replacement route.
+
+Raw Follower lifecycle calls are unsupported in Phoenix robot code because they bypass that
+ownership and terminal truth. Paths are built through the runtime, route/guidance commands use the
+adapter, the initial pose uses the runtime, and shutdown uses `PhoenixRobot.stop()`.
+
 It intentionally does **not**:
 
 - construct or configure a Pedro `Follower` (the project-specific runtime factory does that)
@@ -381,8 +392,13 @@ successful build it preserves the active spec, profile, paths, robot, and adapte
 set.
 
 Pedro debug telemetry is composed into the same frame as Phoenix Auto telemetry. The OpMode adds
-`auto.spec`, `auto.paths`, and Pedro pose/busy rows before `PhoenixRobot.updateAuto()` calls the
-Auto telemetry presenter, so the Driver Station sees one coherent Auto status page per loop.
+`auto.spec`, `auto.paths`, Pedro pose/busy rows, and the backend-neutral `route.status` before
+`PhoenixRobot.updateAuto()` calls the Auto telemetry presenter, so the Driver Station sees one
+coherent Auto status page per loop.
+
+Truthful route status deliberately does not decide what Phoenix should do next.
+Continue/fallback/abort strategy remains robot-owned and must be added explicitly; generic Task
+composition keeps its existing semantics.
 
 
 ## Loop order
@@ -421,11 +437,11 @@ Phoenix keeps `updateAuto()` just as explicit:
 
 Auto uses the same scoring path and targeting service, but swaps TeleOp drive-assist policy for the
 retained Auto drive heartbeat plus queued autonomous task runner. The heartbeat runs after current
-targeting state is available and before Tasks observe route completion or select their next drive
-behavior. A cycle-aware Pedro adapter makes the later generic `RouteTask` or guidance update hook a
-no-op in that same cycle, while continuing hold, pose, and stopped-state updates during mechanism or
-wait Tasks. Its passive localizer verifies that the Pinpoint snapshot belongs to the current Phoenix
-cycle before Pedro computes or writes drive output.
+targeting state is available and before Tasks observe their exact `RouteExecution` status or select
+their next drive behavior. A cycle-aware Pedro adapter makes the later generic `RouteTask` or
+guidance update hook a no-op in that same cycle, while continuing hold, pose, and stopped-state
+updates during mechanism or wait Tasks. Its passive localizer verifies that the Pinpoint snapshot
+belongs to the current Phoenix cycle before Pedro computes or writes drive output.
 
 ## Shutdown ownership
 

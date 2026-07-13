@@ -14,6 +14,10 @@ import edu.ftcphoenix.robots.phoenix.autonomous.PhoenixAutoTasks;
  * <p>Static OpModes and selector OpModes should feed this factory a {@link PhoenixPedroAutoContext}
  * rather than building task sequences themselves. That keeps OpModes as FTC entry points while this
  * class owns strategy-to-routine mapping.</p>
+ *
+ * <p>The checked-in routines are structural placeholders: generic sequences continue after an
+ * abnormal route result. Before using position-dependent scoring in a match routine, add explicit
+ * robot-owned continue, fallback, or abort policy around each route result.</p>
  */
 public final class PhoenixPedroAutoRoutineFactory {
 

@@ -72,6 +72,12 @@ Phoenix is designed around a few core goals:
    the same update hook, the adapter must deduplicate by `clock.cycle()` and count any vendor-hidden
    update as that cycle's one heartbeat.
 
+   A route start also owns one execution identity. Its status and cancellation stay attached to
+   that exact start even if a newer route replaces it. A vendor's idle or not-busy flag is not proof
+   of success: the integration boundary must classify and retain normal endpoint completion,
+   follower timeout/stall, interruption, replacement, failure, and unknown terminal state while the
+   evidence is still observable.
+
 7. **Docs are part of the API**
 
    Phoenix treats documentation as a first-class feature: Javadocs should be “mouse-over quality,”

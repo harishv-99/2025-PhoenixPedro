@@ -11,7 +11,9 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * (for example, a Pedro {@code PathChain}).</p>
  *
  * <p>The goal is the same as {@link edu.ftcphoenix.fw.drive.DriveCommandSink}: keep framework code
- * dependent on the smallest useful seam instead of depending on one specific route library.</p>
+ * dependent on the smallest useful seam instead of depending on one specific route library. Each
+ * start returns a {@link RouteExecution} so status and cancellation remain attached to that exact
+ * route even when another route replaces it.</p>
  *
  * <p>A follower whose heartbeat must continue during mechanism and wait Tasks needs a stable
  * composition-root owner in addition to this Task-facing seam. Its {@link #update(LoopClock)}
@@ -43,19 +45,15 @@ public interface RouteFollower<R> {
     /**
      * Begin following the supplied route.
      *
-     * @param route external route object to follow
-     */
-    void follow(R route);
-
-    /**
-     * Returns whether the follower is still actively executing its current route.
+     * <p>The returned execution belongs only to this start. If a later call replaces an active
+     * route, the older execution must retain {@link RouteStatus#REPLACED}; cancelling that older
+     * handle must not affect the replacement. If start throws before returning a handle, the
+     * implementation must fail closed because callers have no execution to cancel. This method
+     * begins the route synchronously, so a returned execution must be active or already terminal;
+     * {@link RouteStatus#NOT_STARTED} is reserved for a {@link RouteTask} before its start.</p>
      *
-     * @return {@code true} while the route is still in progress
+     * @param route external route object to follow
+     * @return non-null status and cancellation handle for this exact route attempt
      */
-    boolean isBusy();
-
-    /**
-     * Interrupt the current route and leave the follower in a predictable stopped state.
-     */
-    void cancel();
+    RouteExecution follow(R route);
 }

@@ -147,9 +147,9 @@ This is critical because advancing tasks twice effectively doubles loop speed an
 
 ### 4.4 Stateful external followers need a persistent owner
 
-A route Task is active only while its route reports busy. Some vendor followers still need updates
-after that point—for example, Pedro hold-end control and pose tracking continue while a later
-mechanism or wait Task runs.
+A route Task is active while its per-route `RouteExecution` reports `RouteStatus.ACTIVE`. Some
+vendor followers still need updates after that execution becomes terminal—for example, Pedro
+hold-end control and pose tracking continue while a later mechanism or wait Task runs.
 
 Give such an adapter one stable composition-root heartbeat every Auto loop. If `RouteTask` or
 `DriveGuidanceTask` can also reach the same update hook, make the adapter idempotent by
@@ -167,11 +167,12 @@ The production Pedro runtime shares the localization phase's one Pinpoint predic
 instead of polling odometry again. Accepted corrections pushed into the predictor are therefore
 visible to path control in the same heartbeat.
 
-The heartbeat precedes the Task runner so route completion/callback state is current when Tasks are
-evaluated. A route selected by the runner begins advancing on the next loop. A Pedro manual-mode
-transition uses that next loop's vendor-hidden zero update, then applies its retained nonzero command
-on the following heartbeat. This small, predictable staging delay is preferable to a hidden second
-follower update.
+The heartbeat precedes the Task runner so the adapter can classify and retain route completion,
+timeout/stall, interruption, replacement, or an unknown terminal transition before the Task reads
+its `RouteExecution`. A route selected by the runner begins advancing on the next loop. A Pedro
+manual-mode transition uses that next loop's vendor-hidden zero update, then applies its retained
+nonzero command on the following heartbeat. This small, predictable staging delay is preferable to
+a hidden second follower update.
 
 ---
 
@@ -277,9 +278,10 @@ If two helpers both call `macroRunner.update(clock)`, Phoenix prevents double-ad
 
 ### Mistake: making a route Task the only follower heartbeat
 
-If a vendor follower owns pose, hold, callbacks, or final drive output outside its busy route phase,
-do not stop updating it when `RouteTask` completes. Keep the composition-root heartbeat running and
-let the adapter deduplicate the Task-facing update.
+If a vendor follower owns pose, hold, callbacks, or final drive output after a route execution
+becomes terminal, do not stop updating it when `RouteTask` completes. Keep the composition-root
+heartbeat running and let the adapter deduplicate the Task-facing update. Do not infer success from
+the vendor becoming not busy; use the retained `RouteExecution.status()` instead.
 
 ---
 

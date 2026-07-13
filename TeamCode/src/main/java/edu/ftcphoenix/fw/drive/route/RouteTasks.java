@@ -1,7 +1,5 @@
 package edu.ftcphoenix.fw.drive.route;
 
-import edu.ftcphoenix.fw.task.Task;
-
 /**
  * Convenience factory methods for external route-following tasks.
  *
@@ -22,11 +20,11 @@ public final class RouteTasks {
      * @param route route object to follow
      * @param cfg task-level config (timeout); may be {@code null}
      * @param <R> route type
-     * @return task that follows the supplied route until completion or timeout
+     * @return typed task that retains the precise route status
      */
-    public static <R> Task follow(RouteFollower<R> follower,
-                                  R route,
-                                  RouteTask.Config cfg) {
+    public static <R> RouteTask<R> follow(RouteFollower<R> follower,
+                                          R route,
+                                          RouteTask.Config cfg) {
         return new RouteTask<R>(follower, route, cfg);
     }
 
@@ -38,12 +36,12 @@ public final class RouteTasks {
      * @param route route object to follow
      * @param cfg task-level config (timeout); may be {@code null}
      * @param <R> route type
-     * @return task that follows the supplied route until completion or timeout
+     * @return typed task that retains the precise route status
      */
-    public static <R> Task follow(String debugName,
-                                  RouteFollower<R> follower,
-                                  R route,
-                                  RouteTask.Config cfg) {
+    public static <R> RouteTask<R> follow(String debugName,
+                                          RouteFollower<R> follower,
+                                          R route,
+                                          RouteTask.Config cfg) {
         return new RouteTask<R>(debugName, follower, route, cfg);
     }
 }

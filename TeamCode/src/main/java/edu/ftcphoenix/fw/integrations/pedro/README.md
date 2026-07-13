@@ -23,7 +23,8 @@ The runtime contains exactly one of each production owner:
 - one passive Pedro `Localizer`, which converts and consumes the predictor's immutable current-cycle
   pose/velocity/physical-heading snapshot without polling hardware;
 - one valid native Pedro mecanum drivetrain and `Follower`;
-- one `PedroPathingDriveAdapter`, which owns the Follower heartbeat and final drivetrain stop.
+- one `PedroPathingDriveAdapter`, which owns the Follower heartbeat, per-route terminal
+  classification, and final drivetrain stop.
 
 Build production paths with `runtime.pathBuilder()`. Pedro 2.1.2's no-argument
 `Follower.pathBuilder()` reads a process-wide mutable constraint default; the runtime instead passes
@@ -45,6 +46,32 @@ The adapter prepares the passive localizer with the shared `LoopClock` immediate
 vendor heartbeat. The localizer fails closed unless the Pinpoint snapshot belongs to that exact
 cycle. Route and guidance Tasks may call the adapter's update hook too; `LoopClock.cycle()`
 deduplication makes those later calls no-ops.
+
+Every `follow(pathChain)` returns a backend-neutral `RouteExecution` for that exact run. During the
+owned heartbeat, the adapter retains the expected path identity and classifies the transition while
+Pedro's progress and endpoint evidence still exists. It reports `COMPLETED` only when the original
+final path reaches its parametric end and its endpoint velocity, translation, and heading
+constraints pass. A stuck segment or follower endpoint timeout reports
+`FOLLOWER_TIMEOUT_OR_STALL`; adapter/callback stop or manual takeover reports `INTERRUPTED`; a
+supported later follow reports `REPLACED`; and a detectable unexplained terminal transition reports
+`UNKNOWN_TERMINAL` rather than guessed success. In particular, a non-parametric segment advance
+stops the whole route as a stall instead of silently skipping ahead. Raw lifecycle calls remain
+unsupported because they can erase the evidence needed for truthful classification.
+
+`RouteTask` adds the Task-owned `TASK_TIMEOUT` and `CANCELLED` distinctions and exposes the final
+backend-neutral value through `getRouteStatus()`. Its cancellation uses that one execution handle,
+so late cleanup of an older Task cannot stop a replacement route.
+
+`getLatestRouteStatus()` provides the newest backend-neutral value for Driver Station telemetry.
+Code making a decision about one particular route should retain that route's `RouteTask` or
+`RouteExecution` instead of consulting the mutable latest-route view.
+
+Raw Follower lifecycle calls are unsupported in production Phoenix Auto. Do not call
+`followPath(...)`, `breakFollowing()`, `startTeleopDrive()`, `update()`, or pose-reset methods on the
+Follower from robot code; those calls bypass heartbeat ownership or the per-execution status.
+Build routes through `runtime.pathBuilder()`, set the initial pose through the runtime, command
+routes/guidance through the adapter, and use adapter/robot stop. Read-only Follower inspection at
+the integration boundary remains valid.
 
 ## Pose contract
 

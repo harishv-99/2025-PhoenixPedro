@@ -13,6 +13,11 @@ import edu.ftcphoenix.fw.task.TaskOutcome;
  * <p>This lets Phoenix task runners sequence route following together with mechanism actions,
  * waits, and other tasks without the framework taking ownership of a specific route library.</p>
  *
+ * <p>The Task retains the exact {@link RouteExecution} returned for its start. Use
+ * {@link #getRouteStatus()} when routine policy needs the precise terminal reason. The broader
+ * {@link #getOutcome()} maps completed routes to success, follower or Task timeouts to timeout,
+ * and other abnormal endings to the fail-closed cancelled bucket.</p>
+ *
  * <p>This Task calls the follower's update hook while it is active, but it is not a persistent
  * lifecycle owner. An external follower that must keep updating during hold-end, mechanism, or
  * wait phases needs one composition-root heartbeat; its adapter should deduplicate the Task's
@@ -33,6 +38,8 @@ import edu.ftcphoenix.fw.task.TaskOutcome;
  *         RouteTasks.follow("return", pedroAdapter, returnPath, cfg)
  * );
  * }</pre>
+ * <p>This snippet demonstrates Task composition only. Robot-owned policy must gate any later
+ * position-dependent action on the route's precise result.</p>
  *
  * @param <R> route object type understood by the wrapped {@link RouteFollower}
  */
@@ -60,6 +67,8 @@ public final class RouteTask<R> implements Task {
     private boolean started = false;
     private boolean complete = false;
     private TaskOutcome outcome = TaskOutcome.NOT_DONE;
+    private RouteStatus routeStatus = RouteStatus.NOT_STARTED;
+    private RouteExecution execution;
     private double startTimeSec = 0.0;
 
     /**
@@ -82,6 +91,10 @@ public final class RouteTask<R> implements Task {
 
     /**
      * Creates a route-follow task with the default debug name.
+     *
+     * @param follower route follower adapter to command
+     * @param route route object to follow
+     * @param cfg task-level timeout config; when {@code null}, defaults are used
      */
     public RouteTask(RouteFollower<R> follower,
                      R route,
@@ -105,8 +118,20 @@ public final class RouteTask<R> implements Task {
         started = true;
         complete = false;
         outcome = TaskOutcome.NOT_DONE;
+        routeStatus = RouteStatus.NOT_STARTED;
         startTimeSec = (clock != null) ? clock.nowSec() : 0.0;
-        follower.follow(route);
+        try {
+            execution = follower.follow(route);
+        } catch (RuntimeException startFailure) {
+            markFailedTerminal();
+            throw startFailure;
+        }
+        if (execution == null) {
+            markFailedTerminal();
+            throw new IllegalStateException("RouteFollower.follow(...) returned null for RouteTask '"
+                    + debugName + "'. Return a RouteExecution for the route that was started.");
+        }
+        observeAndApplyStatus();
     }
 
     @Override
@@ -123,7 +148,22 @@ public final class RouteTask<R> implements Task {
             return;
         }
 
-        follower.update(clock);
+        observeAndApplyStatus();
+        if (complete) {
+            return;
+        }
+
+        try {
+            follower.update(clock);
+        } catch (RuntimeException updateFailure) {
+            retainStatusAfterUpdateFailure(updateFailure);
+            throw updateFailure;
+        }
+        if (complete) {
+            return;
+        }
+
+        observeAndApplyStatus();
         if (complete) {
             return;
         }
@@ -131,17 +171,8 @@ public final class RouteTask<R> implements Task {
         if (cfg.timeoutSec > 0.0 && (clock.nowSec() - startTimeSec) > cfg.timeoutSec) {
             complete = true;
             outcome = TaskOutcome.TIMEOUT;
-            follower.cancel();
-            return;
-        }
-
-        boolean busy = follower.isBusy();
-        if (complete) {
-            return;
-        }
-        if (!busy) {
-            complete = true;
-            outcome = TaskOutcome.SUCCESS;
+            routeStatus = RouteStatus.TASK_TIMEOUT;
+            execution.cancelForTimeout();
         }
     }
 
@@ -150,9 +181,19 @@ public final class RouteTask<R> implements Task {
         if (!started || complete) {
             return;
         }
+        // A root-owned heartbeat may have terminalized this exact execution since the Task's
+        // previous update. Preserve that reason instead of relabeling a completed/replaced route
+        // as Task cancellation.
+        observeAndApplyStatus();
+        if (complete) {
+            return;
+        }
         complete = true;
         outcome = TaskOutcome.CANCELLED;
-        follower.cancel();
+        routeStatus = RouteStatus.CANCELLED;
+        if (execution != null) {
+            execution.cancelAfterActiveObservation();
+        }
     }
 
     @Override
@@ -165,6 +206,18 @@ public final class RouteTask<R> implements Task {
         return outcome;
     }
 
+    /**
+     * Returns the precise backend-neutral status for this route attempt.
+     *
+     * <p>This preserves why a route ended even when the broader {@link TaskOutcome} maps several
+     * fail-closed terminal reasons to {@link TaskOutcome#CANCELLED}.</p>
+     *
+     * @return current or retained terminal route status
+     */
+    public RouteStatus getRouteStatus() {
+        return routeStatus;
+    }
+
     @Override
     public void debugDump(DebugSink dbg, String prefix) {
         Task.super.debugDump(dbg, prefix);
@@ -172,9 +225,98 @@ public final class RouteTask<R> implements Task {
             return;
         }
         String p = (prefix == null || prefix.isEmpty()) ? "task" : prefix;
-        dbg.addData(p + ".followerBusy", follower.isBusy())
+        dbg.addData(p + ".routeStatus", routeStatus)
                 .addData(p + ".routeClass", route.getClass().getSimpleName())
                 .addData(p + ".timeoutSec", cfg.timeoutSec)
                 .addData(p + ".startedAtSec", startTimeSec);
+    }
+
+    private RouteStatus readExecutionStatus() {
+        RouteStatus status;
+        try {
+            status = execution.status();
+        } catch (RuntimeException failure) {
+            throw new IllegalStateException("RouteTask '" + debugName
+                    + "' could not read its RouteExecution status. " + failure.getMessage(),
+                    failure);
+        }
+        if (status == null) {
+            throw new IllegalStateException("RouteExecution.status() returned null for RouteTask '"
+                    + debugName + "'. Return a backend-neutral RouteStatus.");
+        }
+        return status;
+    }
+
+    private void applyObservedStatus(RouteStatus observedStatus) {
+        routeStatus = observedStatus;
+        switch (observedStatus) {
+            case NOT_STARTED:
+                throw new IllegalStateException("RouteFollower.follow(...) returned a NOT_STARTED "
+                        + "execution for RouteTask '" + debugName + "'. follow(...) must begin the "
+                        + "route synchronously and return ACTIVE or a retained terminal status.");
+            case ACTIVE:
+                return;
+            case COMPLETED:
+                complete = true;
+                outcome = TaskOutcome.SUCCESS;
+                return;
+            case FOLLOWER_TIMEOUT_OR_STALL:
+            case TASK_TIMEOUT:
+                complete = true;
+                outcome = TaskOutcome.TIMEOUT;
+                return;
+            case INTERRUPTED:
+            case REPLACED:
+            case CANCELLED:
+            case FAILED:
+            case UNKNOWN_TERMINAL:
+                complete = true;
+                outcome = TaskOutcome.CANCELLED;
+                return;
+            default:
+                throw new IllegalStateException("Unhandled RouteStatus " + observedStatus
+                        + " for RouteTask '" + debugName + "'.");
+        }
+    }
+
+    private void retainStatusAfterUpdateFailure(RuntimeException updateFailure) {
+        try {
+            applyObservedStatus(readExecutionStatus());
+        } catch (RuntimeException statusFailure) {
+            markFailedTerminal();
+            execution.failClosed(updateFailure);
+            addSuppressedIfDistinct(updateFailure, statusFailure);
+            return;
+        }
+
+        if (!complete) {
+            // The exact execution was still active when its owner threw. With no more-specific
+            // retained terminal evidence, fail closed and keep the update failure primary.
+            markFailedTerminal();
+            execution.failClosed(updateFailure);
+        }
+    }
+
+    private void observeAndApplyStatus() {
+        try {
+            applyObservedStatus(readExecutionStatus());
+        } catch (RuntimeException statusFailure) {
+            markFailedTerminal();
+            execution.failClosed(statusFailure);
+            throw statusFailure;
+        }
+    }
+
+    private void markFailedTerminal() {
+        complete = true;
+        outcome = TaskOutcome.CANCELLED;
+        routeStatus = RouteStatus.FAILED;
+    }
+
+    private static void addSuppressedIfDistinct(RuntimeException primary,
+                                                RuntimeException secondary) {
+        if (secondary != primary) {
+            primary.addSuppressed(secondary);
+        }
     }
 }

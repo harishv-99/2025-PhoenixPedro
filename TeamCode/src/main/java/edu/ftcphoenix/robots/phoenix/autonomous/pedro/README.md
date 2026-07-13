@@ -35,6 +35,17 @@ The adapter remains in `PhoenixPedroAutoContext` because route and guidance Task
 owner. Same-cycle Task update hooks are harmless because the adapter deduplicates by the shared
 `LoopClock.cycle()`.
 
+Each `RouteFollower.follow(...)` call returns a `RouteExecution` tied to that route alone. The
+adapter classifies completion, follower timeout/stall, interruption, replacement, failure, or an
+unknown terminal transition during its owned heartbeat; `RouteTask.getRouteStatus()` preserves that
+backend-neutral reason. Task timeout and active cancellation remain distinct statuses, and cleanup
+of an old Task cannot cancel a newer route.
+
+Robot routines continue to use the short `RouteTasks.follow(adapter, route, cfg)` call. They must not
+start, break, replace, manually take over, update, or reset pose through the raw Pedro Follower;
+those lifecycle calls bypass the adapter's ownership and truthful status. Route building and
+read-only integration inspection remain supported.
+
 The recurring Auto order is:
 
 ```text
@@ -55,7 +66,8 @@ profile, paths, robot, and adapter as one consistent graph.
 
 Pedro debug rows are added before `PhoenixRobot.updateAuto()` emits the standard Auto block. The
 Driver Station therefore gets one coherent frame containing spec/path labels, Pedro pose/busy state,
-Task/scoring/targeting status, raw predictor pose, corrected global pose, and pose drift.
+the backend-neutral `route.status`, Task/scoring/targeting status, raw predictor pose, corrected
+global pose, and pose drift.
 
 ## Where students add real Auto behavior
 
@@ -64,3 +76,7 @@ inside `PhoenixPedroPathFactory` with real alliance/start/partner paths. Keep hi
 selection in `PhoenixPedroAutoRoutineFactory`, and keep reusable scoring/targeting snippets in
 `PhoenixAutoTasks`. Routine Tasks continue using the existing adapter and `PhoenixCapabilities`;
 they do not need a separate localization API.
+
+Truthful route status supplies the fact needed for a later robot-owned continue/fallback/abort
+decision; it does not choose that policy. Phoenix routines must add that policy explicitly, so do
+not assume generic Task sequences automatically stop after every abnormal route ending.

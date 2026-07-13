@@ -49,6 +49,7 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
     private PhoenixRobot robot;
     private PhoenixCapabilities capabilities;
     private Follower follower;
+    private PedroPathingDriveAdapter driveAdapter;
     private PhoenixAutoSpec activeSpec;
     private PhoenixProfile activeProfile;
     private String pathLabel;
@@ -211,6 +212,7 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
             robot = builtRobot;
             capabilities = builtCapabilities;
             follower = builtFollower;
+            driveAdapter = builtDriveAdapter;
             pathLabel = paths.label;
 
             telemetry.addLine("Phoenix Pedro auto ready");
@@ -255,6 +257,9 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
             telemetry.addData("pedro.y", follower.getPose().getY());
             telemetry.addData("pedro.headingDeg", Math.toDegrees(follower.getPose().getHeading()));
         }
+        if (driveAdapter != null) {
+            telemetry.addData("route.status", driveAdapter.getLatestRouteStatus());
+        }
     }
 
     private void clearAutoRuntime() {
@@ -266,6 +271,7 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
         robot = null;
         capabilities = null;
         follower = null;
+        driveAdapter = null;
         activeSpec = null;
         activeProfile = null;
         pathLabel = null;

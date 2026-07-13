@@ -212,6 +212,7 @@ Responsibilities:
 - compose tasks over capabilities
 - wait on status snapshots and signals
 - own route-library-specific strategy
+- decide what a non-completed route means for this routine
 
 The Auto side does **not** need a universal `AutoControls` class just to mirror TeleOp.
 
@@ -322,6 +323,12 @@ If generic route or guidance Tasks also invoke the same stateful drive sink's up
 must make repeated calls in one `LoopClock.cycle()` idempotent. The composition root remains the
 recurring owner; Tasks select behavior and may perform a same-cycle no-op update for compatibility
 with integrations whose work is genuinely Task-local.
+
+The integration owner should also preserve each route's terminal meaning in the backend-neutral
+`RouteExecution` returned by `RouteFollower.follow(...)`. `RouteTask.getRouteStatus()` lets the Auto
+client distinguish completion, timeout/stall, interruption, replacement, failure, and unknown
+termination without exposing vendor types. The adapter reports facts; the Auto client owns any
+continue, fallback, or abort policy.
 
 ### `stop()`
 
