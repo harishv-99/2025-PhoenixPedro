@@ -1,6 +1,6 @@
 # Framework Improvement Tracker
 
-Last updated: 2026-07-12
+Last updated: 2026-07-13
 
 This file tracks proposed Phoenix framework improvements. It is deliberately a planning document:
 an item being listed here does **not** mean its current proposed solution has been approved. Each
@@ -71,7 +71,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 7 | TASK-03 | Clear and cancellation semantics | Done | Remove unsafe drop-without-cancel behavior and make Plant cancellation explicit. |
 | 8 | PEDRO-01 | Follower heartbeat and stopped-state ownership | Done | Advance one Pedro follower once per Auto loop outside individual Tasks; Tasks select behavior but do not own the heartbeat. |
 | 9 | PEDRO-02 | Pedro drivetrain, localization, and pose authority | Done | Build one valid Pedro runtime with one hardware/localization owner and an explicit Pedro-to-Phoenix field-pose contract. |
-| 10 | ROUTE-02 | Truthful route terminal status | Proposed | Do not infer route success solely from `!isBusy()`; preserve completion, interruption, timeout, and failure meaning. |
+| 10 | ROUTE-02 | Truthful route terminal status | Done | Do not infer route success solely from `!isBusy()`; preserve completion, interruption, timeout, and failure meaning. |
 | 11 | ROUTE-01 | Start-time route construction | Proposed | Resolve a route once when its Task starts so live pose and vision can select geometry safely. |
 | 12 | FIELD-01 | Explicit alliance field transforms | Proposed | Define field geometry once and apply a named, tested transform instead of duplicating red/blue path code. |
 | 13 | DRIVE-01 | Drive task ownership | Ready | Keep an exclusive Auto-only timed sink Task, after Pedro's outer-loop ownership is made correct. |
@@ -1251,9 +1251,141 @@ writer, and explicit lifecycle ownership.
   policy safely.
 - **Completion:** focused tests distinguish natural endpoint completion, follower timeout/stall,
   callback break, external replacement, Task timeout, active cancellation, and unknown terminal
-  state; stale status from a prior route cannot complete a new one; PHX-03 branches on truthful data;
-  and telemetry names the terminal reason without leaking Pedro types.
-- **Decision record:** _Pending._
+  state; stale status from a prior route cannot complete a new one; the typed result needed by
+  PHX-03 is available without implementing that later robot-policy item here; and telemetry names
+  the terminal reason without leaking Pedro types.
+- **Decision record (2026-07-12):**
+  - **Confirmed framework defect and baseline:** `RouteTask.update(...)` advances its follower and
+    converts every post-update `!isBusy()` into `TaskOutcome.SUCCESS`. The generic seam supplies no
+    route identity or terminal reason, and its unscoped `cancel()` can stop a replacement route if
+    an older Task is cleaned up late. The focused pre-change baseline passes 23 tests across
+    `RouteTaskSingleUseTest` and `PedroPathingDriveAdapterTest` with zero failures, errors, or skips;
+    one generic test explicitly protects the current ambiguous `busy == false -> SUCCESS` behavior.
+  - **Confirmed pinned Pedro behavior:** Phoenix pins Pedro core/FTC `2.1.2`. Its one
+    `Follower.update()` heartbeat advances a path segment when either the segment reaches its
+    parametric end or a private stuck timer expires. On the final segment it becomes not busy when
+    either endpoint velocity/translation/heading constraints pass or a private endpoint timeout
+    expires. `breakFollowing()`, hold-end completion, callback interruption, manual takeover, and
+    route replacement also clear the same busy flag, while clearing the private timeout/stuck
+    evidence. Therefore terminal meaning must be classified and retained by the adapter during its
+    owned heartbeat; it cannot be reconstructed later from `isBusy()`.
+  - **Current callers and migration surface:** `PedroPathingDriveAdapter` is the only production
+    `RouteFollower`; Phoenix's four Auto strategies reach it through two short helpers in
+    `PhoenixPedroAutoRoutineFactory`. Other implementations are focused test fakes. A coherent
+    breaking seam change therefore has a small migration surface, and the normal student call can
+    remain `RouteTasks.follow("outbound", adapter, path, cfg)`.
+  - **Alternatives considered:** document that not-busy means success; repeat an endpoint predicate
+    in each routine; retain a mutable current-route status/generation on `RouteFollower`; add a
+    second optional status interface beside `isBusy()`; keep truth Pedro-specific; expose generation
+    counters to routine code; or add generic `TaskOutcome.FAILED` plus new aggregation and branching
+    semantics. Documentation and call-site predicates cannot observe cleared callback/stall state.
+    Pedro-only or optional status leaves the generic route seam dishonest. A mutable current status
+    lets a newer run satisfy or be cancelled by an older Task. Exposed counters and a global Task
+    outcome expansion add concepts and framework-wide policy that ROUTE-02 does not need.
+  - **Chosen public contract:** replace `RouteFollower.follow(R)`, `isBusy()`, and global `cancel()`
+    with `RouteExecution follow(R)` plus the existing optional `update(clock)` heartbeat. The small
+    backend-neutral execution handle exposes only `status()` and active-only, idempotent `cancel()`.
+    Its private identity binds status and cancellation to exactly one start, so an adapter can mark
+    an older execution `REPLACED` without exposing a generation counter and cancellation of that old
+    handle cannot stop the new route. Do not retain parallel legacy methods or add a builder.
+  - **Chosen status vocabulary:** one backend-neutral `RouteStatus` enum carries `NOT_STARTED`,
+    `ACTIVE`, `COMPLETED`, `FOLLOWER_TIMEOUT_OR_STALL`, `INTERRUPTED`, `REPLACED`, `TASK_TIMEOUT`,
+    `CANCELLED`, `FAILED`, and `UNKNOWN_TERMINAL`. The combined follower timeout/stall status is the
+    smallest truthful policy category because Pedro can prove an abnormal constraint/stuck ending
+    but does not expose which private timer won in every final-loop edge case. Adapter-owned stop,
+    callback break, and manual takeover use `INTERRUPTED`; another supported follow uses `REPLACED`;
+    and caught start/update exceptions record `FAILED` before the existing fail-closed rethrow.
+    Unsupported raw vendor lifecycle calls bypass those truthful guarantees and remain unsupported;
+    detectable unexplained transitions are retained as `UNKNOWN_TERMINAL` rather than guessed.
+  - **Chosen Task behavior:** `RouteTask` retains the exact execution, exposes
+    `getRouteStatus()`, and uses its own `TASK_TIMEOUT`/`CANCELLED` result before cancelling the
+    execution. `RouteTasks.follow(...)` returns `RouteTask<R>` rather than hiding it as `Task`; this
+    remains source-compatible with ordinary Task sequences and gives later PHX-03 policy typed
+    access without a cast. `COMPLETED` maps to `TaskOutcome.SUCCESS`, follower/Task timeout maps to
+    `TIMEOUT`, and interrupted/replaced/failed/unknown terminals map to the existing fail-closed
+    `CANCELLED` compatibility bucket while their precise route status remains available. Do not add
+    generic `FAILED` or change sequence/parallel/branch policy in this item.
+  - **Pedro classification rule:** explicit adapter lifecycle reasons win. Around the one owned
+    heartbeat, retain the expected chain/final path and inspect segment progress plus final physical
+    velocity, translation, and heading constraints. A non-parametric segment advance caused by the
+    latched stuck condition terminalizes and stops the route as `FOLLOWER_TIMEOUT_OR_STALL` rather
+    than silently skipping ahead. Final completion is `COMPLETED` only when the original final path
+    reached its parametric end and all endpoint constraints pass; otherwise a follower-driven end is
+    `FOLLOWER_TIMEOUT_OR_STALL`. If constraints become true in the same heartbeat as Pedro's hidden
+    timeout, only the achieved state is observable, so report `COMPLETED`. Unexpected route/path
+    identity changes or untagged not-busy transitions become `REPLACED` or `UNKNOWN_TERMINAL`, never
+    success. Raw Follower lifecycle mutation remains unsupported; route building/read-only
+    inspection through the exposed follower stays valid.
+  - **Framework Principles and student simplicity:** route behavior remains non-blocking and uses
+    the existing one cycle-deduplicated Pedro heartbeat. Vendor inspection stays inside the explicit
+    integration boundary, routine strategy receives only Phoenix types, and common Auto code gains
+    no new line or concept. The added execution/status concepts are paid only by framework and
+    integration authors, where they replace ambiguous global state with one clear API.
+  - **Scope boundary:** ROUTE-02 will expose truthful data and backend-neutral telemetry, but will
+    not implement PHX-03 continue/fallback/abort policy, ROUTE-01 deferred construction, a callback
+    DSL, a second scheduler, or changes to generic Task composition semantics.
+  - **Verification plan:** replace the ambiguous generic baseline with tests for every status,
+    single-use/pre-start/idempotent cancellation, Task timeout, stale-result isolation, and old-handle
+    cancellation after replacement. Extend the real pinned-Pedro harness for natural hold/no-hold
+    completion, impossible endpoint constraints, intermediate/final stall, callback interruption,
+    manual takeover, replacement, start/update failure, unknown mutation, immediate physical stop,
+    and same-cycle root/Task deduplication. Compile all four unchanged short Phoenix routine shapes,
+    expose the latest generic status in Auto telemetry, synchronize route/Pedro/Phoenix docs, run
+    the full TeamCode unit suite and debug Java compile, inspect callers and raw follower lifecycle
+    calls, check documentation links and diffs, and request Android Studio review. Deliberate
+    obstruction, endpoint timeout, and status labels still require on-robot observation.
+  - **Approval gate:** the leading hypothesis remains the smallest robust direction, refined with a
+    per-execution handle so generation mechanics never reach students. Replacing the public
+    `RouteFollower` lifecycle is nevertheless a major API decision, so explicit user approval is
+    required before this item moves to **In progress** or any Java implementation is edited.
+  - **Approval:** the user approved the ROUTE-02 design on 2026-07-12.
+  - **Implementation (2026-07-13):** `RouteFollower.follow(...)` now returns one public
+    `RouteExecution` for that exact start, with a backend-neutral `RouteStatus` snapshot and
+    active-only cancellation. The old follower-global busy/cancel methods are removed rather than
+    retained as a parallel path. `RouteTasks.follow(...)` returns the typed `RouteTask<R>` while
+    preserving the same one-line call and normal use as a `Task`.
+  - **Task lifecycle and outcome handling:** `RouteTask` retains its exact execution, samples it
+    before and after the optional follower heartbeat, and exposes `getRouteStatus()`. A stale Task
+    cannot heartbeat or cancel a replacement, and cancellation first preserves a terminal reason
+    already observed by the root heartbeat. `COMPLETED` maps to `SUCCESS`; follower/Task timeout
+    maps to `TIMEOUT`; interruption, replacement, cancellation, failure, and unknown terminal state
+    map to the existing fail-closed `CANCELLED` bucket without losing the precise route status.
+    Synchronous-start/status contract violations and start/update/status failures fail closed with
+    exact-handle best-effort cleanup while retaining the primary exception.
+  - **Pedro implementation:** `PedroPathingDriveAdapter` retains one per-start execution and
+    classifies final completion, endpoint timeout/stall, non-parametric segment stall, adapter or
+    callback interruption, replacement, detected unexplained transitions, and caught failures
+    around its one cycle-deduplicated heartbeat. Endpoint classification mirrors pinned Pedro 2.1.2
+    using the final Path's live constraints and Pedro's cached closest-point heading goal. Route
+    start and heartbeat work are fail-closed transactions; invalid/partial starts, vendor getter
+    failures, same-cycle reentry, callback-initializer reentry, callback stop, and cleanup failure
+    retain truthful status and immediate/stable zero without allowing an old handle to stop a newer
+    route. Phoenix Auto telemetry now includes the latest backend-neutral `route.status`.
+  - **Documentation and callers:** Framework Principles, repository instructions, route/Task
+    Javadocs, framework design/getting-started/loop/capability guides, the Pedro guide, Phoenix
+    Architecture, and the Phoenix Pedro Auto guide describe the same per-start identity, heartbeat,
+    raw-lifecycle boundary, status mapping, and failure-policy boundary. Structural route-to-score
+    examples explicitly warn that generic sequences do not choose continue/fallback/abort policy.
+    Phoenix's four strategies retain their short existing helper call shape; no route policy,
+    deferred route construction, callback DSL, or second scheduler was added.
+  - **Automated verification (2026-07-13):** `:TeamCode:testDebugUnitTest` and
+    `:TeamCode:compileDebugJavaWithJavac` pass. XML reports 221 tests across 25 suites with zero
+    failures, errors, or skips. The focused ROUTE-02 suites pass 65 tests: 7 single-use tests, 26
+    generic route-status/lifecycle tests, and 32 real pinned-Pedro adapter tests. Existing JDK
+    21/source-8 and SDK deprecation warnings remain unchanged.
+  - **Static and independent verification:** caller searches find the Pedro adapter as the only
+    production `RouteFollower`, no legacy busy/cancel route seam, and no production raw Pedro
+    lifecycle calls outside the adapter/runtime boundary; raw calls remain in generated tuning and
+    tool-only Pedro programs. `git diff --check`, the changed/untracked trailing-whitespace scan,
+    and local-link checks for all 10 changed Markdown files pass. Independent core API and
+    documentation/caller reviews found no blocking Framework Principles, scope, lifecycle,
+    documentation, or student-simplicity issue. A separate audit against cached pinned Pedro 2.1.2
+    source confirmed the endpoint/stall rules, cached heading behavior, hold-end heartbeat,
+    immediate-zero break behavior, failure cleanup, replacement identity, and reentrancy handling.
+  - **Manual verification:** the user approved the Android Studio review on 2026-07-13. On-robot
+    observation remains recommended for a normal route, deliberate obstruction/stall, impossible
+    endpoint constraints, callback/manual interruption, immediate and stable motor zero, hold-end
+    behavior, and understandable Driver Station `route.status` labels.
 
 ### ROUTE-01 - Start-time route construction
 

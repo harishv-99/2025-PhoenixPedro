@@ -28,7 +28,7 @@ public final class RouteTaskSingleUseTest {
 
         assertActionable(failure, "outbound", "RouteTasks.follow");
         assertEquals(1, follower.followCount);
-        assertEquals(0, follower.cancelCount);
+        assertEquals(0, follower.current.cancelCount);
         assertFalse(task.isComplete());
     }
 
@@ -44,13 +44,13 @@ public final class RouteTaskSingleUseTest {
         assertTrue(task.isComplete());
         assertEquals(TaskOutcome.CANCELLED, task.getOutcome());
         assertEquals(1, follower.followCount);
-        assertEquals(1, follower.cancelCount);
+        assertEquals(1, follower.current.cancelCount);
 
         IllegalStateException failure = expectSecondStartFailure(task, manualClock.clock());
 
         assertActionable(failure, "return", "Supplier<Task>");
         assertEquals(1, follower.followCount);
-        assertEquals(1, follower.cancelCount);
+        assertEquals(1, follower.current.cancelCount);
         assertEquals(TaskOutcome.CANCELLED, task.getOutcome());
     }
 
@@ -87,7 +87,7 @@ public final class RouteTaskSingleUseTest {
         task.cancel();
         assertFalse(task.isComplete());
         assertEquals(TaskOutcome.NOT_DONE, task.getOutcome());
-        assertEquals(0, follower.cancelCount);
+        assertEquals(0, follower.totalCancelCount());
 
         task.start(manualClock.clock());
 
@@ -103,17 +103,17 @@ public final class RouteTaskSingleUseTest {
         RouteTask<String> task = new RouteTask<>("complete", follower, "route", null);
 
         task.start(manualClock.clock());
-        follower.busy = false;
+        follower.current.integrationStatus = RouteStatus.COMPLETED;
         task.update(manualClock.clock());
         task.cancel();
 
         assertTrue(task.isComplete());
         assertEquals(TaskOutcome.SUCCESS, task.getOutcome());
-        assertEquals(0, follower.cancelCount);
+        assertEquals(0, follower.current.cancelCount);
     }
 
     @Test
-    public void failedStartStillAllowsExactlyOneFollowerCleanupAttempt() {
+    public void failedStartIsTerminalBeforeRethrowAndHasNoOutOfScopeCancellationSideEffect() {
         ManualLoopClock manualClock = new ManualLoopClock();
         RecordingFollower follower = new RecordingFollower();
         follower.throwOnFollow = true;
@@ -126,12 +126,15 @@ public final class RouteTaskSingleUseTest {
             assertTrue(expected.getMessage().contains("test follow"));
         }
 
+        assertTrue(task.isComplete());
+        assertEquals(RouteStatus.FAILED, task.getRouteStatus());
+        assertEquals(TaskOutcome.CANCELLED, task.getOutcome());
         task.cancel();
         task.cancel();
         assertTrue(task.isComplete());
-        assertEquals(TaskOutcome.CANCELLED, task.getOutcome());
+        assertEquals(RouteStatus.FAILED, task.getRouteStatus());
         assertEquals(1, follower.followCount);
-        assertEquals(1, follower.cancelCount);
+        assertEquals(0, follower.totalCancelCount());
     }
 
     @Test
@@ -151,9 +154,10 @@ public final class RouteTaskSingleUseTest {
 
         assertTrue(task.isComplete());
         assertEquals(TaskOutcome.CANCELLED, task.getOutcome());
-        assertEquals(1, follower.cancelCount);
+        assertEquals(RouteStatus.CANCELLED, follower.current.status());
+        assertEquals(1, follower.current.cancelCount);
         task.cancel();
-        assertEquals(1, follower.cancelCount);
+        assertEquals(1, follower.current.cancelCount);
     }
 
     private static IllegalStateException expectSecondStartFailure(Task task, LoopClock clock) {
@@ -176,31 +180,42 @@ public final class RouteTaskSingleUseTest {
 
     private static final class RecordingFollower implements RouteFollower<String> {
         private int followCount;
-        private int cancelCount;
-        private boolean busy = true;
         private boolean throwOnFollow;
         private boolean throwOnCancel;
+        private RecordingExecution current;
 
         @Override
-        public void follow(String route) {
+        public RouteExecution follow(String route) {
             followCount++;
-            busy = true;
             if (throwOnFollow) {
                 throw new IllegalStateException("test follow failure");
             }
+            current = new RecordingExecution();
+            current.throwOnCancel = throwOnCancel;
+            return current;
         }
 
-        @Override
-        public boolean isBusy() {
-            return busy;
+        private int totalCancelCount() {
+            return current != null ? current.cancelCount : 0;
         }
 
-        @Override
-        public void cancel() {
-            cancelCount++;
-            busy = false;
-            if (throwOnCancel) {
-                throw new IllegalStateException("test cancel failure");
+        private static final class RecordingExecution extends RouteExecution {
+            private RouteStatus integrationStatus = RouteStatus.ACTIVE;
+            private int cancelCount;
+            private boolean throwOnCancel;
+
+            @Override
+            protected RouteStatus integrationStatus() {
+                return integrationStatus;
+            }
+
+            @Override
+            protected void cancelActive() {
+                integrationStatus = RouteStatus.CANCELLED;
+                cancelCount++;
+                if (throwOnCancel) {
+                    throw new IllegalStateException("test cancel failure");
+                }
             }
         }
     }

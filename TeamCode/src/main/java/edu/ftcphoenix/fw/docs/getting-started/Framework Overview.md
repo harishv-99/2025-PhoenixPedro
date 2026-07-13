@@ -325,7 +325,22 @@ That keeps normal stick translation while guidance owns omega.
 
 When code only needs a place to *send* drive commands, Phoenix now uses the smaller `DriveCommandSink` seam. `MecanumDrivebase` implements that interface, but route adapters can implement it too.
 
-When code needs to follow an external route object (Pedro `PathChain`, Road Runner trajectory, or your own route type), Phoenix now provides the matching generic seam: `RouteFollower<RouteT>` in `edu.ftcphoenix.fw.drive.route`. Wrap the external follower once, then sequence it with the rest of your robot using `RouteTask` / `RouteTasks.follow(...)`.
+When code needs to follow an external route object (Pedro `PathChain`, Road Runner trajectory, or
+your own route type), Phoenix provides the matching generic seam: `RouteFollower<RouteT>` in
+`edu.ftcphoenix.fw.drive.route`. Wrap the external follower once, then sequence it with the rest of
+your robot using `RouteTask` / `RouteTasks.follow(...)`.
+
+`RouteFollower.follow(route)` returns a `RouteExecution` for that one run. Its `status()` and
+active-only, idempotent `cancel()` remain bound to that execution, so an old Task cannot mistake a
+replacement route for its own completion or cancel the replacement. `RouteTask` retains that exact
+handle and exposes its backend-neutral result through `getRouteStatus()`.
+
+`RouteStatus` distinguishes normal completion from follower timeout/stall, interruption,
+replacement, Task timeout, active cancellation, failure, and an unknown terminal transition.
+`COMPLETED` maps to Task success; follower/Task timeouts map to `TaskOutcome.TIMEOUT`; other abnormal
+terminal states use the existing fail-closed `TaskOutcome.CANCELLED` compatibility bucket. Use
+`getRouteStatus()` when robot policy needs the precise reason instead of reconstructing it from a
+vendor busy flag.
 
 A stateful external follower may need a heartbeat even after its route Task completes. Pedro, for
 example, keeps hold-end control, pose updates, callbacks, and manual drive inside
@@ -347,11 +362,19 @@ Tasks still select routes and guidance; they do not become the only Pedro lifecy
 adapter also uses Pedro's immediate typed break operation for cancellation/shutdown instead of
 merely storing a zero vector for a future update.
 
+Do not call raw Pedro Follower lifecycle methods from robot routines. Starting, breaking,
+replacing, manually taking over, or updating a route outside the adapter bypasses its per-execution
+status and is unsupported. Route construction and read-only Follower inspection remain valid at the
+Pedro boundary.
+
 Even in a one-module repo, keep those adapters and runtime bridges in a library-specific edge
 folder/package such as `fw/integrations/pedro/`, and keep robot-specific examples in a matching
 robot-side folder such as `autonomous/pedro/`. The folder split does not make the dependency
 optional by itself, but it keeps the boundary obvious and makes later source-set or module
 extraction mechanical.
+
+The following snippet shows the composition shape only. A production scoring routine must use
+robot-owned policy to gate position-dependent work after each route result.
 
 ```java
 Task auto = Tasks.sequence(
@@ -362,6 +385,11 @@ Task auto = Tasks.sequence(
 ```
 
 That keeps route-library ownership outside the framework while still letting Auto reuse the same Phoenix task vocabulary as everything else.
+
+The truthful status does not choose robot strategy. Generic Task composition keeps its existing
+semantics; deciding whether a non-completed route should continue, run a fallback, or abort belongs
+in the robot's Auto routine. Do not assume a generic sequence automatically stops after an abnormal
+route ending.
 
 ### `MecanumDrivebase` + `FtcDrives`
 

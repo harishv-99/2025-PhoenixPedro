@@ -1,6 +1,8 @@
 package edu.ftcphoenix.fw.integrations.pedro;
 
 import com.pedropathing.follower.Follower;
+import com.pedropathing.geometry.Pose;
+import com.pedropathing.paths.Path;
 import com.pedropathing.paths.PathChain;
 
 import java.util.Objects;
@@ -8,7 +10,9 @@ import java.util.Objects;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.drive.DriveCommandSink;
 import edu.ftcphoenix.fw.drive.DriveSignal;
+import edu.ftcphoenix.fw.drive.route.RouteExecution;
 import edu.ftcphoenix.fw.drive.route.RouteFollower;
+import edu.ftcphoenix.fw.drive.route.RouteStatus;
 
 /**
  * Framework adapter that bridges Pedro Pathing into Phoenix's small route/drive seams.
@@ -26,6 +30,11 @@ import edu.ftcphoenix.fw.drive.route.RouteFollower;
  * calls in one {@link LoopClock#cycle()} are no-ops. This keeps hold-end, pose, callbacks, manual
  * drive, and stopped-state updates alive without advancing Pedro twice.</p>
  *
+ * <p>Each route start returns a per-start {@link RouteExecution}. During the owned
+ * heartbeat this adapter distinguishes visible endpoint completion from Pedro timeout/stall,
+ * interruption, replacement, failure, and unexplained terminal transitions. Raw Follower
+ * lifecycle mutation is unsupported because it bypasses that retained status.</p>
+ *
  * <p>Typical usage:</p>
  * <pre>{@code
  * PedroPathingRuntime runtime =
@@ -42,6 +51,9 @@ import edu.ftcphoenix.fw.drive.route.RouteFollower;
  * );
  * robot.enqueueAuto(auto);
  * }</pre>
+ * <p>This example demonstrates lifecycle and Task composition only. Generic sequences do not stop
+ * automatically after an abnormal route result; robot-owned policy must gate later aiming,
+ * scoring, or other position-dependent work.</p>
  */
 public final class PedroPathingDriveAdapter implements RouteFollower<PathChain>, DriveCommandSink {
 
@@ -64,6 +76,8 @@ public final class PedroPathingDriveAdapter implements RouteFollower<PathChain>,
     private long lastUpdateCycle = Long.MIN_VALUE;
     private boolean heartbeatInProgress = false;
     private boolean breakAfterHeartbeat = false;
+    private boolean routeStartInProgress = false;
+    private PedroRouteExecution latestRouteExecution;
 
     /**
      * Creates a Phoenix adapter around one Pedro {@link Follower} instance.
@@ -98,11 +112,27 @@ public final class PedroPathingDriveAdapter implements RouteFollower<PathChain>,
     }
 
     /**
+     * Returns the latest route attempt's backend-neutral status.
+     *
+     * <p>The status remains available after the route Task advances, and it never exposes Pedro
+     * route types. Before any route has started this returns {@link RouteStatus#NOT_STARTED}.</p>
+     *
+     * @return current or retained terminal status of the most recently started route
+     */
+    public RouteStatus getLatestRouteStatus() {
+        return latestRouteExecution != null
+                ? latestRouteExecution.status()
+                : RouteStatus.NOT_STARTED;
+    }
+
+    /**
      * Advances the wrapped Follower at most once in the supplied Phoenix loop cycle.
      *
      * <p>The cycle is recorded before entering Pedro, so a callback that reenters this method cannot
      * create a second update. Pedro 2.1.2's {@code startTeleopDrive()} performs one update itself;
-     * that hidden update is deliberately counted as the heartbeat for a manual-mode transition.</p>
+     * that hidden update is deliberately counted as the heartbeat for a manual-mode transition.
+     * A route-initializer callback reentry is deferred without consuming the cycle, allowing the
+     * composition root's normal heartbeat to run after route start returns.</p>
      *
      * <p>If Pedro throws, the current cycle remains consumed, the adapter best-effort stops the
      * Follower, and the original failure is rethrown with any stop failure suppressed.</p>
@@ -115,48 +145,54 @@ public final class PedroPathingDriveAdapter implements RouteFollower<PathChain>,
                 clock,
                 "PedroPathingDriveAdapter.update(clock) requires the shared LoopClock"
         );
-        if (heartbeatInProgress || lastUpdateCycle == currentClock.cycle()) {
+        if (routeStartInProgress
+                || heartbeatInProgress
+                || lastUpdateCycle == currentClock.cycle()) {
             return;
         }
 
         lastUpdateCycle = currentClock.cycle();
         heartbeatInProgress = true;
         RuntimeException failure = null;
-
         try {
-            if (heartbeatPreparation != null) {
-                heartbeatPreparation.prepare(currentClock);
-            }
-            if (mode == Mode.MANUAL_START_PENDING) {
-                // Pedro 2.1.2 calls Follower.update() internally here. Do not update again.
-                follower.startTeleopDrive();
-                if (!breakAfterHeartbeat && mode == Mode.MANUAL_START_PENDING) {
-                    applyRequestedManualDrive();
-                    mode = Mode.MANUAL;
+            try {
+                RouteHeartbeatSnapshot routeSnapshot = captureActiveRouteSnapshot();
+                if (heartbeatPreparation != null) {
+                    heartbeatPreparation.prepare(currentClock);
                 }
-            } else if (mode == Mode.MANUAL) {
-                applyRequestedManualDrive();
-                follower.update();
-            } else {
-                follower.update();
-            }
-        } catch (RuntimeException updateFailure) {
-            failure = updateFailure;
-            stageStoppedRequest();
-        }
-
-        boolean mustBreak = breakAfterHeartbeat || failure != null;
-        breakAfterHeartbeat = false;
-        if (mustBreak) {
-            failure = breakFollower(failure);
-            if (failure != null) {
+                if (mode == Mode.MANUAL_START_PENDING) {
+                    // Pedro 2.1.2 calls Follower.update() internally here. Do not update again.
+                    follower.startTeleopDrive();
+                    if (!breakAfterHeartbeat && mode == Mode.MANUAL_START_PENDING) {
+                        applyRequestedManualDrive();
+                        mode = Mode.MANUAL;
+                    }
+                } else if (mode == Mode.MANUAL) {
+                    applyRequestedManualDrive();
+                    follower.update();
+                } else {
+                    follower.update();
+                }
+                classifyRouteAfterHeartbeat(routeSnapshot);
+            } catch (RuntimeException updateFailure) {
+                failure = updateFailure;
+                finishActiveRoute(RouteStatus.FAILED);
                 stageStoppedRequest();
             }
-        }
 
-        heartbeatInProgress = false;
-        if (failure != null) {
-            throw failure;
+            boolean mustBreak = breakAfterHeartbeat || failure != null;
+            breakAfterHeartbeat = false;
+            if (mustBreak) {
+                failure = breakFollower(failure);
+                if (failure != null) {
+                    stageStoppedRequest();
+                }
+            }
+            if (failure != null) {
+                throw failure;
+            }
+        } finally {
+            heartbeatInProgress = false;
         }
     }
 
@@ -164,17 +200,11 @@ public final class PedroPathingDriveAdapter implements RouteFollower<PathChain>,
      * Starts a route using Pedro's configured default hold-end policy.
      *
      * @param route Pedro path chain to start; must not be null
+     * @return per-start execution handle for this exact route start
      */
     @Override
-    public void follow(PathChain route) {
-        requireRouteStartOutsideHeartbeat();
-        PathChain requestedRoute = Objects.requireNonNull(route, "route");
-        prepareFollowerModeForRouteStart();
-        try {
-            follower.followPath(requestedRoute);
-        } catch (RuntimeException startFailure) {
-            failRouteStartClosed(startFailure);
-        }
+    public RouteExecution follow(PathChain route) {
+        return startRoute(route, null);
     }
 
     /**
@@ -182,26 +212,10 @@ public final class PedroPathingDriveAdapter implements RouteFollower<PathChain>,
      *
      * @param route path chain to follow
      * @param holdEnd whether Pedro should hold the final point when the path completes
+     * @return per-start execution handle for this exact route start
      */
-    public void follow(PathChain route, boolean holdEnd) {
-        requireRouteStartOutsideHeartbeat();
-        PathChain requestedRoute = Objects.requireNonNull(route, "route");
-        prepareFollowerModeForRouteStart();
-        try {
-            follower.followPath(requestedRoute, holdEnd);
-        } catch (RuntimeException startFailure) {
-            failRouteStartClosed(startFailure);
-        }
-    }
-
-    @Override
-    public boolean isBusy() {
-        return follower.isBusy();
-    }
-
-    @Override
-    public void cancel() {
-        stop();
+    public RouteExecution follow(PathChain route, boolean holdEnd) {
+        return startRoute(route, Boolean.valueOf(holdEnd));
     }
 
     /**
@@ -216,6 +230,7 @@ public final class PedroPathingDriveAdapter implements RouteFollower<PathChain>,
         DriveSignal cmd = (signal != null) ? signal.clamped() : DriveSignal.zero();
         requestedManualDrive = cmd;
         if (mode == Mode.FOLLOWER) {
+            finishActiveRoute(RouteStatus.INTERRUPTED);
             mode = Mode.MANUAL_START_PENDING;
             interruptFollowerNow();
         }
@@ -230,6 +245,187 @@ public final class PedroPathingDriveAdapter implements RouteFollower<PathChain>,
      */
     @Override
     public void stop() {
+        finishActiveRoute(RouteStatus.INTERRUPTED);
+        stageStoppedRequest();
+        interruptFollowerNow();
+    }
+
+    /** Start one checked route while retaining identity before Pedro initializes callbacks. */
+    private RouteExecution startRoute(PathChain route, Boolean holdEnd) {
+        requireRouteStartOutsideHeartbeat();
+        PedroRouteExecution execution = null;
+        routeStartInProgress = true;
+        try {
+            PathChain requestedRoute = Objects.requireNonNull(route, "route");
+            if (requestedRoute.size() <= 0) {
+                throw new IllegalArgumentException(
+                        "PedroPathingDriveAdapter.follow(route) requires at least one Path"
+                );
+            }
+
+            execution = new PedroRouteExecution(requestedRoute);
+            finishActiveRoute(RouteStatus.REPLACED);
+            prepareFollowerModeForRouteStart();
+            latestRouteExecution = execution;
+            if (holdEnd == null) {
+                follower.followPath(requestedRoute);
+            } else {
+                follower.followPath(requestedRoute, holdEnd.booleanValue());
+            }
+
+            if (execution.isIntegrationActive()) {
+                PathChain currentRoute = follower.getCurrentPathChain();
+                if (currentRoute != requestedRoute) {
+                    finishRouteAndStop(
+                            execution,
+                            currentRoute != null
+                                    ? RouteStatus.REPLACED
+                                    : RouteStatus.UNKNOWN_TERMINAL
+                    );
+                } else if (!follower.isBusy()) {
+                    finishRouteAndStop(execution, RouteStatus.UNKNOWN_TERMINAL);
+                }
+            }
+            return execution;
+        } catch (RuntimeException startFailure) {
+            if (execution != null) {
+                execution.finish(RouteStatus.FAILED);
+            }
+            if (execution == null || latestRouteExecution != execution) {
+                finishActiveRoute(RouteStatus.FAILED);
+            }
+            stageStoppedRequest();
+            throw breakFollower(startFailure);
+        } finally {
+            routeStartInProgress = false;
+        }
+    }
+
+    /** Capture the exact route and segment state before entering the owned vendor heartbeat. */
+    private RouteHeartbeatSnapshot captureActiveRouteSnapshot() {
+        PedroRouteExecution execution = latestRouteExecution;
+        if (execution == null || !execution.isIntegrationActive() || mode != Mode.FOLLOWER) {
+            return null;
+        }
+        return new RouteHeartbeatSnapshot(
+                execution,
+                follower.isBusy(),
+                follower.getCurrentPath(),
+                follower.getChainIndex()
+        );
+    }
+
+    /** Classify route progress before Pedro clears the evidence behind its busy flag. */
+    private void classifyRouteAfterHeartbeat(RouteHeartbeatSnapshot snapshot) {
+        if (snapshot == null
+                || snapshot.execution != latestRouteExecution
+                || !snapshot.execution.isIntegrationActive()) {
+            return;
+        }
+
+        PathChain currentChain = follower.getCurrentPathChain();
+        if (currentChain != snapshot.execution.route) {
+            finishRouteAndStop(
+                    snapshot.execution,
+                    currentChain != null
+                            ? RouteStatus.REPLACED
+                            : RouteStatus.UNKNOWN_TERMINAL
+            );
+            return;
+        }
+
+        if (follower.isBusy()) {
+            int currentIndex = follower.getChainIndex();
+            if (currentIndex > snapshot.chainIndex) {
+                if (currentIndex != snapshot.chainIndex + 1
+                        || snapshot.path == null
+                        || !snapshot.path.isAtParametricEnd()) {
+                    finishRouteAndStop(
+                            snapshot.execution,
+                            RouteStatus.FOLLOWER_TIMEOUT_OR_STALL
+                    );
+                }
+                return;
+            }
+            if (currentIndex < snapshot.chainIndex
+                    || (currentIndex == snapshot.chainIndex
+                    && snapshot.path != null
+                    && follower.getCurrentPath() != snapshot.path)) {
+                finishRouteAndStop(snapshot.execution, RouteStatus.UNKNOWN_TERMINAL);
+            }
+            return;
+        }
+
+        if (!snapshot.wasBusy) {
+            finishRouteAndStop(snapshot.execution, RouteStatus.UNKNOWN_TERMINAL);
+        } else if (endpointConstraintsSatisfied(snapshot.execution)) {
+            snapshot.execution.finish(RouteStatus.COMPLETED);
+        } else {
+            finishRouteAndStop(
+                    snapshot.execution,
+                    RouteStatus.FOLLOWER_TIMEOUT_OR_STALL
+            );
+        }
+    }
+
+    /** Return whether Pedro visibly achieved every final-path completion requirement. */
+    private boolean endpointConstraintsSatisfied(PedroRouteExecution execution) {
+        if (!execution.finalPath.isAtParametricEnd()) {
+            return false;
+        }
+        double finalT = execution.finalPath.getClosestPointTValue();
+        Pose closestFinalPoint = execution.finalPath.getPoint(finalT);
+        double closestFinalHeading = execution.route.getClosestPointHeadingGoal(
+                new PathChain.PathT(execution.route.size() - 1, finalT)
+        );
+        Pose actualPose = follower.getPose();
+        double translationError = Math.hypot(
+                actualPose.getX() - closestFinalPoint.getX(),
+                actualPose.getY() - closestFinalPoint.getY()
+        );
+        double headingDifference = actualPose.getHeading() - closestFinalHeading;
+        double headingError = Math.abs(Math.atan2(
+                Math.sin(headingDifference),
+                Math.cos(headingDifference)
+        ));
+        return follower.getVelocity().getMagnitude()
+                < execution.finalPath.getPathEndVelocityConstraint()
+                && translationError
+                < execution.finalPath.getPathEndTranslationalConstraint()
+                && headingError < execution.finalPath.getPathEndHeadingConstraint();
+    }
+
+    /** Retain one terminal status without changing a newer route execution. */
+    private void finishActiveRoute(RouteStatus status) {
+        PedroRouteExecution execution = latestRouteExecution;
+        if (execution != null) {
+            execution.finish(status);
+        }
+    }
+
+    /** Retain an abnormal terminal status and request immediate plus stable physical stop. */
+    private void finishRouteAndStop(PedroRouteExecution execution, RouteStatus status) {
+        if (execution != latestRouteExecution || !execution.isIntegrationActive()) {
+            return;
+        }
+        execution.finish(status);
+        stageStoppedRequest();
+        if (heartbeatInProgress) {
+            breakAfterHeartbeat = true;
+            return;
+        }
+        RuntimeException failure = breakFollower(null);
+        if (failure != null) {
+            throw failure;
+        }
+    }
+
+    /** Apply execution-scoped cancellation without stopping a newer route. */
+    private void cancelExecution(PedroRouteExecution execution) {
+        if (execution != latestRouteExecution || !execution.isIntegrationActive()) {
+            return;
+        }
+        execution.finish(RouteStatus.CANCELLED);
         stageStoppedRequest();
         interruptFollowerNow();
     }
@@ -289,20 +485,76 @@ public final class PedroPathingDriveAdapter implements RouteFollower<PathChain>,
         return primaryFailure;
     }
 
-    /** Fail closed when Pedro partially starts a route and then throws. */
-    private void failRouteStartClosed(RuntimeException startFailure) {
-        stageStoppedRequest();
-        RuntimeException failure = breakFollower(startFailure);
-        throw failure;
+    /** Reject recursive or heartbeat-time route replacement before Pedro can corrupt ownership. */
+    private void requireRouteStartOutsideHeartbeat() {
+        if (heartbeatInProgress || routeStartInProgress) {
+            throw new IllegalStateException(
+                    "Cannot start a Pedro route from inside Follower.update() or a route-start "
+                            + "callback; enqueue a fresh RouteTask so the route starts after the "
+                            + "current Pedro lifecycle call"
+            );
+        }
     }
 
-    /** Reject route replacement from inside a vendor heartbeat; ROUTE-02 owns replacement policy. */
-    private void requireRouteStartOutsideHeartbeat() {
-        if (heartbeatInProgress) {
-            throw new IllegalStateException(
-                    "Cannot start a Pedro route from inside Follower.update(); enqueue a fresh "
-                            + "RouteTask so the route starts after the current loop heartbeat"
+    /** Immutable pre-heartbeat evidence for one active Pedro route generation. */
+    private static final class RouteHeartbeatSnapshot {
+        final PedroRouteExecution execution;
+        final boolean wasBusy;
+        final Path path;
+        final int chainIndex;
+
+        RouteHeartbeatSnapshot(PedroRouteExecution execution,
+                               boolean wasBusy,
+                               Path path,
+                               int chainIndex) {
+            this.execution = execution;
+            this.wasBusy = wasBusy;
+            this.path = path;
+            this.chainIndex = chainIndex;
+        }
+    }
+
+    /** Pedro-owned implementation of one generation-safe backend-neutral execution handle. */
+    private final class PedroRouteExecution extends RouteExecution {
+        final PathChain route;
+        final Path finalPath;
+        private RouteStatus retainedStatus = RouteStatus.ACTIVE;
+
+        PedroRouteExecution(PathChain route) {
+            this.route = route;
+            this.finalPath = Objects.requireNonNull(
+                    route.getPath(route.size() - 1),
+                    "Pedro route final Path"
             );
+        }
+
+        @Override
+        protected RouteStatus integrationStatus() {
+            return retainedStatus;
+        }
+
+        @Override
+        protected void cancelActive() {
+            cancelExecution(this);
+        }
+
+        boolean isIntegrationActive() {
+            return retainedStatus == RouteStatus.ACTIVE;
+        }
+
+        void finish(RouteStatus status) {
+            RouteStatus terminalStatus = Objects.requireNonNull(status, "status");
+            if (terminalStatus == RouteStatus.NOT_STARTED
+                    || terminalStatus == RouteStatus.ACTIVE
+                    || terminalStatus == RouteStatus.TASK_TIMEOUT) {
+                throw new IllegalArgumentException(
+                        "Pedro integration cannot retain non-integration terminal status "
+                                + terminalStatus
+                );
+            }
+            if (isIntegrationActive()) {
+                retainedStatus = terminalStatus;
+            }
         }
     }
 }

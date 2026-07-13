@@ -189,16 +189,23 @@ Phoenix should not reimplement those planners. Wrap them in tasks, let Phoenix o
 supervision around them, and use Phoenix cancellation seams to interrupt them cleanly.
 
 Separate behavior selection from lifecycle ownership. If the vendor follower owns pose, callbacks,
-hold, or drive realization outside a busy route, the robot composition root must advance its
-adapter every Auto loop. Route and guidance Tasks may call the same hook while active, so the
-adapter must deduplicate by `LoopClock.cycle()`. Its `stop()` must apply a physical stopped state
+hold, or drive realization outside an active route execution, the robot composition root must
+advance its adapter every Auto loop. Route and guidance Tasks may call the same hook while active,
+so the adapter must deduplicate by `LoopClock.cycle()`. Its `stop()` must apply a physical stopped state
 immediately; storing zero for a future heartbeat is not enough.
+
+Separate route identity from mutable follower state too. `RouteFollower.follow(route)` returns a
+`RouteExecution` whose `status()` and `cancel()` belong only to that run. The adapter classifies the
+vendor transition once; `RouteTask.getRouteStatus()` then preserves normal completion, timeout or
+stall, interruption, replacement, failure, and unknown-terminal meaning for robot policy. This
+complexity belongs in the integration, not at every Auto call site.
 
 In a single-module codebase, keep that lane-5 code at the edges:
 
 - framework-owned bridges in `fw/integrations/<library>/`
 - robot-specific autos/examples in `.../autonomous/<library>/`
-- core framework and robot packages depending only on `RouteFollower<RouteT>` / `RouteTask<RouteT>`
+- core framework and robot packages depending only on `RouteFollower<RouteT>`, `RouteExecution`,
+  `RouteStatus`, and `RouteTask<RouteT>`
 
 ---
 
@@ -912,6 +919,11 @@ Task followCyclePath = RouteTasks.follow(roadRunnerAdapter, cyclePath, new Route
 
 The adapter is still project-specific, but Phoenix now provides the generic `RouteFollower<RouteT>` / `RouteTask<RouteT>` seam so the rest of your Auto can stay inside the normal task vocabulary.
 
+Each `RouteTask` retains the `RouteExecution` returned when it starts. Ordinary code still uses the
+same one-line `RouteTasks.follow(...)` call. Code that genuinely needs the terminal reason can keep
+the returned `RouteTask<RouteT>` and read `getRouteStatus()`; it should not inspect a vendor busy
+flag or call raw follower lifecycle methods.
+
 For a stateful adapter such as Pedro, give the same object to the robot composition root once during
 Auto initialization:
 
@@ -926,6 +938,11 @@ the adapter makes their same-cycle update calls harmless. The runtime's passive 
 reads the same current-cycle predictor that Phoenix localization updates, so this also avoids a
 second odometry owner without adding another scheduler or pose API to student Auto code.
 
+The adapter also classifies each route's terminal state during that owned heartbeat, while the
+evidence still exists. Robot code must use the adapter and Phoenix Task cancellation seams for
+start, replacement, interruption, and cancellation; raw Pedro Follower lifecycle calls are
+unsupported because they bypass the execution status.
+
 ### What still stays common
 
 Even though drive is special, the rest of the robot should still follow the same rules:
@@ -933,12 +950,20 @@ Even though drive is special, the rest of the robot should still follow the same
 - mechanisms are exposed through intent + status APIs
 - Auto routes call the same mechanism intents as TeleOp
 - route interruption should use Phoenix cancellation seams
+- continue/fallback/abort decisions remain visible as robot-owned strategy
 
-### Example Auto sequence with shared mechanism intents
+Truthful route status deliberately does not choose that strategy. Each robot routine must apply its
+own explicit route-failure policy; generic Task sequences do not silently acquire a new
+short-circuit rule.
+
+### Structural Auto composition example with shared mechanism intents
+
+This snippet demonstrates the shared Task vocabulary, not production failure policy. A real scoring
+routine must gate the position-dependent lift and shooter actions on its robot-owned route policy.
 
 ```java
 Task scoreCycle = Tasks.sequence(
-        roadRunnerAdapter.follow(preloadPath),
+        RouteTasks.follow(roadRunnerAdapter, preloadPath, new RouteTask.Config()),
         Tasks.runOnce(() -> lift.setTargetHeightIn(24.0)),
         Tasks.waitUntil(() -> lift.status().atTarget(), 1.5),
         Tasks.runOnce(shooter::requestSingleShot)

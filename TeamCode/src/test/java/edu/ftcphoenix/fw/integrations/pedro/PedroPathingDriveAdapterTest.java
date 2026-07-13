@@ -22,6 +22,8 @@ import edu.ftcphoenix.fw.drive.DriveSignal;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidance;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidancePlan;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceTask;
+import edu.ftcphoenix.fw.drive.route.RouteExecution;
+import edu.ftcphoenix.fw.drive.route.RouteStatus;
 import edu.ftcphoenix.fw.drive.route.RouteTask;
 import edu.ftcphoenix.fw.localization.AbsolutePoseEstimator;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
@@ -47,6 +49,7 @@ public final class PedroPathingDriveAdapterTest {
 
     private static final double EPSILON = 1e-9;
     private static final Pose START = new Pose(0.0, 0.0, 0.0);
+    private static final Pose MID = new Pose(6.0, 0.0, 0.0);
     private static final Pose END = new Pose(12.0, 0.0, 0.0);
 
     @Test
@@ -68,6 +71,7 @@ public final class PedroPathingDriveAdapterTest {
         assertEquals(1, fixture.localizer.updateCount);
         assertEquals(1, fixture.drivetrain.updateConstantsCount);
         assertFalse(task.isComplete());
+        assertEquals(RouteStatus.ACTIVE, task.getRouteStatus());
 
         fixture.clock.nextCycle(0.02);
         task.update(fixture.clock.clock());
@@ -96,6 +100,8 @@ public final class PedroPathingDriveAdapterTest {
 
         assertTrue(task.isComplete());
         assertEquals(TaskOutcome.SUCCESS, task.getOutcome());
+        assertEquals(RouteStatus.COMPLETED, task.getRouteStatus());
+        assertEquals(RouteStatus.COMPLETED, fixture.adapter.getLatestRouteStatus());
         assertFalse(fixture.follower.isBusy());
         assertEquals(1, fixture.localizer.updateCount);
         assertZero(fixture.drivetrain.lastDrivePowers);
@@ -116,9 +122,10 @@ public final class PedroPathingDriveAdapterTest {
     public void explicitNoHoldOverridesPedrosDefaultHold() {
         Fixture fixture = new Fixture(END);
 
-        fixture.adapter.follow(lineRoute(), false);
+        RouteExecution execution = fixture.adapter.follow(lineRoute(), false);
         fixture.adapter.update(fixture.clock.clock());
 
+        assertEquals(RouteStatus.COMPLETED, execution.status());
         assertFalse(fixture.follower.isBusy());
         assertZero(fixture.drivetrain.lastDrivePowers);
 
@@ -134,12 +141,26 @@ public final class PedroPathingDriveAdapterTest {
     }
 
     @Test
+    public void naturalCompletionAtPedroParametricThresholdDoesNotRequireExactEndpoint() {
+        Fixture fixture = new Fixture(new Pose(11.9, 0.0, 0.0));
+        RouteExecution execution = fixture.adapter.follow(parametricThresholdRoute(), false);
+
+        fixture.adapter.update(fixture.clock.clock());
+
+        assertEquals(RouteStatus.COMPLETED, execution.status());
+        assertEquals(RouteStatus.COMPLETED, fixture.adapter.getLatestRouteStatus());
+        assertFalse(fixture.follower.isBusy());
+        assertZero(fixture.drivetrain.lastDrivePowers);
+    }
+
+    @Test
     public void routeToManualTransitionCountsPedrosHiddenUpdateAsTheHeartbeat() {
         Fixture fixture = new Fixture(END);
         DriveSignal requested = new DriveSignal(0.50, -0.25, 0.20);
 
-        fixture.adapter.follow(lineRoute(), true);
+        RouteExecution execution = fixture.adapter.follow(lineRoute(), true);
         fixture.adapter.update(fixture.clock.clock());
+        assertEquals(RouteStatus.COMPLETED, execution.status());
         assertFalse(fixture.follower.isBusy());
         assertEquals(1, fixture.localizer.updateCount);
 
@@ -235,7 +256,6 @@ public final class PedroPathingDriveAdapterTest {
         int updateCountAtStop = fixture.localizer.updateCount;
 
         fixture.adapter.stop();
-        fixture.adapter.cancel();
         fixture.adapter.stop();
 
         assertEquals(updateCountAtStop, fixture.localizer.updateCount);
@@ -260,9 +280,10 @@ public final class PedroPathingDriveAdapterTest {
     public void endpointCancelCannotResurrectRetainedRouteOrHold() {
         Fixture fixture = new Fixture(END);
 
-        fixture.adapter.follow(lineRoute(), true);
-        fixture.adapter.cancel();
+        RouteExecution execution = fixture.adapter.follow(lineRoute(), true);
+        execution.cancel();
 
+        assertEquals(RouteStatus.CANCELLED, execution.status());
         assertFalse(fixture.follower.isBusy());
         assertEquals(0, fixture.localizer.updateCount);
         assertZero(fixture.drivetrain.lastDrivePowers);
@@ -303,6 +324,7 @@ public final class PedroPathingDriveAdapterTest {
 
         assertTrue(task.isComplete());
         assertEquals(TaskOutcome.TIMEOUT, task.getOutcome());
+        assertEquals(RouteStatus.TASK_TIMEOUT, task.getRouteStatus());
         assertEquals(2, fixture.localizer.updateCount);
         assertFalse(fixture.follower.isBusy());
         assertZero(fixture.drivetrain.lastDrivePowers);
@@ -317,6 +339,207 @@ public final class PedroPathingDriveAdapterTest {
     }
 
     @Test
+    public void impossibleEndpointConstraintsReportFollowerTimeoutInsteadOfCompletion() {
+        Fixture fixture = new Fixture(END);
+        RouteExecution execution = fixture.adapter.follow(endpointTimeoutRoute(), false);
+
+        fixture.adapter.update(fixture.clock.clock());
+
+        assertEquals(RouteStatus.FOLLOWER_TIMEOUT_OR_STALL, execution.status());
+        assertEquals(
+                RouteStatus.FOLLOWER_TIMEOUT_OR_STALL,
+                fixture.adapter.getLatestRouteStatus()
+        );
+        assertFalse(fixture.follower.isBusy());
+        assertZero(fixture.drivetrain.lastDrivePowers);
+    }
+
+    @Test
+    public void endpointClassificationUsesConstraintsMutatedBySameHeartbeatCallback() {
+        Fixture fixture = new Fixture(END);
+        PathChain route = lineRoute();
+        Path finalPath = route.getPath(route.size() - 1);
+        int[] callbackCount = {0};
+        route.setCallbacks(new OneShotCallback(() -> {
+            callbackCount[0]++;
+            finalPath.setVelocityConstraint(-1.0);
+            finalPath.setTranslationalConstraint(-1.0);
+            finalPath.setHeadingConstraint(-1.0);
+            finalPath.setTimeoutConstraint(-1.0);
+        }));
+        RouteExecution execution = fixture.adapter.follow(route, false);
+
+        fixture.adapter.update(fixture.clock.clock());
+
+        assertEquals(1, callbackCount[0]);
+        assertEquals(RouteStatus.FOLLOWER_TIMEOUT_OR_STALL, execution.status());
+        assertFalse(fixture.follower.isBusy());
+        assertZero(fixture.drivetrain.lastDrivePowers);
+    }
+
+    @Test
+    public void endpointClassificationUsesHeadingGoalCachedByPedroBeforeCallback() {
+        Fixture fixture = new Fixture(END);
+        PathChain route = lineRoute();
+        Path finalPath = route.getPath(route.size() - 1);
+        finalPath.setConstantHeadingInterpolation(Math.PI / 2.0);
+        finalPath.setTimeoutConstraint(-1.0);
+        int[] callbackCount = {0};
+        route.setCallbacks(new OneShotCallback(() -> {
+            callbackCount[0]++;
+            finalPath.setConstantHeadingInterpolation(0.0);
+        }));
+        RouteExecution execution = fixture.adapter.follow(route, false);
+
+        fixture.adapter.update(fixture.clock.clock());
+
+        assertEquals(1, callbackCount[0]);
+        assertEquals(RouteStatus.FOLLOWER_TIMEOUT_OR_STALL, execution.status());
+        assertFalse(fixture.follower.isBusy());
+        assertZero(fixture.drivetrain.lastDrivePowers);
+    }
+
+    @Test
+    public void intermediateStallStopsTheWholeRouteInsteadOfSkippingAPath() {
+        Fixture fixture = new Fixture(START, immediateStallConstants());
+        RouteExecution execution = fixture.adapter.follow(twoSegmentRoute(), false);
+
+        fixture.adapter.update(fixture.clock.clock());
+
+        assertEquals(RouteStatus.FOLLOWER_TIMEOUT_OR_STALL, execution.status());
+        assertFalse(fixture.follower.isBusy());
+        assertZero(fixture.drivetrain.lastDrivePowers);
+    }
+
+    @Test
+    public void finalPathStallReportsFollowerTimeoutWithoutWaitingForEndpointTimeout() {
+        Fixture fixture = new Fixture(MID, immediateStallConstants());
+        RouteExecution execution = fixture.adapter.follow(lineRoute(), false);
+
+        fixture.adapter.update(fixture.clock.clock());
+
+        assertEquals(RouteStatus.FOLLOWER_TIMEOUT_OR_STALL, execution.status());
+        assertFalse(fixture.follower.isBusy());
+        assertZero(fixture.drivetrain.lastDrivePowers);
+    }
+
+    @Test
+    public void manualTakeoverInterruptsOnlyTheActiveRoute() {
+        Fixture fixture = new Fixture(START);
+        RouteExecution execution = fixture.adapter.follow(lineRoute(), false);
+
+        fixture.adapter.drive(new DriveSignal(0.40, 0.10, -0.20));
+
+        assertEquals(RouteStatus.INTERRUPTED, execution.status());
+        assertFalse(fixture.follower.isBusy());
+        assertZero(fixture.drivetrain.lastDrivePowers);
+
+        execution.cancel();
+        assertEquals(RouteStatus.INTERRUPTED, execution.status());
+    }
+
+    @Test
+    public void replacementRetainsOldStatusAndOldCancelCannotStopNewRoute() {
+        Fixture fixture = new Fixture(START);
+        PathChain firstRoute = lineRoute();
+        PathChain secondRoute = lineRoute();
+        RouteExecution first = fixture.adapter.follow(firstRoute, false);
+
+        RouteExecution second = fixture.adapter.follow(secondRoute, false);
+
+        assertEquals(RouteStatus.REPLACED, first.status());
+        assertEquals(RouteStatus.ACTIVE, second.status());
+        assertEquals(RouteStatus.ACTIVE, fixture.adapter.getLatestRouteStatus());
+        assertSame(secondRoute, fixture.follower.getCurrentPathChain());
+        assertTrue(fixture.follower.isBusy());
+
+        int breakCountAfterReplacement = fixture.drivetrain.breakFollowingCount;
+        first.cancel();
+
+        assertEquals(RouteStatus.REPLACED, first.status());
+        assertEquals(RouteStatus.ACTIVE, second.status());
+        assertEquals(RouteStatus.ACTIVE, fixture.adapter.getLatestRouteStatus());
+        assertEquals(breakCountAfterReplacement, fixture.drivetrain.breakFollowingCount);
+        assertSame(secondRoute, fixture.follower.getCurrentPathChain());
+        assertTrue(fixture.follower.isBusy());
+
+        fixture.localizer.pose = END;
+        fixture.clock.nextCycle(0.02);
+        fixture.adapter.update(fixture.clock.clock());
+
+        assertEquals(RouteStatus.REPLACED, first.status());
+        assertEquals(RouteStatus.COMPLETED, second.status());
+        assertEquals(RouteStatus.COMPLETED, fixture.adapter.getLatestRouteStatus());
+    }
+
+    @Test
+    public void unsupportedRawFollowerBreakReportsUnknownTerminal() {
+        Fixture fixture = new Fixture(START);
+        RouteExecution execution = fixture.adapter.follow(lineRoute(), false);
+
+        fixture.follower.breakFollowing();
+        fixture.adapter.update(fixture.clock.clock());
+
+        assertEquals(RouteStatus.UNKNOWN_TERMINAL, execution.status());
+        assertFalse(fixture.follower.isBusy());
+        assertZero(fixture.drivetrain.lastDrivePowers);
+    }
+
+    @Test
+    public void routeUpdateFailureRetainsFailedStatusAndFailsClosed() {
+        Fixture fixture = new Fixture(START);
+        RouteExecution execution = fixture.adapter.follow(lineRoute(), false);
+        RuntimeException expected = new IllegalStateException("test route update failure");
+        fixture.localizer.throwOnNextUpdate = expected;
+
+        try {
+            fixture.adapter.update(fixture.clock.clock());
+            fail("Expected the route heartbeat to propagate the localizer failure");
+        } catch (RuntimeException actual) {
+            assertSame(expected, actual);
+        }
+
+        assertEquals(RouteStatus.FAILED, execution.status());
+        assertEquals(RouteStatus.FAILED, fixture.adapter.getLatestRouteStatus());
+        assertFalse(fixture.follower.isBusy());
+        assertZero(fixture.drivetrain.lastDrivePowers);
+    }
+
+    @Test
+    public void snapshotGetterFailureFailsClosedAndDoesNotStrandHeartbeatGuard() {
+        RecordingLocalizer localizer = new RecordingLocalizer(START);
+        RecordingDrivetrain drivetrain = new RecordingDrivetrain();
+        SnapshotThrowingFollower follower = new SnapshotThrowingFollower(localizer, drivetrain);
+        PedroPathingDriveAdapter adapter = new PedroPathingDriveAdapter(follower);
+        localizer.clearObservations();
+        drivetrain.clearObservations();
+        ManualLoopClock clock = new ManualLoopClock();
+        RouteExecution execution = adapter.follow(lineRoute(), false);
+        RuntimeException snapshotFailure = new IllegalStateException("test snapshot failure");
+        follower.throwOnNextCurrentPath = snapshotFailure;
+
+        try {
+            adapter.update(clock.clock());
+            fail("Expected snapshot getter failure");
+        } catch (RuntimeException actual) {
+            assertSame(snapshotFailure, actual);
+        }
+
+        assertEquals(RouteStatus.FAILED, execution.status());
+        assertFalse(follower.isBusy());
+        assertEquals(0, localizer.updateCount);
+        assertZero(drivetrain.lastDrivePowers);
+
+        adapter.update(clock.clock());
+        assertEquals(0, localizer.updateCount);
+
+        clock.nextCycle(0.02);
+        adapter.update(clock.clock());
+        assertEquals(1, localizer.updateCount);
+        assertZero(drivetrain.lastDrivePowers);
+    }
+
+    @Test
     public void nextRouteReplacesStableStoppedManualMode() {
         Fixture fixture = new Fixture(START);
 
@@ -328,8 +551,9 @@ public final class PedroPathingDriveAdapterTest {
         assertZero(fixture.drivetrain.lastDrivePowers);
 
         PathChain nextRoute = lineRoute();
-        fixture.adapter.follow(nextRoute, false);
+        RouteExecution execution = fixture.adapter.follow(nextRoute, false);
 
+        assertEquals(RouteStatus.ACTIVE, execution.status());
         assertFalse(fixture.follower.isTeleopDrive());
         assertTrue(fixture.follower.isBusy());
         assertSame(nextRoute, fixture.follower.getCurrentPathChain());
@@ -360,6 +584,7 @@ public final class PedroPathingDriveAdapterTest {
 
         assertFalse(fixture.follower.isBusy());
         assertFalse(fixture.follower.isTeleopDrive());
+        assertEquals(RouteStatus.FAILED, fixture.adapter.getLatestRouteStatus());
         assertZero(fixture.drivetrain.lastDrivePowers);
 
         fixture.drivetrain.clearDriveObservation();
@@ -368,6 +593,89 @@ public final class PedroPathingDriveAdapterTest {
 
         assertFalse(fixture.drivetrain.sawNonZeroDrive);
         assertZero(fixture.drivetrain.lastDrivePowers);
+    }
+
+    @Test
+    public void invalidReplacementFailsClosedAndStopsActiveNonzeroRoute() {
+        Fixture fixture = new Fixture(START);
+        RouteExecution activeExecution = fixture.adapter.follow(lineRoute(), false);
+        fixture.drivetrain.forceNextRunDrive = new double[]{0.70, 0.0, 0.0, 0.0};
+        fixture.adapter.update(fixture.clock.clock());
+        assertTrue(fixture.drivetrain.sawNonZeroDrive);
+
+        try {
+            fixture.adapter.follow(new PathChain(), false);
+            fail("Expected an empty replacement route to fail");
+        } catch (IllegalArgumentException expected) {
+            assertTrue(expected.getMessage().contains("at least one Path"));
+        }
+
+        assertEquals(RouteStatus.FAILED, activeExecution.status());
+        assertEquals(RouteStatus.FAILED, fixture.adapter.getLatestRouteStatus());
+        assertFalse(fixture.follower.isBusy());
+        assertZero(fixture.drivetrain.lastDrivePowers);
+
+        fixture.drivetrain.clearDriveObservation();
+        fixture.clock.nextCycle(0.02);
+        fixture.adapter.update(fixture.clock.clock());
+        assertFalse(fixture.drivetrain.sawNonZeroDrive);
+        assertZero(fixture.drivetrain.lastDrivePowers);
+    }
+
+    @Test
+    public void callbackInitializationFailureRetainsFailedStatusAndStopsPartialStart() {
+        Fixture fixture = new Fixture(START);
+        RuntimeException startFailure = new IllegalStateException(
+                "test callback initialization failure"
+        );
+        PathChain route = lineRoute();
+        route.setCallbacks(new InitializeCallback(() -> {
+            throw startFailure;
+        }));
+
+        try {
+            fixture.adapter.follow(route, false);
+            fail("Expected callback initialization to fail the route start");
+        } catch (RuntimeException actual) {
+            assertSame(startFailure, actual);
+        }
+
+        assertEquals(RouteStatus.FAILED, fixture.adapter.getLatestRouteStatus());
+        assertFalse(fixture.follower.isBusy());
+        assertZero(fixture.drivetrain.lastDrivePowers);
+
+        fixture.drivetrain.clearDriveObservation();
+        fixture.adapter.update(fixture.clock.clock());
+        assertFalse(fixture.drivetrain.sawNonZeroDrive);
+        assertZero(fixture.drivetrain.lastDrivePowers);
+    }
+
+    @Test
+    public void postStartValidationGetterFailureRetainsFailedStatusAndStopsRoute() {
+        RecordingLocalizer localizer = new RecordingLocalizer(START);
+        RecordingDrivetrain drivetrain = new RecordingDrivetrain();
+        StartValidationThrowingFollower follower = new StartValidationThrowingFollower(
+                localizer,
+                drivetrain
+        );
+        PedroPathingDriveAdapter adapter = new PedroPathingDriveAdapter(follower);
+        localizer.clearObservations();
+        drivetrain.clearObservations();
+        RuntimeException validationFailure = new IllegalStateException(
+                "test post-start validation failure"
+        );
+        follower.validationFailure = validationFailure;
+
+        try {
+            adapter.follow(lineRoute(), false);
+            fail("Expected post-start validation getter failure");
+        } catch (RuntimeException actual) {
+            assertSame(validationFailure, actual);
+        }
+
+        assertEquals(RouteStatus.FAILED, adapter.getLatestRouteStatus());
+        assertFalse(follower.isBusy());
+        assertZero(drivetrain.lastDrivePowers);
     }
 
     @Test
@@ -380,13 +688,38 @@ public final class PedroPathingDriveAdapterTest {
             fixture.adapter.update(fixture.clock.clock());
         }));
 
-        fixture.adapter.follow(route, false);
+        RouteExecution execution = fixture.adapter.follow(route, false);
         fixture.adapter.update(fixture.clock.clock());
         fixture.adapter.update(fixture.clock.clock());
 
+        assertEquals(RouteStatus.ACTIVE, execution.status());
         assertEquals(1, callbackCount[0]);
         assertEquals(1, fixture.localizer.updateCount);
         assertEquals(1, fixture.drivetrain.updateConstantsCount);
+    }
+
+    @Test
+    public void callbackInitializationUpdateReentryDefersWithoutConsumingCycle() {
+        Fixture fixture = new Fixture(START);
+        int[] callbackCount = {0};
+        PathChain route = lineRoute();
+        route.setCallbacks(new InitializeCallback(() -> {
+            callbackCount[0]++;
+            fixture.adapter.update(fixture.clock.clock());
+        }));
+
+        RouteExecution execution = fixture.adapter.follow(route, false);
+
+        assertEquals(1, callbackCount[0]);
+        assertEquals(0, fixture.localizer.updateCount);
+        assertEquals(RouteStatus.ACTIVE, execution.status());
+
+        fixture.adapter.update(fixture.clock.clock());
+        fixture.adapter.update(fixture.clock.clock());
+
+        assertEquals(1, fixture.localizer.updateCount);
+        assertEquals(1, fixture.drivetrain.updateConstantsCount);
+        assertEquals(RouteStatus.ACTIVE, execution.status());
     }
 
     @Test
@@ -395,8 +728,9 @@ public final class PedroPathingDriveAdapterTest {
         PathChain route = lineRoute();
         route.setCallbacks(new InitializeCallback(fixture.adapter::stop));
 
-        fixture.adapter.follow(route, true);
+        RouteExecution execution = fixture.adapter.follow(route, true);
 
+        assertEquals(RouteStatus.INTERRUPTED, execution.status());
         assertFalse(fixture.follower.isBusy());
         assertZero(fixture.drivetrain.lastDrivePowers);
 
@@ -417,13 +751,33 @@ public final class PedroPathingDriveAdapterTest {
     }
 
     @Test
+    public void callbackInitializationRouteStartIsRejectedAndFailsOuterStartClosed() {
+        Fixture fixture = new Fixture(START);
+        PathChain route = lineRoute();
+        route.setCallbacks(new InitializeCallback(
+                () -> fixture.adapter.follow(lineRoute(), false)
+        ));
+
+        try {
+            fixture.adapter.follow(route, false);
+            fail("Expected callback-initializer route replacement to be rejected");
+        } catch (IllegalStateException expected) {
+            assertTrue(expected.getMessage().contains("enqueue a fresh RouteTask"));
+        }
+
+        assertEquals(RouteStatus.FAILED, fixture.adapter.getLatestRouteStatus());
+        assertFalse(fixture.follower.isBusy());
+        assertZero(fixture.drivetrain.lastDrivePowers);
+    }
+
+    @Test
     public void callbackRouteStartIsRejectedAndFailsClosed() {
         Fixture fixture = new Fixture(START);
         PathChain route = lineRoute();
         route.setCallbacks(new OneShotCallback(
                 () -> fixture.adapter.follow(lineRoute(), false)
         ));
-        fixture.adapter.follow(route, false);
+        RouteExecution execution = fixture.adapter.follow(route, false);
 
         try {
             fixture.adapter.update(fixture.clock.clock());
@@ -433,6 +787,7 @@ public final class PedroPathingDriveAdapterTest {
         }
 
         assertEquals(1, fixture.localizer.updateCount);
+        assertEquals(RouteStatus.FAILED, execution.status());
         assertFalse(fixture.follower.isBusy());
         assertZero(fixture.drivetrain.lastDrivePowers);
 
@@ -450,7 +805,7 @@ public final class PedroPathingDriveAdapterTest {
         PathChain route = lineRoute();
         route.setCallbacks(new OneShotCallback(fixture.adapter::stop));
 
-        fixture.adapter.follow(route, false);
+        RouteExecution execution = fixture.adapter.follow(route, false);
         int breakCountBeforeHeartbeat = fixture.drivetrain.breakFollowingCount;
         fixture.drivetrain.forceNextRunDrive = new double[]{0.70, 0.0, 0.0, 0.0};
         fixture.drivetrain.clearDriveObservation();
@@ -459,6 +814,7 @@ public final class PedroPathingDriveAdapterTest {
 
         assertTrue(fixture.drivetrain.sawNonZeroDrive);
         assertZero(fixture.drivetrain.lastDrivePowers);
+        assertEquals(RouteStatus.INTERRUPTED, execution.status());
         assertEquals(
                 breakCountBeforeHeartbeat + 2,
                 fixture.drivetrain.breakFollowingCount
@@ -546,9 +902,50 @@ public final class PedroPathingDriveAdapterTest {
     }
 
     private static PathChain lineRoute() {
-        Path path = new Path(new BezierLine(START, END), testConstraints());
+        return lineRoute(testConstraints());
+    }
+
+    private static PathChain lineRoute(PathConstraints constraints) {
+        Path path = new Path(new BezierLine(START, END), constraints);
         path.setConstantHeadingInterpolation(0.0);
-        return new PathChain(testConstraints(), path);
+        return new PathChain(constraints, path);
+    }
+
+    private static PathChain twoSegmentRoute() {
+        PathConstraints constraints = testConstraints();
+        Path first = new Path(new BezierLine(START, MID), constraints);
+        Path second = new Path(new BezierLine(MID, END), constraints);
+        first.setConstantHeadingInterpolation(0.0);
+        second.setConstantHeadingInterpolation(0.0);
+        return new PathChain(constraints, first, second);
+    }
+
+    private static PathChain endpointTimeoutRoute() {
+        PathConstraints impossibleEndpointConstraints = new PathConstraints(
+                0.99,
+                -1.0,
+                -1.0,
+                -1.0,
+                -1.0,
+                1.0,
+                10,
+                1.0
+        );
+        return lineRoute(impossibleEndpointConstraints);
+    }
+
+    private static PathChain parametricThresholdRoute() {
+        PathConstraints thresholdConstraints = new PathConstraints(
+                0.99,
+                0.10,
+                0.20,
+                0.01,
+                10_000.0,
+                1.0,
+                10,
+                1.0
+        );
+        return lineRoute(thresholdConstraints);
     }
 
     private static PathConstraints testConstraints() {
@@ -564,6 +961,19 @@ public final class PedroPathingDriveAdapterTest {
         );
     }
 
+    private static FollowerConstants testFollowerConstants() {
+        return new FollowerConstants().automaticHoldEnd(true);
+    }
+
+    private static FollowerConstants immediateStallConstants() {
+        FollowerConstants constants = testFollowerConstants();
+        constants.stuckVelocity = 1.0;
+        constants.stuckTValueLow = -1.0;
+        constants.stuckTValueHigh = 2.0;
+        constants.stuckTimeout = -1.0;
+        return constants;
+    }
+
     private static void assertZero(double[] powers) {
         assertArrayEquals(new double[]{0.0, 0.0, 0.0, 0.0}, powers, EPSILON);
     }
@@ -577,6 +987,53 @@ public final class PedroPathingDriveAdapterTest {
         return false;
     }
 
+    /** Real Pedro follower with one injectable read failure at the adapter snapshot boundary. */
+    private static final class SnapshotThrowingFollower extends Follower {
+        RuntimeException throwOnNextCurrentPath;
+
+        SnapshotThrowingFollower(RecordingLocalizer localizer,
+                                 RecordingDrivetrain drivetrain) {
+            super(testFollowerConstants(), localizer, drivetrain, testConstraints());
+        }
+
+        @Override
+        public Path getCurrentPath() {
+            RuntimeException failure = throwOnNextCurrentPath;
+            throwOnNextCurrentPath = null;
+            if (failure != null) {
+                throw failure;
+            }
+            return super.getCurrentPath();
+        }
+    }
+
+    /** Real Pedro follower that fails only in the adapter's post-start validation read. */
+    private static final class StartValidationThrowingFollower extends Follower {
+        RuntimeException validationFailure;
+        private RuntimeException throwOnNextCurrentPathChain;
+
+        StartValidationThrowingFollower(RecordingLocalizer localizer,
+                                        RecordingDrivetrain drivetrain) {
+            super(testFollowerConstants(), localizer, drivetrain, testConstraints());
+        }
+
+        @Override
+        public void followPath(PathChain route, boolean holdEnd) {
+            super.followPath(route, holdEnd);
+            throwOnNextCurrentPathChain = validationFailure;
+        }
+
+        @Override
+        public PathChain getCurrentPathChain() {
+            RuntimeException failure = throwOnNextCurrentPathChain;
+            throwOnNextCurrentPathChain = null;
+            if (failure != null) {
+                throw failure;
+            }
+            return super.getCurrentPathChain();
+        }
+    }
+
     private static final class Fixture {
         final ManualLoopClock clock = new ManualLoopClock();
         final RecordingLocalizer localizer;
@@ -585,9 +1042,13 @@ public final class PedroPathingDriveAdapterTest {
         final PedroPathingDriveAdapter adapter;
 
         Fixture(Pose initialPose) {
+            this(initialPose, testFollowerConstants());
+        }
+
+        Fixture(Pose initialPose, FollowerConstants constants) {
             localizer = new RecordingLocalizer(initialPose);
             follower = new Follower(
-                    new FollowerConstants().automaticHoldEnd(true),
+                    constants,
                     localizer,
                     drivetrain,
                     testConstraints()

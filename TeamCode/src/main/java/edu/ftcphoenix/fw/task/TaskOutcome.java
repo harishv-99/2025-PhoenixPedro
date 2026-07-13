@@ -39,8 +39,10 @@ public enum TaskOutcome {
     TIMEOUT,
 
     /**
-     * The task was stopped early through {@link Task#cancel()} or by a runner-level cancellation
-     * helper such as {@link TaskRunner#cancelAndClear()}.
+     * The task ended through cancellation or another task-specific fail-closed abort.
+     *
+     * <p>Consult a task's more-specific status API, when it has one, to distinguish direct
+     * {@link Task#cancel()} from other abnormal terminal reasons.</p>
      */
     CANCELLED
 }
