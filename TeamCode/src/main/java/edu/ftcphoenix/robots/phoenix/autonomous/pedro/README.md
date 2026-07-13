@@ -7,10 +7,10 @@ becoming strategy scripts.
 Current roles:
 
 - `PhoenixPedroPathFactory` builds Pedro `PathChain` values through the runtime's checked
-  `pathBuilder()` and returns the explicitly named `pedroStartPose` for the selected
-  `PhoenixAutoSpec`.
+  `pathBuilder()`, returns the explicitly named `pedroStartPose`, and owns current-pose route
+  construction for the selected `PhoenixAutoSpec`.
 - `PhoenixPedroAutoContext` carries the selected spec, profile snapshot, Phoenix capabilities,
-  drive adapter, and built path set into routine factories.
+  drive adapter, path factory, and fixed path set into routine factories.
 - `PhoenixPedroAutoRoutineFactory` maps strategy ids to Phoenix Task sequences.
 - `PhoenixPedroAutoOpModeBase` owns shared FTC/Pedro/Phoenix construction and lifecycle glue.
 - Concrete selector/static OpModes choose or collect a spec, then delegate.
@@ -22,7 +22,7 @@ Current roles:
 1. derive an Auto-specific defensive `PhoenixProfile` snapshot;
 2. ask project `Constants` for one complete `PedroPathingRuntime`;
 3. pass `runtime.driveAdapter()` and `runtime.motionPredictor()` into `PhoenixRobot.initAuto(...)`;
-4. build paths and apply `paths.pedroStartPose` through `runtime.setStartingPose(...)`;
+4. build fixed paths and apply `paths.pedroStartPose` through `runtime.setStartingPose(...)`;
 5. build and enqueue the selected routine over `PhoenixCapabilities` and the same drive adapter.
 
 The runtime owns one profile-configured Pinpoint predictor, one passive Pedro localizer view, one
@@ -41,10 +41,16 @@ unknown terminal transition during its owned heartbeat; `RouteTask.getRouteStatu
 backend-neutral reason. Task timeout and active cancellation remain distinct statuses, and cleanup
 of an old Task cannot cancel a newer route.
 
-Robot routines continue to use the short `RouteTasks.follow(adapter, route, cfg)` call. They must not
-start, break, replace, manually take over, update, or reset pose through the raw Pedro Follower;
-those lifecycle calls bypass the adapter's ownership and truthful status. Route building and
-read-only integration inspection remain supported.
+Fixed robot routes continue to use the short `RouteTasks.follow(adapter, route, cfg)` call. Robot
+routines must not start, break, replace, manually take over, update, or reset pose through the raw
+Pedro Follower; those lifecycle calls bypass the adapter's ownership and truthful status. Route
+building and read-only integration inspection remain supported.
+
+The placeholder outbound route is fixed and remains eager. The return helper uses
+`RouteTasks.followBuiltAtStart(...)` with a lambda to `PhoenixPedroPathFactory`, so the factory reads
+and snapshots the current Pedro pose only when that phase begins, then builds the concrete return
+through the checked runtime builder. The generic route Task never sees the Follower, vision state,
+or strategy, and a failed build cannot start the adapter.
 
 The recurring Auto order is:
 
@@ -72,8 +78,10 @@ global pose, and pose drift.
 ## Where students add real Auto behavior
 
 The checked-in geometry is still the small placeholder integration route. Replace geometry branches
-inside `PhoenixPedroPathFactory` with real alliance/start/partner paths. Keep high-level strategy
-selection in `PhoenixPedroAutoRoutineFactory`, and keep reusable scoring/targeting snippets in
+inside `PhoenixPedroPathFactory` with real alliance/start/partner paths. Keep fixed routes eager;
+for live-pose or live-vision geometry, add a narrow path-factory method and pass it to
+`followBuiltAtStart(...)`. Keep high-level strategy selection in
+`PhoenixPedroAutoRoutineFactory`, and keep reusable scoring/targeting snippets in
 `PhoenixAutoTasks`. Routine Tasks continue using the existing adapter and `PhoenixCapabilities`;
 they do not need a separate localization API.
 

@@ -84,6 +84,10 @@ the framework API.
   success solely from a vendor's idle/not-busy flag; classify and retain endpoint completion,
   follower timeout/stall, interruption, replacement, failure, and unknown terminal state at the
   integration boundary.
+- Build fixed routes eagerly. When route geometry depends on current pose, vision, or another live
+  fact, resolve it exactly once through the explicitly named start-time Route Task factory. Keep
+  construction quick and non-blocking, keep interpretation in robot-owned path code, and leave the
+  follower untouched if construction fails.
 - Preserve the documented coordinate contract: robot frame `+X` forward, `+Y` left, `+Z` up;
   yaw/omega counter-clockwise positive; distances in inches; angles in radians. Put frames and
   units in names where ambiguity is possible, and convert third-party conventions at boundaries.

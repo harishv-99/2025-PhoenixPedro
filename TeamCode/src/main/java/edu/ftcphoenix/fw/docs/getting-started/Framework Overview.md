@@ -342,6 +342,23 @@ terminal states use the existing fail-closed `TaskOutcome.CANCELLED` compatibili
 `getRouteStatus()` when robot policy needs the precise reason instead of reconstructing it from a
 vendor busy flag.
 
+Fixed routes use the ordinary eager `RouteTasks.follow(...)` factory. If a return or fallback route
+must use live pose, vision, or another current fact, use the explicitly named
+`RouteTasks.followBuiltAtStart(...)` factory instead:
+
+```java
+RouteTask<PathChain> returnToStart = RouteTasks.followBuiltAtStart(
+        "returnToStart",
+        pedro.driveAdapter(),
+        () -> robotPaths.buildReturnFromCurrentPose(returnPose),
+        routeConfig
+);
+```
+
+The supplier runs exactly once at that Task's `start(clock)` boundary. Keep it quick and
+non-blocking, and let robot-owned path code read current snapshots and build the vendor route. Core
+Task code and the follower adapter still receive no sensor, vision, alliance, or strategy types.
+
 A stateful external follower may need a heartbeat even after its route Task completes. Pedro, for
 example, keeps hold-end control, pose updates, callbacks, and manual drive inside
 `Follower.update()`. Its adapter therefore has one stable Auto composition-root owner and
@@ -373,14 +390,19 @@ robot-side folder such as `autonomous/pedro/`. The folder split does not make th
 optional by itself, but it keeps the boundary obvious and makes later source-set or module
 extraction mechanical.
 
-The following snippet shows the composition shape only. A production scoring routine must use
+The following snippet keeps a fixed outbound route eager and builds its return from live state when
+that phase starts. It shows the composition shape only; a production scoring routine must use
 robot-owned policy to gate position-dependent work after each route result.
 
 ```java
 Task auto = Tasks.sequence(
         RouteTasks.follow(pedro.driveAdapter(), outboundPath, new RouteTask.Config()),
         Tasks.runOnce(scoringSupervisor::requestSingleShot),
-        RouteTasks.follow(pedro.driveAdapter(), returnPath, new RouteTask.Config())
+        RouteTasks.followBuiltAtStart(
+                "return",
+                pedro.driveAdapter(),
+                () -> robotPaths.buildReturnFromCurrentPose(returnPose),
+                new RouteTask.Config())
 );
 ```
 

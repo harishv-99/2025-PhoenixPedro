@@ -174,6 +174,12 @@ manual-mode transition uses that next loop's vendor-hidden zero update, then app
 nonzero command on the following heartbeat. This small, predictable staging delay is preferable to
 a hidden second follower update.
 
+If a route is built with `RouteTasks.followBuiltAtStart(...)`, its supplier runs exactly once when
+that Route Task starts in the Task-runner phase. It can therefore snapshot the localization,
+targeting, or vision facts already refreshed earlier in the same cycle. Keep the supplier quick and
+non-blocking; the resulting route starts in that phase and begins advancing on the next owned
+follower heartbeat.
+
 ---
 
 ## 5. Where time comes from (and where it must not come from)

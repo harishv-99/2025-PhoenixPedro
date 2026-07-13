@@ -1,6 +1,8 @@
 package edu.ftcphoenix.robots.phoenix.autonomous.pedro;
 
 import com.pedropathing.geometry.BezierLine;
+import com.pedropathing.geometry.BezierPoint;
+import com.pedropathing.geometry.Curve;
 import com.pedropathing.geometry.Pose;
 import com.pedropathing.paths.PathChain;
 
@@ -22,7 +24,11 @@ import edu.ftcphoenix.robots.phoenix.autonomous.PhoenixAutoSpec;
 public final class PhoenixPedroPathFactory {
 
     /**
-     * Built Pedro path set plus the poses used to initialize/debug the follower.
+     * Fixed Pedro path set plus the poses used to initialize/debug the follower.
+     *
+     * <p>Only geometry whose start is known during INIT belongs here. Routes that depend on the
+     * robot's later pose are built by methods such as {@link #buildReturnFromCurrentPose(Pose)}
+     * when their owning Task starts.</p>
      */
     public static final class Paths {
         /**
@@ -34,18 +40,13 @@ public final class PhoenixPedroPathFactory {
          */
         public final PathChain outboundPath;
         /**
-         * Placeholder return/park path.
-         */
-        public final PathChain returnPath;
-        /**
          * Human-facing label for telemetry.
          */
         public final String label;
 
-        private Paths(Pose pedroStartPose, PathChain outboundPath, PathChain returnPath, String label) {
+        private Paths(Pose pedroStartPose, PathChain outboundPath, String label) {
             this.pedroStartPose = pedroStartPose;
             this.outboundPath = outboundPath;
-            this.returnPath = returnPath;
             this.label = label;
         }
     }
@@ -66,13 +67,15 @@ public final class PhoenixPedroPathFactory {
     }
 
     /**
-     * Build the currently checked-in placeholder path set for the selected Auto spec.
+     * Build the currently checked-in fixed placeholder path set for the selected Auto spec.
      *
      * <p>The path labels and start pose already depend on the spec, but the geometry is still the
      * old twelve-inch Pedro integration route. Replace this method's geometry branches when real
      * Decode routes are ready. The returned {@link Paths#pedroStartPose} is applied by the Auto
      * composition root through the Pedro integration lane so Pedro and Phoenix start from one
-     * synchronized pose. This factory never advances the Follower.</p>
+     * synchronized pose. Return/park geometry is deliberately not prebuilt here because its start
+     * should be the robot's current pose when that Task begins. This factory never advances the
+     * Follower.</p>
      */
     public Paths build(PhoenixAutoSpec spec, PhoenixCapabilities capabilities) {
         Objects.requireNonNull(spec, "spec");
@@ -92,12 +95,61 @@ public final class PhoenixPedroPathFactory {
                 .addParametricCallback(0.50, spinUpCallback(capabilities))
                 .build();
 
-        PathChain back = pedroRuntime.pathBuilder()
-                .addPath(new BezierLine(forwardPose, pedroStartPose))
-                .setLinearHeadingInterpolation(forwardPose.getHeading(), pedroStartPose.getHeading())
-                .build();
+        return new Paths(pedroStartPose, outbound, labelFor(spec, distanceIn));
+    }
 
-        return new Paths(pedroStartPose, outbound, back, labelFor(spec, distanceIn));
+    /**
+     * Build a return path from a one-time snapshot of the Follower's current Pedro pose.
+     *
+     * <p>This operation is intended for a start-time route factory. It reads the current pose once,
+     * copies both endpoints, and builds through {@link PedroPathingRuntime#pathBuilder()} so the
+     * runtime's validated constraints remain in force. It performs no Follower lifecycle call;
+     * route start, heartbeat, cancellation, and stop remain owned by the drive adapter.</p>
+     *
+     * @param pedroReturnPose return target expressed in Pedro field coordinates
+     * @return newly built path from the sampled current pose to {@code pedroReturnPose}
+     */
+    public PathChain buildReturnFromCurrentPose(Pose pedroReturnPose) {
+        Pose currentPose = snapshotPose(
+                Objects.requireNonNull(
+                        pedroRuntime.follower().getPose(),
+                        "Pedro Follower current pose"
+                )
+        );
+        Pose returnPose = snapshotPose(
+                Objects.requireNonNull(pedroReturnPose, "pedroReturnPose")
+        );
+
+        return pedroRuntime.pathBuilder()
+                .addPath(returnCurveFrom(currentPose, returnPose))
+                .setLinearHeadingInterpolation(
+                        currentPose.getHeading(),
+                        returnPose.getHeading()
+                )
+                .build();
+    }
+
+    /**
+     * Select the pinned Pedro curve that safely represents these snapshotted return endpoints.
+     *
+     * <p>Pedro 2.1.2's {@link BezierLine} divides by its length while finding the closest point, so
+     * a line with coincident translation endpoints produces a non-finite path parameter. Its
+     * purpose-built {@link BezierPoint} represents that already-at-position case without changing
+     * the public Phoenix route API. The enclosing path still applies the requested target-heading
+     * interpolation.</p>
+     */
+    static Curve returnCurveFrom(Pose sampledCurrentPose, Pose pedroReturnPose) {
+        Pose currentPose = requireFinitePose(
+                sampledCurrentPose,
+                "Pedro Follower current pose"
+        );
+        Pose returnPose = requireFinitePose(pedroReturnPose, "pedroReturnPose");
+
+        if (currentPose.getX() == returnPose.getX()
+                && currentPose.getY() == returnPose.getY()) {
+            return new BezierPoint(returnPose);
+        }
+        return new BezierLine(currentPose, returnPose);
     }
 
     private Runnable spinUpCallback(final PhoenixCapabilities capabilities) {
@@ -122,5 +174,32 @@ public final class PhoenixPedroPathFactory {
         return spec.alliance.label() + " "
                 + spec.startPosition.label() + " placeholder "
                 + String.format("%.1f in", distanceIn);
+    }
+
+    /** Copy a Pedro pose so each route endpoint is an explicit one-time value snapshot. */
+    private static Pose snapshotPose(Pose pose) {
+        return new Pose(
+                pose.getX(),
+                pose.getY(),
+                pose.getHeading(),
+                pose.getCoordinateSystem()
+        );
+    }
+
+    /** Reject invalid live/target geometry before Pedro can propagate it into drive calculations. */
+    private static Pose requireFinitePose(Pose pose, String endpointName) {
+        Pose requiredPose = Objects.requireNonNull(pose, endpointName);
+        requireFinite(requiredPose.getX(), endpointName, "x");
+        requireFinite(requiredPose.getY(), endpointName, "y");
+        requireFinite(requiredPose.getHeading(), endpointName, "heading");
+        return requiredPose;
+    }
+
+    private static void requireFinite(double value, String endpointName, String fieldName) {
+        if (!Double.isFinite(value)) {
+            throw new IllegalArgumentException(
+                    endpointName + "." + fieldName + " must be finite, but was " + value
+            );
+        }
     }
 }

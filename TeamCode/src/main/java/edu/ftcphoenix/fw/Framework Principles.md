@@ -78,6 +78,12 @@ Phoenix is designed around a few core goals:
    follower timeout/stall, interruption, replacement, failure, and unknown terminal state while the
    evidence is still observable.
 
+   Build fixed route geometry eagerly. When geometry depends on live pose, vision, or another
+   current-cycle fact, use an explicitly named start-time route factory that resolves exactly once
+   at the Route Task's own start boundary. Keep that factory quick and non-blocking, keep sensor and
+   strategy interpretation in robot-owned path code, and pass only the resulting concrete route to
+   the integration. Construction failure must fail closed without starting the follower.
+
 7. **Docs are part of the API**
 
    Phoenix treats documentation as a first-class feature: Javadocs should be “mouse-over quality,”

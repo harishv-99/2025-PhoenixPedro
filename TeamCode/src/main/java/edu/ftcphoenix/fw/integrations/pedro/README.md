@@ -34,6 +34,14 @@ constructing a `PathChain`; the runtime contains this vendor defect and restores
 defaults and any deliberate per-path overrides. Robot path code keeps Pedro's normal fluent builder
 API and does not need a repair step.
 
+Build fixed geometry during INIT and pass it to the ordinary eager `RouteTasks.follow(...)` path.
+When a return or fallback must begin at the follower's live pose, keep that decision in the
+robot-owned path factory and pass a quick lambda to `RouteTasks.followBuiltAtStart(...)`. The lambda
+runs exactly once when its Route Task starts, after the composition root's current-cycle
+localization and Pedro heartbeat. It may use the runtime's supported read-only Follower inspection,
+but it must still build through `runtime.pathBuilder()` and must not call raw Follower lifecycle
+methods.
+
 `PhoenixRobot` receives only backend-neutral `DriveCommandSink` and `MotionPredictor` seams. It does
 not learn Pedro route types or configuration. Auto loop order remains:
 
