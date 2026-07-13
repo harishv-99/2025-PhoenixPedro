@@ -18,6 +18,10 @@ import edu.ftcphoenix.robots.phoenix.autonomous.PhoenixAutoTasks;
  * <p>The checked-in routines are structural placeholders: generic sequences continue after an
  * abnormal route result. Before using position-dependent scoring in a match routine, add explicit
  * robot-owned continue, fallback, or abort policy around each route result.</p>
+ *
+ * <p>The placeholder outbound route is fixed during INIT. Return/park geometry is built once when
+ * that route Task starts, allowing its path to begin at the current Pedro pose without exposing the
+ * raw Follower or Pedro builder in strategy code.</p>
  */
 public final class PhoenixPedroAutoRoutineFactory {
 
@@ -81,6 +85,7 @@ public final class PhoenixPedroAutoRoutineFactory {
         );
     }
 
+    /** Follow the fixed INIT-built outbound path through the normal eager route helper. */
     private static Task followOutbound(PhoenixPedroAutoContext ctx, String debugName) {
         return RouteTasks.follow(debugName,
                 ctx.driveAdapter(),
@@ -88,10 +93,11 @@ public final class PhoenixPedroAutoRoutineFactory {
                 PhoenixAutoTasks.routeConfig(ctx.profile().auto));
     }
 
+    /** Build the return path from the current Pedro pose when this Task actually starts. */
     private static Task followReturn(PhoenixPedroAutoContext ctx, String debugName) {
-        return RouteTasks.follow(debugName,
+        return RouteTasks.followBuiltAtStart(debugName,
                 ctx.driveAdapter(),
-                ctx.paths().returnPath,
+                () -> ctx.pathFactory().buildReturnFromCurrentPose(ctx.paths().pedroStartPose),
                 PhoenixAutoTasks.routeConfig(ctx.profile().auto));
     }
 }

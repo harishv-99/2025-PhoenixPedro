@@ -72,7 +72,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 8 | PEDRO-01 | Follower heartbeat and stopped-state ownership | Done | Advance one Pedro follower once per Auto loop outside individual Tasks; Tasks select behavior but do not own the heartbeat. |
 | 9 | PEDRO-02 | Pedro drivetrain, localization, and pose authority | Done | Build one valid Pedro runtime with one hardware/localization owner and an explicit Pedro-to-Phoenix field-pose contract. |
 | 10 | ROUTE-02 | Truthful route terminal status | Done | Do not infer route success solely from `!isBusy()`; preserve completion, interruption, timeout, and failure meaning. |
-| 11 | ROUTE-01 | Start-time route construction | Proposed | Resolve a route once when its Task starts so live pose and vision can select geometry safely. |
+| 11 | ROUTE-01 | Start-time route construction | Done | Resolve a route once when its Task starts so live pose and vision can select geometry safely. |
 | 12 | FIELD-01 | Explicit alliance field transforms | Proposed | Define field geometry once and apply a named, tested transform instead of duplicating red/blue path code. |
 | 13 | DRIVE-01 | Drive task ownership | Ready | Keep an exclusive Auto-only timed sink Task, after Pedro's outer-loop ownership is made correct. |
 | 14 | TASK-04 | Parallel deadline composition | Proposed | Add one cancellation-safe deadline primitive only if route-plus-companion callers justify it. |
@@ -1417,7 +1417,126 @@ writer, and explicit lifecycle ownership.
   sub-loop, null/throwing factories, cancellation, route timeout, truthful terminal status, and
   debug naming. A compiling example shows both eager fixed geometry and a current-pose fallback
   without exposing the raw follower throughout the routine.
-- **Decision record:** _Pending._
+- **Decision record (2026-07-13):**
+  - **Confirmed behavior and baseline:** `PhoenixPedroAutoOpModeBase` calls
+    `PhoenixPedroPathFactory.build(...)` during INIT, that factory builds both the outbound and
+    return `PathChain`, and `PhoenixPedroAutoRoutineFactory` later gives those stored objects to
+    `RouteTasks.follow(...)`. `RouteTask` requires and retains one concrete route in its constructor;
+    its own `start(clock)` delays only `follower.follow(route)`, not geometry construction. A return
+    or fallback route therefore keeps the INIT-time start pose even after earlier path error,
+    interruption, correction, or strategy changes. `SequenceTask.fromSuppliers(...)` does not solve
+    this because it deliberately invokes its suppliers while constructing the sequence. The focused
+    baseline on 2026-07-13 passes all 33 existing generic route tests (7 single-use and 26 status/
+    lifecycle tests) with zero failures, errors, or skips.
+  - **Current callers and common path:** `PedroPathingDriveAdapter` is the only production
+    `RouteFollower`. The only production `RouteTasks.follow(...)` calls are the short outbound and
+    return helpers in `PhoenixPedroAutoRoutineFactory`; all four Phoenix strategies reuse those two
+    helpers. There is no framework-tool or modern-example route caller. `PhoenixPedroPathFactory`
+    already owns Pedro geometry and the checked `PedroPathingRuntime.pathBuilder()`, while the
+    runtime explicitly permits read-only Follower inspection at that boundary. Routine code should
+    continue seeing only a path-factory method reference, the adapter, and Phoenix Tasks—not a raw
+    Follower or path builder.
+  - **Alternatives considered:** keep all geometry eager and document the stale-pose risk; prebuild
+    every pose/vision variant; rebuild the containing routine; mutate a route's start pose when it
+    begins; write a custom Pedro Task at each caller; add a Pedro-only deferred helper; add a same-
+    name `follow(..., Supplier<R>, ...)` overload; add a public `RouteFactory<R>` or staged builder;
+    add `Function<LoopClock, R>`; add a general `Tasks.defer(Supplier<Task>)`; or add one explicitly
+    named route-specific start-time factory using the standard `Supplier` type.
+  - **Simplicity comparison:** fixed geometry should remain the ordinary one-line
+    `RouteTasks.follow(adapter, route, cfg)` path. A dynamic route needs only one method reference or
+    lambda, not another Task wrapper, builder, or public factory type. A same-name Supplier overload
+    hides the timing difference and becomes ambiguous for null or a route type that itself implements
+    `Supplier`. `Tasks.defer(...)` adds a general wrapper lifecycle without another demonstrated
+    caller, makes the route call more deeply nested, and normally hides the typed `RouteTask` needed
+    for precise `RouteStatus` policy. Passing `LoopClock` into a new factory concept is unnecessary:
+    the composition root updates localization, targeting, and the Pedro heartbeat before Auto Tasks,
+    so a robot-owned path factory can read the current-cycle snapshots when its supplier runs.
+  - **Chosen public API:** keep both existing eager `RouteTasks.follow(...)` overloads unchanged and
+    add parallel named/default `RouteTasks.followBuiltAtStart(...)` overloads that accept
+    `Supplier<? extends R>` and still return `RouteTask<R>`. The name exposes the only semantic
+    difference; `followAtStart` would be misleading because eager Route Tasks also begin following
+    at start, while `deferred` is jargon and `generated` omits when generation occurs. Do not add a
+    public supplier constructor, `RouteFactory` type, builder, or second Task class; `RouteTasks`
+    uses an internal/package-private construction path in the existing `RouteTask`.
+  - **Chosen lifecycle, failure, and debug contract:** validate the supplier when the Task is built,
+    record the Task's single start attempt before invoking it, and call it exactly once at that
+    Task's own `start(clock)` boundary. Never invoke it during task construction, pre-start
+    cancellation, queue removal, update, status reads, or debug output. A null result or factory
+    `RuntimeException` makes the Task terminal with `RouteStatus.FAILED` and the existing fail-closed
+    `TaskOutcome.CANCELLED`, leaves the follower untouched, and throws an actionable error naming the
+    Task while preserving the original cause. A second start cannot call the supplier again. If
+    cancellation re-enters while the supplier is resolving, cancellation remains terminal and the
+    Task must not start the follower afterward. Once a non-null route exists, the existing exact
+    `RouteExecution`, timeout, heartbeat, status, and cancellation semantics remain unchanged. Debug
+    output reports eager versus built-at-start resolution and a pending route class without sampling
+    the supplier; suppliers must remain quick and non-blocking.
+  - **Phoenix/Pedro ownership and compiling proof:** keep one fixed outbound path eager. Retain the
+    existing robot-owned `PhoenixPedroPathFactory` in `PhoenixPedroAutoContext`, add its narrow
+    `buildReturnFromCurrentPose(...)` operation, and have the routine pass a lambda or method
+    reference for that operation to `followBuiltAtStart(...)`. The path factory alone reads the
+    current Pedro pose through the runtime's supported read-only inspection and builds through
+    `PedroPathingRuntime.pathBuilder()`; remove the stale prebuilt return path when it has no caller.
+    Live vision interpretation remains a robot path-factory/service responsibility over a current
+    immutable selection snapshot; no Pedro, vision, alliance, or game-strategy type enters core
+    route APIs. Raw Follower lifecycle calls remain unsupported.
+  - **Rejected and deferred scope:** do not add general deferred Task composition, a second scheduler,
+    a route-progress DSL, route-failure policy, match-time takeover, or alliance transforms in this
+    item. Those broader behaviors remain TASK-04, PHX-03, PHX-04, and FIELD-01. Do not change
+    `RouteFollower.follow(R)` to accept factories: the integration should continue receiving one
+    already-resolved route and owning only its concrete per-start execution.
+  - **Verification plan:** add focused generic tests for no early sampling; live pose/vision values
+    sampled exactly once at a direct and sequence sub-loop start; eager behavior unchanged; null and
+    throwing suppliers; second start after factory failure; pre-start, active, repeated, and
+    reentrant cancellation; timeout and every truthful terminal `RouteStatus`; and debug output
+    before/after resolution without side effects. Add a compiling Phoenix Pedro example/test with
+    an eager outbound route plus a current-pose return/fallback built through the checked runtime
+    builder. Search every route caller and raw Follower lifecycle call; synchronize RouteTask/
+    RouteTasks Javadocs, Framework Principles, Framework Overview, Recommended Robot Design, loop
+    guidance, both Pedro guides, and Phoenix Architecture; run the focused route/Pedro suites, full
+    `:TeamCode:testDebugUnitTest`, `:TeamCode:compileDebugJavaWithJavac`, XML counts, link/diff/
+    whitespace checks, independent reviews, and Android Studio inspection. On robot, observe that a
+    deliberately displaced/interrupted outbound route produces a return path whose first point is
+    the live pose and that cancellation still reaches immediate stable zero.
+  - **Approval gate:** the leading hypothesis remains the smallest robust design; the
+    `followBuiltAtStart(...)` name is only a clarity refinement. This adds a public route-task API and
+    start-time callback lifecycle, so explicit user approval is required before moving to
+    **In progress** or editing Java implementation.
+  - **Approval:** the user approved the ROUTE-01 design on 2026-07-13.
+  - **Implementation (2026-07-13):** `RouteTasks` now provides named and default
+    `followBuiltAtStart(...)` overloads while both eager `follow(...)` overloads remain unchanged.
+    The existing `RouteTask` owns the internal resolution path: it samples the supplier once after
+    recording its single start attempt, retains the concrete route, reports pending/resolved debug
+    state without sampling, and fails closed before touching the follower when construction returns
+    null or throws. Active, repeated, and reentrant cancellation preserve the exact per-start
+    execution and truthful terminal status, including cancellation that occurs before
+    `RouteFollower.follow(...)` returns its handle.
+  - **Phoenix/Pedro proof:** `PhoenixPedroAutoContext` now retains the robot-owned path factory. The
+    placeholder outbound path remains eagerly built during INIT; the return helper uses
+    `followBuiltAtStart(...)` and `PhoenixPedroPathFactory.buildReturnFromCurrentPose(...)` to read
+    the current Pedro pose exactly once and build through the checked runtime builder. The obsolete
+    prebuilt `returnPath` was removed. Non-finite endpoints fail before Pedro receives them, and an
+    already-at-target translation uses Pedro's point path rather than a zero-length line that would
+    produce a non-finite closest-point parameter in pinned Pedro 2.1.2.
+  - **Automated verification (2026-07-13):** the focused
+    `RouteTaskStartTimeConstructionTest`, `RouteTaskSingleUseTest`, `RouteTaskStatusTest`, and
+    `PhoenixPedroPathFactoryTest` suites pass 52 tests with zero failures, errors, or skips. The full
+    `:TeamCode:testDebugUnitTest` task passes 240 tests across 27 suites with zero failures, errors,
+    or skips, and `:TeamCode:compileDebugJavaWithJavac` succeeds. Existing JDK 21/source-8 and FTC SDK
+    deprecation warnings remain unchanged.
+  - **Static and independent verification:** searches find one eager outbound production caller,
+    one built-at-start return caller, one supported read-only current-pose read in the Phoenix path
+    factory, no stale production `returnPath`, and no raw Pedro lifecycle call in Phoenix robot code.
+    `git diff --check`, a trailing-whitespace scan of all 17 changed/untracked files, and all 44 local
+    links across the nine changed Markdown files pass. Independent core, documentation/caller, and
+    pinned-Pedro audits found and drove fixes for reentrant cancellation before an exact execution
+    handle existed, cancellation status being overwritten by a later start failure, one stale eager
+    documentation example, and Pedro's zero-length-line non-finite geometry. Final re-reviews sign
+    off with no actionable Framework Principles, lifecycle, ownership, documentation, or student-
+    simplicity findings.
+  - **Manual verification:** the user approved the Android Studio review on 2026-07-13. On robot,
+    deliberately displace or interrupt the outbound phase and confirm the return path begins at the
+    live pose, test the already-at-return-pose case, and confirm active cancellation still applies
+    immediate stable zero.
 
 ### FIELD-01 - Explicit alliance field transforms
 

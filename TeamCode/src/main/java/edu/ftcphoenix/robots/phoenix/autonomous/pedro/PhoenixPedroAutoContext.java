@@ -12,7 +12,9 @@ import edu.ftcphoenix.robots.phoenix.autonomous.PhoenixAutoSpec;
  *
  * <p>The context keeps routine factories from reaching back into an OpMode or raw robot internals.
  * It exposes only the selected Auto spec, the profile snapshot used to construct the robot,
- * capability families, the Pedro drive adapter, and the path set created for the selected spec.</p>
+ * capability families, the Pedro drive adapter, the robot-owned path factory, and the fixed path
+ * set created for the selected spec. The retained path factory lets routines request live-start
+ * geometry without reaching into the OpMode or raw Follower.</p>
  */
 public final class PhoenixPedroAutoContext {
 
@@ -20,6 +22,7 @@ public final class PhoenixPedroAutoContext {
     private final PhoenixProfile profile;
     private final PhoenixCapabilities capabilities;
     private final PedroPathingDriveAdapter driveAdapter;
+    private final PhoenixPedroPathFactory pathFactory;
     private final PhoenixPedroPathFactory.Paths paths;
 
     /**
@@ -29,11 +32,13 @@ public final class PhoenixPedroAutoContext {
                                    PhoenixProfile profile,
                                    PhoenixCapabilities capabilities,
                                    PedroPathingDriveAdapter driveAdapter,
+                                   PhoenixPedroPathFactory pathFactory,
                                    PhoenixPedroPathFactory.Paths paths) {
         this.spec = Objects.requireNonNull(spec, "spec");
         this.profile = Objects.requireNonNull(profile, "profile");
         this.capabilities = Objects.requireNonNull(capabilities, "capabilities");
         this.driveAdapter = Objects.requireNonNull(driveAdapter, "driveAdapter");
+        this.pathFactory = Objects.requireNonNull(pathFactory, "pathFactory");
         this.paths = Objects.requireNonNull(paths, "paths");
     }
 
@@ -66,7 +71,14 @@ public final class PhoenixPedroAutoContext {
     }
 
     /**
-     * Pedro path set for the selected spec.
+     * Robot-owned Pedro path factory used for start-time geometry construction.
+     */
+    public PhoenixPedroPathFactory pathFactory() {
+        return pathFactory;
+    }
+
+    /**
+     * Fixed Pedro path set and start pose for the selected spec.
      */
     public PhoenixPedroPathFactory.Paths paths() {
         return paths;

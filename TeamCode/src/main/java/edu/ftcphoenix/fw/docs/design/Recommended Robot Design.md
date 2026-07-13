@@ -200,6 +200,12 @@ vendor transition once; `RouteTask.getRouteStatus()` then preserves normal compl
 stall, interruption, replacement, failure, and unknown-terminal meaning for robot policy. This
 complexity belongs in the integration, not at every Auto call site.
 
+Keep fixed geometry on the ordinary eager `RouteTasks.follow(...)` path. When a later route must
+start from the robot's live pose or a current vision choice, use
+`RouteTasks.followBuiltAtStart(...)` with one quick robot-owned path-factory lambda. It resolves
+exactly once when that Task starts; the integration still receives only a concrete route and no
+vendor or game-strategy type enters the generic Task API.
+
 In a single-module codebase, keep that lane-5 code at the edges:
 
 - framework-owned bridges in `fw/integrations/<library>/`
@@ -923,6 +929,12 @@ Each `RouteTask` retains the `RouteExecution` returned when it starts. Ordinary 
 same one-line `RouteTasks.follow(...)` call. Code that genuinely needs the terminal reason can keep
 the returned `RouteTask<RouteT>` and read `getRouteStatus()`; it should not inspect a vendor busy
 flag or call raw follower lifecycle methods.
+
+Build fixed routes eagerly. If a fallback or return route needs the current pose or current vision
+selection at the moment its phase begins, pass a quick lambda or method reference to the explicitly
+named `RouteTasks.followBuiltAtStart(...)` factory. Keep geometry and sensor interpretation in the
+robot path factory; do not move them into the follower adapter or write a custom Task at each call
+site.
 
 For a stateful adapter such as Pedro, give the same object to the robot composition root once during
 Auto initialization:

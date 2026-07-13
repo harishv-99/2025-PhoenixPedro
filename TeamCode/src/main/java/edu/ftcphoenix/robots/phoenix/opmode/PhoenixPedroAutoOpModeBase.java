@@ -25,8 +25,9 @@ import edu.ftcphoenix.robots.phoenix.autonomous.pedro.PhoenixPedroPathFactory;
  * Shared FTC lifecycle glue for Phoenix autonomous routines that use Pedro Pathing.
  *
  * <p>Concrete Driver Station entries should be tiny: return a {@link PhoenixAutoSpec} and let this
- * base class build the profile, Phoenix robot container, Pedro follower, path set, and routine. The
- * goal is to keep annotated OpModes as named entry points, not strategy scripts.</p>
+ * base class build the profile, Phoenix robot container, Pedro follower, fixed paths, retained path
+ * factory, and routine. The goal is to keep annotated OpModes as named entry points, not strategy
+ * scripts.</p>
  *
  * <p>The direct dependency on {@code Constants.createPhoenixAutoRuntime(hardwareMap, profile)}
  * remains here because the Pedro constants package is project-specific TeamCode setup. If a team
@@ -41,7 +42,8 @@ import edu.ftcphoenix.robots.phoenix.autonomous.pedro.PhoenixPedroPathFactory;
  * <p>This mode client asks the project factory for the team-specific runtime, then transfers its
  * adapter's recurring update/final-stop lifecycle and its one shared motion predictor to
  * {@link PhoenixRobot#initAuto(DriveCommandSink, MotionPredictor)}. Route geometry and routine
- * composition remain here on the Auto side; the OpMode does not create a second Pedro heartbeat,
+ * composition remain here on the Auto side; the retained path factory may later read a pose
+ * snapshot for start-time geometry, but the OpMode does not create a second Pedro heartbeat,
  * Pinpoint owner, or shutdown path.</p>
  */
 public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
@@ -203,6 +205,7 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
                     builtProfile,
                     builtCapabilities,
                     builtDriveAdapter,
+                    pathFactory,
                     paths
             );
             builtRobot.enqueueAuto(PhoenixPedroAutoRoutineFactory.build(ctx));

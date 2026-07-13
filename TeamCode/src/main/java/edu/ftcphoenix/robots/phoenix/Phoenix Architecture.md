@@ -295,7 +295,8 @@ PhoenixAutoTasks
   reusable scoring/targeting task snippets over PhoenixCapabilities
 
 PhoenixPedroPathFactory
-  spec -> Pedro PathChain set
+  spec -> fixed Pedro PathChain set
+  current Pedro pose / current robot facts -> start-time Pedro PathChain
 
 PhoenixPedroAutoRoutineFactory
   spec.strategy + context -> Task sequence
@@ -327,6 +328,13 @@ follower timeout/stall, interruption, replacement, failure, or an unknown termin
 before Pedro clears the evidence. `RouteTask.getRouteStatus()` also distinguishes Task timeout and
 active cancellation. This keeps the routine call short while preventing an old Task from completing
 from, or cancelling, a replacement route.
+
+Fixed geometry is built eagerly during INIT and uses `RouteTasks.follow(...)`. Geometry that must
+start from a live pose or a current robot selection stays in `PhoenixPedroPathFactory` and uses
+`RouteTasks.followBuiltAtStart(...)`. The path factory is retained in
+`PhoenixPedroAutoContext`; its quick supplier runs once when that Task starts, reads only supported
+current snapshots, and gives the adapter one concrete route. Neither `PhoenixRobot` nor the generic
+route API gains Pedro, vision, alliance, or game-strategy types.
 
 Raw Follower lifecycle calls are unsupported in Phoenix robot code because they bypass that
 ownership and terminal truth. Paths are built through the runtime, route/guidance commands use the
@@ -442,6 +450,10 @@ their next drive behavior. A cycle-aware Pedro adapter makes the later generic `
 guidance update hook a no-op in that same cycle, while continuing hold, pose, and stopped-state
 updates during mechanism or wait Tasks. Its passive localizer verifies that the Pinpoint snapshot
 belongs to the current Phoenix cycle before Pedro computes or writes drive output.
+
+A `followBuiltAtStart(...)` supplier therefore sees localization, targeting, and the follower pose
+from that current cycle when the Task runner starts its phase. The new concrete route begins
+advancing on the next owned heartbeat; no hidden update is added during path construction.
 
 ## Shutdown ownership
 
