@@ -1024,6 +1024,18 @@ Good examples:
 A task is often the right thing for Auto, or for a reusable TeleOp macro. It is usually **not** the
 right place to store the normal steady-state target of a mechanism.
 
+### Use deadline composition for bounded work beside an owner
+
+When several Tasks must all finish, use `Tasks.parallelAll(...)`. When one Task owns the useful
+lifetime of bounded companion work, use `Tasks.parallelDeadline(deadline, companions...)`. For
+example, a route can own a cancellation-safe collection macro: route completion and outcome end
+the group, while collection finishing early does not end the route.
+
+The composite does not invent mechanism cleanup; it only calls each companion's `cancel()`. Do not
+use `sequence(enable, wait, disable)` as a companion because cancellation skips the future disable
+step. Put persistent intake/flywheel/aim requests in capability or service state. Use a bounded
+companion only when its own active cancellation restores the intended caller-selected state.
+
 ### A simple rule of thumb
 
 - **Normal steady state** lives as subsystem state.

@@ -509,13 +509,21 @@ and rethrows the original failure with any cleanup failure suppressed.
 
 Phoenix gives you factories so your code reads like intent:
 
-* `Tasks` — general composition (`sequence`, `parallelAll`, `waitForSeconds`, `waitUntil`, `runOnce`, …)
+* `Tasks` — generic Task factories and composition (`sequence`, `parallelAll`, `parallelDeadline`,
+  `waitForSeconds`, `waitUntil`, `runOnce`, …)
 * `PlantTasks` — guided patterns that write a Plant's registered target (`write` and `move`)
 * `DriveTasks` — `driveExclusivelyForSeconds(...)` for simple timed open-loop Auto/test movement when
   its Task is the sole behavior-command writer for the `DriveCommandSink`
 * `DriveGuidanceTasks` — execute a `DriveGuidancePlan` as a Task (autonomous-style guidance)
 * `RouteTasks` — follow an external route through a generic `RouteFollower<RouteT>` adapter
 * `GoToPoseTasks` — convenience wrappers for common go-to-pose behaviors (`goToPoseFieldRelative`, `goToPoseTagRelative`, …)
+
+`Tasks` is the one public construction layer for generic composition. `parallelAll(...)` waits for
+every child. `parallelDeadline(deadline, companions...)` instead lets its first argument, named
+`deadline`, own the group's lifetime and natural outcome; when it finishes, the composite asks
+every start-attempted companion to cancel. A route Task is a common deadline, but the API contains
+no route types. Companions must own cancellation-safe cleanup, while persistent mechanism requests
+remain capability/service state.
 
 Example macro (shoot one disc):
 

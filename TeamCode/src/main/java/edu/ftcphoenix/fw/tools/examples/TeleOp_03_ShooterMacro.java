@@ -19,10 +19,9 @@ import edu.ftcphoenix.fw.ftc.FtcDrives;
 import edu.ftcphoenix.fw.ftc.FtcTelemetryDebugSink;
 import edu.ftcphoenix.fw.input.Gamepads;
 import edu.ftcphoenix.fw.input.binding.Bindings;
-import edu.ftcphoenix.fw.task.ParallelAllTask;
-import edu.ftcphoenix.fw.task.SequenceTask;
 import edu.ftcphoenix.fw.task.Task;
 import edu.ftcphoenix.fw.task.TaskRunner;
+import edu.ftcphoenix.fw.task.Tasks;
 
 /**
  * <h1>Example 03: Shooter Macro (Tasks + PlantTasks)</h1>
@@ -54,8 +53,8 @@ import edu.ftcphoenix.fw.task.TaskRunner;
  *     <ul>
  *       <li>{@link Task} – small non-blocking actions.</li>
  *       <li>{@link TaskRunner} – run/update tasks each loop.</li>
- *       <li>{@link SequenceTask} – run tasks one after another.</li>
- *       <li>{@link ParallelAllTask} – run tasks in parallel until all finish.</li>
+ *       <li>{@link Tasks#sequence(Task...)} – run tasks one after another.</li>
+ *       <li>{@link Tasks#parallelAll(Task...)} – run tasks in parallel until all finish.</li>
  *     </ul>
  *   </li>
  *   <li><b>How to use {@link PlantTasks}</b> to create plant-related tasks:
@@ -130,7 +129,7 @@ import edu.ftcphoenix.fw.task.TaskRunner;
  *   <li>No interpolation table yet (still a single shooter velocity).</li>
  *   <li>No vision / AprilTag integration yet.</li>
  *   <li>No multi-ball macro – but you can build “shoot N balls” by repeating
- *       the single-ball macro in a {@link SequenceTask}.</li>
+ *       the single-ball macro with {@link Tasks#sequence(Task...)}.</li>
  * </ul>
  */
 @TeleOp(name = "FW Ex 03: Shooter Macro", group = "Framework Examples")
@@ -439,12 +438,12 @@ public final class TeleOp_03_ShooterMacro extends OpMode {
                 .then(PUSHER_POS_RETRACT)
                 .build();
 
-        Task feedPusher = SequenceTask.of(
+        Task feedPusher = Tasks.sequence(
                 pusherLoad,
                 pusherShoot
         );
 
-        Task feedBoth = ParallelAllTask.of(
+        Task feedBoth = Tasks.parallelAll(
                 feedTransfer,
                 feedPusher
         );
@@ -459,7 +458,7 @@ public final class TeleOp_03_ShooterMacro extends OpMode {
                 .to(0.0)
                 .build();
 
-        return SequenceTask.of(
+        return Tasks.sequence(
                 spinUp,
                 feedBoth,
                 holdBeforeSpinDown,

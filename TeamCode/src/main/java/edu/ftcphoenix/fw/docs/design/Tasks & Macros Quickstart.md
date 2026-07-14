@@ -210,8 +210,36 @@ Common factories (high‑level view):
 
     * `Tasks.sequence(Task... steps)` – run tasks one after another.
     * `Tasks.parallelAll(Task... steps)` – run tasks in parallel and finish when all are done.
+    * `Tasks.parallelDeadline(Task deadline, Task... companions)` – run bounded companions only
+      while one named Task is active; that deadline determines completion and outcome.
 
-> Under the hood these factories use the core classes: `InstantTask`, `RunForSecondsTask`, `WaitUntilTask`, `SequenceTask`, and `ParallelAllTask`. You *can* use those directly, but the factory methods keep TeleOp and Auto code cleaner.
+> `Tasks.*` is the one public construction layer for generic composition, including `sequence(...)`,
+> `parallelAll(...)`, `parallelDeadline(...)`, and `branchOnOutcome(...)`. Public lower-level leaf
+> Tasks such as `InstantTask`, `RunForSecondsTask`, and `WaitUntilTask` remain available. Prefer the
+> corresponding `Tasks` helper when it covers the call; use a concrete leaf only for distinct
+> callback, configuration, or status access.
+
+### 3.1 Choose the parallel owner explicitly
+
+Use `parallelAll(...)` when every child is required before the group can finish. Use
+`parallelDeadline(...)` when one Task owns the lifetime of bounded companion work:
+
+```java
+Task collectAlongRoute = Tasks.parallelDeadline(
+        followRoute,
+        collectWhileMoving
+);
+```
+
+The first argument is called the deadline because it owns completion, not because it must be a
+timer. When `followRoute` ends, its outcome becomes the group's outcome and the composite asks the
+start-attempted companions to cancel before they receive another update. A companion that finishes
+early does not end the route.
+
+Each companion must already make active cancellation safe. Do not use
+`Tasks.sequence(enable, wait, disable)` as a companion: cancelling that sequence skips `disable`.
+Build a bounded robot macro whose own `cancel()` restores its caller-selected state, or keep a
+long-lived flywheel/intake/aim request as ordinary capability or service state.
 
 ---
 
@@ -453,7 +481,7 @@ Because everything is non‑blocking, your loop can also update telemetry, visio
 
 ---
 
-## 7. When to drop down to raw task classes
+## 7. When to use a lower-level or custom Task
 
 For **most** robots, you only need:
 
@@ -462,12 +490,18 @@ For **most** robots, you only need:
 * `DriveTasks.driveExclusivelyForSeconds(...)` only for simple Auto/test movement with exclusive
   drive-sink ownership.
 
-However, the core task classes are still available when you need extra control:
+Some public leaf Task classes remain available when you need extra control. Prefer the matching
+`Tasks` helper when it already expresses the behavior; for example, use `Tasks.runOnce(...)` rather
+than constructing `InstantTask` merely for a different spelling. Concrete leaf classes are useful
+when they expose a distinct capability:
 
-* `InstantTask` – when you want to inject custom one‑shot behavior.
 * `RunForSecondsTask` – when you want full control over what happens during the time window (custom callbacks each loop).
-* `WaitUntilTask` – when you need a “wait until X” primitive not covered by your factories.
-* `SequenceTask` / `ParallelAllTask` – when you want to build your own higher‑level factories.
+* `WaitUntilTask` – when you need its concrete timeout/status inspection beyond the facade.
+
+Even inside a team-specific helper factory, compose child Tasks through `Tasks.*`, such as
+`sequence(...)`, `parallelAll(...)`, `parallelDeadline(...)`, or `branchOnOutcome(...)`. Implement
+`Task` directly only when the behavior genuinely needs a new state machine rather than another
+spelling of existing composition.
 
 A good rule of thumb:
 
@@ -564,11 +598,14 @@ For the full design rationale and more examples, see [`Output Tasks & Queues`](<
 * **`TaskRunner`** manages a queue of tasks and advances them with `update(clock)`.
   `cancelAndClear()` is the total-abort operation and lifecycle failures clear owned work before
   they are rethrown.
-* **`Tasks` factories** (`instant`, `waitForSeconds`, `waitUntil`, `sequence`, `parallelAll`, `noop`, ...) are the main building blocks you should reach for first.
+* **`Tasks` factories** (`runOnce`, `waitForSeconds`, `waitUntil`, `sequence`, `parallelAll`,
+  `parallelDeadline`, `noop`, ...) are the main building blocks you should reach for first.
 * **`PlantTasks`** provide common mechanism patterns: `write(plant)` for time-based writes and `move(plant)` for feedback-based moves.
 * **`DriveTasks.driveExclusivelyForSeconds(...)`** provides simple timed open-loop Auto/test movement
   when its Task is the sole behavior-command writer for the drive sink.
-* The core task classes – `InstantTask`, `RunForSecondsTask`, `WaitUntilTask`, `SequenceTask`, `ParallelAllTask` – are there when you need lower‑level control.
+* Public lower-level leaf Tasks remain available, but prefer their `Tasks` helper unless the
+  concrete type exposes distinct callback, configuration, or status control; generic composition
+  still goes through `Tasks.*`.
 * TeleOp macros and Autonomous routines both use the same task patterns; only the triggers change (buttons vs. init/start).
 
 Once you are comfortable with these patterns, you can layer in more advanced pieces like vision, DriveGuidance (auto-aim / go-to), and interpolated shooter speeds – they all compose naturally on top of the same Task/Plant/Drive structure.

@@ -1,6 +1,6 @@
 # Framework Improvement Tracker
 
-Last updated: 2026-07-13
+Last updated: 2026-07-14
 
 This file tracks proposed Phoenix framework improvements. It is deliberately a planning document:
 an item being listed here does **not** mean its current proposed solution has been approved. Each
@@ -75,7 +75,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 11 | ROUTE-01 | Start-time route construction | Done | Resolve a route once when its Task starts so live pose and vision can select geometry safely. |
 | 12 | FIELD-01 | Explicit alliance field transforms | Deferred | Revisit with real routes: share only genuinely symmetric geometry, while keeping alliance-specific points and complete routes explicit. |
 | 13 | DRIVE-01 | Drive task ownership | Done | Keep an exclusive Auto-only timed sink Task, after Pedro's outer-loop ownership is made correct. |
-| 14 | TASK-04 | Parallel deadline composition | Proposed | Add one cancellation-safe deadline primitive only if route-plus-companion callers justify it. |
+| 14 | TASK-04 | Parallel deadline composition | Done | Add one cancellation-safe deadline primitive only if route-plus-companion callers justify it. |
 | 15 | PHX-03 | Explicit Auto route-failure policy | Proposed | Keep generic sequence semantics and make continue/fallback/abort policy visible in the robot routine. |
 | 16 | PHX-04 | Match-time fallback takeover | Proposed | Let one robot-owned Auto supervisor safely cancel any active phase and start a fresh park route. |
 | 17 | PHX-02 | Phoenix runtime readiness | Proposed | Validate calibration, Pedro construction, routes, alliance facts, and required services before enabling assists/Auto. |
@@ -1806,30 +1806,267 @@ writer, and explicit lifecycle ownership.
 - **Problem to confirm:** Phoenix has `sequence(...)` and `parallelAll(...)`, but a realistic Auto
   often needs one route to determine phase completion while an intake, aiming preparation, or other
   companion behavior runs alongside it and is cancelled when the route ends. `parallelAll(...)`
-  cannot express that ownership: a persistent companion prevents completion. The reviewed
-  BettaFish Auto contains exactly this trap with Road Runner Actions that always return running.
-  Cuttlefish provides two more concrete caller shapes: a route paired with a bounded asynchronous
-  intake action, and a routine that is cancelled when the match-time park deadline wins.
+  cannot express that ownership: a longer companion prevents phase completion. BettaFish's
+  long-lived shooter/context updates and latched intake command are instead evidence for held
+  capability or service state, not forever Tasks. Cuttlefish provides the concrete reusable caller:
+  a bounded mechanism action whose lifetime is owned by one path segment.
 - **Expanded Worlds evidence:** Tech Tigers uses a `ParallelRaceGroup` where transfer completion
   ends a phase and cancels perpetual shooter preparation; LOAD uses races mainly to express route
-  timeouts, stall exits, and bounded mechanism work. The first is a true deadline caller. The latter
-  should prefer truthful route timeout/status and bounded wait helpers, so it does not justify a
-  symmetric arbitrary-race API.
+  timeouts, stall exits, and bounded mechanism work. Phoenix should normally express the perpetual
+  shooter preparation as robot-owned state/service behavior, and should express route timeout and
+  stall status at the route boundary. Those callers therefore do not justify a symmetric
+  arbitrary-race API.
 - **Alternatives to compare:** require every companion to be finite; set/clear capability state
   before and after the route; use Pedro parametric callbacks; create robot-specific phase macros;
-  add one `Tasks.parallelDeadline(primary, companions...)` primitive; or copy Ivy's full race,
+  add one `Tasks.parallelDeadline(deadline, companions...)` primitive; or copy Ivy's full race,
   deadline, repeat, loop, requirements, and priority model.
 - **Leading hypothesis:** persistent baseline mechanisms should remain source/capability state, not
   forever Tasks. If real Phoenix route-plus-finite-companion callers remain after that simplification,
-  add one small deadline composition whose primary child controls completion and whose still-active
+  add one small deadline composition whose deadline child controls completion and whose still-active
   companions receive normal active cancellation. Add symmetric race/repeat/requirements only after
   separate caller evidence; do not import Ivy or create a second scheduler.
 - **Completion:** the common Auto phase is one readable factory call; start, same-cycle completion,
-  primary success/timeout/cancellation, companion early completion, exactly-once companion cleanup,
-  throwing/reentrant cancellation, duplicate identities, outcomes, and single-use behavior are
-  specified and tested. Documentation distinguishes held capability state from bounded companion
-  Tasks.
-- **Decision record:** _Pending._
+  deadline success/timeout/cancellation, companion early completion, one best-effort cancel attempt
+  per selected direct child, throwing/reentrant cancellation, duplicate identities, outcomes, and
+  single-use behavior are specified and tested. Documentation distinguishes held capability state
+  from bounded companion Tasks.
+- **Decision record (2026-07-13):**
+  - **Confirmed behavior and minimal trace:** `ParallelAllTask` starts every child, updates every
+    incomplete child, and becomes complete only after `allFinished()` observes every child complete.
+    Therefore `Tasks.parallelAll(route, companion)` correctly remains active after `route` completes
+    whenever `companion` is still active; a containing sequence cannot advance and no ownership edge
+    cancels the companion. This is not an `all` bug, and changing `parallelAll(...)` would silently
+    break its existing meaning.
+  - **Current callers:** exhaustive framework, Phoenix, tool, test, and documentation searches find
+    no production Phoenix caller of `Tasks.parallelAll(...)`. The tool examples use `ParallelAllTask`
+    for two finite actions and genuinely require all-of completion. The current Phoenix Pedro Auto
+    routines are sequence-only placeholders. Phoenix's existing Pedro progress callback that enables
+    the flywheel is correctly persistent scoring state, not a deadline companion, so there is no
+    in-repository production call to migrate or force-fit.
+  - **Competition caller classification:** all three
+    [BettaFish route-plus-transfer phases](https://github.com/7641MSETBettafish/BettafishDecode/blob/1fb81edcd777b42652ead60302e7bd0f6ea8cedf/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/Auton/Autoblue.java)
+    use an outer all-of `ParallelAction`; the third additionally bounds `transfer.run()` with a
+    4.5-second `RaceAction`. Its forever shooter/context updates map to services, while its one-shot
+    intake command maps to persistent held capability/source state. Tech Tigers' perpetual shooter
+    preparation likewise maps to state/service ownership, and LOAD's principal races map to truthful
+    route termination, bounded waits, or the separate whole-routine takeover item. The narrow
+    positive evidence is Cuttlefish: its fidelity port's
+    [`Close`](https://github.com/6165-MSET-Cuttlefish/summer-2026/blob/f9005c2e1f5f7e523d415f69a670b7e2f737f4f1/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/opmodes/auto/Close.java)
+    queues `flickExtakeThenOn(100)` twice with `actionDuring(...)`; each runs with the next real path
+    segment. Its
+    [`PathActionScheduler`](https://github.com/6165-MSET-Cuttlefish/summer-2026/blob/f9005c2e1f5f7e523d415f69a670b7e2f737f4f1/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/architecture/auto/scheduler/PathActionScheduler.java)
+    cancels every active during-action when the segment advances. That repeated route-scoped
+    cancellation edge is a real deadline ownership pattern, but the Cuttlefish action does not itself
+    guarantee safe actuator restoration when cancelled. Its 100 ms action will normally finish before
+    a multi-second path, so the edge matters chiefly on early timeout, skip, or failure; this is
+    deliberately narrow evidence. Phoenix can express the ownership without copying Cuttlefish's
+    second scheduler, while requiring its companion Task to own safe cancellation cleanup; planned
+    EXAMPLE-02 needs that cleanup-safe route-plus-intake shape.
+  - **Alternatives considered:** make all companions finite and use `parallelAll(...)`; place
+    capability set/clear calls before and after a route; use Pedro progress callbacks; hand-write a
+    robot-specific phase Task; add one deadline composition; or import a full race/deadline/repeat/
+    requirements scheduler. Requiring a guessed companion duration changes when the phase completes.
+    A trailing clear action still runs after an ordinary terminal route outcome, but is skipped if
+    the enclosing sequence is actively cancelled or a lifecycle exception fail-stops its runner.
+    Pedro callbacks are useful progress events but couple ownership to one vendor and do not provide
+    general cancellation cleanup. A custom phase Task repeats subtle lifecycle code in robot code.
+  - **Simplicity comparison:** the selected common call is one line beside the existing all-of form:
+    `Tasks.parallelDeadline(followRoute, runIntake)`. Students learn one distinction: `parallelAll`
+    waits for every child, while `parallelDeadline` ends with its first, named deadline child. The
+    word `deadline` describes ownership rather than elapsed seconds; the parameter Javadoc will make
+    that explicit. The implementation type remains package-private, with no public constructor,
+    builder, list/supplier overload, resource declaration, priority, or scheduler. Held flywheel,
+    intake, aiming, and similar baseline requests remain capability/service state instead of Tasks.
+  - **Chosen public API:** add only
+    `Tasks.parallelDeadline(Task deadline, Task... companions)`. The deadline controls group
+    completion and the group's natural outcome; companions may finish early without completing the
+    group. Zero companions are valid and behave like a structured wrapper around the deadline, which
+    keeps dynamically assembled varargs unsurprising. Reject a null deadline, null companion array,
+    null companion element, and direct identity reuse across the deadline and companion positions
+    with role/index-specific guidance to build fresh single-use Tasks. Defensively copy the varargs
+    array so later caller mutation cannot alter the graph. Do not add a `primary` alias or expose
+    `ParallelDeadlineTask` publicly.
+  - **Chosen lifecycle:** the package-private Task is single-use, rejects update-before-start, and
+    keeps pre-start and terminal cancellation side-effect-free. Consume the wrapper's one start
+    attempt before any child callback, and record each direct child's start attempt before invoking
+    that callback so partial-start failure remains cleanable. Start the deadline once; if it reports
+    complete immediately after that required `start(clock)` call, validate and capture its outcome
+    and do not start companions. Otherwise start distinct companions in declaration order.
+  - **Update and termination order:** on each update, check deadline completion first; if active,
+    update it once, then check again. This prevents an extra update when an outer heartbeat completed
+    it between cycles. If the deadline completes, validate and capture its outcome before making the
+    group terminal, then best-effort cancel companions before any companion receives another update
+    that cycle. Apply the same check-before-update rule to companions, skipping those already
+    complete. Re-check terminal/deadline state after every callback so reentrant completion or
+    cancellation stops further starts or updates.
+  - **Cleanup contract:** active direct cancellation makes the group terminal first, then makes one
+    best-effort `cancel()` call on every start-attempted direct child, including the deadline. Natural
+    deadline completion makes the group terminal first, then makes that call on every start-attempted
+    companion. Cleanup never calls `isComplete()`, because that may be the hook that failed; the Task
+    contract makes terminal child cancellation a no-op, so only active children perform cleanup.
+    Try every selected direct child even when one throws, then rethrow the first runtime failure with
+    later failures suppressed. Hidden aliases may route more than one cancel call to a shared leaf,
+    so leaf idempotence remains required and global exactly-once cleanup is not claimed.
+  - **Outcome contract:** while active, the group reports `NOT_DONE`; direct cancellation reports
+    `CANCELLED`. Natural completion exposes the deadline's `SUCCESS`, `TIMEOUT`, `CANCELLED`, or
+    `UNKNOWN` result and does not let companion outcomes overwrite the owner result. A completed
+    deadline that returns null or `NOT_DONE` is a malformed custom Task and causes an actionable
+    `IllegalStateException`; a throwing outcome query also propagates. Outcome capture occurs before
+    terminalizing so `TaskRunner` fail-stop can still cancel the deadline and companions if capture
+    fails. Companion cleanup failure is thrown after all cleanup attempts, while the graph remains
+    terminal for runner fail-stop handling.
+  - **Companion responsibility:** the composition can only invoke each Task's `cancel()` hook; it
+    cannot infer mechanism cleanup. Every route-scoped companion must therefore already be
+    cancellation-safe. In particular, `sequence(enable, wait, disable)` is unsafe as a companion
+    because active sequence cancellation skips the later disable child. Persistent requests should
+    remain capability/service state; a genuinely bounded route-scoped behavior should be exposed by
+    a robot Task/macro whose own active cancellation restores its safe or caller-selected state.
+  - **Rejected/deferred scope:** do not change `parallelAll(...)`; do not add symmetric `race(...)`,
+    repeat/forever Tasks, requirements, priorities, implicit actuator arbitration, or another runner.
+    Do not turn persistent capability requests into cancellation-owned Tasks. Do not add route
+    library types or route timeout policy to this generic helper. Do not add recursive Task-graph
+    introspection solely to detect a shared leaf hidden inside different composites: the leaf's
+    single-use guard rejects its second start, and runner fail-stop cleans the attempted graph.
+    Reconsider any broader primitive only with a separate repeated caller and decision gate.
+  - **Verification plan:** add focused pure tests for validation and zero companions; start/update
+    order; immediate and same-cycle deadline completion; companion early completion; deadline
+    success/timeout/cancellation/unknown outcomes plus null/`NOT_DONE`/throwing outcome fail-stop;
+    completion between cycles without a deadline update; pre-start, active, repeated, and terminal
+    cancel; partial-start and lifecycle failures; one best-effort cancel attempt per selected direct
+    child with suppressed failures; reentrant cancellation/completion; direct duplicate identities
+    and hidden nested aliases; caller mutation of the original companion array; update-before-start;
+    second-start rejection including after a failed first start; and stable deadline/companion debug
+    output. Update `Tasks`/internal Javadocs, the Task guide, framework overview/principles where the
+    composition vocabulary is listed, and the Phoenix Auto guide without fabricating a production
+    caller. Then run `:TeamCode:testDebugUnitTest` and
+    `:TeamCode:compileDebugJavaWithJavac`, inspect XML test totals, run changed-file/static/Markdown
+    checks and exhaustive caller searches, and request Android Studio review. No robot-hardware
+    claim is required for this pure composition primitive.
+  - **Approval gate:** this adds a public composition API and defines cancellation/outcome ordering,
+    so it is a major API decision. Stop at **Ready** for explicit user approval before changing Java,
+    tests, or framework documentation.
+  - **Approval:** the user approved the TASK-04 design on 2026-07-14.
+  - **Implementation (2026-07-14):** `Tasks.parallelDeadline(deadline, companions...)` is now the
+    only public addition, backed by one package-private `ParallelDeadlineTask`. It starts and updates
+    the deadline first, skips companion starts after immediate deadline completion, lets companions
+    finish early without ending the group, captures the deadline's validated terminal outcome, and
+    terminalizes before deterministic best-effort cleanup. Direct cancellation includes every
+    start-attempted child; natural completion includes only start-attempted companions. Both paths
+    retain the first cleanup failure and suppress later ones without querying completion during
+    cleanup. Direct aliases are rejected before effects, the varargs array is copied, partial starts
+    remain cleanable, and reentrant callbacks cannot advance later children after termination.
+  - **Documentation and caller disposition:** public/internal Javadocs, Framework Principles, the
+    Beginner and Framework Overview guides, Tasks & Macros Quickstart, Recommended Robot Design,
+    `RouteTask`, Phoenix Architecture, and the Phoenix Pedro Auto guide now distinguish all-of from
+    deadline-owned composition and persistent capability/service state from bounded companions.
+    They make companion-owned cancellation cleanup explicit and do not fabricate a production
+    caller; the current Phoenix routes remain sequence-only placeholders.
+  - **Automated verification (2026-07-14):** the focused `ParallelDeadlineTaskTest` passes 14 tests
+    covering validation/copying, zero companions and all valid outcomes, deadline-first order,
+    immediate/between-cycle/same-cycle completion, early companions, reentrancy, direct and natural
+    cleanup failure suppression, partial starts, lifecycle and outcome fail-stop, single-use,
+    hidden aliases, and stable debug prefixes. The full
+    `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` run succeeds; XML reports 272
+    tests across 29 suites with zero failures, errors, or skips. Only the existing JDK 21/source-8
+    and SDK deprecation warnings remain.
+  - **Static and independent verification (2026-07-14):** caller/type searches confirm that only
+    `Tasks` constructs the package-private implementation, there is no Phoenix production caller to
+    migrate, and no route/vendor type entered the generic API. `git diff --check`, all changed and
+    untracked file trailing-whitespace checks, changed-Markdown local-link checks, forbidden-import/
+    blocking-call searches, and visibility checks pass. Three independent reviews covered lifecycle
+    and TaskRunner failure behavior, API/test/caller simplicity, and documentation consistency. The
+    documentation findings were resolved; lifecycle re-review and an independent focused test run
+    found no defect. One static-review concern expected an integer debug count, but Java selects
+    `DebugSink.addData(String, double)` for that primitive value, and the passing focused XML confirms
+    the documented/tested double value.
+  - **Initial manual-verification gate:** superseded when the API-family review reopened TASK-04 for
+    the factory-only design recorded below. Final user approval is recorded at the end of this item.
+  - **Second API-family review (2026-07-14):** after the user questioned whether matching
+    `of(...)` factories would improve the API or merely duplicate it, the construction paths and
+    their callers were audited from scratch. Modern Phoenix production code and lifecycle tests use
+    the `Tasks` facade. Direct concrete `of(...)` use is limited to six calls in two disabled teaching
+    tools, plus class Javadocs and the facade's own delegation. The public List constructors have no
+    external in-repository caller; `SequenceTask.fromSuppliers(...)` is used only by two tests and
+    eagerly invokes its suppliers, so it does not provide deferred or repeatable behavior; and
+    `SequenceTask.getCurrentTask()` has no external caller and exposes a mutable implementation
+    detail that `debugDump(...)` already makes observable for humans.
+  - **Reconsidered alternatives:** concrete factories only would replace the established student
+    namespace with three imports and would remain inconsistent with factory-only composites such as
+    `Tasks.branchOnOutcome(...)`. Keeping both layers preserves compatibility, but offers two
+    spellings for identical behavior and no demonstrated advanced capability. Making composition
+    factory-only through `Tasks` provides one discoverable namespace and makes all supported public
+    siblings parallel at the one public construction layer.
+  - **Revised chosen design:** expose composition only as `Tasks.sequence(...)`,
+    `Tasks.parallelAll(...)`, and `Tasks.parallelDeadline(...)`. Make `SequenceTask`,
+    `ParallelAllTask`, and `ParallelDeadlineTask` package-private implementation types; remove the
+    public concrete constructors and `of(...)` factories; remove the unused eager
+    `SequenceTask.fromSuppliers(...)` convenience and public current-child accessor; and migrate the
+    two teaching tools and all documentation to the facade. Preserve the complete lifecycle,
+    cancellation, outcome, validation, and debug contracts in `Tasks` Javadocs. Do not add a List
+    overload until a real caller demonstrates that it improves robot code.
+  - **Simplicity and compatibility judgment:** this is the shortest common robot-code path, reduces
+    autocomplete choices, and reconciles the principles of one obvious way and parallel sibling
+    APIs without inventing an "advanced" layer that exposes no useful advanced behavior. It is a
+    source- and binary-breaking change for unknown external callers of the concrete types. The
+    in-repository migration is small and mechanical, FTC projects rebuild from source, and Framework
+    Principles explicitly permits coherent breaking cleanup; copied external code would need to
+    replace concrete construction with the corresponding `Tasks.*` call.
+  - **Principle and workflow correction:** retain the existing parallel-API principle, but clarify
+    that an API family should choose one supported public construction layer and keep siblings
+    parallel within it; a second public layer is justified only by a distinct capability. Update the
+    framework-improvement skill's decision and adversarial-review gates to inventory every sibling
+    construction path and record whether each path provides distinct value. This targeted checklist
+    is warranted because the existing general principles did not prevent the duplicate-layer
+    recommendation; the skill's trigger and UI metadata do not change.
+  - **Verification delta:** migrate and statically audit all concrete composition callers; move the
+    full public contracts to `Tasks`; keep package-private white-box lifecycle tests where useful;
+    validate the edited skill; and rerun the focused and full TeamCode checks plus documentation and
+    public-API searches.
+  - **Reopened approval gate:** hiding existing public composition types materially changes the
+    approved API and expands TASK-04's migration scope. TASK-04 remains **Ready** and no Java,
+    principle, guide, or skill implementation edit should occur until the user explicitly approves
+    this factory-only composition design.
+  - **Factory-only API approval:** the user approved the revised composition design on 2026-07-14.
+    TASK-04 was moved to **In progress**. Implementation is limited to the three composition factories,
+    their internal implementation types, directly affected callers/tests/documentation, the
+    principle clarification, and the corresponding improvement-skill audit rule.
+  - **Factory-only implementation (2026-07-14):** `Tasks.sequence(...)`,
+    `Tasks.parallelAll(...)`, and `Tasks.parallelDeadline(...)` are now the sole public construction
+    layer for generic sequence/all/deadline composition and all return `Task`. Their concrete
+    implementations are package-private, with package-private constructors only. The redundant
+    public constructors, `of(...)` factories, eager `fromSuppliers(...)` convenience, and mutable
+    current-child accessor were removed. In-repository examples, tests, Javadocs, and guides now use
+    only `Tasks.*`; the three internal types identify themselves to `TaskRunner` by those public
+    factory names, so telemetry and duplicate-enqueue errors do not teach inaccessible class names.
+  - **Principle and workflow implementation:** Framework Principles now requires one supported
+    public construction layer per API family and parallel sibling operations within that layer; a
+    second layer or overload must provide distinct demonstrated value rather than another spelling.
+    The framework-improvement skill now inventories facade factories, concrete constructors,
+    `of(...)` methods, overloads, and return types, then requires removal/migration or a bounded,
+    explicitly justified compatibility disposition for every redundant layer. Its adversarial gate
+    repeats that audit and forbids symmetry-only expansion. The official skill validator passes, and
+    a forward test correctly rejected retaining the redundant concrete layer without that explicit
+    disposition.
+  - **Final automated verification (2026-07-14):** the focused deadline, cancellation, and
+    single-use contract suites pass after adding coverage for ordinary update order, deadline-start
+    failure cleanup, completion during companion start, fresh supplier-built factory graphs, public
+    factory debug identities, and duplicate-enqueue diagnostics. The full
+    `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` run succeeds; XML reports 277
+    tests across 29 suites with zero failures, errors, or skips. Only the existing JDK 21/source-8
+    and SDK deprecation warnings remain.
+  - **Final static and adversarial verification (2026-07-14):** bytecode inspection confirms the
+    three concrete composition classes are not public and that `Tasks` exposes exactly the three
+    intended `Task`-returning sequence/all/deadline factories. Exhaustive searches find no stale
+    concrete imports or removed factories; only `Tasks` constructs the internal classes.
+    `git diff --check`, changed/untracked-file whitespace checks, changed-Markdown local-link checks,
+    and skill validation pass. Independent lifecycle, API/caller, documentation, and workflow
+    reviews found and then confirmed fixes for three test-coverage gaps, overly broad overload
+    wording, an omitted composition helper in two guides, public diagnostic naming, and fresh-graph
+    regression coverage; their final re-reviews report no remaining concrete defect.
+  - **Factory-only manual verification (2026-07-14):** the user reviewed the implementation in
+    Android Studio and approved it with `TASK-04 factory-only API looks good`. TASK-04 is **Done**.
+    No robot-hardware claim is needed for this pure generic composition/API change; future
+    production companion Tasks still need mechanism-specific cancellation verification.
 
 ### PHX-03 - Explicit Auto route-failure policy
 

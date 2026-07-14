@@ -71,18 +71,35 @@ public final class TaskCancellationSemanticsTest {
                         0.0),
                 Tasks.sequence(new WaitUntilTask(BooleanSource.constant(false))),
                 Tasks.parallelAll(new WaitUntilTask(BooleanSource.constant(false))),
+                Tasks.parallelDeadline(
+                        new WaitUntilTask(BooleanSource.constant(false)),
+                        new WaitUntilTask(BooleanSource.constant(false))),
                 Tasks.branchOnOutcome(
                         new WaitUntilTask(BooleanSource.constant(false)),
                         Tasks.noop(),
                         Tasks.noop())
         };
+        String[] updateFailureLabels = {
+                "InstantTask",
+                "RunForSecondsTask",
+                "WaitUntilTask",
+                "directOutput",
+                "gatedOutput",
+                "Tasks.sequence(...)",
+                "Tasks.parallelAll(...)",
+                "Tasks.parallelDeadline(...)",
+                "BranchOnOutcome"
+        };
 
-        for (Task task : tasks) {
+        for (int i = 0; i < tasks.length; i++) {
+            Task task = tasks[i];
             task.cancel();
             assertFalse(task.getDebugName(), task.isComplete());
 
             IllegalStateException failure = expectIllegalState(() -> task.update(clock));
-            assertTrue(failure.getMessage(), failure.getMessage().contains(task.getDebugName()));
+            assertTrue(
+                    failure.getMessage(),
+                    failure.getMessage().contains(updateFailureLabels[i]));
             assertTrue(failure.getMessage(), failure.getMessage().contains("before start"));
             assertTrue(failure.getMessage(), failure.getMessage().contains("TaskRunner"));
 

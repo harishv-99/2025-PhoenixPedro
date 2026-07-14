@@ -28,20 +28,27 @@ GitHub rather than relying on chat memory.
 1. Move a proposed item to `Researching` while investigating, then record its decision gate:
    - confirmed current behavior or traced failure path;
    - every relevant production, Phoenix, tool, and modern example caller;
+   - for each sibling API family, every supported public construction path: facade factories,
+     constructors, static `of` methods, overloads, and declared return types;
    - documentation-only, smallest-local-fix, leading-hypothesis, and other credible alternatives;
    - student call-site simplicity, concepts introduced, discoverability, error quality, ownership,
      and implementation complexity;
    - chosen design and explicit rejected designs;
    - bounded implementation scope and verification plan.
-2. Compare the result against Framework Principles and the tracker hypothesis. Prefer the smallest
+2. Record whether each supported public layer provides a distinct capability. Assess symmetry within
+   each chosen supported layer; never use symmetry alone to justify duplicate APIs.
+3. For a public construction layer without distinct value, explicitly choose removal and caller
+   migration or record the concrete compatibility reason and cleanup gate for deferral. Do not add
+   siblings to a redundant layer merely to make it look complete.
+4. Compare the result against Framework Principles and the tracker hypothesis. Prefer the smallest
    robust design that leaves ordinary robot code short and obvious.
-3. Update the tracker to `Ready` only after the decision record is complete.
-4. Stop for user direction before implementation when:
+5. Update the tracker to `Ready` only after the decision record is complete.
+6. Stop for user direction before implementation when:
    - the best design materially differs from the leading hypothesis;
    - a public API or major lifecycle/ownership semantic is involved, even if the hypothesis remains
      viable; or
    - new authority or a material scope expansion is required.
-5. Do not edit implementation code during a required design-approval stop.
+7. Do not edit implementation code during a required design-approval stop.
 
 ## Gate 2: Implement one approved design
 
@@ -56,7 +63,9 @@ GitHub rather than relying on chat memory.
 5. Add focused regression tests for the confirmed problem, preserved behavior, error messages,
    boundary cases, and student-facing repetition or recovery paths.
 6. Run adversarial reviews for correctness, Framework Principles, student simplicity, API scope,
-   documentation accuracy, and test validity. Resolve findings and rerun affected checks.
+   documentation accuracy, and test validity. For an API family, independently repeat the public
+   construction-path, distinct-capability, and redundant-layer-disposition audit from Gate 1.
+   Resolve findings and rerun affected checks.
 7. When implementation is complete, mark the item `Verifying`, record exact automated evidence,
    and request Android Studio inspection. Tell the user which files and behaviors to inspect and
    whether robot-hardware validation is useful.

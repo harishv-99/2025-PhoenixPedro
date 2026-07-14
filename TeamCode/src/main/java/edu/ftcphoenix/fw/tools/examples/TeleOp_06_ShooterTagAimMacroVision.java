@@ -39,10 +39,9 @@ import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelectionSource;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelections;
 import edu.ftcphoenix.fw.spatial.ReferencePoint2d;
 import edu.ftcphoenix.fw.spatial.References;
-import edu.ftcphoenix.fw.task.ParallelAllTask;
-import edu.ftcphoenix.fw.task.SequenceTask;
 import edu.ftcphoenix.fw.task.Task;
 import edu.ftcphoenix.fw.task.TaskRunner;
+import edu.ftcphoenix.fw.task.Tasks;
 
 /**
  * <h1>Example 06: Shooter + DriveGuidance Auto-Aim + Vision Distance + Macro</h1>
@@ -555,13 +554,13 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
                 .forSeconds(PUSHER_STAGE_SEC)
                 .build();
 
-        Task feedPusher = SequenceTask.of(
+        Task feedPusher = Tasks.sequence(
                 pusherLoad,
                 pusherShoot,
                 pusherRetract
         );
 
-        Task feedBoth = ParallelAllTask.of(
+        Task feedBoth = Tasks.parallelAll(
                 feedTransfer,
                 feedPusher
         );
@@ -576,7 +575,7 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
                 .to(0.0)
                 .build();
 
-        return SequenceTask.of(
+        return Tasks.sequence(
                 spinUp,
                 feedBoth,
                 holdBeforeSpinDown,

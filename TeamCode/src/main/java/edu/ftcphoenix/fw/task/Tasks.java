@@ -10,11 +10,10 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
 /**
  * Convenience factory and composition helpers for {@link Task} instances.
  *
- * <p>This is a thin utility layer on top of the core task implementations
- * such as {@link InstantTask}, {@link WaitUntilTask}, {@link RunForSecondsTask},
- * {@link SequenceTask}, and {@link ParallelAllTask}. The goal is to make
- * robot code more expressive and readable, without hiding the underlying
- * primitives.</p>
+ * <p>This is the public construction surface for generic Task composition, along with convenient
+ * factories over primitives such as {@link InstantTask}, {@link WaitUntilTask}, and
+ * {@link RunForSecondsTask}. Robot code can compose behavior without depending on internal
+ * state-machine implementation types.</p>
  *
  * <p>Each returned Task is single-use. Call these helpers again, or retain a task-producing
  * supplier or factory, when behavior must repeat.</p>
@@ -535,26 +534,101 @@ public final class Tasks {
     /**
      * Create a {@link Task} that runs the given tasks one after another.
      *
-     * <p>This is a thin wrapper around {@link SequenceTask#of(Task...)}.</p>
+     * <p>The first child starts when the returned Task starts. Only the current child is updated.
+     * When it completes, the next child starts before that update returns; children that complete
+     * during their own start are skipped through immediately. The group completes after its final
+     * child.</p>
+     *
+     * <p>Active cancellation makes the group terminal with {@link TaskOutcome#CANCELLED}, then
+     * asks only the current child to cancel; later children never start. On natural completion the
+     * outcome is {@link TaskOutcome#TIMEOUT} if any child timed out, otherwise
+     * {@link TaskOutcome#SUCCESS}.</p>
+     *
+     * <p>Every child position must contain a distinct, fresh Task instance. The array is copied,
+     * and zero children are valid and complete successfully. The returned Task is single-use;
+     * call this factory again or use a macro {@code Supplier<Task>} when behavior must repeat.</p>
      *
      * @param tasks distinct Task instances to run in order; must not be {@code null} or contain
      *              nulls or duplicate identities
+     * @return a fresh single-use sequential composition
+     * @throws IllegalArgumentException if the array is null or contains a null or duplicate child
      */
     public static Task sequence(Task... tasks) {
-        return SequenceTask.of(tasks);
+        return new SequenceTask(tasks);
     }
 
     /**
      * Create a {@link Task} that runs the given tasks in parallel and completes
      * only when <b>all</b> have completed.
      *
-     * <p>This is a thin wrapper around {@link ParallelAllTask#of(Task...)}.</p>
+     * <p>Every child starts in declaration order when the returned Task starts. Each update checks
+     * and advances every child that is still active. A child finishing early does not finish the
+     * group; all children must complete.</p>
+     *
+     * <p>Active cancellation makes the group terminal with {@link TaskOutcome#CANCELLED}, then
+     * best-effort asks every child to cancel. Cleanup attempts continue if one throws. On natural
+     * completion the outcome is {@link TaskOutcome#TIMEOUT} if any child timed out, otherwise
+     * {@link TaskOutcome#SUCCESS}.</p>
+     *
+     * <p>Use {@link #parallelDeadline(Task, Task...)} instead when one named Task should determine
+     * the lifetime and outcome of bounded companions.</p>
+     *
+     * <p>Every child position must contain a distinct, fresh Task instance. The array is copied,
+     * and zero children are valid and complete successfully. The returned Task is single-use;
+     * call this factory again or use a macro {@code Supplier<Task>} when behavior must repeat.</p>
      *
      * @param tasks distinct Task instances to run in parallel; must not be {@code null} or contain
      *              nulls or duplicate identities
+     * @return a fresh single-use all-children parallel composition
+     * @throws IllegalArgumentException if the array is null or contains a null or duplicate child
      */
     public static Task parallelAll(Task... tasks) {
-        return ParallelAllTask.of(tasks);
+        return new ParallelAllTask(tasks);
+    }
+
+    /**
+     * Create a {@link Task} that runs one deadline and zero or more companions in parallel.
+     *
+     * <p>The deadline starts first. If it completes during its own start, no companion starts.</p>
+     *
+     * <p>The deadline Task owns the group's lifetime and natural outcome. When it completes, the
+     * group becomes terminal and asks every start-attempted companion to cancel before any
+     * companion receives another update. A companion may complete early without ending the group,
+     * and companion outcomes never replace the deadline's outcome.</p>
+     *
+     * <p>Direct active cancellation makes the group terminal with
+     * {@link TaskOutcome#CANCELLED}, then best-effort asks the start-attempted deadline and
+     * companions to cancel. Cleanup attempts continue if one throws.</p>
+     *
+     * <p>{@code deadline} names a Task role, not an elapsed-time value. A route is a common
+     * deadline, but this helper contains no route-library behavior:</p>
+     *
+     * <pre>{@code
+     * Task collectAlongRoute = Tasks.parallelDeadline(
+     *         followRoute,
+     *         collectWhileMoving
+     * );
+     * }</pre>
+     *
+     * <p>Each companion must implement cancellation-safe cleanup itself. For example,
+     * {@code sequence(enable, wait, disable)} is not a safe companion because cancelling that
+     * sequence skips the later {@code disable} child. Keep persistent requests as capability or
+     * service state; use this helper only for bounded Tasks whose active {@link Task#cancel()}
+     * restores their caller-selected state.</p>
+     *
+     * <p>All direct child positions must contain distinct, fresh Task instances. The companion
+     * array is copied, and zero companions are valid. If a completed deadline returns
+     * {@code null} or {@link TaskOutcome#NOT_DONE}, the returned Task's lifecycle call fails with
+     * an actionable {@link IllegalStateException}.</p>
+     *
+     * @param deadline   distinct Task whose completion and outcome end the group; not {@code null}
+     * @param companions distinct Tasks that run only while the deadline remains active; the array
+     *                   and its elements must not be {@code null}
+     * @return a fresh single-use deadline composition
+     * @throws IllegalArgumentException if an input is null or a direct Task identity is reused
+     */
+    public static Task parallelDeadline(Task deadline, Task... companions) {
+        return new ParallelDeadlineTask(deadline, companions);
     }
 
     // ---------------------------------------------------------------------

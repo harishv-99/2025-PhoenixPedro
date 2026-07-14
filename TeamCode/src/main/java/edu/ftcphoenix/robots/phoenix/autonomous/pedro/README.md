@@ -85,6 +85,13 @@ for live-pose or live-vision geometry, add a narrow path-factory method and pass
 `PhoenixAutoTasks`. Routine Tasks continue using the existing adapter and `PhoenixCapabilities`;
 they do not need a separate localization API.
 
+For bounded work that should exist only while a route is active, compose it as
+`Tasks.parallelDeadline(routeTask, companionTask)`. The route owns completion and outcome; a
+started companion is asked to cancel when the route ends. The companion must own safe active
+cancellation—do not use an `enable → wait → disable` sequence whose final step can be skipped.
+Persistent intake, flywheel, scoring, and aim requests remain capability/service state. The current
+placeholder routes do not require a deadline companion yet.
+
 Truthful route status supplies the fact needed for a later robot-owned continue/fallback/abort
 decision; it does not choose that policy. Phoenix routines must add that policy explicitly, so do
 not assume generic Task sequences automatically stop after every abnormal route ending.
