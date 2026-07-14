@@ -73,7 +73,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 9 | PEDRO-02 | Pedro drivetrain, localization, and pose authority | Done | Build one valid Pedro runtime with one hardware/localization owner and an explicit Pedro-to-Phoenix field-pose contract. |
 | 10 | ROUTE-02 | Truthful route terminal status | Done | Do not infer route success solely from `!isBusy()`; preserve completion, interruption, timeout, and failure meaning. |
 | 11 | ROUTE-01 | Start-time route construction | Done | Resolve a route once when its Task starts so live pose and vision can select geometry safely. |
-| 12 | FIELD-01 | Explicit alliance field transforms | Proposed | Define field geometry once and apply a named, tested transform instead of duplicating red/blue path code. |
+| 12 | FIELD-01 | Explicit alliance field transforms | Deferred | Revisit with real routes: share only genuinely symmetric geometry, while keeping alliance-specific points and complete routes explicit. |
 | 13 | DRIVE-01 | Drive task ownership | Ready | Keep an exclusive Auto-only timed sink Task, after Pedro's outer-loop ownership is made correct. |
 | 14 | TASK-04 | Parallel deadline composition | Proposed | Add one cancellation-safe deadline primitive only if route-plus-companion callers justify it. |
 | 15 | PHX-03 | Explicit Auto route-failure policy | Proposed | Keep generic sequence semantics and make continue/fallback/abort policy visible in the robot routine. |
@@ -1540,25 +1540,96 @@ writer, and explicit lifecycle ownership.
 
 ### FIELD-01 - Explicit alliance field transforms
 
-- **Problem to confirm:** Phoenix's path selector describes alliance mirroring, but the current path
-  factory manually branches between red and blue coordinates. That duplicates field facts and lets
-  headings, control points, and target poses drift apart as routes evolve.
+- **Problem to confirm:** real autonomous routes can contain field-symmetric poses, but a
+  mirrored route is only a nominal geometric baseline. Phoenix must eventually make shared geometry
+  easy without implying that Red and Blue must use identical tuned endpoints, control points,
+  constraints, or route topology.
 - **External evidence:** Cuttlefish's
   [`FieldPose`](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/architecture/auto/FieldPose.java)
-  defines one pose and derives the alliance variant, demonstrating the student-facing benefit even
-  though Phoenix should avoid its global color state and use Phoenix's documented frame.
+  derives a nominal alliance variant, but its competition Auto also uses alliance-specific
+  endpoints, an extra Blue control point, different heading interpolation timing, and different
+  mechanism offsets. This demonstrates the student-facing benefit and the required escape hatch:
+  share only the geometry that is truly symmetric. Phoenix should still avoid Cuttlefish's global
+  color state and use Phoenix's documented frame.
 - **Alternatives to compare:** continue explicit red/blue path definitions; use Pedro's color helper
   directly; store alliance in global mutable context; add robot-local coordinate helper methods; or
   add a small immutable Phoenix-coordinate field transform driven by explicit field facts.
-- **Leading hypothesis:** define a tiny backend-neutral 2D pose/vector transform with explicit field
-  dimensions/origin and no global alliance. Robot path factories select the transform, apply it to
-  poses/headings/control points, and convert to Pedro only at the integration boundary. Do not add
-  season route names or alliance strategy to the framework.
-- **Completion:** tests cover pose, vector, heading, and control-point transformation; reflection
-  boundaries and heading normalization; applying the alliance transform twice where mathematically
-  applicable; explicit no-transform/default behavior; and Pedro boundary conversion. One route is
-  defined once for both alliances in the compiling Auto reference.
-- **Decision record:** _Pending._
+- **Reopen hypothesis:** after real Phoenix routes exist, first use an optional robot-local
+  Phoenix-coordinate symmetry helper for the poses/control points that are actually shared. Keep
+  ordinary named alliance-specific points or complete route builders for tested differences, then
+  convert to Pedro at the integration boundary. Promote only repeated, stable transform math into
+  the framework; do not add season route names, alliance strategy, or a generic route-tuning DSL.
+- **Completion after reopening:** the real route set demonstrates which geometry is shared and which
+  is deliberately alliance-specific. Focused tests cover the selected pose/heading symmetry,
+  identity behavior, transform-before-Pedro conversion, and an explicit side-specific point or
+  route. On-robot validation confirms both alliances independently; no test claims that geometric
+  symmetry guarantees identical physical tracking.
+- **Decision record (2026-07-13):**
+  - **Confirmed behavior:** the original problem statement is not true of the current repository.
+    `PhoenixPedroPathFactory` builds one documented twelve-inch Pedro integration placeholder. Its
+    only alliance geometry branch keeps x/y unchanged and selects heading `0` for Red or `pi` for
+    Blue; there are no duplicated Red/Blue route definitions or control-point sets to consolidate.
+    `Phoenix Architecture.md` and the Phoenix Pedro README explicitly defer real geometry to the
+    future. `Pose2d.then(...)` is an orientation-preserving rigid transform, so it cannot represent
+    a reflection without a new mathematical concept. The runtime-selected `PedroFieldTransform`
+    remains a vendor-coordinate boundary, not an alliance policy object.
+  - **Current callers:** exhaustive modern-framework/Phoenix searches find the one placeholder
+    heading branch above, alliance-specific scoring-tag selection in `PhoenixAutoProfiles`, thin
+    Red/Blue OpModes that only choose `PhoenixAutoSpec.Alliance`, and selector/telemetry display.
+    No production route, framework tool, or compiling example currently repeats alliance pose,
+    heading, vector, or control-point transformation.
+  - **Competition and vendor evidence:** at Cuttlefish's audited Worlds commit `1a9ff399`,
+    `FieldPose.ColorPose(...)` nominally mirrors x and heading for Blue using its configured
+    141.5-inch field width.
+    Its [`Close` Auto](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/opmodes/auto/Close.java)
+    nevertheless uses distinct Red/Blue intake endpoints, adds a Blue-only curve control point,
+    changes Red/Blue heading interpolation timing, and selects different shooter offsets; its
+    [`Far` Auto](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/opmodes/auto/Far.java)
+    also applies a side-specific live control-point correction. Pinned Pedro 2.1.2 similarly
+    provides only [`Pose.mirror(...)`](https://github.com/Pedro-Pathing/PedroPathing/blob/v2.1.2/core/src/main/java/com/pedropathing/geometry/Pose.java)
+    for one pose in Pedro coordinates, with a 141.5-inch default, rather than a route-level
+    equivalence guarantee. The need for an explicit side-specific escape hatch is therefore
+    demonstrated by the strongest external example. Its source does not establish whether each
+    difference came from hardware, field interaction, camera/mechanism geometry, or strategy.
+  - **Alternatives considered:** duplicate every route explicitly; expose Pedro's `Pose.mirror()`;
+    use a global current-alliance value; add a private Phoenix helper now; add an immutable public
+    `FieldTransform2d` plus point/vector types now; or defer extraction and use a hybrid when real
+    geometry arrives. A future hybrid may transform shared canonical poses while ordinary robot
+    code replaces a point, changes a constraint/control-point count, or selects a separate route.
+  - **Simplicity comparison:** explicit separate routes add no concept and are easiest to tune when
+    their topology differs, but unnecessarily duplicated shared geometry can drift. A public type
+    today would add symmetry kind, axis/origin, canonical-side, point-versus-vector, heading-wrap,
+    and adjustment-order contracts without removing one current repeated call. A private helper
+    beside the first real route keeps the common call site short and lets the actual route reveal
+    the smallest useful contract. A generic post-transform tuning/override layer would add more
+    vocabulary than an ordinary named branch and is not justified.
+  - **Chosen design and reason for deferral:** do not implement a public framework transform against
+    placeholder geometry. Reopen FIELD-01 when the first real Phoenix route set or EXAMPLE-02 is
+    designed. Define canonical geometry only where field symmetry is real, apply an explicit
+    robot-local transform selected from `PhoenixAutoSpec`, permit named per-alliance points or whole
+    routes without ceremony, and convert Phoenix coordinates to Pedro last. Systematic drivetrain,
+    localization, or follower error should first be corrected in calibration/tuning because hiding
+    it in alliance field facts would conflate desired geometry with tracking compensation and tend
+    to duplicate that compensation across routes. Promote a small backend-neutral transform into
+    `fw` only after a second in-repository robot/backend repeats the same stable math or a concrete
+    frame mistake shows that centralization prevents misuse. Any
+    task that adds the first non-placeholder Phoenix route or begins EXAMPLE-02 must first move
+    FIELD-01 from `Deferred` to `Researching` and rerun this decision gate; do not introduce
+    alliance-transform logic silently under that other item.
+  - **Rejected designs:** do not force one transformed route for both alliances; do not wrap or
+    teach Pedro's coordinate-specific mirror as the framework authority; do not use global alliance
+    state; do not add `Vec2`, arbitrary matrices, a transform-composition DSL, or a route-tuning DSL
+    before callers require them. A completely separate alliance route remains a supported
+    robot-owned choice rather than a design failure.
+  - **Verification on reopening:** trace every real pose/control-point caller; add pure tests for
+    the exact selected identity/symmetry math, finite inputs, heading normalization, boundaries,
+    and applying the mapping twice when the selected symmetry is involutive; test
+    Phoenix-transform-before-Pedro conversion; compile one shared route portion plus one explicit
+    alliance-specific difference; run the full unit/compile/documentation/static checks; and tune
+    and validate both alliance routes separately on the physical robot.
+  - **Approval:** the user approved this deliberate deferral on 2026-07-13. No framework or Phoenix
+    Java implementation was made; the recorded reopen gate prevents transform logic from being
+    introduced silently with the first real route or EXAMPLE-02.
 
 ### DRIVE-01 - Drive task ownership
 
