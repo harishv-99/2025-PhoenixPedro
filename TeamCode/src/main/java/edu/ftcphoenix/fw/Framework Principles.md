@@ -22,7 +22,7 @@ Phoenix is designed around a few core goals:
 
    Robot code is written in terms of a few narrow building blocks:
 
-    * **Drive behavior**: `DriveSource` → `DriveSignal` → `MecanumDrivebase`
+    * **Drive behavior**: `DriveSource` → `DriveSignal` → `DriveCommandSink` (for example, `MecanumDrivebase`)
     * **Mechanisms**: `Plant`
     * **Behavior over time**: `Task` / `TaskRunner`
 
@@ -38,7 +38,9 @@ Phoenix is designed around a few core goals:
    Students primarily use:
 
     * `FtcActuators.plant(hardwareMap) ... build()` (to create Plants)
-    * `PlantTasks`, `Tasks`, `DriveTasks` (to create Tasks)
+    * `PlantTasks` and `Tasks` (to create ordinary Tasks)
+    * `DriveTasks.driveExclusivelyForSeconds(...)` only for simple Auto/test movement where that
+      Task is the sole behavior-command writer for the drive sink
 
    Mentors can go deeper (HAL, adapters, custom Tasks) when needed.
 
@@ -315,6 +317,20 @@ DriveSignal s = manual.get(clock).clamped();
 drivebase.drive(s);
 ```
 
+Ordinary TeleOp Tasks perform decision work, update behavior sources, or request Plant targets.
+After those Tasks run, one final drive phase samples the composed `DriveSource` and writes its
+`DriveSignal` to the `DriveCommandSink`. Do not add a Task that imperatively competes with that final
+writer.
+
+`DriveTasks.driveExclusivelyForSeconds(...)` is a deliberately narrow exception for simple
+open-loop Auto routines and drive testers. Use it only while it is the sole behavior-command writer
+for that sink. It refreshes the sink and writes the requested signal on every active cycle, then
+stops on completion or active cancellation. If a third-party adapter's supported lifecycle requires
+updates beyond active Tasks, the composition root continues calling `update(clock)` with the shared
+`LoopClock`, and the adapter deduplicates a same-cycle Task update. Timed open-loop drive is not the
+normal way to run a Pedro or other external route; use the route/guidance Task helpers for that
+lifecycle.
+
 Configuration is via `MecanumDrivebase.Config` for drivebase scaling and physical-speed mapping. The drivebase makes a **defensive copy** of the config at construction time, so mutating the config object later won’t change an already-created drivebase.
 
 
@@ -487,8 +503,10 @@ A key design choice: `TaskRunner.update(clock)` is **idempotent by `clock.cycle(
 The runner may call a newly started task's `update(clock)` in that same cycle. Because
 `clock.dtSec()` describes the interval before the current loop, a Task must start its own duration,
 timeout, or phase timer from `clock.nowSec()` rather than charging that preceding delta. A
-positive-duration command must remain available to the documented downstream drive/output/Plant
-phase for at least one loop observation; a zero-duration command may complete immediately.
+positive-duration output or Plant request must remain available to its documented downstream
+realization phase for at least one loop observation. The exclusive timed-drive helper instead
+publishes directly when its Task starts and on each active cycle, and must make every positive
+interval observable at least once. A zero-duration command may complete immediately.
 
 `cancelAndClear()` is the normal total-abort operation: it cancels the active Task, if any, and
 always discards every queued Task. Queued Tasks never receive a pre-start cancellation callback.
@@ -506,7 +524,8 @@ Robot code should rarely implement raw tasks directly. Prefer:
 * `Tasks.*` for generic composition (`sequence`, `parallelAll`, `waitForSeconds`, `waitUntil`, ...)
 * `ScalarTasks.write(...)` for standalone `ScalarTarget`s, `PlantTasks.write(plant)` for time-based writes to a Plant's registered target, and `PlantTasks.move(plant)` for feedback-aware moves
 * `Tasks.outputPulse(...)` + `OutputTaskRunner` for short output-producing pulses that are overlaid into a final Plant target source
-* `DriveTasks.*` for drive behaviors
+* `DriveTasks.driveExclusivelyForSeconds(...)` for simple Auto/test drive intervals only when the
+  Task is the sole behavior-command writer for the sink
 
 For a timed scalar or Plant write, `.then(value)` applies that final registered request after normal
 completion **and active cancellation**. Omitting `.then(...)`, or selecting `.leaveThere()`, leaves

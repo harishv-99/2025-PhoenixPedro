@@ -313,6 +313,13 @@ Each `PhoenixRobot` accepts one mode initialization for its lifetime. A repeated
 TeleOp/Auto cross-init fails before replacing any retained owner; a different mode/runtime uses a
 new robot container.
 
+For a simple open-loop Auto/test interval, `DriveTasks.driveExclusivelyForSeconds(...)` may command
+the retained sink only when that Task is the sole behavior-command writer. It refreshes the sink and
+writes the requested signal each active cycle, then stops on completion or active cancellation.
+Phoenix's retained Auto owner still provides any independent composition-root heartbeat the sink
+requires, with same-cycle adapter deduplication. Production Pedro movement normally uses
+`RouteTasks` or guidance Tasks instead of timed open-loop drive.
+
 For Pedro, `PhoenixPedroAutoOpModeBase` asks the project constants factory for one
 `PedroPathingRuntime`. That runtime contains one configured Pinpoint predictor, one passive Pedro
 localizer view, one Follower/native mecanum drivetrain, and one `PedroPathingDriveAdapter`. The mode
@@ -447,9 +454,10 @@ Auto uses the same scoring path and targeting service, but swaps TeleOp drive-as
 retained Auto drive heartbeat plus queued autonomous task runner. The heartbeat runs after current
 targeting state is available and before Tasks observe their exact `RouteExecution` status or select
 their next drive behavior. A cycle-aware Pedro adapter makes the later generic `RouteTask` or
-guidance update hook a no-op in that same cycle, while continuing hold, pose, and stopped-state
-updates during mechanism or wait Tasks. Its passive localizer verifies that the Pinpoint snapshot
-belongs to the current Phoenix cycle before Pedro computes or writes drive output.
+guidance update hook—or the update made by an exclusive timed-drive Task—a no-op in that same cycle,
+while continuing hold, pose, and stopped-state updates during mechanism or wait Tasks. Its passive
+localizer verifies that the Pinpoint snapshot belongs to the current Phoenix cycle before Pedro
+computes or writes drive output.
 
 A `followBuiltAtStart(...)` supplier therefore sees localization, targeting, and the follower pose
 from that current cycle when the Task runner starts its phase. The new concrete route begins

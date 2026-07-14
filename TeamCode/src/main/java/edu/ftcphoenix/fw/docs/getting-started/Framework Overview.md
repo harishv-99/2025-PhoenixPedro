@@ -165,7 +165,7 @@ Think of Phoenix as a few thin layers you stack:
     * `Bindings` turns boolean signal edges, changes, levels, toggles, and nudges into actions.
 4. **Tasks / Macros** (`fw.task`, plus helpers in other packages)
 
-    * `Task`, `TaskRunner`, `Tasks`, `PlantTasks`, `DriveTasks`.
+    * `Task`, `TaskRunner`, `Tasks`, `PlantTasks`, and the exclusive Auto/test helper in `DriveTasks`.
 5. **Drive behavior** (`fw.drive` + `fw.drive.source` + `fw.drive.guidance`)
 
     * `DriveSource` (a specialized `Source<DriveSignal>`) produces a `DriveSignal` each loop (stick drive, driver assist overlays, etc.).
@@ -325,6 +325,17 @@ That keeps normal stick translation while guidance owns omega.
 
 When code only needs a place to *send* drive commands, Phoenix now uses the smaller `DriveCommandSink` seam. `MecanumDrivebase` implements that interface, but route adapters can implement it too.
 
+Ordinary TeleOp Tasks do decision/source/Plant-target work before one final drive phase samples the
+composed `DriveSource` and writes its `DriveSignal` to that sink. Do not let a Task and the final
+TeleOp drive phase compete as behavior-command writers.
+
+For a simple open-loop Auto routine or drive tester,
+`DriveTasks.driveExclusivelyForSeconds(...)` may own the sink for a fixed interval, but only when it
+is the sole behavior-command writer. It refreshes the sink and writes the signal every active cycle,
+then stops on completion or active cancellation. If an adapter's supported lifecycle requires
+updates beyond active Tasks, its composition root continues calling `update(clock)` with the shared
+`LoopClock`, and the adapter deduplicates the Task's same-cycle update.
+
 When code needs to follow an external route object (Pedro `PathChain`, Road Runner trajectory, or
 your own route type), Phoenix provides the matching generic seam: `RouteFollower<RouteT>` in
 `edu.ftcphoenix.fw.drive.route`. Wrap the external follower once, then sequence it with the rest of
@@ -408,6 +419,10 @@ Task auto = Tasks.sequence(
 
 That keeps route-library ownership outside the framework while still letting Auto reuse the same Phoenix task vocabulary as everything else.
 
+Timed open-loop drive is not a substitute for normal Pedro route movement. Use `RouteTasks` or the
+guidance helpers so the adapter can preserve its supported route lifecycle and truthful terminal
+status.
+
 The truthful status does not choose robot strategy. Generic Task composition keeps its existing
 semantics; deciding whether a non-completed route should continue, run a fallback, or abort belongs
 in the robot's Auto routine. Do not assume a generic sequence automatically stops after an abnormal
@@ -473,8 +488,10 @@ current or queued twice, and framework Tasks throw a clear error if an already-s
 
 The runner may start and update a new task in the same loop. Framework timed tasks anchor their
 durations and timeouts to that start timestamp, so the preceding loop's `dtSec()` cannot erase a
-short wait or command. Every positive-duration drive/output/Plant command is available to the later
-realization phase for at least one loop; zero-duration intervals may finish immediately.
+short wait or command. Every positive-duration output or Plant request remains available to its
+later realization phase for at least one loop. The exclusive timed-drive helper instead publishes
+directly when its Task starts and on each active cycle, so a positive interval is observable without
+a competing downstream drive writer. Zero-duration intervals may finish immediately.
 
 Use `cancelAndClear()` to abort automation. It cooperatively cancels the active Task, if any, and
 always discards every queued Task; queued Tasks receive no pre-start cancellation callback. There
@@ -494,7 +511,8 @@ Phoenix gives you factories so your code reads like intent:
 
 * `Tasks` — general composition (`sequence`, `parallelAll`, `waitForSeconds`, `waitUntil`, `runOnce`, …)
 * `PlantTasks` — guided patterns that write a Plant's registered target (`write` and `move`)
-* `DriveTasks` — simple patterns that command a `DriveCommandSink` (`driveForSeconds`, `stop`, …)
+* `DriveTasks` — `driveExclusivelyForSeconds(...)` for simple timed open-loop Auto/test movement when
+  its Task is the sole behavior-command writer for the `DriveCommandSink`
 * `DriveGuidanceTasks` — execute a `DriveGuidancePlan` as a Task (autonomous-style guidance)
 * `RouteTasks` — follow an external route through a generic `RouteFollower<RouteT>` adapter
 * `GoToPoseTasks` — convenience wrappers for common go-to-pose behaviors (`goToPoseFieldRelative`, `goToPoseTagRelative`, …)
@@ -618,6 +636,10 @@ public void loop() {
     telemetry.update();
 }
 ```
+
+This is the normal TeleOp pattern: Tasks finish their decisions first, then the one final
+`DriveSource` writer commands the drivebase. Do not add an exclusive `DriveTasks` interval to this
+loop unless the ordinary final drive write is disabled for that interval.
 
 ---
 

@@ -32,7 +32,7 @@ These live in `edu.ftcphoenix.fw.spatial` and can be used in TeleOp, tasks, test
 
 ---
 
-## 1. The big picture: Tasks drive everything
+## 1. The big picture: Tasks coordinate behavior
 
 Phoenix code is built around three ideas:
 
@@ -66,14 +66,22 @@ public class MyTeleOp extends OpMode {
         // 2) Advance tasks.
         runner.update(clock);
 
-        // 3) Apply the latest targets.
+        // 3) Apply the latest drive intent through one final writer.
+        DriveSignal driveSignal = driveSource.get(clock).clamped();
         drivebase.update(clock);
+        drivebase.drive(driveSignal);
+
+        // 4) Apply the latest mechanism targets.
         double dtSec = clock.dtSec();
         shooter.update(clock);
         // ... etc.
     }
 }
 ```
+
+In ordinary TeleOp, Tasks do decision work, update sources, or request Plant targets. They run before
+the one final `DriveSource` writer shown above; they do not also write imperatively to the same drive
+sink.
 
 The rest of this guide is about how to create those `Task` objects in a friendly way.
 
@@ -131,9 +139,11 @@ Rules:
 
 The first `update(...)` may happen immediately after `start(...)` in the same runner call. Phoenix's
 timed factories account for that: a long loop immediately before scheduling does not consume the
-new task's duration. Positive-duration drive, output, and Plant commands remain available to the
-later realization phase for at least one loop. A zero-duration interval itself is immediate, though
-an explicitly configured follow-up or cooldown still runs.
+new task's duration. Positive-duration output and Plant requests remain available to their later
+realization phase for at least one loop. The exclusive timed-drive helper instead publishes directly
+when its Task starts and on each active cycle, so a positive interval is observable without a
+competing downstream drive writer. A zero-duration interval itself is immediate, though an
+explicitly configured follow-up or cooldown still runs.
 
 You almost never subclass `TaskRunner`. You just feed it tasks.
 
@@ -172,8 +182,8 @@ Task auto = Tasks.sequence(
     // Wait until shooter is spun up.
     Tasks.waitUntil(() -> shooterReady()),
 
-    // Drive forward for 0.8 seconds.
-    DriveTasks.driveForSeconds(drivebase, forwardSignal, 0.8),
+    // This simple Auto is the only drive-command writer while the interval runs.
+    DriveTasks.driveExclusivelyForSeconds(drivebase, forwardSignal, 0.8),
 
     // Small pause before the next step.
     Tasks.waitForSeconds(0.5)
@@ -413,25 +423,31 @@ The rest of your TeleOp loop just calls `bindings.update(clock)` and `runner.upd
 
 The same patterns work in Autonomous – you just enqueue one big task (usually a sequence) in `init()` or `start()` and let it run.
 
-Example sketch:
+For a simple open-loop Auto or drive tester, the exclusive timed-drive helper is appropriate only
+when no route Task, guidance Task, or separate final `DriveSource` loop is also writing behavior
+commands to the same sink:
 
 ```java
 Task auto = Tasks.sequence(
     // 1. Drive off the starting line.
-    DriveTasks.driveForSeconds(drivebase, forwardSignal, 1.0),
+    DriveTasks.driveExclusivelyForSeconds(drivebase, forwardSignal, 1.0),
 
     // 2. Wait until shooter is ready.
     Tasks.waitUntil(() -> shooterReady()),
 
     // 3. Shoot three discs with a macro.
-    createShootThreeDiscMacro(),
-
-    // 4. Finally, stop the drivebase.
-    DriveTasks.stop(drivebase)
+    createShootThreeDiscMacro()
 );
 
 runner.enqueue(auto);
 ```
+
+`driveExclusivelyForSeconds(...)` refreshes the sink and writes the requested signal on every active
+cycle, then stops the sink when the interval completes or is actively cancelled. If an adapter's
+supported lifecycle requires updates beyond active Tasks, its composition root continues calling
+`update(clock)` with the shared `LoopClock`; same-cycle deduplication makes the Task's call safe.
+Timed open-loop drive is not normal Pedro route movement—use `RouteTasks` or guidance Tasks for
+those supported lifecycles.
 
 Because everything is non‑blocking, your loop can also update telemetry, vision, etc., while the auto sequence runs.
 
@@ -443,7 +459,8 @@ For **most** robots, you only need:
 
 * `Tasks.*` factory methods.
 * `PlantTasks.*` helpers.
-* `DriveTasks.*` helpers.
+* `DriveTasks.driveExclusivelyForSeconds(...)` only for simple Auto/test movement with exclusive
+  drive-sink ownership.
 
 However, the core task classes are still available when you need extra control:
 
@@ -454,7 +471,7 @@ However, the core task classes are still available when you need extra control:
 
 A good rule of thumb:
 
-> Try the factories (`Tasks`, `PlantTasks`, `DriveTasks`) first. If you find yourself rewriting the same pattern many times using raw `Task` classes, wrap it in a new helper method so the next student can just call the helper.
+> Try the factories (`Tasks`, `PlantTasks`, and the narrowly scoped `DriveTasks` helper) first. If you find yourself rewriting the same pattern many times using raw `Task` classes, wrap it in a new helper method so the next student can just call the helper.
 
 ---
 
@@ -549,7 +566,8 @@ For the full design rationale and more examples, see [`Output Tasks & Queues`](<
   they are rethrown.
 * **`Tasks` factories** (`instant`, `waitForSeconds`, `waitUntil`, `sequence`, `parallelAll`, `noop`, ...) are the main building blocks you should reach for first.
 * **`PlantTasks`** provide common mechanism patterns: `write(plant)` for time-based writes and `move(plant)` for feedback-based moves.
-* **`DriveTasks`** provide simple drive‑related building blocks.
+* **`DriveTasks.driveExclusivelyForSeconds(...)`** provides simple timed open-loop Auto/test movement
+  when its Task is the sole behavior-command writer for the drive sink.
 * The core task classes – `InstantTask`, `RunForSecondsTask`, `WaitUntilTask`, `SequenceTask`, `ParallelAllTask` – are there when you need lower‑level control.
 * TeleOp macros and Autonomous routines both use the same task patterns; only the triggers change (buttons vs. init/start).
 

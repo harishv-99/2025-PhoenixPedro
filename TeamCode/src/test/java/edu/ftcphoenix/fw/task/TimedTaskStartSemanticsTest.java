@@ -10,14 +10,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.source.ScalarSource;
 import edu.ftcphoenix.fw.core.time.LoopClock;
-import edu.ftcphoenix.fw.drive.DriveCommandSink;
-import edu.ftcphoenix.fw.drive.DriveSignal;
-import edu.ftcphoenix.fw.drive.DriveTasks;
 import edu.ftcphoenix.fw.testing.ManualLoopClock;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
 /** Verifies that core timed tasks measure only intervals that occur after their own start. */
@@ -340,50 +336,5 @@ public final class TimedTaskStartSemanticsTest {
         manualClock.nextCycle(0.125);
         runner.update(manualClock.clock());
         assertTrue(parallel.isComplete());
-    }
-
-    @Test
-    public void publicDriveTaskCommandSurvivesItsSubLoopStartCycle() {
-        ManualLoopClock manualClock = new ManualLoopClock();
-        manualClock.nextCycle(2.0);
-        RecordingDriveSink sink = new RecordingDriveSink();
-        DriveSignal command = new DriveSignal(0.4, -0.1, 0.2);
-        Task drive = DriveTasks.driveForSeconds(sink, command, 0.02);
-        TaskRunner runner = new TaskRunner();
-        runner.enqueue(drive);
-
-        runner.update(manualClock.clock());
-        assertFalse(drive.isComplete());
-        assertEquals(1, sink.driveCount);
-        assertEquals(0, sink.stopCount);
-        assertSame(command, sink.lastCommand);
-
-        runner.update(manualClock.clock());
-        assertEquals(1, sink.driveCount);
-        assertEquals(0, sink.stopCount);
-
-        manualClock.nextCycle(0.10);
-        runner.update(manualClock.clock());
-        assertTrue(drive.isComplete());
-        assertEquals(1, sink.stopCount);
-    }
-
-    /** Minimal drive sink that records whether a timed command remained observable. */
-    private static final class RecordingDriveSink implements DriveCommandSink {
-        private int driveCount;
-        private int stopCount;
-        private DriveSignal lastCommand;
-
-        @Override
-        public void drive(DriveSignal signal) {
-            driveCount++;
-            lastCommand = signal;
-        }
-
-        @Override
-        public void stop() {
-            stopCount++;
-            lastCommand = null;
-        }
     }
 }

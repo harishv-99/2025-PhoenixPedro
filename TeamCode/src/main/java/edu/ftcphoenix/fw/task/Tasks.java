@@ -26,8 +26,8 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *     // 1) Wait for shooter to be ready.
  *     Tasks.waitUntil(() -> shooterReady()),
  *
- *     // 2) Drive forward for 0.8 seconds (using DriveTasks).
- *     DriveTasks.driveForSeconds(drivebase, forwardSignal, 0.8),
+ *     // 2) Drive forward for 0.8 seconds. This Auto owns the sink exclusively.
+ *     DriveTasks.driveExclusivelyForSeconds(drivebase, forwardSignal, 0.8),
  *
  *     // 3) Run intake for 0.5 seconds.
  *     Tasks.waitForSeconds(0.5)
