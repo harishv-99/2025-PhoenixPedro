@@ -7,6 +7,7 @@ import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.task.Task;
 import edu.ftcphoenix.fw.task.TaskOutcome;
+import edu.ftcphoenix.fw.task.Tasks;
 
 /**
  * Autonomous-style {@link Task} wrapper around an external {@link RouteFollower}.
@@ -23,6 +24,11 @@ import edu.ftcphoenix.fw.task.TaskOutcome;
  * lifecycle owner. An external follower that must keep updating during hold-end, mechanism, or
  * wait phases needs one composition-root heartbeat; its adapter should deduplicate the Task's
  * same-cycle call.</p>
+ *
+ * <p>When a bounded mechanism Task should run only while this route is active, use this route as
+ * the deadline in {@link Tasks#parallelDeadline(Task, Task...)}. The companion must make its own
+ * active cancellation safe; persistent mechanism requests should remain capability or service
+ * state instead of a forever-running companion.</p>
  *
  * <p>A {@code RouteTask} instance is single-use. Create a fresh task with
  * {@link RouteTasks#follow(String, RouteFollower, Object, Config)},

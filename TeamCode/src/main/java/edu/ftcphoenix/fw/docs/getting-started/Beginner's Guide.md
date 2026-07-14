@@ -460,7 +460,18 @@ Task waitForReady = Tasks.waitUntil(() -> shooterReady());
 
 Task macro = Tasks.sequence(spinUp, feed, spinDown);
 Task parallel = Tasks.parallelAll(moveArm, runIntake);
+Task collectAlongRoute = Tasks.parallelDeadline(followRoute, collectWhileMoving);
 ```
+
+Use `parallelAll(...)` when every child must finish. Use `parallelDeadline(...)` when its first
+argument, named `deadline`—often a route—owns the lifetime and outcome of bounded companions. A
+companion may finish early without ending the group; when the deadline finishes, every
+start-attempted companion is asked to cancel before another update.
+
+That cancellation call is only safe when the companion owns its cleanup. A sequence shaped like
+`enable → wait → disable` is not a safe companion because cancellation skips the later `disable`.
+Keep persistent mechanism requests as robot capability/service state, or provide a bounded macro
+whose active cancellation restores the desired state.
 
 In student code, prefer the factories (`Tasks.*`, `PlantTasks.*`, and the narrowly scoped
 `DriveTasks.driveExclusivelyForSeconds(...)`) over constructing task classes directly. The drive
@@ -522,7 +533,7 @@ without blocking TeleOp.
 
 ---
 
-## 7. When to use raw Task classes
+## 7. When to use a lower-level or custom Task
 
 For most student code, you only need:
 
@@ -532,11 +543,17 @@ For most student code, you only need:
 * `DriveTasks.driveExclusivelyForSeconds(...)` only for simple Auto/test movement with exclusive
   drive-sink ownership.
 
-The raw task classes (`InstantTask`, `RunForSecondsTask`, `WaitUntilTask`,
-`SequenceTask`, `ParallelAllTask`, …) are useful when:
+Generic composition goes through `Tasks.*`. Its helpers include `sequence(...)`,
+`parallelAll(...)`, `parallelDeadline(...)`, and `branchOnOutcome(...)`. Some public lower-level
+leaf Tasks, including `InstantTask`, `RunForSecondsTask`, and `WaitUntilTask`, remain available.
+Prefer the matching `Tasks` helper when it already covers the behavior; use a concrete leaf only
+when:
 
-* You’re building **your own helper factories** to share across a team.
-* You need a special behavior the existing factories don’t cover yet.
+* Their callback or configuration surface provides something the facade does not.
+* You need a genuinely new behavior state machine that the existing factories do not cover.
+
+Team helper factories should still build their child graphs through `Tasks.*`; do not add another
+public construction path merely to give the same composition a different class name.
 
 ---
 
@@ -551,7 +568,8 @@ The raw task classes (`InstantTask`, `RunForSecondsTask`, `WaitUntilTask`,
     * Motors + `.position().deviceManagedWithDefaults()` or `.position().regulated().nativeFeedback(...).regulator(...)` → feedback-capable position control.
     * Servos + `.position().linear().bounded(...).nativeUnits()` or `.rangeMapsToNative(...)` → open-loop set-and-hold.
 
-* **PlantTasks** and **Tasks** provide factory helpers that build `Task`s for you.
+* **PlantTasks** and **Tasks** provide factory helpers that build `Task`s for you, including
+  all-children and deadline-owned parallel composition.
 
 * **DriveTasks** has one exclusive timed open-loop Auto/test helper; ordinary TeleOp drive still has
   one final `DriveSource` writer, and Pedro routes use route/guidance Tasks plus their independent

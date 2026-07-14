@@ -174,6 +174,11 @@ Phoenix is designed around a few core goals:
    * Aim for **one obvious way** to do something. If two APIs overlap, choose one and remove the other.
    * Keep things **parallel** across similar objects:
      consistent capabilities, consistent method names, consistent argument order, and consistent nouns.
+   * Choose one supported public construction layer for an API family and keep sibling operations
+     parallel within that layer. A second public layer—for example, exposing both facade factories
+     and concrete constructors or `of(...)` factories—needs a distinct capability, not merely
+     another spelling of the same construction. Within the chosen layer, add an overload only when
+     it materially simplifies a useful input or optional configuration without creating ambiguity.
 
 ---
 
@@ -521,11 +526,23 @@ total-abort and fail-stop paths.
 
 Robot code should rarely implement raw tasks directly. Prefer:
 
-* `Tasks.*` for generic composition (`sequence`, `parallelAll`, `waitForSeconds`, `waitUntil`, ...)
+* `Tasks.*` for generic Task factories and as the public construction layer for composition
+  (`sequence`, `parallelAll`, `parallelDeadline`, `waitForSeconds`, `waitUntil`, ...)
 * `ScalarTasks.write(...)` for standalone `ScalarTarget`s, `PlantTasks.write(plant)` for time-based writes to a Plant's registered target, and `PlantTasks.move(plant)` for feedback-aware moves
 * `Tasks.outputPulse(...)` + `OutputTaskRunner` for short output-producing pulses that are overlaid into a final Plant target source
 * `DriveTasks.driveExclusivelyForSeconds(...)` for simple Auto/test drive intervals only when the
   Task is the sole behavior-command writer for the sink
+
+Choose parallel composition by lifetime ownership. `parallelAll(...)` waits for every child.
+`parallelDeadline(deadline, companions...)` lets the first argument, explicitly named `deadline`,
+determine the group's completion and natural outcome, then asks every start-attempted companion to
+cancel. Here “deadline” is a Task role, not necessarily a timer; a route Task is a common owner.
+
+The deadline composite can only invoke each companion's `cancel()` hook. Every bounded companion
+must therefore own cancellation-safe cleanup; `sequence(enable, wait, disable)` is unsafe because
+cancelling the sequence skips the later disable step. Keep long-lived flywheel, intake, aiming, and
+other mechanism requests as capability/service state instead of disguising them as forever Tasks.
+Use deadline composition only when the companion is genuinely scoped to the owner's lifetime.
 
 For a timed scalar or Plant write, `.then(value)` applies that final registered request after normal
 completion **and active cancellation**. Omitting `.then(...)`, or selecting `.leaveThere()`, leaves

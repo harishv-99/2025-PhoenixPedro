@@ -343,6 +343,14 @@ start from a live pose or a current robot selection stays in `PhoenixPedroPathFa
 current snapshots, and gives the adapter one concrete route. Neither `PhoenixRobot` nor the generic
 route API gains Pedro, vision, alliance, or game-strategy types.
 
+When future strategy needs a bounded mechanism Task only while a route remains active, the routine
+may use `Tasks.parallelDeadline(routeTask, companionTask)`. The route then owns the group's terminal
+outcome and every start-attempted companion is asked to cancel when it ends; only still-active
+companions perform cleanup. Each companion must already implement safe active cancellation;
+persistent scoring, intake, flywheel, or aim requests remain `PhoenixCapabilities`/service state.
+The checked-in placeholder routines do not yet need this composition, so Phoenix does not fabricate
+a production caller for it.
+
 Raw Follower lifecycle calls are unsupported in Phoenix robot code because they bypass that
 ownership and terminal truth. Paths are built through the runtime, route/guidance commands use the
 adapter, the initial pose uses the runtime, and shutdown uses `PhoenixRobot.stop()`.

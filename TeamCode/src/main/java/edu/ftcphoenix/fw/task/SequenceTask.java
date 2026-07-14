@@ -2,44 +2,42 @@ package edu.ftcphoenix.fw.task;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.Supplier;
 
 import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 
 /**
- * A {@link Task} that runs a sequence of child tasks one after another.
+ * Internal {@link Task} implementation for {@link Tasks#sequence(Task...)}.
  *
  * <p>Semantics:</p>
  * <ul>
  *   <li>On {@link #start(LoopClock)}, the first child is started.</li>
  *   <li>On each {@link #update(LoopClock)}, the current child is updated.</li>
- *   <li>When the current child finishes, the next child is started on the following update, or
- *       immediately if the child finishes in its own {@code start()} method.</li>
+ *   <li>When the current child finishes, the next child starts before that update returns; a child
+ *       that finishes in its own {@code start()} method is skipped through immediately.</li>
  *   <li>The sequence finishes when all children have finished.</li>
  *   <li>Active {@link #cancel()} marks the sequence terminal, then asks its current child to
  *       cancel. Pre-start and terminal cancellation are no-ops.</li>
  * </ul>
  *
- * <p>Typical usage:</p>
+ * <p>Robot code constructs this composition through {@link Tasks}:</p>
  * <pre>{@code
  * TaskRunner runner = new TaskRunner();
  *
- * runner.enqueue(SequenceTask.of(
+ * runner.enqueue(Tasks.sequence(
  *     new InstantTask(() -> log("start")),
  *     new WaitUntilTask(readySensor),
  *     new InstantTask(() -> log("done"))
  * ));
  * }</pre>
  *
- * <p>This is the standard Phoenix "do A, then B, then C" primitive for macros. It is also the
- * main building block used by helpers such as {@link Tasks#sequence(Task...)} and
- * {@link Tasks#branchOnOutcome(Task, Task, Task)}.</p>
+ * <p>This is the standard Phoenix "do A, then B, then C" implementation for macros. It remains
+ * package-private so composition has one public construction surface through {@link Tasks}.</p>
  *
  * <p>A sequence is single-use, and each child position must contain a distinct Task instance.
  * Repeated behavior should construct a fresh sequence with fresh children.</p>
  */
-public final class SequenceTask implements Task {
+final class SequenceTask implements Task {
 
     private final List<Task> tasks = new ArrayList<>();
     private boolean startAttempted = false;
@@ -51,73 +49,24 @@ public final class SequenceTask implements Task {
     private int index = -1;
 
     /**
-     * Create a sequence from a list of tasks.
+     * Create a sequence from an ordered array of tasks.
      *
-     * <p>The list is copied; subsequent modifications to {@code tasks} do not affect this
+     * <p>The array is copied; subsequent modifications to {@code tasks} do not affect this
      * sequence.</p>
      *
-     * @param tasks ordered list of distinct child tasks; must not be {@code null} or contain
+     * @param tasks ordered array of distinct child tasks; must not be {@code null} or contain
      *              {@code null} or duplicate instances
      */
-    public SequenceTask(List<Task> tasks) {
+    SequenceTask(Task... tasks) {
         if (tasks == null) {
             throw new IllegalArgumentException("tasks is required");
         }
-        validateDistinctChildren(tasks);
-        this.tasks.addAll(tasks);
-    }
-
-    /**
-     * Convenience factory for a sequence from varargs.
-     *
-     * <p>Each element in {@code tasks} must be non-null and refer to a distinct Task instance. The
-     * array is copied into an internal list.</p>
-     *
-     * @param tasks ordered distinct child tasks to run; must not be {@code null} or contain
-     *              {@code null} or duplicate instances
-     * @return a new {@link SequenceTask} running the given children in order
-     */
-    public static SequenceTask of(Task... tasks) {
-        if (tasks == null) {
-            throw new IllegalArgumentException("tasks is required");
+        List<Task> copiedTasks = new ArrayList<>(tasks.length);
+        for (Task task : tasks) {
+            copiedTasks.add(task);
         }
-        List<Task> list = new ArrayList<>(tasks.length);
-        for (Task t : tasks) {
-            if (t == null) {
-                throw new IllegalArgumentException("tasks must not contain null elements");
-            }
-            list.add(t);
-        }
-        return new SequenceTask(list);
-    }
-
-    /**
-     * Convenience factory that obtains sequence children from suppliers.
-     *
-     * <p>Suppliers are invoked eagerly, exactly once each, while this method constructs the
-     * sequence. They are not retained or invoked again when the sequence starts. Each supplier
-     * must return a non-null, fresh Task instance distinct from every other child.</p>
-     *
-     * @param taskSuppliers non-null suppliers that each create a distinct, fresh Task
-     * @return a {@link SequenceTask} using newly-created tasks
-     */
-    @SafeVarargs
-    public static SequenceTask fromSuppliers(Supplier<Task>... taskSuppliers) {
-        if (taskSuppliers == null) {
-            throw new IllegalArgumentException("taskSuppliers is required");
-        }
-        List<Task> list = new ArrayList<>(taskSuppliers.length);
-        for (Supplier<Task> supplier : taskSuppliers) {
-            if (supplier == null) {
-                throw new IllegalArgumentException("taskSuppliers must not contain null elements");
-            }
-            Task t = supplier.get();
-            if (t == null) {
-                throw new IllegalArgumentException("taskSuppliers must not return null");
-            }
-            list.add(t);
-        }
-        return new SequenceTask(list);
+        validateDistinctChildren(copiedTasks);
+        this.tasks.addAll(copiedTasks);
     }
 
     /**
@@ -145,7 +94,7 @@ public final class SequenceTask implements Task {
     @Override
     public void update(LoopClock clock) {
         if (!started) {
-            throw TaskLifecycle.updateBeforeStart("SequenceTask");
+            throw TaskLifecycle.updateBeforeStart("Task returned by Tasks.sequence(...)");
         }
         Task current = getCurrentTask();
         if (current == null) {
@@ -219,6 +168,12 @@ public final class SequenceTask implements Task {
         return TaskOutcome.SUCCESS;
     }
 
+    /** Identify this internal implementation by the public factory robot code calls. */
+    @Override
+    public String getDebugName() {
+        return "Tasks.sequence(...)";
+    }
+
     /**
      * {@inheritDoc}
      *
@@ -248,7 +203,7 @@ public final class SequenceTask implements Task {
     /**
      * @return the current child task, or {@code null} if there is none.
      */
-    public Task getCurrentTask() {
+    private Task getCurrentTask() {
         if (!started || index < 0 || index >= tasks.size()) {
             return null;
         }
@@ -281,12 +236,12 @@ public final class SequenceTask implements Task {
             Task child = children.get(i);
             if (child == null) {
                 throw new IllegalArgumentException(
-                        "SequenceTask children must not contain null; found null at index " + i);
+                        "Tasks.sequence children must not contain null; found null at index " + i);
             }
             for (int previous = 0; previous < i; previous++) {
                 if (child == children.get(previous)) {
                     throw new IllegalArgumentException(
-                            "SequenceTask child at index " + i
+                            "Tasks.sequence child at index " + i
                                     + " reuses the same Task instance as index " + previous + ". "
                                     + "Each child must be a distinct, fresh task; create it with "
                                     + "its builder or macro method, a Supplier<Task>, or an "
@@ -300,7 +255,8 @@ public final class SequenceTask implements Task {
     private void markStartAttempt() {
         if (startAttempted) {
             throw new IllegalStateException(
-                    "SequenceTask is single-use and start(...) was called more than once. "
+                    "The Task returned by Tasks.sequence(...) is single-use and start(...) was "
+                            + "called more than once. "
                             + "Create a fresh task with its builder or macro method, a "
                             + "Supplier<Task>, or an OutputTaskFactory.");
         }
