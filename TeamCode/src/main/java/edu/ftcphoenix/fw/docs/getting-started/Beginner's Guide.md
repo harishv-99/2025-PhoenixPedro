@@ -5,7 +5,8 @@ This guide is a gentle introduction to the Phoenix framework. It focuses on:
 1. The **big ideas** (loop timing, inputs, tasks, plants, drive).
 2. A minimal **TeleOp skeleton** that you can copy.
 3. How to wire **hardware into Plants** using `FtcActuators.plant(...)`.
-4. How to use **factory helpers** (`Tasks`, `PlantTasks`, `DriveTasks`) for common patterns.
+4. How to use **factory helpers** (`Tasks`, `PlantTasks`, and the exclusive Auto/test helper in
+   `DriveTasks`) for common patterns.
 
 If you’re new, you don’t need to know how everything works inside.
 The goal is: **get a clean, non‑blocking TeleOp running quickly**.
@@ -166,6 +167,9 @@ Keep this loop shape in mind:
 
 > **Clock → Inputs → Bindings → Tasks → Drive → Plants → Telemetry**
 
+In ordinary TeleOp, Tasks make decisions, update sources, or request Plant targets. The Drive phase
+then samples the one final composed `DriveSource` and writes the drivebase. Do not also use an
+imperative drive Task that competes with that final writer.
 
 ### A principle that becomes important as robots get bigger
 
@@ -458,8 +462,11 @@ Task macro = Tasks.sequence(spinUp, feed, spinDown);
 Task parallel = Tasks.parallelAll(moveArm, runIntake);
 ```
 
-In student code, prefer the factories (`Tasks.*`, `PlantTasks.*`, `DriveTasks.*`)
-over constructing task classes directly.
+In student code, prefer the factories (`Tasks.*`, `PlantTasks.*`, and the narrowly scoped
+`DriveTasks.driveExclusivelyForSeconds(...)`) over constructing task classes directly. The drive
+helper is only for simple open-loop Auto/test movement where its Task is the sole behavior-command
+writer for the sink. It refreshes the sink each active cycle and stops on completion or active
+cancellation; use route or guidance Tasks for normal Pedro movement instead.
 
 Phoenix's timed factories measure durations and timeouts from the task's actual start timestamp.
 If you write a custom timed Task, capture `clock.nowSec()` in `start(...)` and compare later clock
@@ -522,7 +529,8 @@ For most student code, you only need:
 * `FtcActuators.plant(...)` to build Plants from FTC hardware.
 * `PlantTasks.*` for mechanism behavior.
 * `Tasks.*` for generic timing and composition.
-* `DriveTasks.*` for drive‑specific helpers.
+* `DriveTasks.driveExclusivelyForSeconds(...)` only for simple Auto/test movement with exclusive
+  drive-sink ownership.
 
 The raw task classes (`InstantTask`, `RunForSecondsTask`, `WaitUntilTask`,
 `SequenceTask`, `ParallelAllTask`, …) are useful when:
@@ -544,6 +552,10 @@ The raw task classes (`InstantTask`, `RunForSecondsTask`, `WaitUntilTask`,
     * Servos + `.position().linear().bounded(...).nativeUnits()` or `.rangeMapsToNative(...)` → open-loop set-and-hold.
 
 * **PlantTasks** and **Tasks** provide factory helpers that build `Task`s for you.
+
+* **DriveTasks** has one exclusive timed open-loop Auto/test helper; ordinary TeleOp drive still has
+  one final `DriveSource` writer, and Pedro routes use route/guidance Tasks plus their independent
+  composition-root heartbeat.
 
 * The **main loop shape** stays consistent:
 

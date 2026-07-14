@@ -49,8 +49,10 @@ Phoenix’s preferred ordering is:
 
 **Tasks before Drive and Plants**
 
-* Tasks are the “decision layer” that sets targets.
-* Drive/Plants are the “actuation layer” that consumes the latest targets.
+* Ordinary Tasks are the “decision layer”: they update behavior sources or request Plant targets.
+* The Drive/Plants phases are the “actuation layer” that consumes those decisions.
+* In TeleOp, the Drive phase is the one final behavior-command writer. Tasks must not also write
+  imperatively to the same drive sink.
 
 **Drive before Plants**
 
@@ -104,6 +106,18 @@ public void loop() {
     telemetry.update();
 }
 ```
+
+That is the normal TeleOp ownership model: Tasks finish their decision/source/Plant-target work,
+then the one final Drive phase samples the composed `DriveSource` and writes the sink.
+
+For a simple open-loop Auto routine or drive tester with no competing final writer,
+`DriveTasks.driveExclusivelyForSeconds(...)` can own the sink for an interval. It calls the sink's
+update hook and writes the requested signal every active cycle, then stops on completion or active
+cancellation. Do not also run the `driveSource` write shown above while that exclusive Task is
+active. If an adapter's supported lifecycle requires updates beyond active Tasks, its composition
+root continues calling `update(clock)` with the shared `LoopClock`, and the adapter deduplicates the
+Task's same-cycle update. Use route or guidance Tasks, not timed open-loop drive, for normal Pedro
+route movement.
 
 ---
 

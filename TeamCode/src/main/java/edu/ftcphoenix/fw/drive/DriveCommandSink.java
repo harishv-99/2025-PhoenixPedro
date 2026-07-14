@@ -18,7 +18,10 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * <p>Typical direct-sink usage:</p>
  * <pre>{@code
  * DriveCommandSink sink = drivebase; // MecanumDrivebase implements it
- * Task nudge = DriveTasks.driveForSeconds(sink, new DriveSignal(0.2, 0.0, 0.0), 0.15);
+ * Task nudge = DriveTasks.driveExclusivelyForSeconds(
+ *         sink,
+ *         new DriveSignal(0.2, 0.0, 0.0),
+ *         0.15);
  *
  * // A validated production runtime can supply a cycle-owned external sink:
  * DriveCommandSink autoDrive = pedroRuntime.driveAdapter();
@@ -31,10 +34,11 @@ public interface DriveCommandSink {
      * Optional lifecycle hook for per-loop timing, realization, or housekeeping.
      *
      * <p>The default implementation is a no-op so simple sinks do not need to care about it.
-     * Guidance and timed-drive Tasks call this before emitting a new drive command. An external
-     * sink that requires updates even while another Task is active must also have one stable
-     * composition-root owner call this every loop and must deduplicate repeated calls by
-     * {@link LoopClock#cycle()}.</p>
+     * Guidance Tasks and exclusive timed-drive Tasks call this before emitting a new drive
+     * command. This Task-facing call reflects behavior-command ownership; it does not replace an
+     * external adapter's lifecycle owner. A sink that requires updates even while another Task is
+     * active must also have one stable composition-root owner call this every loop and must
+     * deduplicate repeated calls by {@link LoopClock#cycle()}.</p>
      *
      * @param clock shared loop clock for the current cycle
      */

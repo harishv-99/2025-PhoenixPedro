@@ -74,7 +74,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 10 | ROUTE-02 | Truthful route terminal status | Done | Do not infer route success solely from `!isBusy()`; preserve completion, interruption, timeout, and failure meaning. |
 | 11 | ROUTE-01 | Start-time route construction | Done | Resolve a route once when its Task starts so live pose and vision can select geometry safely. |
 | 12 | FIELD-01 | Explicit alliance field transforms | Deferred | Revisit with real routes: share only genuinely symmetric geometry, while keeping alliance-specific points and complete routes explicit. |
-| 13 | DRIVE-01 | Drive task ownership | Ready | Keep an exclusive Auto-only timed sink Task, after Pedro's outer-loop ownership is made correct. |
+| 13 | DRIVE-01 | Drive task ownership | Done | Keep an exclusive Auto-only timed sink Task, after Pedro's outer-loop ownership is made correct. |
 | 14 | TASK-04 | Parallel deadline composition | Proposed | Add one cancellation-safe deadline primitive only if route-plus-companion callers justify it. |
 | 15 | PHX-03 | Explicit Auto route-failure policy | Proposed | Keep generic sequence semantics and make continue/fallback/abort policy visible in the robot routine. |
 | 16 | PHX-04 | Match-time fallback takeover | Proposed | Let one robot-owned Auto supervisor safely cancel any active phase and start a fresh park route. |
@@ -1645,20 +1645,25 @@ writer, and explicit lifecycle ownership.
   - **Confirmed behavior:** `DriveTasks.driveForSeconds(...)` builds a `RunForSecondsTask` whose
     start callback calls `sink.drive(signal)`, whose per-loop callback is `null`, and whose finish
     callback calls `sink.stop()`. The nonzero command is therefore written exactly once rather than
-    refreshed during the timed interval. `DriveCommandSink.drive(...)` defines its command as
-    current-loop state and exposes `update(clock)` for per-loop housekeeping, so the helper does not
-    satisfy the generic sink contract. The focused
+    refreshed during the timed interval. `DriveCommandSink` permits both immediate sinks and
+    heartbeat-driven adapters that retain a request for a later owned update; every current concrete
+    sink retains its last request in some form. The confirmed contract mismatch is therefore not a
+    current watchdog failure: the helper never calls the `update(clock)` hook that the sink Javadoc
+    says timed-drive Tasks call, and its mode-neutral name does not reveal that a direct sink Task
+    must exclusively own behavior commands. The focused
     `TimedTaskStartSemanticsTest.publicDriveTaskCommandSurvivesItsSubLoopStartCycle` baseline passes
     one test with zero failures/errors/skips while explicitly asserting that the drive count stays
     at one; this confirms rather than protects against the defect.
-  - **Loop and caller trace:** the documented TeleOp loop runs Tasks before one final
-    `DriveSource -> DriveCommandSink` write. Phoenix and compiling examples 03 and 06 follow that
-    order, so a direct Task write is overwritten later in the same cycle and its later `stop()` is
-    overwritten too. Phoenix Auto has no competing final drive phase: its active Auto Task owns the
-    drive resource. Existing `DriveGuidanceTask` and `RouteTask` already model that exclusive path by
-    updating their sink/follower each active loop. `MecanumDrivebase` happens to latch immediate
-    motor power and has a no-op update, which masks the bug when uncontested; the Pedro adapter needs
-    `update(clock)` to advance its follower and receives no separate update from Phoenix Auto.
+  - **Loop and caller trace:** the documented TeleOp loop and compiling examples 03 and 06 run Tasks
+    before one final `DriveSource -> DriveCommandSink` write. Phoenix TeleOp likewise has one final
+    source-driven writer, although it does not currently expose a general macro runner. A direct
+    Task write in either pattern is therefore overwritten later in the same cycle and its later
+    `stop()` would be overwritten too. Phoenix Auto has no competing behavior-command phase: its
+    active Auto Task owns drive behavior, while `PhoenixRobot` now supplies the stable external-sink
+    lifecycle heartbeat before the Task runner. Existing `DriveGuidanceTask` and `RouteTask` model
+    the same exclusive behavior-command path. `MecanumDrivebase` latches immediate motor power and
+    has a no-op update; the Pedro adapter retains manual requests and deduplicates the composition
+    root's update from any same-cycle Task-facing update.
   - **Current callers:** there is no production Phoenix, framework-tool example, Auto, or TeleOp
     caller of `DriveTasks`. The only executable caller is the baseline unit test. Student-facing
     references are concentrated in `DriveTasks`, `DriveCommandSink`, `Tasks`, Framework Principles,
@@ -1685,15 +1690,18 @@ writer, and explicit lifecycle ownership.
     directly for shutdown, and an advanced sequence can deliberately use
     `Tasks.runOnce(sink::stop)` without presenting a mode-neutral drive macro to beginners. The
     resulting `DriveTasks` surface has one safe, discoverable purpose.
-  - **Chosen ownership rule:** the exclusive helper is for an Auto-style runner or tester that is
-    the only owner updating and commanding that sink while the Task is active. Each unexpired active
-    cycle asks `sink.update(clock)` and then calls `sink.drive(signal)` exactly once. A stable sink
-    lane that already owns a once-per-cycle heartbeat must make the same-cycle update idempotent;
-    the Task-local call is not a substitute for an outer lifecycle owner such as Pedro requires. A
-    positive duration publishes its command during the TaskRunner's start cycle; normal completion
-    and active cancellation stop exactly once. A zero duration publishes no motion and stops
-    immediately. TeleOp macros and assists remain `DriveSource`/overlay proposals consumed by the
-    composition root's one final writer; they must not use the exclusive helper before that writer.
+  - **Chosen ownership rule:** the exclusive helper is for an Auto-style runner or tester where the
+    Task is the only behavior command writer for that sink while active. A composition root may and,
+    for a stateful external adapter such as Pedro, must remain the stable lifecycle-heartbeat owner.
+    Each unexpired active cycle asks `sink.update(clock)` once and, if that callback leaves the Task
+    active, calls `sink.drive(signal)` once. A sink lane with an outer once-per-cycle heartbeat must
+    make the same-cycle update idempotent; the Task-local call is not a substitute for that lifecycle
+    owner. A positive
+    duration publishes its command from `start(clock)` during the TaskRunner's start cycle, then
+    deduplicates the runner's same-cycle `update(clock)`; normal completion and active cancellation
+    stop exactly once. A zero duration publishes no motion and stops immediately. TeleOp macros and
+    assists remain `DriveSource`/overlay proposals consumed by the composition root's one final
+    writer; they must not use the exclusive helper before that writer.
   - **Chosen lifecycle implementation:** use a private purpose-specific Task behind the factory,
     not a new public type or builder. It anchors elapsed time at its own `clock.nowSec()` boundary,
     deduplicates by `clock.cycle()`, and becomes terminal before invoking `stop()`. It checks for
@@ -1719,11 +1727,12 @@ writer, and explicit lifecycle ownership.
     the lifecycle hazards Phoenix Tasks should remove; LOAD's readable route/capability sequences
     demonstrate that doing so need not make the student routine longer. None of the three needs a
     general direct-drive runner or makes timed open-loop drive the normal autonomous API.
-  - **Pedro dependency discovered by the re-review:** the current Phoenix adapter does not yet meet
-    the lifecycle assumed by this generic design. Pedro requires an outer-loop Follower heartbeat,
-    immediate stopped-state behavior, a valid drivetrain/localizer, and explicit coordinate/pose
-    authority. Those are now tracked as PEDRO-01 and PEDRO-02 ahead of DRIVE-01. DRIVE-01 must not
-    claim to fix Pedro hold-end, pose updates, or stopped output by itself.
+  - **Pedro prerequisite discovered by the re-review:** Pedro requires an outer-loop Follower
+    heartbeat, immediate stopped-state behavior, a valid drivetrain/localizer, and explicit
+    coordinate/pose authority. PEDRO-01 and PEDRO-02 were therefore completed ahead of DRIVE-01.
+    The current Phoenix Auto root now owns the recurring adapter heartbeat, and the adapter makes
+    Task/root calls same-cycle idempotent. DRIVE-01 must preserve that ownership and must not claim
+    to implement or replace Pedro hold-end, pose updates, or stopped-output behavior.
   - **Rejected/deferred scope:** do not convert route followers or autonomous guidance into
     `DriveSource`s; their direct lifecycle ownership is already explicit. Do not add a generic or
     drive-specific output runner until a real recurring TeleOp timed-drive use case demonstrates
@@ -1740,11 +1749,57 @@ writer, and explicit lifecycle ownership.
     exhaustive searches find no removed calls, then run `:TeamCode:testDebugUnitTest`,
     `:TeamCode:compileDebugJavaWithJavac`, XML result counts, `git diff --check`, adversarial review,
     and Android Studio inspection. Generic watchdog/recording-sink behavior belongs in DRIVE-01;
-    Pedro hold, heartbeat, cancellation, and stopped-output hardware checks belong in PEDRO-01 after
-    PEDRO-02 supplies a valid runtime.
+    Pedro hold, heartbeat, cancellation, and stopped-output behavior remain PEDRO regression scope,
+    not functionality supplied by DRIVE-01.
+  - **Pre-implementation revalidation (2026-07-13):** the complete caller, lifecycle, sink, Phoenix
+    loop, Pedro, test, Javadoc, and guide audit confirms the leading API and ownership split remain
+    the smallest principle-consistent design. There are still no production, Phoenix, tool,
+    modern-example, or OpMode callers to migrate; only the bug-preserving unit test and current
+    documentation use the old factories. Deleting every timed helper would make basic direct-drive
+    Auto/test code harder, while a timed `DriveSource`, output runner, public ownership policy, or
+    resource scheduler would add student-facing machinery without a caller. The private Task must
+    publish `sink.update(clock)` then `sink.drive(signal)` from `start(clock)` for every positive
+    duration, recording the cycle before callbacks so the runner's same-cycle update is a no-op.
+    This is required when a sequence starts the drive child at the end of its own update; waiting
+    until the next cycle could let a short command expire without ever being published. The Task
+    then refreshes once per later unexpired cycle, checks expiry before another write, rechecks
+    terminal state after a reentrant sink update, and becomes terminal before exactly-once stop
+    cleanup. Documentation must describe **exclusive** as behavior-command ownership, retain the
+    independent root heartbeat for stateful adapters, and keep this helper out of the ordinary
+    TeleOp source/final-writer path. No DRIVE-01 Java implementation was made during this gate.
   - **Approval gate:** this confirms the tracker's leading ownership split, but it renames/removes
     public drive-task APIs and defines a new exclusive lifecycle contract. It is therefore a major
     API decision and requires explicit user approval before moving to **In progress**.
+  - **Approval:** the user approved the DRIVE-01 design on 2026-07-13.
+  - **Implementation (2026-07-13):** `DriveTasks` now exposes one public
+    `driveExclusivelyForSeconds(...)` factory backed by a private single-use Task. Every positive
+    interval publishes from its own start boundary, refreshes at most once per unexpired clock cycle,
+    checks expiry before another write, and stops exactly once after becoming terminal. Active
+    cancellation is idempotent; update-before-start and second-start misuse fail actionably; zero
+    duration stops without publishing motion. The old `driveForSeconds(...)`, `driveInstant(...)`,
+    and `DriveTasks.stop(...)` paths were removed rather than retained as aliases. TeleOp remains one
+    source-driven final writer, while adapters whose supported lifecycle requires updates beyond
+    active Tasks retain a shared-clock composition-root heartbeat with same-cycle deduplication.
+  - **Automated verification (2026-07-13):** `DriveTasksTest` has 19 passing tests for start/update
+    order, refresh and deduplication, sequence timing, exact/overshoot expiry, positive/zero duration,
+    lifecycle misuse, cancellation/reentrancy, callback failures, exactly-once stop, runner cleanup,
+    suppressed cleanup failures, and the competing-writer trace. The retained
+    `TimedTaskStartSemanticsTest` has 14 passing tests. The full
+    `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` run succeeded: 28 suites,
+    258 tests, zero failures, errors, or skips. Only the repository's existing Java 8-on-JDK-21
+    deprecation warnings remain.
+  - **Static and independent verification (2026-07-13):** exhaustive current source, test, guide,
+    example, tool, and OpMode searches find no removed API call; the remaining old names are only the
+    historical decision evidence in this tracker. The public `DriveTasks` surface contains only the
+    approved factory. `git diff --check`, changed-file trailing-whitespace checks, and changed-
+    Markdown local-link checks pass. Three independent adversarial reviews covered lifecycle/Pedro
+    compatibility, Framework Principles/student-facing documentation, and API/test/caller scope.
+    Their wording and reentrant-update test findings were resolved, and the final review has no
+    blocking finding.
+  - **Manual verification (2026-07-13):** the user confirmed the Android Studio review and approved
+    DRIVE-01. No robot-hardware run is claimed; a later low-power direct-drive Auto/test check can
+    confirm command refresh and immediate stop on the team's real sink, while normal Pedro route
+    movement remains covered by its route and heartbeat lifecycle rather than this helper.
 
 ### TASK-04 - Parallel deadline composition
 
