@@ -1,6 +1,6 @@
 # Framework Improvement Tracker
 
-Last updated: 2026-07-14
+Last updated: 2026-07-15
 
 This file tracks proposed Phoenix framework improvements. It is deliberately a planning document:
 an item being listed here does **not** mean its current proposed solution has been approved. Each
@@ -97,7 +97,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 33 | SOURCE-01 | Boolean composition sampling | Proposed | Sample both operands once per cycle before combining stateful results. |
 | 34 | API-01 | Writable Plant command binding | Proposed | Keep one simple `Plant` if builder provenance can prevent silent no-op writes. |
 | 35 | API-02 | Feedback tolerance choice | Proposed | Ask for tolerance after unit mapping; retain an explicitly named native default only if useful. |
-| 36 | API-03 | Servo and owner-config validation | Proposed | Reject invalid configuration at build/owner construction with device-specific messages. |
+| 36 | API-03 | Builder and owner-config validation | Proposed | Reject invalid hardware and controller configuration at the earliest fully informed boundary with actionable messages. |
 | 37 | API-04 | Binding execution order | Proposed | Preserve declaration order unless explicit phases are proven necessary. |
 | 38 | API-05 | One beginner drive entry point | Proposed | Teach the lane as the robot-facing path and keep the raw factory as a lower-level tool. |
 | 39 | COMMON-01 | Initialization runtime helper | Proposed | Extract only repeated retry/error/cleanup ceremony; avoid a robot base class. |
@@ -111,6 +111,10 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 47 | DOC-01 | Stale and non-compiling documentation | Proposed | Correct loop/API examples and validate links/examples where practical. |
 | 48 | CI-01 | Framework verification in CI | Proposed | Run focused unit tests, TeamCode compilation, docs checks, and boundary checks. |
 | 49 | CLEAN-01 | Alias and risky convenience cleanup | Proposed | Remove only APIs proven redundant or unsafe by caller search. |
+| 50 | CTRL-01 | Final scalar-regulator output constraints | Proposed | Constrain the final composed regulator command with one factory-only decorator, without adding flywheel policy or another Plant-builder path. |
+| 51 | SOURCE-02 | Derived rate from sampled scalar position | Proposed | Derive units-per-second from any position `ScalarSource` in core; keep encoder hardware reads at the FTC boundary. |
+| 52 | SOURCE-03 | Composable scalar measurement conditioning | Proposed | Add only evidence-backed, explicitly configured numeric filters as generic `ScalarSource` decorators rather than hiding smoothing in a sensor adapter. |
+| 53 | SAFE-03 | Regulated Plant actuator-command truth | Proposed | Make every normalized regulated-Plant command finite, bounded, and truthful before the defensive hardware adapter. |
 
 The order is intentionally front-loaded with testability, robot lifecycle, actuator safety, and
 deterministic Task behavior. The Pedro review added two runtime-ownership gates before DRIVE-01:
@@ -118,8 +122,11 @@ the checked-in Auto must first have one continuous follower heartbeat and one va
 localization authority. The Cuttlefish review then added route truth and deferred construction ahead
 of the higher-level Auto policies that depend on them. The expanded Worlds-source review added one
 mode-boundary handoff and one missing FTC sensor primitive, while deliberately leaving robot power,
-jam, calibration, and match strategy out of the framework. Later API cleanup should not begin until
-tests protect the core semantics it depends on.
+jam, calibration, and match strategy out of the framework. The Bettabot review then separated an
+intentional final control-command constraint from universal regulated-output safety, and separated
+generic rate estimation from optional signal conditioning rather than naming either source
+abstraction after one encoder. Later API cleanup should not begin until tests protect the core
+semantics it depends on.
 
 ## External competition capability benchmark (2026-07-11)
 
@@ -189,6 +196,28 @@ not enough evidence for another framework lane; revisit dynamic localization cam
 a second concrete robot cannot use the existing time-aware mount and estimator boundaries cleanly.
 No reviewed code justifies a second scheduler, generic command requirements, global mutable robot
 state, a generated Auto language, or background hardware behavior.
+
+### Bettabot shooter review (2026-07-15)
+
+The tracker was also reviewed against every Java file under `edu.ftcphoenix.robots.betta` in
+[Hansika1098/Summer26 at commit `4eed9d6c`](https://github.com/Hansika1098/Summer26/tree/4eed9d6c7c93c5e2b65bdbc78463ad0be0e87790/TeamCode/src/main/java/edu/ftcphoenix/robots/betta).
+All 1,047 lines count as robot code for this assessment, including tuning, telemetry, composition,
+controls, and unused Auto scaffolding; a short outer Plant call does not by itself make the complete
+robot implementation simple.
+
+| Bettabot evidence | Phoenix assessment | Tracker consequence |
+|---|---|---|
+| [`CappedFlywheelRegulator`](https://github.com/Hansika1098/Summer26/blob/4eed9d6c7c93c5e2b65bdbc78463ad0be0e87790/TeamCode/src/main/java/edu/ftcphoenix/robots/betta/BettaShooter.java#L77-L136) wraps the complete PID-plus-feedforward result because `Pid` output limits apply before the feedforward decorator. | An intentional narrower command range is a reusable control-law composition operation. It does not belong in a flywheel class, FTC motor adapter, or another regulated-Plant builder branch. Zero-target coast/reset remains robot policy. Separately, every normalized regulated output needs truthful universal `[-1,+1]` safety even when a caller does not request a narrower range. | Add CTRL-01 for one factory-only policy constraint and SAFE-03 for universal regulated-command safety/truth; explicitly evaluate composition order and anti-windup implications. |
+| [`ThroughBoreVelocitySource`](https://github.com/Hansika1098/Summer26/blob/4eed9d6c7c93c5e2b65bdbc78463ad0be0e87790/TeamCode/src/main/java/edu/ftcphoenix/robots/betta/BettaShooter.java#L30-L75) directly reads FTC position and differences consecutive samples to avoid a reported high-rate velocity-counter problem. | Hardware acquisition belongs in `fw.ftc`, but position-to-rate estimation is generic core Source logic that can consume motor, external, analog, absolute, or simulated position sources. Filtering is another generic transform and must not be hidden inside an encoder model or an automatic velocity fallback. | Add SOURCE-02 for generic derived-rate estimation and SOURCE-03 for independently composable scalar conditioning. Require hardware comparison against direct SDK velocity before changing the recommended encoder-feedback path. |
+| [`BettaDashboardControls`](https://github.com/Hansika1098/Summer26/blob/4eed9d6c7c93c5e2b65bdbc78463ad0be0e87790/TeamCode/src/main/java/edu/ftcphoenix/robots/betta/BettaDashboardControls.java#L18-L100) synchronizes mutable live values, while [`BettaShooter`](https://github.com/Hansika1098/Summer26/blob/4eed9d6c7c93c5e2b65bdbc78463ad0be0e87790/TeamCode/src/main/java/edu/ftcphoenix/robots/betta/BettaShooter.java#L320-L361) repeats extensive configuration validation. | Live tuning is useful but should not become production configuration authority. Repeated finite/range/name validation should fail at the earliest fully informed framework or robot-owner boundary. | Add Bettabot evidence to TUNE-01 and broaden API-03's validation audit; do not add a framework shooter, tuning singleton, or generic robot base. |
+
+The intended measurement layering is explicit: an FTC adapter acquires and memoizes a raw hardware
+reading; core Sources perform reusable unit mapping, position-to-rate estimation, and optional
+filtering; a Plant or robot service consumes the resulting Source; robot code owns what the value
+means and how behavior responds. SOURCE-02 and SOURCE-03 remain independent decision gates:
+SOURCE-02 must not depend on optional filtering, while SOURCE-03 may decorate either raw or derived
+measurements. Each item must audit the existing `ScalarSource` construction layer independently and
+avoid adding redundant factory and instance-method spellings.
 
 ### Recommended autonomous ownership structure
 
@@ -2857,6 +2886,10 @@ writer, and explicit lifecycle ownership.
 - **External evidence:** Cuttlefish exposes many mechanism, control, and Auto parameters through FTC
   Dashboard configuration during development. Its use demonstrates the speed benefit while also
   showing why mutable globals should not become Phoenix's production configuration authority.
+  Bettabot's
+  [`BettaDashboardControls`](https://github.com/Hansika1098/Summer26/blob/4eed9d6c7c93c5e2b65bdbc78463ad0be0e87790/TeamCode/src/main/java/edu/ftcphoenix/robots/betta/BettaDashboardControls.java#L18-L100)
+  independently repeats a two-way live-static synchronization layer for flywheel gains, bounds, and
+  targets, reinforcing the need for one explicit tune -> validate -> record workflow.
 - **Alternatives to compare:** edit/redeploy checked-in profiles only; let production owners read
   mutable Dashboard statics continuously; rebuild individual owners from a tuning snapshot; provide
   dedicated calibration/tester bridges; or emit/copy validated values into the profile. Consider
@@ -2981,15 +3014,29 @@ writer, and explicit lifecycle ownership.
   meaningful robot units.
 - **Decision record:** _Pending._
 
-### API-03 - Servo and owner-config validation
+### API-03 - Builder and owner-config validation
 
-- **Problem to confirm:** invalid servo endpoints, transformed values, non-finite limits, or negative
-  magnitude settings may survive construction and be silently clamped or misapplied later.
+- **Problem to confirm:** invalid servo endpoints, transformed values, non-finite controller gains or
+  limits, inconsistent output/integral bounds, blank or duplicate motor names, and negative magnitude
+  settings may survive construction and be silently clamped or misapplied later. Bettabot's
+  [`BettaShooter` validation](https://github.com/Hansika1098/Summer26/blob/4eed9d6c7c93c5e2b65bdbc78463ad0be0e87790/TeamCode/src/main/java/edu/ftcphoenix/robots/betta/BettaShooter.java#L320-L361)
+  is evidence that robot owners currently repeat invariants that may already be fully known by a
+  framework builder or controller factory.
 - **Alternatives to compare:** builder-stage validation, owner constructor validation, constrained
-  config value objects, and hardware-boundary defense.
+  config value objects, controller/factory validation, and hardware-boundary defense. Inventory which
+  layer first knows each complete invariant; do not move robot-specific relationships into a generic
+  builder merely to remove local checks.
 - **Leading hypothesis:** validate once at the earliest fully informed builder/owner boundary and keep
   cheap final hardware defense; avoid new public value types unless several APIs share the invariant.
-- **Completion:** errors name the device, setting, units, supplied value, and legal range.
+  CTRL-01 owns the new final-constraint API and its own inputs; API-03 audits other existing
+  construction-time validity.
+- **Scope gate:** servo mapping, controller parameters, motor-group topology, and robot-owned
+  cross-field relationships have different owners. The decision gate must select one coherent
+  validation family for implementation and move independently owned families to named follow-up
+  items instead of turning API-03 into an omnibus cleanup.
+- **Completion:** errors name the device or controller, setting, units, supplied value, and legal
+  range or relationship where applicable. Focused tests cover each migrated invariant, and robot
+  owners retain only checks that depend on relationships unique to that robot.
 - **Decision record:** _Pending._
 
 ### API-04 - Binding execution order
@@ -3216,6 +3263,157 @@ writer, and explicit lifecycle ownership.
   churn is bundled with behavioral work. Route construction/config defaults either have one chosen
   documented path or retain a parallel path only with a concrete compatibility reason and cleanup
   gate.
+- **Decision record:** _Pending._
+
+### CTRL-01 - Final scalar-regulator output constraints
+
+- **Problem to confirm:** Phoenix can limit a `PidController`'s contribution, but later
+  `ScalarRegulator` decorators can add feedforward or voltage compensation after that limit. A robot
+  that needs an intentional final command range must therefore write a custom wrapper or rely on the
+  actuator's broader defensive saturation, which neither expresses the requested range nor reports
+  the constrained control-law result.
+- **External evidence:** Bettabot's
+  [`CappedFlywheelRegulator`](https://github.com/Hansika1098/Summer26/blob/4eed9d6c7c93c5e2b65bdbc78463ad0be0e87790/TeamCode/src/main/java/edu/ftcphoenix/robots/betta/BettaShooter.java#L77-L136)
+  adds about sixty lines to constrain the complete PIDF command to `[0, maximumOutputPower]` and
+  expose useful tuning diagnostics. Its zero-setpoint reset/coast behavior is additional
+  flywheel-specific policy and is not evidence for a universal stop rule.
+- **Alternatives to compare:** keep custom robot regulators; document careful decorator ordering;
+  use `Pid.setOutputLimits(...)`; rely on final FTC `[-1, +1]` saturation; add a regulated-Plant
+  builder stage; add one factory-only `ScalarRegulator` decorator; or make saturation visible to a
+  controller for anti-windup. Trace every current regulator construction path and distinguish final
+  output limiting from integral limiting, non-finite-output defense, Plant target bounds, and
+  actuator saturation. SAFE-03 separately owns the universal normalized-command invariant for
+  regulated Plants that do not opt into a narrower policy constraint.
+- **Leading hypothesis:** add one factory-only final-output constraint decorator in
+  `ScalarRegulators`, with finite ordered bounds, delegated reset, and debug fields for unconstrained
+  output, applied output, and whether limiting occurred. It composes explicitly around PIDF or
+  voltage compensation and adds no public concrete class, duplicate instance spelling, Plant-builder
+  branch, flywheel vocabulary, automatic zero-setpoint reset, or claim of saturation-aware
+  anti-windup. Confirm the exact factory name and non-finite policy at the decision gate.
+- **Anti-windup boundary:** an outer decorator cannot generically feed its saturation state back into
+  an arbitrary inner regulator. Compare existing integral limits/reset, controller-specific
+  conditional integration or back-calculation, and a richer regulator contract using focused
+  saturation/recovery evidence. The leading hypothesis is to document that final limiting is not
+  automatic anti-windup rather than complicating every `ScalarRegulator` from Bettabot's currently
+  zero-`kI` case.
+- **Completion:** pure tests cover exact boundaries, positive/negative saturation, decorator order
+  with PIDF and voltage compensation, repeated updates, reset propagation, debug state, invalid
+  bounds, and non-finite inner output. A regulated-Plant test with a fake `PowerOutput` proves the
+  selected limit reaches the output and its diagnostics agree. Javadocs and the shooter examples show
+  one obvious composition path and clearly separate generic limiting from robot-owned disable/coast
+  policy; hardware output adapters retain cheap defensive saturation.
+- **Decision record:** _Pending._
+
+### SOURCE-02 - Derived rate from sampled scalar position
+
+- **Problem to confirm:** Phoenix exposes raw position and direct SDK velocity sources but has no
+  reusable way to derive rate from position samples. Bettabot therefore embeds FTC SDK access,
+  sample history, timing, reset, and same-cycle deduplication in a robot-specific class. The same
+  need can apply to any encoder or position sensor whose direct velocity is absent, overflows, is
+  too quantized, or has unsuitable semantics.
+- **External evidence:** Bettabot's
+  [`ThroughBoreVelocitySource`](https://github.com/Hansika1098/Summer26/blob/4eed9d6c7c93c5e2b65bdbc78463ad0be0e87790/TeamCode/src/main/java/edu/ftcphoenix/robots/betta/BettaShooter.java#L30-L75)
+  differences `getCurrentPosition()` using `LoopClock.dtSec()` to avoid a reported REV velocity-
+  counter limitation. The implementation is not actually Through Bore-specific, and its timing is
+  only correct while it is sampled every cycle.
+- **Layer boundary to preserve:** `FtcSensors` owns device lookup, raw cycle-memoized readings, and
+  any confirmed SDK/controller representation correction such as a hardware counter-width defect.
+  Core Source composition owns device-independent delta-over-elapsed-time estimation; a generic
+  periodic-position contract, if justified, is distinct from correcting a particular SDK counter.
+  SOURCE-03 owns optional smoothing or outlier conditioning. `VelocityFeedback.fromSource(...)`
+  remains the Plant seam unless another entry point proves a distinct validation or ownership value.
+- **Alternatives to compare:** retain one custom class per robot; always trust `DcMotorEx.getVelocity()`;
+  add a Through Bore or FTC-only helper; derive rate as a generic core Source transform; expose a
+  separate estimator object; or add a Plant-feedback-only option. Compare actual SDK velocity with
+  position-derived results on supported hubs, motors, internal/external quadrature encoders, and
+  relevant loop rates. Define first-sample, skipped-cycle, duplicate-cycle, reset, non-finite,
+  counter-rollover, wrapped/absolute-position, discontinuity, and direction/unit semantics before
+  choosing the API.
+- **Hardware decision gate:** before implementation, record direct SDK velocity and position-derived
+  velocity on the pinned SDK and actual REV hardware across the Through Bore encoder's expected
+  counts/revolution, RPM, direction, stop, and representative loop-rate envelope. Determine whether
+  any discrepancy is acquisition/counter representation, generic estimation, or filtering. Put a
+  correction only in that owning layer. If Bettabot's direct velocity is sound and no other concrete
+  caller needs a position-derived rate, defer SOURCE-02 entirely. If another caller still justifies
+  the core estimator, record it explicitly; an FTC or Plant convenience remains a separate question
+  requiring distinct student-facing or validation value.
+- **Leading hypothesis:** core owns one resettable, cycle-idempotent position-to-rate calculation that
+  accepts any `ScalarSource` in caller-chosen position units and returns the same units per second.
+  It uses elapsed time between its own accepted samples rather than assuming it was sampled during
+  the immediately preceding loop. `FtcSensors` continues to own raw SDK position and direct-velocity
+  acquisition; existing Plant feedback accepts the resulting Source. Add an FTC or Plant convenience
+  only if it has distinct student-facing value, and otherwise keep one public construction path. Do
+  not identify the estimator with Through Bore hardware, silently replace direct SDK velocity, or
+  hide smoothing inside it.
+- **Completion:** fake-clock tests cover startup, normal and irregular intervals, skipped and repeated
+  cycles, reset/restart, zero or invalid elapsed time, direction, unit mapping, non-finite samples,
+  wrap/discontinuity policy, and debug output. Hardware evidence records the usable range and failure
+  behavior of direct versus derived velocity. Documentation demonstrates the same estimator with at
+  least two position-source kinds and shows one concise regulated-Plant integration without leaking
+  FTC types into core.
+- **Decision record:** _Pending._
+
+### SOURCE-03 - Composable scalar measurement conditioning
+
+- **Problem to confirm:** finite differencing can amplify encoder quantization and loop jitter, while
+  analog, distance, current, and other scalar measurements may contain spikes or noise. Phoenix has
+  generic mapping, clamping, hold-last, rate-limiting, and boolean stability helpers, but no clearly
+  documented generic numeric smoothing or outlier-rejection path. Putting a filter inside a Through
+  Bore adapter or derived-velocity helper would couple reusable signal conditioning to one device
+  and prevent deliberate filtering before versus after estimation.
+- **External evidence:** Bettabot currently uses one-cycle position differencing without filtering in
+  [`ThroughBoreVelocitySource`](https://github.com/Hansika1098/Summer26/blob/4eed9d6c7c93c5e2b65bdbc78463ad0be0e87790/TeamCode/src/main/java/edu/ftcphoenix/robots/betta/BettaShooter.java#L30-L75).
+  This motivates measurement rather than proving which filter is correct; collect real flywheel
+  traces and identify at least one additional sensor caller before selecting an algorithm.
+- **Alternatives to compare:** document robot-owned custom filters; use FTC SDK filter utilities at
+  the boundary; add an exponential/time-constant low-pass decorator; add fixed-sample or time-window
+  mean/median filters; reject implausible deltas; estimate rate with windowed regression; or provide
+  a broad configurable filter interface. Compare noise rejection, phase delay, irregular-loop
+  behavior, allocation, tuning concepts, and whether each candidate offers distinct value beside
+  existing Source composition.
+- **Leading hypothesis:** if measurements confirm a repeated need, add only the smallest named
+  filter decorator or decorators to the generic scalar Source layer. Each has explicit time/window
+  semantics, is cycle-idempotent and resettable, and can be composed either before SOURCE-02's rate
+  estimate or after it. Do not add a generic "filtered encoder velocity," implicit default smoothing,
+  one opaque filter with many modes, or parallel factory/instance spellings without distinct value.
+- **Completion:** deterministic tests cover startup, reset, duplicate cycles, irregular `dt`, step and
+  ramp response, representative noise/outliers, non-finite samples, latency, and debug state.
+  Documentation explains the semantic difference between filtering position before differentiation
+  and filtering derived velocity afterward, gives selection guidance backed by recorded data, and
+  keeps sensor meaning and response policy in robot code.
+- **Decision record:** _Pending._
+
+### SAFE-03 - Regulated Plant actuator-command truth
+
+- **Problem to confirm:** `PowerOutput` is a normalized `[-1,+1]` command seam, but regulated
+  position/velocity Plants currently store and forward the raw regulator result while FTC adapters
+  may clamp a different value. Group scale/bias wrappers also report the pre-transform request while
+  child adapters may saturate. Debug output can therefore disagree with the command that reached
+  hardware, and non-finite or excessive commands travel farther than necessary before defensive
+  handling. SAFE-02 intentionally fixed only direct power Plants and deferred regulated outputs.
+- **External evidence:** Bettabot's
+  [`CappedFlywheelRegulator`](https://github.com/Hansika1098/Summer26/blob/4eed9d6c7c93c5e2b65bdbc78463ad0be0e87790/TeamCode/src/main/java/edu/ftcphoenix/robots/betta/BettaShooter.java#L77-L136)
+  prevents this mismatch for one flywheel while also applying its narrower `[0, maximum]` policy.
+  CTRL-01 owns that optional policy range; SAFE-03 asks what every normalized regulated Plant must
+  guarantee even when no optional decorator is used.
+- **Alternatives to compare:** document that every regulator must self-limit; install CTRL-01
+  implicitly; clamp/sanitize in each regulated Plant; centralize one final regulated-output safety
+  helper; change `PowerOutput.setPower(...)` to return what was applied; read
+  `getCommandedPower()` after every write; or add a constrained command/status type. Trace legacy and
+  mapped position/velocity Plants, search/homing power, grouped and scaled outputs, CR servos, direct
+  pure-framework callers, debug/status consumers, and stop/failure behavior before selecting scope.
+- **Leading hypothesis:** because `PowerOutput` semantically consumes normalized power, apply one
+  shared finite/`[-1,+1]` invariant immediately before each regulated Plant's final write and retain
+  both requested regulator output and applied normalized command in diagnostics. Keep FTC adapter
+  saturation as defense in depth. Do not require students to remember CTRL-01 for universal safety,
+  change mechanism targets or `Plant.getAppliedTarget()`, or conflate child scale/bias configuration
+  validity with the central regulator command; API-03 separately audits those mappings.
+- **Completion:** focused fake-output tests cover mapped and lower-level regulated position/velocity
+  paths, exact boundaries, positive/negative saturation, NaN/infinity, grouped/scaled outputs,
+  search/homing commands where in scope, stop/reset/failure, and agreement between diagnostics and
+  the command accepted by the semantic output seam. Javadocs clearly distinguish mechanism target,
+  raw regulator result, applied normalized command, per-child mapped command, and physical feedback;
+  existing finite in-range behavior and CTRL-01's narrower explicit policy remain unchanged.
 - **Decision record:** _Pending._
 
 ## Explicitly deferred architectural ideas
