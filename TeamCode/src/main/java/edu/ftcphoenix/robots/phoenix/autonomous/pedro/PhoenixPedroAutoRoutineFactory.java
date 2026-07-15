@@ -1,10 +1,12 @@
 package edu.ftcphoenix.robots.phoenix.autonomous.pedro;
 
+import com.pedropathing.paths.PathChain;
+
 import java.util.Objects;
 
+import edu.ftcphoenix.fw.drive.route.RouteTask;
 import edu.ftcphoenix.fw.drive.route.RouteTasks;
 import edu.ftcphoenix.fw.task.Task;
-import edu.ftcphoenix.fw.task.Tasks;
 import edu.ftcphoenix.robots.phoenix.autonomous.PhoenixAutoStrategyId;
 import edu.ftcphoenix.robots.phoenix.autonomous.PhoenixAutoTasks;
 
@@ -15,9 +17,11 @@ import edu.ftcphoenix.robots.phoenix.autonomous.PhoenixAutoTasks;
  * rather than building task sequences themselves. That keeps OpModes as FTC entry points while this
  * class owns strategy-to-routine mapping.</p>
  *
- * <p>The checked-in routines are structural placeholders: generic sequences continue after an
- * abnormal route result. Before using position-dependent scoring in a match routine, add explicit
- * robot-owned continue, fallback, or abort policy around each route result.</p>
+ * <p>The checked-in routines use one private robot-owned coordinator to apply explicit route and
+ * scoring policy. Position-dependent scoring starts only after outbound completion; outbound and
+ * scoring timeouts select the live-pose return/park attempt, while cancellation-like results abort.
+ * A timeout of that final attempt terminates the routine rather than starting another fallback.
+ * Generic Task and route APIs continue to report facts without choosing Phoenix strategy.</p>
  *
  * <p>The placeholder outbound route is fixed during INIT. Return/park geometry is built once when
  * that route Task starts, allowing its path to begin at the current Pedro pose without exposing the
@@ -49,44 +53,66 @@ public final class PhoenixPedroAutoRoutineFactory {
     }
 
     private static Task safePreload(PhoenixPedroAutoContext ctx) {
-        return Tasks.sequence(
-                followOutbound(ctx, "phoenix.safePreload.outbound"),
-                PhoenixAutoTasks.aimAndShootOne(ctx.capabilities(), ctx.driveAdapter(), ctx.profile().auto),
-                followReturn(ctx, "phoenix.safePreload.returnOrPark"),
-                PhoenixAutoTasks.disableFlywheel(ctx.capabilities())
+        return buildRoutine(
+                ctx,
+                "phoenix.safePreload",
+                "phoenix.safePreload.outbound",
+                "phoenix.safePreload.returnOrPark"
         );
     }
 
     private static Task preloadAndPark(PhoenixPedroAutoContext ctx) {
-        return Tasks.sequence(
-                followOutbound(ctx, "phoenix.preloadAndPark.outbound"),
-                PhoenixAutoTasks.aimAndShootOne(ctx.capabilities(), ctx.driveAdapter(), ctx.profile().auto),
-                followReturn(ctx, "phoenix.preloadAndPark.parkPlaceholder"),
-                PhoenixAutoTasks.disableFlywheel(ctx.capabilities())
+        return buildRoutine(
+                ctx,
+                "phoenix.preloadAndPark",
+                "phoenix.preloadAndPark.outbound",
+                "phoenix.preloadAndPark.parkPlaceholder"
         );
     }
 
     private static Task partnerAwareCycle(PhoenixPedroAutoContext ctx) {
         // Structure exists now; real partner-aware lane geometry belongs in PhoenixPedroPathFactory.
-        return Tasks.sequence(
-                followOutbound(ctx, "phoenix.partnerAware.outbound"),
-                PhoenixAutoTasks.aimAndShootOne(ctx.capabilities(), ctx.driveAdapter(), ctx.profile().auto),
-                followReturn(ctx, "phoenix.partnerAware.safeReturnPlaceholder"),
-                PhoenixAutoTasks.disableFlywheel(ctx.capabilities())
+        return buildRoutine(
+                ctx,
+                "phoenix.partnerAware",
+                "phoenix.partnerAware.outbound",
+                "phoenix.partnerAware.safeReturnPlaceholder"
         );
     }
 
     private static Task pedroIntegrationTest(PhoenixPedroAutoContext ctx) {
-        return Tasks.sequence(
-                followOutbound(ctx, "pedro.outbound12in"),
-                PhoenixAutoTasks.aimAndShootOne(ctx.capabilities(), ctx.driveAdapter(), ctx.profile().auto),
-                followReturn(ctx, "pedro.returnToStart"),
-                PhoenixAutoTasks.disableFlywheel(ctx.capabilities())
+        return buildRoutine(
+                ctx,
+                "pedro.integrationTest",
+                "pedro.outbound12in",
+                "pedro.returnToStart"
+        );
+    }
+
+    /** Construct the private policy owner behind the existing one-method public routine factory. */
+    private static Task buildRoutine(PhoenixPedroAutoContext ctx,
+                                     String routineName,
+                                     String outboundDebugName,
+                                     String returnDebugName) {
+        RouteTask<PathChain> outbound = followOutbound(ctx, outboundDebugName);
+        Task scoringAttempt = PhoenixAutoTasks.aimAndShootOne(
+                ctx.capabilities(),
+                ctx.driveAdapter(),
+                ctx.profile().auto
+        );
+        RouteTask<PathChain> returnOrPark = followReturn(ctx, returnDebugName);
+        return new PhoenixPedroAutoRoutineTask(
+                routineName,
+                outbound,
+                scoringAttempt,
+                returnOrPark,
+                ctx.capabilities().scoring()
         );
     }
 
     /** Follow the fixed INIT-built outbound path through the normal eager route helper. */
-    private static Task followOutbound(PhoenixPedroAutoContext ctx, String debugName) {
+    private static RouteTask<PathChain> followOutbound(PhoenixPedroAutoContext ctx,
+                                                       String debugName) {
         return RouteTasks.follow(debugName,
                 ctx.driveAdapter(),
                 ctx.paths().outboundPath,
@@ -94,7 +120,8 @@ public final class PhoenixPedroAutoRoutineFactory {
     }
 
     /** Build the return path from the current Pedro pose when this Task actually starts. */
-    private static Task followReturn(PhoenixPedroAutoContext ctx, String debugName) {
+    private static RouteTask<PathChain> followReturn(PhoenixPedroAutoContext ctx,
+                                                     String debugName) {
         return RouteTasks.followBuiltAtStart(debugName,
                 ctx.driveAdapter(),
                 () -> ctx.pathFactory().buildReturnFromCurrentPose(ctx.paths().pedroStartPose),

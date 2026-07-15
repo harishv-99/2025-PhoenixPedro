@@ -76,7 +76,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 12 | FIELD-01 | Explicit alliance field transforms | Deferred | Revisit with real routes: share only genuinely symmetric geometry, while keeping alliance-specific points and complete routes explicit. |
 | 13 | DRIVE-01 | Drive task ownership | Done | Keep an exclusive Auto-only timed sink Task, after Pedro's outer-loop ownership is made correct. |
 | 14 | TASK-04 | Parallel deadline composition | Done | Add one cancellation-safe deadline primitive only if route-plus-companion callers justify it. |
-| 15 | PHX-03 | Explicit Auto route-failure policy | Proposed | Keep generic sequence semantics and make continue/fallback/abort policy visible in the robot routine. |
+| 15 | PHX-03 | Explicit Auto route-failure policy | Done | Keep generic sequence semantics and make continue/fallback/abort policy visible in the robot routine. |
 | 16 | PHX-04 | Match-time fallback takeover | Proposed | Let one robot-owned Auto supervisor safely cancel any active phase and start a fresh park route. |
 | 17 | PHX-02 | Phoenix runtime readiness | Proposed | Validate calibration, Pedro construction, routes, alliance facts, and required services before enabling assists/Auto. |
 | 18 | MATCH-01 | Explicit Auto-to-TeleOp handoff | Proposed | Carry one typed immutable robot snapshot across the FTC mode boundary without string maps or stale globals. |
@@ -2089,7 +2089,224 @@ writer, and explicit lifecycle ownership.
   no routine silently aims or shoots after a failed prerequisite; the fallback is visible in task
   telemetry; tests cover outbound failure, scoring failure, return failure, cancellation, and a
   successful routine without changing generic sequence semantics.
-- **Decision record:** _Pending._
+- **Decision record (2026-07-14):**
+  - **Confirmed failure path:** all four strategies built by
+    `PhoenixPedroAutoRoutineFactory` currently have the same unconditional
+    `outbound route -> aimAndShootOne -> return/park route -> disable flywheel` sequence.
+    `RouteTask` truthfully maps `COMPLETED` to `SUCCESS`, the two timeout statuses to `TIMEOUT`,
+    and interruption/replacement/cancellation/failure/unknown terminal statuses to `CANCELLED`.
+    `SequenceTask` deliberately advances after every completed child, aggregates only child
+    `TIMEOUT`, and can therefore erase a child `CANCELLED` into final `SUCCESS`. A non-throwing
+    abnormal outbound result consequently starts position-dependent aiming and may request a shot
+    from the wrong location. This is distinct from direct cancellation of the whole routine, which
+    does stop later children, and from a thrown lifecycle/integration failure, which uses the
+    `TaskRunner` fail-stop path.
+  - **Persistent-state and return-path evidence:** the fixed outbound Pedro path has a 50-percent
+    progress callback that captures the suggested velocity and enables the held flywheel request.
+    A later route timeout or interruption can therefore leave scoring intent active. The return
+    route has the same policy gap: every terminal status advances to the trailing flywheel-disable
+    Task, cancellation-like statuses may be reported as success, and a thrown start-time path-build
+    failure skips that trailing Task until robot shutdown. Safe policy must cancel pending shots and
+    clear held scoring requests through `PhoenixCapabilities`, not write hardware directly.
+  - **Production and modern-caller inventory:** `PhoenixPedroAutoOpModeBase` is the only production
+    caller of `PhoenixPedroAutoRoutineFactory.build(...)`. The two static safe Autos select
+    `SAFE_PRELOAD`; the Pedro test OpMode selects `PEDRO_INTEGRATION_TEST`; and the selector exposes
+    all four strategy ids, including `PRELOAD_AND_PARK` and `PARTNER_AWARE_CYCLE`. All four reach the
+    same repeated routine shape. No production Phoenix class currently reads a per-start
+    `RouteTask.getRouteStatus()` for policy; the OpMode only displays the adapter's mutable
+    latest-route status. Existing route/Pedro tests prove the lower-level statuses and lifecycle,
+    while `PhoenixPedroPathFactoryTest` covers only return geometry. There is no current Phoenix
+    routine-policy or `PhoenixAutoTasks` unit test.
+  - **Public construction-path audit:** generic sequential composition has one supported public path,
+    `Tasks.sequence(Task...) -> Task`; `SequenceTask` is package-private and has no public constructor
+    or `of(...)` alias. Outcome branching likewise has one public path,
+    `Tasks.branchOnOutcome(Task, Task, Task) -> Task`. `RouteTasks` has a justified two-by-two family:
+    eager versus explicitly start-time-built geometry, each with default versus diagnostic-name
+    overloads, and all four return the status-bearing `RouteTask<R>`. Phoenix has one public routine
+    factory, `PhoenixPedroAutoRoutineFactory.build(ctx) -> Task`; its strategy builders remain
+    private. `PhoenixCapabilities(Scoring, Targeting)` is the capability aggregate's sole public
+    construction path, while `PhoenixRobot.capabilities()` acquires the robot-owned aggregate rather
+    than constructing an alternative. `Targeting.aimTask(...) -> Task` is the capability leaf
+    factory. `PhoenixAutoTasks.aimAndShootOne(...)` and `disableFlywheel(...)` are distinct semantic
+    macro factories, while `routeConfig(...)` and `aimConfig(...)` are config adapters; the utility
+    constructor is private and there are no constructor/`of(...)` aliases. PHX-03 adds no parallel
+    public macro, constructor, builder, overload, or route API: both new implementations stay behind
+    the existing public routine/macro factories.
+  - **Adjacent API disposition:** the audit also found that `RouteTask` still has two public eager
+    constructors which duplicate `RouteTasks.follow(...)`, while start-time construction is
+    deliberately factory-only, and that `RouteTask.Config` still uses implicit construction/null
+    defaults rather than the usual explicit owner-config vocabulary. Neither issue is required to
+    fix robot route policy. Removing or normalizing those public paths here would be an unrelated
+    breaking framework migration, contrary to the one-item scope, when PHX-03 needs no such change.
+    Do not add supplier constructors merely for symmetry. The existing `CLEAN-01` gate now explicitly
+    records both findings and must perform its own caller/compatibility decision before migrating or
+    removing the constructors or normalizing the config construction/default path.
+  - **Alternatives considered:** leave the sequence and improve only documentation; globally make
+    `sequence(...)` short-circuit; add a second generic success-only sequence; nest only the existing
+    `branchOnOutcome(...)`; add cancelled/status overloads to generic `Tasks`; add a route-status DSL
+    or public Phoenix Auto builder; or centralize the repeated lifecycle in one private robot-owned
+    coordinator. Documentation alone leaves the unsafe behavior. Changing or duplicating generic
+    sequence semantics makes timeout fatal where recovery may be correct. Existing outcome branching
+    has no branch for a child `CANCELLED`, collapses precise route reasons, cannot distinguish direct
+    wrapper cancellation from an observed abnormal route, and does not retain useful fallback debug
+    state. A generic cancelled/status API still cannot own Phoenix scoring cleanup, while coupling
+    `Tasks` to route or season policy violates the framework boundary. A public Auto DSL adds concepts
+    before Phoenix has real varied routines that justify one.
+  - **Simplicity comparison:** the selected design adds no concept to the public student API and keeps
+    each strategy as one named semantic routine factory. Students continue using `RouteTasks`,
+    `PhoenixAutoTasks`, and `PhoenixCapabilities`; the subtle status, cancellation, cleanup, and
+    telemetry state machine is implemented and tested once. The private routine code will explicitly
+    name that scoring runs only after a completed outbound route and that a timeout chooses the
+    current-pose return/park fallback. This is shorter and harder to misuse than deeply nested
+    outcome branches, while preserving the generic framework's one factory-only composition layer.
+  - **Chosen ownership and implementation shape:** keep `Tasks.sequence(...)`, `TaskOutcome`,
+    `RouteTask`, and `RouteTasks` semantics unchanged. Use two cohesive package-private state
+    machines behind existing factories, rather than one monolith or hidden nested branches: a
+    Phoenix scoring-attempt Task behind `PhoenixAutoTasks.aimAndShootOne(...)`, and one Phoenix/Pedro
+    routine coordinator for the repeated outbound, scoring, and return/fallback phases. The latter is
+    exposed only through private helpers in `PhoenixPedroAutoRoutineFactory`. The private
+    `followOutbound(...)` and `followReturn(...)` helpers will return `RouteTask<PathChain>` rather
+    than erasing the typed per-start status to `Task`. Both helpers depend on capabilities and
+    backend-neutral Task/route types, never on a raw Pedro `Follower`, and remain single-use,
+    non-blocking, and on the shared `LoopClock`. This is two internal lifecycle owners with distinct
+    jobs, not a second public construction layer or an Auto DSL.
+  - **Chosen current strategy policy:** all four checked-in placeholder strategies use the same
+    conservative mapping, stated in the routine factory rather than the integration:
+    - outbound `COMPLETED`: run the scoring attempt, then build the return/park route from the live
+      pose;
+    - outbound `FOLLOWER_TIMEOUT_OR_STALL` or `TASK_TIMEOUT`: make scoring safe, skip aiming/shooting,
+      and attempt the live-pose return/park route as the fallback;
+    - outbound `INTERRUPTED`, `REPLACED`, `CANCELLED`, `FAILED`, or `UNKNOWN_TERMINAL`: make scoring
+      safe and abort without starting another route;
+    - scoring success: disable the route-owned flywheel request after the requested shot drains, then
+      return/park; scoring timeout: let the scoring attempt cancel its own pending shot, disable the
+      route-owned flywheel request, retain the degraded outcome, and return/park; scoring
+      cancellation/unknown: clean only those same owned requests and abort;
+    - return/fallback completion: finish safely; return timeout/stall: finish with `TIMEOUT`; every
+      other abnormal return status: finish with `CANCELLED` and no replacement route.
+    A future strategy that intentionally interrupts a route, such as a bonk transition, must state a
+    different robot-owned mapping explicitly; it must not change the integration's status meaning.
+  - **Scoring-attempt truth:** update the existing `PhoenixAutoTasks.aimAndShootOne(...)` behavior,
+    without adding another public construction path. Its package-private scoring-attempt Task owns
+    the wait-for-target, capture-velocity, aim, request-shot, and wait-for-shot phases directly, so
+    unavailable target, aim timeout, and shot-drain timeout remain `TIMEOUT` rather than being
+    converted to success by a no-op handler; child cancellation/unknown outcomes likewise remain
+    visible instead of being erased by an inner sequence. Each failure skips every dependent shot
+    action that has not safely begun, and timeout/cancellation after a shot request best-effort
+    cancels that Task's own transient shot. This lets the routine make and test an honest scoring-
+    failure decision while keeping the same short public call.
+  - **Lifecycle, outcome, and cleanup contract:** consume the coordinator's one start attempt before
+    any child or capability effect, reject update-before-start and direct child aliases, and start at
+    most one phase child at a time. Snapshot the exact terminal status from each retained RouteTask;
+    never decide from `getLatestRouteStatus()`. Direct active cancellation terminalizes first,
+    cancels only the active child, disables the route-owned flywheel request once, and never launches
+    fallback; an active scoring child performs its own transient-shot cleanup. Lifecycle
+    exceptions continue to propagate to `TaskRunner` fail-stop; its best-effort wrapper cancellation
+    still invokes each owner's idempotent cleanup. A successful fallback does not erase the triggering
+    timeout; a later cancellation-like failure takes precedence. Cleanup is deliberately limited to
+    state these Tasks create: the scoring attempt owns pending transient shots, and the coordinator
+    owns disabling the flywheel request enabled by its outbound path callback. It does not clear
+    intake, continuous-shooting, or eject requests that another future strategy/companion may own.
+    Each cleanup owner terminalizes first, attempts every one of its selected child/owned cleanup
+    actions even if an earlier action throws, and rethrows the first runtime failure with later ones
+    suppressed. No Plant, device, or raw follower write is added.
+  - **Error quality:** null or aliased direct roles, update-before-start, a second start attempt, and a
+    completed child with a null/`NOT_DONE` outcome fail with the routine/scoring phase and role named,
+    plus guidance to create a fresh Task graph from the existing factory. Malformed terminal route
+    state names the retained route Task/status rather than falling through to a guessed policy.
+  - **Telemetry contract:** Phoenix's current Auto presenter emits the current Task's dynamic
+    `getDebugName()` and outcome, but does not call `debugDump()`. The coordinator's debug name will
+    therefore include its routine label, active phase, selected `FALLBACK` or `ABORT` decision, and
+    retained triggering route status while that policy remains current; in particular, a live-pose
+    fallback remains visible after the adapter's mutable latest-route row changes to the fallback
+    route. `debugDump()` additionally exposes the accumulated outcome and active child for explicit
+    debug/test callers, but PHX-03 does not add presenter history or claim that an immediate terminal
+    abort is retained after the runner detaches it.
+  - **Bounded implementation and documentation scope:** change only the Phoenix scoring helper,
+    package-private scoring-attempt Task, Phoenix Pedro routine factory/private coordinator, focused
+    unit tests, and the route-policy text in Framework Principles, Phoenix Architecture, Phoenix
+    Pedro/integration guidance, and any modern
+    route example that still implies a generic sequence short-circuits. Do not implement PHX-04's
+    match-time preemption, a new scheduler, new route geometry, a generic race/success-only Task,
+    route-constructor cleanup, readiness checks, or a public autonomous DSL.
+  - **Verification plan:** add pure tests with fake route executions, scoring Tasks/capabilities, and
+    a manual loop clock for outbound success; both timeout sources; every cancellation-like status;
+    skipped scoring on failed prerequisite; target/aim/shot scoring failure; normal and degraded
+    return; return/fallback timeout and cancellation; direct cancellation in every phase; no fallback
+    after direct cancel; owned-cleanup ordering, idempotence, and failure suppression; immediate
+    completion and loop ordering; child lifecycle/configuration failures; duplicate identities;
+    update before
+    start; second-start rejection; retained outcomes; and debug phase/status/decision rows. Verify all
+    four strategy ids use the explicit common policy and return fresh Task graphs. Run focused tests,
+    full `:TeamCode:testDebugUnitTest`, `:TeamCode:compileDebugJavaWithJavac`, XML totals,
+    `git diff --check`, changed-file whitespace/link/import/blocking-call checks, and exhaustive caller
+    searches. Android Studio review should inspect the policy table in code and simulate or force a
+    route/scoring failure; deliberate on-robot route obstruction, skipped-shot behavior, immediate
+    flywheel stop, live-pose fallback, and Driver Station telemetry remain the hardware validation.
+  - **Hypothesis and approval gate:** this preserves generic sequence behavior and follows the
+    leading hypothesis's explicitly allowed small Phoenix helper after four repeated callers proved
+    it necessary. The research refines the hypothesis because bare `branchOnOutcome(...)` is not a
+    complete solution, but it does not move policy into the framework or add a public API. The change
+    still defines major autonomous lifecycle, failure, and held-mechanism safety semantics, and it
+    changes the observable outcome of `aimAndShootOne(...)`; stop at **Ready** for explicit user
+    approval before editing Java, tests, or framework/robot documentation. `Approve PHX-03 design`
+    authorizes only the package-private scoring/coordinator implementations, the exact status table,
+    owned transient-shot/flywheel cleanup, dynamic current-task-name telemetry, focused tests, and
+    synchronized documentation described above. It does not authorize PHX-04, any public framework
+    API, route/config cleanup, publication/merge, or another tracker item.
+  - **Approval:** the user approved the PHX-03 design on 2026-07-14. Implementation is limited to
+    the package-private scoring attempt and route-policy coordinator, the recorded current-strategy
+    status mapping, owned cleanup, dynamic current-task telemetry, focused tests, and synchronized
+    documentation. PHX-04 and every adjacent API cleanup remain out of scope.
+  - **Implementation (2026-07-14):** `PhoenixAutoTasks.aimAndShootOne(...)` now constructs one
+    package-private scoring-attempt Task that requires target selection, aim, and shot-drain success
+    in order; retains timeout/cancellation/unknown outcomes; and cancels only its owned transient
+    shot after an abnormal post-request ending. `PhoenixPedroAutoRoutineFactory.build(...)` now
+    constructs one package-private Phoenix/Pedro coordinator for every strategy. It applies the
+    approved outbound/scoring/return status mapping, builds the live-pose return only after policy
+    selects it, retains earlier timeout degradation, gives later cancellation-like results
+    precedence, disables the route-owned flywheel request once, and exposes the current
+    phase/decision/trigger through its dynamic Task name. Direct cancellation terminalizes first,
+    cancels only the active child, performs owned cleanup, and never starts recovery. Generic Task,
+    RouteTask, and RouteTasks behavior remains unchanged.
+  - **Public API and simplicity verification:** both lifecycle owners and their constructors are
+    package-private implementation types. Bytecode inspection confirms neither class is public;
+    exhaustive production construction search finds exactly one scoring construction inside
+    `PhoenixAutoTasks` and one routine construction inside the private helper behind
+    `PhoenixPedroAutoRoutineFactory`. Direct constructor use elsewhere is same-package white-box
+    testing only. The public factory matrix covers all four `PhoenixAutoStrategyId` values and
+    repeated builds, proving fresh coordinator plus outbound/scoring/return child identities. No
+    public builder, overload, route-policy type, scheduler, PHX-04 takeover behavior, or second
+    student-facing construction path was added.
+  - **Automated verification (2026-07-14):** the focused scoring suite reports 21 tests, the routine
+    policy suite 27 tests, and the public factory matrix one test, all with zero failures, errors, or
+    skips. Coverage includes the complete route-status matrix, retained timeout and cancellation
+    precedence, skipped scoring after failed prerequisites, immediate-complete children,
+    active-only/direct/reentrant cancellation, exact-once capability actions, cleanup ordering and
+    suppression, malformed children, dynamic telemetry, `TaskRunner` fail-stop after scoring-start
+    and live-return-build failures, all four strategies, and fresh graphs. The final
+    `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` run succeeds; XML reports 326
+    tests across 32 suites with zero failures, errors, or skips. Only the existing JDK 21/source-8
+    and FTC SDK deprecation warnings remain.
+  - **Documentation, static, and adversarial verification (2026-07-14):** Framework Principles,
+    Phoenix Architecture, Pedro integration/Phoenix guidance, Task/capability guides, and modern
+    route examples now consistently state that integrations report facts while robot routines own
+    continue/fallback/abort policy and owned mechanism cleanup. Searches find no remaining modern
+    generic route-then-score sequence or stale claim that Phoenix policy is missing. All nine
+    changed Markdown files have valid local links; `git diff --check`, untracked-file whitespace,
+    forbidden boundary import, blocking-call, and construction-path checks pass. Independent
+    lifecycle, policy, API, documentation, and student-simplicity reviews found and drove fixes for
+    terminal-child updates plus reentrant double-start/repeated-action cases; the final settled-tree
+    rereview reports no remaining concrete defect.
+  - **Android Studio / robot verification gate:** before publication, PHX-03 was held at
+    **Verifying** for review of the two public factory calls, the private status table, truthful
+    scoring outcomes, and the Driver Station Task-name phase/decision/trigger. Hardware validation
+    should deliberately obstruct an outbound route and a scoring attempt, confirm that the shot is
+    skipped or cancelled as recorded, confirm prompt flywheel shutdown, and confirm that only
+    timeout selects the live-pose return. No robot-hardware result is claimed yet.
+  - **Manual verification (2026-07-14):** the user reviewed the PHX-03 implementation in Android
+    Studio and approved it with `PHX-03 looks good`. PHX-03 is **Done**. The hardware checks above
+    remain recommended during normal robot bring-up and are not claimed by this approval.
 
 ### PHX-04 - Match-time fallback takeover
 
@@ -2711,13 +2928,19 @@ writer, and explicit lifecycle ownership.
 ### CLEAN-01 - Alias and risky convenience cleanup
 
 - **Problem to confirm:** aliases and adjacent-`double` overloads create parallel learning paths;
-  level-triggered task bindings may enqueue unbounded work.
+  level-triggered task bindings may enqueue unbounded work. The PHX-03 construction audit also found
+  two public eager `RouteTask` constructors duplicating `RouteTasks.follow(...)`, plus nullable
+  implicit `RouteTask.Config` defaults beside the otherwise factory-led route family.
 - **Decision question:** which APIs have no callers or demonstrably unsafe semantics, and which names
-  genuinely improve discoverability?
+  genuinely improve discoverability? For the route family, explicitly compare migration/removal of
+  the eager constructors and one explicit config-default path against source compatibility; do not
+  add a supplier constructor merely for symmetry.
 - **Leading hypothesis:** remove only after caller search and after the preferred path is documented;
   prioritize unsafe task-enqueue helpers over cosmetic naming cleanup.
 - **Completion:** one obvious documented path remains, all callers migrate, and no unrelated naming
-  churn is bundled with behavioral work.
+  churn is bundled with behavioral work. Route construction/config defaults either have one chosen
+  documented path or retain a parallel path only with a concrete compatibility reason and cleanup
+  gate.
 - **Decision record:** _Pending._
 
 ## Explicitly deferred architectural ideas

@@ -47,8 +47,14 @@ public final class PhoenixAutoTasks {
     }
 
     /**
-     * Build a robust single-shot sequence: wait briefly for a selected target, capture shot velocity,
-     * run Phoenix aim, request one shot, and wait for the shot queue to drain.
+     * Build one truthful scoring attempt: wait briefly for a selected target, capture shot
+     * velocity, run Phoenix aim, request one shot, and wait for the shot queue to drain.
+     *
+     * <p>Each phase must succeed before the next phase begins. Target-selection, aiming, and shot-
+     * drain timeouts remain {@link edu.ftcphoenix.fw.task.TaskOutcome#TIMEOUT}; cancellation and
+     * unknown terminal outcomes likewise remain visible to the owning Auto routine. If an abnormal
+     * ending occurs after the shot request, the Task best-effort asks scoring to cancel that
+     * transient action.</p>
      */
     public static Task aimAndShootOne(PhoenixCapabilities capabilities,
                                       DriveCommandSink driveSink,
@@ -59,40 +65,25 @@ public final class PhoenixAutoTasks {
         final PhoenixCapabilities.Scoring scoring = capabilities.scoring();
         final PhoenixCapabilities.Targeting targeting = capabilities.targeting();
 
-        return Tasks.branchOnOutcome(
-                Tasks.waitUntil(new BooleanSource() {
-                    @Override
-                    public boolean getAsBoolean(LoopClock clock) {
-                        return targeting.status(clock).selection.hasSelection;
-                    }
-                }, auto.waitForTargetSec),
-                Tasks.sequence(
-                        Tasks.runOnce(new Runnable() {
-                            @Override
-                            public void run() {
-                                scoring.captureSuggestedShotVelocity();
-                            }
-                        }),
-                        Tasks.branchOnOutcome(
-                                targeting.aimTask(driveSink, aimConfig(auto)),
-                                Tasks.sequence(
-                                        Tasks.runOnce(new Runnable() {
-                                            @Override
-                                            public void run() {
-                                                scoring.requestSingleShot();
-                                            }
-                                        }),
-                                        Tasks.waitUntil(new BooleanSource() {
-                                            @Override
-                                            public boolean getAsBoolean(LoopClock clock) {
-                                                return !scoring.hasPendingShots();
-                                            }
-                                        }, auto.waitForShotCompleteSec)
-                                ),
-                                Tasks.noop()
-                        )
-                ),
-                Tasks.noop()
+        Task waitForTargetTask = Tasks.waitUntil(new BooleanSource() {
+            @Override
+            public boolean getAsBoolean(LoopClock clock) {
+                return targeting.status(clock).selection.hasSelection;
+            }
+        }, auto.waitForTargetSec);
+        Task aimTask = targeting.aimTask(driveSink, aimConfig(auto));
+        Task waitForShotTask = Tasks.waitUntil(new BooleanSource() {
+            @Override
+            public boolean getAsBoolean(LoopClock clock) {
+                return !scoring.hasPendingShots();
+            }
+        }, auto.waitForShotCompleteSec);
+
+        return new PhoenixScoringAttemptTask(
+                scoring,
+                waitForTargetTask,
+                aimTask,
+                waitForShotTask
         );
     }
 

@@ -80,6 +80,15 @@ Phoenix is designed around a few core goals:
    follower timeout/stall, interruption, replacement, failure, and unknown terminal state while the
    evidence is still observable.
 
+   The integration reports those route facts; the robot routine owns what they mean for strategy.
+   Generic Task sequences do not silently short-circuit or choose recovery. Gate position-dependent
+   work on the retained route result, and state whether each non-normal result continues, starts an
+   explicitly selected fallback, or aborts. A conservative routine may fallback after timeout while
+   aborting on cancellation-like results; an intentional interruption-to-continue policy must be just
+   as explicit. Direct active cancellation never starts a fallback. Mechanism cleanup associated
+   with a route/scoring failure changes only the capability requests that the cancelled or failed
+   phase owns, not unrelated persistent requests or hardware directly.
+
    Build fixed route geometry eagerly. When geometry depends on live pose, vision, or another
    current-cycle fact, use an explicitly named start-time route factory that resolves exactly once
    at the Route Task's own start boundary. Keep that factory quick and non-blocking, keep sensor and

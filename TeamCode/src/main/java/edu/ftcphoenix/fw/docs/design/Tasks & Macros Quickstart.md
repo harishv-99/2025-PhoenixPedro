@@ -241,6 +241,14 @@ Each companion must already make active cancellation safe. Do not use
 Build a bounded robot macro whose own `cancel()` restores its caller-selected state, or keep a
 long-lived flywheel/intake/aim request as ordinary capability or service state.
 
+Route failure policy is also deliberately outside generic composition. `Tasks.sequence(...)` does
+not stop merely because a child route timed out or reported a cancellation-like terminal outcome,
+and broad `TaskOutcome` values do not replace a route's precise status. Keep the returned
+`RouteTask`, gate position-dependent work in a robot-owned routine, and explicitly choose whether a
+non-normal status continues, starts a fallback, or aborts. Direct cancellation never starts the
+fallback. Cleanup belongs to the phase that created the request and goes through robot capabilities,
+not direct Plant or hardware writes.
+
 ---
 
 ## 4. Mechanisms: `PlantTasks` and `ScalarTasks` for common patterns

@@ -70,6 +70,14 @@ unsupported because they can erase the evidence needed for truthful classificati
 backend-neutral value through `getRouteStatus()`. Its cancellation uses that one execution handle,
 so late cleanup of an older Task cannot stop a replacement route.
 
+That status is a fact, not a recovery decision. A robot routine must retain the exact `RouteTask`,
+gate position-dependent scoring on its completed status, and explicitly choose continue, fallback,
+or abort for every other result. Phoenix's conservative routine may start a live-pose fallback after
+follower/Task timeout, but aborts on interruption, replacement, cancellation, failure, or unknown
+termination. Direct active cancellation never starts fallback. Any route/scoring cleanup stays in
+the robot capability layer and clears only requests that phase owns; the Pedro adapter neither
+chooses game strategy nor writes mechanism state.
+
 `getLatestRouteStatus()` provides the newest backend-neutral value for Driver Station telemetry.
 Code making a decision about one particular route should retain that route's `RouteTask` or
 `RouteExecution` instead of consulting the mutable latest-route view.

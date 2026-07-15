@@ -44,16 +44,18 @@ import edu.ftcphoenix.fw.drive.route.RouteStatus;
  * runtime.setStartingPose(pedroStartPose);
  * // Phoenix now owns every-loop adapter update and final stop.
  *
- * Task auto = Tasks.sequence(
- *         RouteTasks.follow(adapter, outboundPath, new RouteTask.Config()),
- *         aimPlan.task(adapter, aimCfg),
- *         Tasks.runOnce(scoring::requestSingleShot)
+ * RouteTask&lt;PathChain&gt; outbound = RouteTasks.follow(
+ *         "outbound",
+ *         adapter,
+ *         outboundPath,
+ *         new RouteTask.Config()
  * );
- * robot.enqueueAuto(auto);
+ * robot.enqueueAuto(outbound);
  * }</pre>
- * <p>This example demonstrates lifecycle and Task composition only. Generic sequences do not stop
- * automatically after an abnormal route result; robot-owned policy must gate later aiming,
- * scoring, or other position-dependent work.</p>
+ * <p>A multi-phase routine should retain that status-bearing Task and give it, plus its semantic
+ * mechanism Tasks, to robot-owned policy. Generic sequences do not stop automatically after an
+ * abnormal route result; the robot policy must gate later aiming, scoring, or other
+ * position-dependent work.</p>
  */
 public final class PedroPathingDriveAdapter implements RouteFollower<PathChain>, DriveCommandSink {
 

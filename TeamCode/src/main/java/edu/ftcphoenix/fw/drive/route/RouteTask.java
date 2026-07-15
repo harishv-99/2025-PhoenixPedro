@@ -43,18 +43,17 @@ import edu.ftcphoenix.fw.task.Tasks;
  * RouteTask.Config cfg = new RouteTask.Config();
  * cfg.timeoutSec = 4.0;
  *
- * Task auto = Tasks.sequence(
- *         RouteTasks.follow("outbound", pedroAdapter, outboundPath, cfg),
- *         Tasks.runOnce(scoringSupervisor::requestSingleShot),
- *         RouteTasks.followBuiltAtStart(
- *                 "return",
- *                 pedroAdapter,
- *                 () -> pathFactory.buildReturnFromCurrentPose(returnPose),
- *                 cfg)
- * );
+ * RouteTask&lt;MyRoute&gt; outbound =
+ *         RouteTasks.follow("outbound", routeAdapter, outboundPath, cfg);
+ * RouteTask&lt;MyRoute&gt; livePoseReturn = RouteTasks.followBuiltAtStart(
+ *         "return",
+ *         routeAdapter,
+ *         () -> pathFactory.buildReturnFromCurrentPose(returnPose),
+ *         cfg);
  * }</pre>
- * <p>This snippet demonstrates Task composition only. Robot-owned policy must gate any later
- * position-dependent action on the route's precise result.</p>
+ * <p>Pass these fresh status-bearing Tasks and the mechanism action to a robot-owned routine
+ * helper. That policy must gate any position-dependent action on the route's precise result;
+ * generic sequence composition does not choose continue, fallback, or abort semantics.</p>
  *
  * @param <R> route object type understood by the wrapped {@link RouteFollower}
  */
