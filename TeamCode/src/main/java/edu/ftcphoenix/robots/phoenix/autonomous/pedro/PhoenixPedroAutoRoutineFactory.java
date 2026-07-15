@@ -17,11 +17,13 @@ import edu.ftcphoenix.robots.phoenix.autonomous.PhoenixAutoTasks;
  * rather than building task sequences themselves. That keeps OpModes as FTC entry points while this
  * class owns strategy-to-routine mapping.</p>
  *
- * <p>The checked-in routines use one private robot-owned coordinator to apply explicit route and
- * scoring policy. Position-dependent scoring starts only after outbound completion; outbound and
- * scoring timeouts select the live-pose return/park attempt, while cancellation-like results abort.
- * A timeout of that final attempt terminates the routine rather than starting another fallback.
- * Generic Task and route APIs continue to report facts without choosing Phoenix strategy.</p>
+ * <p>The checked-in routines use one private robot-owned coordinator to apply explicit route,
+ * scoring, and match-budget policy. Position-dependent scoring starts only after outbound
+ * completion. Outbound/scoring timeouts and the match-time cutoff select one live-pose return/park
+ * attempt, while cancellation-like results abort. Once that final route starts, the pre-park timer
+ * is gone; a timeout or other failure of the final attempt terminates the routine rather than
+ * starting another fallback. Generic Task and route APIs continue to report facts without choosing
+ * Phoenix strategy.</p>
  *
  * <p>The placeholder outbound route is fixed during INIT. Return/park geometry is built once when
  * that route Task starts, allowing its path to begin at the current Pedro pose without exposing the
@@ -89,11 +91,15 @@ public final class PhoenixPedroAutoRoutineFactory {
         );
     }
 
-    /** Construct the private policy owner behind the existing one-method public routine factory. */
+    /** Construct the private policy owners behind the existing one-method public routine factory. */
     private static Task buildRoutine(PhoenixPedroAutoContext ctx,
                                      String routineName,
                                      String outboundDebugName,
                                      String returnDebugName) {
+        double parkTakeoverElapsedSec = requireParkTakeoverElapsedSec(
+                ctx.profile().auto.parkTakeoverElapsedSec,
+                routineName
+        );
         RouteTask<PathChain> outbound = followOutbound(ctx, outboundDebugName);
         Task scoringAttempt = PhoenixAutoTasks.aimAndShootOne(
                 ctx.capabilities(),
@@ -101,12 +107,18 @@ public final class PhoenixPedroAutoRoutineFactory {
                 ctx.profile().auto
         );
         RouteTask<PathChain> returnOrPark = followReturn(ctx, returnDebugName);
-        return new PhoenixPedroAutoRoutineTask(
+        PhoenixPedroPreParkTask prePark = new PhoenixPedroPreParkTask(
                 routineName,
                 outbound,
                 scoringAttempt,
-                returnOrPark,
-                ctx.capabilities().scoring()
+                ctx.capabilities().scoring(),
+                ctx.driveAdapter()
+        );
+        return new PhoenixPedroAutoRoutineTask(
+                routineName,
+                prePark,
+                parkTakeoverElapsedSec,
+                returnOrPark
         );
     }
 
@@ -126,5 +138,17 @@ public final class PhoenixPedroAutoRoutineFactory {
                 ctx.driveAdapter(),
                 () -> ctx.pathFactory().buildReturnFromCurrentPose(ctx.paths().pedroStartPose),
                 PhoenixAutoTasks.routeConfig(ctx.profile().auto));
+    }
+
+    /** Reject a disabled or malformed match cutoff before allocating any Task graph. */
+    private static double requireParkTakeoverElapsedSec(double value, String routineName) {
+        if (!Double.isFinite(value) || value <= 0.0) {
+            throw new IllegalArgumentException(
+                    "Phoenix Pedro routine '" + routineName
+                            + "' requires profile.auto.parkTakeoverElapsedSec to be finite and "
+                            + "> 0 seconds, got " + value
+            );
+        }
+        return value;
     }
 }

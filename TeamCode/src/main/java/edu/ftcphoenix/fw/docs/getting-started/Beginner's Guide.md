@@ -544,8 +544,11 @@ For most student code, you only need:
   drive-sink ownership.
 
 Generic composition goes through `Tasks.*`. Its helpers include `sequence(...)`,
-`parallelAll(...)`, `parallelDeadline(...)`, and `branchOnOutcome(...)`. Some public lower-level
-leaf Tasks, including `InstantTask`, `RunForSecondsTask`, and `WaitUntilTask`, remain available.
+`parallelAll(...)`, `parallelDeadline(...)`, `branchOnOutcome(...)`, and `withTimeout(...)`. An
+outer `withTimeout(...)` budget is different from a leaf Task's local timeout; see
+[`Tasks & Macros Quickstart`](<../design/Tasks & Macros Quickstart.md>) for the continuation and
+cleanup rules. Some public lower-level leaf Tasks, including `InstantTask`, `RunForSecondsTask`,
+and `WaitUntilTask`, remain available.
 Prefer the matching `Tasks` helper when it already covers the behavior; use a concrete leaf only
 when:
 

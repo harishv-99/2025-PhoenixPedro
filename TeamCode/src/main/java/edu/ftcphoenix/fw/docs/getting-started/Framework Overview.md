@@ -520,7 +520,7 @@ and rethrows the original failure with any cleanup failure suppressed.
 Phoenix gives you factories so your code reads like intent:
 
 * `Tasks` — generic Task factories and composition (`sequence`, `parallelAll`, `parallelDeadline`,
-  `waitForSeconds`, `waitUntil`, `runOnce`, …)
+  `withTimeout`, `waitForSeconds`, `waitUntil`, `runOnce`, …)
 * `PlantTasks` — guided patterns that write a Plant's registered target (`write` and `move`)
 * `DriveTasks` — `driveExclusivelyForSeconds(...)` for simple timed open-loop Auto/test movement when
   its Task is the sole behavior-command writer for the `DriveCommandSink`
@@ -534,6 +534,17 @@ every child. `parallelDeadline(deadline, companions...)` instead lets its first 
 every start-attempted companion to cancel. A route Task is a common deadline, but the API contains
 no route types. Companions must own cancellation-safe cleanup, while persistent mechanism requests
 remain capability/service state.
+
+`withTimeout(task, timeoutSec)` gives a parent one hard elapsed-time budget around a complete Task
+or composite graph. It starts timing when the wrapper starts and uses the child's ordinary active
+`cancel()` at the boundary. When a continuation is valid after every non-throwing terminal result,
+put it after that wrapper—for example, `sequence(withTimeout(prePark, 25.0), park)`—so early
+completion starts it early and the expired timer cannot later interrupt it. When exact route or
+domain status may suppress the continuation, keep the same timed shape behind a robot-owned policy
+coordinator; generic sequence does not choose that policy. Direct cancellation and cleanup failures
+must not start the continuation. Keep an operation's own timeout when it has phase-relative timing,
+operation-specific safe cleanup, or a richer result such as `RouteStatus.TASK_TIMEOUT`; the outer
+wrapper may report `TIMEOUT` while its cancelled child reports `CANCELLED`.
 
 Example macro (shoot one disc):
 

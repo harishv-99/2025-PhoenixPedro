@@ -536,7 +536,7 @@ total-abort and fail-stop paths.
 Robot code should rarely implement raw tasks directly. Prefer:
 
 * `Tasks.*` for generic Task factories and as the public construction layer for composition
-  (`sequence`, `parallelAll`, `parallelDeadline`, `waitForSeconds`, `waitUntil`, ...)
+  (`sequence`, `parallelAll`, `parallelDeadline`, `withTimeout`, `waitForSeconds`, `waitUntil`, ...)
 * `ScalarTasks.write(...)` for standalone `ScalarTarget`s, `PlantTasks.write(plant)` for time-based writes to a Plant's registered target, and `PlantTasks.move(plant)` for feedback-aware moves
 * `Tasks.outputPulse(...)` + `OutputTaskRunner` for short output-producing pulses that are overlaid into a final Plant target source
 * `DriveTasks.driveExclusivelyForSeconds(...)` for simple Auto/test drive intervals only when the
@@ -552,6 +552,22 @@ must therefore own cancellation-safe cleanup; `sequence(enable, wait, disable)` 
 cancelling the sequence skips the later disable step. Keep long-lived flywheel, intake, aiming, and
 other mechanism requests as capability/service state instead of disguising them as forever Tasks.
 Use deadline composition only when the companion is genuinely scoped to the owner's lifetime.
+
+Use `Tasks.withTimeout(task, timeoutSec)` when the caller owns one hard elapsed-time budget around
+an otherwise complete Task or composite graph. The decorator starts its clock at its own
+`start(clock)` boundary and, at the deadline, reaches the child only through ordinary active
+`cancel()`. A successfully cancelled child therefore lets the wrapper report `TIMEOUT`, while the
+retained child may truthfully report `CANCELLED`. Put any allowed continuation outside the timed
+region—for example, `sequence(withTimeout(prePark, 25.0), park)`—so an early park is not later
+interrupted and restarted by a still-running timer. Direct cancellation or failed cleanup must not
+start that continuation.
+
+Keep task-local timeouts when the operation owns different semantics: phase-relative timing,
+operation-specific safe targets or cleanup, or a richer terminal status such as
+`RouteStatus.TASK_TIMEOUT`. Local and outer timeouts may be nested when they represent distinct
+budgets; do not duplicate the same policy in both places. `waitUntil(condition, timeoutSec)` remains
+the concise condition-wait API and deliberately samples its condition first at the exact boundary.
+Fixed-duration waits and commands are successful timed behavior, not timeouts.
 
 For a timed scalar or Plant write, `.then(value)` applies that final registered request after normal
 completion **and active cancellation**. Omitting `.then(...)`, or selecting `.leaveThere()`, leaves

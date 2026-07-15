@@ -87,7 +87,7 @@ public final class PhoenixProfile {
     public AutoAimConfig autoAim = new AutoAimConfig();
 
     /**
-     * Autonomous route/aim/wait timing tuned by Phoenix Auto strategy code.
+     * Autonomous match-budget, route, aim, and wait timing tuned by Phoenix Auto strategy code.
      */
     public AutoConfig auto = new AutoConfig();
 
@@ -705,13 +705,19 @@ public final class PhoenixProfile {
     }
 
     /**
-     * Autonomous route-following, aim-task, and wait timing.
+     * Autonomous match-budget, route-following, aim-task, and wait timing.
      *
      * <p>These values are consumed by Phoenix Auto plans and routine factories. Keeping them in a
      * profile section avoids hardcoded timing literals in OpModes while still leaving route geometry
      * and game strategy in robot-specific Auto code.</p>
      */
     public static final class AutoConfig {
+        /**
+         * Elapsed Auto time at which Phoenix abandons unfinished pre-park work and starts its
+         * live-pose return/park policy.
+         */
+        public double parkTakeoverElapsedSec = 25.0;
+
         /**
          * Maximum time allowed for a single route segment before timing out.
          */
@@ -776,6 +782,7 @@ public final class PhoenixProfile {
          */
         public AutoConfig copy() {
             AutoConfig c = new AutoConfig();
+            c.parkTakeoverElapsedSec = this.parkTakeoverElapsedSec;
             c.routeTimeoutSec = this.routeTimeoutSec;
             c.aimHeadingToleranceDeg = this.aimHeadingToleranceDeg;
             c.aimTimeoutSec = this.aimTimeoutSec;

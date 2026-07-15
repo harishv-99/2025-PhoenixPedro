@@ -71,6 +71,23 @@ public final class RouteTaskStatusTest {
     }
 
     @Test
+    public void statusGetterObservesHeartbeatTerminalBeforeTaskUpdate() {
+        ManualLoopClock manualClock = new ManualLoopClock();
+        RecordingFollower follower = new RecordingFollower();
+        RouteTask<String> task = RouteTasks.follow(follower, "route", null);
+        task.start(manualClock.clock());
+        follower.current.integrationStatus = RouteStatus.INTERRUPTED;
+
+        assertEquals(RouteStatus.INTERRUPTED, task.getRouteStatus());
+        assertEquals(TaskOutcome.CANCELLED, task.getOutcome());
+        assertTrue(task.isComplete());
+
+        task.cancel();
+        assertEquals(0, follower.current.cancelCount);
+        assertEquals(RouteStatus.INTERRUPTED, task.getRouteStatus());
+    }
+
+    @Test
     public void followerTerminalStatusWinsBeforeTaskTimeout() {
         ManualLoopClock manualClock = new ManualLoopClock();
         RecordingFollower follower = new RecordingFollower();

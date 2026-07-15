@@ -60,7 +60,7 @@ public final class PhoenixRobot {
     private PhoenixTeleOpControls teleOpControls;
     private PhoenixDriveAssistService driveAssists;
     private DriveSource teleOpDriveSource;
-    private TaskRunner autoRunner;
+    private AutoRoutineLifecycle autoRoutineLifecycle;
     private DriveCommandSink autonomousDrive;
 
     /**
@@ -218,7 +218,7 @@ public final class PhoenixRobot {
                     aimOverrideSource
             );
             capabilities = createCapabilities();
-            autoRunner = new TaskRunner();
+            autoRoutineLifecycle = new AutoRoutineLifecycle();
             telemetry.addLine("Phoenix auto ready");
             telemetry.update();
         } catch (RuntimeException initializationFailure) {
@@ -290,10 +290,16 @@ public final class PhoenixRobot {
     /**
      * Resets shared lifecycle state for any mode.
      *
+     * <p>For Auto, this is the exact FTC START boundary and closes the INIT-only routine
+     * installation window before {@link #startAuto()} begins the installed root.</p>
+     *
      * @param runtime current FTC runtime in seconds
      */
     public void startAny(double runtime) {
         clock.reset(runtime);
+        if (autoRoutineLifecycle != null) {
+            autoRoutineLifecycle.markStartBoundary();
+        }
     }
 
     /**
@@ -310,10 +316,16 @@ public final class PhoenixRobot {
     /**
      * Starts autonomous-specific runtime state.
      *
-     * <p>Phoenix Auto keeps its actual routine in the {@link #autoRunner()}, so there is no extra
-     * start action beyond the shared clock reset.</p>
+     * <p>The one routine installed during INIT starts immediately on the shared clock's exact FTC
+     * START boundary. This gives every match-time budget the same zero-delta timestamp instead of
+     * delaying its start until the first regular loop.</p>
+     *
+     * @throws IllegalStateException if Auto is not initialized, {@link #startAny(double)} has not
+     *                               established the FTC START boundary, no root is installed, or
+     *                               this Auto runtime has already started
      */
     public void startAuto() {
+        requireAutoRoutineLifecycle().start(clock);
     }
 
     /**
@@ -373,14 +385,14 @@ public final class PhoenixRobot {
      * Advances one autonomous loop.
      *
      * <p>Loop order is explicit and matches Phoenix ownership boundaries: localization first, then
-     * targeting, the continuously owned external drive heartbeat, queued autonomous tasks, the
-     * scoring path, and finally telemetry.</p>
+     * targeting, the continuously owned external drive heartbeat, the installed autonomous root,
+     * the scoring path, and finally telemetry.</p>
      */
     public void updateAuto() {
         if (localization == null
                 || scoringPath == null
                 || scoringTargeting == null
-                || autoRunner == null
+                || autoRoutineLifecycle == null
                 || autonomousDrive == null) {
             return;
         }
@@ -388,7 +400,7 @@ public final class PhoenixRobot {
         localization.update(clock);
         scoringTargeting.update(clock);
         autonomousDrive.update(clock);
-        autoRunner.update(clock);
+        autoRoutineLifecycle.update(clock);
 
         scoringPath.update(clock);
         ScoringPath.Status scoringStatus = scoringPath.status();
@@ -397,36 +409,29 @@ public final class PhoenixRobot {
         PoseEstimate globalPose = localization.globalEstimator().getEstimate();
         PoseEstimate odomPose = localization.predictor().getEstimate();
 
-        Task currentAutoTask = autoRunner.currentTaskOrNull();
         telemetryPresenter.emitAuto(
                 scoringStatus,
                 targetingStatus,
-                currentAutoTask,
-                autoRunner.queuedCount(),
+                autoRoutineLifecycle.installedRoutine(),
                 globalPose,
                 odomPose
         );
     }
 
     /**
-     * Enqueues one autonomous task into the shared Phoenix auto runner.
+     * Installs the one root autonomous routine for this Phoenix runtime.
      *
-     * @param task task to add to the end of the autonomous sequence
+     * <p>Call this exactly once during INIT, after {@link #initAuto(DriveCommandSink,
+     * MotionPredictor)} and before {@link #startAny(double)}. The root Task may internally compose
+     * every route, mechanism action, deadline, and fallback needed by the selected strategy.</p>
+     *
+     * @param task fresh single-use root Task for the selected autonomous routine
+     * @throws NullPointerException  if {@code task} is null
+     * @throws IllegalStateException if Auto is not initialized, a root is already installed, or
+     *                               FTC START has closed the INIT installation window
      */
-    public void enqueueAuto(Task task) {
-        requireAutoRunner().enqueue(Objects.requireNonNull(task, "task"));
-    }
-
-    /**
-     * Returns the shared autonomous task runner.
-     *
-     * <p>This is mainly intended for advanced Auto integrations that want to inspect or cancel the
-     * active task directly.</p>
-     *
-     * @return initialized autonomous task runner
-     */
-    public TaskRunner autoRunner() {
-        return requireAutoRunner();
+    public void installAutoRoutine(Task task) {
+        requireAutoRoutineLifecycle().install(task);
     }
 
     /**
@@ -449,7 +454,7 @@ public final class PhoenixRobot {
      * rethrown after cleanup, with later failures attached as suppressed exceptions.</p>
      */
     public void stop() {
-        TaskRunner runnerToStop = autoRunner;
+        AutoRoutineLifecycle autoRoutineToStop = autoRoutineLifecycle;
         PhoenixTeleOpControls controlsToStop = teleOpControls;
         PhoenixDriveAssistService assistsToStop = driveAssists;
         ScoringPath scoringToStop = scoringPath;
@@ -458,7 +463,7 @@ public final class PhoenixRobot {
         ScoringTargeting targetingToStop = scoringTargeting;
         AprilTagVisionLane visionToStop = vision;
 
-        autoRunner = null;
+        autoRoutineLifecycle = null;
         teleOpControls = null;
         driveAssists = null;
         teleOpDriveSource = null;
@@ -470,7 +475,9 @@ public final class PhoenixRobot {
         capabilities = null;
         localization = null;
 
-        Runnable cancelAuto = runnerToStop == null ? null : runnerToStop::cancelAndClear;
+        Runnable cancelAuto = autoRoutineToStop == null
+                ? null
+                : autoRoutineToStop::cancelAndClear;
         Runnable clearControls = controlsToStop == null ? null : controlsToStop::clear;
         Runnable resetAssists = assistsToStop == null ? null : assistsToStop::reset;
         Runnable stopScoring = scoringToStop == null ? null : scoringToStop::stop;
@@ -525,10 +532,98 @@ public final class PhoenixRobot {
         return scoringTargeting;
     }
 
-    private TaskRunner requireAutoRunner() {
-        if (autoRunner == null) {
-            throw new IllegalStateException("Phoenix auto runner is not initialized");
+    private AutoRoutineLifecycle requireAutoRoutineLifecycle() {
+        if (autoRoutineLifecycle == null) {
+            throw new IllegalStateException(
+                    "Phoenix Auto is not initialized; call initAuto(...) before installing or "
+                            + "starting an autonomous routine"
+            );
         }
-        return autoRunner;
+        return autoRoutineLifecycle;
+    }
+
+    /**
+     * Package-private lifecycle owner behind Phoenix's one-root Auto API.
+     *
+     * <p>The {@link TaskRunner} remains an implementation detail. Retaining the installed root
+     * separately keeps terminal phase/outcome telemetry available after the runner releases a
+     * completed Task.</p>
+     */
+    static final class AutoRoutineLifecycle {
+        private final TaskRunner runner = new TaskRunner();
+        private Task installedRoutine;
+        private boolean startBoundaryReached;
+        private boolean started;
+
+        /** Install exactly one fresh root while the OpMode is still in INIT. */
+        void install(Task task) {
+            Task requiredTask = Objects.requireNonNull(
+                    task,
+                    "Phoenix auto routine is required"
+            );
+            if (startBoundaryReached || started) {
+                throw new IllegalStateException(
+                        "Phoenix auto routine installation is INIT-only; call "
+                                + "installAutoRoutine(...) before startAny(...) and startAuto()"
+                );
+            }
+            if (installedRoutine != null) {
+                throw new IllegalStateException(
+                        "Phoenix Auto already has an installed routine; install exactly one root "
+                                + "Task for each PhoenixRobot"
+                );
+            }
+            installedRoutine = requiredTask;
+        }
+
+        /** Record that FTC START has closed the INIT-only installation window. */
+        void markStartBoundary() {
+            startBoundaryReached = true;
+        }
+
+        /** Start the installed root once at the current shared-clock boundary. */
+        void start(LoopClock clock) {
+            Objects.requireNonNull(clock, "Phoenix Auto start clock is required");
+            if (started) {
+                throw new IllegalStateException(
+                        "Phoenix Auto has already started; create a new PhoenixRobot for another "
+                                + "autonomous run"
+                );
+            }
+            if (installedRoutine == null) {
+                throw new IllegalStateException(
+                        "Phoenix Auto cannot start without an installed routine; call "
+                                + "installAutoRoutine(...) during INIT"
+                );
+            }
+            if (!startBoundaryReached) {
+                throw new IllegalStateException(
+                        "Phoenix Auto cannot start before startAny(runtime) resets the shared "
+                                + "LoopClock at FTC START"
+                );
+            }
+
+            // Publish the terminal lifecycle state before invoking arbitrary Task callbacks so a
+            // reentrant or throwing start cannot schedule the root a second time.
+            started = true;
+            runner.enqueue(installedRoutine);
+            runner.update(clock);
+        }
+
+        /** Advance the private one-root runner during the ordinary Phoenix Auto Task phase. */
+        void update(LoopClock clock) {
+            runner.update(clock);
+        }
+
+        /** Cancel active work and discard any pending runner state during total robot shutdown. */
+        void cancelAndClear() {
+            runner.cancelAndClear();
+        }
+
+        /** Return the retained root for active and terminal telemetry. */
+        Task installedRoutine() {
+            return installedRoutine;
+        }
+
     }
 }

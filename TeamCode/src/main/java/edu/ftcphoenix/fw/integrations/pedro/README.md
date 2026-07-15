@@ -72,11 +72,17 @@ so late cleanup of an older Task cannot stop a replacement route.
 
 That status is a fact, not a recovery decision. A robot routine must retain the exact `RouteTask`,
 gate position-dependent scoring on its completed status, and explicitly choose continue, fallback,
-or abort for every other result. Phoenix's conservative routine may start a live-pose fallback after
-follower/Task timeout, but aborts on interruption, replacement, cancellation, failure, or unknown
-termination. Direct active cancellation never starts fallback. Any route/scoring cleanup stays in
-the robot capability layer and clears only requests that phase owns; the Pedro adapter neither
-chooses game strategy nor writes mechanism state.
+or abort for every other result. Phoenix's conservative routine bounds its complete outbound-plus-
+scoring pre-park policy with `Tasks.withTimeout(...)`, then permits one live-pose park after normal
+completion, a local follower/Task timeout, or successful match-time cleanup. It aborts on
+interruption, replacement, cancellation, failure, unknown termination, direct root cancellation,
+or failed cleanup. The park is outside the timer, so starting it early cannot cause a second park at
+the threshold. Cleanup stays in the robot capability layer; the Pedro adapter neither chooses game
+strategy nor writes mechanism state.
+
+Keep `RouteTask`'s local timeout when its exact `TASK_TIMEOUT` fact matters. A generic outer timeout
+uses ordinary child cancellation and therefore leaves the route child `CANCELLED` while the wrapper
+reports `TIMEOUT`; it cannot substitute for route-specific terminal classification.
 
 `getLatestRouteStatus()` provides the newest backend-neutral value for Driver Station telemetry.
 Code making a decision about one particular route should retain that route's `RouteTask` or

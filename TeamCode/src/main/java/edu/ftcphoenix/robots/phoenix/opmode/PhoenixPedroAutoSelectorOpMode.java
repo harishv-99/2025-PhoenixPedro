@@ -311,7 +311,7 @@ public final class PhoenixPedroAutoSelectorOpMode extends PhoenixPedroAutoOpMode
     private SummaryScreen lockedSummaryScreen(PhoenixAutoSpec spec) {
         return SummaryScreen.builder("Phoenix Auto Locked")
                 .status("LOCKED", "Phoenix + Pedro are initialized for this exact spec.")
-                .help("Choices are locked after initialization so the visible setup cannot drift away from the queued routine.")
+                .help("Choices are locked after initialization so the visible setup cannot drift away from the installed routine.")
                 .row("Alliance", spec.alliance.label())
                 .row("Start", spec.startPosition.label())
                 .row("Partner", spec.partnerPlan.label())

@@ -212,9 +212,12 @@ Common factories (high‑level view):
     * `Tasks.parallelAll(Task... steps)` – run tasks in parallel and finish when all are done.
     * `Tasks.parallelDeadline(Task deadline, Task... companions)` – run bounded companions only
       while one named Task is active; that deadline determines completion and outcome.
+    * `Tasks.withTimeout(Task task, double timeoutSec)` – impose one hard outer time budget on a
+      complete Task or Task graph.
 
 > `Tasks.*` is the one public construction layer for generic composition, including `sequence(...)`,
-> `parallelAll(...)`, `parallelDeadline(...)`, and `branchOnOutcome(...)`. Public lower-level leaf
+> `parallelAll(...)`, `parallelDeadline(...)`, `withTimeout(...)`, and
+> `branchOnOutcome(...)`. Public lower-level leaf
 > Tasks such as `InstantTask`, `RunForSecondsTask`, and `WaitUntilTask` remain available. Prefer the
 > corresponding `Tasks` helper when it covers the call; use a concrete leaf only for distinct
 > callback, configuration, or status access.
@@ -248,6 +251,37 @@ and broad `TaskOutcome` values do not replace a route's precise status. Keep the
 non-normal status continues, starts a fallback, or aborts. Direct cancellation never starts the
 fallback. Cleanup belongs to the phase that created the request and goes through robot capabilities,
 not direct Plant or hardware writes.
+
+### 3.2 Put a continuation outside its time budget
+
+Use `withTimeout(...)` when a parent owns a hard budget around one complete Task or composite. When
+the continuation is valid after every non-throwing terminal outcome of that Task, an autonomous
+routine can keep it after the timed region:
+
+```java
+Task auto = Tasks.sequence(
+        Tasks.withTimeout(preParkWork, 25.0),
+        parkFromCurrentPose
+);
+```
+
+If `preParkWork` finishes at 18 seconds, the park starts then. If it is still active at 25 seconds,
+the wrapper calls its ordinary active `cancel()` and starts the park only after that cleanup returns
+and the child is terminal. Once the park starts, no timer remains to interrupt or restart it.
+Cancelling the outer sequence (including FTC STOP) does not start the park. This is a bounded
+continuation, not Java `finally`; mandatory physical cleanup belongs in the active Task's
+`cancel()` implementation.
+
+If route status or another domain result can suppress the continuation, keep the same timed A/B
+shape inside a robot-owned policy coordinator instead of relying on bare `sequence(...)` to decide.
+Phoenix does this so interruption, replacement, cancellation, failure, and unknown route endings do
+not start its park.
+
+An outer timeout is intentionally different from operation-owned timeouts. A route-local timeout
+can retain `RouteStatus.TASK_TIMEOUT`; a feedback move can apply its timeout target; a gated output
+can time only its RUN phase. `withTimeout(...)` instead uses the child's normal cancellation path,
+so the wrapper may report `TIMEOUT` while the retained child reports `CANCELLED`. Keep both when
+they protect different scopes, but do not configure two copies of the same policy.
 
 ---
 
@@ -507,7 +541,8 @@ when they expose a distinct capability:
 * `WaitUntilTask` – when you need its concrete timeout/status inspection beyond the facade.
 
 Even inside a team-specific helper factory, compose child Tasks through `Tasks.*`, such as
-`sequence(...)`, `parallelAll(...)`, `parallelDeadline(...)`, or `branchOnOutcome(...)`. Implement
+`sequence(...)`, `parallelAll(...)`, `parallelDeadline(...)`, `withTimeout(...)`, or
+`branchOnOutcome(...)`. Implement
 `Task` directly only when the behavior genuinely needs a new state machine rather than another
 spelling of existing composition.
 
@@ -607,7 +642,8 @@ For the full design rationale and more examples, see [`Output Tasks & Queues`](<
   `cancelAndClear()` is the total-abort operation and lifecycle failures clear owned work before
   they are rethrown.
 * **`Tasks` factories** (`runOnce`, `waitForSeconds`, `waitUntil`, `sequence`, `parallelAll`,
-  `parallelDeadline`, `noop`, ...) are the main building blocks you should reach for first.
+  `parallelDeadline`, `withTimeout`, `noop`, ...) are the main building blocks you should reach for
+  first.
 * **`PlantTasks`** provide common mechanism patterns: `write(plant)` for time-based writes and `move(plant)` for feedback-based moves.
 * **`DriveTasks.driveExclusivelyForSeconds(...)`** provides simple timed open-loop Auto/test movement
   when its Task is the sole behavior-command writer for the drive sink.

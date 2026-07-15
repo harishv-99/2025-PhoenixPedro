@@ -82,6 +82,7 @@ public final class RouteTask<R> implements Task {
     private boolean startAttempted = false;
     private boolean started = false;
     private boolean complete = false;
+    private boolean statusObservationInProgress = false;
     private TaskOutcome outcome = TaskOutcome.NOT_DONE;
     private RouteStatus routeStatus = RouteStatus.NOT_STARTED;
     private RouteExecution execution;
@@ -307,11 +308,24 @@ public final class RouteTask<R> implements Task {
      * Returns the precise backend-neutral status for this route attempt.
      *
      * <p>This preserves why a route ended even when the broader {@link TaskOutcome} maps several
-     * fail-closed terminal reasons to {@link TaskOutcome#CANCELLED}.</p>
+     * fail-closed terminal reasons to {@link TaskOutcome#CANCELLED}. If the retained execution is
+     * still active in this Task's cache, this method observes its current status first. That
+     * observation may terminalize this Task. If the execution supplies an invalid status or throws,
+     * the Task fails closed and this method throws rather than returning stale policy input. This
+     * keeps policy truthful when a composition-root follower heartbeat terminalized the execution
+     * before the Task's later phase update.</p>
      *
      * @return current or retained terminal route status
+     * @throws IllegalStateException if the retained execution's current status is null, invalid, or
+     *                               cannot be read
      */
     public RouteStatus getRouteStatus() {
+        // A composition-root follower heartbeat may terminalize the exact execution before this
+        // Task receives its phase update. Return the current execution truth so robot policy can
+        // distinguish that terminal reason from a cancellation it is about to apply.
+        if (started && !complete && execution != null) {
+            observeAndApplyStatus();
+        }
         return routeStatus;
     }
 
@@ -410,12 +424,18 @@ public final class RouteTask<R> implements Task {
     }
 
     private void observeAndApplyStatus() {
+        if (statusObservationInProgress) {
+            return;
+        }
+        statusObservationInProgress = true;
         try {
             applyObservedStatus(readExecutionStatus());
         } catch (RuntimeException statusFailure) {
             markFailedTerminal();
             execution.failClosed(statusFailure);
             throw statusFailure;
+        } finally {
+            statusObservationInProgress = false;
         }
     }
 
