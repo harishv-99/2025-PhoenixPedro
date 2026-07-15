@@ -36,7 +36,9 @@ PhoenixRobot
   ScoringTargeting targeting
   ScoringPath scoring
   DriveCommandSink autoDrive   (Auto only; supplied by the Auto mode client)
-  TaskRunner autoRunner
+  AutoRoutineLifecycle autoRoutineLifecycle
+    TaskRunner runner          (private lifecycle driver for one installed root)
+    Task installedRoutine      (retained for terminal telemetry)
   PhoenixTelemetryPresenter telemetry
 ```
 
@@ -101,7 +103,10 @@ use them instead of touching `ScoringPath` or `ScoringTargeting` directly.
 - `ScoringPath`: scoring-path mechanism owner, source-driven scoring Plants, internally layered as inputs → execution → realization
 - `DriveCommandSink autoDrive`: required Auto drive lifecycle owner supplied through a
   backend-neutral seam; Phoenix advances and stops it without owning route-library strategy
-- `TaskRunner autoRunner`: autonomous task queue used when Phoenix is running Auto
+- private `AutoRoutineLifecycle autoRoutineLifecycle`: owns both the private `TaskRunner` lifecycle
+  driver and Phoenix's one installed Auto root
+- retained installed Auto root: the single routine selected during INIT and the source of active or
+  terminal routine telemetry; Phoenix does not expose queue scheduling or runner access
 - `PhoenixTelemetryPresenter`: driver-facing presentation from snapshots
 - `PhoenixRobot`: composition root and loop owner
 
@@ -307,11 +312,18 @@ PhoenixPedroAutoRoutineFactory
 1. retain the required backend-neutral Auto drive lifecycle owner supplied by the mode client
 2. build shared Auto localization around the explicitly supplied backend-neutral predictor
 3. create `PhoenixCapabilities`
-4. create the shared `TaskRunner autoRunner`
+4. create the private `TaskRunner` that will start and own one INIT-installed Auto root
 
 Each `PhoenixRobot` accepts one mode initialization for its lifetime. A repeated Auto init or a
 TeleOp/Auto cross-init fails before replacing any retained owner; a different mode/runtime uses a
 new robot container.
+
+The Auto mode client installs exactly one root with `installAutoRoutine(...)` during INIT. After
+`startAny(...)` resets the shared clock at FTC START, `startAuto()` immediately starts that root
+through the private runner, so a match budget is measured from the real start boundary rather than
+the first later loop. Phoenix's private pre-park coordinator arms at that boundary but defers its
+outbound child until the first normal Auto Task phase, after localization, targeting, and the Pedro
+heartbeat. A second install, late install, start without a root, or repeated start fails fast.
 
 For a simple open-loop Auto/test interval, `DriveTasks.driveExclusivelyForSeconds(...)` may command
 the retained sink only when that Task is the sole behavior-command writer. It refreshes the sink and
@@ -336,13 +348,26 @@ before Pedro clears the evidence. `RouteTask.getRouteStatus()` also distinguishe
 active cancellation. This keeps the routine call short while preventing an old Task from completing
 from, or cancelling, a replacement route.
 
-The adapter reports those facts but does not choose strategy. The checked-in Phoenix routine gates
-its scoring attempt on outbound `COMPLETED`. An outbound follower/Task timeout makes only the
-routine-owned scoring requests safe, skips aim/shoot, and selects the live-pose return as a fallback.
-Interruption, replacement, cancellation, failure, or an unknown terminal result aborts instead of
+The adapter reports those facts but does not choose strategy. The checked-in Phoenix routine calls
+all outbound and scoring behavior **pre-park work**. It gates scoring on outbound `COMPLETED` and
+wraps that complete pre-park policy in `Tasks.withTimeout(...)` using
+`profile.auto.parkTakeoverElapsedSec`. An outbound follower/Task timeout or scoring timeout remains
+truthful and permits the one live-pose park. At the match threshold, the wrapper actively cancels
+the current pre-park phase, waits for its safety cleanup, and then permits that same park. If
+pre-park finishes early, the park starts early and is no longer inside the timer.
+
+Because the persistent Pedro heartbeat precedes the Task phase, a route may become terminal on the
+exact cutoff cycle before its `RouteTask` update. `RouteTask.getRouteStatus()` observes that exact
+execution before pre-park cancellation is classified. The same boundary check validates a terminal
+scoring outcome. Success or a local timeout remains park-eligible; cancellation-like or malformed
+evidence fails closed and suppresses the park.
+
+Interruption, replacement, cancellation, failure, or an unknown pre-park result aborts instead of
 starting another route. Direct cancellation of the routine also aborts without launching fallback.
 The scoring attempt reports unavailable-target, aim, and shot-drain timeouts truthfully so the
-routine can make the same explicit decision before starting its return phase.
+routine can make the same explicit decision. A successful park after any allowed local or match
+timeout retains the routine's `TIMEOUT`; a cancellation-like park result takes precedence as
+`CANCELLED`, and no park result starts a second fallback.
 
 Fixed geometry is built eagerly during INIT and uses `RouteTasks.follow(...)`. Geometry that must
 start from a live pose or a current robot selection stays in `PhoenixPedroPathFactory` and uses
@@ -393,9 +418,9 @@ routine factories, tester implementations, and robot services remain grouped by 
 The checked-in Pedro routes are still placeholder integration geometry. Real alliance/start/partner
 paths should be added in `PhoenixPedroPathFactory`; high-level strategy decisions should stay in
 `PhoenixPedroAutoRoutineFactory`; reusable aim/shoot snippets should stay in `PhoenixAutoTasks`.
-The existing private routine coordinator centralizes Phoenix's conservative route-status mapping;
-new strategies should change that robot-owned mapping deliberately rather than changing the Pedro
-adapter or generic Task semantics.
+The existing private pre-park and final routine coordinators centralize Phoenix's conservative
+route-status mapping and match-time park boundary; new strategies should change that robot-owned
+mapping deliberately rather than changing the Pedro adapter or generic Task semantics.
 
 ## Driver Station setup UI
 
@@ -415,9 +440,9 @@ selection mechanics into `PhoenixRobot` or individual OpModes. The intended spli
 `PhoenixPedroAutoSelectorOpMode` is the first robot-specific user of this split. It produces a
 `PhoenixAutoSpec` during INIT, delegates to the same Pedro/Phoenix lifecycle glue used by static
 Auto entries, and then replaces the wizard with a locked summary so the menu cannot drift away from
-the queued routine. OpMode classes should still stay thin: they choose or collect the spec, construct
-`PhoenixRobot`, and enqueue the selected routine. They should not become route scripts or hardware
-selection screens.
+the installed routine. OpMode classes should still stay thin: they choose or collect the spec,
+construct `PhoenixRobot`, and install the selected routine once during INIT. They should not become
+route scripts or hardware selection screens.
 
 `PhoenixPedroAutoOpModeBase` also treats INIT failures as retryable setup failures, not as
 half-built robot states. Before each new build attempt it clears any previous error and asks the
@@ -428,16 +453,21 @@ set.
 Pedro debug telemetry is composed into the same frame as Phoenix Auto telemetry. The OpMode adds
 `auto.spec`, `auto.paths`, Pedro pose/busy rows, and the backend-neutral `route.status` before
 `PhoenixRobot.updateAuto()` calls the Auto telemetry presenter, so the Driver Station sees one
-coherent Auto status page per loop. While the routine is active, its dynamic Task name identifies
-the current scoring/return/fallback phase and retains the route status that selected a fallback,
-even after the adapter's latest-route row changes to the newly started route.
+coherent Auto status page per loop. The installed root is retained after completion, so its dynamic
+Task name and outcome continue to identify normal pre-park work, local degradation, match-time
+cutoff, suppressed park, active park, or the terminal park result even after the adapter's mutable
+latest-route row changes.
 
 Truthful route status deliberately does not decide what Phoenix should do next.
 Phoenix now applies its explicit conservative continue/fallback/abort mapping in
-`PhoenixPedroAutoRoutineFactory`; generic Task composition keeps its existing semantics. Route
-failure and direct cancellation clear only the transient shot request owned by the scoring attempt
-and the flywheel request enabled by this routine. They do not reset unrelated intake, continuous
-shooting, or eject intent.
+`PhoenixPedroAutoRoutineFactory`; generic Task composition keeps its existing semantics. Natural
+PHX-03 endings retain their narrow ownership cleanup: the scoring attempt cancels only a transient
+shot it owns and pre-park disables the flywheel request enabled by this routine. When the outer
+match budget actively cancels pre-park, that private owner additionally best-effort cancels its
+active child, clears the Auto root's transient/feed and held intake/shoot/eject/flywheel requests
+through `PhoenixCapabilities`, and applies immediate drive zero through the retained sink. It
+attempts every safety action and does not release the park continuation after failed cleanup. This
+is robot-owned match policy, not a callback added to generic `Tasks` or an imperative Plant write.
 
 
 ## Loop order
@@ -469,13 +499,14 @@ Phoenix keeps `updateAuto()` just as explicit:
 1. localization.update(clock)
 2. targeting.update(clock)
 3. autoDrive.update(clock)
-4. autoRunner.update(clock)
+4. autoRoutineLifecycle.update(clock)
 5. scoringPath.update(clock)
 6. telemetryPresenter.emitAuto(...with Auto task and scoring snapshots...)
 ```
 
 Auto uses the same scoring path and targeting service, but swaps TeleOp drive-assist policy for the
-retained Auto drive heartbeat plus queued autonomous task runner. The heartbeat runs after current
+retained Auto drive heartbeat plus the private lifecycle driver for one installed root. The
+heartbeat runs after current
 targeting state is available and before Tasks observe their exact `RouteExecution` status or select
 their next drive behavior. A cycle-aware Pedro adapter makes the later generic `RouteTask` or
 guidance update hook—or the update made by an exclusive timed-drive Task—a no-op in that same cycle,
@@ -522,7 +553,7 @@ PhoenixProfile
   driveAssist   -> shoot-brace / drive-assist tuning
   scoring       -> scoring-path mechanism config
   autoAim       -> scoring target catalog + shot table + aim tuning
-  auto          -> Auto route/aim/wait timing + red/blue Auto scoring tag ids
+  auto          -> Auto route/aim/wait timing + pre-park takeover time + red/blue Auto scoring tag ids
   calibration   -> human acknowledgements
 ```
 

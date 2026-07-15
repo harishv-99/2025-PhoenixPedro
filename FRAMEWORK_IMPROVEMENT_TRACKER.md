@@ -77,7 +77,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 13 | DRIVE-01 | Drive task ownership | Done | Keep an exclusive Auto-only timed sink Task, after Pedro's outer-loop ownership is made correct. |
 | 14 | TASK-04 | Parallel deadline composition | Done | Add one cancellation-safe deadline primitive only if route-plus-companion callers justify it. |
 | 15 | PHX-03 | Explicit Auto route-failure policy | Done | Keep generic sequence semantics and make continue/fallback/abort policy visible in the robot routine. |
-| 16 | PHX-04 | Match-time fallback takeover | Proposed | Let one robot-owned Auto supervisor safely cancel any active phase and start a fresh park route. |
+| 16 | PHX-04 | Match-time fallback takeover | Done | Bound only pre-park work, then start one live-pose park after early completion or a successful match-time cutoff. |
 | 17 | PHX-02 | Phoenix runtime readiness | Proposed | Validate calibration, Pedro construction, routes, alliance facts, and required services before enabling assists/Auto. |
 | 18 | MATCH-01 | Explicit Auto-to-TeleOp handoff | Proposed | Carry one typed immutable robot snapshot across the FTC mode boundary without string maps or stale globals. |
 | 19 | DRIVE-02 | Shared drivetrain actuator handoff | Proposed | Preserve one motor writer when a PTO reuses drivetrain motors for an endgame mechanism. |
@@ -105,11 +105,12 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 41 | CHECK-01 | Staged whole-robot system check | Proposed | Compose a safe pre-match check from robot capabilities without hardware reflection or a base robot. |
 | 42 | EXAMPLE-01 | Compiling modern starter robot | Proposed | Add a small multi-file reference, not an inheritance framework. |
 | 43 | EXAMPLE-02 | Compiling Pedro autonomous reference | Proposed | Show one small real path, capability Tasks, one follower heartbeat, explicit fallback, and a thin OpMode. |
-| 44 | EXAMPLE-03 | Advanced moving-target reference | Proposed | Prove progress-triggered scoring and a bounded moving turret without putting game physics in the framework. |
-| 45 | BOUNDARY-01 | FTC boundary enforcement | Proposed | Fix existing import leaks, then add a focused forbidden-import check. |
-| 46 | DOC-01 | Stale and non-compiling documentation | Proposed | Correct loop/API examples and validate links/examples where practical. |
-| 47 | CI-01 | Framework verification in CI | Proposed | Run focused unit tests, TeamCode compilation, docs checks, and boundary checks. |
-| 48 | CLEAN-01 | Alias and risky convenience cleanup | Proposed | Remove only APIs proven redundant or unsafe by caller search. |
+| 44 | AUTO-01 | Compact bounded Auto continuation | Proposed | Use another real routine to separate reusable lifecycle ceremony from robot-owned match and recovery policy. |
+| 45 | EXAMPLE-03 | Advanced moving-target reference | Proposed | Prove progress-triggered scoring and a bounded moving turret without putting game physics in the framework. |
+| 46 | BOUNDARY-01 | FTC boundary enforcement | Proposed | Fix existing import leaks, then add a focused forbidden-import check. |
+| 47 | DOC-01 | Stale and non-compiling documentation | Proposed | Correct loop/API examples and validate links/examples where practical. |
+| 48 | CI-01 | Framework verification in CI | Proposed | Run focused unit tests, TeamCode compilation, docs checks, and boundary checks. |
+| 49 | CLEAN-01 | Alias and risky convenience cleanup | Proposed | Remove only APIs proven redundant or unsafe by caller search. |
 
 The order is intentionally front-loaded with testability, robot lifecycle, actuator safety, and
 deterministic Task behavior. The Pedro review added two runtime-ownership gates before DRIVE-01:
@@ -135,7 +136,7 @@ behaviors with fewer lifecycle hazards and a smaller student-facing programming 
 | One configured Pedro `Follower` is built with mecanum and Pinpoint configuration, then advanced by the outer OpMode loop independently of route scheduling ([Constants](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/architecture/auto/Constants.java), [EnhancedOpMode](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/core/EnhancedOpMode.java)). | This validates Phoenix's intended single-owner direction, but the checked-in Phoenix Pedro runtime does not yet satisfy it. | Keep PEDRO-01 and PEDRO-02 ahead of DRIVE-01. |
 | Routes can be constructed when execution begins from the live follower pose and current vision selection ([PathActionBuilder](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/architecture/auto/pathaction/PathActionBuilder.java), [Far Auto](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/opmodes/auto/Far.java)). | Phoenix's eager `RouteTask` cannot naturally express live start geometry without rebuilding the surrounding routine. | Add ROUTE-01. |
 | Route progress callbacks coordinate intake, turret, and scoring, while the scheduler also handles replacement, built-in path interruption, and manual skipping ([Close Auto](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/opmodes/auto/Close.java), [PathActionScheduler](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/architecture/auto/pathaction/PathActionScheduler.java)). | Pedro already supplies useful progress callbacks, and Phoenix Tasks can own companion work. The real gap is that `!isBusy()` alone cannot distinguish success from interruption or failure. | Add ROUTE-02; retain TASK-04 and PHX-03. Do not add a second scheduler or generic callback DSL. |
-| A global match-time rule can preempt whatever Auto phase is active and start a park route from the current pose ([Far Auto](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/opmodes/auto/Far.java)). | A route-local branch or deadline child does not by itself express a one-shot whole-routine takeover cleanly. | Add PHX-04 as robot-owned policy over the existing TaskRunner. |
+| A global match-time rule can preempt whatever Auto phase is active and start a park route from the current pose ([Far Auto](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/opmodes/auto/Far.java)). | A route-local branch or deadline child does not by itself express one bounded pre-park phase followed by one live-pose park cleanly. | Add PHX-04 as robot-owned policy around one generic timeout decorator and one root Task graph. |
 | Red/blue geometry is derived from one field-pose definition ([FieldPose](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/architecture/auto/FieldPose.java)). | Phoenix currently makes alliance-specific path duplication too attractive. | Add FIELD-01, with Phoenix coordinates and no global alliance state. |
 | A PTO reuses drivetrain motors and encoders for the lift/endgame, with explicit mode changes and TeleOp drive suppression ([RobotActions](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/core/RobotActions.java), [Endgame](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/modules/Endgame.java)). | The standard Phoenix drive lane hides the shared actuator/readback seam, so a robot can do this only by bypassing normal ownership. This is distinct from timed drive Tasks. | Add DRIVE-02; do not broaden DRIVE-01 into resource arbitration. |
 | Layered controls suppress held-button edges on activation and add rate-limited gamepad rumble ([TeleOp](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/opmodes/tele/Tele.java), [LayeredGamepad](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/architecture/input/LayeredGamepad.java)). | Flat Phoenix controls remain the beginner default, but advanced robots need optional safe contextual activation and a separate driver-feedback output boundary. | Add INPUT-01 and HAPTIC-01. |
@@ -2326,21 +2327,264 @@ writer, and explicit lifecycle ownership.
   is clearer than scattered state checks, but the takeover threshold and park choice remain routine
   facts.
 - **Alternatives to compare:** repeat raw time checks inside every routine phase; use only a route
-  timeout; wrap the entire routine in TASK-04 and place park after it; add generic Task race/preempt
-  primitives; or add one Phoenix Auto supervisor that owns the one-shot takeover over the existing
-  `TaskRunner`. Compare how normal routine completion, Task cleanup failures, and safe mechanism
-  requests are handled.
-- **Leading hypothesis:** keep one scheduler and one `LoopClock`. A robot-owned Auto supervisor reads
-  the shared match time, calls the TaskRunner's total cancel-and-clear path once, requests safe
-  capability state, creates a fresh deferred park Task from the current pose, and starts it through
-  the same runner. The time threshold, park choice, and mechanism policy remain routine/robot facts;
-  no generic framework emergency strategy or hidden background timer is added.
-- **Completion:** tests cover takeover during routes, companion work, mechanism waits, and idle/end
-  state; exactly-once triggering at the threshold; active-child cancellation and cleanup failure;
-  safe mechanism requests; truthful route failure; unavailable park geometry; repeated loop calls;
-  and shutdown. Telemetry distinguishes normal completion, time takeover, fallback construction
-  failure, and park outcome.
-- **Decision record:** _Pending._
+  timeout; make a timer the TASK-04 deadline; wrap `A + B` in a timed override; add a generic race;
+  add a Java-like asynchronous `finally`; or compose one generic timeout decorator around pre-park
+  work A and put one park B after that timed region. Compare early A completion, B already running at
+  25 seconds, direct FTC STOP, cleanup failure, route-policy truth, and student-facing API size.
+- **Leading hypothesis:** keep one scheduler and one `LoopClock`. Add one factory-only generic
+  `Tasks.withTimeout(Task, double)` decorator, bound only the Phoenix pre-park work A, and let one
+  private Phoenix policy coordinator start one live-pose park B after A completes normally or is
+  successfully cancelled at the match threshold. Once B starts, no timer owns it. Match threshold,
+  park choice, mechanism safety, and route interpretation remain robot/routine facts.
+- **Completion:** tests cover early A completion, timeout during every pre-park phase, B beginning
+  before 25 seconds without interruption or restart, exactly-once B construction/start, active-child
+  cleanup failure, abnormal PHX-03 route outcomes, safe mechanism requests, truthful route status,
+  unavailable park geometry, repeated loop calls, direct cancellation, and shutdown. Telemetry
+  distinguishes normal continuation, local degradation, match-time cutoff, suppressed park, park
+  construction failure, and final park outcome.
+- **Decision record (2026-07-14):**
+  - **Current behavior and caller trace:** Phoenix owns one shared `LoopClock`, one private
+    `TaskRunner`, and one continuously updated Pedro drive adapter. `startAny(...)` resets the clock
+    at FTC START, but `startAuto()` is currently empty and the queued routine does not start until
+    the first regular Auto loop. `PhoenixPedroAutoOpModeBase` is the only production installer and
+    every concrete/selector OpMode converges on its one `PhoenixPedroAutoRoutineFactory.build(ctx)`
+    call. No code currently observes a whole-match time budget. Route and scoring timeouts are only
+    local facts, so a healthy route, a `parallelDeadline(...)` companion, or a mechanism wait can
+    still consume the remaining time and prevent the routine's normal park/return from starting.
+  - **A/B boundary correction after user review:** the current PHX-03 routine already contains
+    outbound, scoring, and return/park. Calling that entire graph the primary in a timed override is
+    wrong: if its normal park B begins at 20 seconds, the still-armed 25-second override cancels and
+    restarts B. Calling only pre-park work A the primary is also insufficient for the proposed
+    `timedOverride(A, 25, B)`, because B would not run when A finishes early. The timed region must be
+    exactly A, with B outside it and started once after an allowed A ending.
+  - **Why existing composition alone is insufficient:** repeating clock checks in every phase
+    duplicates policy and can miss a new phase; a route timeout cannot preempt scoring or companion
+    work; and neither orientation of `parallelDeadline(timer, A)` works. A timer deadline delays B
+    until 25 seconds even when A finishes early, while an A deadline cannot be preempted by timer
+    completion. `sequence(withTimeout(A, 25), B)` is the correct generic execution shape, but bare
+    `SequenceTask` deliberately advances after any non-throwing child completion and does not retain
+    the exact PHX-03 route decision. Phoenix therefore needs a private outcome-policy coordinator,
+    not another public composition spelling.
+  - **Generic public construction-path audit:** `sequence(...)`, `parallelAll(...)`,
+    `parallelDeadline(...)`, and `branchOnOutcome(...)` are factory-only generic compositions in
+    `Tasks`; they accept fresh child `Task` instances and return `Task`, while their implementations
+    and constructors are package-private. Add exactly one supported sibling:
+    `Tasks.withTimeout(Task task, double timeoutSec)`. Back it with one package-private
+    `TimeoutTask`; do not expose a constructor, concrete type, `of(...)`, builder, Task default
+    method, `Supplier<Task>` overload, match-time alias, or second factory layer. Task-first argument
+    order parallels `waitUntil(condition, timeoutSec)`, and the conventional decorator name says
+    only what the framework owns.
+  - **Generic timeout contract:** require a non-null Task and a finite, nonnegative duration. The
+    duration begins at the wrapper's own `clock.nowSec()` start boundary, never from preceding
+    `dtSec()`. Zero completes immediately with `TIMEOUT` without starting the child. A positive
+    duration starts the child at that boundary and captures an immediate terminal outcome. On each
+    later update, an already-terminal child wins, including at the exact threshold; otherwise
+    `elapsed >= timeoutSec` wins before another child update. A natural completion retains the
+    child's validated terminal outcome. A framework timeout actively cancels the child and reports
+    `TIMEOUT` only after cancellation returns and the child is terminal. A throwing, nonterminal, or
+    malformed cancellation fails closed and cannot release a continuation. Direct wrapper
+    cancellation is active-only, reports `CANCELLED`, and never changes into a timeout. Single-use,
+    update-before-start, same-cycle, reentrant-callback, and retained-debug rules match the other
+    generic compositions.
+  - **Built-in timeout audit and ownership rule:** do not remove task-local timeouts as a consequence
+    of adding the decorator. They own different semantics: `PlantTasks.move(...).timeout(...)`
+    applies its success/timeout `.thenTarget(...)` rather than its cancellation target;
+    `RouteTask.Config.timeoutSec` records `RouteStatus.TASK_TIMEOUT` and uses timeout-specific route
+    cancellation; output-pulse maximums begin at the gated RUN phase and may continue through
+    cooldown; calibration's staged `failAfterSec(...)` forces an explicit search-safety choice; and
+    guidance's no-guidance window resets when usable guidance returns. The common
+    `Tasks.waitUntil(condition, timeoutSec)` overload also remains: it is materially simpler and
+    samples its condition before its local timeout at the exact boundary. Fixed-duration actions
+    are successful timed commands, not timeouts. `DriveGuidanceTask.Config.timeoutSec` is the only
+    superficially replaceable whole-task cap, but it remains an operation-owned safe default; its
+    removal would be a separate API decision, not PHX-04 cleanup.
+  - **Timeout scope rule for documentation:** use a task-local timeout when the operation owns
+    phase timing, safe terminal behavior, or a truthful domain status. Use
+    `Tasks.withTimeout(...)` when a parent owns a hard budget around an otherwise complete Task or
+    composite graph. The decorator reaches its deadline through the child's ordinary active
+    `cancel()` path; it cannot invoke that child's internal timeout transition. The wrapper may
+    therefore report `TIMEOUT` while the retained child reports `CANCELLED`. Nested local and outer
+    limits are valid when they represent different scopes—such as a four-second route safeguard
+    inside a 25-second pre-park budget—but should not duplicate the same policy. When the local
+    timeout reason matters, configure the outer budget to expire later.
+  - **Concrete generic code shape and `finally` boundary:** a custom robot that truly wants B after
+    every non-throwing terminal result of A writes:
+
+    ```java
+    Task auto = Tasks.sequence(
+            Tasks.withTimeout(A, 25.0),
+            B
+    );
+    ```
+
+    If A finishes at 18 seconds, B starts then. If A remains active at 25 seconds, the decorator
+    cancels A safely and B starts once. If B began earlier, the completed decorator no longer has a
+    timer that can interrupt it. This is a bounded continuation, not Java `finally`: direct
+    cancellation/FTC STOP or a lifecycle/cleanup exception cancels the graph and must not start an
+    asynchronous driving Task. Mandatory physical cleanup belongs in A's active `cancel()` path.
+  - **Phoenix public API and one-root ownership:** retain the tested `TaskRunner` only as
+    `PhoenixRobot`'s private, single-root lifecycle driver. Replace `enqueueAuto(Task)` with the
+    one-shot, INIT-only `installAutoRoutine(Task)` and remove public mutable `autoRunner()`; caller
+    search found no compatibility need outside the shared Auto base. Installation rejects null, a
+    second/late install, start without an installed routine, and repeated start. The supported
+    public installation call remains one line:
+    `robot.installAutoRoutine(PhoenixPedroAutoRoutineFactory.build(ctx))`. Do not add a timed install
+    overload, public supervisor/status type, or public `PhoenixAutoTasks.withMatchTimePark(...)` that
+    duplicates the one generic timing construction path. This does not make the private Phoenix
+    coordinators free of robot-code maintenance cost; everything under `edu.ftcphoenix.robots.phoenix`
+    is robot code for simplicity review.
+  - **Phoenix routine composition and PHX-03 preservation:**
+    `PhoenixPedroAutoRoutineFactory.build(ctx)` keeps its public `Task` return type and remains the
+    only supported public construction entry point. Internally, split the current private
+    coordinator into
+    (1) one pre-park policy Task A for outbound plus scoring, (2)
+    `Tasks.withTimeout(A, profile.auto.parkTakeoverElapsedSec)`, (3) one live-start return/park
+    `RouteTask` B, and (4) one private Phoenix A-to-B policy coordinator. The coordinator starts B
+    once after A/bounded-A `SUCCESS` or `TIMEOUT`, including the match cutoff. It does not start B
+    after PHX-03's interruption, replacement, failure, cancellation, or unknown endings, after a
+    lifecycle/cleanup failure, or after direct root cancellation. This private gate is required
+    because generic `sequence(...)` must not choose season route-recovery policy.
+  - **One park and live geometry:** the initial checked-in `parkTakeoverElapsedSec` is `25.0`, and
+    Phoenix rejects a non-finite or non-positive match threshold even though the generic decorator
+    defines zero. B is one fresh Task built through `RouteTasks.followBuiltAtStart(...)`. Its object
+    may be allocated during routine construction, but its supplier samples current pose and builds
+    geometry exactly once only when B starts. The same B serves normal early completion, a local
+    outbound/scoring timeout, and the global cutoff; there is no separate emergency park to restart
+    it. Threshold and destination remain profile/routine facts, and Pedro types remain at the
+    integration edge.
+  - **Exact FTC START and first-loop ordering:** `startAuto()` starts the installed timed root through
+    the private runner immediately after `startAny(...)` resets the shared clock, so 25 seconds is
+    measured from the exact FTC START boundary rather than the first loop. Generic timed composition
+    starts its primary normally. The private Phoenix routine's `start(clock)` becomes an arm-only
+    boundary that records its cycle without starting outbound behavior; its same-cycle update is a
+    no-op. Its normal child starts on the first later Auto Task phase, after localization, targeting,
+    and the continuously owned Pedro heartbeat. This preserves generic Task semantics and Phoenix's
+    established loop order without a competing clock.
+  - **Phoenix cancellation is the safety boundary:** pre-park A owns cleanup required before B. Its
+    active `cancel()` terminalizes first; best-effort cancels its active route/scoring phase; clears
+    only Auto-owned transient scoring, feed, intake, aim, and flywheel requests; and immediately
+    stops the drive adapter. It attempts every safety action even if an earlier one fails and
+    propagates one aggregate with later failures suppressed. The timeout decorator becomes terminal
+    only after that cleanup returned and A is terminal, so the private coordinator cannot start B
+    after failed cleanup. Direct robot cancellation performs the same cleanup but terminalizes the
+    outer coordinator first, so it never selects B. No generic cleanup callback or Phoenix
+    capability enters `Tasks`.
+  - **Truthful terminal state:** `TimeoutTask.debugDump(...)` retains elapsed/threshold state, whether
+    its own timeout fired, and the child snapshot after completion. The private Phoenix coordinator
+    retains whether A ended normally, locally timed out, or was cut off by match time, plus B's exact
+    `RouteStatus` for success, endpoint timeout/stall, interruption, replacement, cancellation,
+    failure, and unknown. A successful B after any allowed A timeout remains overall `TIMEOUT`; a
+    cancellation-like B result takes precedence as `CANCELLED`; and B never triggers another
+    fallback. Phoenix retains the installed root for terminal telemetry. No public timeout concrete
+    type or status model is justified.
+  - **Framework Principles and simplicity check:** the design is cooperative and non-blocking; uses
+    one heartbeat, clock, runner, drive owner, and root Task graph; preserves single-use,
+    active-only cancellation, start-boundary timing, and source/capability ownership; keeps generic
+    lifecycle in `fw.task` and robot policy in Phoenix; and removes two scheduler-facing Phoenix
+    paths in favor of one install path. API parallelism exists at the supported factory layer:
+    generic compositions and decorators are factory-only siblings in `Tasks`, while Phoenix uses
+    that layer instead of exposing another spelling. A routine installer still selects a spec and
+    calls one factory, but that short entry point is not by itself evidence that the complete Phoenix
+    robot implementation is simple. `AUTO-01` will evaluate whether the private coordinator's
+    lifecycle ceremony can be reduced without moving match-specific policy into the framework.
+  - **Rejected public paths and deferred scope:** do not implement this as a public
+    `MatchTimeAutoTask`, retain `timedOverride(...)`, add `timeoutThen(...)`, call an asynchronous
+    continuation `finally`, put Phoenix/Pedro/safety callbacks in `Tasks`, add a generic race or
+    `takeOverWhen(...)`, add an eager-plus-supplier overload pair, expose an `of(...)`/constructor,
+    add a second scheduler/clock, or add a Phoenix timing alias merely for symmetry. `deadlineThen`
+    would conflict with the established parallel-deadline term. A future condition-driven takeover,
+    true cleanup hook, or public typed status requires an independent caller and decision gate. Do
+    not change generic sequence outcome policy, add real season park geometry, readiness checks,
+    mode handoff, or another tracker item.
+  - **Bounded implementation scope:** add the one `Tasks.withTimeout(...)` facade method,
+    package-private implementation, focused generic tests, and synchronized Task principles/guides;
+    change only the Phoenix Auto profile snapshot, private pre-park/final routine lifecycle,
+    routine factory/private live-pose park helper, root installation/telemetry path, focused Phoenix
+    tests, and synchronized Phoenix/Pedro documentation.
+  - **Verification plan:** generic tests cover null/non-finite/negative construction and zero;
+    just-before, exact, and after-threshold timing; immediate/early child completion; child
+    success/timeout/cancellation/unknown outcomes; timeout cancellation that succeeds, throws,
+    returns nonterminal, or re-enters; child start/update/completion/outcome failures; direct
+    cancellation before start, while active, and after terminal; single-use, update-before-start,
+    same-cycle/reentrant calls, and retained debug state. Phoenix tests cover early A completion;
+    match cutoff during outbound, deadline companions, scoring, and mechanism waits; B already
+    active at 25 seconds without cancellation/restart; exact FTC START with no INIT/first-loop
+    charge; every PHX-03 cancellation-like result with B suppressed; every best-effort safety action
+    and suppression order; cleanup/drive-stop failure with B unstarted; direct cancellation in A and
+    B; live pose sampled once; truthful B results; shutdown; duplicate install/start; all strategy
+    ids and fresh identities; retained telemetry; and unchanged Pedro heartbeat/immediate-zero
+    behavior. Run focused suites, full `:TeamCode:testDebugUnitTest`,
+    `:TeamCode:compileDebugJavaWithJavac`, XML counts, construction-path/caller/import/blocking
+    checks, links, `git diff --check`, independent lifecycle/API/simplicity reviews, and Android
+    Studio inspection. On robot, tune the 25-second threshold with real paths, interrupt each major
+    pre-park phase near it, let normal B cross the threshold, and confirm safe mechanisms, immediate
+    zero, one live-pose park, and truthful Driver Station status.
+  - **Approval gate:** this now adds one public generic composition API, removes two public Phoenix
+    scheduling paths, splits the private PHX-03 routine at the A/B boundary, changes Phoenix root
+    cancellation/start semantics, and replaces the previously proposed timed override. Stop at
+    **Ready**. `Approve PHX-04 bounded-pre-park design` authorizes only the exact factory-only
+    `Tasks.withTimeout(...)` API, private Phoenix A-to-B integration, failure rules, telemetry,
+    tests, and documentation above; it does not authorize PHX-02, publication, or adjacent cleanup.
+  - **Approval (2026-07-14):** the user approved the bounded-pre-park design with
+    `Approve PHX-04 bounded-pre-park design`. Implementation is limited to the exact generic
+    timeout decorator, private Phoenix A-to-B policy and safety boundary, exact Auto root
+    installation/start behavior, focused tests, telemetry, and synchronized documentation recorded
+    above. PHX-02, adjacent cleanup, staging, publication, and merge remain out of scope.
+  - **Implementation (2026-07-14):** added the sole public construction path
+    `Tasks.withTimeout(Task, double)` backed by a package-private, single-use `TimeoutTask`. The
+    decorator measures from its own start timestamp, gives an already-terminal child precedence at
+    the exact boundary, uses ordinary active cancellation when its hard budget wins, and fails
+    closed without releasing continuation after throwing, nonterminal, or malformed cleanup.
+  - **Phoenix integration (2026-07-14):** split the private Pedro routine into bounded outbound plus
+    scoring A and one live-start return/park B outside the timer. `PhoenixProfile.AutoConfig` now
+    carries the copied `25.0`-second default, the routine preserves PHX-03 continue/fallback/abort
+    policy, and match cutoff performs the full capability-owned scoring/drive cleanup before B.
+    A persistent-heartbeat route result or scoring result that becomes terminal on the exact cutoff
+    cycle is observed first, so cancellation-like or malformed evidence suppresses B instead of
+    being mistaken for a normal cutoff. B is built and started at most once and cannot be interrupted
+    or restarted by the completed A timer.
+  - **Root lifecycle and telemetry (2026-07-14):** Phoenix now exposes one INIT-only
+    `installAutoRoutine(Task)` path while its `TaskRunner` stays private behind
+    `AutoRoutineLifecycle`. FTC START is captured before last-chance initialization, resets the one
+    shared clock, and starts the installed root immediately at cycle zero; physical outbound work
+    remains arm-only until the first later ordered Auto loop. The installed root is retained after
+    terminal completion, obsolete queue telemetry was removed, and routine name/outcome plus the
+    private policy trigger retain normal, cutoff, suppressed, construction-failure, and final-route
+    state.
+  - **Automated verification (2026-07-14):** `:TeamCode:testDebugUnitTest` and
+    `:TeamCode:compileDebugJavaWithJavac` pass. The final XML contains **35 suites / 350 tests / 0
+    failures / 0 errors / 0 skipped**. PHX-04-focused coverage comprises 15 generic timeout tests, 6
+    one-root lifecycle tests, 2 profile-copy tests, 26 Phoenix routine-policy tests, and 2 routine
+    factory tests; the 27-test `RouteTaskStatusTest` suite also passes with the live terminal-status
+    observation regression. Coverage includes exact-cutoff route/scoring races, a real
+    `parallelDeadline(...)` mechanism-wait/companion graph, reentrant policy callbacks, malformed
+    lifecycle snapshots, construction failure, best-effort cleanup, direct cancellation, live-pose
+    single construction, and all allowed/aborting route outcomes.
+    The same two Gradle checks were rerun after final approval on 2026-07-15 and passed with the same
+    **35 suites / 350 tests / 0 failures / 0 errors / 0 skipped** result.
+  - **Static and documentation verification (2026-07-14):** construction-path search finds
+    `new TimeoutTask(...)` only in `Tasks`; no timeout aliases, public Phoenix runner/queue escape
+    hatches, or obsolete queue telemetry remain. No sleeps or busy waits were added (the one new
+    `while` is a bounded in-call drain of already-completed private phases). `git diff --check`
+    passes, and local links validate in all 9 changed Markdown files. Framework Principles, generic
+    guides, Pedro integration guidance, Phoenix architecture, examples, Javadocs, and selector help
+    are synchronized.
+  - **Independent review (2026-07-14):** lifecycle, API/simplicity, test-coverage, exact-boundary,
+    and final-diff reviews were completed. They identified and the implementation now resolves stale
+    queue terminology, missing beginner documentation, park-construction failure telemetry, an
+    exact-cutoff route/scoring race, terminal-plus-`NOT_DONE` scoring evidence, and lost PHX-03
+    reentrant/malformed regressions. The final reviewer reported no unresolved PHX-04 blocker.
+  - **Android Studio / hardware audit point (2026-07-14, before approval):** status was
+    **Verifying** and no files were staged or committed. Robot-hardware validation still needs to
+    tune the threshold with real paths and confirm Pedro immediate physical zero, safe scoring/feed
+    requests near cutoff, one feasible live-pose park, an already-running park crossing 25 seconds
+    without restart, and truthful Driver Station routine status.
+  - **Manual approval and publication authorization (2026-07-15):** the user accepted the Android
+    Studio/manual audit with `PHX-04 looks good` and authorized proceeding. The user also clarified
+    that “robot code” includes every class under `edu.ftcphoenix.robots.phoenix`; the one-line public
+    installer therefore must not be used as a proxy for total student/season maintenance burden.
+    That follow-up is tracked separately as `AUTO-01`. Hardware validation remains recommended and
+    is not represented as completed.
 
 ### PHX-02 - Phoenix runtime readiness
 
@@ -2861,6 +3105,37 @@ writer, and explicit lifecycle ownership.
   alliance transform, a route supplier resolved at start, one Pedro progress callback that requests
   a robot capability, deadline-bounded intake, truthful route branching, vision fallback, and a
   match-time park takeover without introducing a second scheduler or Auto DSL.
+- **Decision record:** _Pending._
+
+### AUTO-01 - Compact bounded Auto continuation
+
+- **Problem to confirm:** PHX-04 keeps the supported public installation entry point short, but its
+  two private Phoenix bounded-pre-park/coordinator Tasks contain 1,012 source lines. Because all code
+  under `edu.ftcphoenix.robots.phoenix` is robot code, a new season or robot may otherwise copy a
+  large amount of single-use, same-cycle/reentrant, outcome-validation, cancellation, cleanup
+  aggregation, one-continuation handoff, and telemetry machinery merely to express its own park
+  policy. Determine how much is essential robot strategy and how much is repeated lifecycle ceremony.
+- **Prerequisite evidence:** complete or prototype `EXAMPLE-02` as a genuinely independent compact
+  Pedro Auto, then compare at least one materially different bounded-continuation routine. Count the
+  robot-code concepts and lines each approach requires; a short outer factory call is not sufficient
+  evidence of simplicity.
+- **Alternatives to compare:** retain the tested explicit pattern; simplify only the Phoenix private
+  Tasks; document a copyable template; add a robot-local helper; reuse or reshape existing
+  `sequence(...)`/`branchOnOutcome(...)` composition; extract a narrow lifecycle utility; or add a
+  generic factory-only composition only if multiple real callers prove identical semantics. Compare
+  one continuation identity, truthful retained outcomes, cleanup ownership, reentrant/same-cycle
+  behavior, diagnostic quality, and the number of concepts a student must maintain.
+- **Leading hypothesis:** do not add a framework API from PHX-04 alone. Use the independent examples
+  to identify repeated lifecycle/outcome mechanics, then extract only the smallest proven common
+  shell. Keep route-status meaning, park eligibility, match threshold, mechanism cleanup, and
+  recovery policy robot-owned. Do not assume a public Auto DSL, abstract base class, generic cleanup
+  callback, or match-specific framework API is the answer.
+- **Completion:** a new-season reference expresses bounded pre-park work, allowed terminal results,
+  safe cancellation, and one live-start park in compact, auditable robot code without copying a large
+  lifecycle state machine. Tests retain exact START timing, reentry and same-cycle safety,
+  cleanup-failure suppression, exactly-once continuation, and truthful final outcomes. If no
+  abstraction is simpler than a tested private template, record that evidence-based no-change result
+  explicitly rather than adding another API spelling.
 - **Decision record:** _Pending._
 
 ### EXAMPLE-03 - Advanced moving-target reference

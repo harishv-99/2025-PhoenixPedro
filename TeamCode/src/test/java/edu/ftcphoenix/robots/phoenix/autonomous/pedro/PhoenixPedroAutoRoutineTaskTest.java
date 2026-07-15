@@ -5,9 +5,12 @@ import org.junit.Test;
 import java.lang.reflect.Field;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.time.LoopClock;
+import edu.ftcphoenix.fw.drive.DriveCommandSink;
+import edu.ftcphoenix.fw.drive.DriveSignal;
 import edu.ftcphoenix.fw.drive.route.RouteExecution;
 import edu.ftcphoenix.fw.drive.route.RouteFollower;
 import edu.ftcphoenix.fw.drive.route.RouteStatus;
@@ -16,6 +19,7 @@ import edu.ftcphoenix.fw.drive.route.RouteTasks;
 import edu.ftcphoenix.fw.task.Task;
 import edu.ftcphoenix.fw.task.TaskOutcome;
 import edu.ftcphoenix.fw.task.TaskRunner;
+import edu.ftcphoenix.fw.task.Tasks;
 import edu.ftcphoenix.fw.testing.ManualLoopClock;
 import edu.ftcphoenix.robots.phoenix.PhoenixCapabilities;
 import edu.ftcphoenix.robots.phoenix.ScoringPath;
@@ -26,10 +30,10 @@ import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
-/** Verifies Phoenix's private outbound/scoring/return policy and Task lifecycle contract. */
+/** Verifies Phoenix's bounded pre-park policy, one-park handoff, and cleanup contract. */
 public final class PhoenixPedroAutoRoutineTaskTest {
 
-    private static final RouteStatus[] OUTBOUND_ABORT_STATUSES = {
+    private static final RouteStatus[] CANCELLATION_LIKE_STATUSES = {
             RouteStatus.INTERRUPTED,
             RouteStatus.REPLACED,
             RouteStatus.CANCELLED,
@@ -43,39 +47,169 @@ public final class PhoenixPedroAutoRoutineTaskTest {
     };
 
     @Test
-    public void completedOutboundRunsScoringAndCompletedReturnSucceeds() {
+    public void rootStartArmsOnlyAndSameCycleUpdatesDoNotStartOutbound() {
         Fixture fixture = new Fixture();
-        fixture.start();
 
-        fixture.finishOutbound(RouteStatus.COMPLETED);
-        assertEquals(1, fixture.scoringAttempt.startCount);
+        fixture.routine.start(fixture.clock.clock());
+        fixture.routine.update(fixture.clock.clock());
+        fixture.routine.update(fixture.clock.clock());
+
+        assertEquals(0, fixture.outboundFollower.followCount);
+        assertEquals(0, fixture.scoringAttempt.startCount);
         assertEquals(0, fixture.returnFollower.followCount);
 
-        fixture.finishScoring(TaskOutcome.SUCCESS);
-        assertEquals(1, fixture.scoring.disableCount);
-        assertEquals(1, fixture.returnFollower.followCount);
+        fixture.advanceAndUpdate(0.01);
+        assertEquals(1, fixture.outboundFollower.followCount);
+        assertEquals(0, fixture.outboundFollower.updateCount);
 
-        fixture.finishReturn(RouteStatus.COMPLETED);
+        fixture.routine.update(fixture.clock.clock());
+        assertEquals(0, fixture.outboundFollower.updateCount);
 
-        assertTrue(fixture.routine.isComplete());
-        assertEquals(TaskOutcome.SUCCESS, fixture.routine.getOutcome());
-        assertEquals(0, fixture.scoringAttempt.cancelCount);
-        assertEquals(1, fixture.scoring.disableCount);
+        fixture.advanceAndUpdate(0.01);
+        fixture.routine.update(fixture.clock.clock());
+        assertEquals(1, fixture.outboundFollower.updateCount);
     }
 
     @Test
-    public void eachOutboundTimeoutSkipsScoringAndRunsLiveReturnFallback() {
-        for (RouteStatus status : ROUTE_TIMEOUT_STATUSES) {
-            Fixture fixture = new Fixture();
+    public void earlyPreParkCompletionStartsOneReturnThatCrossesThresholdUninterrupted() {
+        Fixture fixture = new Fixture(0.05, 100.0);
+        fixture.start();
+        fixture.finishOutbound(RouteStatus.COMPLETED);
+        fixture.finishScoring(TaskOutcome.SUCCESS);
+
+        assertEquals(1, fixture.returnFollower.followCount);
+        assertEquals(0, fixture.returnFollower.current.cancelCount);
+        assertTrue(fixture.routine.getDebugName().contains("RETURN_OR_PARK"));
+
+        fixture.advanceAndUpdate(0.10);
+
+        assertFalse(fixture.routine.isComplete());
+        assertEquals(1, fixture.returnFollower.followCount);
+        assertEquals(0, fixture.returnFollower.current.cancelCount);
+
+        fixture.finishReturn(RouteStatus.COMPLETED);
+        assertEquals(TaskOutcome.SUCCESS, fixture.routine.getOutcome());
+    }
+
+    @Test
+    public void cutoffBeforeFirstAutoLoopSkipsOutboundAndStartsParkFromRootStartBudget() {
+        Fixture fixture = new Fixture(0.05, 100.0);
+        fixture.routine.start(fixture.clock.clock());
+
+        fixture.advanceAndUpdate(0.06);
+
+        assertEquals(0, fixture.outboundFollower.followCount);
+        assertEquals(1, fixture.returnFollower.followCount);
+        assertFullCleanup(fixture);
+        assertTrue(fixture.routine.getDebugName().contains("MATCH_TIME_CUTOFF"));
+
+        fixture.finishReturn(RouteStatus.COMPLETED);
+        assertEquals(TaskOutcome.TIMEOUT, fixture.routine.getOutcome());
+    }
+
+    @Test
+    public void matchCutoffDuringOutboundCancelsItCleansEveryIntentAndStartsParkOnce() {
+        Fixture fixture = new Fixture(0.05, 100.0);
+        fixture.start();
+
+        fixture.advanceAndUpdate(0.05);
+
+        assertEquals(1, fixture.outboundFollower.current.cancelCount);
+        assertEquals(0, fixture.scoringAttempt.startCount);
+        assertEquals(1, fixture.returnFollower.followCount);
+        assertFullCleanup(fixture);
+        assertTrue(fixture.routine.getDebugName().contains("MATCH_TIME_CUTOFF"));
+
+        fixture.advanceAndUpdate(0.10);
+        assertEquals(1, fixture.returnFollower.followCount);
+        assertEquals(0, fixture.returnFollower.current.cancelCount);
+
+        fixture.finishReturn(RouteStatus.COMPLETED);
+        assertEquals(TaskOutcome.TIMEOUT, fixture.routine.getOutcome());
+    }
+
+    @Test
+    public void matchCutoffDuringScoringCancelsScoringAndStartsParkOnce() {
+        Fixture fixture = new Fixture(0.05, 100.0);
+        fixture.start();
+        fixture.finishOutbound(RouteStatus.COMPLETED);
+        assertEquals(1, fixture.scoringAttempt.startCount);
+
+        fixture.advanceAndUpdate(0.05);
+
+        assertEquals(1, fixture.scoringAttempt.cancelCount);
+        assertEquals(1, fixture.returnFollower.followCount);
+        assertFullCleanup(fixture);
+        assertTrue(fixture.routine.getDebugName().contains("MATCH_TIME_CUTOFF"));
+
+        fixture.finishReturn(RouteStatus.COMPLETED);
+        assertEquals(TaskOutcome.TIMEOUT, fixture.routine.getOutcome());
+    }
+
+    @Test
+    public void cancellationLikeOutboundHeartbeatAtExactCutoffSuppressesPark() {
+        for (RouteStatus status : CANCELLATION_LIKE_STATUSES) {
+            Fixture fixture = new Fixture(0.05, 100.0);
             fixture.start();
 
+            // Pedro's composition-root heartbeat can terminalize the execution before the Task
+            // phase gets its update on this exact threshold cycle.
+            fixture.outboundFollower.finish(status);
+            fixture.clock.nextCycle(0.04);
+            fixture.routine.update(fixture.clock.clock());
+
+            assertEquals(status.toString(), 0, fixture.returnFollower.followCount);
+            assertEquals(status.toString(), TaskOutcome.CANCELLED, fixture.routine.getOutcome());
+            assertTrue(status.toString(), fixture.routine.getDebugName().contains(status.name()));
+            assertFullCleanup(fixture);
+
+            CapturingDebugSink sink = new CapturingDebugSink();
+            fixture.routine.debugDump(sink, "auto.policy");
+            assertEquals(status.toString(), status, sink.values.get("auto.policy.lastRouteStatus"));
+        }
+    }
+
+    @Test
+    public void cancellationLikeScoringResultAtExactCutoffSuppressesPark() {
+        TaskOutcome[] outcomes = {TaskOutcome.CANCELLED, TaskOutcome.UNKNOWN};
+        for (TaskOutcome scoringOutcome : outcomes) {
+            Fixture fixture = new Fixture(0.05, 100.0);
+            fixture.start();
+            fixture.finishOutbound(RouteStatus.COMPLETED);
+
+            // The mechanism Task may terminalize after its previous policy update but before the
+            // timeout decorator enforces the same exact match-time boundary.
+            fixture.scoringAttempt.completeWith(scoringOutcome);
+            fixture.clock.nextCycle(0.03);
+            fixture.routine.update(fixture.clock.clock());
+
+            assertEquals(scoringOutcome.toString(), 0, fixture.returnFollower.followCount);
+            assertEquals(
+                    scoringOutcome.toString(),
+                    TaskOutcome.CANCELLED,
+                    fixture.routine.getOutcome()
+            );
+            assertTrue(
+                    scoringOutcome.toString(),
+                    fixture.routine.getDebugName().contains("SCORING_" + scoringOutcome)
+            );
+            assertFullCleanup(fixture);
+        }
+    }
+
+    @Test
+    public void eachLocalOutboundTimeoutSkipsScoringAndRetainsTimeoutAfterPark() {
+        for (RouteStatus status : ROUTE_TIMEOUT_STATUSES) {
+            Fixture fixture = new Fixture(25.0, 0.05);
+            fixture.start();
             fixture.finishOutbound(status);
 
             assertEquals(status.toString(), 0, fixture.scoringAttempt.startCount);
             assertEquals(status.toString(), 1, fixture.returnFollower.followCount);
-            assertEquals(status.toString(), 1, fixture.scoring.disableCount);
-            assertTrue(fixture.routine.getDebugName().contains("FALLBACK"));
-            assertTrue(fixture.routine.getDebugName().contains(status.name()));
+            assertEquals(status.toString(), 1, fixture.scoring.flywheelDisableCount);
+            assertEquals(status.toString(), 0, fixture.scoring.cancelTransientCount);
+            assertEquals(status.toString(), 0, fixture.drive.stopCount);
+            assertTrue(status.toString(), fixture.routine.getDebugName().contains(status.name()));
 
             fixture.finishReturn(RouteStatus.COMPLETED);
             assertEquals(status.toString(), TaskOutcome.TIMEOUT, fixture.routine.getOutcome());
@@ -83,63 +217,67 @@ public final class PhoenixPedroAutoRoutineTaskTest {
     }
 
     @Test
-    public void eachCancellationLikeOutboundStatusAbortsWithoutScoringOrFallback() {
-        for (RouteStatus status : OUTBOUND_ABORT_STATUSES) {
+    public void scoringSuccessAndTimeoutAreBothParkEligibleWithTruthfulOutcome() {
+        TaskOutcome[] outcomes = {TaskOutcome.SUCCESS, TaskOutcome.TIMEOUT};
+        for (TaskOutcome scoringOutcome : outcomes) {
             Fixture fixture = new Fixture();
             fixture.start();
+            fixture.finishOutbound(RouteStatus.COMPLETED);
+            fixture.finishScoring(scoringOutcome);
 
+            assertEquals(scoringOutcome.toString(), 1, fixture.returnFollower.followCount);
+            assertEquals(scoringOutcome.toString(), 1, fixture.scoring.flywheelDisableCount);
+            assertEquals(scoringOutcome.toString(), 0, fixture.scoringAttempt.updateCount);
+            fixture.finishReturn(RouteStatus.COMPLETED);
+
+            assertEquals(
+                    scoringOutcome.toString(),
+                    scoringOutcome == TaskOutcome.TIMEOUT
+                            ? TaskOutcome.TIMEOUT
+                            : TaskOutcome.SUCCESS,
+                    fixture.routine.getOutcome()
+            );
+        }
+    }
+
+    @Test
+    public void eachCancellationLikeOutboundResultSuppressesPark() {
+        for (RouteStatus status : CANCELLATION_LIKE_STATUSES) {
+            Fixture fixture = new Fixture();
+            fixture.start();
             fixture.finishOutbound(status);
 
             assertTrue(status.toString(), fixture.routine.isComplete());
             assertEquals(status.toString(), TaskOutcome.CANCELLED, fixture.routine.getOutcome());
             assertEquals(status.toString(), 0, fixture.scoringAttempt.startCount);
             assertEquals(status.toString(), 0, fixture.returnFollower.followCount);
-            assertEquals(status.toString(), 1, fixture.scoring.disableCount);
-            assertTrue(fixture.routine.getDebugName().contains("ABORT"));
-            assertTrue(fixture.routine.getDebugName().contains(status.name()));
+            assertEquals(status.toString(), 1, fixture.scoring.flywheelDisableCount);
         }
     }
 
     @Test
-    public void scoringTimeoutRunsReturnAndRetainsTimeoutAfterSuccessfulReturn() {
-        Fixture fixture = new Fixture();
-        fixture.start();
-        fixture.finishOutbound(RouteStatus.COMPLETED);
-
-        fixture.finishScoring(TaskOutcome.TIMEOUT);
-
-        assertEquals(1, fixture.returnFollower.followCount);
-        assertEquals(1, fixture.scoring.disableCount);
-        assertTrue(fixture.routine.getDebugName().contains("FALLBACK"));
-        assertTrue(fixture.routine.getDebugName().contains("SCORING_TIMEOUT"));
-
-        fixture.finishReturn(RouteStatus.COMPLETED);
-        assertEquals(TaskOutcome.TIMEOUT, fixture.routine.getOutcome());
-    }
-
-    @Test
-    public void scoringCancellationAndUnknownAbortWithoutReturn() {
+    public void scoringCancellationAndUnknownSuppressPark() {
         TaskOutcome[] outcomes = {TaskOutcome.CANCELLED, TaskOutcome.UNKNOWN};
-        for (TaskOutcome outcome : outcomes) {
+        for (TaskOutcome scoringOutcome : outcomes) {
             Fixture fixture = new Fixture();
             fixture.start();
             fixture.finishOutbound(RouteStatus.COMPLETED);
+            fixture.finishScoring(scoringOutcome);
 
-            fixture.finishScoring(outcome);
-
-            assertTrue(outcome.toString(), fixture.routine.isComplete());
-            assertEquals(outcome.toString(), TaskOutcome.CANCELLED, fixture.routine.getOutcome());
-            assertEquals(outcome.toString(), 0, fixture.returnFollower.followCount);
-            assertEquals(outcome.toString(), 1, fixture.scoring.disableCount);
-            assertTrue(fixture.routine.getDebugName().contains("SCORING_" + outcome));
+            assertTrue(scoringOutcome.toString(), fixture.routine.isComplete());
+            assertEquals(scoringOutcome.toString(), TaskOutcome.CANCELLED, fixture.routine.getOutcome());
+            assertEquals(scoringOutcome.toString(), 0, fixture.returnFollower.followCount);
+            assertTrue(
+                    scoringOutcome.toString(),
+                    fixture.routine.getDebugName().contains("SCORING_" + scoringOutcome)
+            );
         }
     }
 
     @Test
-    public void eachReturnTimeoutFinishesAsTimeout() {
+    public void everyFinalRouteTimeoutFinishesWithoutSecondFallback() {
         for (RouteStatus status : ROUTE_TIMEOUT_STATUSES) {
-            Fixture fixture = fixtureAtReturn();
-
+            Fixture fixture = fixtureAtReturn(TaskOutcome.SUCCESS);
             fixture.finishReturn(status);
 
             assertTrue(status.toString(), fixture.routine.isComplete());
@@ -149,52 +287,115 @@ public final class PhoenixPedroAutoRoutineTaskTest {
     }
 
     @Test
-    public void eachCancellationLikeReturnStatusWinsOverEarlierSuccess() {
-        for (RouteStatus status : OUTBOUND_ABORT_STATUSES) {
-            Fixture fixture = fixtureAtReturn();
+    public void everyCancellationLikeFinalRouteResultWinsOverSuccessOrRetainedTimeout() {
+        for (RouteStatus status : CANCELLATION_LIKE_STATUSES) {
+            Fixture afterSuccess = fixtureAtReturn(TaskOutcome.SUCCESS);
+            afterSuccess.finishReturn(status);
+            assertEquals(status.toString(), TaskOutcome.CANCELLED, afterSuccess.routine.getOutcome());
+            assertEquals(status.toString(), 1, afterSuccess.returnFollower.followCount);
 
-            fixture.finishReturn(status);
-
-            assertTrue(status.toString(), fixture.routine.isComplete());
-            assertEquals(status.toString(), TaskOutcome.CANCELLED, fixture.routine.getOutcome());
-            assertEquals(status.toString(), 1, fixture.returnFollower.followCount);
-            assertTrue(fixture.routine.getDebugName().contains(status.name()));
+            Fixture afterTimeout = fixtureAtReturn(TaskOutcome.TIMEOUT);
+            afterTimeout.finishReturn(status);
+            assertEquals(status.toString(), TaskOutcome.CANCELLED, afterTimeout.routine.getOutcome());
+            assertEquals(status.toString(), 1, afterTimeout.returnFollower.followCount);
         }
     }
 
     @Test
-    public void cancellationLikeReturnOverridesRetainedOutboundTimeout() {
+    public void directCancellationBeforeStartIsNoOp() {
         Fixture fixture = new Fixture();
-        fixture.start();
-        fixture.finishOutbound(RouteStatus.FOLLOWER_TIMEOUT_OR_STALL);
 
-        fixture.finishReturn(RouteStatus.REPLACED);
+        fixture.routine.cancel();
+
+        assertFalse(fixture.routine.isComplete());
+        assertEquals(TaskOutcome.NOT_DONE, fixture.routine.getOutcome());
+        assertNoFullCleanup(fixture);
+        assertEquals(0, fixture.returnFollower.followCount);
+    }
+
+    @Test
+    public void directCancellationDuringOutboundAndScoringCleansAndNeverParks() {
+        Fixture outbound = new Fixture();
+        outbound.start();
+        outbound.routine.cancel();
+        outbound.routine.cancel();
+        assertEquals(TaskOutcome.CANCELLED, outbound.routine.getOutcome());
+        assertEquals(1, outbound.outboundFollower.current.cancelCount);
+        assertEquals(0, outbound.returnFollower.followCount);
+        assertFullCleanup(outbound);
+
+        Fixture scoring = new Fixture();
+        scoring.start();
+        scoring.finishOutbound(RouteStatus.COMPLETED);
+        scoring.routine.cancel();
+        scoring.routine.cancel();
+        assertEquals(TaskOutcome.CANCELLED, scoring.routine.getOutcome());
+        assertEquals(1, scoring.scoringAttempt.cancelCount);
+        assertEquals(0, scoring.returnFollower.followCount);
+        assertFullCleanup(scoring);
+    }
+
+    @Test
+    public void directCancellationDuringParkCancelsOnlyThatOneParkAndCannotRestartIt() {
+        Fixture fixture = fixtureAtReturn(TaskOutcome.SUCCESS);
+
+        fixture.routine.cancel();
+        fixture.routine.cancel();
 
         assertEquals(TaskOutcome.CANCELLED, fixture.routine.getOutcome());
-        assertTrue(fixture.routine.getDebugName().contains("REPLACED"));
+        assertEquals(1, fixture.returnFollower.followCount);
+        assertEquals(1, fixture.returnFollower.current.cancelCount);
+        // Natural pre-park completion already removed the flywheel request; the completed
+        // pre-park Task is not misused as a post-terminal cleanup callback.
+        assertEquals(1, fixture.scoring.flywheelDisableCount);
+        assertEquals(0, fixture.scoring.cancelTransientCount);
     }
 
     @Test
-    public void returnTimeoutPreservesRetainedOutboundAndScoringTimeouts() {
-        Fixture outboundTimeout = new Fixture();
-        outboundTimeout.start();
-        outboundTimeout.finishOutbound(RouteStatus.FOLLOWER_TIMEOUT_OR_STALL);
-        outboundTimeout.finishReturn(RouteStatus.TASK_TIMEOUT);
-        assertEquals(TaskOutcome.TIMEOUT, outboundTimeout.routine.getOutcome());
+    public void cutoffCleanupAttemptsEveryActionAndSuppressesFailuresInOrder() {
+        Fixture fixture = new Fixture(0.05, 100.0);
+        fixture.start();
+        IllegalStateException childFailure = new IllegalStateException("child cancel failed");
+        IllegalStateException transientFailure = new IllegalStateException("transient failed");
+        IllegalStateException intakeFailure = new IllegalStateException("intake failed");
+        IllegalStateException shootingFailure = new IllegalStateException("shooting failed");
+        IllegalStateException ejectFailure = new IllegalStateException("eject failed");
+        IllegalStateException flywheelFailure = new IllegalStateException("flywheel failed");
+        IllegalStateException driveFailure = new IllegalStateException("drive failed");
+        fixture.outboundFollower.current.cancelFailure = childFailure;
+        fixture.scoring.cancelTransientFailure = transientFailure;
+        fixture.scoring.intakeDisableFailure = intakeFailure;
+        fixture.scoring.shootingDisableFailure = shootingFailure;
+        fixture.scoring.ejectDisableFailure = ejectFailure;
+        fixture.scoring.flywheelDisableFailure = flywheelFailure;
+        fixture.drive.stopFailure = driveFailure;
 
-        Fixture scoringTimeout = new Fixture();
-        scoringTimeout.start();
-        scoringTimeout.finishOutbound(RouteStatus.COMPLETED);
-        scoringTimeout.finishScoring(TaskOutcome.TIMEOUT);
-        scoringTimeout.finishReturn(RouteStatus.FOLLOWER_TIMEOUT_OR_STALL);
-        assertEquals(TaskOutcome.TIMEOUT, scoringTimeout.routine.getOutcome());
+        try {
+            fixture.advanceAndUpdate(0.05);
+            fail("expected aggregate cleanup failure");
+        } catch (IllegalStateException actual) {
+            assertSame(childFailure, actual);
+        }
+
+        assertEquals(1, fixture.outboundFollower.current.cancelCount);
+        assertFullCleanup(fixture);
+        assertEquals(0, fixture.returnFollower.followCount);
+        assertEquals(6, childFailure.getSuppressed().length);
+        assertSame(transientFailure, childFailure.getSuppressed()[0]);
+        assertSame(intakeFailure, childFailure.getSuppressed()[1]);
+        assertSame(shootingFailure, childFailure.getSuppressed()[2]);
+        assertSame(ejectFailure, childFailure.getSuppressed()[3]);
+        assertSame(flywheelFailure, childFailure.getSuppressed()[4]);
+        assertSame(driveFailure, childFailure.getSuppressed()[5]);
     }
 
     @Test
-    public void taskRunnerFailStopCleansFlywheelAfterScoringChildStartFailure() {
+    public void taskRunnerFailureDuringScoringStartFailsClosedAndSuppressesPark() {
         Fixture fixture = new Fixture();
         TaskRunner runner = new TaskRunner();
         runner.enqueue(fixture.routine);
+        runner.update(fixture.clock.clock());
+        fixture.clock.nextCycle(0.01);
         runner.update(fixture.clock.clock());
 
         IllegalStateException startFailure = new IllegalStateException("scoring start failed");
@@ -212,38 +413,36 @@ public final class PhoenixPedroAutoRoutineTaskTest {
         assertTrue(runner.isIdle());
         assertEquals(TaskOutcome.CANCELLED, fixture.routine.getOutcome());
         assertEquals(1, fixture.scoringAttempt.cancelCount);
-        assertEquals(1, fixture.scoring.disableCount);
         assertEquals(0, fixture.returnFollower.followCount);
+        assertFullCleanup(fixture);
     }
 
     @Test
-    public void taskRunnerFailStopCleansAfterLiveReturnBuildFailureWithoutStartingFollower() {
+    public void liveParkConstructionFailureFailsClosedWithoutCallingFollower() {
         ManualLoopClock clock = new ManualLoopClock();
         ControlledFollower outboundFollower = new ControlledFollower();
         ControlledFollower returnFollower = new ControlledFollower();
         ControlledTask scoringAttempt = new ControlledTask();
         RecordingScoring scoring = new RecordingScoring();
-        RouteTask<String> outbound = newRoute("outbound", outboundFollower);
+        RecordingDriveSink drive = new RecordingDriveSink();
+        RouteTask<String> outbound = newRoute("outbound", outboundFollower, 100.0);
         IllegalStateException buildFailure = new IllegalStateException("live return unavailable");
-        RouteTask.Config returnConfig = new RouteTask.Config();
-        returnConfig.timeoutSec = 0.05;
         RouteTask<String> liveReturn = RouteTasks.followBuiltAtStart(
                 "liveReturn",
                 returnFollower,
                 () -> {
                     throw buildFailure;
                 },
-                returnConfig
+                routeConfig(100.0)
         );
+        PhoenixPedroPreParkTask prePark = new PhoenixPedroPreParkTask(
+                "returnBuildFailure", outbound, scoringAttempt, scoring, drive);
         PhoenixPedroAutoRoutineTask routine = new PhoenixPedroAutoRoutineTask(
-                "returnBuildFailure",
-                outbound,
-                scoringAttempt,
-                liveReturn,
-                scoring
-        );
+                "returnBuildFailure", prePark, 25.0, liveReturn);
         TaskRunner runner = new TaskRunner();
         runner.enqueue(routine);
+        runner.update(clock.clock());
+        clock.nextCycle(0.01);
         runner.update(clock.clock());
 
         outboundFollower.finish(RouteStatus.COMPLETED);
@@ -262,412 +461,334 @@ public final class PhoenixPedroAutoRoutineTaskTest {
 
         assertTrue(runner.isIdle());
         assertEquals(TaskOutcome.CANCELLED, routine.getOutcome());
-        assertEquals(1, scoring.disableCount);
         assertEquals(0, returnFollower.followCount);
+        assertEquals(1, scoring.flywheelDisableCount);
+        CapturingDebugSink sink = new CapturingDebugSink();
+        routine.debugDump(sink, "auto.policy");
+        assertEquals("FAILED", sink.values.get("auto.policy.trigger"));
+        assertEquals(RouteStatus.FAILED, sink.values.get("auto.policy.lastRouteStatus"));
     }
 
     @Test
-    public void directCancellationInEveryPhaseCancelsOnlyActiveChildAndNeverRecovers() {
-        Fixture outbound = new Fixture();
-        outbound.start();
-        outbound.routine.cancel();
-        outbound.routine.cancel();
-        assertCancelled(outbound);
-        assertEquals(1, outbound.outboundFollower.current.cancelCount);
-        assertEquals(0, outbound.scoringAttempt.startCount);
-        assertEquals(0, outbound.returnFollower.followCount);
+    public void liveParkFactoryIsSampledOnceOnlyWhenParkStarts() {
+        ManualLoopClock clock = new ManualLoopClock();
+        ControlledFollower outboundFollower = new ControlledFollower();
+        ControlledFollower returnFollower = new ControlledFollower();
+        ControlledTask scoringAttempt = new ControlledTask();
+        RecordingScoring scoring = new RecordingScoring();
+        RecordingDriveSink drive = new RecordingDriveSink();
+        AtomicInteger builds = new AtomicInteger();
+        RouteTask<String> outbound = newRoute("outbound", outboundFollower, 100.0);
+        RouteTask<String> liveReturn = RouteTasks.followBuiltAtStart(
+                "liveReturn",
+                returnFollower,
+                () -> {
+                    builds.incrementAndGet();
+                    return "live-route";
+                },
+                routeConfig(100.0)
+        );
+        PhoenixPedroPreParkTask prePark = new PhoenixPedroPreParkTask(
+                "liveBuild", outbound, scoringAttempt, scoring, drive);
+        PhoenixPedroAutoRoutineTask routine = new PhoenixPedroAutoRoutineTask(
+                "liveBuild", prePark, 25.0, liveReturn);
 
-        Fixture scoring = new Fixture();
-        scoring.start();
-        scoring.finishOutbound(RouteStatus.COMPLETED);
-        scoring.routine.cancel();
-        scoring.routine.cancel();
-        assertCancelled(scoring);
-        assertEquals(1, scoring.scoringAttempt.cancelCount);
-        assertEquals(0, scoring.returnFollower.followCount);
+        routine.start(clock.clock());
+        routine.debugDump(new CapturingDebugSink(), "auto");
+        assertEquals(0, builds.get());
+        clock.nextCycle(0.01);
+        routine.update(clock.clock());
+        assertEquals(0, builds.get());
 
-        Fixture returning = fixtureAtReturn();
-        returning.routine.cancel();
-        returning.routine.cancel();
-        assertCancelled(returning);
-        assertEquals(1, returning.returnFollower.current.cancelCount);
-        assertEquals(1, returning.returnFollower.followCount);
+        outboundFollower.finish(RouteStatus.COMPLETED);
+        clock.nextCycle(0.01);
+        routine.update(clock.clock());
+        scoringAttempt.completeWith(TaskOutcome.SUCCESS);
+        clock.nextCycle(0.01);
+        routine.update(clock.clock());
+
+        assertEquals(1, builds.get());
+        assertEquals(1, returnFollower.followCount);
+        routine.update(clock.clock());
+        assertEquals(1, builds.get());
     }
 
     @Test
-    public void cancellationBeforeStartIsNoOpAndTerminalCancellationIsNoOp() {
-        Fixture fixture = new Fixture();
-
-        fixture.routine.cancel();
-        assertFalse(fixture.routine.isComplete());
-        assertEquals(TaskOutcome.NOT_DONE, fixture.routine.getOutcome());
-        assertEquals(0, fixture.scoring.disableCount);
-
-        fixture.start();
-        fixture.finishOutbound(RouteStatus.INTERRUPTED);
-        fixture.routine.cancel();
-
-        assertEquals(TaskOutcome.CANCELLED, fixture.routine.getOutcome());
-        assertEquals(1, fixture.scoring.disableCount);
-        assertEquals(0, fixture.outboundFollower.current.cancelCount);
-    }
-
-    @Test
-    public void cancellationReenteredFromFlywheelCleanupDoesNotStartFallback() {
-        Fixture fixture = new Fixture();
-        fixture.start();
-        fixture.scoring.onDisable = fixture.routine::cancel;
-
-        fixture.finishOutbound(RouteStatus.FOLLOWER_TIMEOUT_OR_STALL);
-
-        assertCancelled(fixture);
-        assertEquals(1, fixture.scoring.disableCount);
-        assertEquals(0, fixture.scoringAttempt.startCount);
-        assertEquals(0, fixture.returnFollower.followCount);
-        assertTrue(fixture.routine.getDebugName().contains("DIRECT_CANCEL"));
-    }
-
-    @Test
-    public void updateReenteredFromFlywheelCleanupStartsEachSelectedReturnOnlyOnce() {
-        Fixture outboundTimeout = new Fixture();
-        outboundTimeout.start();
-        outboundTimeout.scoring.onDisable =
-                () -> outboundTimeout.routine.update(outboundTimeout.clock.clock());
-
-        outboundTimeout.finishOutbound(RouteStatus.FOLLOWER_TIMEOUT_OR_STALL);
-
-        assertEquals(1, outboundTimeout.returnFollower.followCount);
-        assertEquals(1, outboundTimeout.scoring.disableCount);
-        assertTrue(outboundTimeout.routine.getDebugName().contains("FALLBACK"));
-
-        Fixture scoringSuccess = new Fixture();
-        scoringSuccess.start();
-        scoringSuccess.finishOutbound(RouteStatus.COMPLETED);
-        scoringSuccess.scoringAttempt.completeWith(TaskOutcome.SUCCESS);
-        scoringSuccess.scoring.onDisable =
-                () -> scoringSuccess.routine.update(scoringSuccess.clock.clock());
-
-        scoringSuccess.routine.update(scoringSuccess.clock.clock());
-
-        assertEquals(1, scoringSuccess.returnFollower.followCount);
-        assertEquals(1, scoringSuccess.scoring.disableCount);
-        assertTrue(scoringSuccess.routine.getDebugName().contains("phase=RETURN_OR_PARK"));
-    }
-
-    @Test
-    public void cancellationReenteredFromScoringOutcomeDoesNotOverwriteAbortOrStartReturn() {
-        Fixture fixture = new Fixture();
-        fixture.start();
-        fixture.finishOutbound(RouteStatus.COMPLETED);
-        fixture.scoringAttempt.completeWith(TaskOutcome.SUCCESS);
-        fixture.scoringAttempt.onGetOutcome = fixture.routine::cancel;
-
-        fixture.routine.update(fixture.clock.clock());
-
-        assertCancelled(fixture);
-        assertEquals(1, fixture.scoring.disableCount);
-        assertEquals(0, fixture.returnFollower.followCount);
-        assertTrue(fixture.routine.getDebugName().contains("decision=ABORT"));
-        assertTrue(fixture.routine.getDebugName().contains("DIRECT_CANCEL"));
-    }
-
-    @Test
-    public void updateReenteredFromScoringOutcomeStartsReturnOnlyOnce() {
-        Fixture fixture = new Fixture();
-        fixture.start();
-        fixture.finishOutbound(RouteStatus.COMPLETED);
-        fixture.scoringAttempt.completeWith(TaskOutcome.SUCCESS);
-        fixture.scoringAttempt.onGetOutcome =
-                () -> fixture.routine.update(fixture.clock.clock());
-
-        fixture.routine.update(fixture.clock.clock());
-
-        assertFalse(fixture.routine.isComplete());
-        assertEquals(1, fixture.returnFollower.followCount);
-        assertEquals(1, fixture.scoring.disableCount);
-        assertTrue(fixture.routine.getDebugName().contains("phase=RETURN_OR_PARK"));
-
-        fixture.finishReturn(RouteStatus.COMPLETED);
-        assertEquals(TaskOutcome.SUCCESS, fixture.routine.getOutcome());
-    }
-
-    @Test
-    public void childAlreadyCompleteAtUpdateIsAdvancedWithoutTerminalUpdateCall() {
-        Fixture fixture = new Fixture();
-        fixture.start();
-        fixture.finishOutbound(RouteStatus.COMPLETED);
-        fixture.scoringAttempt.completeWith(TaskOutcome.SUCCESS);
-
-        fixture.routine.update(fixture.clock.clock());
-
-        assertEquals(0, fixture.scoringAttempt.updateCount);
-        assertEquals(1, fixture.returnFollower.followCount);
-    }
-
-    @Test
-    public void directCancelAttemptsBothCleanupsOnceAndSuppressesLaterFailure() {
-        Fixture fixture = new Fixture();
-        fixture.start();
-        fixture.finishOutbound(RouteStatus.COMPLETED);
-        IllegalStateException childFailure = new IllegalStateException("child cancel failed");
-        IllegalStateException cleanupFailure = new IllegalStateException("flywheel cleanup failed");
-        fixture.scoringAttempt.cancelFailure = childFailure;
-        fixture.scoring.disableFailure = cleanupFailure;
-
-        try {
-            fixture.routine.cancel();
-            fail("expected cleanup failure");
-        } catch (IllegalStateException actual) {
-            assertSame(childFailure, actual);
-        }
-
-        assertTrue(fixture.routine.isComplete());
-        assertEquals(TaskOutcome.CANCELLED, fixture.routine.getOutcome());
-        assertEquals(1, fixture.scoringAttempt.cancelCount);
-        assertEquals(1, fixture.scoring.disableCount);
-        assertEquals(1, childFailure.getSuppressed().length);
-        assertSame(cleanupFailure, childFailure.getSuppressed()[0]);
-
-        fixture.routine.cancel();
-        assertEquals(1, fixture.scoringAttempt.cancelCount);
-        assertEquals(1, fixture.scoring.disableCount);
-    }
-
-    @Test
-    public void immediateChildrenAdvanceThroughWholeRoutineAtTheirOwnStartBoundaries() {
+    public void immediateChildrenAdvanceOnlyAfterFirstLaterCycle() {
         Fixture fixture = new Fixture();
         fixture.outboundFollower.statusOnFollow = RouteStatus.COMPLETED;
         fixture.scoringAttempt.completeOnStart = TaskOutcome.SUCCESS;
         fixture.returnFollower.statusOnFollow = RouteStatus.COMPLETED;
 
-        fixture.start();
+        fixture.routine.start(fixture.clock.clock());
+        fixture.routine.update(fixture.clock.clock());
+        assertFalse(fixture.routine.isComplete());
+        assertEquals(0, fixture.outboundFollower.followCount);
+
+        fixture.advanceAndUpdate(0.01);
 
         assertTrue(fixture.routine.isComplete());
         assertEquals(TaskOutcome.SUCCESS, fixture.routine.getOutcome());
         assertEquals(1, fixture.outboundFollower.followCount);
         assertEquals(1, fixture.scoringAttempt.startCount);
         assertEquals(1, fixture.returnFollower.followCount);
-        assertEquals(1, fixture.scoring.disableCount);
     }
 
     @Test
-    public void immediateOutboundTimeoutFallbackRetainsTimeoutAndSkipsScoring() {
-        Fixture fixture = new Fixture();
-        fixture.outboundFollower.statusOnFollow = RouteStatus.FOLLOWER_TIMEOUT_OR_STALL;
-        fixture.returnFollower.statusOnFollow = RouteStatus.COMPLETED;
+    public void reentrantPolicyCallbacksNeverDuplicateOrReleaseParkAfterCancellation() {
+        Fixture updateReentry = new Fixture();
+        updateReentry.start();
+        updateReentry.scoring.onFlywheelDisable =
+                () -> updateReentry.routine.update(updateReentry.clock.clock());
+        updateReentry.finishOutbound(RouteStatus.FOLLOWER_TIMEOUT_OR_STALL);
+        assertEquals(1, updateReentry.scoring.flywheelDisableCount);
+        assertEquals(1, updateReentry.returnFollower.followCount);
 
-        fixture.start();
+        Fixture cleanupCancel = new Fixture();
+        cleanupCancel.start();
+        cleanupCancel.scoring.onFlywheelDisable = cleanupCancel.routine::cancel;
+        cleanupCancel.finishOutbound(RouteStatus.FOLLOWER_TIMEOUT_OR_STALL);
+        assertEquals(TaskOutcome.CANCELLED, cleanupCancel.routine.getOutcome());
+        assertEquals(1, cleanupCancel.scoring.flywheelDisableCount);
+        assertEquals(0, cleanupCancel.returnFollower.followCount);
 
-        assertTrue(fixture.routine.isComplete());
-        assertEquals(TaskOutcome.TIMEOUT, fixture.routine.getOutcome());
-        assertEquals(0, fixture.scoringAttempt.startCount);
-        assertEquals(1, fixture.returnFollower.followCount);
-        assertEquals(1, fixture.scoring.disableCount);
+        Fixture outcomeCancel = new Fixture();
+        outcomeCancel.start();
+        outcomeCancel.finishOutbound(RouteStatus.COMPLETED);
+        outcomeCancel.scoringAttempt.completeWith(TaskOutcome.SUCCESS);
+        outcomeCancel.scoringAttempt.onGetOutcome = outcomeCancel.routine::cancel;
+        outcomeCancel.advanceAndUpdate(0.01);
+        assertEquals(TaskOutcome.CANCELLED, outcomeCancel.routine.getOutcome());
+        assertEquals(0, outcomeCancel.returnFollower.followCount);
+        assertFullCleanup(outcomeCancel);
     }
 
     @Test
-    public void lifecycleErrorsAndDuplicateAliasesAreActionable() {
-        Fixture fixture = new Fixture();
+    public void cutoffCancelsParallelDeadlineMechanismWaitAndCompanionBeforePark() {
+        ManualLoopClock clock = new ManualLoopClock();
+        ControlledFollower outboundFollower = new ControlledFollower();
+        ControlledFollower returnFollower = new ControlledFollower();
+        RecordingScoring scoring = new RecordingScoring();
+        RecordingDriveSink drive = new RecordingDriveSink();
+        Task mechanismWait = Tasks.waitForSeconds(100.0);
+        ControlledTask companion = new ControlledTask();
+        Task scoringGraph = Tasks.parallelDeadline(mechanismWait, companion);
+        PhoenixPedroPreParkTask prePark = new PhoenixPedroPreParkTask(
+                "parallelCutoff",
+                newRoute("outbound", outboundFollower, 100.0),
+                scoringGraph,
+                scoring,
+                drive
+        );
+        PhoenixPedroAutoRoutineTask routine = new PhoenixPedroAutoRoutineTask(
+                "parallelCutoff",
+                prePark,
+                0.05,
+                newRoute("return", returnFollower, 100.0)
+        );
 
+        routine.start(clock.clock());
+        clock.nextCycle(0.01);
+        routine.update(clock.clock());
+        outboundFollower.finish(RouteStatus.COMPLETED);
+        clock.nextCycle(0.01);
+        routine.update(clock.clock());
+        assertEquals(1, companion.startCount);
+
+        clock.nextCycle(0.04);
+        routine.update(clock.clock());
+
+        assertEquals(TaskOutcome.CANCELLED, mechanismWait.getOutcome());
+        assertEquals(1, companion.cancelCount);
+        assertEquals(1, returnFollower.followCount);
+        assertFullCleanup(scoring, drive);
+    }
+
+    @Test
+    public void lifecycleAndConstructionFailuresAreActionable() {
+        Fixture fixture = new Fixture();
         assertFailureContains(
                 () -> fixture.routine.update(fixture.clock.clock()),
                 "before start",
                 "PhoenixPedroAutoRoutineFactory.build"
         );
 
-        fixture.start();
-        int startsBeforeSecondAttempt = fixture.outboundFollower.followCount;
+        fixture.routine.start(fixture.clock.clock());
         assertFailureContains(
                 () -> fixture.routine.start(fixture.clock.clock()),
                 "single-use",
                 "fresh Task graph"
         );
-        assertEquals(startsBeforeSecondAttempt, fixture.outboundFollower.followCount);
 
         ControlledFollower follower = new ControlledFollower();
-        RouteTask<String> shared = newRoute("shared", follower);
-        RouteTask<String> other = newRoute("other", new ControlledFollower());
-        RecordingScoring scoring = new RecordingScoring();
+        RouteTask<String> sharedRoute = newRoute("shared", follower, 100.0);
         ControlledTask ordinary = new ControlledTask();
-
-        assertFailureContains(
-                () -> new PhoenixPedroAutoRoutineTask(
-                        "alias", shared, ordinary, shared, scoring),
-                "outboundRoute",
-                "returnOrParkRoute",
-                "fresh Task"
-        );
-        assertFailureContains(
-                () -> new PhoenixPedroAutoRoutineTask(
-                        "alias", shared, shared, other, scoring),
-                "outboundRoute",
-                "scoringAttempt",
-                "fresh Task"
-        );
-        assertFailureContains(
-                () -> new PhoenixPedroAutoRoutineTask(
-                        "alias", shared, other, other, scoring),
-                "scoringAttempt",
-                "returnOrParkRoute",
-                "fresh Task"
-        );
-    }
-
-    @Test
-    public void constructorRejectsMissingRolesWithNamedGuidance() {
-        ControlledFollower follower = new ControlledFollower();
-        RouteTask<String> outbound = newRoute("outbound", follower);
-        RouteTask<String> returning = newRoute("return", new ControlledFollower());
-        ControlledTask scoringTask = new ControlledTask();
         RecordingScoring scoring = new RecordingScoring();
+        RecordingDriveSink drive = new RecordingDriveSink();
 
         assertFailureContains(
-                () -> new PhoenixPedroAutoRoutineTask(
-                        " ", outbound, scoringTask, returning, scoring),
-                "routineName",
-                "telemetry"
-        );
-        assertFailureContains(
-                () -> new PhoenixPedroAutoRoutineTask(
-                        "missing", null, scoringTask, returning, scoring),
+                () -> new PhoenixPedroPreParkTask(
+                        "alias", sharedRoute, sharedRoute, scoring, drive),
                 "outboundRoute",
-                "fresh Task graph"
-        );
-        assertFailureContains(
-                () -> new PhoenixPedroAutoRoutineTask(
-                        "missing", outbound, null, returning, scoring),
                 "scoringAttempt",
-                "fresh Task graph"
+                "fresh Task"
         );
+        PhoenixPedroPreParkTask prePark = new PhoenixPedroPreParkTask(
+                "alias", sharedRoute, ordinary, scoring, drive);
         assertFailureContains(
-                () -> new PhoenixPedroAutoRoutineTask(
-                        "missing", outbound, scoringTask, null, scoring),
+                () -> new PhoenixPedroAutoRoutineTask("alias", prePark, 25.0, sharedRoute),
                 "returnOrParkRoute",
-                "fresh Task graph"
+                "pre-park child",
+                "fresh"
         );
-        assertFailureContains(
-                () -> new PhoenixPedroAutoRoutineTask(
-                        "missing", outbound, scoringTask, returning, null),
-                "scoring",
-                "fresh Task graph"
-        );
+
+        double[] invalidThresholds = {0.0, -1.0, Double.NaN, Double.POSITIVE_INFINITY};
+        for (double threshold : invalidThresholds) {
+            PhoenixPedroPreParkTask freshPrePark = new PhoenixPedroPreParkTask(
+                    "invalid", newRoute("outbound", new ControlledFollower(), 100.0),
+                    new ControlledTask(), new RecordingScoring(), new RecordingDriveSink());
+            assertFailureContains(
+                    () -> new PhoenixPedroAutoRoutineTask(
+                            "invalid", freshPrePark, threshold,
+                            newRoute("return", new ControlledFollower(), 100.0)),
+                    "parkTakeoverElapsedSec",
+                    "finite and > 0"
+            );
+        }
     }
 
     @Test
-    public void malformedCompletedScoringOutcomesFailWithRoleAndRecoveryGuidance() {
-        TaskOutcome[] malformed = {null, TaskOutcome.NOT_DONE};
-        for (TaskOutcome outcome : malformed) {
+    public void malformedCompletedChildrenFailClosedWithRoleGuidanceAndNoPark() throws Exception {
+        TaskOutcome[] malformedScoring = {null, TaskOutcome.NOT_DONE};
+        for (TaskOutcome outcome : malformedScoring) {
             Fixture fixture = new Fixture();
-            fixture.start();
-            fixture.finishOutbound(RouteStatus.COMPLETED);
+            TaskRunner runner = startWithRunner(fixture);
+            finishOutboundWithRunner(fixture, runner, RouteStatus.COMPLETED);
             fixture.scoringAttempt.completeWith(outcome);
+            fixture.clock.nextCycle(0.01);
 
-            assertFailureContains(
-                    () -> fixture.routine.update(fixture.clock.clock()),
+            assertRunnerFailureContains(
+                    runner,
+                    fixture.clock.clock(),
                     "scoringAttempt",
                     String.valueOf(outcome),
                     "fresh child Task graph"
             );
-            fixture.routine.cancel();
-            assertEquals(1, fixture.scoring.disableCount);
+            assertTrue(runner.isIdle());
+            assertEquals(0, fixture.returnFollower.followCount);
+            assertFullCleanup(fixture);
         }
-    }
 
-    @Test
-    public void malformedCompletedRouteStatusFailsWithoutGuessingPolicy() throws Exception {
-        Object[] malformed = {null, RouteStatus.ACTIVE, RouteStatus.NOT_STARTED};
-        for (Object status : malformed) {
+        Object[] malformedRouteStatuses = {null, RouteStatus.ACTIVE, RouteStatus.NOT_STARTED};
+        for (Object status : malformedRouteStatuses) {
             Fixture fixture = new Fixture();
-            fixture.start();
+            TaskRunner runner = startWithRunner(fixture);
             setPrivate(fixture.outboundRoute, "complete", true);
             setPrivate(fixture.outboundRoute, "routeStatus", status);
+            fixture.clock.nextCycle(0.01);
 
-            assertFailureContains(
-                    () -> fixture.routine.update(fixture.clock.clock()),
+            assertRunnerFailureContains(
+                    runner,
+                    fixture.clock.clock(),
                     "outboundRoute",
                     String.valueOf(status),
                     "terminal RouteStatus"
             );
-            fixture.routine.cancel();
-            assertEquals(1, fixture.scoring.disableCount);
+            assertTrue(runner.isIdle());
+            assertEquals(0, fixture.returnFollower.followCount);
+            assertFullCleanup(fixture);
         }
+
+        Fixture exactCutoff = new Fixture(0.05, 100.0);
+        TaskRunner exactRunner = startWithRunner(exactCutoff);
+        finishOutboundWithRunner(exactCutoff, exactRunner, RouteStatus.COMPLETED);
+        exactCutoff.scoringAttempt.completeWith(TaskOutcome.NOT_DONE);
+        exactCutoff.clock.nextCycle(0.03);
+        assertRunnerFailureContains(
+                exactRunner,
+                exactCutoff.clock.clock(),
+                "scoringAttempt",
+                "isComplete=true",
+                "outcome=NOT_DONE"
+        );
+        assertTrue(exactRunner.isIdle());
+        assertEquals(0, exactCutoff.returnFollower.followCount);
+        assertFullCleanup(exactCutoff);
     }
 
     @Test
-    public void childStartFailureLeavesRoleVisibleAndCancellationCleansOwnedState() {
-        Fixture fixture = new Fixture();
-        fixture.start();
-        IllegalStateException startFailure = new IllegalStateException("scoring start failed");
-        fixture.scoringAttempt.startFailure = startFailure;
+    public void debugDumpDistinguishesLocalTimeoutFromMatchCutoff() {
+        Fixture local = new Fixture(25.0, 0.05);
+        local.start();
+        local.finishOutbound(RouteStatus.FOLLOWER_TIMEOUT_OR_STALL);
+        CapturingDebugSink localSink = new CapturingDebugSink();
+        local.routine.debugDump(localSink, "auto.policy");
 
-        try {
-            fixture.finishOutbound(RouteStatus.COMPLETED);
-            fail("expected child start failure");
-        } catch (IllegalStateException actual) {
-            assertSame(startFailure, actual);
-        }
-
-        assertTrue(fixture.routine.getDebugName().contains("phase=SCORING"));
-        fixture.routine.cancel();
-        assertEquals(TaskOutcome.CANCELLED, fixture.routine.getOutcome());
-        assertEquals(1, fixture.scoringAttempt.cancelCount);
-        assertEquals(1, fixture.scoring.disableCount);
-        assertEquals(0, fixture.returnFollower.followCount);
-    }
-
-    @Test
-    public void debugNameAndDumpExposeLiveFallbackStatusAndAccumulatedOutcome() {
-        Fixture fixture = new Fixture();
-        fixture.start();
-        fixture.finishOutbound(RouteStatus.FOLLOWER_TIMEOUT_OR_STALL);
-
-        String name = fixture.routine.getDebugName();
-        assertTrue(name.contains("testRoutine"));
-        assertTrue(name.contains("phase=RETURN_OR_PARK"));
-        assertTrue(name.contains("decision=FALLBACK"));
-        assertTrue(name.contains("FOLLOWER_TIMEOUT_OR_STALL"));
-
-        CapturingDebugSink sink = new CapturingDebugSink();
-        fixture.routine.debugDump(sink, "auto.policy");
-        fixture.routine.debugDump(null, "ignored");
-
-        assertEquals("testRoutine", sink.values.get("auto.policy.routine"));
-        assertEquals("RETURN_OR_PARK", String.valueOf(sink.values.get("auto.policy.phase")));
-        assertEquals("FALLBACK", String.valueOf(sink.values.get("auto.policy.decision")));
+        assertEquals("RETURN_OR_PARK", String.valueOf(localSink.values.get("auto.policy.phase")));
+        assertEquals("FALLBACK", String.valueOf(localSink.values.get("auto.policy.decision")));
+        assertEquals(Boolean.FALSE, localSink.values.get("auto.policy.matchTimeCutoff"));
+        assertEquals(
+                "FOLLOWER_TIMEOUT_OR_STALL",
+                localSink.values.get("auto.policy.trigger")
+        );
         assertEquals(
                 RouteStatus.FOLLOWER_TIMEOUT_OR_STALL,
-                sink.values.get("auto.policy.triggerRouteStatus")
+                localSink.values.get("auto.policy.lastRouteStatus")
         );
-        assertEquals(TaskOutcome.TIMEOUT, sink.values.get("auto.policy.accumulatedOutcome"));
-        assertEquals("return", sink.values.get("auto.policy.activeChild"));
+        assertEquals(TaskOutcome.TIMEOUT, localSink.values.get("auto.policy.accumulatedOutcome"));
+
+        Fixture match = new Fixture(0.05, 100.0);
+        match.start();
+        match.advanceAndUpdate(0.05);
+        CapturingDebugSink matchSink = new CapturingDebugSink();
+        match.routine.debugDump(matchSink, "auto.policy");
+
+        assertEquals(Boolean.TRUE, matchSink.values.get("auto.policy.matchTimeCutoff"));
+        assertEquals("MATCH_TIME_CUTOFF", matchSink.values.get("auto.policy.trigger"));
+        assertEquals(TaskOutcome.CANCELLED, matchSink.values.get("auto.policy.preParkOutcome"));
+        assertEquals(TaskOutcome.TIMEOUT, matchSink.values.get("auto.policy.accumulatedOutcome"));
     }
 
-    private static Fixture fixtureAtReturn() {
+    private static Fixture fixtureAtReturn(TaskOutcome scoringOutcome) {
         Fixture fixture = new Fixture();
         fixture.start();
         fixture.finishOutbound(RouteStatus.COMPLETED);
-        fixture.finishScoring(TaskOutcome.SUCCESS);
+        fixture.finishScoring(scoringOutcome);
         return fixture;
     }
 
-    private static void assertCancelled(Fixture fixture) {
-        assertTrue(fixture.routine.isComplete());
-        assertEquals(TaskOutcome.CANCELLED, fixture.routine.getOutcome());
-        assertEquals(1, fixture.scoring.disableCount);
-        assertTrue(fixture.routine.getDebugName().contains("ABORT"));
-        assertTrue(fixture.routine.getDebugName().contains("DIRECT_CANCEL"));
+    private static void assertFullCleanup(Fixture fixture) {
+        assertFullCleanup(fixture.scoring, fixture.drive);
     }
 
-    private static RouteTask<String> newRoute(String name, ControlledFollower follower) {
+    private static void assertFullCleanup(RecordingScoring scoring, RecordingDriveSink drive) {
+        assertEquals(1, scoring.cancelTransientCount);
+        assertEquals(1, scoring.intakeDisableCount);
+        assertEquals(1, scoring.shootingDisableCount);
+        assertEquals(1, scoring.ejectDisableCount);
+        assertEquals(1, scoring.flywheelDisableCount);
+        assertEquals(1, drive.stopCount);
+    }
+
+    private static void assertNoFullCleanup(Fixture fixture) {
+        assertEquals(0, fixture.scoring.cancelTransientCount);
+        assertEquals(0, fixture.scoring.intakeDisableCount);
+        assertEquals(0, fixture.scoring.shootingDisableCount);
+        assertEquals(0, fixture.scoring.ejectDisableCount);
+        assertEquals(0, fixture.scoring.flywheelDisableCount);
+        assertEquals(0, fixture.drive.stopCount);
+    }
+
+    private static RouteTask.Config routeConfig(double timeoutSec) {
         RouteTask.Config config = new RouteTask.Config();
-        config.timeoutSec = 0.05;
-        return RouteTasks.follow(name, follower, name + "-route", config);
+        config.timeoutSec = timeoutSec;
+        return config;
     }
 
-    private static void setPrivate(Object target, String fieldName, Object value) throws Exception {
-        Field field = target.getClass().getDeclaredField(fieldName);
-        field.setAccessible(true);
-        field.set(target, value);
+    private static RouteTask<String> newRoute(String name,
+                                               ControlledFollower follower,
+                                               double timeoutSec) {
+        return RouteTasks.follow(name, follower, name + "-route", routeConfig(timeoutSec));
     }
 
     private static void assertFailureContains(ThrowingAction action, String... fragments) {
@@ -684,37 +805,97 @@ public final class PhoenixPedroAutoRoutineTaskTest {
         }
     }
 
+    private static TaskRunner startWithRunner(Fixture fixture) {
+        TaskRunner runner = new TaskRunner();
+        runner.enqueue(fixture.routine);
+        runner.update(fixture.clock.clock());
+        fixture.clock.nextCycle(0.01);
+        runner.update(fixture.clock.clock());
+        assertEquals(1, fixture.outboundFollower.followCount);
+        return runner;
+    }
+
+    private static void finishOutboundWithRunner(Fixture fixture,
+                                                 TaskRunner runner,
+                                                 RouteStatus status) {
+        fixture.outboundFollower.finish(status);
+        fixture.clock.nextCycle(0.01);
+        runner.update(fixture.clock.clock());
+    }
+
+    private static void assertRunnerFailureContains(TaskRunner runner,
+                                                    LoopClock clock,
+                                                    String... fragments) {
+        try {
+            runner.update(clock);
+            fail("expected failure containing " + fragments[0]);
+        } catch (RuntimeException expected) {
+            for (String fragment : fragments) {
+                assertTrue(
+                        "missing '" + fragment + "' in: " + expected.getMessage(),
+                        expected.getMessage() != null && expected.getMessage().contains(fragment)
+                );
+            }
+        }
+    }
+
+    private static void setPrivate(Object target, String fieldName, Object value) throws Exception {
+        Field field = target.getClass().getDeclaredField(fieldName);
+        field.setAccessible(true);
+        field.set(target, value);
+    }
+
     private interface ThrowingAction {
         void run();
     }
 
     private static final class Fixture {
+        private final double routeTimeoutSec;
         private final ManualLoopClock clock = new ManualLoopClock();
         private final ControlledFollower outboundFollower = new ControlledFollower();
         private final ControlledFollower returnFollower = new ControlledFollower();
-        private final RouteTask<String> outboundRoute = newRoute("outbound", outboundFollower);
-        private final RouteTask<String> returnRoute = newRoute("return", returnFollower);
+        private final RouteTask<String> outboundRoute;
+        private final RouteTask<String> returnRoute;
         private final ControlledTask scoringAttempt = new ControlledTask();
         private final RecordingScoring scoring = new RecordingScoring();
-        private final PhoenixPedroAutoRoutineTask routine = new PhoenixPedroAutoRoutineTask(
-                "testRoutine",
-                outboundRoute,
-                scoringAttempt,
-                returnRoute,
-                scoring
-        );
+        private final RecordingDriveSink drive = new RecordingDriveSink();
+        private final PhoenixPedroPreParkTask prePark;
+        private final PhoenixPedroAutoRoutineTask routine;
+
+        private Fixture() {
+            this(25.0, 0.50);
+        }
+
+        private Fixture(double takeoverSec, double routeTimeoutSec) {
+            this.routeTimeoutSec = routeTimeoutSec;
+            outboundRoute = newRoute("outbound", outboundFollower, routeTimeoutSec);
+            returnRoute = newRoute("return", returnFollower, routeTimeoutSec);
+            prePark = new PhoenixPedroPreParkTask(
+                    "testRoutine", outboundRoute, scoringAttempt, scoring, drive);
+            routine = new PhoenixPedroAutoRoutineTask(
+                    "testRoutine", prePark, takeoverSec, returnRoute);
+        }
 
         private void start() {
             routine.start(clock.clock());
+            routine.update(clock.clock());
+            assertEquals(0, outboundFollower.followCount);
+            advanceAndUpdate(0.01);
+            assertEquals(1, outboundFollower.followCount);
+        }
+
+        private void advanceAndUpdate(double dtSec) {
+            clock.nextCycle(dtSec);
+            routine.update(clock.clock());
         }
 
         private void finishOutbound(RouteStatus status) {
             finishRoute(outboundFollower, status);
         }
 
-        private void finishScoring(TaskOutcome outcome) {
-            scoringAttempt.completeWith(outcome);
-            routine.update(clock.clock());
+        private void finishScoring(TaskOutcome scoringOutcome) {
+            scoringAttempt.completeWith(scoringOutcome);
+            advanceAndUpdate(0.01);
         }
 
         private void finishReturn(RouteStatus status) {
@@ -723,11 +904,11 @@ public final class PhoenixPedroAutoRoutineTaskTest {
 
         private void finishRoute(ControlledFollower follower, RouteStatus status) {
             if (status == RouteStatus.TASK_TIMEOUT) {
-                clock.nextCycle(0.06);
+                advanceAndUpdate(routeTimeoutSec + 0.01);
             } else {
                 follower.finish(status);
+                advanceAndUpdate(0.01);
             }
-            routine.update(clock.clock());
         }
     }
 
@@ -735,7 +916,6 @@ public final class PhoenixPedroAutoRoutineTaskTest {
         private ControlledExecution current;
         private RouteStatus statusOnFollow = RouteStatus.ACTIVE;
         private RuntimeException followFailure;
-        private Runnable onFollow;
         private int followCount;
         private int updateCount;
 
@@ -747,11 +927,6 @@ public final class PhoenixPedroAutoRoutineTaskTest {
             }
             current = new ControlledExecution();
             current.integrationStatus = statusOnFollow;
-            Runnable callback = onFollow;
-            onFollow = null;
-            if (callback != null) {
-                callback.run();
-            }
             return current;
         }
 
@@ -761,10 +936,13 @@ public final class PhoenixPedroAutoRoutineTaskTest {
         }
 
         private void finish(RouteStatus status) {
+            if (current == null) {
+                throw new IllegalStateException("route has not started");
+            }
             if (status == RouteStatus.NOT_STARTED
                     || status == RouteStatus.ACTIVE
                     || status == RouteStatus.TASK_TIMEOUT) {
-                throw new IllegalArgumentException("test fixture requires integration terminal status");
+                throw new IllegalArgumentException("fixture requires an integration terminal status");
             }
             current.integrationStatus = status;
         }
@@ -871,36 +1049,51 @@ public final class PhoenixPedroAutoRoutineTaskTest {
     }
 
     private static final class RecordingScoring implements PhoenixCapabilities.Scoring {
-        private int disableCount;
-        private RuntimeException disableFailure;
-        private Runnable onDisable;
+        private int intakeDisableCount;
+        private int flywheelDisableCount;
+        private int shootingDisableCount;
+        private int ejectDisableCount;
+        private int cancelTransientCount;
+        private RuntimeException intakeDisableFailure;
+        private RuntimeException flywheelDisableFailure;
+        private RuntimeException shootingDisableFailure;
+        private RuntimeException ejectDisableFailure;
+        private RuntimeException cancelTransientFailure;
+        private Runnable onFlywheelDisable;
 
         @Override
         public void setIntakeEnabled(boolean enabled) {
+            if (!enabled) {
+                intakeDisableCount++;
+                if (intakeDisableFailure != null) throw intakeDisableFailure;
+            }
         }
 
         @Override
         public void setFlywheelEnabled(boolean enabled) {
-            if (enabled) {
-                return;
-            }
-            disableCount++;
-            Runnable callback = onDisable;
-            onDisable = null;
-            if (callback != null) {
-                callback.run();
-            }
-            if (disableFailure != null) {
-                throw disableFailure;
+            if (!enabled) {
+                flywheelDisableCount++;
+                Runnable callback = onFlywheelDisable;
+                onFlywheelDisable = null;
+                if (callback != null) callback.run();
+                if (flywheelDisableFailure != null) throw flywheelDisableFailure;
             }
         }
 
         @Override
         public void setShootingEnabled(boolean enabled) {
+            if (!enabled) {
+                shootingDisableCount++;
+                if (shootingDisableFailure != null) throw shootingDisableFailure;
+            }
         }
 
         @Override
         public void setEjectEnabled(boolean enabled) {
+            if (!enabled) {
+                ejectDisableCount++;
+                if (ejectDisableFailure != null) throw ejectDisableFailure;
+            }
         }
 
         @Override
@@ -913,6 +1106,8 @@ public final class PhoenixPedroAutoRoutineTaskTest {
 
         @Override
         public void cancelTransientActions() {
+            cancelTransientCount++;
+            if (cancelTransientFailure != null) throw cancelTransientFailure;
         }
 
         @Override
@@ -935,6 +1130,21 @@ public final class PhoenixPedroAutoRoutineTaskTest {
         @Override
         public ScoringPath.Status status() {
             return null;
+        }
+    }
+
+    private static final class RecordingDriveSink implements DriveCommandSink {
+        private int stopCount;
+        private RuntimeException stopFailure;
+
+        @Override
+        public void drive(DriveSignal signal) {
+        }
+
+        @Override
+        public void stop() {
+            stopCount++;
+            if (stopFailure != null) throw stopFailure;
         }
     }
 

@@ -532,6 +532,35 @@ public final class Tasks {
     // ---------------------------------------------------------------------
 
     /**
+     * Create a {@link Task} that imposes a hard elapsed-time budget on one child Task.
+     *
+     * <p>The budget begins at the returned Task's own {@link Task#start(LoopClock)} boundary. A
+     * zero budget completes immediately with {@link TaskOutcome#TIMEOUT} without starting the
+     * child. With a positive budget, a child that finishes naturally retains its terminal outcome.
+     * If the budget elapses first, the wrapper invokes the child's ordinary active
+     * {@link Task#cancel()} path and reports {@code TIMEOUT} only after cancellation returns and the
+     * child is terminal.</p>
+     *
+     * <p>This is a parent-owned execution budget, not a replacement for operation-specific timeout
+     * APIs. Prefer a Task's built-in timeout when it owns phase-local timing, timeout-specific
+     * cleanup, or more precise status. For example, a Plant move's built-in timeout may apply its
+     * success/timeout target, while this wrapper uses that move's selected cancellation target.</p>
+     *
+     * <p>At the exact boundary, a child already terminal before the update wins. Otherwise the
+     * timeout wins before another child update. Direct cancellation reports
+     * {@link TaskOutcome#CANCELLED}. The returned Task and its child are both single-use.</p>
+     *
+     * @param task       fresh child Task to run; must not be {@code null}
+     * @param timeoutSec finite, nonnegative hard budget in seconds
+     * @return a fresh single-use timeout decorator
+     * @throws NullPointerException if {@code task} is {@code null}
+     * @throws IllegalArgumentException if {@code timeoutSec} is negative or non-finite
+     */
+    public static Task withTimeout(Task task, double timeoutSec) {
+        return new TimeoutTask(task, timeoutSec);
+    }
+
+    /**
      * Create a {@link Task} that runs the given tasks one after another.
      *
      * <p>The first child starts when the returned Task starts. Only the current child is updated.

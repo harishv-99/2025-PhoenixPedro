@@ -36,8 +36,8 @@ import edu.ftcphoenix.robots.phoenix.autonomous.pedro.PhoenixPedroPathFactory;
  * autonomous entry.</p>
  *
  * <p>Initialization is retry-safe during INIT. A failed attempt tears down any partially-created
- * Phoenix or Pedro runtime before another spec is built, which keeps selector telemetry, queued
- * tasks, and live hardware owners from drifting apart.</p>
+ * Phoenix or Pedro runtime before another spec is built, which keeps selector telemetry, the
+ * installed routine, and live hardware owners from drifting apart.</p>
  *
  * <p>This mode client asks the project factory for the team-specific runtime, then transfers its
  * adapter's recurring update/final-stop lifecycle and its one shared motion predictor to
@@ -87,13 +87,16 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
      */
     @Override
     public void start() {
+        // Capture the FTC START boundary before a last-chance INIT retry can consume match time.
+        // The first regular loop then charges any such setup delay to the pre-park budget.
+        final double startRuntimeSec = getRuntime();
         if (!isAutoInitialized() && initError == null) {
             initializeRobotForSpec(autoSpec());
         }
         if (initError != null || robot == null) {
             return;
         }
-        robot.startAny(getRuntime());
+        robot.startAny(startRuntimeSec);
         robot.startAuto();
     }
 
@@ -208,7 +211,7 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
                     pathFactory,
                     paths
             );
-            builtRobot.enqueueAuto(PhoenixPedroAutoRoutineFactory.build(ctx));
+            builtRobot.installAutoRoutine(PhoenixPedroAutoRoutineFactory.build(ctx));
 
             activeSpec = requestedSpec;
             activeProfile = builtProfile;

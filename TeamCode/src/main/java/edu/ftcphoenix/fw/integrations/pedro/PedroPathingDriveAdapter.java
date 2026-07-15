@@ -50,7 +50,7 @@ import edu.ftcphoenix.fw.drive.route.RouteStatus;
  *         outboundPath,
  *         new RouteTask.Config()
  * );
- * robot.enqueueAuto(outbound);
+ * robot.installAutoRoutine(outbound);
  * }</pre>
  * <p>A multi-phase routine should retain that status-bearing Task and give it, plus its semantic
  * mechanism Tasks, to robot-owned policy. Generic sequences do not stop automatically after an

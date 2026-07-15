@@ -293,6 +293,14 @@ Only mode-specific arming/reset work that is not already shared.
 
 These can stay empty when no extra work is needed.
 
+When the composition root owns one installed autonomous root with a match-time budget, `startAuto()`
+should start that root immediately after the shared clock reset. Do not wait until the first later
+OpMode loop, because that silently shortens or shifts the budget. Phoenix exposes one INIT-only
+`installAutoRoutine(task)` path, keeps its `TaskRunner` private, rejects duplicate/late install or
+start, and retains the installed root for terminal telemetry. Its robot-owned pre-park Task may arm
+at START and defer physical child behavior until the first normal Auto task phase after current
+state producers and the external drive heartbeat.
+
 ### `updateAny()`
 
 Shared timebase update and other truly common loop state.

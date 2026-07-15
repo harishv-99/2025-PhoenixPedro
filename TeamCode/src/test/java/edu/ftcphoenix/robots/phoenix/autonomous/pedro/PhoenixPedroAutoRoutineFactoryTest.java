@@ -31,7 +31,7 @@ import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
-/** Verifies the public routine factory keeps every strategy on one fresh private policy graph. */
+/** Verifies the public routine factory keeps every strategy on one fresh bounded policy graph. */
 public final class PhoenixPedroAutoRoutineFactoryTest {
 
     @Test
@@ -45,15 +45,25 @@ public final class PhoenixPedroAutoRoutineFactoryTest {
             assertTrue(strategy.toString(), first instanceof PhoenixPedroAutoRoutineTask);
             assertTrue(strategy.toString(), second instanceof PhoenixPedroAutoRoutineTask);
             assertNotSame(strategy.toString(), first, second);
+            Object firstPrePark = role(first, "prePark");
+            Object secondPrePark = role(second, "prePark");
+            assertTrue(strategy.toString(), firstPrePark instanceof PhoenixPedroPreParkTask);
+            assertTrue(strategy.toString(), secondPrePark instanceof PhoenixPedroPreParkTask);
+            assertNotSame(strategy + " prePark", firstPrePark, secondPrePark);
+            assertNotSame(
+                    strategy + " boundedPrePark",
+                    role(first, "boundedPrePark"),
+                    role(second, "boundedPrePark")
+            );
             assertNotSame(
                     strategy + " outboundRoute",
-                    role(first, "outboundRoute"),
-                    role(second, "outboundRoute")
+                    preParkRole(firstPrePark, "outboundRoute"),
+                    preParkRole(secondPrePark, "outboundRoute")
             );
             assertNotSame(
                     strategy + " scoringAttempt",
-                    role(first, "scoringAttempt"),
-                    role(second, "scoringAttempt")
+                    preParkRole(firstPrePark, "scoringAttempt"),
+                    preParkRole(secondPrePark, "scoringAttempt")
             );
             assertNotSame(
                     strategy + " returnOrParkRoute",
@@ -64,6 +74,24 @@ public final class PhoenixPedroAutoRoutineFactoryTest {
                     first.getDebugName(),
                     first.getDebugName().contains(expectedRoutineName(strategy))
             );
+        }
+    }
+
+    @Test
+    public void invalidMatchTakeoverThresholdFailsBeforeRoutineConstruction() throws Exception {
+        double[] invalid = {0.0, -1.0, Double.NaN, Double.POSITIVE_INFINITY};
+        for (double value : invalid) {
+            PhoenixPedroAutoContext context = contextFor(PhoenixAutoStrategyId.SAFE_PRELOAD);
+            context.profile().auto.parkTakeoverElapsedSec = value;
+
+            try {
+                PhoenixPedroAutoRoutineFactory.build(context);
+                fail("expected invalid park takeover threshold " + value);
+            } catch (IllegalArgumentException expected) {
+                assertTrue(expected.getMessage().contains("parkTakeoverElapsedSec"));
+                assertTrue(expected.getMessage().contains("finite"));
+                assertTrue(expected.getMessage().contains("> 0"));
+            }
         }
     }
 
@@ -127,6 +155,12 @@ public final class PhoenixPedroAutoRoutineFactoryTest {
         Field field = PhoenixPedroAutoRoutineTask.class.getDeclaredField(fieldName);
         field.setAccessible(true);
         return field.get(routine);
+    }
+
+    private static Object preParkRole(Object prePark, String fieldName) throws Exception {
+        Field field = PhoenixPedroPreParkTask.class.getDeclaredField(fieldName);
+        field.setAccessible(true);
+        return field.get(prePark);
     }
 
     private static String expectedRoutineName(PhoenixAutoStrategyId strategy) {

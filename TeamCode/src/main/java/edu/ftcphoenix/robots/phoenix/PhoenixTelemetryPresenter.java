@@ -54,17 +54,21 @@ public final class PhoenixTelemetryPresenter {
      */
     public void emitAuto(ScoringPath.Status scoring,
                          ScoringTargeting.Status targeting,
-                         Task currentAutoTask,
-                         int queuedAutoTasks,
+                         Task installedAutoRoutine,
                          PoseEstimate globalPose,
                          PoseEstimate odomPose) {
         if (telemetry == null) {
             return;
         }
 
-        telemetry.addData("auto.currentTask", currentAutoTask != null ? currentAutoTask.getDebugName() : "<idle>");
-        telemetry.addData("auto.currentOutcome", currentAutoTask != null ? currentAutoTask.getOutcome() : "IDLE");
-        telemetry.addData("auto.queued", queuedAutoTasks);
+        telemetry.addData(
+                "auto.routine",
+                installedAutoRoutine != null ? installedAutoRoutine.getDebugName() : "<not-installed>"
+        );
+        telemetry.addData(
+                "auto.routineOutcome",
+                installedAutoRoutine != null ? installedAutoRoutine.getOutcome() : "NOT_INSTALLED"
+        );
 
         emitScoringTelemetry(scoring, "scoring");
         emitScoringIntentTelemetry(scoring);
