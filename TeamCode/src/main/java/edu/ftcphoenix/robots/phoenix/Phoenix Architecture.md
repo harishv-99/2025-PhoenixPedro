@@ -292,14 +292,14 @@ PhoenixAutoProfiles
   spec + base profile -> Auto-specific profile snapshot, using profile-owned red/blue Auto tag ids
 
 PhoenixAutoTasks
-  reusable scoring/targeting task snippets over PhoenixCapabilities
+  reusable scoring/targeting task snippets over PhoenixCapabilities, with truthful attempt outcomes
 
 PhoenixPedroPathFactory
   spec -> fixed Pedro PathChain set
   current Pedro pose / current robot facts -> start-time Pedro PathChain
 
 PhoenixPedroAutoRoutineFactory
-  spec.strategy + context -> Task sequence
+  spec.strategy + context -> route-status-aware Task routine
 ```
 
 `PhoenixRobot.initAuto(autoDrive, motionPredictor)` does four things only:
@@ -335,6 +335,14 @@ follower timeout/stall, interruption, replacement, failure, or an unknown termin
 before Pedro clears the evidence. `RouteTask.getRouteStatus()` also distinguishes Task timeout and
 active cancellation. This keeps the routine call short while preventing an old Task from completing
 from, or cancelling, a replacement route.
+
+The adapter reports those facts but does not choose strategy. The checked-in Phoenix routine gates
+its scoring attempt on outbound `COMPLETED`. An outbound follower/Task timeout makes only the
+routine-owned scoring requests safe, skips aim/shoot, and selects the live-pose return as a fallback.
+Interruption, replacement, cancellation, failure, or an unknown terminal result aborts instead of
+starting another route. Direct cancellation of the routine also aborts without launching fallback.
+The scoring attempt reports unavailable-target, aim, and shot-drain timeouts truthfully so the
+routine can make the same explicit decision before starting its return phase.
 
 Fixed geometry is built eagerly during INIT and uses `RouteTasks.follow(...)`. Geometry that must
 start from a live pose or a current robot selection stays in `PhoenixPedroPathFactory` and uses
@@ -385,6 +393,9 @@ routine factories, tester implementations, and robot services remain grouped by 
 The checked-in Pedro routes are still placeholder integration geometry. Real alliance/start/partner
 paths should be added in `PhoenixPedroPathFactory`; high-level strategy decisions should stay in
 `PhoenixPedroAutoRoutineFactory`; reusable aim/shoot snippets should stay in `PhoenixAutoTasks`.
+The existing private routine coordinator centralizes Phoenix's conservative route-status mapping;
+new strategies should change that robot-owned mapping deliberately rather than changing the Pedro
+adapter or generic Task semantics.
 
 ## Driver Station setup UI
 
@@ -417,11 +428,16 @@ set.
 Pedro debug telemetry is composed into the same frame as Phoenix Auto telemetry. The OpMode adds
 `auto.spec`, `auto.paths`, Pedro pose/busy rows, and the backend-neutral `route.status` before
 `PhoenixRobot.updateAuto()` calls the Auto telemetry presenter, so the Driver Station sees one
-coherent Auto status page per loop.
+coherent Auto status page per loop. While the routine is active, its dynamic Task name identifies
+the current scoring/return/fallback phase and retains the route status that selected a fallback,
+even after the adapter's latest-route row changes to the newly started route.
 
 Truthful route status deliberately does not decide what Phoenix should do next.
-Continue/fallback/abort strategy remains robot-owned and must be added explicitly; generic Task
-composition keeps its existing semantics.
+Phoenix now applies its explicit conservative continue/fallback/abort mapping in
+`PhoenixPedroAutoRoutineFactory`; generic Task composition keeps its existing semantics. Route
+failure and direct cancellation clear only the transient shot request owned by the scoring attempt
+and the flywheel request enabled by this routine. They do not reset unrelated intake, continuous
+shooting, or eject intent.
 
 
 ## Loop order

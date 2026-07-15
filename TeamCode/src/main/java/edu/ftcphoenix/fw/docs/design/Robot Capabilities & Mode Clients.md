@@ -330,6 +330,12 @@ client distinguish completion, timeout/stall, interruption, replacement, failure
 termination without exposing vendor types. The adapter reports facts; the Auto client owns any
 continue, fallback, or abort policy.
 
+That policy must gate position-dependent capability work rather than relying on a generic sequence
+to short-circuit. A conservative routine can choose a live-state fallback after timeout and abort on
+cancellation-like results. Direct cancellation cancels the active phase and must not start recovery.
+Any cleanup goes through the same robot capability family and clears only transient or held requests
+owned by the failed phase, leaving unrelated mechanism intent to its actual owner.
+
 ### `stop()`
 
 When the robot composition root has the same lifetime as one FTC OpMode, prefer one public,

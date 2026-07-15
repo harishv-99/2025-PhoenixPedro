@@ -338,8 +338,8 @@ updates beyond active Tasks, its composition root continues calling `update(cloc
 
 When code needs to follow an external route object (Pedro `PathChain`, Road Runner trajectory, or
 your own route type), Phoenix provides the matching generic seam: `RouteFollower<RouteT>` in
-`edu.ftcphoenix.fw.drive.route`. Wrap the external follower once, then sequence it with the rest of
-your robot using `RouteTask` / `RouteTasks.follow(...)`.
+`edu.ftcphoenix.fw.drive.route`. Wrap the external follower once, then compose its status-bearing
+`RouteTask` with an explicit robot-owned route policy.
 
 `RouteFollower.follow(route)` returns a `RouteExecution` for that one run. Its `status()` and
 active-only, idempotent `cancel()` remain bound to that execution, so an old Task cannot mistake a
@@ -401,23 +401,31 @@ robot-side folder such as `autonomous/pedro/`. The folder split does not make th
 optional by itself, but it keeps the boundary obvious and makes later source-set or module
 extraction mechanical.
 
-The following snippet keeps a fixed outbound route eager and builds its return from live state when
-that phase starts. It shows the composition shape only; a production scoring routine must use
-robot-owned policy to gate position-dependent work after each route result.
+The following snippet keeps a fixed outbound route eager and prepares a return that will build from
+live state only if robot policy selects it. Keep the typed Tasks so that policy can read the exact
+result; do not place a position-dependent shot immediately after `outbound` in a generic sequence.
 
 ```java
-Task auto = Tasks.sequence(
-        RouteTasks.follow(pedro.driveAdapter(), outboundPath, new RouteTask.Config()),
-        Tasks.runOnce(scoringSupervisor::requestSingleShot),
-        RouteTasks.followBuiltAtStart(
-                "return",
-                pedro.driveAdapter(),
-                () -> robotPaths.buildReturnFromCurrentPose(returnPose),
-                new RouteTask.Config())
+RouteTask<PathChain> outbound = RouteTasks.follow(
+        "outbound",
+        pedro.driveAdapter(),
+        outboundPath,
+        new RouteTask.Config()
+);
+
+RouteTask<PathChain> livePoseReturn = RouteTasks.followBuiltAtStart(
+        "return",
+        pedro.driveAdapter(),
+        () -> robotPaths.buildReturnFromCurrentPose(returnPose),
+        new RouteTask.Config()
 );
 ```
 
-That keeps route-library ownership outside the framework while still letting Auto reuse the same Phoenix task vocabulary as everything else.
+Give those fresh Tasks and the scoring capability action to one robot routine helper/coordinator.
+That routine runs scoring only after `outbound` reports `COMPLETED`, may choose `livePoseReturn` as a
+timeout fallback, and aborts on its explicitly cancellation-like results. A direct routine cancel
+cancels the active child and never starts the fallback. This keeps route-library ownership outside
+the framework without inventing another public scheduler or route-policy API.
 
 Timed open-loop drive is not a substitute for normal Pedro route movement. Use `RouteTasks` or the
 guidance helpers so the adapter can preserve its supported route lifecycle and truthful terminal
@@ -426,7 +434,9 @@ status.
 The truthful status does not choose robot strategy. Generic Task composition keeps its existing
 semantics; deciding whether a non-completed route should continue, run a fallback, or abort belongs
 in the robot's Auto routine. Do not assume a generic sequence automatically stops after an abnormal
-route ending.
+route ending. Cleanup also remains robot-owned: cancel only transient mechanism work and held
+requests created by that routine phase, through its capability API rather than direct Plant or
+hardware writes.
 
 ### `MecanumDrivebase` + `FtcDrives`
 

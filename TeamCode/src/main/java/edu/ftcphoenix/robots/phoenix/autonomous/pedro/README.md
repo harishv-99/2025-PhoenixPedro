@@ -11,7 +11,8 @@ Current roles:
   construction for the selected `PhoenixAutoSpec`.
 - `PhoenixPedroAutoContext` carries the selected spec, profile snapshot, Phoenix capabilities,
   drive adapter, path factory, and fixed path set into routine factories.
-- `PhoenixPedroAutoRoutineFactory` maps strategy ids to Phoenix Task sequences.
+- `PhoenixPedroAutoRoutineFactory` maps strategy ids to Phoenix Tasks with explicit route-result
+  policy.
 - `PhoenixPedroAutoOpModeBase` owns shared FTC/Pedro/Phoenix construction and lifecycle glue.
 - Concrete selector/static OpModes choose or collect a spec, then delegate.
 
@@ -52,6 +53,25 @@ and snapshots the current Pedro pose only when that phase begins, then builds th
 through the checked runtime builder. The generic route Task never sees the Follower, vision state,
 or strategy, and a failed build cannot start the adapter.
 
+## Route and scoring outcome policy
+
+The integration reports route facts; `PhoenixPedroAutoRoutineFactory` owns their strategy meaning.
+The checked-in strategies run aim/shoot only after outbound `COMPLETED`. An outbound
+`FOLLOWER_TIMEOUT_OR_STALL` or `TASK_TIMEOUT` skips scoring and selects the live-pose return/park as
+the fallback. `INTERRUPTED`, `REPLACED`, `CANCELLED`, `FAILED`, and `UNKNOWN_TERMINAL` abort without
+starting another route. Direct cancellation also aborts and never launches fallback.
+
+The scoring attempt retains unavailable-target, aim, and shot-drain timeouts instead of converting
+them to success. On scoring timeout, Phoenix cancels only that attempt's transient shot, disables
+the flywheel request enabled by the outbound route, and still attempts the normal live-pose return.
+Cancellation-like scoring results abort. Return/fallback timeout remains a timeout; other abnormal
+return results remain cancellation-like and do not start another replacement route.
+
+Cleanup stays inside the capability boundary. The scoring attempt owns its transient shot request,
+and the routine owns disabling the flywheel request its outbound callback enabled. The policy does
+not clear unrelated intake, continuous-shooting, or eject requests and never writes a Plant or
+hardware device directly.
+
 The recurring Auto order is:
 
 ```text
@@ -73,7 +93,8 @@ profile, paths, robot, and adapter as one consistent graph.
 Pedro debug rows are added before `PhoenixRobot.updateAuto()` emits the standard Auto block. The
 Driver Station therefore gets one coherent frame containing spec/path labels, Pedro pose/busy state,
 the backend-neutral `route.status`, Task/scoring/targeting status, raw predictor pose, corrected
-global pose, and pose drift.
+global pose, and pose drift. The current Task's dynamic name identifies its active phase and retains
+the status that selected a running fallback after the mutable latest-route row changes.
 
 ## Where students add real Auto behavior
 
@@ -92,6 +113,8 @@ cancellation—do not use an `enable → wait → disable` sequence whose final 
 Persistent intake, flywheel, scoring, and aim requests remain capability/service state. The current
 placeholder routes do not require a deadline companion yet.
 
-Truthful route status supplies the fact needed for a later robot-owned continue/fallback/abort
-decision; it does not choose that policy. Phoenix routines must add that policy explicitly, so do
-not assume generic Task sequences automatically stop after every abnormal route ending.
+Truthful route status supplies the fact for Phoenix's robot-owned continue/fallback/abort decision;
+it does not choose that policy. The existing routine factory applies the conservative mapping above.
+When adding a strategy that intentionally continues after an interruption, state that different
+mapping in the routine instead of changing the integration or assuming a generic Task sequence
+short-circuits.

@@ -963,27 +963,45 @@ Even though drive is special, the rest of the robot should still follow the same
 - Auto routes call the same mechanism intents as TeleOp
 - route interruption should use Phoenix cancellation seams
 - continue/fallback/abort decisions remain visible as robot-owned strategy
+- direct routine cancellation never starts a fallback
+- failure cleanup clears only capability requests owned by that routine phase
 
 Truthful route status deliberately does not choose that strategy. Each robot routine must apply its
 own explicit route-failure policy; generic Task sequences do not silently acquire a new
 short-circuit rule.
 
-### Structural Auto composition example with shared mechanism intents
+### Route-policy inputs with shared mechanism intents
 
-This snippet demonstrates the shared Task vocabulary, not production failure policy. A real scoring
-routine must gate the position-dependent lift and shooter actions on its robot-owned route policy.
+Construct fresh status-bearing route Tasks and semantic capability Tasks, then give them to one
+robot-owned routine helper/coordinator. Do not put the lift and shot directly after the route in a
+generic sequence: that sequence deliberately does not decide whether a non-normal route result is
+safe to continue from.
 
 ```java
-Task scoreCycle = Tasks.sequence(
-        RouteTasks.follow(roadRunnerAdapter, preloadPath, new RouteTask.Config()),
+RouteTask<YourRoute> preloadRoute = RouteTasks.follow(
+        "preload",
+        routeAdapter,
+        preloadPath,
+        new RouteTask.Config()
+);
+```
+
+Build the semantic mechanism work separately:
+
+```java
+Task scorePreload = Tasks.sequence(
         Tasks.runOnce(() -> lift.setTargetHeightIn(24.0)),
         Tasks.waitUntil(() -> lift.status().atTarget(), 1.5),
         Tasks.runOnce(shooter::requestSingleShot)
 );
 ```
 
-Drive may be special internally, but the rest of the robot still benefits from the same small
-vocabulary.
+The robot policy selects `scorePreload` only after `preloadRoute.getRouteStatus()` is `COMPLETED`.
+It may select a start-time-built safe route after timeout, while cancellation-like results abort and
+direct cancellation never launches recovery. If the route or scoring phase owns a transient request,
+its cancellation path clears that request through the robot capability; it does not reset unrelated
+mechanism intent. Drive may be special internally, but the routine still uses the same small Task and
+capability vocabulary.
 
 ---
 
@@ -1019,7 +1037,7 @@ Good examples:
 
 - set lift height, then wait until at target
 - run intake until piece is seen
-- follow a route and then score
+- follow a route, apply its explicit result policy, and score only after confirmed completion
 
 A task is often the right thing for Auto, or for a reusable TeleOp macro. It is usually **not** the
 right place to store the normal steady-state target of a mechanism.
