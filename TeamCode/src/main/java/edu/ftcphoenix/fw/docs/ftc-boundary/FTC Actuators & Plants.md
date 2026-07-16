@@ -292,6 +292,50 @@ are not Plant target units and are not a replacement for `bounded(...)` or `targ
 Likewise, optional narrower policy does not replace the Plant/output path's universal responsibility
 to keep normalized actuator commands finite and inside their semantic range.
 
+### Regulated command truth and fail-stop behavior
+
+For a framework-regulated position or velocity Plant, the regulator result passes through one final
+normalized-power boundary immediately before the configured `PowerOutput`:
+
+| Regulator/output event | Plant behavior |
+|---|---|
+| Finite result inside `[-1.0, +1.0]` | Submit it unchanged, including exact boundaries and signed zero. |
+| Finite result outside `[-1.0, +1.0]` | Saturate it to the nearest boundary and submit the normalized value. |
+| `NaN` or either infinity | Do not submit it; best-effort stop the output, reset the regulator, and throw an actionable failure. |
+| Regulator or output write throws | Best-effort stop and reset, then rethrow the original failure with cleanup failures suppressed. |
+
+Finite saturation at this universal boundary is normal actuator-domain behavior. It neither resets
+the regulator nor supplies generic anti-windup. Use an outermost `outputLimited(...)` when the robot
+intentionally needs a narrower or asymmetric policy such as `[0.0, maximumFlywheelPower]`.
+
+`reset()` clears regulator/completion state but does not send a hardware command. The last normally
+submitted normalized command therefore remains the truthful command fact until another output
+operation returns normally. `stop()` attempts to submit zero before resetting the regulator and
+attempts both operations even when one fails. A normally returning top-level stop supports a
+seam-level "zero submitted" fact even if regulator reset then fails; a throwing output stop leaves
+the command unknown. In either case, `atTarget()` and `atTarget(value)` stay false until a complete
+later regulated actuation returns normally.
+
+The debug fields deliberately keep different kinds of truth separate:
+
+* `.regulatorOutput` is the raw regulator result. Existing `.output` on lower-level regulated
+  Plants and `.lastRegulatorOutput` on mapped position Plants remain raw aliases.
+* `.normalizedPowerCommand` is the last known value submitted by a normally returning top-level
+  `PowerOutput` operation performed by the regulated-command boundary. It becomes unknown when a
+  throwing output operation prevents truthful command bookkeeping. An open-loop position-
+  calibration search bypasses this boundary and may command the same configured output later; use
+  its separate search state when interpreting diagnostics. The normalized command is not a motor
+  measurement or hardware acknowledgement.
+* `.regulatedPowerStatus` explains whether the last operation submitted, saturated and submitted,
+  reset without writing, stopped, or failed, including fail-stop and reset outcomes.
+* `.regulator` remains the nested regulator-specific diagnostic prefix.
+
+For a regulated Plant, `getAppliedTarget()` remains the final mechanism target in plant units; it is
+not either of the power-command fields above. A custom or grouped `PowerOutput` may transform one
+top-level command into several child commands, so these diagnostics do not claim per-child or
+physical actuator truth. Standard FTC adapter saturation remains defense in depth. Open-loop
+position-calibration search power is a separate configuration path and is not a regulator result.
+
 The decorator reports its unconstrained and applied results through standard regulator debug data,
 delegates `reset()` to its inner regulator, and rejects a non-finite inner result instead of hiding
 broken control math behind a bound. It does not provide generic saturation-aware anti-windup;

@@ -26,7 +26,9 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * reference validity are enforced first; dynamic hardware protection such as interlocks and target
  * rate limits are applied by {@link PlantTargetGuards}; the result is checked once more for the
  * final finite/range invariant; then one applied target is sent to hardware or the framework
- * regulator.</p>
+ * regulator. The regulated path evaluates that regulator once, normalizes the finite result to
+ * {@code [-1.0, +1.0]}, and performs best-effort fail-stop cleanup before propagating a runtime
+ * control/output failure.</p>
  */
 public final class MappedPositionPlant implements PositionPlant {
 
@@ -51,6 +53,7 @@ public final class MappedPositionPlant implements PositionPlant {
     private final PositionOutput positionOut;
     private final PowerOutput regulatedPowerOut;
     private final ScalarRegulator regulator;
+    private final RegulatedPowerChannel regulatedPowerChannel;
     private final ScalarSource nativeMeasurement;
     private final PowerOutput searchPowerOut;
     private final PlantTargetSource targetSource;
@@ -74,9 +77,9 @@ public final class MappedPositionPlant implements PositionPlant {
     private double lastMeasurement = Double.NaN;
     private double lastNativeMeasurement = Double.NaN;
     private boolean lastAtTarget;
+    private boolean regulatedActuationCompleted;
     private boolean searchActive;
     private double searchPower;
-    private double lastRegulatorOutput;
     private PlantTargetStatus targetStatus = PlantTargetStatus.STOPPED;
     private PlantTargetPlan targetPlan = PlantTargetPlan.unavailable("not sampled");
 
@@ -121,6 +124,9 @@ public final class MappedPositionPlant implements PositionPlant {
         this.referenced = referenceMode == ReferenceMode.STATIC;
         this.pendingAssume = referenceMode == ReferenceMode.ASSUME_CURRENT;
         validate();
+        this.regulatedPowerChannel = regulatedPowerOut == null
+                ? null
+                : new RegulatedPowerChannel(regulatedPowerOut, regulator, "MappedPositionPlant");
     }
 
     /**
@@ -140,6 +146,7 @@ public final class MappedPositionPlant implements PositionPlant {
 
     /**
      * Starts configuring a framework-regulated position plant that drives raw power.
+     * The resulting Plant keeps mechanism target units separate from its normalized power command.
      */
     public static Builder regulated(PowerOutput powerOut,
                                     ScalarSource nativeMeasurement,
@@ -355,6 +362,9 @@ public final class MappedPositionPlant implements PositionPlant {
             return;
         }
 
+        double priorAppliedTarget = appliedTarget;
+        PlantTargetStatus priorTargetStatus = targetStatus;
+        PlantTargetPlan priorTargetPlan = targetPlan;
         samplePlantMeasurement(clock);
         ScalarRange range = targetRange();
         PlantTargetContext context = PlantTargetContext.position(hasFeedback(), lastMeasurement,
@@ -392,23 +402,31 @@ public final class MappedPositionPlant implements PositionPlant {
         }
         if (positionOut != null) {
             positionOut.setPosition(toNative(appliedTarget));
-        } else if (regulatedPowerOut != null) {
-            lastRegulatorOutput = regulator.update(appliedTarget, lastMeasurement, clock);
-            regulatedPowerOut.setPower(lastRegulatorOutput);
+        } else if (regulatedPowerChannel != null) {
+            regulatedActuationCompleted = false;
+            lastAtTarget = false;
+            try {
+                regulatedPowerChannel.update(appliedTarget, lastMeasurement, clock);
+            } catch (RuntimeException failure) {
+                handleRegulatedUpdateFailure(
+                        priorAppliedTarget, priorTargetStatus, priorTargetPlan, failure);
+                throw failure;
+            }
+            regulatedActuationCompleted = true;
         }
         lastAtTarget = atTarget(requestedTarget);
     }
 
     @Override
     public void reset() {
+        regulatedActuationCompleted = false;
+        lastAtTarget = false;
         targetSource.reset();
         targetGuards.reset();
         if (nativeMeasurement != null) nativeMeasurement.reset();
-        if (regulator != null) regulator.reset();
+        if (regulatedPowerChannel != null) regulatedPowerChannel.reset();
         lastMeasurement = Double.NaN;
         lastNativeMeasurement = Double.NaN;
-        lastAtTarget = false;
-        lastRegulatorOutput = 0.0;
         targetStatus = PlantTargetStatus.STOPPED;
         targetPlan = PlantTargetPlan.unavailable("not sampled");
         if (referenceMode == ReferenceMode.ASSUME_CURRENT) {
@@ -419,15 +437,51 @@ public final class MappedPositionPlant implements PositionPlant {
 
     @Override
     public void stop() {
-        if (positionOut != null) positionOut.stop();
-        if (regulatedPowerOut != null) regulatedPowerOut.stop();
-        if (searchPowerOut != null) searchPowerOut.stop();
-        if (regulator != null) regulator.reset();
-        targetGuards.reset();
+        double priorAppliedTarget = appliedTarget;
+        PlantTargetStatus priorTargetStatus = targetStatus;
+        PlantTargetPlan priorTargetPlan = targetPlan;
+        regulatedActuationCompleted = false;
+        lastAtTarget = false;
+
+        RuntimeException primary = null;
+        boolean allOutputStopsSucceeded = true;
+        if (positionOut != null) {
+            try {
+                positionOut.stop();
+            } catch (RuntimeException failure) {
+                allOutputStopsSucceeded = false;
+                primary = failure;
+            }
+        }
+        if (regulatedPowerChannel != null) {
+            try {
+                regulatedPowerChannel.stop(searchPowerOut);
+            } catch (RuntimeException failure) {
+                primary = suppress(primary, failure);
+            }
+            allOutputStopsSucceeded &= regulatedPowerChannel.lastStopSubmitted();
+        }
+        if (searchPowerOut != null && regulatedPowerChannel == null) {
+            try {
+                searchPowerOut.stop();
+            } catch (RuntimeException failure) {
+                allOutputStopsSucceeded = false;
+                primary = suppress(primary, failure);
+            }
+        }
+        try {
+            targetGuards.reset();
+        } catch (RuntimeException failure) {
+            primary = suppress(primary, failure);
+        }
         searchActive = false;
-        lastRegulatorOutput = 0.0;
-        targetStatus = PlantTargetStatus.STOPPED;
-        targetPlan = PlantTargetPlan.unavailable("plant stopped");
+
+        if (allOutputStopsSucceeded) {
+            markSuccessfullyStopped();
+        } else {
+            restoreTargetState(priorAppliedTarget, priorTargetStatus, priorTargetPlan);
+        }
+        if (primary != null) throw primary;
     }
 
     @Override
@@ -478,7 +532,8 @@ public final class MappedPositionPlant implements PositionPlant {
 
     @Override
     public boolean atTarget(double target) {
-        return hasFeedback()
+        return (regulatedPowerChannel == null || regulatedActuationCompleted)
+                && hasFeedback()
                 && Double.isFinite(target)
                 && Double.isFinite(lastMeasurement)
                 && Math.abs(requestedTarget - target) <= tolerance
@@ -553,9 +608,10 @@ public final class MappedPositionPlant implements PositionPlant {
     }
 
     private void stopNormalPositionOutput() {
+        regulatedActuationCompleted = false;
+        lastAtTarget = false;
         if (positionOut != null) positionOut.stop();
-        if (regulatedPowerOut != null) regulatedPowerOut.stop();
-        if (regulator != null) regulator.reset();
+        if (regulatedPowerChannel != null) regulatedPowerChannel.stop();
     }
 
     private double sampleNative(LoopClock clock) {
@@ -594,6 +650,43 @@ public final class MappedPositionPlant implements PositionPlant {
         return plantReference + (nativePosition - nativeReference) / nativePerPlantUnit;
     }
 
+    private void handleRegulatedUpdateFailure(double priorAppliedTarget,
+                                              PlantTargetStatus priorTargetStatus,
+                                              PlantTargetPlan priorTargetPlan,
+                                              RuntimeException failure) {
+        regulatedActuationCompleted = false;
+        lastAtTarget = false;
+        try {
+            targetGuards.reset();
+        } catch (RuntimeException cleanupFailure) {
+            suppress(failure, cleanupFailure);
+        }
+        if (regulatedPowerChannel.lastStopSubmitted()) {
+            markSuccessfullyStopped();
+        } else {
+            restoreTargetState(priorAppliedTarget, priorTargetStatus, priorTargetPlan);
+        }
+    }
+
+    private void markSuccessfullyStopped() {
+        targetStatus = PlantTargetStatus.STOPPED;
+        targetPlan = PlantTargetPlan.unavailable("plant stopped");
+    }
+
+    private void restoreTargetState(double priorAppliedTarget,
+                                    PlantTargetStatus priorTargetStatus,
+                                    PlantTargetPlan priorTargetPlan) {
+        appliedTarget = priorAppliedTarget;
+        targetStatus = priorTargetStatus;
+        targetPlan = priorTargetPlan;
+    }
+
+    private static RuntimeException suppress(RuntimeException primary, RuntimeException additional) {
+        if (primary == null) return additional;
+        if (primary != additional) primary.addSuppressed(additional);
+        return primary;
+    }
+
     @Override
     public void debugDump(DebugSink dbg, String prefix) {
         if (dbg == null) return;
@@ -608,10 +701,15 @@ public final class MappedPositionPlant implements PositionPlant {
                 .addData(p + ".plantReference", plantReference)
                 .addData(p + ".nativeReference", nativeReference)
                 .addData(p + ".lastNativeMeasurement", lastNativeMeasurement)
-                .addData(p + ".searchActive", searchActive)
-                .addData(p + ".lastRegulatorOutput", lastRegulatorOutput);
+                .addData(p + ".searchActive", searchActive);
+        if (regulatedPowerChannel != null) {
+            dbg.addData(p + ".lastRegulatorOutput", regulatedPowerChannel.regulatorOutput());
+            regulatedPowerChannel.debugDump(dbg, p);
+        } else {
+            // Preserve the existing debug key for position-output Plants.
+            dbg.addData(p + ".lastRegulatorOutput", 0.0);
+        }
         targetSource.debugDump(dbg, p + ".targetSource");
         targetGuards.debugDump(dbg, p + ".targetGuards");
-        if (regulator != null) regulator.debugDump(dbg, p + ".regulator");
     }
 }

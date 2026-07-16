@@ -99,6 +99,8 @@ public final class Plants {
 
     /**
      * Create a framework-regulated position plant that drives raw power.
+     * The final regulator result is required to be finite, normalized to {@code [-1.0, +1.0]},
+     * and fail-stopped before a runtime control/output failure is propagated.
      */
     public static Plant positionFromPower(PowerOutput powerOut,
                                           PlantTargetSource target,
@@ -112,6 +114,8 @@ public final class Plants {
 
     /**
      * Create a framework-regulated velocity plant that drives raw power.
+     * The final regulator result is required to be finite, normalized to {@code [-1.0, +1.0]},
+     * and fail-stopped before a runtime control/output failure is propagated.
      */
     public static Plant velocityFromPower(PowerOutput powerOut,
                                           PlantTargetSource target,
@@ -141,6 +145,9 @@ public final class Plants {
 
         @Override
         public final void update(LoopClock clock) {
+            double priorAppliedTarget = appliedTarget;
+            PlantTargetStatus priorTargetStatus = targetStatus;
+            PlantTargetPlan priorTargetPlan = targetPlan;
             prepareTargetContext(clock);
             PlantTargetContext context = targetContext(clock);
             targetPlan = targetSource.resolve(context, clock);
@@ -165,8 +172,13 @@ public final class Plants {
                     guards, candidate, status, appliedTarget, context.targetRange(), "Plant", clock);
             appliedTarget = result.target;
             targetStatus = result.status;
-            applyTarget(appliedTarget, clock);
-            updateStatus(clock);
+            try {
+                applyTarget(appliedTarget, clock);
+                updateStatus(clock);
+            } catch (RuntimeException failure) {
+                onUpdateFailure(priorAppliedTarget, priorTargetStatus, priorTargetPlan, failure);
+                throw failure;
+            }
         }
 
         protected void prepareTargetContext(LoopClock clock) {
@@ -183,6 +195,12 @@ public final class Plants {
         protected abstract void applyTarget(double target, LoopClock clock);
 
         protected void updateStatus(LoopClock clock) {
+        }
+
+        protected void onUpdateFailure(double priorAppliedTarget,
+                                       PlantTargetStatus priorTargetStatus,
+                                       PlantTargetPlan priorTargetPlan,
+                                       RuntimeException failure) {
         }
 
         @Override
@@ -229,6 +247,14 @@ public final class Plants {
         protected final void markStopped(double appliedAfterStop) {
             appliedTarget = appliedAfterStop;
             targetStatus = PlantTargetStatus.STOPPED;
+        }
+
+        protected final void restoreTargetState(double priorAppliedTarget,
+                                                PlantTargetStatus priorTargetStatus,
+                                                PlantTargetPlan priorTargetPlan) {
+            appliedTarget = priorAppliedTarget;
+            targetStatus = priorTargetStatus;
+            targetPlan = priorTargetPlan;
         }
 
         /**
@@ -351,11 +377,20 @@ public final class Plants {
 
         @Override
         public final boolean atTarget(double target) {
-            return Double.isFinite(lastMeasurement)
+            return completionEvidenceValid()
+                    && Double.isFinite(lastMeasurement)
                     && Math.abs(getRequestedTarget() - target) <= tolerance
                     && Math.abs(getAppliedTarget() - target) <= tolerance
                     && Math.abs(lastMeasurement - target) <= tolerance
                     && getTargetStatus().kind() == PlantTargetStatus.Kind.ACCEPTED;
+        }
+
+        protected boolean completionEvidenceValid() {
+            return true;
+        }
+
+        protected final void invalidateAtTarget() {
+            lastAtTarget = false;
         }
 
         @Override
@@ -412,43 +447,87 @@ public final class Plants {
     }
 
     private abstract static class AbstractRegulatedPlant extends AbstractFeedbackPlant {
-        private final PowerOutput out;
-        private final ScalarRegulator regulator;
-        private double lastOutput;
+        private final RegulatedPowerChannel powerChannel;
+        private boolean regulatedActuationCompleted;
 
         AbstractRegulatedPlant(PowerOutput out, PlantTargetSource target, ScalarTarget writable,
                                PlantTargetGuards guards, ScalarSource measurement,
-                               ScalarRegulator regulator, double tolerance) {
+                               ScalarRegulator regulator, double tolerance, String controlPath) {
             super(target, writable, guards, measurement, tolerance);
-            this.out = Objects.requireNonNull(out, "out");
-            this.regulator = Objects.requireNonNull(regulator, "regulator");
+            this.powerChannel = new RegulatedPowerChannel(out, regulator, controlPath);
         }
 
         @Override
         protected final void applyTarget(double target, LoopClock clock) {
             // The regulator needs the same-loop measurement, so power is written in onFeedbackUpdate.
+            regulatedActuationCompleted = false;
+            invalidateAtTarget();
         }
 
         @Override
         protected final void onFeedbackUpdate(LoopClock clock, double measurement) {
-            lastOutput = regulator.update(getAppliedTarget(), measurement, clock);
-            out.setPower(lastOutput);
+            powerChannel.update(getAppliedTarget(), measurement, clock);
+            regulatedActuationCompleted = true;
+        }
+
+        @Override
+        protected final boolean completionEvidenceValid() {
+            return regulatedActuationCompleted;
+        }
+
+        @Override
+        protected final void onUpdateFailure(double priorAppliedTarget,
+                                             PlantTargetStatus priorTargetStatus,
+                                             PlantTargetPlan priorTargetPlan,
+                                             RuntimeException failure) {
+            regulatedActuationCompleted = false;
+            invalidateAtTarget();
+            try {
+                resetTargetGuards();
+            } catch (RuntimeException cleanupFailure) {
+                suppress(failure, cleanupFailure);
+            }
+            if (powerChannel.lastStopSubmitted()) {
+                markStopped(0.0);
+            } else {
+                restoreTargetState(priorAppliedTarget, priorTargetStatus, priorTargetPlan);
+            }
         }
 
         @Override
         public void reset() {
+            regulatedActuationCompleted = false;
+            invalidateAtTarget();
             super.reset();
-            regulator.reset();
-            lastOutput = 0.0;
+            powerChannel.reset();
         }
 
         @Override
         public void stop() {
-            out.stop();
-            regulator.reset();
-            resetTargetGuards();
-            lastOutput = 0.0;
-            markStopped(0.0);
+            double priorAppliedTarget = getAppliedTarget();
+            PlantTargetStatus priorTargetStatus = getTargetStatus();
+            PlantTargetPlan priorTargetPlan = getTargetPlan();
+            regulatedActuationCompleted = false;
+            invalidateAtTarget();
+
+            RuntimeException primary = null;
+            try {
+                powerChannel.stop();
+            } catch (RuntimeException failure) {
+                primary = failure;
+            }
+            try {
+                resetTargetGuards();
+            } catch (RuntimeException failure) {
+                primary = suppress(primary, failure);
+            }
+
+            if (powerChannel.lastStopSubmitted()) {
+                markStopped(0.0);
+            } else {
+                restoreTargetState(priorAppliedTarget, priorTargetStatus, priorTargetPlan);
+            }
+            if (primary != null) throw primary;
         }
 
         @Override
@@ -456,8 +535,14 @@ public final class Plants {
             super.debugDump(dbg, prefix);
             if (dbg == null) return;
             String p = (prefix == null || prefix.isEmpty()) ? "plant" : prefix;
-            dbg.addData(p + ".output", lastOutput);
-            regulator.debugDump(dbg, p + ".regulator");
+            dbg.addData(p + ".output", powerChannel.regulatorOutput());
+            powerChannel.debugDump(dbg, p);
+        }
+
+        private static RuntimeException suppress(RuntimeException primary, RuntimeException additional) {
+            if (primary == null) return additional;
+            if (primary != additional) primary.addSuppressed(additional);
+            return primary;
         }
     }
 
@@ -465,7 +550,8 @@ public final class Plants {
         RegulatedPositionPlant(PowerOutput out, PlantTargetSource target, ScalarTarget writable,
                                PlantTargetGuards guards, ScalarSource measurement,
                                ScalarRegulator regulator, double tolerance) {
-            super(out, target, writable, guards, measurement, regulator, tolerance);
+            super(out, target, writable, guards, measurement, regulator, tolerance,
+                    "Plants.positionFromPower");
         }
     }
 
@@ -473,7 +559,8 @@ public final class Plants {
         RegulatedVelocityPlant(PowerOutput out, PlantTargetSource target, ScalarTarget writable,
                                PlantTargetGuards guards, ScalarSource measurement,
                                ScalarRegulator regulator, double tolerance) {
-            super(out, target, writable, guards, measurement, regulator, tolerance);
+            super(out, target, writable, guards, measurement, regulator, tolerance,
+                    "Plants.velocityFromPower");
         }
     }
 }

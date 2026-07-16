@@ -103,7 +103,7 @@ BooleanSource feedbackCapable = PlantSources.hasFeedback(shooterPlant);
 Notes:
 
 - `PlantSources.atTarget(...)` reads the plant's cached status from the most recent `plant.update(clock)`.
-- `PlantSources.requestedTarget(...)` shows what behavior asked for; `appliedTarget(...)` shows what the Plant actually applied after bounds and target guards.
+- `PlantSources.requestedTarget(...)` shows what behavior asked for; `appliedTarget(...)` shows the final mechanism target selected after bounds and target guards. For framework-regulated Plants, that target is distinct from the later normalized actuator command.
 
 ---
 
