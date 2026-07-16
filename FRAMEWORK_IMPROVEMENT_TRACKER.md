@@ -78,7 +78,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 14 | TASK-04 | Parallel deadline composition | Done | Add one cancellation-safe deadline primitive only if route-plus-companion callers justify it. |
 | 15 | PHX-03 | Explicit Auto route-failure policy | Done | Keep generic sequence semantics and make continue/fallback/abort policy visible in the robot routine. |
 | 16 | PHX-04 | Match-time fallback takeover | Done | Bound only pre-park work, then start one live-pose park after early completion or a successful match-time cutoff. |
-| 17 | PHX-02 | Phoenix runtime readiness | Proposed | Validate calibration, Pedro construction, routes, alliance facts, and required services before enabling assists/Auto. |
+| 17 | PHX-02 | Phoenix runtime readiness | Done | Validate calibration, Pedro construction, routes, alliance facts, and required services before enabling assists/Auto. |
 | 18 | MATCH-01 | Explicit Auto-to-TeleOp handoff | Proposed | Carry one typed immutable robot snapshot across the FTC mode boundary without string maps or stale globals. |
 | 19 | DRIVE-02 | Shared drivetrain actuator handoff | Proposed | Preserve one motor writer when a PTO reuses drivetrain motors for an endgame mechanism. |
 | 20 | VISION-01 | Custom VisionPortal ownership | Proposed | Reuse camera/processor lifecycle without forcing robot-specific detections through AprilTag APIs. |
@@ -2633,8 +2633,206 @@ writer, and explicit lifecycle ownership.
   hardware motion remains CHECK-01, not INIT validation.
 - **Completion:** unsafe modes fail before start with actionable telemetry; valid partial-feature
   configurations remain possible when explicitly selected; placeholder routes, invalid Pedro
-  construction, and an unsafe selected-start/live-pose mismatch cannot be armed as a match Auto.
-- **Decision record:** _Pending._
+  construction, and a selected-start/first-route mismatch cannot be armed as a match Auto; expected
+  physical placement is shown without claiming that a software pose rebase measured it.
+- **Decision record (2026-07-15): Ready, with a material correction to the leading start-pose
+  hypothesis.** This is a major Phoenix lifecycle and robot-facing policy decision, so no Java,
+  tests, or API/documentation implementation may begin until the user explicitly approves the
+  design below.
+  - **Confirmed current behavior:** every checked-in strategy currently builds the same documented
+    twelve-inch Pedro integration placeholder. `SAFE_PRELOAD`, `PRELOAD_AND_PARK`, and
+    `PARTNER_AWARE_CYCLE` are nevertheless shown as selectable match strategies; both static
+    audience-side entries install the placeholder; and the shared base plus `PhoenixRobot` emit
+    variations of “auto ready.” A production-looking OpMode can therefore arm test geometry.
+    `PhoenixProfile` also has zero Pinpoint pod offsets and
+    `pinpointPodOffsetsCalibrated == false`, but neither calibration acknowledgement participates in
+    match arming or TeleOp-assist availability. Finally, `PhoenixAutoProfiles` silently retains the
+    complete scoring-target catalog when the selected alliance tag is absent, which can leave the
+    other alliance's target eligible instead of reporting the bad config.
+  - **What earlier work already solved:** PEDRO-02 made
+    `Constants.createPhoenixAutoRuntime(...)` and `PedroPathingRuntime.create(...)` all-or-throw
+    production construction paths. They validate the selected drivetrain/Pinpoint physical config,
+    predictor, Follower, mecanum constants, path constraints, coordinate transform, hardware
+    construction, and passive-localizer contract. The passive localizer also requires a finite
+    start pose before its first heartbeat and verifies that the predictor publishes the requested
+    rebase. Phoenix service constructors already fail initialization when required vision,
+    localization, targeting, or scoring owners cannot be built, and the shared Auto base refuses to
+    call `startAuto()` after that failure. PHX-02 will consume these truthful construction facts; it
+    will not add a redundant `PedroPathingRuntime.isReady()`, duplicate vendor validators, or
+    optional/no-op service graph.
+  - **Current callers and ordinary student path:** `PhoenixPedroAutoOpModeBase` is the sole shared
+    build/start path for the two static match entries, the match selector, and the explicit Pedro
+    test entry. `PhoenixAutoProfiles.profileFor(...)` is called only from that base.
+    `PhoenixPedroPathFactory.build(...)` feeds the routine factory and its focused tests. TeleOp
+    assists are wired once in `PhoenixRobot.initTeleOp()`. The normal student-facing match OpMode
+    remains a tiny `autoSpec()` implementation; students will not construct reports, validators, or
+    builders. The selector and shared base will render and enforce the same robot-owned facts.
+    The public-path audit found no PHX-02 cleanup need in `PhoenixRobot`'s distinct constructor or
+    `initAuto` convenience/configuration overloads, the single production Pedro runtime factory,
+    the distinct tool-only Follower path, or eager versus start-time route factories. CLEAN-01 owns
+    the already-recorded `RouteTask` construction cleanup.
+  - **Framework Principles and simplicity comparison:** one centralized robot policy gives one
+    answer to “may this behavior run?” while the existing component owners continue answering “was
+    my configuration constructed correctly?” Required warnings stay in normal Driver Station
+    telemetry, not `debugDump()`. Ordinary match code gains no call or concept; the only extra
+    concept visible in robot internals is the necessary distinction between match-ready and
+    integration-only routes. This is simpler and more truthful than scattered exceptions, silent
+    no-op capabilities, a generic feature matrix, or a second framework validation DSL. Manual
+    TeleOp remains usable when localization calibration is incomplete, but localization-dependent
+    assists are visibly unavailable rather than silently applying questionable corrections.
+  - **Chosen report shape:** add one Phoenix-owned, immutable, factory-only readiness result; do not
+    put it in `fw`. Its ordered issues have a stable id, `WARNING` or `BLOCKING` severity, an
+    actionable message, and remediation text; the result exposes whether the requested behavior is
+    allowed. There is no public constructor, builder, validator interface, telemetry dependency, or
+    generic framework `ValidationReport`. One Phoenix policy factory evaluates TeleOp pose assists
+    and Pedro Auto from the relevant immutable profile/spec/route facts. Presenters and the shared
+    Auto base format that snapshot for humans. Extract a generic report only after a second
+    non-Phoenix production caller demonstrates compatible semantics.
+  - **Typed route maturity and one source of truth:** give the Pedro path owner a typed route fact
+    such as `MATCH_READY` versus `INTEGRATION_ONLY`; never infer safety from a label containing
+    “placeholder.” The same path-factory-owned lookup used by `build(...)` supplies selector
+    availability and the built `Paths` snapshot, so strategy enum tags, selector rules, and geometry
+    cannot become parallel authorities. The current twelve-inch geometry is
+    `INTEGRATION_ONLY`. It blocks all match entries, including START-without-confirmation in the
+    selector. It may run only from the explicitly marked Pedro integration-test entry, with an
+    unmistakable persistent `TEST` warning; that test strategy is disabled in the match selector.
+    Real geometry must be added and deliberately marked match-ready before a static or selected
+    match Auto can arm.
+  - **Calibration and partial-mode policy:** match Auto requires both existing human
+    acknowledgements: verified Pinpoint axes and calibrated pod offsets. Unverified axes also block
+    a moving Pedro integration test because the response direction may be unsafe; incomplete pod
+    offsets are a persistent warning in that explicit test mode so the diagnostic route remains
+    usable for bounded integration work. In TeleOp, either incomplete acknowledgement leaves manual
+    drive and mechanisms available while gating both localization-dependent auto-aim and shoot-brace
+    overlays off and printing the exact calibration action required. This is the supported
+    partial-feature case. PHX-02 will not introduce nullable/optional Phoenix capabilities, pretend
+    missing hardware is present with no-ops, or block merely because no AprilTag happens to be
+    visible during INIT. Only the selected alliance's target is required; an absent inactive-
+    alliance target does not block that spec.
+  - **Alliance and field-fact policy:** the selected red/blue scoring tag id must exist in
+    `autoAim.scoringTargets` and in the configured fixed `TagLayout` before the Auto-specific profile
+    is constructed. Missing data is one actionable blocker naming the exact profile field and tag
+    id; the full-catalog fallback is removed. `PhoenixAutoProfiles.profileFor(...)` retains its one
+    transformation role and also fails fast when called directly with the same invalid selected
+    fact. Broad profile-null/field validation remains API-03, and backend streaming/health policy
+    remains VISION-01 rather than being invented here.
+  - **Corrected start-pose decision:** the tracker previously proposed comparing the selected route
+    start to a “live” follower pose under configurable tolerances. In Phoenix, the current
+    `setStartingPose(...)` deliberately rebases the only Pinpoint predictor to that selected pose
+    and immediately asserts software equality. Comparing the resulting values would therefore
+    always pass and cannot prove where the robot is physically sitting. Cuttlefish obtains a
+    meaningful relative check only by assigning a separate setup pose, repeatedly polling during
+    INIT, and expecting the drive team to move the robot from that setup pose to the route start.
+    Phoenix already builds after the exact spec is selected. Adding that second pose, operator
+    movement procedure, pre-START Pedro heartbeat, and a new `LoopClock` phase-rebase API would add
+    substantial lifecycle and student complexity; moving or lifting the robot could still make the
+    relative odometry claim wrong. It is not the best general Phoenix path.
+  - **Truthful replacement start contract:** keep one declared selected start pose, require the
+    first fixed route geometry to start there under a tight structural epsilon at the Pedro
+    boundary, retain the integration's existing rebase/publication assertion, and show the expected
+    field start prominently throughout INIT. Reapply that same selected pose at FTC START before
+    the first Pedro heartbeat, then start the installed root only while the retained report is
+    allowed. This gives one software coordinate authority and avoids charging or skipping an INIT
+    interval without changing `LoopClock` cycle semantics. It does **not** claim to verify physical
+    field placement; the drive team must place the robot at the displayed start. A future automatic
+    placement gate requires a fresh independently trustworthy field-absolute observation, such as a
+    calibrated AprilTag pose, and a separate decision about unavailable/stale observation policy.
+  - **Arming, status, and error contract:** `PhoenixRobot.initAuto(...)` reports only that its owned
+    services initialized; it must not claim the whole selected Auto is ready. The shared Pedro base
+    retains the readiness result, expected start, and exact initialization failure. It installs and
+    starts no root when any blocker remains, rechecks the retained arm decision at START so selector
+    bypass cannot move the robot, and labels `BLOCKED`, `TEST`, `WARN`, and `READY` distinctly in
+    always-on telemetry. Remove the universal “check drive/Pinpoint” suffix from unrelated failures.
+    INIT cleanup remains best-effort, but a cleanup failure is retained/suppressed alongside the
+    original cause instead of disappearing. Active staged hardware motion remains CHECK-01.
+  - **Rejected alternatives:** documentation-only leaves placeholder match OpModes runnable;
+    scattered constructor checks cannot aggregate route maturity, calibration, and alliance policy;
+    silently substituting no-op services hides capability loss and complicates every caller; a
+    generic framework report has no second compatible runtime caller; tester-only
+    `CalibrationStatus` does not represent multi-issue arming policy; a generic optional-feature
+    matrix has no concrete Phoenix caller and would spread branching through capabilities and
+    controls; a post-rebase pose comparison is tautological; and Cuttlefish's separate setup-pose
+    INIT heartbeat is a valid team-specific operating procedure but is not simpler or more truthful
+    for Phoenix's already-selected spec. Do not change the generic Task, route, Pedro heartbeat, or
+    clock APIs in PHX-02.
+  - **Bounded implementation scope:** change only the small Phoenix readiness policy/result,
+    Phoenix calibration-dependent TeleOp-assist wiring/status telemetry, Auto profile selection,
+    Pedro path maturity/start validation, the shared selector/base/test-entry arming path, focused
+    Phoenix tests, and synchronized Framework Principles/Phoenix/Pedro/calibration documentation.
+    Do not add real season route geometry, active hardware checks, generic framework validation,
+    optional service graphs, live-vision arming, unrelated profile validation, or another task.
+  - **Verification plan:** add pure readiness-matrix tests for every current strategy and run
+    purpose; placeholder match blocking; the explicit test escape hatch; axes/offset combinations;
+    manual TeleOp versus assist availability; selected versus inactive alliance facts; absent
+    catalog/layout entries; deterministic issue ordering and immutability. Add profile tests proving
+    valid red/blue filtering and actionable missing-target failure. Extend path tests for maturity,
+    nonempty/finite geometry, declared-start/first-point translation and wrapped-heading equality,
+    and structural mismatch refusal. Add focused arming/lifecycle coverage proving a blocker never
+    installs or starts the root, START cannot bypass the selector, test-only state stays visible,
+    the start pose is applied before the first heartbeat, no route callback or actuator starts in
+    INIT, retry clears stale reports, and failure cleanup preserves the primary cause. Verify
+    TeleOp's manual path remains live while both pose assists are gated. Re-run all Pedro runtime,
+    passive-localizer, adapter, route, routine, PHX-03/PHX-04 timing tests; full
+    `:TeamCode:testDebugUnitTest`; `:TeamCode:compileDebugJavaWithJavac`; XML totals; caller,
+    raw-Follower-lifecycle, blocking-call, link, and `git diff --check` audits.
+  - **Android Studio and hardware audit point:** inspect that static match entries and the selector
+    show `BLOCKED` with the exact route/calibration remedy, that only the dedicated integration-test
+    entry can show `TEST`, and that normal static OpModes still contain only `autoSpec()`. On the
+    robot, prove blocked match entries cannot move or spin mechanisms; confirm manual TeleOp remains
+    controllable while unavailable assists stay off; verify calibrated real geometry can arm; and
+    check that the explicitly Pedro-field-labeled expected pose matches physical placement. The last
+    check is an operator validation, not an automated absolute-position claim.
+  - **Approval gate:** `Approve PHX-02 readiness design` authorizes only the exact robot-owned report,
+    route-maturity/test policy, calibration-dependent TeleOp gating, alliance/start-contract checks,
+    fail-closed arming/error telemetry, tests, and synchronized documentation above. It does not
+    authorize a Cuttlefish-style setup-pose heartbeat, a `LoopClock` API change, generic framework
+    validation, real route geometry, CHECK-01, publication/merge, or another tracker item.
+  - **Approval (2026-07-15):** the user approved the design with
+    `Approve PHX-02 readiness desing` (interpreted as the requested PHX-02 readiness-design
+    approval). Implementation is limited to the exact scope and exclusions above.
+  - **Implementation (2026-07-15):** added the immutable factory-only `PhoenixReadiness` policy,
+    exact selected-alliance profile validation/filtering, path-factory-owned `RouteAvailability`,
+    structural declared-start validation, calibration-dependent TeleOp pose-assist gating, and one
+    shared Pedro Auto arming/start/error path for static entries, the selector, and the dedicated
+    integration test. All checked-in geometry remains deliberately `INTEGRATION_ONLY`, so every
+    match entry is blocked and only the visibly named Pedro test entry may run it with persistent
+    `TEST` warnings. The selected Pedro start is reapplied before the shared clock/root start, and
+    telemetry names its physical-placement value `auto.expectedPhysicalStartPedro` with explicit
+    Pedro-field inches/degrees. Construction/start failures retain their exact cause; cleanup
+    failures are suppressed, displayed with restart guidance, and prevent competing-owner retries.
+    No real route geometry, live-vision gate, optional capability graph, generic validation API,
+    hardware-motion check, or adjacent tracker item was added.
+  - **Adversarial review (2026-07-15):** independent Auto, TeleOp/readiness, Pedro-documentation, and
+    final Framework-Principles reviews found and resolved route/spec mismatch risk, raw-versus-gated
+    auto-aim status, inactive-alliance layout coverage, invalid/overflowing placeholder distance,
+    stale selector reports, retained cleanup failures, conflicting reinitialization, INIT/START
+    documentation drift, ambiguous field-frame telemetry, and unnecessarily broad readiness/test
+    hooks. The final review found no remaining blocker; no extra public or protected student
+    extension seam was added for tests.
+  - **Automated verification (2026-07-15):** Android Studio's bundled JDK completed
+    `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` successfully. The generated XML
+    contains 39 suites / 380 tests / 0 failures / 0 errors / 0 skipped. Focused coverage includes 9
+    readiness-policy, 5 Auto-profile, 10 Pedro-path, 2 TeleOp drive-assist, 7 shared Auto OpMode, and
+    7 passive-localizer tests. It proves selector START cannot bypass a blocker, repeated pre-heartbeat
+    start-pose publication is allowed, START reapplies pose before clock/root start with no INIT
+    behavior, ordinary retry refreshes state, and primary/cleanup failures remain truthful. Static
+    audits found no changed production sleep/busy-wait pattern or raw Follower lifecycle owner;
+    changed Markdown local links resolve; `git diff --check` and trailing-whitespace checks over all
+    modified/untracked files pass. The only compiler output is the repository's existing Java 8 on
+    JDK 21 deprecation warning. Robot hardware behavior remains unverified until the user audit.
+  - **Android Studio audit requested (2026-07-15):** inspect `PhoenixReadiness`,
+    `PhoenixPedroPathFactory.RouteAvailability`, `PhoenixPedroAutoOpModeBase`, the selector/test
+    entries, TeleOp drive-assist gating, and always-on telemetry. Confirm current match entries and
+    selector choices show `BLOCKED` without constructing/moving hardware; the dedicated Pedro test
+    alone shows `TEST`; static OpModes still only provide `autoSpec()`; manual TeleOp remains
+    available while both pose assists report unavailable; and the expected physical start is
+    explicitly labeled as Pedro-field coordinates. Hardware validation is useful for the no-motion
+    block and manual-drive/gated-assist behavior, but flipping placeholder routes to match-ready is
+    intentionally outside PHX-02.
+  - **Manual approval (2026-07-15):** after the Android Studio audit point and readiness-workflow
+    walkthrough, the user replied `PHX-02 looks good`, approving this exact implementation for
+    publication and merge. No robot-hardware validation was reported; all current match routes
+    remain deliberately blocked until real geometry is implemented and validated.
 
 ### MATCH-01 - Explicit Auto-to-TeleOp handoff
 

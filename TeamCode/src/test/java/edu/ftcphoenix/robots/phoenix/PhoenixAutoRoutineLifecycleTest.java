@@ -54,7 +54,7 @@ public final class PhoenixAutoRoutineLifecycleTest {
             lateLifecycle.install(new RecordingTask(false, null));
             fail("Expected installation after FTC START to be rejected");
         } catch (IllegalStateException expected) {
-            assertTrue(expected.getMessage().contains("INIT-only"));
+            assertTrue(expected.getMessage().contains("pre-start only"));
         }
     }
 

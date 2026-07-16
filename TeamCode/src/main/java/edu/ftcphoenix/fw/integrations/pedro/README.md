@@ -16,6 +16,10 @@ robot.initAuto(runtime.driveAdapter(), runtime.motionPredictor());
 runtime.setStartingPose(paths.pedroStartPose);
 ```
 
+Successful runtime construction proves only this integration graph's configuration and ownership
+contracts. It does not decide whether robot-specific calibration acknowledgements, field facts, or
+route geometry are ready for a match; keep that combined arming policy in the robot mode client.
+
 The runtime contains exactly one of each production owner:
 
 - one profile-configured `PinpointOdometryPredictor`, which alone acquires, configures, resets,
@@ -34,7 +38,8 @@ constructing a `PathChain`; the runtime contains this vendor defect and restores
 defaults and any deliberate per-path overrides. Robot path code keeps Pedro's normal fluent builder
 API and does not need a repair step.
 
-Build fixed geometry during INIT and pass it to the ordinary eager `RouteTasks.follow(...)` path.
+Build fixed geometry eagerly during the mode client's pre-start construction and pass it to the
+ordinary `RouteTasks.follow(...)` path.
 When a return or fallback must begin at the follower's live pose, keep that decision in the
 robot-owned path factory and pass a quick lambda to `RouteTasks.followBuiltAtStart(...)`. The lambda
 runs exactly once when its Route Task starts, after the composition root's current-cycle
@@ -109,12 +114,23 @@ the Pedro heartbeat, so path following and targeting see the same corrected pose
 Disabling predictor push remains the explicit targeting-only policy; Phoenix telemetry displays raw
 predictor pose, corrected global pose, and their drift.
 
+The robot mode client may apply the same declared start during INIT and reapply it at the exact FTC
+START boundary, provided neither call occurs after the first heartbeat. This is a software
+coordinate rebase and publication check, not an independent observation of physical field
+placement. Show the expected physical start with an explicit Pedro-field label to the drive team,
+or use a separately trustworthy field-absolute observation if an automatic placement check is
+required.
+
 ## Configuration and tuning tools
 
 The project factory derives motor names/directions and Pinpoint name/offsets/resolution/directions/
 yaw scalar from the selected defensive `PhoenixProfile` snapshot. `Constants` retains Pedro-only
 follower/controller/drivetrain/path tuning. Invalid names, duplicate motors, unsupported reset
-assumptions, and non-finite tuning fail during INIT with a setting-specific message.
+assumptions, and non-finite tuning fail during pre-start construction with a setting-specific
+message.
+Human acknowledgements such as verified pod directions or calibrated offsets remain robot-owned
+readiness facts; numeric construction validation must not silently claim that those procedures were
+performed.
 
 Pedro's generated `Tuning` menu and standalone `PedroTest` use
 `Constants.createToolOnlyNativeFollower(hardwareMap)`. That clearly named tool path uses Pedro's

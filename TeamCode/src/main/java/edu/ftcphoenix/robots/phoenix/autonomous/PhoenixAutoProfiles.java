@@ -4,6 +4,7 @@ import java.util.LinkedHashMap;
 import java.util.Objects;
 
 import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
+import edu.ftcphoenix.robots.phoenix.PhoenixReadiness;
 
 /**
  * Applies autonomous setup choices to a Phoenix profile before the robot container is constructed.
@@ -27,17 +28,21 @@ public final class PhoenixAutoProfiles {
      * @param spec selected autonomous setup
      * @param base base profile to copy; when null, {@link PhoenixProfile#current()} is used
      * @return copied profile with autonomous-specific edits applied
+     * @throws IllegalStateException when the selected alliance scoring tag is absent from either
+     *                               the target catalog or the fixed-field layout
      */
     public static PhoenixProfile profileFor(PhoenixAutoSpec spec, PhoenixProfile base) {
         Objects.requireNonNull(spec, "spec");
-        PhoenixProfile profile = (base == null ? PhoenixProfile.current() : base).copy();
+        PhoenixProfile source = base == null ? PhoenixProfile.current() : base;
+        PhoenixReadiness.autoProfile(spec, source).requireAllowed("Phoenix Auto profile");
+        PhoenixProfile profile = source.copy();
 
         switch (spec.alliance) {
             case RED:
-                keepOnlyScoringTagIfPresent(profile, profile.auto.redAllianceScoringTagId);
+                keepOnlyScoringTag(profile, profile.auto.redAllianceScoringTagId);
                 break;
             case BLUE:
-                keepOnlyScoringTagIfPresent(profile, profile.auto.blueAllianceScoringTagId);
+                keepOnlyScoringTag(profile, profile.auto.blueAllianceScoringTagId);
                 break;
             default:
                 break;
@@ -46,13 +51,8 @@ public final class PhoenixAutoProfiles {
         return profile;
     }
 
-    private static void keepOnlyScoringTagIfPresent(PhoenixProfile profile, int tagId) {
+    private static void keepOnlyScoringTag(PhoenixProfile profile, int tagId) {
         PhoenixProfile.AutoAimConfig.ScoringTarget target = profile.autoAim.scoringTargets.get(tagId);
-        if (target == null) {
-            // Leave the catalog intact rather than producing an Auto profile with no target choices.
-            return;
-        }
-
         LinkedHashMap<Integer, PhoenixProfile.AutoAimConfig.ScoringTarget> filtered =
                 new LinkedHashMap<Integer, PhoenixProfile.AutoAimConfig.ScoringTarget>();
         filtered.put(tagId, target.copy());

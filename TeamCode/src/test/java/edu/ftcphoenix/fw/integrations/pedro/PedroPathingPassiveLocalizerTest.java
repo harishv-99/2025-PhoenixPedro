@@ -133,7 +133,7 @@ public final class PedroPathingPassiveLocalizerTest {
     }
 
     @Test
-    public void startAndCorrectionRebasesPreservePhysicalVelocityAndHeading() {
+    public void repeatedPreHeartbeatStartAndCorrectionRebasesPreservePhysicalVelocityAndHeading() {
         FakePredictorAccess access = new FakePredictorAccess();
         access.sample = sampled(
                 -1L,
@@ -156,8 +156,9 @@ public final class PedroPathingPassiveLocalizerTest {
 
         Pose pedroStart = new Pose(80.0, 90.0, Math.PI);
         follower.setStartingPose(pedroStart);
+        follower.setStartingPose(pedroStart);
 
-        assertEquals(1, access.setPoseCount);
+        assertEquals(2, access.setPoseCount);
         assertEquals(6.0, access.sample.phoenixFieldVelocityXInchesPerSec, EPSILON);
         assertEquals(-2.0, access.sample.phoenixFieldVelocityYInchesPerSec, EPSILON);
         assertEquals(0.75, access.sample.angularVelocityRadPerSec, EPSILON);
