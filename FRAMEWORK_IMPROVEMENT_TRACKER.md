@@ -79,45 +79,54 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 15 | PHX-03 | Explicit Auto route-failure policy | Done | Keep generic sequence semantics and make continue/fallback/abort policy visible in the robot routine. |
 | 16 | PHX-04 | Match-time fallback takeover | Done | Bound only pre-park work, then start one live-pose park after early completion or a successful match-time cutoff. |
 | 17 | PHX-02 | Phoenix runtime readiness | Done | Validate calibration, Pedro construction, routes, alliance facts, and required services before enabling assists/Auto. |
-| 18 | MATCH-01 | Explicit Auto-to-TeleOp handoff | Proposed | Carry one typed immutable robot snapshot across the FTC mode boundary without string maps or stale globals. |
-| 19 | DRIVE-02 | Shared drivetrain actuator handoff | Proposed | Preserve one motor writer when a PTO reuses drivetrain motors for an endgame mechanism. |
-| 20 | VISION-01 | Custom VisionPortal ownership | Proposed | Reuse camera/processor lifecycle without forcing robot-specific detections through AprilTag APIs. |
-| 21 | SENSOR-01 | Motor-current sensing | Proposed | Expose cycle-memoized current in amps as a Source; keep jam, homing, and power-budget policy robot-owned. |
-| 22 | INPUT-01 | Safe contextual control activation | Proposed | Support optional control modes without turning held controls into phantom press edges. |
-| 23 | HAPTIC-01 | Driver haptic feedback boundary | Proposed | Expose small rate-safe rumble output while controls retain the meaning of each notification. |
-| 24 | PERF-01 | FTC hub bulk-cache ownership | Proposed | Evaluate one optional, cycle-idempotent manual bulk-cache heartbeat against SDK automatic caching. |
-| 25 | PERF-02 | Loop phase diagnostics | Proposed | Measure named loop phases with a lightweight diagnostic that does not own timing or sleep. |
-| 26 | PERF-03 | Contract-safe hardware write deduplication | Proposed | Add write caching only where measurements justify it and stop/Plant truth remain exact. |
-| 27 | TUNE-01 | Live tuning to checked-in profile | Proposed | Keep production snapshots stable while providing an explicit, optional live-tuning workflow. |
-| 28 | TARGET-01 | Lazy Plant target overlay selection | Proposed | Resolve the selected highest-priority layer first and avoid sampling shadowed layers. |
-| 29 | TARGET-02 | Candidate freshness | Proposed | Compute effective age from the loop clock and timestamp, with validation. |
-| 30 | TARGET-03 | Periodic planner complexity | Proposed | Replace range iteration with constant-time candidate mathematics. |
-| 31 | CYCLE-01 | Stateful drive-source cycle safety | Proposed | Memoize stateful composition once per `clock.cycle()` and propagate reset deliberately. |
-| 32 | CYCLE-02 | Localization cycle safety | Proposed | Guard predictors/estimators against duplicate same-cycle updates. |
-| 33 | SOURCE-01 | Boolean composition sampling | Proposed | Sample both operands once per cycle before combining stateful results. |
-| 34 | API-01 | Writable Plant command binding | Proposed | Keep one simple `Plant` if builder provenance can prevent silent no-op writes. |
-| 35 | API-02 | Feedback tolerance choice | Proposed | Ask for tolerance after unit mapping; retain an explicitly named native default only if useful. |
-| 36 | API-03 | Builder and owner-config validation | Proposed | Reject invalid hardware and controller configuration at the earliest fully informed boundary with actionable messages. |
-| 37 | API-04 | Binding execution order | Proposed | Preserve declaration order unless explicit phases are proven necessary. |
-| 38 | API-05 | One beginner drive entry point | Proposed | Teach the lane as the robot-facing path and keep the raw factory as a lower-level tool. |
-| 39 | COMMON-01 | Initialization runtime helper | Proposed | Extract only repeated retry/error/cleanup ceremony; avoid a robot base class. |
-| 40 | COMMON-02 | Telemetry commit ownership | Proposed | Renderers add data; the composition root commits once. |
-| 41 | CHECK-01 | Staged whole-robot system check | Proposed | Compose a safe pre-match check from robot capabilities without hardware reflection or a base robot. |
-| 42 | EXAMPLE-01 | Compiling modern starter robot | Proposed | Add a small multi-file reference, not an inheritance framework. |
-| 43 | EXAMPLE-02 | Compiling Pedro autonomous reference | Proposed | Show one small real path, capability Tasks, one follower heartbeat, explicit fallback, and a thin OpMode. |
-| 44 | AUTO-01 | Compact bounded Auto continuation | Proposed | Use another real routine to separate reusable lifecycle ceremony from robot-owned match and recovery policy. |
-| 45 | EXAMPLE-03 | Advanced moving-target reference | Proposed | Prove progress-triggered scoring and a bounded moving turret without putting game physics in the framework. |
-| 46 | BOUNDARY-01 | FTC boundary enforcement | Proposed | Fix existing import leaks, then add a focused forbidden-import check. |
-| 47 | DOC-01 | Stale and non-compiling documentation | Proposed | Correct loop/API examples and validate links/examples where practical. |
-| 48 | CI-01 | Framework verification in CI | Proposed | Run focused unit tests, TeamCode compilation, docs checks, and boundary checks. |
-| 49 | CLEAN-01 | Alias and risky convenience cleanup | Proposed | Remove only APIs proven redundant or unsafe by caller search. |
-| 50 | CTRL-01 | Final scalar-regulator output constraints | Proposed | Constrain the final composed regulator command with one factory-only decorator, without adding flywheel policy or another Plant-builder path. |
-| 51 | SOURCE-02 | Derived rate from sampled scalar position | Proposed | Derive units-per-second from any position `ScalarSource` in core; keep encoder hardware reads at the FTC boundary. |
-| 52 | SOURCE-03 | Composable scalar measurement conditioning | Proposed | Add only evidence-backed, explicitly configured numeric filters as generic `ScalarSource` decorators rather than hiding smoothing in a sensor adapter. |
-| 53 | SAFE-03 | Regulated Plant actuator-command truth | Proposed | Make every normalized regulated-Plant command finite, bounded, and truthful before the defensive hardware adapter. |
+| 18 | EXAMPLE-02 | Compiling Pedro autonomous reference | Proposed | Show one small real path, capability Tasks, one follower heartbeat, explicit fallback, and a thin OpMode. |
+| 19 | CTRL-01 | Final scalar-regulator output constraints | Proposed | Constrain the final composed regulator command with one factory-only decorator, without adding flywheel policy or another Plant-builder path. |
+| 20 | SAFE-03 | Regulated Plant actuator-command truth | Proposed | Make every normalized regulated-Plant command finite, bounded, and truthful before the defensive hardware adapter. |
+| 21 | SOURCE-02 | Derived rate from sampled scalar position | Proposed | Derive units-per-second from any position `ScalarSource` in core; keep encoder hardware reads at the FTC boundary. |
+| 22 | API-03 | Builder and owner-config validation | Proposed | Reject invalid hardware and controller configuration at the earliest fully informed boundary with actionable messages. |
+| 23 | TUNE-01 | Live tuning to checked-in profile | Proposed | Keep production snapshots stable while providing an explicit, optional live-tuning workflow. |
+| 24 | AUTO-01 | Compact bounded Auto continuation | Proposed | Use another real routine to separate reusable lifecycle ceremony from robot-owned match and recovery policy. |
+| 25 | SOURCE-03 | Composable scalar measurement conditioning | Proposed | Add only evidence-backed, explicitly configured numeric filters as generic `ScalarSource` decorators rather than hiding smoothing in a sensor adapter. |
+| 26 | MATCH-01 | Explicit Auto-to-TeleOp handoff | Proposed | Carry one typed immutable robot snapshot across the FTC mode boundary without string maps or stale globals. |
+| 27 | DRIVE-02 | Shared drivetrain actuator handoff | Proposed | Preserve one motor writer when a PTO reuses drivetrain motors for an endgame mechanism. |
+| 28 | VISION-01 | Custom VisionPortal ownership | Proposed | Reuse camera/processor lifecycle without forcing robot-specific detections through AprilTag APIs. |
+| 29 | SENSOR-01 | Motor-current sensing | Proposed | Expose cycle-memoized current in amps as a Source; keep jam, homing, and power-budget policy robot-owned. |
+| 30 | INPUT-01 | Safe contextual control activation | Proposed | Support optional control modes without turning held controls into phantom press edges. |
+| 31 | HAPTIC-01 | Driver haptic feedback boundary | Proposed | Expose small rate-safe rumble output while controls retain the meaning of each notification. |
+| 32 | PERF-01 | FTC hub bulk-cache ownership | Proposed | Evaluate one optional, cycle-idempotent manual bulk-cache heartbeat against SDK automatic caching. |
+| 33 | PERF-02 | Loop phase diagnostics | Proposed | Measure named loop phases with a lightweight diagnostic that does not own timing or sleep. |
+| 34 | PERF-03 | Contract-safe hardware write deduplication | Proposed | Add write caching only where measurements justify it and stop/Plant truth remain exact. |
+| 35 | TARGET-01 | Lazy Plant target overlay selection | Proposed | Resolve the selected highest-priority layer first and avoid sampling shadowed layers. |
+| 36 | TARGET-02 | Candidate freshness | Proposed | Compute effective age from the loop clock and timestamp, with validation. |
+| 37 | TARGET-03 | Periodic planner complexity | Proposed | Replace range iteration with constant-time candidate mathematics. |
+| 38 | CYCLE-01 | Stateful drive-source cycle safety | Proposed | Memoize stateful composition once per `clock.cycle()` and propagate reset deliberately. |
+| 39 | CYCLE-02 | Localization cycle safety | Proposed | Guard predictors/estimators against duplicate same-cycle updates. |
+| 40 | SOURCE-01 | Boolean composition sampling | Proposed | Sample both operands once per cycle before combining stateful results. |
+| 41 | API-01 | Writable Plant command binding | Proposed | Keep one simple `Plant` if builder provenance can prevent silent no-op writes. |
+| 42 | API-02 | Feedback tolerance choice | Proposed | Ask for tolerance after unit mapping; retain an explicitly named native default only if useful. |
+| 43 | API-04 | Binding execution order | Proposed | Preserve declaration order unless explicit phases are proven necessary. |
+| 44 | API-05 | One beginner drive entry point | Proposed | Teach the lane as the robot-facing path and keep the raw factory as a lower-level tool. |
+| 45 | COMMON-01 | Initialization runtime helper | Proposed | Extract only repeated retry/error/cleanup ceremony; avoid a robot base class. |
+| 46 | COMMON-02 | Telemetry commit ownership | Proposed | Renderers add data; the composition root commits once. |
+| 47 | CHECK-01 | Staged whole-robot system check | Proposed | Compose a safe pre-match check from robot capabilities without hardware reflection or a base robot. |
+| 48 | EXAMPLE-01 | Compiling modern starter robot | Proposed | Add a small multi-file reference, not an inheritance framework. |
+| 49 | EXAMPLE-03 | Advanced moving-target reference | Proposed | Prove progress-triggered scoring and a bounded moving turret without putting game physics in the framework. |
+| 50 | BOUNDARY-01 | FTC boundary enforcement | Proposed | Fix existing import leaks, then add a focused forbidden-import check. |
+| 51 | DOC-01 | Stale and non-compiling documentation | Proposed | Correct loop/API examples and validate links/examples where practical. |
+| 52 | CI-01 | Framework verification in CI | Proposed | Run focused unit tests, TeamCode compilation, docs checks, and boundary checks. |
+| 53 | CLEAN-01 | Alias and risky convenience cleanup | Proposed | Remove only APIs proven redundant or unsafe by caller search. |
 
-The order is intentionally front-loaded with testability, robot lifecycle, actuator safety, and
-deterministic Task behavior. The Pedro review added two runtime-ownership gates before DRIVE-01:
+The completed order was intentionally front-loaded with testability, robot lifecycle, actuator
+safety, and deterministic Task behavior. The current proposed-item priority now focuses on making
+Summer26/Bettabot's first production Pedro Auto small and supported, then removing concrete shooter
+complexity already proven in that robot. EXAMPLE-02 is first because Bettabot currently has no
+enabled Auto at all; CTRL-01 follows because it removes a complete robot-local regulator decorator.
+SAFE-03 remains a separate universal safety/truth task. SOURCE-02 stays near the front but must defer
+rather than block the lane if its required REV hardware comparison is unavailable or disproves the
+need. API-03 and TUNE-01 are secondary Bettabot simplifiers. AUTO-01 and SOURCE-03 remain conditional
+on the additional real-routine and measurement evidence stated in their own gates.
+
+The Pedro review added two runtime-ownership gates before DRIVE-01:
 the checked-in Auto must first have one continuous follower heartbeat and one valid drivetrain/
 localization authority. The Cuttlefish review then added route truth and deferred construction ahead
 of the higher-level Auto policies that depend on them. The expanded Worlds-source review added one
@@ -210,6 +219,7 @@ robot implementation simple.
 | [`CappedFlywheelRegulator`](https://github.com/Hansika1098/Summer26/blob/4eed9d6c7c93c5e2b65bdbc78463ad0be0e87790/TeamCode/src/main/java/edu/ftcphoenix/robots/betta/BettaShooter.java#L77-L136) wraps the complete PID-plus-feedforward result because `Pid` output limits apply before the feedforward decorator. | An intentional narrower command range is a reusable control-law composition operation. It does not belong in a flywheel class, FTC motor adapter, or another regulated-Plant builder branch. Zero-target coast/reset remains robot policy. Separately, every normalized regulated output needs truthful universal `[-1,+1]` safety even when a caller does not request a narrower range. | Add CTRL-01 for one factory-only policy constraint and SAFE-03 for universal regulated-command safety/truth; explicitly evaluate composition order and anti-windup implications. |
 | [`ThroughBoreVelocitySource`](https://github.com/Hansika1098/Summer26/blob/4eed9d6c7c93c5e2b65bdbc78463ad0be0e87790/TeamCode/src/main/java/edu/ftcphoenix/robots/betta/BettaShooter.java#L30-L75) directly reads FTC position and differences consecutive samples to avoid a reported high-rate velocity-counter problem. | Hardware acquisition belongs in `fw.ftc`, but position-to-rate estimation is generic core Source logic that can consume motor, external, analog, absolute, or simulated position sources. Filtering is another generic transform and must not be hidden inside an encoder model or an automatic velocity fallback. | Add SOURCE-02 for generic derived-rate estimation and SOURCE-03 for independently composable scalar conditioning. Require hardware comparison against direct SDK velocity before changing the recommended encoder-feedback path. |
 | [`BettaDashboardControls`](https://github.com/Hansika1098/Summer26/blob/4eed9d6c7c93c5e2b65bdbc78463ad0be0e87790/TeamCode/src/main/java/edu/ftcphoenix/robots/betta/BettaDashboardControls.java#L18-L100) synchronizes mutable live values, while [`BettaShooter`](https://github.com/Hansika1098/Summer26/blob/4eed9d6c7c93c5e2b65bdbc78463ad0be0e87790/TeamCode/src/main/java/edu/ftcphoenix/robots/betta/BettaShooter.java#L320-L361) repeats extensive configuration validation. | Live tuning is useful but should not become production configuration authority. Repeated finite/range/name validation should fail at the earliest fully informed framework or robot-owner boundary. | Add Bettabot evidence to TUNE-01 and broaden API-03's validation audit; do not add a framework shooter, tuning singleton, or generic robot base. |
+| [`BettaAutoTasks`](https://github.com/Hansika1098/Summer26/blob/4eed9d6c7c93c5e2b65bdbc78463ad0be0e87790/TeamCode/src/main/java/edu/ftcphoenix/robots/betta/autonomous/BettaAutoTasks.java) contains only three one-shot shooter requests, the [Betta Pedro guide](https://github.com/Hansika1098/Summer26/blob/4eed9d6c7c93c5e2b65bdbc78463ad0be0e87790/TeamCode/src/main/java/edu/ftcphoenix/robots/betta/autonomous/pedro/README.md) describes future wiring, and [`PedroTest`](https://github.com/Hansika1098/Summer26/blob/4eed9d6c7c93c5e2b65bdbc78463ad0be0e87790/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/pedroPathing/PedroTest.java) is entirely commented out with an empty state update. | Bettabot has no enabled production Auto to copy or evaluate. The next useful proof is a small non-Phoenix consumer of the completed Pedro runtime, Route Tasks, capability Tasks, truthful fallback, and one visible heartbeat—not another handwritten state machine or a copy of Phoenix's season graph. | Prioritize EXAMPLE-02 first and require its decision gate to compare the complete example robot-code surface against Bettabot's current scaffold. Reassess AUTO-01 only after this example and a materially different real bounded routine provide its required evidence. |
 
 The intended measurement layering is explicit: an FTC adapter acquires and memoizes a raw hardware
 reading; core Sources perform reusable unit mapping, position-to-rate estimation, and optional
@@ -218,6 +228,14 @@ means and how behavior responds. SOURCE-02 and SOURCE-03 remain independent deci
 SOURCE-02 must not depend on optional filtering, while SOURCE-03 may decorate either raw or derived
 measurements. Each item must audit the existing `ScalarSource` construction layer independently and
 avoid adding redundant factory and instance-method spellings.
+
+Summer26 currently carries an older copied framework boundary: its
+[`PedroPathingDriveAdapter`](https://github.com/Hansika1098/Summer26/blob/4eed9d6c7c93c5e2b65bdbc78463ad0be0e87790/TeamCode/src/main/java/edu/ftcphoenix/fw/integrations/pedro/PedroPathingDriveAdapter.java)
+predates the completed PEDRO-01/02 and ROUTE-01/02 ownership and outcome work. Before a production
+Bettabot Auto is enabled, that downstream copy must be synchronized with the current framework
+baseline. This is an adoption prerequisite, not evidence for a second Pedro API or a new framework
+distribution abstraction from one consumer. If another robot repeats material copy/sync drift,
+open a separate decision gate for the smallest supported distribution path.
 
 ### Recommended autonomous ownership structure
 
@@ -1634,18 +1652,19 @@ writer, and explicit lifecycle ownership.
     the smallest useful contract. A generic post-transform tuning/override layer would add more
     vocabulary than an ordinary named branch and is not justified.
   - **Chosen design and reason for deferral:** do not implement a public framework transform against
-    placeholder geometry. Reopen FIELD-01 when the first real Phoenix route set or EXAMPLE-02 is
-    designed. Define canonical geometry only where field symmetry is real, apply an explicit
+    placeholder geometry. Reopen FIELD-01 when a real route set proposes shared alliance geometry,
+    not merely because EXAMPLE-02 contains one explicit route. Define canonical geometry only where
+    field symmetry is real, apply an explicit
     robot-local transform selected from `PhoenixAutoSpec`, permit named per-alliance points or whole
     routes without ceremony, and convert Phoenix coordinates to Pedro last. Systematic drivetrain,
     localization, or follower error should first be corrected in calibration/tuning because hiding
     it in alliance field facts would conflate desired geometry with tracking compensation and tend
     to duplicate that compensation across routes. Promote a small backend-neutral transform into
     `fw` only after a second in-repository robot/backend repeats the same stable math or a concrete
-    frame mistake shows that centralization prevents misuse. Any
-    task that adds the first non-placeholder Phoenix route or begins EXAMPLE-02 must first move
-    FIELD-01 from `Deferred` to `Researching` and rerun this decision gate; do not introduce
-    alliance-transform logic silently under that other item.
+    frame mistake shows that centralization prevents misuse. Any task that adds shared alliance
+    geometry or an alliance transform must first move FIELD-01 from `Deferred` to `Researching` and
+    rerun this decision gate; do not introduce transform logic silently under another item. A
+    single-alliance or explicitly separate-alliance example route does not reopen this task.
   - **Rejected designs:** do not force one transformed route for both alliances; do not wrap or
     teach Pedro's coordinate-specific mirror as the framework authority; do not use global alliance
     state; do not add `Vec2`, arbitrary matrices, a transform-composition DSL, or a route-tuning DSL
@@ -3332,8 +3351,11 @@ writer, and explicit lifecycle ownership.
   alliance/plan, and each routine reads as a short semantic sequence of follow-path, intake, and
   shoot factories. SaMoTech's named `AutoStep[]` plans and Tech Tigers' short
   `CycleConfiguration[]` leaf OpModes reach a similar surface but require much larger hidden custom
-  machinery. The Phoenix example should achieve the short surface with the ordinary framework
-  vocabulary rather than teaching a generated plan language or fixed-cycle state builder.
+  machinery. Summer26/Bettabot independently shows the immediate onboarding gap: it has mechanism
+  capability Tasks and Pedro tuning constants, but its only Pedro OpMode is commented-out generated
+  scaffolding with no routine. The Phoenix example should achieve the short surface with the
+  ordinary framework vocabulary rather than teaching a generated plan language or fixed-cycle
+  state builder.
 - **Alternatives to compare:** rely on Pedro's Ivy example; expand Markdown snippets only; make the
   full Phoenix Decode Auto the starter; add a code generator/base OpMode; or add one small compiling
   Pedro-specific robot-side example after PEDRO-01/02 establish the correct integration contract.
@@ -3341,12 +3363,17 @@ writer, and explicit lifecycle ownership.
   robot. It should show one configured follower/integration owner, a tiny immutable path set, one
   reusable mechanism capability Task, a readable routine composition, explicit route fallback, a
   thin OpMode, one LoopClock/follower heartbeat, and deterministic cancellation. Keep Pedro types at
-  the integration/path boundary and use Phoenix Tasks rather than teaching Ivy beside them.
+  the integration/path boundary and use Phoenix Tasks rather than teaching Ivy beside them. Treat a
+  Betta-like non-Phoenix robot as the primary adoption proof so the example cannot hide
+  Phoenix-season services or count only its outer call site as robot simplicity.
 - **Completion:** the example compiles against the pinned Pedro version, runs in a pure/fake adapter
   test where practical, contains no placeholder hardware config, and documents the exact files a
   student normally edits for a new alliance/path/routine. Android Studio and on-robot walkthroughs
   confirm the normal programming path is shorter and clearer than copying the full Phoenix season
-  graph. After their prerequisite items land, an advanced companion section demonstrates one
+  graph or completing Summer26's generated state-machine scaffold. Record total robot-code files,
+  lines, and concepts—not only the leaf routine call site—and identify the downstream framework-sync
+  step required before Bettabot can adopt it. After their prerequisite items land, an advanced
+  companion section demonstrates one
   alliance transform, a route supplier resolved at start, one Pedro progress callback that requests
   a robot capability, deadline-bounded intake, truthful route branching, vision fallback, and a
   match-time park takeover without introducing a second scheduler or Auto DSL.
