@@ -14,6 +14,16 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * implementation, but so are feedforward-plus-PID blends, asymmetric up/down regulators, voltage
  * compensation decorators, or other custom scalar control laws.</p>
  *
+ * <p>A {@link Pid#setOutputLimits(double, double) PID output limit} bounds only that controller's
+ * contribution. If later decorators add feedforward or voltage compensation, put
+ * {@link ScalarRegulators#outputLimited(ScalarRegulator, double, double)} outermost when the complete
+ * composed result needs an intentional narrower range. That policy limit is distinct from Plant
+ * target bounds and from the enclosing output boundary's universal command safety.</p>
+ *
+ * <p>An outer output limiter cannot provide generic saturation-aware anti-windup for an arbitrary
+ * inner controller. Controller-specific integral limits remain explicit, and the robot mechanism
+ * owner still decides enable, coast/hold, and reset policy.</p>
+ *
  * <h2>Typical usage</h2>
  *
  * <pre>{@code

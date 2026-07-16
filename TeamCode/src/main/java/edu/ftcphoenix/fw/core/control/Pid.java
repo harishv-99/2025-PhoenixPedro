@@ -18,8 +18,8 @@ import edu.ftcphoenix.fw.core.math.MathUtil;
  *       {@link #update(double, double)}, and receive a control output.</li>
  *   <li>Supports proportional, integral, and derivative terms:
  *     {@code output = kP * error + integral + derivative}.</li>
- *   <li>Optional clamping of the integral accumulator and output to avoid
- *       runaway behavior ("integral windup").</li>
+ *   <li>Independent optional limits for the integral contribution and this PID controller's
+ *       output.</li>
  *   <li>Derivative term is computed from the difference in error between
  *       successive calls.</li>
  * </ul>
@@ -44,7 +44,7 @@ import edu.ftcphoenix.fw.core.math.MathUtil;
  * <pre>{@code
  * Pid pid = Pid.withGains(0.8, 0.2, 0.05);
  * pid.setIntegralLimits(-0.5, 0.5); // clamp integral contribution
- * pid.setOutputLimits(-1.0, 1.0);   // clamp final output
+ * pid.setOutputLimits(-1.0, 1.0);   // clamp this PID controller's output
  * }</pre>
  *
  * <p>When switching modes or making large setpoint jumps, call
@@ -136,6 +136,12 @@ public final class Pid implements PidController {
      *
      * <p>This is useful when the PID output is applied directly as a power
      * command or velocity setpoint that must stay within a certain range.</p>
+     *
+     * <p>The limits apply to this controller's combined {@code P + I + D} result. A later
+     * {@link ScalarRegulator} decorator may still add or scale output. When a complete regulator
+     * composition needs a policy range, wrap it outermost with
+     * {@link ScalarRegulators#outputLimited(ScalarRegulator, double, double)}. Output limiting alone
+     * is not saturation-aware anti-windup; configure integral limits and reset policy separately.</p>
      *
      * @param min minimum output value
      * @param max maximum output value

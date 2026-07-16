@@ -256,6 +256,25 @@ Behavior guards and Plant guards are intentionally parallel, but they attach at 
 
 Keep static range declarations such as `bounded(min, max)` close to the Plant topology because they define the legal plant coordinate system. Direct power Plants are the simpler fixed-domain case: their normalized range is always `[-1, +1]`, so the builder does not ask students to declare it. Keep dynamic protection such as rate limits and interlocks in `targetGuards()`.
 
+For framework-regulated Plants, keep three different bounds at their proper layers:
+
+* A `Pid` output limit bounds that controller's own contribution. Feedforward, voltage
+  compensation, or another later regulator decorator can still change the command.
+* When robot policy needs a deliberately narrower range around the complete composed control law,
+  place `ScalarRegulators.outputLimited(...)` outermost around that composition. The decorator is
+  explicit control-law policy; putting another output-changing decorator outside it would change
+  what is covered by the limit.
+* Plant/output command safety is universal, not an optional policy. The normalized command boundary
+  remains responsible for keeping the command finite and inside its semantic domain even when no
+  `outputLimited(...)` decorator is present. A regulator limit does not replace target bounds,
+  Plant guards, or final output defense.
+
+An outer output limiter cannot generically feed saturation back into an arbitrary inner controller,
+so it does not claim saturation-aware anti-windup. Keep integral limits controller-specific. The
+robot mechanism owner also decides when regulation is enabled, whether a zero request means coast
+or active hold, and when controller history should be reset; those meanings must not be inferred by
+a generic scalar decorator.
+
 ### 2.3 The beginner entrypoint: `FtcActuators.plant(...)`
 
 `edu.ftcphoenix.fw.ftc.FtcActuators` is the recommended way to create Plants from FTC hardware. It lives in the FTC boundary because it depends directly on `HardwareMap`, FTC device classes, and FTC-specific motor tuning APIs.
