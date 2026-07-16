@@ -3,18 +3,20 @@
 Use this section when you want concrete, runnable framework examples plus the design reasoning
 behind them.
 
-The examples folder now has three complementary docs:
+The examples folder now has four complementary docs:
 
 - a progression guide for the full `TeleOp_01` → `TeleOp_09` sequence,
 - a dedicated walkthrough for the first explicit layered mechanism example,
-- and a shooter-focused case study for the AprilTag aim-assist examples.
+- a shooter-focused case study for the AprilTag aim-assist examples,
+- and a complete small Pedro autonomous lifecycle reference.
 
 ## Read in this order
 
 1. [`Examples Progression & Layered Mechanisms.md`](<Examples Progression & Layered Mechanisms.md>)
 2. [`Layered Shooter Example.md`](<Layered Shooter Example.md>)
 3. [`Shooter Case Study & Examples Walkthrough.md`](<Shooter Case Study & Examples Walkthrough.md>)
-4. [`../../tools/examples/`](<../../tools/examples/>)
+4. [`Pedro Autonomous Reference.md`](<Pedro Autonomous Reference.md>)
+5. [`../../tools/examples/`](<../../tools/examples/>)
 
 ## Pair with
 

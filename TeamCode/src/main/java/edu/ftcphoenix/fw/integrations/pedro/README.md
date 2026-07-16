@@ -2,7 +2,24 @@
 
 This folder is Phoenix's explicit boundary for Pedro Pathing. Core framework packages stay free of
 `com.pedropathing.*`; reusable adapter, field-transform, and runtime ownership code lives here;
-robot-specific paths and strategies remain under `robots/phoenix/autonomous/pedro/`.
+robot-specific paths and strategies remain under the owning robot package. Phoenix production paths
+live under `robots/phoenix/autonomous/pedro/`; the independent beginner reference lives under
+`robots/examples/pedro/`.
+
+## Small compiling Auto reference
+
+Start with [`Pedro Autonomous Reference`](<../../docs/examples/Pedro Autonomous Reference.md>) when
+you need the complete lifecycle without the Phoenix season graph. Its five robot-code files show one
+fixed practice path, a Plant-backed capability Task, explicit success/timeout/cancellation policy,
+one recurring follower heartbeat, deterministic stop, and a thin FTC OpMode.
+
+Four reference files are independent of Phoenix season code. The fifth,
+`PhoenixBasicPedroAutoExample`, is a disabled host that uses this repository's real Phoenix profile
+only to compile-check the physical construction and FTC INIT/START/loop/STOP boundary. A new robot
+replaces that host with its own verified runtime and mechanism wiring and adapts the concrete
+capability/routine/root types to its own mechanisms; it must not copy the Phoenix hardware profile.
+The guide counts all five robot-code files and documents the exact edit points, portability
+boundaries, and hardware checks that compilation cannot perform.
 
 ## Production ownership
 
@@ -139,6 +156,7 @@ tool-only follower to Phoenix Auto; it is not a second production option.
 
 ## Related docs
 
+- [`../../docs/examples/Pedro Autonomous Reference.md`](<../../docs/examples/Pedro Autonomous Reference.md>)
 - [`../../docs/core-concepts/Loop Structure.md`](<../../docs/core-concepts/Loop Structure.md>)
 - [`../../docs/design/Recommended Robot Design.md`](<../../docs/design/Recommended Robot Design.md>)
 - [`../../docs/drive-vision/AprilTag Localization & Fixed Layouts.md`](<../../docs/drive-vision/AprilTag Localization & Fixed Layouts.md>)

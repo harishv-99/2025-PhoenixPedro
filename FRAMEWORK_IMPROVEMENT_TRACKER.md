@@ -79,7 +79,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 15 | PHX-03 | Explicit Auto route-failure policy | Done | Keep generic sequence semantics and make continue/fallback/abort policy visible in the robot routine. |
 | 16 | PHX-04 | Match-time fallback takeover | Done | Bound only pre-park work, then start one live-pose park after early completion or a successful match-time cutoff. |
 | 17 | PHX-02 | Phoenix runtime readiness | Done | Validate calibration, Pedro construction, routes, alliance facts, and required services before enabling assists/Auto. |
-| 18 | EXAMPLE-02 | Compiling Pedro autonomous reference | Proposed | Show one small real path, capability Tasks, one follower heartbeat, explicit fallback, and a thin OpMode. |
+| 18 | EXAMPLE-02 | Compiling Pedro autonomous reference | Done | Show one small real path, capability Tasks, one follower heartbeat, explicit fallback, and a thin OpMode. |
 | 19 | CTRL-01 | Final scalar-regulator output constraints | Proposed | Constrain the final composed regulator command with one factory-only decorator, without adding flywheel policy or another Plant-builder path. |
 | 20 | SAFE-03 | Regulated Plant actuator-command truth | Proposed | Make every normalized regulated-Plant command finite, bounded, and truthful before the defensive hardware adapter. |
 | 21 | SOURCE-02 | Derived rate from sampled scalar position | Proposed | Derive units-per-second from any position `ScalarSource` in core; keep encoder hardware reads at the FTC boundary. |
@@ -3351,11 +3351,8 @@ writer, and explicit lifecycle ownership.
   alliance/plan, and each routine reads as a short semantic sequence of follow-path, intake, and
   shoot factories. SaMoTech's named `AutoStep[]` plans and Tech Tigers' short
   `CycleConfiguration[]` leaf OpModes reach a similar surface but require much larger hidden custom
-  machinery. Summer26/Bettabot independently shows the immediate onboarding gap: it has mechanism
-  capability Tasks and Pedro tuning constants, but its only Pedro OpMode is commented-out generated
-  scaffolding with no routine. The Phoenix example should achieve the short surface with the
-  ordinary framework vocabulary rather than teaching a generated plan language or fixed-cycle
-  state builder.
+  machinery. Phoenix should achieve that short surface with the ordinary framework vocabulary
+  rather than teaching a generated plan language or fixed-cycle state builder.
 - **Alternatives to compare:** rely on Pedro's Ivy example; expand Markdown snippets only; make the
   full Phoenix Decode Auto the starter; add a code generator/base OpMode; or add one small compiling
   Pedro-specific robot-side example after PEDRO-01/02 establish the correct integration contract.
@@ -3363,21 +3360,178 @@ writer, and explicit lifecycle ownership.
   robot. It should show one configured follower/integration owner, a tiny immutable path set, one
   reusable mechanism capability Task, a readable routine composition, explicit route fallback, a
   thin OpMode, one LoopClock/follower heartbeat, and deterministic cancellation. Keep Pedro types at
-  the integration/path boundary and use Phoenix Tasks rather than teaching Ivy beside them. Treat a
-  Betta-like non-Phoenix robot as the primary adoption proof so the example cannot hide
-  Phoenix-season services or count only its outer call site as robot simplicity.
+  the integration/path boundary and use Phoenix Tasks rather than teaching Ivy beside them. Keep
+  four reference classes independent of Phoenix-season services so the example cannot hide those
+  dependencies or count only its outer call site as robot simplicity.
 - **Completion:** the example compiles against the pinned Pedro version, runs in a pure/fake adapter
   test where practical, contains no placeholder hardware config, and documents the exact files a
   student normally edits for a new alliance/path/routine. Android Studio and on-robot walkthroughs
   confirm the normal programming path is shorter and clearer than copying the full Phoenix season
-  graph or completing Summer26's generated state-machine scaffold. Record total robot-code files,
-  lines, and concepts—not only the leaf routine call site—and identify the downstream framework-sync
-  step required before Bettabot can adopt it. After their prerequisite items land, an advanced
+  graph or assembling a generated state-machine scaffold. Record total robot-code files, lines, and
+  concepts—not only the leaf routine call site—and identify the framework/runtime prerequisites a
+  different robot must satisfy before adopting it. After their prerequisite items land, an advanced
   companion section demonstrates one
   alliance transform, a route supplier resolved at start, one Pedro progress callback that requests
   a robot capability, deadline-bounded intake, truthful route branching, vision fallback, and a
   match-time park takeover without introducing a second scheduler or Auto DSL.
-- **Decision record:** _Pending._
+- **Decision record (2026-07-15):**
+  - **Confirmed gap:** the checked-in production Pedro entry is
+    `PhoenixPedroAutoOpModeBase`, whose lifecycle is correct but whose useful behavior is spread
+    across the Phoenix profile, readiness, capabilities, path factory, routine factory, routine
+    coordinator, and bounded-pre-park coordinator. The seven principal Auto files alone total more
+    than 2,000 source lines, before the rest of the Phoenix mechanism and localization graph is
+    counted. Existing framework documentation contains isolated route/runtime snippets, and the
+    disabled framework examples are flat TeleOps; neither is a compiling end-to-end Pedro Auto.
+    The problem is therefore an example and portability gap, not evidence for another scheduler or
+    framework lifecycle abstraction.
+  - **Existing API and caller audit:** `PedroPathingRuntime.create(...)` already creates the one
+    validated drivetrain/localization graph; `pathBuilder()`, `setStartingPose(...)`, and
+    `driveAdapter()` expose the supported path, START-pose, route, recurring-heartbeat, and physical
+    stop boundaries. `RouteTasks.follow(...)` creates an eager fixed-route Task, and its retained
+    execution maps `COMPLETED` to `SUCCESS`, follower/Task timeout to `TIMEOUT`, and interruption,
+    replacement, cancellation, failure, or unknown termination to `CANCELLED`.
+    `Tasks.branchOnOutcome(...)` can therefore run a capability Task only after confirmed route
+    success, run one explicitly named safe fallback only after timeout, and abort without starting
+    either continuation after cancellation-like endings. `TaskRunner`, `PlantTasks`, and the
+    adapter's same-cycle heartbeat deduplication cover the remaining lifecycle. Current production
+    construction uses the project `Constants.createPhoenixAutoRuntime(...)` factory; there is no
+    independent robot-side caller. The two public eager `RouteTask` constructors and mutable/
+    nullable route config are existing API debt already assigned to CLEAN-01, not a reason for
+    EXAMPLE-02 to add another spelling.
+  - **Alternatives considered:** expand Markdown snippets only; teach Pedro/Ivy beside Phoenix
+    Tasks; reduce the existing Phoenix season Auto to a nominal starter; copy another robot's
+    unverified constants into this repository; publish placeholder hardware names in a disabled
+    OpMode; add a generic base OpMode, code generator, Auto DSL, or new Pedro facade; provide only a
+    constructor-injected test fixture; or combine an independent small example with one explicit
+    host wiring boundary. Documentation alone cannot compile-check lifecycle. Phoenix's graph hides
+    the very adoption work being taught. A second scheduler/facade or generated plan language adds
+    concepts without removing a current limitation. A test-only fixture does not prove FTC
+    INIT/START/loop/STOP. Placeholder names are still unsafe when disabled. Copying another robot's
+    values would create a second configuration authority and could publish hardware directions or
+    tuning that have not been verified for the configuration-owning robot.
+  - **Framework Principles and simplicity comparison:** the selected design has one `LoopClock`, one
+    Pinpoint owner, one stable Pedro heartbeat, one final drivetrain writer, source-driven mechanism
+    output, fresh single-use capability Tasks, explicit outcome policy, and active-only idempotent
+    cancellation. It keeps Pedro types in the host/path/integration edge, keeps route geometry and
+    Auto policy in robot code, and keeps the annotated OpMode as lifecycle forwarding. The routine
+    uses only `RouteTasks.follow(...)`, `Tasks.branchOnOutcome(...)`, and a named capability Task;
+    there is no custom Task state machine, base class, generated state, resource/requirements
+    system, or public framework API. The implementation audit corrected the original seven-bucket
+    estimate: the full reference—not only its short routine—is five Java files, 630 source lines,
+    and about 15 concrete concepts once hardware/runtime wiring, FTC lifecycle, composition,
+    localization, heartbeat, route execution, Task lifecycle, Plant realization, telemetry, and
+    fail-stop cleanup are counted separately.
+  - **Chosen basic-reference structure:** add the independent package
+    `edu.ftcphoenix.robots.examples.pedro` with (1) `BasicPedroAutoMechanism`, one small Plant-backed
+    capability whose factory always returns a fresh cancellation-safe Task; (2)
+    `BasicPedroAutoPaths`, one declared Pedro start pose and one eagerly built short practice path;
+    (3) `BasicPedroAutoRoutine`, the approximately 15-25-line semantic route/success/timeout graph;
+    and (4) `BasicPedroAutoRobot`, the composition root that owns the clock, predictor update,
+    adapter heartbeat, runner, mechanism update, and idempotent best-effort stop. Add (5) one
+    `@Disabled` Phoenix-hosted test OpMode that constructs those four objects using
+    `PhoenixProfile.current()` and `Constants.createPhoenixAutoRuntime(...)` only at the physical
+    wiring boundary; it must not instantiate or delegate to `PhoenixRobot`, Phoenix readiness,
+    targeting, scoring services, paths, routines, or season strategy. Reuse one real Phoenix
+    mechanism mapping from the profile rather than duplicating a name or tuning value. A new robot
+    replaces this one host file with its own verified runtime/mechanism construction while retaining
+    the lifecycle/routine shape.
+  - **Chosen lifecycle and policy:** construct hardware and the fixed path during INIT without
+    starting behavior. At FTC START, apply the declared Pedro pose once, reset the shared clock at
+    that exact boundary, and enqueue one fresh root routine. Each loop advances
+    `clock -> predictor -> driveAdapter heartbeat -> TaskRunner -> mechanism Plant -> telemetry`;
+    the route Task may also call the adapter, whose same-cycle guard prevents a second vendor
+    update. The fixed route is the deadline-like operation by itself: confirmed completion runs one
+    capability action, a truthful timeout runs a safe mechanism fallback, and all cancellation-like
+    terminal statuses abort. STOP first cancels and clears the runner, then restores/stops the
+    mechanism and immediately stops the Pedro adapter, attempting every cleanup action once even if
+    an earlier one fails. No raw `Follower.update()`, `breakFollowing()`, or competing pose owner is
+    exposed in the independent package.
+  - **Documentation and adoption proof:** add `fw/docs/examples/Pedro Autonomous Reference.md` and
+    link it from the examples and Pedro integration indexes. The guide names the ordinary edit
+    points: verified hardware/tuning in the host factory, geometry/start pose in `Paths`, semantic
+    ordering/timeouts/failure policy in `Routine`, and robot capability realization only when the
+    robot does not already have one. It must count all example files/lines/concepts and explain that
+    another robot should keep its existing capability Tasks, provide its own paths and routine, and
+    wire one thin OpMode/composition root against the completed PEDRO/ROUTE/TASK baseline. Hardware
+    names, directions, localization calibration, constraints, and tuning remain owned and verified
+    by the adopting robot; none are copied into this reference.
+  - **Bounded scope:** this item teaches one fixed practice route and one explicit timeout fallback.
+    It does not reopen deferred FIELD-01, add alliance transforms, live-pose construction, vision,
+    progress callbacks, deadline-bounded intake, or match-time park takeover. Those belong in the
+    already recorded advanced companion after their stated prerequisites, not silently in the
+    beginner example. It also does not fix CLEAN-01 route-factory/config debt or extract AUTO-01
+    lifecycle ceremony from one example.
+  - **Verification plan:** compile TeamCode against pinned Pedro 2.1.2; run the full unit suite; add
+    fake-focused tests for START-pose/clock boundaries, exactly one root heartbeat per cycle, route
+    success, timeout fallback, cancellation-like abort, direct cancellation, mechanism safe target,
+    idempotent best-effort STOP, and INIT-to-STOP forwarding. Statically verify that the independent
+    example package imports no `edu.ftcphoenix.robots.phoenix` classes and does not call raw Follower
+    lifecycle APIs. Perform a portability audit that identifies the exact framework/runtime
+    prerequisites and host-factory replacement required by another robot. In
+    Android Studio, review all five Java files and the guide rather than only the routine. Physical
+    testing remains a deliberately enabled, low-speed practice-path walkthrough on the
+    configuration-owning robot after motor directions, Pinpoint calibration, clear space, and an
+    immediate STOP are verified.
+  - **Approval (2026-07-15):** the user approved this example ownership/lifecycle design. The
+    implementation remains limited to the five-file basic reference, its focused tests and guide,
+    and the documented portability audit; no later tracker item or advanced Auto feature is
+    included.
+  - **Implementation (2026-07-15):** added four Phoenix-season-independent classes under
+    `edu.ftcphoenix.robots.examples.pedro`: a writable-Plant intake capability, one fixed 12-inch
+    Pedro practice path, an outcome-aware route/capability routine, and the explicit Auto
+    composition root. Added the disabled `PhoenixBasicPedroAutoExample` under the Phoenix OpMode
+    package as the sole real-hardware host. START applies the declared pose, resets one clock, and
+    enqueues without advancing the route; each loop owns
+    `clock -> localization -> Pedro heartbeat -> TaskRunner -> Plant`; STOP best-effort cancels and
+    clears work, idles/stops the mechanism, and physically stops drive. No framework API, Auto DSL,
+    base class, custom Task state machine, placeholder hardware name, or advanced Auto feature was
+    added.
+  - **Simplicity and boundary audit (2026-07-15):** the exact production counts are 98 lines for
+    `BasicPedroAutoMechanism`, 52 for `BasicPedroAutoPaths`, 54 for
+    `BasicPedroAutoRoutine`, 209 for `BasicPedroAutoRobot`, and 217 for the Phoenix host: 630 total,
+    with 413 in the four independent classes. This is materially smaller than the Phoenix season
+    graph but is not honestly a one-line or tiny complete robot. The semantic routine remains about
+    20 lines; most bulk is explicit lifecycle and best-effort cleanup. Compressing it with lambdas
+    would not remove concepts, while extracting a public lifecycle/cleanup helper from one example
+    would be a major API decision without enough evidence. Keep this result as concrete AUTO-01
+    evidence. The four independent classes import no Phoenix season type; the concrete routine/root
+    intentionally name the example capability, so another robot adapts the pattern rather than
+    pretending the class is a drop-in generic base.
+  - **Adversarial corrections (2026-07-15):** review made the retained `PathChain` accessor
+    package-private, documented the idle-at-routine-entry invariant for cancellation-like aborts,
+    ensured partial INIT failure stops a Plant even if capability construction did not take
+    ownership, and made host telemetry failures fail-stop the root while preserving cleanup
+    failures as suppressed exceptions. The guide reports all 630 lines and 15 concepts, does not
+    claim superiority over raw generated scaffolding by line count, and distinguishes reusable
+    framework guarantees from robot-owned route and mechanism policy.
+  - **Portability audit (2026-07-15):** the example has no dependency on another robot project or
+    its hardware constants. An adopting robot keeps its existing capability Tasks, syncs the
+    supported PEDRO/ROUTE/TASK baseline, and adapts the example's paths/routine/root/host pattern.
+    Its owners must supply and verify motor names and directions, localization calibration, Pedro
+    constraints, and follower tuning before enabling Auto. This repository does not claim that a
+    successful source-level adaptation proves another robot's physical configuration.
+  - **Automated verification (2026-07-15):** Android Studio's bundled JBR completed
+    `:TeamCode:compileDebugJavaWithJavac` and the focused EXAMPLE-02 tests, then
+    `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac`. The full result is 389 tests,
+    0 failures, 0 errors, and 0 skipped; 9 tests directly cover capability cancellation, truthful
+    route success/timeout/cancellation policy, START and first-loop ordering, exact-once
+    best-effort STOP, FTC lifecycle forwarding, and telemetry-failure fail-stop. Static checks found
+    no Phoenix imports in the four independent classes, no raw/blocking follower lifecycle calls,
+    no direct framework Task construction, no trailing whitespace, and no broken local links in the
+    four affected documentation files. The only compiler output was the repository's existing
+    Java-8-on-JDK-21 deprecation warning.
+  - **Android Studio audit point:** inspect all five production Java files and
+    `fw/docs/examples/Pedro Autonomous Reference.md`, not only the short routine. Confirm the
+    declared `(24, 24, 0)` to `(36, 24, 0)` Pedro practice geometry, success/timeout/cancellation
+    policy, enqueue-only START, loop ownership order, best-effort STOP, the disabled real-profile
+    host boundary, complete line/concept accounting, and candid portability limits.
+    Physical drive/Pinpoint/intake behavior remains unverified; deliberately enable this test only
+    after directions, calibration, conservative constraints, clear space, and immediate STOP are
+    checked on the configuration-owning robot.
+  - **Manual verification (2026-07-15):** the user confirmed the five-file implementation in
+    Android Studio and approved publication after the framework documentation and this item record
+    were made project-neutral. No production Java behavior changed during that wording adjustment.
+    Robot-hardware validation remains deliberately outstanding as documented above.
 
 ### AUTO-01 - Compact bounded Auto continuation
 

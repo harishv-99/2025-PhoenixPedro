@@ -33,6 +33,7 @@ If you are new to Phoenix, read in this order:
 - [`design/Recommended Robot Design.md`](<design/Recommended Robot Design.md>)
 - [`design/Supervisors & Pipelines.md`](<design/Supervisors & Pipelines.md>)
 - [`design/Output Tasks & Queues.md`](<design/Output Tasks & Queues.md>)
+- [`examples/Pedro Autonomous Reference.md`](<examples/Pedro Autonomous Reference.md>)
 - [`../Framework Principles.md`](<../Framework Principles.md>)
 
 ### I am building signal pipelines or stateful source composition
@@ -50,6 +51,8 @@ If you are new to Phoenix, read in this order:
 - [`drive-vision/Mechanism Target Planning.md`](<drive-vision/Mechanism Target Planning.md>)
 - [`drive-vision/AprilTag Localization & Fixed Layouts.md`](<drive-vision/AprilTag Localization & Fixed Layouts.md>)
 - [`drive-vision/AprilTag Practice Setup.md`](<drive-vision/AprilTag Practice Setup.md>)
+- [`examples/Pedro Autonomous Reference.md`](<examples/Pedro Autonomous Reference.md>)
+- [`../integrations/pedro/README.md`](<../integrations/pedro/README.md>)
 - [`testing-calibration/Robot Calibration Tutorials.md`](<testing-calibration/Robot Calibration Tutorials.md>)
 
 ### I want to bring up and calibrate a robot from scratch
@@ -66,6 +69,7 @@ If you are new to Phoenix, read in this order:
 - [`examples/Examples Progression & Layered Mechanisms.md`](<examples/Examples Progression & Layered Mechanisms.md>)
 - [`examples/Layered Shooter Example.md`](<examples/Layered Shooter Example.md>)
 - [`examples/Shooter Case Study & Examples Walkthrough.md`](<examples/Shooter Case Study & Examples Walkthrough.md>)
+- [`examples/Pedro Autonomous Reference.md`](<examples/Pedro Autonomous Reference.md>)
 - [`../tools/examples/`](<../tools/examples/>)
 
 ### I am maintaining or extending the framework
