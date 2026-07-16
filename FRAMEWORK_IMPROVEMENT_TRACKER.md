@@ -80,7 +80,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 16 | PHX-04 | Match-time fallback takeover | Done | Bound only pre-park work, then start one live-pose park after early completion or a successful match-time cutoff. |
 | 17 | PHX-02 | Phoenix runtime readiness | Done | Validate calibration, Pedro construction, routes, alliance facts, and required services before enabling assists/Auto. |
 | 18 | EXAMPLE-02 | Compiling Pedro autonomous reference | Done | Show one small real path, capability Tasks, one follower heartbeat, explicit fallback, and a thin OpMode. |
-| 19 | CTRL-01 | Final scalar-regulator output constraints | Proposed | Constrain the final composed regulator command with one factory-only decorator, without adding flywheel policy or another Plant-builder path. |
+| 19 | CTRL-01 | Final scalar-regulator output constraints | Done | Constrain the final composed regulator command with one factory-only decorator, without adding flywheel policy or another Plant-builder path. |
 | 20 | SAFE-03 | Regulated Plant actuator-command truth | Proposed | Make every normalized regulated-Plant command finite, bounded, and truthful before the defensive hardware adapter. |
 | 21 | SOURCE-02 | Derived rate from sampled scalar position | Proposed | Derive units-per-second from any position `ScalarSource` in core; keep encoder hardware reads at the FTC boundary. |
 | 22 | API-03 | Builder and owner-config validation | Proposed | Reject invalid hardware and controller configuration at the earliest fully informed boundary with actionable messages. |
@@ -3663,12 +3663,12 @@ writer, and explicit lifecycle ownership.
   output limiting from integral limiting, non-finite-output defense, Plant target bounds, and
   actuator saturation. SAFE-03 separately owns the universal normalized-command invariant for
   regulated Plants that do not opt into a narrower policy constraint.
-- **Leading hypothesis:** add one factory-only final-output constraint decorator in
-  `ScalarRegulators`, with finite ordered bounds, delegated reset, and debug fields for unconstrained
+- **Leading hypothesis:** add one factory-only `ScalarRegulators.outputLimited(...)` decorator, with
+  finite ordered bounds, delegated reset, and debug fields for unconstrained
   output, applied output, and whether limiting occurred. It composes explicitly around PIDF or
   voltage compensation and adds no public concrete class, duplicate instance spelling, Plant-builder
   branch, flywheel vocabulary, automatic zero-setpoint reset, or claim of saturation-aware
-  anti-windup. Confirm the exact factory name and non-finite policy at the decision gate.
+  anti-windup.
 - **Anti-windup boundary:** an outer decorator cannot generically feed its saturation state back into
   an arbitrary inner regulator. Compare existing integral limits/reset, controller-specific
   conditional integration or back-calculation, and a richer regulator contract using focused
@@ -3681,7 +3681,171 @@ writer, and explicit lifecycle ownership.
   selected limit reaches the output and its diagnostics agree. Javadocs and the shooter examples show
   one obvious composition path and clearly separate generic limiting from robot-owned disable/coast
   policy; hardware output adapters retain cheap defensive saturation.
-- **Decision record:** _Pending._
+- **Decision record (2026-07-15):**
+  - **Confirmed behavior and minimal trace:** `Pid.update(...)` clamps only its own `P + I + D`
+    result. `ScalarRegulators.pidf(...)` then adds setpoint feedforward, and
+    `voltageCompensated(...)` can scale that combined result afterward. For example, a PID limited to
+    `[-0.65, +0.65]` returns `0.65`; `0.20` feedforward makes the regulator result `0.85`; a `1.30`
+    voltage multiplier then makes it `1.105`. Neither the PID limit nor an eventual FTC
+    `[-1, +1]` clamp expresses an intentional complete-command range such as `[0, 0.65]`. The issue
+    is therefore confirmed by the traced current call order without inventing a new Plant behavior.
+  - **Current callers and construction paths:** `ScalarRegulators` is already the sole public
+    construction facade for built-in Plant regulators: `pid(...)`, the function and linear-gain
+    `pidf(...)` overloads, `setpointFeedforward(...)`, and `voltageCompensated(...)`; every concrete
+    implementation is private. The three student-facing regulated `FtcActuators` paths (motor
+    velocity, motor position, and CR-servo position) all accept an already composed
+    `ScalarRegulator` and pass it to `MappedVelocityPlant` or `MappedPositionPlant`. The lower-level
+    `Plants.positionFromPower(...)` and `velocityFromPower(...)` paths do the same. The only compiled
+    in-repository call site is the external-sensor lift example, which uses a plain PID regulator and
+    needs no migration. There is no current Phoenix-season caller. The FTC actuator guide's
+    PIDF-plus-voltage flywheel is the canonical documentation caller to update.
+  - **Public construction-layer audit:** retain `ScalarRegulator` as the custom-control-law extension
+    seam and retain `ScalarRegulators` as the only built-in construction/decorator layer. The
+    `pidf(controller, double kF)` overload has distinct student value because it removes a lambda for
+    the common linear case. `Pid.setOutputLimits(...)` remains a distinct controller-contribution
+    limit when PID is the complete control law; it is not another spelling for complete-regulator
+    limiting. `ScalarControllers` remains a distinct cycle-memoized `ScalarSource` family and must
+    not gain a sibling limiter. The audit also found that public `new Pid(kP, kI, kD)` and
+    `Pid.withGains(...)` are equivalent construction spellings with no in-repository constructor
+    caller. Their migration/removal is explicitly deferred to CLEAN-01 rather than bundled into this
+    behavioral item; CTRL-01 does not copy that existing redundancy.
+  - **Alternatives considered:** keep robot-local wrappers; document ordering only; use
+    `Pid.setOutputLimits(...)`; rely on FTC saturation; add a limit to each regulated-Plant builder;
+    publish a concrete/status-bearing limiter type; add one factory-only generic decorator; or add a
+    controller feedback contract for saturation-aware anti-windup. No change leaves each robot to
+    repeat validation, clamp math, reset/debug delegation, and state reporting. Documentation and
+    PID limits cannot enforce a range after later decorators. FTC saturation is broader, late, and
+    cannot express asymmetric or intentionally reduced ranges. A Plant-builder branch duplicates
+    the same operation across three staged builders, hides ordering, and omits lower-level users.
+    Generic anti-windup cannot be inferred backward through arbitrary feedforward and scaling and is
+    unsupported by the current zero-`kI` evidence.
+  - **Simplicity comparison:** the normal public call adds one discoverable outer factory around the
+    already composed regulator:
+
+    ```java
+    ScalarRegulator regulator = ScalarRegulators.outputLimited(
+            ScalarRegulators.voltageCompensated(pidf, voltage, 13.0, 9.0, 1.4),
+            0.0,
+            maximumOutputPower);
+    ```
+
+    Students learn one distinction: a PID output limit bounds the PID contribution, while
+    `outputLimited(...)` bounds everything inside it. They do not learn a public limiter class,
+    status interface, builder branch, bounds object, instance/default-method twin, or symmetric-max
+    overload. The composition order remains visible at the call site and construction failures name
+    the invalid argument.
+  - **Chosen public API:** add only
+    `ScalarRegulators.outputLimited(ScalarRegulator inner, double minOutput, double maxOutput)`,
+    returning the declared `ScalarRegulator` interface and backed by one private implementation.
+    Bounds are inclusive, finite, and ordered with `minOutput <= maxOutput`; equal bounds are valid,
+    reversed bounds are rejected rather than silently swapped, and bounds are not restricted to
+    `[-1, +1]` because regulator command units are generic. The name deliberately omits `final`:
+    another output-changing decorator placed outside it could change the result, so documentation
+    requires the intentional complete-command limit to be outermost.
+  - **Update, failure, reset, and diagnostics contract:** each call invokes the inner regulator
+    exactly once with the supplied operands; there is no same-cycle cache because repeated calls may
+    intentionally use different setpoints or measurements. A finite result is constrained by exact
+    range comparison, with exact-boundary values reported as not limited. `NaN` or either infinity
+    from the inner regulator throws an actionable `IllegalStateException` rather than converting a
+    numerical failure into a possibly dangerous command. `reset()` delegates once and clears local
+    numeric diagnostics to `NaN`. Stable debug fields report `minOutput`, `maxOutput`,
+    `lastUnconstrainedOutput`, `lastOutput`, and `lastOutputLimited`, then nest the inner regulator's
+    diagnostics under `.inner`. The factory exposes no typed `wasLimited()` accessor; limiting is
+    tuning/debug information unless a future real operational caller proves otherwise.
+  - **Ownership and safety boundary:** this decorator owns one optional control-law policy range. It
+    does not change Plant target bounds or `Plant.getAppliedTarget()`, does not guarantee downstream
+    grouped/scaled child commands, does not replace FTC adapter defense, and does not make universal
+    finite normalized-output truth optional. SAFE-03 retains those Plant/output responsibilities.
+    It also does not provide saturation-aware integral control: callers retain explicit integral
+    limits and robot-owned controller reset/enable policy.
+  - **Summer26/Bettabot simplification:** the current 60-line `CappedFlywheelRegulator` combines two
+    different responsibilities. CTRL-01 moves reusable bounds validation, clamp math, unconstrained/
+    applied/limited bookkeeping, limiter debug keys, and the custom `wasLimited()` machinery into
+    the framework. Exact current behavior still requires a small robot-owned
+    `CoastingFlywheelRegulator`: when the flywheel setpoint is non-positive it resets its inner
+    regulator and returns exactly zero; otherwise it delegates. A `[0, maximum]` limit alone is not
+    equivalent because positive integral history or a negative/noisy velocity measurement can still
+    request positive power at a zero setpoint. Keeping that 29-line policy wrapper inside the new
+    outer `outputLimited(...)` call reduces the complete custom class and call-site burden by about
+    30 lines. Moving the non-operational `powerLimited` field and its presenter plumbing to the
+    standard regulator/Plant debug output removes about five more, reducing the pinned robot Java
+    surface from 1,047 to about 1,012 physical lines. PID/PIDF tuning, maximum-power configuration,
+    feedback units, Plant wiring, and exact coast/reset policy correctly remain robot code.
+  - **Rejected and deferred designs:** do not add a public limiter class or diagnostic subtype merely
+    to preserve one telemetry boolean; do not add `ScalarRegulator.outputLimited(...)`, an `of(...)`
+    alias, a max-absolute overload, a range value type, or three Plant-builder spellings. Do not make
+    zero-setpoint coast/reset automatic: zero velocity may mean active holding/braking for another
+    mechanism. A generic conditional-activation decorator is not justified by this one policy
+    caller. Do not modify PID construction aliases, controller parameter validation, universal
+    regulated-Plant command truth, signal filtering, or tuning workflow in this item.
+  - **Verification plan:** add pure `ScalarRegulatorsTest` coverage for null input; every non-finite
+    and reversed bound; equal bounds; exact boundaries and one-ULP excursions; positive/negative
+    limiting; PID-limit-then-feedforward order; correct and deliberately incorrect voltage/
+    constraint order; all non-finite inner results; repeated same-cycle calls; exact reset
+    delegation; null-safe debug; stable fields; and nested diagnostics. Add one focused fake-output
+    case to `MappedVelocityPlantSafetyTest` proving the selected regulator result reaches the
+    semantic `PowerOutput` seam while the Plant's applied target remains in mechanism units. Update
+    `ScalarRegulator`/`ScalarRegulators` Javadocs, the generic FTC actuator/flywheel guide, the layered
+    shooter guide, and the stable Framework Principles distinction among controller contribution,
+    complete-regulator policy, and Plant/output safety. Framework documentation must remain project-
+    neutral. Run the focused tests, full `:TeamCode:testDebugUnitTest`, and
+    `:TeamCode:compileDebugJavaWithJavac`; inspect XML totals, caller/API searches, changed Markdown
+    links, and `git diff --check`; then request Android Studio review. Robot-hardware verification
+    remains downstream: an adopting robot must check zero and maximum boundaries, no reverse drive,
+    reset-clean re-enable behavior, diagnostics, and its owning lifecycle's stop response after the
+    deliberate non-finite-result exception.
+  - **Approval gate:** this adds a public regulator-composition API and fixes its ordering, numerical
+    failure, reset, and diagnostics contract. It is therefore a major API decision. Stop at
+    **Ready** for explicit user approval before editing Java, tests, or framework documentation.
+  - **Approval (2026-07-15):** the user approved the factory-only
+    `ScalarRegulators.outputLimited(inner, minOutput, maxOutput)` design, including outermost
+    composition, finite ordered bounds, fail-fast non-finite output, delegated reset/debugging, no
+    typed limiting-status API, and the robot-owned zero-setpoint coast/reset boundary.
+  - **Implementation (2026-07-15):** `ScalarRegulators` now exposes the approved single
+    `outputLimited(inner, minOutput, maxOutput)` factory backed by a private decorator. Construction
+    rejects null inner regulators, non-finite bounds, and reversed bounds with argument-specific
+    values; equal bounds remain valid. Each update delegates exactly once, constrains a finite result
+    by exact inclusive comparison, records stable nested diagnostics, and throws with remediation
+    guidance after retaining a non-finite result. Reset delegates once and clears limiter state. No
+    concrete/status type, instance/default-method spelling, overload, bounds object, Plant-builder
+    branch, automatic coast/reset policy, or anti-windup contract was added.
+  - **Documentation and focused tests (2026-07-15):** `Pid`, `ScalarRegulator`, and
+    `ScalarRegulators` Javadocs plus Framework Principles and the generic actuator/layered-shooter
+    guides now distinguish PID contribution limits, outermost complete-regulator policy, and
+    Plant/output command safety while retaining a short beginner PID example. Framework docs remain
+    project-neutral. A new `ScalarRegulatorsTest` has 11 focused cases covering configuration,
+    boundaries, ordering, repeated calls, failure diagnostics, reset, and debug nesting; the existing
+    mapped-velocity safety suite adds one semantic-output integration case. The focused XML total is
+    21 tests with zero failures, errors, or skips.
+  - **Automated verification (2026-07-15):** Android Studio's bundled JBR completed the focused
+    regulator/mapped-velocity suites and then
+    `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac`. The full XML result is 44
+    suites and 401 tests with zero failures, errors, or skips. The only compiler output is the
+    repository's existing Java-8-on-JDK-21 source/target deprecation warning.
+  - **Static and independent verification (2026-07-15):** `git diff --check`, an affected-file
+    trailing-whitespace scan including the untracked new test, the new same-document Markdown anchor,
+    exhaustive `ScalarRegulator` factory/implementation/caller searches, and project-neutrality
+    searches all pass. Three independent reviews covered API construction-layer scope, numerical and
+    reset/debug correctness, test validity, Framework Principles, student simplicity, and
+    documentation. The reviews corrected a weak decorator-order test, aligned actionable error text,
+    restored the short beginner Javadoc example, and removed a duplicated guide snippet; final review
+    found no blocker. The intentional remaining boundary is explicit: `outputLimited(...)` owns no
+    hardware and therefore cannot itself zero a previously commanded actuator after throwing on a
+    non-finite inner result. The owning lifecycle and SAFE-03 retain stop/failure and universal
+    regulated-command responsibilities.
+  - **Android Studio audit point:** inspect `ScalarRegulators.outputLimited(...)` and its private
+    implementation, the `Pid`/`ScalarRegulator` Javadocs, the three-layer rule in Framework
+    Principles, the actuator and layered-shooter examples, `ScalarRegulatorsTest`, and the added
+    mapped-velocity integration case. Confirm that the limit is outermost after PIDF/voltage
+    compensation, equal/inclusive bounds and non-finite failures read clearly, diagnostics distinguish
+    unconstrained from applied output, and no public concrete type, status interface, Plant-builder
+    spelling, zero-setpoint policy, or anti-windup claim was introduced. This repository has no
+    production hardware caller, so robot testing is not required for this pure decorator. When an
+    adopting flywheel migrates, separately verify exact coast/reset policy, zero and maximum output,
+    no reverse drive, clean re-enable, diagnostics, and owning-lifecycle cleanup on the real robot.
+  - **Manual verification (2026-07-15):** the user confirmed the CTRL-01 implementation in Android
+    Studio and approved publication. No robot-hardware run is claimed for this pure decorator; the
+    downstream adopting-robot checks remain as documented above.
 
 ### SOURCE-02 - Derived rate from sampled scalar position
 

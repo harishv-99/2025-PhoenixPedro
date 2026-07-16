@@ -86,9 +86,10 @@ public final class ScalarRegulators {
      * <p>{@code minimumVoltage} is used as a denominator floor so a very low or noisy voltage reading
      * cannot create an extreme scale. {@code maximumScale} is an additional upper cap on the multiplier.
      * If the voltage source returns {@code NaN}, infinity, or a non-positive value, compensation is
-     * disabled for that sample and the scale is {@code 1.0}. The wrapper does not clamp the final
-     * command; use controller output limits or the enclosing output adapter when the command is
-     * normalized power.</p>
+     * disabled for that sample and the scale is {@code 1.0}. The wrapper does not constrain its
+     * output. Wrap the complete composition with {@link #outputLimited(ScalarRegulator, double,
+     * double)} when it needs an intentional policy range; the enclosing Plant/output boundary still
+     * owns its separate defensive command invariant.</p>
      *
      * <pre>{@code
      * ScalarRegulator compensated = ScalarRegulators.voltageCompensated(
@@ -114,6 +115,48 @@ public final class ScalarRegulators {
                                                      double maximumScale) {
         return new VoltageCompensatedScalarRegulator(inner, supplyVoltage,
                 referenceVoltage, minimumVoltage, maximumScale);
+    }
+
+    /**
+     * Constrain an existing regulator's complete output to an inclusive range.
+     *
+     * <p>Place this decorator outside every output-changing decorator that the range must cover.
+     * For example, the following range applies after both feedforward and voltage compensation:</p>
+     *
+     * <pre>{@code
+     * ScalarRegulator flywheel = ScalarRegulators.outputLimited(
+     *     ScalarRegulators.voltageCompensated(
+     *         ScalarRegulators.pidf(pid, rpm -> kV * rpm),
+     *         supplyVoltage,
+     *         13.0,
+     *         9.0,
+     *         1.4
+     *     ),
+     *     0.0,
+     *     maximumOutputPower
+     * );
+     * }</pre>
+     *
+     * <p>{@link Pid#setOutputLimits(double, double)} instead limits only that PID controller's
+     * contribution before later regulator decorators run. This decorator is an intentional
+     * control-law policy; it does not replace Plant target bounds, final normalized-output defense,
+     * controller-specific anti-windup, or robot-owned enable/coast/reset policy.</p>
+     *
+     * <p>The returned regulator rejects a non-finite inner result rather than turning invalid
+     * control math into a bounded but potentially dangerous command.</p>
+     *
+     * @param inner     regulator whose complete result should be constrained
+     * @param minOutput inclusive finite lower output bound, in the inner regulator's output units
+     * @param maxOutput inclusive finite upper output bound, in the inner regulator's output units
+     * @return regulator decorator that constrains the output of {@code inner}
+     * @throws NullPointerException     if {@code inner} is null
+     * @throws IllegalArgumentException if either bound is non-finite or
+     *                                  {@code minOutput > maxOutput}
+     */
+    public static ScalarRegulator outputLimited(ScalarRegulator inner,
+                                                double minOutput,
+                                                double maxOutput) {
+        return new OutputLimitedScalarRegulator(inner, minOutput, maxOutput);
     }
 
     private static final class PidScalarRegulator implements ScalarRegulator {
@@ -311,6 +354,82 @@ public final class ScalarRegulators {
                     .addData(p + ".lastInnerOutput", lastInnerOutput)
                     .addData(p + ".lastOutput", lastOutput);
             supplyVoltage.debugDump(dbg, p + ".supplyVoltage");
+            inner.debugDump(dbg, p + ".inner");
+        }
+    }
+
+    /**
+     * Applies one explicit policy range after an inner regulator has computed its complete output.
+     */
+    private static final class OutputLimitedScalarRegulator implements ScalarRegulator {
+        private final ScalarRegulator inner;
+        private final double minOutput;
+        private final double maxOutput;
+
+        private double lastUnconstrainedOutput = Double.NaN;
+        private double lastOutput = Double.NaN;
+        private boolean lastOutputLimited;
+
+        private OutputLimitedScalarRegulator(ScalarRegulator inner,
+                                             double minOutput,
+                                             double maxOutput) {
+            this.inner = Objects.requireNonNull(inner, "inner");
+            if (!Double.isFinite(minOutput)) {
+                throw new IllegalArgumentException(
+                        "minOutput must be finite; got minOutput=" + minOutput
+                                + ", maxOutput=" + maxOutput);
+            }
+            if (!Double.isFinite(maxOutput)) {
+                throw new IllegalArgumentException(
+                        "maxOutput must be finite; got minOutput=" + minOutput
+                                + ", maxOutput=" + maxOutput);
+            }
+            if (minOutput > maxOutput) {
+                throw new IllegalArgumentException(
+                        "minOutput must be <= maxOutput; got minOutput=" + minOutput
+                                + ", maxOutput=" + maxOutput);
+            }
+            this.minOutput = minOutput;
+            this.maxOutput = maxOutput;
+        }
+
+        @Override
+        public double update(double setpoint, double measurement, LoopClock clock) {
+            lastUnconstrainedOutput = inner.update(setpoint, measurement, clock);
+            lastOutput = Double.NaN;
+            lastOutputLimited = false;
+
+            if (!Double.isFinite(lastUnconstrainedOutput)) {
+                throw new IllegalStateException(
+                        "outputLimited(...) received a non-finite output from the inner regulator; got "
+                                + lastUnconstrainedOutput
+                                + ". Check the setpoint, measurement, feedforward, and compensation inputs.");
+            }
+
+            lastOutputLimited = lastUnconstrainedOutput < minOutput
+                    || lastUnconstrainedOutput > maxOutput;
+            lastOutput = MathUtil.clamp(lastUnconstrainedOutput, minOutput, maxOutput);
+            return lastOutput;
+        }
+
+        @Override
+        public void reset() {
+            inner.reset();
+            lastUnconstrainedOutput = Double.NaN;
+            lastOutput = Double.NaN;
+            lastOutputLimited = false;
+        }
+
+        @Override
+        public void debugDump(DebugSink dbg, String prefix) {
+            if (dbg == null) return;
+            String p = (prefix == null || prefix.isEmpty()) ? "outputLimitedRegulator" : prefix;
+            dbg.addData(p + ".class", "OutputLimitedScalarRegulator")
+                    .addData(p + ".minOutput", minOutput)
+                    .addData(p + ".maxOutput", maxOutput)
+                    .addData(p + ".lastUnconstrainedOutput", lastUnconstrainedOutput)
+                    .addData(p + ".lastOutput", lastOutput)
+                    .addData(p + ".lastOutputLimited", lastOutputLimited);
             inner.debugDump(dbg, p + ".inner");
         }
     }

@@ -269,6 +269,36 @@ The regulator sees plant-unit error. If the plant uses `nativeUnits()`, plant un
 are the same. If the plant uses `scaleToNative(...)`, the feedback is converted into plant units
 before the regulator runs.
 
+### Controller limits, complete-regulator limits, and output safety
+
+These three protections answer different questions:
+
+| Layer | Question it answers |
+|---|---|
+| `Pid.setOutputLimits(...)` | How large may the PID controller's own contribution be? |
+| `ScalarRegulators.outputLimited(...)` | How large may this complete inner regulator composition be? |
+| Plant/output command safety | What finite command may the actuator channel ultimately accept? |
+
+PID output limits run before feedforward or another outer decorator. For example, voltage
+compensation can legitimately scale a previously limited PIDF command above the PID controller's
+limit. When the robot intentionally wants a narrower command range around everything, make the
+limiter the outermost output-changing decorator. The complete regulated-velocity example in
+[Velocity bounds, mapping, and tuning](#13-velocity-bounds-mapping-and-tuning) shows that composition
+around PIDF and battery-voltage compensation.
+
+`outputLimited(...)` constrains exactly the regulator passed to it. Another output-changing
+decorator placed outside it is not covered. Its bounds are generic regulator-command units; they
+are not Plant target units and are not a replacement for `bounded(...)` or `targetGuards()`.
+Likewise, optional narrower policy does not replace the Plant/output path's universal responsibility
+to keep normalized actuator commands finite and inside their semantic range.
+
+The decorator reports its unconstrained and applied results through standard regulator debug data,
+delegates `reset()` to its inner regulator, and rejects a non-finite inner result instead of hiding
+broken control math behind a bound. It does not provide generic saturation-aware anti-windup;
+controller-specific integral limits remain explicit. Robot behavior or realization still decides
+whether disabled means coast or hold and when an enable/disable transition should reset controller
+history.
+
 ---
 
 ## 5. Position topology and bounds
@@ -694,12 +724,15 @@ ScalarRegulator nominalFlywheel = ScalarRegulators.pidf(
         rpm -> kV * rpm
 );
 
-ScalarRegulator compensatedFlywheel = ScalarRegulators.voltageCompensated(
-        nominalFlywheel,
-        batteryVoltage,
-        13.0,  // reference voltage used while tuning
-        9.0,   // denominator floor for low/noisy readings
-        1.4    // maximum multiplier
+ScalarRegulator flywheelRegulator = ScalarRegulators.outputLimited(
+        ScalarRegulators.voltageCompensated(
+                nominalFlywheel,
+                batteryVoltage,
+                13.0,  // reference voltage used while tuning
+                9.0,   // denominator floor for low/noisy readings
+                1.4),  // maximum multiplier
+        0.0,
+        maximumFlywheelPower
 );
 
 Plant shooter = FtcActuators.plant(hardwareMap)
@@ -707,7 +740,7 @@ Plant shooter = FtcActuators.plant(hardwareMap)
         .velocity()
         .regulated()
             .nativeFeedback(FtcActuators.VelocityFeedback.internalEncoder())
-            .regulator(compensatedFlywheel)
+            .regulator(flywheelRegulator)
         .bounded(0.0, 5000.0)          // plant units: RPM
         .scaleToNative(TICKS_PER_RPM)  // native units: FTC ticks/sec
         .velocityTolerance(75.0)       // plant units: RPM
@@ -723,7 +756,10 @@ units, so in the example above both values are RPM even though the native encode
 
 `ScalarRegulators.voltageCompensated(...)` is intentionally a generic core decorator rather than a
 flywheel-only builder method. It can wrap PID, PIDF, or a custom `ScalarRegulator`, and regulated
-Plants automatically include its debug fields under `plantPrefix.regulator`.
+Plants automatically include its debug fields under `plantPrefix.regulator`. In the example,
+`outputLimited(...)` is deliberately outside voltage compensation so the requested
+`[0.0, maximumFlywheelPower]` policy covers the fully compensated command. A PID output limit inside
+`nominalFlywheel` would cover only the PID contribution before feedforward and compensation.
 
 If robot code wants nicer plant velocity units, keep the controller native units explicit:
 

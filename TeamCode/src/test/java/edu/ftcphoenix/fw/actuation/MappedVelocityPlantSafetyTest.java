@@ -2,6 +2,13 @@ package edu.ftcphoenix.fw.actuation;
 
 import org.junit.Test;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+import edu.ftcphoenix.fw.core.control.ScalarRegulator;
+import edu.ftcphoenix.fw.core.control.ScalarRegulators;
+import edu.ftcphoenix.fw.core.debug.DebugSink;
+import edu.ftcphoenix.fw.core.hal.PowerOutput;
 import edu.ftcphoenix.fw.core.hal.VelocityOutput;
 import edu.ftcphoenix.fw.core.source.ScalarTarget;
 import edu.ftcphoenix.fw.core.time.LoopClock;
@@ -217,6 +224,61 @@ public final class MappedVelocityPlantSafetyTest {
         assertEquals(PlantTargetStatus.Kind.RATE_LIMITED, plant.getTargetStatus().kind());
     }
 
+    @Test
+    public void explicitRegulatorLimitBoundsPowerWithoutChangingPlantTargetUnits() {
+        RecordingPowerOutput output = new RecordingPowerOutput();
+        ScalarTarget targetRpm = ScalarTarget.held(4200.0);
+        ScalarRegulator constrained = ScalarRegulators.outputLimited(
+                (setpoint, measurement, clock) -> 0.85,
+                0.0,
+                0.65);
+        MappedVelocityPlant plant = MappedVelocityPlant.regulated(
+                output,
+                clock -> 2000.0,
+                constrained)
+                .range(ScalarRange.bounded(0.0, 6000.0))
+                .nativePerPlantUnit(2.0)
+                .targetedBy(targetRpm)
+                .build();
+
+        plant.update(new ManualLoopClock().clock());
+
+        assertEquals(4200.0, plant.getRequestedTarget(), 0.0);
+        assertEquals(4200.0, plant.getAppliedTarget(), 0.0);
+        assertEquals(1000.0, plant.getMeasurement(), 0.0);
+        assertEquals(0.65, output.getCommandedPower(), 0.0);
+
+        CapturingDebugSink debug = new CapturingDebugSink();
+        plant.debugDump(debug, "shooter.flywheel");
+        assertEquals(0.65, number(debug, "shooter.flywheel.regulatorOutput"), 0.0);
+        assertEquals(0.85,
+                number(debug, "shooter.flywheel.regulator.lastUnconstrainedOutput"), 0.0);
+        assertEquals(0.65,
+                number(debug, "shooter.flywheel.regulator.lastOutput"), 0.0);
+        assertEquals(Boolean.TRUE,
+                debug.data.get("shooter.flywheel.regulator.lastOutputLimited"));
+    }
+
+    private static double number(CapturingDebugSink debug, String key) {
+        Object value = debug.data.get(key);
+        assertTrue(key + " must contain a number", value instanceof Number);
+        return ((Number) value).doubleValue();
+    }
+
+    private static final class RecordingPowerOutput implements PowerOutput {
+        private double commanded = Double.NaN;
+
+        @Override
+        public void setPower(double power) {
+            commanded = power;
+        }
+
+        @Override
+        public double getCommandedPower() {
+            return commanded;
+        }
+    }
+
     private static final class RecordingVelocityOutput implements VelocityOutput {
         private double commanded = Double.NaN;
 
@@ -228,6 +290,21 @@ public final class MappedVelocityPlantSafetyTest {
         @Override
         public double getCommandedVelocity() {
             return commanded;
+        }
+    }
+
+    private static final class CapturingDebugSink implements DebugSink {
+        private final Map<String, Object> data = new LinkedHashMap<>();
+
+        @Override
+        public DebugSink addData(String key, Object value) {
+            data.put(key, value);
+            return this;
+        }
+
+        @Override
+        public DebugSink addLine(String text) {
+            return this;
         }
     }
 }

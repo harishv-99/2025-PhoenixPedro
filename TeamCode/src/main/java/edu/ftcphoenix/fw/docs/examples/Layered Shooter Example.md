@@ -183,6 +183,31 @@ flywheel with battery-voltage compensation, that compensation belongs in the fly
 `ScalarRegulator` inside realization; requests and behavior still only talk in selected velocity
 targets and readiness readback.
 
+When that complete control law needs an intentional power range, compose the regulator in the same
+inside-to-outside order in which commands are calculated:
+
+```java
+ScalarRegulator flywheelRegulator = ScalarRegulators.outputLimited(
+        ScalarRegulators.voltageCompensated(
+                ScalarRegulators.pidf(
+                        Pid.withGains(kP, kI, kD)
+                                .setIntegralLimits(-0.15, 0.15),
+                        targetVelocity -> kV * targetVelocity),
+                batteryVoltage,
+                13.0,
+                9.0,
+                1.4),
+        0.0,
+        maximumFlywheelPower);
+```
+
+The outer `outputLimited(...)` policy covers PID, feedforward, and voltage compensation. A PID
+output limit would cover only the controller contribution, while the Plant/output boundary remains
+responsible for universal actuator-command safety. The generic limiter deliberately does not decide
+whether a disabled or zero-velocity request should coast, brake, or hold. Behavior/realization owns
+that mechanism meaning and decides when to call `reset()`; the outer limiter also cannot provide
+generic saturation-aware anti-windup for the inner PID.
+
 The feeder uses a richer final target source:
 
 ```java
