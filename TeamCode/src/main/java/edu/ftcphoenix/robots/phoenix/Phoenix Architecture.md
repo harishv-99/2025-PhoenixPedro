@@ -105,8 +105,8 @@ use them instead of touching `ScoringPath` or `ScoringTargeting` directly.
   backend-neutral seam; Phoenix advances and stops it without owning route-library strategy
 - private `AutoRoutineLifecycle autoRoutineLifecycle`: owns both the private `TaskRunner` lifecycle
   driver and Phoenix's one installed Auto root
-- retained installed Auto root: the single routine selected during INIT and the source of active or
-  terminal routine telemetry; Phoenix does not expose queue scheduling or runner access
+- retained installed Auto root: the single routine selected before FTC START and the source of
+  active or terminal routine telemetry; Phoenix does not expose queue scheduling or runner access
 - `PhoenixTelemetryPresenter`: driver-facing presentation from snapshots
 - `PhoenixRobot`: composition root and loop owner
 
@@ -245,6 +245,12 @@ controls should generally go through capabilities as frame-valued commands and b
 button layout itself. That keeps input semantics and drive-assist policy separate while still
 letting them collaborate cleanly.
 
+`PhoenixReadiness.teleOpPoseAssists(...)` evaluates the two checked-in Pinpoint calibration
+acknowledgements before those pose-dependent overlays are wired. If axes or pod offsets are not
+acknowledged, manual drive and all mechanism capabilities remain available, while auto-aim and
+shoot-brace are both gated off. The INIT and normal TeleOp frames print the exact calibration step
+needed; lack of a currently visible AprilTag is not an initialization blocker.
+
 ## ScoringPath internal layering
 
 `ScoringPath` now keeps its mutable state split into the same three roles Phoenix wants future
@@ -296,6 +302,9 @@ PhoenixAutoSpec
 PhoenixAutoProfiles
   spec + base profile -> Auto-specific profile snapshot, using profile-owned red/blue Auto tag ids
 
+PhoenixReadiness
+  profile + exact spec + route availability + OpMode purpose -> immutable warnings/blockers
+
 PhoenixAutoTasks
   reusable scoring/targeting task snippets over PhoenixCapabilities, with truthful attempt outcomes
 
@@ -312,18 +321,27 @@ PhoenixPedroAutoRoutineFactory
 1. retain the required backend-neutral Auto drive lifecycle owner supplied by the mode client
 2. build shared Auto localization around the explicitly supplied backend-neutral predictor
 3. create `PhoenixCapabilities`
-4. create the private `TaskRunner` that will start and own one INIT-installed Auto root
+4. create the private `TaskRunner` that will start and own one pre-START-installed Auto root
+
+Those four successful construction steps mean the Phoenix-owned runtime services exist; they do
+not mean that a selected match Auto is armed. `PhoenixPedroAutoOpModeBase` owns that higher-level
+decision because it also knows the exact spec, route maturity, calibration acknowledgements, and
+Driver Station entry purpose.
 
 Each `PhoenixRobot` accepts one mode initialization for its lifetime. A repeated Auto init or a
 TeleOp/Auto cross-init fails before replacing any retained owner; a different mode/runtime uses a
 new robot container.
 
-The Auto mode client installs exactly one root with `installAutoRoutine(...)` during INIT. After
-`startAny(...)` resets the shared clock at FTC START, `startAuto()` immediately starts that root
-through the private runner, so a match budget is measured from the real start boundary rather than
-the first later loop. Phoenix's private pre-park coordinator arms at that boundary but defers its
-outbound child until the first normal Auto Task phase, after localization, targeting, and the Pedro
-heartbeat. A second install, late install, start without a root, or repeated start fails fast.
+The Auto mode client installs exactly one root with `installAutoRoutine(...)` before it starts the
+robot. Normal static entries and a confirmed selector do this during INIT. If the driver presses
+START without confirming the selector, the selector makes one guarded last-chance call through the
+same readiness and construction path; any blocker still returns before hardware or a root is
+constructed. After `startAny(...)` resets the shared clock at FTC START, `startAuto()` immediately
+starts that root through the private runner, so a match budget is measured from the real start
+boundary rather than the first later loop. Phoenix's private pre-park coordinator arms at that
+boundary but defers its outbound child until the first normal Auto Task phase, after localization,
+targeting, and the Pedro heartbeat. A second install, an install after `startAny(...)`, start without
+a root, or repeated start fails fast.
 
 For a simple open-loop Auto/test interval, `DriveTasks.driveExclusivelyForSeconds(...)` may command
 the retained sink only when that Task is the sole behavior-command writer. It refreshes the sink and
@@ -340,6 +358,22 @@ selected Pedro start pose through the runtime before the first heartbeat. The ad
 available to route and guidance Tasks for behavior requests, but Phoenix owns its recurring update
 and final stop. The adapter uses `LoopClock.cycle()` to make the root update and later same-cycle
 generic Task hooks one physical Pedro heartbeat.
+
+Before constructing that graph, the base obtains one path-factory-owned `RouteAvailability` and
+evaluates `PhoenixReadiness`. Match Auto requires verified Pinpoint axes, calibrated pod offsets,
+the selected alliance tag in both the scoring catalog and fixed layout, and deliberately
+`MATCH_READY` geometry. The inactive alliance target is irrelevant. Any blocker is rendered during
+INIT and returns before `PhoenixRobot`, Pedro hardware, paths, or the Auto root are constructed;
+START checks the retained result again. The explicitly named Pedro test entry is the only client
+that accepts `INTEGRATION_ONLY` geometry. It still blocks unverified axes, permits uncalibrated pod
+offsets only as a persistent warning, and displays `TEST` on every frame.
+
+The fixed path's first translation and effective wrapped heading must structurally match its
+declared start pose. The runtime verifies that the Pinpoint predictor publishes the requested
+software rebase during INIT, and the mode client reapplies that same pose at FTC START before
+resetting the shared clock or allowing the first heartbeat. This establishes one software
+coordinate authority. It does not measure physical placement, so INIT telemetry prominently shows
+the expected Pedro-field x/y/heading (inches/degrees) and the drive team must place the robot there.
 
 Each route start returns a backend-neutral `RouteExecution` whose status and cancellation remain
 bound to that run. During its owned heartbeat, the Pedro adapter classifies natural completion,
@@ -369,8 +403,8 @@ routine can make the same explicit decision. A successful park after any allowed
 timeout retains the routine's `TIMEOUT`; a cancellation-like park result takes precedence as
 `CANCELLED`, and no park result starts a second fallback.
 
-Fixed geometry is built eagerly during INIT and uses `RouteTasks.follow(...)`. Geometry that must
-start from a live pose or a current robot selection stays in `PhoenixPedroPathFactory` and uses
+Fixed geometry is built eagerly while the selected runtime is constructed before robot start and
+uses `RouteTasks.follow(...)`. Geometry that must start from a live pose or a current robot selection stays in `PhoenixPedroPathFactory` and uses
 `RouteTasks.followBuiltAtStart(...)`. The path factory is retained in
 `PhoenixPedroAutoContext`; its quick supplier runs once when that Task starts, reads only supported
 current snapshots, and gives the adapter one concrete route. Neither `PhoenixRobot` nor the generic
@@ -415,8 +449,10 @@ edu.ftcphoenix.robots.phoenix.tester
 That means OpModes are easy to find from the Driver Station perspective, while path factories,
 routine factories, tester implementations, and robot services remain grouped by responsibility.
 
-The checked-in Pedro routes are still placeholder integration geometry. Real alliance/start/partner
-paths should be added in `PhoenixPedroPathFactory`; high-level strategy decisions should stay in
+The checked-in Pedro routes are explicitly `INTEGRATION_ONLY` placeholder geometry, so no current
+static or selected match entry can arm. Real alliance/start/partner paths should be added in
+`PhoenixPedroPathFactory` and deliberately classified `MATCH_READY` only after validation;
+high-level strategy decisions should stay in
 `PhoenixPedroAutoRoutineFactory`; reusable aim/shoot snippets should stay in `PhoenixAutoTasks`.
 The existing private pre-park and final routine coordinators centralize Phoenix's conservative
 route-status mapping and match-time park boundary; new strategies should change that robot-owned
@@ -440,18 +476,28 @@ selection mechanics into `PhoenixRobot` or individual OpModes. The intended spli
 `PhoenixPedroAutoSelectorOpMode` is the first robot-specific user of this split. It produces a
 `PhoenixAutoSpec` during INIT, delegates to the same Pedro/Phoenix lifecycle glue used by static
 Auto entries, and then replaces the wizard with a locked summary so the menu cannot drift away from
-the installed routine. OpMode classes should still stay thin: they choose or collect the spec,
-construct `PhoenixRobot`, and install the selected routine once during INIT. They should not become
-route scripts or hardware selection screens.
+the installed routine. If START bypasses confirmation, it delegates once through that same
+fail-closed path before starting. OpMode classes should still stay thin: they choose or collect the
+spec, construct `PhoenixRobot`, and install the selected routine before starting it. They should not
+become route scripts or hardware selection screens.
+
+The strategy screen disables every selection whose exact path-factory fact is not match-ready and
+never offers `PEDRO_INTEGRATION_TEST` as a match strategy. The confirmation preview uses the same
+readiness policy as the shared base, and pressing START without confirmation reaches the same
+fail-closed check rather than bypassing the selector.
 
 `PhoenixPedroAutoOpModeBase` also treats INIT failures as retryable setup failures, not as
 half-built robot states. Before each new build attempt it clears any previous error and asks the
 active `PhoenixRobot` to stop its retained Auto drive owner and other partial runtime owners; after a
 successful build it preserves the active spec, profile, paths, robot, and adapter as one consistent
-set.
+set. A cleanup failure prevents a competing graph from being created. Construction/start errors
+retain their original message, and any later cleanup error is attached and displayed separately
+instead of being replaced by a generic drive/Pinpoint suggestion.
 
 Pedro debug telemetry is composed into the same frame as Phoenix Auto telemetry. The OpMode adds
-`auto.spec`, `auto.paths`, Pedro pose/busy rows, and the backend-neutral `route.status` before
+`auto.readiness`, route maturity, `auto.expectedPhysicalStartPedro` in explicit Pedro field
+coordinates, actionable issues, `auto.spec`,
+`auto.paths`, Pedro pose/busy rows, and the backend-neutral `route.status` before
 `PhoenixRobot.updateAuto()` calls the Auto telemetry presenter, so the Driver Station sees one
 coherent Auto status page per loop. The installed root is retained after completion, so its dynamic
 Task name and outcome continue to identify normal pre-park work, local degradation, match-time

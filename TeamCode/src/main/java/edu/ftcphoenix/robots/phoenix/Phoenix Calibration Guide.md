@@ -18,6 +18,7 @@ Phoenix keeps calibration ownership intentionally clean:
 - `PhoenixTeleOpControls` -> TeleOp stick/button semantics
 - `ScoringPath` -> scoring policy, requests, mechanism actuation, and status
 - `ScoringTargeting` -> selected-tag policy, aim status, and shot suggestions
+- `PhoenixReadiness` -> immutable mode-specific calibration/field/route warnings and blockers
 - `PhoenixRobot` -> composition root and loop owner
 
 That ownership split matters during bring-up because fixes should land in the owner of the behavior:
@@ -232,6 +233,10 @@ Record completion after rerunning the tester and accepting the result:
 PhoenixProfile.current().calibration.pinpointAxesVerified = true;
 ```
 
+Until this acknowledgement is true, Phoenix keeps TeleOp auto-aim and shoot-brace unavailable and
+blocks every Pedro Auto, including the dedicated integration test. Manual TeleOp drive and
+mechanisms remain available, with the required tester named in Driver Station telemetry.
+
 ---
 
 ### Step 5: Pinpoint pod offsets
@@ -263,6 +268,24 @@ PhoenixProfile.current().calibration.pinpointPodOffsetsCalibrated = true;
 ```
 
 Phoenix enables AprilTag assist for this tester automatically once the active backend's camera mount looks solved enough to trust.
+
+Until this acknowledgement is true, match Auto remains blocked and both pose-dependent TeleOp
+assists remain unavailable. The explicitly named Pedro integration-test OpMode may still run after
+the axes check, but it shows a persistent uncalibrated-offset warning. That exception supports
+bounded calibration work; it does not make the route or localization match-ready.
+
+### Readiness shown by production OpModes
+
+Phoenix match Auto also requires the selected alliance scoring tag in both
+`PhoenixProfile.autoAim.scoringTargets` and `PhoenixProfile.field.fixedAprilTagLayout`, plus route
+geometry deliberately classified `MATCH_READY` by `PhoenixPedroPathFactory`. Current checked-in
+placeholder geometry is `INTEGRATION_ONLY`, so static match entries and the selector correctly show
+`BLOCKED` even after localization calibration is complete. The dedicated Pedro test entry alone can
+show `TEST` and run that geometry.
+
+Auto INIT displays the exact expected Pedro-field x/y/heading (inches/degrees) for physical
+placement. Setting the Pedro start pose rebases the software coordinate system; it does not sense
+where the chassis is on the field. Place the robot at the displayed pose before START.
 
 ---
 
@@ -375,7 +398,9 @@ Examples of future additions that would fit this model naturally:
 4. Pinpoint axis directions
 5. Pinpoint pod offsets
 6. default corrected-global localization validation
-7. optional EKF comparison
+7. confirm TeleOp reports pose assists `READY`
+8. confirm the intended Auto has calibrated field facts and `MATCH_READY` geometry
+9. optional EKF comparison
 
 ---
 

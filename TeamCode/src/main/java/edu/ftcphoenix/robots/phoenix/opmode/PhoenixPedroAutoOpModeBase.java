@@ -1,6 +1,7 @@
 package edu.ftcphoenix.robots.phoenix.opmode;
 
 import com.pedropathing.follower.Follower;
+import com.pedropathing.geometry.Pose;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 
@@ -14,6 +15,7 @@ import edu.ftcphoenix.fw.integrations.pedro.PedroPathingRuntime;
 import edu.ftcphoenix.fw.localization.MotionPredictor;
 import edu.ftcphoenix.robots.phoenix.PhoenixCapabilities;
 import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
+import edu.ftcphoenix.robots.phoenix.PhoenixReadiness;
 import edu.ftcphoenix.robots.phoenix.PhoenixRobot;
 import edu.ftcphoenix.robots.phoenix.autonomous.PhoenixAutoProfiles;
 import edu.ftcphoenix.robots.phoenix.autonomous.PhoenixAutoSpec;
@@ -45,17 +47,27 @@ import edu.ftcphoenix.robots.phoenix.autonomous.pedro.PhoenixPedroPathFactory;
  * composition remain here on the Auto side; the retained path factory may later read a pose
  * snapshot for start-time geometry, but the OpMode does not create a second Pedro heartbeat,
  * Pinpoint owner, or shutdown path.</p>
+ *
+ * <p>Before constructing hardware, this base evaluates one retained {@link PhoenixReadiness}
+ * result from the exact spec, route maturity, calibration acknowledgements, and Driver Station
+ * purpose. A blocker prevents construction and remains effective at START. The expected Pedro
+ * start is also displayed as an operator placement requirement; applying that pose synchronizes
+ * software coordinates but does not measure physical placement.</p>
  */
 public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
 
     private PhoenixRobot robot;
-    private PhoenixCapabilities capabilities;
+    private PedroPathingRuntime pedroRuntime;
     private Follower follower;
     private PedroPathingDriveAdapter driveAdapter;
     private PhoenixAutoSpec activeSpec;
-    private PhoenixProfile activeProfile;
+    private PhoenixPedroPathFactory.RouteAvailability routeAvailability;
+    private PhoenixReadiness.Result readiness;
+    private Pose expectedPedroStartPose;
     private String pathLabel;
-    private String initError;
+    private RuntimeException initFailure;
+    private RuntimeException unrecoveredCleanupFailure;
+    private boolean startBoundaryReached;
 
     /**
      * Return the autonomous setup for static OpModes, or the current selector state.
@@ -73,6 +85,16 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
     }
 
     /**
+     * Declare whether this Driver Station entry is a match Auto or the explicit Pedro test entry.
+     *
+     * <p>Competition entries inherit the fail-closed default. Only the visibly named Pedro
+     * integration-test OpMode overrides this method.</p>
+     */
+    PhoenixReadiness.AutoPurpose autoPurpose() {
+        return PhoenixReadiness.AutoPurpose.MATCH_AUTO;
+    }
+
+    /**
      * Initialize the static autonomous entry when appropriate.
      */
     @Override
@@ -80,6 +102,13 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
         if (buildRobotInInit()) {
             initializeRobotForSpec(autoSpec());
         }
+    }
+
+    /** Keep the selected readiness result and expected physical placement visible during INIT. */
+    @Override
+    public void init_loop() {
+        emitAutoReadinessTelemetry();
+        telemetry.update();
     }
 
     /**
@@ -90,14 +119,35 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
         // Capture the FTC START boundary before a last-chance INIT retry can consume match time.
         // The first regular loop then charges any such setup delay to the pre-park budget.
         final double startRuntimeSec = getRuntime();
-        if (!isAutoInitialized() && initError == null) {
+        startBoundaryReached = true;
+        if (!isAutoInitialized()
+                && initFailure == null
+                && (readiness == null || readiness.isAllowed())) {
             initializeRobotForSpec(autoSpec());
         }
-        if (initError != null || robot == null) {
+        if (!isAutoInitialized()) {
+            emitAutoReadinessTelemetry();
+            telemetry.update();
             return;
         }
-        robot.startAny(startRuntimeSec);
-        robot.startAuto();
+
+        try {
+            // Reassert the declared software coordinate origin at the exact FTC START boundary,
+            // before the shared clock or Pedro heartbeat begins. This does not claim to measure
+            // physical field placement; the expected placement remains an operator check.
+            pedroRuntime.setStartingPose(expectedPedroStartPose);
+            robot.startAny(startRuntimeSec);
+            robot.startAuto();
+        } catch (RuntimeException startFailure) {
+            RuntimeException cleanupFailure = clearAutoRuntime();
+            attachSuppressed(startFailure, cleanupFailure);
+            if (cleanupFailure != null) {
+                unrecoveredCleanupFailure = startFailure;
+            }
+            initFailure = startFailure;
+            emitAutoReadinessTelemetry();
+            telemetry.update();
+        }
     }
 
     /**
@@ -109,19 +159,14 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
      */
     @Override
     public void loop() {
-        if (initError != null) {
-            telemetry.addLine("Phoenix Pedro auto init failed");
-            telemetry.addLine(initError);
-            telemetry.update();
-            return;
-        }
-        if (robot == null) {
-            telemetry.addLine("Phoenix Pedro auto has not been initialized yet.");
+        if (!isAutoInitialized()) {
+            emitAutoReadinessTelemetry();
             telemetry.update();
             return;
         }
 
         robot.updateAny(getRuntime());
+        emitAutoReadinessTelemetry();
         emitPedroDebugTelemetry();
         robot.updateAuto();
     }
@@ -134,47 +179,192 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
      */
     @Override
     public void stop() {
-        clearAutoRuntime();
-        initError = null;
+        RuntimeException stopFailure = clearAutoRuntime();
+        clearSelectionState();
+        unrecoveredCleanupFailure = null;
+        startBoundaryReached = false;
+        if (stopFailure != null) {
+            throw stopFailure;
+        }
     }
 
     /**
      * Return whether the Phoenix robot + Pedro routine have been built successfully.
      */
     protected final boolean isAutoInitialized() {
-        return robot != null && initError == null;
+        return robot != null
+                && pedroRuntime != null
+                && expectedPedroStartPose != null
+                && readiness != null
+                && readiness.isAllowed()
+                && initFailure == null;
     }
 
     /**
      * Return the currently active spec, or null before initialization.
      */
-    protected final PhoenixAutoSpec activeSpecOrNull() {
+    final PhoenixAutoSpec activeSpecOrNull() {
         return activeSpec;
     }
 
     /**
-     * Return the current init error, or null if initialization has not failed.
+     * Return the retained initialization, start, or cleanup error, or null when none has occurred.
      */
-    protected final String initErrorOrNull() {
-        return initError;
+    final String initErrorOrNull() {
+        return initFailure == null ? null : failureSummary(initFailure);
+    }
+
+    /** Return the retained immutable readiness result, or null before it has been evaluated. */
+    final PhoenixReadiness.Result readinessOrNull() {
+        return readiness;
+    }
+
+    /** Return whether a cleanup failure makes every later INIT rebuild unsafe. */
+    final boolean cleanupFailureBlocksRetry() {
+        return unrecoveredCleanupFailure != null;
+    }
+
+    /**
+     * Emit the shared Auto arming state without completing the telemetry frame.
+     *
+     * <p>Static entries, the selector, and the running test entry all use this same presenter path,
+     * so a blocker cannot be hidden by a different OpMode screen.</p>
+     */
+    final void emitAutoReadinessTelemetry() {
+        if (initFailure != null) {
+            emitAutoSelectionTelemetry(activeSpec, routeAvailability);
+            if (autoPurpose() == PhoenixReadiness.AutoPurpose.PEDRO_INTEGRATION_TEST) {
+                telemetry.addData("auto.purpose", "TEST");
+            }
+            telemetry.addData("auto.readiness", "ERROR");
+            telemetry.addLine("Phoenix Pedro Auto initialization/start failed: "
+                    + failureSummary(initFailure));
+            for (Throwable suppressed : initFailure.getSuppressed()) {
+                telemetry.addLine("Cleanup also failed: " + failureSummary(suppressed));
+            }
+            if (unrecoveredCleanupFailure != null) {
+                telemetry.addLine(
+                        "Retry disabled: stop and restart this OpMode after verifying all outputs are safe."
+                );
+            }
+            emitReadinessIssues(readiness);
+            return;
+        }
+        emitAutoReadinessTelemetry(activeSpec, routeAvailability, readiness);
+    }
+
+    /**
+     * Emit the same readiness block for a selector preview that has not constructed hardware yet.
+     */
+    final void emitAutoReadinessTelemetry(
+            PhoenixAutoSpec displayedSpec,
+            PhoenixPedroPathFactory.RouteAvailability displayedAvailability,
+            PhoenixReadiness.Result displayedReadiness
+    ) {
+        emitAutoSelectionTelemetry(displayedSpec, displayedAvailability);
+        if (autoPurpose() == PhoenixReadiness.AutoPurpose.PEDRO_INTEGRATION_TEST) {
+            telemetry.addData("auto.purpose", "TEST");
+        }
+        if (displayedReadiness == null) {
+            telemetry.addData("auto.readiness", "NOT EVALUATED");
+            telemetry.addLine("Phoenix Pedro Auto has not been evaluated yet.");
+            return;
+        }
+
+        String status;
+        if (!displayedReadiness.isAllowed()) {
+            status = "BLOCKED";
+        } else if (autoPurpose() == PhoenixReadiness.AutoPurpose.PEDRO_INTEGRATION_TEST) {
+            status = "TEST";
+        } else if (displayedReadiness.hasWarnings()) {
+            status = "WARN";
+        } else {
+            status = "READY";
+        }
+        telemetry.addData("auto.readiness", status);
+        emitReadinessIssues(displayedReadiness);
+    }
+
+    private void emitReadinessIssues(PhoenixReadiness.Result displayedReadiness) {
+        if (displayedReadiness == null) {
+            return;
+        }
+        for (PhoenixReadiness.Issue issue : displayedReadiness.issues()) {
+            telemetry.addLine(
+                    "Auto [" + issue.severity() + "] " + issue.message()
+                            + " | " + issue.remediation()
+            );
+        }
+    }
+
+    private void emitAutoSelectionTelemetry(
+            PhoenixAutoSpec displayedSpec,
+            PhoenixPedroPathFactory.RouteAvailability displayedAvailability
+    ) {
+        if (displayedSpec != null) {
+            telemetry.addData("auto.spec", displayedSpec.summary());
+        }
+        if (displayedAvailability == null) {
+            return;
+        }
+
+        telemetry.addData("auto.routeMaturity", displayedAvailability.maturity);
+        Pose expectedStart = displayedAvailability.expectedPedroStartPose;
+        telemetry.addData(
+                "auto.expectedPhysicalStartPedro",
+                "x=%.1f in, y=%.1f in, heading=%.1f deg",
+                expectedStart.getX(),
+                expectedStart.getY(),
+                Math.toDegrees(expectedStart.getHeading())
+        );
+        if (!startBoundaryReached) {
+            telemetry.addLine(
+                    "Place the robot at auto.expectedPhysicalStartPedro "
+                            + "(Pedro field coordinates) before START."
+            );
+        }
     }
 
     /**
      * Build Phoenix + Pedro runtime for a selected spec.
      *
      * <p>Selector OpModes may call this from {@code init_loop()} once the operator confirms a spec.
-     * Repeated calls after a successful initialization are ignored so a second press of confirm does
-     * not allocate another robot graph. If a previous attempt failed, this method clears the error,
-     * tears down any partial runtime, and tries again from a clean state.</p>
+     * Repeated calls for the same successfully initialized spec are ignored so a second press of
+     * confirm does not allocate another robot graph; a different spec is rejected. If an ordinary
+     * previous attempt failed, this method clears the error, tears down any partial runtime, and
+     * tries again from a clean state. A cleanup failure remains terminal for this OpMode so a retry
+     * cannot create a competing hardware owner.</p>
      */
     protected final boolean initializeRobotForSpec(PhoenixAutoSpec spec) {
+        PhoenixAutoSpec requestedSpec = Objects.requireNonNull(spec, "spec");
         if (isAutoInitialized()) {
-            return true;
+            if (sameSpec(activeSpec, requestedSpec)) {
+                return true;
+            }
+            throw new IllegalStateException(
+                    "Phoenix Pedro Auto is already initialized for " + activeSpec.summary()
+                            + "; cannot replace it with " + requestedSpec.summary()
+                            + ". Create a new OpMode runtime for a different spec."
+            );
         }
 
-        PhoenixAutoSpec requestedSpec = Objects.requireNonNull(spec, "spec");
-        clearAutoRuntime();
-        initError = null;
+        if (unrecoveredCleanupFailure != null) {
+            initFailure = unrecoveredCleanupFailure;
+            emitAutoReadinessTelemetry();
+            telemetry.update();
+            return false;
+        }
+
+        RuntimeException previousStopFailure = clearAutoRuntime();
+        clearSelectionState();
+        activeSpec = requestedSpec;
+        if (previousStopFailure != null) {
+            initFailure = previousStopFailure;
+            unrecoveredCleanupFailure = previousStopFailure;
+            emitAutoReadinessTelemetry();
+            telemetry.update();
+            return false;
+        }
 
         PhoenixRobot builtRobot = null;
         Follower builtFollower;
@@ -182,7 +372,21 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
         PedroPathingDriveAdapter builtDriveAdapter = null;
 
         try {
-            PhoenixProfile builtProfile = PhoenixAutoProfiles.profileFor(requestedSpec, PhoenixProfile.current());
+            PhoenixProfile baseProfile = PhoenixProfile.current();
+            routeAvailability = PhoenixPedroPathFactory.routeAvailabilityFor(requestedSpec);
+            expectedPedroStartPose = routeAvailability.expectedPedroStartPose;
+            readiness = PhoenixReadiness.pedroAuto(
+                    requestedSpec,
+                    baseProfile,
+                    autoPurpose()
+            );
+            if (!readiness.isAllowed()) {
+                emitAutoReadinessTelemetry();
+                telemetry.update();
+                return false;
+            }
+
+            PhoenixProfile builtProfile = PhoenixAutoProfiles.profileFor(requestedSpec, baseProfile);
 
             builtRobot = new PhoenixRobot(hardwareMap, telemetry, gamepad1, gamepad2, builtProfile);
             builtRobot.initAny();
@@ -213,27 +417,27 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
             );
             builtRobot.installAutoRoutine(PhoenixPedroAutoRoutineFactory.build(ctx));
 
-            activeSpec = requestedSpec;
-            activeProfile = builtProfile;
             robot = builtRobot;
-            capabilities = builtCapabilities;
+            pedroRuntime = builtPedroRuntime;
             follower = builtFollower;
             driveAdapter = builtDriveAdapter;
             pathLabel = paths.label;
 
-            telemetry.addLine("Phoenix Pedro auto ready");
-            telemetry.addData("auto.spec", activeSpec.summary());
+            emitAutoReadinessTelemetry();
             telemetry.addData("auto.paths", pathLabel);
             telemetry.addLine("Pedro runtime: one Phoenix Pinpoint owner + passive Follower localizer");
             telemetry.update();
             return true;
         } catch (RuntimeException e) {
-            initError = buildInitError(e);
-            safeStopRobot(builtRobot);
-            clearRuntimeReferences();
+            RuntimeException cleanupFailure = stopRobot(builtRobot);
+            attachSuppressed(e, cleanupFailure);
+            if (cleanupFailure != null) {
+                unrecoveredCleanupFailure = e;
+            }
+            clearRuntimeOwnerReferences();
+            initFailure = e;
 
-            telemetry.addLine("Phoenix Pedro auto init failed");
-            telemetry.addLine(initError);
+            emitAutoReadinessTelemetry();
             telemetry.update();
             return false;
         }
@@ -268,39 +472,60 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
         }
     }
 
-    private void clearAutoRuntime() {
-        safeStopRobot(robot);
-        clearRuntimeReferences();
+    private RuntimeException clearAutoRuntime() {
+        RuntimeException stopFailure = stopRobot(robot);
+        clearRuntimeOwnerReferences();
+        return stopFailure;
     }
 
-    private void clearRuntimeReferences() {
+    private void clearRuntimeOwnerReferences() {
         robot = null;
-        capabilities = null;
+        pedroRuntime = null;
         follower = null;
         driveAdapter = null;
-        activeSpec = null;
-        activeProfile = null;
         pathLabel = null;
     }
 
-    private static void safeStopRobot(PhoenixRobot runtime) {
+    private void clearSelectionState() {
+        activeSpec = null;
+        routeAvailability = null;
+        readiness = null;
+        expectedPedroStartPose = null;
+        initFailure = null;
+    }
+
+    private static RuntimeException stopRobot(PhoenixRobot runtime) {
         if (runtime == null) {
-            return;
+            return null;
         }
         try {
             runtime.stop();
-        } catch (RuntimeException ignored) {
-            // Cleanup should be best-effort during failed INIT retries and OpMode shutdown.
+            return null;
+        } catch (RuntimeException stopFailure) {
+            return stopFailure;
         }
     }
 
-    private static String buildInitError(RuntimeException e) {
-        String message = e.getMessage();
-        if (message == null || message.isEmpty()) {
-            message = e.getClass().getSimpleName();
+    private static void attachSuppressed(RuntimeException primary,
+                                         RuntimeException cleanupFailure) {
+        if (cleanupFailure != null && cleanupFailure != primary) {
+            primary.addSuppressed(cleanupFailure);
         }
-        return message
-                + " | Check PhoenixProfile drive/Pinpoint wiring or createPedroRuntime(...) "
-                + "if your project uses a different Pedro constants package.";
+    }
+
+    private static String failureSummary(Throwable failure) {
+        String message = failure.getMessage();
+        return message == null || message.trim().isEmpty()
+                ? failure.getClass().getSimpleName()
+                : message;
+    }
+
+    private static boolean sameSpec(PhoenixAutoSpec first, PhoenixAutoSpec second) {
+        return first != null
+                && second != null
+                && first.alliance == second.alliance
+                && first.startPosition == second.startPosition
+                && first.partnerPlan == second.partnerPlan
+                && first.strategy == second.strategy;
     }
 }

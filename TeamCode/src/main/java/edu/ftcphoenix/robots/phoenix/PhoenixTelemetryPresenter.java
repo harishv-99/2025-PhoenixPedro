@@ -34,6 +34,7 @@ public final class PhoenixTelemetryPresenter {
     public void emitTeleOp(ScoringPath.Status scoring,
                            ScoringTargeting.Status targeting,
                            PhoenixDriveAssistService.Status driveAssist,
+                           PhoenixReadiness.Result poseAssistReadiness,
                            PoseEstimate globalPose,
                            PoseEstimate odomPose) {
         if (telemetry == null) {
@@ -44,9 +45,35 @@ public final class PhoenixTelemetryPresenter {
         emitScoringIntentTelemetry(scoring);
         emitAimSummary(targeting);
         emitDriveAssistTelemetry(driveAssist);
+        emitTeleOpReadiness(poseAssistReadiness);
         emitPoseTelemetry(globalPose, odomPose);
         emitTargetTelemetry(targeting);
         telemetry.update();
+    }
+
+    /**
+     * Emit the required availability status for Phoenix's localization-dependent TeleOp assists.
+     *
+     * <p>This method deliberately does not call {@code telemetry.update()}. The composition root
+     * uses it both on the INIT help frame and inside the ordinary one-frame TeleOp presenter.</p>
+     *
+     * @param readiness immutable Phoenix readiness result for auto-aim and shoot-brace
+     */
+    void emitTeleOpReadiness(PhoenixReadiness.Result readiness) {
+        if (telemetry == null || readiness == null) {
+            return;
+        }
+
+        telemetry.addData(
+                "drive.poseAssistReadiness",
+                readiness.isAllowed() ? "READY" : "BLOCKED"
+        );
+        for (PhoenixReadiness.Issue issue : readiness.issues()) {
+            telemetry.addLine(
+                    "Pose assists [" + issue.severity() + "] " + issue.message()
+                            + " | " + issue.remediation()
+            );
+        }
     }
 
     /**
@@ -136,6 +163,7 @@ public final class PhoenixTelemetryPresenter {
         if (driveAssist == null) {
             return;
         }
+        telemetry.addData("drive.poseAssistsAvailable", driveAssist.poseAssistsAvailable);
         telemetry.addData("drive.autoAimRequested", driveAssist.autoAimRequested);
         telemetry.addData("drive.shootBraceEligible", driveAssist.shootBraceEligible);
         telemetry.addData("drive.shootBraceEnabled", driveAssist.shootBraceEnabled);

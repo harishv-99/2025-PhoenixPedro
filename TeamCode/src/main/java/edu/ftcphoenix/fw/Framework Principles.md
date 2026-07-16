@@ -135,6 +135,25 @@ Phoenix is designed around a few core goals:
    When something is misconfigured, Phoenix should throw early (often at build-time) with an
    error message that tells a student what to change. Avoid silent no-ops.
 
+   Component construction and complete-behavior readiness are different facts. A component should
+   validate the configuration it owns; when safe operation also depends on several robot-owned
+   facts, combine those facts once at the mode boundary in a small immutable robot-specific
+   readiness result. Do not add a second generic validation language, scatter exceptions through
+   OpModes, or let a successful constructor claim that an entire Auto is armed.
+
+   * A blocking result must prevent hardware behavior from being installed or started, including
+     any START-without-confirmation path. Warnings and blockers required by drivers belong in
+     always-on telemetry with a concrete remediation, not only in `debugDump(...)`.
+   * Gate only the behavior that depends on a missing fact when a safe partial mode exists. For
+     example, incomplete localization calibration may disable pose-dependent TeleOp assists while
+     leaving manual drive and mechanisms available.
+   * Treat test-only route geometry and other maturity distinctions as typed facts owned by their
+     producer. A production-looking label, successful construction, or vendor idle state is not a
+     substitute for deliberate match readiness.
+   * A software pose rebase proves that coordinate owners agree; it does not measure the robot's
+     physical field placement. Display the required physical start for an operator check, and do
+     not describe a post-rebase comparison as an independent safety observation.
+
 9. **Guided builders ask one conceptual question at a time**
 
    Staged builders should guide users through the small set of meaningful answers for the next

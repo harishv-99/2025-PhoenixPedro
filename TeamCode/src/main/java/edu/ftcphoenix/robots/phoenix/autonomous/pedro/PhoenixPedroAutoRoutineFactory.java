@@ -25,7 +25,7 @@ import edu.ftcphoenix.robots.phoenix.autonomous.PhoenixAutoTasks;
  * starting another fallback. Generic Task and route APIs continue to report facts without choosing
  * Phoenix strategy.</p>
  *
- * <p>The placeholder outbound route is fixed during INIT. Return/park geometry is built once when
+ * <p>The placeholder outbound route is fixed during pre-start construction. Return/park geometry is built once when
  * that route Task starts, allowing its path to begin at the current Pedro pose without exposing the
  * raw Follower or Pedro builder in strategy code.</p>
  */

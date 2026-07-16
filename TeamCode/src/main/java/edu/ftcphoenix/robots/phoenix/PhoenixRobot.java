@@ -60,6 +60,7 @@ public final class PhoenixRobot {
     private PhoenixTeleOpControls teleOpControls;
     private PhoenixDriveAssistService driveAssists;
     private DriveSource teleOpDriveSource;
+    private PhoenixReadiness.Result teleOpPoseAssistReadiness;
     private AutoRoutineLifecycle autoRoutineLifecycle;
     private DriveCommandSink autonomousDrive;
 
@@ -135,8 +136,12 @@ public final class PhoenixRobot {
     private void initTeleOpRuntime() {
         drive = new FtcMecanumDriveLane(hardwareMap, profile.drive);
         teleOpControls = new PhoenixTeleOpControls(gamepads, profile.controls);
+        teleOpPoseAssistReadiness = PhoenixReadiness.teleOpPoseAssists(profile);
+        BooleanSource enabledAutoAim = teleOpControls.autoAimEnabledSource()
+                .and(BooleanSource.constant(teleOpPoseAssistReadiness.isAllowed()))
+                .memoized();
         initSharedRuntimeWithOwnedPredictor(
-                teleOpControls.autoAimEnabledSource(),
+                enabledAutoAim,
                 teleOpControls.aimOverrideSource()
         );
         capabilities = createCapabilities();
@@ -148,12 +153,14 @@ public final class PhoenixRobot {
                 teleOpControls.manualDriveSource(),
                 teleOpControls.manualTranslateMagnitudeSource(),
                 teleOpControls.autoAimEnabledSource(),
+                teleOpPoseAssistReadiness.isAllowed(),
                 localization.globalEstimator(),
                 scoringTargeting.aimOverlay()
         );
         teleOpDriveSource = driveAssists.driveSource();
 
         teleOpControls.emitInitHelp(telemetry);
+        telemetryPresenter.emitTeleOpReadiness(teleOpPoseAssistReadiness);
         telemetry.update();
     }
 
@@ -170,6 +177,10 @@ public final class PhoenixRobot {
      * <p>The drive sink and predictor are supplied as an explicit pair because an external route
      * runtime may own both drivetrain actuation and the physical odometry resource. Requiring both
      * seams prevents Phoenix from silently constructing a second hardware predictor for Auto.</p>
+     *
+     * <p>Success means this composition root's shared services and routine lifecycle are available;
+     * the Auto mode client must separately decide whether its exact calibration, field facts, and
+     * route are ready before installing or starting behavior.</p>
      *
      * @param autonomousDrive external Auto drive owner; must not be null
      * @param motionPredictor predictor owned by the same Auto runtime; must not be null
@@ -219,8 +230,6 @@ public final class PhoenixRobot {
             );
             capabilities = createCapabilities();
             autoRoutineLifecycle = new AutoRoutineLifecycle();
-            telemetry.addLine("Phoenix auto ready");
-            telemetry.update();
         } catch (RuntimeException initializationFailure) {
             stopAfterInitializationFailure(initializationFailure);
             throw initializationFailure;
@@ -290,8 +299,9 @@ public final class PhoenixRobot {
     /**
      * Resets shared lifecycle state for any mode.
      *
-     * <p>For Auto, this is the exact FTC START boundary and closes the INIT-only routine
-     * installation window before {@link #startAuto()} begins the installed root.</p>
+     * <p>For Auto, this is the exact Phoenix lifecycle boundary for FTC START and closes the
+     * pre-start routine installation window before {@link #startAuto()} begins the installed
+     * root.</p>
      *
      * @param runtime current FTC runtime in seconds
      */
@@ -316,9 +326,9 @@ public final class PhoenixRobot {
     /**
      * Starts autonomous-specific runtime state.
      *
-     * <p>The one routine installed during INIT starts immediately on the shared clock's exact FTC
-     * START boundary. This gives every match-time budget the same zero-delta timestamp instead of
-     * delaying its start until the first regular loop.</p>
+     * <p>The one routine installed before {@link #startAny(double)} starts immediately on the shared
+     * clock's exact FTC START boundary. This gives every match-time budget the same zero-delta
+     * timestamp instead of delaying its start until the first regular loop.</p>
      *
      * @throws IllegalStateException if Auto is not initialized, {@link #startAny(double)} has not
      *                               established the FTC START boundary, no root is installed, or
@@ -376,6 +386,7 @@ public final class PhoenixRobot {
                 scoringStatus,
                 targetingStatus,
                 driveAssistStatus,
+                teleOpPoseAssistReadiness,
                 globalPose,
                 odomPose
         );
@@ -421,14 +432,16 @@ public final class PhoenixRobot {
     /**
      * Installs the one root autonomous routine for this Phoenix runtime.
      *
-     * <p>Call this exactly once during INIT, after {@link #initAuto(DriveCommandSink,
-     * MotionPredictor)} and before {@link #startAny(double)}. The root Task may internally compose
-     * every route, mechanism action, deadline, and fallback needed by the selected strategy.</p>
+     * <p>Call this exactly once after {@link #initAuto(DriveCommandSink, MotionPredictor)} and before
+     * {@link #startAny(double)}. Normal Auto entries install during INIT; a guarded selector may
+     * finish construction at the beginning of its FTC {@code start()} callback before forwarding
+     * that lifecycle boundary. The root Task may internally compose every route, mechanism action,
+     * deadline, and fallback needed by the selected strategy.</p>
      *
      * @param task fresh single-use root Task for the selected autonomous routine
      * @throws NullPointerException  if {@code task} is null
      * @throws IllegalStateException if Auto is not initialized, a root is already installed, or
-     *                               FTC START has closed the INIT installation window
+     *                               {@link #startAny(double)} has closed the installation window
      */
     public void installAutoRoutine(Task task) {
         requireAutoRoutineLifecycle().install(task);
@@ -467,6 +480,7 @@ public final class PhoenixRobot {
         teleOpControls = null;
         driveAssists = null;
         teleOpDriveSource = null;
+        teleOpPoseAssistReadiness = null;
         autonomousDrive = null;
         scoringPath = null;
         drive = null;
@@ -555,7 +569,7 @@ public final class PhoenixRobot {
         private boolean startBoundaryReached;
         private boolean started;
 
-        /** Install exactly one fresh root while the OpMode is still in INIT. */
+        /** Install exactly one fresh root before the Phoenix lifecycle reaches FTC START. */
         void install(Task task) {
             Task requiredTask = Objects.requireNonNull(
                     task,
@@ -563,7 +577,7 @@ public final class PhoenixRobot {
             );
             if (startBoundaryReached || started) {
                 throw new IllegalStateException(
-                        "Phoenix auto routine installation is INIT-only; call "
+                        "Phoenix auto routine installation is pre-start only; call "
                                 + "installAutoRoutine(...) before startAny(...) and startAuto()"
                 );
             }
@@ -576,7 +590,7 @@ public final class PhoenixRobot {
             installedRoutine = requiredTask;
         }
 
-        /** Record that FTC START has closed the INIT-only installation window. */
+        /** Record that FTC START has closed the pre-start installation window. */
         void markStartBoundary() {
             startBoundaryReached = true;
         }
@@ -593,7 +607,7 @@ public final class PhoenixRobot {
             if (installedRoutine == null) {
                 throw new IllegalStateException(
                         "Phoenix Auto cannot start without an installed routine; call "
-                                + "installAutoRoutine(...) during INIT"
+                                + "installAutoRoutine(...) before startAny(runtime)"
                 );
             }
             if (!startBoundaryReached) {

@@ -14,8 +14,11 @@ import edu.ftcphoenix.fw.ftc.ui.SummaryScreen;
 import edu.ftcphoenix.fw.ftc.ui.UiControls;
 import edu.ftcphoenix.fw.input.Gamepads;
 import edu.ftcphoenix.fw.input.binding.Bindings;
+import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
+import edu.ftcphoenix.robots.phoenix.PhoenixReadiness;
 import edu.ftcphoenix.robots.phoenix.autonomous.PhoenixAutoSpec;
 import edu.ftcphoenix.robots.phoenix.autonomous.PhoenixAutoStrategyId;
+import edu.ftcphoenix.robots.phoenix.autonomous.pedro.PhoenixPedroPathFactory;
 
 /**
  * Pre-start Phoenix autonomous selector.
@@ -24,6 +27,10 @@ import edu.ftcphoenix.robots.phoenix.autonomous.PhoenixAutoStrategyId;
  * INIT. Once confirmed, the same Pedro/Phoenix initialization path used by static Auto entries is
  * executed and the selector is replaced by a locked summary screen. The selected values remain
  * robot-owned; the framework UI only handles display, navigation, and button dispatch.</p>
+ *
+ * <p>Only deliberately match-ready route selections are enabled. The same Phoenix readiness result
+ * is shown in previews and enforced by the shared base, so pressing START without confirming cannot
+ * bypass calibration, field-fact, route-maturity, or test-purpose blockers.</p>
  */
 @Autonomous(name = "Phoenix Auto Selector", group = "Phoenix")
 public final class PhoenixPedroAutoSelectorOpMode extends PhoenixPedroAutoOpModeBase {
@@ -89,7 +96,7 @@ public final class PhoenixPedroAutoSelectorOpMode extends PhoenixPedroAutoOpMode
      */
     @Override
     public void start() {
-        if (!isAutoInitialized() && initErrorOrNull() == null) {
+        if (!isAutoInitialized()) {
             selectedSpec = autoSpec();
             initializeRobotForSpec(selectedSpec);
         }
@@ -101,17 +108,40 @@ public final class PhoenixPedroAutoSelectorOpMode extends PhoenixPedroAutoOpMode
             navigator.render(telemetry);
         }
 
+        PhoenixAutoSpec previewSpec = builder.build();
+        PhoenixPedroPathFactory.RouteAvailability previewAvailability =
+                PhoenixPedroPathFactory.routeAvailabilityFor(previewSpec);
+        PhoenixReadiness.Result previewReadiness = PhoenixReadiness.pedroAuto(
+                previewSpec,
+                PhoenixProfile.current(),
+                PhoenixReadiness.AutoPurpose.MATCH_AUTO
+        );
+        boolean showRetainedAttempt = cleanupFailureBlocksRetry()
+                || (selectedSpec != null && sameSpec(activeSpecOrNull(), selectedSpec));
+        PhoenixReadiness.Result displayedReadiness = showRetainedAttempt
+                && readinessOrNull() != null ? readinessOrNull() : previewReadiness;
+
         telemetry.addLine("");
-        telemetry.addData("Current", builder.build().summary());
+        telemetry.addData("Current", previewSpec.summary());
         if (selectedSpec != null) {
             telemetry.addData("Confirmed", selectedSpec.summary());
         }
         if (isAutoInitialized()) {
-            telemetry.addLine("Status: [OK] Phoenix Auto initialized. Press START when ready.");
-        } else if (initErrorOrNull() != null) {
+            telemetry.addLine("Status: [READY] Phoenix Auto initialized. Press START when ready.");
+        } else if (showRetainedAttempt && initErrorOrNull() != null) {
             telemetry.addLine("Status: [ERROR] " + initErrorOrNull());
+        } else if (!displayedReadiness.isAllowed()) {
+            PhoenixReadiness.Issue blocker = displayedReadiness.firstBlockingIssueOrNull();
+            telemetry.addLine("Status: [BLOCKED] " + blocker.message());
+            telemetry.addLine("Fix: " + blocker.remediation());
         } else {
             telemetry.addLine("Status: Choose values, then confirm before START. START will use the current values.");
+        }
+
+        if (showRetainedAttempt) {
+            emitAutoReadinessTelemetry();
+        } else {
+            emitAutoReadinessTelemetry(previewSpec, previewAvailability, previewReadiness);
         }
         telemetry.update();
     }
@@ -282,17 +312,23 @@ public final class PhoenixPedroAutoSelectorOpMode extends PhoenixPedroAutoOpMode
 
                     @Override
                     public String tag(PhoenixAutoStrategyId value) {
-                        return value == builder.strategy() ? "CURRENT" : value.tag();
+                        return isMatchStrategyAvailable(value)
+                                ? (value == builder.strategy() ? "CURRENT" : value.tag())
+                                : "BLOCKED";
                     }
 
                     @Override
                     public boolean enabled(PhoenixAutoStrategyId value) {
-                        return true;
+                        return isMatchStrategyAvailable(value);
                     }
 
                     @Override
                     public String disabledReason(PhoenixAutoStrategyId value) {
-                        return null;
+                        if (value == PhoenixAutoStrategyId.PEDRO_INTEGRATION_TEST) {
+                            return "Use the explicitly named 'Phoenix: Pedro Auto Test' OpMode; "
+                                    + "test strategy is never selectable as match Auto.";
+                        }
+                        return routeAvailabilityForStrategy(value).reason;
                     }
                 });
         menu.setHelp("Step 4: choose the autonomous strategy to build from the selected setup.");
@@ -325,14 +361,33 @@ public final class PhoenixPedroAutoSelectorOpMode extends PhoenixPedroAutoOpMode
 
     private ConfirmationScreen confirmScreen() {
         PhoenixAutoSpec preview = builder.build();
+        PhoenixPedroPathFactory.RouteAvailability availability =
+                PhoenixPedroPathFactory.routeAvailabilityFor(preview);
+        PhoenixReadiness.Result previewReadiness = PhoenixReadiness.pedroAuto(
+                preview,
+                PhoenixProfile.current(),
+                PhoenixReadiness.AutoPurpose.MATCH_AUTO
+        );
+        PhoenixReadiness.Issue blocker = previewReadiness.firstBlockingIssueOrNull();
         return ConfirmationScreen.builder("Confirm Phoenix Auto")
                 .help("Step 5: review the setup. Press A to build Phoenix + Pedro for this spec.")
-                .status("READY", "Not initialized until confirmed or START is pressed.")
+                .status(
+                        blocker == null ? "READY" : "BLOCKED",
+                        blocker == null
+                                ? "Not initialized until confirmed or START is pressed."
+                                : blocker.message()
+                )
                 .row("Alliance", preview.alliance.label())
                 .row("Start", preview.startPosition.label())
                 .row("Partner", preview.partnerPlan.label())
                 .row("Strategy", preview.strategy.label())
-                .warning("Verify these values before START; Driver Station static entries are safer for common match routines.")
+                .row("Route maturity", availability.maturity)
+                .row("Expected physical start (Pedro field)", formatExpectedStart(availability))
+                .warning(
+                        blocker == null
+                                ? "Verify these values and physical placement before START; Driver Station static entries are safer for common match routines."
+                                : blocker.remediation()
+                )
                 .onConfirm(new Runnable() {
                     @Override
                     public void run() {
@@ -349,5 +404,45 @@ public final class PhoenixPedroAutoSelectorOpMode extends PhoenixPedroAutoOpMode
                     }
                 })
                 .build();
+    }
+
+    private boolean isMatchStrategyAvailable(PhoenixAutoStrategyId strategy) {
+        return strategy != PhoenixAutoStrategyId.PEDRO_INTEGRATION_TEST
+                && routeAvailabilityForStrategy(strategy).isMatchReady();
+    }
+
+    private PhoenixPedroPathFactory.RouteAvailability routeAvailabilityForStrategy(
+            PhoenixAutoStrategyId strategy
+    ) {
+        return PhoenixPedroPathFactory.routeAvailabilityFor(specWithStrategy(strategy));
+    }
+
+    private PhoenixAutoSpec specWithStrategy(PhoenixAutoStrategyId strategy) {
+        return PhoenixAutoSpec.builder()
+                .alliance(builder.alliance())
+                .startPosition(builder.startPosition())
+                .partnerPlan(builder.partnerPlan())
+                .strategy(strategy)
+                .build();
+    }
+
+    private static String formatExpectedStart(
+            PhoenixPedroPathFactory.RouteAvailability availability
+    ) {
+        return String.format(
+                "x=%.1f in, y=%.1f in, heading=%.1f deg",
+                availability.expectedPedroStartPose.getX(),
+                availability.expectedPedroStartPose.getY(),
+                Math.toDegrees(availability.expectedPedroStartPose.getHeading())
+        );
+    }
+
+    private static boolean sameSpec(PhoenixAutoSpec first, PhoenixAutoSpec second) {
+        return first != null
+                && second != null
+                && first.alliance == second.alliance
+                && first.startPosition == second.startPosition
+                && first.partnerPlan == second.partnerPlan
+                && first.strategy == second.strategy;
     }
 }

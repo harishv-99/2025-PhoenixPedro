@@ -38,6 +38,10 @@ import edu.ftcphoenix.fw.localization.AbsolutePoseEstimator;
  * container wires objects together and chooses loop order; this service owns the scoring-related
  * drive-assist behavior itself.
  * </p>
+ *
+ * <p>When Phoenix's localization calibration is not acknowledged, this service gates both assists
+ * internally while preserving the base manual {@link DriveSource}. Availability is also retained
+ * in {@link Status} for required Driver Station telemetry.</p>
  */
 public final class PhoenixDriveAssistService {
 
@@ -45,6 +49,9 @@ public final class PhoenixDriveAssistService {
      * Immutable status snapshot for Phoenix's robot-specific drive-assist service.
      */
     public static final class Status {
+        /** Whether Phoenix's localization calibration permits pose-dependent assists. */
+        public final boolean poseAssistsAvailable;
+        /** Whether the driver requested auto-aim, even when readiness currently gates it off. */
         public final boolean autoAimRequested;
         public final boolean shootBraceEligible;
         public final boolean shootBraceEnabled;
@@ -53,10 +60,12 @@ public final class PhoenixDriveAssistService {
         /**
          * Creates an immutable drive-assist status snapshot.
          */
-        public Status(boolean autoAimRequested,
+        public Status(boolean poseAssistsAvailable,
+                      boolean autoAimRequested,
                       boolean shootBraceEligible,
                       boolean shootBraceEnabled,
                       double manualTranslateMagnitude) {
+            this.poseAssistsAvailable = poseAssistsAvailable;
             this.autoAimRequested = autoAimRequested;
             this.shootBraceEligible = shootBraceEligible;
             this.shootBraceEnabled = shootBraceEnabled;
@@ -65,12 +74,14 @@ public final class PhoenixDriveAssistService {
     }
 
     private final ScalarSource manualTranslateMagnitude;
+    private final BooleanSource autoAimRequested;
     private final BooleanSource autoAimEnabled;
+    private final boolean poseAssistsAvailable;
     private final HysteresisBoolean shootBraceLatch;
     private final DriveSource driveSource;
 
     private long lastStatusCycle = Long.MIN_VALUE;
-    private Status lastStatus = new Status(false, false, false, 0.0);
+    private Status lastStatus = new Status(false, false, false, false, 0.0);
 
     /**
      * Creates the Phoenix drive-assist service.
@@ -79,6 +90,7 @@ public final class PhoenixDriveAssistService {
      * @param manualDrive                 base manual drive source from the controls owner
      * @param manualTranslateMagnitude    source describing the driver's current translation-stick magnitude
      * @param autoAimEnabled              source that requests omega-only auto aim when held
+     * @param poseAssistsAvailable        whether checked-in localization calibration permits pose-dependent assists
      * @param globalAbsolutePoseEstimator shared global pose estimator used by the shoot-brace pose lock
      * @param autoAimOverlay              scoring-targeting overlay that controls robot omega while auto aim is active
      */
@@ -86,12 +98,18 @@ public final class PhoenixDriveAssistService {
                                      DriveSource manualDrive,
                                      ScalarSource manualTranslateMagnitude,
                                      BooleanSource autoAimEnabled,
+                                     boolean poseAssistsAvailable,
                                      AbsolutePoseEstimator globalAbsolutePoseEstimator,
                                      DriveOverlay autoAimOverlay) {
         PhoenixProfile.DriveAssistConfig cfg = Objects.requireNonNull(config, "config").copy();
         Objects.requireNonNull(manualDrive, "manualDrive");
         this.manualTranslateMagnitude = Objects.requireNonNull(manualTranslateMagnitude, "manualTranslateMagnitude");
-        this.autoAimEnabled = Objects.requireNonNull(autoAimEnabled, "autoAimEnabled");
+        this.poseAssistsAvailable = poseAssistsAvailable;
+        this.autoAimRequested = Objects.requireNonNull(autoAimEnabled, "autoAimEnabled")
+                .memoized();
+        this.autoAimEnabled = this.autoAimRequested
+                .and(BooleanSource.constant(poseAssistsAvailable))
+                .memoized();
         Objects.requireNonNull(globalAbsolutePoseEstimator, "globalAbsolutePoseEstimator");
         Objects.requireNonNull(autoAimOverlay, "autoAimOverlay");
 
@@ -120,6 +138,7 @@ public final class PhoenixDriveAssistService {
                         DriveOverlayMask.OMEGA_ONLY
                 )
                 .build();
+        this.lastStatus = new Status(poseAssistsAvailable, false, false, false, 0.0);
     }
 
     /**
@@ -155,9 +174,11 @@ public final class PhoenixDriveAssistService {
         }
         lastStatusCycle = cycle;
 
-        boolean autoAimRequested = autoAimEnabled.getAsBoolean(clock);
+        boolean autoAimRequested = this.autoAimRequested.getAsBoolean(clock);
         double manualTranslateMag = manualTranslateMagnitude.getAsDouble(clock);
-        boolean shootBraceEligible = scoringStatus != null && scoringStatus.shootActive;
+        boolean shootBraceEligible = poseAssistsAvailable
+                && scoringStatus != null
+                && scoringStatus.shootActive;
         boolean shootBraceEnabled;
 
         if (!shootBraceEligible) {
@@ -168,6 +189,7 @@ public final class PhoenixDriveAssistService {
         }
 
         lastStatus = new Status(
+                poseAssistsAvailable,
                 autoAimRequested,
                 shootBraceEligible,
                 shootBraceEnabled,
@@ -196,6 +218,6 @@ public final class PhoenixDriveAssistService {
     public void reset() {
         shootBraceLatch.reset(false);
         lastStatusCycle = Long.MIN_VALUE;
-        lastStatus = new Status(false, false, false, 0.0);
+        lastStatus = new Status(poseAssistsAvailable, false, false, false, 0.0);
     }
 }
