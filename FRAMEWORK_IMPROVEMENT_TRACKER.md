@@ -1,6 +1,6 @@
 # Framework Improvement Tracker
 
-Last updated: 2026-07-15
+Last updated: 2026-07-16
 
 This file tracks proposed Phoenix framework improvements. It is deliberately a planning document:
 an item being listed here does **not** mean its current proposed solution has been approved. Each
@@ -81,7 +81,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 17 | PHX-02 | Phoenix runtime readiness | Done | Validate calibration, Pedro construction, routes, alliance facts, and required services before enabling assists/Auto. |
 | 18 | EXAMPLE-02 | Compiling Pedro autonomous reference | Done | Show one small real path, capability Tasks, one follower heartbeat, explicit fallback, and a thin OpMode. |
 | 19 | CTRL-01 | Final scalar-regulator output constraints | Done | Constrain the final composed regulator command with one factory-only decorator, without adding flywheel policy or another Plant-builder path. |
-| 20 | SAFE-03 | Regulated Plant actuator-command truth | Proposed | Make every normalized regulated-Plant command finite, bounded, and truthful before the defensive hardware adapter. |
+| 20 | SAFE-03 | Regulated Plant actuator-command truth | Done | Make every normalized regulated-Plant command finite, bounded, and truthful before the defensive hardware adapter. |
 | 21 | SOURCE-02 | Derived rate from sampled scalar position | Proposed | Derive units-per-second from any position `ScalarSource` in core; keep encoder hardware reads at the FTC boundary. |
 | 22 | API-03 | Builder and owner-config validation | Proposed | Reject invalid hardware and controller configuration at the earliest fully informed boundary with actionable messages. |
 | 23 | TUNE-01 | Live tuning to checked-in profile | Proposed | Keep production snapshots stable while providing an explicit, optional live-tuning workflow. |
@@ -115,6 +115,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 51 | DOC-01 | Stale and non-compiling documentation | Proposed | Correct loop/API examples and validate links/examples where practical. |
 | 52 | CI-01 | Framework verification in CI | Proposed | Run focused unit tests, TeamCode compilation, docs checks, and boundary checks. |
 | 53 | CLEAN-01 | Alias and risky convenience cleanup | Proposed | Remove only APIs proven redundant or unsafe by caller search. |
+| 54 | SAFE-04 | PowerOutput failure cleanup and seam truth | Proposed | Make low-level and grouped output failure handling fail-safe without claiming atomic or physical command truth. |
 
 The completed order was intentionally front-loaded with testability, robot lifecycle, actuator
 safety, and deterministic Task behavior. The current proposed-item priority now focuses on making
@@ -124,7 +125,11 @@ enabled Auto at all; CTRL-01 follows because it removes a complete robot-local r
 SAFE-03 remains a separate universal safety/truth task. SOURCE-02 stays near the front but must defer
 rather than block the lane if its required REV hardware comparison is unavailable or disproves the
 need. API-03 and TUNE-01 are secondary Bettabot simplifiers. AUTO-01 and SOURCE-03 remain conditional
-on the additional real-routine and measurement evidence stated in their own gates.
+on the additional real-routine and measurement evidence stated in their own gates. SAFE-04 records
+the lower-level and grouped-output failure contract separately so SAFE-03 does not overstate what a
+single regulated command can prove about child devices or physical hardware. It is appended rather
+than silently displacing the already approved Summer-focused priority order; a later decision gate
+may promote it if reproduced failure risk justifies that change.
 
 The Pedro review added two runtime-ownership gates before DRIVE-01:
 the checked-in Auto must first have one continuous follower heartbeat and one valid drivetrain/
@@ -3233,9 +3238,10 @@ writer, and explicit lifecycle ownership.
 
 ### API-03 - Builder and owner-config validation
 
-- **Problem to confirm:** invalid servo endpoints, transformed values, non-finite controller gains or
-  limits, inconsistent output/integral bounds, blank or duplicate motor names, and negative magnitude
-  settings may survive construction and be silently clamped or misapplied later. Bettabot's
+- **Problem to confirm:** invalid servo endpoints, transformed values, calibration-search powers,
+  non-finite controller gains or limits, inconsistent output/integral bounds, blank or duplicate
+  motor names, and negative magnitude settings may survive construction and be silently clamped or
+  misapplied later. Bettabot's
   [`BettaShooter` validation](https://github.com/Hansika1098/Summer26/blob/4eed9d6c7c93c5e2b65bdbc78463ad0be0e87790/TeamCode/src/main/java/edu/ftcphoenix/robots/betta/BettaShooter.java#L320-L361)
   is evidence that robot owners currently repeat invariants that may already be fully known by a
   framework builder or controller factory.
@@ -3247,10 +3253,10 @@ writer, and explicit lifecycle ownership.
   cheap final hardware defense; avoid new public value types unless several APIs share the invariant.
   CTRL-01 owns the new final-constraint API and its own inputs; API-03 audits other existing
   construction-time validity.
-- **Scope gate:** servo mapping, controller parameters, motor-group topology, and robot-owned
-  cross-field relationships have different owners. The decision gate must select one coherent
-  validation family for implementation and move independently owned families to named follow-up
-  items instead of turning API-03 into an omnibus cleanup.
+- **Scope gate:** servo mapping, calibration-search configuration, controller parameters, motor-group
+  topology, and robot-owned cross-field relationships have different owners. The decision gate must
+  select one coherent validation family for implementation and move independently owned families to
+  named follow-up items instead of turning API-03 into an omnibus cleanup.
 - **Completion:** errors name the device or controller, setting, units, supplied value, and legal
   range or relationship where applicable. Focused tests cover each migrated invariant, and robot
   owners retain only checks that depend on relationships unique to that robot.
@@ -3947,16 +3953,261 @@ writer, and explicit lifecycle ownership.
   pure-framework callers, debug/status consumers, and stop/failure behavior before selecting scope.
 - **Leading hypothesis:** because `PowerOutput` semantically consumes normalized power, apply one
   shared finite/`[-1,+1]` invariant immediately before each regulated Plant's final write and retain
-  both requested regulator output and applied normalized command in diagnostics. Keep FTC adapter
-  saturation as defense in depth. Do not require students to remember CTRL-01 for universal safety,
-  change mechanism targets or `Plant.getAppliedTarget()`, or conflate child scale/bias configuration
-  validity with the central regulator command; API-03 separately audits those mappings.
+  both requested regulator output and the normalized command submitted by a normally returning
+  top-level output call in diagnostics. Keep FTC adapter saturation as defense in depth. Do not require
+  students to remember CTRL-01 for universal safety, change mechanism targets or
+  `Plant.getAppliedTarget()`, or conflate child scale/bias configuration validity with the central
+  regulator command; API-03 separately audits those mappings.
 - **Completion:** focused fake-output tests cover mapped and lower-level regulated position/velocity
   paths, exact boundaries, positive/negative saturation, NaN/infinity, grouped/scaled outputs,
   search/homing commands where in scope, stop/reset/failure, and agreement between diagnostics and
-  the command accepted by the semantic output seam. Javadocs clearly distinguish mechanism target,
-  raw regulator result, applied normalized command, per-child mapped command, and physical feedback;
+  the command submitted by a normally returning top-level output call. Javadocs clearly distinguish
+  mechanism target, raw regulator result, submitted normalized command, per-child mapped command,
+  and physical feedback;
   existing finite in-range behavior and CTRL-01's narrower explicit policy remain unchanged.
+- **Decision record (2026-07-15):**
+  - **Confirmed behavior and minimal trace:** all regulated paths currently call
+    `regulator.update(...)`, cache that raw result, and pass it unchanged to
+    `PowerOutput.setPower(...)`. The lower-level `Plants.positionFromPower(...)` and
+    `velocityFromPower(...)` factories share `Plants.AbstractRegulatedPlant`; mapped position and
+    velocity each duplicate the same sequence. Their stable raw-result debug keys are respectively
+    `.output`, `.lastRegulatorOutput`, and `.regulatorOutput`. A finite `1.2` therefore reaches a
+    custom output as `1.2`; a standard FTC motor or CR-servo adapter later clips it to `1.0`, so the
+    Plant and boundary diagnostics disagree. FTC's current clamp maps positive/negative infinity to
+    `+1.0`/`-1.0` and leaves `NaN` as `NaN`. If a regulator throws instead of returning—specifically,
+    CTRL-01 rejects a non-finite inner result—the Plant leaves the previously commanded hardware
+    output active unless an outer owner happens to stop it.
+  - **Current callers and construction paths:** the normal student path is the staged
+    `FtcActuators` builder. Regulated motor velocity uses `MappedVelocityPlant`; regulated motor
+    position and regulated CR-servo position use `MappedPositionPlant`. The builder requires
+    default scale/bias for regulated groups, so its supported group path fans out one identical
+    logical command. The only compiled modern repository caller is
+    `TeleOp_08_LiftExternalSensorControl`; current Phoenix production code has no regulated Plant.
+    The public mapped builders and `Plants.positionFromPower(...)`/`velocityFromPower(...)` remain
+    distinct lower-level paths for custom HAL outputs, and no in-repository production caller uses
+    those factories directly.
+  - **Public construction-layer audit:** retain the staged
+    `FtcActuators.plant(...).motor/crServo(...).velocity/position().regulated()...` path as the one
+    beginner layer because it owns FTC device lookup, direction, grouping, feedback selection, and
+    guided validation. Retain `MappedPositionPlant.regulated(PowerOutput, ScalarSource,
+    ScalarRegulator)` and `MappedVelocityPlant.regulated(...)` as the advanced non-FTC/custom-HAL
+    boundary because their builders uniquely own plant/native unit mapping, declared target ranges,
+    position topology/reference, optional calibration output, and typed mapped-Plant results.
+    `Plants.positionFromPower(...)` and `velocityFromPower(...)` are older minimal native-unit
+    ingredient factories returning generic `Plant`; their behavior overlaps an identity-configured
+    mapped builder, they have no in-repository caller, and they are not a second recommended robot
+    path. SAFE-03 must still protect them while CLEAN-01 performs the separate compatibility/external-
+    caller gate for eventual removal rather than bundling an unrelated breaking deletion into a
+    safety change. Retain `ScalarRegulator` as the custom control-law seam, `ScalarRegulators` as the
+    only built-in regulator factory, and `PowerOutput` as the normalized custom-output seam. Add no
+    overload, builder question, public implementation, result type, getter, or status interface.
+  - **Alternatives considered:** no change or documentation-only self-limiting; implicitly wrap every
+    regulator with CTRL-01's `outputLimited(..., -1.0, +1.0)`; add a clamp and failure handling in
+    each of the three Plant implementations; centralize only a stateless clamp; add one private
+    stateful regulated-power channel; fix only `FtcHardware`; change `PowerOutput.setPower(...)` to
+    return an applied value; read `getCommandedPower()` after the write; expose a constrained power
+    value, Plant getter, or command-status type; reject all finite saturation; silently convert
+    numerical failures to zero; or retain the previous command.
+  - **Simplicity comparison:** documentation and self-limiting make every student remember a safety
+    wrapper. An implicit CTRL-01 decorator conflates optional robot policy with universal output
+    safety and still cannot stop hardware when its inner regulator throws. Three local clamps or a
+    stateless helper duplicate raw/normalized diagnostics and fail-stop/reset behavior. A return
+    value, readback, constrained type, getter, or builder step adds public concepts but still cannot
+    prove grouped-child or physical actuator response. One package-private channel changes no robot
+    call, keeps autocomplete unchanged, and removes the repeated safety/lifecycle state machine from
+    all three implementations.
+  - **Chosen internal design:** add one package-private actuation helper,
+    `RegulatedPowerChannel`, that owns one stable `ScalarRegulator` -> normalized command ->
+    `PowerOutput` graph. `Plants.AbstractRegulatedPlant`, `MappedPositionPlant`, and
+    `MappedVelocityPlant` delegate regulator evaluation, final normalization, write bookkeeping,
+    reset, stop, failure cleanup, and common debug state to it. It does not memoize by loop cycle:
+    repeated calls may intentionally carry different setpoints or measurements. Plant target
+    resolution, unit mapping, target guards, `getAppliedTarget()`, `PlantTargetStatus`, tolerance,
+    and update order remain unchanged; only the internal evidence that the last regulated actuation
+    completed normally becomes an explicit prerequisite for completion reporting.
+  - **Finite update contract:** invoke the regulator exactly once. Preserve finite values already in
+    the inclusive `[-1.0, +1.0]` range, including exact boundaries and signed zero. Saturate a finite
+    excursion once at this final seam, forward only the normalized value, and distinguish submitted
+    from saturated-and-submitted results in diagnostics. Normal return from the `void` output call is
+    not a hardware acknowledgement. Saturation is normal actuator-domain behavior, so it does not
+    throw or reset the regulator and does not claim generic anti-windup. CTRL-01 remains the explicit
+    outermost policy when a robot wants a narrower or asymmetric range.
+  - **Numerical and write-failure contract:** never forward `NaN` or either infinity. Record a
+    returned non-finite raw value, best-effort stop the output first, reset the regulator, and throw
+    an actionable `IllegalStateException` identifying the setpoint, measurement, result, and Plant
+    implementation/control path. That synthetic exception remains primary and any stop/reset failure
+    is suppressed on it. If regulator evaluation or `PowerOutput.setPower(...)` throws a
+    `RuntimeException`, perform the same best-effort stop/reset cleanup and rethrow that original
+    exception as primary with cleanup failures suppressed. Catch no `Error`. Silently zero-and-
+    continue would hide broken control math; retaining the previous command would leave a known
+    powered failure state.
+  - **Reset, stop, and Plant-status contract:** maintain one internal completion-valid condition (or
+    equivalent protected hook) used by both `atTarget()` and `atTarget(value)`. Clear it before every
+    regulated actuation attempt, reset, and explicit stop; set it only after the complete regulator/
+    output update returns normally. This prevents preserved matching target/status/measurement facts
+    from making either completion overload return true after a failed stop. `reset()` resets
+    controller and raw-computation state but performs no hardware write: retain the last normally
+    submitted normalized command and report `RESET_WITHOUT_WRITE`, or
+    `RESET_FAILED_WITHOUT_WRITE` before rethrowing a reset failure. `stop()` attempts every distinct
+    owned output stop before regulator reset and always attempts all cleanup, preserving the first
+    exception and suppressing later ones.
+    If all required output stop calls return normally, command `0.0` is truthfully submitted and each
+    Plant applies its existing successful-stop target/status semantics even if regulator reset later
+    fails; the combined status records that reset failure. If any required output stop throws, mark
+    command truth unknown, keep `atTarget()` false, reset local guards/search ownership best-effort,
+    but preserve the prior public `getAppliedTarget()`, target plan, and `PlantTargetStatus` rather
+    than falsely reporting `STOPPED`; then propagate the failure. The same conditional Plant-status
+    rule applies when a regulator/write failure triggers fail-stop cleanup: only a normally returning
+    stop may apply successful-stop semantics. `MappedPositionPlant` must identity-deduplicate its
+    regulated and search output when shared, while still attempting both when they are distinct.
+  - **Diagnostics and truth boundary:** add consistent private debug state at each Plant prefix for
+    raw `.regulatorOutput`, seam-level `.normalizedPowerCommand`, and a
+    `.regulatedPowerStatus` that distinguishes not-yet-updated, submitted, saturated-and-submitted,
+    reset-without-write/reset-failed, stop-submitted/stop-failed, and regulator/non-finite/output
+    failure outcomes—including whether fail-stop and regulator reset separately succeeded. Preserve
+    the lower-level `.output` and
+    mapped-position `.lastRegulatorOutput` raw aliases because Framework Principles require stable
+    debug keys; mapped velocity's existing `.regulatorOutput` is already canonical. Continue nesting
+    the regulator at `.regulator`. A normalized command is only the value submitted by a top-level
+    `PowerOutput` operation that returned normally; a `void` normal return is not acceptance or
+    readback. It is not a per-child transformed command, SDK readback, measured actuator power,
+    voltage, velocity, or proof that hardware physically moved. Command value and later controller-
+    reset outcome remain separate facts: a submitted zero stays truthful if reset then fails. No
+    operational getter or public status type is added.
+  - **Grouped, scaled, and FTC boundary:** the staged regulated group path accepts only default child
+    mappings, so its normal successful fan-out receives the central normalized command unchanged.
+    Advanced lower-level callers may supply a `PowerOutput` that scales, biases, clips, or otherwise
+    interprets that command; SAFE-03 deliberately reports only the configured top-level seam. It
+    does not read `getCommandedPower()` after a side effect or claim atomic group writes. Standard FTC
+    finite saturation remains defense in depth. Raw-HAL non-finite handling, cache-after-success,
+    and best-effort cleanup after a partial composite write are broader `PowerOutput` concerns now
+    tracked separately as SAFE-04.
+  - **Calibration-search scope:** `MappedPositionPlant`'s search power is open-loop configuration,
+    not a regulator result, and the same search path is also installed for device-managed motor
+    position Plants. Routing it through `RegulatedPowerChannel` would therefore mix two different
+    responsibilities and broaden this item silently. SAFE-03 leaves valid search behavior unchanged.
+    API-03 now explicitly tracks finite/range validation at `PositionCalibrationTasks.withPower(...)`
+    and the direct `beginCalibrationSearch(...)` boundary; SAFE-04 owns output-failure cleanup rather
+    than pretending one regulated-command value solves it.
+  - **CTRL-01 and Summer26/Bettabot effect:** SAFE-03 removes no additional Bettabot class or line
+    after CTRL-01; the projected robot surface remains about 1,012 Java lines. Bettabot still needs
+    `outputLimited(..., 0.0, maximumOutputPower)` for its intentional no-reverse/narrower policy and
+    its small robot-owned zero-setpoint coast/reset wrapper. PID/PIDF tuning, feedback units, Plant
+    wiring, readiness, maximum-power configuration, and enable/reset policy also remain robot facts.
+    The improvement is safety and mental-burden reduction: simpler robots need no redundant generic
+    `[-1,+1]` regulator wrapper merely to protect normalized hardware, diagnostics no longer hide FTC
+    clipping, and a CTRL-01/non-finite regulator failure best-effort stops the previous flywheel
+    command before propagating. Existing PID output limits should remain when they intentionally
+    shape that controller contribution; SAFE-03 is not evidence to remove tuning policy.
+  - **Rejected and deferred designs:** do not add another public API, builder branch, constrained
+    number, Plant command getter/status, or implicit regulator decorator. Do not replace the stable
+    mechanism-target meaning of `getAppliedTarget()`/`PlantTargetStatus`, and do not rename existing
+    debug keys. Do not move per-child scale/bias validation from API-03, calibration configuration
+    into regulated control, raw output-adapter/composite failure semantics from SAFE-04, or robot
+    enable/coast/hold policy into the framework. Do not claim physical output truth or saturation-
+    aware anti-windup.
+  - **Verification plan:** add pure fake-output coverage for all four public control paths: lower-level
+    regulated position/velocity and mapped regulated position/velocity. Cover interior values,
+    signed zero, exact `+/-1` boundaries, one-ULP and larger positive/negative saturation, all three
+    non-finite values, CTRL-01 narrower pass-through and thrown failure, repeated calls, reset without
+    a hardware write, reset failure after a prior command, successful/throwing stop, successful stop
+    followed by reset failure, regulator/write/cleanup exceptions, suppressed-error ordering,
+    prior-`atTarget() == true` and `atTarget(value) == true` invalidation, conditional public target/
+    status behavior after successful versus failed fail-stop, shared-versus-distinct search-output
+    identities, and raw/normalized/status debug truth.
+    Audit default regulated group construction and custom scaled-output semantics without claiming
+    child truth. Preserve existing target/range/guard tests and the compiling lift caller. Update
+    `PowerOutput`/`ScalarRegulator` and regulated factory/class Javadocs, Framework Principles, and
+    `FTC Actuators & Plants`; framework documentation remains project-neutral. Run the focused tests,
+    full `:TeamCode:testDebugUnitTest`, `:TeamCode:compileDebugJavaWithJavac`, caller/debug-key/doc-link
+    searches, XML-result inspection, and `git diff --check`, then request Android Studio review.
+    Real motor/CR-servo saturation and fail-stop behavior remain required observations during normal
+    adopting-robot bring-up; no hardware result will be claimed from unit tests.
+  - **Approval gate:** the leading hypothesis remains the smallest student-facing design and no
+    public call changes, but finite out-of-range values sent to custom outputs change and non-finite,
+    regulator, output-write, and stop failures gain a new fail-stop/reset/rethrow lifecycle. Treat
+    that as a major safety-semantic decision. `Approve SAFE-03 fail-stop design` authorizes only this
+    recorded scope; implementation must not begin before explicit approval.
+  - **Approval (2026-07-16):** the user approved the recorded design with
+    `Approve SAFE-03 fail-stop design`. Implementation is limited to the private shared regulated-
+    power channel, conditional Plant completion/stop truth, stable diagnostics, focused tests, and
+    synchronized project-neutral documentation above. SAFE-04, API-03 calibration validation,
+    publication, and every later tracker item remain out of scope.
+  - **Implementation (2026-07-16):** added the package-private `RegulatedPowerChannel` and routed
+    all four regulated Plant paths through it: lower-level position/velocity-from-power and mapped
+    position/velocity. The shared channel evaluates the regulator once, preserves finite in-range
+    values, saturates finite excursions at the final normalized-power seam, rejects all non-finite
+    results, and centralizes raw/normalized diagnostics plus best-effort stop-then-reset cleanup.
+    No public type, builder question, overload, getter, or robot-code call changed.
+  - **Lifecycle and truth implementation (2026-07-16):** regulated completion is invalidated before
+    every actuation, reset, and stop and becomes valid only after a complete update returns normally.
+    Runtime regulator/output failures retain their primary exception and suppress cleanup failures
+    in attempt order. Reset retains the last normally submitted normalized command without writing.
+    Stop marks zero only when every relevant top-level output stop returns normally; otherwise the
+    owning Plant preserves its prior applied target/plan/status while keeping both completion forms
+    false. Mapped position stops a shared regulated/search output once and stops distinct outputs
+    before regulator reset. Calibration-search command validation and raw/composite output behavior
+    remain deferred to API-03 and SAFE-04.
+  - **Documentation and diagnostics (2026-07-16):** synchronized Framework Principles, Plant,
+    `ScalarRegulator`, `PowerOutput`, mapped/lower regulated Javadocs, Sources and Signals, and FTC
+    Actuators & Plants. Stable raw aliases remain; the canonical private debug fields are
+    `.regulatorOutput`, `.normalizedPowerCommand`, and `.regulatedPowerStatus`, with `.regulator`
+    still nested. Documentation explicitly limits command truth to operations performed by the
+    regulated boundary and does not claim calibration-search, per-child, SDK, or physical truth.
+  - **Automated verification (2026-07-16):** focused SAFE-03 tests passed with 23 tests, zero
+    failures/errors/skips (`RegulatedPowerChannelTest`: 15; `RegulatedPlantSafetyTest`: 8). The final
+    full `:TeamCode:testDebugUnitTest` run passed with 424 tests across 46 suites and zero
+    failures/errors/skips; XML results were inspected. `:TeamCode:compileDebugJavaWithJavac` passed.
+    `git diff --check`, a trailing-whitespace scan including new files, regulated-path delegation,
+    public-surface, project-reference, and command-readback searches passed. Gradle emitted only the
+    existing Java 21/source-8 deprecation warnings.
+  - **Adversarial review (2026-07-16):** the failure-semantics review found no remaining production
+    correctness issue after the distinct-output stop-order refinement. Its inverse companion-stop
+    failure test gap and calibration-search diagnostic wording gap were both fixed and reverified.
+    The independent simplicity review found no student-facing API expansion, parallel construction
+    path, project-specific framework reference, or unapproved scope expansion.
+  - **Gate 3 / verification status (2026-07-16):** implementation and automated verification are
+    complete; SAFE-03 is **Verifying** pending the user's Android Studio review. No robot-hardware
+    result is claimed. Do not stage, commit, publish, merge, mark Done, or start SAFE-04 until the
+    user explicitly approves this audit point.
+  - **User verification (2026-07-16):** the user completed the Android Studio review and replied
+    `SAFE-03 looks good`. SAFE-03 is **Done**. Robot-hardware saturation and fail-stop observations
+    remain part of normal adopting-robot bring-up rather than a claim from this unit-tested change.
+
+### SAFE-04 - PowerOutput failure cleanup and seam truth
+
+- **Problem to confirm:** the standard FTC motor and CR-servo adapters cache a command before the SDK
+  write succeeds and their finite clamp still forwards `NaN`. The internal scaled/grouped outputs
+  likewise cache before child writes, and a child exception aborts the remaining write or stop loop.
+  `getCommandedPower()` can therefore imply success after a failed write, while a composite may leave
+  only some children stopped. SAFE-03 can best-effort call the configured top-level output but cannot
+  make that operation atomic or prove child/physical state.
+- **Alternatives to compare:** retain expert-only raw behavior; validate every caller; strengthen only
+  FTC adapters; cache only after success; make composite writes/stops best-effort across every child;
+  expose per-child results; change `PowerOutput` to return a result; or add a transactional output
+  abstraction. Reproduce first/middle/last-child failures and distinguish the logical seam command,
+  child commands, SDK acceptance, and physical response before changing the contract.
+- **Leading hypothesis:** keep the narrow `PowerOutput` interface and its seam-relative cached
+  command. Require finite normalized input; for a non-finite raw hardware request, best-effort submit
+  zero and then throw. Retain finite saturation at concrete hardware adapters and cache a command only
+  after its top-level operation returns normally. If a composite child write throws, stop issuing the
+  requested nonzero command immediately, best-effort stop every child (including children not yet
+  written), preserve the original write failure, and suppress stop failures. If a child stop throws,
+  continue stop attempts for all remaining children, preserve the first stop failure, and suppress
+  later ones. Set `getCommandedPower()` to `NaN` after any partial/failed write or stop and document
+  that as unknown seam state; this public semantic change requires SAFE-04's own approval gate.
+  Document that software fan-out is not atomic. Add no physical-readback claim, transaction API, or
+  public per-child status unless a real operational caller proves it is needed.
+- **Boundary with other items:** API-03 owns construction-time scale/bias and calibration-power
+  validity; PERF-03 owns optional successful-write deduplication. SAFE-04 owns only defensive
+  low-level write/stop failure semantics and truthful cache state.
+- **Completion:** focused throwing-output/SDK-adapter tests cover non-finite raw commands, exact and
+  excessive finite values, success-only caching, failures before and after a child side effect,
+  first/middle/last-child write and stop failures, immediate nonzero-write abandonment, all-child
+  best-effort stop cleanup, suppressed exceptions, `NaN` unknown-cache state, repeated stop, and
+  truthful top-level versus child diagnostics. Javadocs state exactly what
+  `getCommandedPower()` can and cannot prove; physical behavior is checked on representative motor,
+  CR-servo, and grouped hardware before claiming completion.
 - **Decision record:** _Pending._
 
 ## Explicitly deferred architectural ideas

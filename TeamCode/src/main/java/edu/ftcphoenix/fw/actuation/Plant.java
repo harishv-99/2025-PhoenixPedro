@@ -11,14 +11,16 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * power, servo position, motor velocity, lift position, flywheel velocity, and similar targets.
  * Robot behavior does <b>not</b> imperatively set a plant every loop. Instead, each plant is built
  * with one PlantTargetSource. During {@link #update(LoopClock)}, the plant samples that source once,
- * applies plant-level hardware guards, sends one safe target to hardware/control, and refreshes
- * feedback/status.</p>
+ * applies plant-level hardware guards, applies one final mechanism target through its selected
+ * control path, and refreshes feedback/status.</p>
  *
  * <h2>Target vocabulary</h2>
  * <ul>
  *   <li><b>Requested target</b>: raw value sampled from the behavior PlantTargetSource this loop.</li>
- *   <li><b>Applied target</b>: value actually sent to hardware/control after static bounds,
- *       reference checks, target guards, and rate limits.</li>
+ *   <li><b>Applied target</b>: final mechanism target selected after static bounds, reference
+ *       checks, target guards, and rate limits. For a framework-regulated Plant, the regulator then
+ *       derives a separate normalized actuator command from this target; the applied target is not
+ *       that command or hardware readback.</li>
  *   <li><b>Writable target</b>: optional {@link ScalarTarget} registered with the plant so
  *       {@link PlantTasks} can write requests without being passed a separate target variable.</li>
  * </ul>
@@ -46,9 +48,9 @@ public interface Plant {
     /**
      * Update this plant once for the current loop.
      *
-     * <p>Implementations should sample their configured PlantTargetSource, compute their applied target,
-     * command hardware/control, and refresh measurement/status caches. Robot code should call this
-     * once per loop after updating the shared {@link LoopClock}.</p>
+     * <p>Implementations should sample their configured PlantTargetSource, compute their applied
+     * mechanism target, command hardware/control, and refresh measurement/status caches. Robot code
+     * should call this once per loop after updating the shared {@link LoopClock}.</p>
      */
     void update(LoopClock clock);
 
@@ -58,7 +60,12 @@ public interface Plant {
     double getRequestedTarget();
 
     /**
-     * Target actually applied to hardware/control on the most recent update.
+     * Return this Plant's cached final mechanism target.
+     *
+     * <p>For a framework-regulated Plant this remains a target in plant units, not the regulator's
+     * raw result, the normalized power command, or physical hardware readback. If an output stop
+     * fails, an implementation may retain its prior target fact rather than falsely report a new
+     * stopped target.</p>
      */
     double getAppliedTarget();
 
@@ -111,7 +118,10 @@ public interface Plant {
     /**
      * Whether the plant is at its current requested target.
      *
-     * <p>Open-loop plants default to {@code false} because Phoenix cannot prove physical arrival.</p>
+     * <p>Open-loop plants default to {@code false} because Phoenix cannot prove physical arrival.
+     * Framework-regulated feedback Plants additionally require the latest regulated actuation to
+     * have completed normally; reset, stop, or a failed actuation invalidates completion evidence
+     * until a later successful update.</p>
      */
     default boolean atTarget() {
         return false;
@@ -121,7 +131,9 @@ public interface Plant {
      * Whether the plant is truly at a specific target value.
      *
      * <p>Feedback tasks use this overload so a behavior overlay, clamp, fallback, or rate limiter
-     * cannot make a task complete early while the plant is following a different target.</p>
+     * cannot make a task complete early while the plant is following a different target.
+     * Framework-regulated feedback Plants also require current successful actuation evidence, just
+     * as {@link #atTarget()} does.</p>
      */
     default boolean atTarget(double target) {
         return false;
@@ -146,12 +158,19 @@ public interface Plant {
 
     /**
      * Reset transient state such as controllers, target guards, and cached measurements.
+     *
+     * <p>For a framework-regulated Plant, reset invalidates completion and resets the regulator but
+     * does not write or imply a stopped actuator command.</p>
      */
     default void reset() {
     }
 
     /**
      * Immediately stop driving this plant in the most reasonable way for its implementation.
+     *
+     * <p>Framework-regulated implementations attempt to stop owned outputs before resetting the
+     * regulator, invalidate completion evidence, and propagate runtime cleanup failures. A normally
+     * returning top-level stop establishes seam-level zero submission, not physical proof.</p>
      */
     void stop();
 

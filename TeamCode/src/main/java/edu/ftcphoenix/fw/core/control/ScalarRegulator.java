@@ -20,6 +20,13 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * composed result needs an intentional narrower range. That policy limit is distinct from Plant
  * target bounds and from the enclosing output boundary's universal command safety.</p>
  *
+ * <p>A regulator is allowed to express a generic raw command; it does not need a redundant
+ * {@code [-1,+1]} policy decorator solely for actuator safety. An enclosing framework-regulated
+ * Plant requires a finite result and normalizes the final command to the {@code PowerOutput}
+ * domain. A non-finite result or runtime failure causes that Plant to perform fail-stop cleanup and
+ * propagate an actionable failure. Direct callers of this interface own their own output-boundary
+ * validation and cleanup.</p>
+ *
  * <p>An outer output limiter cannot provide generic saturation-aware anti-windup for an arbitrary
  * inner controller. Controller-specific integral limits remain explicit, and the robot mechanism
  * owner still decides enable, coast/hold, and reset policy.</p>
@@ -42,13 +49,17 @@ public interface ScalarRegulator {
      * @param setpoint    desired value in plant units
      * @param measurement measured value in the same units as {@code setpoint}
      * @param clock       current loop clock for the cycle being processed
-     * @return actuator command; units are chosen by the enclosing plant and usually correspond to the
-     * raw actuator command channel (for example normalized power)
+     * @return raw actuator command; units are chosen by the enclosing plant and usually correspond
+     * to its actuator command channel. Framework-regulated power Plants require a finite result and
+     * normalize it to {@code [-1.0, +1.0]} before submitting it to hardware.
      */
     double update(double setpoint, double measurement, LoopClock clock);
 
     /**
      * Reset any transient internal controller state such as integrators or derivative history.
+     *
+     * <p>Resetting a regulator does not itself command or stop an actuator. The enclosing Plant owns
+     * output lifecycle and failure cleanup.</p>
      */
     default void reset() {
         // default: no transient state

@@ -234,13 +234,14 @@ A **Plant** is a source-driven scalar target follower. Robot behavior does not c
 behavior targets use `PlantTargets.overlay(...)` or `PlantTargets.plan(...)`. During
 `plant.update(clock)`, the Plant resolves that target source once, applies static bounds and
 plant-level hardware guards, verifies the final target is finite and still inside the declared
-plant-unit range, sends that one safe target to hardware/control, and refreshes status.
+plant-unit range, applies that one safe mechanism target through its selected hardware/control
+path, and refreshes status.
 
 Key methods (see `edu.ftcphoenix.fw.actuation.Plant`):
 
 * `update(LoopClock clock)` — sample the configured target source and command hardware/control.
 * `getRequestedTarget()` — what behavior asked for this loop.
-* `getAppliedTarget()` — what the Plant actually applied after bounds and target guards.
+* `getAppliedTarget()` — the final mechanism target selected after bounds and target guards.
 * `getTargetPlan()` — how the `PlantTargets` graph selected the requested target.
 * `getTargetStatus()` — why requested and applied target may differ.
 * `atTarget()` / `atTarget(value)` / `hasFeedback()` — feedback-based readiness.
@@ -268,6 +269,20 @@ For framework-regulated Plants, keep three different bounds at their proper laye
   remains responsible for keeping the command finite and inside its semantic domain even when no
   `outputLimited(...)` decorator is present. A regulator limit does not replace target bounds,
   Plant guards, or final output defense.
+
+At a framework-regulated `PowerOutput` boundary, finite commands already inside `[-1.0, +1.0]`
+remain unchanged and finite excursions saturate to that inclusive range. Non-finite regulator
+results are never submitted. If regulation or the output write fails, the Plant fails closed: it
+best-effort stops the output, resets the regulator, and preserves the original failure as the
+primary exception. A regulator reset by itself does not write hardware.
+
+Regulated completion is also command evidence, not just matching target and measurement numbers.
+Both `atTarget()` forms must remain false after reset, stop, or a failed regulated actuation until a
+complete later actuation returns normally. Diagnostics distinguish the raw regulator result from
+the normalized command submitted by a normally returning top-level output call. That call is a
+seam-level fact, not acceptance, per-child group truth, hardware readback, or proof of motion; stop
+status must likewise claim submitted zero only when every relevant top-level output stop returns
+normally.
 
 An outer output limiter cannot generically feed saturation back into an arbitrary inner controller,
 so it does not claim saturation-aware anti-windup. Keep integral limits controller-specific. The
