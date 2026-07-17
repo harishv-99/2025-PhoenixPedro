@@ -47,7 +47,7 @@ For example, motor position wiring asks:
 
 1. Which hardware? `motor(...)`
 2. Which target domain? `position()`
-3. Who manages the position loop? `deviceManagedWithDefaults()`, `deviceManaged()...doneDeviceManaged()`, or `regulated().nativeFeedback(...).regulator(...)`
+3. Who manages the position loop? `deviceManagedWithDefaults()`, `deviceManaged()...doneDeviceManaged()`, or `regulated()` followed by one direct feedback answer and `regulator(...)`
 4. What topology? `linear()` or `periodic(period)`
 5. What bounds? `bounded(min, max)` or `unbounded()`
 6. How do plant units map to native units? `nativeUnits()`, `scaleToNative(...)`, or bounded-only `rangeMapsToNative(...)`
@@ -59,7 +59,7 @@ Motor velocity wiring asks a parallel but smaller set of questions:
 
 1. Which hardware? `motor(...)`
 2. Which target domain? `velocity()`
-3. Who manages the velocity loop? `deviceManagedWithDefaults()`, `deviceManaged()...doneDeviceManaged()`, or `regulated().nativeFeedback(...).regulator(...)`
+3. Who manages the velocity loop? `deviceManagedWithDefaults()`, `deviceManaged()...doneDeviceManaged()`, or `regulated()` followed by one direct feedback answer and `regulator(...)`
 4. What target bounds are legal? `bounded(min, max)` or `unbounded()`
 5. How do plant velocity units map to native velocity units? `nativeUnits()` or `scaleToNative(...)`
 6. Optional dynamic hardware guards: `targetGuards().maxTargetRate(...)`, `holdLastTargetUnless(...)`, `fallbackTargetUnless(...)`
@@ -254,7 +254,7 @@ PositionPlant arm = FtcActuators.plant(hardwareMap)
         .motor("armMotor", Direction.FORWARD)
         .position()
         .regulated()
-            .nativeFeedback(FtcActuators.PositionFeedback.externalEncoder("armEncoder"))
+            .externalEncoder("armEncoder")
             .regulator(ScalarRegulators.pid(Pid.withGains(0.006, 0.0, 0.0002)))
         .linear()
             .bounded(-300.0, 1200.0)
@@ -595,7 +595,7 @@ PositionPlant turret = FtcActuators.plant(hardwareMap)
         .crServo("turretServo", Direction.FORWARD)
         .position()
         .regulated()
-            .nativeFeedback(FtcActuators.PositionFeedback.externalEncoder("turretEncoder"))
+            .externalEncoder("turretEncoder")
             .regulator(ScalarRegulators.pid(Pid.withGains(0.01, 0.0, 0.0005)))
         .periodic(TURRET_TICKS_PER_TURN)
             .bounded(-900.0, 1100.0)
@@ -611,35 +611,59 @@ be driven with temporary open-loop power while looking for a reference.
 
 ---
 
-## 10. Feedback selectors
+## 10. Feedback answers on regulated stages
 
-Builder feedback selectors are typed so errors are caught early.
+After `.regulated()`, answer the feedback question directly on that already-domain-specific builder
+stage. There is no separate feedback-selector object to construct and immediately pass back.
 
-### Native position feedback
+### Motor position
 
-* `PositionFeedback.internalEncoder()`
-* `PositionFeedback.internalEncoder("leftLift")`
-* `PositionFeedback.averageInternalEncoders()`
-* `PositionFeedback.externalEncoder("liftEncoder")`
-* `PositionFeedback.externalEncoder("liftEncoder", direction)`
-* `PositionFeedback.fromSource(customNativePositionSource)`
+* `.internalEncoder()`
+* `.internalEncoder("leftLift")`
+* `.averageInternalEncoders()`
+* `.externalEncoder("liftEncoder")`
+* `.externalEncoder("liftEncoder", direction)`
+* `.nativeFeedback(customNativePositionSource)`
 
-These are native position sources. If the source already reports the plant units you want robot code
-to use, choose `nativeUnits().alreadyReferenced()` after the geometry step.
+The encoder answers report native position in FTC ticks. `nativeFeedback(...)` is the advanced seam
+for an analog, vendor, simulated, fused, or already-composed source that directly reports the native
+position required by this stage. If that source already uses the public coordinate you want, choose
+`nativeUnits().alreadyReferenced()` after the geometry step.
 
-### Velocity feedback
+### Motor velocity
 
-* `VelocityFeedback.internalEncoder()`
-* `VelocityFeedback.internalEncoder("flywheel")`
-* `VelocityFeedback.averageInternalEncoders()`
-* `VelocityFeedback.externalEncoder("flywheelEncoder")`
-* `VelocityFeedback.externalEncoder("flywheelEncoder", direction)`
-* `VelocityFeedback.fromSource(customVelocitySource)`
+* `.internalEncoder()`
+* `.internalEncoder("flywheel")`
+* `.averageInternalEncoders()`
+* `.externalEncoder("flywheelEncoder")`
+* `.externalEncoder("flywheelEncoder", direction)`
+* `.nativeFeedback(customNativeVelocitySource)`
 
-The built-in encoder helpers use native FTC units:
+Internal motor-encoder answers use the FTC SDK's direct velocity reading in ticks/second. An external
+incremental encoder answer instead reads the SDK-observed signed 32-bit position continuously and
+derives interval-average ticks/second from position change over actual elapsed accepted sample time.
+The builder hides that acquisition difference; robot code still chooses only which physical feedback
+source it wired.
 
-* position: **ticks**
-* velocity: **ticks/sec**
+The first valid external-position sample establishes the baseline and reports bootstrap velocity
+`0.0`. Plant/source reset clears that history, so reset feedback while the mechanism is stopped or
+otherwise account for the new baseline in robot policy. Repeated samples in one
+`LoopClock.cycle()` reuse one result, skipped cycles use their complete elapsed interval, and the
+estimator does not hide smoothing, counts-per-revolution conversion, or outlier policy.
+
+Position derivation avoids the FTC direct-velocity field's narrower numeric representation, but it
+can only describe positions that the SDK reports. It cannot prove that a hub captured every physical
+encoder edge. For a high-count-rate REV Through Bore encoder, use a hardware-counted Control/
+Expansion Hub encoder port 0 or 3 and validate the exact wiring, firmware, loop conditions, maximum
+speed, and regulator tuning on the robot before claiming match readiness. Optional filtering remains
+separate source composition rather than a hidden encoder behavior.
+
+### CR-servo position
+
+CR servos have no internal encoder choice. Their regulated position stage exposes only:
+
+* `.externalEncoder("turretEncoder"[, direction])`
+* `.nativeFeedback(customNativePositionSource)`
 
 ---
 
@@ -783,7 +807,7 @@ Plant shooter = FtcActuators.plant(hardwareMap)
         .motor("flywheel", Direction.FORWARD)
         .velocity()
         .regulated()
-            .nativeFeedback(FtcActuators.VelocityFeedback.internalEncoder())
+            .internalEncoder()
             .regulator(flywheelRegulator)
         .bounded(0.0, 5000.0)          // plant units: RPM
         .scaleToNative(TICKS_PER_RPM)  // native units: FTC ticks/sec

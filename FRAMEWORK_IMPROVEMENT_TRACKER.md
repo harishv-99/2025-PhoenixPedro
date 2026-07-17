@@ -82,40 +82,41 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 18 | EXAMPLE-02 | Compiling Pedro autonomous reference | Done | Show one small real path, capability Tasks, one follower heartbeat, explicit fallback, and a thin OpMode. |
 | 19 | CTRL-01 | Final scalar-regulator output constraints | Done | Constrain the final composed regulator command with one factory-only decorator, without adding flywheel policy or another Plant-builder path. |
 | 20 | SAFE-03 | Regulated Plant actuator-command truth | Done | Make every normalized regulated-Plant command finite, bounded, and truthful before the defensive hardware adapter. |
-| 21 | SOURCE-02 | Derived rate from sampled scalar position | Proposed | Derive units-per-second from any position `ScalarSource` in core; keep encoder hardware reads at the FTC boundary. |
-| 22 | API-03 | Builder and owner-config validation | Proposed | Reject invalid hardware and controller configuration at the earliest fully informed boundary with actionable messages. |
-| 23 | TUNE-01 | Live tuning to checked-in profile | Proposed | Keep production snapshots stable while providing an explicit, optional live-tuning workflow. |
-| 24 | AUTO-01 | Compact bounded Auto continuation | Proposed | Use another real routine to separate reusable lifecycle ceremony from robot-owned match and recovery policy. |
-| 25 | SOURCE-03 | Composable scalar measurement conditioning | Proposed | Add only evidence-backed, explicitly configured numeric filters as generic `ScalarSource` decorators rather than hiding smoothing in a sensor adapter. |
-| 26 | MATCH-01 | Explicit Auto-to-TeleOp handoff | Proposed | Carry one typed immutable robot snapshot across the FTC mode boundary without string maps or stale globals. |
-| 27 | DRIVE-02 | Shared drivetrain actuator handoff | Proposed | Preserve one motor writer when a PTO reuses drivetrain motors for an endgame mechanism. |
-| 28 | VISION-01 | Custom VisionPortal ownership | Proposed | Reuse camera/processor lifecycle without forcing robot-specific detections through AprilTag APIs. |
-| 29 | SENSOR-01 | Motor-current sensing | Proposed | Expose cycle-memoized current in amps as a Source; keep jam, homing, and power-budget policy robot-owned. |
-| 30 | INPUT-01 | Safe contextual control activation | Proposed | Support optional control modes without turning held controls into phantom press edges. |
-| 31 | HAPTIC-01 | Driver haptic feedback boundary | Proposed | Expose small rate-safe rumble output while controls retain the meaning of each notification. |
-| 32 | PERF-01 | FTC hub bulk-cache ownership | Proposed | Evaluate one optional, cycle-idempotent manual bulk-cache heartbeat against SDK automatic caching. |
-| 33 | PERF-02 | Loop phase diagnostics | Proposed | Measure named loop phases with a lightweight diagnostic that does not own timing or sleep. |
-| 34 | PERF-03 | Contract-safe hardware write deduplication | Proposed | Add write caching only where measurements justify it and stop/Plant truth remain exact. |
-| 35 | TARGET-01 | Lazy Plant target overlay selection | Proposed | Resolve the selected highest-priority layer first and avoid sampling shadowed layers. |
-| 36 | TARGET-02 | Candidate freshness | Proposed | Compute effective age from the loop clock and timestamp, with validation. |
-| 37 | TARGET-03 | Periodic planner complexity | Proposed | Replace range iteration with constant-time candidate mathematics. |
-| 38 | CYCLE-01 | Stateful drive-source cycle safety | Proposed | Memoize stateful composition once per `clock.cycle()` and propagate reset deliberately. |
-| 39 | CYCLE-02 | Localization cycle safety | Proposed | Guard predictors/estimators against duplicate same-cycle updates. |
-| 40 | SOURCE-01 | Boolean composition sampling | Proposed | Sample both operands once per cycle before combining stateful results. |
-| 41 | API-01 | Writable Plant command binding | Proposed | Keep one simple `Plant` if builder provenance can prevent silent no-op writes. |
-| 42 | API-02 | Feedback tolerance choice | Proposed | Ask for tolerance after unit mapping; retain an explicitly named native default only if useful. |
-| 43 | API-04 | Binding execution order | Proposed | Preserve declaration order unless explicit phases are proven necessary. |
-| 44 | API-05 | One beginner drive entry point | Proposed | Teach the lane as the robot-facing path and keep the raw factory as a lower-level tool. |
-| 45 | COMMON-01 | Initialization runtime helper | Proposed | Extract only repeated retry/error/cleanup ceremony; avoid a robot base class. |
-| 46 | COMMON-02 | Telemetry commit ownership | Proposed | Renderers add data; the composition root commits once. |
-| 47 | CHECK-01 | Staged whole-robot system check | Proposed | Compose a safe pre-match check from robot capabilities without hardware reflection or a base robot. |
-| 48 | EXAMPLE-01 | Compiling modern starter robot | Proposed | Add a small multi-file reference, not an inheritance framework. |
-| 49 | EXAMPLE-03 | Advanced moving-target reference | Proposed | Prove progress-triggered scoring and a bounded moving turret without putting game physics in the framework. |
-| 50 | BOUNDARY-01 | FTC boundary enforcement | Proposed | Fix existing import leaks, then add a focused forbidden-import check. |
-| 51 | DOC-01 | Stale and non-compiling documentation | Proposed | Correct loop/API examples and validate links/examples where practical. |
-| 52 | CI-01 | Framework verification in CI | Proposed | Run focused unit tests, TeamCode compilation, docs checks, and boundary checks. |
-| 53 | CLEAN-01 | Alias and risky convenience cleanup | Proposed | Remove only APIs proven redundant or unsafe by caller search. |
-| 54 | SAFE-04 | PowerOutput failure cleanup and seam truth | Proposed | Make low-level and grouped output failure handling fail-safe without claiming atomic or physical command truth. |
+| 21 | SOURCE-02 | Derived rate from sampled scalar position | Done | Derive units-per-second from any position `ScalarSource` in core; keep encoder hardware reads at the FTC boundary. |
+| 22 | FTC-01 | Regulated motor run-mode ownership | Proposed | Make Phoenix-regulated raw-power motor Plants own the required FTC run mode without another student-facing choice. |
+| 23 | API-03 | Builder and owner-config validation | Proposed | Reject invalid hardware and controller configuration at the earliest fully informed boundary with actionable messages. |
+| 24 | TUNE-01 | Live tuning to checked-in profile | Proposed | Keep production snapshots stable while providing an explicit, optional live-tuning workflow. |
+| 25 | AUTO-01 | Compact bounded Auto continuation | Proposed | Use another real routine to separate reusable lifecycle ceremony from robot-owned match and recovery policy. |
+| 26 | SOURCE-03 | Composable scalar measurement conditioning | Proposed | Add only evidence-backed, explicitly configured numeric filters as generic `ScalarSource` decorators rather than hiding smoothing in a sensor adapter. |
+| 27 | MATCH-01 | Explicit Auto-to-TeleOp handoff | Proposed | Carry one typed immutable robot snapshot across the FTC mode boundary without string maps or stale globals. |
+| 28 | DRIVE-02 | Shared drivetrain actuator handoff | Proposed | Preserve one motor writer when a PTO reuses drivetrain motors for an endgame mechanism. |
+| 29 | VISION-01 | Custom VisionPortal ownership | Proposed | Reuse camera/processor lifecycle without forcing robot-specific detections through AprilTag APIs. |
+| 30 | SENSOR-01 | Motor-current sensing | Proposed | Expose cycle-memoized current in amps as a Source; keep jam, homing, and power-budget policy robot-owned. |
+| 31 | INPUT-01 | Safe contextual control activation | Proposed | Support optional control modes without turning held controls into phantom press edges. |
+| 32 | HAPTIC-01 | Driver haptic feedback boundary | Proposed | Expose small rate-safe rumble output while controls retain the meaning of each notification. |
+| 33 | PERF-01 | FTC hub bulk-cache ownership | Proposed | Evaluate one optional, cycle-idempotent manual bulk-cache heartbeat against SDK automatic caching. |
+| 34 | PERF-02 | Loop phase diagnostics | Proposed | Measure named loop phases with a lightweight diagnostic that does not own timing or sleep. |
+| 35 | PERF-03 | Contract-safe hardware write deduplication | Proposed | Add write caching only where measurements justify it and stop/Plant truth remain exact. |
+| 36 | TARGET-01 | Lazy Plant target overlay selection | Proposed | Resolve the selected highest-priority layer first and avoid sampling shadowed layers. |
+| 37 | TARGET-02 | Candidate freshness | Proposed | Compute effective age from the loop clock and timestamp, with validation. |
+| 38 | TARGET-03 | Periodic planner complexity | Proposed | Replace range iteration with constant-time candidate mathematics. |
+| 39 | CYCLE-01 | Stateful drive-source cycle safety | Proposed | Memoize stateful composition once per `clock.cycle()` and propagate reset deliberately. |
+| 40 | CYCLE-02 | Localization cycle safety | Proposed | Guard predictors/estimators against duplicate same-cycle updates. |
+| 41 | SOURCE-01 | Boolean composition sampling | Proposed | Sample both operands once per cycle before combining stateful results. |
+| 42 | API-01 | Writable Plant command binding | Proposed | Keep one simple `Plant` if builder provenance can prevent silent no-op writes. |
+| 43 | API-02 | Feedback tolerance choice | Proposed | Ask for tolerance after unit mapping; retain an explicitly named native default only if useful. |
+| 44 | API-04 | Binding execution order | Proposed | Preserve declaration order unless explicit phases are proven necessary. |
+| 45 | API-05 | One beginner drive entry point | Proposed | Teach the lane as the robot-facing path and keep the raw factory as a lower-level tool. |
+| 46 | COMMON-01 | Initialization runtime helper | Proposed | Extract only repeated retry/error/cleanup ceremony; avoid a robot base class. |
+| 47 | COMMON-02 | Telemetry commit ownership | Proposed | Renderers add data; the composition root commits once. |
+| 48 | CHECK-01 | Staged whole-robot system check | Proposed | Compose a safe pre-match check from robot capabilities without hardware reflection or a base robot. |
+| 49 | EXAMPLE-01 | Compiling modern starter robot | Proposed | Add a small multi-file reference, not an inheritance framework. |
+| 50 | EXAMPLE-03 | Advanced moving-target reference | Proposed | Prove progress-triggered scoring and a bounded moving turret without putting game physics in the framework. |
+| 51 | BOUNDARY-01 | FTC boundary enforcement | Proposed | Fix existing import leaks, then add a focused forbidden-import check. |
+| 52 | DOC-01 | Stale and non-compiling documentation | Proposed | Correct loop/API examples and validate links/examples where practical. |
+| 53 | CI-01 | Framework verification in CI | Proposed | Run focused unit tests, TeamCode compilation, docs checks, and boundary checks. |
+| 54 | CLEAN-01 | Alias and risky convenience cleanup | Proposed | Remove only APIs proven redundant or unsafe by caller search. |
+| 55 | SAFE-04 | PowerOutput failure cleanup and seam truth | Proposed | Make low-level and grouped output failure handling fail-safe without claiming atomic or physical command truth. |
 
 The completed order was intentionally front-loaded with testability, robot lifecycle, actuator
 safety, and deterministic Task behavior. The current proposed-item priority now focuses on making
@@ -123,9 +124,13 @@ Summer26/Bettabot's first production Pedro Auto small and supported, then removi
 complexity already proven in that robot. EXAMPLE-02 is first because Bettabot currently has no
 enabled Auto at all; CTRL-01 follows because it removes a complete robot-local regulator decorator.
 SAFE-03 remains a separate universal safety/truth task. SOURCE-02 stays near the front but must defer
-rather than block the lane if its required REV hardware comparison is unavailable or disproves the
-need. API-03 and TUNE-01 are secondary Bettabot simplifiers. AUTO-01 and SOURCE-03 remain conditional
-on the additional real-routine and measurement evidence stated in their own gates. SAFE-04 records
+unless its contract is limited to the position observations supplied by the SDK; the user approved
+that limitation and moved exact-stack hardware qualification to adopting-robot validation.
+FTC-01 now follows SOURCE-02 because Bettabot's framework-regulated flywheel must not depend on a
+motor mode left behind by another owner or OpMode, and resolving that lifecycle centrally removes
+another hardware detail from robot code. API-03 and TUNE-01 remain secondary Bettabot simplifiers.
+AUTO-01 and SOURCE-03 remain conditional on the additional real-routine and measurement evidence
+stated in their own gates. SAFE-04 records
 the lower-level and grouped-output failure contract separately so SAFE-03 does not overstate what a
 single regulated command can prove about child devices or physical hardware. It is appended rather
 than silently displacing the already approved Summer-focused priority order; a later decision gate
@@ -3864,13 +3869,23 @@ writer, and explicit lifecycle ownership.
   [`ThroughBoreVelocitySource`](https://github.com/Hansika1098/Summer26/blob/4eed9d6c7c93c5e2b65bdbc78463ad0be0e87790/TeamCode/src/main/java/edu/ftcphoenix/robots/betta/BettaShooter.java#L30-L75)
   differences `getCurrentPosition()` using `LoopClock.dtSec()` to avoid a reported REV velocity-
   counter limitation. The implementation is not actually Through Bore-specific, and its timing is
-  only correct while it is sampled every cycle.
+  only correct while it is sampled every cycle. Cuttlefish independently uses the same acquisition
+  direction in its Decode shooter: its
+  [`Shooter`](https://github.com/6165-MSET-Cuttlefish/summer-2026/blob/42d1ce8ffe3dd62187b93771f1a5455c85fff6cd/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/modules/Shooter.java)
+  reads `getCurrentPosition()`, divides the position delta by measured elapsed time and 8192
+  counts/revolution, then applies explicit low-pass stages. Its checked-in
+  [`decode.xml`](https://github.com/6165-MSET-Cuttlefish/summer-2026/blob/42d1ce8ffe3dd62187b93771f1a5455c85fff6cd/TeamCode/src/main/res/xml/decode.xml)
+  puts the encoder-bearing left flywheel on hardware-counted Expansion Hub port 3. The user's report
+  that this external Through Bore path worked is useful field-shaped adoption evidence, but the
+  public snapshot contains no retained tachometer comparison or lost-edge result and does not by
+  itself certify exact-stack accuracy.
 - **Layer boundary to preserve:** `FtcSensors` owns device lookup, raw cycle-memoized readings, and
   any confirmed SDK/controller representation correction such as a hardware counter-width defect.
   Core Source composition owns device-independent delta-over-elapsed-time estimation; a generic
   periodic-position contract, if justified, is distinct from correcting a particular SDK counter.
-  SOURCE-03 owns optional smoothing or outlier conditioning. `VelocityFeedback.fromSource(...)`
-  remains the Plant seam unless another entry point proves a distinct validation or ownership value.
+  SOURCE-03 owns optional smoothing or outlier conditioning. Direct
+  `nativeFeedback(ScalarSource)` on the already-domain-specific regulated builder stage remains the
+  advanced Plant seam; no immediately consumed feedback-selector wrapper is retained.
 - **Alternatives to compare:** retain one custom class per robot; always trust `DcMotorEx.getVelocity()`;
   add a Through Bore or FTC-only helper; derive rate as a generic core Source transform; expose a
   separate estimator object; or add a Plant-feedback-only option. Compare actual SDK velocity with
@@ -3878,29 +3893,363 @@ writer, and explicit lifecycle ownership.
   relevant loop rates. Define first-sample, skipped-cycle, duplicate-cycle, reset, non-finite,
   counter-rollover, wrapped/absolute-position, discontinuity, and direction/unit semantics before
   choosing the API.
-- **Hardware decision gate:** before implementation, record direct SDK velocity and position-derived
+- **Original hardware decision gate, now adoption validation:** record direct SDK velocity and position-derived
   velocity on the pinned SDK and actual REV hardware across the Through Bore encoder's expected
   counts/revolution, RPM, direction, stop, and representative loop-rate envelope. Determine whether
   any discrepancy is acquisition/counter representation, generic estimation, or filtering. Put a
-  correction only in that owning layer. If Bettabot's direct velocity is sound and no other concrete
-  caller needs a position-derived rate, defer SOURCE-02 entirely. If another caller still justifies
-  the core estimator, record it explicitly; an FTC or Plant convenience remains a separate question
-  requiring distinct student-facing or validation value.
+  correction only in that owning layer. This exact-stack run remains necessary before claiming
+  Bettabot hardware accuracy or match readiness, but after the approved contract reclassification
+  it no longer blocks the generic framework transform or the staged external-feedback path.
 - **Leading hypothesis:** core owns one resettable, cycle-idempotent position-to-rate calculation that
   accepts any `ScalarSource` in caller-chosen position units and returns the same units per second.
   It uses elapsed time between its own accepted samples rather than assuming it was sampled during
   the immediately preceding loop. `FtcSensors` continues to own raw SDK position and direct-velocity
-  acquisition; existing Plant feedback accepts the resulting Source. Add an FTC or Plant convenience
-  only if it has distinct student-facing value, and otherwise keep one public construction path. Do
-  not identify the estimator with Through Bore hardware, silently replace direct SDK velocity, or
-  hide smoothing inside it.
+  acquisition. Make the already-domain-specific regulated builder stage the only public feedback-
+  selection layer: it exposes direct `internalEncoder(...)`, `averageInternalEncoders()`,
+  `externalEncoder(...)`, and advanced `nativeFeedback(ScalarSource)` answers. Delete the redundant
+  public `PositionFeedback`/`VelocityFeedback` wrapper factories. On the velocity stage,
+  `externalEncoder(...)` deterministically resolves continuous FTC position followed by the generic
+  rate transform, while internal encoders retain direct SDK velocity for the reviewed built-in motor
+  encoders. Add no runtime strategy inference, second external-encoder selector, or parallel core
+  factory spelling. Do not identify the core estimator with Through Bore hardware, silently replace
+  the raw direct SDK source globally, or hide smoothing inside either path.
 - **Completion:** fake-clock tests cover startup, normal and irregular intervals, skipped and repeated
   cycles, reset/restart, zero or invalid elapsed time, direction, unit mapping, non-finite samples,
-  wrap/discontinuity policy, and debug output. Hardware evidence records the usable range and failure
-  behavior of direct versus derived velocity. Documentation demonstrates the same estimator with at
-  least two position-source kinds and shows one concise regulated-Plant integration without leaking
-  FTC types into core.
-- **Decision record:** _Pending._
+  wrap/discontinuity policy, and debug output. FTC-boundary tests cover signed 32-bit rollover and
+  staged internal/direct versus external/derived selection. Documentation demonstrates the same
+  estimator with at least two position-source kinds and shows one concise regulated-Plant
+  integration without leaking FTC types into core. Exact-stack usable range, count retention, and
+  control performance remain explicitly deferred adopting-robot evidence rather than framework
+  completion claims.
+- **Decision record (direct staged API and observed-position contract approved 2026-07-16):**
+  - **Current callers and public layers:** repository search found no second handwritten derivative;
+    Bettabot is the concrete caller. The three regulated feedback stages already establish velocity,
+    motor position, or CR-servo position before asking for feedback. The public `PositionFeedback`
+    and `VelocityFeedback` objects are constructed only to be passed immediately into those stages;
+    no repository caller stores or reuses one, and their `fromSource(ScalarSource)` methods add no
+    dimensional type safety because `ScalarSource` itself is unit-agnostic. They are therefore a
+    redundant public construction layer. `ScalarSource` instance methods remain the one-input core
+    composition layer, `FtcSensors` owns reusable raw FTC acquisition, and lower-level regulated
+    Plants consume a final measurement Source.
+  - **Supplied-source capability and disposition:** an arbitrary native measurement remains a
+    distinct advanced capability for an analog tachometer, vendor device, simulated source, fused
+    measurement, or explicitly composed/conditioned signal that has no FTC motor-port encoder name.
+    Removing that capability would force such callers to abandon the staged builder. It does not,
+    however, justify public `fromSource(...)` wrapper factories. Each domain-specific feedback stage
+    should accept `nativeFeedback(ScalarSource)` directly. The concrete position example using an
+    analog lift-height source migrates mechanically to that method. A named `externalEncoder(...)`
+    remains the ordinary acquisition answer; overloading it with an arbitrary scalar would misname
+    non-encoder measurements and make it unclear whether the value is position or already rate.
+  - **Pinned-SDK representation finding:** this repository pins FTC SDK 11.1.0. Inspection of its
+    `Hardware` source JAR traces Lynx motor velocity through `LynxGetBulkInputDataResponse`, whose
+    protocol payload and Java storage are signed 16-bit values; motor position is signed 32-bit.
+    `LynxDcMotorController` returns that velocity without host-side overflow correction. Direct
+    velocity can therefore represent only `-32768..32767` counts/second. Source inspection proves
+    that a higher count rate cannot be represented truthfully, but does not prove whether a given
+    hub firmware wraps, saturates, or fails another way; that observed behavior remains part of the
+    hardware run.
+  - **Encoder-spec comparison:** the relevant distinction is count rate at the hub port, not the
+    motor brand or the output-shaft counts/revolution by itself.
+    - A [REV HD Hex](https://docs.revrobotics.com/duo-control/sensors/encoders/motor-based-encoders)
+      has 28 counts per motor revolution at 6000 RPM. Its 20:1 and 40:1 gearboxes multiply output
+      counts/revolution while reducing output RPM by the same factor, so each configuration reaches
+      only about 2800 counts/second at free speed. The REV Core Hex's 288 output counts/revolution at
+      125 RPM is about 600 counts/second. Both have wide signed-16 velocity margin.
+    - A current [goBILDA 5203 Yellow Jacket](https://www.gobilda.com/5203-series-yellow-jacket-motor-1-1-ratio-24mm-length-8mm-rex-shaft-6000-rpm-3-3-5v-encoder/)
+      likewise has 28 counts per encoder-shaft revolution at 6000 RPM, or about 2800
+      counts/second. Gearbox examples preserve approximately that count rate: the official
+      [19.2:1 model](https://www.gobilda.com/5203-series-yellow-jacket-planetary-gear-motor-19-2-1-ratio-24mm-length-8mm-rex-shaft-312-rpm-3-3-5v-encoder/)
+      is 537.7 output counts/revolution at 312 RPM, or about 2796 counts/second.
+    - Both [REV Through Bore V1](https://www.revrobotics.com/content/docs/REV-11-1271-DS.pdf)
+      and [V2](https://www.revrobotics.com/rev-11-3174/) specify 8192 incremental counts/revolution
+      and a 10000 RPM sensor limit. On the hub's signed-16 velocity representation, positive direct
+      velocity reaches its limit at about 240 RPM. Bettabot's configured 1000 RPM default is about
+      136533 counts/second and its 5000 RPM maximum is about 682667 counts/second, so raw
+      `getVelocity()` cannot represent either. The sensor's own maximum rating would be about
+      1365333 counts/second; REV does not publish a matching maximum count rate for the hub encoder
+      port, so successful high-rate position capture must be measured rather than inferred. FIRST's
+      [Control/Expansion Hub guidance](https://ftc-docs.firstinspires.org/en/latest/tech_tips/tech-tips.html)
+      says ports 0 and 3 are hardware-counted while ports 1 and 2 are software-counted, and names the
+      high-resolution Through Bore as a device that should use port 0 or 3 to avoid missed counts.
+      A claimed high-rate path must therefore use and record port 0 or 3.
+  - **Position-API finding:** `DcMotor.getCurrentPosition()` is the pinned SDK's ordinary public
+    position API. On a Lynx hub it returns the same signed 32-bit position field available from
+    `LynxModule.BulkData.getMotorCurrentPosition(...)`; direct bulk-data access supplies neither a
+    wider counter nor a more precise value. `DcMotorEx.getVelocity(AngleUnit)` only converts the
+    same signed-16 direct velocity and is not an alternative acquisition. Consecutive accepted
+    `getCurrentPosition()` readings can infer interval-average velocity without that signed-16
+    range limit, but no SDK method can prove that the selected port captured every electrical edge.
+    Correct wiring on hardware-counted port 0/3, coherent bulk-cache lifecycle, a safely bounded
+    interval, and comparison with an independent reference remain necessary.
+  - **Layer conclusion:** keep motor/encoder lookup, direction normalization, raw position and raw
+    velocity, quadrature-port behavior, and any proven Lynx signed-16 correction in `FtcSensors`.
+    Keep delta-position divided by elapsed sample time device-independent in core. Caller-selected
+    CPR/unit scaling remains ordinary Source composition, and robot configuration owns which sensor
+    is physically attached and what its value means. A wrapped absolute-angle source must be
+    explicitly unwrapped by a layer that knows its period before generic differentiation. SOURCE-03
+    continues to own optional smoothing/outlier handling; neither acquisition path may hide it.
+  - **Construction-time dispatch:** after `.position().regulated()` or
+    `.velocity().regulated()`, the staged builder itself provides the required distinction; neither
+    the regulator implementation nor a sampled value must be inspected. On a velocity stage,
+    `internalEncoder(...)` resolves to direct SDK velocity and `externalEncoder(...)` resolves to a
+    rollover-aware FTC position source followed by the generic elapsed-time rate transform. On a
+    position stage, the same encoder-named methods resolve position. `nativeFeedback(source)` means
+    the advanced Source already reports the native measurement required by that stage and is passed
+    unchanged. `MappedVelocityPlant.update(clock)` already supplies the shared `LoopClock`, and its
+    reset already resets measurement history, so no new heartbeat, constructor-time sample, or public
+    lifecycle method is required. The regulator remains hardware-agnostic: it receives the final
+    native measurement. A physically external encoder must use `externalEncoder(...)` even when it
+    occupies the powered motor's encoder channel or shares its configured hardware name; the SDK
+    cannot verify that physical fact.
+  - **Plant-facade refinement after user review:** the existing
+    velocity-stage `externalEncoder(name[, direction])` answer should mean "obtain trustworthy native
+    velocity from this external incremental encoder," not "call `DcMotorEx.getVelocity()`." Its
+    current private resolver does the latter, but the builder and `MappedVelocityPlant` already own
+    construction, measurement reset, sampling, unit conversion, and regulator delivery, so they can
+    hide the stateful position-derived source without adding robot code. Keep the velocity-stage
+    `internalEncoder(...)` answer on direct SDK velocity for the reviewed low-count-rate motor
+    encoders. Keep direct `nativeFeedback(source)` as the advanced already-domain-specific seam.
+    This materially refines the earlier assumption that the Plant layer added no distinct value and
+    removes the redundant selector-object layer instead of adding another API.
+  - **Feedback API alternatives:** retaining the two wrapper families preserves explicit nouns but
+    makes students restate the domain already chosen by `.position()`/`.velocity()` and exposes
+    public selector objects with no demonstrated reuse. Replacing them with one public
+    `EncoderFeedback` object removes one repeated noun but still creates an immediately consumed
+    factory object and cannot honestly represent a non-encoder native source. Accepting only a raw
+    `ScalarSource` would force ordinary callers to know FTC acquisition, direction, internal-group
+    selection, and direct-versus-derived behavior. The smallest coherent design is therefore direct
+    answers on the staged feedback question. Motor position and velocity stages expose parallel
+    `internalEncoder()`, `internalEncoder(name)`, `averageInternalEncoders()`,
+    `externalEncoder(name[, direction])`, and `nativeFeedback(source)` methods. CR-servo position
+    exposes only external encoder and native-source answers; adding impossible internal choices for
+    visual symmetry is rejected. Delete the old wrapper classes rather than retaining parallel
+    spellings or deprecations.
+  - **Approach comparison:** direct SDK velocity remains the simplest recommended acquisition for
+    the reviewed built-in motor encoders and must not be replaced globally. It is structurally
+    unusable for Bettabot's high-rate Through Bore. A generic elapsed-time position derivative is
+    the smallest reusable way to remove Bettabot's robot-owned history/timing code and is the fixed
+    default behind `externalEncoder(...)`. `DcMotor.getMotorType()` does expose configured
+    ticks/revolution and maximum RPM, but the SDK says that type is assigned in the robot
+    configuration and may later be changed; the pinned SDK contains no Through Bore motor type, and
+    its unspecified motor type contains plausible legacy Tetrix values rather than an unknown
+    marker. It therefore cannot identify an external encoder or prove direct velocity safe. Plant
+    target bounds likewise describe legal commands rather than guaranteed measured speed.
+    A position-assisted signed-16 branch correction might retain better hub-timed resolution, but
+    it depends on undocumented wrap and sampling semantics and can choose an adjacent
+    `65536`-counts/second branch during acceleration, long loops, stops, resets, or reversal. It is
+    rejected as the leading/default design unless hardware evidence first shows that plain derived
+    feedback is unusable and that the correction is branch-stable. Runtime fallback based on a
+    suspicious raw value is unsafe because an overflowed value can look plausible. A student-facing
+    `DIRECT`/`DERIVED`/`AUTO` choice, Through Bore-named core type, duplicate static and instance
+    factories, second external-encoder selector, and another Plant feedback spelling are therefore
+    rejected as misleading or redundant.
+  - **Approved core semantics:** use one
+    resettable, cycle-idempotent `ScalarSource` instance transform returning caller position units
+    per second. Sample upstream once per new `clock.cycle()` and use differences between the
+    transform's own accepted `clock.nowSec()` samples, never the preceding loop's `dtSec()`. A first
+    finite sample establishes a baseline and returns a documented bootstrap `0.0`; reset propagates
+    upstream and clears history. Same-cycle calls return the cached result. Zero elapsed time keeps
+    the prior result without consuming the position delta, regressing time rebaselines, and a
+    non-finite sample/result returns `NaN` without poisoning the last valid baseline. The core type
+    assumes linear unwrapped position and must not guess counter width, periodic shortest paths,
+    discontinuities, CPR, direction, or filtering.
+  - **Prior algorithm approval and reopened API gate (2026-07-16):** the user approved the fixed
+    internal-direct/external-derived acquisition policy, then identified that the public
+    `VelocityFeedback` wrapper repeats the velocity domain and that `fromSource(...)` adds ceremony.
+    That observation materially improves the public API and reopened the required major-design stop.
+    The user approved the direct staged feedback API on 2026-07-16. The measurement-only comparison
+    was then added to the existing generic motor-power tester and reviewed before the hardware gate
+    was reconsidered.
+  - **API-review workflow lesson:** `Framework Principles.md` now requires each conceptual builder
+    question to be answered once, treats an immediately consumed selector/parameter wrapper as a
+    public construction layer, and permits that type only when callers meaningfully store, reuse,
+    compose, share, or independently validate it. The framework-improvement skill now performs that
+    parameter-type audit explicitly and has a separate evidence gate for decisions that source or
+    documentation inspection cannot prove. It keeps the item `Researching`, separates diagnostic
+    tooling from production defaults, requires Android Studio safety review before a physical run,
+    and reopens design approval if measured evidence contradicts an assumption.
+  - **Measurement-only tooling (2026-07-16):** the existing generic `HW: DcMotor Power` tester now
+    keeps its ordinary display concise and adds an opt-in Y capture. While capture is active, an
+    acquisition guard reads the selected motor port at most once per shared loop cycle, including a
+    cached failure. On a matched REV module, one explicit fresh bulk read feeds both public motor
+    getters from a coherent snapshot; an original `OFF` cache mode is changed to `MANUAL` only while
+    those getters consume the snapshot and is restored immediately, while `MANUAL`/`AUTO` are left
+    unchanged. Module, controller, firmware, original cache mode, port 0/3 eligibility, coherence,
+    and restoration truth are logged rather than inferred. A package-private tools-only helper uses
+    elapsed accepted `clock.nowSec()` samples, same-cycle caching, signed 32-bit rollover-aware
+    deltas, explicit warmup, zero-time retention, time-regression rebaseline, and reset at
+    device/lifecycle boundaries; it is deliberately not the proposed production `ScalarSource`.
+    The tester locks actuation during INIT, requires a fresh A arm after Driver Station START and
+    every device selection, prevents a stale target from reaching a new motor, temporarily selects
+    `RUN_WITHOUT_ENCODER` for open-loop testing, and commands zero before restoring the prior mode.
+    Locale-stable rows distinguish the command held before measurement from the command actually
+    issued afterward, report every unavailable cycle explicitly, and include one non-blocking
+    right-bumper sample gap. No filter, signed-16 correction, sleep, FtcSensors/Plant API, or
+    production feedback selection was added. The generic guide documents fixture/tachometer safety,
+    the exact port and stack, coherent acquisition, raw-log preservation, and the distinction between
+    configured motor metadata and physical encoder identity without naming a downstream robot
+    project.
+  - **Measurement-tool applicability:** the pinned Bettabot code obtains its external reading through
+    `leftMotorName`, matching the one selected motor channel that the power tester both drives and
+    observes. The hardware run must still confirm that the Through Bore is physically wired to that
+    selected channel. If it is actually on a separate encoder-only channel, stop: a two-device
+    actuator/measurement tester is a material UI and ownership change requiring another design gate.
+  - **Measurement-stage automated verification (2026-07-16):** nine focused pure tests pass for
+    bootstrap, normal/irregular intervals, duplicate cycles, zero/regressing/non-finite time, reset,
+    forward/reverse signed position rollover, and unavailable direct velocity with valid derived
+    output. The complete `:TeamCode:testDebugUnitTest` suite passes 433 tests with zero failures,
+    errors, or skips, and `:TeamCode:compileDebugJavaWithJavac` succeeds against the pinned FTC SDK.
+    `git diff --check`, untracked-file whitespace checks, and no-sleep/no-loop diagnostic checks pass.
+    Independent adversarial reviews closed same-press selection/arming, stale-target transfer,
+    INIT actuation, motor-mode restoration, fail-stop cleanup, coherent REV bulk acquisition,
+    one-acquisition-per-cycle, log truth, and student-facing wording findings. The remaining physical
+    hardware evidence is intentionally not claimed by these automated checks.
+  - **Measurement-tool manual audit (2026-07-16):** the user reviewed the diagnostic controls,
+    safety/lifecycle behavior, coherent-acquisition path, and recorded output in Android Studio and
+    replied `SOURCE-02 measurement tool looks good`. This approves the physical evidence run only;
+    it is not final SOURCE-02 approval and does not authorize production builder/core changes.
+  - **No-hardware and Cuttlefish reassessment (approved 2026-07-16):** the user does not
+    have access to the exact hardware and pointed to Cuttlefish's working external Through Bore
+    implementation as an additional hint. Cuttlefish independently chose position-delta over actual
+    elapsed time at 8192 counts/revolution, bootstraps the first sample at zero, keeps smoothing as
+    explicit later stages, configures the encoder-bearing motor on hardware-counted port 3, and
+    bounds final motor power. This strengthens the practicality and ownership case for hiding the
+    derived measurement below robot behavior. It does not establish the encoder version, retained
+    count accuracy, direct-versus-derived error, reference-instrument agreement, or the exact
+    firmware/loop conditions, and its per-loop filters and lifecycle assumptions should not be
+    copied into the generic estimator.
+    - The recommended response is a formal Gate 1 reclassification, not an evidence waiver. Narrow
+      SOURCE-02's production promise to a deterministic rate from the continuous positions the FTC
+      SDK actually reports. Keep physical encoder identity, counts/revolution/unit mapping,
+      direction, wiring, appropriate high-rate port, maximum usable rate, and regulator tuning as
+      adoption facts. Track the exact-stack tachometer/count-retention run separately and do not
+      claim that a finite derived result proves every physical edge was captured.
+    - Under that narrower contract, indefinite framework deferral adds no safety: the signed-16
+      direct velocity range is already proven structurally insufficient for this 8192-count encoder,
+      while two robot implementations repeat position history and timing. The approved staged API,
+      generic elapsed-time transform, FTC signed-32 continuity handling, exhaustive fake-clock/
+      rollover tests, port 0/3 guidance, existing finite normalized command boundary, and explicit
+      unvalidated-hardware wording form the conservative best-effort implementation. No automatic
+      direct/derived fallback, signed-16 branch correction, hidden filter, or reliability claim is
+      justified.
+    - Cuttlefish also explicitly selects `RUN_WITHOUT_ENCODER` before its raw-power
+      shooter loop. Phoenix's general FTC `motorPower(...)` adapter currently leaves motor run mode
+      unchanged. That is a broader regulated-motor lifecycle issue, not permission to silently
+      expand SOURCE-02; decide it through its own major gate before claiming that every regulated
+      motor path owns raw-power mode. Feedback-read/non-finite-measurement cleanup is likewise a
+      broader regulated-Plant safety question and must not be hidden inside this source transform.
+    - **Approval and implementation status (2026-07-16):** the user replied
+      `Approve reclassifying SOURCE-02 hardware evidence as adoption validation and proceeding with
+      the conservative observed-position implementation.` This formally limits the framework claim
+      to the SDK-observed position stream, preserves the exact-stack run below as separate adoption
+      validation, and authorizes the already approved core/staged implementation. SOURCE-02 passed
+      `Ready` and entered implementation. It does not authorize FTC motor run-mode changes,
+      filtering, feedback-failure semantics, or a hardware-accuracy claim.
+  - **Production implementation (2026-07-16):** `ScalarSource.ratePerSecond()` now owns one
+    resettable, per-cycle-idempotent elapsed-time derivative with the approved bootstrap, skipped-
+    cycle, zero/regressing-time, non-finite, reset, and diagnostic semantics. The FTC boundary adds
+    package-private signed-32 modular position continuity for the staged external-encoder path.
+    Regulated motor velocity, motor position, and CR-servo position builders now expose direct,
+    parallel feedback answers; the redundant public `PositionFeedback` and `VelocityFeedback`
+    selector families are removed. Internal motor velocity remains direct SDK velocity, external
+    incremental-encoder velocity is observed position followed by the generic rate transform, and
+    advanced `nativeFeedback(source)` remains an unchanged already-domain-specific seam. All
+    in-repository callers, Javadocs, guides, and examples use the one staged API. No run mode,
+    filtering, automatic fallback, feedback-validity policy, or hardware-accuracy inference was
+    added.
+  - **Bettabot simplification:** the framework path replaces Bettabot's robot-owned
+    `ThroughBoreVelocitySource` state machine—SDK lookup, prior position/time history, reset, and
+    sample arithmetic—with the ordinary builder answer `.externalEncoder(leftMotorName)`. Bettabot
+    still owns the meaningful configuration: physical encoder name and direction, counts-per-
+    revolution mapping, regulator/tuning, legal target range, target source, and mechanism policy.
+    The next prioritized `FTC-01` gate separately decides raw-power run-mode ownership so this
+    simplification is not presented as a complete flywheel lifecycle yet.
+  - **Automated verification (2026-07-16):** focused suites cover the generic rate transform and FTC
+    staged/rollover boundary. Android Studio's bundled JBR completed
+    `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac`; the full XML result is 48 suites
+    and 452 tests with zero failures, errors, or skips. The only compiler output is the repository's
+    existing Java-8-on-JDK-21 source/target deprecation warning.
+  - **Static and independent verification (2026-07-16):** `git diff --check`, an untracked-file
+    trailing-whitespace scan, stale feedback-wrapper searches, project-neutrality searches, and
+    no-blocking-loop checks pass. Builder-level fake-hardware tests prove that the public internal
+    velocity answer reads only SDK velocity, the external velocity answer reads only position and
+    derives elapsed-time rate, reset restores bootstrap behavior, and motor/CR position answers stay
+    position-based. Three independent reviews covered numerical/timing/reset behavior, signed-32
+    rollover, staged construction, API parallelism, error quality, documentation claims, scope, and
+    Framework Principles. They found no remaining blocker after the builder-dispatch coverage was
+    strengthened.
+  - **Android Studio audit point:** inspect `ScalarSource.ratePerSecond()`, the three regulated
+    feedback-step interfaces and their builder implementations in `FtcActuators`, the package-private
+    continuous position source in `FtcSensors`, `FtcExternalEncoderFeedbackTest`, and the feedback
+    section in `FTC Actuators & Plants.md`. Confirm that the ordinary velocity call reads
+    `.regulated().externalEncoder(name).regulator(...)`, internal and external acquisition choices
+    are deterministic, CR servos expose no impossible internal answer, reset/bootstrap and hardware-
+    accuracy limits are clear, and no mode selector, filter, automatic fallback, or public feedback-
+    wrapper type was added. Also inspect `FTC-01` below and confirm it—not SOURCE-02—owns the next
+    Bettabot motor-mode decision. No robot hardware is required for this code/API audit; the exact-
+    stack encoder run remains deferred adopting-robot validation.
+  - **Manual verification (2026-07-16):** the user reviewed SOURCE-02 in Android Studio and replied
+    `SOURCE-02 looks good`. This approves the generic estimator, direct staged feedback API,
+    conservative SDK-observed-position contract, synchronized documentation/tests, and publication.
+    It does not close or weaken the separately documented exact-stack adopting-robot validation, and
+    it does not authorize starting `FTC-01` as part of this item.
+  - **Deferred adopting-robot evidence point:** when Bettabot hardware is available, first confirm
+    that the Through Bore is physically connected to the selected powered motor's encoder channel.
+    If the actuator and encoder require different configured device entries, the existing tester
+    needs a separate UI/ownership decision before that run. This validation is not a production-code
+    prerequisite under the approved observed-position contract.
+  - **Evidence still required before claiming Bettabot hardware accuracy or match readiness:** compare raw SDK velocity and elapsed-time
+    position-derived velocity against an independent tachometer on Bettabot's actual Through Bore,
+    Control/Expansion Hub and firmware, hardware-counted encoder port 0 or 3, SDK 11.1.0, and
+    production bulk-caching mode. Record same-cycle time, position, and both rates at stop; both
+    directions; below/around 240 RPM; the expected direct-velocity wrap boundaries; 1000 RPM; and the
+    highest safely fixture-contained operating point up to the claimed 5000 RPM. Include spin-up/down,
+    coast, reversal, typical/fast/slow loops, and one skipped/long loop. The run must verify that
+    position capture does not lose counts at the supported maximum and that the derived interval-
+    average feedback is accurate and responsive enough for closed-loop regulation. Reconsider a
+    measurement-only signed-16 correction only if the plain derived path fails that performance gate;
+    it is not a co-equal production candidate by default. Until this adoption gate closes, do not
+    claim that Phoenix, the SDK, or the configured hub port guarantees physically correct Through
+    Bore velocity at Bettabot's operating speeds.
+
+### FTC-01 - Regulated motor run-mode ownership
+
+- **Problem to confirm:** a Phoenix-regulated motor position or velocity Plant describes a
+  framework-owned control loop that writes normalized raw power, but the standard
+  `FtcHardware.motorPower(...)` adapter currently configures direction and forwards `setPower(...)`
+  without selecting an FTC run mode. A motor left in `RUN_USING_ENCODER` or `RUN_TO_POSITION` by an
+  earlier owner or OpMode can therefore apply a second controller or stale position target beneath
+  the Phoenix regulator. Cuttlefish avoids that ambiguity in its working shooter by explicitly
+  selecting `RUN_WITHOUT_ENCODER`; Bettabot should not need to repeat that FTC lifecycle detail
+  around the framework builder.
+- **Why it is prioritized for Bettabot:** SOURCE-02 makes Bettabot's external Through Bore feedback
+  concise, while CTRL-01 and SAFE-03 already centralize its complete-regulator limit and final
+  normalized command safety. Those improvements do not make the flywheel loop authoritative if the
+  FTC motor controller remains in an inherited closed-loop mode. FTC-01 is therefore the next
+  proposed item after SOURCE-02 and must be decided before describing Bettabot's regulated flywheel
+  construction as complete.
+- **Alternatives to compare:** document a robot-owned `setMode(...)` call; make every low-level
+  `FtcHardware.motorPower(...)` adapter always own `RUN_WITHOUT_ENCODER`; configure mode only for
+  the staged `FtcActuators...regulated()` path; switch once at construction, assert before every
+  power write, or establish mode at an explicit lifecycle boundary; fail when the existing mode is
+  incompatible; restore the prior mode on stop; or introduce a broader actuator-mode/resource
+  owner. Trace single and grouped regulated Plants, direct power Plants, calibration search,
+  device-managed position/velocity transitions, repeated OpModes, output sharing, and DRIVE-02 PTO
+  handoff before choosing the lifecycle.
+- **Leading hypothesis:** do not add a student-facing run-mode question. Keep the general low-level
+  `PowerOutput` seam free to represent caller-owned hardware, but make the FTC construction path
+  that promises a Phoenix-owned raw-power regulator establish and retain the required motor mode at
+  the smallest fully informed boundary. Mode selection, stop behavior, later device-managed reuse,
+  grouped failures, and ownership handoff must be explicit and best-effort safe; do not silently
+  reset encoder position or infer physical encoder identity.
+- **Completion:** focused fake-motor tests cover every starting mode, construction versus first-write
+  timing, repeated updates, single/group partial failures, stop/reset, shared outputs, calibration
+  search, and handoff to device-managed control. Javadocs and the FTC actuator guide state exactly
+  which layer owns mode and whether stop restores, retains, or transitions it. Compilation and
+  on-robot observation confirm that a regulated Bettabot-style flywheel uses one Phoenix controller
+  over `RUN_WITHOUT_ENCODER`, while direct/device-managed Plants preserve their documented modes.
+- **Decision record:** _Pending. This is a major FTC lifecycle/ownership decision and is not part of
+  SOURCE-02 implementation._
 
 ### SOURCE-03 - Composable scalar measurement conditioning
 
@@ -4249,13 +4598,14 @@ These are not implementation tasks without new evidence:
 The safest workflow is one Codex task and one branch per tracker item. This keeps each design review,
 diff, verification result, and rollback boundary small.
 
-1. Start with the next incomplete item in the recommended order, currently `PEDRO-01`, on its own
-   `codex/` branch.
+1. Start with the first item in the recommended order that is neither **Done** nor **Deferred**, on
+   its own `codex/` branch.
 2. Ask Codex to perform the decision gate first and update this tracker. It should stop for direction
    if the chosen design materially differs from the leading hypothesis.
 3. After the decision record is accepted, implement only that ID, update callers/docs/examples, run
-   focused verification, and mark it Done in the same branch.
-4. Review and merge that change before starting the next item. Reorder the queue when evidence from a
+   focused verification, and mark it **Verifying** in the same branch.
+4. Review the Android Studio audit point. Only after the implementation is approved, mark the item
+   **Done**, publish and merge it, then start the next item. Reorder the queue when evidence from a
    completed item changes later assumptions.
 5. Use a separate task/branch for Phoenix-only fixes even when they were discovered during framework
    work.
@@ -4267,7 +4617,8 @@ Suggested prompt for each new Codex task:
 > against `Framework Principles.md`, and update the item's decision record. Preserve the simplest
 > student-facing robot API. If the best design materially differs from the leading hypothesis, stop
 > after the decision record and ask me before implementation. Otherwise implement it, update all
-> affected Javadocs/guides/examples, run focused tests and compilation, and mark only that item Done.
+> affected Javadocs/guides/examples, run focused tests and compilation, mark only that item Verifying,
+> and stop for my Android Studio review before publication.
 
 For the current Codex conversation, the same process can be followed sequentially if branch-per-task
 is inconvenient. The important constraints are one tracker ID at a time, a visible design decision

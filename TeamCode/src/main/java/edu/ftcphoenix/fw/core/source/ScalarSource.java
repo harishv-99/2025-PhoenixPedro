@@ -450,6 +450,111 @@ public interface ScalarSource extends Source<Double> {
         };
     }
 
+    /**
+     * Derive this source's rate of change per second.
+     *
+     * <p>The returned source treats this source as an unwrapped linear position signal. It uses
+     * elapsed {@link LoopClock#nowSec()} time between accepted samples rather than the clock's most
+     * recent {@link LoopClock#dtSec()} interval, so the result remains correct when the source is
+     * not sampled every loop. The first finite sample establishes a baseline and returns
+     * {@code 0.0}.</p>
+     *
+     * <p>Sampling is idempotent by {@link LoopClock#cycle()}. A new-cycle sample at the same time
+     * retains the previous finite rate without consuming the position change; that change remains
+     * part of the next positive-time calculation. If time regresses, the current finite sample
+     * starts a fresh baseline and returns {@code 0.0}.</p>
+     *
+     * <p>A non-finite position, time, or calculated rate returns {@link Double#NaN} for that cycle
+     * without replacing the last accepted baseline. This helper does not unwrap fixed-width
+     * counters, apply encoder counts-per-revolution conversion, or filter the result. Perform those
+     * concerns in their appropriate source or hardware-boundary layers.</p>
+     */
+    default ScalarSource ratePerSecond() {
+        ScalarSource self = this;
+        return new ScalarSource() {
+            private long lastCycle = Long.MIN_VALUE;
+            private double lastOutput = 0.0;
+
+            private boolean hasBaseline = false;
+            private double lastAcceptedValue = Double.NaN;
+            private double lastAcceptedSec = Double.NaN;
+            private double lastFiniteRatePerSec = 0.0;
+
+            @Override
+            public double getAsDouble(LoopClock clock) {
+                Objects.requireNonNull(clock, "clock");
+                long cycle = clock.cycle();
+                if (cycle == lastCycle) {
+                    return lastOutput;
+                }
+
+                double value = self.getAsDouble(clock);
+                double nowSec = clock.nowSec();
+                lastCycle = cycle;
+
+                if (!Double.isFinite(value) || !Double.isFinite(nowSec)) {
+                    lastOutput = Double.NaN;
+                    return lastOutput;
+                }
+
+                if (!hasBaseline || nowSec < lastAcceptedSec) {
+                    hasBaseline = true;
+                    lastAcceptedValue = value;
+                    lastAcceptedSec = nowSec;
+                    lastFiniteRatePerSec = 0.0;
+                    lastOutput = 0.0;
+                    return lastOutput;
+                }
+
+                double elapsedSec = nowSec - lastAcceptedSec;
+                if (elapsedSec == 0.0) {
+                    lastOutput = lastFiniteRatePerSec;
+                    return lastOutput;
+                }
+                if (!Double.isFinite(elapsedSec)) {
+                    lastOutput = Double.NaN;
+                    return lastOutput;
+                }
+
+                double ratePerSec = (value - lastAcceptedValue) / elapsedSec;
+                if (!Double.isFinite(ratePerSec)) {
+                    lastOutput = Double.NaN;
+                    return lastOutput;
+                }
+
+                lastAcceptedValue = value;
+                lastAcceptedSec = nowSec;
+                lastFiniteRatePerSec = ratePerSec;
+                lastOutput = ratePerSec;
+                return lastOutput;
+            }
+
+            @Override
+            public void reset() {
+                self.reset();
+                lastCycle = Long.MIN_VALUE;
+                lastOutput = 0.0;
+                hasBaseline = false;
+                lastAcceptedValue = Double.NaN;
+                lastAcceptedSec = Double.NaN;
+                lastFiniteRatePerSec = 0.0;
+            }
+
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) return;
+                String p = (prefix == null || prefix.isEmpty()) ? "ratePerSecond" : prefix;
+                dbg.addData(p + ".class", "RatePerSecondScalar")
+                        .addData(p + ".hasBaseline", hasBaseline)
+                        .addData(p + ".lastAcceptedValue", lastAcceptedValue)
+                        .addData(p + ".lastAcceptedSec", lastAcceptedSec)
+                        .addData(p + ".lastFiniteRatePerSec", lastFiniteRatePerSec)
+                        .addData(p + ".lastOutput", lastOutput);
+                self.debugDump(dbg, p + ".src");
+            }
+        };
+    }
+
 
     // ---------------------------------------------------------------------------------------------
     // Conversions & boolean helpers

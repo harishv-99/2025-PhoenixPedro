@@ -267,8 +267,9 @@ Plant pusher = FtcActuators.plant(hardwareMap)
 
 The builder stays domain-first (`power()`, `position()`, `velocity()`). Position Plants then ask
 small guided questions about control strategy, topology, bounds, unit mapping, and reference policy.
-For example, a regulated motor position path uses `motor(...).position().regulated().nativeFeedback(...).regulator(...)`
-instead of hiding those choices inside a large argument object.
+For example, a regulated motor position path uses `motor(...).position().regulated()` followed by
+one direct feedback answer and `.regulator(...)` instead of hiding those choices inside a large
+argument object.
 
 A direct power Plant already knows its only legal domain: normalized `[-1.0, +1.0]`. It clamps a
 finite out-of-range request before calling `PowerOutput`, while the FTC adapter keeps its own clamp

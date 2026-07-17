@@ -30,6 +30,11 @@ GitHub rather than relying on chat memory.
    - every relevant production, Phoenix, tool, and modern example caller;
    - for each sibling API family, every supported public construction path: facade factories,
      constructors, static `of` methods, overloads, and declared return types;
+   - for each staged-builder parameter type, whether callers store, reuse, compose, share, or
+     independently validate it, or only construct it inline for that step; compare direct stage
+     answer methods for the latter;
+   - side-by-side ordinary robot call sites for credible API designs, labeling each conceptual
+     decision the student supplies; require distinct value for every repeated answer or public noun;
    - documentation-only, smallest-local-fix, leading-hypothesis, and other credible alternatives;
    - student call-site simplicity, concepts introduced, discoverability, error quality, ownership,
      and implementation complexity;
@@ -49,6 +54,33 @@ GitHub rather than relying on chat memory.
      viable; or
    - new authority or a material scope expansion is required.
 7. Do not edit implementation code during a required design-approval stop.
+
+## Evidence gate: measure before production when required
+
+Use this gate only when the decision record shows that documentation, source inspection, tests, or
+configuration metadata cannot establish a hardware, firmware, controller, vendor, timing, or
+performance fact needed by the production design.
+
+1. Keep the item `Researching` and record the exact stack, conditions, independent reference, raw
+   observations, and pass/fail question required to close the evidence gap.
+   If a useful production contract can avoid depending on the unproven fact, return to Gate 1,
+   narrow the claim and design explicitly, and request user approval to reclassify the physical run
+   as adopting-robot validation. Treat that as a design change, not an evidence waiver; preserve the
+   deferred validation and never claim the narrower implementation proves the physical fact.
+2. Obtain user approval before adding or materially changing diagnostic tooling. Before those edits,
+   fetch `origin/master` and create or confirm the item branch using Gate 2's branch rule. Keep the
+   tooling measurement-only: it must not silently become a production fallback, commit an unresolved
+   API, hide filtering/correction, block the loop, or claim that configuration metadata identifies
+   the physical device.
+3. Verify the diagnostic implementation and request Android Studio inspection of controls, safety,
+   lifecycle resets, sampling truth, and recorded fields. Then stop for the physical run; compile or
+   simulated success is never hardware validation. User approval at this stop authorizes only the
+   evidence run and any explicitly stated research-tool publication; it is not Gate 3 approval of
+   the unfinished tracker item.
+4. Record the exact physical setup and raw results in the tracker. If evidence contradicts an
+   approved design assumption, reopen Gate 1 and request approval for the changed design. Move to
+   `Ready` and production implementation only after the recorded evidence closes the gate or the
+   user approves a narrower contract under step 1 that no longer depends on it.
 
 ## Gate 2: Implement one approved design
 
@@ -74,8 +106,10 @@ GitHub rather than relying on chat memory.
 
 ## Gate 3: Finalize an approved implementation
 
-Treat `<ITEM-ID> looks good` as approval to finalize, publish, and merge that item. Do not treat it
-as permission to start the next item.
+Only when the item is `Verifying` after Gate 2, treat `<ITEM-ID> looks good` as approval to finalize,
+publish, and merge that item. During an evidence gate, the same wording approves only the explicitly
+presented diagnostic audit point and physical run. Do not treat either approval as permission to
+start the next item.
 
 1. Mark the tracker item `Done` and record the user's manual verification.
 2. Confirm the working tree contains only the reviewed item and rerun `git diff --check` plus any

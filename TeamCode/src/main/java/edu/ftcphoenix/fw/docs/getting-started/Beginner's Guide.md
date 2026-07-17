@@ -279,14 +279,13 @@ sense for it:
 
     * `motor(...).position().deviceManagedWithDefaults()` uses FTC `RUN_TO_POSITION`.
     * `motor(...).position().deviceManaged() ... .doneDeviceManaged()` exposes optional FTC tuning knobs.
-    * `motor(...).position().regulated().nativeFeedback(...).regulator(...)` uses a framework-owned regulator plus explicit native feedback.
+    * `motor(...).position().regulated()` asks for one direct feedback answer—an internal encoder, external encoder, or advanced `nativeFeedback(source)`—before `.regulator(...)`.
     * Feedback-capable motor position Plants report plant-unit measurement and `atTarget()` status after `plant.update(clock)`.
     * `plant.reset()` clears transient controller state only. It does **not** redefine encoder zero or physical coordinate frame.
 
 * **Regulated CR-servo position**:
 
-    * CR servos have no device-managed position mode, so `crServo(...).position().regulated().nativeFeedback(...).regulator(...)` is required.
-    * The feedback source can be an external encoder or custom source.
+    * CR servos have no device-managed position mode, so `crServo(...).position().regulated()` must answer with `.externalEncoder(...)` or `.nativeFeedback(source)` before `.regulator(...)`.
 
 * **Servo position**:
 
@@ -326,7 +325,7 @@ PositionPlant arm = FtcActuators.plant(hardwareMap)
         .motor("armMotor", Direction.FORWARD)
         .position()
         .regulated()
-            .nativeFeedback(FtcActuators.PositionFeedback.externalEncoder("armEncoder"))
+            .externalEncoder("armEncoder")
             .regulator(ScalarRegulators.pid(Pid.withGains(0.006, 0.0, 0.0002)))
         .linear()
             .bounded(-300.0, 1200.0)
@@ -568,7 +567,7 @@ public construction path merely to give the same composition a different class n
 
 * **Position semantics differ**:
 
-    * Motors + `.position().deviceManagedWithDefaults()` or `.position().regulated().nativeFeedback(...).regulator(...)` → feedback-capable position control.
+    * Motors + `.position().deviceManagedWithDefaults()` or `.position().regulated()` followed by a direct feedback answer and `.regulator(...)` → feedback-capable position control.
     * Servos + `.position().linear().bounded(...).nativeUnits()` or `.rangeMapsToNative(...)` → open-loop set-and-hold.
 
 * **PlantTasks** and **Tasks** provide factory helpers that build `Task`s for you, including

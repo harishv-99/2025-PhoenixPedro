@@ -282,7 +282,7 @@ public final class StandardTesters {
 
         suite.add(
                 "HW: DcMotor Power",
-                "Open-loop motor power test (enable, invert, step, stick override).",
+                "Open-loop motor power test; optional direct-vs-derived encoder velocity logging.",
                 DcMotorPowerTester::new
         );
 

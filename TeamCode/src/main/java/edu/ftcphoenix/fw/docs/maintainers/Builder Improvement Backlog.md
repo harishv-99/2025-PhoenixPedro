@@ -80,7 +80,7 @@ independent optional tuning values before returning.
 Completed in the third builder cleanup pass. Motor velocity now follows the same guided shape as
 position, but without position-only concepts like topology, reference, and homing:
 
-1. choose velocity loop ownership (`deviceManagedWithDefaults()`, `deviceManaged()...doneDeviceManaged()`, or `regulated().nativeFeedback(...).regulator(...)`)
+1. choose velocity loop ownership (`deviceManagedWithDefaults()`, `deviceManaged()...doneDeviceManaged()`, or `regulated()` followed by one direct feedback answer and `regulator(...)`)
 2. choose legal velocity target bounds (`bounded(...)` or `unbounded()`)
 3. choose plant/native velocity mapping (`nativeUnits()` or `scaleToNative(...)`)
 4. optionally set plant-level `velocityTolerance(...)` and `targetGuards().maxTargetRate(...)`

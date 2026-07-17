@@ -133,6 +133,42 @@ Rule of thumb:
 
 ---
 
+## Deriving rate from linear position
+
+Use `ratePerSecond()` when a source reports a linear, already-unwrapped position and you need its
+interval-average rate in the same units per second:
+
+```java
+// Simulated or model-owned carriage position in inches.
+ScalarSource carriagePositionIn = ScalarSource.of(() -> simulatedCarriagePositionIn);
+ScalarSource carriageSpeedInPerSec = carriagePositionIn.ratePerSecond();
+
+// Analog arm position mapped to degrees before differentiation.
+ScalarSource armPositionDeg = FtcSensors.analogVoltage(hardwareMap, "armPot")
+        .mapToDouble(volts -> volts * DEGREES_PER_VOLT);
+ScalarSource armSpeedDegPerSec = armPositionDeg.ratePerSecond();
+```
+
+The transform owns its sample history. It uses elapsed `clock.nowSec()` between samples it actually
+accepted rather than assuming it ran during the preceding `dtSec()` interval. It samples upstream at
+most once per `clock.cycle()`, returns the same cached result for repeated same-cycle reads, and uses
+the full interval across skipped cycles.
+
+The first finite sample establishes the baseline and returns `0.0`. A zero-time sample retains the
+previous rate without consuming movement; a regressing clock re-establishes the baseline. A
+non-finite sample or calculated rate returns `NaN` for that cycle without poisoning the last valid
+baseline. Calling `reset()` propagates upstream and clears the baseline, so restart the estimator at
+an intentional lifecycle boundary—normally while a regulated mechanism is stopped.
+
+`ratePerSecond()` deliberately does not guess a counter width, angular period, discontinuity, sensor
+direction, counts per revolution, or filter. Unwrap a periodic or wrapping position in the layer that
+knows its period before differentiating, and compose optional signal conditioning separately. For an
+FTC external incremental encoder used as regulated velocity feedback, prefer the staged
+`FtcActuators...velocity().regulated().externalEncoder(...)` answer: the FTC boundary handles its
+signed 32-bit position continuity and the core transform handles elapsed-time differentiation.
+
+---
+
 ## Boolean edges and toggles
 
 Many robot behaviors are event-driven: a button press, a ball passing a sensor, a target becoming ready.

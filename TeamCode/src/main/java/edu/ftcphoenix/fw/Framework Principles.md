@@ -167,6 +167,11 @@ Phoenix is designed around a few core goals:
      silently replaces an earlier answer. For example, after a target request is supplied, a planner
      preference stage may expose `nearestToMeasurement()`, `preferIncreasing()`, `preferDecreasing()`,
      and `preferRangeCenter()`, and each method should advance to the unreachable-policy question.
+   * Answer each conceptual question once. Prefer direct answer methods on the current stage; do not
+     make callers restate a domain already established by an earlier stage or construct a selector or
+     parameter wrapper only to pass it immediately into that stage. Keep such a public type only when
+     callers meaningfully store, reuse, compose, share, or independently validate it outside that
+     one builder step.
    * Optional tuning only appears after the user deliberately enters a tuning branch.
    * Use a `done...()` method only for a multi-setting tuning branch where the user may reasonably
      set several options before returning. One-answer policy choices should advance immediately;
@@ -207,6 +212,13 @@ Phoenix is designed around a few core goals:
      and concrete constructors or `of(...)` factories—needs a distinct capability, not merely
      another spelling of the same construction. Within the chosen layer, add an overload only when
      it materially simplifies a useful input or optional configuration without creating ambiguity.
+     Count an immediately consumed selector or parameter wrapper as a public construction layer;
+     being a parameter type does not by itself provide a distinct capability.
+   * Do not let an API infer facts its inputs cannot prove. Configuration metadata is not physical
+     hardware identity, and plausible runtime values are not proof of trustworthy acquisition. When
+     correctness or safety materially depends on undocumented controller, firmware, vendor, or
+     hardware behavior, measure the exact supported stack first and keep diagnostic tooling separate
+     from the eventual production abstraction.
 
 ---
 
@@ -336,7 +348,7 @@ The builder is staged on purpose:
      `CLAMPED_TO_RANGE` is the active status unless a later guard supplies a more specific status.
    * Velocity then asks loop ownership, bounds, and plant/native units.
 3. **For position Plants, answer guided position questions**:
-   * motor position control: `deviceManagedWithDefaults()`, `deviceManaged()...doneDeviceManaged()`, or `regulated().nativeFeedback(...).regulator(...)`
+   * motor position control: `deviceManagedWithDefaults()`, `deviceManaged()...doneDeviceManaged()`, or `regulated()` followed by one direct feedback answer and `regulator(...)`
    * topology: `linear()` or `periodic(period)`
    * bounds: `bounded(min, max)` or `unbounded()`
    * mapping/reference: `nativeUnits()`, `scaleToNative(...)`, bounded-only `rangeMapsToNative(...)`, then `alreadyReferenced()`, `plantPositionMapsToNative(...)`, `assumeCurrentPositionIs(...)`, or `needsReference(...)` when a runtime reference is required
