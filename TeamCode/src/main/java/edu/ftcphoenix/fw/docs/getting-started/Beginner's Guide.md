@@ -261,6 +261,13 @@ The builder has three stages:
       * `.nativeUnits()`, `.scaleToNative(...)`, or bounded-only `.rangeMapsToNative(...)`
       * then `.alreadyReferenced()`, `.plantPositionMapsToNative(...)`, `.assumeCurrentPositionIs(...)`, or `.needsReference(...)` when a runtime reference is required.
 
+The builder also owns the FTC motor run mode implied by those choices. Motor `.power()` and
+framework-regulated motor paths use raw/open-loop power; device-managed position and velocity paths
+own their respective FTC modes. Raw-power mode is acquired only when an explicit command is sent,
+not while the Plant is merely being constructed. A raw-power output's lifecycle stop writes zero
+without acquiring or restoring a mode, and none of these normal command paths resets encoder
+position. Student code should not add `DcMotor.setMode(...)` calls around the standard builder.
+
 Rule of thumb: builder values are in **plant units** unless the API explicitly says `Native` (or a
 native/controller-specific unit like `Ticks`). So `bounded(...)`, `periodic(...)`, tolerances, and
 later target-source values all use plant units. `rangeMapsToNative(...)` takes native endpoint values.
@@ -335,6 +342,11 @@ PositionPlant arm = FtcActuators.plant(hardwareMap)
         .targetedByDefaultWritable(0.0)
         .build();
 ```
+
+The regulated feedback answer chooses only what is measured; it does not choose the powered
+motor's run mode. Internal and external feedback both leave the powered motor under the raw-power
+adapter. A separately named external encoder is read-only—Phoenix does not command it, change its
+mode, or reset it as a side effect of `.externalEncoder(...)`.
 
 ### 3.4 Position-tolerance knobs: what they mean
 

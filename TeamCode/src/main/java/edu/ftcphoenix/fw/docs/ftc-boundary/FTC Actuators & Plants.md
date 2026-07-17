@@ -72,6 +72,25 @@ builder. A finite request outside that range clamps before the output. The Plant
 `CLAMPED_TO_RANGE` when that clamp remains the active final transform; a later rate limit,
 interlock, or fallback may report its more specific status instead.
 
+### FTC motor run-mode ownership
+
+The core `PowerOutput` interface is hardware-neutral; it does not promise that every implementation
+owns an FTC motor mode. The concrete `FtcHardware.motorPower(...)` adapter does have a narrower
+contract: it means raw/open-loop motor power.
+
+Construction resolves the motor and sets its direction but does not acquire a run mode. Every
+explicit `setPower(...)` command, including `setPower(0.0)`, conditionally establishes
+`RUN_WITHOUT_ENCODER`. If another mode is selected, the adapter writes zero in that mode, selects
+and verifies `RUN_WITHOUT_ENCODER`, and only then writes the requested power. Lifecycle `stop()` is
+deliberately different: it writes zero without acquiring or restoring a mode. The adapter never
+uses `STOP_AND_RESET_ENCODER`.
+
+Device-managed `FtcHardware.motorPosition(...)` and `motorVelocity(...)` outputs own their required
+FTC modes when commanded. `FtcActuators` selects these output semantics from the target domain and
+control strategy already chosen in the staged builder, so student robot code should not surround
+standard Plants with manual `setMode(...)` calls. Each command path asserting its own mode supports
+an orderly handoff; it does not make simultaneous writers safe.
+
 ---
 
 ## 2. Behavior sources vs Plant target guards
@@ -542,6 +561,11 @@ Task homeLift = PositionCalibrationTasks.search(lift)
         .build();
 ```
 
+The search power temporarily asserts raw/open-loop mode through the motor-power adapter. Ending the
+search writes zero without restoring the previous mode; the next device-managed position command
+reasserts `RUN_TO_POSITION`. Calibration establishes the Plant reference and never resets the
+encoder as a hidden side effect.
+
 The timeout policy is explicit: use `failAfterSec(...)` for a bounded search or `neverTimeout()` only when another safety path is guaranteed to cancel the task.
 
 For periodic mechanisms, `establishReferenceAt(...)` preserves the nearest equivalent unwrapped
@@ -616,6 +640,14 @@ be driven with temporary open-loop power while looking for a reference.
 After `.regulated()`, answer the feedback question directly on that already-domain-specific builder
 stage. There is no separate feedback-selector object to construct and immediately pass back.
 
+The feedback answer selects only a measurement source; it does not select the powered motor's run
+mode. A regulated motor remains on the raw/open-loop command path whether feedback comes from its
+internal encoder, an external encoder on the same configured channel, or a separate encoder-only
+channel. A separate external channel is read-only: `.externalEncoder(...)` does not set its power,
+change its mode, or reset its encoder. If another owner deliberately leaves that channel in
+`STOP_AND_RESET_ENCODER`, that owner must explicitly leave reset mode before expecting useful
+measurements.
+
 ### Motor position
 
 * `.internalEncoder()`
@@ -679,7 +711,9 @@ Phoenix separates **commands** from **measurements**.
 * `PositionOutput`
 * `VelocityOutput`
 
-These answer “what command should we send?” — not “what did the mechanism measure?”
+These answer “what command should we send?” — not “what did the mechanism measure?” The interfaces
+remain hardware-neutral; FTC run-mode ownership belongs to the concrete motor adapters described
+above.
 
 ### Measurement sources
 
@@ -866,8 +900,12 @@ For grouped device-managed Plants, Phoenix supports per-child `scale(...)` / `bi
 one aggregate measurement in group units.
 
 For grouped **regulated** Plants, the staged builder intentionally requires default per-child scaling
-and bias. If you need a more advanced grouped regulated mechanism, build the raw outputs manually and
-compose with `Plants.positionFromPower(...)` or `Plants.velocityFromPower(...)`.
+and bias. If you need a more advanced grouped regulated mechanism, build one deliberate custom
+group-output adapter and compose it with `Plants.positionFromPower(...)` or
+`Plants.velocityFromPower(...)`. That advanced adapter owns its complete group lifecycle and failure
+contract. Independently combining public `FtcHardware.motorPower(...)` outputs does not receive the
+standard builder's all-child mode preflight, so do not treat sequential child writes as an equivalent
+safe construction path.
 
 That restriction keeps the common builder path simple and makes ambiguous regulated group semantics
 fail fast with an actionable error.

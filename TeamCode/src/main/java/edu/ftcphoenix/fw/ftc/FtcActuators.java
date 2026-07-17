@@ -1304,9 +1304,7 @@ public final class FtcActuators {
                 Spec spec = specs.get(0);
                 return FtcHardware.motorPower(hw, spec.name, spec.direction);
             }
-            List<PowerOutput> outs = new ArrayList<>();
-            for (Spec spec : specs) outs.add(FtcHardware.motorPower(hw, spec.name, spec.direction));
-            return new GroupedPowerOutput(outs);
+            return new GroupedPowerOutput(groupedFtcMotorPowers());
         }
 
         private PowerOutput groupedMotorPowerWithMappings() {
@@ -1314,16 +1312,27 @@ public final class FtcActuators {
                 Spec spec = specs.get(0);
                 return new ScaledBiasedPowerOutput(FtcHardware.motorPower(hw, spec.name, spec.direction), spec.scale, spec.bias);
             }
-            List<PowerOutput> outs = new ArrayList<>();
             double[] scales = new double[specs.size()];
             double[] biases = new double[specs.size()];
             for (int i = 0; i < specs.size(); i++) {
                 Spec spec = specs.get(i);
-                outs.add(FtcHardware.motorPower(hw, spec.name, spec.direction));
                 scales[i] = spec.scale;
                 biases[i] = spec.bias;
             }
-            return new GroupedPowerOutput(outs, scales, biases);
+            return new GroupedPowerOutput(groupedFtcMotorPowers(), scales, biases);
+        }
+
+        /**
+         * Resolve every grouped motor before configuring directions and coordinating power writes.
+         */
+        private List<PowerOutput> groupedFtcMotorPowers() {
+            List<String> names = new ArrayList<>(specs.size());
+            List<Direction> directions = new ArrayList<>(specs.size());
+            for (Spec spec : specs) {
+                names.add(spec.name);
+                directions.add(spec.direction);
+            }
+            return FtcHardware.motorPowerGroup(hw, names, directions);
         }
 
         private VelocityOutput groupedMotorVelocity(DeviceManagedVelocityConfig cfg) {
