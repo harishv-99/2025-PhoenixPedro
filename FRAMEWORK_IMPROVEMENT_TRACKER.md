@@ -85,7 +85,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 21 | SOURCE-02 | Derived rate from sampled scalar position | Done | Derive units-per-second from any position `ScalarSource` in core; keep encoder hardware reads at the FTC boundary. |
 | 22 | FTC-01 | FTC raw motor-power run-mode ownership | Done | Make the FTC motor-power boundary consistently own `RUN_WITHOUT_ENCODER` without another student-facing choice. |
 | 23 | API-03 | PID and linear-PIDF configuration ownership | Done | Keep plain PID error-centric and add one factory-only standard PIDF regulator that owns all four gains and live tuning as one validated update. |
-| 24 | TUNE-01 | Live tuning to checked-in profile | Proposed | Keep production snapshots stable while proving that an explicit PIDF tune/apply/record path reduces total robot code. |
+| 24 | TUNE-01 | Live tuning to checked-in profile | Done | Document one explicit test-mode PIDF tune/apply/record workflow; add no tuner API because API-03 exposes the complete gain update and realization already owns outer reset. |
 | 25 | ROUTE-03 | Factory-only route Task configuration | Proposed | Keep `RouteTasks` as the sole construction layer and replace one-field mutable/null configuration ceremony with one explicit route-timeout answer if the caller audit confirms it. |
 | 26 | ACT-01 | FTC actuator-group identity validation | Proposed | Reject blank and duplicate group members before resolving or configuring hardware. |
 | 27 | COMMON-01 | Initialization runtime helper | Proposed | Use the complete Pedro reference cost to extract only repeated retry/error/cleanup ceremony; avoid a robot base class or hidden loop. |
@@ -3193,43 +3193,187 @@ writer, and explicit lifecycle ownership.
 
 ### TUNE-01 - Live tuning to checked-in profile
 
-- **Problem to confirm:** competition robots benefit from live Dashboard tuning, but Phoenix profiles
-  are intentionally data-only and defensively copied by long-lived owners. Directly reading mutable
-  static `@Config` fields throughout production would make behavior change mid-cycle, bypass staged
-  validation, and leave the tuned values outside version-controlled robot configuration.
-- **External evidence:** Cuttlefish exposes many mechanism, control, and Auto parameters through FTC
-  Dashboard configuration during development. Its use demonstrates the speed benefit while also
-  showing why mutable globals should not become Phoenix's production configuration authority.
-  Bettabot's
-  [`BettaDashboardControls`](https://github.com/Hansika1098/Summer26/blob/4eed9d6c7c93c5e2b65bdbc78463ad0be0e87790/TeamCode/src/main/java/edu/ftcphoenix/robots/betta/BettaDashboardControls.java#L18-L100)
-  independently repeats a two-way live-static synchronization layer for flywheel gains, bounds, and
-  targets, reinforcing the need for one explicit tune -> validate -> record workflow.
-- **Reprioritization evidence (2026-07-17):** API-03 now gives a retained standard PIDF handle one
-  validated four-gain update, so the next audit can compare the complete roughly 100-line Bettabot
-  synchronization owner against the smallest post-API-03 tuning path. Count every tuning class,
-  tester OpMode, profile-copy step, and presenter as robot code. This repository currently carries
-  Pedro Panels rather than an FTC Dashboard dependency; adding another vendor dependency or mutable
-  static surface is not a simplification unless the side-by-side total clearly wins.
-- **Alternatives to compare:** edit/redeploy checked-in profiles only; let production owners read
-  mutable Dashboard statics continuously; rebuild individual owners from a tuning snapshot; provide
-  a narrow standard-PIDF tester bridge; use the existing Panels boundary; add an optional Dashboard
-  adapter; provide broader owner-rebuild tooling; or emit/copy validated values into the profile.
-  Consider which parameter changes are safe while hardware is active and whether the standard PIDF
-  case genuinely shares lifecycle with arbitrary owner reconstruction.
-- **Leading hypothesis:** keep production Phoenix owners on immutable defensive snapshots. An
-  optional tuning owner is used only by explicit tuning/tester modes, validates a complete
-  candidate, applies it at a visible boundary through an already-safe retained capability, and
-  reports values in a form that can be copied into the checked-in profile. Start with the narrow
-  four-gain PIDF case. Split or defer generic rebuild/profile machinery if it adds concepts or does
-  not reduce the complete robot surface. No hidden mutable global becomes a match dependency.
-- **Completion:** tests cover invalid/non-finite edits, atomic candidate apply, outer-composition
-  reset, active-output safety, rollback, and emitted profile values. Rebuild/close ordering is
-  required only if Gate 1 selects broader owner reconstruction rather than splitting or deferring
-  it. Documentation gives students one repeatable tune -> validate -> record -> production
-  workflow, match OpModes fail readiness if they depend on unrecorded live state, and the decision
-  record includes the before/after count of every robot-code file and concept needed by the ordinary
-  PIDF tuning workflow.
-- **Decision record:** _Pending._
+- **Confirmed problem:** live editing is useful while tuning, but mutable Dashboard/Panels fields
+  are not checked-in production configuration. Reading them continuously from a match owner can
+  change behavior between cycles, exposes a multi-field candidate before the robot has deliberately
+  accepted it, and gives the framework no truthful way to know whether accepted values were copied
+  into source control. A complete tuning workflow therefore needs an explicit candidate snapshot,
+  apply boundary, safe mechanism policy, accepted-value report, and manual record/restart step.
+- **Confirmed current behavior:**
+  - `PidfRegulator.setGains(kP, kI, kD, kF)` already validates the complete candidate before
+    changing any gain. A rejected non-finite candidate leaves all four applied gains unchanged.
+    A valid candidate preserves controller history until the robot resets its outermost retained
+    regulator composition.
+  - The smallest correct post-API-03 apply operation is already:
+
+    ```java
+    flywheelPidf.setGains(candidateKP, candidateKI, candidateKD, candidateKF);
+    flywheelRegulator.reset();
+    ```
+
+    The robot realization owns `flywheelRegulator` because it alone knows whether PIDF is wrapped
+    by output limiting, voltage compensation, or another stateful robot policy. Reset does not
+    itself command or stop the actuator; the Plant applies the changed law on its next ordinary
+    update.
+  - Summer26 `master` still points to the reviewed `4eed9d6c` commit. Its 1,047 Java lines under
+    `edu.ftcphoenix.robots.betta` are distributed across eight files. The current tuning workflow
+    touches seven of them: the 123-line `BettaDashboardControls`, the 202-line composition root,
+    52-line TeleOp host, 39-line capability aggregate, 362-line shooter owner, 132-line profile,
+    and 84-line controls owner. Only the 53-line Auto task file is unrelated.
+  - The 123-line Dashboard class is not 123 lines of reusable PIDF infrastructure. It declares and
+    mirrors six vendor statics (enable, target RPM, and four gains), arbitrates Dashboard changes
+    against gamepad state, initializes and stops the flywheel request, publishes command telemetry,
+    and retains six previous values. Enable, target selection, safe arming, and gamepad precedence
+    are Bettabot policy. API-03 already makes the reusable separate-`Pid`/captured-`kF`,
+    four-finite-check, and partial-update burden removable.
+  - Bettabot currently applies a changed four-gain tuple from production TeleOp and has no explicit
+    record/commit step or separate tuning-mode readiness boundary. Cuttlefish independently proves
+    that live mutable configuration is useful, but it is not a second Phoenix
+    `PidfRegulator` tune/apply/reset/record caller and therefore does not prove a common standard-
+    PIDF tester lifecycle.
+- **Complete current caller inventory:**
+  - No checked-in Phoenix robot, framework tool, or modern compiling example constructs a
+    `PidfRegulator`; current production Java references are the regulator and factory
+    implementations themselves. `PidfRegulatorTest`, `ScalarRegulatorsApiTest`, and
+    `RegulatedPlantSafetyTest` are the concrete executable callers.
+  - The Beginner's Guide, FTC Actuators & Plants, Layered Shooter Example, and Recommended Robot
+    Design show the retained PIDF plus outer-regulator reset. They do not yet describe explicit
+    apply, safe arming, rejected-candidate reporting, rollback choice, profile recording, and
+    production restart as one workflow.
+  - Bettabot is the only reviewed Phoenix-style adopting caller. Its Dashboard dependency is
+    enabled while this repository has Panels through Pedro and no FTC Dashboard dependency.
+    Both vendors expose static configuration fields, but their refresh and copy-back behavior is
+    vendor-specific; neither supplies a framework-owned atomic four-value candidate or proof that
+    source was committed.
+- **Public construction, storage, and sibling-family audit:**
+  - `ScalarRegulators.pidf(double, double, double, double) -> PidfRegulator` is the sole public
+    standard-PIDF construction layer. `PidfRegulator` has no public constructor or class-local
+    factory.
+  - `PidfRegulator.setGains(...) -> PidfRegulator` is the retained capability used for a live
+    complete update. Its four getters expose applied truth. `ScalarRegulator.reset() -> void` is a
+    separate composition-lifecycle operation whose correct receiver is robot-owned.
+  - No current caller stores, shares, composes, or independently validates a `PidfGains`,
+    tuning-session, or profile-assignment object. The robot profile and UI already own the four
+    values in their respective domains. Adding an immediately consumed wrapper would repeat those
+    answers and reopen the API-03 decision that deliberately rejected such a type.
+  - `ScalarTuner` is a one-number gamepad UI component constructed directly for hardware testers.
+    Four instances would still require gain ranges/steps, selection/apply choreography, mechanism
+    target/enable policy, telemetry, and profile-field names. It is not a missing PIDF tuple owner.
+  - `TeleOpTester` and `FtcTeleOpTesterOpMode` already provide a generic explicit tester lifecycle.
+    A robot can use that host for a local tuning mode without another framework base class. The
+    framework has no public PIDF-tester factory or second PIDF action layer to make parallel.
+- **Ordinary student-call comparison:**
+
+  | Design | Ordinary apply site | Conceptual decisions still supplied by robot code |
+  |---|---|---|
+  | Checked-in profile only | No live apply; rebuild from four checked-in gains. | Four gains and normal mechanism safety. Safest and smallest, but redeploys every trial. |
+  | Robot-local explicit tuning mode (selected) | `pidf.setGains(p, i, d, f);` then `outer.reset();` | Four candidate values, explicit APPLY event, safe target/arming policy, the outer composition owner, accepted/last-known-good values, and robot profile field names. |
+  | `PidfTuningSession`/`PidfTuners.apply(...)` | One helper call after constructing or passing another owner. | Every decision above plus a tuning-session/helper noun; it removes at most the visible reset statement and cannot infer its correct receiver. |
+  | Framework PIDF Plant tester | A builder/factory supplied with PIDF, outer regulator, Plant, writable target, setpoint range/steps, profile labels, and lifecycle hooks. | Every mechanism-specific safety and recording decision, while also granting a second object direct Plant lifecycle ownership. |
+  | Dashboard or Panels adapter | Vendor annotations/statics plus an adapter call. | The same six Bettabot meanings and safe mechanism policy, with a second public path or a dependency that one of the two repositories does not carry. |
+- **Alternatives rejected:**
+  - Documentation-only warnings without a concrete workflow were rejected because they leave the
+    current immediate-production-static pattern looking endorsed.
+  - Continuously reading mutable fields in production was rejected because there is no explicit
+    candidate acceptance, tuple publication contract, match isolation, or source-control truth.
+  - Rebuilding a regulator, Plant, subsystem, or robot owner was rejected because a retained
+    `PidfRegulator` already updates the standard law without replacing hardware/lifecycle owners or
+    losing unrelated configuration.
+  - A `PidfGains` value, `PidfTuningSession`, `PidfTuners.apply(...)`, or
+    `setGainsAndReset(outer, ...)` convenience was rejected because it wraps the existing two-line
+    boundary, repeats four profile answers, cannot discover the outer composition, and has only one
+    adopting caller.
+  - A full generic PIDF Plant tester was rejected because the framework would need target units,
+    safe range and step policy, enable/stop semantics, Plant ownership, mechanism telemetry, and
+    profile field names. Those extra answers make the common robot call longer and give a tool
+    competing knowledge of realization lifecycle.
+  - Dashboard-only, Panels-only, dual-vendor, reflection, and generic live-config adapters were
+    rejected. Static annotation discovery and refresh behavior are vendor-specific, and a generic
+    facade does not remove the robot's fields or meanings.
+  - Automatic profile mutation, Java-source rewriting, a cross-OpMode dirty singleton, and a
+    framework match-readiness claim were rejected because runtime code cannot prove that a student
+    copied, reviewed, committed, and restarted with a value. A match mode that never reads live
+    tuning state needs no artificial readiness flag.
+  - Automatic rollback around arbitrary outer decorators was rejected as an untruthful
+    transaction. Invalid candidates already leave gains unchanged. A valid but poor candidate is
+    rolled back by explicitly reapplying the tester's last accepted or checked-in four-gain tuple;
+    any apply/reset/update failure must make the robot-local tuning mode stop its owned mechanism.
+- **Selected design:** add no framework runtime type, factory, vendor adapter, dependency, tuning
+  singleton, profile writer, or robot base class. Add one vendor-neutral documentation pattern for
+  a dedicated tuning/tester mode:
+  1. Production TeleOp and Auto construct only from a checked-in defensive profile snapshot and do
+     not read live tuning statics.
+  2. The tuning mode starts with a zero/disabled request, uses the robot's existing target and
+     complete-output bounds, and requires explicit arming.
+  3. An explicit APPLY event causes the OpMode thread to read each UI value once, call
+     `PidfRegulator.setGains(...)`, and reset the robot-owned outermost regulator before the next
+     Plant update. The UI publication mechanism, not Phoenix, must make that candidate coherent;
+     Phoenix does not claim cross-thread tuple atomicity.
+  4. Rejection is displayed without changing the accepted tuple. Runtime apply/reset/update failure
+     disables and stops the tuning mechanism. Rollback is an explicit reapply of a known-good
+     tuple, not an inferred hardware transaction.
+  5. Telemetry prints the accepted four profile assignments. The student copies them into the
+     robot profile, commits the source, stops the tuning mode, and starts a fresh production mode.
+- **Bettabot effect:** TUNE-01 itself adds no new shortening API because the post-API-03 reusable
+  apply site is already two statements with no extra noun. Bettabot can make its match code safer
+  by moving Dashboard fields and tuning arbitration out of `BettaTeleOp` into a dedicated local
+  tuning mode, then deleting the Dashboard field/update/stop coupling from production. The exact
+  replacement line count depends on Bettabot's chosen UI and safe flywheel controls, so the
+  framework must not claim that all 123 Dashboard-owner lines disappear. The decision gate failed
+  the required proof that another framework abstraction reduces total robot code and concepts.
+- **Framework Principles check:** this keeps one PIDF construction/update surface, leaves outer
+  composition and Plant lifecycle with realization, keeps vendor types outside core, makes the
+  tester/match boundary explicit, preserves checked-in profile snapshots, and refuses to add an
+  abstraction from one caller. The Framework Principles should record the tune -> explicitly
+  apply -> record -> restart rule so future tuning features cannot silently turn mutable globals
+  into production authority.
+- **Bounded documentation implementation after approval:**
+  - Add a short vendor-neutral live-PIDF tuning guide under `fw/docs/testing-calibration`, link it
+    from that section's README and the existing PIDF examples, and keep every example project-
+    neutral.
+  - Add the live-tuning authority rule to Framework Principles and tighten `PidfRegulator`
+    Javadocs around one-loop candidate snapshots, explicit apply, outer reset, and production
+    isolation.
+  - Change no runtime Java behavior or public API, add no dependency, and do not add or modify
+    Phoenix/Bettabot robot code.
+- **Verification plan:** rerun the existing focused API-03 PIDF and regulated-Plant safety suites
+  plus TeamCode Java compilation; confirm the public surface is unchanged; verify documentation
+  links, code snippets, whitespace, and final newlines; and scan framework source/docs for
+  Dashboard, Panels, or external-project coupling. No hardware claim is required because the
+  selected change defines a software ownership workflow and adds no actuator behavior.
+- **Decision record (2026-07-17):** **Ready for explicit approval, with a material change from the
+  leading hypothesis.** The audit did not prove that a new optional tuning owner reduces complete
+  robot code. API-03 already owns the reusable validated four-gain update, while the remaining
+  candidate UI, arming, target, rollback choice, telemetry, and profile names are robot policy.
+  The user approved the documentation-only design with
+  `Approve TUNE-01 documentation-only design` on 2026-07-17. Implementation is limited to the
+  Framework Principle, vendor-neutral guide and links, and `PidfRegulator` Javadocs recorded above.
+- **Implementation and automated verification (2026-07-17):**
+  - Added the vendor-neutral `Software PIDF Tuning Workflow.md`, linked it from the testing and
+    calibration index plus all four existing standard-PIDF explanations, and added Framework
+    Principles section 3.4.5. Production modes use checked-in defensive snapshots; the dedicated
+    tuning mode owns explicit arm/apply/stop, and accepted getter values are manually recorded
+    before a fresh production start.
+  - Tightened `PidfRegulator` Javadocs without changing runtime Java or the public API. The guide
+    distinguishes complete-candidate rejection from an outer-reset failure, guards the following
+    owner/Plant update, preserves the primary failure through best-effort zero/stop cleanup, and
+    emits locale-independent round-trip `double` assignments.
+  - `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` passed: 52 suites, 512 tests,
+    0 failures, 0 errors, and 0 skipped. Focused evidence includes 18 `PidfRegulatorTest`, 4
+    `ScalarRegulatorsApiTest`, and 9 `RegulatedPlantSafetyTest` cases. Only the repository's existing
+    Java 8 source/target deprecation warnings were emitted.
+  - All relative links in the eight affected Markdown files resolve; code fences are balanced;
+    affected files have final newlines and no trailing whitespace; `git diff --check` passes; the
+    tracker still has 63 sequential unique items with one matching section each. An affected-Java
+    diff scan found zero non-comment changed lines.
+  - No external-project reference appears in the affected framework files or elsewhere under
+    `edu.ftcphoenix.fw`. A whole-framework tuning-vendor word scan found only two pre-existing
+    generic `dashboard` comments in `Pid.java`, with no vendor type or dependency; this item adds no
+    Dashboard/Panels coupling.
+  - No robot-hardware claim is made or needed because TUNE-01 changes only ownership guidance,
+    Javadocs, and navigation.
+- **Manual verification (2026-07-17):** the user reviewed the implementation in Android Studio and
+  approved it with `TUNE-01 looks good`. Status is **Done**; no hardware validation was required.
 
 ### TARGET-01 - Lazy Plant target overlay selection
 

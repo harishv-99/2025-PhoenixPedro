@@ -519,6 +519,30 @@ Examples:
 
 If a boolean is genuinely a *permission* (“this action is allowed”), `allowX` is acceptable — but try to keep that rare and obvious.
 
+#### 3.4.5 Live tuning is a development workflow, not production configuration
+
+Production TeleOp and Auto must construct long-lived owners from checked-in configuration and
+defensive runtime snapshots. They must not continuously read mutable fields from a tuning UI or
+treat runtime values as proof that configuration was reviewed and recorded.
+
+Use a dedicated tuning/tester mode when live edits are useful:
+
+- Start the mechanism disabled or at a zero request, and make arming, target bounds, complete-output
+  bounds, and fail-stop behavior explicit robot-owned policy.
+- Accept a complete candidate at one owned OpMode-loop boundary. Read each candidate value once,
+  validate and apply it through the retained control object in robot-owned realization, reset the
+  robot-owned outermost composition, and let the normal Plant update perform the hardware write.
+- Keep candidate publication at the UI boundary. Phoenix does not make independently changing
+  fields into an atomic tuple and framework core must not depend on a vendor configuration API.
+- Report the values that were actually accepted. Copy them into the robot profile, review and
+  commit the source, stop the tuner, and start a fresh production mode to prove the checked-in
+  snapshot.
+- Do not invent a match-readiness flag that claims runtime code can prove a source edit was copied
+  or committed. Production modes are independent of live tuning state by construction.
+
+The complete standard software-PIDF workflow is in
+[`Software PIDF Tuning Workflow`](<docs/testing-calibration/Software PIDF Tuning Workflow.md>).
+
 
 ### 3.5 Direction and naming conventions
 

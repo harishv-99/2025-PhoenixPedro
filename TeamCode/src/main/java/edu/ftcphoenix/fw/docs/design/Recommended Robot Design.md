@@ -904,8 +904,12 @@ void applyFlywheelGains(double kP, double kI, double kD, double kF) {
 }
 ```
 
-TeleOp and Auto still request shooter intent and read status; they do not manipulate this retained
-handle. FTC `.deviceManaged().velocityPidf(...)` is a separate hardware-controller configuration.
+Match TeleOp and Auto still request shooter intent and read status; they do not manipulate this
+retained handle. A dedicated test mode may call the local apply method, but production modes should
+load only checked-in profile values. See the
+[`software PIDF tuning workflow`](<../testing-calibration/Software PIDF Tuning Workflow.md>) for
+safe apply, record, and restart. FTC `.deviceManaged().velocityPidf(...)` is a separate
+hardware-controller configuration.
 For a nonlinear or table-driven feedforward, realization uses the explicit advanced composition
 `ScalarRegulators.setpointFeedforward(ScalarRegulators.pid(customController), function)` instead of
 pretending it is the standard four-gain law.
