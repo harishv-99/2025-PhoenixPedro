@@ -78,7 +78,7 @@ public final class TeleOp_08_LiftExternalSensorControl extends OpMode {
                 .motor(HW_LIFT_MOTOR, Direction.FORWARD)
                 .position()
                 .regulated()
-                .nativeFeedback(FtcActuators.PositionFeedback.fromSource(liftHeightIn))
+                .nativeFeedback(liftHeightIn)
                 .regulator(ScalarRegulators.pid(liftPid))
                 .linear()
                 .bounded(HEIGHT_MIN_IN, HEIGHT_MAX_IN)

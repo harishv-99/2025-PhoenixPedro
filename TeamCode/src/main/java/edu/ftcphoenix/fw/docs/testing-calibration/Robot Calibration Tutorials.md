@@ -139,6 +139,87 @@ A student can answer, without hesitation, “yes, each wheel does the expected t
 - drivetrain motor names are still uncertain
 - your only explanation is “mecanum is confusing” rather than a config fix
 
+## High-resolution external encoder velocity comparison
+
+### Why this is a separate hardware check
+
+A quadrature encoder fundamentally supplies position changes. FTC hardware and the SDK may also
+report a device-timed velocity, but that representation can have a smaller numeric range than the
+position counter. A high-count-rate external encoder therefore needs evidence from the exact hub,
+firmware, port, SDK, and loop configuration before either reading becomes the production default.
+Motor configuration metadata is not proof of which physical encoder is connected.
+
+`HW: DcMotor Power` includes a measurement-only comparison for this purpose. For safe open-loop
+power testing it temporarily selects `RUN_WITHOUT_ENCODER`, then restores the motor's prior mode
+after commanding zero when the tester stops or returns to the picker. It does not filter either
+reading, correct an apparent velocity wrap, or change any Plant feedback API.
+
+### Safety and setup
+
+- Mechanically fixture the mechanism, guard every rotating part, and begin at zero power.
+- Selecting a motor always resets the target and leaves output disarmed. The A press that chooses a
+  motor cannot also arm it; release A, inspect the selection, then press A again deliberately.
+- Use an independent tachometer with known accuracy; neither SDK reading is an independent truth.
+- Select the configured motor whose own encoder port carries the external encoder. This tester does
+  not compare a separately selected encoder-only port while driving a different motor.
+- For a high-rate quadrature encoder on a REV hub, use encoder port **0 or 3**. Those ports are
+  hardware-counted; FIRST warns that the software-counted ports 1 and 2 can miss counts from a
+  high-count-rate encoder. See the current
+  [FIRST Control and Expansion Hub guidance](https://ftc-docs.firstinspires.org/en/latest/tech_tips/tech-tips.html)
+  and record the exact port.
+- Record the SDK version, hub model and firmware, bulk-caching mode, encoder version and counts per
+  revolution, battery voltage, and tachometer model before the run.
+
+### Procedure
+
+1. Run `FW: Testers`, open `Framework: Hardware Testers`, and select `HW: DcMotor Power`.
+2. Choose the motor/encoder entry, then start the OpMode from Driver Station with the power target
+   still at zero. Output remains disarmed until you deliberately press A.
+3. In Android Studio Logcat, filter for the tag `PhoenixEncoderVelocity`.
+4. Press Y to start capture. The first position-derived value deliberately reports unavailable
+   until two positive-time samples exist. Confirm telemetry says the matched REV snapshot is
+   coherent and `Row eligible for tachometer comparison` says `YES`. This means the row has the
+   required measurement mechanics; only the independent tachometer comparison can establish
+   accuracy, so do not use an ineligible row or the label alone to decide production policy.
+5. Press A to arm, then increase power gradually. Hold each safe test point long enough to record
+   the tachometer, then capture acceleration, coast-down, reversal, and both rotation directions.
+   Include points below, near, and above any suspected direct-velocity representation boundary.
+6. Press right bumper once during a steady point to skip exactly one comparison sample. The OpMode
+   and motor command continue normally; the following accepted sample spans the longer interval.
+   Never create a long sample with `sleep(...)` or a blocked loop.
+7. Press B to command zero and keep capturing until the mechanism has stopped. Press Y again to end
+   the capture, then save the filtered Logcat output.
+
+Each capture begins with an `ENCODER_VELOCITY_META` row containing the selected connection, controller,
+port, matched REV module address/serial/firmware, original bulk-caching mode, motor run modes,
+direction, and configured motor-type values. Those configured motor-type values are labeled
+metadata, not physical encoder identification.
+
+On a matched REV module, each accepted loop explicitly obtains one fresh bulk snapshot. If the
+module's mode is `OFF`, the tester switches to `MANUAL` only while both public motor getters consume
+that snapshot, then restores `OFF`; existing `MANUAL` or `AUTO` settings are left unchanged. Each
+data row records whether the snapshot was coherent and the original mode was preserved. This keeps
+the direct and position readings comparable without silently changing the production stack's
+bulk-caching policy.
+
+Each `ENCODER_VELOCITY_DATA` row records the session, motor name, loop cycle/time, enabled state,
+target power, the command held before measurement, the command issued afterward, position,
+rollover-aware position delta, accepted sample interval, both velocities, their difference,
+availability flags, snapshot/bulk-mode evidence, port eligibility, and status. An
+`ENCODER_VELOCITY_ERROR` row makes an unavailable cycle explicit, `ENCODER_VELOCITY_SKIPPED`
+identifies the deliberate one-sample gap, and `ENCODER_VELOCITY_END` closes a capture. Both
+velocities are in ticks per second. Convert the tachometer reading using:
+
+```text
+expected ticks/second = tachometer RPM * encoder counts/revolution / 60
+```
+
+Compare steady-state accuracy and sign as well as spin-up, spin-down, reversal, stop, ordinary loop
+intervals, and any observed long loop. Compile success and plausible-looking telemetry are not
+hardware validation. Preserve the raw log: filtering, smoothing, or a signed-velocity correction is
+a separate design decision that must not be inferred from one display value. Keep captures short
+and evaluate the recorded loop intervals because per-cycle Logcat output can itself affect timing.
+
 ## Camera mount
 
 ### Why this matters

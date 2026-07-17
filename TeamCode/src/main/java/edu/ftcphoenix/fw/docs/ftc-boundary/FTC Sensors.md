@@ -48,6 +48,53 @@ Notes:
 
 ---
 
+## Motor and incremental-encoder measurements
+
+FTC motor ports expose encoder position and direct velocity through different SDK paths:
+
+```java
+ScalarSource positionTicks = FtcSensors.motorPositionTicks(hardwareMap, "armMotor");
+ScalarSource directVelocityTicksPerSec =
+        FtcSensors.motorVelocityTicksPerSec(hardwareMap, "armMotor");
+```
+
+Both helpers memoize the hardware read per `LoopClock.cycle()`. Position is the SDK-observed signed
+32-bit count. Direct velocity is the SDK's motor-velocity reading; converting its units does not make
+its underlying controller representation wider.
+
+For ordinary built-in motor encoders, the regulated motor-velocity builder's
+`.internalEncoder(...)` answer uses direct SDK velocity. For a physically external incremental
+encoder, use `.externalEncoder(name[, direction])`; that path maintains continuous signed-32-bit
+position at the FTC boundary, then uses the generic `ScalarSource.ratePerSecond()` transform to
+produce native ticks/second:
+
+```java
+Plant flywheel = FtcActuators.plant(hardwareMap)
+        .motor("flywheel", Direction.FORWARD)
+        .velocity()
+        .regulated()
+            .externalEncoder("flywheelEncoder")
+            .regulator(flywheelRegulator)
+        .bounded(0.0, MAX_FLYWHEEL_RPM)
+        .scaleToNative(TICKS_PER_REV / 60.0)
+        .velocityTolerance(75.0)
+        .targetedByDefaultWritable(0.0)
+        .build();
+```
+
+The robot still owns physical facts: which encoder is attached, its counts per revolution,
+direction, wiring, and appropriate operating range. Configuration metadata cannot prove that the
+named motor port contains a particular encoder or that the hub captured every electrical edge. For
+a high-count-rate REV Through Bore encoder, use a hardware-counted Control/Expansion Hub encoder
+port 0 or 3 and validate the exact hardware/firmware/loop stack before claiming reliable
+maximum-speed feedback.
+
+Keep optional smoothing, outlier handling, and semantic unit conversion outside the raw FTC adapter.
+`ratePerSecond()` assumes its input is a linear unwrapped position; an absolute-angle source must be
+unwrapped by a layer that knows its period first.
+
+---
+
 ## Distance sensors
 
 Distance sensors are represented as a `ScalarSource` in your chosen unit.

@@ -390,9 +390,39 @@ public final class FtcActuators {
      */
     public interface MotorRegulatedVelocityFeedbackStep {
         /**
-         * Select the native velocity feedback source used by the regulator.
+         * Use the selected motor's SDK-reported internal encoder velocity in native ticks/sec.
          */
-        MotorRegulatedVelocityRegulatorStep nativeFeedback(VelocityFeedback feedback);
+        MotorRegulatedVelocityRegulatorStep internalEncoder();
+
+        /**
+         * Use one named selected motor's SDK-reported internal encoder velocity in native ticks/sec.
+         */
+        MotorRegulatedVelocityRegulatorStep internalEncoder(String motorName);
+
+        /**
+         * Use the average SDK-reported internal encoder velocity of all selected motors.
+         */
+        MotorRegulatedVelocityRegulatorStep averageInternalEncoders();
+
+        /**
+         * Derive native velocity in ticks/sec from a named external encoder's position samples.
+         *
+         * <p>The FTC position counter is made continuous across signed 32-bit rollover before the
+         * rate is calculated. This avoids depending on the SDK's narrower direct-velocity result
+         * for a high-count-rate external encoder.</p>
+         */
+        MotorRegulatedVelocityRegulatorStep externalEncoder(String name);
+
+        /**
+         * Derive native velocity in ticks/sec from a named external encoder's position samples,
+         * with an explicit logical direction.
+         */
+        MotorRegulatedVelocityRegulatorStep externalEncoder(String name, Direction direction);
+
+        /**
+         * Use a caller-supplied native velocity source.
+         */
+        MotorRegulatedVelocityRegulatorStep nativeFeedback(ScalarSource source);
     }
 
     /**
@@ -523,9 +553,35 @@ public final class FtcActuators {
      */
     public interface MotorRegulatedPositionFeedbackStep {
         /**
-         * Select the native position feedback source used by the regulator.
+         * Use the selected motor's internal encoder position in native ticks.
          */
-        MotorRegulatedPositionRegulatorStep nativeFeedback(PositionFeedback feedback);
+        MotorRegulatedPositionRegulatorStep internalEncoder();
+
+        /**
+         * Use one named selected motor's internal encoder position in native ticks.
+         */
+        MotorRegulatedPositionRegulatorStep internalEncoder(String motorName);
+
+        /**
+         * Use the average internal encoder position of all selected motors.
+         */
+        MotorRegulatedPositionRegulatorStep averageInternalEncoders();
+
+        /**
+         * Use a named external encoder's position in native ticks.
+         */
+        MotorRegulatedPositionRegulatorStep externalEncoder(String name);
+
+        /**
+         * Use a named external encoder's position in native ticks with an explicit logical
+         * direction.
+         */
+        MotorRegulatedPositionRegulatorStep externalEncoder(String name, Direction direction);
+
+        /**
+         * Use a caller-supplied native position source.
+         */
+        MotorRegulatedPositionRegulatorStep nativeFeedback(ScalarSource source);
     }
 
     /**
@@ -674,9 +730,20 @@ public final class FtcActuators {
      */
     public interface CrServoRegulatedPositionFeedbackStep {
         /**
-         * Select the native position feedback source used by the regulator.
+         * Use a named external encoder's position in native ticks.
          */
-        CrServoRegulatedPositionRegulatorStep nativeFeedback(PositionFeedback feedback);
+        CrServoRegulatedPositionRegulatorStep externalEncoder(String name);
+
+        /**
+         * Use a named external encoder's position in native ticks with an explicit logical
+         * direction.
+         */
+        CrServoRegulatedPositionRegulatorStep externalEncoder(String name, Direction direction);
+
+        /**
+         * Use a caller-supplied native position source.
+         */
+        CrServoRegulatedPositionRegulatorStep nativeFeedback(ScalarSource source);
     }
 
     /**
@@ -1107,239 +1174,65 @@ public final class FtcActuators {
     private enum VelocityControlKind {DEVICE_MANAGED, REGULATED}
 
     // ---------------------------------------------------------------------------------------------
-    // Feedback specs
+    // Builder-side feedback resolution
     // ---------------------------------------------------------------------------------------------
 
-    /**
-     * Builder-side selector for native position feedback.
-     *
-     * <p>For position plants, this source reports <b>native units</b>. If the source already reports
-     * the desired plant units, choose {@code nativeUnits().alreadyReferenced()} in the later mapping
-     * and reference stages.</p>
-     */
-    public abstract static class PositionFeedback {
-        private PositionFeedback() {
-        }
-
-        /**
-         * Use the selected motor's internal encoder position in native ticks.
-         */
-        public static PositionFeedback internalEncoder() {
-            return new InternalPositionFeedback(null, false);
-        }
-
-        /**
-         * Use one named selected motor's internal encoder position in native ticks.
-         */
-        public static PositionFeedback internalEncoder(String motorName) {
-            return new InternalPositionFeedback(motorName, false);
-        }
-
-        /**
-         * Use the average selected motor internal encoder position in native group ticks.
-         */
-        public static PositionFeedback averageInternalEncoders() {
-            return new InternalPositionFeedback(null, true);
-        }
-
-        /**
-         * Use an external encoder device position in native ticks.
-         */
-        public static PositionFeedback externalEncoder(String name) {
-            return new ExternalPositionFeedback(name, Direction.FORWARD);
-        }
-
-        /**
-         * Use an external encoder device position in native ticks with an explicit logical direction.
-         */
-        public static PositionFeedback externalEncoder(String name, Direction direction) {
-            return new ExternalPositionFeedback(name, direction);
-        }
-
-        /**
-         * Use a caller-supplied native position source.
-         */
-        public static PositionFeedback fromSource(ScalarSource source) {
-            return new SourcePositionFeedback(source);
-        }
-
-        abstract ScalarSource resolve(HardwareMap hw, List<MotorBuilder.Spec> motorSpecs);
-    }
-
-    /**
-     * Builder-side selector for native velocity feedback.
-     *
-     * <p>For velocity plants, this source reports <b>native units</b>. If the source already reports
-     * the desired plant velocity units, choose {@code nativeUnits()} in the later mapping stage.</p>
-     */
-    public abstract static class VelocityFeedback {
-        private VelocityFeedback() {
-        }
-
-        /**
-         * Use the selected motor's internal encoder velocity in ticks/sec.
-         */
-        public static VelocityFeedback internalEncoder() {
-            return new InternalVelocityFeedback(null, false);
-        }
-
-        /**
-         * Use one named selected motor's internal encoder velocity in ticks/sec.
-         */
-        public static VelocityFeedback internalEncoder(String motorName) {
-            return new InternalVelocityFeedback(motorName, false);
-        }
-
-        /**
-         * Use the average selected motor internal encoder velocity in group ticks/sec.
-         */
-        public static VelocityFeedback averageInternalEncoders() {
-            return new InternalVelocityFeedback(null, true);
-        }
-
-        /**
-         * Use an external encoder device velocity in ticks/sec.
-         */
-        public static VelocityFeedback externalEncoder(String name) {
-            return new ExternalVelocityFeedback(name, Direction.FORWARD);
-        }
-
-        /**
-         * Use an external encoder device velocity in ticks/sec with an explicit logical direction.
-         */
-        public static VelocityFeedback externalEncoder(String name, Direction direction) {
-            return new ExternalVelocityFeedback(name, direction);
-        }
-
-        /**
-         * Use a caller-supplied native velocity source.
-         */
-        public static VelocityFeedback fromSource(ScalarSource source) {
-            return new SourceVelocityFeedback(source);
-        }
-
-        abstract ScalarSource resolve(HardwareMap hw, List<MotorBuilder.Spec> motorSpecs);
-    }
-
-    private static final class InternalPositionFeedback extends PositionFeedback {
-        private final String motorName;
-        private final boolean average;
-
-        private InternalPositionFeedback(String motorName, boolean average) {
-            this.motorName = motorName;
-            this.average = average;
-        }
-
-        @Override
-        ScalarSource resolve(HardwareMap hw, List<MotorBuilder.Spec> motorSpecs) {
-            ensureMotorFeedbackAvailable(motorSpecs, "position");
-            if (average) {
-                List<ScalarSource> sources = new ArrayList<>();
-                for (MotorBuilder.Spec spec : motorSpecs)
-                    sources.add(FtcSensors.motorPositionTicks(hw, spec.name));
-                return averageSources(sources);
+    private static ScalarSource internalPositionFeedback(HardwareMap hw,
+                                                         List<MotorBuilder.Spec> motorSpecs,
+                                                         String motorName,
+                                                         boolean average) {
+        ensureMotorFeedbackAvailable(motorSpecs, "position");
+        if (average) {
+            List<ScalarSource> sources = new ArrayList<>();
+            for (MotorBuilder.Spec spec : motorSpecs) {
+                sources.add(FtcSensors.motorPositionTicks(hw, spec.name));
             }
-            if (motorName != null) {
-                for (MotorBuilder.Spec spec : motorSpecs) {
-                    if (spec.name.equals(motorName))
-                        return FtcSensors.motorPositionTicks(hw, spec.name);
+            return averageSources(sources);
+        }
+        if (motorName != null) {
+            for (MotorBuilder.Spec spec : motorSpecs) {
+                if (spec.name.equals(motorName)) {
+                    return FtcSensors.motorPositionTicks(hw, spec.name);
                 }
-                throw new IllegalStateException("PositionFeedback.internalEncoder(\"" + motorName + "\") does not match any selected motor");
             }
-            if (motorSpecs.size() != 1) {
-                throw new IllegalStateException("PositionFeedback.internalEncoder() is ambiguous for a "
-                        + motorSpecs.size() + "-motor group. Choose internalEncoder(\"name\"), averageInternalEncoders(), or an external encoder.");
-            }
-            return FtcSensors.motorPositionTicks(hw, motorSpecs.get(0).name);
+            throw new IllegalStateException("internalEncoder(\"" + motorName
+                    + "\") does not match any selected motor");
         }
+        if (motorSpecs.size() != 1) {
+            throw new IllegalStateException("internalEncoder() is ambiguous for a "
+                    + motorSpecs.size() + "-motor group. Choose internalEncoder(\"name\"), "
+                    + "averageInternalEncoders(), or externalEncoder(...).");
+        }
+        return FtcSensors.motorPositionTicks(hw, motorSpecs.get(0).name);
     }
 
-    private static final class ExternalPositionFeedback extends PositionFeedback {
-        private final String name;
-        private final Direction direction;
-
-        private ExternalPositionFeedback(String name, Direction direction) {
-            this.name = Objects.requireNonNull(name, "name");
-            this.direction = Objects.requireNonNull(direction, "direction");
-        }
-
-        @Override
-        ScalarSource resolve(HardwareMap hw, List<MotorBuilder.Spec> motorSpecs) {
-            return FtcSensors.motorPositionTicks(hw, name, direction);
-        }
-    }
-
-    private static final class SourcePositionFeedback extends PositionFeedback {
-        private final ScalarSource source;
-
-        private SourcePositionFeedback(ScalarSource source) {
-            this.source = Objects.requireNonNull(source, "source");
-        }
-
-        @Override
-        ScalarSource resolve(HardwareMap hw, List<MotorBuilder.Spec> motorSpecs) {
-            return source;
-        }
-    }
-
-    private static final class InternalVelocityFeedback extends VelocityFeedback {
-        private final String motorName;
-        private final boolean average;
-
-        private InternalVelocityFeedback(String motorName, boolean average) {
-            this.motorName = motorName;
-            this.average = average;
-        }
-
-        @Override
-        ScalarSource resolve(HardwareMap hw, List<MotorBuilder.Spec> motorSpecs) {
-            ensureMotorFeedbackAvailable(motorSpecs, "velocity");
-            if (average) {
-                List<ScalarSource> sources = new ArrayList<>();
-                for (MotorBuilder.Spec spec : motorSpecs)
-                    sources.add(FtcSensors.motorVelocityTicksPerSec(hw, spec.name));
-                return averageSources(sources);
+    private static ScalarSource internalVelocityFeedback(HardwareMap hw,
+                                                         List<MotorBuilder.Spec> motorSpecs,
+                                                         String motorName,
+                                                         boolean average) {
+        ensureMotorFeedbackAvailable(motorSpecs, "velocity");
+        if (average) {
+            List<ScalarSource> sources = new ArrayList<>();
+            for (MotorBuilder.Spec spec : motorSpecs) {
+                sources.add(FtcSensors.motorVelocityTicksPerSec(hw, spec.name));
             }
-            if (motorName != null) {
-                for (MotorBuilder.Spec spec : motorSpecs)
-                    if (spec.name.equals(motorName))
-                        return FtcSensors.motorVelocityTicksPerSec(hw, spec.name);
-                throw new IllegalStateException("VelocityFeedback.internalEncoder(\"" + motorName + "\") does not match any selected motor");
+            return averageSources(sources);
+        }
+        if (motorName != null) {
+            for (MotorBuilder.Spec spec : motorSpecs) {
+                if (spec.name.equals(motorName)) {
+                    return FtcSensors.motorVelocityTicksPerSec(hw, spec.name);
+                }
             }
-            if (motorSpecs.size() != 1) {
-                throw new IllegalStateException("VelocityFeedback.internalEncoder() is ambiguous for a "
-                        + motorSpecs.size() + "-motor group. Choose internalEncoder(\"name\"), averageInternalEncoders(), or an external encoder.");
-            }
-            return FtcSensors.motorVelocityTicksPerSec(hw, motorSpecs.get(0).name);
+            throw new IllegalStateException("internalEncoder(\"" + motorName
+                    + "\") does not match any selected motor");
         }
-    }
-
-    private static final class ExternalVelocityFeedback extends VelocityFeedback {
-        private final String name;
-        private final Direction direction;
-
-        private ExternalVelocityFeedback(String name, Direction direction) {
-            this.name = Objects.requireNonNull(name, "name");
-            this.direction = Objects.requireNonNull(direction, "direction");
+        if (motorSpecs.size() != 1) {
+            throw new IllegalStateException("internalEncoder() is ambiguous for a "
+                    + motorSpecs.size() + "-motor group. Choose internalEncoder(\"name\"), "
+                    + "averageInternalEncoders(), or externalEncoder(...).");
         }
-
-        @Override
-        ScalarSource resolve(HardwareMap hw, List<MotorBuilder.Spec> motorSpecs) {
-            return FtcSensors.motorVelocityTicksPerSec(hw, name, direction);
-        }
-    }
-
-    private static final class SourceVelocityFeedback extends VelocityFeedback {
-        private final ScalarSource source;
-
-        private SourceVelocityFeedback(ScalarSource source) {
-            this.source = Objects.requireNonNull(source, "source");
-        }
-
-        @Override
-        ScalarSource resolve(HardwareMap hw, List<MotorBuilder.Spec> motorSpecs) {
-            return source;
-        }
+        return FtcSensors.motorVelocityTicksPerSec(hw, motorSpecs.get(0).name);
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -1528,7 +1421,7 @@ public final class FtcActuators {
         private final MotorBuilder parent;
         private final DeviceManagedVelocityConfig deviceConfig = new DeviceManagedVelocityConfig();
         private VelocityControlKind controlKind;
-        private VelocityFeedback feedback;
+        private ScalarSource feedback;
         private ScalarRegulator regulator;
         private ScalarRange range;
         private double nativePerPlantUnit = 1.0;
@@ -1568,8 +1461,39 @@ public final class FtcActuators {
         }
 
         @Override
-        public MotorRegulatedVelocityRegulatorStep nativeFeedback(VelocityFeedback feedback) {
-            this.feedback = Objects.requireNonNull(feedback, "feedback");
+        public MotorRegulatedVelocityRegulatorStep internalEncoder() {
+            feedback = internalVelocityFeedback(parent.hw, parent.specs, null, false);
+            return this;
+        }
+
+        @Override
+        public MotorRegulatedVelocityRegulatorStep internalEncoder(String motorName) {
+            feedback = internalVelocityFeedback(parent.hw, parent.specs,
+                    Objects.requireNonNull(motorName, "motorName"), false);
+            return this;
+        }
+
+        @Override
+        public MotorRegulatedVelocityRegulatorStep averageInternalEncoders() {
+            feedback = internalVelocityFeedback(parent.hw, parent.specs, null, true);
+            return this;
+        }
+
+        @Override
+        public MotorRegulatedVelocityRegulatorStep externalEncoder(String name) {
+            return externalEncoder(name, Direction.FORWARD);
+        }
+
+        @Override
+        public MotorRegulatedVelocityRegulatorStep externalEncoder(String name, Direction direction) {
+            feedback = FtcSensors.continuousMotorPositionTicks(parent.hw, name, direction)
+                    .ratePerSecond();
+            return this;
+        }
+
+        @Override
+        public MotorRegulatedVelocityRegulatorStep nativeFeedback(ScalarSource source) {
+            feedback = Objects.requireNonNull(source, "source");
             return this;
         }
 
@@ -1623,8 +1547,10 @@ public final class FtcActuators {
             } else {
                 parent.requireDefaultGroupScalingForRegulated("velocity");
                 if (feedback == null || regulator == null)
-                    throw new IllegalStateException("Regulated motor velocity requires nativeFeedback(...) and regulator(...)");
-                b = MappedVelocityPlant.regulated(parent.groupedMotorPower(), feedback.resolve(parent.hw, parent.specs), regulator);
+                    throw new IllegalStateException("Regulated motor velocity requires a feedback answer "
+                            + "(internalEncoder(), averageInternalEncoders(), externalEncoder(...), or "
+                            + "nativeFeedback(...)) and regulator(...)");
+                b = MappedVelocityPlant.regulated(parent.groupedMotorPower(), feedback, regulator);
             }
             b.range(range).nativePerPlantUnit(nativePerPlantUnit).velocityTolerance(velocityTolerance).targetGuards(guards).targetedBy(source);
             if (writable != null) b.writableTarget(writable);
@@ -1776,7 +1702,7 @@ public final class FtcActuators {
         private final MotorBuilder parent;
         private final DeviceManagedPositionConfig deviceConfig = new DeviceManagedPositionConfig();
         private PositionControlKind controlKind;
-        private PositionFeedback feedback;
+        private ScalarSource feedback;
         private ScalarRegulator regulator;
 
         private MotorPositionBuilder(MotorBuilder parent) {
@@ -1834,8 +1760,38 @@ public final class FtcActuators {
         }
 
         @Override
-        public MotorRegulatedPositionRegulatorStep nativeFeedback(PositionFeedback feedback) {
-            this.feedback = Objects.requireNonNull(feedback, "feedback");
+        public MotorRegulatedPositionRegulatorStep internalEncoder() {
+            feedback = internalPositionFeedback(parent.hw, parent.specs, null, false);
+            return this;
+        }
+
+        @Override
+        public MotorRegulatedPositionRegulatorStep internalEncoder(String motorName) {
+            feedback = internalPositionFeedback(parent.hw, parent.specs,
+                    Objects.requireNonNull(motorName, "motorName"), false);
+            return this;
+        }
+
+        @Override
+        public MotorRegulatedPositionRegulatorStep averageInternalEncoders() {
+            feedback = internalPositionFeedback(parent.hw, parent.specs, null, true);
+            return this;
+        }
+
+        @Override
+        public MotorRegulatedPositionRegulatorStep externalEncoder(String name) {
+            return externalEncoder(name, Direction.FORWARD);
+        }
+
+        @Override
+        public MotorRegulatedPositionRegulatorStep externalEncoder(String name, Direction direction) {
+            feedback = FtcSensors.motorPositionTicks(parent.hw, name, direction);
+            return this;
+        }
+
+        @Override
+        public MotorRegulatedPositionRegulatorStep nativeFeedback(ScalarSource source) {
+            feedback = Objects.requireNonNull(source, "source");
             return this;
         }
 
@@ -1857,9 +1813,11 @@ public final class FtcActuators {
             }
             parent.requireDefaultGroupScalingForRegulated("position");
             if (feedback == null || regulator == null)
-                throw new IllegalStateException("Regulated motor position requires nativeFeedback(...) and regulator(...)");
+                throw new IllegalStateException("Regulated motor position requires a feedback answer "
+                        + "(internalEncoder(), averageInternalEncoders(), externalEncoder(...), or "
+                        + "nativeFeedback(...)) and regulator(...)");
             PowerOutput power = parent.groupedMotorPower();
-            return applyCommon(MappedPositionPlant.regulated(power, feedback.resolve(parent.hw, parent.specs), regulator)
+            return applyCommon(MappedPositionPlant.regulated(power, feedback, regulator)
                     .searchPowerOutput(power), source, writable, guards).build();
         }
     }
@@ -2078,7 +2036,7 @@ public final class FtcActuators {
     private static final class CrServoPositionBuilder extends BasePositionBuilder implements CrServoPositionControlStep,
             CrServoRegulatedPositionFeedbackStep, CrServoRegulatedPositionRegulatorStep {
         private final CrServoBuilder parent;
-        private PositionFeedback feedback;
+        private ScalarSource feedback;
         private ScalarRegulator regulator;
 
         private CrServoPositionBuilder(CrServoBuilder parent) {
@@ -2091,8 +2049,19 @@ public final class FtcActuators {
         }
 
         @Override
-        public CrServoRegulatedPositionRegulatorStep nativeFeedback(PositionFeedback feedback) {
-            this.feedback = Objects.requireNonNull(feedback, "feedback");
+        public CrServoRegulatedPositionRegulatorStep externalEncoder(String name) {
+            return externalEncoder(name, Direction.FORWARD);
+        }
+
+        @Override
+        public CrServoRegulatedPositionRegulatorStep externalEncoder(String name, Direction direction) {
+            feedback = FtcSensors.motorPositionTicks(parent.hw, name, direction);
+            return this;
+        }
+
+        @Override
+        public CrServoRegulatedPositionRegulatorStep nativeFeedback(ScalarSource source) {
+            feedback = Objects.requireNonNull(source, "source");
             return this;
         }
 
@@ -2106,9 +2075,10 @@ public final class FtcActuators {
         protected PositionPlant buildPositionPlant(PlantTargetSource source, ScalarTarget writable, PlantTargetGuards guards) {
             parent.requireDefaultGroupScalingForRegulated();
             if (feedback == null || regulator == null)
-                throw new IllegalStateException("Regulated CR-servo position requires nativeFeedback(...) and regulator(...)");
+                throw new IllegalStateException("Regulated CR-servo position requires externalEncoder(...) "
+                        + "or nativeFeedback(...), followed by regulator(...)");
             PowerOutput power = parent.groupedCrServoPower();
-            return applyCommon(MappedPositionPlant.regulated(power, feedback.resolve(parent.hw, null), regulator)
+            return applyCommon(MappedPositionPlant.regulated(power, feedback, regulator)
                     .searchPowerOutput(power), source, writable, guards).build();
         }
     }
@@ -2258,7 +2228,8 @@ public final class FtcActuators {
 
     private static void ensureMotorFeedbackAvailable(List<MotorBuilder.Spec> motorSpecs, String domain) {
         if (motorSpecs == null || motorSpecs.isEmpty()) {
-            throw new IllegalStateException("Internal " + domain + " encoder feedback requires a motor builder. Use an external encoder or fromSource(...) instead.");
+            throw new IllegalStateException("Internal " + domain + " encoder feedback requires a "
+                    + "motor builder. Use externalEncoder(...) or nativeFeedback(...) instead.");
         }
     }
 

@@ -506,6 +506,92 @@ public final class FtcSensors {
     }
 
     /**
+     * Create an FTC-boundary position source that stays continuous across observed signed 32-bit
+     * encoder-counter rollover.
+     *
+     * <p>This package-private source supports position-derived external-encoder velocity in
+     * {@link FtcActuators}. Each accepted sample adds the signed 32-bit modular delta to a wider
+     * counter, so a transition between {@link Integer#MAX_VALUE} and {@link Integer#MIN_VALUE} does
+     * not appear as a multi-billion-tick jump. Like every sampled modular counter, it assumes the
+     * physical count changes by fewer than 2<sup>31</sup> ticks between accepted loop samples. It
+     * does not infer or compensate for an out-of-band hardware counter reset.</p>
+     *
+     * <p>Repeated reads in one {@link LoopClock#cycle()} return the same value without reading the
+     * device again. {@link ScalarSource#reset()} discards the software continuity history; it does
+     * not change the FTC device's counter.</p>
+     */
+    static ScalarSource continuousMotorPositionTicks(DcMotor motor, Direction direction) {
+        if (motor == null) {
+            throw new IllegalArgumentException("motor is required");
+        }
+        if (direction == null) {
+            throw new IllegalArgumentException("direction is required");
+        }
+        final long directionSign = direction == Direction.REVERSE ? -1L : 1L;
+        return new ScalarSource() {
+            private long lastCycle = Long.MIN_VALUE;
+            private boolean initialized;
+            private int previousRawTicks;
+            private long continuousTicks;
+            private double last;
+
+            @Override
+            public double getAsDouble(LoopClock clock) {
+                long cycle = clock.cycle();
+                if (cycle == lastCycle) {
+                    return last;
+                }
+
+                int rawTicks = motor.getCurrentPosition();
+                if (!initialized) {
+                    initialized = true;
+                    continuousTicks = rawTicks;
+                } else {
+                    // Java int overflow gives the desired signed modular-32 delta at rollover.
+                    int deltaTicks = rawTicks - previousRawTicks;
+                    continuousTicks += deltaTicks;
+                }
+                previousRawTicks = rawTicks;
+                last = directionSign * (double) continuousTicks;
+                lastCycle = cycle;
+                return last;
+            }
+
+            @Override
+            public void reset() {
+                lastCycle = Long.MIN_VALUE;
+                initialized = false;
+                previousRawTicks = 0;
+                continuousTicks = 0L;
+                last = 0.0;
+            }
+
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) return;
+                String p = (prefix == null || prefix.isEmpty()) ? "continuousEncoderTicks" : prefix;
+                dbg.addData(p + ".class", "ContinuousFtcEncoderPosition")
+                        .addData(p + ".initialized", initialized)
+                        .addData(p + ".rawTicks", previousRawTicks)
+                        .addData(p + ".continuousTicks", continuousTicks)
+                        .addData(p + ".logicalTicks", last)
+                        .addData(p + ".direction", direction);
+            }
+        };
+    }
+
+    /** Resolve a named FTC encoder device for {@link #continuousMotorPositionTicks(DcMotor, Direction)}. */
+    static ScalarSource continuousMotorPositionTicks(HardwareMap hw, String name, Direction direction) {
+        if (hw == null) {
+            throw new IllegalArgumentException("HardwareMap is required");
+        }
+        if (name == null) {
+            throw new IllegalArgumentException("name is required");
+        }
+        return continuousMotorPositionTicks(hw.get(DcMotor.class, name), direction);
+    }
+
+    /**
      * Create a memoized scalar source that reads FTC motor velocity in native ticks per second.
      *
      * @param motor FTC motor or encoder-backed device that exposes velocity through {@link DcMotorEx}
