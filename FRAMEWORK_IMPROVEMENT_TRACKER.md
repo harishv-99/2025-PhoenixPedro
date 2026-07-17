@@ -1,6 +1,6 @@
 # Framework Improvement Tracker
 
-Last updated: 2026-07-16
+Last updated: 2026-07-17
 
 This file tracks proposed Phoenix framework improvements. It is deliberately a planning document:
 an item being listed here does **not** mean its current proposed solution has been approved. Each
@@ -85,69 +85,70 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 21 | SOURCE-02 | Derived rate from sampled scalar position | Done | Derive units-per-second from any position `ScalarSource` in core; keep encoder hardware reads at the FTC boundary. |
 | 22 | FTC-01 | FTC raw motor-power run-mode ownership | Done | Make the FTC motor-power boundary consistently own `RUN_WITHOUT_ENCODER` without another student-facing choice. |
 | 23 | API-03 | PID and linear-PIDF configuration ownership | Done | Keep plain PID error-centric and add one factory-only standard PIDF regulator that owns all four gains and live tuning as one validated update. |
-| 24 | TUNE-01 | Live tuning to checked-in profile | Proposed | Keep production snapshots stable while providing an explicit, optional live-tuning workflow. |
-| 25 | AUTO-01 | Compact bounded Auto continuation | Proposed | Use another real routine to separate reusable lifecycle ceremony from robot-owned match and recovery policy. |
-| 26 | SOURCE-03 | Composable scalar measurement conditioning | Proposed | Add only evidence-backed, explicitly configured numeric filters as generic `ScalarSource` decorators rather than hiding smoothing in a sensor adapter. |
-| 27 | MATCH-01 | Explicit Auto-to-TeleOp handoff | Proposed | Carry one typed immutable robot snapshot across the FTC mode boundary without string maps or stale globals. |
-| 28 | DRIVE-02 | Shared drivetrain actuator handoff | Proposed | Preserve one motor writer when a PTO reuses drivetrain motors for an endgame mechanism. |
-| 29 | VISION-01 | Custom VisionPortal ownership | Proposed | Reuse camera/processor lifecycle without forcing robot-specific detections through AprilTag APIs. |
-| 30 | SENSOR-01 | Motor-current sensing | Proposed | Expose cycle-memoized current in amps as a Source; keep jam, homing, and power-budget policy robot-owned. |
-| 31 | INPUT-01 | Safe contextual control activation | Proposed | Support optional control modes without turning held controls into phantom press edges. |
-| 32 | HAPTIC-01 | Driver haptic feedback boundary | Proposed | Expose small rate-safe rumble output while controls retain the meaning of each notification. |
-| 33 | PERF-01 | FTC hub bulk-cache ownership | Proposed | Evaluate one optional, cycle-idempotent manual bulk-cache heartbeat against SDK automatic caching. |
-| 34 | PERF-02 | Loop phase diagnostics | Proposed | Measure named loop phases with a lightweight diagnostic that does not own timing or sleep. |
-| 35 | PERF-03 | Contract-safe hardware write deduplication | Proposed | Add write caching only where measurements justify it and stop/Plant truth remain exact. |
-| 36 | TARGET-01 | Lazy Plant target overlay selection | Proposed | Resolve the selected highest-priority layer first and avoid sampling shadowed layers. |
-| 37 | TARGET-02 | Candidate freshness | Proposed | Compute effective age from the loop clock and timestamp, with validation. |
-| 38 | TARGET-03 | Periodic planner complexity | Proposed | Replace range iteration with constant-time candidate mathematics. |
-| 39 | CYCLE-01 | Stateful drive-source cycle safety | Proposed | Memoize stateful composition once per `clock.cycle()` and propagate reset deliberately. |
-| 40 | CYCLE-02 | Localization cycle safety | Proposed | Guard predictors/estimators against duplicate same-cycle updates. |
-| 41 | SOURCE-01 | Boolean composition sampling | Proposed | Sample both operands once per cycle before combining stateful results. |
-| 42 | API-01 | Writable Plant command binding | Proposed | Keep one simple `Plant` if builder provenance can prevent silent no-op writes. |
-| 43 | API-02 | Feedback tolerance choice | Proposed | Ask for tolerance after unit mapping; retain an explicitly named native default only if useful. |
-| 44 | API-04 | Binding execution order | Proposed | Preserve declaration order unless explicit phases are proven necessary. |
-| 45 | API-05 | One beginner drive entry point | Proposed | Teach the lane as the robot-facing path and keep the raw factory as a lower-level tool. |
-| 46 | COMMON-01 | Initialization runtime helper | Proposed | Extract only repeated retry/error/cleanup ceremony; avoid a robot base class. |
-| 47 | COMMON-02 | Telemetry commit ownership | Proposed | Renderers add data; the composition root commits once. |
-| 48 | CHECK-01 | Staged whole-robot system check | Proposed | Compose a safe pre-match check from robot capabilities without hardware reflection or a base robot. |
-| 49 | EXAMPLE-01 | Compiling modern starter robot | Proposed | Add a small multi-file reference, not an inheritance framework. |
-| 50 | EXAMPLE-03 | Advanced moving-target reference | Proposed | Prove progress-triggered scoring and a bounded moving turret without putting game physics in the framework. |
-| 51 | BOUNDARY-01 | FTC boundary enforcement | Proposed | Fix existing import leaks, then add a focused forbidden-import check. |
-| 52 | DOC-01 | Stale and non-compiling documentation | Proposed | Correct loop/API examples and validate links/examples where practical. |
-| 53 | CI-01 | Framework verification in CI | Proposed | Run focused unit tests, TeamCode compilation, docs checks, and boundary checks. |
-| 54 | CLEAN-01 | Alias and risky convenience cleanup | Proposed | Remove only APIs proven redundant or unsafe by caller search. |
-| 55 | SAFE-04 | PowerOutput failure cleanup and seam truth | Proposed | Make low-level and grouped output failure handling fail-safe without claiming atomic or physical command truth. |
-| 56 | ACT-01 | FTC actuator-group identity validation | Proposed | Reject blank and duplicate group members before resolving or configuring hardware. |
-| 57 | CAL-01 | Calibration-search power validation | Proposed | Reject invalid normalized search power before stopping normal output or changing calibration state. |
-| 58 | CAL-02 | Position-calibration reference validity | Proposed | Validate calibration reference and hold answers at the boundary that owns their units and lifecycle. |
-| 59 | MAP-01 | FTC actuator mapping-domain validation | Proposed | Validate finite child transforms and raw actuator domains before command mapping can be silently clamped. |
-| 60 | RANGE-01 | ScalarRange construction validity | Proposed | Define and enforce finite, half-bounded, and unbounded range construction without allowing `NaN`. |
-| 61 | FTC-02 | Device-managed controller configuration validation | Proposed | Validate FTC PIDF/P, maximum-power, and related staged answers before SDK access or mode changes. |
-| 62 | CONFIG-01 | Owner-configuration snapshot audit | Deferred | Revisit specific owners only when a traced caller shows mutation drift or invalid retained state. |
+| 24 | TUNE-01 | Live tuning to checked-in profile | Proposed | Keep production snapshots stable while proving that an explicit PIDF tune/apply/record path reduces total robot code. |
+| 25 | ROUTE-03 | Factory-only route Task configuration | Proposed | Keep `RouteTasks` as the sole construction layer and replace one-field mutable/null configuration ceremony with one explicit route-timeout answer if the caller audit confirms it. |
+| 26 | ACT-01 | FTC actuator-group identity validation | Proposed | Reject blank and duplicate group members before resolving or configuring hardware. |
+| 27 | COMMON-01 | Initialization runtime helper | Proposed | Use the complete Pedro reference cost to extract only repeated retry/error/cleanup ceremony; avoid a robot base class or hidden loop. |
+| 28 | AUTO-01 | Compact bounded Auto continuation | Proposed | Use another real routine to separate reusable lifecycle ceremony from robot-owned match and recovery policy. |
+| 29 | SOURCE-03 | Composable scalar measurement conditioning | Proposed | Add only measurement-backed, explicitly configured numeric filters as generic `ScalarSource` decorators rather than hiding smoothing in a sensor adapter. |
+| 30 | MATCH-01 | Explicit Auto-to-TeleOp handoff | Proposed | Carry one typed immutable robot snapshot across the FTC mode boundary without string maps or stale globals. |
+| 31 | DRIVE-02 | Shared drivetrain actuator handoff | Proposed | Preserve one motor writer when a PTO reuses drivetrain motors for an endgame mechanism. |
+| 32 | VISION-01 | Custom VisionPortal ownership | Proposed | Reuse camera/processor lifecycle without forcing robot-specific detections through AprilTag APIs. |
+| 33 | SENSOR-01 | Motor-current sensing | Proposed | Expose cycle-memoized current in amps as a Source; keep jam, homing, and power-budget policy robot-owned. |
+| 34 | INPUT-01 | Safe contextual control activation | Proposed | Support optional control modes without turning held controls into phantom press edges. |
+| 35 | HAPTIC-01 | Driver haptic feedback boundary | Proposed | Expose small rate-safe rumble output while controls retain the meaning of each notification. |
+| 36 | PERF-01 | FTC hub bulk-cache ownership | Proposed | Evaluate one optional, cycle-idempotent manual bulk-cache heartbeat against SDK automatic caching. |
+| 37 | PERF-02 | Loop phase diagnostics | Proposed | Measure named loop phases with a lightweight diagnostic that does not own timing or sleep. |
+| 38 | PERF-03 | Contract-safe hardware write deduplication | Proposed | Add write caching only where measurements justify it and stop/Plant truth remain exact. |
+| 39 | TARGET-01 | Lazy Plant target overlay selection | Proposed | Resolve the selected highest-priority layer first and avoid sampling shadowed layers. |
+| 40 | TARGET-02 | Candidate freshness | Proposed | Compute effective age from the loop clock and timestamp, with validation. |
+| 41 | TARGET-03 | Periodic planner complexity | Proposed | Replace range iteration with constant-time candidate mathematics. |
+| 42 | CYCLE-01 | Stateful drive-source cycle safety | Proposed | Memoize stateful composition once per `clock.cycle()` and propagate reset deliberately. |
+| 43 | CYCLE-02 | Localization cycle safety | Proposed | Guard predictors/estimators against duplicate same-cycle updates. |
+| 44 | SOURCE-01 | Boolean composition sampling | Proposed | Sample both operands once per cycle before combining stateful results. |
+| 45 | API-01 | Writable Plant command binding | Proposed | Keep one simple `Plant` if builder provenance can prevent silent no-op writes. |
+| 46 | API-02 | Feedback tolerance choice | Proposed | Ask for tolerance after unit mapping; retain an explicitly named native default only if useful. |
+| 47 | API-04 | Binding execution order | Proposed | Preserve declaration order unless explicit phases are proven necessary. |
+| 48 | API-05 | One beginner drive entry point | Proposed | Teach the lane as the robot-facing path and keep the raw factory as a lower-level tool. |
+| 49 | COMMON-02 | Telemetry commit ownership | Proposed | Renderers add data; the composition root commits once. |
+| 50 | CHECK-01 | Staged whole-robot system check | Proposed | Compose a safe pre-match check from robot capabilities without hardware reflection or a base robot. |
+| 51 | EXAMPLE-01 | Compiling modern starter robot | Proposed | Add a small multi-file reference, not an inheritance framework. |
+| 52 | EXAMPLE-03 | Advanced moving-target reference | Proposed | Prove progress-triggered scoring and a bounded moving turret without putting game physics in the framework. |
+| 53 | BOUNDARY-01 | FTC boundary enforcement | Proposed | Fix existing import leaks, then add a focused forbidden-import check. |
+| 54 | DOC-01 | Stale and non-compiling documentation | Proposed | Correct loop/API examples and validate links/examples where practical. |
+| 55 | CI-01 | Framework verification in CI | Proposed | Run focused unit tests, TeamCode compilation, docs checks, and boundary checks. |
+| 56 | CLEAN-01 | Alias and risky convenience cleanup | Proposed | Remove only APIs proven redundant or unsafe by caller search. |
+| 57 | SAFE-04 | PowerOutput failure cleanup and seam truth | Proposed | Make low-level and grouped output failure handling fail-safe without claiming atomic or physical command truth. |
+| 58 | CAL-01 | Calibration-search power validation | Proposed | Reject invalid normalized search power before stopping normal output or changing calibration state. |
+| 59 | CAL-02 | Position-calibration reference validity | Proposed | Validate calibration reference and hold answers at the boundary that owns their units and lifecycle. |
+| 60 | MAP-01 | FTC actuator mapping-domain validation | Proposed | Validate finite child transforms and raw actuator domains before command mapping can be silently clamped. |
+| 61 | RANGE-01 | ScalarRange construction validity | Proposed | Define and enforce finite, half-bounded, and unbounded range construction without allowing `NaN`. |
+| 62 | FTC-02 | Device-managed controller configuration validation | Proposed | Validate FTC PIDF/P, maximum-power, and related staged answers before SDK access or mode changes. |
+| 63 | CONFIG-01 | Owner-configuration snapshot audit | Deferred | Revisit specific owners only when a traced caller shows mutation drift or invalid retained state. |
 
 The completed order was intentionally front-loaded with testability, robot lifecycle, actuator
-safety, and deterministic Task behavior. The current proposed-item priority now focuses on making
-Summer26/Bettabot's first production Pedro Auto small and supported, then removing concrete shooter
-complexity already proven in that robot. EXAMPLE-02 is first because Bettabot currently has no
-enabled Auto at all; CTRL-01 follows because it removes a complete robot-local regulator decorator.
-SAFE-03 remains a separate universal safety/truth task. SOURCE-02 stays near the front but must defer
-unless its contract is limited to the position observations supplied by the SDK; the user approved
-that limitation and moved exact-stack hardware qualification to adopting-robot validation.
-FTC-01 now follows SOURCE-02 because Bettabot's framework-regulated flywheel must not depend on a
-motor mode left behind by another owner or OpMode, and resolving that lifecycle centrally removes
-another hardware detail from robot code. API-03 now owns shared PID validation and one
-framework-owned standard linear-PIDF control law that removes Bettabot's mutable feedforward gain
-and split live update; TUNE-01 remains the later Dashboard apply/record workflow. API-03's audit also split
-ACT-01, CAL-01, CAL-02, MAP-01, RANGE-01, and FTC-02 into named follow-ups, while CONFIG-01 records
-an evidence gap rather than pretending a broad audit is implementation-ready. They are appended
-rather than silently displacing the already reviewed order; each proposed item may be promoted only
-after its own decision gate compares urgency, dependencies, and student-facing benefit.
-AUTO-01 and SOURCE-03 remain conditional on the additional real-routine and measurement evidence
-stated in their own gates. SAFE-04 records
-the lower-level and grouped-output failure contract separately so SAFE-03 does not overstate what a
-single regulated command can prove about child devices or physical hardware. It is appended rather
-than silently displacing the already approved Summer-focused priority order; a later decision gate
-may promote it if reproduced failure risk justifies that change.
+safety, deterministic Task behavior, Pedro ownership, truthful route outcomes, and the reusable
+pieces already proven by Bettabot's shooter. The remaining order was re-audited on 2026-07-17
+against the still-current Summer26/Bettabot commit `4eed9d6c` and the complete 630-line Pedro
+reference rather than against short outer calls.
+
+The next decision-gate cluster is now TUNE-01, ROUTE-03, ACT-01, and COMMON-01. TUNE-01 has the
+largest potential shooter payoff after API-03, but it must prove a net reduction in all tuner and
+OpMode robot code rather than merely introduce a short framework call. ROUTE-03 splits the
+factory/configuration portion out of broad CLEAN-01 because a simple route currently needs a
+mutable one-field `RouteTask.Config`, nullable defaults, and a public construction family that
+duplicates the `RouteTasks` facade. ACT-01 is a small but concrete Bettabot simplification:
+`FtcActuators` already knows the complete two-motor group and can own blank/duplicate identity
+validation before lookup, allowing an adopting Bettabot to delete its duplicate checks. COMMON-01
+is promoted to measure the repeated lifecycle shell exposed by EXAMPLE-02; it must not turn that
+evidence into a base OpMode or hide loop order.
+
+AUTO-01 and SOURCE-03 remain high-value but explicitly evidence-gated. AUTO-01 needs a second
+materially different bounded routine—ideally Bettabot's first real route—before extracting a
+continuation abstraction. SOURCE-03 now has a second real flywheel caller in Cuttlefish, but still
+needs representative traces before selecting a filter whose delay could help or harm PIDF control.
+They follow the actionable research cluster instead of pretending missing physical/routine evidence
+is implementation-ready. The remaining unrelated items retain their prior relative order.
 
 The Pedro review added two runtime-ownership gates before DRIVE-01:
 the checked-in Auto must first have one continuous follower heartbeat and one valid drivetrain/
@@ -259,6 +260,34 @@ Bettabot Auto is enabled, that downstream copy must be synchronized with the cur
 baseline. This is an adoption prerequisite, not evidence for a second Pedro API or a new framework
 distribution abstraction from one consumer. If another robot repeats material copy/sync drift,
 open a separate decision gate for the smallest supported distribution path.
+
+### Bettabot-focused remaining-work audit (2026-07-17)
+
+Summer26 `master` was rechecked and still points to the pinned `4eed9d6c` revision used above. The
+completed CTRL-01, SAFE-03, SOURCE-02, FTC-01, and API-03 work already owns most reusable PIDF
+shooter complexity; the completed Pedro/Route/Task/PHX/EXAMPLE-02 sequence already establishes the
+safe route foundation. The remaining priority therefore targets concrete residual robot code,
+without reopening those designs:
+
+| Priority | Item | Concrete Bettabot benefit | Gate that remains |
+|---:|---|---|---|
+| 1 | TUNE-01 | Potentially replaces the roughly 100-line two-way Dashboard synchronization owner with one explicit four-gain tune, validate, apply/reset, and record workflow. | Compare the complete tuner plus OpMode surface after API-03 against a small robot-local solution. This repository currently uses Pedro Panels and has no FTC Dashboard dependency; do not add a vendor dependency or generic tuning language unless total robot code and concepts decrease. |
+| 2 | ROUTE-03 | Makes each fixed or start-time Pedro route choose its name, route source, follower, and timeout directly through one factory layer instead of constructing a mutable one-field config or discovering parallel constructors. | Audit every factory, constructor, default/named overload, config caller, and return type. This is a major public-API decision and requires approval before implementation. |
+| 3 | ACT-01 | Would let an adopting Bettabot delete blank and duplicate left/right flywheel motor-name checks after the fully informed grouped-actuator boundary owns them, without changing the valid staged call. | Preserve intentional external-feedback reuse of a powered motor's own port and avoid a global hardware registry. |
+| 4 | COMMON-01 | The independent Pedro reference proves that 426 of its 630 source lines are in the composition root and FTC host rather than paths, capabilities, or the semantic routine. | Separate genuinely repeated INIT/retry/partial-cleanup mechanics from required robot ownership. Split another narrowly named item if recurring Auto-root lifecycle is proven but does not fit this initialization scope. |
+| 5 | AUTO-01 | Could prevent copying Phoenix's large bounded-pre-park continuation state machine when Bettabot adds a match-time park policy. | EXAMPLE-02 supplies one reference, but a second materially different bounded routine is still required. A simple one-route Auto should not wait for this item or justify an Auto DSL. |
+| 6 | SOURCE-03 | Could improve position-derived flywheel feedback and avoid a future robot-local filter. | Cuttlefish supplies the second real caller, not the correct algorithm. Require real traces and compare noise rejection against control delay under irregular loop periods; never add implicit smoothing. |
+
+**Manual review (2026-07-17):** the user approved this revised Bettabot-focused priority order
+with “Priority order looks good.” This authorizes publication of this tracker-only plan; it does
+not approve any proposed item design or start TUNE-01.
+
+SAFE-04 remains useful grouped-output failure safety, but it removes no Bettabot code and requires
+representative physical validation. API-02 already matches Bettabot's explicit RPM tolerance call;
+MAP-01 targets mappings Bettabot does not use; FTC-02 owns device-managed SDK PIDF rather than
+Bettabot's external-feedback software PIDF. PERF/CHECK/DOC/CI work can improve diagnosis, readiness,
+and maintenance later, but none is a more direct next simplification. FIELD-01 and EXAMPLE-03 remain
+advanced geometry/moving-target work rather than prerequisites for a simple first route.
 
 ### Recommended autonomous ownership structure
 
@@ -1608,6 +1637,51 @@ writer, and explicit lifecycle ownership.
     deliberately displace or interrupt the outbound phase and confirm the return path begins at the
     live pose, test the already-at-return-pose case, and confirm active cancellation still applies
     immediate stable zero.
+
+### ROUTE-03 - Factory-only route Task configuration
+
+- **Problem to confirm:** the route family currently exposes four `RouteTasks` factories, two
+  equivalent public eager `RouteTask` constructors, nullable implicit defaults, and a mutable
+  `RouteTask.Config` whose only answer is `timeoutSec`. A basic route creates a config, mutates that
+  one field, and passes it immediately; many tests pass `null`. This makes a simple Pedro route
+  learn a configuration noun and parallel construction layer without adding route capability.
+  The current `timeoutSec > 0` check also silently treats `NaN`, negative infinity, zero, and
+  negative values as no timeout, while positive infinity effectively never expires.
+- **Current caller evidence:** `BasicPedroAutoRoutine` constructs a fresh config solely to set a
+  four-second timeout. Phoenix's `PhoenixAutoTasks.routeConfig(...)` likewise creates a fresh
+  one-field config from the profile for each eager or start-time route call. Repository search found
+  no modern production caller that stores, shares, composes, or independently validates the config.
+  `RouteTask` itself must remain a public retained return type because callers use its precise
+  per-start `RouteStatus`; that does not justify public constructors.
+- **Alternatives to compare:** keep every path and improve documentation; remove constructors but
+  retain mutable/null config; replace config with an immutable options value or builder; answer the
+  sole timeout directly on each factory; expose a separately named no-timeout choice; retain the
+  numeric `<= 0` sentinel; use generic `Tasks.withTimeout(...)`; or require a named route
+  factory with no unnamed/default sibling. Compare default omission, finite-positive timeout,
+  zero/negative/no-timeout, non-finite rejection, route-specific `TASK_TIMEOUT` truth, named
+  diagnostics, call-site concepts, eager/start-time API parallelism, compatibility, and whether
+  each remaining overload provides distinct value.
+- **Leading hypothesis:** keep `RouteTasks` as the sole public construction layer and `RouteTask` as
+  the status-bearing return type. If the complete caller audit confirms that timeout is the only
+  configuration answer and is never reused, delete the public constructors, mutable config, and
+  nullable default path without deprecation; answer timeout policy directly and keep eager and
+  built-at-start factories parallel. Require a deliberate, validated distinction between a finite
+  timeout and no timeout instead of letting non-finite values become accidental sentinels. Do not
+  replace route-local timeout semantics with a generic wrapper that loses the retained route
+  terminal reason, and do not add a staged builder or options wrapper used only inline.
+- **Student-facing target:** a fixed route and a start-time route should each read as one direct,
+  parallel factory call whose arguments are the actual robot decisions: diagnostic name, follower,
+  concrete route or route factory, and timeout. The decision gate must explicitly decide whether an
+  unnamed/default overload has distinct beginner value or is another learning path.
+- **Completion:** exact API-surface tests enforce the chosen sole construction layer; every
+  production, example, test, Javadoc, and Markdown caller migrates together; route timeout,
+  no-timeout, default, zero/negative, and invalid non-finite semantics are explicit and tested;
+  cancellation, status, single-use, and start-time construction behavior remain unchanged; the
+  Pedro reference visibly loses config ceremony. No robot hardware validation is required for this
+  pure API cleanup.
+- **Decision record:** _Pending; split from CLEAN-01 and promoted for Bettabot's first simple Pedro
+  routes on 2026-07-17. This is a breaking public-API decision and must stop for explicit design
+  approval before implementation._
 
 ### FIELD-01 - Explicit alliance field transforms
 
@@ -3130,19 +3204,31 @@ writer, and explicit lifecycle ownership.
   [`BettaDashboardControls`](https://github.com/Hansika1098/Summer26/blob/4eed9d6c7c93c5e2b65bdbc78463ad0be0e87790/TeamCode/src/main/java/edu/ftcphoenix/robots/betta/BettaDashboardControls.java#L18-L100)
   independently repeats a two-way live-static synchronization layer for flywheel gains, bounds, and
   targets, reinforcing the need for one explicit tune -> validate -> record workflow.
+- **Reprioritization evidence (2026-07-17):** API-03 now gives a retained standard PIDF handle one
+  validated four-gain update, so the next audit can compare the complete roughly 100-line Bettabot
+  synchronization owner against the smallest post-API-03 tuning path. Count every tuning class,
+  tester OpMode, profile-copy step, and presenter as robot code. This repository currently carries
+  Pedro Panels rather than an FTC Dashboard dependency; adding another vendor dependency or mutable
+  static surface is not a simplification unless the side-by-side total clearly wins.
 - **Alternatives to compare:** edit/redeploy checked-in profiles only; let production owners read
   mutable Dashboard statics continuously; rebuild individual owners from a tuning snapshot; provide
-  dedicated calibration/tester bridges; or emit/copy validated values into the profile. Consider
-  which parameter changes are safe while hardware is active.
+  a narrow standard-PIDF tester bridge; use the existing Panels boundary; add an optional Dashboard
+  adapter; provide broader owner-rebuild tooling; or emit/copy validated values into the profile.
+  Consider which parameter changes are safe while hardware is active and whether the standard PIDF
+  case genuinely shares lifecycle with arbitrary owner reconstruction.
 - **Leading hypothesis:** keep production Phoenix owners on immutable defensive snapshots. An
-  optional FTC/Dashboard tuning owner is used only by explicit tuning/tester modes, validates a
-  complete candidate, applies it at a visible rebuild boundary or through an already-safe calibrated
-  source, and reports values in a form that can be copied into the checked-in profile. No hidden
-  mutable global becomes a match dependency.
-- **Completion:** tests cover invalid/non-finite edits, atomic snapshot/apply, active-output safety,
-  rollback, rebuild/close ordering, and emitted profile values. Documentation gives students one
-  repeatable tune -> validate -> record -> production workflow, and match OpModes fail readiness if
-  they depend on unrecorded live state.
+  optional tuning owner is used only by explicit tuning/tester modes, validates a complete
+  candidate, applies it at a visible boundary through an already-safe retained capability, and
+  reports values in a form that can be copied into the checked-in profile. Start with the narrow
+  four-gain PIDF case. Split or defer generic rebuild/profile machinery if it adds concepts or does
+  not reduce the complete robot surface. No hidden mutable global becomes a match dependency.
+- **Completion:** tests cover invalid/non-finite edits, atomic candidate apply, outer-composition
+  reset, active-output safety, rollback, and emitted profile values. Rebuild/close ordering is
+  required only if Gate 1 selects broader owner reconstruction rather than splitting or deferring
+  it. Documentation gives students one repeatable tune -> validate -> record -> production
+  workflow, match OpModes fail readiness if they depend on unrecorded live state, and the decision
+  record includes the before/after count of every robot-code file and concept needed by the ordinary
+  PIDF tuning workflow.
 - **Decision record:** _Pending._
 
 ### TARGET-01 - Lazy Plant target overlay selection
@@ -3550,13 +3636,25 @@ writer, and explicit lifecycle ownership.
 
 - **Problem to confirm:** Phoenix Auto and framework testers repeat retry, error reporting, partial
   construction cleanup, and initialization state.
+- **New Pedro evidence (2026-07-17):** the completed independent Pedro reference totals 630 source
+  lines. Its semantic path/routine/capability files are 204 lines, while
+  `BasicPedroAutoRobot` and `PhoenixBasicPedroAutoExample` contribute 426 lines for the composition
+  root and FTC host. Much of that shell is required ownership, but INIT failure handling, partial
+  construction cleanup, one-shot lifecycle guards, and best-effort stop aggregation are concrete
+  candidates to compare against Phoenix Auto and existing testers. A short routine method alone
+  does not make the adopting robot simple.
 - **Alternatives to compare:** a small generic init/cleanup owner; local shared private helpers; an
-  FTC-specific lane; or no extraction until another production robot needs it.
+  FTC-specific lane; a separate narrowly scoped Auto-runtime shell; or no extraction until another
+  production robot needs it. Compare the entire adopting OpMode and composition-root surface, not
+  only the extracted helper call.
 - **Leading hypothesis:** extract only the lifecycle state machine and cleanup guarantees already
   repeated in at least three callers. Do not include robot capabilities, configuration policy, or
-  OpMode inheritance.
+  OpMode inheritance. Keep one explicit clock/localization/Pedro/Task/Plant loop order. If recurring
+  active Auto-root lifecycle is real but does not fit an initialization helper without hiding
+  ownership, split another focused tracker item rather than silently broadening COMMON-01.
 - **Completion:** callers become shorter without hiding loop order or resource ownership; partial
-  failure and repeated cleanup are tested.
+  failure and repeated cleanup are tested; the decision record counts removed versus introduced
+  robot-code lines and concepts across the complete Pedro reference.
 - **Decision record:** _Pending._
 
 ### COMMON-02 - Telemetry commit ownership
@@ -3812,6 +3910,12 @@ writer, and explicit lifecycle ownership.
   Pedro Auto, then compare at least one materially different bounded-continuation routine. Count the
   robot-code concepts and lines each approach requires; a short outer factory call is not sufficient
   evidence of simplicity.
+- **Reprioritization state (2026-07-17):** EXAMPLE-02 is complete and records the full 630-line
+  independent reference cost, closing the first prerequisite. Bettabot still has only one-shot
+  shooter Tasks and no real bounded Pedro routine, so the second caller needed to distinguish
+  reusable continuation mechanics from Phoenix's match policy does not yet exist. Keep this item
+  high for the first competition Auto, but do not implement it for an ordinary single-route routine
+  or manufacture a generic Auto DSL from the remaining evidence.
 - **Alternatives to compare:** retain the tested explicit pattern; simplify only the Phoenix private
   Tasks; document a copyable template; add a robot-local helper; reuse or reshape existing
   `sequence(...)`/`branchOnOutcome(...)` composition; extract a narrow lifecycle utility; or add a
@@ -3896,19 +4000,16 @@ writer, and explicit lifecycle ownership.
 ### CLEAN-01 - Alias and risky convenience cleanup
 
 - **Problem to confirm:** aliases and adjacent-`double` overloads create parallel learning paths;
-  level-triggered task bindings may enqueue unbounded work. The PHX-03 construction audit also found
-  two public eager `RouteTask` constructors duplicating `RouteTasks.follow(...)`, plus nullable
-  implicit `RouteTask.Config` defaults beside the otherwise factory-led route family.
+  level-triggered task bindings may enqueue unbounded work.
 - **Decision question:** which APIs have no callers or demonstrably unsafe semantics, and which names
-  genuinely improve discoverability? For the route family, explicitly compare migration/removal of
-  the eager constructors and one explicit config-default path against source compatibility; do not
-  add a supplier constructor merely for symmetry.
+  genuinely improve discoverability?
 - **Leading hypothesis:** remove only after caller search and after the preferred path is documented;
   prioritize unsafe task-enqueue helpers over cosmetic naming cleanup.
 - **Completion:** one obvious documented path remains, all callers migrate, and no unrelated naming
-  churn is bundled with behavioral work. Route construction/config defaults either have one chosen
-  documented path or retain a parallel path only with a concrete compatibility reason and cleanup
-  gate.
+  churn is bundled with behavioral work.
+- **Scope split (2026-07-17):** public `RouteTask` construction and its one-field/null configuration
+  path moved to focused ROUTE-03 so a Pedro simplification is not bundled with unrelated aliases or
+  binding behavior.
 - **Decision record:** _Pending._
 
 ### CTRL-01 - Final scalar-regulator output constraints
@@ -4651,8 +4752,21 @@ writer, and explicit lifecycle ownership.
   and prevent deliberate filtering before versus after estimation.
 - **External evidence:** Bettabot currently uses one-cycle position differencing without filtering in
   [`ThroughBoreVelocitySource`](https://github.com/Hansika1098/Summer26/blob/4eed9d6c7c93c5e2b65bdbc78463ad0be0e87790/TeamCode/src/main/java/edu/ftcphoenix/robots/betta/BettaShooter.java#L30-L75).
-  This motivates measurement rather than proving which filter is correct; collect real flywheel
-  traces and identify at least one additional sensor caller before selecting an algorithm.
+  Cuttlefish independently derives flywheel rate from position and then applies multiple explicit
+  low-pass accumulator stages in its
+  [`Shooter`](https://github.com/6165-MSET-Cuttlefish/summer-2026/blob/42d1ce8ffe3dd62187b93771f1a5455c85fff6cd/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/modules/Shooter.java).
+  That supplies a second real caller, but its per-loop alpha values are not a documented
+  elapsed-time/time-constant contract and do not prove which filter Phoenix should use. Collect real
+  flywheel traces before selecting an algorithm.
+- **Composition gap to audit:** the simple regulated-Plant
+  `.externalEncoder(name, direction)` path deliberately hides rollover-aware position acquisition,
+  and rate derivation. The surrounding regulated actuator path owns the powered motor's
+  `RUN_WITHOUT_ENCODER` mode; a separate encoder-only port remains read-only. Advanced
+  `nativeFeedback(ScalarSource)` can accept a composed signal, but the exact rollover-aware
+  continuous-position source used by the simple path is currently package-private. The decision
+  gate must determine whether real callers need a distinct advanced composable acquisition seam,
+  while keeping the ordinary external-encoder call unchanged. Do not add implicit filtering or a
+  second ordinary feedback selector merely to expose internals.
 - **Alternatives to compare:** document robot-owned custom filters; use FTC SDK filter utilities at
   the boundary; add an exponential/time-constant low-pass decorator; add fixed-sample or time-window
   mean/median filters; reject implausible deltas; estimate rate with windowed regression; or provide
@@ -4956,6 +5070,11 @@ writer, and explicit lifecycle ownership.
   lookup. A duplicate group member can configure and command the same SDK object twice. Bettabot
   consequently repeats blank/distinct shooter-motor name checks that the complete group
   specification already knows.
+- **Priority evidence (2026-07-17):** unlike the remaining broad configuration audits, this change
+  identifies concrete downstream branches that an adopting Bettabot can delete after migration:
+  its left/right blank and duplicate-name checks move to the existing fully informed grouped-
+  actuator boundary. The student-facing valid staged call remains unchanged, and no hardware
+  measurement is needed to decide ownership.
 - **Alternatives to compare:** validate the existing private group specification before any lookup;
   keep robot-owner checks; add public motor/group identity values; validate only at SDK lookup; or
   add a global cross-Plant hardware registry. Preserve the FTC-01 use case where an external encoder
