@@ -3,6 +3,9 @@ package edu.ftcphoenix.fw.ftc;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 
+import java.util.Arrays;
+import java.util.List;
+
 import edu.ftcphoenix.fw.core.hal.Direction;
 import edu.ftcphoenix.fw.core.hal.PowerOutput;
 import edu.ftcphoenix.fw.drive.MecanumDrivebase;
@@ -63,14 +66,17 @@ import edu.ftcphoenix.fw.drive.MecanumDrivebase;
  *       mapping. Smooth driver behavior with {@code DriveSource.rateLimited(...)} upstream.</li>
  *   <li>Use the overloads that accept custom motor names if they do not
  *       follow the standard naming convention.</li>
- *   <li>Bypass this helper entirely and construct {@link MecanumDrivebase}
- *       directly with {@link FtcHardware#motorPower} and a custom config.</li>
+ *   <li>Construct {@link MecanumDrivebase} directly only for nonstandard
+ *       {@link PowerOutput} implementations whose lifecycle and multi-output coordination the
+ *       caller deliberately owns.</li>
  * </ul>
  *
  * <p>However, for teaching and most examples, <b>prefer using
  * {@link #mecanum(HardwareMap)} or the simple overloads here</b>. This keeps
  * robot code focused on behavior (how the robot should move) instead of
- * wiring details.</p>
+ * wiring details. The standard helper also resolves the complete motor group and preflights every
+ * raw-power mode before requested wheel-power fan-out; the sequential hardware writes themselves
+ * are not atomic.</p>
  */
 public final class FtcDrives {
 
@@ -451,13 +457,18 @@ public final class FtcDrives {
             throw new IllegalArgumentException("All motor directions are required");
         }
 
-        PowerOutput fl = FtcHardware.motorPower(hw, flName, flDirection);
-        PowerOutput fr = FtcHardware.motorPower(hw, frName, frDirection);
-        PowerOutput bl = FtcHardware.motorPower(hw, blName, blDirection);
-        PowerOutput br = FtcHardware.motorPower(hw, brName, brDirection);
+        List<PowerOutput> motors = FtcHardware.motorPowerGroup(
+                hw,
+                Arrays.asList(flName, frName, blName, brName),
+                Arrays.asList(flDirection, frDirection, blDirection, brDirection));
 
         MecanumDrivebase.Config cfg = (config != null) ? config : MecanumDrivebase.Config.defaults();
-        return new MecanumDrivebase(fl, fr, bl, br, cfg);
+        return new MecanumDrivebase(
+                motors.get(0),
+                motors.get(1),
+                motors.get(2),
+                motors.get(3),
+                cfg);
     }
 
     // ----------------------------------------------------------------------

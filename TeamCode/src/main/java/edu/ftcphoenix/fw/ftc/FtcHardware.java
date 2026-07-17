@@ -7,6 +7,9 @@ import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.hardware.Servo;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import edu.ftcphoenix.fw.core.hal.Direction;
 import edu.ftcphoenix.fw.core.hal.PositionOutput;
 import edu.ftcphoenix.fw.core.hal.PowerOutput;
@@ -41,32 +44,57 @@ public final class FtcHardware {
     /**
      * Create a Phoenix {@link PowerOutput} for a named FTC motor.
      *
-     * <p>The returned output writes through {@link DcMotor#setPower(double)} and reports the most
-     * recent commanded power through {@link PowerOutput#getCommandedPower()}.</p>
+     * <p>This factory defines motor power as raw/open-loop normalized power. Construction resolves
+     * the motor and configures direction, but does not claim its run mode or write power. Each
+     * {@link PowerOutput#setPower(double)} command checks for
+     * {@link DcMotor.RunMode#RUN_WITHOUT_ENCODER}; when a transition is needed, the adapter commands
+     * zero in the current mode, selects and verifies the required mode, and only then submits the
+     * requested power. It never resets the encoder.</p>
+     *
+     * <p>{@link PowerOutput#stop()} writes zero directly without acquiring or restoring a mode. A
+     * deliberate handoff must stop the old updater before the new owner begins commanding the
+     * motor; this adapter does not make simultaneous writers valid.</p>
      *
      * @param hw FTC hardware map used to look up the motor
      * @param name configured hardware name of the {@link DcMotorEx}
      * @param direction logical forward direction for Phoenix commands
-     * @return command-only power output for the named motor
+     * @return command-only raw/open-loop power output for the named motor
      */
     public static PowerOutput motorPower(HardwareMap hw, String name, Direction direction) {
         requireHardwareMap(hw);
         requireName(name);
         requireDirection(direction);
-        return motorPower(hw.get(DcMotorEx.class, name), direction);
+        return motorPower(
+                hw.get(DcMotorEx.class, name),
+                direction,
+                "configured motor \"" + name + "\"");
     }
 
     /**
      * Create a Phoenix {@link PowerOutput} for an FTC motor instance.
      *
-     * <p>The adapter configures the motor direction immediately and clamps every commanded value to
-     * {@code [-1.0, +1.0]} before forwarding it to the FTC SDK.</p>
+     * <p>The adapter configures direction immediately but leaves power and run mode untouched until
+     * a command arrives. Every commanded value is clamped to {@code [-1.0, +1.0]}. If the motor is
+     * not already in {@link DcMotor.RunMode#RUN_WITHOUT_ENCODER}, the command path first writes zero,
+     * selects that raw-power mode, verifies it, and then writes the requested value. A failed mode
+     * acquisition requests a best-effort zero and reports the motor, observed mode, and required
+     * mode while retaining the underlying and suppressed cleanup failures.</p>
+     *
+     * <p>The adapter never resets encoder position. Its {@link PowerOutput#stop()} implementation
+     * writes zero without changing mode, so stopping an inactive output cannot steal mode ownership
+     * from another deliberate owner.</p>
      *
      * @param motor     FTC motor instance to command
      * @param direction logical forward direction for Phoenix commands
-     * @return command-only power output backed by {@link DcMotor#setPower(double)}
+     * @return command-only raw/open-loop power output backed by {@link DcMotor#setPower(double)}
      */
     public static PowerOutput motorPower(DcMotorEx motor, Direction direction) {
+        return motorPower(motor, direction, null);
+    }
+
+    private static FtcMotorPowerOutput motorPower(DcMotorEx motor,
+                                                  Direction direction,
+                                                  String description) {
         if (motor == null) {
             throw new IllegalArgumentException("motor is required");
         }
@@ -75,20 +103,198 @@ public final class FtcHardware {
                 ? DcMotorSimple.Direction.REVERSE
                 : DcMotorSimple.Direction.FORWARD);
 
-        return new PowerOutput() {
-            private double last;
+        return new FtcMotorPowerOutput(motor, description);
+    }
 
-            @Override
-            public void setPower(double power) {
-                last = MathUtil.clampAbs(power, 1.0);
-                motor.setPower(last);
+    /**
+     * Resolve and coordinate a framework-owned group of named FTC raw-power motors.
+     *
+     * <p>Every device is resolved before direction is configured. On each complete ordered group
+     * command, the first child write preflights every member's raw-power mode before any requested
+     * child power is submitted. This package-private factory lets FTC builders preserve that safety
+     * invariant without adding a public grouping or run-mode concept.</p>
+     */
+    static List<PowerOutput> motorPowerGroup(HardwareMap hw,
+                                             List<String> names,
+                                             List<Direction> directions) {
+        requireHardwareMap(hw);
+        if (names == null || directions == null || names.isEmpty()
+                || names.size() != directions.size()) {
+            throw new IllegalArgumentException(
+                    "motor names and directions must be non-empty and have matching sizes");
+        }
+
+        List<DcMotorEx> motors = new ArrayList<>(names.size());
+        for (int i = 0; i < names.size(); i++) {
+            requireName(names.get(i));
+            requireDirection(directions.get(i));
+            motors.add(hw.get(DcMotorEx.class, names.get(i)));
+        }
+
+        List<FtcMotorPowerOutput> rawOutputs = new ArrayList<>(motors.size());
+        for (int i = 0; i < motors.size(); i++) {
+            rawOutputs.add(motorPower(
+                    motors.get(i),
+                    directions.get(i),
+                    "configured motor \"" + names.get(i) + "\""));
+        }
+        new FtcMotorPowerGroup(rawOutputs);
+
+        List<PowerOutput> outputs = new ArrayList<>(rawOutputs.size());
+        outputs.addAll(rawOutputs);
+        return outputs;
+    }
+
+    /**
+     * FTC motor output whose power commands conditionally acquire the SDK's raw-power run mode.
+     *
+     * <p>The cached command retains the adapter's existing seam-level behavior: it records the
+     * clamped request before attempting hardware access. It is not hardware acknowledgement.</p>
+     */
+    private static final class FtcMotorPowerOutput implements PowerOutput {
+        private static final DcMotor.RunMode REQUIRED_MODE =
+                DcMotor.RunMode.RUN_WITHOUT_ENCODER;
+
+        private final DcMotorEx motor;
+        private final String description;
+        private FtcMotorPowerGroup group;
+        private double last;
+
+        private FtcMotorPowerOutput(DcMotorEx motor, String description) {
+            this.motor = motor;
+            this.description = description;
+        }
+
+        @Override
+        public void setPower(double power) {
+            last = MathUtil.clampAbs(power, 1.0);
+            if (group != null) {
+                group.beforeCommand(this);
+            } else {
+                acquireRequiredModeIfNeeded();
+            }
+            motor.setPower(last);
+        }
+
+        @Override
+        public double getCommandedPower() {
+            return last;
+        }
+
+        /**
+         * Write zero without acquiring or restoring a run mode.
+         *
+         * <p>This differs deliberately from {@code setPower(0.0)}, which is still a raw-power
+         * command and therefore establishes {@link #REQUIRED_MODE} when necessary.</p>
+         */
+        @Override
+        public void stop() {
+            if (group != null) {
+                group.invalidateBatch();
+            }
+            last = 0.0;
+            motor.setPower(0.0);
+        }
+
+        private void acquireRequiredModeIfNeeded() {
+            DcMotor.RunMode currentMode = null;
+            try {
+                currentMode = motor.getMode();
+                if (currentMode == REQUIRED_MODE) {
+                    return;
+                }
+
+                motor.setPower(0.0);
+                motor.setMode(REQUIRED_MODE);
+                currentMode = motor.getMode();
+                if (currentMode != REQUIRED_MODE) {
+                    throw new IllegalStateException(
+                            "FTC motor reported an incompatible mode after mode selection");
+                }
+            } catch (RuntimeException primaryFailure) {
+                try {
+                    motor.setPower(0.0);
+                } catch (RuntimeException cleanupFailure) {
+                    if (cleanupFailure != primaryFailure) {
+                        primaryFailure.addSuppressed(cleanupFailure);
+                    }
+                }
+                throw new IllegalStateException(
+                        "Cannot acquire raw motor-power mode: motor=" + description()
+                                + ", currentMode=" + modeName(currentMode)
+                                + ", requiredMode=" + REQUIRED_MODE,
+                        primaryFailure);
+            }
+        }
+
+        private String description() {
+            return description != null ? description : describeMotor(motor);
+        }
+    }
+
+    /**
+     * Coordinates one synchronous ordered fan-out so mode acquisition finishes before motion.
+     *
+     * <p>The framework-created callers retain the children privately and always issue a complete
+     * ordered batch. An unexpected order starts a fresh preflight, so an interrupted batch cannot
+     * silently lend stale preparation to a later command.</p>
+     */
+    private static final class FtcMotorPowerGroup {
+        private final List<FtcMotorPowerOutput> outputs;
+        private int nextIndex = -1;
+        private int remainingInBatch;
+
+        private FtcMotorPowerGroup(List<FtcMotorPowerOutput> outputs) {
+            this.outputs = new ArrayList<>(outputs);
+            for (FtcMotorPowerOutput output : this.outputs) {
+                output.group = this;
+            }
+        }
+
+        private void beforeCommand(FtcMotorPowerOutput output) {
+            int index = outputs.indexOf(output);
+            if (index < 0) {
+                throw new IllegalStateException(
+                        "Raw motor-power output is not a member of its command group");
+            }
+            if (remainingInBatch == 0 || index != nextIndex) {
+                invalidateBatch();
+                preflightAll();
+                remainingInBatch = outputs.size();
+                nextIndex = index;
             }
 
-            @Override
-            public double getCommandedPower() {
-                return last;
+            remainingInBatch--;
+            nextIndex = (index + 1) % outputs.size();
+        }
+
+        private void preflightAll() {
+            try {
+                for (FtcMotorPowerOutput output : outputs) {
+                    output.acquireRequiredModeIfNeeded();
+                }
+            } catch (RuntimeException primaryFailure) {
+                for (FtcMotorPowerOutput output : outputs) {
+                    try {
+                        output.motor.setPower(0.0);
+                    } catch (RuntimeException cleanupFailure) {
+                        if (cleanupFailure != primaryFailure) {
+                            primaryFailure.addSuppressed(cleanupFailure);
+                        }
+                    }
+                }
+                throw new IllegalStateException(
+                        "Cannot prepare raw motor-power group for "
+                                + DcMotor.RunMode.RUN_WITHOUT_ENCODER
+                                + " before requested power fan-out",
+                        primaryFailure);
             }
-        };
+        }
+
+        private void invalidateBatch() {
+            remainingInBatch = 0;
+            nextIndex = -1;
+        }
     }
 
     /**
@@ -374,5 +580,21 @@ public final class FtcHardware {
         if (direction == null) {
             throw new IllegalArgumentException("direction is required");
         }
+    }
+
+    private static String modeName(DcMotor.RunMode mode) {
+        return mode == null ? "unknown" : mode.name();
+    }
+
+    private static String describeMotor(DcMotorEx motor) {
+        try {
+            String connectionInfo = motor.getConnectionInfo();
+            if (connectionInfo != null && !connectionInfo.trim().isEmpty()) {
+                return connectionInfo;
+            }
+        } catch (RuntimeException ignored) {
+            // Failure reporting must not replace the mode-acquisition failure.
+        }
+        return motor.getClass().getSimpleName();
     }
 }

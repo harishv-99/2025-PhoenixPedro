@@ -83,7 +83,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 19 | CTRL-01 | Final scalar-regulator output constraints | Done | Constrain the final composed regulator command with one factory-only decorator, without adding flywheel policy or another Plant-builder path. |
 | 20 | SAFE-03 | Regulated Plant actuator-command truth | Done | Make every normalized regulated-Plant command finite, bounded, and truthful before the defensive hardware adapter. |
 | 21 | SOURCE-02 | Derived rate from sampled scalar position | Done | Derive units-per-second from any position `ScalarSource` in core; keep encoder hardware reads at the FTC boundary. |
-| 22 | FTC-01 | Regulated motor run-mode ownership | Proposed | Make Phoenix-regulated raw-power motor Plants own the required FTC run mode without another student-facing choice. |
+| 22 | FTC-01 | FTC raw motor-power run-mode ownership | Done | Make the FTC motor-power boundary consistently own `RUN_WITHOUT_ENCODER` without another student-facing choice. |
 | 23 | API-03 | Builder and owner-config validation | Proposed | Reject invalid hardware and controller configuration at the earliest fully informed boundary with actionable messages. |
 | 24 | TUNE-01 | Live tuning to checked-in profile | Proposed | Keep production snapshots stable while providing an explicit, optional live-tuning workflow. |
 | 25 | AUTO-01 | Compact bounded Auto continuation | Proposed | Use another real routine to separate reusable lifecycle ceremony from robot-owned match and recovery policy. |
@@ -4212,44 +4212,178 @@ writer, and explicit lifecycle ownership.
     claim that Phoenix, the SDK, or the configured hub port guarantees physically correct Through
     Bore velocity at Bettabot's operating speeds.
 
-### FTC-01 - Regulated motor run-mode ownership
+### FTC-01 - FTC raw motor-power run-mode ownership
 
-- **Problem to confirm:** a Phoenix-regulated motor position or velocity Plant describes a
-  framework-owned control loop that writes normalized raw power, but the standard
-  `FtcHardware.motorPower(...)` adapter currently configures direction and forwards `setPower(...)`
-  without selecting an FTC run mode. A motor left in `RUN_USING_ENCODER` or `RUN_TO_POSITION` by an
-  earlier owner or OpMode can therefore apply a second controller or stale position target beneath
-  the Phoenix regulator. Cuttlefish avoids that ambiguity in its working shooter by explicitly
-  selecting `RUN_WITHOUT_ENCODER`; Bettabot should not need to repeat that FTC lifecycle detail
-  around the framework builder.
-- **Why it is prioritized for Bettabot:** SOURCE-02 makes Bettabot's external Through Bore feedback
-  concise, while CTRL-01 and SAFE-03 already centralize its complete-regulator limit and final
-  normalized command safety. Those improvements do not make the flywheel loop authoritative if the
-  FTC motor controller remains in an inherited closed-loop mode. FTC-01 is therefore the next
-  proposed item after SOURCE-02 and must be decided before describing Bettabot's regulated flywheel
-  construction as complete.
-- **Alternatives to compare:** document a robot-owned `setMode(...)` call; make every low-level
-  `FtcHardware.motorPower(...)` adapter always own `RUN_WITHOUT_ENCODER`; configure mode only for
-  the staged `FtcActuators...regulated()` path; switch once at construction, assert before every
-  power write, or establish mode at an explicit lifecycle boundary; fail when the existing mode is
-  incompatible; restore the prior mode on stop; or introduce a broader actuator-mode/resource
-  owner. Trace single and grouped regulated Plants, direct power Plants, calibration search,
-  device-managed position/velocity transitions, repeated OpModes, output sharing, and DRIVE-02 PTO
-  handoff before choosing the lifecycle.
-- **Leading hypothesis:** do not add a student-facing run-mode question. Keep the general low-level
-  `PowerOutput` seam free to represent caller-owned hardware, but make the FTC construction path
-  that promises a Phoenix-owned raw-power regulator establish and retain the required motor mode at
-  the smallest fully informed boundary. Mode selection, stop behavior, later device-managed reuse,
-  grouped failures, and ownership handoff must be explicit and best-effort safe; do not silently
-  reset encoder position or infer physical encoder identity.
-- **Completion:** focused fake-motor tests cover every starting mode, construction versus first-write
-  timing, repeated updates, single/group partial failures, stop/reset, shared outputs, calibration
-  search, and handoff to device-managed control. Javadocs and the FTC actuator guide state exactly
-  which layer owns mode and whether stop restores, retains, or transitions it. Compilation and
-  on-robot observation confirm that a regulated Bettabot-style flywheel uses one Phoenix controller
-  over `RUN_WITHOUT_ENCODER`, while direct/device-managed Plants preserve their documented modes.
-- **Decision record:** _Pending. This is a major FTC lifecycle/ownership decision and is not part of
-  SOURCE-02 implementation._
+- **Confirmed problem:** `FtcHardware.motorPower(...)` currently configures direction and forwards
+  `setPower(...)` without establishing the run mode that gives that command raw/open-loop meaning.
+  Under the pinned FTC SDK 11.1.0, `RUN_WITHOUT_ENCODER` sends constant power,
+  `RUN_USING_ENCODER` turns `setPower(...)` into a hub-managed velocity target,
+  `RUN_TO_POSITION` uses the stored position target and treats power as unsigned maximum effort,
+  and `STOP_AND_RESET_ENCODER` does not actuate from a power write. A same-OpMode owner transition
+  can therefore put a Phoenix raw-power command beneath a second controller, send it toward a stale
+  target, or make it ineffective.
+- **Pinned-SDK correction to the original hypothesis:** normal REV/Lynx OpMode initialization does
+  not carry the prior user OpMode's motor mode forward. Before user `init()`,
+  `OpModeManagerImpl` resets Lynx controllers and `LynxDcMotorController.initializeHardware()`
+  selects `RUN_WITHOUT_ENCODER`, float/zero. The confirmed problem is still real for same-OpMode
+  transitions, calibration search, competing owners, non-Lynx/custom reset behavior, and an adapter
+  whose own semantic contract is unspecified; the decision must not claim ordinary cross-OpMode
+  inheritance on the pinned stack.
+- **Why it is prioritized for Bettabot:** SOURCE-02 makes the external Through Bore feedback concise,
+  while CTRL-01 and SAFE-03 centralize complete-regulator limits and normalized command safety.
+  Those improvements do not make the flywheel controller authoritative if its motor-power boundary
+  can still use an FTC PID mode. Bettabot should not need raw `DcMotorEx` access or a surrounding
+  `setMode(...)` ritual to make the ordinary regulated builder correct.
+- **Completion:** focused fake-motor tests cover every modern starting mode, construction versus
+  first-write timing, exact zero/mode/verification/request ordering, already-correct and repeated
+  writes, transition failures, single and grouped mode preflight, stop/reset, calibration search,
+  direct power, regulated position/velocity, simple mecanum drive, and handoff to device-managed
+  control. Javadocs and the FTC actuator guide state which boundary owns mode, the difference
+  between `setPower(0.0)` and lifecycle `stop()`, and the no-restore/no-reset policy. The complete
+  unit suite and FTC compile pass. Representative hardware observation remains adoption evidence;
+  software verification must not claim independent firmware acknowledgement or physical motion.
+- **Decision record (2026-07-16):**
+  - **Minimal reproduced trace:** all compiled framework motor-power paths reach
+    `FtcHardware.motorPower(...)`. Its current `setPower(...)` only clamps and delegates. FTC
+    `DcMotorImpl.setPower(...)` consults the current mode; in `RUN_TO_POSITION` it makes the power
+    non-negative, while the REV/Lynx controller sends a target-velocity command for both PID modes
+    and a constant-power command only for `RUN_WITHOUT_ENCODER`. Device-managed position
+    calibration is a concrete in-repository failure: `beginCalibrationSearch(...)` first stops its
+    normal output, that stop selects `RUN_USING_ENCODER`, and the current search output then writes
+    "open-loop" power without leaving the velocity PID mode. The SDK's mode transition also
+    preserves and reissues the prior power, so a safe transition must submit zero before selecting
+    raw mode; selecting mode first is not sufficient.
+  - **Current callers and public construction layers:** the only compiled callers of
+    `FtcHardware.motorPower(...)` are `FtcActuators` and `FtcDrives`. They cover motor
+    `.power()`, framework-regulated motor position and velocity, motor position calibration search,
+    the standard mecanum lane/examples/calibrator, Phoenix's intake and drivetrain tester, and the
+    external-sensor regulated example. No in-repository robot directly calls the low-level factory,
+    although `PowerOutput` Javadoc teaches that public use. `FtcHardware.motorPosition(...)` and
+    `motorVelocity(...)` already assert their device-managed modes when commanding. Generic core
+    `PowerOutput` remains a hardware-neutral command seam.
+  - **Student-facing simplicity and parallelism:** the Beginner's Guide already defines motor
+    `.power()` as open-loop normalized power and `.regulated()` as Phoenix driving raw power.
+    Consequently the run mode is not another conceptual student choice: it follows from the target
+    domain and loop owner already selected; selecting external rather than internal feedback does
+    not change the powered motor's required raw-power mode. The public call sites remain unchanged. Making
+    FTC-specific `motorPower(...)`, `motorVelocity(...)`, and `motorPosition(...)` each establish
+    the mode required by their names is more parallel and discoverable than adding a regulated-only
+    exception. Bettabot's normal builder therefore remains the complete construction; FTC-01 removes
+    no additional robot class, but prevents a hidden hardware prerequisite and avoids future
+    `DcMotorEx.setMode(...)` setup code.
+  - **Chosen ownership boundary and command lifecycle:** `FtcHardware.motorPower(...)` will mean an
+    FTC raw/open-loop power output and will own `RUN_WITHOUT_ENCODER` whenever
+    `setPower(...)` asserts a command. Construction continues to resolve the motor and set direction
+    only; it does not steal mode from an unused output. Before each command, the adapter checks the
+    current SDK-reported mode. If it is already `RUN_WITHOUT_ENCODER`, it submits the requested power
+    directly. Otherwise it commands zero in the current mode, selects and verifies
+    `RUN_WITHOUT_ENCODER`, and only then submits the requested power. This is a conditional mode
+    assertion, not a blind `setMode(...)` on every loop; on Lynx, the mode read uses the same
+    freshness cache that `DcMotorImpl.setPower(...)` already consults. A transition or verification
+    failure best-effort commands zero, preserves the primary failure, suppresses cleanup failures,
+    and throws an actionable motor/current-mode/required-mode error. It never resets encoder
+    position.
+  - **Stop, reset, calibration, and handoff:** the motor-power adapter overrides `stop()` to command
+    zero directly without acquiring or restoring a mode. A normal raw owner therefore usually
+    leaves `RUN_WITHOUT_ENCODER` selected at zero; if another owner already selected a different
+    mode, stop does not steal it back. Plant `reset()` remains state-only and sends no hardware or
+    mode command. Calibration search asserts raw mode on its search command; the next
+    device-managed position command reasserts `RUN_TO_POSITION`. Device-managed velocity likewise
+    retains `RUN_USING_ENCODER`. A deliberate shared-actuator handoff must stop and disable the old
+    updater before enabling the new one. Every command asserts its own mode, but FTC-01 does not
+    make simultaneous writers valid.
+  - **External-encoder channel boundary:** run mode follows the actuation path, not the feedback
+    source. A powered motor controlled by a Phoenix regulator therefore uses
+    `RUN_WITHOUT_ENCODER` whether feedback comes from its internal encoder, an external encoder on
+    the same configured motor channel, or a separate encoder-only channel. A separate external
+    channel is measurement-only: `FtcSensors` reads position and must not set its power, select its
+    mode, or reset it as a side effect of `externalEncoder(...)`. Normal pinned Lynx OpMode init
+    leaves that channel in a non-resetting `RUN_WITHOUT_ENCODER` mode. If adopting robot code
+    deliberately enters `STOP_AND_RESET_ENCODER`, that owner must explicitly leave reset mode before
+    expecting measurements; Phoenix must not hide that lifecycle mistake by mutating a sensor
+    channel. FTC-01 changes only the powered `motorPower(...)` output.
+  - **Grouped-mode safety and item boundaries:** framework-created motor groups will resolve their
+    members before command side effects and use the smallest package-private preflight coordination
+    needed to zero/select/verify every child before any requested nonzero child write. A
+    mode-acquisition failure therefore cannot make an earlier child begin the requested group
+    motion. Software fan-out is still not atomic. SAFE-04 retains ordinary child command/stop
+    failure cleanup and cached seam-truth semantics after mode preflight; FTC-01 must not absorb
+    that separate public contract. DRIVE-02 retains PTO/shared-drivetrain arbitration and suppression
+    of the old updater. CR servos, generic custom `PowerOutput`s, lower-level pure Plants, encoder
+    identity, zero-power brake/coast policy, and device-managed tuning are unchanged.
+  - **Alternatives rejected:** documentation-only or robot-owned `setMode(...)` leaves a common FTC
+    correctness rule in every robot; a new public run-mode question, enum, wrapper, or factory adds
+    a redundant way to restate the already selected power/control domain; a regulated-only wrapper
+    leaves direct `.power()`, mecanum, and calibration search contradicting their documented
+    open-loop meaning; construction-only selection can be invalidated by a later legitimate
+    device-managed phase and causes unused outputs to claim hardware; blindly setting mode on every
+    loop causes needless mode transitions; rejecting every incompatible starting mode makes normal
+    handoff harder without improving ownership; restoring a prior PID mode can revive stale
+    controller state; and a global actuator registry/resource scheduler is disproportionate here
+    and belongs, if justified, to DRIVE-02.
+  - **Verification plan:** add a dedicated ordered-event `DcMotorEx` probe rather than extending the
+    SOURCE-02 feedback test. Verify no mode/power write at construction; all four current starting
+    modes; zero before every required transition; no requested command before verified raw mode; no
+    encoder reset; already-raw and repeated-write behavior; stop without mode acquisition/restoration;
+    transition/readback/cleanup failures and exception suppression; mode changes between writes;
+    all-child group preflight before requested nonzero fan-out; regulated fail-stop compatibility;
+    direct and regulated `FtcActuators` paths; device-managed calibration and return; external
+    feedback on the powered channel and on a distinct encoder-only channel; no mode, power, or reset
+    write to the distinct measurement channel; and `FtcDrives` stop/handoff semantics. Update
+    `FtcHardware`/`PowerOutput` Javadocs, Framework
+    Overview, Beginner's Guide, and FTC Actuators & Plants together. Run focused tests,
+    `:TeamCode:testDebugUnitTest`, `:TeamCode:compileDebugJavaWithJavac`, `git diff --check`, and
+    no-sleep/no-busy-loop checks.
+  - **Approval gate:** approved by the user on 2026-07-16. The approved design deliberately broadens
+    the original regulated-only leading hypothesis to every standard FTC motor-power path while
+    keeping the student-facing builders unchanged.
+  - **Implementation record (2026-07-16):**
+    - `FtcHardware.motorPower(...)` now returns a named FTC raw-power adapter. Construction still
+      resolves the motor and configures direction without reading/writing mode or power. Each
+      explicit power command checks the current SDK-reported mode; an incompatible mode uses
+      zero, `RUN_WITHOUT_ENCODER`, verification, then the requested clamped power. Acquisition
+      failures request a best-effort zero and retain primary and suppressed cleanup failures in an
+      actionable exception. Lifecycle `stop()` writes zero without mode acquisition/restoration,
+      and no raw-power path resets encoder position.
+    - A package-private FTC motor-group coordinator resolves every named child before direction
+      configuration and preflights every child's raw mode before requested power fan-out. A
+      preflight failure best-effort zeros the complete group without submitting requested motion.
+      Fixed-order batch state is invalidated by interruption, unexpected ordering, and lifecycle
+      stop. Public `FtcActuators` and `FtcDrives` APIs remain unchanged; generic `PowerOutput`,
+      CR-servo groups, and custom output construction do not gain an FTC mode concept.
+    - `FtcActuators` uses the coordinated output group for direct power, regulated
+      position/velocity, and device-managed position calibration-search paths.
+      `FtcDrives` uses the same coordination for standard mecanum construction.
+      `MecanumDrivebase.stop()` now delegates to each output's lifecycle `stop()` hook, allowing a
+      deliberate later owner's mode to remain selected while physical zero is requested.
+    - `PowerOutput` Javadocs and Framework Overview, Beginner's Guide, and FTC Actuators & Plants
+      document hardware-neutral versus FTC-specific ownership, active zero versus lifecycle stop,
+      calibration handoff, internal/external feedback independence, separate encoder-channel
+      read-only behavior, and the advanced manual-group responsibility. No student-facing builder
+      call or Bettabot robot class changed. Per user direction, FTC-01 contains no compatibility
+      path for deprecated SDK run-mode aliases and does not call the deprecated
+      `DcMotor.RunMode.migrate()` API; its contract and tests use the four current SDK modes.
+  - **Automated verification (2026-07-16):**
+    - Dedicated `FtcMotorPowerRunModeTest`: 21 tests, 0 failures, 0 errors, 0 skipped. Coverage
+      includes all four current SDK starting modes, construction timing, explicit zero,
+      stop/reset, mode drift, exact transition ordering, verification and cleanup failures,
+      exception suppression, all-child group preflight/failure cleanup, complete-group resolution,
+      direct and regulated position/velocity paths, same-channel and distinct external feedback,
+      raw/device-managed velocity handoff, calibration search/return, regulated fail-stop, and
+      standard mecanum drive/stop.
+    - `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` passed under the Android
+      Studio JBR. Generated XML reports 473 tests, 0 failures, 0 errors, and 0 skipped. Output
+      retains the project-wide Java 8 source/target warning under JDK 21 and the existing FTC Robot
+      Controller app-shell note; neither comes from modern `edu.ftcphoenix` code or an FTC-01
+      compatibility path.
+    - `git diff --check`, an explicit trailing-whitespace scan including the untracked focused test,
+      and targeted no-sleep/no-busy-loop scans all passed. Independent API/Framework-Principles and
+      SDK/lifecycle adversarial reviews report no remaining actionable finding.
+  - **Manual verification (2026-07-16):** the user reviewed FTC-01 in Android Studio and confirmed
+    that it looks good. Software tests cannot prove independent hub-firmware acknowledgement,
+    absence of a physical transition pulse under every electrical condition, or correct mechanism
+    motion. Representative robot observation remains adoption validation when hardware becomes
+    available, not a blocker for this conservative boundary contract.
 
 ### SOURCE-03 - Composable scalar measurement conditioning
 

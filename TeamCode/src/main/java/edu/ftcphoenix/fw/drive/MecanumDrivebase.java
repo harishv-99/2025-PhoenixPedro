@@ -334,7 +334,8 @@ public final class MecanumDrivebase implements DriveCommandSink {
     }
 
     /**
-     * Immediately stop all four drive outputs and reset last command bookkeeping.
+     * Immediately stop all four drive outputs through their lifecycle stop hooks and reset last
+     * command bookkeeping.
      */
     @Override
     public void stop() {
@@ -347,10 +348,10 @@ public final class MecanumDrivebase implements DriveCommandSink {
         lastBlPower = 0.0;
         lastBrPower = 0.0;
 
-        fl.setPower(0.0);
-        fr.setPower(0.0);
-        bl.setPower(0.0);
-        br.setPower(0.0);
+        fl.stop();
+        fr.stop();
+        bl.stop();
+        br.stop();
     }
 
     // ------------------------------------------------------------------------

@@ -210,6 +210,8 @@ Phoenix abstracts FTC hardware into small output interfaces (in `fw.core.hal`):
 * `VelocityOutput` — native velocity units (e.g., ticks/sec)
 
 These HAL outputs are intentionally **command-only**. Plant-level feedback lives on `Plant.getMeasurement()` and raw sensor reads live in `ScalarSource` / `FtcSensors`.
+The generic interfaces are device-neutral; `PowerOutput` itself does not choose an FTC motor run
+mode.
 
 ### FTC boundary: `FtcHardware`
 
@@ -222,6 +224,20 @@ These HAL outputs are intentionally **command-only**. Plant-level feedback lives
 * `FtcHardware.crServoPower(hw, name, direction)`
 
 These return command-only HAL outputs. Measurement lives separately as `ScalarSource` values (for example via `FtcSensors`) so internal encoders, external encoders, and derived mechanism units all share the same feedback abstraction.
+
+`FtcHardware.motorPower(...)` has a narrower FTC meaning: raw/open-loop motor power. Constructing
+the adapter does not acquire a motor mode. Each explicit `setPower(...)` command, including
+`setPower(0.0)`, conditionally establishes `RUN_WITHOUT_ENCODER`; when a transition is needed, the
+adapter first writes zero in the current mode, then selects and verifies the raw-power mode before
+writing the request. Lifecycle `stop()` instead writes zero without acquiring or restoring a mode,
+and the adapter never resets encoder position. The device-managed motor-position and motor-velocity
+outputs establish their corresponding modes when commanded.
+
+Run mode follows the command path, not the feedback choice. A framework-regulated motor uses the
+raw-power mode whether it reads an internal encoder or an external encoder. A separately named
+external-encoder channel remains measurement-only: Phoenix does not set its power, mode, or encoder
+reference as a side effect of reading it. Student code using the standard `FtcActuators` and
+`FtcDrives` paths should not add its own `setMode(...)` calls.
 
 ### Beginner entrypoint: `FtcActuators`
 
