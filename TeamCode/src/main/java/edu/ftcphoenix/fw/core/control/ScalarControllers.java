@@ -34,6 +34,11 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * <p>This is Phoenix's lane-2 scalar-regulation pattern: one measured scalar is regulated
  * toward a setpoint. It is intentionally separate from event-driven supervision and from spatial
  * guidance.</p>
+ *
+ * <p>Framework-regulated Plants instead consume {@link ScalarRegulator}. Use
+ * {@link ScalarRegulators#pidf(double, double, double, double)} at that seam for the standard
+ * setpoint-aware software PIDF law; this source helper deliberately does not duplicate that
+ * construction API.</p>
  */
 public final class ScalarControllers {
 
@@ -134,15 +139,27 @@ public final class ScalarControllers {
      * Simple proportional-only scalar controller.
      *
      * <p>This is a compact way to express small lane-2 helpers when full PID tuning is not needed.</p>
+     *
+     * @param setpoint desired-value source
+     * @param measurement measured-value source in the same units
+     * @param kP finite proportional gain
+     * @return cycle-memoized command source
+     * @throws IllegalArgumentException if {@code kP} is not finite
      */
     public static ScalarSource proportional(ScalarSource setpoint,
                                             ScalarSource measurement,
                                             double kP) {
-        return pid(setpoint, measurement, new Pid(kP, 0.0, 0.0));
+        return pid(setpoint, measurement, Pid.withGains(kP, 0.0, 0.0));
     }
 
     /**
      * Convenience overload for a constant setpoint and proportional-only control.
+     *
+     * @param setpoint constant desired value
+     * @param measurement measured-value source in the same units
+     * @param kP finite proportional gain
+     * @return cycle-memoized command source
+     * @throws IllegalArgumentException if {@code kP} is not finite
      */
     public static ScalarSource proportional(double setpoint,
                                             ScalarSource measurement,

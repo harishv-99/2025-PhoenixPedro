@@ -348,6 +348,28 @@ motor's run mode. Internal and external feedback both leave the powered motor un
 adapter. A separately named external encoder is read-only—Phoenix does not command it, change its
 mode, or reset it as a side effect of `.externalEncoder(...)`.
 
+For a Phoenix-regulated velocity Plant with the standard linear PIDF law, create and retain the
+PIDF handle through `ScalarRegulators`:
+
+```java
+PidfRegulator flywheelPidf = ScalarRegulators.pidf(kP, kI, kD, kF)
+        .setIntegralLimits(-0.15, 0.15)
+        .setPidOutputLimits(-1.0, 1.0);
+
+ScalarRegulator flywheelRegulator =
+        ScalarRegulators.outputLimited(flywheelPidf, 0.0, maximumFlywheelPower);
+```
+
+Here `kF` contributes `kF * setpoint`. The integral limit and PID-output limit belong to the inner
+P+I+D calculation; the outer `outputLimited(...)` bounds the complete PIDF command. Those limits
+saturate finite values but do not disguise invalid control math as a boundary command. If a tuning
+screen changes all four gains, apply them together with `flywheelPidf.setGains(...)`, then call
+`flywheelRegulator.reset()` on the outermost composition. This software PIDF is for a
+`.regulated()` Plant; FTC device-managed `.velocityPidf(...)` configures the motor controller
+instead. For a custom or nonlinear feedforward function, compose it explicitly with
+`ScalarRegulators.setpointFeedforward(ScalarRegulators.pid(customController), function)`. See
+[`FTC Actuators & Plants`](<../ftc-boundary/FTC Actuators & Plants.md>) for the complete example.
+
 ### 3.4 Position-tolerance knobs: what they mean
 
 For device-managed motor position plants there are **two different tolerance concepts**:

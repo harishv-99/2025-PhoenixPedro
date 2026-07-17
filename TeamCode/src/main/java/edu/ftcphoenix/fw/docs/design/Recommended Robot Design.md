@@ -869,6 +869,47 @@ Task fireOne = Tasks.sequence(
 - Auto does not need to mimic a driver's hold semantics
 - status snapshots provide clean, inspectable wait conditions
 
+### Keep software PIDF inside realization
+
+When a power-based flywheel uses the standard Phoenix software PIDF law, realization can retain its
+tunable handle without exposing controller pieces through `ShooterApi`:
+
+```java
+private final PidfRegulator flywheelPidf;
+private final ScalarRegulator flywheelRegulator;
+
+ShooterRealization(double kP,
+                   double kI,
+                   double kD,
+                   double kF,
+                   double maximumFlywheelPower) {
+    flywheelPidf = ScalarRegulators.pidf(kP, kI, kD, kF)
+            .setIntegralLimits(-0.15, 0.15)
+            .setPidOutputLimits(-1.0, 1.0);
+    flywheelRegulator =
+            ScalarRegulators.outputLimited(flywheelPidf, 0.0, maximumFlywheelPower);
+}
+```
+
+The standard law adds `kF * setpoint` after P+I+D. The two limits on `flywheelPidf` apply only
+inside that PID calculation; the outer `outputLimited(...)` covers the complete command. A
+limit saturates finite excursions but does not convert invalid controller math into a boundary
+command. A deliberate live-tuning method can update the four gains together, then reset the
+outermost composition:
+
+```java
+void applyFlywheelGains(double kP, double kI, double kD, double kF) {
+    flywheelPidf.setGains(kP, kI, kD, kF);
+    flywheelRegulator.reset();
+}
+```
+
+TeleOp and Auto still request shooter intent and read status; they do not manipulate this retained
+handle. FTC `.deviceManaged().velocityPidf(...)` is a separate hardware-controller configuration.
+For a nonlinear or table-driven feedforward, realization uses the explicit advanced composition
+`ScalarRegulators.setpointFeedforward(ScalarRegulators.pid(customController), function)` instead of
+pretending it is the standard four-gain law.
+
 ---
 
 ## Detailed example 5: drive is special

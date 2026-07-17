@@ -84,7 +84,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 20 | SAFE-03 | Regulated Plant actuator-command truth | Done | Make every normalized regulated-Plant command finite, bounded, and truthful before the defensive hardware adapter. |
 | 21 | SOURCE-02 | Derived rate from sampled scalar position | Done | Derive units-per-second from any position `ScalarSource` in core; keep encoder hardware reads at the FTC boundary. |
 | 22 | FTC-01 | FTC raw motor-power run-mode ownership | Done | Make the FTC motor-power boundary consistently own `RUN_WITHOUT_ENCODER` without another student-facing choice. |
-| 23 | API-03 | Builder and owner-config validation | Proposed | Reject invalid hardware and controller configuration at the earliest fully informed boundary with actionable messages. |
+| 23 | API-03 | PID and linear-PIDF configuration ownership | Done | Keep plain PID error-centric and add one factory-only standard PIDF regulator that owns all four gains and live tuning as one validated update. |
 | 24 | TUNE-01 | Live tuning to checked-in profile | Proposed | Keep production snapshots stable while providing an explicit, optional live-tuning workflow. |
 | 25 | AUTO-01 | Compact bounded Auto continuation | Proposed | Use another real routine to separate reusable lifecycle ceremony from robot-owned match and recovery policy. |
 | 26 | SOURCE-03 | Composable scalar measurement conditioning | Proposed | Add only evidence-backed, explicitly configured numeric filters as generic `ScalarSource` decorators rather than hiding smoothing in a sensor adapter. |
@@ -117,6 +117,13 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 53 | CI-01 | Framework verification in CI | Proposed | Run focused unit tests, TeamCode compilation, docs checks, and boundary checks. |
 | 54 | CLEAN-01 | Alias and risky convenience cleanup | Proposed | Remove only APIs proven redundant or unsafe by caller search. |
 | 55 | SAFE-04 | PowerOutput failure cleanup and seam truth | Proposed | Make low-level and grouped output failure handling fail-safe without claiming atomic or physical command truth. |
+| 56 | ACT-01 | FTC actuator-group identity validation | Proposed | Reject blank and duplicate group members before resolving or configuring hardware. |
+| 57 | CAL-01 | Calibration-search power validation | Proposed | Reject invalid normalized search power before stopping normal output or changing calibration state. |
+| 58 | CAL-02 | Position-calibration reference validity | Proposed | Validate calibration reference and hold answers at the boundary that owns their units and lifecycle. |
+| 59 | MAP-01 | FTC actuator mapping-domain validation | Proposed | Validate finite child transforms and raw actuator domains before command mapping can be silently clamped. |
+| 60 | RANGE-01 | ScalarRange construction validity | Proposed | Define and enforce finite, half-bounded, and unbounded range construction without allowing `NaN`. |
+| 61 | FTC-02 | Device-managed controller configuration validation | Proposed | Validate FTC PIDF/P, maximum-power, and related staged answers before SDK access or mode changes. |
+| 62 | CONFIG-01 | Owner-configuration snapshot audit | Deferred | Revisit specific owners only when a traced caller shows mutation drift or invalid retained state. |
 
 The completed order was intentionally front-loaded with testability, robot lifecycle, actuator
 safety, and deterministic Task behavior. The current proposed-item priority now focuses on making
@@ -128,7 +135,13 @@ unless its contract is limited to the position observations supplied by the SDK;
 that limitation and moved exact-stack hardware qualification to adopting-robot validation.
 FTC-01 now follows SOURCE-02 because Bettabot's framework-regulated flywheel must not depend on a
 motor mode left behind by another owner or OpMode, and resolving that lifecycle centrally removes
-another hardware detail from robot code. API-03 and TUNE-01 remain secondary Bettabot simplifiers.
+another hardware detail from robot code. API-03 now owns shared PID validation and one
+framework-owned standard linear-PIDF control law that removes Bettabot's mutable feedforward gain
+and split live update; TUNE-01 remains the later Dashboard apply/record workflow. API-03's audit also split
+ACT-01, CAL-01, CAL-02, MAP-01, RANGE-01, and FTC-02 into named follow-ups, while CONFIG-01 records
+an evidence gap rather than pretending a broad audit is implementation-ready. They are appended
+rather than silently displacing the already reviewed order; each proposed item may be promoted only
+after its own decision gate compares urgency, dependencies, and student-facing benefit.
 AUTO-01 and SOURCE-03 remain conditional on the additional real-routine and measurement evidence
 stated in their own gates. SAFE-04 records
 the lower-level and grouped-output failure contract separately so SAFE-03 does not overstate what a
@@ -3241,31 +3254,274 @@ writer, and explicit lifecycle ownership.
   meaningful robot units.
 - **Decision record:** _Pending._
 
-### API-03 - Builder and owner-config validation
+### API-03 - PID and linear-PIDF configuration ownership
 
-- **Problem to confirm:** invalid servo endpoints, transformed values, calibration-search powers,
-  non-finite controller gains or limits, inconsistent output/integral bounds, blank or duplicate
-  motor names, and negative magnitude settings may survive construction and be silently clamped or
-  misapplied later. Bettabot's
-  [`BettaShooter` validation](https://github.com/Hansika1098/Summer26/blob/4eed9d6c7c93c5e2b65bdbc78463ad0be0e87790/TeamCode/src/main/java/edu/ftcphoenix/robots/betta/BettaShooter.java#L320-L361)
-  is evidence that robot owners currently repeat invariants that may already be fully known by a
-  framework builder or controller factory.
-- **Alternatives to compare:** builder-stage validation, owner constructor validation, constrained
-  config value objects, controller/factory validation, and hardware-boundary defense. Inventory which
-  layer first knows each complete invariant; do not move robot-specific relationships into a generic
-  builder merely to remove local checks.
-- **Leading hypothesis:** validate once at the earliest fully informed builder/owner boundary and keep
-  cheap final hardware defense; avoid new public value types unless several APIs share the invariant.
-  CTRL-01 owns the new final-constraint API and its own inputs; API-03 audits other existing
-  construction-time validity.
-- **Scope gate:** servo mapping, calibration-search configuration, controller parameters, motor-group
-  topology, and robot-owned cross-field relationships have different owners. The decision gate must
-  select one coherent validation family for implementation and move independently owned families to
-  named follow-up items instead of turning API-03 into an omnibus cleanup.
-- **Completion:** errors name the device or controller, setting, units, supplied value, and legal
-  range or relationship where applicable. Focused tests cover each migrated invariant, and robot
-  owners retain only checks that depend on relationships unique to that robot.
-- **Decision record:** _Pending._
+- **Confirmed problem:** `Pid` currently accepts `NaN` and infinity for every gain and accepts
+  non-finite or reversed explicit integral/output limits. Invalid gains can therefore produce
+  non-finite commands during the loop, while reversed limits are silently reordered by
+  `MathUtil.clamp(...)`. The numeric `ScalarRegulators.pidf(controller, kF)` overload also accepts a
+  non-finite static feedforward coefficient. A final Plant or output guard can stop an invalid
+  command, but that is too late to explain which controller setting was wrong.
+- **Reopened ownership problem (2026-07-16):** Bettabot uses the function PIDF overload solely to
+  capture a mutable robot-owned `velocityKf`. The framework therefore cannot validate or atomically
+  update the complete four-gain candidate, and Bettabot retains a field, lambda, validation, and
+  update-order policy for a standard linear `kF * setpoint` controller. The user's question exposed
+  that this is an accidental escape hatch, not evidence that live linear `kF` belongs in robot code.
+  Plain `Pid` still cannot own `kF` because its narrow `update(error, dtSec)` contract never receives
+  the setpoint; a setpoint-aware `ScalarRegulator` can.
+- **Current caller evidence:** modern in-repository callers already use
+  `Pid.withGains(...).setIntegralLimits(...).setOutputLimits(...)`. The only direct
+  `new Pid(...)` production call is internal to `ScalarControllers.proportional(...)`. Bettabot's
+  pinned
+  [`BettaShooter`](https://github.com/Hansika1098/Summer26/blob/4eed9d6c7c93c5e2b65bdbc78463ad0be0e87790/TeamCode/src/main/java/edu/ftcphoenix/robots/betta/BettaShooter.java#L209-L271)
+  repeats finite checks for all four gains, retains a separate mutable `kF`, and coordinates a
+  three-gain `Pid` update with that field during live tuning. This is reusable standard PIDF
+  validity and ownership, not shooter policy.
+- **Complete modern caller inventory:** Phoenix production currently has no direct `Pid` caller.
+  `TeleOp_08_LiftExternalSensorControl` is the sole compiling tool example; it uses the factory and
+  an output-limit setter. `ScalarRegulatorsTest` is the sole current unit-test caller and uses the
+  same factory plus the function PIDF overload. The Beginner's Guide, FTC Actuators & Plants,
+  Recommended Robot Design, Layered Shooter Example, and the `Pid`, `ScalarControllers`,
+  `ScalarRegulator`, and `ScalarRegulators` Javadocs all use or describe the factory form.
+  `ScalarControllers` contains the only implementation call to the public constructor.
+  Repository-wide caller search found no stored PID parameter wrapper and no other direct
+  construction path.
+- **Public construction and reuse audit:**
+  - `new Pid(kP, kI, kD)` and `Pid.withGains(kP, kI, kD) -> Pid` are two spellings of the same
+    construction. The constructor has no distinct capability or modern direct caller; there is no
+    `of(...)` factory or builder.
+  - `Pid.setGains(...)` is not a duplicate construction path. Bettabot's live-tuning workflow needs
+    to update the controller object already retained by its regulator, so the operation remains for
+    PID-only callers.
+  - `ScalarRegulators.pid(PidController) -> ScalarRegulator` remains the custom error-controller
+    adapter. `setpointFeedforward(ScalarRegulator, DoubleUnaryOperator) -> ScalarRegulator` remains
+    the explicit advanced decorator for nonlinear, dynamic, or custom-regulator feedforward.
+  - The current `pidf(PidController, double|DoubleUnaryOperator)` overloads do not retain distinct
+    value after the standard four-gain factory exists. The numeric form creates a second spelling of
+    standard linear PIDF; the function form is exactly
+    `setpointFeedforward(pid(controller), function)`. Both will be deleted without deprecation.
+  - `voltageCompensated(...)` and `outputLimited(...)` remain distinct outer decorators. They can
+    wrap PID, standard PIDF, or custom regulators and preserve visible inside-to-outside command
+    ordering.
+  - `ScalarControllers.pid(ScalarSource|double, ScalarSource, PidController)` and
+    `proportional(ScalarSource|double, ScalarSource, double)` return a cycle-memoized
+    `ScalarSource`. This is a different lifecycle/output seam from `ScalarRegulator`; the
+    constant-setpoint overload removes a commonly repeated `ScalarSource.constant(...)` without
+    adding ambiguity.
+  - `PidController` is a deliberately stored/composed interface for custom stateful error
+    controllers. It is not a staged-builder parameter or a second PID-construction spelling.
+  - FTC `velocityPidf(...)` and `innerVelocityPidf(...)` staged answers remain distinct: they program
+    an SDK motor controller and select a device-managed Plant path. API-03 owns Phoenix software
+    regulation; FTC-02 separately owns validation at that hardware boundary.
+  - Bettabot demonstrably retains the standard PIDF object across Plant composition, live tuning,
+    reset, status, and diagnostics. A specialized public return type therefore has independent
+    capability value. Its nonpublic constructor does not create a second public construction layer.
+  - No caller independently stores or reuses a PID/PIDF gains parameter bundle outside its existing
+    robot profile. A new `Pid.Config`, `PidfGains`, constrained-number type, or builder would wrap
+    four conventional arguments only to pass them immediately into the factory or setter.
+- **Alternatives compared:**
+  - Documentation-only warnings were rejected because invalid static values would still enter the
+    loop and every robot would still need to remember the same checks.
+  - The smallest local fix—validate only `Pid.withGains(...)`—was rejected as incomplete: it leaves
+    the equivalent constructor, live setter, explicit limit setters, and numeric PIDF overload as
+    holes in the same controller/regulator family.
+  - Robot-owner-only validation was rejected because every robot would repeat the same finite-gain
+    and ordered-limit checks, and a simpler robot could omit them.
+  - Plant or hardware-boundary validation alone was rejected because it loses the setting name and
+    fails only after the control loop starts.
+  - One broad validation utility or constrained numeric/config type was rejected because it hides
+    ownership and adds student-facing nouns without demonstrated reuse.
+  - Putting `kF` on `Pid` or widening `PidController.update(...)` was rejected because an
+    error-centric controller never receives the setpoint needed for `kF * setpoint`.
+  - Keeping Bettabot's captured lambda was rejected because the robot must then own a mutable field,
+    validation, and partial-update ordering for a standard framework control law.
+  - A mutable coefficient Source/handle was rejected because PID and `kF` would still have separate
+    owners and could not be validated as one update. Rebuilding the regulator or Plant was rejected
+    because it complicates hardware/lifecycle ownership and discards state.
+  - A public PIDF interface plus private implementation was rejected because `ScalarRegulator`
+    already is the custom-control-law extension seam. A public final retained capability with a
+    nonpublic constructor parallels final `Pid` implementing `PidController`, uses one less public
+    abstraction, and guarantees the built-in validation contract.
+  - Validating servo mappings, calibration, motor-group topology, FTC device-managed tuning, and
+    every owner config in the same item was rejected by the scope gate. Those answers have different
+    units, policies, and earliest fully informed owners.
+- **Selected public API:**
+  - Make the `Pid` constructor private. `Pid.withGains(kP, kI, kD)` is the only public PID
+    construction path; no deprecated constructor or compatibility alias remains.
+  - Add exactly
+    `ScalarRegulators.pidf(double kP, double kI, double kD, double kF) -> PidfRegulator`
+    for the standard Phoenix software control law
+    `PID(setpoint - measurement) + kF * setpoint`.
+  - `PidfRegulator` is a public final class implementing `ScalarRegulator`, with a nonpublic
+    constructor and no class-local factory. The retained type exposes only
+    `setGains(kP, kI, kD, kF)`, `setIntegralLimits(min, max)`,
+    `setPidOutputLimits(min, max)`, and current-gain accessors `getKP/getKI/getKD/getKF` beyond the
+    inherited regulation, reset, and debug capabilities.
+  - Rename `Pid.getkP/getkI/getkD` to `getKP/getKI/getKD` for parallel spelling and delete the old
+    methods instead of adding aliases. `Pid.setGains(...)`, `setIntegralLimits(...)`,
+    `setOutputLimits(...)`, and `getIntegral()` remain distinct PID-only capabilities.
+  - Delete both old `ScalarRegulators.pidf(PidController, double|DoubleUnaryOperator)` overloads.
+    Advanced custom or nonlinear feedforward remains explicit through
+    `setpointFeedforward(ScalarRegulators.pid(customController), function)`. Add no
+    `ScalarControllers.pidf(...)` sibling merely for symmetry.
+- **Control and limit semantics:**
+  - Standard PIDF computes `error = setpoint - measurement`, evaluates the internal PID with
+    `clock.dtSec()`, computes `feedforward = kF * setpoint`, and returns
+    `pidOutput + feedforward`. Signed finite gains are valid. `kF` is command per plant-setpoint
+    unit; it is not a static-friction, acceleration, gravity, or FTC SDK motor-controller term.
+  - `PidfRegulator.setPidOutputLimits(...)` deliberately limits only `P + I + D` before adding
+    feedforward. `ScalarRegulators.outputLimited(...)` still limits the complete regulator passed to
+    it, including PIDF, voltage compensation, and any inner robot policy. These are distinct
+    decisions: with PID output `-2.0` and feedforward `+1.5`, an inner `[-1,+1]` limit produces
+    `+0.5`, while omitting it produces `-0.5` before any outer `[0,0.65]` limit.
+  - All gains must be finite. All explicit integral and output bounds must be finite and ordered.
+    Integral bounds must also include zero so `reset()` can truthfully clear the integral
+    contribution; one-sided, symmetric, and asymmetric ranges containing zero remain valid, with
+    `[0,0]` the only equal-bound case.
+  - A rejected factory or setter validates every argument before mutation. A valid narrower
+    integral range immediately reclamps an existing finite integral contribution. Gain changes do
+    not otherwise reset integral/derivative history.
+  - A four-gain update is all-or-nothing with respect to validation in the single-thread OpMode loop;
+    it is not a cross-thread atomicity guarantee. TUNE-01 must snapshot Dashboard fields and apply
+    the candidate on the loop boundary.
+  - After live tuning, robot code resets the outermost retained regulator composition, not merely
+    the inner PIDF handle, so voltage sources, limit/debug state, and every delegating wrapper reset
+    together. Reset preserves gains and limits and writes no hardware.
+  - PIDF does not memoize same-cycle calls or add setpoint/measurement substitution. It passes
+    `clock.dtSec()` to the existing `Pid`, whose timing semantics treat a non-positive step as zero
+    and advance integral/derivative terms only for a positive step. Integral and PID-output limits
+    saturate finite values only; they must not turn non-finite dynamic input or arithmetic overflow
+    into a plausible boundary command. Existing `ScalarRegulator` invocation semantics remain;
+    regulated Plants retain SAFE-03 fail-stop/reset defense, and direct regulator callers own their
+    final output boundary.
+- **Student-facing comparison:**
+
+  | Design | Extra student-owned concepts beyond the four gains |
+  |---|---|
+  | Captured lambda (current Bettabot) | Separate `Pid`, mutable `velocityKf`, lambda, four finite checks, partial-update ordering, and manual status ownership. |
+  | Mutable coefficient Source/handle | Two mutable owners and no one-step four-gain validation. |
+  | Rebuild regulator/Plant | Replacement/delegation lifecycle and lost state. |
+  | `PidfGains` wrapper | Another value/factory copied from an existing robot profile, without independent reuse. |
+  | Factory-owned `PidfRegulator` (selected) | One retained capability only when live tuning/status needs it; static callers may store it as `ScalarRegulator`. |
+
+  Bettabot's PIDF portion becomes:
+
+  ```java
+  pidf = ScalarRegulators.pidf(
+          cfg.velocityKp, cfg.velocityKi, cfg.velocityKd, cfg.velocityKf)
+          .setIntegralLimits(-cfg.integralOutputLimit, cfg.integralOutputLimit)
+          .setPidOutputLimits(-1.0, 1.0);
+  ```
+
+  Its retained outer `regulator` continues to compose that PIDF with Bettabot's explicit
+  zero-target coast/reset policy and the framework's complete-command output limit (and voltage
+  compensation if configured); API-03 does not disguise that robot policy as a generic helper.
+
+  Its live update becomes:
+
+  ```java
+  pidf.setGains(kP, kI, kD, kF);
+  regulator.reset();
+  ```
+
+  This deletes Bettabot's retained plain `Pid`, mutable `velocityKf`, captured lambda, four generic
+  finite checks, and split gain-update order. The Dashboard/profile still own candidate values and
+  checked-in configuration; status can read the four applied gains from `PidfRegulator`. Motor
+  identity/directions, encoder choice and mapping, target/default/maximum/tolerance relationships,
+  maximum-power/no-reverse/coast policy, and reset timing remain robot-owned.
+- **Framework Principles check:** the design keeps `Pid` error-centric, puts setpoint feedforward at
+  the `ScalarRegulator` layer that has the required input, keeps `ScalarRegulators` as the sole
+  public PIDF construction layer, deletes overlapping overloads, and adds no inline-only config
+  wrapper. The retained public final type is justified by Bettabot's real storage, tuning, status,
+  reset, and composition use. Optional PID-contribution and complete-output limits remain
+  explicitly named rather than hidden behind precedence.
+- **Named follow-ups:** ACT-01 owns FTC group identity/topology; CAL-01 owns normalized
+  calibration-search power before lifecycle side effects; CAL-02 owns calibration reference/hold
+  validity; MAP-01 owns FTC actuator transforms and raw native domains; RANGE-01 owns core range
+  construction; and FTC-02 owns SDK device-managed PIDF/P and maximum-power answers. CONFIG-01 is
+  Deferred until a concrete caller proves owner-snapshot drift. Robot-specific cross-field
+  relationships stay in each robot owner.
+- **Verification required:**
+  - Add focused `Pid` tests for every non-finite gain position, valid signed gains,
+    non-finite/reversed bounds, the integral-must-include-zero contract, one-sided/asymmetric/equal
+    zero limits, rejected-setter all-or-nothing behavior, immediate integral reclamping, reset, and
+    unchanged control/debug math.
+  - Add focused `PidfRegulator` tests for every invalid gain at construction and live update, valid
+    signed gains, four-gain all-or-nothing behavior, same-error/different-setpoint formula evidence,
+    first/zero/positive-dt behavior, integral and PID-output limits, the inner-versus-outer limit
+    distinction, gain persistence across reset, outer-decorator reset propagation, live updates
+    through retained compositions, repeated same-cycle calls, and debug/current-gain truth.
+  - Add API-surface/reflection tests proving `Pid` has no public constructor, `PidfRegulator` is
+    public/final with no public constructor or class-local factory, exactly one public
+    `ScalarRegulators.pidf(...)` remains with four `double` parameters and a `PidfRegulator` return,
+    removed PIDF overloads and old `getkP/getkI/getkD` names are absent, and the selected methods are
+    present.
+  - Migrate the arbitrary-feedforward regulator test to explicit
+    `setpointFeedforward(pid(controller), function)` and retain coverage that the advanced path is
+    distinct. Search the entire repository for removed constructors, overloads, and getter names.
+  - Synchronize `Pid`, `PidfRegulator`, `ScalarRegulator`, `ScalarRegulators`, and
+    `ScalarControllers` Javadocs plus the Beginner's Guide, FTC Actuators & Plants, Recommended
+    Robot Design, and Layered Shooter Example. The existing Framework Principles already state the
+    required fail-fast, one-public-layer, API-parallelism, and no-inline-wrapper rules. The
+    implementation review must add the newly exposed finite-only policy-limit invariant to those
+    principles so a bound cannot hide invalid control math; the improvement skill already requires
+    the adversarial correctness/safety review that found it and needs no workflow amendment.
+  - Run focused tests, the full TeamCode unit suite and Java compilation, inspect XML result counts,
+    and run public-surface/caller/documentation and whitespace checks. This pure software
+    control-law/configuration change needs no robot-hardware claim.
+- **Diagnostics:** errors must name the PID or PIDF factory/setter, each offending setting and
+  supplied value, and the finite/order/contains-zero rule. PIDF debug output will expose current
+  gains plus last setpoint, measurement, error, PID output, feedforward output, and combined output;
+  reset clears last-sample diagnostics without hiding configuration. Generic PID/PIDF cannot
+  truthfully name a motor or physical unit, so robot owners retain those contextual messages where
+  they express robot policy.
+- **Decision record (2026-07-16):** **Ready for explicit approval after the user-requested reopened
+  audit.** The original earliest-owner hypothesis remains valid, but the improved design now gives
+  standard live linear `kF` the same framework ownership as the PID gains at the correct
+  setpoint-aware layer. It deliberately replaces the first-pass validation-only proposal. This is a
+  major public API decision: it adds the retained `PidfRegulator` type, removes both old PIDF
+  overloads and the public `Pid` constructor, renames PID gain getters, and strengthens integral
+  limit semantics. Approve with `Approve API-03 framework-owned PIDF design`; implementation must
+  not start before approval.
+- **Approval checkpoint (2026-07-16):** the user approved the framework-owned PIDF design and its
+  breaking public-API cleanup. API-03 is now **In progress**; implementation remains limited to the
+  selected API, caller/documentation migrations, focused tests, and required verification.
+- **Implementation checkpoint (2026-07-16):** implemented the approved factory-only API. `Pid` now
+  has one public construction path through `withGains(...)`, validates finite gains and explicit
+  finite/ordered limits at construction and live mutation, requires integral limits to contain
+  zero, and uses the parallel `getKP/getKI/getKD` names. The new public final
+  `PidfRegulator` is constructed only by
+  `ScalarRegulators.pidf(kP, kI, kD, kF)`, owns all four gains and their one-step live update, and
+  exposes separately named integral and inner-PID output limits. Both legacy PIDF overloads were
+  deleted; arbitrary feedforward remains the explicit
+  `setpointFeedforward(pid(customController), function)` composition.
+- **Adversarial refinement (2026-07-16):** correctness review found that the pre-existing `Pid`
+  clamp order could convert infinity or arithmetic overflow into a finite limit, hiding invalid
+  control math from SAFE-03's Plant fail-stop boundary. `Pid` now applies integral and PID-output
+  policy limits only to finite values, so non-finite measurements and P/I/D overflow propagate to
+  the owning output boundary. Framework Principles, Javadocs, guides, and direct plus regulated-
+  Plant tests now state and enforce this finite-only limiting rule. The framework-improvement skill
+  already mandates the adversarial correctness/safety review that found the issue, so no skill
+  change is needed.
+- **Automated verification (2026-07-16):** the focused API-03 suites pass 58 tests
+  (`PidTest` 16, `PidfRegulatorTest` 18, `ScalarRegulatorsApiTest` 4,
+  `ScalarRegulatorsTest` 11, and `RegulatedPlantSafetyTest` 9) with zero failures, errors, or skips.
+  `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` succeeds; its XML contains
+  52 suites and 512 tests with zero failures, errors, or skips. Exact reflection checks enforce the
+  approved public surface. Repository scans found no removed constructor/overload/getter production
+  caller and no Summer26/Bettabot reference in framework source, tests, or framework documentation.
+  `git diff --check` and changed/untracked-file whitespace/final-newline checks are clean. Three
+  independent adversarial reviews report no remaining API/principles, correctness/safety, or
+  tests/documentation finding.
+- **Android Studio audit point (2026-07-16):** API-03 is **Verifying** and intentionally remains
+  unstaged and uncommitted. Inspect the factory-only construction surface, four-gain live update,
+  inner-versus-complete limit naming, invalid-value fail-fast behavior, non-finite fail-stop
+  propagation, synchronized examples, and focused tests. This is a pure software control-law
+  change; source inspection and unit tests are sufficient, with no robot-hardware claim. User
+  approval authorizes finalization/publication of API-03 only and does not start another item.
+- **Manual verification (2026-07-17):** the user reviewed the API-03 implementation in Android
+  Studio and approved it with `API-03 looks good`. API-03 is now **Done**; this approval authorizes
+  Gate 3 finalization, publication, and merge for API-03 only, not work on the next tracker item.
 
 ### API-04 - Binding execution order
 
@@ -3718,8 +3974,8 @@ writer, and explicit lifecycle ownership.
     limiting. `ScalarControllers` remains a distinct cycle-memoized `ScalarSource` family and must
     not gain a sibling limiter. The audit also found that public `new Pid(kP, kI, kD)` and
     `Pid.withGains(...)` are equivalent construction spellings with no in-repository constructor
-    caller. Their migration/removal is explicitly deferred to CLEAN-01 rather than bundled into this
-    behavioral item; CTRL-01 does not copy that existing redundancy.
+    caller. CTRL-01 did not bundle that unrelated deletion; API-03's later full
+    controller-construction audit now owns the factory-only migration instead of CLEAN-01.
   - **Alternatives considered:** keep robot-local wrappers; document ordering only; use
     `Pid.setOutputLimits(...)`; rely on FTC saturation; add a limit to each regulated-Plant builder;
     publish a concrete/status-bearing limiter type; add one factory-only generic decorator; or add a
@@ -4692,6 +4948,134 @@ writer, and explicit lifecycle ownership.
   `getCommandedPower()` can and cannot prove; physical behavior is checked on representative motor,
   CR-servo, and grouped hardware before claiming completion.
 - **Decision record:** _Pending._
+
+### ACT-01 - FTC actuator-group identity validation
+
+- **Problem to confirm:** `FtcActuators` rejects null group names and directions, but blank names and
+  duplicate configured names within one motor/standard-servo/CR-servo group can survive until SDK
+  lookup. A duplicate group member can configure and command the same SDK object twice. Bettabot
+  consequently repeats blank/distinct shooter-motor name checks that the complete group
+  specification already knows.
+- **Alternatives to compare:** validate the existing private group specification before any lookup;
+  keep robot-owner checks; add public motor/group identity values; validate only at SDK lookup; or
+  add a global cross-Plant hardware registry. Preserve the FTC-01 use case where an external encoder
+  intentionally names a powered motor's own channel, and distinguish duplicates inside one
+  actuator group from reuse across independent owners.
+- **Leading hypothesis:** keep the current fluent staged API byte-for-byte for valid callers. Validate
+  nonblank and unique names once the group identity specification is complete and before
+  resolving/configuring hardware. Add no public group/spec type or global registry. MAP-01 owns
+  scale/bias and native-domain mathematics.
+- **Completion:** focused fake-HardwareMap tests prove invalid specifications have no lookup,
+  direction, mode, or command side effects; errors identify the group and offending name; valid
+  direct-power, device-managed, regulated, and same-motor external-feedback cases remain supported.
+- **Decision record:** _Pending; split from API-03 on 2026-07-16._
+
+### CAL-01 - Calibration-search power validation
+
+- **Problem to confirm:** `PositionCalibrationTasks.withPower(...)` accepts non-finite or
+  out-of-range normalized power, while `MappedPositionPlant.beginCalibrationSearch(...)` can stop
+  normal output and change calibration state before a bad value reaches the hardware adapter.
+  `NaN` can pass through the current clamp.
+- **Alternatives to compare:** documentation only; task-factory validation only; direct Plant
+  validation only; both earliest staged validation and defensive direct-boundary validation; a new
+  normalized-power value type; or an additional builder stage.
+- **Leading hypothesis:** keep `.withPower(double)` and the existing calibration lifecycle API.
+  Require finite inclusive `[-1, +1]` power immediately at the task stage and defensively at the
+  direct Plant boundary before any stop, state change, or write. Do not invent a wrapper for one
+  inline answer or impose a robot-specific gentle/nonzero/direction policy.
+- **Completion:** tests cover every boundary value and failure before side effects, direct and
+  task-driven entry, active cancellation/return behavior, and actionable normalized-power
+  diagnostics. Documentation distinguishes framework validity from the robot's safe homing power.
+- **Decision record:** _Pending; split from API-03 and SAFE-03's open-loop calibration boundary on
+  2026-07-16._
+
+### CAL-02 - Position-calibration reference validity
+
+- **Problem to confirm:** position reference and hold answers such as
+  `plantPositionMapsToNative(...)`, `assumeCurrentPositionIs(...)`, and the post-search hold target
+  have multiple public entry paths and may accept non-finite values before calibration state changes.
+  Unlike normalized search power, their units and valid range depend on the configured Plant map.
+- **Alternatives to compare:** validate each staged answer immediately; validate only when the full
+  Plant range/map is known; add a reusable calibration-reference value; rely on final target guards;
+  or keep direct advanced-Plant and beginner-facade paths with parallel checks. Inventory every path
+  and determine which boundary first knows the value's declared units and legal range.
+- **Leading hypothesis:** preserve direct answer methods and validate at the earliest fully informed
+  owner, before mutating calibration state. Add no wrapper if callers use the answer inline, and
+  keep runtime target guards as separate defense.
+- **Completion:** every public calibration-reference/hold path has parallel finite/range semantics,
+  actionable plant-unit diagnostics, and tests proving rejection before lifecycle or hardware side
+  effects.
+- **Decision record:** _Pending; split from CAL-01 during API-03 review on 2026-07-16._
+
+### MAP-01 - FTC actuator mapping-domain validation
+
+- **Problem to confirm:** standard-servo endpoint maps and grouped child transforms may compute raw
+  values outside the SDK's `[0, 1]` servo domain and then be silently clamped, making commanded and
+  applied position meaning diverge. Non-finite affine inputs or arithmetic overflow can likewise
+  survive partial checks.
+- **Alternatives to compare:** finite scale/bias checks in the existing staged answers; raw-domain
+  validation only in standard-servo builders; require callers to pre-clamp endpoints; report
+  applied native clamp; or add endpoint/mapping value objects. Inventory direct mapped-Plant and
+  FtcActuators paths, but keep generic `ScalarRange` construction in RANGE-01.
+- **Leading hypothesis:** validate finite affine parameters at their existing FTC staged answers and
+  enforce `[0, 1]` only at the standard-servo boundary that knows that native domain. Preserve final
+  SDK clamping as defense, and add no wrapper unless a mapping is demonstrably stored or shared.
+  Calibration reference/offset answers remain exclusively in CAL-02 even when they contribute to a
+  later affine map.
+- **Completion:** every accepted endpoint/child transform is finite and maps the declared Plant range
+  into its native domain without silent configuration clamp; tests cover negative scale, endpoints,
+  group transforms, overflow, and command/applied truth.
+- **Decision record:** _Pending; split from API-03 on 2026-07-16._
+
+### RANGE-01 - ScalarRange construction validity
+
+- **Problem to confirm:** `ScalarRange.bounded(min, max)` checks ordering but can admit `NaN` because
+  comparisons with `NaN` are false. Other framework code intentionally uses unbounded ranges, so a
+  blanket finite-only rule could remove a useful capability or create multiple spellings for the
+  same range.
+- **Alternatives to compare:** require finite `bounded(...)` endpoints and keep one explicit
+  `unbounded()` factory; permit intentional half-bounded infinities; add named lower/upper-bounded
+  factories; validate only when a Plant consumes the range; or introduce constrained endpoint
+  values. Audit all range factories, constructors, and callers before deciding.
+- **Leading hypothesis:** reject `NaN` at construction and expose each supported bounded/unbounded
+  shape through one obvious factory. Do not use FTC servo `[0, 1]` policy in this core value.
+- **Completion:** the accepted finite, half-bounded, and unbounded contracts are explicit, every
+  caller has one construction path, and tests cover `NaN`, infinities, equal/reversed endpoints,
+  containment, and Plant-target safety integration.
+- **Decision record:** _Pending; split from MAP-01 during API-03 review on 2026-07-16._
+
+### FTC-02 - Device-managed controller configuration validation
+
+- **Problem to confirm:** FTC device-managed velocity/position PIDF or P coefficients and maximum
+  power are staged separately from framework `Pid`, but several paths accept non-finite values and
+  excessive maximum power that is later clamped. SDK access or run-mode changes are too late to
+  explain the configuration error.
+- **Alternatives to compare:** validate each existing staged answer; add an immutable reusable FTC
+  tuning value; defer to the SDK; clamp silently; or replace device-managed control with framework
+  regulation. Compare actual callers to determine whether numeric overloads or a tuning bundle have
+  independent reuse value.
+- **Leading hypothesis:** preserve both device-managed and framework-regulated paths because they
+  are distinct capabilities. Validate finite SDK-controller settings and normalized maximum power
+  at the existing staged answer before lookup/mode mutation; keep hardware saturation as defense and
+  avoid a tuning wrapper used only inline.
+- **Completion:** focused tests cover all device-managed motor/CR-servo paths, invalid values before
+  SDK side effects, boundary values, diagnostics with units, and unchanged valid student calls.
+- **Decision record:** _Pending; split from API-03 on 2026-07-16._
+
+### CONFIG-01 - Owner-configuration snapshot audit
+
+- **Evidence gap:** the API-03 audit found that `DriveGuidanceTask.Config` and `RouteTask.Config` are
+  mutable and may be retained directly, while many other long-lived owners copy private config.
+  Source shape alone does not prove a caller mutates either object after construction or that one
+  generic change is correct. Their relationships already differ, such as a route timeout where
+  non-positive intentionally disables timeout.
+- **Why Deferred:** “make all configs immutable” would combine unrelated owners and add wrappers or
+  withers without traced robot-code benefit. Resume only for one named owner after a production,
+  Phoenix, tool, or test caller demonstrates mutation drift or an invalid retained-state failure;
+  then compare an owner-specific defensive copy, immutable reusable value, direct staged answer, and
+  no-change design.
+- **Decision record (2026-07-16):** **Deferred for concrete caller evidence.** This is an audit note,
+  not an implementation-ready umbrella task.
 
 ## Explicitly deferred architectural ideas
 

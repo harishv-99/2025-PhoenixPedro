@@ -187,12 +187,13 @@ When that complete control law needs an intentional power range, compose the reg
 inside-to-outside order in which commands are calculated:
 
 ```java
+PidfRegulator nominalFlywheel = ScalarRegulators.pidf(kP, kI, kD, kF)
+        .setIntegralLimits(-0.15, 0.15)
+        .setPidOutputLimits(-1.0, 1.0);
+
 ScalarRegulator flywheelRegulator = ScalarRegulators.outputLimited(
         ScalarRegulators.voltageCompensated(
-                ScalarRegulators.pidf(
-                        Pid.withGains(kP, kI, kD)
-                                .setIntegralLimits(-0.15, 0.15),
-                        targetVelocity -> kV * targetVelocity),
+                nominalFlywheel,
                 batteryVoltage,
                 13.0,
                 9.0,
@@ -201,12 +202,37 @@ ScalarRegulator flywheelRegulator = ScalarRegulators.outputLimited(
         maximumFlywheelPower);
 ```
 
-The outer `outputLimited(...)` policy covers PID, feedforward, and voltage compensation. A PID
-output limit would cover only the controller contribution, while the Plant/output boundary remains
-responsible for universal actuator-command safety. The generic limiter deliberately does not decide
-whether a disabled or zero-velocity request should coast, brake, or hold. Behavior/realization owns
-that mechanism meaning and decides when to call `reset()`; the outer limiter also cannot provide
-generic saturation-aware anti-windup for the inner PID.
+The standard factory computes `PID(setpoint - measurement, dt) + kF * setpoint`. Its
+`setIntegralLimits(...)` and `setPidOutputLimits(...)` settings affect only the inner PID
+contribution. The outer `outputLimited(...)` policy covers PID, feedforward, and voltage
+compensation, while the Plant/output boundary remains responsible for universal actuator-command
+safety. Limits saturate finite excursions only; non-finite controller math remains a failure for
+the outer regulator or Plant to reject.
+
+Retaining `nominalFlywheel` also gives a live tuning path without splitting the four standard gains
+between a `Pid` and a captured lambda:
+
+```java
+nominalFlywheel.setGains(newKP, newKI, newKD, newKF);
+flywheelRegulator.reset();
+```
+
+Reset the outermost composition after a live gain change so nested controller and decorator history
+is cleared together. Reset itself does not write hardware. The generic limiter deliberately does
+not decide whether a disabled or zero-velocity request should coast, brake, or hold;
+behavior/realization owns that mechanism meaning. The outer limiter also cannot provide generic
+saturation-aware anti-windup for the inner PID.
+
+This Phoenix `PidfRegulator` belongs to a software-regulated Plant. FTC
+`.deviceManaged().velocityPidf(...)` configures the motor controller and is a different path. When
+feedforward is nonlinear or table-driven, keep that choice explicit:
+
+```java
+ScalarRegulator customNominal = ScalarRegulators.setpointFeedforward(
+        ScalarRegulators.pid(customController),
+        targetVelocity -> shotModel.feedforwardFor(targetVelocity)
+);
+```
 
 The feeder uses a richer final target source:
 

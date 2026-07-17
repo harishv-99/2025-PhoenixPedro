@@ -282,6 +282,10 @@ For framework-regulated Plants, keep three different bounds at their proper laye
   `outputLimited(...)` decorator is present. A regulator limit does not replace target bounds,
   Plant guards, or final output defense.
 
+Controller and regulator policy limits may saturate finite excursions only. They must never turn
+`NaN`, infinity, or arithmetic overflow into a plausible finite boundary value, because doing so
+would hide invalid control math from the final fail-stop defense.
+
 At a framework-regulated `PowerOutput` boundary, finite commands already inside `[-1.0, +1.0]`
 remain unchanged and finite excursions saturate to that inclusive range. Non-finite regulator
 results are never submitted. If regulation or the output write fails, the Plant fails closed: it
