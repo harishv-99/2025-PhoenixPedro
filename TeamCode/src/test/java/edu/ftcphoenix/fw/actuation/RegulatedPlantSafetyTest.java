@@ -5,6 +5,7 @@ import org.junit.Test;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+import edu.ftcphoenix.fw.core.control.PidfRegulator;
 import edu.ftcphoenix.fw.core.control.ScalarRegulator;
 import edu.ftcphoenix.fw.core.control.ScalarRegulators;
 import edu.ftcphoenix.fw.core.debug.DebugSink;
@@ -288,6 +289,39 @@ public final class RegulatedPlantSafetyTest {
         assertEquals(PlantTargetStatus.Kind.STOPPED, plant.getTargetStatus().kind());
         assertFalse(plant.atTarget());
         assertFalse(plant.atTarget(20.0));
+    }
+
+    @Test
+    public void pidfLimitsPreserveNonFiniteMeasurementForPlantFailStop() {
+        PidfRegulator pidf = ScalarRegulators.pidf(1.0, 0.0, 0.0, 0.1)
+                .setIntegralLimits(-0.5, 0.5)
+                .setPidOutputLimits(-1.0, 1.0);
+        ScalarRegulator constrained = ScalarRegulators.outputLimited(pidf, 0.0, 0.65);
+        RecordingPowerOutput output = new RecordingPowerOutput();
+        MappedVelocityPlant plant = MappedVelocityPlant.regulated(
+                output, clock -> Double.NEGATIVE_INFINITY, constrained)
+                .velocityTolerance(0.0)
+                .targetedBy(ScalarTarget.held(100.0))
+                .build();
+
+        try {
+            plant.update(new ManualLoopClock().clock());
+            fail("Expected non-finite PIDF measurement math to fail closed");
+        } catch (IllegalStateException expected) {
+            assertTrue(expected.getMessage().contains("non-finite"));
+        }
+
+        assertEquals(0, output.setCalls);
+        assertEquals(1, output.stopCalls);
+        assertEquals(0.0, output.commanded, 0.0);
+        assertEquals(PlantTargetStatus.Kind.STOPPED, plant.getTargetStatus().kind());
+        assertFalse(plant.atTarget());
+        assertFalse(plant.atTarget(100.0));
+
+        CapturingDebugSink pidfDebug = new CapturingDebugSink();
+        pidf.debugDump(pidfDebug, "pidf");
+        assertTrue(Double.isNaN(number(pidfDebug, "pidf.lastSetpoint")));
+        assertTrue(Double.isNaN(number(pidfDebug, "pidf.lastOutput")));
     }
 
     @Test

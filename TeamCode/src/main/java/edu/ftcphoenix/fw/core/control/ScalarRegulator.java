@@ -10,12 +10,15 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * the control-law seam used by framework-regulated plants such as position-from-power or
  * velocity-from-power plants.</p>
  *
- * <p>This interface is intentionally broader than plain PID. A PID controller is one possible
- * implementation, but so are feedforward-plus-PID blends, asymmetric up/down regulators, voltage
- * compensation decorators, or other custom scalar control laws.</p>
+ * <p>This interface is intentionally broader than plain PID. A PID controller or the standard
+ * {@link PidfRegulator} is one possible implementation, but so are nonlinear
+ * feedforward-plus-feedback blends, asymmetric up/down regulators, voltage compensation
+ * decorators, or other custom scalar control laws.</p>
  *
- * <p>A {@link Pid#setOutputLimits(double, double) PID output limit} bounds only that controller's
- * contribution. If later decorators add feedforward or voltage compensation, put
+ * <p>A {@link Pid#setOutputLimits(double, double) PID output limit} or
+ * {@link PidfRegulator#setPidOutputLimits(double, double) PIDF's PID-contribution limit} bounds only
+ * a finite {@code P + I + D} result; neither turns non-finite controller math into a boundary
+ * value. If feedforward or later decorators add or scale output, put
  * {@link ScalarRegulators#outputLimited(ScalarRegulator, double, double)} outermost when the complete
  * composed result needs an intentional narrower range. That policy limit is distinct from Plant
  * target bounds and from the enclosing output boundary's universal command safety.</p>
@@ -34,8 +37,12 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * <h2>Typical usage</h2>
  *
  * <pre>{@code
- * ScalarRegulator regulator = ScalarRegulators.pid(
- *     Pid.withGains(0.006, 0.0, 0.0002).setOutputLimits(-0.8, 0.8)
+ * ScalarRegulator regulator = ScalarRegulators.outputLimited(
+ *     ScalarRegulators.pidf(0.006, 0.0, 0.0002, 0.0004)
+ *         .setIntegralLimits(-0.15, 0.15)
+ *         .setPidOutputLimits(-1.0, 1.0),
+ *     0.0,
+ *     0.8
  * );
  *
  * double command = regulator.update(setpointTicks, measuredTicks, clock);
@@ -45,6 +52,11 @@ public interface ScalarRegulator {
 
     /**
      * Compute the next actuator command from the current setpoint and measurement.
+     *
+     * <p>Unless an implementation explicitly documents cycle memoization, every invocation may
+     * advance controller state, including repeated calls with the same
+     * {@link LoopClock#cycle()}. Normal owners should invoke a stateful regulator once per intended
+     * control update.</p>
      *
      * @param setpoint    desired value in plant units
      * @param measurement measured value in the same units as {@code setpoint}

@@ -290,20 +290,27 @@ before the regulator runs.
 
 ### Controller limits, complete-regulator limits, and output safety
 
-These three protections answer different questions:
+These protections answer different questions:
 
 | Layer | Question it answers |
 |---|---|
-| `Pid.setOutputLimits(...)` | How large may the PID controller's own contribution be? |
+| `Pid.setOutputLimits(...)` | How large may a plain PID controller's complete P+I+D output be? |
+| `PidfRegulator.setPidOutputLimits(...)` | How large may a standard PIDF regulator's P+I+D contribution be before `kF * setpoint` is added? |
 | `ScalarRegulators.outputLimited(...)` | How large may this complete inner regulator composition be? |
 | Plant/output command safety | What finite command may the actuator channel ultimately accept? |
 
-PID output limits run before feedforward or another outer decorator. For example, voltage
-compensation can legitimately scale a previously limited PIDF command above the PID controller's
-limit. When the robot intentionally wants a narrower command range around everything, make the
-limiter the outermost output-changing decorator. The complete regulated-velocity example in
+`PidfRegulator.setIntegralLimits(...)` limits its integral contribution, and
+`setPidOutputLimits(...)` limits its combined P+I+D contribution. Neither limits the later
+`kF * setpoint` term. These inner limits also run before another outer decorator. For example,
+voltage compensation can legitimately scale a previously limited PIDF command above the inner
+PID-output limit. When the robot intentionally wants a narrower command range around everything,
+make the limiter the outermost output-changing decorator. The complete regulated-velocity example in
 [Velocity bounds, mapping, and tuning](#13-velocity-bounds-mapping-and-tuning) shows that composition
 around PIDF and battery-voltage compensation.
+
+Every controller or regulator limit above saturates finite excursions only. It never turns
+`NaN`, infinity, or arithmetic overflow into a plausible boundary command; invalid math remains
+visible so `outputLimited(...)` or the regulated Plant can reject it and fail closed.
 
 `outputLimited(...)` constrains exactly the regulator passed to it. Another output-changing
 decorator placed outside it is not covered. Its bounds are generic regulator-command units; they
@@ -801,14 +808,15 @@ Plant shooter = FtcActuators.plant(hardwareMap)
 
 The velocity tuning branch intentionally exposes only `velocityPidf(...)`. The separate FTC
 position-loop gain (`outerPositionP(...)`) belongs to device-managed motor **position** mode, not
-pure velocity mode.
+pure velocity mode. This method writes FTC device-controller coefficients; it is distinct from
+Phoenix's software `PidfRegulator` and does not construct one.
 
 Use `regulated()` when Phoenix should own the velocity loop and command raw motor power. This is the
 right path for custom power-based flywheel control, including optional battery-voltage compensation:
 
 ```java
 import edu.ftcphoenix.fw.actuation.Plant;
-import edu.ftcphoenix.fw.core.control.Pid;
+import edu.ftcphoenix.fw.core.control.PidfRegulator;
 import edu.ftcphoenix.fw.core.control.ScalarRegulator;
 import edu.ftcphoenix.fw.core.control.ScalarRegulators;
 import edu.ftcphoenix.fw.core.hal.Direction;
@@ -821,10 +829,9 @@ static final double TICKS_PER_RPM = TICKS_PER_FLYWHEEL_REV / 60.0;
 
 ScalarSource batteryVoltage = FtcSensors.batteryVoltage(hardwareMap);
 
-ScalarRegulator nominalFlywheel = ScalarRegulators.pidf(
-        Pid.withGains(kP, kI, kD).setIntegralLimits(-0.15, 0.15),
-        rpm -> kV * rpm
-);
+PidfRegulator nominalFlywheel = ScalarRegulators.pidf(kP, kI, kD, kF)
+        .setIntegralLimits(-0.15, 0.15)
+        .setPidOutputLimits(-1.0, 1.0);
 
 ScalarRegulator flywheelRegulator = ScalarRegulators.outputLimited(
         ScalarRegulators.voltageCompensated(
@@ -850,6 +857,16 @@ Plant shooter = FtcActuators.plant(hardwareMap)
         .build();
 ```
 
+`ScalarRegulators.pidf(kP, kI, kD, kF)` is the one public construction path for the standard
+software law:
+
+```text
+PID(setpoint - measurement, dt) + kF * setpoint
+```
+
+The `kF` units are regulator-command units per plant-setpoint unit. It is not a static-friction,
+acceleration, gravity, or FTC device PIDF term, and plain `Pid` does not own a `kF` gain.
+
 The old-style formula
 `(referenceVoltage / measuredVoltage) * controllerOutput` belongs in the regulator decorator, not in
 the OpMode loop. The Plant still owns target sampling, target bounds, unit conversion, feedback
@@ -860,8 +877,33 @@ units, so in the example above both values are RPM even though the native encode
 flywheel-only builder method. It can wrap PID, PIDF, or a custom `ScalarRegulator`, and regulated
 Plants automatically include its debug fields under `plantPrefix.regulator`. In the example,
 `outputLimited(...)` is deliberately outside voltage compensation so the requested
-`[0.0, maximumFlywheelPower]` policy covers the fully compensated command. A PID output limit inside
-`nominalFlywheel` would cover only the PID contribution before feedforward and compensation.
+`[0.0, maximumFlywheelPower]` policy covers the fully compensated command.
+`nominalFlywheel.setPidOutputLimits(...)` covers only P+I+D before feedforward and compensation.
+
+Retain both handles when a tuning tool may change gains while the robot is running. Apply the four
+standard gains together, then reset the **outermost** composition so every nested stateful
+controller or decorator clears its history:
+
+```java
+nominalFlywheel.setGains(newKP, newKI, newKD, newKF);
+flywheelRegulator.reset();
+```
+
+The gain update keeps configured limits and either accepts all four finite values or rejects the
+change. Reset does not write hardware; the robot mechanism owner still decides when a live tuning
+change is safe and whether a zero target means coast, brake, or active hold.
+
+When feedforward is nonlinear, table-driven, or otherwise custom, keep that difference explicit:
+
+```java
+ScalarRegulator customNominal = ScalarRegulators.setpointFeedforward(
+        ScalarRegulators.pid(customController),
+        targetRpm -> shotModel.feedforwardForRpm(targetRpm)
+);
+```
+
+That advanced composition remains available without turning the standard four-gain PIDF factory
+into a second custom-feedforward API.
 
 If robot code wants nicer plant velocity units, keep the controller native units explicit:
 

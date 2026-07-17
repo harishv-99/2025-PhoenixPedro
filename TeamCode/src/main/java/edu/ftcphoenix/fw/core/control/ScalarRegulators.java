@@ -9,7 +9,7 @@ import edu.ftcphoenix.fw.core.source.ScalarSource;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 
 /**
- * Helper factories and decorators for common {@link ScalarRegulator} implementations.
+ * Sole public factories and decorators for common {@link ScalarRegulator} implementations.
  *
  * <p>Regulators own the control law for Phoenix-regulated plants. They receive plant-unit setpoints
  * and measurements and return the command that the enclosing plant sends to its output channel
@@ -35,32 +35,34 @@ public final class ScalarRegulators {
     }
 
     /**
-     * Adapt an error-centric {@link PidController} with a conventional setpoint feedforward term.
+     * Create a standard Phoenix software PIDF regulator with four finite gains.
      *
-     * <p>The feedforward function receives the requested setpoint in plant units. This matches common
-     * velocity-control PIDF usage such as a shooter flywheel where the {@code F} term is proportional
-     * to the requested RPM/ticks-per-second rather than to the instantaneous error.</p>
+     * <p>The returned regulator computes
+     * {@code PID(setpoint - measurement, clock.dtSec()) + kF * setpoint}. The feedforward gain is
+     * expressed in command units per plant-setpoint unit. Signed gains are allowed. This software
+     * control law is distinct from an FTC SDK motor controller's device-managed PIDF settings.</p>
+     *
+     * <p>Retain the concrete result when live tuning or applied-gain reporting is needed. Static
+     * configurations may store it as a {@link ScalarRegulator}:</p>
      *
      * <pre>{@code
-     * ScalarRegulator flywheel = ScalarRegulators.pidf(
-     *     Pid.withGains(kP, kI, kD).setIntegralLimits(-0.15, 0.15),
-     *     rpm -> kV * rpm
-     * );
+     * PidfRegulator pidf = ScalarRegulators.pidf(kP, kI, kD, kF)
+     *     .setIntegralLimits(-0.15, 0.15)
+     *     .setPidOutputLimits(-1.0, 1.0);
      * }</pre>
-     */
-    public static ScalarRegulator pidf(PidController controller,
-                                       DoubleUnaryOperator feedforwardFromSetpoint) {
-        return setpointFeedforward(pid(controller), feedforwardFromSetpoint);
-    }
-
-    /**
-     * Adapt an error-centric {@link PidController} with a linear setpoint feedforward term.
      *
-     * <p>This is a convenience overload for the common case where feedforward is simply
-     * {@code kF * setpoint}.</p>
+     * <p>For a nonlinear or dynamic feedforward law, compose it explicitly with
+     * {@link #setpointFeedforward(ScalarRegulator, DoubleUnaryOperator)}.</p>
+     *
+     * @param kP finite proportional gain
+     * @param kI finite integral gain
+     * @param kD finite derivative gain
+     * @param kF finite linear setpoint-feedforward gain
+     * @return retained standard PIDF regulator
+     * @throws IllegalArgumentException if any gain is not finite
      */
-    public static ScalarRegulator pidf(PidController controller, double kF) {
-        return pidf(controller, setpoint -> kF * setpoint);
+    public static PidfRegulator pidf(double kP, double kI, double kD, double kF) {
+        return new PidfRegulator(kP, kI, kD, kF);
     }
 
     /**
@@ -68,7 +70,9 @@ public final class ScalarRegulators {
      *
      * <p>The returned regulator computes {@code inner.update(setpoint, measurement, clock)} and then
      * adds {@code feedforwardFromSetpoint.applyAsDouble(setpoint)}. This keeps feedforward composition
-     * independent of whether the feedback controller is PID, bang-bang, asymmetric, or custom.</p>
+     * independent of whether the feedback controller is PID, bang-bang, asymmetric, or custom.
+     * Use {@link #pidf(double, double, double, double)} for ordinary linear PIDF so all four gains
+     * share one validated retained owner.</p>
      */
     public static ScalarRegulator setpointFeedforward(ScalarRegulator inner,
                                                       DoubleUnaryOperator feedforwardFromSetpoint) {
@@ -126,7 +130,8 @@ public final class ScalarRegulators {
      * <pre>{@code
      * ScalarRegulator flywheel = ScalarRegulators.outputLimited(
      *     ScalarRegulators.voltageCompensated(
-     *         ScalarRegulators.pidf(pid, rpm -> kV * rpm),
+     *         ScalarRegulators.pidf(kP, kI, kD, kF)
+     *             .setPidOutputLimits(-1.0, 1.0),
      *         supplyVoltage,
      *         13.0,
      *         9.0,
@@ -137,10 +142,12 @@ public final class ScalarRegulators {
      * );
      * }</pre>
      *
-     * <p>{@link Pid#setOutputLimits(double, double)} instead limits only that PID controller's
-     * contribution before later regulator decorators run. This decorator is an intentional
-     * control-law policy; it does not replace Plant target bounds, final normalized-output defense,
-     * controller-specific anti-windup, or robot-owned enable/coast/reset policy.</p>
+     * <p>{@link Pid#setOutputLimits(double, double)} and
+     * {@link PidfRegulator#setPidOutputLimits(double, double)} instead limit only the PID
+     * contribution before feedforward or later regulator decorators run. This decorator is an
+     * intentional control-law policy; it does not replace Plant target bounds, final
+     * normalized-output defense, controller-specific anti-windup, or robot-owned
+     * enable/coast/reset policy.</p>
      *
      * <p>The returned regulator rejects a non-finite inner result rather than turning invalid
      * control math into a bounded but potentially dangerous command.</p>

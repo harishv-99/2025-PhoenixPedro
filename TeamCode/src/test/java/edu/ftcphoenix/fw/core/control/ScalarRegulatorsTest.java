@@ -101,15 +101,21 @@ public final class ScalarRegulatorsTest {
     }
 
     @Test
-    public void outerLimitAppliesAfterPidLimitAndSetpointFeedforward() {
+    public void outerLimitAppliesAfterPidLimitAndExplicitSetpointFeedforward() {
         Pid pid = Pid.withGains(1.0, 0.0, 0.0)
                 .setOutputLimits(-0.65, 0.65);
-        ScalarRegulator pidf = ScalarRegulators.pidf(pid, setpoint -> 0.20);
+        ScalarRegulator pidWithCustomFeedforward =
+                ScalarRegulators.setpointFeedforward(
+                        ScalarRegulators.pid(pid),
+                        setpoint -> 0.20);
         LoopClock clock = new ManualLoopClock().clock();
 
-        assertEquals(0.85, pidf.update(1.0, 0.0, clock), EPSILON);
+        assertEquals(0.85,
+                pidWithCustomFeedforward.update(1.0, 0.0, clock),
+                EPSILON);
 
-        ScalarRegulator completeCommandLimit = ScalarRegulators.outputLimited(pidf, 0.0, 0.65);
+        ScalarRegulator completeCommandLimit = ScalarRegulators.outputLimited(
+                pidWithCustomFeedforward, 0.0, 0.65);
         assertEquals(0.65, completeCommandLimit.update(1.0, 0.0, clock), EPSILON);
         assertLastOutputLimited(completeCommandLimit, true);
     }
