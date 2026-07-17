@@ -31,10 +31,17 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *
  * ScalarRegulator regulator = ScalarRegulators.outputLimited(pidf, 0.0, maximumPower);
  *
- * // Apply one complete live-tuning candidate, then reset the outermost composition.
- * pidf.setGains(newKP, newKI, newKD, newKF);
- * regulator.reset();
+ * // In one OpMode-loop apply phase, after obtaining one coherent candidate:
+ * pidf.setGains(candidateKP, candidateKI, candidateKD, candidateKF);
+ * regulator.reset(); // outermost retained composition; no actuator command
  * }</pre>
+ *
+ * <p>Live configuration is development input, not production configuration authority. Production
+ * TeleOp and Auto should construct from checked-in profile snapshots. A dedicated tuning mode
+ * should accept one coherently published candidate at an explicit apply boundary, report the
+ * accepted values, and require those values to be copied into the checked-in profile before
+ * starting a fresh production mode. The robot realization retains the outer composition because
+ * this inner PIDF object cannot discover wrappers that also need reset.</p>
  *
  * <p>The optional PID-output limits apply to the combined {@code P + I + D} contribution before
  * feedforward is added. Use
@@ -67,16 +74,24 @@ public final class PidfRegulator implements ScalarRegulator {
     }
 
     /**
-     * Set all four gains as one validated update.
+     * Set all four gains from one caller-supplied candidate.
      *
-     * <p>Every candidate gain is checked before any applied gain changes. A rejected update leaves
-     * all four gains unchanged. A valid update preserves integral and derivative history; call
-     * {@link ScalarRegulator#reset()} on the outermost retained composition when the robot's live
-     * tuning policy requires a clean restart.</p>
+     * <p>Every argument is validated before any applied gain changes. If any gain is non-finite,
+     * this method throws and leaves all four applied gains unchanged. A valid update preserves
+     * integral and derivative history.</p>
      *
-     * <p>This all-or-nothing guarantee covers validation and mutation in Phoenix's normal
-     * single-thread OpMode loop. It is not cross-thread synchronization for independently changing
-     * Dashboard fields.</p>
+     * <p>For live tuning, call this method from the same OpMode-loop thread that calls
+     * {@link #update(double, double, LoopClock)}, at one explicit apply boundary. Obtain one
+     * coherently published candidate, copy its four values into loop-owned local variables once,
+     * and invoke this method once. This method neither reads mutable UI fields nor provides
+     * cross-thread synchronization or a cross-field atomic snapshot. Reading four independently
+     * mutable fields once is not, by itself, an atomic tuple snapshot.</p>
+     *
+     * <p>For the documented live-tuning workflow, reset the robot-owned outermost retained
+     * regulator composition in the same loop phase, before its next ordinary control update.
+     * Resetting only this inner PIDF handle cannot clear state owned by enclosing decorators. Reset
+     * does not itself command or stop an actuator; the mechanism owner still owns safe arming,
+     * stop, known-good reapply, and the decision to apply a candidate.</p>
      *
      * @param kP new finite proportional gain
      * @param kI new finite integral gain
@@ -193,8 +208,8 @@ public final class PidfRegulator implements ScalarRegulator {
     /**
      * Clear transient PID history and last-sample diagnostics while preserving gains and limits.
      *
-     * <p>Reset performs no hardware write. When this object is wrapped by stateful decorators,
-     * reset the outermost retained composition so every layer clears together.</p>
+     * <p>Reset does not itself command or stop an actuator. When this object is wrapped by stateful
+     * decorators, reset the outermost retained composition so every layer clears together.</p>
      */
     @Override
     public void reset() {

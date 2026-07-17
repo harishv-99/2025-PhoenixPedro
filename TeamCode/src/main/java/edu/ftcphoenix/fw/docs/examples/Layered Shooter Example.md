@@ -218,10 +218,15 @@ flywheelRegulator.reset();
 ```
 
 Reset the outermost composition after a live gain change so nested controller and decorator history
-is cleared together. Reset itself does not write hardware. The generic limiter deliberately does
+is cleared together. Reset itself sends no actuator command. The generic limiter deliberately does
 not decide whether a disabled or zero-velocity request should coast, brake, or hold;
 behavior/realization owns that mechanism meaning. The outer limiter also cannot provide generic
 saturation-aware anti-windup for the inner PID.
+
+Use a dedicated test mode for that update; production TeleOp and Auto should use only checked-in
+profile snapshots. See the
+[`software PIDF tuning workflow`](<../testing-calibration/Software PIDF Tuning Workflow.md>) for
+explicit apply, safe-stop, record, and restart.
 
 This Phoenix `PidfRegulator` belongs to a software-regulated Plant. FTC
 `.deviceManaged().velocityPidf(...)` configures the motor controller and is a different path. When

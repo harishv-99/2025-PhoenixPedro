@@ -368,7 +368,10 @@ screen changes all four gains, apply them together with `flywheelPidf.setGains(.
 `.regulated()` Plant; FTC device-managed `.velocityPidf(...)` configures the motor controller
 instead. For a custom or nonlinear feedforward function, compose it explicitly with
 `ScalarRegulators.setpointFeedforward(ScalarRegulators.pid(customController), function)`. See
-[`FTC Actuators & Plants`](<../ftc-boundary/FTC Actuators & Plants.md>) for the complete example.
+[`FTC Actuators & Plants`](<../ftc-boundary/FTC Actuators & Plants.md>) for the complete
+construction example and the
+[`software PIDF tuning workflow`](<../testing-calibration/Software PIDF Tuning Workflow.md>) for
+dedicated apply, record, and production restart.
 
 ### 3.4 Position-tolerance knobs: what they mean
 

@@ -890,8 +890,14 @@ flywheelRegulator.reset();
 ```
 
 The gain update keeps configured limits and either accepts all four finite values or rejects the
-change. Reset does not write hardware; the robot mechanism owner still decides when a live tuning
-change is safe and whether a zero target means coast, brake, or active hold.
+change. Reset does not itself command or stop the actuator; the robot mechanism owner still decides
+when a live tuning change is safe and whether a zero target means coast, brake, or active hold.
+
+Keep that update in a dedicated test mode rather than reading mutable tuning fields from production
+TeleOp or Auto. Follow the
+[`software PIDF tuning workflow`](<../testing-calibration/Software PIDF Tuning Workflow.md>) to
+apply one candidate, report the accepted getters, copy them into the checked-in profile, and
+restart production.
 
 When feedforward is nonlinear, table-driven, or otherwise custom, keep that difference explicit:
 
