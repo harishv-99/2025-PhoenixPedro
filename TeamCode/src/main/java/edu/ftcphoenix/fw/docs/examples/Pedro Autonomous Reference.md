@@ -21,12 +21,12 @@ Read them in this order:
 |---|---:|---|---|
 | [`BasicPedroAutoMechanism.java`](<../../../robots/examples/pedro/BasicPedroAutoMechanism.java>) | 98 | Plant-backed intake capability that creates fresh, cancellation-safe Tasks | Replace it with an existing robot capability when one already owns the mechanism; otherwise change the Plant and action names/targets here. |
 | [`BasicPedroAutoPaths.java`](<../../../robots/examples/pedro/BasicPedroAutoPaths.java>) | 52 | Declared physical start pose and one eagerly built fixed Pedro route | Change the start/end coordinates and path geometry here. Keep all coordinates explicitly in Pedro field inches and radians. |
-| [`BasicPedroAutoRoutine.java`](<../../../robots/examples/pedro/BasicPedroAutoRoutine.java>) | 54 | Route, success action, and timeout fallback composed with framework Task factories | Change semantic order, route timeout, capability actions, and the policy for each route result here. |
+| [`BasicPedroAutoRoutine.java`](<../../../robots/examples/pedro/BasicPedroAutoRoutine.java>) | 50 | Route, success action, and timeout fallback composed with framework Task factories | Change semantic order, route timeout, capability actions, and the policy for each route result here. |
 | [`BasicPedroAutoRobot.java`](<../../../robots/examples/pedro/BasicPedroAutoRobot.java>) | 209 | Composition root for the shared clock, localization, recurring Pedro heartbeat, Task runner, Plant realization, and shutdown | Usually retain this shape. Add robot-owned sensor/service/capability updates only when the robot actually has them, preserving one explicit loop order. |
 | [`PhoenixBasicPedroAutoExample.java`](<../../../robots/phoenix/opmode/PhoenixBasicPedroAutoExample.java>) | 217 | Disabled FTC lifecycle host and this repository's physical hardware/runtime wiring | Replace this entire host boundary with the new robot's verified Pedro runtime and mechanism construction. Do not copy Phoenix hardware values into another robot. |
 
-The five files total **630 source lines**, including comments, Javadocs, imports, and blank lines.
-The four independent reference classes total 413 lines; the Phoenix-specific host is another 217.
+The five files total **626 source lines**, including comments, Javadocs, imports, and blank lines.
+The four independent reference classes total 409 lines; the Phoenix-specific host is another 217.
 That full count matters. A student maintaining or adapting the reference encounters about 15
 concrete concepts, not merely the few calls in `BasicPedroAutoRoutine`:
 
@@ -108,9 +108,11 @@ mechanism and drive owners before rethrowing the construction error.
 
 ## The route-result policy
 
-The example builds one `RouteTask` with `RouteTasks.follow(...)` and retains a four-second Task
-timeout. `RouteTask` converts the integration's detailed terminal fact into the outcome understood
-by `Tasks.branchOnOutcome(...)`:
+The example builds one route Task with `RouteTasks.follow(...)`, passing its four-second Task
+timeout directly in that factory call. The routine stores it through the ordinary `Task` interface
+because this policy needs only the mapped outcome; code that needs the precise terminal reason can
+retain the factory's `RouteTask` result. `RouteTask` converts the integration's detailed terminal
+fact into the outcome understood by `Tasks.branchOnOutcome(...)`:
 
 | Route terminal fact | Task outcome | Example policy |
 |---|---|---|

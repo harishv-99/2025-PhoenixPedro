@@ -48,7 +48,7 @@ import edu.ftcphoenix.fw.drive.route.RouteStatus;
  *         "outbound",
  *         adapter,
  *         outboundPath,
- *         new RouteTask.Config()
+ *         4.0
  * );
  * robot.installAutoRoutine(outbound);
  * }</pre>

@@ -30,11 +30,10 @@ public final class RouteTaskStartTimeConstructionTest {
         ManualLoopClock manualClock = new ManualLoopClock();
         MutableRouteInputs inputs = new MutableRouteInputs(1, "init-left");
         RecordingFollower follower = new RecordingFollower();
-        RouteTask<RouteSnapshot> task = RouteTasks.followBuiltAtStart(
+        RouteTask<RouteSnapshot> task = RouteTasks.followBuiltAtStartWithoutTaskTimeout(
                 "liveReturn",
                 follower,
-                inputs::build,
-                null
+                inputs::build
         );
 
         assertEquals(0, inputs.buildCount);
@@ -69,10 +68,10 @@ public final class RouteTaskStartTimeConstructionTest {
         ManualLoopClock manualClock = new ManualLoopClock();
         MutableRouteInputs inputs = new MutableRouteInputs(1, "init-left");
         RecordingFollower follower = new RecordingFollower();
-        RouteTask<RouteSnapshot> task = RouteTasks.followBuiltAtStart(
+        RouteTask<RouteSnapshot> task = RouteTasks.followBuiltAtStartWithoutTaskTimeout(
+                "latestInputs",
                 follower,
-                inputs::build,
-                null
+                inputs::build
         );
 
         inputs.poseVersion = 7;
@@ -107,15 +106,15 @@ public final class RouteTaskStartTimeConstructionTest {
         MutableRouteInputs inputs = new MutableRouteInputs(2, "init-left");
         RecordingFollower follower = new RecordingFollower();
         final long[] sampledCycle = {Long.MIN_VALUE};
-        RouteTask<RouteSnapshot> dynamicRoute = RouteTasks.followBuiltAtStart(
-                "sequenceReturn",
-                follower,
-                () -> {
-                    sampledCycle[0] = manualClock.clock().cycle();
-                    return inputs.build();
-                },
-                null
-        );
+        RouteTask<RouteSnapshot> dynamicRoute =
+                RouteTasks.followBuiltAtStartWithoutTaskTimeout(
+                        "sequenceReturn",
+                        follower,
+                        () -> {
+                            sampledCycle[0] = manualClock.clock().cycle();
+                            return inputs.build();
+                        }
+                );
         Task sequence = Tasks.sequence(
                 Tasks.waitUntil(releaseFirstChild::get),
                 dynamicRoute
@@ -142,11 +141,10 @@ public final class RouteTaskStartTimeConstructionTest {
     public void eagerFollowStillUsesTheConcreteRouteSuppliedAtConstruction() {
         RecordingFollower follower = new RecordingFollower();
         RouteSnapshot eagerRoute = new RouteSnapshot(3, "fixed");
-        RouteTask<RouteSnapshot> task = RouteTasks.follow(
+        RouteTask<RouteSnapshot> task = RouteTasks.followWithoutTaskTimeout(
                 "fixedOutbound",
                 follower,
-                eagerRoute,
-                null
+                eagerRoute
         );
 
         task.start(new ManualLoopClock().clock());
@@ -165,11 +163,10 @@ public final class RouteTaskStartTimeConstructionTest {
         RecordingFollower follower = new RecordingFollower();
 
         try {
-            RouteTasks.followBuiltAtStart(
+            RouteTasks.followBuiltAtStartWithoutTaskTimeout(
                     "missingFactory",
                     follower,
-                    (Supplier<? extends RouteSnapshot>) null,
-                    null
+                    (Supplier<? extends RouteSnapshot>) null
             );
             fail("expected a null route factory to be rejected");
         } catch (RuntimeException expected) {
@@ -184,14 +181,13 @@ public final class RouteTaskStartTimeConstructionTest {
     public void nullFactoryResultFailsClosedWithoutTouchingFollower() {
         RecordingFollower follower = new RecordingFollower();
         final int[] factoryCalls = {0};
-        RouteTask<RouteSnapshot> task = RouteTasks.followBuiltAtStart(
+        RouteTask<RouteSnapshot> task = RouteTasks.followBuiltAtStartWithoutTaskTimeout(
                 "nullRouteResult",
                 follower,
                 () -> {
                     factoryCalls[0]++;
                     return null;
-                },
-                null
+                }
         );
 
         try {
@@ -219,13 +215,12 @@ public final class RouteTaskStartTimeConstructionTest {
     public void throwingFactoryFailsClosedWithTaskNamedErrorAndOriginalCause() {
         RecordingFollower follower = new RecordingFollower();
         IllegalStateException factoryFailure = new IllegalStateException("vision snapshot missing");
-        RouteTask<RouteSnapshot> task = RouteTasks.followBuiltAtStart(
+        RouteTask<RouteSnapshot> task = RouteTasks.followBuiltAtStartWithoutTaskTimeout(
                 "throwingReturnFactory",
                 follower,
                 () -> {
                     throw factoryFailure;
-                },
-                null
+                }
         );
 
         try {
@@ -247,14 +242,13 @@ public final class RouteTaskStartTimeConstructionTest {
     public void secondStartAfterFactoryFailureCannotResampleFactory() {
         RecordingFollower follower = new RecordingFollower();
         final int[] factoryCalls = {0};
-        RouteTask<RouteSnapshot> task = RouteTasks.followBuiltAtStart(
+        RouteTask<RouteSnapshot> task = RouteTasks.followBuiltAtStartWithoutTaskTimeout(
                 "singleUseFactoryFailure",
                 follower,
                 () -> {
                     factoryCalls[0]++;
                     throw new IllegalStateException("cannot build route");
-                },
-                null
+                }
         );
         ManualLoopClock manualClock = new ManualLoopClock();
 
@@ -282,11 +276,10 @@ public final class RouteTaskStartTimeConstructionTest {
     public void activeAndRepeatedCancellationCancelResolvedExecutionOnce() {
         RecordingFollower follower = new RecordingFollower();
         MutableRouteInputs inputs = new MutableRouteInputs(4, "center");
-        RouteTask<RouteSnapshot> task = RouteTasks.followBuiltAtStart(
+        RouteTask<RouteSnapshot> task = RouteTasks.followBuiltAtStartWithoutTaskTimeout(
                 "cancelDynamicRoute",
                 follower,
-                inputs::build,
-                null
+                inputs::build
         );
         task.start(new ManualLoopClock().clock());
         RecordingExecution execution = follower.current;
@@ -306,15 +299,14 @@ public final class RouteTaskStartTimeConstructionTest {
         RecordingFollower follower = new RecordingFollower();
         AtomicReference<RouteTask<RouteSnapshot>> taskRef = new AtomicReference<>();
         final int[] factoryCalls = {0};
-        RouteTask<RouteSnapshot> task = RouteTasks.followBuiltAtStart(
+        RouteTask<RouteSnapshot> task = RouteTasks.followBuiltAtStartWithoutTaskTimeout(
                 "cancelDuringFactory",
                 follower,
                 () -> {
                     factoryCalls[0]++;
                     taskRef.get().cancel();
                     return new RouteSnapshot(5, "cancelled");
-                },
-                null
+                }
         );
         taskRef.set(task);
 
@@ -339,11 +331,10 @@ public final class RouteTaskStartTimeConstructionTest {
             taskRef.get().cancel();
             return execution;
         };
-        RouteTask<RouteSnapshot> task = RouteTasks.followBuiltAtStart(
+        RouteTask<RouteSnapshot> task = RouteTasks.followBuiltAtStartWithoutTaskTimeout(
                 "cancelDuringFollow",
                 follower,
-                () -> new RouteSnapshot(6, "cancelled-during-follow"),
-                null
+                () -> new RouteSnapshot(6, "cancelled-during-follow")
         );
         taskRef.set(task);
 
@@ -373,11 +364,10 @@ public final class RouteTaskStartTimeConstructionTest {
             taskRef.get().cancel();
             return execution;
         };
-        RouteTask<RouteSnapshot> task = RouteTasks.followBuiltAtStart(
+        RouteTask<RouteSnapshot> task = RouteTasks.followBuiltAtStartWithoutTaskTimeout(
                 "completeDuringFollow",
                 follower,
-                () -> new RouteSnapshot(7, "complete-during-follow"),
-                null
+                () -> new RouteSnapshot(7, "complete-during-follow")
         );
         taskRef.set(task);
 
@@ -400,11 +390,10 @@ public final class RouteTaskStartTimeConstructionTest {
             taskRef.get().cancel();
             throw followFailure;
         };
-        RouteTask<RouteSnapshot> task = RouteTasks.followBuiltAtStart(
+        RouteTask<RouteSnapshot> task = RouteTasks.followBuiltAtStartWithoutTaskTimeout(
                 "cancelThenFailFollow",
                 follower,
-                () -> new RouteSnapshot(8, "cancel-then-fail"),
-                null
+                () -> new RouteSnapshot(8, "cancel-then-fail")
         );
         taskRef.set(task);
 
@@ -426,13 +415,11 @@ public final class RouteTaskStartTimeConstructionTest {
     public void taskTimeoutRetainsTaskReasonAndCancelsResolvedExecutionOnce() {
         ManualLoopClock manualClock = new ManualLoopClock();
         RecordingFollower follower = new RecordingFollower();
-        RouteTask.Config cfg = new RouteTask.Config();
-        cfg.timeoutSec = 0.05;
         RouteTask<RouteSnapshot> task = RouteTasks.followBuiltAtStart(
                 "dynamicTimeout",
                 follower,
                 () -> new RouteSnapshot(6, "timeout"),
-                cfg
+                0.05
         );
         task.start(manualClock.clock());
         RecordingExecution execution = follower.current;
@@ -462,12 +449,12 @@ public final class RouteTaskStartTimeConstructionTest {
 
         for (RouteStatus terminalStatus : terminalStatuses) {
             RecordingFollower follower = new RecordingFollower();
-            RouteTask<RouteSnapshot> task = RouteTasks.followBuiltAtStart(
-                    "dynamic-" + terminalStatus,
-                    follower,
-                    () -> new RouteSnapshot(8, terminalStatus.name()),
-                    null
-            );
+            RouteTask<RouteSnapshot> task =
+                    RouteTasks.followBuiltAtStartWithoutTaskTimeout(
+                            "dynamic-" + terminalStatus,
+                            follower,
+                            () -> new RouteSnapshot(8, terminalStatus.name())
+                    );
             ManualLoopClock manualClock = new ManualLoopClock();
             task.start(manualClock.clock());
             RecordingExecution execution = follower.current;
@@ -488,11 +475,10 @@ public final class RouteTaskStartTimeConstructionTest {
     public void debugShowsPendingAndResolvedRouteWithoutAdditionalSampling() {
         MutableRouteInputs inputs = new MutableRouteInputs(10, "debug");
         RecordingFollower follower = new RecordingFollower();
-        RouteTask<RouteSnapshot> task = RouteTasks.followBuiltAtStart(
+        RouteTask<RouteSnapshot> task = RouteTasks.followBuiltAtStartWithoutTaskTimeout(
                 "debugDynamicRoute",
                 follower,
-                inputs::build,
-                null
+                inputs::build
         );
         CapturingDebugSink before = new CapturingDebugSink();
 
@@ -501,6 +487,7 @@ public final class RouteTaskStartTimeConstructionTest {
         assertEquals(0, inputs.buildCount);
         assertEquals("builtAtStart", before.data.get("route.routeSource"));
         assertEquals("pending", before.data.get("route.routeClass"));
+        assertEquals("none", before.data.get("route.timeoutSec"));
 
         task.start(new ManualLoopClock().clock());
         CapturingDebugSink after = new CapturingDebugSink();
@@ -510,6 +497,23 @@ public final class RouteTaskStartTimeConstructionTest {
         assertEquals(1, inputs.buildCount);
         assertEquals("builtAtStart", after.data.get("route.routeSource"));
         assertEquals("RouteSnapshot", after.data.get("route.routeClass"));
+        assertEquals("none", after.data.get("route.timeoutSec"));
+    }
+
+    @Test
+    public void debugKeepsStableTimeoutKeyForBoundedRoute() {
+        RecordingFollower follower = new RecordingFollower();
+        RouteTask<RouteSnapshot> task = RouteTasks.follow(
+                "debugBoundedRoute",
+                follower,
+                new RouteSnapshot(11, "bounded"),
+                2.5
+        );
+        CapturingDebugSink debug = new CapturingDebugSink();
+
+        task.debugDump(debug, "route");
+
+        assertEquals(Double.valueOf(2.5), debug.data.get("route.timeoutSec"));
     }
 
     private static TaskOutcome expectedOutcome(RouteStatus terminalStatus) {

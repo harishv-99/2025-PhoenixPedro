@@ -6,7 +6,6 @@ import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.drive.DriveCommandSink;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceTask;
-import edu.ftcphoenix.fw.drive.route.RouteTask;
 import edu.ftcphoenix.fw.task.Task;
 import edu.ftcphoenix.fw.task.Tasks;
 import edu.ftcphoenix.robots.phoenix.PhoenixCapabilities;
@@ -23,15 +22,6 @@ public final class PhoenixAutoTasks {
 
     private PhoenixAutoTasks() {
         // Utility class.
-    }
-
-    /**
-     * Build route-follow timeout config from Phoenix's Auto profile section.
-     */
-    public static RouteTask.Config routeConfig(PhoenixProfile.AutoConfig autoCfg) {
-        RouteTask.Config cfg = new RouteTask.Config();
-        cfg.timeoutSec = cfgOrDefault(autoCfg).routeTimeoutSec;
-        return cfg;
     }
 
     /**

@@ -54,18 +54,24 @@ unknown terminal transition during its owned heartbeat; `RouteTask.getRouteStatu
 backend-neutral reason. Task timeout and active cancellation remain distinct statuses, and cleanup
 of an old Task cannot cancel a newer route.
 
-Fixed robot routes continue to use the short `RouteTasks.follow(adapter, route, cfg)` call. Robot
-routines must not start, break, replace, manually take over, update, or reset pose through the raw
-Pedro Follower; those lifecycle calls bypass the adapter's ownership and truthful status. Route
-building and read-only integration inspection remain supported.
+Fixed robot routes use the short
+`RouteTasks.follow(debugName, adapter, route, profile.auto.routeTimeoutSec)` call. Phoenix
+deliberately keeps that finite Task-level timeout because its routine distinguishes
+`RouteStatus.TASK_TIMEOUT`; the explicit `followWithoutTaskTimeout(...)` variant is for a robot
+whose policy deliberately assigns that deadline elsewhere. Neither choice disables a follower's
+own timeout/stall detection. Robot routines must not start, break, replace, manually take over,
+update, or reset pose through the raw Pedro Follower; those lifecycle calls bypass the adapter's
+ownership and truthful status. Route building and read-only integration inspection remain
+supported.
 
 The placeholder outbound route is fixed, eager, and explicitly `INTEGRATION_ONLY`. Its first
 translation and effective wrapped heading are checked against the separately declared start pose.
 The return helper uses
-`RouteTasks.followBuiltAtStart(...)` with a lambda to `PhoenixPedroPathFactory`, so the factory reads
-and snapshots the current Pedro pose only when that phase begins, then builds the concrete return
-through the checked runtime builder. The generic route Task never sees the Follower, vision state,
-or strategy, and a failed build cannot start the adapter.
+`RouteTasks.followBuiltAtStart(debugName, adapter, routeFactory, profile.auto.routeTimeoutSec)` with
+a lambda to `PhoenixPedroPathFactory`, so the factory reads and snapshots the current Pedro pose
+only when that phase begins, then builds the concrete return through the checked runtime builder.
+The generic route Task never sees the Follower, vision state, or strategy, and a failed build cannot
+start the adapter.
 
 ## Pre-park budget, route, and scoring policy
 

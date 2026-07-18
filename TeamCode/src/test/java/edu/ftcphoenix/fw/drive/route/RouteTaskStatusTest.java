@@ -19,7 +19,8 @@ public final class RouteTaskStatusTest {
     @Test
     public void factoryReturnsTypedTaskAndExposesActiveExecution() {
         RecordingFollower follower = new RecordingFollower();
-        RouteTask<String> task = RouteTasks.follow("outbound", follower, "route-a", null);
+        RouteTask<String> task =
+                RouteTasks.followWithoutTaskTimeout("outbound", follower, "route-a");
 
         assertEquals(RouteStatus.NOT_STARTED, task.getRouteStatus());
 
@@ -60,7 +61,8 @@ public final class RouteTaskStatusTest {
     public void activeStatusRemainsNonterminal() {
         ManualLoopClock manualClock = new ManualLoopClock();
         RecordingFollower follower = new RecordingFollower();
-        RouteTask<String> task = RouteTasks.follow(follower, "route", null);
+        RouteTask<String> task =
+                RouteTasks.followWithoutTaskTimeout("activeStatus", follower, "route");
         task.start(manualClock.clock());
 
         task.update(manualClock.clock());
@@ -74,7 +76,8 @@ public final class RouteTaskStatusTest {
     public void statusGetterObservesHeartbeatTerminalBeforeTaskUpdate() {
         ManualLoopClock manualClock = new ManualLoopClock();
         RecordingFollower follower = new RecordingFollower();
-        RouteTask<String> task = RouteTasks.follow(follower, "route", null);
+        RouteTask<String> task =
+                RouteTasks.followWithoutTaskTimeout("heartbeatTerminal", follower, "route");
         task.start(manualClock.clock());
         follower.current.integrationStatus = RouteStatus.INTERRUPTED;
 
@@ -88,16 +91,15 @@ public final class RouteTaskStatusTest {
     }
 
     @Test
-    public void followerTerminalStatusWinsBeforeTaskTimeout() {
+    public void followerTerminalStatusWinsAtExactTaskTimeoutBoundary() {
         ManualLoopClock manualClock = new ManualLoopClock();
         RecordingFollower follower = new RecordingFollower();
-        RouteTask.Config cfg = new RouteTask.Config();
-        cfg.timeoutSec = 0.05;
-        RouteTask<String> task = RouteTasks.follow(follower, "route", cfg);
+        RouteTask<String> task =
+                RouteTasks.follow("terminalBeforeTimeout", follower, "route", 0.05);
         task.start(manualClock.clock());
         follower.statusOnUpdate = RouteStatus.COMPLETED;
 
-        manualClock.nextCycle(0.10);
+        manualClock.nextCycle(0.05);
         task.update(manualClock.clock());
 
         assertEquals(RouteStatus.COMPLETED, task.getRouteStatus());
@@ -106,12 +108,28 @@ public final class RouteTaskStatusTest {
     }
 
     @Test
+    public void activeRouteTimesOutAtExactTaskTimeoutBoundary() {
+        ManualLoopClock manualClock = new ManualLoopClock();
+        RecordingFollower follower = new RecordingFollower();
+        RouteTask<String> task =
+                RouteTasks.follow("exactTimeoutBoundary", follower, "route", 0.05);
+        task.start(manualClock.clock());
+
+        manualClock.nextCycle(0.05);
+        task.update(manualClock.clock());
+
+        assertEquals(RouteStatus.TASK_TIMEOUT, task.getRouteStatus());
+        assertEquals(TaskOutcome.TIMEOUT, task.getOutcome());
+        assertTrue(task.isComplete());
+        assertEquals(1, follower.current.cancelCount);
+    }
+
+    @Test
     public void taskTimeoutRetainsTaskReasonAndCancelsOnlyItsExecution() {
         ManualLoopClock manualClock = new ManualLoopClock();
         RecordingFollower follower = new RecordingFollower();
-        RouteTask.Config cfg = new RouteTask.Config();
-        cfg.timeoutSec = 0.05;
-        RouteTask<String> task = RouteTasks.follow(follower, "route", cfg);
+        RouteTask<String> task =
+                RouteTasks.follow("taskTimeout", follower, "route", 0.05);
         task.start(manualClock.clock());
         RecordingExecution execution = follower.current;
 
@@ -132,11 +150,10 @@ public final class RouteTaskStatusTest {
         RecordingExecution execution = new RecordingExecution(follower);
         execution.integrationStatus = RouteStatus.NOT_STARTED;
         follower.current = execution;
-        RouteTask<String> task = RouteTasks.follow(
+        RouteTask<String> task = RouteTasks.followWithoutTaskTimeout(
                 "notStartedContractViolation",
                 route -> execution,
-                "route",
-                null);
+                "route");
 
         try {
             task.start(new ManualLoopClock().clock());
@@ -159,9 +176,8 @@ public final class RouteTaskStatusTest {
         ManualLoopClock manualClock = new ManualLoopClock();
         manualClock.nextCycle(1.0);
         RecordingFollower follower = new RecordingFollower();
-        RouteTask.Config cfg = new RouteTask.Config();
-        cfg.timeoutSec = 0.05;
-        RouteTask<String> task = RouteTasks.follow(follower, "route", cfg);
+        RouteTask<String> task =
+                RouteTasks.follow("timeoutBoundary", follower, "route", 0.05);
 
         task.start(manualClock.clock());
         task.update(manualClock.clock());
@@ -176,7 +192,8 @@ public final class RouteTaskStatusTest {
     @Test
     public void activeTaskCancellationIsTerminalAndIdempotent() {
         RecordingFollower follower = new RecordingFollower();
-        RouteTask<String> task = RouteTasks.follow(follower, "route", null);
+        RouteTask<String> task =
+                RouteTasks.followWithoutTaskTimeout("activeCancellation", follower, "route");
         task.start(new ManualLoopClock().clock());
         RecordingExecution execution = follower.current;
 
@@ -193,7 +210,8 @@ public final class RouteTaskStatusTest {
     @Test
     public void taskCancellationPreservesCompletionObservedSinceLastUpdate() {
         RecordingFollower follower = new RecordingFollower();
-        RouteTask<String> task = RouteTasks.follow(follower, "route", null);
+        RouteTask<String> task =
+                RouteTasks.followWithoutTaskTimeout("preserveCompletion", follower, "route");
         task.start(new ManualLoopClock().clock());
         RecordingExecution execution = follower.current;
         execution.integrationStatus = RouteStatus.COMPLETED;
@@ -210,8 +228,10 @@ public final class RouteTaskStatusTest {
     @Test
     public void taskCancellationPreservesReplacementObservedSinceLastUpdate() {
         RecordingFollower follower = new RecordingFollower();
-        RouteTask<String> oldTask = RouteTasks.follow("old", follower, "route-a", null);
-        RouteTask<String> newTask = RouteTasks.follow("new", follower, "route-b", null);
+        RouteTask<String> oldTask =
+                RouteTasks.followWithoutTaskTimeout("old", follower, "route-a");
+        RouteTask<String> newTask =
+                RouteTasks.followWithoutTaskTimeout("new", follower, "route-b");
         oldTask.start(new ManualLoopClock().clock());
         RecordingExecution oldExecution = follower.current;
         newTask.start(new ManualLoopClock().clock());
@@ -229,7 +249,8 @@ public final class RouteTaskStatusTest {
     @Test
     public void taskCancellationStatusFailureFailsClosedBeforeRethrow() {
         RecordingFollower follower = new RecordingFollower();
-        RouteTask<String> task = RouteTasks.follow(follower, "route", null);
+        RouteTask<String> task =
+                RouteTasks.followWithoutTaskTimeout("cancellationStatusFailure", follower, "route");
         task.start(new ManualLoopClock().clock());
         RecordingExecution execution = follower.current;
         IllegalStateException statusFailure = new IllegalStateException("cancel status failure");
@@ -264,10 +285,9 @@ public final class RouteTaskStatusTest {
     public void replacementBeatsOldTaskTimeoutAndOldCleanupCannotStopNewRoute() {
         ManualLoopClock manualClock = new ManualLoopClock();
         RecordingFollower follower = new RecordingFollower();
-        RouteTask.Config shortTimeout = new RouteTask.Config();
-        shortTimeout.timeoutSec = 0.05;
-        RouteTask<String> oldTask = RouteTasks.follow("old", follower, "route-a", shortTimeout);
-        RouteTask<String> newTask = RouteTasks.follow("new", follower, "route-b", null);
+        RouteTask<String> oldTask = RouteTasks.follow("old", follower, "route-a", 0.05);
+        RouteTask<String> newTask =
+                RouteTasks.followWithoutTaskTimeout("new", follower, "route-b");
         oldTask.start(manualClock.clock());
         RecordingExecution oldExecution = follower.current;
 
@@ -292,8 +312,10 @@ public final class RouteTaskStatusTest {
     public void oldTaskReadsItsOwnCompletedExecutionInsteadOfNewRouteState() {
         ManualLoopClock manualClock = new ManualLoopClock();
         RecordingFollower follower = new RecordingFollower();
-        RouteTask<String> oldTask = RouteTasks.follow("old", follower, "route-a", null);
-        RouteTask<String> newTask = RouteTasks.follow("new", follower, "route-b", null);
+        RouteTask<String> oldTask =
+                RouteTasks.followWithoutTaskTimeout("old", follower, "route-a");
+        RouteTask<String> newTask =
+                RouteTasks.followWithoutTaskTimeout("new", follower, "route-b");
         oldTask.start(manualClock.clock());
         RecordingExecution oldExecution = follower.current;
         oldExecution.integrationStatus = RouteStatus.COMPLETED;
@@ -312,7 +334,8 @@ public final class RouteTaskStatusTest {
     public void updateFailureRefreshesFailedExecutionStatusBeforeRethrow() {
         ManualLoopClock manualClock = new ManualLoopClock();
         RecordingFollower follower = new RecordingFollower();
-        RouteTask<String> task = RouteTasks.follow("updateFailure", follower, "route", null);
+        RouteTask<String> task =
+                RouteTasks.followWithoutTaskTimeout("updateFailure", follower, "route");
         task.start(manualClock.clock());
         IllegalStateException updateFailure = new IllegalStateException("test update failure");
         follower.statusBeforeUpdateFailure = RouteStatus.FAILED;
@@ -335,7 +358,8 @@ public final class RouteTaskStatusTest {
     public void updateFailureDoesNotOverwriteExplicitTerminalCompletion() {
         ManualLoopClock manualClock = new ManualLoopClock();
         RecordingFollower follower = new RecordingFollower();
-        RouteTask<String> task = RouteTasks.follow("completedThenThrow", follower, "route", null);
+        RouteTask<String> task =
+                RouteTasks.followWithoutTaskTimeout("completedThenThrow", follower, "route");
         task.start(manualClock.clock());
         RecordingExecution execution = follower.current;
         IllegalStateException updateFailure = new IllegalStateException("late update failure");
@@ -360,7 +384,8 @@ public final class RouteTaskStatusTest {
     public void updateFailureWithActiveExecutionMarksTaskFailedBeforeCleanup() {
         ManualLoopClock manualClock = new ManualLoopClock();
         RecordingFollower follower = new RecordingFollower();
-        RouteTask<String> task = RouteTasks.follow("activeUpdateFailure", follower, "route", null);
+        RouteTask<String> task =
+                RouteTasks.followWithoutTaskTimeout("activeUpdateFailure", follower, "route");
         task.start(manualClock.clock());
         RecordingExecution execution = follower.current;
         execution.taskToObserveDuringCancel = task;
@@ -386,7 +411,8 @@ public final class RouteTaskStatusTest {
     public void updateFailurePreservesOriginalAndSuppressesStatusReadFailure() {
         ManualLoopClock manualClock = new ManualLoopClock();
         RecordingFollower follower = new RecordingFollower();
-        RouteTask<String> task = RouteTasks.follow("statusReadFailure", follower, "route", null);
+        RouteTask<String> task =
+                RouteTasks.followWithoutTaskTimeout("statusReadFailure", follower, "route");
         task.start(manualClock.clock());
         IllegalStateException updateFailure = new IllegalStateException("update failure");
         IllegalStateException statusFailure = new IllegalStateException("status failure");
@@ -416,11 +442,10 @@ public final class RouteTaskStatusTest {
         IllegalStateException statusFailure = new IllegalStateException("initial status failure");
         execution.statusFailure = statusFailure;
         follower.current = execution;
-        RouteTask<String> task = RouteTasks.follow(
+        RouteTask<String> task = RouteTasks.followWithoutTaskTimeout(
                 "initialStatusFailure",
                 route -> execution,
-                "route",
-                null);
+                "route");
 
         try {
             task.start(new ManualLoopClock().clock());
@@ -464,7 +489,8 @@ public final class RouteTaskStatusTest {
     public void updateFailurePreservesCleanupFailureAsSuppressed() {
         ManualLoopClock manualClock = new ManualLoopClock();
         RecordingFollower follower = new RecordingFollower();
-        RouteTask<String> task = RouteTasks.follow("cleanupFailure", follower, "route", null);
+        RouteTask<String> task =
+                RouteTasks.followWithoutTaskTimeout("cleanupFailure", follower, "route");
         task.start(manualClock.clock());
         RecordingExecution execution = follower.current;
         IllegalStateException updateFailure = new IllegalStateException("update failure");
@@ -490,9 +516,8 @@ public final class RouteTaskStatusTest {
     public void timeoutRetainsStatusWhenCleanupThrowsAndDoesNotRetry() {
         ManualLoopClock manualClock = new ManualLoopClock();
         RecordingFollower follower = new RecordingFollower();
-        RouteTask.Config cfg = new RouteTask.Config();
-        cfg.timeoutSec = 0.05;
-        RouteTask<String> task = RouteTasks.follow("timeoutCleanupFailure", follower, "route", cfg);
+        RouteTask<String> task =
+                RouteTasks.follow("timeoutCleanupFailure", follower, "route", 0.05);
         task.start(manualClock.clock());
         RecordingExecution execution = follower.current;
         IllegalStateException cleanupFailure = new IllegalStateException("timeout cleanup failure");
@@ -521,7 +546,8 @@ public final class RouteTaskStatusTest {
     @Test
     public void nullExecutionFailsFastWithAdapterAuthorGuidance() {
         RouteFollower<String> follower = route -> null;
-        RouteTask<String> task = RouteTasks.follow("nullExecution", follower, "route", null);
+        RouteTask<String> task =
+                RouteTasks.followWithoutTaskTimeout("nullExecution", follower, "route");
 
         try {
             task.start(new ManualLoopClock().clock());
@@ -547,7 +573,8 @@ public final class RouteTaskStatusTest {
             }
         };
         RouteFollower<String> follower = route -> nullStatusExecution;
-        RouteTask<String> task = RouteTasks.follow("nullStatus", follower, "route", null);
+        RouteTask<String> task =
+                RouteTasks.followWithoutTaskTimeout("nullStatus", follower, "route");
 
         try {
             task.start(new ManualLoopClock().clock());
@@ -562,7 +589,10 @@ public final class RouteTaskStatusTest {
     private static void assertTerminalMapping(RouteStatus status, TaskOutcome expectedOutcome) {
         ManualLoopClock manualClock = new ManualLoopClock();
         RecordingFollower follower = new RecordingFollower();
-        RouteTask<String> task = RouteTasks.follow("mapping-" + status, follower, "route", null);
+        RouteTask<String> task = RouteTasks.followWithoutTaskTimeout(
+                "mapping-" + status,
+                follower,
+                "route");
         task.start(manualClock.clock());
         follower.current.integrationStatus = status;
 

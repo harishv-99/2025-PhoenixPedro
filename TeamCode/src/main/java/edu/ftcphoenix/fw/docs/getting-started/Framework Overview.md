@@ -379,13 +379,20 @@ RouteTask<PathChain> returnToStart = RouteTasks.followBuiltAtStart(
         "returnToStart",
         pedro.driveAdapter(),
         () -> robotPaths.buildReturnFromCurrentPose(returnPose),
-        routeConfig
+        routeTimeoutSec
 );
 ```
 
 The supplier runs exactly once at that Task's `start(clock)` boundary. Keep it quick and
 non-blocking, and let robot-owned path code read current snapshots and build the vendor route. Core
 Task code and the follower adapter still receive no sensor, vision, alliance, or strategy types.
+
+Both eager and start-time factories require a nonblank diagnostic name. Their ordinary bounded
+forms take a finite, positive Task-level timeout directly; zero, negative, and non-finite values
+are rejected instead of meaning “no timeout.” When robot policy deliberately assigns its outer
+Task-level budget elsewhere, select `followWithoutTaskTimeout(...)` or
+`followBuiltAtStartWithoutTaskTimeout(...)` explicitly. Those variants disable only
+`RouteStatus.TASK_TIMEOUT`; a follower can still report `FOLLOWER_TIMEOUT_OR_STALL`.
 
 A stateful external follower may need a heartbeat even after its route Task completes. Pedro, for
 example, keeps hold-end control, pose updates, callbacks, and manual drive inside
@@ -427,14 +434,14 @@ RouteTask<PathChain> outbound = RouteTasks.follow(
         "outbound",
         pedro.driveAdapter(),
         outboundPath,
-        new RouteTask.Config()
+        routeTimeoutSec
 );
 
 RouteTask<PathChain> livePoseReturn = RouteTasks.followBuiltAtStart(
         "return",
         pedro.driveAdapter(),
         () -> robotPaths.buildReturnFromCurrentPose(returnPose),
-        new RouteTask.Config()
+        routeTimeoutSec
 );
 ```
 

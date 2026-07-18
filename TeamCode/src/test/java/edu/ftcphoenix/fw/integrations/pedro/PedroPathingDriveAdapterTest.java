@@ -25,6 +25,7 @@ import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceTask;
 import edu.ftcphoenix.fw.drive.route.RouteExecution;
 import edu.ftcphoenix.fw.drive.route.RouteStatus;
 import edu.ftcphoenix.fw.drive.route.RouteTask;
+import edu.ftcphoenix.fw.drive.route.RouteTasks;
 import edu.ftcphoenix.fw.localization.AbsolutePoseEstimator;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
 import edu.ftcphoenix.fw.task.TaskOutcome;
@@ -55,13 +56,10 @@ public final class PedroPathingDriveAdapterTest {
     @Test
     public void rootAndRouteTaskUpdatesAdvanceFollowerOncePerCycle() {
         Fixture fixture = new Fixture(START);
-        RouteTask.Config config = new RouteTask.Config();
-        config.timeoutSec = 0.0;
-        RouteTask<PathChain> task = new RouteTask<>(
+        RouteTask<PathChain> task = RouteTasks.followWithoutTaskTimeout(
                 "deduplicated route",
                 fixture.adapter,
-                lineRoute(),
-                config
+                lineRoute()
         );
 
         task.start(fixture.clock.clock());
@@ -85,13 +83,11 @@ public final class PedroPathingDriveAdapterTest {
     @Test
     public void holdEndContinuesAfterRouteTaskCompletesAndOnlyRootKeepsUpdating() {
         Fixture fixture = new Fixture(END);
-        RouteTask.Config config = new RouteTask.Config();
-        config.timeoutSec = 1.0;
-        RouteTask<PathChain> task = new RouteTask<>(
+        RouteTask<PathChain> task = RouteTasks.follow(
                 "hold-end route",
                 fixture.adapter,
                 lineRoute(),
-                config
+                1.0
         );
 
         task.start(fixture.clock.clock());
@@ -303,13 +299,11 @@ public final class PedroPathingDriveAdapterTest {
     @Test
     public void routeTimeoutStopsImmediatelyWithoutASecondTaskHeartbeat() {
         Fixture fixture = new Fixture(START);
-        RouteTask.Config config = new RouteTask.Config();
-        config.timeoutSec = 0.10;
-        RouteTask<PathChain> task = new RouteTask<>(
+        RouteTask<PathChain> task = RouteTasks.follow(
                 "timed route",
                 fixture.adapter,
                 lineRoute(),
-                config
+                0.10
         );
 
         task.start(fixture.clock.clock());

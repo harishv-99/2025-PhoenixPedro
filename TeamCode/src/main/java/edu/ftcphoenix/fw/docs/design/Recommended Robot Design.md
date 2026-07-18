@@ -965,7 +965,8 @@ Conceptually:
 
 ```java
 Task goToBackstage = drivePlan.task(drivebase, cfg);
-Task followCyclePath = RouteTasks.follow(roadRunnerAdapter, cyclePath, new RouteTask.Config());
+Task followCyclePath =
+        RouteTasks.follow("cycle", roadRunnerAdapter, cyclePath, routeTimeoutSec);
 ```
 
 The adapter is still project-specific, but Phoenix now provides the generic `RouteFollower<RouteT>` / `RouteTask<RouteT>` seam so the rest of your Auto can stay inside the normal task vocabulary.
@@ -974,6 +975,12 @@ Each `RouteTask` retains the `RouteExecution` returned when it starts. Ordinary 
 same one-line `RouteTasks.follow(...)` call. Code that genuinely needs the terminal reason can keep
 the returned `RouteTask<RouteT>` and read `getRouteStatus()`; it should not inspect a vendor busy
 flag or call raw follower lifecycle methods.
+
+Route construction has one public owner: `RouteTasks`. Give every route a nonblank diagnostic name
+and pass its finite, positive Task timeout directly. If robot policy deliberately assigns its outer
+Task-level budget elsewhere, use `followWithoutTaskTimeout(...)` or its parallel start-time variant
+instead of encoding that choice with zero, a negative number, a non-finite value, or another
+sentinel. “Without Task timeout” does not disable a follower's own timeout/stall result.
 
 Build fixed routes eagerly. If a fallback or return route needs the current pose or current vision
 selection at the moment its phase begins, pass a quick lambda or method reference to the explicitly
@@ -990,10 +997,11 @@ robot.initAuto(pedro.driveAdapter(), pedro.motionPredictor());
 ```
 
 The robot owns `pedro.driveAdapter().update(clock)` on every Auto loop and its final stop. The
-routine still uses `RouteTasks.follow(pedro.driveAdapter(), route, cfg)` and guidance Tasks normally;
-the adapter makes their same-cycle update calls harmless. The runtime's passive Pedro localizer
-reads the same current-cycle predictor that Phoenix localization updates, so this also avoids a
-second odometry owner without adding another scheduler or pose API to student Auto code.
+routine still uses
+`RouteTasks.follow("cycle", pedro.driveAdapter(), route, routeTimeoutSec)` and guidance Tasks
+normally; the adapter makes their same-cycle update calls harmless. The runtime's passive Pedro
+localizer reads the same current-cycle predictor that Phoenix localization updates, so this also
+avoids a second odometry owner without adding another scheduler or pose API to student Auto code.
 
 The adapter also classifies each route's terminal state during that owned heartbeat, while the
 evidence still exists. Robot code must use the adapter and Phoenix Task cancellation seams for
@@ -1027,7 +1035,7 @@ RouteTask<YourRoute> preloadRoute = RouteTasks.follow(
         "preload",
         routeAdapter,
         preloadPath,
-        new RouteTask.Config()
+        routeTimeoutSec
 );
 ```
 

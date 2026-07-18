@@ -56,13 +56,22 @@ defaults and any deliberate per-path overrides. Robot path code keeps Pedro's no
 API and does not need a repair step.
 
 Build fixed geometry eagerly during the mode client's pre-start construction and pass it to the
-ordinary `RouteTasks.follow(...)` path.
+ordinary `RouteTasks.follow("outbound", adapter, route, taskTimeoutSec)` path. Every route factory
+requires a nonblank diagnostic name. A bounded factory also requires a finite, positive Task-level
+timeout; zero, negative, and non-finite values are configuration errors rather than hidden
+no-timeout sentinels.
+
 When a return or fallback must begin at the follower's live pose, keep that decision in the
-robot-owned path factory and pass a quick lambda to `RouteTasks.followBuiltAtStart(...)`. The lambda
-runs exactly once when its Route Task starts, after the composition root's current-cycle
-localization and Pedro heartbeat. It may use the runtime's supported read-only Follower inspection,
-but it must still build through `runtime.pathBuilder()` and must not call raw Follower lifecycle
-methods.
+robot-owned path factory and pass a quick lambda to
+`RouteTasks.followBuiltAtStart("return", adapter, routeFactory, taskTimeoutSec)`. The lambda runs
+exactly once when its Route Task starts, after the composition root's current-cycle localization
+and Pedro heartbeat. It may use the runtime's supported read-only Follower inspection, but it must
+still build through `runtime.pathBuilder()` and must not call raw Follower lifecycle methods.
+
+If robot policy deliberately does not want a Task-level deadline, use the parallel, explicit
+`followWithoutTaskTimeout(...)` or `followBuiltAtStartWithoutTaskTimeout(...)` factory. Those names
+disable only `RouteStatus.TASK_TIMEOUT`; the follower can still report
+`FOLLOWER_TIMEOUT_OR_STALL`.
 
 `PhoenixRobot` receives only backend-neutral `DriveCommandSink` and `MotionPredictor` seams. It does
 not learn Pedro route types or configuration. Auto loop order remains:
