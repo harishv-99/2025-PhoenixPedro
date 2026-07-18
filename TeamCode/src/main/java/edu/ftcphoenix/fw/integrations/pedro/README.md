@@ -151,9 +151,12 @@ required.
 
 The project factory derives motor names/directions and Pinpoint name/offsets/resolution/directions/
 yaw scalar from the selected defensive `PhoenixProfile` snapshot. `Constants` retains Pedro-only
-follower/controller/drivetrain/path tuning. Invalid names, duplicate motors, unsupported reset
-assumptions, and non-finite tuning fail during pre-start construction with a setting-specific
-message.
+follower/controller/drivetrain/path tuning. Mecanum motor names follow FTC's trimmed,
+case-sensitive lookup identity; blank or trim-equivalent duplicate names fail before fresh
+drivetrain hardware resolution or configuration. Unsupported reset assumptions and non-finite
+tuning also fail during pre-start construction with a setting-specific message. Name validation is
+group-local configuration checking: it neither proves physical device identity nor globally
+reserves a configured name for this runtime.
 Human acknowledgements such as verified pod directions or calibrated offsets remain robot-owned
 readiness facts; numeric construction validation must not silently claim that those procedures were
 performed.

@@ -291,6 +291,13 @@ A direct power Plant already knows its only legal domain: normalized `[-1.0, +1.
 finite out-of-range request before calling `PowerOutput`, while the FTC adapter keeps its own clamp
 as final boundary defense.
 
+FTC configured names use a trimmed, case-sensitive lookup identity. Phoenix therefore rejects a
+blank name or two trim-equivalent names within one homogeneous actuator command group before fresh
+group hardware resolution or configuration. Reusing a retained builder stage to attempt an invalid
+addition has no additional hardware effects. This validation does not change the fluent call, prove
+that differently named entries are physically different devices, or reserve names across owners.
+The actuator and its feedback may intentionally use the same configured name.
+
 **Important:** tasks write the Plant's registered `ScalarTarget`; *your loop* must still call `plant.update(clock)` each cycle so the Plant samples that source and applies hardware guards.
 
 ---
@@ -481,6 +488,10 @@ DriveSource drive = new GamepadDriveSource(
         GamepadDriveSource.Config.defaults()
 ).scaledWhen(pads.p1().rightBumper(), 0.35, 0.20);
 ```
+
+Custom FTC mecanum wiring follows the same trimmed, case-sensitive group contract: all four motor
+names must be nonblank and distinct before fresh group hardware resolution or configuration. This
+is a configuration-string check, not proof of physical wiring or a global ownership claim.
 
 **Rate limiting note:** `MecanumDrivebase` can rate-limit components using the most recent `dtSec`. Call `drivebase.update(clock)` once per loop. If you want rate limiting to use the *current* loop’s `dt`, call `update(clock)` **before** `drive(...)`.
 

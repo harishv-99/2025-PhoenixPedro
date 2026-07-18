@@ -52,6 +52,22 @@ public final class PedroPathingRuntimeValidationTest {
     }
 
     @Test
+    public void motorNameIdentityUsesSdkTrimmedCaseSensitiveKeys() {
+        MecanumConstants trimEquivalent = new MecanumConstants()
+                .leftFrontMotorName("drive")
+                .leftRearMotorName(" \tdrive ");
+        assertRejects(
+                () -> PedroPathingRuntime.validateMecanumConstants(trimEquivalent),
+                "duplicates motor hardware name"
+        );
+
+        MecanumConstants caseDistinct = new MecanumConstants()
+                .leftFrontMotorName("drive")
+                .leftRearMotorName("Drive");
+        PedroPathingRuntime.validateMecanumConstants(caseDistinct);
+    }
+
+    @Test
     public void invalidVendorTuningFailsBeforeHardwareConstruction() {
         FollowerConstants followerConstants = new FollowerConstants();
         followerConstants.mass = Double.NaN;

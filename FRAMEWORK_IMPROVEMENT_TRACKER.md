@@ -87,7 +87,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 23 | API-03 | PID and linear-PIDF configuration ownership | Done | Keep plain PID error-centric and add one factory-only standard PIDF regulator that owns all four gains and live tuning as one validated update. |
 | 24 | TUNE-01 | Live tuning to checked-in profile | Done | Document one explicit test-mode PIDF tune/apply/record workflow; add no tuner API because API-03 exposes the complete gain update and realization already owns outer reset. |
 | 25 | ROUTE-03 | Factory-only route Task configuration | Done | Use one named factory-only layer with direct bounded or explicit no-Task-timeout policy. |
-| 26 | ACT-01 | FTC actuator-group identity validation | Proposed | Reject blank and duplicate group members before resolving or configuring hardware. |
+| 26 | ACT-01 | FTC actuator-group identity validation | Done | Private SDK-equivalent actuator/mecanum validation reviewed, verified, and approved on 2026-07-17. |
 | 27 | COMMON-01 | Initialization runtime helper | Proposed | Use the complete Pedro reference cost to extract only repeated retry/error/cleanup ceremony; avoid a robot base class or hidden loop. |
 | 28 | AUTO-01 | Compact bounded Auto continuation | Proposed | Use another real routine to separate reusable lifecycle ceremony from robot-owned match and recovery policy. |
 | 29 | SOURCE-03 | Composable scalar measurement conditioning | Proposed | Add only measurement-backed, explicitly configured numeric filters as generic `ScalarSource` decorators rather than hiding smoothing in a sensor adapter. |
@@ -5369,10 +5369,177 @@ writer, and explicit lifecycle ownership.
   nonblank and unique names once the group identity specification is complete and before
   resolving/configuring hardware. Add no public group/spec type or global registry. MAP-01 owns
   scale/bias and native-domain mathematics.
-- **Completion:** focused fake-HardwareMap tests prove invalid specifications have no lookup,
-  direction, mode, or command side effects; errors identify the group and offending name; valid
-  direct-power, device-managed, regulated, and same-motor external-feedback cases remain supported.
-- **Decision record:** _Pending; split from API-03 on 2026-07-16._
+- **Completion:** focused fake-HardwareMap tests prove a freshly supplied invalid group has no lookup,
+  direction, mode, tuning, or command side effects, while a rejected add through a retained stage
+  alias causes no additional effects and does not mutate the earlier valid group; errors identify
+  the group and offending name. Valid direct-power, device-managed, regulated, same-motor external-
+  feedback, standard-servo, CR-servo, FTC mecanum, and Pedro mecanum cases remain supported.
+- **Decision record (2026-07-17):**
+  - **Confirmed `FtcActuators` behavior:** its one public construction layer is
+    `FtcActuators.plant(hardwareMap)` followed by the staged motor, standard-servo, or CR-servo
+    answers. All concrete builders and the shared member `Spec` are private. That `Spec` currently
+    null-checks `name` and `direction` but accepts blank and repeated names. Motor power/velocity/
+    position, standard-servo position, and CR-servo power/position then resolve those names through
+    separate paths. Device-managed motor and servo/CR group paths can configure an earlier child
+    before a later invalid SDK lookup; a repeated name can resolve one SDK object more than once,
+    set its direction or tuning more than once, and submit multiple ordered commands to it.
+  - **Why validation cannot wait for final build:** motor and CR-servo `.power()` resolve their
+    outputs immediately, and regulated feedback answers can resolve an encoder before `build()`.
+    Public staged-builder objects are also mutable aliases: a caller can retain the group step,
+    create a downstream velocity/position builder that retains the same private parent list, and
+    then call another `andMotor(...)`, `andServo(...)`, or `andCrServo(...)`. A one-time transition
+    check can therefore be bypassed unless the group is copied/sealed or every later resolution
+    revalidates it. Repository callers all use ordinary inline chains, so a private validate-before-
+    add invariant is both smaller and stronger than snapshots, sealing, or repeated late checks.
+  - **FTC SDK identity fact:** this repository pins FTC SDK `RobotCore` 11.1.0. Inspection of the
+    pinned `HardwareMap.get(...)`, `tryGet(...)`, and insertion bytecode confirms that the SDK calls
+    `String.trim()` and then performs an ordinary case-sensitive map lookup. The configuration-
+    identity key for this change is therefore `name.trim()` with case-sensitive equality:
+    `"left"` and `" left "` are the same requested device, while `"left"` and `"Left"` remain
+    distinct. Preserve the caller's raw string for lookup and diagnostics; do not lowercase,
+    Unicode-normalize, or claim that different keys prove different physical ports.
+  - **Repository caller audit:** there are 16 executable `andMotor(...)`/`andCrServo(...)` group
+    additions across Phoenix, modern framework tools, and focused tests; there is currently no
+    executable standard-servo group caller, but that parallel public family is documented and
+    supported. Phoenix `ScoringPath` owns one two-CR-servo transfer group. Shooter examples own
+    device-managed motor groups and CR-servo power groups. Motor singles, servo singles, and the
+    existing external-feedback paths remain relevant preserved cases. Within `FtcActuators`, no
+    caller stores, shares, composes, or independently validates a public group-specification value,
+    and no such public value exists; every actuator group is supplied inline from literals,
+    constants, or profile strings.
+  - **Bettabot evidence and exact simplification:** at pinned Summer26 commit
+    [`4eed9d6c`](https://github.com/Hansika1098/Summer26/commit/4eed9d6c7c93c5e2b65bdbc78463ad0be0e87790),
+    `BettaShooter.validateConfig(...)` repeats three conditions—left name null/blank, right name
+    null/blank, and exact left/right equality—across nine source lines before supplying the same
+    names to its grouped `FtcActuators` call. An adopting Bettabot may delete those branches after
+    moving or eliminating its two optional raw telemetry `hardwareMap.get(...)` calls so that the
+    validated Plant construction is the first name-consuming boundary. ACT-01 does not remove the
+    remaining robot-owned RPM, tolerance, counts-per-revolution, gain, or output-power validation,
+    and it does not claim that a short Plant call represents the whole robot subsystem.
+  - **Public-layer and sibling audit:** `FtcHardware` and `FtcSensors` are distinct low-level
+    command/source capabilities rather than duplicate Plant construction layers; their public
+    single-device factories have no within-group identity question and remain outside this item.
+    The audit did find one genuine sibling group: all eight public `FtcDrives.mecanum(...)` overloads
+    converge on the custom-name overload and package-private `FtcHardware.motorPowerGroup(...)`;
+    `FtcMecanumDriveLane` owns that construction for its lane. Unlike `FtcActuators`,
+    `FtcDrives.MecanumWiringConfig` is deliberately a reusable public wiring value with
+    `defaults()`/`copy()` and profile/tool/calibrator callers. Its four names currently reach the
+    group helper, which interleaves validation with lookup and accepts blank or SDK-trim-equivalent
+    duplicates. `FtcDrives.setZeroPowerBehavior(...)` consumes the same wiring value directly.
+    Pedro's `PedroPathingRuntime.create(...)` consumes reusable vendor `MecanumConstants`; its
+    independent preflight already rejects blank and exact duplicate names, but its used-name set
+    does not yet use the SDK's trimmed identity key.
+  - **Alternatives compared:** documentation alone and robot-local checks leave double resolution/
+    commands possible and repeat framework-owned knowledge. Validation only inside SDK lookup is too
+    late, misses several group paths, and may initialize/configure hardware first. A final-build or
+    domain-transition-only check is bypassable through retained stage aliases unless the builder is
+    copied or sealed. A public `HardwareName`, group spec, builder, or registry adds a student-facing
+    concept even though callers only provide inline strings; a global/per-`HardwareMap` registry
+    also invents release/handoff lifecycle and would reject legitimate independent builds and
+    feedback sharing. Java object-identity comparison requires lookup and still cannot prove
+    physical-port identity under arbitrary SDK/vendor aliases.
+  - **Recommended `FtcActuators` design:** keep every public nested interface, method, argument,
+    return type, and valid fluent call unchanged. Use one shared private validate-and-add path for
+    `motor`/`andMotor`, `servo`/`andServo`, and `crServo`/`andCrServo`. Before mutating the private
+    spec list, validate in the existing observable order—null name, null direction, trim-empty
+    name, duplicate trimmed key, then mutation—and reject a case-sensitive trimmed key already used
+    by that one homogeneous commanded group. Preserve the existing null exception types/messages
+    and failed-add non-mutation. Internal named-encoder membership should compare the same SDK-
+    equivalent key, so harmless surrounding whitespace does not create a second identity rule.
+  - **Recommended mecanum parity:** because API parallelism and the same double-command hazard make
+    an FtcActuators-only fix incomplete, prevalidate the complete package-private motor-power group
+    before its first `HardwareMap` lookup and apply the same check before direct mecanum zero-power-
+    behavior configuration. Make Pedro's existing duplicate-name preflight use the same trimmed,
+    case-sensitive key. Keep any shared FTC helper package-private; add no public name/group API.
+    This is a bounded expansion from the original FtcActuators-only leading hypothesis and is the
+    reason implementation requires explicit approval.
+  - **Ownership and escape hatches preserved:** uniqueness is scoped only to commanded members of
+    one actuator or drivetrain group. A regulated Plant may deliberately use
+    `.externalEncoder(...)` or an internal-encoder selector naming one selected motor, including the
+    Bettabot left flywheel's encoder channel. Separate read-only feedback may be shared, and
+    separately constructed Plants/modes may reuse one configured name; ACT-01 does not make
+    simultaneous writers valid or add hidden ownership state. Different trimmed keys are accepted
+    without claiming they are different physical hardware.
+  - **Error contract:** blank/duplicate failures occur at the earliest fully informed group
+    boundary, before the rejected member enters the private spec or that add can cause any new
+    lookup/configuration effect. A caller may already have resolved the earlier valid group through
+    a retained public stage alias; validation cannot erase that prior work, but rejection neither
+    mutates that group nor adds another side effect. Messages identify `FtcActuators`, FTC motor-
+    power/mecanum, or Pedro ownership as applicable; name the actuator family/member or configured
+    field; show the offending raw/effective name and earlier conflict where useful; and tell the
+    student to use a distinct configured hardware name. Missing and wrong-type real devices remain
+    ordinary SDK lookup failures after the complete name specification passes.
+  - **Bounded implementation scope:** limit production edits to private FTC group-name validation,
+    `FtcActuators`' shared add path/internal selected-motor comparison, the package-private motor
+    group, direct mecanum zero-power configuration, and Pedro's existing name-set key. Synchronize
+    only affected Javadocs, Framework Principles, the beginner/overview hardware sections, the FTC
+    actuator-group guide, and relevant Pedro/drive guidance. Do not change robot behavior code,
+    public construction types, low-level single-device factories, mapping mathematics (MAP-01),
+    motor-mode ownership, controller policy, or physical hardware discovery.
+  - **Verification plan:** add focused fake-`HardwareMap` coverage for first/later blank names and
+    exact/trim-equivalent duplicates across motor power/velocity/position, standard-servo position,
+    and CR-servo power/position. For each `FtcActuators` family, cover first/later null name and null
+    direction with the existing exception contract and failed-add non-mutation. For the package-
+    private motor group, cover null/empty/mismatched lists and a later null name/direction before any
+    lookup. For fresh invalid groups, assert zero lookup, direction, mode, power, position, velocity,
+    `setPositionPIDFCoefficients`, `setVelocityPIDFCoefficients`,
+    `setTargetPositionTolerance`, and `setZeroPowerBehavior` side effects. Use a fake
+    `HardwareMap` that emulates SDK-trimmed lookup; cover actionable messages, accepted case-
+    distinct configured keys, valid surrounding whitespace, and a retained stage alias whose
+    earlier valid resolution remains unchanged with no additional effect after a rejected add.
+    Preserve the same powered motor as external velocity feedback and external position feedback—
+    including a trim-equivalent spelling—canonical `internalEncoder(String)` selection, direct-
+    power, device-managed, regulated, servo, CR-servo, and separate-Plant reuse cases. Cover all
+    converged FtcDrives construction plus direct zero-power configuration and Pedro trimmed-key
+    parity. Run the focused FTC/Pedro suites, full `:TeamCode:testDebugUnitTest`,
+    `:TeamCode:compileDebugJavaWithJavac`, XML counts, exhaustive caller/API searches,
+    documentation-link/diff/whitespace checks, independent reviews, and Android Studio inspection.
+    This is a string/specification safety contract; no physical robot run is needed.
+  - **Approval gate:** the private add-time FtcActuators invariant preserves and simplifies the
+    leading hypothesis, but extending SDK-equivalent group validation to the supported FTC/Pedro
+    mecanum siblings materially broadens the original scope. It is also a public invalid-input
+    timing/behavior change across supported construction paths. Do not edit Java implementation
+    until the user explicitly approves this expanded ACT-01 design.
+  - **Design approval (2026-07-17):** user approved the expanded ACT-01 design, including private
+    SDK-equivalent validation for `FtcActuators`, FTC mecanum owners, and Pedro's existing mecanum
+    preflight. Gate 2 implementation is authorized for this item only.
+  - **Gate 2 implementation (2026-07-17):**
+    - Added one package-private FTC name-group helper that uses the SDK's trimmed, case-sensitive
+      identity key while preserving raw lookup strings and exposing no student-facing type.
+      `FtcActuators` now routes motor, standard-servo, and CR-servo additions through one private
+      null-name → null-direction → blank-name → duplicate-name → mutation invariant. Its named
+      internal-encoder selectors use the same identity key.
+    - `FtcHardware.motorPowerGroup(...)` now validates the complete list shape and every
+      name/direction before its first lookup. `FtcDrives`' eight factory overloads continue to
+      converge there, while direct zero-power/brake configuration prevalidates the same reusable
+      wiring names. `FtcMecanumDriveLane` inherits the check through its existing owner path.
+    - Pedro's existing `MecanumConstants` preflight now stores trimmed case-sensitive keys, so a
+      trim-equivalent duplicate fails before vendor drivetrain construction. No public method,
+      argument, return type, staged answer, or valid robot call changed.
+    - Synchronized Javadocs, Framework Principles, the beginner/overview/FTC actuator guides, the
+      Pedro lifecycle reference, and Pedro integration guidance. Framework documentation contains
+      no downstream case-study project reference.
+  - **Automated verification (2026-07-17):**
+    - Focused ACT-01 suites passed: `FtcActuatorGroupIdentityValidationTest` 18/18 and
+      `PedroPathingRuntimeValidationTest` 5/5, with zero failures, errors, or skips.
+    - Full
+      `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` completed successfully:
+      54 XML suites, 539 tests, zero failures, zero errors, and zero skips. Output contained only
+      the repository's existing Java-8-on-JDK-21 source/target warnings and deprecated FTC controller
+      sample note.
+    - `git diff --check` and a changed-plus-untracked trailing-whitespace scan passed. Exhaustive
+      caller/construction searches confirmed the private helper boundary, both package-private motor-
+      group callers, all converged FtcDrives paths, Pedro preflight, preserved feedback sharing, and
+      no added public/protected production signature. Independent implementation/API, tests, and
+      documentation reviews reported no remaining findings.
+  - **Manual verification scope:** inspect the private validation/error messages, unchanged
+    staged call sites, FtcDrives/Pedro parity, same-channel feedback exception, tests, and
+    synchronized docs in Android Studio. No physical robot run is required for this configuration-
+    string contract; a robot run cannot prove that differently named configuration entries identify
+    different physical devices.
+  - **Manual verification (2026-07-17):** user reviewed the ACT-01 implementation in Android Studio
+    and confirmed that it looks good. Gate 3 finalization and publication are authorized for this
+    item only.
 
 ### CAL-01 - Calibration-search power validation
 

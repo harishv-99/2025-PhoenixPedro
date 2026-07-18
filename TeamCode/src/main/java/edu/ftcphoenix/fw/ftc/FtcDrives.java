@@ -3,6 +3,7 @@ package edu.ftcphoenix.fw.ftc;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -76,7 +77,9 @@ import edu.ftcphoenix.fw.drive.MecanumDrivebase;
  * robot code focused on behavior (how the robot should move) instead of
  * wiring details. The standard helper also resolves the complete motor group and preflights every
  * raw-power mode before requested wheel-power fan-out; the sequential hardware writes themselves
- * are not atomic.</p>
+ * are not atomic. Mecanum motor names must be nonblank and distinct under the FTC SDK's trimmed,
+ * case-sensitive lookup contract; invalid wiring is rejected before the first group lookup or
+ * configuration write.</p>
  */
 public final class FtcDrives {
 
@@ -113,7 +116,9 @@ public final class FtcDrives {
      * Hardware wiring for a mecanum drivetrain.
      *
      * <p>This bundles motor names and directions into a single object so robot configs and testers
-     * can pass wiring around without picking among multiple factory overloads.</p>
+     * can pass wiring around without picking among multiple factory overloads. Each consuming
+     * helper requires four nonblank names that remain distinct after surrounding whitespace is
+     * trimmed; case remains significant.</p>
      */
     public static final class MecanumWiringConfig {
 
@@ -189,6 +194,9 @@ public final class FtcDrives {
      * Creates a mecanum drivebase from a {@link MecanumWiringConfig} bundle.
      *
      * <p>This is a convenience overload that uses {@link MecanumDrivebase.Config#defaults()}.</p>
+     *
+     * @throws IllegalArgumentException if the wiring contains a null/blank name,
+     * trim-equivalent duplicate names, or a null direction
      */
     public static MecanumDrivebase mecanum(HardwareMap hw, MecanumWiringConfig wiring) {
         return mecanum(hw, wiring, MecanumDrivebase.Config.defaults());
@@ -200,6 +208,8 @@ public final class FtcDrives {
      * @param hw     hardware map
      * @param wiring motor names/directions
      * @param config mecanum drive config (if null, {@link MecanumDrivebase.Config#defaults()} is used)
+     * @throws IllegalArgumentException if the wiring contains a null/blank name,
+     * trim-equivalent duplicate names, or a null direction
      */
     public static MecanumDrivebase mecanum(HardwareMap hw, MecanumWiringConfig wiring, MecanumDrivebase.Config config) {
         if (wiring == null) {
@@ -234,6 +244,8 @@ public final class FtcDrives {
      * @param hw       FTC hardware map
      * @param wiring   mecanum wiring bundle (motor names)
      * @param behavior desired behavior when commanded power is zero
+     * @throws IllegalArgumentException if the wiring contains a blank or SDK-trim-equivalent
+     * duplicate motor name
      */
     public static void setZeroPowerBehavior(HardwareMap hw, MecanumWiringConfig wiring, DcMotor.ZeroPowerBehavior behavior) {
         if (hw == null) {
@@ -245,6 +257,7 @@ public final class FtcDrives {
         if (behavior == null) {
             throw new IllegalArgumentException("behavior is required");
         }
+        requireDistinctMecanumNames(wiring);
 
         hw.get(DcMotor.class, wiring.frontLeftName).setZeroPowerBehavior(behavior);
         hw.get(DcMotor.class, wiring.frontRightName).setZeroPowerBehavior(behavior);
@@ -345,7 +358,8 @@ public final class FtcDrives {
      * @param brName      configured device name for the back-right motor
      * @param brDirection logical direction for the back-right motor
      * @return a new {@link MecanumDrivebase} wired to the four configured motors
-     * @throws IllegalArgumentException if {@code hw} is {@code null}, any name is {@code null}, or any direction is {@code null}
+     * @throws IllegalArgumentException if {@code hw} is {@code null}, any name is null/blank,
+     * any two names select the same FTC configured entry after trimming, or any direction is null
      */
     public static MecanumDrivebase mecanum(HardwareMap hw,
                                            String flName, Direction flDirection,
@@ -439,7 +453,8 @@ public final class FtcDrives {
      * @param brDirection logical direction for the back-right motor
      * @param config      configuration/tuning for the drivebase; if {@code null}, defaults are used
      * @return a new {@link MecanumDrivebase}
-     * @throws IllegalArgumentException if {@code hw} is {@code null}, any name is {@code null}, or any direction is {@code null}
+     * @throws IllegalArgumentException if {@code hw} is null, any name is null/blank, any two names
+     * select the same FTC configured entry after trimming, or any direction is null
      */
     public static MecanumDrivebase mecanum(HardwareMap hw,
                                            String flName, Direction flDirection,
@@ -469,6 +484,25 @@ public final class FtcDrives {
                 motors.get(2),
                 motors.get(3),
                 cfg);
+    }
+
+    /**
+     * Validate direct wiring consumers before any SDK lookup or configuration effect.
+     */
+    private static void requireDistinctMecanumNames(MecanumWiringConfig wiring) {
+        String[] labels = {"front-left motor", "front-right motor", "back-left motor",
+                "back-right motor"};
+        String[] names = {wiring.frontLeftName, wiring.frontRightName, wiring.backLeftName,
+                wiring.backRightName};
+        List<String> acceptedNames = new ArrayList<>(names.length);
+        for (int i = 0; i < names.length; i++) {
+            FtcHardwareNameGroups.requireNewMember(
+                    "FtcDrives mecanum wiring",
+                    labels[i],
+                    names[i],
+                    acceptedNames);
+            acceptedNames.add(names[i]);
+        }
     }
 
     // ----------------------------------------------------------------------

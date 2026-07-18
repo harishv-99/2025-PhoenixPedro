@@ -240,6 +240,18 @@ The builder has three stages:
     * `.servo(name, direction)` then (optional) `.andServo(name, direction)`
     * `.crServo(name, direction)` then (optional) `.andCrServo(name, direction)`
 
+   FTC trims surrounding whitespace when it looks up a configured hardware name, but matching
+   remains case-sensitive. Phoenix uses that same rule for each homogeneous command group: names
+   must be nonblank and distinct after trimming, so `"left"` and `" left "` conflict while
+   `"left"` and `"Left"` do not. An invalid addition is rejected before it joins the group and
+   without additional hardware effects, even if code retained and reused an earlier builder stage.
+   The same group rule applies to mecanum motor wiring.
+
+   This check catches configuration-string mistakes without adding anything to the fluent call.
+   It does not prove physical wiring or reserve a name across the robot. A regulated Plant may
+   intentionally read feedback through the same configured name as one of its actuators, and
+   separately constructed owners may deliberately reuse a name.
+
 2. **Pick the target domain**:
 
     * `.power()` – open-loop normalized power in `[-1.0, +1.0]` (motors or CR servos). The Plant

@@ -50,6 +50,15 @@ import edu.ftcphoenix.fw.core.source.ScalarTarget;
  * to native velocity {@code 0.0}. Phoenix therefore exposes velocity {@code nativeUnits()} and
  * {@code scaleToNative(...)} mappings, but not an offset-based velocity endpoint map.</p>
  *
+ * <h2>Grouped hardware names</h2>
+ *
+ * <p>Every motor, standard-servo, or CR-servo command group requires nonblank, distinct configured
+ * hardware names. Identity follows the FTC SDK lookup contract: surrounding whitespace is ignored
+ * and case remains significant. Invalid members are rejected when added, before they enter the
+ * private group or cause a new hardware effect. This is group-local command validation, not a
+ * global ownership registry; a separately constructed Plant or a read-only feedback choice may
+ * intentionally use the same configured device name.</p>
+ *
  * <h2>Typical usage</h2>
  *
  * <pre>{@code
@@ -113,16 +122,25 @@ public final class FtcActuators {
     public interface StartStep {
         /**
          * Start building a plant from one or more FTC motors.
+         *
+         * @throws NullPointerException if {@code name} or {@code direction} is null
+         * @throws IllegalArgumentException if {@code name} is blank after FTC-style trimming
          */
         MotorSingleStep motor(String name, Direction direction);
 
         /**
          * Start building a plant from one or more FTC standard servos.
+         *
+         * @throws NullPointerException if {@code name} or {@code direction} is null
+         * @throws IllegalArgumentException if {@code name} is blank after FTC-style trimming
          */
         ServoSingleStep servo(String name, Direction direction);
 
         /**
          * Start building a plant from one or more FTC continuous-rotation servos.
+         *
+         * @throws NullPointerException if {@code name} or {@code direction} is null
+         * @throws IllegalArgumentException if {@code name} is blank after FTC-style trimming
          */
         CrServoSingleStep crServo(String name, Direction direction);
     }
@@ -301,6 +319,10 @@ public final class FtcActuators {
     public interface MotorSingleStep {
         /**
          * Add another motor to the same plant group.
+         *
+         * @throws NullPointerException if {@code name} or {@code direction} is null
+         * @throws IllegalArgumentException if the name is blank or selects an earlier motor after
+         * FTC-style trimming
          */
         MotorGroupAddedStep andMotor(String name, Direction direction);
 
@@ -396,6 +418,7 @@ public final class FtcActuators {
 
         /**
          * Use one named selected motor's SDK-reported internal encoder velocity in native ticks/sec.
+         * Matching ignores surrounding whitespace like FTC lookup and remains case-sensitive.
          */
         MotorRegulatedVelocityRegulatorStep internalEncoder(String motorName);
 
@@ -559,6 +582,7 @@ public final class FtcActuators {
 
         /**
          * Use one named selected motor's internal encoder position in native ticks.
+         * Matching ignores surrounding whitespace like FTC lookup and remains case-sensitive.
          */
         MotorRegulatedPositionRegulatorStep internalEncoder(String motorName);
 
@@ -600,6 +624,10 @@ public final class FtcActuators {
     public interface ServoSingleStep {
         /**
          * Add another standard servo to the same plant group.
+         *
+         * @throws NullPointerException if {@code name} or {@code direction} is null
+         * @throws IllegalArgumentException if the name is blank or selects an earlier servo after
+         * FTC-style trimming
          */
         ServoGroupAddedStep andServo(String name, Direction direction);
 
@@ -678,6 +706,10 @@ public final class FtcActuators {
     public interface CrServoSingleStep {
         /**
          * Add another continuous-rotation servo to the same plant group.
+         *
+         * @throws NullPointerException if {@code name} or {@code direction} is null
+         * @throws IllegalArgumentException if the name is blank or selects an earlier CR servo
+         * after FTC-style trimming
          */
         CrServoGroupAddedStep andCrServo(String name, Direction direction);
 
@@ -1191,7 +1223,7 @@ public final class FtcActuators {
         }
         if (motorName != null) {
             for (MotorBuilder.Spec spec : motorSpecs) {
-                if (spec.name.equals(motorName)) {
+                if (FtcHardwareNameGroups.sameConfiguredName(spec.name, motorName)) {
                     return FtcSensors.motorPositionTicks(hw, spec.name);
                 }
             }
@@ -1220,7 +1252,7 @@ public final class FtcActuators {
         }
         if (motorName != null) {
             for (MotorBuilder.Spec spec : motorSpecs) {
-                if (spec.name.equals(motorName)) {
+                if (FtcHardwareNameGroups.sameConfiguredName(spec.name, motorName)) {
                     return FtcSensors.motorVelocityTicksPerSec(hw, spec.name);
                 }
             }
@@ -1233,6 +1265,31 @@ public final class FtcActuators {
                     + "averageInternalEncoders(), or externalEncoder(...).");
         }
         return FtcSensors.motorVelocityTicksPerSec(hw, motorSpecs.get(0).name);
+    }
+
+    /**
+     * Validate and append one member without exposing a second public hardware-group type.
+     *
+     * <p>Validation order is observable and intentional: name null, direction null, blank
+     * FTC-effective name, duplicate FTC-effective name, then mutation.</p>
+     */
+    private static int addActuatorSpec(List<MotorBuilder.Spec> specs,
+                                       String family,
+                                       String name,
+                                       Direction direction) {
+        String requiredName = Objects.requireNonNull(name, "name");
+        Direction requiredDirection = Objects.requireNonNull(direction, "direction");
+        List<String> earlierNames = new ArrayList<>(specs.size());
+        for (MotorBuilder.Spec spec : specs) {
+            earlierNames.add(spec.name);
+        }
+        FtcHardwareNameGroups.requireNewMember(
+                "FtcActuators",
+                family + " member " + (specs.size() + 1),
+                requiredName,
+                earlierNames);
+        specs.add(new MotorBuilder.Spec(requiredName, requiredDirection));
+        return specs.size() - 1;
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -1262,8 +1319,7 @@ public final class FtcActuators {
         }
 
         private void addMotorInternal(String name, Direction direction) {
-            specs.add(new Spec(name, direction));
-            lastIndex = specs.size() - 1;
+            lastIndex = addActuatorSpec(specs, "motor", name, direction);
         }
 
         @Override
@@ -1846,8 +1902,7 @@ public final class FtcActuators {
         }
 
         private void addServoInternal(String name, Direction direction) {
-            specs.add(new MotorBuilder.Spec(name, direction));
-            lastIndex = specs.size() - 1;
+            lastIndex = addActuatorSpec(specs, "standard-servo", name, direction);
         }
 
         @Override
@@ -1974,8 +2029,7 @@ public final class FtcActuators {
         }
 
         private void addCrServoInternal(String name, Direction direction) {
-            specs.add(new MotorBuilder.Spec(name, direction));
-            lastIndex = specs.size() - 1;
+            lastIndex = addActuatorSpec(specs, "CR servo", name, direction);
         }
 
         @Override
