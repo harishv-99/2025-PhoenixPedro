@@ -43,7 +43,8 @@ public final class FtcMecanumDriveLane implements DriveCommandSink {
     public static final class Config {
 
         /**
-         * FTC motor names and logical directions for the four mecanum motors.
+         * FTC motor names and logical directions for the four mecanum motors. Names must be
+         * nonblank and distinct under the FTC SDK's trimmed, case-sensitive lookup identity.
          */
         public FtcDrives.MecanumWiringConfig wiring = FtcDrives.MecanumWiringConfig.defaults();
 
@@ -92,6 +93,8 @@ public final class FtcMecanumDriveLane implements DriveCommandSink {
      *
      * @param hardwareMap FTC hardware map used to create and configure drive hardware
      * @param config lane config; defensively copied for local ownership
+     * @throws IllegalArgumentException if the copied wiring has a blank or trim-equivalent
+     * duplicate motor name
      */
     public FtcMecanumDriveLane(HardwareMap hardwareMap, Config config) {
         Objects.requireNonNull(hardwareMap, "hardwareMap");

@@ -161,6 +161,11 @@ The normal edit path is:
 7. **Keep the OpMode thin.** Construct during INIT, forward START/loop/STOP, and display required
    placement/readiness facts. Do not move the routine into the OpMode.
 
+The Pedro runtime checks its four mecanum motor names using FTC's trimmed, case-sensitive lookup
+identity. Blank or trim-equivalent duplicate names fail before fresh drivetrain hardware resolution
+or configuration. That catches a configuration-string mistake, but it does not prove that four
+differently named Robot Configuration entries are wired to four different physical motors.
+
 ## Portability boundary
 
 The four independent reference classes have no dependency on another robot project or its hardware

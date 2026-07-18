@@ -72,6 +72,29 @@ builder. A finite request outside that range clamps before the output. The Plant
 `CLAMPED_TO_RANGE` when that clamp remains the active final transform; a later rate limit,
 interlock, or fallback may report its more specific status instead.
 
+### Grouped hardware-name identity
+
+The student-facing calls stay unchanged, but grouped construction validates the configured names
+before it touches new group hardware. The FTC SDK trims surrounding whitespace before a
+case-sensitive lookup, so Phoenix uses the same effective identity:
+
+* `"left"` and `" left "` select the same configured name and cannot both belong to one group.
+* `"left"` and `"Left"` remain distinct configured names.
+* The caller's original string is retained for FTC lookup and diagnostics.
+
+Each motor, standard-servo, or CR-servo command group requires nonblank, distinct names under that
+rule. A name is checked before it is accepted into the staged group, and the complete group is
+preflighted before fresh hardware resolution or configuration. If code retains an earlier builder
+stage and later tries to add a bad member through that alias, rejection does not mutate the group or
+cause additional hardware effects.
+
+This check is intentionally scoped to one homogeneous command group. It does not prove that two
+different Robot Configuration entries identify different physical devices, and it is not a global
+ownership registry. The same name may be used by separately constructed owners when robot lifecycle
+policy makes that reuse intentional. Feedback is also a separate role: a regulated Plant may
+deliberately read an internal or external encoder through the same configured name as one of its
+commanded actuators.
+
 ### FTC motor run-mode ownership
 
 The core `PowerOutput` interface is hardware-neutral; it does not promise that every implementation

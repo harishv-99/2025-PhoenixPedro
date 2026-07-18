@@ -68,6 +68,10 @@ public final class PedroPathingRuntime {
      * public four-argument constructor after validation, containing that vendor global-state trap
      * while retaining the exact configured drivetrain, localizer, and constraints.</p>
      *
+     * <p>The four mecanum motor names must also be nonblank and distinct under the FTC SDK's
+     * trimmed, case-sensitive lookup identity. That complete configuration check finishes before
+     * Pedro constructs or configures drivetrain hardware.</p>
+     *
      * @param hardwareMap FTC hardware registry used only to construct the native Pedro drivetrain
      * @param motionPredictor already-created sole Pinpoint owner with controlled INIT reset enabled
      * @param followerConstants Pedro controller/follower tuning
@@ -368,6 +372,9 @@ public final class PedroPathingRuntime {
         }
     }
 
+    /**
+     * Validate Pedro drivetrain wiring and tuning before vendor hardware construction.
+     */
     static void validateMecanumConstants(MecanumConstants constants) {
         MecanumConstants value = Objects.requireNonNull(constants, "mecanumConstants");
         Set<String> motorNames = new HashSet<String>();
@@ -529,9 +536,12 @@ public final class PedroPathingRuntime {
                                                   String fieldName,
                                                   Set<String> usedNames) {
         requireHardwareName(name, fieldName);
-        if (!usedNames.add(name)) {
+        String effectiveName = name.trim();
+        if (!usedNames.add(effectiveName)) {
             throw new IllegalArgumentException(
-                    fieldName + " duplicates motor hardware name '" + name + "'"
+                    fieldName + " duplicates motor hardware name after FTC trimming: raw='"
+                            + name + "', effective='" + effectiveName
+                            + "'; use a distinct configured hardware name"
             );
         }
     }

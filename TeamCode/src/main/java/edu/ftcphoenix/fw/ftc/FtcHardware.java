@@ -109,10 +109,12 @@ public final class FtcHardware {
     /**
      * Resolve and coordinate a framework-owned group of named FTC raw-power motors.
      *
-     * <p>Every device is resolved before direction is configured. On each complete ordered group
-     * command, the first child write preflights every member's raw-power mode before any requested
-     * child power is submitted. This package-private factory lets FTC builders preserve that safety
-     * invariant without adding a public grouping or run-mode concept.</p>
+     * <p>The complete list shape, every member's name/direction, and SDK-trim-equivalent name
+     * uniqueness are validated before the first hardware lookup. Every device is then resolved
+     * before direction is configured. On each complete ordered group command, the first child write
+     * preflights every member's raw-power mode before any requested child power is submitted. This
+     * package-private factory lets FTC builders preserve those safety invariants without adding a
+     * public grouping or run-mode concept.</p>
      */
     static List<PowerOutput> motorPowerGroup(HardwareMap hw,
                                              List<String> names,
@@ -124,10 +126,22 @@ public final class FtcHardware {
                     "motor names and directions must be non-empty and have matching sizes");
         }
 
+        List<String> acceptedNames = new ArrayList<>(names.size());
+        for (int i = 0; i < names.size(); i++) {
+            String name = names.get(i);
+            Direction direction = directions.get(i);
+            requireName(name);
+            requireDirection(direction);
+            FtcHardwareNameGroups.requireNewMember(
+                    "FTC motor-power group",
+                    "motor member " + (i + 1),
+                    name,
+                    acceptedNames);
+            acceptedNames.add(name);
+        }
+
         List<DcMotorEx> motors = new ArrayList<>(names.size());
         for (int i = 0; i < names.size(); i++) {
-            requireName(names.get(i));
-            requireDirection(directions.get(i));
             motors.add(hw.get(DcMotorEx.class, names.get(i)));
         }
 

@@ -135,6 +135,14 @@ Phoenix is designed around a few core goals:
    When something is misconfigured, Phoenix should throw early (often at build-time) with an
    error message that tells a student what to change. Avoid silent no-ops.
 
+   At the FTC boundary, every homogeneous actuator or mecanum command group must use nonblank,
+   distinct configured names under the FTC SDK's trimmed, case-sensitive lookup identity. Validate
+   each name before accepting it into a group and preflight the complete group before fresh hardware
+   resolution or configuration. Rejecting a bad addition through a retained staged-builder alias
+   must cause no additional hardware effects. This is a group-local configuration invariant, not
+   proof of physical device identity or a global ownership registry: feedback may intentionally read
+   the same configured device, and separate owners may reuse a name when their lifecycles permit it.
+
    Component construction and complete-behavior readiness are different facts. A component should
    validate the configuration it owns; when safe operation also depends on several robot-owned
    facts, combine those facts once at the mode boundary in a small immutable robot-specific
@@ -358,6 +366,18 @@ The builder is staged on purpose:
    * mapping/reference: `nativeUnits()`, `scaleToNative(...)`, bounded-only `rangeMapsToNative(...)`, then `alreadyReferenced()`, `plantPositionMapsToNative(...)`, `assumeCurrentPositionIs(...)`, or `needsReference(...)` when a runtime reference is required
 4. **Optional hardware guards**: enter `targetGuards()` for dynamic Plant-level protection such as `maxTargetRate(...)`, `holdLastTargetUnless(...)`, or `fallbackTargetUnless(...)`.
 5. **Target binding**: finish with `targetedBy(ScalarTarget)`, `targetedBy(readOnlySource)`, or `targetedByDefaultWritable(initialTarget)`, then `build()`.
+
+Configured hardware names keep FTC's own identity semantics: surrounding whitespace is trimmed for
+lookup and comparison, while case remains significant. Within one motor, standard-servo, or
+CR-servo command group, names must therefore be nonblank and distinct after trimming. Phoenix
+checks a name before accepting it into the staged group and validates the complete group before
+fresh hardware resolution or configuration, without changing the fluent call site.
+
+That check is deliberately local to the commanded group. It does not prove that differently named
+configuration entries are different physical devices, reserve a name globally, or prohibit a
+regulated Plant from reading feedback through the same configured name. Separately constructed
+owners may also refer to the same configured name when robot lifecycle policy makes that handoff
+intentional.
 
 Internally, Phoenix also has lower-level `Plants` factory helpers, but student code should typically prefer `FtcActuators`.
 
