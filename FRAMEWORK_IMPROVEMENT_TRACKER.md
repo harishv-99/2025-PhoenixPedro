@@ -86,7 +86,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 22 | FTC-01 | FTC raw motor-power run-mode ownership | Done | Make the FTC motor-power boundary consistently own `RUN_WITHOUT_ENCODER` without another student-facing choice. |
 | 23 | API-03 | PID and linear-PIDF configuration ownership | Done | Keep plain PID error-centric and add one factory-only standard PIDF regulator that owns all four gains and live tuning as one validated update. |
 | 24 | TUNE-01 | Live tuning to checked-in profile | Done | Document one explicit test-mode PIDF tune/apply/record workflow; add no tuner API because API-03 exposes the complete gain update and realization already owns outer reset. |
-| 25 | ROUTE-03 | Factory-only route Task configuration | Proposed | Keep `RouteTasks` as the sole construction layer and replace one-field mutable/null configuration ceremony with one explicit route-timeout answer if the caller audit confirms it. |
+| 25 | ROUTE-03 | Factory-only route Task configuration | Done | Use one named factory-only layer with direct bounded or explicit no-Task-timeout policy. |
 | 26 | ACT-01 | FTC actuator-group identity validation | Proposed | Reject blank and duplicate group members before resolving or configuring hardware. |
 | 27 | COMMON-01 | Initialization runtime helper | Proposed | Use the complete Pedro reference cost to extract only repeated retry/error/cleanup ceremony; avoid a robot base class or hidden loop. |
 | 28 | AUTO-01 | Compact bounded Auto continuation | Proposed | Use another real routine to separate reusable lifecycle ceremony from robot-owned match and recovery policy. |
@@ -129,13 +129,14 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 The completed order was intentionally front-loaded with testability, robot lifecycle, actuator
 safety, deterministic Task behavior, Pedro ownership, truthful route outcomes, and the reusable
 pieces already proven by Bettabot's shooter. The remaining order was re-audited on 2026-07-17
-against the still-current Summer26/Bettabot commit `4eed9d6c` and the complete 630-line Pedro
+against the still-current Summer26/Bettabot commit `4eed9d6c` and the complete 626-line Pedro
 reference rather than against short outer calls.
 
-The next decision-gate cluster is now TUNE-01, ROUTE-03, ACT-01, and COMMON-01. TUNE-01 has the
+The next decision-gate cluster selected on 2026-07-17 was TUNE-01, ROUTE-03, ACT-01, and COMMON-01.
+TUNE-01 had the
 largest potential shooter payoff after API-03, but it must prove a net reduction in all tuner and
-OpMode robot code rather than merely introduce a short framework call. ROUTE-03 splits the
-factory/configuration portion out of broad CLEAN-01 because a simple route currently needs a
+OpMode robot code rather than merely introduce a short framework call. ROUTE-03 split the
+factory/configuration portion out of broad CLEAN-01 because the pre-change simple route needed a
 mutable one-field `RouteTask.Config`, nullable defaults, and a public construction family that
 duplicates the `RouteTasks` facade. ACT-01 is a small but concrete Bettabot simplification:
 `FtcActuators` already knows the complete two-motor group and can own blank/duplicate identity
@@ -274,7 +275,7 @@ without reopening those designs:
 | 1 | TUNE-01 | Potentially replaces the roughly 100-line two-way Dashboard synchronization owner with one explicit four-gain tune, validate, apply/reset, and record workflow. | Compare the complete tuner plus OpMode surface after API-03 against a small robot-local solution. This repository currently uses Pedro Panels and has no FTC Dashboard dependency; do not add a vendor dependency or generic tuning language unless total robot code and concepts decrease. |
 | 2 | ROUTE-03 | Makes each fixed or start-time Pedro route choose its name, route source, follower, and timeout directly through one factory layer instead of constructing a mutable one-field config or discovering parallel constructors. | Audit every factory, constructor, default/named overload, config caller, and return type. This is a major public-API decision and requires approval before implementation. |
 | 3 | ACT-01 | Would let an adopting Bettabot delete blank and duplicate left/right flywheel motor-name checks after the fully informed grouped-actuator boundary owns them, without changing the valid staged call. | Preserve intentional external-feedback reuse of a powered motor's own port and avoid a global hardware registry. |
-| 4 | COMMON-01 | The independent Pedro reference proves that 426 of its 630 source lines are in the composition root and FTC host rather than paths, capabilities, or the semantic routine. | Separate genuinely repeated INIT/retry/partial-cleanup mechanics from required robot ownership. Split another narrowly named item if recurring Auto-root lifecycle is proven but does not fit this initialization scope. |
+| 4 | COMMON-01 | The independent Pedro reference proves that 426 of its 626 source lines are in the composition root and FTC host rather than paths, capabilities, or the semantic routine. | Separate genuinely repeated INIT/retry/partial-cleanup mechanics from required robot ownership. Split another narrowly named item if recurring Auto-root lifecycle is proven but does not fit this initialization scope. |
 | 5 | AUTO-01 | Could prevent copying Phoenix's large bounded-pre-park continuation state machine when Bettabot adds a match-time park policy. | EXAMPLE-02 supplies one reference, but a second materially different bounded routine is still required. A simple one-route Auto should not wait for this item or justify an Auto DSL. |
 | 6 | SOURCE-03 | Could improve position-derived flywheel feedback and avoid a future robot-local filter. | Cuttlefish supplies the second real caller, not the correct algorithm. Require real traces and compare noise rejection against control delay under irregular loop periods; never add implicit smoothing. |
 
@@ -1558,6 +1559,8 @@ writer, and explicit lifecycle ownership.
     at start, while `deferred` is jargon and `generated` omits when generation occurs. Do not add a
     public supplier constructor, `RouteFactory` type, builder, or second Task class; `RouteTasks`
     uses an internal/package-private construction path in the existing `RouteTask`.
+    ROUTE-03 later superseded the default/named/config construction spellings while preserving this
+    eager-versus-start-time capability distinction.
   - **Chosen lifecycle, failure, and debug contract:** validate the supplier when the Task is built,
     record the Task's single start attempt before invoking it, and call it exactly once at that
     Task's own `start(clock)` boundary. Never invoke it during task construction, pre-start
@@ -1679,9 +1682,142 @@ writer, and explicit lifecycle ownership.
   cancellation, status, single-use, and start-time construction behavior remain unchanged; the
   Pedro reference visibly loses config ceremony. No robot hardware validation is required for this
   pure API cleanup.
-- **Decision record:** _Pending; split from CLEAN-01 and promoted for Bettabot's first simple Pedro
-  routes on 2026-07-17. This is a breaking public-API decision and must stop for explicit design
-  approval before implementation._
+- **Decision record (2026-07-17):**
+  - **Confirmed construction and timeout behavior:** `RouteTasks` exposes four public factories and
+    `RouteTask` exposes two equivalent public eager constructors, for six public construction
+    spellings. The built-at-start implementation is already internal. A nullable config silently
+    creates a fresh ten-second default. The constructor retains a caller's mutable `Config`
+    reference, and `update(...)` plus `debugDump(...)` reread its field, so mutation after
+    construction can change an active Task's deadline and reported configuration. No caller uses
+    that live-mutation behavior deliberately. The current `timeoutSec > 0.0` check treats zero,
+    negative values, `NaN`, and negative infinity as no timeout while positive infinity is an
+    effective no-timeout sentinel. The timeout is checked after execution status, the follower
+    heartbeat, and a second status read, using strict `elapsed > timeoutSec`.
+  - **Complete caller audit:** repository search found 59 executable route-Task constructions:
+    50 through `RouteTasks` (three production/example calls and 47 test calls) and nine direct
+    public constructors. Modern production/example code has
+    only three: the named eager `BasicPedroAutoRoutine` route and Phoenix's named eager outbound
+    plus named built-at-start return. Production code never uses an unnamed factory or direct
+    constructor. The unnamed overloads exist only in nine core-test calls; direct constructors
+    exist only in route/Pedro tests. Phoenix retains the concrete public `RouteTask<R>` result and
+    reads `getRouteStatus()` in its routine coordinators, so the type must remain public even though
+    its constructors need not be.
+  - **Configuration storage and reuse audit:** executable code never stores a `RouteTask.Config` in
+    an owner field, shares one between Tasks, composes it, or independently validates it.
+    `BasicPedroAutoRoutine` creates, mutates, and immediately passes one local config.
+    `PhoenixAutoTasks.routeConfig(...)` wraps the profile's already-owned scalar timeout in a fresh
+    config for each of its two callers. Tests similarly create one-use values; only an illustrative
+    Javadoc snippet reuses one config. The wrapper therefore answers no second question and provides
+    no reusable value semantics. Merely adding `defaults()` or a defensive copy would repair config
+    convention but retain the unnecessary student-facing noun.
+  - **Alternatives and simplicity comparison:** keeping the current API or changing documentation
+    alone preserves six spellings, nullable policy, and mutation risk. Removing constructors while
+    retaining `Config`, or replacing it with an immutable options object, builder, `OptionalDouble`,
+    or timeout-policy type still makes students construct a one-answer wrapper for immediate
+    consumption. A hidden ten-second overload saves one argument but hides a robot safety decision;
+    a zero, negative, or non-finite sentinel is short but ambiguous and silently accepts mistakes.
+    `Tasks.withTimeout(...)` represents a caller-owned outer budget: it returns a generic `Task` and
+    cancels the child through ordinary cancellation, so it cannot replace a retained route-local
+    `RouteStatus.TASK_TIMEOUT`. Requiring a diagnostic name adds no production ceremony because
+    every modern caller already supplies one, makes retained route results actionable, and removes
+    unnamed/default construction paths.
+  - **Chosen public API:** keep `RouteTasks` as the only public construction layer and keep
+    `RouteTask<R>` public solely as the status-bearing result, with no public constructors or public
+    config type. Expose exactly four parallel factories:
+    `follow(debugName, follower, route, taskTimeoutSec)`,
+    `followWithoutTaskTimeout(debugName, follower, route)`,
+    `followBuiltAtStart(debugName, follower, routeFactory, taskTimeoutSec)`, and
+    `followBuiltAtStartWithoutTaskTimeout(debugName, follower, routeFactory)`. The ordinary bounded
+    route remains the shortest path. The longer exceptional method name is deliberate: it disables
+    only `RouteTask`'s deadline and does not promise that a follower cannot report
+    `FOLLOWER_TIMEOUT_OR_STALL`. Eager/start-time argument order and bounded/unbounded naming remain
+    parallel inside the family.
+  - **Validation and timing semantics:** require a non-null, nonblank diagnostic name and reject
+    every timed value that is not finite and greater than zero at factory construction, before a
+    route supplier or follower can run. The error must include the rejected value and point to the
+    corresponding `WithoutTaskTimeout` factory. Internally retain final timeout-enabled state and a
+    primitive value rather than a public sentinel or mutable alias. Start timing at the Task's own
+    `start(clock)` boundary as today. At update, preserve the current evidence order—status,
+    heartbeat, status, deadline—so confirmed follower completion or failure wins; if the execution
+    is still active at `elapsed >= taskTimeoutSec`, retain `TASK_TIMEOUT`. The inclusive boundary
+    matches the framework's other maximum-budget Tasks and avoids an unintended extra loop.
+  - **Student/Bettabot effect:** the basic route loses the config declaration and mutation and
+    becomes one call such as
+    `RouteTasks.follow("BasicPracticeRoute", routes, practiceRoute, 4.0)`. Phoenix passes
+    `profile.auto.routeTimeoutSec` directly and deletes `PhoenixAutoTasks.routeConfig(...)`.
+    Because the basic routine branches only on the broad Task outcome, it also stores that result as
+    `Task` and drops the `RouteTask` import; Phoenix correctly retains `RouteTask<PathChain>` where
+    its coordinator reads precise status. A future Bettabot Pedro routine learns route identity,
+    route source timing, and timeout policy, but no separate config type or null/sentinel rule. This
+    is a modest route-composition simplification; it does not claim to remove Pedro geometry,
+    lifecycle, or autonomous strategy work.
+  - **Rejected and bounded scope:** do not retain deprecated constructors, aliases, unnamed
+    overloads, or `Config`; do not add a builder, options value, hidden default, sentinel, generic
+    timeout substitution, route DSL, or new autonomous policy. `RouteExecution`, `RouteStatus`,
+    cancellation, single-use behavior, start-time supplier resolution, follower ownership, and
+    exact per-start identity remain unchanged. `DriveGuidanceTask.Config` answers several guidance
+    questions and is outside this one-item change; route naming is intentionally stricter because
+    robot policy retains and branches on each route's precise terminal fact.
+  - **Verification plan:** add a focused public-surface test proving the four factories, no public
+    `RouteTask` constructor, and no `RouteTask.Config`. Cover blank names; zero, negative, `NaN`,
+    and both infinities; validation before supplier/follower side effects; bounded and explicitly
+    unbounded eager/start-time routes; the exact inclusive boundary; and follower completion at the
+    boundary taking precedence. Migrate all 59 executable calls and delete
+    `PhoenixAutoTasks.routeConfig(...)`. Re-run the existing route status, single-use, start-time,
+    Pedro adapter, Phoenix routine, and basic example tests; run the full TeamCode unit suite and
+    Java compile; then search for stale constructors/config/null sentinels and synchronize
+    `RouteTask`/`RouteTasks` Javadocs, framework/Pedro guides, Phoenix Architecture, and the compiling
+    Pedro reference. No hardware validation is required for this pure construction/validation
+    change, but Android Studio review remains the manual approval point.
+  - **Approval gate:** the factory-only/direct-timeout leading hypothesis remains viable. The exact
+    four-method public surface, required names, explicit no-Task-timeout names, and inclusive
+    deadline are major API decisions, so implementation must not begin until the user approves this
+    ROUTE-03 design.
+  - **Approval:** the user approved the ROUTE-03 design on 2026-07-17.
+  - **Implementation (2026-07-17):** `RouteTasks` is now the sole public construction layer and
+    exposes exactly the approved four named factories for eager/start-time and bounded/explicitly
+    unbounded routes. `RouteTask` retains its public status-bearing type but has no public
+    constructor or config type. Bounded factories validate a nonblank diagnostic name and a finite,
+    positive Task timeout before route-factory or follower side effects; unbounded factories retain
+    the stable `.timeoutSec` debug key with the value `none`. The deadline is inclusive while the
+    existing follower-status evidence order, cancellation, single-use, and start-time resolution
+    contracts remain intact.
+  - **Robot-code effect:** `BasicPedroAutoRoutine` now supplies its timeout directly and stores the
+    result as the broad `Task` it actually consumes, removing four lines plus the `RouteTask` concept
+    from that beginner routine. Phoenix passes its profile-owned timeout directly and deletes
+    `PhoenixAutoTasks.routeConfig(...)`, while correctly retaining `RouteTask<PathChain>` in the
+    coordinator that reads precise route status. The complete independent Pedro reference is now
+    626 source lines: 200 semantic path/routine/capability lines and 426 composition-root/FTC-host
+    lines, compared with the recorded 630-line pre-ROUTE-03 baseline.
+  - **Automated verification (2026-07-17):** the focused route-core suite passes 58 tests with zero
+    failures, errors, or skips. `:TeamCode:testDebugUnitTest` and
+    `:TeamCode:compileDebugJavaWithJavac` succeed; the final XML result contains 53 suites and 520
+    tests with zero failures, errors, or skips. The only compiler diagnostics are the existing
+    Java-21/source-8 warnings and existing FTC deprecation note.
+  - **Static and documentation verification:** all 59 executable pre-change construction sites
+    migrated. Searches find no external direct constructor, config, nullable-timeout, or removed
+    factory use; the only `new RouteTask` calls are the two package-private internal construction
+    paths. Exact reflection tests enforce the four public factories, no public constructor, and no
+    public config type. `git diff --check`, trailing-whitespace checks across all 20 changed and
+    untracked files, and all 52 local Markdown links in the seven changed Markdown files pass.
+    Framework/Pedro guides, Phoenix Architecture, Javadocs, examples, and historical tracker records
+    are synchronized.
+  - **Independent review (2026-07-17):** separate core-lifecycle, public-API/simplicity, and
+    documentation/principles reviews signed off on the settled tree. Earlier review findings drove
+    preservation of the stable `.timeoutSec` debug key, corresponding invalid-timeout recovery
+    guidance, exact bounded/unbounded debug assertions, current reference counts, and clearer
+    historical tracker framing. The final reviewers report no remaining concrete finding.
+  - **Android Studio audit point (2026-07-17):** ROUTE-03 is **Verifying** and intentionally remains
+    unstaged and uncommitted. Inspect the four-method `RouteTasks` surface, the hidden `RouteTask`
+    construction path, direct timeout use in the beginner and Phoenix routines, exact-boundary and
+    invalid-input tests, and the synchronized guide examples. This is a pure API and Task-timing
+    change; source inspection and unit tests are sufficient, and no robot-hardware result is
+    claimed. Approval authorizes finalization/publication of ROUTE-03 only and does not start
+    another item.
+  - **Manual verification (2026-07-17):** the user reviewed the ROUTE-03 implementation in Android
+    Studio and approved it with `ROUTE-03 looks good`. ROUTE-03 is now **Done**; this approval
+    authorizes Gate 3 finalization, publication, and merge for ROUTE-03 only, not work on the next
+    tracker item.
 
 ### FIELD-01 - Explicit alliance field transforms
 
@@ -2274,10 +2410,11 @@ writer, and explicit lifecycle ownership.
     construction path, while `PhoenixRobot.capabilities()` acquires the robot-owned aggregate rather
     than constructing an alternative. `Targeting.aimTask(...) -> Task` is the capability leaf
     factory. `PhoenixAutoTasks.aimAndShootOne(...)` and `disableFlywheel(...)` are distinct semantic
-    macro factories, while `routeConfig(...)` and `aimConfig(...)` are config adapters; the utility
-    constructor is private and there are no constructor/`of(...)` aliases. PHX-03 adds no parallel
-    public macro, constructor, builder, overload, or route API: both new implementations stay behind
-    the existing public routine/macro factories.
+    macro factories, while `routeConfig(...)` and `aimConfig(...)` were config adapters at this
+    gate; the utility constructor is private and there are no constructor/`of(...)` aliases.
+    PHX-03 adds no parallel public macro, constructor, builder, overload, or route API: both new
+    implementations stay behind the existing public routine/macro factories. ROUTE-03 later removed
+    the one-field `routeConfig(...)` adapter while leaving `aimConfig(...)` unchanged.
   - **Adjacent API disposition:** the audit also found that `RouteTask` still has two public eager
     constructors which duplicate `RouteTasks.follow(...)`, while start-time construction is
     deliberately factory-only, and that `RouteTask.Config` still uses implicit construction/null
@@ -2287,6 +2424,8 @@ writer, and explicit lifecycle ownership.
     Do not add supplier constructors merely for symmetry. The existing `CLEAN-01` gate now explicitly
     records both findings and must perform its own caller/compatibility decision before migrating or
     removing the constructors or normalizing the config construction/default path.
+    ROUTE-03 later completed that audit and removed the duplicated constructors, config, nullable
+    defaults, and unnamed route factories.
   - **Alternatives considered:** leave the sequence and improve only documentation; globally make
     `sequence(...)` short-circuit; add a second generic success-only sequence; nest only the existing
     `branchOnOutcome(...)`; add cancelled/status overloads to generic `Tasks`; add a route-status DSL
@@ -2534,8 +2673,9 @@ writer, and explicit lifecycle ownership.
   - **Built-in timeout audit and ownership rule:** do not remove task-local timeouts as a consequence
     of adding the decorator. They own different semantics: `PlantTasks.move(...).timeout(...)`
     applies its success/timeout `.thenTarget(...)` rather than its cancellation target;
-    `RouteTask.Config.timeoutSec` records `RouteStatus.TASK_TIMEOUT` and uses timeout-specific route
-    cancellation; output-pulse maximums begin at the gated RUN phase and may continue through
+    `RouteTask`'s route-factory-supplied local timeout records `RouteStatus.TASK_TIMEOUT` and uses
+    timeout-specific route cancellation; output-pulse maximums begin at the gated RUN phase and may
+    continue through
     cooldown; calibration's staged `failAfterSec(...)` forces an explicit search-safety choice; and
     guidance's no-guidance window resets when usable guidance returns. The common
     `Tasks.waitUntil(condition, timeoutSec)` overload also remains: it is materially simpler and
@@ -3780,8 +3920,8 @@ writer, and explicit lifecycle ownership.
 
 - **Problem to confirm:** Phoenix Auto and framework testers repeat retry, error reporting, partial
   construction cleanup, and initialization state.
-- **New Pedro evidence (2026-07-17):** the completed independent Pedro reference totals 630 source
-  lines. Its semantic path/routine/capability files are 204 lines, while
+- **New Pedro evidence (2026-07-17, current after ROUTE-03):** the completed independent Pedro
+  reference totals 626 source lines. Its semantic path/routine/capability files are 200 lines, while
   `BasicPedroAutoRobot` and `PhoenixBasicPedroAutoExample` contribute 426 lines for the composition
   root and FTC host. Much of that shell is required ownership, but INIT failure handling, partial
   construction cleanup, one-shot lifecycle guards, and best-effort stop aggregation are concrete
@@ -4054,8 +4194,9 @@ writer, and explicit lifecycle ownership.
   Pedro Auto, then compare at least one materially different bounded-continuation routine. Count the
   robot-code concepts and lines each approach requires; a short outer factory call is not sufficient
   evidence of simplicity.
-- **Reprioritization state (2026-07-17):** EXAMPLE-02 is complete and records the full 630-line
-  independent reference cost, closing the first prerequisite. Bettabot still has only one-shot
+- **Reprioritization state (2026-07-17):** EXAMPLE-02 recorded the full 630-line independent
+  reference baseline before ROUTE-03; the current reference is 626 lines after its route-config
+  cleanup, so the first prerequisite remains closed. Bettabot still has only one-shot
   shooter Tasks and no real bounded Pedro routine, so the second caller needed to distinguish
   reusable continuation mechanics from Phoenix's match policy does not yet exist. Keep this item
   high for the first competition Auto, but do not implement it for an ordinary single-route routine
@@ -5327,18 +5468,21 @@ writer, and explicit lifecycle ownership.
 
 ### CONFIG-01 - Owner-configuration snapshot audit
 
-- **Evidence gap:** the API-03 audit found that `DriveGuidanceTask.Config` and `RouteTask.Config` are
-  mutable and may be retained directly, while many other long-lived owners copy private config.
-  Source shape alone does not prove a caller mutates either object after construction or that one
-  generic change is correct. Their relationships already differ, such as a route timeout where
-  non-positive intentionally disables timeout.
-- **Why Deferred:** “make all configs immutable” would combine unrelated owners and add wrappers or
-  withers without traced robot-code benefit. Resume only for one named owner after a production,
-  Phoenix, tool, or test caller demonstrates mutation drift or an invalid retained-state failure;
-  then compare an owner-specific defensive copy, immutable reusable value, direct staged answer, and
-  no-change design.
-- **Decision record (2026-07-16):** **Deferred for concrete caller evidence.** This is an audit note,
-  not an implementation-ready umbrella task.
+- **Remaining evidence gap:** the API-03 audit found that `DriveGuidanceTask.Config` is mutable and
+  may be retained directly, while many other long-lived owners copy private config. Source shape
+  alone does not prove that a caller mutates it after construction or that a defensive copy,
+  immutable value, or different public answer would simplify guidance code.
+- **Resolved route half:** ROUTE-03 proved that `RouteTask.Config` was only a mutable, immediately
+  consumed one-field wrapper. It removed that type, its retained alias, and non-positive sentinel
+  semantics in favor of validated direct factory answers. Route configuration is no longer an open
+  part of CONFIG-01.
+- **Why Deferred:** “make all configs immutable” would still combine unrelated owners and add
+  wrappers or withers without traced robot-code benefit. Resume only for the named
+  `DriveGuidanceTask.Config` owner after a production, Phoenix, tool, or test caller demonstrates
+  mutation drift or an invalid retained-state failure; then compare an owner-specific defensive
+  copy, immutable reusable value, direct staged answer, and no-change design.
+- **Decision record (updated 2026-07-17):** **Deferred for concrete DriveGuidance caller evidence.**
+  This is an audit note, not an implementation-ready umbrella task.
 
 ## Explicitly deferred architectural ideas
 

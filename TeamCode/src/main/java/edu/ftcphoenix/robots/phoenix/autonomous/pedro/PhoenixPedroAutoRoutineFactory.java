@@ -128,7 +128,7 @@ public final class PhoenixPedroAutoRoutineFactory {
         return RouteTasks.follow(debugName,
                 ctx.driveAdapter(),
                 ctx.paths().outboundPath,
-                PhoenixAutoTasks.routeConfig(ctx.profile().auto));
+                ctx.profile().auto.routeTimeoutSec);
     }
 
     /** Build the return path from the current Pedro pose when this Task actually starts. */
@@ -137,7 +137,7 @@ public final class PhoenixPedroAutoRoutineFactory {
         return RouteTasks.followBuiltAtStart(debugName,
                 ctx.driveAdapter(),
                 () -> ctx.pathFactory().buildReturnFromCurrentPose(ctx.paths().pedroStartPose),
-                PhoenixAutoTasks.routeConfig(ctx.profile().auto));
+                ctx.profile().auto.routeTimeoutSec);
     }
 
     /** Reject a disabled or malformed match cutoff before allocating any Task graph. */

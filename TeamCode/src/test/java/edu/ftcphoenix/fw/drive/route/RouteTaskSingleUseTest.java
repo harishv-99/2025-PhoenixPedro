@@ -19,14 +19,15 @@ public final class RouteTaskSingleUseTest {
     public void secondStartWhileActiveFailsBeforeFollowingAgain() {
         ManualLoopClock manualClock = new ManualLoopClock();
         RecordingFollower follower = new RecordingFollower();
-        RouteTask<String> task = new RouteTask<>("outbound", follower, "route-a", null);
+        RouteTask<String> task =
+                RouteTasks.followWithoutTaskTimeout("outbound", follower, "route-a");
 
         task.start(manualClock.clock());
         assertEquals(1, follower.followCount);
 
         IllegalStateException failure = expectSecondStartFailure(task, manualClock.clock());
 
-        assertActionable(failure, "outbound", "RouteTasks.follow");
+        assertActionable(failure, "outbound", "RouteTasks factory");
         assertEquals(1, follower.followCount);
         assertEquals(0, follower.current.cancelCount);
         assertFalse(task.isComplete());
@@ -36,7 +37,8 @@ public final class RouteTaskSingleUseTest {
     public void secondStartAfterTerminalCancelHasNoRepeatedFollowerSideEffect() {
         ManualLoopClock manualClock = new ManualLoopClock();
         RecordingFollower follower = new RecordingFollower();
-        RouteTask<String> task = new RouteTask<>("return", follower, "route-b", null);
+        RouteTask<String> task =
+                RouteTasks.followWithoutTaskTimeout("return", follower, "route-b");
 
         task.start(manualClock.clock());
         task.cancel();
@@ -58,8 +60,8 @@ public final class RouteTaskSingleUseTest {
     public void freshFactoryTasksCanFollowIndependently() {
         ManualLoopClock manualClock = new ManualLoopClock();
         RecordingFollower follower = new RecordingFollower();
-        Task first = RouteTasks.follow("first", follower, "route", null);
-        Task second = RouteTasks.follow("second", follower, "route", null);
+        Task first = RouteTasks.followWithoutTaskTimeout("first", follower, "route");
+        Task second = RouteTasks.followWithoutTaskTimeout("second", follower, "route");
 
         first.start(manualClock.clock());
         first.cancel();
@@ -73,7 +75,8 @@ public final class RouteTaskSingleUseTest {
     public void cancelBeforeFirstStartIsNoOpAndUpdateBeforeStartFails() {
         ManualLoopClock manualClock = new ManualLoopClock();
         RecordingFollower follower = new RecordingFollower();
-        RouteTask<String> task = new RouteTask<>("cancelBeforeStart", follower, "route", null);
+        RouteTask<String> task =
+                RouteTasks.followWithoutTaskTimeout("cancelBeforeStart", follower, "route");
 
         try {
             task.update(manualClock.clock());
@@ -100,7 +103,8 @@ public final class RouteTaskSingleUseTest {
     public void cancellationAfterSuccessfulCompletionDoesNotCancelFollower() {
         ManualLoopClock manualClock = new ManualLoopClock();
         RecordingFollower follower = new RecordingFollower();
-        RouteTask<String> task = new RouteTask<>("complete", follower, "route", null);
+        RouteTask<String> task =
+                RouteTasks.followWithoutTaskTimeout("complete", follower, "route");
 
         task.start(manualClock.clock());
         follower.current.integrationStatus = RouteStatus.COMPLETED;
@@ -117,7 +121,8 @@ public final class RouteTaskSingleUseTest {
         ManualLoopClock manualClock = new ManualLoopClock();
         RecordingFollower follower = new RecordingFollower();
         follower.throwOnFollow = true;
-        RouteTask<String> task = new RouteTask<>("failedStart", follower, "route", null);
+        RouteTask<String> task =
+                RouteTasks.followWithoutTaskTimeout("failedStart", follower, "route");
 
         try {
             task.start(manualClock.clock());
@@ -142,7 +147,8 @@ public final class RouteTaskSingleUseTest {
         ManualLoopClock manualClock = new ManualLoopClock();
         RecordingFollower follower = new RecordingFollower();
         follower.throwOnCancel = true;
-        RouteTask<String> task = new RouteTask<>("throwingCancel", follower, "route", null);
+        RouteTask<String> task =
+                RouteTasks.followWithoutTaskTimeout("throwingCancel", follower, "route");
         task.start(manualClock.clock());
 
         try {

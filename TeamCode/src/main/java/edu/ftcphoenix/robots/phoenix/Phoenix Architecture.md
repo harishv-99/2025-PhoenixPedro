@@ -404,11 +404,16 @@ timeout retains the routine's `TIMEOUT`; a cancellation-like park result takes p
 `CANCELLED`, and no park result starts a second fallback.
 
 Fixed geometry is built eagerly while the selected runtime is constructed before robot start and
-uses `RouteTasks.follow(...)`. Geometry that must start from a live pose or a current robot selection stays in `PhoenixPedroPathFactory` and uses
-`RouteTasks.followBuiltAtStart(...)`. The path factory is retained in
-`PhoenixPedroAutoContext`; its quick supplier runs once when that Task starts, reads only supported
-current snapshots, and gives the adapter one concrete route. Neither `PhoenixRobot` nor the generic
-route API gains Pedro, vision, alliance, or game-strategy types.
+uses the named `RouteTasks.follow(...)` factory with `profile.auto.routeTimeoutSec` passed directly.
+Geometry that must start from a live pose or a current robot selection stays in
+`PhoenixPedroPathFactory` and uses the parallel named `RouteTasks.followBuiltAtStart(...)` factory
+with the same explicit timeout. Phoenix deliberately does not select the
+`WithoutTaskTimeout` variants because its route policy retains `RouteStatus.TASK_TIMEOUT`; those
+variants disable only the Task deadline and would not disable follower timeout/stall detection.
+The path factory is retained in `PhoenixPedroAutoContext`; its quick supplier runs once when that
+Task starts, reads only supported current snapshots, and gives the adapter one concrete route.
+Neither `PhoenixRobot` nor the generic route API gains Pedro, vision, alliance, or game-strategy
+types.
 
 When future strategy needs a bounded mechanism Task only while a route remains active, the routine
 may use `Tasks.parallelDeadline(routeTask, companionTask)`. The route then owns the group's terminal

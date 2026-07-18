@@ -31,25 +31,24 @@ import edu.ftcphoenix.fw.task.Tasks;
  * state instead of a forever-running companion.</p>
  *
  * <p>A {@code RouteTask} instance is single-use. Create a fresh task with
- * {@link RouteTasks#follow(String, RouteFollower, Object, Config)},
- * {@link RouteTasks#followBuiltAtStart(String, RouteFollower, Supplier, Config)}, or a
- * {@code Supplier<Task>} each time a route should run. The built-at-start form resolves its route
+ * {@link RouteTasks#follow(String, RouteFollower, Object, double)},
+ * {@link RouteTasks#followWithoutTaskTimeout(String, RouteFollower, Object)},
+ * {@link RouteTasks#followBuiltAtStart(String, RouteFollower, Supplier, double)},
+ * {@link RouteTasks#followBuiltAtStartWithoutTaskTimeout(String, RouteFollower, Supplier)}, or a
+ * {@code Supplier<Task>} each time a route should run. The built-at-start forms resolve their route
  * factory exactly once at this Task's own {@link #start(LoopClock)} boundary, which lets a
- * robot-owned path factory use current pose or vision state without moving route-library types into
- * framework core.</p>
+ * robot-owned path factory use current pose or vision state without moving route-library types
+ * into framework core.</p>
  *
  * <p>Typical usage:</p>
  * <pre>{@code
- * RouteTask.Config cfg = new RouteTask.Config();
- * cfg.timeoutSec = 4.0;
- *
  * RouteTask&lt;MyRoute&gt; outbound =
- *         RouteTasks.follow("outbound", routeAdapter, outboundPath, cfg);
+ *         RouteTasks.follow("outbound", routeAdapter, outboundPath, 4.0);
  * RouteTask&lt;MyRoute&gt; livePoseReturn = RouteTasks.followBuiltAtStart(
  *         "return",
  *         routeAdapter,
  *         () -> pathFactory.buildReturnFromCurrentPose(returnPose),
- *         cfg);
+ *         4.0);
  * }</pre>
  * <p>Pass these fresh status-bearing Tasks and the mechanism action to a robot-owned routine
  * helper. That policy must gate any position-dependent action on the route's precise result;
@@ -59,23 +58,11 @@ import edu.ftcphoenix.fw.task.Tasks;
  */
 public final class RouteTask<R> implements Task {
 
-    /**
-     * Task-level configuration for a route follow.
-     */
-    public static final class Config {
-
-        /**
-         * Maximum time allowed for the route follow before timing out.
-         *
-         * <p>Set {@code <= 0} to disable the timeout.</p>
-         */
-        public double timeoutSec = 10.0;
-    }
-
     private final String debugName;
     private final RouteFollower<R> follower;
     private final Supplier<? extends R> routeFactory;
-    private final Config cfg;
+    private final boolean taskTimeoutEnabled;
+    private final double taskTimeoutSec;
 
     private R route;
 
@@ -88,23 +75,19 @@ public final class RouteTask<R> implements Task {
     private RouteExecution execution;
     private double startTimeSec = 0.0;
 
-    /**
-     * Creates a named route-follow task.
-     *
-     * @param debugName human-readable task label used for debugging
-     * @param follower route follower adapter to command
-     * @param route route object to follow
-     * @param cfg task-level timeout config; when {@code null}, defaults are used
-     */
-    public RouteTask(String debugName,
-                     RouteFollower<R> follower,
-                     R route,
-                     Config cfg) {
-        this(debugName,
+    /** Creates the package-internal eager form selected only through {@link RouteTasks}. */
+    static <R> RouteTask<R> eager(String debugName,
+                                  RouteFollower<R> follower,
+                                  R route,
+                                  boolean taskTimeoutEnabled,
+                                  double taskTimeoutSec) {
+        return new RouteTask<R>(
+                debugName,
                 follower,
                 Objects.requireNonNull(route, "route"),
                 null,
-                cfg);
+                taskTimeoutEnabled,
+                taskTimeoutSec);
     }
 
     /**
@@ -117,13 +100,15 @@ public final class RouteTask<R> implements Task {
     static <R> RouteTask<R> builtAtStart(String debugName,
                                          RouteFollower<R> follower,
                                          Supplier<? extends R> routeFactory,
-                                         Config cfg) {
+                                         boolean taskTimeoutEnabled,
+                                         double taskTimeoutSec) {
         return new RouteTask<R>(
                 debugName,
                 follower,
                 null,
                 Objects.requireNonNull(routeFactory, "routeFactory"),
-                cfg);
+                taskTimeoutEnabled,
+                taskTimeoutSec);
     }
 
     /** Initialize exactly one of the eager-route or built-at-start route sources. */
@@ -131,8 +116,13 @@ public final class RouteTask<R> implements Task {
                       RouteFollower<R> follower,
                       R route,
                       Supplier<? extends R> routeFactory,
-                      Config cfg) {
-        this.debugName = (debugName != null && !debugName.isEmpty()) ? debugName : "RouteTask";
+                      boolean taskTimeoutEnabled,
+                      double taskTimeoutSec) {
+        this.debugName = requireDebugName(debugName);
+        this.taskTimeoutEnabled = taskTimeoutEnabled;
+        this.taskTimeoutSec = taskTimeoutEnabled
+                ? requireTaskTimeoutSec(taskTimeoutSec, routeFactory != null)
+                : 0.0;
         this.follower = Objects.requireNonNull(follower, "follower");
         this.route = route;
         this.routeFactory = routeFactory;
@@ -140,20 +130,6 @@ public final class RouteTask<R> implements Task {
             throw new IllegalArgumentException(
                     "RouteTask requires exactly one eager route or built-at-start route factory");
         }
-        this.cfg = (cfg != null) ? cfg : new Config();
-    }
-
-    /**
-     * Creates a route-follow task with the default debug name.
-     *
-     * @param follower route follower adapter to command
-     * @param route route object to follow
-     * @param cfg task-level timeout config; when {@code null}, defaults are used
-     */
-    public RouteTask(RouteFollower<R> follower,
-                     R route,
-                     Config cfg) {
-        this("RouteTask", follower, route, cfg);
     }
 
     @Override
@@ -166,8 +142,7 @@ public final class RouteTask<R> implements Task {
         if (startAttempted) {
             throw new IllegalStateException("RouteTask '" + debugName
                     + "' is single-use and has already been started. Create a fresh task with "
-                    + "RouteTasks.follow(...), RouteTasks.followBuiltAtStart(...), or a "
-                    + "Supplier<Task> for each run.");
+                    + "the matching RouteTasks factory or a Supplier<Task> for each run.");
         }
         startAttempted = true;
         started = true;
@@ -260,7 +235,8 @@ public final class RouteTask<R> implements Task {
             return;
         }
 
-        if (cfg.timeoutSec > 0.0 && (clock.nowSec() - startTimeSec) > cfg.timeoutSec) {
+        if (taskTimeoutEnabled
+                && (clock.nowSec() - startTimeSec) >= taskTimeoutSec) {
             complete = true;
             outcome = TaskOutcome.TIMEOUT;
             routeStatus = RouteStatus.TASK_TIMEOUT;
@@ -340,8 +316,37 @@ public final class RouteTask<R> implements Task {
                 .addData(p + ".routeSource", routeFactory == null ? "eager" : "builtAtStart")
                 .addData(p + ".routeClass",
                         route == null ? "pending" : route.getClass().getSimpleName())
-                .addData(p + ".timeoutSec", cfg.timeoutSec)
+                .addData(p + ".timeoutSec", taskTimeoutDebugValue())
                 .addData(p + ".startedAtSec", startTimeSec);
+    }
+
+    /** Return a readable debug value without exposing a numeric no-timeout sentinel. */
+    private Object taskTimeoutDebugValue() {
+        return taskTimeoutEnabled ? Double.valueOf(taskTimeoutSec) : "none";
+    }
+
+    /** Require the diagnostic identity needed for actionable route status and failures. */
+    private static String requireDebugName(String debugName) {
+        if (debugName == null || debugName.trim().isEmpty()) {
+            throw new IllegalArgumentException(
+                    "RouteTasks debugName must be nonblank so this route attempt can be "
+                            + "identified, got '" + debugName + "'");
+        }
+        return debugName;
+    }
+
+    /** Validate the explicit Task-owned deadline selected by a bounded route factory. */
+    private static double requireTaskTimeoutSec(double taskTimeoutSec, boolean builtAtStart) {
+        if (!Double.isFinite(taskTimeoutSec) || taskTimeoutSec <= 0.0) {
+            String noTimeoutFactory = builtAtStart
+                    ? "RouteTasks.followBuiltAtStartWithoutTaskTimeout(...)"
+                    : "RouteTasks.followWithoutTaskTimeout(...)";
+            throw new IllegalArgumentException(
+                    "RouteTasks taskTimeoutSec must be finite and > 0 seconds, got "
+                            + taskTimeoutSec + ". Use " + noTimeoutFactory
+                            + " when no Task-level timeout is intended.");
+        }
+        return taskTimeoutSec;
     }
 
     /** Add Task identity and actionable guidance while retaining the factory's original failure. */

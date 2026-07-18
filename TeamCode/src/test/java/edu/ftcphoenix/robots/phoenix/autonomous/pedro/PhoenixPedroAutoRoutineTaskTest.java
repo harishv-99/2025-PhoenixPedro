@@ -433,7 +433,7 @@ public final class PhoenixPedroAutoRoutineTaskTest {
                 () -> {
                     throw buildFailure;
                 },
-                routeConfig(100.0)
+                100.0
         );
         PhoenixPedroPreParkTask prePark = new PhoenixPedroPreParkTask(
                 "returnBuildFailure", outbound, scoringAttempt, scoring, drive);
@@ -486,7 +486,7 @@ public final class PhoenixPedroAutoRoutineTaskTest {
                     builds.incrementAndGet();
                     return "live-route";
                 },
-                routeConfig(100.0)
+                100.0
         );
         PhoenixPedroPreParkTask prePark = new PhoenixPedroPreParkTask(
                 "liveBuild", outbound, scoringAttempt, scoring, drive);
@@ -779,16 +779,10 @@ public final class PhoenixPedroAutoRoutineTaskTest {
         assertEquals(0, fixture.drive.stopCount);
     }
 
-    private static RouteTask.Config routeConfig(double timeoutSec) {
-        RouteTask.Config config = new RouteTask.Config();
-        config.timeoutSec = timeoutSec;
-        return config;
-    }
-
     private static RouteTask<String> newRoute(String name,
                                                ControlledFollower follower,
                                                double timeoutSec) {
-        return RouteTasks.follow(name, follower, name + "-route", routeConfig(timeoutSec));
+        return RouteTasks.follow(name, follower, name + "-route", timeoutSec);
     }
 
     private static void assertFailureContains(ThrowingAction action, String... fragments) {

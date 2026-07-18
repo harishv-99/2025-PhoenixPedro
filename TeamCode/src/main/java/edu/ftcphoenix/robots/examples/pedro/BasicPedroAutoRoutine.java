@@ -5,7 +5,6 @@ import com.pedropathing.paths.PathChain;
 import java.util.Objects;
 
 import edu.ftcphoenix.fw.drive.route.RouteFollower;
-import edu.ftcphoenix.fw.drive.route.RouteTask;
 import edu.ftcphoenix.fw.drive.route.RouteTasks;
 import edu.ftcphoenix.fw.task.Task;
 import edu.ftcphoenix.fw.task.Tasks;
@@ -31,14 +30,11 @@ public final class BasicPedroAutoRoutine {
     public static Task build(RouteFollower<PathChain> routes,
                              PathChain practiceRoute,
                              BasicPedroAutoMechanism mechanism) {
-        RouteTask.Config routeConfig = new RouteTask.Config();
-        routeConfig.timeoutSec = ROUTE_TIMEOUT_SEC;
-
-        RouteTask<PathChain> followPracticeRoute = RouteTasks.follow(
+        Task followPracticeRoute = RouteTasks.follow(
                 "BasicPracticeRoute",
                 Objects.requireNonNull(routes, "routes"),
                 Objects.requireNonNull(practiceRoute, "practiceRoute"),
-                routeConfig
+                ROUTE_TIMEOUT_SEC
         );
 
         BasicPedroAutoMechanism requiredMechanism = Objects.requireNonNull(

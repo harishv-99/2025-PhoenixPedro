@@ -719,7 +719,10 @@ public final class PhoenixProfile {
         public double parkTakeoverElapsedSec = 25.0;
 
         /**
-         * Maximum time allowed for a single route segment before timing out.
+         * Maximum time allowed for a single route Task before timing out, in seconds.
+         *
+         * <p>This is passed directly to Phoenix's bounded {@code RouteTasks} factories and must be
+         * finite and {@code > 0}. It is separate from follower-owned timeout/stall constraints.</p>
          */
         public double routeTimeoutSec = 4.0;
 
