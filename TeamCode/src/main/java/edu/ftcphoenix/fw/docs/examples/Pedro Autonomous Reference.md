@@ -19,14 +19,16 @@ Read them in this order:
 
 | File | Source lines | Job | What a new robot normally changes |
 |---|---:|---|---|
-| [`BasicPedroAutoMechanism.java`](<../../../robots/examples/pedro/BasicPedroAutoMechanism.java>) | 98 | Plant-backed intake capability that creates fresh, cancellation-safe Tasks | Replace it with an existing robot capability when one already owns the mechanism; otherwise change the Plant and action names/targets here. |
+| [`BasicPedroAutoMechanism.java`](<../../../robots/examples/pedro/BasicPedroAutoMechanism.java>) | 85 | Plant-backed intake capability that creates fresh, cancellation-safe Tasks | Replace it with an existing robot capability when one already owns the mechanism; otherwise change the Plant and action names/targets here. |
 | [`BasicPedroAutoPaths.java`](<../../../robots/examples/pedro/BasicPedroAutoPaths.java>) | 52 | Declared physical start pose and one eagerly built fixed Pedro route | Change the start/end coordinates and path geometry here. Keep all coordinates explicitly in Pedro field inches and radians. |
 | [`BasicPedroAutoRoutine.java`](<../../../robots/examples/pedro/BasicPedroAutoRoutine.java>) | 50 | Route, success action, and timeout fallback composed with framework Task factories | Change semantic order, route timeout, capability actions, and the policy for each route result here. |
-| [`BasicPedroAutoRobot.java`](<../../../robots/examples/pedro/BasicPedroAutoRobot.java>) | 209 | Composition root for the shared clock, localization, recurring Pedro heartbeat, Task runner, Plant realization, and shutdown | Usually retain this shape. Add robot-owned sensor/service/capability updates only when the robot actually has them, preserving one explicit loop order. |
-| [`PhoenixBasicPedroAutoExample.java`](<../../../robots/phoenix/opmode/PhoenixBasicPedroAutoExample.java>) | 217 | Disabled FTC lifecycle host and this repository's physical hardware/runtime wiring | Replace this entire host boundary with the new robot's verified Pedro runtime and mechanism construction. Do not copy Phoenix hardware values into another robot. |
+| [`BasicPedroAutoRobot.java`](<../../../robots/examples/pedro/BasicPedroAutoRobot.java>) | 171 | Composition root for the shared clock, localization, recurring Pedro heartbeat, Task runner, Plant realization, and shutdown | Usually retain this shape. Add robot-owned sensor/service/capability updates only when the robot actually has them, preserving one explicit loop order. |
+| [`PhoenixBasicPedroAutoExample.java`](<../../../robots/phoenix/opmode/PhoenixBasicPedroAutoExample.java>) | 208 | Disabled FTC lifecycle host and this repository's physical hardware/runtime wiring | Replace this entire host boundary with the new robot's verified Pedro runtime and mechanism construction. Do not copy Phoenix hardware values into another robot. |
 
-The five files total **626 source lines**, including comments, Javadocs, imports, and blank lines.
-The four independent reference classes total 409 lines; the Phoenix-specific host is another 217.
+The five files total **566 source lines**, including comments, Javadocs, imports, and blank lines.
+The four independent reference classes total 358 lines; the Phoenix-specific host is another 208.
+Framework cleanup-action aggregation removed 60 lines from the former 626-line reference (about
+9.6%) without moving ownership or loop policy into the framework.
 That full count matters. A student maintaining or adapting the reference encounters about 15
 concrete concepts, not merely the few calls in `BasicPedroAutoRoutine`:
 
@@ -100,11 +102,14 @@ The OpMode owns only lifecycle forwarding and telemetry. It does not call raw Pe
 2. restore the mechanism's idle request and stop its Plant,
 3. stop the Pedro drive adapter immediately.
 
-If an earlier cleanup throws, later cleanup is still attempted and additional failures are
-suppressed onto the first one. A START or loop failure also enters this fail-stop path. Active
-cancellation of the collection Task restores the intake's idle request; queued Tasks are never
-treated as though they had started. Partial FTC INIT construction also stops any already-created
-mechanism and drive owners before rethrowing the construction error.
+If an earlier cleanup throws a `RuntimeException`, later cleanup is still attempted and additional
+failures are suppressed onto the first one; an `Error` propagates immediately. The root keeps its
+terminal state and cleanup order visible, while `CleanupActions.attemptAll(...)` owns only those
+exception mechanics. A START or loop failure also enters this fail-stop path;
+`attemptAllAfterFailure(...)` preserves that original failure and attaches cleanup failures before
+the caller rethrows it. Active cancellation of the collection Task restores the intake's idle
+request; queued Tasks are never treated as though they had started. Partial FTC INIT construction
+also stops any already-created mechanism and drive owners before rethrowing the construction error.
 
 ## The route-result policy
 

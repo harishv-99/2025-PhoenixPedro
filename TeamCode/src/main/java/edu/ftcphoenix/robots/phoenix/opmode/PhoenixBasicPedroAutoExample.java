@@ -11,6 +11,7 @@ import java.util.Objects;
 import java.util.function.Supplier;
 
 import edu.ftcphoenix.fw.actuation.Plant;
+import edu.ftcphoenix.fw.core.lifecycle.CleanupActions;
 import edu.ftcphoenix.fw.ftc.FtcActuators;
 import edu.ftcphoenix.fw.integrations.pedro.PedroPathingRuntime;
 import edu.ftcphoenix.robots.examples.pedro.BasicPedroAutoMechanism;
@@ -55,8 +56,7 @@ public final class PhoenixBasicPedroAutoExample extends OpMode {
                     : Objects.requireNonNull(testRobotFactory.get(), "testRobotFactory.get()");
             emitPlacementTelemetry();
         } catch (RuntimeException initFailure) {
-            failStop(initFailure);
-            throw initFailure;
+            throw failStop(initFailure);
         }
     }
 
@@ -66,8 +66,7 @@ public final class PhoenixBasicPedroAutoExample extends OpMode {
         try {
             emitPlacementTelemetry();
         } catch (RuntimeException telemetryFailure) {
-            failStop(telemetryFailure);
-            throw telemetryFailure;
+            throw failStop(telemetryFailure);
         }
     }
 
@@ -94,8 +93,7 @@ public final class PhoenixBasicPedroAutoExample extends OpMode {
                 telemetry.update();
             }
         } catch (RuntimeException loopFailure) {
-            failStop(loopFailure);
-            throw loopFailure;
+            throw failStop(loopFailure);
         }
     }
 
@@ -138,13 +136,12 @@ public final class PhoenixBasicPedroAutoExample extends OpMode {
             paths = builtPaths;
             return builtRobot;
         } catch (RuntimeException constructionFailure) {
-            cleanupPartialConstruction(
+            throw cleanupPartialConstruction(
                     constructionFailure,
                     builtMechanism,
                     builtIntakePlant,
                     builtRuntime
             );
-            throw constructionFailure;
         }
     }
 
@@ -174,44 +171,38 @@ public final class PhoenixBasicPedroAutoExample extends OpMode {
         return robot;
     }
 
-    private static void cleanupPartialConstruction(RuntimeException primary,
-                                                   BasicPedroAutoMechanism mechanism,
-                                                   Plant intakePlant,
-                                                   PedroPathingRuntime runtime) {
+    private static RuntimeException cleanupPartialConstruction(
+            RuntimeException primary,
+            BasicPedroAutoMechanism mechanism,
+            Plant intakePlant,
+            PedroPathingRuntime runtime) {
+        Runnable driveCleanup = new Runnable() {
+            @Override
+            public void run() {
+                runtime.driveAdapter().stop();
+            }
+        };
         if (mechanism != null) {
-            try {
-                mechanism.stop();
-            } catch (RuntimeException mechanismFailure) {
-                addSuppressed(primary, mechanismFailure);
-            }
-        } else if (intakePlant != null) {
-            try {
-                intakePlant.stop();
-            } catch (RuntimeException plantFailure) {
-                addSuppressed(primary, plantFailure);
-            }
+            return CleanupActions.attemptAllAfterFailure(
+                    primary,
+                    mechanism::stop,
+                    driveCleanup
+            );
         }
-        try {
-            runtime.driveAdapter().stop();
-        } catch (RuntimeException driveFailure) {
-            addSuppressed(primary, driveFailure);
+        if (intakePlant != null) {
+            return CleanupActions.attemptAllAfterFailure(
+                    primary,
+                    intakePlant::stop,
+                    driveCleanup
+            );
         }
+        return CleanupActions.attemptAllAfterFailure(primary, driveCleanup);
     }
 
-    private void failStop(RuntimeException primary) {
+    private RuntimeException failStop(RuntimeException primary) {
         if (robot == null) {
-            return;
+            return primary;
         }
-        try {
-            robot.stop();
-        } catch (RuntimeException cleanupFailure) {
-            addSuppressed(primary, cleanupFailure);
-        }
-    }
-
-    private static void addSuppressed(RuntimeException primary, RuntimeException cleanupFailure) {
-        if (cleanupFailure != primary) {
-            primary.addSuppressed(cleanupFailure);
-        }
+        return CleanupActions.attemptAllAfterFailure(primary, robot::stop);
     }
 }

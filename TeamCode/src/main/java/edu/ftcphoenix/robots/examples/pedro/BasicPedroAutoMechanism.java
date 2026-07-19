@@ -4,6 +4,7 @@ import java.util.Objects;
 
 import edu.ftcphoenix.fw.actuation.Plant;
 import edu.ftcphoenix.fw.actuation.PlantTasks;
+import edu.ftcphoenix.fw.core.lifecycle.CleanupActions;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.task.Task;
 
@@ -76,23 +77,9 @@ public final class BasicPedroAutoMechanism {
         }
         stopped = true;
 
-        RuntimeException failure = null;
-        try {
-            intakePlant.writableTarget().set(IDLE_POWER);
-        } catch (RuntimeException targetFailure) {
-            failure = targetFailure;
-        }
-        try {
-            intakePlant.stop();
-        } catch (RuntimeException plantFailure) {
-            if (failure == null) {
-                failure = plantFailure;
-            } else if (plantFailure != failure) {
-                failure.addSuppressed(plantFailure);
-            }
-        }
-        if (failure != null) {
-            throw failure;
-        }
+        CleanupActions.attemptAll(
+                () -> intakePlant.writableTarget().set(IDLE_POWER),
+                intakePlant::stop
+        );
     }
 }
