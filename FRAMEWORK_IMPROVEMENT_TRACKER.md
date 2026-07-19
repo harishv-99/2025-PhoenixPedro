@@ -89,7 +89,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 25 | ROUTE-03 | Factory-only route Task configuration | Done | Use one named factory-only layer with direct bounded or explicit no-Task-timeout policy. |
 | 26 | ACT-01 | FTC actuator-group identity validation | Done | Private SDK-equivalent actuator/mecanum validation reviewed, verified, and approved on 2026-07-17. |
 | 27 | COMMON-01 | Cleanup action aggregation | Done | The stateless cleanup-action primitive and five bounded migrations are implemented, verified, and approved; the generic INIT runtime remains deferred. |
-| 28 | TESTER-01 | Tester child lifecycle fail-stop | Proposed | Fix concrete partial-init and uncertain-cleanup replacement hazards in existing tester owners without creating a generic robot runtime. |
+| 28 | TESTER-01 | Tester child lifecycle fail-stop | Done | Approved fail-stop policies are implemented, verified, and approved without changing valid public call sites. |
 | 29 | AUTO-01 | Compact bounded Auto continuation | Proposed | Use another real routine to separate reusable lifecycle ceremony from robot-owned match and recovery policy. |
 | 30 | SOURCE-03 | Composable scalar measurement conditioning | Proposed | Add only measurement-backed, explicitly configured numeric filters as generic `ScalarSource` decorators rather than hiding smoothing in a sensor adapter. |
 | 31 | MATCH-01 | Explicit Auto-to-TeleOp handoff | Proposed | Carry one typed immutable robot snapshot across the FTC mode boundary without string maps or stale globals. |
@@ -4187,7 +4187,176 @@ writer, and explicit lifecycle ownership.
   are preserved and block unsafe replacement, BACK and repeated STOP remain safe, and no callback
   runs on a terminal child. Update tester documentation and examples if the observable lifecycle
   contract changes.
-- **Decision record:** _Pending._
+- **Decision record (2026-07-18):**
+  - **Confirmed traced failures:** `HardwareSelectingTester.enter(...)` keeps a newly returned
+    tester only in a local variable until both `init(...)` and an optional `start()` return. Either
+    callback can therefore throw after acquiring hardware, after which the catch block drops the
+    only reference, clears the picker, and permits a replacement without ever invoking
+    `stop()`. `TesterSuite` retains its candidate before `init(...)`, but an `init`, `start`,
+    `initLoop`, `loop`, or BACK failure leaves contradictory menu/active state and can permit a
+    replacement or another callback on the failed child. Both owners clear `active` only after
+    `stop()` returns, so a failed or reentrant stop can be invoked repeatedly.
+    `FtcTeleOpTesterOpMode` likewise retains its root before `init(...)`, but every forwarded
+    lifecycle failure leaves that root callable and repeated FTC `stop()` calls repeat the child
+    stop. Its null `createTester()` result merely disables the OpMode after telemetry rather than
+    failing with an actionable configuration error. These direct call traces close the problem
+    confirmation gate without touching hardware.
+  - **Selectable-resource audit:** `CameraMountCalibrator`,
+    `AprilTagLocalizationTester`, and `PinpointAprilTagFusionLocalizationTester` each allow a
+    failed `AprilTagVisionLane.close()` to be discarded or followed by another selection, so the
+    previous camera's ownership can be uncertain while a replacement is opened. Their candidate
+    lane must be retained as soon as `open(...)` returns, detached before one close attempt, and
+    allowed to be replaced only when that close returned normally. A factory whose `open(...)`
+    throws before returning still owns rollback of anything it acquired; no caller-side session
+    can clean an object that was never returned.
+  - **Complete public construction and caller audit:** the normal menu path remains
+    `new TesterSuite().add("Name", Tester::new)`. Eight direct construction sites, including
+    `CalibrationWalkthroughBuilder`, use that path across nested framework and Phoenix menus.
+    `FtcTeleOpTesterOpMode` has one protected `createTester()` hook and exactly the framework and
+    Phoenix production hosts. `HardwareSelectingTester` has one public constructor and four
+    `StandardTesters` factories. The ready-made `StandardTesters` and Phoenix factories supply
+    menu content; they are not parallel lifecycle APIs. No `TesterSuite.of(...)`, second host,
+    lifecycle builder, registry, or session API exists.
+  - **Parameter-type and API-value audit:** `Supplier<TeleOpTester>` has distinct value because a
+    menu entry must create a fresh inactive tester each time it is entered.
+    `Function<String, TeleOpTester>` has different value because the runtime-selected hardware
+    name configures that fresh child. The advanced `MenuItem<Supplier<TeleOpTester>>` overload has
+    distinct stable-id, tag, help, and disabled-item value. Keep all three capabilities, but reject
+    a null enabled factory or null returned child with the selected tester/hardware name in the
+    message. Document that a factory constructs an inactive child, performs no unreturnable
+    acquisition, and returns a fresh non-null instance; hardware acquisition belongs in
+    `init(...)` or a later owned phase.
+  - **Alternatives and simplicity comparison:**
+
+    | Approach | Valid robot/tester call | New student concepts | Ownership and failure result |
+    |---|---|---:|---|
+    | Documentation only | unchanged | 0 | Leaves the proven lost-child, repeated-stop, and unsafe-replacement paths |
+    | Local owner corrections | unchanged | 0 | Each existing owner visibly retains one child and chooses its own retry/presentation policy |
+    | Package-private session for the two menu owners | unchanged | 0 | Centralizes their identical active/retry/blocked mechanism while each owner keeps its menu/picker presentation |
+    | Public or all-owner tester session | adds another lifecycle API | 1 or more | The one-shot host, replaceable menu child, and vision resource do not share one complete policy |
+    | Put state in `BaseTeleOpTester` | subclass hooks appear unchanged | hidden self-ownership | Cannot govern arbitrary `TeleOpTester` implementations or the owner's replacement decision |
+    | Generic INIT/runtime guard | adds a guard/builder and cleanup transfer rules | several | Cannot clean resources acquired before a throwing supplier returns and must guess retry, replacement, and UI policy |
+
+    Local corrections therefore add no public method, builder, state token, registry, or second
+    construction path. The only student-visible change is a phase- and tester-named error plus
+    explicit “restart the OpMode” guidance when cleanup is uncertain.
+  - **Chosen child-owner lifecycle:** `TesterSuite` and `HardwareSelectingTester` repeat the same
+    replaceable child state machine closely enough to justify one package-private
+    `TesterChildSession` in their existing package. It owns only the child slot, active/empty/
+    cleanup-blocked/terminal state, lifecycle forwarding, detach-before-stop, exact-once cleanup,
+    and primary/suppressed exception preservation. It does **not** own a factory, selected
+    hardware name, menu/picker state, telemetry wording, `LoopClock`, or FTC OpMode lifecycle, and
+    is not a public or protected API. Each existing owner keeps those presentation and selection
+    decisions. A non-null child is retained before its first callback. On a child
+    `RuntimeException`, the session first makes that child terminal and detaches it, invokes
+    `stop()` at most once, preserves the callback failure as primary, and attaches a stop failure
+    as suppressed. Confirmed cleanup lets the suite or selector show the error and accept a
+    **fresh** selection; cleanup failure latches a visible failed-closed state, invokes no child or
+    factory again, consumes BACK so a parent suite cannot replace the uncertain subtree, and
+    instructs the operator to restart the OpMode. Normal unhandled BACK uses the same
+    detach-before-stop rule; handled BACK leaves the child active. Explicit owner STOP
+    terminalizes first, stops an active child once, and makes repeated or reentrant STOP a no-op.
+  - **FTC-host policy remains intentionally different:** `FtcTeleOpTesterOpMode` is a one-shot root,
+    not a retry menu. A null/throwing `createTester()` is terminal and actionable. Once a root is
+    returned it is retained before `init(...)`; a `RuntimeException` from `init`, `name`,
+    `initLoop`, `start`, or `loop` detaches and stops it once, preserves any stop failure, and
+    rethrows so the SDK records the failure. Later lifecycle calls cannot reach that terminal root.
+    The existing one-clock reset/update order is unchanged. As with `CleanupActions`, this contract
+    catches `RuntimeException`, not `Error`.
+  - **Selectable-vision policy:** correct the three audited selectable vision owners locally rather
+    than making a public generic resource session. If setup fails after `open(...)` returned a
+    lane, detach and close that lane once while preserving the setup failure. Confirmed close
+    permits the picker to retry; close failure is retained, blocks another open, and displays a
+    restart instruction. BACK and final STOP use detach-before-close and never retry the same lane.
+    This is the same safety invariant as child ownership, but its camera-specific readiness and
+    picker presentation remain with the tester that owns them.
+  - **Framework Principles result:** the design keeps one existing tester lifecycle and one normal
+    construction path, leaves the FTC and camera boundaries explicit, retains fresh-child and
+    cleanup ownership at the composition point, fails with actionable context, and puts no
+    lifecycle decisions into ordinary Phoenix robot/tester code. The public `TeleOpTester`
+    contract must say that `stop()` can be called once after a partially completed or throwing
+    `init()`/`start()`, so implementations clean only successfully acquired fields. That is a
+    material lifecycle semantic even though method signatures and valid call sites do not change.
+  - **Rejected designs:** do not duplicate the proven menu-child state machine after the audit has
+    shown two structurally identical owners. Also do not broaden that narrow package-private helper
+    into a public or protected child session, lifecycle builder,
+    ownership-transfer token, cleanup registry, generic Auto/runtime guard, or another
+    `TeleOpTester` construction facade. Do not make the child own its own replacement policy.
+    Do not use `CleanupActions` as if it owned terminal state; it is useful only where a concrete
+    tester has multiple independent cleanup actions. Do not catch `Error` or retry a stop whose
+    result is already uncertain.
+  - **Bounded implementation scope:** add only the package-private child-session implementation and
+    change `HardwareSelectingTester`, `TesterSuite`, `FtcTeleOpTesterOpMode`, the three named
+    selectable vision testers, their directly affected Javadocs/guides, and focused fake-backed
+    tests. Preserve all existing valid constructors, menu-registration methods, factories, loop
+    order, hardware choices, and Phoenix caller code.
+    The audit also found separate internal-resource issues: the configured
+    `PinpointPodOffsetCalibrator` does not stop its optional drive, multi-motor tester cleanup can
+    stop after the first failure, several raw-device testers discard restoration failures, and a
+    Limelight lane may acquire before construction returns. Those are not structurally the same
+    child-session change and are deliberately **not** claimed fixed by TESTER-01; they require a
+    separate decision gate or the appropriate later low-level resource item rather than silently
+    expanding this task.
+  - **Verification plan:** add a pure `TesterChildSessionTest`, plus `TesterSuiteTest`,
+    `HardwareSelectingTesterTest`, and `FtcTeleOpTesterOpModeTest` fake children covering factory
+    throw/null, failures in `init`,
+    `start` both before and after FTC START, `initLoop`, `loop`, `name`, and BACK; successful and
+    throwing `stop`; original/suppressed exception identity; safe retry only after confirmed
+    cleanup; nested failed-closed BACK; repeated/reentrant STOP; no callback on a terminal child;
+    happy-path lifecycle mapping; and unchanged one-heartbeat behavior. Add focused fake
+    `AprilTagVisionLane` cases for setup failure after open, close failure, confirmed retry, BACK,
+    and repeated STOP in each selectable owner. Run those suites, the existing tester/calibration
+    suites, `:TeamCode:testDebugUnitTest`, and `:TeamCode:compileDebugJavaWithJavac`; search every
+    constructor/caller again, inspect docs/examples for one-path consistency, and report that
+    physical motor/camera cleanup remains unverified without robot hardware.
+  - **Design approval (2026-07-18):** the user approved the TESTER-01 fail-stop design.
+    Implementation is limited to the package-private menu-child session, the distinct one-shot host
+    and three selectable-vision owners, synchronized tester lifecycle documentation, and focused
+    fake-backed verification. The adjacent resource-cleanup findings and every later tracker item
+    remain untouched.
+  - **Implementation (2026-07-18):**
+    - Added one package-private `TesterChildSession` used only by `TesterSuite` and
+      `HardwareSelectingTester`. It retains a child before callbacks, detaches before one cleanup
+      attempt, preserves primary/suppressed runtime failures, permits a fresh selection only after
+      confirmed cleanup, and latches cleanup-blocked or terminal state without adding a public API.
+    - Made `FtcTeleOpTesterOpMode` a terminal one-shot owner across factory, `init`, `name`,
+      `initLoop`, `start`, and `loop` failures. Reentrant or repeated STOP cannot transfer or
+      reacquire ownership, invoke a later callback, or stop the same root twice.
+    - Applied the approved local policy to `CameraMountCalibrator`,
+      `AprilTagLocalizationTester`, and `PinpointAprilTagFusionLocalizationTester`: a returned lane
+      is retained immediately, cleanup is detach-first and exact-once, a failed close blocks another
+      open, and a terminal STOP request cannot be cleared by a reentrant close callback.
+    - Kept all valid constructors, menu factories, hardware choices, and Phoenix callers unchanged.
+      Updated `TeleOpTester`/base Javadocs and the FTC UI/testing guides with the fresh inactive
+      factory, partial-init cleanup, safe-retry, and restart-after-uncertain-cleanup contracts.
+  - **Adversarial review and corrections (2026-07-18):** independent lifecycle and test reviews
+    found three boundary cases before the verification gate. The FTC root now rechecks terminal
+    state and retained identity after reentrant factory, initialization, naming, and telemetry
+    callbacks. The three vision owners now preserve terminal precedence if `close()` reenters
+    owner STOP. Nested `TesterSuite` instances now deduplicate parent-delegated and locally bound
+    BACK handling in one shared-clock cycle, and clear that cache when START resets the root clock
+    and reuses cycle numbers. Focused regressions exercise each path. Final independent re-review
+    found no remaining material lifecycle, scope, or coverage issue.
+  - **Automated verification (2026-07-18):**
+    - Focused lifecycle suites pass **36/36**: `FtcTeleOpTesterOpModeTest` 13,
+      `TesterChildSessionTest` 7, `TesterMenuLifecycleTest` 9, and
+      `SelectableVisionTesterLifecycleTest` 7, with zero failures, errors, or skips.
+    - `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` passes: **59 suites,
+      590 tests**, zero failures, errors, or skips. Output contains only the repository's existing
+      Java 21/source-target 8 deprecation warnings.
+    - `git diff --check` and trailing-whitespace checks pass. The approved scope is 16 files:
+      nine production Java files, four test files, two guides, and this tracker. A signature scan
+      found no added or changed public/protected construction method. The existing eight
+      `TesterSuite` constructions, four `HardwareSelectingTester` constructions, and two FTC-host
+      subclasses still compile without caller changes.
+  - **Gate 2 verification stop (2026-07-18):** TESTER-01 was moved to **Verifying** and paused for
+    Android Studio review. Fake-backed tests prove the framework's ownership, callback, exception,
+    and exact-once cleanup decisions. With no robot hardware available, they do not claim that a
+    physical motor or camera actually stopped after an SDK/vendor failure; that remains optional
+    adoption validation. No later tracker item was started.
+  - **Manual verification (2026-07-19):** the user reviewed TESTER-01 in Android Studio and replied
+    `TESTER-01 looks good`. TESTER-01 is **Done**. This approval authorizes publication and merge for
+    TESTER-01 only; COMMON-02 and every later tracker item remain untouched.
 
 ### COMMON-02 - Telemetry commit ownership
 

@@ -6,6 +6,29 @@ or Limelight AprilTag rigs, and building guided walkthrough testers.
 
 If you copied only `fw` into a project, you can launch the framework-owned tester tree directly from the ready-made Driver Station OpMode `FW: Testers` (`edu.ftcphoenix.fw.tools.tester.opmode.FrameworkTestersOpMode`). Robot projects that already have their own configured tester home can keep embedding the shared framework categories through `StandardTesters.register(...)`.
 
+## Tester lifecycle and recovery
+
+Register tester factories normally:
+
+```java
+new TesterSuite()
+        .add("HW: My Mechanism", MyMechanismTester::new);
+```
+
+Each factory must return a fresh, non-null, inactive tester. Construct configuration in the factory,
+then acquire hardware in `init(...)` or a later owned lifecycle phase. If a factory acquires a
+resource before it returns a tester, that factory must also clean the resource before throwing;
+the suite cannot stop an object it never received.
+
+The runner retains a returned tester before invoking its lifecycle. If `init(...)`, `start()`, an
+update, or BACK handling fails with a runtime exception, the runner makes that child terminal and
+attempts `stop()` once. Confirmed cleanup returns a suite or hardware selector to its menu with an
+actionable error. Failed cleanup blocks another tester or device from being selected because the
+previous hardware ownership is uncertain; stop and restart the OpMode before continuing.
+
+Implement `stop()` so it is safe after partial initialization: clean only fields whose resources
+were successfully acquired. The runner will not repeatedly call `stop()` after it throws.
+
 ## Read in this order
 
 1. [`Robot Calibration Tutorials.md`](<Robot Calibration Tutorials.md>)

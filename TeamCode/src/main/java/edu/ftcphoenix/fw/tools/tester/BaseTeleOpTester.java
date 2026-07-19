@@ -123,6 +123,10 @@ public abstract class BaseTeleOpTester implements TeleOpTester {
 
     /**
      * Optional hook called once when the tester is stopped (or when returning to menu).
+     *
+     * <p>This hook may follow an {@link #onInit()} call that acquired some resources and then
+     * threw. Clean only resources that were successfully acquired; do not assume initialization
+     * reached its final line.</p>
      */
     protected void onStop() {
         // Default: no-op.

@@ -1,5 +1,6 @@
 package edu.ftcphoenix.fw.tools.tester;
 
+import java.util.Objects;
 import java.util.function.Supplier;
 
 import edu.ftcphoenix.fw.ftc.ui.MenuItem;
@@ -23,6 +24,10 @@ import edu.ftcphoenix.fw.ftc.ui.SelectionMenu;
  * <p>This class uses the framework-level {@link SelectionMenu} for the list screen, while keeping
  * tester lifecycle ownership here. The separation is intentional: generic UI owns rendering and
  * selection; tester code owns what entering an item means.</p>
+ *
+ * <p>Every returned child is retained before initialization and is stopped at most once after a
+ * runtime failure. Confirmed cleanup returns to this menu and permits a fresh child. Failed cleanup
+ * blocks replacement and BACK navigation because the previous hardware ownership is uncertain.</p>
  */
 public final class TesterSuite extends BaseTeleOpTester {
 
@@ -31,9 +36,14 @@ public final class TesterSuite extends BaseTeleOpTester {
                     .setTitle("Phoenix Tester Menu")
                     .setHelp("Dpad: select | A: enter | BACK: back/exit");
 
-    private TeleOpTester active = null;
+    private TesterChildSession childSession = new TesterChildSession();
     private boolean inMenu = true;
     private boolean opModeStarted = false;
+    private String childError = null;
+    private String activeTesterName = null;
+    private RuntimeException childFailure = null;
+    private long lastBackCycle = Long.MIN_VALUE;
+    private boolean lastBackConsumed = false;
 
     // -----------------------------------------------------------------------------------------
     // Menu configuration
@@ -73,7 +83,8 @@ public final class TesterSuite extends BaseTeleOpTester {
      * Register a tester in the menu with no item help.
      *
      * @param name    display name in the menu
-     * @param factory factory that creates a new tester instance when selected
+     * @param factory factory that returns a fresh inactive tester when selected; acquire owned
+     *                hardware during that tester's {@code init}
      * @return this suite for chaining
      */
     public TesterSuite add(String name, Supplier<TeleOpTester> factory) {
@@ -85,10 +96,12 @@ public final class TesterSuite extends BaseTeleOpTester {
      *
      * @param name    display name in the menu
      * @param help    optional help line shown when the item is highlighted
-     * @param factory factory that creates a new tester instance when selected
+     * @param factory factory that returns a fresh inactive tester when selected; acquire owned
+     *                hardware during that tester's {@code init}
      * @return this suite for chaining
      */
     public TesterSuite add(String name, String help, Supplier<TeleOpTester> factory) {
+        Objects.requireNonNull(factory, "factory for tester '" + displayName(name) + "'");
         menu.addItem(name, help, factory);
         return this;
     }
@@ -97,9 +110,11 @@ public final class TesterSuite extends BaseTeleOpTester {
      * Register a tester with a compact item tag such as {@code OK}, {@code TODO}, or {@code WARN}.
      *
      * <p>Tags are rendered by {@link SelectionMenu} instead of being baked into the label, which keeps
-     * display names stable and makes status semantics easier to scan.</p>
+     * display names stable and makes status semantics easier to scan. The factory follows the same
+     * fresh-inactive-tester contract as the simpler {@code add(...)} overloads.</p>
      */
     public TesterSuite add(String name, String help, String tag, Supplier<TeleOpTester> factory) {
+        Objects.requireNonNull(factory, "factory for tester '" + displayName(name) + "'");
         menu.addItem(MenuItem.tagged(name, name, help, tag, factory));
         return this;
     }
@@ -108,9 +123,16 @@ public final class TesterSuite extends BaseTeleOpTester {
      * Register a fully specified menu item.
      *
      * <p>This advanced hook is useful for robot-specific menu builders that want explicit stable ids,
-     * tags, or disabled items while still reusing tester-suite lifecycle handling.</p>
+     * tags, or disabled items while still reusing tester-suite lifecycle handling. An enabled item
+     * must contain a non-null factory that returns a fresh inactive tester; a disabled placeholder
+     * may omit its value.</p>
      */
     public TesterSuite addItem(MenuItem<Supplier<TeleOpTester>> item) {
+        Objects.requireNonNull(item, "item");
+        if (item.enabled && item.value == null) {
+            throw new IllegalArgumentException(
+                    "Enabled tester menu item '" + item.label + "' must provide a factory.");
+        }
         menu.addItem(item);
         return this;
     }
@@ -135,15 +157,43 @@ public final class TesterSuite extends BaseTeleOpTester {
      */
     @Override
     public boolean onBackPressed() {
+        long cycle = clock.cycle();
+        if (lastBackCycle == cycle) {
+            return lastBackConsumed;
+        }
+
+        // Publish a consumed result before invoking child code so reentrant BACK cannot recurse
+        // into the same navigation transition. The final result is cached below.
+        lastBackCycle = cycle;
+        lastBackConsumed = true;
+        lastBackConsumed = handleBackPressed();
+        return lastBackConsumed;
+    }
+
+    private boolean handleBackPressed() {
+        if (childSession.mustConsumeBackNavigation()) {
+            return true;
+        }
         if (inMenu) {
             return false;
         }
 
-        if (active != null && active.onBackPressed()) {
+        TesterChildSession.BackResult back = childSession.backPressed();
+        if (back.failure() != null) {
+            recordChildFailure(activeTesterName(), "BACK", back.failure());
+            activeTesterName = null;
+            inMenu = true;
+            return true;
+        }
+        if (back.handled()) {
             return true;
         }
 
-        stopActive();
+        RuntimeException stopFailure = childSession.stopForReplacement();
+        if (stopFailure != null) {
+            recordChildFailure(activeTesterName(), "stop after BACK", stopFailure);
+        }
+        activeTesterName = null;
         inMenu = true;
         return true;
     }
@@ -157,8 +207,8 @@ public final class TesterSuite extends BaseTeleOpTester {
                 gamepads.p1().dpadUp(),
                 gamepads.p1().dpadDown(),
                 gamepads.p1().a(),
-                () -> inMenu,
-                item -> enter(item.value)
+                () -> inMenu && childSession.canActivate(),
+                item -> enter(item.label, item.value)
         );
 
         // BACK is treated as navigation:
@@ -166,20 +216,16 @@ public final class TesterSuite extends BaseTeleOpTester {
         //   2) If not handled, stop the tester and return to the menu.
         // We intentionally do not bind B here because many active tester screens use B as a local
         // action (zero, center, reset, abort sample, etc.).
-        bindings.onRise(gamepads.p1().back(), () -> {
-            if (inMenu) return;
-
-            if (active != null && active.onBackPressed()) {
-                return;
-            }
-
-            stopActive();
-            inMenu = true;
-        });
+        bindings.onRise(gamepads.p1().back(), () -> onBackPressed());
 
         inMenu = true;
         opModeStarted = false;
-        active = null;
+        childSession = new TesterChildSession();
+        childError = null;
+        activeTesterName = null;
+        childFailure = null;
+        lastBackCycle = Long.MIN_VALUE;
+        lastBackConsumed = false;
     }
 
     /** {@inheritDoc} */
@@ -190,8 +236,14 @@ public final class TesterSuite extends BaseTeleOpTester {
             return;
         }
 
-        if (active != null) {
-            active.initLoop(dtSec);
+        if (childSession.hasActive()) {
+            RuntimeException failure = childSession.initLoop(dtSec);
+            if (failure != null) {
+                recordChildFailure(activeTesterName(), "initLoop", failure);
+                activeTesterName = null;
+                inMenu = true;
+                renderMenu();
+            }
             return;
         }
 
@@ -203,9 +255,21 @@ public final class TesterSuite extends BaseTeleOpTester {
     /** {@inheritDoc} */
     @Override
     protected void onStart() {
+        // The FTC root resets the shared clock when RUN begins, so INIT cycle numbers may be
+        // reused. Do not let an INIT-phase BACK result suppress a distinct RUN-phase press.
+        lastBackCycle = Long.MIN_VALUE;
+        lastBackConsumed = false;
         opModeStarted = true;
-        if (active != null) {
-            active.start();
+        if (childSession.hasActive()) {
+            RuntimeException failure = childSession.start();
+            if (failure != null) {
+                recordChildFailure(activeTesterName(), "start", failure);
+                activeTesterName = null;
+                inMenu = true;
+            } else if (!childSession.hasActive()) {
+                activeTesterName = null;
+                inMenu = true;
+            }
         }
     }
 
@@ -217,8 +281,14 @@ public final class TesterSuite extends BaseTeleOpTester {
             return;
         }
 
-        if (active != null) {
-            active.loop(dtSec);
+        if (childSession.hasActive()) {
+            RuntimeException failure = childSession.loop(dtSec);
+            if (failure != null) {
+                recordChildFailure(activeTesterName(), "loop", failure);
+                activeTesterName = null;
+                inMenu = true;
+                renderMenu();
+            }
             return;
         }
 
@@ -230,30 +300,56 @@ public final class TesterSuite extends BaseTeleOpTester {
     /** {@inheritDoc} */
     @Override
     protected void onStop() {
-        stopActive();
+        RuntimeException failure = childSession.stopTerminal();
+        activeTesterName = null;
+        if (failure != null) {
+            throw failure;
+        }
     }
 
     // ---------------------------------------------------------------------------------------------
     // Internals
     // ---------------------------------------------------------------------------------------------
 
-    private void enter(Supplier<TeleOpTester> factory) {
-        stopActive();
-
-        active = factory.get();
-        active.init(ctx);
-
-        if (opModeStarted) {
-            active.start();
+    private void enter(String testerName, Supplier<TeleOpTester> factory) {
+        if (!childSession.canActivate()) {
+            return;
         }
 
-        inMenu = false;
-    }
+        final TeleOpTester child;
+        try {
+            child = Objects.requireNonNull(
+                    factory.get(),
+                    "Tester factory for '" + testerName + "' returned null.");
+        } catch (RuntimeException failure) {
+            recordChildFailure("'" + testerName + "'", "factory", failure);
+            inMenu = true;
+            return;
+        }
 
-    private void stopActive() {
-        if (active == null) return;
-        active.stop();
-        active = null;
+        activeTesterName = testerName;
+        childSession.retain(child);
+        RuntimeException failure = childSession.init(ctx);
+        String phase = "init";
+        if (failure == null && opModeStarted && childSession.hasActive()) {
+            phase = "start";
+            failure = childSession.start();
+        }
+        if (failure != null) {
+            recordChildFailure("'" + testerName + "'", phase, failure);
+            activeTesterName = null;
+            inMenu = true;
+            return;
+        }
+        if (!childSession.hasActive()) {
+            activeTesterName = null;
+            inMenu = true;
+            return;
+        }
+
+        childError = null;
+        childFailure = null;
+        inMenu = false;
     }
 
     private void renderMenu() {
@@ -266,6 +362,37 @@ public final class TesterSuite extends BaseTeleOpTester {
         ctx.telemetry.addLine(opModeStarted
                 ? "RUNNING: Enter tester with A."
                 : "INIT: Enter a tester with A (it may have its own picker/selection menu).");
+        if (childError != null) {
+            ctx.telemetry.addLine("");
+            ctx.telemetry.addLine("Tester error:");
+            ctx.telemetry.addLine(childError);
+            if (childSession.cleanupBlocked()) {
+                ctx.telemetry.addLine("Cleanup also failed. Retry disabled.");
+                ctx.telemetry.addLine("Restart the OpMode and inspect the hardware.");
+            }
+        }
         ctx.telemetry.update();
+    }
+
+    private void recordChildFailure(String testerName, String phase, RuntimeException failure) {
+        childFailure = failure;
+        childError = testerName + " failed during " + phase + ": " + describe(failure);
+        if (failure.getSuppressed().length > 0) {
+            childError += " | cleanup: " + describe(failure.getSuppressed()[0]);
+        }
+    }
+
+    private String activeTesterName() {
+        return activeTesterName == null ? "active tester" : "'" + activeTesterName + "'";
+    }
+
+    private static String describe(Throwable failure) {
+        String message = failure.getMessage();
+        return failure.getClass().getSimpleName()
+                + ((message == null || message.trim().isEmpty()) ? "" : ": " + message);
+    }
+
+    private static String displayName(String name) {
+        return (name == null || name.trim().isEmpty()) ? "Item" : name.trim();
     }
 }
