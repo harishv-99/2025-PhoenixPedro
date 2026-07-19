@@ -7,6 +7,7 @@ import org.firstinspires.ftc.robotcore.external.Telemetry;
 
 import java.util.Objects;
 
+import edu.ftcphoenix.fw.core.lifecycle.CleanupActions;
 import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.drive.DriveCommandSink;
@@ -127,8 +128,10 @@ public final class PhoenixRobot {
         try {
             initTeleOpRuntime();
         } catch (RuntimeException initializationFailure) {
-            stopAfterInitializationFailure(initializationFailure);
-            throw initializationFailure;
+            throw CleanupActions.attemptAllAfterFailure(
+                    initializationFailure,
+                    this::stop
+            );
         }
     }
 
@@ -231,8 +234,10 @@ public final class PhoenixRobot {
             capabilities = createCapabilities();
             autoRoutineLifecycle = new AutoRoutineLifecycle();
         } catch (RuntimeException initializationFailure) {
-            stopAfterInitializationFailure(initializationFailure);
-            throw initializationFailure;
+            throw CleanupActions.attemptAllAfterFailure(
+                    initializationFailure,
+                    this::stop
+            );
         }
     }
 
@@ -512,17 +517,6 @@ public final class PhoenixRobot {
                 resetTargeting,
                 closeVision
         );
-    }
-
-    /** Preserve an initialization failure while attaching any best-effort cleanup failure. */
-    private void stopAfterInitializationFailure(RuntimeException initializationFailure) {
-        try {
-            stop();
-        } catch (RuntimeException cleanupFailure) {
-            if (cleanupFailure != initializationFailure) {
-                initializationFailure.addSuppressed(cleanupFailure);
-            }
-        }
     }
 
     private PhoenixCapabilities requireCapabilities() {

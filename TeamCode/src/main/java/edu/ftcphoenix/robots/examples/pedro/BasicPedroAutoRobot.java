@@ -2,6 +2,7 @@ package edu.ftcphoenix.robots.examples.pedro;
 
 import java.util.Objects;
 
+import edu.ftcphoenix.fw.core.lifecycle.CleanupActions;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.drive.DriveCommandSink;
 import edu.ftcphoenix.fw.integrations.pedro.PedroPathingRuntime;
@@ -104,8 +105,7 @@ public final class BasicPedroAutoRobot {
             autoRunner.enqueue(rootTask);
             started = true;
         } catch (RuntimeException startFailure) {
-            failStop(startFailure);
-            throw startFailure;
+            throw failStop(startFailure);
         }
     }
 
@@ -128,8 +128,7 @@ public final class BasicPedroAutoRobot {
             autoRunner.update(clock);
             mechanism.update(clock);
         } catch (RuntimeException updateFailure) {
-            failStop(updateFailure);
-            throw updateFailure;
+            throw failStop(updateFailure);
         }
     }
 
@@ -153,52 +152,15 @@ public final class BasicPedroAutoRobot {
         stopped = true;
         started = false;
 
-        RuntimeException failure = null;
-        failure = attempt(failure, new Runnable() {
-            @Override
-            public void run() {
-                autoRunner.cancelAndClear();
-            }
-        });
-        failure = attempt(failure, new Runnable() {
-            @Override
-            public void run() {
-                mechanism.stop();
-            }
-        });
-        failure = attempt(failure, new Runnable() {
-            @Override
-            public void run() {
-                autoDrive.stop();
-            }
-        });
-        if (failure != null) {
-            throw failure;
-        }
+        CleanupActions.attemptAll(
+                autoRunner::cancelAndClear,
+                mechanism::stop,
+                autoDrive::stop
+        );
     }
 
-    private void failStop(RuntimeException primaryFailure) {
-        try {
-            stop();
-        } catch (RuntimeException cleanupFailure) {
-            if (cleanupFailure != primaryFailure) {
-                primaryFailure.addSuppressed(cleanupFailure);
-            }
-        }
-    }
-
-    private static RuntimeException attempt(RuntimeException first, Runnable action) {
-        try {
-            action.run();
-        } catch (RuntimeException failure) {
-            if (first == null) {
-                return failure;
-            }
-            if (failure != first) {
-                first.addSuppressed(failure);
-            }
-        }
-        return first;
+    private RuntimeException failStop(RuntimeException primaryFailure) {
+        return CleanupActions.attemptAllAfterFailure(primaryFailure, this::stop);
     }
 
     private static void requireFinite(double value, String name) {

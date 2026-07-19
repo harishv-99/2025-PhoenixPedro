@@ -1,6 +1,6 @@
 # Framework Improvement Tracker
 
-Last updated: 2026-07-17
+Last updated: 2026-07-18
 
 This file tracks proposed Phoenix framework improvements. It is deliberately a planning document:
 an item being listed here does **not** mean its current proposed solution has been approved. Each
@@ -88,49 +88,50 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 24 | TUNE-01 | Live tuning to checked-in profile | Done | Document one explicit test-mode PIDF tune/apply/record workflow; add no tuner API because API-03 exposes the complete gain update and realization already owns outer reset. |
 | 25 | ROUTE-03 | Factory-only route Task configuration | Done | Use one named factory-only layer with direct bounded or explicit no-Task-timeout policy. |
 | 26 | ACT-01 | FTC actuator-group identity validation | Done | Private SDK-equivalent actuator/mecanum validation reviewed, verified, and approved on 2026-07-17. |
-| 27 | COMMON-01 | Initialization runtime helper | Proposed | Use the complete Pedro reference cost to extract only repeated retry/error/cleanup ceremony; avoid a robot base class or hidden loop. |
-| 28 | AUTO-01 | Compact bounded Auto continuation | Proposed | Use another real routine to separate reusable lifecycle ceremony from robot-owned match and recovery policy. |
-| 29 | SOURCE-03 | Composable scalar measurement conditioning | Proposed | Add only measurement-backed, explicitly configured numeric filters as generic `ScalarSource` decorators rather than hiding smoothing in a sensor adapter. |
-| 30 | MATCH-01 | Explicit Auto-to-TeleOp handoff | Proposed | Carry one typed immutable robot snapshot across the FTC mode boundary without string maps or stale globals. |
-| 31 | DRIVE-02 | Shared drivetrain actuator handoff | Proposed | Preserve one motor writer when a PTO reuses drivetrain motors for an endgame mechanism. |
-| 32 | VISION-01 | Custom VisionPortal ownership | Proposed | Reuse camera/processor lifecycle without forcing robot-specific detections through AprilTag APIs. |
-| 33 | SENSOR-01 | Motor-current sensing | Proposed | Expose cycle-memoized current in amps as a Source; keep jam, homing, and power-budget policy robot-owned. |
-| 34 | INPUT-01 | Safe contextual control activation | Proposed | Support optional control modes without turning held controls into phantom press edges. |
-| 35 | HAPTIC-01 | Driver haptic feedback boundary | Proposed | Expose small rate-safe rumble output while controls retain the meaning of each notification. |
-| 36 | PERF-01 | FTC hub bulk-cache ownership | Proposed | Evaluate one optional, cycle-idempotent manual bulk-cache heartbeat against SDK automatic caching. |
-| 37 | PERF-02 | Loop phase diagnostics | Proposed | Measure named loop phases with a lightweight diagnostic that does not own timing or sleep. |
-| 38 | PERF-03 | Contract-safe hardware write deduplication | Proposed | Add write caching only where measurements justify it and stop/Plant truth remain exact. |
-| 39 | TARGET-01 | Lazy Plant target overlay selection | Proposed | Resolve the selected highest-priority layer first and avoid sampling shadowed layers. |
-| 40 | TARGET-02 | Candidate freshness | Proposed | Compute effective age from the loop clock and timestamp, with validation. |
-| 41 | TARGET-03 | Periodic planner complexity | Proposed | Replace range iteration with constant-time candidate mathematics. |
-| 42 | CYCLE-01 | Stateful drive-source cycle safety | Proposed | Memoize stateful composition once per `clock.cycle()` and propagate reset deliberately. |
-| 43 | CYCLE-02 | Localization cycle safety | Proposed | Guard predictors/estimators against duplicate same-cycle updates. |
-| 44 | SOURCE-01 | Boolean composition sampling | Proposed | Sample both operands once per cycle before combining stateful results. |
-| 45 | API-01 | Writable Plant command binding | Proposed | Keep one simple `Plant` if builder provenance can prevent silent no-op writes. |
-| 46 | API-02 | Feedback tolerance choice | Proposed | Ask for tolerance after unit mapping; retain an explicitly named native default only if useful. |
-| 47 | API-04 | Binding execution order | Proposed | Preserve declaration order unless explicit phases are proven necessary. |
-| 48 | API-05 | One beginner drive entry point | Proposed | Teach the lane as the robot-facing path and keep the raw factory as a lower-level tool. |
-| 49 | COMMON-02 | Telemetry commit ownership | Proposed | Renderers add data; the composition root commits once. |
-| 50 | CHECK-01 | Staged whole-robot system check | Proposed | Compose a safe pre-match check from robot capabilities without hardware reflection or a base robot. |
-| 51 | EXAMPLE-01 | Compiling modern starter robot | Proposed | Add a small multi-file reference, not an inheritance framework. |
-| 52 | EXAMPLE-03 | Advanced moving-target reference | Proposed | Prove progress-triggered scoring and a bounded moving turret without putting game physics in the framework. |
-| 53 | BOUNDARY-01 | FTC boundary enforcement | Proposed | Fix existing import leaks, then add a focused forbidden-import check. |
-| 54 | DOC-01 | Stale and non-compiling documentation | Proposed | Correct loop/API examples and validate links/examples where practical. |
-| 55 | CI-01 | Framework verification in CI | Proposed | Run focused unit tests, TeamCode compilation, docs checks, and boundary checks. |
-| 56 | CLEAN-01 | Alias and risky convenience cleanup | Proposed | Remove only APIs proven redundant or unsafe by caller search. |
-| 57 | SAFE-04 | PowerOutput failure cleanup and seam truth | Proposed | Make low-level and grouped output failure handling fail-safe without claiming atomic or physical command truth. |
-| 58 | CAL-01 | Calibration-search power validation | Proposed | Reject invalid normalized search power before stopping normal output or changing calibration state. |
-| 59 | CAL-02 | Position-calibration reference validity | Proposed | Validate calibration reference and hold answers at the boundary that owns their units and lifecycle. |
-| 60 | MAP-01 | FTC actuator mapping-domain validation | Proposed | Validate finite child transforms and raw actuator domains before command mapping can be silently clamped. |
-| 61 | RANGE-01 | ScalarRange construction validity | Proposed | Define and enforce finite, half-bounded, and unbounded range construction without allowing `NaN`. |
-| 62 | FTC-02 | Device-managed controller configuration validation | Proposed | Validate FTC PIDF/P, maximum-power, and related staged answers before SDK access or mode changes. |
-| 63 | CONFIG-01 | Owner-configuration snapshot audit | Deferred | Revisit specific owners only when a traced caller shows mutation drift or invalid retained state. |
+| 27 | COMMON-01 | Cleanup action aggregation | Done | The stateless cleanup-action primitive and five bounded migrations are implemented, verified, and approved; the generic INIT runtime remains deferred. |
+| 28 | TESTER-01 | Tester child lifecycle fail-stop | Proposed | Fix concrete partial-init and uncertain-cleanup replacement hazards in existing tester owners without creating a generic robot runtime. |
+| 29 | AUTO-01 | Compact bounded Auto continuation | Proposed | Use another real routine to separate reusable lifecycle ceremony from robot-owned match and recovery policy. |
+| 30 | SOURCE-03 | Composable scalar measurement conditioning | Proposed | Add only measurement-backed, explicitly configured numeric filters as generic `ScalarSource` decorators rather than hiding smoothing in a sensor adapter. |
+| 31 | MATCH-01 | Explicit Auto-to-TeleOp handoff | Proposed | Carry one typed immutable robot snapshot across the FTC mode boundary without string maps or stale globals. |
+| 32 | DRIVE-02 | Shared drivetrain actuator handoff | Proposed | Preserve one motor writer when a PTO reuses drivetrain motors for an endgame mechanism. |
+| 33 | VISION-01 | Custom VisionPortal ownership | Proposed | Reuse camera/processor lifecycle without forcing robot-specific detections through AprilTag APIs. |
+| 34 | SENSOR-01 | Motor-current sensing | Proposed | Expose cycle-memoized current in amps as a Source; keep jam, homing, and power-budget policy robot-owned. |
+| 35 | INPUT-01 | Safe contextual control activation | Proposed | Support optional control modes without turning held controls into phantom press edges. |
+| 36 | HAPTIC-01 | Driver haptic feedback boundary | Proposed | Expose small rate-safe rumble output while controls retain the meaning of each notification. |
+| 37 | PERF-01 | FTC hub bulk-cache ownership | Proposed | Evaluate one optional, cycle-idempotent manual bulk-cache heartbeat against SDK automatic caching. |
+| 38 | PERF-02 | Loop phase diagnostics | Proposed | Measure named loop phases with a lightweight diagnostic that does not own timing or sleep. |
+| 39 | PERF-03 | Contract-safe hardware write deduplication | Proposed | Add write caching only where measurements justify it and stop/Plant truth remain exact. |
+| 40 | TARGET-01 | Lazy Plant target overlay selection | Proposed | Resolve the selected highest-priority layer first and avoid sampling shadowed layers. |
+| 41 | TARGET-02 | Candidate freshness | Proposed | Compute effective age from the loop clock and timestamp, with validation. |
+| 42 | TARGET-03 | Periodic planner complexity | Proposed | Replace range iteration with constant-time candidate mathematics. |
+| 43 | CYCLE-01 | Stateful drive-source cycle safety | Proposed | Memoize stateful composition once per `clock.cycle()` and propagate reset deliberately. |
+| 44 | CYCLE-02 | Localization cycle safety | Proposed | Guard predictors/estimators against duplicate same-cycle updates. |
+| 45 | SOURCE-01 | Boolean composition sampling | Proposed | Sample both operands once per cycle before combining stateful results. |
+| 46 | API-01 | Writable Plant command binding | Proposed | Keep one simple `Plant` if builder provenance can prevent silent no-op writes. |
+| 47 | API-02 | Feedback tolerance choice | Proposed | Ask for tolerance after unit mapping; retain an explicitly named native default only if useful. |
+| 48 | API-04 | Binding execution order | Proposed | Preserve declaration order unless explicit phases are proven necessary. |
+| 49 | API-05 | One beginner drive entry point | Proposed | Teach the lane as the robot-facing path and keep the raw factory as a lower-level tool. |
+| 50 | COMMON-02 | Telemetry commit ownership | Proposed | Renderers add data; the composition root commits once. |
+| 51 | CHECK-01 | Staged whole-robot system check | Proposed | Compose a safe pre-match check from robot capabilities without hardware reflection or a base robot. |
+| 52 | EXAMPLE-01 | Compiling modern starter robot | Proposed | Add a small multi-file reference, not an inheritance framework. |
+| 53 | EXAMPLE-03 | Advanced moving-target reference | Proposed | Prove progress-triggered scoring and a bounded moving turret without putting game physics in the framework. |
+| 54 | BOUNDARY-01 | FTC boundary enforcement | Proposed | Fix existing import leaks, then add a focused forbidden-import check. |
+| 55 | DOC-01 | Stale and non-compiling documentation | Proposed | Correct loop/API examples and validate links/examples where practical. |
+| 56 | CI-01 | Framework verification in CI | Proposed | Run focused unit tests, TeamCode compilation, docs checks, and boundary checks. |
+| 57 | CLEAN-01 | Alias and risky convenience cleanup | Proposed | Remove only APIs proven redundant or unsafe by caller search. |
+| 58 | SAFE-04 | PowerOutput failure cleanup and seam truth | Proposed | Make low-level and grouped output failure handling fail-safe without claiming atomic or physical command truth. |
+| 59 | CAL-01 | Calibration-search power validation | Proposed | Reject invalid normalized search power before stopping normal output or changing calibration state. |
+| 60 | CAL-02 | Position-calibration reference validity | Proposed | Validate calibration reference and hold answers at the boundary that owns their units and lifecycle. |
+| 61 | MAP-01 | FTC actuator mapping-domain validation | Proposed | Validate finite child transforms and raw actuator domains before command mapping can be silently clamped. |
+| 62 | RANGE-01 | ScalarRange construction validity | Proposed | Define and enforce finite, half-bounded, and unbounded range construction without allowing `NaN`. |
+| 63 | FTC-02 | Device-managed controller configuration validation | Proposed | Validate FTC PIDF/P, maximum-power, and related staged answers before SDK access or mode changes. |
+| 64 | CONFIG-01 | Owner-configuration snapshot audit | Deferred | Revisit specific owners only when a traced caller shows mutation drift or invalid retained state. |
 
 The completed order was intentionally front-loaded with testability, robot lifecycle, actuator
 safety, deterministic Task behavior, Pedro ownership, truthful route outcomes, and the reusable
 pieces already proven by Bettabot's shooter. The remaining order was re-audited on 2026-07-17
-against the still-current Summer26/Bettabot commit `4eed9d6c` and the complete 626-line Pedro
-reference rather than against short outer calls.
+against the still-current Summer26/Bettabot commit `4eed9d6c` and the then-current,
+pre-COMMON-01 626-line Pedro reference rather than against short outer calls.
 
 The next decision-gate cluster selected on 2026-07-17 was TUNE-01, ROUTE-03, ACT-01, and COMMON-01.
 TUNE-01 had the
@@ -275,7 +276,7 @@ without reopening those designs:
 | 1 | TUNE-01 | Potentially replaces the roughly 100-line two-way Dashboard synchronization owner with one explicit four-gain tune, validate, apply/reset, and record workflow. | Compare the complete tuner plus OpMode surface after API-03 against a small robot-local solution. This repository currently uses Pedro Panels and has no FTC Dashboard dependency; do not add a vendor dependency or generic tuning language unless total robot code and concepts decrease. |
 | 2 | ROUTE-03 | Makes each fixed or start-time Pedro route choose its name, route source, follower, and timeout directly through one factory layer instead of constructing a mutable one-field config or discovering parallel constructors. | Audit every factory, constructor, default/named overload, config caller, and return type. This is a major public-API decision and requires approval before implementation. |
 | 3 | ACT-01 | Would let an adopting Bettabot delete blank and duplicate left/right flywheel motor-name checks after the fully informed grouped-actuator boundary owns them, without changing the valid staged call. | Preserve intentional external-feedback reuse of a powered motor's own port and avoid a global hardware registry. |
-| 4 | COMMON-01 | The independent Pedro reference proves that 426 of its 626 source lines are in the composition root and FTC host rather than paths, capabilities, or the semantic routine. | Separate genuinely repeated INIT/retry/partial-cleanup mechanics from required robot ownership. Split another narrowly named item if recurring Auto-root lifecycle is proven but does not fit this initialization scope. |
+| 4 | COMMON-01 | The pre-COMMON-01 independent Pedro reference proved that 426 of its 626 source lines were in the composition root and FTC host rather than paths, capabilities, or the semantic routine. | Separate genuinely repeated INIT/retry/partial-cleanup mechanics from required robot ownership. Split another narrowly named item if recurring Auto-root lifecycle is proven but does not fit this initialization scope. |
 | 5 | AUTO-01 | Could prevent copying Phoenix's large bounded-pre-park continuation state machine when Bettabot adds a match-time park policy. | EXAMPLE-02 supplies one reference, but a second materially different bounded routine is still required. A simple one-route Auto should not wait for this item or justify an Auto DSL. |
 | 6 | SOURCE-03 | Could improve position-derived flywheel feedback and avoid a future robot-local filter. | Cuttlefish supplies the second real caller, not the correct algorithm. Require real traces and compare noise rejection against control delay under irregular loop periods; never add implicit smoothing. |
 
@@ -3916,7 +3917,7 @@ writer, and explicit lifecycle ownership.
 - **Completion:** one complete beginner loop compiles and matches actual timing/ownership behavior.
 - **Decision record:** _Pending._
 
-### COMMON-01 - Initialization runtime helper
+### COMMON-01 - Cleanup action aggregation
 
 - **Problem to confirm:** Phoenix Auto and framework testers repeat retry, error reporting, partial
   construction cleanup, and initialization state.
@@ -3939,6 +3940,253 @@ writer, and explicit lifecycle ownership.
 - **Completion:** callers become shorter without hiding loop order or resource ownership; partial
   failure and repeated cleanup are tested; the decision record counts removed versus introduced
   robot-code lines and concepts across the complete Pedro reference.
+- **Decision record (2026-07-17):**
+  - **Confirmed decision-gate reference cost:** the pre-implementation Pedro reference was 626
+    source lines:
+    98 in `BasicPedroAutoMechanism`, 52 in `BasicPedroAutoPaths`, 50 in
+    `BasicPedroAutoRoutine`, 209 in `BasicPedroAutoRobot`, and 217 in
+    `PhoenixBasicPedroAutoExample`. The semantic capability/path/routine files are 200 lines; the
+    composition root and FTC host are 426 lines. The loop itself is not accidental boilerplate:
+    `BasicPedroAutoRobot.update(...)` must keep
+    `clock -> localization -> Pedro heartbeat -> TaskRunner -> mechanism Plant` explicit. The
+    mechanically repeated portion is narrower: ordered best-effort cleanup plus preservation of a
+    primary failure and later suppressed cleanup failures was estimated to remove 62-70 net
+    robot-code lines across the basic root, mechanism, and host before implementation. The exact
+    completed measurement below is 60 lines, or about 9.6% of the complete reference.
+  - **Full caller and behavior audit:** only `PhoenixPedroAutoOpModeBase` has the complete proposed
+    retry state machine. It distinguishes a readiness blocker from a construction failure, retains
+    the exact `PhoenixAutoSpec`, treats another request for the same successful spec as idempotent,
+    rejects replacement with a different spec, permits another INIT attempt after ordinary clean
+    failure, and permanently blocks retry after uncertain cleanup. The independent Pedro host is a
+    one-shot FTC lifecycle that rethrows INIT failure; `BasicPedroAutoRobot` is a one-shot
+    START/update/fail-stop owner; and `PhoenixRobot` permits one mode initialization and one
+    terminal idempotent stop. These are not three copies of one retry policy.
+  - **Tester and tool audit:** `FtcTeleOpTesterOpMode` owns one whole-OpMode tester but has no
+    retained retry contract. `TesterSuite` and `HardwareSelectingTester` own replaceable child
+    sessions, not a whole Auto runtime; in particular, `HardwareSelectingTester` can lose a local
+    tester whose `init(...)` or `start()` threw before `active` was assigned. Three vision testers
+    repeat resource-specific ready/error/reselection code, but currently swallow cleanup failure
+    and permit retry, unlike the fail-closed Phoenix Auto contract. These are concrete tester-safety
+    follow-ups, not evidence that one generic INIT state machine should silently choose retry,
+    replacement, presentation, or cleanup-failure policy for every caller.
+  - **Other cleanup callers audited:** `RouteExecution.failClosed(...)`,
+    `FtcHardware.acquireRequiredModeIfNeeded(...)`, and `PhoenixScoringAttemptTask.cancel()` contain
+    mechanically equivalent attempt-all/first-failure aggregation, and modern framework TeleOp
+    examples contain several simpler sequential multi-owner `stop()` methods. They confirm that the
+    narrow primitive is reusable, but remain deliberate non-migrations in this bounded first use so
+    COMMON-01 does not become a repository-wide cleanup rewrite. `DcMotorPowerTester` also preserves
+    failures while restoring physical zero and motor mode, but deliberately wraps some failures
+    with tester-specific remediation. Other Task, route, and regulated-Plant implementations make
+    outcome- or state-dependent cleanup decisions; converting those non-equivalent state machines
+    would change their safety or lifecycle contract. None of these callers supplies a second copy
+    of the complete generic INIT/retry policy.
+  - **Broader-use and naming audit:** appropriate uses extend beyond a composition root's final
+    `stop()`: partial-construction rollback, Task cancellation, route fail-closed cancellation,
+    multi-motor zeroing after configuration failure, Plant output/reset recovery, and tester
+    teardown all need the same attempt-all/retain-first mechanism. They are nevertheless all
+    cleanup or compensating actions. No ordinary forward-operation caller was found where continuing
+    after a failed prerequisite is generally safe. A generic `Actions`, `BestEffortActions`,
+    `RuntimeFailures`, or `Exceptions` facade would therefore advertise a broader and potentially
+    unsafe policy. `LifecycleCleanup` is also too narrow and can sound like it owns lifecycle state
+    or idempotence. Use the plural static facade `CleanupActions`; it describes caller-owned
+    cleanup operations without claiming to own their lifecycle.
+  - **Existing public construction paths:** `PhoenixRobot` has two public constructors,
+    `initAny()`, `initTeleOp()`, two `initAuto(...)` overloads, and one public `stop()`; its
+    `PhoenixShutdown` state helper is deliberately package-private. `PedroPathingRuntime` has one
+    public static `create(...)` factory and a private constructor, and cleans its own partially
+    created vendor graph. `BasicPedroAutoRobot` has one public wiring constructor plus a
+    package-private fake-test constructor. Testers use the existing `TeleOpTester` lifecycle,
+    `FtcTeleOpTesterOpMode#createTester()`, the `TesterSuite` constructor/fluent registration path,
+    and the `HardwareSelectingTester` constructor. There is no existing framework runtime slot,
+    cleanup registry, generic lifecycle interface, or second public construction layer to extend.
+  - **Why the documented supplier-based guard is not sound:** the conceptual
+    `InitRuntimeGuard.builder(...).buildWith(Supplier<T>)...` in
+    `Future Robot Boilerplate Helpers.md` cannot clean hardware or another resource created before
+    a throwing supplier returns `T`. Fixing that requires callers either to introduce a new wrapper
+    composition root before acquisition or to register every partial owner in a cleanup scope and
+    transfer/disarm ownership as larger owners are built. The latter adds a public resource
+    transaction, alias/transfer rules, reverse-versus-explicit cleanup-order choices, and
+    double-stop hazards. Its `cleanupWith(...)` and `describe(...)` parameters would be constructed
+    inline for one builder step rather than stored, reused, composed, shared, or independently
+    validated, so staged parameter types or selector wrappers would add public nouns without
+    distinct value.
+  - **Side-by-side ordinary robot call sites and decisions:**
+
+    | Approach | Ordinary owner code | Conceptual decisions supplied by the student |
+    |---|---|---|
+    | No framework change | `failure = attempt(failure, runner::cancelAndClear);` repeated for each owner, followed by `if (failure != null) throw failure;` plus a separate primary-failure bridge | terminal/idempotent state; every owner; action order; first-failure retention; later suppression; self-suppression; primary propagation |
+    | Robot-local private helper | the same `attempt(...)` calls, with the helper copied into each new robot root/host | every decision above; the mechanics merely move to another robot file |
+    | Proposed `CleanupActions` | `CleanupActions.attemptAll(runner::cancelAndClear, mechanisms::stop, drive::stop);` | terminal/idempotent state; the three real owners; their safety order. The framework owns only attempt-all and exception aggregation |
+    | Generic `InitRuntimeGuard<T>` | `guard.tryInitialize(this::buildRuntime)` plus a cleanup callback or registration scope | runtime identity; construction/initialization boundary; partial-owner registration and transfer; same/different-spec replacement; retry eligibility; cleanup-failure policy; error presentation; STOP behavior |
+    | FTC/Auto base shell | `final class MyAuto extends FrameworkAutoOpMode { ...hooks... }` | short leaf code, but hidden callback/loop order plus hook choices for readiness, telemetry, routes, services, mechanisms, and cleanup |
+
+    The no-change and local-helper shapes therefore keep about seven lifecycle/error decisions in
+    robot code. The proposed static call reduces that to owner identity/order plus the owner's
+    existing terminal flag. The generic guard adds decisions that the current callers answer
+    differently, and a base shell hides required ownership rather than eliminating it.
+  - **Chosen materially narrower design:** add one FTC-independent, static-only public primitive,
+    `edu.ftcphoenix.fw.core.lifecycle.CleanupActions`, with no public constructor, builder, retained
+    resource list, or parallel instance API. `attemptAll(Runnable...)` executes the caller-listed
+    actions in order, attempts every action after a `RuntimeException`, then throws the first failure
+    with later failures suppressed. “Attempt” is intentional: it promises that every eligible
+    cleanup is invoked, not that every cleanup succeeds. The
+    `RuntimeException attemptAllAfterFailure(RuntimeException primaryFailure, Runnable...)` method
+    attempts every action in order, attaches each cleanup failure directly to the already-owned
+    primary, and returns that **same exception object** so the common rethrow remains one explicit
+    expression:
+
+    ```java
+    catch (RuntimeException failure) {
+        throw CleanupActions.attemptAllAfterFailure(
+                failure,
+                mechanism::stop,
+                drive::stop
+        );
+    }
+    ```
+
+    The supplied failure is therefore the attachment target, not a signal that the helper secretly
+    throws it. A caller may instead wrap the returned primary as an actionable cause, retain it for
+    telemetry, or ignore the return while continuing to reference the same mutated object. Making
+    the helper always throw was rejected because `PedroPathingRuntime` deliberately wraps its
+    enriched construction failure, and returning a new aggregate would lose primary identity.
+    Eliminating this method in favor of catching `attemptAll(...)` would create a nested suppression
+    graph (`primary -> first cleanup -> later cleanup`) rather than attaching every cleanup failure
+    directly and visibly to the true primary.
+    A null primary is rejected before cleanup because there is no failure to preserve. A null
+    action array passed explicitly to `attemptAll(...)` is rejected; when an existing primary is
+    supplied, the equivalent array error is attached to that primary. An individual null action is
+    treated as an actionable indexed cleanup failure at its position and later actions are still
+    attempted. “Distinct” means only that an exception is never suppressed onto itself by identity;
+    the helper does not globally deduplicate a later exception instance. It catches
+    `RuntimeException`, not `Error`.
+  - **What students still decide:** owners retain their own exact-once or terminal flag, detach
+    references before reentrant cleanup when required, and list the real actions in their required
+    safety order. For the basic Auto root, the complete normal call remains visibly
+    `CleanupActions.attemptAll(runner::cancelAndClear, mechanism::stop, drive::stop)`. During partial
+    host construction, the host still explicitly chooses mechanism cleanup **or** raw Plant cleanup
+    according to which owner exists, then asks the helper to preserve those failures on the
+    construction exception. The helper never owns a `LoopClock`, OpMode callback, runtime slot,
+    retry decision, resource registry, telemetry frame, route policy, or robot capability.
+  - **Framework Principles and simplicity result:** this introduces one public noun with a distinct
+    safety capability instead of a second spelling of runtime construction. It keeps all actions
+    and their order visible, preserves the original actionable failure, contains no FTC/vendor
+    dependency, and removes exception-graph mechanics from robot code without hiding the heartbeat
+    or hardware ownership. The full reference still teaches idempotent fail-stop cleanup as one of
+    its approximately 15 concepts; it should not claim that a helper removes the need to choose
+    owners or safety order.
+  - **Rejected designs:** documentation-only/no change leaves a real repeated safety mechanism in
+    robot code; private helpers do not reduce adopting-robot code; a public
+    `InitRuntimeGuard<T>` lacks enough equivalent callers and cannot own an unreturned partial
+    graph; a cleanup-registration transaction adds more ownership concepts than it removes; making
+    every owner `AutoCloseable` does not fit the non-lexical FTC lifecycle or explicit stop order;
+    promoting `PhoenixShutdown` would incorrectly export Phoenix's one-init policy; an FTC lane,
+    generic Auto runtime, scheduler, or base OpMode would hide lifecycle/loop ownership and absorb
+    robot-specific readiness, telemetry, and strategy.
+  - **Bounded implementation scope:** if approved, add only the static cleanup primitive and focused
+    tests; migrate the equivalent aggregation in `BasicPedroAutoRobot`,
+    `BasicPedroAutoMechanism`, `PhoenixBasicPedroAutoExample`, PhoenixRobot's
+    initialization-failure bridge, and the matching single-cleanup construction bridge in
+    `PedroPathingRuntime` where semantics remain identical. Keep `PhoenixShutdown.run(...)`
+    package-private and unchanged because it deliberately accepts absent/null owner actions as part
+    of a larger exact-once lifecycle; the proposed public primitive treats an individual null
+    action as an error. Do not change Auto retry/spec/readiness policy, tester selection behavior,
+    Task cleanup state machines, route behavior, loop order, or any later tracker item. Correct
+    `Future Robot Boilerplate Helpers.md` so the speculative generic guard is explicitly deferred,
+    and synchronize the Pedro reference and robot-design cleanup guidance with the real API and
+    exact line counts.
+  - **Verification plan:** add pure tests for action order, all-actions-after-failure, first/later
+    failure identity and suppression order, return identity from `attemptAllAfterFailure(...)`, an
+    action throwing the already-owned primary, invalid primary/action inputs, and calls with no
+    actions. Rerun `PhoenixShutdownTest`,
+    `BasicPedroAutoRobotTest`, `BasicPedroAutoMechanismTest`,
+    `PhoenixBasicPedroAutoExampleTest`, `PhoenixPedroAutoOpModeBaseTest`, and
+    `PedroPathingRuntimeValidationTest`; then run the complete TeamCode unit suite and Java compile
+    with Android Studio's JBR. Recount the five Pedro files, search for a new generic INIT guard,
+    resource registry, hidden OpMode/base shell, or changed loop order, check documentation links
+    and whitespace, and report that hardware cleanup ordering itself remains unverified without the
+    robot.
+  - **Design approval (2026-07-18):** the user approved the `CleanupActions` design after the API was
+    refined to `attemptAll(...)` and returned-primary `attemptAllAfterFailure(...)`. Implementation
+    is limited to the primitive, the five bounded migrations, focused tests, synchronized
+    documentation, and exact post-change line counts.
+  - **Implementation (2026-07-18):** added the static-only, FTC-independent `CleanupActions`
+    primitive with only the two approved public methods. It preserves caller order and exception
+    identity, attempts later actions after a `RuntimeException`, attaches later failures in order,
+    avoids self-suppression, treats null actions as indexed cleanup failures, and propagates
+    `Error` immediately. The equivalent aggregation in `BasicPedroAutoRobot`,
+    `BasicPedroAutoMechanism`, `PhoenixBasicPedroAutoExample`, PhoenixRobot's two initialization
+    failure bridges, and `PedroPathingRuntime` now uses that primitive. No loop order, owner
+    eligibility, idempotence flag, partial-construction selection, retry/readiness policy,
+    `PhoenixShutdown`, Task state machine, or public robot construction path changed.
+  - **Implementation measurement (2026-07-18):** the five-file Pedro reference is now exactly 566
+    source lines: 85 in `BasicPedroAutoMechanism`, 52 in `BasicPedroAutoPaths`, 50 in
+    `BasicPedroAutoRoutine`, 171 in `BasicPedroAutoRobot`, and 208 in
+    `PhoenixBasicPedroAutoExample`. That is 60 fewer lines than the 626-line pre-COMMON-01
+    reference, a reduction of about 9.6%. The four independent reference classes total 358 lines;
+    the Phoenix-specific FTC host contributes 208. Ownership, cleanup order, the explicit
+    `clock -> localization -> Pedro heartbeat -> TaskRunner -> mechanism Plant` update order, and
+    all robot-specific construction policy remain visible.
+  - **Automated verification (2026-07-18):** the seven focused cleanup, migrated-caller, Phoenix
+    shutdown/host, and Pedro-runtime suites pass 36 tests with zero failures, errors, or skips. The
+    final `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` run succeeds with 55 XML
+    suites and 554 tests, zero failures, zero errors, and zero skips. Diagnostics are limited to the
+    repository's existing Java-21/source-8 and FTC deprecation warnings.
+  - **Static, documentation, and adversarial verification:** exact line recounting confirms the
+    566-line reference and 60-line reduction. Exhaustive caller/API searches confirm one new public
+    static facade, exactly two approved methods, exactly five production migrations, and no generic
+    INIT guard, registry, base OpMode, alias, overload, or parallel construction path. Framework
+    Principles, robot-design guidance, the Pedro reference, and the future-helper guidance describe
+    the same ownership and `RuntimeException`/`Error` contract. Framework docs contain no downstream
+    case-study project reference; local Markdown links, `git diff --check`, and affected-file
+    trailing-whitespace checks pass. Independent API/simplicity, correctness/lifecycle, docs, and
+    final-scope reviews found no blocking issue after their count, wording, suppression, and
+    adversarial-test findings were addressed.
+  - **Gate 3 / verification status (2026-07-18):** implementation and automated verification are
+    complete. No robot-hardware result is claimed; physical cleanup ordering remains an on-robot
+    observation even though this change preserves the existing owner order and adds no new hardware
+    behavior.
+  - **Manual verification (2026-07-18):** the user reviewed COMMON-01 in Android Studio and replied
+    `COMMON-01 looks good`. COMMON-01 is **Done**. This approval authorizes publication and merge for
+    COMMON-01 only; TESTER-01 and every later tracker item remain untouched.
+
+### TESTER-01 - Tester child lifecycle fail-stop
+
+- **Problem to confirm:** tester owners can lose a partially initialized child or replace a child
+  after cleanup failed, leaving hardware ownership uncertain. `HardwareSelectingTester` constructs
+  a candidate in a local variable and assigns `active` only after `init(...)` and `start()` return;
+  if either callback throws, the candidate is no longer reachable for `stop()`. `TesterSuite`,
+  `FtcTeleOpTesterOpMode`, and the selectable vision testers also need an explicit audit of failure
+  and replacement behavior across every child lifecycle callback.
+- **Why it matters:** test OpModes intentionally exercise real hardware. A failed child must not
+  leave a motor, camera, or vendor resource active while the UI selects or creates a replacement.
+  The safe behavior should be fail-stop and actionable without adding a generic robot runtime or
+  hiding tester selection from students.
+- **Framework Principle target:** stable resource ownership, exact and idempotent cleanup,
+  best-effort cancellation after lifecycle failure, fail-fast actionable errors, and one clear
+  public lifecycle path.
+- **Alternatives to compare:**
+  1. correct each existing tester owner locally, retaining the candidate before invoking lifecycle
+     callbacks and blocking replacement when cleanup outcome is uncertain;
+  2. extract a tester-specific child-session owner only if the complete lifecycle state machine is
+     repeated after the local corrections are written and tested;
+  3. reuse the narrow lifecycle-cleanup aggregation primitive for exception preservation while
+     keeping ownership and retry policy local;
+  4. introduce the previously proposed generic INIT/runtime guard;
+  5. document the risk without changing behavior.
+- **Leading hypothesis:** first fix the existing tester owners at their real ownership boundaries.
+  Use the COMMON-01 cleanup primitive, if approved and applicable, only for attempt-all exception
+  aggregation. Extract a tester-session helper only if the completed fixes reveal multiple
+  structurally identical child state machines; do not generalize this into an Auto/robot runtime.
+- **Student-facing simplicity gate:** ordinary tester creation and selection must not gain a
+  builder, cleanup registry, ownership-transfer token, or second public construction path. The
+  tester should either be visibly active or visibly failed closed; students should not decide
+  exception-suppression mechanics.
+- **Completion:** fake-backed tests cover a null/throwing factory, `init`, `start`, `initLoop`, and
+  `loop` failure; prove that every reachable partial child is stopped at most once, cleanup failures
+  are preserved and block unsafe replacement, BACK and repeated STOP remain safe, and no callback
+  runs on a terminal child. Update tester documentation and examples if the observable lifecycle
+  contract changes.
 - **Decision record:** _Pending._
 
 ### COMMON-02 - Telemetry commit ownership
@@ -4195,12 +4443,13 @@ writer, and explicit lifecycle ownership.
   robot-code concepts and lines each approach requires; a short outer factory call is not sufficient
   evidence of simplicity.
 - **Reprioritization state (2026-07-17):** EXAMPLE-02 recorded the full 630-line independent
-  reference baseline before ROUTE-03; the current reference is 626 lines after its route-config
-  cleanup, so the first prerequisite remains closed. Bettabot still has only one-shot
-  shooter Tasks and no real bounded Pedro routine, so the second caller needed to distinguish
-  reusable continuation mechanics from Phoenix's match policy does not yet exist. Keep this item
-  high for the first competition Auto, but do not implement it for an ordinary single-route routine
-  or manufacture a generic Auto DSL from the remaining evidence.
+  reference baseline before ROUTE-03; route-config cleanup reduced it to 626 lines, and COMMON-01
+  cleanup aggregation has since reduced the current reference to 566 lines. The first prerequisite
+  remains closed. Bettabot still has only one-shot shooter Tasks and no real bounded Pedro routine,
+  so the second caller needed to distinguish reusable continuation mechanics from Phoenix's match
+  policy does not yet exist. Keep this item high for the first competition Auto, but do not
+  implement it for an ordinary single-route routine or manufacture a generic Auto DSL from the
+  remaining evidence.
 - **Alternatives to compare:** retain the tested explicit pattern; simplify only the Phoenix private
   Tasks; document a copyable template; add a robot-local helper; reuse or reshape existing
   `sequence(...)`/`branchOnOutcome(...)` composition; extract a narrow lifecycle utility; or add a

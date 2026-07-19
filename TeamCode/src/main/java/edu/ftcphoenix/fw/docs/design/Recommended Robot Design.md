@@ -240,6 +240,47 @@ It should usually **not** own:
 A robot container is the place where it should be obvious what exists on the robot. It is not the
 place where each mechanism's detailed behavior should live.
 
+### Coordinated cleanup remains explicit
+
+When a composition root owns several independent cleanup actions, mark the owner terminal or detach
+its references first, then list the real actions in their required safety order:
+
+```java
+public void stop() {
+    if (stopped) {
+        return;
+    }
+    stopped = true;
+
+    CleanupActions.attemptAll(
+            runner::cancelAndClear,
+            mechanism::stop,
+            drive::stop
+    );
+}
+```
+
+Every later action is attempted if an earlier one throws a `RuntimeException`. The first cleanup
+failure remains primary and later failures are suppressed onto it; an `Error` propagates
+immediately. If an update or construction operation already failed, keep that more useful failure
+primary:
+
+```java
+catch (RuntimeException failure) {
+    throw CleanupActions.attemptAllAfterFailure(
+            failure,
+            mechanism::stop,
+            drive::stop
+    );
+}
+```
+
+The second method returns the same supplied exception after attaching cleanup failures. The caller
+may rethrow it, wrap it as an actionable cause, or retain it for telemetry. `CleanupActions` does
+not choose eligibility, ownership, idempotence, rollback order, retry, or replacement policy, and
+it is not a normal command sequencer. Continuing later drive, feed, or mechanism commands after a
+failed prerequisite can be unsafe.
+
 ### Subsystem
 
 A subsystem owns the target sources and Plant update order for one mechanism or one tightly-coupled hardware group.

@@ -103,6 +103,58 @@ public final class BasicPedroAutoRobotTest {
         assertEquals(3, events.size());
     }
 
+    @Test
+    public void updateFailureRemainsPrimaryWhenCompositeFailStopAlsoFails() {
+        List<String> events = new ArrayList<String>();
+        RuntimeException updateFailure = new RuntimeException("plant update failed");
+        RuntimeException taskFailure = new RuntimeException("task cleanup failed");
+        RuntimeException mechanismFailure = new RuntimeException("mechanism stop failed");
+        RuntimeException driveFailure = new RuntimeException("drive stop failed");
+        RecordingPlant plant = new RecordingPlant(events);
+        plant.updateFailure = updateFailure;
+        plant.stopFailure = mechanismFailure;
+        RecordingTask task = new RecordingTask(events);
+        task.cancelFailure = taskFailure;
+        RecordingDrive drive = new RecordingDrive(events);
+        drive.stopFailure = driveFailure;
+        BasicPedroAutoRobot robot = new BasicPedroAutoRobot(
+                new RecordingLocalization(events),
+                drive,
+                () -> events.add("startPose"),
+                new BasicPedroAutoMechanism(plant, 0.7),
+                task
+        );
+        robot.start(0.0);
+
+        try {
+            robot.update(0.02);
+            fail("expected update failure");
+        } catch (RuntimeException failure) {
+            assertSame(updateFailure, failure);
+            assertEquals(1, failure.getSuppressed().length);
+            assertSame(taskFailure, failure.getSuppressed()[0]);
+            assertEquals(2, taskFailure.getSuppressed().length);
+            assertSame(mechanismFailure, taskFailure.getSuppressed()[0]);
+            assertSame(driveFailure, taskFailure.getSuppressed()[1]);
+        }
+
+        assertEquals(
+                Arrays.asList(
+                        "startPose",
+                        "localization(cycle=1,dt=0.02)",
+                        "drive.update(cycle=1)",
+                        "task.start(cycle=1)",
+                        "task.update(cycle=1)",
+                        "plant.update(cycle=1)",
+                        "task.cancel",
+                        "plant.stop",
+                        "drive.stop"
+                ),
+                events
+        );
+        assertTrue(robot.isStopped());
+    }
+
     /** Creates the same small fake-backed root for the separate FTC host lifecycle test. */
     public static BasicPedroAutoRobot newRecordingRobot(List<String> events) {
         RecordingPlant plant = new RecordingPlant(events);
@@ -167,6 +219,7 @@ public final class BasicPedroAutoRobotTest {
     private static final class RecordingPlant implements Plant {
         private final List<String> events;
         final ScalarTarget target = ScalarTarget.held(0.0);
+        RuntimeException updateFailure;
         RuntimeException stopFailure;
 
         RecordingPlant(List<String> events) {
@@ -176,6 +229,9 @@ public final class BasicPedroAutoRobotTest {
         @Override
         public void update(LoopClock clock) {
             events.add("plant.update(cycle=" + clock.cycle() + ")");
+            if (updateFailure != null) {
+                throw updateFailure;
+            }
         }
 
         @Override

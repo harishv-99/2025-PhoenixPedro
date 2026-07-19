@@ -731,6 +731,16 @@ Task also cannot undo persistent requests left by earlier completed macro steps.
 shutdown must still cancel queues, disable relevant overlays, and reset every related mechanism
 request for coordinated or emergency cleanup.
 
+When one owner must clean several independent resources, it first makes its terminal/idempotent
+state and eligible ownership explicit, then may use `CleanupActions.attemptAll(...)` to attempt the
+listed actions in their required safety order while preserving the first `RuntimeException`. Later
+actions are still attempted after a `RuntimeException`; an `Error` propagates immediately. If
+another operation already failed, `attemptAllAfterFailure(...)` attaches cleanup failures to that
+supplied primary and returns the same exception for the caller to rethrow, wrap, retain, or report.
+These helpers own exception aggregation only: they do not select resources, detach references,
+choose rollback/retry policy, or authorize continuing ordinary robot commands after a failed
+prerequisite.
+
 This makes it hard to accidentally write a “wait for target” macro on a mechanism that has no feedback.
 
 ---

@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
+import edu.ftcphoenix.fw.core.lifecycle.CleanupActions;
 import edu.ftcphoenix.fw.ftc.localization.PinpointOdometryPredictor;
 import edu.ftcphoenix.fw.localization.MotionPredictor;
 
@@ -140,14 +141,12 @@ public final class PedroPathingRuntime {
                     pathBuilderDefaults
             );
         } catch (RuntimeException constructionFailure) {
-            if (drivetrain != null) {
-                try {
-                    drivetrain.breakFollowing();
-                } catch (RuntimeException stopFailure) {
-                    if (stopFailure != constructionFailure) {
-                        constructionFailure.addSuppressed(stopFailure);
-                    }
-                }
+            final Mecanum drivetrainToStop = drivetrain;
+            if (drivetrainToStop != null) {
+                CleanupActions.attemptAllAfterFailure(
+                        constructionFailure,
+                        drivetrainToStop::breakFollowing
+                );
             }
             throw new IllegalStateException(
                     "Pedro production runtime construction failed for field transform '"
