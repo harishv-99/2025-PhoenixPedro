@@ -101,6 +101,10 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
     private String selectedVisionDeviceName = null;
 
     private boolean ready = false;
+    private boolean visionClosingOrTerminal = false;
+    private boolean visionTerminalRequested = false;
+    private boolean visionCleanupFailed = false;
+    private RuntimeException visionFailure = null;
     private String initError = null;
     private String activeVisionDescription = null;
 
@@ -315,7 +319,7 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
                 gamepads.p1().dpadDown(),
                 gamepads.p1().a(),
                 gamepads.p1().x(),
-                () -> !ready,
+                () -> !ready && !visionClosingOrTerminal && !visionCleanupFailed,
                 chosen -> {
                     selectedVisionDeviceName = chosen;
                     ensureReady();
@@ -390,6 +394,9 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
      */
     @Override
     public boolean onBackPressed() {
+        if (visionClosingOrTerminal || visionCleanupFailed) {
+            return true;
+        }
         if (!ready) {
             return false;
         }
@@ -399,28 +406,34 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
 
     @Override
     protected void onStop() {
-        if (visionLane != null) {
-            visionLane.close();
-            visionLane = null;
-        }
+        visionTerminalRequested = true;
+        ready = false;
         tagSensor = null;
         selection = null;
         localizationLane = null;
         activeVisionDescription = null;
+        RuntimeException cleanupFailure = closeVisionLaneOnce();
+        if (cleanupFailure != null) {
+            visionCleanupFailed = true;
+            visionFailure = cleanupFailure;
+            throw cleanupFailure;
+        }
     }
 
     private void resetToPicker() {
         ready = false;
         initError = null;
         layout = null;
-        if (visionLane != null) {
-            visionLane.close();
-        }
-        visionLane = null;
         tagSensor = null;
         selection = null;
         localizationLane = null;
         activeVisionDescription = null;
+        RuntimeException cleanupFailure = closeVisionLaneOnce();
+        if (cleanupFailure != null) {
+            blockVisionSelection(cleanupFailure);
+        } else if (!visionTerminalRequested) {
+            visionClosingOrTerminal = false;
+        }
     }
 
     private void renderPicker() {
@@ -437,19 +450,27 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
         visionPicker.render(t);
         t.addLine("");
         t.addLine("Chosen: " + (selectedVisionDeviceName == null ? "(none)" : selectedVisionDeviceName));
-        t.addLine("Press A to choose the active vision device and initialize localization.");
-        t.addLine("Press B to refresh the device list.");
-        t.addLine("Press BACK to exit to the tester menu.");
+        if (visionCleanupFailed) {
+            t.addLine("VISION DEVICE SELECTION DISABLED.");
+            t.addLine("Stop and restart this OpMode before selecting another device.");
+        } else {
+            t.addLine("Press A to choose the active vision device and initialize localization.");
+            t.addLine("Press B to refresh the device list.");
+            t.addLine("Press BACK to exit to the tester menu.");
+        }
         t.update();
     }
 
     private void ensureReady() {
         if (ready) return;
+        if (visionClosingOrTerminal) return;
+        if (visionCleanupFailed) return;
         if (selectedVisionDeviceName == null || selectedVisionDeviceName.trim().isEmpty()) {
             initError = "No vision device selected";
             return;
         }
 
+        visionFailure = null;
         try {
             AprilTagVisionLaneFactory factory = visionLaneFactoryBuilder.apply(selectedVisionDeviceName);
             if (factory == null) {
@@ -457,6 +478,10 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
             }
 
             visionLane = factory.open(ctx.hw);
+            if (visionLane == null) {
+                throw new IllegalStateException(
+                        "vision lane factory returned null for " + selectedVisionDeviceName);
+            }
             tagSensor = visionLane.tagSensor();
             activeVisionDescription = factory.description();
             layout = (layoutOverride != null)
@@ -472,22 +497,72 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
 
             ready = true;
             initError = null;
-        } catch (Exception e) {
-            if (visionLane != null) {
-                try {
-                    visionLane.close();
-                } catch (Exception ignored) {
-                    // Best effort only.
-                }
-            }
-            visionLane = null;
+        } catch (RuntimeException e) {
             tagSensor = null;
             selection = null;
             localizationLane = null;
             activeVisionDescription = null;
-            initError = e.getClass().getSimpleName() + ": " + e.getMessage();
             ready = false;
+            RuntimeException cleanupFailure = closeVisionLaneOnce();
+            visionFailure = e;
+            if (cleanupFailure != null) {
+                if (cleanupFailure != e) {
+                    e.addSuppressed(cleanupFailure);
+                }
+                visionCleanupFailed = true;
+            } else if (!visionTerminalRequested) {
+                visionClosingOrTerminal = false;
+            }
+            initError = visionFailureMessage(e);
         }
+    }
+
+    /**
+     * Detaches and closes the currently owned vision lane once.
+     *
+     * <p>Detaching before the callback keeps reentrant and repeated shutdown paths from reaching
+     * the same lane again.</p>
+     *
+     * @return the close failure, or {@code null} when no lane was owned or close succeeded
+     */
+    private RuntimeException closeVisionLaneOnce() {
+        visionClosingOrTerminal = true;
+        AprilTagVisionLane lane = visionLane;
+        visionLane = null;
+        if (lane == null) {
+            return null;
+        }
+        try {
+            lane.close();
+            return null;
+        } catch (RuntimeException cleanupFailure) {
+            return cleanupFailure;
+        }
+    }
+
+    /** Blocks further selection after cleanup leaves hardware ownership uncertain. */
+    private void blockVisionSelection(RuntimeException cleanupFailure) {
+        visionCleanupFailed = true;
+        visionFailure = cleanupFailure;
+        initError = visionFailureMessage(cleanupFailure);
+    }
+
+    /** Formats the primary failure first and retains any suppressed cleanup diagnostics. */
+    private String visionFailureMessage(RuntimeException failure) {
+        StringBuilder message = new StringBuilder()
+                .append(failure.getClass().getSimpleName())
+                .append(": ")
+                .append(String.valueOf(failure.getMessage()));
+        for (Throwable suppressed : failure.getSuppressed()) {
+            message.append("\nCleanup also failed: ")
+                    .append(suppressed.getClass().getSimpleName())
+                    .append(": ")
+                    .append(String.valueOf(suppressed.getMessage()));
+        }
+        if (visionCleanupFailed) {
+            message.append("\nVision cleanup is uncertain. Stop and restart this OpMode.");
+        }
+        return message.toString();
     }
 
     private void rebuildSelection() {

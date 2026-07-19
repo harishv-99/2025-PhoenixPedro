@@ -10,6 +10,17 @@ package edu.ftcphoenix.fw.tools.tester;
  *   <li>Support selection menus (device/camera pickers, mode selection) during INIT via
  *       {@link #initLoop(double)}.</li>
  * </ul>
+ *
+ * <h2>Lifecycle ownership</h2>
+ * <p>A tester factory should construct an inactive tester and defer hardware or resource
+ * acquisition to {@link #init(TesterContext)}. A runner cannot clean up a factory that fails
+ * before returning its tester.</p>
+ *
+ * <p>Once a runner receives a tester, it retains that tester before calling {@code init}. If
+ * {@code init} begins and then fails, the runner may immediately call {@link #stop()} so that
+ * partially acquired resources can be released. Implementations must therefore make
+ * {@code stop()} safe after partial initialization. For each activation, a fail-stop runner calls
+ * {@code stop()} at most once and invokes no further lifecycle callbacks after stopping begins.</p>
  */
 public interface TeleOpTester {
 
@@ -50,7 +61,10 @@ public interface TeleOpTester {
     void loop(double dtSec);
 
     /**
-     * Called once when the OpMode stops.
+     * Called once when the tester is left or the owning OpMode stops.
+     *
+     * <p>This may follow a partially completed or failed {@link #init(TesterContext)}. Release
+     * every resource acquired so far without assuming that initialization completed.</p>
      */
     default void stop() {
     }

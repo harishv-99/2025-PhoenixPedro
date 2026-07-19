@@ -172,6 +172,12 @@ Dpad: highlight | A: choose | X: refresh
 
 A picker should be used while the robot is in a selection screen, usually during `init()` / `initLoop()` or a tester picker state. Do not repeatedly enumerate hardware while actively commanding actuators.
 
+The picker owns only selection UI, not the selected device or tester lifecycle. Its caller must
+retain any resource created from the selected name before further setup and close or stop it before
+showing the picker again. If that cleanup throws, keep replacement disabled and direct the operator
+to restart the OpMode; opening another selection would create competing ownership while the old
+state is unknown.
+
 ## Design rule
 
 Keep these responsibilities separate:
