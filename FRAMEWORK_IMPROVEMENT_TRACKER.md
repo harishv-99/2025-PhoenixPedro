@@ -1,6 +1,6 @@
 # Framework Improvement Tracker
 
-Last updated: 2026-07-18
+Last updated: 2026-07-19
 
 This file tracks proposed Phoenix framework improvements. It is deliberately a planning document:
 an item being listed here does **not** mean its current proposed solution has been approved. Each
@@ -38,6 +38,28 @@ Non-negotiable evaluation criteria:
 - **Verifying**: code is complete and focused verification is running.
 - **Done**: implementation, callers, documentation, and verification are complete.
 - **Deferred**: deliberately postponed with a reason recorded.
+
+## Hardware-unavailable execution policy
+
+As of 2026-07-19, no representative robot hardware is available. Do not substitute fake-backed
+tests, SDK source inspection, or configuration metadata for a physical measurement required to
+select a production design or claim completion.
+
+- `SOURCE-03`, `SENSOR-01`, `PERF-01`, `PERF-03`, `CHECK-01`, and `SAFE-04` are **Deferred** under
+  their current completion contracts because each requires recorded signal, controller-performance,
+  assembled-robot, or representative-hardware evidence.
+- A later decision gate may propose a narrower conservative software contract that makes physical
+  observation adopting-robot validation rather than completion evidence. That is a material design
+  change and still requires explicit user approval under the evidence gate.
+- Hardware that would merely increase confidence in an already testable software-seam contract does
+  not block other items. Such work may proceed only when its completion claim explicitly stops at
+  that seam and preserves physical validation as optional adoption evidence.
+- `AUTO-01` is also **Deferred**, for a different reason: the second materially different bounded
+  Auto caller needed to justify a reusable abstraction does not yet exist. Do not manufacture that
+  caller merely to advance the tracker.
+- While this policy is active, select the highest-priority item whose current behavior, design
+  choice, and completion contract can all be established through source/caller inspection,
+  deterministic tests, documentation, and compilation. `MATCH-01` is the next such item.
 
 ## Required decision gate for every item
 
@@ -90,17 +112,17 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 26 | ACT-01 | FTC actuator-group identity validation | Done | Private SDK-equivalent actuator/mecanum validation reviewed, verified, and approved on 2026-07-17. |
 | 27 | COMMON-01 | Cleanup action aggregation | Done | The stateless cleanup-action primitive and five bounded migrations are implemented, verified, and approved; the generic INIT runtime remains deferred. |
 | 28 | TESTER-01 | Tester child lifecycle fail-stop | Done | Approved fail-stop policies are implemented, verified, and approved without changing valid public call sites. |
-| 29 | AUTO-01 | Compact bounded Auto continuation | Proposed | Use another real routine to separate reusable lifecycle ceremony from robot-owned match and recovery policy. |
-| 30 | SOURCE-03 | Composable scalar measurement conditioning | Proposed | Add only measurement-backed, explicitly configured numeric filters as generic `ScalarSource` decorators rather than hiding smoothing in a sensor adapter. |
+| 29 | AUTO-01 | Compact bounded Auto continuation | Deferred | Wait for a second materially different real bounded-Auto caller; do not infer an API from PHX-04 alone. |
+| 30 | SOURCE-03 | Composable scalar measurement conditioning | Deferred | Wait for recorded signal traces before choosing a public filtering algorithm or latency contract. |
 | 31 | MATCH-01 | Explicit Auto-to-TeleOp handoff | Proposed | Carry one typed immutable robot snapshot across the FTC mode boundary without string maps or stale globals. |
 | 32 | DRIVE-02 | Shared drivetrain actuator handoff | Proposed | Preserve one motor writer when a PTO reuses drivetrain motors for an endgame mechanism. |
 | 33 | VISION-01 | Custom VisionPortal ownership | Proposed | Reuse camera/processor lifecycle without forcing robot-specific detections through AprilTag APIs. |
-| 34 | SENSOR-01 | Motor-current sensing | Proposed | Expose cycle-memoized current in amps as a Source; keep jam, homing, and power-budget policy robot-owned. |
+| 34 | SENSOR-01 | Motor-current sensing | Deferred | Current completion requires controller polling measurements; revisit via a narrower conservative seam only through a new approved decision gate. |
 | 35 | INPUT-01 | Safe contextual control activation | Proposed | Support optional control modes without turning held controls into phantom press edges. |
 | 36 | HAPTIC-01 | Driver haptic feedback boundary | Proposed | Expose small rate-safe rumble output while controls retain the meaning of each notification. |
-| 37 | PERF-01 | FTC hub bulk-cache ownership | Proposed | Evaluate one optional, cycle-idempotent manual bulk-cache heartbeat against SDK automatic caching. |
+| 37 | PERF-01 | FTC hub bulk-cache ownership | Deferred | Wait for real hub-I/O benchmarks before changing the SDK automatic-caching default. |
 | 38 | PERF-02 | Loop phase diagnostics | Proposed | Measure named loop phases with a lightweight diagnostic that does not own timing or sleep. |
-| 39 | PERF-03 | Contract-safe hardware write deduplication | Proposed | Add write caching only where measurements justify it and stop/Plant truth remain exact. |
+| 39 | PERF-03 | Contract-safe hardware write deduplication | Deferred | Wait for per-adapter measurements and controller/watchdog evidence before suppressing writes. |
 | 40 | TARGET-01 | Lazy Plant target overlay selection | Proposed | Resolve the selected highest-priority layer first and avoid sampling shadowed layers. |
 | 41 | TARGET-02 | Candidate freshness | Proposed | Compute effective age from the loop clock and timestamp, with validation. |
 | 42 | TARGET-03 | Periodic planner complexity | Proposed | Replace range iteration with constant-time candidate mathematics. |
@@ -112,14 +134,14 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 48 | API-04 | Binding execution order | Proposed | Preserve declaration order unless explicit phases are proven necessary. |
 | 49 | API-05 | One beginner drive entry point | Proposed | Teach the lane as the robot-facing path and keep the raw factory as a lower-level tool. |
 | 50 | COMMON-02 | Telemetry commit ownership | Proposed | Renderers add data; the composition root commits once. |
-| 51 | CHECK-01 | Staged whole-robot system check | Proposed | Compose a safe pre-match check from robot capabilities without hardware reflection or a base robot. |
+| 51 | CHECK-01 | Staged whole-robot system check | Deferred | Meaningful Phoenix thresholds, hazardous-motion confirmation, and physical safe-state evidence require the assembled robot. |
 | 52 | EXAMPLE-01 | Compiling modern starter robot | Proposed | Add a small multi-file reference, not an inheritance framework. |
 | 53 | EXAMPLE-03 | Advanced moving-target reference | Proposed | Prove progress-triggered scoring and a bounded moving turret without putting game physics in the framework. |
 | 54 | BOUNDARY-01 | FTC boundary enforcement | Proposed | Fix existing import leaks, then add a focused forbidden-import check. |
 | 55 | DOC-01 | Stale and non-compiling documentation | Proposed | Correct loop/API examples and validate links/examples where practical. |
 | 56 | CI-01 | Framework verification in CI | Proposed | Run focused unit tests, TeamCode compilation, docs checks, and boundary checks. |
 | 57 | CLEAN-01 | Alias and risky convenience cleanup | Proposed | Remove only APIs proven redundant or unsafe by caller search. |
-| 58 | SAFE-04 | PowerOutput failure cleanup and seam truth | Proposed | Make low-level and grouped output failure handling fail-safe without claiming atomic or physical command truth. |
+| 58 | SAFE-04 | PowerOutput failure cleanup and seam truth | Deferred | Current completion requires representative actuator observation; a narrower software-seam contract needs a new approved decision gate. |
 | 59 | CAL-01 | Calibration-search power validation | Proposed | Reject invalid normalized search power before stopping normal output or changing calibration state. |
 | 60 | CAL-02 | Position-calibration reference validity | Proposed | Validate calibration reference and hold answers at the boundary that owns their units and lifecycle. |
 | 61 | MAP-01 | FTC actuator mapping-domain validation | Proposed | Validate finite child transforms and raw actuator domains before command mapping can be silently clamped. |
@@ -3212,7 +3234,11 @@ writer, and explicit lifecycle ownership.
   output; hardware measurements record polling cost and SDK/controller assumptions. Examples show
   one jam condition and one `PositionCalibrationTasks` stop condition while keeping recovery policy
   in the robot capability/supervisor. Existing robots need no migration.
-- **Decision record:** _Pending._
+- **Pause record (2026-07-19):** **Deferred while representative controller measurements are
+  unavailable.** Fake-backed tests can prove a narrow current-source API, but the current completion
+  contract also requires polling-cost and SDK/controller behavior evidence. A later Gate 1 may ask
+  the user to approve a conservative software-seam contract that moves those measurements to
+  adopting-robot validation; do not make that reclassification silently.
 
 ### INPUT-01 - Safe contextual control activation
 
@@ -3282,7 +3308,9 @@ writer, and explicit lifecycle ownership.
   hubs, one clear per cycle, duplicate calls, INIT/active transitions, partial failure, and stop;
   documentation places the owner at one explicit loop phase; robots that do not opt in need no extra
   concepts.
-- **Decision record:** _Pending._
+- **Pause record (2026-07-19):** **Deferred while real hub-I/O benchmarks are unavailable.** Fakes
+  can verify one-clear-per-cycle mechanics but cannot establish that manual caching has enough
+  benefit to justify a new owner or changing the beginner default.
 
 ### PERF-02 - Loop phase diagnostics
 
@@ -3330,7 +3358,9 @@ writer, and explicit lifecycle ownership.
   tiny changes, zero/stop, limits, mode/config changes, invalidation/reconnect, write failure, NaN
   rejection, and Plant applied-target truth. Each supported adapter opts in explicitly; no generic
   source or Task behavior changes.
-- **Decision record:** _Pending._
+- **Pause record (2026-07-19):** **Deferred while per-adapter hardware measurements and controller
+  behavior evidence are unavailable.** Fake tests cannot justify suppressing a real write or prove
+  watchdog, reconnect, and configuration invalidation rules. Keep existing writes unchanged.
 
 ### TUNE-01 - Live tuning to checked-in profile
 
@@ -4393,7 +4423,11 @@ writer, and explicit lifecycle ownership.
   OpMode stop; results include measured value, expectation, severity, and actionable advice; PHX-02
   may reference the latest report without running hardware automatically; and a fake-HAL test covers
   the complete sequence.
-- **Decision record:** _Pending._
+- **Pause record (2026-07-19):** **Deferred while the assembled Phoenix robot is unavailable.** A
+  generic stage/report runner is software-testable, but meaningful robot thresholds, hazardous-motion
+  confirmations, and claims that every physical capability reaches its safe state cannot be guessed.
+  Revisit with the robot, or propose a separately approved infrastructure-only contract that makes
+  the complete Phoenix checklist adopting-robot work.
 
 ### EXAMPLE-01 - Compiling modern starter robot
 
@@ -4636,7 +4670,11 @@ writer, and explicit lifecycle ownership.
   cleanup-failure suppression, exactly-once continuation, and truthful final outcomes. If no
   abstraction is simpler than a tested private template, record that evidence-based no-change result
   explicitly rather than adding another API spelling.
-- **Decision record:** _Pending._
+- **Pause record (2026-07-19):** **Deferred for a second materially different real bounded-Auto
+  caller.** This is a caller-evidence gate, not a hardware gate. EXAMPLE-02 closes the independent
+  reference prerequisite, but Phoenix remains the only caller with the complete bounded-continuation
+  lifecycle. Resume when another real robot routine needs the behavior; do not manufacture a generic
+  Auto DSL or count a one-route routine as evidence.
 
 ### EXAMPLE-03 - Advanced moving-target reference
 
@@ -5486,7 +5524,10 @@ writer, and explicit lifecycle ownership.
   Documentation explains the semantic difference between filtering position before differentiation
   and filtering derived velocity afterward, gives selection guidance backed by recorded data, and
   keeps sensor meaning and response policy in robot code.
-- **Decision record:** _Pending._
+- **Pause record (2026-07-19):** **Deferred while recorded representative signal traces are
+  unavailable.** Synthetic data can test a chosen filter but cannot select the public algorithm,
+  time/window semantics, or acceptable latency. Resume with raw timestamped traces or an approved
+  narrower no-API/documentation result; do not hide an unvalidated default in the encoder boundary.
 
 ### SAFE-03 - Regulated Plant actuator-command truth
 
@@ -5764,7 +5805,11 @@ writer, and explicit lifecycle ownership.
   truthful top-level versus child diagnostics. Javadocs state exactly what
   `getCommandedPower()` can and cannot prove; physical behavior is checked on representative motor,
   CR-servo, and grouped hardware before claiming completion.
-- **Decision record:** _Pending._
+- **Pause record (2026-07-19):** **Deferred under the current representative-hardware completion
+  gate.** Fault-injected fakes can prove the software seam, but the present item explicitly requires
+  physical actuator observation. A later Gate 1 may propose and seek approval for a narrower
+  fail-stop software contract that disclaims atomic and physical truth; until then, do not claim
+  completion from fake outputs alone.
 
 ### ACT-01 - FTC actuator-group identity validation
 
