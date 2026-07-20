@@ -17,6 +17,7 @@ import edu.ftcphoenix.fw.integrations.pedro.PedroPathingRuntime;
 import edu.ftcphoenix.robots.examples.pedro.BasicPedroAutoMechanism;
 import edu.ftcphoenix.robots.examples.pedro.BasicPedroAutoPaths;
 import edu.ftcphoenix.robots.examples.pedro.BasicPedroAutoRobot;
+import edu.ftcphoenix.robots.phoenix.PhoenixMatchHandoff;
 import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
 
 /**
@@ -47,6 +48,8 @@ public final class PhoenixBasicPedroAutoExample extends OpMode {
     /** Constructs the complete example graph during FTC INIT. */
     @Override
     public void init() {
+        // This disabled diagnostic host must not preserve a match Auto snapshot for a later TeleOp.
+        PhoenixMatchHandoff.clear();
         try {
             if (robot != null) {
                 throw new IllegalStateException("Basic Pedro Auto is already initialized");

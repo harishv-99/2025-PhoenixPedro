@@ -6,6 +6,7 @@ import edu.ftcphoenix.fw.ftc.FtcTeleOpTesterOpMode;
 import edu.ftcphoenix.fw.tools.tester.StandardTesters;
 import edu.ftcphoenix.fw.tools.tester.TeleOpTester;
 import edu.ftcphoenix.fw.tools.tester.TesterSuite;
+import edu.ftcphoenix.robots.phoenix.PhoenixMatchHandoff;
 import edu.ftcphoenix.robots.phoenix.tester.PhoenixRobotTesters;
 
 /**
@@ -27,6 +28,9 @@ public final class PhoenixTestersOpMode extends FtcTeleOpTesterOpMode {
      */
     @Override
     protected TeleOpTester createTester() {
+        // FtcTeleOpTesterOpMode owns the final init() method and calls this factory during INIT.
+        // Invalidate match-only state before opening a diagnostic mode.
+        PhoenixMatchHandoff.clear();
         TesterSuite suite = new TesterSuite()
                 .setTitle("Phoenix Tester Home")
                 .setHelp("Guide first for a fresh robot. Dpad: select | A: enter | BACK: back");

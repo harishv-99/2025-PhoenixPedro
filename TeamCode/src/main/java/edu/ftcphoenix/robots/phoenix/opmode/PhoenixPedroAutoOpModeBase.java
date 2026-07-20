@@ -13,7 +13,9 @@ import edu.ftcphoenix.fw.drive.DriveCommandSink;
 import edu.ftcphoenix.fw.integrations.pedro.PedroPathingDriveAdapter;
 import edu.ftcphoenix.fw.integrations.pedro.PedroPathingRuntime;
 import edu.ftcphoenix.fw.localization.MotionPredictor;
+import edu.ftcphoenix.fw.localization.PoseEstimate;
 import edu.ftcphoenix.robots.phoenix.PhoenixCapabilities;
+import edu.ftcphoenix.robots.phoenix.PhoenixMatchHandoff;
 import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
 import edu.ftcphoenix.robots.phoenix.PhoenixReadiness;
 import edu.ftcphoenix.robots.phoenix.PhoenixRobot;
@@ -53,11 +55,17 @@ import edu.ftcphoenix.robots.phoenix.autonomous.pedro.PhoenixPedroPathFactory;
  * purpose. A blocker prevents construction and remains effective at START. The expected Pedro
  * start is also displayed as an operator placement requirement; applying that pose synchronizes
  * software coordinates but does not measure physical placement.</p>
+ *
+ * <p>A new Phoenix Auto clears the process-local Auto-to-TeleOp handoff during INIT. After a match
+ * Auto has successfully crossed both Phoenix START calls, {@link #stop()} captures the retained
+ * backend-neutral pose before cleanup and publishes it only after cleanup succeeds. Test, blocked,
+ * failed-start, invalid-pose, and failed-cleanup runs leave no snapshot for TeleOp.</p>
  */
 public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
 
     private PhoenixRobot robot;
     private PedroPathingRuntime pedroRuntime;
+    private MotionPredictor motionPredictor;
     private Follower follower;
     private PedroPathingDriveAdapter driveAdapter;
     private PhoenixAutoSpec activeSpec;
@@ -68,6 +76,8 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
     private RuntimeException initFailure;
     private RuntimeException unrecoveredCleanupFailure;
     private boolean startBoundaryReached;
+    private boolean autoStartedSuccessfully;
+    private boolean stopBoundaryHandled;
 
     /**
      * Return the autonomous setup for static OpModes, or the current selector state.
@@ -99,6 +109,9 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
      */
     @Override
     public void init() {
+        PhoenixMatchHandoff.clear();
+        autoStartedSuccessfully = false;
+        stopBoundaryHandled = false;
         if (buildRobotInInit()) {
             initializeRobotForSpec(autoSpec());
         }
@@ -131,6 +144,7 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
             return;
         }
 
+        autoStartedSuccessfully = false;
         try {
             // Reassert the declared software coordinate origin at the exact FTC START boundary,
             // before the shared clock or Pedro heartbeat begins. This does not claim to measure
@@ -138,6 +152,7 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
             pedroRuntime.setStartingPose(expectedPedroStartPose);
             robot.startAny(startRuntimeSec);
             robot.startAuto();
+            autoStartedSuccessfully = true;
         } catch (RuntimeException startFailure) {
             RuntimeException cleanupFailure = clearAutoRuntime();
             attachSuppressed(startFailure, cleanupFailure);
@@ -145,6 +160,7 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
                 unrecoveredCleanupFailure = startFailure;
             }
             initFailure = startFailure;
+            PhoenixMatchHandoff.clear();
             emitAutoReadinessTelemetry();
             telemetry.update();
         }
@@ -175,16 +191,67 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
      * Stop Phoenix Auto and any runtime left from a failed INIT retry.
      *
      * <p>The successfully initialized {@link PhoenixRobot} owns the Pedro adapter's recurring
-     * heartbeat and final stop.</p>
+     * heartbeat and final stop. A successfully started match Auto snapshots the already-cached
+     * predictor pose before that cleanup, then publishes only after cleanup succeeds. Repeated stop
+     * calls are inert so they cannot erase an already-published snapshot.</p>
      */
     @Override
     public void stop() {
-        RuntimeException stopFailure = clearAutoRuntime();
+        if (stopBoundaryHandled) {
+            return;
+        }
+        // Close the boundary before invoking robot or carrier callbacks so a reentrant/repeated
+        // stop cannot erase a snapshot that this invocation publishes.
+        stopBoundaryHandled = true;
+
+        boolean shouldPublish = false;
+        PoseEstimate finalPose = null;
+        RuntimeException primaryFailure = null;
+        try {
+            shouldPublish = autoStartedSuccessfully
+                    && autoPurpose() == PhoenixReadiness.AutoPurpose.MATCH_AUTO;
+            if (shouldPublish) {
+                // Read only the predictor's retained software snapshot. Do not perform a new
+                // hardware or follower update after the FTC stop boundary.
+                finalPose = Objects.requireNonNull(
+                        Objects.requireNonNull(
+                                motionPredictor,
+                                "Started Phoenix Auto is missing its motion predictor"
+                        ).getEstimate(),
+                        "Started Phoenix Auto motion predictor returned a null final estimate"
+                );
+            }
+        } catch (RuntimeException captureOrPolicyFailure) {
+            primaryFailure = captureOrPolicyFailure;
+            shouldPublish = false;
+        }
+
+        RuntimeException cleanupFailure = clearAutoRuntime();
+        if (primaryFailure == null) {
+            primaryFailure = cleanupFailure;
+        } else {
+            attachSuppressed(primaryFailure, cleanupFailure);
+        }
         clearSelectionState();
         unrecoveredCleanupFailure = null;
         startBoundaryReached = false;
-        if (stopFailure != null) {
-            throw stopFailure;
+        autoStartedSuccessfully = false;
+
+        if (primaryFailure == null && shouldPublish) {
+            try {
+                // Publication is intentionally the final successful lifecycle operation: TeleOp
+                // must never receive state from an Auto whose cleanup did not complete.
+                PhoenixMatchHandoff.publishFromAuto(this, finalPose);
+            } catch (RuntimeException publicationFailure) {
+                PhoenixMatchHandoff.clear();
+                primaryFailure = publicationFailure;
+            }
+        } else {
+            PhoenixMatchHandoff.clear();
+        }
+
+        if (primaryFailure != null) {
+            throw primaryFailure;
         }
     }
 
@@ -194,6 +261,7 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
     protected final boolean isAutoInitialized() {
         return robot != null
                 && pedroRuntime != null
+                && motionPredictor != null
                 && expectedPedroStartPose != null
                 && readiness != null
                 && readiness.isAllowed()
@@ -370,6 +438,7 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
         Follower builtFollower;
         PedroPathingRuntime builtPedroRuntime;
         PedroPathingDriveAdapter builtDriveAdapter = null;
+        MotionPredictor builtMotionPredictor;
 
         try {
             PhoenixProfile baseProfile = PhoenixProfile.current();
@@ -394,9 +463,10 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
             builtPedroRuntime = createPedroRuntime(hardwareMap, builtProfile);
             builtFollower = builtPedroRuntime.follower();
             builtDriveAdapter = builtPedroRuntime.driveAdapter();
+            builtMotionPredictor = builtPedroRuntime.motionPredictor();
             builtRobot.initAuto(
                     builtDriveAdapter,
-                    builtPedroRuntime.motionPredictor()
+                    builtMotionPredictor
             );
             PhoenixCapabilities builtCapabilities = builtRobot.capabilities();
 
@@ -419,6 +489,7 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
 
             robot = builtRobot;
             pedroRuntime = builtPedroRuntime;
+            motionPredictor = builtMotionPredictor;
             follower = builtFollower;
             driveAdapter = builtDriveAdapter;
             pathLabel = paths.label;
@@ -481,6 +552,7 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
     private void clearRuntimeOwnerReferences() {
         robot = null;
         pedroRuntime = null;
+        motionPredictor = null;
         follower = null;
         driveAdapter = null;
         pathLabel = null;

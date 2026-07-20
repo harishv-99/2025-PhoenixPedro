@@ -114,7 +114,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 28 | TESTER-01 | Tester child lifecycle fail-stop | Done | Approved fail-stop policies are implemented, verified, and approved without changing valid public call sites. |
 | 29 | AUTO-01 | Compact bounded Auto continuation | Deferred | Wait for a second materially different real bounded-Auto caller; do not infer an API from PHX-04 alone. |
 | 30 | SOURCE-03 | Composable scalar measurement conditioning | Deferred | Wait for recorded signal traces before choosing a public filtering algorithm or latency contract. |
-| 31 | MATCH-01 | Explicit Auto-to-TeleOp handoff | Proposed | Carry one typed immutable robot snapshot across the FTC mode boundary without string maps or stale globals. |
+| 31 | MATCH-01 | Explicit Auto-to-TeleOp handoff | Done | Complete; physical pose accuracy remains adopting-robot validation rather than a software-contract claim. |
 | 32 | DRIVE-02 | Shared drivetrain actuator handoff | Proposed | Preserve one motor writer when a PTO reuses drivetrain motors for an endgame mechanism. |
 | 33 | VISION-01 | Custom VisionPortal ownership | Proposed | Reuse camera/processor lifecycle without forcing robot-specific detections through AprilTag APIs. |
 | 34 | SENSOR-01 | Motor-current sensing | Deferred | Current completion requires controller polling measurements; revisit via a narrower conservative seam only through a new approved decision gate. |
@@ -3132,17 +3132,247 @@ writer, and explicit lifecycle ownership.
   Auto-init/stop-failure behavior. Do not assume a cross-mode `LoopClock` instance exists.
 - **Leading hypothesis:** the robot defines one immutable data-only snapshot containing only the
   facts its next mode may accept. A narrow FTC-boundary, typed, one-shot carrier publishes that
-  snapshot from the Auto composition root and lets TeleOp consume it or use an explicit configured
-  fallback. It records enough producer/freshness metadata to reject stale or wrong-mode data and
+  snapshot from the Auto composition root and lets TeleOp consume it or use an explicit robot-owned
+  fallback. It records enough producer/freshness metadata to reject stale or wrong-type data and
   has an explicit clear operation. Keep hardware objects, Tasks, vendor poses, services, and season
   strategy out of the carrier; convert poses at the publishing boundary. Prefer a robot-named
   wrapper at the call site, and do not introduce a global robot-state map or event bus.
 - **Completion:** tests cover publish/consume once, missing data, explicit fallback, wrong type,
   stale data, repeated Auto/TeleOp/test OpModes in one app process, explicit clear, process-local
-  limitations, concurrent misuse, Auto cleanup failure, and defensive immutability. The Phoenix
-  Auto and TeleOp each need one obvious handoff call, and ordinary robots that do not carry state
-  gain no required setup.
-- **Decision record:** _Pending._
+  limitations, concurrent misuse, Auto cleanup failure, and defensive immutability. Phoenix keeps
+  the required clear, publish, and consume boundaries obvious and centralized in its shared
+  lifecycle owners, and ordinary robots that do not carry state gain no required setup.
+- **Decision record (2026-07-19):**
+  - **Confirmed FTC process boundary:** the pinned FTC SDK 11.1.0 explicitly supports process-local
+    state between OpModes. `OpMode` declares a public static `HashMap<String, Object> blackboard`,
+    and the repository's official disabled `ConceptBlackboard` sample names Auto-to-TeleOp as a use
+    case. The sample also documents the exact hazards MATCH-01 must remove: callers choose string
+    keys and casts, values persist when an OpMode is re-entered, and all data disappears on a robot
+    reset, app restart, or code download. The SDK does not clear the map automatically.
+    `OpModeManagerImpl` stops the old user OpMode before swapping to and initializing the new one,
+    and ordinary annotated OpModes are newly constructed. A user `stop()` failure can still be
+    recorded while the requested next OpMode is initialized, so publishing uncertain state before
+    cleanup is not safe. There is no typed Pedro handoff facility or other SDK owner with freshness,
+    one-shot consumption, and lifecycle policy.
+  - **Current Phoenix callers:** the concrete match producers are
+    `PhoenixRedAudienceSafeAuto`, `PhoenixBlueAudienceSafeAuto`, and
+    `PhoenixPedroAutoSelectorOpMode`; all share `PhoenixPedroAutoOpModeBase`.
+    `PhoenixPedroAutoTestOpMode` is an explicitly non-match purpose and must clear but never publish.
+    `PhoenixBasicPedroAutoExample` and `PhoenixTestersOpMode` are diagnostic/example entries that
+    must invalidate a pending Phoenix match handoff. `PhoenixTeleOp` is the one consumer.
+    The selector overrides `init()` and currently does not call the base implementation, so the
+    common clear cannot be placed in the base without also making that lifecycle delegation
+    explicit. Repository search found no existing modern Phoenix/framework carrier, preference,
+    file, blackboard, or mutable public pose-storage path.
+  - **Current pose and ownership seam:** Auto's retained `PedroPathingRuntime.motionPredictor()`
+    exposes the same backend-neutral predictor that Phoenix localization and Pedro's passive
+    localizer share. Its cached `PoseEstimate` is already in the Phoenix field frame; no Pedro
+    `Pose`, follower read, or vendor conversion is needed. TeleOp constructs its localization owner
+    during `PhoenixRobot.initTeleOp()`, after which the robot can apply an accepted planar
+    `Pose2d` through the existing `CorrectedPoseEstimator.setPose(...)` seam before FTC START or the
+    first loop. That seam rebases the owned predictor as part of localization ownership. The
+    handoff must not expose the lane or resetter from `PhoenixRobot`.
+  - **Payload audit:** Phoenix currently has one fact that the next mode actually consumes: the
+    final valid, finite Phoenix field-to-robot planar pose. Alliance and checked-in calibration
+    flags are available during Auto, but TeleOp has no current consumer and those flags are
+    configuration rather than live calibration observations. The robot-specific payload will
+    therefore be one deeply immutable data-only snapshot containing only `Pose2d`. It will not
+    carry Tasks, hardware, services, queues, capabilities, route status, strategy, vendor types,
+    `LoopClock`, or a `PoseEstimate` timestamp whose epoch belongs to the old OpMode.
+  - **Alternatives and simplicity comparison:**
+
+    | Approach | Ordinary robot code | Safety/lifecycle result | Decision |
+    |---|---:|---|---|
+    | Documentation plus a public robot static field | Short initially, but every team writes read/null/clear rules | No type token, freshness, atomic consume, or shared failure policy | Reject |
+    | Phoenix-only private holder | Smallest one-robot change | Correctable, but repeats the same one-shot age/type/concurrency mechanism already needed by several reviewed teams | Keep only as a thin robot wrapper |
+    | FTC `OpMode.blackboard` | Raw `put/get/remove` plus keys and casts | Public mutable map, key collisions, Blocks access, no synchronization, freshness, ownership, or automatic clear | Use as lifecycle evidence, not storage |
+    | Typed process-local carrier plus robot wrapper | One private channel declaration; lifecycle calls live in the shared robot base/wrapper | Centralizes type, age, consume-once, clear, concurrency, and diagnostics while payload/policy remain robot-owned | Choose |
+    | Staged exact producer/consumer class lists | Adds publisher/consumer class lists and a stage for every new OpMode | Excludes named tests, but cannot prove Auto and TeleOp were adjacent; existing robot purpose and private wrapper already own eligibility | Reject |
+    | Lifecycle listener that observes every intervening OpMode | Adds manager/activity registration and listener cleanup | Can detect adjacency but couples a tiny value handoff to internal FTC lifecycle plumbing | Reject |
+    | Preferences, files, or serialization | Adds schema/I/O/recovery work | Persists stale match state across the wrong lifetime | Reject |
+    | Global registry, string map, or event bus | Adds a second robot-state architecture | Broad unchecked ownership for a one-slot use case | Reject |
+
+  - **Chosen framework API:** add one stateful
+    `edu.ftcphoenix.fw.ftc.FtcAutoToTeleOpHandoff<T>` with exactly one public construction path:
+
+    ```java
+    FtcAutoToTeleOpHandoff<MatchSnapshot> handoff =
+            FtcAutoToTeleOpHandoff.create(
+            "Phoenix Auto to TeleOp",
+            MatchSnapshot.class,
+            60.0
+    );
+    ```
+
+    The constructor is private. There is no plural factory facade, `of(...)`, builder, overload,
+    registry, string key, no-age path, `peek()`, or persistent backing. The three factory answers
+    have distinct value: a diagnostic channel name, a runtime payload type token, and a finite
+    positive maximum process-monotonic age in seconds. Its only state operations are
+    `clear()`, `publishFromAuto(OpMode producer, T payload)`, and
+    `consumeForTeleOp(OpMode consumer)`. Producer and consumer objects are used only to record
+    concrete class diagnostics and are never retained or treated as authentication.
+  - **Consume result and state contract:** `consumeForTeleOp(...)` returns one privately
+    constructed, immutable `ConsumeResult<T>` with a status of `DELIVERED`, `MISSING`, `STALE`, or
+    `ALREADY_CONSUMED`, the payload only for `DELIVERED`, and bounded producer/age diagnostics when
+    they exist. The carrier is a single linearizable slot backed by an isolated atomic state, not
+    the SDK blackboard. `clear()` idempotently opens a fresh empty cycle. One valid publish is
+    accepted only into that cleared cycle; null, wrong raw type, duplicate, or late publication
+    fails before replacing state. The first consume atomically closes the cycle even when it finds
+    missing or stale data, so a concurrent late publisher cannot leave data for a later TeleOp.
+    Exactly one concurrent consumer can receive a value; later consumers see
+    `ALREADY_CONSUMED`. Stale data is discarded. A package-private injected nanosecond clock makes
+    the exact-age and regressing-clock behavior deterministic in tests; production uses
+    `System.nanoTime()`, never either OpMode's `LoopClock` or wall time.
+  - **Immutability boundary:** the generic carrier can validate the declared runtime class but
+    cannot deep-copy arbitrary `T`; its Javadocs require an immutable payload and must not claim
+    otherwise. Phoenix satisfies that contract with its private immutable match snapshot and the
+    already immutable `Pose2d`. This keeps the generic API honest while preventing a public
+    Phoenix snapshot/config noun that no caller needs to construct.
+  - **Chosen Phoenix wrapper:** one robot-named `PhoenixMatchHandoff` privately owns the static final
+    generic channel and the 60-second robot policy. It exposes lifecycle-named operations to the
+    Phoenix OpModes but never exposes the channel or payload. It validates `PoseEstimate.hasPose`
+    and finite x/y/heading before creating the snapshot, translates the generic consume result into
+    a small Phoenix restore status, and delegates an accepted pose to a package-private
+    `PhoenixRobot` initialization seam. The carrier itself does not authenticate match roles:
+    `PhoenixPedroAutoOpModeBase` remains the owner of the existing `MATCH_AUTO` versus
+    `PEDRO_INTEGRATION_TEST` policy. This is simpler and more truthful than maintaining exact
+    concrete-class allowlists that still cannot prove mode adjacency.
+  - **Auto lifecycle policy:** clear the channel at the beginning of every Phoenix Pedro Auto
+    `init()`. The selector will call `super.init()` first; its `buildRobotInInit() == false` keeps
+    construction deferred while sharing the clear. Record a separate successfully-started flag
+    only after both Phoenix start calls return; the existing `startBoundaryReached` flag is too
+    early. At `stop()`, a successfully started match Auto captures one immutable candidate from the
+    predictor's already-cached estimate before owners are cleared. It performs no new hardware
+    update after the SDK's failsafe. It then attempts normal robot cleanup and clears its owner
+    references. Only when capture and cleanup both succeed does it publish, as the final operation.
+    A blocked/init-only/test Auto, start failure, invalid pose, capture failure, or cleanup failure
+    leaves the channel empty; failures retain their primary/suppressed ordering. Publication before
+    cleanup is explicitly rejected because a failed Auto could otherwise leak a snapshot into the
+    requested TeleOp.
+  - **TeleOp and diagnostic lifecycle policy:** `PhoenixTeleOp.init()` first constructs and
+    initializes its ordinary localization graph, then performs exactly one robot-wrapper restore
+    before START. `DELIVERED` applies the pose; `MISSING`, `STALE`, and `ALREADY_CONSUMED` visibly
+    keep the normally initialized TeleOp localizer pose. This is the explicit fallback. Do not add
+    a zero-pose sentinel or new profile field because no input proves a different standalone
+    TeleOp field pose. If application fails after initialization, the OpMode stops the constructed
+    robot and preserves the failure. The Phoenix tester host and disabled basic Pedro example clear
+    pending state during INIT so they cannot sit between a match Auto and TeleOp unnoticed.
+    Process/classloader restart naturally produces `MISSING`; no recovery from disk is attempted.
+  - **Student-facing and total robot-code effect:** the generic mechanism is common framework code,
+    while Phoenix still contains the robot facts and lifecycle policy. This does not pretend all
+    robot code becomes one line: the shared Auto base owns a clear and a publish boundary,
+    `PhoenixTeleOp` owns one restore boundary, and the two diagnostic hosts own invalidation.
+    Students adding a normal Phoenix match Auto leaf still write only its existing `autoSpec()`
+    because the repeated lifecycle is centralized in the base. A different robot opts in by
+    defining one immutable snapshot and one private wrapper; a robot with no handoff adds nothing.
+  - **Framework Principles result:** the design keeps FTC process behavior at `fw.ftc`, payload and
+    role policy in the robot, pose realization in the localization-owning composition root, and
+    vendor/strategy types outside the carrier. It provides one public construction layer and three
+    parallel state operations, fails fast on invalid configuration/misuse, preserves explicit
+    lifecycle calls and fallback, and does not infer physical pose accuracy or mode adjacency from
+    a class name. No Framework Principles or framework-improvement skill change is needed: their
+    existing ownership, one-construction-path, parameter-value, fail-fast, and evidence rules
+    directly selected this design.
+  - **Bounded implementation scope:** add only the generic carrier/result, the Phoenix private
+    snapshot/wrapper, the package-private robot pose-restore seam, the shared Auto/selector,
+    TeleOp, tester, and basic-example lifecycle integration, and directly affected documentation
+    and tests. Do not add persistent storage, SDK-blackboard wrapping, exact OpMode allowlists,
+    lifecycle listeners, a global state service, multiple payloads, alliance/calibration transfer,
+    public localization access, route changes, or another tracker item.
+  - **Software-only verification plan:** pure carrier tests cover factory validation; correct and
+    raw wrong-type publication; duplicate/late publish; explicit clear; exact freshness boundary;
+    stale, missing, already-consumed, regressing monotonic time, and process-local semantics;
+    linearizable publish/consume/clear races and one receiving consumer per cleared cycle; and
+    producer/consumer objects not being retained. Phoenix tests cover immutable finite-pose
+    validation, all three production Auto
+    paths, test/example/tester invalidation, selector base-init delegation, blocked/no-start/failed-
+    start behavior, capture-before-cleanup and publish-after-cleanup ordering, primary/suppressed
+    cleanup failures, repeated Auto/TeleOp sequences, single TeleOp restore before first update,
+    existing-pose fallback, and failed-restore cleanup. Re-run the full TeamCode unit suite and FTC
+    Java compile; audit the public surface, blackboard absence, vendor-type boundary, callers,
+    Javadocs, the FTC-boundary guide, mode-client guide, and Phoenix Architecture.
+    No robot hardware is required to verify this process/lifecycle contract. Tests can prove the
+    existing pose-reset seam receives the accepted value; they must not claim that Auto's physical
+    pose estimate was accurate or that a physical TeleOp drivetrain starts at that field pose.
+  - **Approval gate:** the leading typed, one-shot, process-local hypothesis remains viable, with
+    two reviewed refinements: use an isolated atomic slot instead of the SDK's raw blackboard, and
+    keep ordinary TeleOp localization as the explicit missing/stale fallback instead of inventing a
+    configured pose. Because the factory, consume-result statuses, publish-last Auto ordering, and
+    Phoenix restore lifecycle are major API/behavior decisions, implementation must not begin until
+    the user approves this MATCH-01 design.
+  - **Public-scope refinement and approval (2026-07-19):** when the user asked whether the carrier
+    had uses beyond Auto-to-TeleOp, the caller audit found no second proven lifecycle. Mechanism
+    offsets, inventory, alliance, or detected game facts are possible **payloads** for the same
+    match boundary only when the next TeleOp actually consumes them; durable calibration belongs in
+    configuration/persistence, and same-OpMode state belongs in the robot runtime. The approved
+    public type is therefore narrowed from the broader draft `FtcModeHandoff<T>` to
+    `FtcAutoToTeleOpHandoff<T>`, with role-named publish/consume operations. This changes no state,
+    freshness, Phoenix-wrapper, or verification decision and avoids advertising a general global
+    mode-state mechanism. The user then replied `Approve MATCH-01 design`, authorizing Gate 2
+    implementation of this narrowed design and this item only.
+  - **Implementation (2026-07-20):**
+    - Added the factory-only `FtcAutoToTeleOpHandoff<T>` with one isolated atomic state, explicit
+      `clear()`, role-named publish/consume operations, runtime type validation, process-monotonic
+      freshness, immutable `ConsumeResult<T>`, and `DELIVERED`, `MISSING`, `STALE`, and
+      `ALREADY_CONSUMED` statuses. Primitive type tokens now fail during construction rather than
+      creating a carrier that can never accept a boxed value.
+    - Added `PhoenixMatchHandoff`, whose private immutable snapshot contains only a finite planar
+      Phoenix field pose. Its private channel and 60-second policy remain behind Phoenix lifecycle
+      names; no Pedro, hardware, Task, service, strategy, or localization-owner type crosses the
+      boundary.
+    - The shared Pedro Auto base clears during INIT, retains the exact runtime motion-predictor
+      reference, marks success only after both START calls, captures its cached immutable pose before
+      shutdown, and publishes only after successful shutdown. Blocked, test-purpose, never-started,
+      failed-start, failed-capture, invalid-pose, and failed-cleanup runs leave the channel empty;
+      repeated/reentrant stop cannot erase a successful publication. The selector now explicitly
+      delegates base INIT, while the Phoenix tester and disabled basic example invalidate match
+      state.
+    - `PhoenixTeleOp` constructs the ordinary localization graph, performs the one-shot restore
+      before START, and fail-stops an initialized robot if application fails. Normal controls help,
+      pose-assist readiness, and the handoff result/fallback are staged into one committed INIT
+      telemetry frame so FTC auto-clear cannot hide either set of guidance.
+    - Added the FTC-boundary handoff guide and synchronized the docs hub, FTC-boundary index,
+      mode-client guide, Phoenix Architecture, Javadocs, and examples with the exact process,
+      ownership, fallback, failure-ordering, and physical-accuracy limits.
+  - **Adversarial review and corrections (2026-07-20):** independent core/concurrency,
+    Phoenix-lifecycle, and documentation/API reviews found and resolved four material edges before
+    this gate. Construction now rejects primitive type tokens; `ConsumeStatus` and the tracker's
+    wrong-type wording are synchronized; deterministic clear/publish/consume regressions prove an
+    old atomic identity cannot cross a cleared cycle and a retried publication receives fresh time;
+    and TeleOp now commits one combined INIT frame instead of replacing readiness help with a second
+    auto-cleared frame. The guide points to the complete Phoenix failure-ordering reference.
+    Final independent re-reviews found no remaining core, lifecycle, documentation, scope, or
+    student-facing API issue. A large fake hardware-runtime abstraction was deliberately not added
+    solely to invoke successful `PhoenixTeleOp.init()` on the host; the narrow restore,
+    presentation, and failure seams plus production call-order audit cover that boundary without
+    enlarging robot code.
+  - **Automated verification (2026-07-20):**
+    - The six focused MATCH-01 suites pass **47/47**: `FtcAutoToTeleOpHandoffTest` 18,
+      `PhoenixMatchHandoffTest` 9, `PhoenixPedroAutoOpModeBaseTest` 14, `PhoenixTeleOpTest` 2,
+      `PhoenixBasicPedroAutoExampleTest` 3, and `PhoenixTestersOpModeTest` 1, with zero failures,
+      errors, or skips.
+    - `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` passes: **63 suites,
+      628 tests**, zero failures, errors, or skips. Output contains only the repository's existing
+      Java 21/source-target 8 deprecation warning.
+    - `git diff --check`, all-changed-file trailing-whitespace checks, and changed-Markdown
+      relative-link checks pass. The bounded scope is 20 files: eight production Java files, six
+      test files, five guides/indexes, and this tracker. Compiled public-surface inspection confirms
+      the generic carrier has one public factory plus only `clear`, `publishFromAuto`, and
+      `consumeForTeleOp`; the Phoenix wrapper exposes only its three lifecycle operations. Static
+      audits found no SDK-blackboard access, persistent/global registry, vendor type at the generic
+      boundary, new sleep/busy wait, or retained producer/consumer `OpMode` field.
+  - **Gate 2 verification stop (2026-07-20):** MATCH-01 is **Verifying** and paused for Android
+    Studio review. Inspect the generic carrier/result, Phoenix wrapper, Auto stop ordering, selector
+    base-init delegation, TeleOp pre-START restore/fallback and combined INIT telemetry frame,
+    diagnostic invalidation, focused tests, and the new FTC-boundary guide. No robot hardware is
+    required to verify the software process/lifecycle contract. The tests prove that an accepted
+    pose reaches the existing reset seam; they do not claim that Auto's physical pose estimate was
+    accurate on a real field. No later tracker item was started.
+  - **Manual verification (2026-07-20):** the user reviewed MATCH-01 in Android Studio and replied
+    `MATCH-01 looks good`. MATCH-01 is **Done**. This approval authorizes publication and merge of
+    this item; no robot-hardware validation was reported or required for its process/lifecycle
+    contract. The user's separate `Next task` instruction authorizes beginning the next eligible
+    decision gate only after this reviewed change is merged.
 
 ### DRIVE-02 - Shared drivetrain actuator handoff
 

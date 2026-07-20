@@ -283,6 +283,37 @@ Usually does **not** own:
 
 Those normally live in the Auto mode client or the Auto OpMode.
 
+### Auto-to-TeleOp state is a separate process boundary
+
+FTC creates a new OpMode and robot container for TeleOp. When that new runtime needs one fact from
+the completed Auto, use one robot-owned immutable snapshot carried by
+`FtcAutoToTeleOpHandoff<T>`. The framework owns the typed, fresh, consume-once process slot; the
+robot owns which facts cross, which Auto is eligible to publish, how TeleOp applies them, and what
+missing/stale data means.
+
+The safe lifecycle has separate operations:
+
+1. clear pending state at Auto INIT;
+2. after a successfully started match Auto, capture cached facts before shutdown clears their
+   owners;
+3. complete shutdown;
+4. publish only after successful capture and shutdown;
+5. initialize the new TeleOp robot, then consume/apply once before START.
+
+Do not compress publication into the robot's hardware shutdown operation. A failed stop must not
+make uncertain state available to TeleOp. Test/example modes should invalidate a pending
+robot-specific handoff, and non-match Auto purposes should never publish.
+
+Missing or stale data needs an explicit robot fallback. Keeping the normally initialized TeleOp
+localizer is often safer than fabricating a zero field pose. The carrier uses process-monotonic age,
+not either OpMode's `LoopClock`; it intentionally disappears on a Robot Controller process restart.
+It is not a capability family, persistent configuration store, global state map, event bus, or
+hardware-accuracy check.
+
+See
+[`FTC Auto-to-TeleOp Handoff`](<../ftc-boundary/FTC Auto-to-TeleOp Handoff.md>)
+for the exact carrier contract and example.
+
 ### `startAny()`
 
 Shared runtime reset such as clock reset.

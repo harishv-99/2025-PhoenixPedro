@@ -7,6 +7,7 @@ This section covers Phoenix's FTC SDK boundary adapters and where sensor logic s
 1. [`FTC Actuators & Plants.md`](<FTC Actuators & Plants.md>)
 2. [`FTC Sensors.md`](<FTC Sensors.md>)
 3. [`FTC UI Helpers.md`](<FTC UI Helpers.md>)
+4. [`FTC Auto-to-TeleOp Handoff.md`](<FTC Auto-to-TeleOp Handoff.md>)
 
 ## Pair with
 
@@ -14,3 +15,4 @@ This section covers Phoenix's FTC SDK boundary adapters and where sensor logic s
 - [`../testing-calibration/README.md`](<../testing-calibration/README.md>)
 - [`../getting-started/Beginner's Guide.md`](<../getting-started/Beginner's Guide.md>)
 - [`../design/Recommended Robot Design.md`](<../design/Recommended Robot Design.md>)
+- [`../design/Robot Capabilities & Mode Clients.md`](<../design/Robot Capabilities & Mode Clients.md>)

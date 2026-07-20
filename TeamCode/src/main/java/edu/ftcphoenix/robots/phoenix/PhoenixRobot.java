@@ -7,6 +7,7 @@ import org.firstinspires.ftc.robotcore.external.Telemetry;
 
 import java.util.Objects;
 
+import edu.ftcphoenix.fw.core.geometry.Pose2d;
 import edu.ftcphoenix.fw.core.lifecycle.CleanupActions;
 import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.time.LoopClock;
@@ -19,6 +20,7 @@ import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLane;
 import edu.ftcphoenix.fw.input.Gamepads;
 import edu.ftcphoenix.fw.localization.MotionPredictor;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
+import edu.ftcphoenix.fw.localization.PoseResetter;
 import edu.ftcphoenix.fw.task.Task;
 import edu.ftcphoenix.fw.task.TaskRunner;
 
@@ -51,6 +53,8 @@ public final class PhoenixRobot {
     private final Gamepads gamepads;
     private final PhoenixProfile profile;
     private final PhoenixTelemetryPresenter telemetryPresenter;
+    private final TeleOpPoseRestoreLifecycle teleOpPoseRestore =
+            new TeleOpPoseRestoreLifecycle();
 
     private PhoenixCapabilities capabilities;
     private FtcMecanumDriveLane drive;
@@ -120,7 +124,8 @@ public final class PhoenixRobot {
      * controls, scoring services, drive overlays, and driver-facing telemetry help text. Call it
      * once while the OpMode is in INIT before any TeleOp updates begin.
      * If construction fails, every Phoenix owner that was successfully created is stopped before
-     * the original failure is rethrown.
+     * the original failure is rethrown. This stages the ordinary TeleOp help/readiness rows; the
+     * mode client adds any mode-boundary status and commits the one complete INIT telemetry frame.
      * </p>
      */
     public void initTeleOp() {
@@ -164,7 +169,7 @@ public final class PhoenixRobot {
 
         teleOpControls.emitInitHelp(telemetry);
         telemetryPresenter.emitTeleOpReadiness(teleOpPoseAssistReadiness);
-        telemetry.update();
+        teleOpPoseRestore.initialize(localization.globalEstimator());
     }
 
     /**
@@ -312,6 +317,7 @@ public final class PhoenixRobot {
      */
     public void startAny(double runtime) {
         clock.reset(runtime);
+        teleOpPoseRestore.markStartBoundary();
         if (autoRoutineLifecycle != null) {
             autoRoutineLifecycle.markStartBoundary();
         }
@@ -493,6 +499,7 @@ public final class PhoenixRobot {
         vision = null;
         capabilities = null;
         localization = null;
+        teleOpPoseRestore.clear();
 
         Runnable cancelAuto = autoRoutineToStop == null
                 ? null
@@ -517,6 +524,23 @@ public final class PhoenixRobot {
                 resetTargeting,
                 closeVision
         );
+    }
+
+    /**
+     * Applies one accepted Auto-to-TeleOp field pose before the FTC START boundary.
+     *
+     * <p>This package-private seam keeps the localization owner private. The robot-owned handoff
+     * validates and consumes its process-local snapshot, while this composition root alone decides
+     * how an accepted field pose rebases the active TeleOp estimator.</p>
+     *
+     * @param fieldToRobotPose accepted immutable pose in the Phoenix field frame
+     * @throws NullPointerException  if {@code fieldToRobotPose} is null
+     * @throws IllegalArgumentException if any planar pose component is not finite
+     * @throws IllegalStateException if TeleOp localization is not initialized or FTC START has
+     *                               already been reached
+     */
+    void restoreTeleOpPose(Pose2d fieldToRobotPose) {
+        teleOpPoseRestore.restore(fieldToRobotPose);
     }
 
     private PhoenixCapabilities requireCapabilities() {
@@ -633,5 +657,70 @@ public final class PhoenixRobot {
             return installedRoutine;
         }
 
+    }
+
+    /**
+     * Package-private lifecycle guard for the narrow pre-START TeleOp pose-reset seam.
+     *
+     * <p>Keeping this state separate from FTC hardware construction lets its boundary rules be
+     * verified with a fake {@link PoseResetter} on the host JVM.</p>
+     */
+    static final class TeleOpPoseRestoreLifecycle {
+        private PoseResetter poseResetter;
+        private boolean startBoundaryReached;
+
+        /** Install the TeleOp localization reset capability after initialization succeeds. */
+        void initialize(PoseResetter poseResetter) {
+            if (this.poseResetter != null) {
+                throw new IllegalStateException(
+                        "Phoenix TeleOp pose restore is already initialized; create a new "
+                                + "PhoenixRobot for another mode"
+                );
+            }
+            this.poseResetter = Objects.requireNonNull(
+                    poseResetter,
+                    "Phoenix TeleOp pose resetter is required"
+            );
+        }
+
+        /** Close the restore window at the shared FTC START boundary. */
+        void markStartBoundary() {
+            startBoundaryReached = true;
+        }
+
+        /** Apply one validated field pose while TeleOp localization is initialized and pre-START. */
+        void restore(Pose2d fieldToRobotPose) {
+            Pose2d requiredPose = Objects.requireNonNull(
+                    fieldToRobotPose,
+                    "Auto-to-TeleOp field pose is required"
+            );
+            if (!Double.isFinite(requiredPose.xInches)
+                    || !Double.isFinite(requiredPose.yInches)
+                    || !Double.isFinite(requiredPose.headingRad)) {
+                throw new IllegalArgumentException(
+                        "Auto-to-TeleOp field pose must have finite xInches, yInches, and "
+                                + "headingRad"
+                );
+            }
+            if (poseResetter == null) {
+                throw new IllegalStateException(
+                        "Cannot restore the Auto pose because Phoenix TeleOp localization is not "
+                                + "initialized; call initTeleOp() first"
+                );
+            }
+            if (startBoundaryReached) {
+                throw new IllegalStateException(
+                        "Cannot restore the Auto pose after FTC START; call "
+                                + "PhoenixMatchHandoff.restoreForTeleOp(...) during TeleOp INIT"
+                );
+            }
+            poseResetter.setPose(requiredPose);
+        }
+
+        /** Detach the localization capability when the robot ownership graph stops. */
+        void clear() {
+            poseResetter = null;
+            startBoundaryReached = false;
+        }
     }
 }
