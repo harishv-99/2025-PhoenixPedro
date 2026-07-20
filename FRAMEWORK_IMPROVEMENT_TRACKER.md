@@ -1,6 +1,6 @@
 # Framework Improvement Tracker
 
-Last updated: 2026-07-19
+Last updated: 2026-07-20
 
 This file tracks proposed Phoenix framework improvements. It is deliberately a planning document:
 an item being listed here does **not** mean its current proposed solution has been approved. Each
@@ -59,7 +59,8 @@ select a production design or claim completion.
   caller merely to advance the tracker.
 - While this policy is active, select the highest-priority item whose current behavior, design
   choice, and completion contract can all be established through source/caller inspection,
-  deterministic tests, documentation, and compilation. `MATCH-01` is the next such item.
+  deterministic tests, documentation, and compilation. Do not advance an item whose current
+  production contract still depends on unavailable adopting-robot evidence.
 
 ## Required decision gate for every item
 
@@ -115,7 +116,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 29 | AUTO-01 | Compact bounded Auto continuation | Deferred | Wait for a second materially different real bounded-Auto caller; do not infer an API from PHX-04 alone. |
 | 30 | SOURCE-03 | Composable scalar measurement conditioning | Deferred | Wait for recorded signal traces before choosing a public filtering algorithm or latency contract. |
 | 31 | MATCH-01 | Explicit Auto-to-TeleOp handoff | Done | Complete; physical pose accuracy remains adopting-robot validation rather than a software-contract claim. |
-| 32 | DRIVE-02 | Shared drivetrain actuator handoff | Proposed | Preserve one motor writer when a PTO reuses drivetrain motors for an endgame mechanism. |
+| 32 | DRIVE-02 | Shared drivetrain actuator handoff | Deferred | Wait for a real PTO-equipped adopting robot; preserve the approved single-owner design constraints without inventing hardware-specific APIs. |
 | 33 | VISION-01 | Custom VisionPortal ownership | Proposed | Reuse camera/processor lifecycle without forcing robot-specific detections through AprilTag APIs. |
 | 34 | SENSOR-01 | Motor-current sensing | Deferred | Current completion requires controller polling measurements; revisit via a narrower conservative seam only through a new approved decision gate. |
 | 35 | INPUT-01 | Safe contextual control activation | Proposed | Support optional control modes without turning held controls into phantom press edges. |
@@ -3402,7 +3403,103 @@ writer, and explicit lifecycle ownership.
   PTO engagement; ordered follower stop, zero output, motor-mode/encoder transition, and PTO actuation;
   safe rollback on failure; repeated/idempotent transitions; explicit drive reinitialization; useful
   readback for the endgame Plant; and unchanged student code for robots without shared actuators.
-- **Decision record:** _Pending._
+- **Decision gate (2026-07-20; implementation deferral approved by the user):**
+  - **Confirmed current behavior:** the ordinary FTC path constructs one
+    `FtcMecanumDriveLane(hardwareMap, profile.drive)`. The lane privately retains a
+    `MecanumDrivebase`; every drive command immediately fans out through the four raw-power outputs,
+    and `stop()` zeros them but does not latch the lane disabled. Phoenix TeleOp then unconditionally
+    performs its final `drive.update(clock)` and `drive.drive(command)` after controls and mechanism
+    policy. A PTO transition that only calls `stop()` earlier in that cycle can therefore be followed
+    by a stale final drive write that reacquires `RUN_WITHOUT_ENCODER`.
+  - **Pedro trace:** production Pedro constructs its own native mecanum writer inside
+    `PedroPathingRuntime`. `PhoenixRobot.updateAuto()` calls the retained adapter heartbeat before the
+    Auto Task root on every loop. `PedroPathingDriveAdapter.stop()` correctly interrupts the current
+    route and applies immediate/final zero, including callback reentry, but a later heartbeat is still
+    a vendor drivetrain lifecycle call. A shared owner must fence both future heartbeats and route
+    starts before changing motor ownership; stopping the adapter once is not arbitration.
+  - **Reachable competition evidence:** the previously audited Decode repository is no longer
+    publicly reachable at its pinned commit. Its public
+    [`summer-2026` fidelity port](https://github.com/6165-MSET-Cuttlefish/summer-2026/tree/42d1ce8ffe3dd62187b93771f1a5455c85fff6cd)
+    preserves the relevant shape:
+    [`RobotActions`](https://github.com/6165-MSET-Cuttlefish/summer-2026/blob/42d1ce8ffe3dd62187b93771f1a5455c85fff6cd/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/decode/RobotActions.java#L178-L205)
+    resets the front drive encoders, engages the PTO, waits, and enables full lift;
+    [`Endgame`](https://github.com/6165-MSET-Cuttlefish/summer-2026/blob/42d1ce8ffe3dd62187b93771f1a5455c85fff6cd/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/modules/Endgame.java#L217-L241)
+    reads those shared encoders and submits paired lift targets to the
+    [`Drivetrain`](https://github.com/6165-MSET-Cuttlefish/summer-2026/blob/42d1ce8ffe3dd62187b93771f1a5455c85fff6cd/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/modules/Drivetrain.java#L109-L164),
+    which remains the physical motor writer; and
+    [`Tele`](https://github.com/6165-MSET-Cuttlefish/summer-2026/blob/42d1ce8ffe3dd62187b93771f1a5455c85fff6cd/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/opmodes/tele/Tele.java#L112-L123)
+    suppresses ordinary drive while the PTO/full lift is active. This proves the use case, but not
+    one universal motor subset, sign convention, encoder-reset policy, servo/PWM sequence, settling
+    time, reversibility, or physical rollback contract.
+  - **What not to copy from the competition example:** Cuttlefish's root order is
+    [`readModules -> follower.update -> gameLoop -> Actions.update -> writeModules`](https://github.com/6165-MSET-Cuttlefish/summer-2026/blob/42d1ce8ffe3dd62187b93771f1a5455c85fff6cd/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/architecture/core/EnhancedOpMode.java#L213-L253).
+    Suppressing the later manual `drive()` call does not clear the drivetrain's retained targets, so
+    the preceding command can still be written during the 300 ms PTO-settle interval until full-lift
+    control replaces it. That is a source-derived risk, not evidence of a field failure. The example
+    also has no explicit physical zero/Pedro stop before reset and no transactional fail-closed state.
+    Phoenix should support the capability without copying those lifecycle gaps.
+  - **Current callers:** no production, Phoenix, modern example, or tool runtime shares drivetrain
+    motors with another mechanism. Phoenix has no endgame/PTO profile, subsystem, capability, or
+    control. `DrivetrainMotorDirectionTester` owns four separate test Plants in an isolated tester and
+    is not a handoff caller.
+  - **Supported public construction layers:**
+    - `FtcMecanumDriveLane(HardwareMap, Config)` is the one recommended robot-facing lane and owns
+      standard wiring, brake setup, drivebase lifecycle, and debug delegation.
+    - `FtcDrives.mecanum(...)` is the lower-level FTC factory. Its overloads create a private
+      coordinated four-output group that preflights every raw-power mode before requested motion.
+      Whether its many beginner-facing overloads should remain is API-05, not DRIVE-02.
+    - `new MecanumDrivebase(PowerOutput, PowerOutput, PowerOutput, PowerOutput, Config)` is the
+      existing advanced injection seam. It deliberately leaves custom multi-output coordination and
+      lifecycle to its caller.
+    - Public `FtcHardware.motorPower(...)` creates one raw-power adapter; the coordinated group
+      factory is package-private. Combining four independent public adapters does not preserve the
+      standard factory's all-motor preflight guarantee.
+    - `FtcActuators.plant(...)` can intentionally reuse configured motor names under one higher-level
+      robot lifecycle owner, but it does not arbitrate a drive lane and a mechanism Plant.
+      `PositionPlant.establishReferenceAt(...)` can establish a lift coordinate without resetting a
+      hardware encoder, so a framework PTO API must not assume `STOP_AND_RESET_ENCODER`.
+  - **Student-facing comparison (each bracket is a new conceptual answer):**
+
+    | Approach | Ordinary/PTO call-site shape | Concepts and ownership result |
+    |---|---|---|
+    | No framework change for ordinary robots | `new FtcMecanumDriveLane(hardwareMap, profile.drive)` `[hardware registry] [drive config]` | Current one-line path remains clear. |
+    | Raw lane getters | `drive.motor(FRONT_LEFT).setMode(...)` `[wheel identity] [SDK mode] [reset order] [direction] [writer suppression]` | Short syntax exposes the hardest lifecycle decisions and breaks lane encapsulation. |
+    | Separate drive and lift Plants | Build both over the same names `[two owners] [activation order]` | Looks familiar but permits the later drive/heartbeat writer to steal the motors back. |
+    | Lift as a `DriveSource` | Encode lift power as axial/lateral/omega `[fake drive meaning]` | Hides contention by lying about the command domain and loses Plant range/reference/readiness. |
+    | New shared-hardware handle/seam | `shared = FtcDrives.sharedMecanum(...)`; then build drive and lift views `[handle] [views] [mode API] [transition policy]` | Adds a second construction layer but still cannot own robot-specific PTO mechanics unless it grows into the robot owner. |
+    | Robot-owned shared realization | One `SharedDriveEndgame` owns both private realizations; TeleOp/Auto use `mobility()` and `endgame()` capabilities `[robot topology] [explicit mode intent]` | Preserves one final writer and keeps strategy out of framework, but the realization remains meaningful robot code rather than complexity that can honestly disappear. |
+    | Generic claims/priorities | `resource.claim(owner, priority)` `[resource] [claim] [lease] [priority] [transition callback]` | Adds a resource scheduler yet still cannot define the physical PTO sequence or Pedro callback boundary. |
+
+  - **Framework Principles result:** the leading ownership direction is still correct: one
+    robot-owned FTC realization should own every shared motor, encoder, PTO actuator, mode transition,
+    and final write branch. Its internal lifecycle should use explicit `DRIVE`, transition,
+    `ENDGAME`, and fail-closed states; capabilities expose mode-neutral intent. It must gate the
+    TeleOp final sink or Pedro heartbeat/route seam before stopping and zeroing hardware, establish a
+    software encoder reference unless the real mechanism proves a hardware reset is required, actuate
+    and settle the PTO non-blockingly, and enable only the selected writer. A failed prerequisite
+    leaves both behavior writers disabled and output zero; it must not claim rollback to drive unless
+    every physical restore step succeeds.
+  - **Why implementation should not start now:** Phoenix has no adopting PTO robot, and representative
+    hardware is unavailable. The exact shared motors, motor directions, drive/follower owner, encoder
+    reference policy, PTO servo/PWM behavior, settle phases, safe failure state, and return-to-drive
+    behavior are all part of the production contract. Inventing them would manufacture season
+    hardware inside Phoenix. A partial injected handle, raw getters, or generic arbitration would add
+    student-facing concepts without closing those correctness gaps.
+  - **Approved disposition:** **Deferred**. The user agreed that Phoenix should not solve a
+    specialized hardware problem whose correct solution may change with the robot's construction.
+    Resume when a real adopting robot and its safe transition specification are available. Implement
+    the first complete owner in robot code; extract only a narrow correctness-critical or repeated
+    framework seam after caller evidence identifies one, while preserving the ordinary one-line lane
+    path.
+  - **Future verification plan:** fake-owner tests must prove the drive/route/heartbeat fence occurs
+    before hardware transition, exactly one writer is enabled, no stale same-cycle command escapes,
+    transitions and cancellation are idempotent, and any failure remains zero/disabled. FTC fake
+    tests must prove all-motor zero and mode preflight ordering, reference/reset policy, and explicit
+    drive reinitialization. Task tests must prove non-blocking PTO settling and safe cancellation.
+    Pedro tests must prove no heartbeat or route start reaches the follower in endgame mode. Compile
+    the adopting robot and preserve the ordinary lane caller. Physical validation must still verify
+    PTO engagement, servo/PWM behavior, encoder signs, settling, load behavior, and the actual
+    fail-safe state; fake tests cannot establish those facts.
 
 ### VISION-01 - Custom VisionPortal ownership
 
