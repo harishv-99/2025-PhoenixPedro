@@ -33,6 +33,7 @@ If you are new to Phoenix, read in this order:
 - [`design/Recommended Robot Design.md`](<design/Recommended Robot Design.md>)
 - [`design/Supervisors & Pipelines.md`](<design/Supervisors & Pipelines.md>)
 - [`design/Output Tasks & Queues.md`](<design/Output Tasks & Queues.md>)
+- [`ftc-boundary/FTC Auto-to-TeleOp Handoff.md`](<ftc-boundary/FTC Auto-to-TeleOp Handoff.md>)
 - [`examples/Pedro Autonomous Reference.md`](<examples/Pedro Autonomous Reference.md>)
 - [`../Framework Principles.md`](<../Framework Principles.md>)
 

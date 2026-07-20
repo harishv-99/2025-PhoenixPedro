@@ -60,6 +60,34 @@ Auto client:
 That is the intended parallelism. TeleOp and Auto are parallel **clients** of Phoenix, not
 different APIs layered directly onto internals.
 
+Phoenix also has one explicit boundary between those clients:
+
+```text
+successful match Auto
+  capture cached final Phoenix field pose
+  stop owned Auto resources successfully
+  publish one immutable process-local snapshot
+        |
+        v
+next Phoenix TeleOp
+  build ordinary TeleOp localization
+  consume once before START
+  restore the pose, or visibly keep the initialized TeleOp pose
+```
+
+`PhoenixMatchHandoff` owns that robot policy over the framework's narrow
+`FtcAutoToTeleOpHandoff<T>`. The generic carrier owns type/freshness/atomic-consume mechanics; it
+does not know Phoenix pose semantics or authenticate match roles. The shared Pedro Auto base owns
+the `MATCH_AUTO` versus integration-test decision, while the Phoenix tester and basic example
+invalidate pending match state. Process restart, missing, stale, and already-consumed state all use
+the explicit normal-TeleOp-localization fallback.
+
+Auto captures only the predictor's already-cached immutable Phoenix field pose before shutdown and
+publishes only after shutdown succeeds. TeleOp applies an accepted pose through the localization
+owner after `initTeleOp()` and before FTC START. No Pedro pose, Follower, Task, service, hardware
+object, route strategy, alliance, or static SDK blackboard crosses the boundary. This software
+handoff does not prove that the Auto estimate was physically accurate.
+
 `PhoenixCapabilities` is now only a tiny aggregate of robot-owned capability families. It no longer has a separate delegating implementation class; `ScoringPath` implements the scoring family directly and `ScoringTargeting` implements the targeting family directly.
 
 ## Role map

@@ -64,6 +64,9 @@ public final class PhoenixPedroAutoSelectorOpMode extends PhoenixPedroAutoOpMode
      */
     @Override
     public void init() {
+        // Share the match-handoff reset owned by the Auto base. buildRobotInInit() remains false,
+        // so this does not bypass the selector or construct hardware.
+        super.init();
         uiClock.reset(getRuntime());
         gamepads = Gamepads.create(gamepad1, gamepad2);
         bindings = new Bindings();
