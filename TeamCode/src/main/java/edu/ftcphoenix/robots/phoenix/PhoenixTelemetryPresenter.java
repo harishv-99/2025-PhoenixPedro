@@ -4,6 +4,7 @@ import org.firstinspires.ftc.robotcore.external.Telemetry;
 
 import edu.ftcphoenix.fw.core.math.MathUtil;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceStatus;
+import edu.ftcphoenix.fw.ftc.vision.VisionReadiness;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagObservation;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelectionResult;
@@ -35,6 +36,7 @@ public final class PhoenixTelemetryPresenter {
                            ScoringTargeting.Status targeting,
                            PhoenixDriveAssistService.Status driveAssist,
                            PhoenixReadiness.Result poseAssistReadiness,
+                           VisionReadiness visionReadiness,
                            PoseEstimate globalPose,
                            PoseEstimate odomPose) {
         if (telemetry == null) {
@@ -46,6 +48,7 @@ public final class PhoenixTelemetryPresenter {
         emitAimSummary(targeting);
         emitDriveAssistTelemetry(driveAssist);
         emitTeleOpReadiness(poseAssistReadiness);
+        emitVisionReadiness(visionReadiness);
         emitPoseTelemetry(globalPose, odomPose);
         emitTargetTelemetry(targeting);
         telemetry.update();
@@ -82,6 +85,7 @@ public final class PhoenixTelemetryPresenter {
     public void emitAuto(ScoringPath.Status scoring,
                          ScoringTargeting.Status targeting,
                          Task installedAutoRoutine,
+                         VisionReadiness visionReadiness,
                          PoseEstimate globalPose,
                          PoseEstimate odomPose) {
         if (telemetry == null) {
@@ -100,9 +104,22 @@ public final class PhoenixTelemetryPresenter {
         emitScoringTelemetry(scoring, "scoring");
         emitScoringIntentTelemetry(scoring);
         emitAimSummary(targeting);
+        emitVisionReadiness(visionReadiness);
         emitPoseTelemetry(globalPose, odomPose);
         emitTargetTelemetry(targeting);
         telemetry.update();
+    }
+
+    /** Emit camera-component readiness independently from target visibility. */
+    private void emitVisionReadiness(VisionReadiness readiness) {
+        if (readiness == null) {
+            return;
+        }
+        telemetry.addData(
+                "vision.componentReadiness",
+                readiness.isReady() ? "READY" : "NOT_READY"
+        );
+        telemetry.addData("vision.readinessReason", readiness.reason());
     }
 
     private void emitScoringTelemetry(ScoringPath.Status scoring, String prefix) {

@@ -1,6 +1,7 @@
 package edu.ftcphoenix.fw.ftc.vision;
 
 import edu.ftcphoenix.fw.core.debug.DebugSink;
+import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
 
@@ -13,15 +14,17 @@ import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
  * </p>
  * <ul>
  *   <li>the shared {@link AprilTagSensor},</li>
- *   <li>the fixed {@link CameraMountConfig} used to interpret those observations, and</li>
+ *   <li>the fixed {@link CameraMountConfig} used to interpret those observations,</li>
+ *   <li>component readiness, kept separate from whether a target is visible, and</li>
  *   <li>lifecycle/debug hooks for the owner that holds the camera resource.</li>
  * </ul>
  *
  * <p>
  * The point of this seam is not to erase the real differences between webcam- and smart-camera
  * backends. It is to keep the rest of the framework dependent on the outputs it consumes, while
- * concrete FTC-boundary owners such as {@link FtcWebcamAprilTagVisionLane} or {@link FtcLimelightAprilTagVisionLane} remain free to own
- * backend-specific wiring, processor setup, and cleanup.
+ * concrete FTC-boundary owners such as {@link FtcWebcamAprilTagVisionLane} or
+ * {@link FtcLimelightAprilTagVisionLane} remain free to own backend-specific wiring, processor
+ * setup, and cleanup.
  * </p>
  */
 public interface AprilTagVisionLane extends AutoCloseable {
@@ -39,6 +42,19 @@ public interface AprilTagVisionLane extends AutoCloseable {
      * @return camera extrinsics for the active backend/profile
      */
     CameraMountConfig cameraMountConfig();
+
+    /**
+     * Returns whether this lane can safely provide AprilTag observations in the current loop.
+     *
+     * <p>This is component readiness, not target visibility. A ready lane may legitimately report
+     * zero detections. Limelight-backed implementations use the clock to keep result sampling
+     * cycle-stable; webcam-backed implementations use the same signature so callers remain
+     * backend-neutral.</p>
+     *
+     * @param clock current shared loop clock (required)
+     * @return immutable AprilTag-component readiness and operator-facing reason
+     */
+    VisionReadiness readiness(LoopClock clock);
 
     /**
      * Releases the shared vision resources owned by this lane.

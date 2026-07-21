@@ -500,9 +500,13 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
             telemetry.update();
             return true;
         } catch (RuntimeException e) {
+            // A nested constructor may have failed its own rollback before publishing an owner
+            // reference. CleanupActions records that uncertainty as a suppressed failure, and a
+            // later successful stop cannot prove that hidden hardware ownership was released.
+            boolean inheritedCleanupFailure = e.getSuppressed().length > 0;
             RuntimeException cleanupFailure = stopRobot(builtRobot);
             attachSuppressed(e, cleanupFailure);
-            if (cleanupFailure != null) {
+            if (inheritedCleanupFailure || cleanupFailure != null) {
                 unrecoveredCleanupFailure = e;
             }
             clearRuntimeOwnerReferences();

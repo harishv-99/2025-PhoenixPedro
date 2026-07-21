@@ -1,8 +1,6 @@
 package edu.ftcphoenix.fw.ftc.localization;
 
-import com.qualcomm.hardware.limelightvision.LLResult;
 import com.qualcomm.hardware.limelightvision.LLResultTypes;
-import com.qualcomm.hardware.limelightvision.Limelight3A;
 
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
@@ -10,7 +8,6 @@ import org.firstinspires.ftc.robotcore.external.navigation.Pose3D;
 import org.firstinspires.ftc.robotcore.external.navigation.Position;
 import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
 
-import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Objects;
 
@@ -19,6 +16,7 @@ import edu.ftcphoenix.fw.core.geometry.Pose3d;
 import edu.ftcphoenix.fw.core.math.MathUtil;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.ftc.vision.FtcLimelightAprilTagVisionLane;
+import edu.ftcphoenix.fw.ftc.vision.FtcLimelightVisionLane;
 import edu.ftcphoenix.fw.localization.AbsolutePoseEstimator;
 import edu.ftcphoenix.fw.localization.MotionDelta;
 import edu.ftcphoenix.fw.localization.MotionPredictor;
@@ -152,6 +150,9 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
             String p = (context != null && !context.trim().isEmpty())
                     ? context.trim()
                     : "LimelightFieldPoseEstimator.Config";
+            if (c.mode == null) {
+                throw new IllegalArgumentException(p + ".mode must not be null");
+            }
             requireNonNegative(c.maxResultAgeSec, p + ".maxResultAgeSec");
             if (c.minVisibleTags < 1) {
                 throw new IllegalArgumentException(p + ".minVisibleTags must be >= 1");
@@ -183,8 +184,6 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
             }
         }
     }
-
-    private static final double MILLIS_PER_SECOND = 1000.0;
 
     private final FtcLimelightAprilTagVisionLane lane;
     private final MotionPredictor predictor;
@@ -223,7 +222,8 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
      */
     @Override
     public void update(LoopClock clock) {
-        final double nowSec = clock != null ? clock.nowSec() : 0.0;
+        Objects.requireNonNull(clock, "clock");
+        final double nowSec = clock.nowSec();
         lastRejectReason = "none";
         lastVisibleTagCount = 0;
         lastBaseQuality = 0.0;
@@ -231,46 +231,56 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
         lastTranslationSpeedInPerSec = 0.0;
         lastYawRateRadPerSec = 0.0;
 
-        Limelight3A limelight = lane.limelight();
         if (cfg.mode == Config.Mode.BOTPOSE_MT2) {
-            maybePushPredictorYawToLimelight(limelight);
+            maybePushPredictorYawToLimelight();
         }
 
-        LLResult result = limelight.getLatestResult();
-        double ageSec = ageSecFromResult(result);
+        FtcLimelightVisionLane.ResultSnapshot result = lane.confirmedAprilTagResult(clock);
+        if (!result.hasResult()) {
+            lastRejectReason = "AprilTag pipeline is not ready";
+            lastEstimate = PoseEstimate.noPose(nowSec);
+            return;
+        }
+
+        double ageSec = result.ageSec();
+        if (!Double.isFinite(ageSec) || ageSec < 0.0) {
+            lastRejectReason = "confirmed result reported an invalid age";
+            lastEstimate = PoseEstimate.noPose(nowSec);
+            return;
+        }
         double timestampSec = nowSec - ageSec;
 
-        if (result == null || !result.isValid()) {
-            lastRejectReason = "no valid Limelight result";
-            lastEstimate = PoseEstimate.noPose(timestampSec);
+        if (!result.isTargetValid()) {
+            lastRejectReason = "confirmed pipeline result has no target";
+            lastEstimate = PoseEstimate.noPose(nowSec);
             return;
         }
 
         if (cfg.maxResultAgeSec > 0.0 && ageSec > cfg.maxResultAgeSec) {
             lastRejectReason = "result age exceeded maxResultAgeSec";
-            lastEstimate = PoseEstimate.noPose(timestampSec);
+            lastEstimate = PoseEstimate.noPose(nowSec);
             return;
         }
 
-        List<LLResultTypes.FiducialResult> fiducials = result.getFiducialResults();
-        lastVisibleTagCount = fiducials != null ? fiducials.size() : 0;
+        List<LLResultTypes.FiducialResult> fiducials = result.fiducialResults();
+        lastVisibleTagCount = fiducials.size();
         if (lastVisibleTagCount < cfg.minVisibleTags) {
             lastRejectReason = "not enough visible tags for direct pose";
-            lastEstimate = PoseEstimate.noPose(timestampSec);
+            lastEstimate = PoseEstimate.noPose(nowSec);
             return;
         }
 
         Pose3D botpose = readBotpose(result, cfg.mode);
         if (botpose == null) {
             lastRejectReason = "direct botpose was unavailable";
-            lastEstimate = PoseEstimate.noPose(timestampSec);
+            lastEstimate = PoseEstimate.noPose(nowSec);
             return;
         }
 
         Pose3d fieldToRobotPose = phoenixFieldPose(botpose);
         if (fieldToRobotPose == null) {
             lastRejectReason = "could not decode botpose";
-            lastEstimate = PoseEstimate.noPose(timestampSec);
+            lastEstimate = PoseEstimate.noPose(nowSec);
             return;
         }
 
@@ -291,7 +301,7 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
                         && (lastTranslationSpeedInPerSec > cfg.maxTranslationSpeedInPerSec
                         || lastYawRateRadPerSec > cfg.maxYawRateRadPerSec)) {
                     lastRejectReason = "predictor motion exceeded hard limits";
-                    lastEstimate = PoseEstimate.noPose(timestampSec);
+                    lastEstimate = PoseEstimate.noPose(nowSec);
                     return;
                 }
 
@@ -352,7 +362,7 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
                 .addData(p + ".cfg.maxYawRateRadPerSec", cfg.maxYawRateRadPerSec);
     }
 
-    private void maybePushPredictorYawToLimelight(Limelight3A limelight) {
+    private void maybePushPredictorYawToLimelight() {
         if (predictor == null) {
             return;
         }
@@ -360,8 +370,7 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
         if (predictorEst == null || !predictorEst.hasPose) {
             return;
         }
-        double yawDeg = Math.toDegrees(predictorEst.fieldToRobotPose.yawRad);
-        tryInvokeUpdateRobotOrientation(limelight, yawDeg);
+        lane.updateRobotFieldYawRad(predictorEst.fieldToRobotPose.yawRad);
     }
 
     private static Pose3d phoenixFieldPose(Pose3D botpose) {
@@ -392,57 +401,17 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
         );
     }
 
-    private static double ageSecFromResult(LLResult result) {
-        if (result == null) {
-            return Double.POSITIVE_INFINITY;
-        }
-        return Math.max(0.0, result.getStaleness()) / MILLIS_PER_SECOND;
-    }
-
-    private static Pose3D readBotpose(LLResult result, Config.Mode mode) {
-        if (result == null) {
+    private static Pose3D readBotpose(FtcLimelightVisionLane.ResultSnapshot result,
+                                      Config.Mode mode) {
+        if (result == null || !result.hasResult()) {
             return null;
         }
         if (mode == Config.Mode.BOTPOSE_MT2) {
-            Pose3D mt2 = invokePoseMethod(result, "getBotpose_MT2");
-            if (mt2 != null) {
-                return mt2;
-            }
-            mt2 = invokePoseMethod(result, "getBotPose_MT2");
+            Pose3D mt2 = result.botposeMt2();
             if (mt2 != null) {
                 return mt2;
             }
         }
-        Pose3D mt1 = invokePoseMethod(result, "getBotpose");
-        if (mt1 != null) {
-            return mt1;
-        }
-        return invokePoseMethod(result, "getBotPose");
-    }
-
-    private static Pose3D invokePoseMethod(LLResult result, String methodName) {
-        try {
-            Method method = result.getClass().getMethod(methodName);
-            Object out = method.invoke(result);
-            return (out instanceof Pose3D) ? (Pose3D) out : null;
-        } catch (Exception ignored) {
-            return null;
-        }
-    }
-
-    private static void tryInvokeUpdateRobotOrientation(Limelight3A limelight, double yawDeg) {
-        try {
-            Method method = limelight.getClass().getMethod("updateRobotOrientation", double.class);
-            method.invoke(limelight, yawDeg);
-            return;
-        } catch (Exception ignored) {
-            // Try alternate overloads below.
-        }
-        try {
-            Method method = limelight.getClass().getMethod("updateRobotOrientation", Double.TYPE, Double.TYPE, Double.TYPE, Double.TYPE, Double.TYPE, Double.TYPE);
-            method.invoke(limelight, yawDeg, 0.0, 0.0, 0.0, 0.0, 0.0);
-        } catch (Exception ignored) {
-            // Best effort. If the SDK version differs, the estimator can still use MT1.
-        }
+        return result.botpose();
     }
 }

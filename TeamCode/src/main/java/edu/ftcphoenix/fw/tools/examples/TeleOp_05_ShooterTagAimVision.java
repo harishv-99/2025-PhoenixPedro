@@ -12,6 +12,7 @@ import edu.ftcphoenix.fw.actuation.Plant;
 import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.debug.NullDebugSink;
 import edu.ftcphoenix.fw.core.hal.Direction;
+import edu.ftcphoenix.fw.core.lifecycle.CleanupActions;
 import edu.ftcphoenix.fw.core.math.InterpolatingTable1D;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.drive.DriveOverlayMask;
@@ -25,7 +26,7 @@ import edu.ftcphoenix.fw.drive.source.GamepadDriveSource;
 import edu.ftcphoenix.fw.ftc.FtcActuators;
 import edu.ftcphoenix.fw.ftc.FtcDrives;
 import edu.ftcphoenix.fw.ftc.FtcTelemetryDebugSink;
-import edu.ftcphoenix.fw.ftc.FtcVision;
+import edu.ftcphoenix.fw.ftc.vision.FtcWebcamAprilTagVisionLane;
 import edu.ftcphoenix.fw.input.Gamepads;
 import edu.ftcphoenix.fw.input.binding.Bindings;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
@@ -55,7 +56,8 @@ import edu.ftcphoenix.fw.spatial.References;
  *   </li>
  *   <li><b>Shooter velocity from AprilTag distance</b>:
  *     <ul>
- *       <li>Use an {@link AprilTagSensor} created by {@link FtcVision#aprilTags}.</li>
+ *       <li>Use the shared {@link AprilTagSensor} owned by a
+ *           {@link FtcWebcamAprilTagVisionLane}.</li>
  *       <li>Share a {@link TagSelectionSource} so aiming, telemetry, and shooter range all agree on the tag choice.</li>
  *       <li>Read {@link AprilTagObservation#cameraRangeInches()} from the selector's fresh selected observation.</li>
  *       <li>Use an {@link InterpolatingTable1D} to map
@@ -133,6 +135,7 @@ public final class TeleOp_05_ShooterTagAimVision extends OpMode {
     private DriveSource baseDrive;
     private DriveSource driveWithAim;
 
+    private FtcWebcamAprilTagVisionLane vision;
     private AprilTagSensor tagSensor;
     private TagSelectionSource scoringSelection;
 
@@ -175,12 +178,7 @@ public final class TeleOp_05_ShooterTagAimVision extends OpMode {
         ).scaledWhen(gamepads.p1().rightBumper(), 0.35, 0.20)
                 .rateLimited(4.0, 4.0, 6.0);
 
-        // 3) Tag sensor: real FTC VisionPortal + AprilTagProcessor adapter.
-        //
-        // NOTE: Replace "Webcam 1" with your actual camera name in the Robot Configuration.
-        tagSensor = FtcVision.aprilTags(hardwareMap, "Webcam 1");
-
-        // 3b) Camera mount: robot→camera extrinsics (Phoenix axes: +X forward, +Y left, +Z up).
+        // 3) Camera mount: robot→camera extrinsics (Phoenix axes: +X forward, +Y left, +Z up).
         //
         // IMPORTANT: Update these values for your robot.
         // Example: camera is 6" forward, 3" to the RIGHT (so y = -3), 8" up, facing forward.
@@ -192,6 +190,15 @@ public final class TeleOp_05_ShooterTagAimVision extends OpMode {
                 /*pitchRad=*/0.0,
                 /*rollRad=*/0.0
         );
+
+        // One explicit owner keeps the VisionPortal, processor, sensor, and cleanup together.
+        // Replace "Webcam 1" with your actual Robot Configuration name.
+        FtcWebcamAprilTagVisionLane.Config visionConfig =
+                FtcWebcamAprilTagVisionLane.Config.defaults();
+        visionConfig.webcamName = "Webcam 1";
+        visionConfig.cameraMount = cameraMount;
+        vision = new FtcWebcamAprilTagVisionLane(hardwareMap, visionConfig);
+        tagSensor = vision.tagSensor();
 
         // Shared tag selection: preview continuously, then latch the best visible scoring tag
         // while the driver holds aim assist.
@@ -353,13 +360,21 @@ public final class TeleOp_05_ShooterTagAimVision extends OpMode {
      */
     @Override
     public void stop() {
-        if (tagSensor != null) {
-            tagSensor.close();
-            tagSensor = null;
-        }
         shooterEnabled = false;
-        shooter.writableTarget().set(0.0);
-        shooter.stop();
-        drivebase.stop();
+        CleanupActions.attemptAll(
+                () -> shooter.writableTarget().set(0.0),
+                shooter::stop,
+                drivebase::stop,
+                this::closeVisionOwner
+        );
+    }
+
+    private void closeVisionOwner() {
+        FtcWebcamAprilTagVisionLane ownedVision = vision;
+        vision = null;
+        tagSensor = null;
+        if (ownedVision != null) {
+            ownedVision.close();
+        }
     }
 }

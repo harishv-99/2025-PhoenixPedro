@@ -29,6 +29,13 @@ previous hardware ownership is uncertain; stop and restart the OpMode before con
 Implement `stop()` so it is safe after partial initialization: clean only fields whose resources
 were successfully acquired. The runner will not repeatedly call `stop()` after it throws.
 
+For vision, retain and close the concrete webcam or Limelight lane owner rather than closing a
+borrowed processor/sensor view. After close succeeds, a retry creates a fresh owner; a webcam retry
+also needs fresh `VisionProcessor` instances because processors belong to the portal graph built
+around them. If close fails, follow the fail-stop rule above and restart the OpMode instead of
+opening a replacement. Display `VisionReadiness` separately from whether a target is currently
+visible.
+
 ## Read in this order
 
 1. [`Robot Calibration Tutorials.md`](<Robot Calibration Tutorials.md>)

@@ -144,7 +144,7 @@ The tester prints both `CameraMountConfig.of(...)` and `CameraMountConfig.ofDegr
 
 ### How webcam and Limelight are used so far
 
-Above the FTC boundary, Phoenix uses both backends almost the same way:
+For Phoenix's current AprilTag use case, both backends expose the same narrow seam:
 
 ```java
 AprilTagVisionLane vision = PhoenixVisionFactory.create(hardwareMap, PhoenixProfile.current().vision);
@@ -169,6 +169,16 @@ The backend only changes which concrete AprilTag lane is created:
 
 - `Backend.WEBCAM` -> `FtcWebcamAprilTagVisionLane`
 - `Backend.LIMELIGHT` -> `FtcLimelightAprilTagVisionLane`
+
+That does not make the devices identical. A webcam portal may run its construction-time processor
+set concurrently; a Limelight runs one onboard pipeline and must confirm a fresh result after each
+requested change. Phoenix displays `vision.componentReadiness` and `vision.readinessReason` every
+loop independently of target visibility. A ready lane may legitimately see no tags.
+
+Future custom vision should keep the concrete advanced owner in a robot realization:
+`FtcWebcamVisionPortalLane` maps semantic modes to processor enablement, while
+`FtcLimelightVisionLane` maps them to one pipeline request at each transition. Auto and TeleOp
+should consume one robot-owned immutable timestamped snapshot rather than FTC or Limelight result types.
 
 Phoenix can now also use Limelight's direct device field pose as an **optional** correction source through `PhoenixProfile.localization.correctionSource`, but the raw AprilTag path remains available either way. Limelight's FTC SDK exposes both fiducial-result access and direct botpose / MT2 pose access.
 

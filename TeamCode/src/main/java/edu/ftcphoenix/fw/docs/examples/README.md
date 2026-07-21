@@ -18,6 +18,11 @@ The examples folder now has four complementary docs:
 4. [`Pedro Autonomous Reference.md`](<Pedro Autonomous Reference.md>)
 5. [`../../tools/examples/`](<../../tools/examples/>)
 
+[`CustomVisionOwnershipExample.java`](../../tools/examples/CustomVisionOwnershipExample.java) in
+that source folder shows the advanced ownership pattern:
+one robot-owned semantic interface and immutable timestamped snapshot, with separate webcam-processor and
+Limelight-pipeline realizations. It is intentionally not another numbered full OpMode.
+
 ## Pair with
 
 - [`../design/README.md`](<../design/README.md>)

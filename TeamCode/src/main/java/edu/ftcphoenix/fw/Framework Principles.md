@@ -33,6 +33,14 @@ Phoenix is designed around a few core goals:
    [`Robot Capabilities & Mode Clients`](<docs/design/Robot Capabilities & Mode Clients.md>). It is
    a normal robot pattern, but usually not a framework lane.
 
+   Vision keeps backend ownership explicit. A webcam owner declares its complete processor set
+   when it builds one `VisionPortal`, then enables or disables those processors. A Limelight owner
+   controls one selected onboard pipeline, confirms that a post-request result belongs to that
+   pipeline, and refuses stale or unconfirmed results. These are parallel lifecycle owners, not one
+   artificial universal-camera interface. Robot code may put a small semantic interface above
+   either realization so Auto and TeleOp ask for meanings such as `AIMING` and consume the same
+   robot-owned immutable, timestamped snapshot without importing FTC or vendor result types.
+
 3. **Beginner-friendly, mentor-powerful**
 
    Students primarily use:
@@ -445,7 +453,8 @@ Phoenix uses two common patterns for configuration:
 1. **Owner-scoped configs** live as a nested `Owner.Config` class.
 
    * Use this when the config is only meaningful to that one class.
-   * Examples: `MecanumDrivebase.Config`, `FtcVision.Config`, `PinpointOdometryPredictor.Config`.
+   * Examples: `MecanumDrivebase.Config`, `FtcWebcamVisionPortalLane.Config`,
+     `PinpointOdometryPredictor.Config`.
    * These are usually simple mutable data objects: start from `defaults()`, tweak the fields you care about, then pass the config into the owner.
    * Owners should defensively copy configs at construction time when later mutation would be surprising.
 

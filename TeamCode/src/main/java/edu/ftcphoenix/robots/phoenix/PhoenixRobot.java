@@ -17,6 +17,7 @@ import edu.ftcphoenix.fw.drive.DriveSource;
 import edu.ftcphoenix.fw.ftc.drive.FtcMecanumDriveLane;
 import edu.ftcphoenix.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane;
 import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLane;
+import edu.ftcphoenix.fw.ftc.vision.VisionReadiness;
 import edu.ftcphoenix.fw.input.Gamepads;
 import edu.ftcphoenix.fw.localization.MotionPredictor;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
@@ -362,11 +363,14 @@ public final class PhoenixRobot {
      * Advances one TeleOp loop.
      *
      * <p>
-     * Loop order is intentionally explicit: localization lane, targeting, controls, scoring path, drive-assist service, drive lane, then telemetry presentation.
+     * Loop order is intentionally explicit: vision component readiness, localization lane,
+     * targeting, controls, scoring path, drive-assist service, drive lane, then telemetry
+     * presentation.
      * </p>
      */
     public void updateTeleOp() {
         if (drive == null
+                || vision == null
                 || localization == null
                 || scoringPath == null
                 || scoringTargeting == null
@@ -376,6 +380,7 @@ public final class PhoenixRobot {
             return;
         }
 
+        VisionReadiness visionReadiness = vision.readiness(clock);
         localization.update(clock);
         scoringTargeting.update(clock);
         teleOpControls.update(clock);
@@ -398,6 +403,7 @@ public final class PhoenixRobot {
                 targetingStatus,
                 driveAssistStatus,
                 teleOpPoseAssistReadiness,
+                visionReadiness,
                 globalPose,
                 odomPose
         );
@@ -406,12 +412,13 @@ public final class PhoenixRobot {
     /**
      * Advances one autonomous loop.
      *
-     * <p>Loop order is explicit and matches Phoenix ownership boundaries: localization first, then
-     * targeting, the continuously owned external drive heartbeat, the installed autonomous root,
-     * the scoring path, and finally telemetry.</p>
+     * <p>Loop order is explicit and matches Phoenix ownership boundaries: vision component
+     * readiness, localization, targeting, the continuously owned external drive heartbeat, the
+     * installed autonomous root, the scoring path, and finally telemetry.</p>
      */
     public void updateAuto() {
-        if (localization == null
+        if (vision == null
+                || localization == null
                 || scoringPath == null
                 || scoringTargeting == null
                 || autoRoutineLifecycle == null
@@ -419,6 +426,7 @@ public final class PhoenixRobot {
             return;
         }
 
+        VisionReadiness visionReadiness = vision.readiness(clock);
         localization.update(clock);
         scoringTargeting.update(clock);
         autonomousDrive.update(clock);
@@ -435,6 +443,7 @@ public final class PhoenixRobot {
                 scoringStatus,
                 targetingStatus,
                 autoRoutineLifecycle.installedRoutine(),
+                visionReadiness,
                 globalPose,
                 odomPose
         );

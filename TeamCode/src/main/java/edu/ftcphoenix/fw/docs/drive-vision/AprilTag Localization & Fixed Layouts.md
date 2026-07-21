@@ -124,19 +124,68 @@ Standard FTC-boundary implementations are:
 - `FtcWebcamAprilTagVisionLane`
 - `FtcLimelightAprilTagVisionLane`
 
+They are AprilTag-specialized forms of two different advanced owners:
+
+- `FtcWebcamVisionPortalLane` owns one webcam, one portal, and the complete set of fresh
+  `VisionProcessor` instances supplied before construction. It supports processor enable/disable
+  and stream/camera controls, but it does not add processors after the portal is built.
+- `FtcLimelightVisionLane` owns one Limelight connection and one requested onboard pipeline. It
+  tracks request acceptance, requested-versus-observed pipeline, result generation, freshness, and
+  shutdown. It never treats an unconfirmed post-switch result as belonging to the new mode.
+
+Those owners are intentionally parallel in lifecycle and readiness, not flattened into a fake
+camera API. Webcam processors can coexist; Limelight pipelines cannot.
+
+When `FtcWebcamAprilTagVisionLane` also owns custom processors, its
+`setAprilTagProcessorEnabled(...)` and `isAprilTagProcessorEnabled()` operations let the
+robot-owned mode realization control the built-in AprilTag processor without exposing that SDK
+processor instance.
+
 Both expose the same shared resources above the FTC boundary:
 
 ```java
 AprilTagSensor tags = visionLane.tagSensor();
 CameraMountConfig mount = visionLane.cameraMountConfig();
+VisionReadiness readiness = visionLane.readiness(clock);
 ```
+
+`readiness` describes the configured AprilTag component, not whether a tag is currently visible.
+A streaming webcam with its required processor enabled can be ready with zero detections. A
+Limelight AprilTag lane becomes ready only after it is running, connected, accepted the pipeline
+request, and observed a fresh post-request result from that pipeline; that result may still report
+no target.
+
+Keep the Limelight polling rate at its 100 Hz framework default unless real-device testing gives a
+specific reason to change it. The FTC SDK evaluates connection activity over a short fixed window,
+so unusually low polling rates can make readiness appear to alternate between connected and
+disconnected even when the device is otherwise healthy.
 
 What changes is only how raw AprilTag observations are acquired:
 
 - `FtcWebcamAprilTagVisionLane` uses a `WebcamName` plus FTC VisionPortal / FTC AprilTag processing.
-- `FtcLimelightAprilTagVisionLane` uses a `Limelight3A`, switches to the configured AprilTag pipeline, starts polling, and adapts Limelight fiducial results into the same `AprilTagSensor` seam. Limelight also exposes direct device field pose and orientation-update APIs through the FTC SDK, which Phoenix can optionally consume through a separate absolute-pose estimator path.
+- `FtcLimelightAprilTagVisionLane` requests the configured Limelight AprilTag pipeline, confirms a
+  fresh result from that pipeline, and adapts its fiducial results into the same `AprilTagSensor`
+  seam. Limelight also exposes direct device field pose and a narrow orientation-update operation,
+  which Phoenix can optionally consume through a separate absolute-pose estimator path without
+  borrowing the mutable device.
 
-The important policy is: **the camera lane owns device lifecycle and raw observations; localization owns estimation strategy.**
+Robot code supplies both backends only a Phoenix `CameraMountConfig` (`+X` forward, `+Y` left,
+`+Z` up; radians). The webcam owner performs the FTC SDK's less-obvious conversion internally:
+camera position is expressed in FTC robot axes while orientation rotates the optical-camera axes
+using the SDK's intrinsic-ZXZ convention. A forward-facing Phoenix identity orientation therefore
+maps to the SDK's documented `(yaw=0, pitch=-90°, roll=0)` baseline; students do not add a second
+SDK pitch correction.
+
+The important policy is: **the camera lane owns device lifecycle and trustworthy acquisition;
+localization owns estimation strategy.** Close the owner at shutdown. After close succeeds, a retry
+constructs a new owner; it does not revive a closed portal or reuse its processor instances. If
+close fails, do not create a competing owner in the same OpMode; stop and restart the OpMode first.
+
+For season-specific multi-purpose vision, put a robot-owned typed interface above either advanced
+owner. Auto and TeleOp can then select semantic modes such as `DRIVER_VIEW` or `AIMING` and consume
+one immutable timestamped robot snapshot. The webcam realization maps a mode to processor enablement; the
+Limelight realization maps the same mode to one pipeline request. FTC and Limelight result types
+remain inside those realization classes.
 
 ---
 
@@ -385,6 +434,10 @@ Phoenix's direct Limelight field-pose estimator is intentionally conservative:
 - optional motion-aware quality degradation (`degradeWhenMoving`)
 - optional hard reject thresholds (`rejectWhenMovingTooFast`)
 - optional predictor yaw feed for MegaTag2-style direct pose modes when the active SDK supports it. Limelight's FTC API exposes both direct botpose access and a robot-orientation update hook for the MT2 path.
+
+The FTC SDK returns an exact all-zero `Pose3D` when a Limelight pose array is absent. The Phoenix
+owner treats that sentinel as unavailable, rather than accepting it as a confident field-origin or
+camera-to-tag measurement.
 
 If direct Limelight field pose is unstable while moving:
 

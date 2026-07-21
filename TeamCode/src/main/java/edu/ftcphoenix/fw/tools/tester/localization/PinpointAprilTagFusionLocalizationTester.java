@@ -23,6 +23,7 @@ import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLane;
 import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLaneFactories;
 import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLaneFactory;
 import edu.ftcphoenix.fw.ftc.vision.FtcWebcamAprilTagVisionLane;
+import edu.ftcphoenix.fw.ftc.vision.VisionReadiness;
 import edu.ftcphoenix.fw.localization.AbsolutePoseEstimator;
 import edu.ftcphoenix.fw.localization.MotionPredictor;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
@@ -107,6 +108,7 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
     private RuntimeException visionFailure = null;
     private String initError = null;
     private String activeVisionDescription = null;
+    private VisionReadiness visionReadiness = VisionReadiness.notReady("No vision device is open");
 
     private TagLayout layout;
     private AprilTagVisionLane visionLane;
@@ -319,7 +321,7 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
                 gamepads.p1().dpadDown(),
                 gamepads.p1().a(),
                 gamepads.p1().x(),
-                () -> !ready && !visionClosingOrTerminal && !visionCleanupFailed,
+                () -> visionLane == null && !visionClosingOrTerminal && !visionCleanupFailed,
                 chosen -> {
                     selectedVisionDeviceName = chosen;
                     ensureReady();
@@ -372,6 +374,7 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
 
     @Override
     protected void onInitLoop(double dtSec) {
+        refreshVisionReadiness();
         if (!ready) {
             renderPicker();
             return;
@@ -381,6 +384,7 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
 
     @Override
     protected void onLoop(double dtSec) {
+        refreshVisionReadiness();
         if (!ready) {
             renderPicker();
             return;
@@ -397,7 +401,7 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
         if (visionClosingOrTerminal || visionCleanupFailed) {
             return true;
         }
-        if (!ready) {
+        if (visionLane == null) {
             return false;
         }
         resetToPicker();
@@ -408,6 +412,7 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
     protected void onStop() {
         visionTerminalRequested = true;
         ready = false;
+        visionReadiness = VisionReadiness.notReady("Vision tester is stopping");
         tagSensor = null;
         selection = null;
         localizationLane = null;
@@ -422,6 +427,7 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
 
     private void resetToPicker() {
         ready = false;
+        visionReadiness = VisionReadiness.notReady("No vision device is open");
         initError = null;
         layout = null;
         tagSensor = null;
@@ -433,6 +439,7 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
             blockVisionSelection(cleanupFailure);
         } else if (!visionTerminalRequested) {
             visionClosingOrTerminal = false;
+            resetVisionPickerChoice();
         }
     }
 
@@ -450,19 +457,27 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
         visionPicker.render(t);
         t.addLine("");
         t.addLine("Chosen: " + (selectedVisionDeviceName == null ? "(none)" : selectedVisionDeviceName));
+        if (visionLane != null) {
+            t.addData("Vision readiness", visionReadiness.isReady() ? "READY" : "WAITING");
+            t.addData("Vision status", visionReadiness.reason());
+            t.addLine("Press BACK to close this owner and choose another device.");
+        }
         if (visionCleanupFailed) {
             t.addLine("VISION DEVICE SELECTION DISABLED.");
             t.addLine("Stop and restart this OpMode before selecting another device.");
-        } else {
+        } else if (visionLane == null) {
             t.addLine("Press A to choose the active vision device and initialize localization.");
-            t.addLine("Press B to refresh the device list.");
+            t.addLine("Press X to refresh the device list.");
             t.addLine("Press BACK to exit to the tester menu.");
         }
         t.update();
     }
 
     private void ensureReady() {
-        if (ready) return;
+        if (visionLane != null) {
+            refreshVisionReadiness();
+            return;
+        }
         if (visionClosingOrTerminal) return;
         if (visionCleanupFailed) return;
         if (selectedVisionDeviceName == null || selectedVisionDeviceName.trim().isEmpty()) {
@@ -471,6 +486,7 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
         }
 
         visionFailure = null;
+        boolean ownerPublished = false;
         try {
             AprilTagVisionLaneFactory factory = visionLaneFactoryBuilder.apply(selectedVisionDeviceName);
             if (factory == null) {
@@ -482,6 +498,7 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
                 throw new IllegalStateException(
                         "vision lane factory returned null for " + selectedVisionDeviceName);
             }
+            ownerPublished = true;
             tagSensor = visionLane.tagSensor();
             activeVisionDescription = factory.description();
             layout = (layoutOverride != null)
@@ -495,14 +512,19 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
             );
             rebuildSelection();
 
-            ready = true;
+            ready = false;
+            visionReadiness = VisionReadiness.notReady("Vision device is opening");
             initError = null;
+            refreshVisionReadiness();
         } catch (RuntimeException e) {
+            boolean unpublishedCleanupUncertain = !ownerPublished
+                    && e.getSuppressed().length > 0;
             tagSensor = null;
             selection = null;
             localizationLane = null;
             activeVisionDescription = null;
             ready = false;
+            visionReadiness = VisionReadiness.notReady("Vision initialization failed");
             RuntimeException cleanupFailure = closeVisionLaneOnce();
             visionFailure = e;
             if (cleanupFailure != null) {
@@ -510,10 +532,62 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
                     e.addSuppressed(cleanupFailure);
                 }
                 visionCleanupFailed = true;
+            } else if (unpublishedCleanupUncertain) {
+                // A suppressed construction rollback failure means the device may still be owned,
+                // even though no lane reference was returned to this tester.
+                visionCleanupFailed = true;
             } else if (!visionTerminalRequested) {
                 visionClosingOrTerminal = false;
+                resetVisionPickerChoice();
             }
             initError = visionFailureMessage(e);
+        }
+    }
+
+    /** Refreshes asynchronous vision readiness without opening a competing device owner. */
+    private void refreshVisionReadiness() {
+        AprilTagVisionLane lane = visionLane;
+        if (lane == null || visionClosingOrTerminal || visionCleanupFailed) {
+            ready = false;
+            return;
+        }
+        try {
+            VisionReadiness current = lane.readiness(clock);
+            visionReadiness = current != null
+                    ? current
+                    : VisionReadiness.notReady("Vision lane returned no readiness result");
+            ready = visionReadiness.isReady();
+        } catch (RuntimeException failure) {
+            ready = false;
+            visionReadiness = VisionReadiness.notReady("Vision readiness check failed");
+            tagSensor = null;
+            selection = null;
+            localizationLane = null;
+            activeVisionDescription = null;
+            RuntimeException cleanupFailure = closeVisionLaneOnce();
+            visionFailure = failure;
+            if (cleanupFailure != null) {
+                if (cleanupFailure != failure) {
+                    failure.addSuppressed(cleanupFailure);
+                }
+                visionCleanupFailed = true;
+            } else if (!visionTerminalRequested) {
+                visionClosingOrTerminal = false;
+                resetVisionPickerChoice();
+            }
+            initError = visionFailureMessage(failure);
+        }
+    }
+
+    private void resetVisionPickerChoice() {
+        if (visionPicker == null) {
+            return;
+        }
+        visionPicker.clearChoice();
+        visionPicker.refresh();
+        if (selectedVisionDeviceName != null
+                && !selectedVisionDeviceName.trim().isEmpty()) {
+            visionPicker.setPreferredName(selectedVisionDeviceName);
         }
     }
 

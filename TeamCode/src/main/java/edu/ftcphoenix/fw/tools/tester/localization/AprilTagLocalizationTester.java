@@ -21,6 +21,7 @@ import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLane;
 import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLaneFactories;
 import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLaneFactory;
 import edu.ftcphoenix.fw.ftc.vision.FtcWebcamAprilTagVisionLane;
+import edu.ftcphoenix.fw.ftc.vision.VisionReadiness;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
 import edu.ftcphoenix.fw.localization.apriltag.AprilTagPoseEstimator;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
@@ -106,6 +107,7 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
     private RuntimeException visionFailure = null;
     private String visionInitError = null;
     private String activeVisionDescription = null;
+    private VisionReadiness visionReadiness = VisionReadiness.notReady("No vision device is open");
 
     private AprilTagVisionLane visionLane;
     private AprilTagSensor tagSensor;
@@ -279,7 +281,7 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
                 gamepads.p1().dpadDown(),
                 gamepads.p1().a(),
                 gamepads.p1().x(),
-                () -> !visionReady && !visionClosingOrTerminal && !visionCleanupFailed,
+                () -> visionLane == null && !visionClosingOrTerminal && !visionCleanupFailed,
                 chosen -> {
                     selectedCameraName = chosen;
                     ensureVisionReady();
@@ -338,6 +340,7 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
      */
     @Override
     protected void onInitLoop(double dtSec) {
+        refreshVisionReadiness();
         if (!visionReady) {
             renderCameraPicker();
             return;
@@ -351,6 +354,7 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
      */
     @Override
     protected void onLoop(double dtSec) {
+        refreshVisionReadiness();
         if (!visionReady) {
             renderCameraPicker();
             return;
@@ -367,13 +371,14 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
         if (visionClosingOrTerminal || visionCleanupFailed) {
             return true;
         }
-        // If we are already in the picker, let the suite handle BACK (exit to suite menu).
-        if (!visionReady) {
+        // If no owner is retained, let the suite handle BACK (exit to suite menu).
+        if (visionLane == null) {
             return false;
         }
 
         // Return to picker state.
         visionReady = false;
+        visionReadiness = VisionReadiness.notReady("No vision device is open");
         visionInitError = null;
 
         RuntimeException cleanupFailure = closeVisionLaneOnce();
@@ -393,13 +398,7 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
         }
 
         // Reset picker UI and highlight the last camera for convenience.
-        if (cameraPicker != null) {
-            cameraPicker.clearChoice();
-            cameraPicker.refresh();
-        }
-        if (selectedCameraName != null && !selectedCameraName.isEmpty()) {
-            cameraPicker.setPreferredName(selectedCameraName);
-        }
+        resetCameraPickerChoice();
 
         return true;
     }
@@ -408,6 +407,7 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
     protected void onStop() {
         visionTerminalRequested = true;
         visionReady = false;
+        visionReadiness = VisionReadiness.notReady("Vision tester is stopping");
         tagSensor = null;
         selection = null;
         poseEstimator = null;
@@ -425,7 +425,10 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
     // ---------------------------------------------------------------------------------------------
 
     private void ensureVisionReady() {
-        if (visionReady) return;
+        if (visionLane != null) {
+            refreshVisionReadiness();
+            return;
+        }
         if (visionClosingOrTerminal) return;
         if (visionCleanupFailed) return;
         if (selectedCameraName == null || selectedCameraName.isEmpty()) return;
@@ -433,6 +436,7 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
         visionInitError = null;
         visionFailure = null;
 
+        boolean ownerPublished = false;
         try {
             AprilTagVisionLaneFactory factory = cameraLaneFactoryBuilder.apply(selectedCameraName);
             if (factory == null) {
@@ -444,18 +448,22 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
                 throw new IllegalStateException(
                         "vision lane factory returned null for " + selectedCameraName);
             }
+            ownerPublished = true;
             tagSensor = visionLane.tagSensor();
             cameraMount = visionLane.cameraMountConfig();
             activeVisionDescription = factory.description();
-            visionReady = true;
-
-            rebuildSelectionAndEstimator();
+            visionReady = false;
+            visionReadiness = VisionReadiness.notReady("Vision device is opening");
+            refreshVisionReadiness();
         } catch (RuntimeException ex) {
+            boolean unpublishedCleanupUncertain = !ownerPublished
+                    && ex.getSuppressed().length > 0;
             tagSensor = null;
             selection = null;
             poseEstimator = null;
             activeVisionDescription = null;
             visionReady = false;
+            visionReadiness = VisionReadiness.notReady("Vision initialization failed");
             RuntimeException cleanupFailure = closeVisionLaneOnce();
             visionFailure = ex;
             if (cleanupFailure != null) {
@@ -463,10 +471,66 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
                     ex.addSuppressed(cleanupFailure);
                 }
                 visionCleanupFailed = true;
+            } else if (unpublishedCleanupUncertain) {
+                // A failed factory may have acquired hardware and attached a failed rollback as
+                // suppressed. With no published lane to close again, replacement is unsafe.
+                visionCleanupFailed = true;
             } else if (!visionTerminalRequested) {
                 visionClosingOrTerminal = false;
+                resetCameraPickerChoice();
             }
             visionInitError = visionFailureMessage(ex);
+        }
+    }
+
+    /** Refreshes asynchronous component readiness without opening a second camera owner. */
+    private void refreshVisionReadiness() {
+        AprilTagVisionLane lane = visionLane;
+        if (lane == null || visionClosingOrTerminal || visionCleanupFailed) {
+            visionReady = false;
+            return;
+        }
+
+        boolean wasReady = visionReady;
+        try {
+            VisionReadiness current = lane.readiness(clock);
+            visionReadiness = current != null
+                    ? current
+                    : VisionReadiness.notReady("Vision lane returned no readiness result");
+            visionReady = visionReadiness.isReady();
+            if (visionReady && (!wasReady || selection == null || poseEstimator == null)) {
+                rebuildSelectionAndEstimator();
+            }
+        } catch (RuntimeException failure) {
+            visionReady = false;
+            visionReadiness = VisionReadiness.notReady("Vision readiness check failed");
+            tagSensor = null;
+            selection = null;
+            poseEstimator = null;
+            activeVisionDescription = null;
+            RuntimeException cleanupFailure = closeVisionLaneOnce();
+            visionFailure = failure;
+            if (cleanupFailure != null) {
+                if (cleanupFailure != failure) {
+                    failure.addSuppressed(cleanupFailure);
+                }
+                visionCleanupFailed = true;
+            } else if (!visionTerminalRequested) {
+                visionClosingOrTerminal = false;
+                resetCameraPickerChoice();
+            }
+            visionInitError = visionFailureMessage(failure);
+        }
+    }
+
+    private void resetCameraPickerChoice() {
+        if (cameraPicker == null) {
+            return;
+        }
+        cameraPicker.clearChoice();
+        cameraPicker.refresh();
+        if (selectedCameraName != null && !selectedCameraName.isEmpty()) {
+            cameraPicker.setPreferredName(selectedCameraName);
         }
     }
 
@@ -572,12 +636,17 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
 
         t.addLine("");
         t.addLine("Chosen: " + (selectedCameraName == null ? "(none)" : selectedCameraName));
+        if (visionLane != null) {
+            t.addData("Vision readiness", visionReadiness.isReady() ? "READY" : "WAITING");
+            t.addData("Vision status", visionReadiness.reason());
+            t.addLine("Press BACK to close this owner and choose another device.");
+        }
         if (visionCleanupFailed) {
             t.addLine("VISION DEVICE SELECTION DISABLED.");
             t.addLine("Stop and restart this OpMode before selecting another device.");
-        } else {
+        } else if (visionLane == null) {
             t.addLine("Press A to choose the active vision device and initialize AprilTags.");
-            t.addLine("Press B to refresh the device list.");
+            t.addLine("Press X to refresh the device list.");
             t.addLine("Press BACK to exit to the tester menu.");
         }
 

@@ -24,7 +24,12 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *
  * <h2>Typical usage</h2>
  * <pre>{@code
- * AprilTagSensor tags = FtcVision.aprilTags(hardwareMap, "Webcam 1");
+ * FtcWebcamAprilTagVisionLane.Config config =
+ *         FtcWebcamAprilTagVisionLane.Config.defaults();
+ * config.webcamName = "Webcam 1";
+ * FtcWebcamAprilTagVisionLane vision =
+ *         new FtcWebcamAprilTagVisionLane(hardwareMap, config);
+ * AprilTagSensor tags = vision.tagSensor();
  *
  * // Shared loop sample (memoized inside the sensor).
  * AprilTagDetections dets = tags.get(clock);
@@ -37,6 +42,9 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * if (obs.hasTarget) {
  *     telemetry.addData("bearingDeg", Math.toDegrees(obs.cameraBearingRad()));
  * }
+ *
+ * // At OpMode shutdown, close the owner—not a borrowed sensor view.
+ * vision.close();
  * }</pre>
  */
 public interface AprilTagSensor extends Source<AprilTagDetections> {
@@ -53,15 +61,4 @@ public interface AprilTagSensor extends Source<AprilTagDetections> {
      */
     @Override
     AprilTagDetections get(LoopClock clock);
-
-    /**
-     * Release any underlying resources held by this sensor.
-     *
-     * <p>FTC vision implementations typically own a {@code VisionPortal}. This hook is safe to
-     * ignore when a robot creates a single camera for the entire OpMode, but testers and
-     * calibration tools often create and tear down cameras repeatedly.</p>
-     */
-    default void close() {
-        // Default: no-op.
-    }
 }

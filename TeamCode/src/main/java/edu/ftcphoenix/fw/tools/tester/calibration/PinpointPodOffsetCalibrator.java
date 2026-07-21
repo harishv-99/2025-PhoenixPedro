@@ -23,6 +23,7 @@ import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLane;
 import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLaneFactories;
 import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLaneFactory;
 import edu.ftcphoenix.fw.ftc.vision.FtcWebcamAprilTagVisionLane;
+import edu.ftcphoenix.fw.ftc.vision.VisionReadiness;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
 import edu.ftcphoenix.fw.localization.apriltag.AprilTagPoseEstimator;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
@@ -288,6 +289,10 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
     private AprilTagPoseEstimator tagEstimator;
     private String activeVisionDescription;
     private String aprilTagAssistNotice;
+    private boolean visionCleanupFailed;
+    private boolean visionTerminalRequested;
+    private RuntimeException visionFailure;
+    private VisionReadiness visionReadiness = VisionReadiness.notReady("No vision device is open");
 
     /**
      * High-level state machine for the calibration flow.
@@ -431,7 +436,9 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
                         gamepads.p1().dpadDown(),
                         gamepads.p1().a(),
                         gamepads.p1().x(),
-                        () -> tagSensor == null,
+                        () -> visionLane == null
+                                && !visionCleanupFailed
+                                && !visionTerminalRequested,
                         name -> selectedVisionDeviceName = name
                 );
             }
@@ -456,19 +463,19 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
 
     @Override
     protected void onInitLoop(double dtSec) {
-        ensureAprilTagAssistReady();
+        ensureAprilTagAssistReady(true);
 
         // Keep estimators warm in init so the first sample isn't stale.
-        updateSensors();
+        updateSensors(true);
 
         renderTelemetry(true);
     }
 
     @Override
     protected void onLoop(double dtSec) {
-        ensureAprilTagAssistReady();
+        ensureAprilTagAssistReady(false);
 
-        updateSensors();
+        updateSensors(false);
 
         // Update heading unwrapper for phases where a sample is active.
         if (isSampleActive()) {
@@ -892,9 +899,11 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         autoSample = false;
     }
 
-    private void ensureAprilTagAssistReady() {
+    private void ensureAprilTagAssistReady(boolean initPhase) {
         if (!cfg.enableAprilTagAssist) return;
-        if (tagSensor != null) return;
+        if (visionLane != null) return;
+        if (visionCleanupFailed) return;
+        if (visionTerminalRequested) return;
         if (selectedVisionDeviceName == null) return;
 
         Function<String, AprilTagVisionLaneFactory> builder = cfg.visionLaneFactoryBuilder;
@@ -912,26 +921,132 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
             };
         }
 
-        AprilTagVisionLaneFactory factory = builder.apply(selectedVisionDeviceName);
-        if (factory == null) {
-            throw new IllegalStateException("visionLaneFactoryBuilder returned null for " + selectedVisionDeviceName);
+        try {
+            AprilTagVisionLaneFactory factory = builder.apply(selectedVisionDeviceName);
+            if (factory == null) {
+                throw new IllegalStateException(
+                        "visionLaneFactoryBuilder returned null for "
+                                + selectedVisionDeviceName);
+            }
+
+            visionLane = factory.open(ctx.hw);
+            if (visionLane == null) {
+                throw new IllegalStateException(
+                        "vision lane factory returned null for "
+                                + selectedVisionDeviceName);
+            }
+            tagSensor = visionLane.tagSensor();
+            activeVisionDescription = factory.description();
+
+            AprilTagPoseEstimator.Config estCfg = AprilTagPoseEstimator.Config.defaults()
+                    .withCameraMount(visionLane.cameraMountConfig());
+            estCfg.maxDetectionAgeSec = cfg.maxTagAgeSec;
+            tagEstimator = new AprilTagPoseEstimator(tagSensor, layout, estCfg);
+            aprilTagAssistNotice = null;
+            visionFailure = null;
+            visionReadiness = VisionReadiness.notReady("Vision device is opening");
+        } catch (RuntimeException failure) {
+            handleVisionFailure(failure, "Vision setup failed", initPhase);
         }
-
-        visionLane = factory.open(ctx.hw);
-        tagSensor = visionLane.tagSensor();
-        activeVisionDescription = factory.description();
-
-        AprilTagPoseEstimator.Config estCfg = AprilTagPoseEstimator.Config.defaults()
-                .withCameraMount(visionLane.cameraMountConfig());
-        estCfg.maxDetectionAgeSec = cfg.maxTagAgeSec;
-        tagEstimator = new AprilTagPoseEstimator(tagSensor, layout, estCfg);
     }
 
-    private void updateSensors() {
+    /** Samples dynamic camera readiness while leaving the non-vision calibration path available. */
+    private void refreshAprilTagVisionReadiness(boolean initPhase) {
+        if (visionLane == null) {
+            visionReadiness = VisionReadiness.notReady(
+                    aprilTagAssistNotice != null
+                            ? aprilTagAssistNotice
+                            : "No vision device is open");
+            return;
+        }
+        try {
+            VisionReadiness current = visionLane.readiness(ctx.clock);
+            if (current == null) {
+                throw new IllegalStateException("vision lane returned a null readiness result");
+            }
+            visionReadiness = current;
+        } catch (RuntimeException failure) {
+            handleVisionFailure(failure, "Vision readiness failed", initPhase);
+        }
+    }
+
+    private void handleVisionFailure(
+            RuntimeException failure,
+            String context,
+            boolean initPhase
+    ) {
+        AprilTagVisionLane failedLane = visionLane;
+        visionLane = null;
+        tagSensor = null;
+        tagEstimator = null;
+        activeVisionDescription = null;
+        selectedVisionDeviceName = null;
+
+        if (failedLane != null) {
+            try {
+                failedLane.close();
+            } catch (RuntimeException cleanupFailure) {
+                visionCleanupFailed = true;
+                if (cleanupFailure != failure) {
+                    failure.addSuppressed(cleanupFailure);
+                }
+            }
+        } else if (failure.getSuppressed().length > 0) {
+            // A framework factory can fail before publishing its lane and attach a failed
+            // rollback/close attempt. There is no safe owner reference to close again.
+            visionCleanupFailed = true;
+        }
+        if (!visionCleanupFailed && !visionTerminalRequested) {
+            try {
+                resetVisionPickerChoice();
+            } catch (RuntimeException pickerFailure) {
+                visionCleanupFailed = true;
+                if (pickerFailure != failure) {
+                    failure.addSuppressed(pickerFailure);
+                }
+            }
+        }
+
+        String recovery = visionCleanupFailed
+                ? "vision cleanup failed; stop and restart this OpMode before selecting another device"
+                : initPhase && visionPicker != null
+                ? "select the vision device again to create a fresh owner"
+                : "press BACK and reopen this tester to create a fresh owner";
+        visionFailure = failure;
+        aprilTagAssistNotice = context + ": " + failureSummary(failure) + "; " + recovery;
+        visionReadiness = VisionReadiness.notReady(aprilTagAssistNotice);
+    }
+
+    private static String failureSummary(RuntimeException failure) {
+        String message = failure.getMessage();
+        String summary = failure.getClass().getSimpleName()
+                + ((message == null || message.trim().isEmpty()) ? "" : ": " + message.trim());
+        Throwable[] suppressed = failure.getSuppressed();
+        if (suppressed.length == 0) {
+            return summary;
+        }
+        Throwable cleanup = suppressed[0];
+        String cleanupMessage = cleanup.getMessage();
+        return summary + "; cleanup also failed: " + cleanup.getClass().getSimpleName()
+                + ((cleanupMessage == null || cleanupMessage.trim().isEmpty())
+                ? ""
+                : ": " + cleanupMessage.trim());
+    }
+
+    private void resetVisionPickerChoice() {
+        if (visionPicker == null) {
+            return;
+        }
+        visionPicker.clearChoice();
+        visionPicker.refresh();
+    }
+
+    private void updateSensors(boolean initPhase) {
         pinpoint.update(ctx.clock);
         latestPinpointPose = pinpoint.getEstimate().toPose2d();
 
-        if (tagSensor != null && tagEstimator != null) {
+        refreshAprilTagVisionReadiness(initPhase);
+        if (visionReadiness.isReady() && tagSensor != null && tagEstimator != null) {
             tagEstimator.update(ctx.clock);
 
             PoseEstimate tagEst = tagEstimator.getEstimate();
@@ -939,6 +1054,8 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
             if (isSampleActive() && latestTagPose != null) {
                 endTagPose = latestTagPose;
             }
+        } else {
+            latestTagPose = null;
         }
     }
 
@@ -969,9 +1086,15 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
             if (activeVisionDescription != null && !activeVisionDescription.isEmpty()) {
                 ctx.telemetry.addData("Vision backend", activeVisionDescription);
             }
+            ctx.telemetry.addData(
+                    "Vision readiness",
+                    visionReadiness.isReady() ? "READY" : "WAITING"
+            );
+            ctx.telemetry.addData("Vision status", visionReadiness.reason());
             ctx.telemetry.addData("Tag pose", latestTagPose != null ? latestTagPose.toString() : "<none>");
             FtcTagLayoutDebug.dumpSummary(layout, new FtcTelemetryDebugSink(ctx.telemetry), "layout");
-            if (initPhase && visionPicker != null && selectedVisionDeviceName == null) {
+            if (initPhase && visionPicker != null && selectedVisionDeviceName == null
+                    && !visionCleanupFailed) {
                 ctx.telemetry.addLine();
                 visionPicker.render(ctx.telemetry);
             }
@@ -1149,13 +1272,23 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
 
     @Override
     protected void onStop() {
-        if (visionLane != null) {
-            visionLane.close();
-            visionLane = null;
-        }
+        visionTerminalRequested = true;
+        AprilTagVisionLane ownedVision = visionLane;
+        visionLane = null;
+        visionReadiness = VisionReadiness.notReady("Vision tester is stopping");
         tagSensor = null;
         tagEstimator = null;
         activeVisionDescription = null;
+        selectedVisionDeviceName = null;
+        if (ownedVision != null) {
+            try {
+                ownedVision.close();
+            } catch (RuntimeException cleanupFailure) {
+                visionCleanupFailed = true;
+                visionFailure = cleanupFailure;
+                throw cleanupFailure;
+            }
+        }
     }
 
     /**
