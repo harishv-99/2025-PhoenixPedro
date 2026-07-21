@@ -13,6 +13,7 @@ import edu.ftcphoenix.fw.actuation.PlantTasks;
 import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.debug.NullDebugSink;
 import edu.ftcphoenix.fw.core.hal.Direction;
+import edu.ftcphoenix.fw.core.lifecycle.CleanupActions;
 import edu.ftcphoenix.fw.core.math.InterpolatingTable1D;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.drive.DriveOverlayMask;
@@ -26,7 +27,7 @@ import edu.ftcphoenix.fw.drive.source.GamepadDriveSource;
 import edu.ftcphoenix.fw.ftc.FtcActuators;
 import edu.ftcphoenix.fw.ftc.FtcDrives;
 import edu.ftcphoenix.fw.ftc.FtcTelemetryDebugSink;
-import edu.ftcphoenix.fw.ftc.FtcVision;
+import edu.ftcphoenix.fw.ftc.vision.FtcWebcamAprilTagVisionLane;
 import edu.ftcphoenix.fw.input.Gamepads;
 import edu.ftcphoenix.fw.input.binding.Bindings;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
@@ -185,6 +186,7 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
     private DriveSource baseDrive;
     private DriveSource driveWithAim;
 
+    private FtcWebcamAprilTagVisionLane vision;
     private AprilTagSensor tagSensor;
     private TagSelectionSource scoringSelection;
 
@@ -235,13 +237,7 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
         ).scaledWhen(gamepads.p1().rightBumper(), 0.35, 0.20)
                 .rateLimited(4.0, 4.0, 6.0);
 
-        // 3) Tag sensor: FTC VisionPortal + AprilTagProcessor adapter.
-        //
-        // NOTE: Replace "Webcam 1" with your actual camera name in the
-        // Robot Configuration.
-        tagSensor = FtcVision.aprilTags(hardwareMap, "Webcam 1");
-
-        // 3b) Camera mount: robot→camera extrinsics (Phoenix axes: +X forward, +Y left, +Z up).
+        // 3) Camera mount: robot→camera extrinsics (Phoenix axes: +X forward, +Y left, +Z up).
         //
         // IMPORTANT: Update these values for your robot.
         // Example: camera is 6" forward, 3" to the RIGHT (so y = -3), 8" up, facing forward.
@@ -253,6 +249,15 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
                 /*pitchRad=*/0.0,
                 /*rollRad=*/0.0
         );
+
+        // One explicit owner keeps the VisionPortal, processor, sensor, and cleanup together.
+        // Replace "Webcam 1" with your actual Robot Configuration name.
+        FtcWebcamAprilTagVisionLane.Config visionConfig =
+                FtcWebcamAprilTagVisionLane.Config.defaults();
+        visionConfig.webcamName = "Webcam 1";
+        visionConfig.cameraMount = cameraMount;
+        vision = new FtcWebcamAprilTagVisionLane(hardwareMap, visionConfig);
+        tagSensor = vision.tagSensor();
 
         scoringSelection = TagSelections.from(tagSensor)
                 .among(SCORING_TAG_IDS)
@@ -455,12 +460,25 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
      */
     @Override
     public void stop() {
-        if (tagSensor != null) {
-            tagSensor.close();
-            tagSensor = null;
+        lastShooterMacroTargetVel = 0.0;
+        lastMacroStatus = "cancelled";
+        CleanupActions.attemptAll(
+                macroRunner::cancelAndClear,
+                () -> shooter.writableTarget().set(0.0),
+                () -> transfer.writableTarget().set(0.0),
+                () -> pusher.writableTarget().set(PUSHER_POS_RETRACT),
+                drivebase::stop,
+                this::closeVisionOwner
+        );
+    }
+
+    private void closeVisionOwner() {
+        FtcWebcamAprilTagVisionLane ownedVision = vision;
+        vision = null;
+        tagSensor = null;
+        if (ownedVision != null) {
+            ownedVision.close();
         }
-        cancelShootMacros();
-        drivebase.stop();
     }
 
     // ----------------------------------------------------------------------

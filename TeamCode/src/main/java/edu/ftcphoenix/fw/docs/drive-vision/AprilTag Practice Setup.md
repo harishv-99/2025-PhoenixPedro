@@ -26,7 +26,7 @@ Make sure you measure or record the printed size (in inches or mm) and use that 
 
 ## 2) Create a tag library (size + IDs)
 
-Phoenix's FTC vision wrapper supports overriding the FTC `AprilTagLibrary`.
+Phoenix's webcam AprilTag lane supports overriding the FTC `AprilTagLibrary`.
 
 For a **single printed tag**, build a library like:
 
@@ -41,12 +41,20 @@ AprilTagLibrary lib = FtcAprilTags.singleTagLibrary(
 );
 ```
 
-Then pass it into `FtcVision.Config`:
+Then pass it into the explicit webcam AprilTag owner config:
 
 ```java
-FtcVision.Config visionCfg = FtcVision.Config.defaults()
-        .withTagLibrary(lib);
+FtcWebcamAprilTagVisionLane.Config visionCfg =
+        FtcWebcamAprilTagVisionLane.Config.defaults();
+visionCfg.webcamName = "Webcam 1";
+visionCfg.tagLibrary = lib;
+
+FtcWebcamAprilTagVisionLane vision =
+        new FtcWebcamAprilTagVisionLane(hardwareMap, visionCfg);
 ```
+
+Keep `vision` as the owner and call `vision.close()` during shutdown. Consumers borrow
+`vision.tagSensor()`; they do not own the webcam lifecycle.
 
 ## 3) Create a simple tag layout (field pose)
 

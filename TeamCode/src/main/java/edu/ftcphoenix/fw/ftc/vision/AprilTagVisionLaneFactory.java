@@ -16,6 +16,10 @@ public interface AprilTagVisionLaneFactory {
     /**
      * Opens a configured AprilTag vision lane against one FTC hardware map.
      *
+     * <p>If construction throws with a suppressed exception, framework callers conservatively
+     * treat that suppression as a failed rollback/close attempt. They must not open a replacement
+     * vision owner in the same OpMode because the original hardware ownership is uncertain.</p>
+     *
      * @param hardwareMap FTC hardware map used to acquire the underlying camera device
      * @return opened vision lane; caller owns its lifecycle
      */

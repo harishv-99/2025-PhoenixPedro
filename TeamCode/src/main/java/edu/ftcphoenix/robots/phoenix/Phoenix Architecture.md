@@ -45,7 +45,11 @@ PhoenixRobot
 Phoenix keeps backend choice in a small robot-owned wrapper: `PhoenixProfile.VisionConfig`
 plus `PhoenixVisionFactory`. That is why the rest of the graph can depend on
 `AprilTagVisionLane` instead of a backend-specific owner even though the FTC-boundary
-implementation may be a webcam lane or a Limelight lane.
+implementation may be a webcam lane or a Limelight lane. That ordinary factory call remains the
+right Phoenix path. Each loop, `PhoenixRobot` also samples the lane's `VisionReadiness` and the
+presenter displays component readiness and its reason separately from whether a tag is visible.
+This live component fact does not become another static `PhoenixReadiness` blocker, so manual and
+non-vision behavior remain available while a camera opens or a Limelight pipeline settles.
 
 The shared mode clients are:
 
@@ -104,6 +108,9 @@ handoff does not prove that the Auto estimate was physically accurate.
 
 - `FtcMecanumDriveLane`: owns mecanum hardware wiring, brake behavior, drivebase construction, and drive lifecycle
 - `AprilTagVisionLane` plus a concrete FTC-boundary implementation such as `FtcWebcamAprilTagVisionLane` or `FtcLimelightAprilTagVisionLane`: Phoenix consumes the backend-neutral seam while `PhoenixVisionFactory` chooses the active backend
+- `FtcWebcamVisionPortalLane` and `FtcLimelightVisionLane`: parallel advanced owners available to
+  a future robot-specific semantic vision capability; Phoenix's current AprilTag-only path uses
+  their specialized forms
 - `FtcOdometryAprilTagLocalizationLane`: owns predictor wiring + AprilTag localization strategy,
   correction-source selection, corrected-estimator selection, and pose production; it constructs
   Pinpoint for ordinary TeleOp or consumes an explicitly supplied Auto predictor
@@ -223,6 +230,7 @@ the camera rig is not only for localization.
 
 - backend-specific device identity (for example webcam or Limelight)
 - backend-specific processor / pipeline setup
+- confirmation that the configured component can safely provide results (not target visibility)
 - camera mount
 - AprilTag sensor lifetime
 - vision-device cleanup
@@ -246,6 +254,13 @@ the camera rig is not only for localization.
 - the fixed field tag layout from `PhoenixProfile.field`
 
 That dependency structure is deliberate and matches the role vocabulary in the framework docs.
+
+The shared `AprilTagVisionLane` does not claim that every webcam processor and every Limelight
+pipeline has one universal result shape. If Phoenix later adds game-specific vision modes, a
+robot-owned typed interface should map those meanings onto the appropriate concrete owner and
+publish immutable Phoenix snapshots. The webcam realization can enable processors that were all
+declared when its portal was built; the Limelight realization requests one pipeline on a mode
+transition and waits for a fresh confirmed result. Strategy stays vendor-neutral in both cases.
 
 ## TeleOp controls live in one place
 
@@ -554,14 +569,15 @@ is robot-owned match policy, not a callback added to generic `Tasks` or an imper
 Phoenix keeps loop order explicit inside `PhoenixRobot.updateTeleOp()`:
 
 ```text
-1. localization.update(clock)
-2. targeting.update(clock)
-3. controls.update(clock)
-4. scoringPath.update(clock)
-5. driveAssists.update(clock, scoringStatus)
-6. drive.update(clock)
-7. drive.drive(...)
-8. telemetryPresenter.emitTeleOp(...snapshots...)
+1. sample vision component readiness
+2. localization.update(clock)
+3. targeting.update(clock)
+4. controls.update(clock)
+5. scoringPath.update(clock)
+6. driveAssists.update(clock, scoringStatus)
+7. drive.update(clock)
+8. drive.drive(...)
+9. telemetryPresenter.emitTeleOp(...snapshots...)
 ```
 
 That order reflects ownership:
@@ -575,12 +591,13 @@ That order reflects ownership:
 Phoenix keeps `updateAuto()` just as explicit:
 
 ```text
-1. localization.update(clock)
-2. targeting.update(clock)
-3. autoDrive.update(clock)
-4. autoRoutineLifecycle.update(clock)
-5. scoringPath.update(clock)
-6. telemetryPresenter.emitAuto(...with Auto task and scoring snapshots...)
+1. sample vision component readiness
+2. localization.update(clock)
+3. targeting.update(clock)
+4. autoDrive.update(clock)
+5. autoRoutineLifecycle.update(clock)
+6. scoringPath.update(clock)
+7. telemetryPresenter.emitAuto(...with Auto task, vision, and scoring snapshots...)
 ```
 
 Auto uses the same scoring path and targeting service, but swaps TeleOp drive-assist policy for the

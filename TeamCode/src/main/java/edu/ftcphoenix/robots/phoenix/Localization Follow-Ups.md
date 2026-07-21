@@ -5,7 +5,10 @@ This file tracks Phoenix-specific follow-up work now that TeleOp uses framework-
 The current framework split is:
 
 - `FtcMecanumDriveLane` owns mecanum wiring, brake behavior, and drivebase lifecycle.
-- `AprilTagVisionLane` is the backend-neutral seam; Phoenix now instantiates either `FtcWebcamAprilTagVisionLane` or `FtcLimelightAprilTagVisionLane` for backend-specific device identity, camera mount, and AprilTag resource cleanup.
+- `AprilTagVisionLane` is the backend-neutral AprilTag seam; Phoenix instantiates either
+  `FtcWebcamAprilTagVisionLane` or `FtcLimelightAprilTagVisionLane` for backend-specific device
+  identity, trustworthy acquisition, camera mount, component readiness, and cleanup. This does not
+  erase the different webcam-processor and Limelight-pipeline lifecycles.
 - `FtcOdometryAprilTagLocalizationLane` owns Pinpoint, AprilTag-only field solving, raw AprilTag solving, optional direct Limelight field pose, corrected estimator selection, and per-loop pose production.
 - `PhoenixCapabilities` owns the shared mode-neutral robot vocabulary used by TeleOp and Auto.
 - `PhoenixTeleOpControls` owns all TeleOp input semantics, including the drive sticks and slow mode.

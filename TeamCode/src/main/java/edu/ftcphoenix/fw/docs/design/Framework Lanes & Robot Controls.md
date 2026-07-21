@@ -88,6 +88,7 @@ Examples:
 
 - `FtcMecanumDriveLane`
 - `AprilTagVisionLane` / `FtcWebcamAprilTagVisionLane` / `FtcLimelightAprilTagVisionLane`
+- `FtcWebcamVisionPortalLane` / `FtcLimelightVisionLane` for advanced multi-purpose vision
 - `FtcOdometryAprilTagLocalizationLane`
 
 A lane answers:
@@ -466,6 +467,26 @@ AprilTagVisionLane vision = MyVisionFactory.create(hardwareMap, profile.vision);
 The important split is: construct a concrete lane at the FTC boundary, but store and pass around the
 backend-neutral `AprilTagVisionLane` seam above that boundary. That lets localization and targeting
 consume tag observations without caring whether the implementation is webcam-backed or Limelight-backed.
+
+That shared AprilTag seam should not be stretched into a universal arbitrary-vision API. The two
+advanced owners preserve the hardware's real model:
+
+- build `FtcWebcamVisionPortalLane` once with the complete fresh processor set, then enable or
+  disable processors as modes change;
+- build `FtcLimelightVisionLane` once, request a pipeline only on a semantic mode transition, and
+  wait for `pipelineReadiness(clock)` before consuming its confirmed result.
+
+Robot code owns the unifying vocabulary when its strategy needs one. A small `MyVision` interface
+can expose `select(Mode)` plus an immutable timestamped `Snapshot`; its webcam realization maps a mode to
+processor enablement, and its Limelight realization maps that mode to one pipeline request. Auto,
+TeleOp, and strategy code see only those robot nouns. FTC `VisionProcessor` and Limelight result
+types stop inside the corresponding realization.
+
+All of these owners expose component readiness separately from target visibility. A ready camera
+may see no target. Close the owner at the OpMode boundary. After that close succeeds, retry by
+constructing a fresh owner, including fresh webcam processors, instead of adding ownership flags or
+reviving a closed device. If close fails, hardware ownership is uncertain; stop and restart the
+OpMode rather than opening a competing owner.
 
 ### Localization lane example
 
@@ -1026,6 +1047,8 @@ Why it is a problem:
 Instead, split:
 
 - `AprilTagVisionLane` plus a concrete backend owner such as `FtcWebcamAprilTagVisionLane` or `FtcLimelightAprilTagVisionLane` for the camera rig
+- a robot-owned semantic vision interface above `FtcWebcamVisionPortalLane` or
+  `FtcLimelightVisionLane` when the season needs more than AprilTags
 - `FtcOdometryAprilTagLocalizationLane` for pose production
 - field facts for shared landmarks
 

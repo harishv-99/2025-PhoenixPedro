@@ -64,9 +64,17 @@ If you are trying to bring up a fresh robot, start with [`Robot Calibration Tuto
 
 One important gotcha with FTC vision:
 
-* Anything backed by a `VisionPortal` **owns the camera**. When you are done with a vision tester/OpMode,
-  make sure the portal is closed so the next tester can start the camera cleanly.
-  In Phoenix, `AprilTagSensor` has a `close()` method for this purpose—call it on `stop()`/BACK navigation.
+* A concrete vision lane **owns the camera**. Close that owner on `stop()`/BACK navigation so the
+  next tester can start the device cleanly; do not treat a borrowed processor or sensor view as the
+  lifecycle owner. Retry means successfully close the failed owner and then construct a fresh owner
+  (and, for a `VisionPortal`, fresh processor instances). If close fails, do not open a replacement:
+  stop and restart the OpMode because hardware ownership is uncertain.
+* Webcam and Limelight ownership are deliberately parallel rather than identical. A webcam portal
+  can run a fixed set of processors together and enable/disable each one. A Limelight runs one
+  onboard pipeline at a time, so a requested switch must be confirmed by a fresh result before
+  robot code interprets that result.
+* `VisionReadiness` answers whether the configured component can safely provide results. It does
+  not answer whether a target is visible; a ready camera may have no target in view.
 
 One more gotcha that matters a lot for AprilTags:
 
@@ -112,8 +120,8 @@ Phoenix's rule of thumb:
 Implementation pointers:
 
 * `fw.ftc.FtcFrames` documents the basis transforms and exposes the conversion matrices.
-* `fw.ftc.FtcVision` builds `AprilTagObservation.cameraToTagPose` from `rawPose` and converts it into
-  Phoenix camera axes (+X forward, +Y left, +Z up).
+* The FTC webcam AprilTag adapter builds `AprilTagObservation.cameraToTagPose` from `rawPose` and
+  converts it into Phoenix camera axes (+X forward, +Y left, +Z up).
 * `fw.ftc.FtcGameTagLayout.currentGameFieldFixed()` builds the framework-owned official fixed-tag
   layout for the current FTC season.
 
@@ -139,7 +147,10 @@ Two rules of thumb:
 Phoenix now distinguishes between three different kinds of ownership that often got blurred together in older FTC code:
 
 - **primitives**: small reusable building blocks like `GamepadDriveSource`, `MecanumDrivebase`, `AprilTagSensor`, and `PinpointOdometryPredictor`
-- **framework lanes**: stable reusable owners built from primitives, such as `FtcMecanumDriveLane`, the backend-neutral `AprilTagVisionLane` seam (commonly implemented by `FtcWebcamAprilTagVisionLane` or `FtcLimelightAprilTagVisionLane`), and `FtcOdometryAprilTagLocalizationLane`
+- **framework lanes**: stable reusable owners built from primitives, such as `FtcMecanumDriveLane`,
+  the backend-neutral `AprilTagVisionLane` seam (commonly implemented by an AprilTag-specialized
+  webcam or Limelight owner), the advanced `FtcWebcamVisionPortalLane` and
+  `FtcLimelightVisionLane` owners, and `FtcOdometryAprilTagLocalizationLane`
 - **field facts**: shared environment data such as `TagLayout` and `FtcGameTagLayout.currentGameFieldFixed()`
 - **robot-owned capability families**: the shared mode-neutral API used by both TeleOp and Auto
 - **robot-owned controls/policy**: button semantics, scoring logic, auto-aim rules, and telemetry presentation

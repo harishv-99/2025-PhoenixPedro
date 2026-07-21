@@ -131,6 +131,24 @@ public final class PhoenixPedroAutoOpModeBaseTest {
     }
 
     @Test
+    public void inheritedConstructorRollbackFailurePermanentlyBlocksRetry() {
+        RecordingTelemetry recordingTelemetry = new RecordingTelemetry();
+        ControlledFailingTestAuto mode = configuredTestAuto(recordingTelemetry);
+        mode.failNextWithSuppressedRollback();
+
+        mode.init();
+
+        assertEquals(1, mode.runtimeFactoryCalls);
+        assertTrue(mode.cleanupBlocked());
+        assertTrue(recordingTelemetry.contains("controlled constructor rollback failure"));
+
+        assertFalse(mode.retry());
+        assertEquals("a replacement graph must not be built after uncertain rollback",
+                1, mode.runtimeFactoryCalls);
+        assertTrue(mode.cleanupBlocked());
+    }
+
+    @Test
     public void cleanupFailurePermanentlyBlocksLaterInitRetries() throws Exception {
         RecordingTelemetry recordingTelemetry = new RecordingTelemetry();
         ControlledFailingTestAuto mode = configuredTestAuto(recordingTelemetry);
@@ -844,6 +862,7 @@ public final class PhoenixPedroAutoOpModeBaseTest {
 
     private static final class ControlledFailingTestAuto extends PhoenixPedroAutoOpModeBase {
         int runtimeFactoryCalls;
+        RuntimeException nextSuppressedRollback;
 
         @Override
         protected PhoenixAutoSpec autoSpec() {
@@ -864,9 +883,18 @@ public final class PhoenixPedroAutoOpModeBaseTest {
         protected PedroPathingRuntime createPedroRuntime(HardwareMap hardwareMap,
                                                          PhoenixProfile profile) {
             runtimeFactoryCalls++;
-            throw new IllegalStateException(
-                    "controlled Pedro construction failure " + runtimeFactoryCalls
-            );
+            RuntimeException failure = new IllegalStateException(
+                    "controlled Pedro construction failure " + runtimeFactoryCalls);
+            if (nextSuppressedRollback != null) {
+                failure.addSuppressed(nextSuppressedRollback);
+                nextSuppressedRollback = null;
+            }
+            throw failure;
+        }
+
+        void failNextWithSuppressedRollback() {
+            nextSuppressedRollback = new IllegalStateException(
+                    "controlled constructor rollback failure");
         }
 
         boolean retry() {

@@ -36,15 +36,19 @@ import edu.ftcphoenix.fw.core.geometry.Vec3;
  *   <li><b>+Z</b> up</li>
  * </ul>
  *
- * <h3>FTC AprilTag Localization camera axes (used for setCameraPose in the localization sample)</h3>
+ * <h3>FTC AprilTag Localization optical-camera axes</h3>
  * <p>
- * The AprilTag Localization tutorial defines a camera-axes convention for specifying camera placement:
+ * The AprilTag Localization tutorial defines these physical camera axes:
  * </p>
  * <ul>
  *   <li><b>+x</b> right</li>
  *   <li><b>+y</b> down</li>
  *   <li><b>+z</b> forward (from the camera’s perspective)</li>
  * </ul>
+ * <p>The {@code AprilTagProcessor.Builder.setCameraPose(...)} position is <em>not</em> expressed
+ * in those camera axes. Its position uses the FTC robot axes below, while its orientation rotates
+ * these optical-camera axes into the robot frame. The webcam owner performs that two-sided
+ * conversion explicitly; a simple one-frame basis change is not sufficient.</p>
  *
  * <h3>FTC robot axes (as described in the localization tutorial)</h3>
  * <ul>
@@ -65,12 +69,14 @@ import edu.ftcphoenix.fw.core.geometry.Vec3;
  * </p>
  *
  * <p><b>AprilTagDetection.ftcPose gotcha:</b>
- * The FTC SDK reports {@code pitch} as rotation about <b>+X</b> and {@code roll} as rotation about <b>+Y</b>,
- * and the sample OpModes treat these values as <b>degrees</b>. Phoenix {@link Pose3d} uses the more common
- * naming where roll is about +X and pitch is about +Y, and Phoenix angles are in <b>radians</b>.
- * Therefore, when converting {@code det.ftcPose} into a {@link Pose3d}, convert degrees→radians and swap
- * the pitch/roll fields (FTC pitch→Phoenix roll, FTC roll→Phoenix pitch). See {@link FtcVision} for the
- * canonical conversion.
+ * The FTC SDK reports {@code pitch} as rotation about <b>+X</b> and {@code roll} as rotation about
+ * <b>+Y</b>. {@code AprilTagProcessor.Builder.setOutputUnits(...)} controls their units; Phoenix
+ * configures that processor for radians. Phoenix {@link Pose3d} also uses radians, but uses the more
+ * common naming where roll is about +X and pitch is about +Y. Therefore, when converting the
+ * configured processor's {@code det.ftcPose} into a {@link Pose3d}, preserve the angle values and
+ * swap the pitch/roll fields (FTC pitch→Phoenix roll, FTC roll→Phoenix pitch). The webcam
+ * AprilTag adapter owned by {@code FtcWebcamAprilTagVisionLane} applies the canonical conversion
+ * before observations cross the FTC boundary.
  * </p>
  * <h2>How to use</h2>
  * <p>

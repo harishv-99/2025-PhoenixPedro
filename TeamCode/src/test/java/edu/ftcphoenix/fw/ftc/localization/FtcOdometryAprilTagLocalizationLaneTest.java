@@ -6,6 +6,7 @@ import edu.ftcphoenix.fw.core.geometry.Pose3d;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.field.SimpleTagLayout;
 import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLane;
+import edu.ftcphoenix.fw.ftc.vision.VisionReadiness;
 import edu.ftcphoenix.fw.localization.MotionDelta;
 import edu.ftcphoenix.fw.localization.MotionPredictor;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
@@ -94,6 +95,11 @@ public final class FtcOdometryAprilTagLocalizationLaneTest {
             @Override
             public CameraMountConfig cameraMountConfig() {
                 return CameraMountConfig.identity();
+            }
+
+            @Override
+            public VisionReadiness readiness(LoopClock clock) {
+                return VisionReadiness.ready();
             }
 
             @Override

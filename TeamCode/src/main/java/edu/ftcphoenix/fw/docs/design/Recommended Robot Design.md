@@ -7,6 +7,8 @@ For larger robots, use this ownership pattern:
 - **framework lanes** for stable FTC-side systems that recur year to year
   - example: `FtcMecanumDriveLane`
   - example: `FtcWebcamAprilTagVisionLane` or `FtcLimelightAprilTagVisionLane` (behind the `AprilTagVisionLane` seam)
+  - example: `FtcWebcamVisionPortalLane` or `FtcLimelightVisionLane` behind a robot-owned typed
+    vision interface when the season needs multiple semantic modes
   - example: `FtcOdometryAprilTagLocalizationLane`
 - **shared field facts** for layouts and landmarks used by several systems
   - example: `TagLayout` and `FtcGameTagLayout.currentGameFieldFixed()`
@@ -25,6 +27,10 @@ For larger robots, use this ownership pattern:
   - telemetry presenters
 
 A good composition root wires those owners together, but does not absorb their responsibilities.
+For custom vision, keep camera plumbing and trustworthy acquisition in the concrete framework
+owner, map robot meanings to processor enablement or pipeline transitions in one robot realization,
+and expose immutable timestamped robot snapshots to strategy. Do not make Auto or TeleOp interpret FTC/vendor
+results, and do not pretend that webcam processors and Limelight pipelines have the same lifecycle.
 
 ### Why this matters
 

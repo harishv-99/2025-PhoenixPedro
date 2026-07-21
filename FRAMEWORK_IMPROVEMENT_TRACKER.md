@@ -117,7 +117,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 30 | SOURCE-03 | Composable scalar measurement conditioning | Deferred | Wait for recorded signal traces before choosing a public filtering algorithm or latency contract. |
 | 31 | MATCH-01 | Explicit Auto-to-TeleOp handoff | Done | Complete; physical pose accuracy remains adopting-robot validation rather than a software-contract claim. |
 | 32 | DRIVE-02 | Shared drivetrain actuator handoff | Deferred | Wait for a real PTO-equipped adopting robot; preserve the approved single-owner design constraints without inventing hardware-specific APIs. |
-| 33 | VISION-01 | Custom VisionPortal ownership | Proposed | Reuse camera/processor lifecycle without forcing robot-specific detections through AprilTag APIs. |
+| 33 | VISION-01 | Shared webcam and Limelight vision ownership | Done | Parallel webcam/Limelight ownership, readiness, lifecycle recovery, migrations, documentation, and tests were approved on 2026-07-20. |
 | 34 | SENSOR-01 | Motor-current sensing | Deferred | Current completion requires controller polling measurements; revisit via a narrower conservative seam only through a new approved decision gate. |
 | 35 | INPUT-01 | Safe contextual control activation | Proposed | Support optional control modes without turning held controls into phantom press edges. |
 | 36 | HAPTIC-01 | Driver haptic feedback boundary | Proposed | Expose small rate-safe rumble output while controls retain the meaning of each notification. |
@@ -3501,35 +3501,206 @@ writer, and explicit lifecycle ownership.
     PTO engagement, servo/PWM behavior, encoder signs, settling, load behavior, and the actual
     fail-safe state; fake tests cannot establish those facts.
 
-### VISION-01 - Custom VisionPortal ownership
+### VISION-01 - Shared webcam and Limelight vision ownership
 
 - **Problem to confirm:** Phoenix's reusable FTC vision owners are AprilTag-specific. A robot that
   adds a color/cluster/game-piece `VisionProcessor` must repeat webcam/portal construction, processor
   enablement, streaming state, failure reporting, and close/retry behavior or incorrectly force
-  robot-specific results through `AprilTagVisionLane`.
-- **External evidence:** Cuttlefish's Far Auto creates and closes a custom cluster-detection portal,
-  and its
-  [`ClusterDetectionProcessor`](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/vision/ClusterDetectionProcessor.java)
-  publishes detection facts that affect route construction. The lifecycle is reusable; the cluster
-  vocabulary and OpenCV algorithm are not. Tech Tigers also shares one physical Limelight among
-  object, motif, and localization pipelines. Its robot-specific pipeline meanings should not be
-  generalized, but the decision gate must specify one-device ownership, enable/switch settling,
-  readiness, and stale-result behavior rather than treating a requested pipeline as immediately
-  usable.
-- **Alternatives to compare:** keep every custom portal robot-owned; generalize the AprilTag lane;
-  expose raw `VisionPortal` from a factory; create a small FTC portal resource owner around supplied
-  processors; or define generic detection/result interfaces. Confirm whether existing `FtcVision`
-  already removes enough ceremony before adding another public type.
-- **Leading hypothesis:** if at least two real callers share the lifecycle, add one small `fw.ftc`
-  resource owner for camera/processor construction, enable/disable state, readiness diagnostics,
-  retry, and close. Algorithms and immutable timestamped result snapshots stay robot-owned and typed;
-  framework routines never depend on `VisionProcessor`, OpenCV, or an arbitrary generic detection
-  map.
-- **Completion:** a fake or FTC-boundary test covers partial construction, processor enable/disable,
-  streaming/readiness, retry, close after failure, repeated close, and stale-result policy. AprilTag
-  code remains coherent, a compiling custom processor example has one clear owner, and no SDK/vendor
-  type leaks into core Tasks or robot strategy.
-- **Decision record:** _Pending._
+  robot-specific results through `AprilTagVisionLane`. A Limelight robot has a parallel ownership
+  problem, but not the same processing model: one physical device may serve object, motif, and
+  localization pipelines, and a requested pipeline is not immediately safe to interpret.
+- **External evidence:**
+  - The original private Cuttlefish `Decode` link used in the first audit is no longer accessible.
+    Its public
+    [`WebcamSession`](https://github.com/6165-MSET-Cuttlefish/summer-2026/blob/42d1ce8ffe3dd62187b93771f1a5455c85fff6cd/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/OpenCVPipelines/WebcamSession.java#L28-L64)
+    fidelity-port equivalent owns lookup, asynchronous open, pipeline/stream start, Dashboard
+    streaming, update, and close around a robot-owned EasyOpenCV algorithm. This corroborates the
+    reusable webcam-lifecycle problem, but it does not by itself prove a VisionPortal-specific API.
+  - Tech Tigers' Worlds
+    [`LimelightSubsystem`](https://github.com/techtigers-ftc/decode/blob/0bec90bb2523368c122d8d8361b56261d85cdfe2/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/subsystems/LimelightSubsystem.java#L72-L165)
+    shares one Limelight between artifact and AprilTag work. It reads the latest result, requests the
+    pipeline implied by the new semantic state, and then interprets that pre-switch result without
+    checking its pipeline index or age. That is concrete evidence for framework-owned
+    requested-versus-confirmed pipeline state and stale-result protection; its artifact/motif
+    vocabulary remains robot-owned.
+  - FTC documents VisionPortal processor enablement, camera streaming, and final close as distinct
+    resource levels. Limelight's official FTC guide documents `pipelineSwitch(...)` as
+    fire-and-forget and directs callers to confirm `LLResult.getPipelineIndex()`; results also expose
+    staleness. Limelight and HuskyLens do not use VisionPortal.
+- **Alternatives to compare:** keep every custom device owner robot-owned; generalize
+  `AprilTagVisionLane`; expose raw `VisionPortal`/`Limelight3A` from factories; add only a webcam
+  portal owner; create one generic cross-backend owner; create parallel backend-specific owners; or
+  define generic detection/result maps. Confirm whether existing `FtcVision` already removes enough
+  ceremony and whether a common status interface/value has a real caller before adding it.
+- **Original leading hypothesis:** if at least two real callers share the lifecycle, add one small
+  `fw.ftc` resource owner for camera/processor construction, enable/disable state, readiness
+  diagnostics, retry, and close. Algorithms and immutable timestamped result snapshots stay
+  robot-owned and typed; framework routines never depend on `VisionProcessor`, OpenCV, or an
+  arbitrary generic detection map.
+- **Completion:** focused fake/FTC-boundary tests cover both owners' configuration and partial
+  construction, readiness diagnostics, close after failure, repeated close, and fresh reconstruction.
+  Webcam tests cover registered-processor enablement and stream state. Limelight tests cover polling
+  order, rejected pipeline requests, disconnected/fake results, requested-versus-observed pipeline,
+  post-switch generation, switch-away/switch-back, freshness, same-cycle sampling, and the
+  distinction between an operational pipeline and “no target.” Existing AprilTag lanes use the same
+  physical owner rather than acquiring a competing camera; ordinary Phoenix construction remains
+  unchanged. A compiling custom-vision example keeps algorithms and immutable typed snapshots
+  robot-owned, and no SDK/vendor type leaks into core Tasks or robot strategy.
+- **Decision record (2026-07-20): Ready for major API approval; no implementation code changed.**
+  - **Confirmed current behavior and callers:**
+    - `FtcVision.aprilTags(...)` constructs and hides one `VisionPortal` plus one
+      `AprilTagProcessor`. `FtcWebcamAprilTagVisionLane` can close the returned sensor but cannot
+      attach a custom processor, control an attached processor, or report the portal's asynchronous
+      camera state. A robot that opens another portal risks competing ownership of the same webcam.
+    - `FtcLimelightAprilTagVisionLane` gets one `Limelight3A`, sets the poll rate, requests a
+      pipeline, starts polling, and ignores the boolean pipeline-switch result. Its sensor accepts
+      fiducials without confirming running/connected state, the requested pipeline, or a post-switch
+      frame, and the lane exposes the mutable raw device as an escape hatch.
+    - FTC SDK 11.1 `Limelight3A.getLatestResult()` synthesizes an empty result when no real result
+      has arrived. That synthetic object is timestamped at creation and defaults to pipeline zero, so
+      non-nullness, apparent freshness, or pipeline index alone can falsely make a disconnected
+      pipeline-zero camera look ready. Readiness must require running and connected state too.
+    - VisionPortal can run several attached processors concurrently and toggles each processor for a
+      subsequent frame. Limelight runs one onboard pipeline at a time; a successful
+      `pipelineSwitch(...)` request is not proof that subsequent reads belong to it. These are
+      different mechanisms, not two implementations of one enable operation.
+    - Phoenix, localization testers, and calibration tools already consume the backend-neutral
+      `AprilTagVisionLane`; selectable testers already own retry correctly by closing a confirmed
+      lane and factory-opening a fresh one. That retry policy should not move inside a camera owner.
+  - **Framework Principles and student-facing comparison:**
+
+    | Approach | Simplicity and principle result |
+    |---|---|
+    | Keep custom ownership in every robot | No new framework type, but repeats correctness-sensitive lifecycle and leaves the Tech Tigers stale-pipeline hazard for each student team to rediscover. Rejected. |
+    | Generalize `AprilTagVisionLane` into `VisionLane<T>` or a generic detection map | Makes unrelated processor/pipeline/result concepts appear interchangeable, leaks vendor or untyped result vocabulary upward, and makes the ordinary path harder to learn. Rejected. |
+    | Return a raw `VisionPortal` or `Limelight3A` from a factory | Saves construction lines but does not establish one owner, readiness, generation/freshness, or safe close. It also preserves competing imperative access. Rejected. |
+    | Add only a VisionPortal owner | Solves the webcam symptom but does not support the clarified next-season Limelight requirement or one-device multi-pipeline use. Rejected. |
+    | One cross-backend device owner | Would need conditional APIs for simultaneous processor enablement versus exclusive pipeline selection and would create false parallelism. Rejected. |
+    | Parallel concrete owners with one narrow readiness value | Keeps vendor mechanics at the FTC boundary, preserves one physical owner, keeps ordinary AprilTag construction stable, and lets robot code expose one small typed semantic capability. Chosen. |
+
+  - **Chosen public shape:**
+    1. Add `FtcWebcamVisionPortalLane`, a concrete FTC-boundary owner constructed with the complete
+       set of fresh `VisionProcessor` instances. It owns webcam lookup, portal construction,
+       registered-processor enable/disable, stream state, camera-control access, diagnostics, and
+       idempotent close. It does not expose the raw portal and cannot add processors after build.
+    2. Add `FtcLimelightVisionLane`, a separate concrete FTC-boundary owner for hardware lookup,
+       poll/start/stop order, requested pipeline, request success/failure, cycle-stable result
+       sampling, requested-versus-observed pipeline, post-request generation, freshness,
+       diagnostics, and idempotent close. It exposes narrow operations needed by supported
+       integrations, such as robot-orientation input, rather than the raw mutable `Limelight3A`.
+    3. Add one small immutable `VisionReadiness` value used by `AprilTagVisionLane` and the two
+       concrete owners. It reports component readiness and an actionable reason; it is not a
+       generic detection/result interface and does not claim that a target is visible.
+       `AprilTagVisionLane` gains a readiness query so Phoenix and the existing backend-selectable
+       testers have a real common caller.
+    4. Make `FtcWebcamAprilTagVisionLane` and `FtcLimelightAprilTagVisionLane` specialized forms of
+       their corresponding concrete owner, with one underlying device and one idempotent close.
+       The standard public construction remains:
+
+       ```java
+       AprilTagVisionLane vision =
+               PhoenixVisionFactory.create(hardwareMap, profile.vision);
+       ```
+
+       A robot that needs AprilTags plus a custom processor/pipeline retains that one specialized
+       owner and exposes only its own immutable typed vision snapshot to strategy. It does not open a
+       second camera owner.
+    5. Keep backend realization explicit inside the robot's vision boundary. A robot-owned
+       `MyVision` capability/factory maps semantic modes such as `GAME_PIECES` and `APRIL_TAGS` to
+       either processor enablement or a Limelight pipeline request. The rest of Auto/TeleOp sees
+       only typed immutable `MyVisionSnapshot` data; it does not see `VisionProcessor`, `LLResult`,
+       OpenCV, or numeric pipeline indices.
+    6. Treat retry as close plus fresh construction. A closed VisionPortal cannot reopen, and FTC
+       SDK processor identities are single-attachment objects, so retry must create fresh processors
+       and a fresh owner. Do not add a mutable `retry()` method or ownership flags.
+    7. Remove the overlapping `Tags.aprilTags(...)` / `FtcVision.aprilTags(...)` public construction
+       path and migrate its two examples to the explicit AprilTag lane owner. Keep only internal
+       conversion/build support needed by the lanes. The deferred `AprilTagVisionLaneFactory`
+       remains because “open a fresh configured lane later” is a distinct tester capability, not a
+       second spelling of ordinary construction.
+  - **Readiness and freshness contract:**
+    - Webcam device readiness means the portal is streaming and the required processor is enabled;
+      target availability remains the processor's result concern. Because `VisionProcessor` has no
+      standard result API, each robot-owned processor/adapter must publish an immutable timestamped
+      snapshot and invalidate or reject stale output after disable/re-enable. The framework will not
+      invent a generic result map to guess that policy.
+    - Limelight readiness means polling is running, the device is connected, the pipeline request
+      was accepted, and a result newer than that request confirms the requested pipeline within the
+      configured freshness bound. `LLResult.isValid()` means a target is available; it is not
+      pipeline/session readiness. A generation/baseline check is required so switching away and back
+      cannot revive a cached result merely because its numeric pipeline index matches again.
+    - Limelight's SDK pipeline request is a synchronous HTTP operation even though its effect is
+      asynchronous. Call it only once on an actual semantic transition and never in an every-loop
+      setter. Do not add an unverified background thread or promise non-blocking vendor behavior
+      without hardware/thread-safety evidence; the software contract instead guarantees no waits,
+      retries, or result consumption loops and refuses results until settling is confirmed.
+  - **Implementation and verification scope after approval:** add the two owners, readiness value,
+    fakeable package-private device seams, specialized AprilTag composition, controlled Limelight
+    result/orientation access, focused tests, one custom webcam/Limelight structure example, and
+    synchronized Javadocs/vision/lane/Phoenix docs. Update all in-repository callers and delete the
+    duplicate construction path in the same change. Use software tests to establish lifecycle,
+    ordering, generation, and failure contracts; report that actual camera-open time, pipeline-switch
+    latency, image quality, and physical detection performance still require adopting-robot
+    validation.
+  - **Decision-gate result:** this materially differs from the original single-owner leading
+    hypothesis. The smallest correct design is two parallel backend-specific owners, not one owner
+    with webcam/Limelight conditionals. It is also a major public ownership/readiness decision, so
+    implementation must stop here until the user approves this revised design.
+  - **Approval:** the user approved the VISION-01 parallel-owner design on 2026-07-20.
+  - **Implementation record (2026-07-20):**
+    - Added `FtcWebcamVisionPortalLane` and `FtcLimelightVisionLane` as parallel FTC-boundary
+      owners, plus the narrow immutable `VisionReadiness` value. The webcam owner fixes the complete
+      processor set at construction and owns processor/stream controls and terminal close. The
+      Limelight owner owns polling, pipeline requests, generation-aware same-cycle sampling,
+      requested-versus-observed confirmation, freshness, and terminal close without exposing the
+      raw device.
+    - Rebuilt the webcam and Limelight AprilTag lanes on those physical owners. The specialized
+      webcam lane can enable or disable its built-in AprilTag processor without exposing that SDK
+      processor, so one robot-owned semantic capability can switch between AprilTags and other
+      registered processors. `PhoenixVisionFactory.create(...)` remains the ordinary one-line
+      Phoenix construction path.
+    - Removed the overlapping `FtcVision.aprilTags(...)` and `Tags.aprilTags(...)` construction
+      paths and migrated their callers. Borrowed `AprilTagSensor` views no longer pretend to own or
+      close the physical camera.
+    - Added a compiling custom-vision example in which Auto/TeleOp consume one robot-owned semantic
+      interface and immutable timestamped snapshots while webcam processor toggles and Limelight
+      pipeline indices remain inside backend realizations. Transition failures are terminal and
+      cleanup preserves the primary failure; replacement is allowed only after close succeeds.
+    - Phoenix and the selectable vision/calibration tools now report component readiness separately
+      from target visibility, retain actionable causes, close and detach failed owners, permit INIT
+      reselection only after confirmed cleanup, and require an OpMode restart after cleanup failure.
+      A factory/constructor failure that arrives with a suppressed rollback failure conservatively
+      blocks replacement even when no owner reference was published; this keeps the call sites safe
+      without adding another public failure-marker API. Phoenix Auto applies the same rule.
+    - Both concrete owners distinguish close attempted, close succeeded, and close failed. A thrown
+      Limelight pipeline transition terminalizes that owner until its one cleanup attempt, and all
+      close/replacement diagnostics remain truthful under repeated or reentrant calls.
+    - Corrected the FTC webcam mount boundary from Phoenix robot axes into FTC robot-placement and
+      optical-camera axes, removed the redundant webcam SDK pitch-offset setting, and added
+      matrix-based regression coverage. Limelight snapshots defensively copy poses and reject the
+      SDK's exact all-zero missing-pose sentinel; the field estimator now returns current-loop
+      no-pose timestamps instead of non-finite values.
+  - **Automated verification (2026-07-20):**
+    - Focused owner/readiness/lifecycle suite: 55 tests (`VisionReadinessTest` 3,
+      `FtcWebcamVisionPortalLaneTest` 10, `FtcLimelightVisionLaneTest` 12,
+      `SelectableVisionTesterLifecycleTest` 15, and `PhoenixPedroAutoOpModeBaseTest` 15), with 0
+      failures, 0 errors, and 0 skipped.
+    - Full `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac`: 66 suites and 662
+      tests, with 0 failures, 0 errors, and 0 skipped; compilation succeeded. Output contained only
+      the existing Java 21/source-8 and FTC app-shell deprecation warnings.
+    - `git diff --check`, an untracked-file trailing-whitespace scan, and targeted stale-API/retry
+      searches passed. Independent adversarial reviews exercised ownership, recovery, freshness,
+      frame conversion, API scope, documentation, and test validity; their findings were resolved
+      before this audit point.
+  - **Android Studio audit point (completed):** the two backend-specific owners, specialized
+    AprilTag composition, custom semantic example, Phoenix/tool readiness presentation, and focused
+    tests were presented while status was `Verifying`. At that audit point, no VISION-01 file had
+    been staged, committed, pushed, or merged. Actual camera open/stream behavior, processor frame
+    timing, Limelight pipeline-switch latency, image quality, physical pose accuracy, detections,
+    and USB/device close behavior remain adopting-robot hardware validation rather than claims
+    established by these software tests.
+  - **Manual verification (2026-07-20):** the user reviewed the implementation in Android Studio
+    and approved it with `VISION-01 looks good`.
 
 ### SENSOR-01 - Motor-current sensing
 
