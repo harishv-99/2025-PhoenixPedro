@@ -120,7 +120,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 33 | VISION-01 | Shared webcam and Limelight vision ownership | Done | Parallel webcam/Limelight ownership, readiness, lifecycle recovery, migrations, documentation, and tests were approved on 2026-07-20. |
 | 34 | SENSOR-01 | Motor-current sensing | Deferred | Current completion requires controller polling measurements; revisit via a narrower conservative seam only through a new approved decision gate. |
 | 35 | INPUT-01 | Safe contextual control activation | Done | Approved robot-first contextual controls, shared registration surface, lifecycle-safe tester handoffs, and regression coverage. |
-| 36 | HAPTIC-01 | Driver haptic feedback boundary | Proposed | Expose small rate-safe rumble output while controls retain the meaning of each notification. |
+| 36 | HAPTIC-01 | Driver haptic feedback boundary | Done | Approved fixed-pulse sink, truthful FTC conversion, focused coverage, and full software verification; physical rumble behavior remains adopting-robot validation. |
 | 37 | PERF-01 | FTC hub bulk-cache ownership | Deferred | Wait for real hub-I/O benchmarks before changing the SDK automatic-caching default. |
 | 38 | PERF-02 | Loop phase diagnostics | Proposed | Measure named loop phases with a lightweight diagnostic that does not own timing or sleep. |
 | 39 | PERF-03 | Contract-safe hardware write deduplication | Deferred | Wait for per-adapter measurements and controller/watchdog evidence before suppressing writes. |
@@ -4123,25 +4123,166 @@ writer, and explicit lifecycle ownership.
 
 ### HAPTIC-01 - Driver haptic feedback boundary
 
-- **Problem to confirm:** Cuttlefish uses gamepad rumble for readiness, intake-full, relocalization,
-  mode, warning, and endgame events. Phoenix controls can read through framework sources but have no
-  corresponding narrow output seam, so robot code must retain raw FTC `Gamepad` references and
-  repeatedly implement controller selection and cooldown policy.
-- **External evidence:** Cuttlefish's
-  [TeleOp haptic helpers](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/opmodes/tele/Tele.java)
-  rate-limit rumble independently for each driver and use it across many meaningful robot events.
-- **Alternatives to compare:** keep direct FTC calls in the OpMode; add rumble methods to
-  `GamepadDevice`; define a tiny core-facing haptic sink with one FTC adapter; put rate limiting in
-  every controls owner; or add a generic notification/event bus. Coordinate this with BOUNDARY-01 so
-  fixing output does not preserve an existing SDK import leak.
-- **Leading hypothesis:** expose one small haptic output contract with an FTC adapter and a reusable
-  cooldown/debounce wrapper only if it shortens real callers. Robot controls/presenters retain the
-  meaning, pattern choice, and recipient of each signal. Do not create a framework notification bus,
-  background thread, or scoring-specific feedback API.
-- **Completion:** tests cover per-controller cooldown, immediate safety warnings where selected,
-  repeated events, disabled/unavailable rumble, stop, and loop-thread ownership. The common call site
-  is one obvious feedback request and core robot policy has no FTC SDK dependency.
-- **Decision record:** _Pending._
+- **Confirmed problem:** competition robot controls use gamepad rumble for short readiness,
+  intake-full, relocalization, mode, warning, and endgame cues. Phoenix can read controller input
+  through framework Sources but has no corresponding output seam. A robot-owned controls class must
+  therefore retain an FTC `Gamepad`, express durations in SDK milliseconds, and couple otherwise
+  portable event policy to an asynchronous, controller-specific SDK command.
+- **Confirmed external evidence:** the original Cuttlefish Decode snapshot is no longer publicly
+  readable, so this gate rechecked its accessible
+  [public fidelity port at pinned commit `42d1ce8`](https://github.com/6165-MSET-Cuttlefish/summer-2026/blob/42d1ce8ffe3dd62187b93771f1a5455c85fff6cd/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/opmodes/tele/Tele.java).
+  It sends only fixed-duration full-strength pulses: driver-one warning activation, intake-full, and
+  relocalization cues; driver-two mode, turret-hold, sorting-layer, and endgame cues. Its two helper
+  methods retain one last-accepted timestamp per controller and drop calls inside a 250 ms window.
+  Some state conditions call those helpers every loop, so that cooldown is compensating for
+  state-based requests rather than adding a hardware capability.
+- **Confirmed FTC SDK behavior:** local RobotCore 11.1 sources and the bundled
+  `ConceptGamepadRumble` sample show that a new rumble effect displaces the active effect and enters
+  a one-element evicting outgoing queue. `stopRumble()` queues another command; it is not a confirmed
+  immediate physical stop. `isRumbling()` is only a wall-clock estimate. The SDK exposes no reliable
+  controller-support or delivery query: controller `id`/`type` can be unknown for an attached idle
+  gamepad, and documented controller models have different or absent rumble hardware. The core
+  contract must therefore be command-only and best-effort.
+- **Current caller and ownership audit:** `GamepadDevice` is an input/calibration owner for axes and
+  buttons and already has an FTC import that BOUNDARY-01 must resolve. `Gamepads` exposes
+  `create(Gamepad, Gamepad)`, the redundant `of(...)` alias, and a public wrapped-device
+  constructor. Twelve modern callers use `Gamepads.create` (Phoenix, the Phoenix Auto selector,
+  `BaseTeleOpTester`, and nine TeleOp examples); none uses `of`, constructs a wrapped gamepad
+  directly, or requests rumble. `PhoenixTeleOpControls` has one composition-root caller and owns
+  operator meaning, while `PhoenixRobot` has the raw gamepads at its FTC construction boundary and
+  owns cleanup. HAPTIC-01 can add output without changing any existing input constructor or caller.
+- **Side-by-side alternatives and student-visible concepts:** the gate compared complete creation
+  and event calls, not only the shortest leaf method:
+
+  | Approach | Representative robot code | Student-visible decisions and result |
+  |---|---|---|
+  | Direct FTC / documentation only | `gamepad1.rumble(200);` | One line, but every event chooses an SDK recipient, milliseconds, and SDK effect semantics; controls remain FTC-coupled and harder to fake. |
+  | Add output to `GamepadDevice` | `gamepads.p1().pulse(1.0, 0.20);` | Short, but makes an input/calibration object also command output, deepens BOUNDARY-01's existing leak, and gives selectors/testers an output capability they did not ask for. |
+  | Robot-local adapter | `driverHaptics.pulse(1.0, 0.20);` | Can be clean for one robot, but repeats the same stable SDK conversion, validation, and stop contract in each adopting robot. |
+  | Separate framework sink and FTC factory | `HapticSink driverHaptics = FtcHaptics.gamepad(gamepad1);` then `driverHaptics.pulse(1.0, 0.20);` | Chooses the recipient and SDK boundary once; each semantic event supplies only normalized strength and seconds. Core controls are fakeable and SDK-free. |
+  | Reusable pattern value | `driverHaptics.play(Haptics.pulse(1.0, 0.20));` | Adds a pattern type, factory, nested call, and storage concept. The real callers use only immediate fixed pulses and do not store, pass, compose, or sequence effect values, so the extra layer has no current payoff. |
+  | Sink-wide cooldown decorator | `Haptics.cooldown(driverHaptics, clock, 0.25)` | Shortens repeated state calls but can drop an urgent warning because an ordinary cue fired first. Per-event keys, priorities, and bypass paths grow into the rejected notification router. |
+  | Generic event bus | `feedback.publish(DRIVER, INTAKE_FULL);` | Makes the leaf call shortest by moving season meaning, recipient, pattern, interruption, and priority policy into a much larger hidden framework owner. |
+- **Selected public API:** add one SDK-free `HapticSink` with exactly
+  `pulse(double strength, double durationSec)` and `stop()`. Add one public construction path,
+  `FtcHaptics.gamepad(Gamepad)`, returning the interface through a private adapter. There is no
+  public adapter constructor, `create`/`of` alias, staged builder, pattern class, dual-motor channel
+  overload, continuous-effect API, `isActive`, availability query, success result, silent-sink
+  factory, or method on `GamepadDevice`/`Gamepads`. The two scalar arguments are the complete inline
+  answers for the one evidenced command and do not justify another value type.
+- **Pulse and validation contract:** strength is normalized, finite, and in `(0, 1]`; duration is
+  finite and positive seconds. Zero is not a second spelling for `stop()`. The FTC adapter sends the
+  same effective normalized strength to both SDK rumble channels so robot code does not choose
+  controller-specific motors and one-channel controllers still receive channel one. It rounds a
+  valid positive strength below the SDK's first nonzero command level up to that level, rounds
+  every positive sub-millisecond request up to one millisecond, and rejects durations that cannot
+  fit the SDK's finite millisecond range before queuing an effect. The SDK retains only the latest
+  undelivered request; once delivered, a later pulse intentionally replaces an earlier one. A normal
+  return means only that the SDK request was accepted locally; it does not prove support, delivery,
+  completion, or physical intensity.
+- **Cooldown and event policy:** do not add a haptic-specific cooldown wrapper. Ordinary cues are
+  requested on semantic transitions, for example
+  `bindings.onRise(intakeFull, () -> driverHaptics.pulse(1.0, 0.50));`, rather than by writing the
+  same state every loop. Noisy Boolean facts may use the existing Source debounce transforms. If
+  one particular active state genuinely needs a periodic reminder, its controls/driver-feedback
+  owner owns one existing `Cooldown`; a supervisor or service may supply the state or policy that
+  owner consumes. That explicit per-event policy cannot suppress an unrelated urgent cue. A safety
+  warning may deliberately replace an ordinary pulse immediately.
+- **Lifecycle and ownership:** the FTC composition root constructs one sink per intended recipient,
+  passes those sinks to robot controls or a dedicated driver-feedback owner that owns cue mapping,
+  and best-effort calls each sink's `stop()` during total cleanup. Supervisors/services may supply
+  the status or robot policy that owner consumes. Repeated `stop()` calls are safe, but the contract
+  describes an SDK stop request rather than immediate physical acknowledgement. Calls remain on the
+  ordinary OpMode loop thread. The sink owns no heartbeat, `LoopClock`, timer, scheduler, background
+  thread, event queue, retry, or priority. When multiple policies share a controller, that one
+  controls/feedback owner coordinates their meaning; framework dispatch does not guess a winner.
+- **Framework Principles and simplicity result:** the core capability owns one narrow reusable
+  command; the FTC factory owns SDK conversion; robot controls or a dedicated driver-feedback owner
+  owns cue mapping, recipient, interruption, and any repeat policy; and the composition root owns
+  construction and cleanup.
+  Flat robots that need no rumble gain no object or heartbeat. An adopting robot replaces raw SDK
+  event calls with one fakeable method and seconds used everywhere else in Phoenix. Output does not
+  contaminate the input Source graph, and HAPTIC-01 neither preserves nor broadens BOUNDARY-01's
+  existing SDK leak. This is the smallest design that supports all observed Cuttlefish behavior.
+- **Rejected or deferred scope:** do not add rumble to `GamepadDevice`; do not infer support from
+  gamepad metadata; do not claim delivery or physical stop; do not add a blanket cooldown,
+  notification bus, scoring vocabulary, LED/audio abstraction, custom SDK effect escape hatch,
+  multistep pattern DSL, or Phoenix season cue merely to manufacture an in-repository production
+  caller. A future real caller that must store or sequence patterns requires a new decision gate.
+  Deliberately disabling haptics remains visible robot policy (omit/guard the binding); an
+  unsupported controller safely produces no physical feedback without an unreliable automatic
+  detection branch.
+- **Bounded implementation scope:** add only the core sink, one FTC facade/private adapter, focused
+  tests, package/public Javadocs, robot-first controls and loop/lifecycle guidance, any directly
+  affected documentation index, and this tracker. Existing Phoenix behavior and every `Gamepads`
+  construction path remain unchanged. Do not begin BOUNDARY-01 or clean its aliases in this item.
+- **Software verification plan:** use SDK-backed unit tests to verify null rejection, both-channel
+  strength mapping, seconds-to-milliseconds rounding, finite/range/overflow validation before SDK
+  effects, latest-request replacement, independent driver/operator queues, and safe repeated stop
+  requests. Add fake call-site tests for edge-driven cues and an event-specific existing
+  `Cooldown` whose ordinary reminder cannot block a direct urgent pulse. Add static checks proving
+  the core haptic package imports no FTC SDK type and that there is one public FTC construction
+  path with no public adapter. Run focused tests, full TeamCode unit tests, FTC Java compilation,
+  changed-Markdown link checks, and `git diff --check`. Software tests cannot prove controller
+  support, delivery, felt strength, physical stop latency, or actual OpMode-thread use; those remain
+  adopting-robot/hardware validation and must be documented as such.
+- **Approval gate (2026-07-21):** this is a new public API and therefore a major decision. Gate 1 is
+  complete and HAPTIC-01 is Ready, but implementation must not begin until the user approves the
+  factory-only fixed-pulse sink design. No framework or robot implementation code has been changed
+  at this gate.
+- **Approval (2026-07-21):** after explicitly reconsidering multistep pattern support, the user
+  chose the simpler fixed-pulse design with “Keep it simple for now and proceed with your
+  suggestion.” Implementation is limited to the recorded `HapticSink`/`FtcHaptics` API, fixed-pulse
+  semantics, tests, and synchronized documentation; this approval does not authorize pattern
+  support, BOUNDARY-01, or another tracker item.
+- **Implementation record (2026-07-21):**
+  - Added the SDK-free `HapticSink` command seam with only `pulse(strength, durationSec)` and
+    repeat-safe, best-effort `stop()`, plus package Javadocs that keep cue mapping in robot controls
+    or a dedicated driver-feedback owner. The interface owns no clock, heartbeat, scheduler,
+    availability state, pattern value, cooldown, or event vocabulary.
+  - Added the sole FTC construction path, `FtcHaptics.gamepad(Gamepad)`, returning `HapticSink`
+    through a private adapter. It rejects null gamepads, invalid strength/duration, and
+    unrepresentable duration before an SDK effect; sends one effective strength to both channels;
+    raises every valid positive sub-level strength to the SDK's first nonzero level; rounds every
+    positive sub-millisecond duration up to one millisecond; and delegates stop to the SDK's queued
+    zero/zero continuous request. No existing `GamepadDevice`, `Gamepads`, Phoenix constructor, or
+    robot behavior changed.
+  - Added SDK-queue tests for the exact public surface, sole factory/private adapter, validation
+    ordering, strength/channel quantization, minimum positive strength, duration rounding and exact
+    overflow boundary, latest-undelivered replacement, recipient isolation, and repeated stop.
+    SDK-free usage tests exercise real `Bindings` edge dispatch and a per-event existing `Cooldown`
+    that cannot suppress a direct urgent cue.
+  - Updated the robot architecture guide, loop guide, and framework package overview. The docs show
+    one recipient-specific sink per controller, controls/driver-feedback cue ownership, edge-driven
+    ordinary cues, explicit event-specific repeat policy, best-effort aggregate cleanup, no extra
+    loop phase, and the FTC runtime/Driver Station/controller limits on support and delivery.
+- **Adversarial audit (2026-07-21):** independent correctness, public-API/simplicity, SDK, and
+  documentation reviews repeated the construction-path and Framework Principles checks. They
+  confirmed that the two public types have distinct value and found no reason for a duration-only
+  overload, public adapter, `create`/`of` alias, pattern object, cooldown decorator, silent sink,
+  availability query, or event bus. Findings corrected before this audit point were a null-test
+  exception mismatch, an imprecise Driver Station event-loop attribution, a cleanup example that
+  did not initially aggregate two stop failures, ownership wording that let supervisors choose
+  controller cues, and a valid tiny strength that the SDK would otherwise quantize to known zero.
+  Rechecks found no remaining issue.
+- **Automated verification (2026-07-21):**
+  - Focused `FtcHapticsTest` and `HapticSinkUsageTest`: 13 tests, 0 failures, 0 errors, and 0 skipped.
+  - Full `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac`: 73 suites and 697 tests,
+    with 0 failures, 0 errors, and 0 skipped; TeamCode compilation succeeded. Output contained only
+    the existing Java 21/source-8 and FTC app-shell deprecation warnings.
+  - `git diff --check`, trailing-whitespace scanning including untracked files, changed-Markdown
+    local-link checks, core FTC-import checks, one-factory/private-adapter public-surface searches,
+    and framework-code/docs case-study-reference checks passed.
+- **Hardware-validation boundary and audit point (2026-07-21):** software inspection can prove the
+  queued SDK command, validation, conversion, ownership, and replacement semantics; it cannot prove
+  that a particular controller supports rumble, receives a request, produces a distinguishable
+  strength, completes a duration, or stops with a particular latency. Those remain adopting-robot
+  validation when hardware is available. The implementation was marked Verifying and paused for the
+  user's Android Studio review; nothing beyond HAPTIC-01 was started.
+- **Manual verification (2026-07-22):** the user reviewed HAPTIC-01 in Android Studio and replied
+  `HAPTIC-01 looks good`. HAPTIC-01 is **Done** and publication is authorized for this item only. No
+  controller hardware was available, so physical rumble support, feel, delivery, duration, and stop
+  latency remain adopting-robot validation rather than software-test claims.
 
 ### PERF-01 - FTC hub bulk-cache ownership
 
