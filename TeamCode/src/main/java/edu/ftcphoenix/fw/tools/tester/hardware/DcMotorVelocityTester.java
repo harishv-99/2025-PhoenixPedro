@@ -5,8 +5,10 @@ import com.qualcomm.robotcore.hardware.DcMotorEx;
 
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 
+import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.tools.tester.BaseTeleOpTester;
 import edu.ftcphoenix.fw.ftc.ui.HardwareNamePicker;
+import edu.ftcphoenix.fw.input.binding.Bindings;
 import edu.ftcphoenix.fw.tools.tester.ui.IntTuner;
 
 /**
@@ -139,9 +141,13 @@ public final class DcMotorVelocityTester extends BaseTeleOpTester {
                 }
         );
 
+        Bindings.ControlContext liveControls = bindings.contextWhen(
+                BooleanSource.of(() -> ready),
+                Bindings.ActivationPolicy.REARM_AFTER_NEUTRAL
+        );
+
         // A: toggle enabled with side-effects.
-        bindings.onRise(gamepads.p1().a(), () -> {
-            if (!ready) return;
+        liveControls.onRise(gamepads.p1().a(), () -> {
             targetVelTps.toggleEnabled();
 
             if (!targetVelTps.isEnabled()) {
@@ -150,37 +156,20 @@ public final class DcMotorVelocityTester extends BaseTeleOpTester {
         });
 
         // X: toggle motor direction.
-        bindings.onRise(gamepads.p1().x(), () -> {
-            if (!ready) return;
-            toggleDirection();
-        });
+        liveControls.onRise(gamepads.p1().x(), this::toggleDirection);
 
         // START: fine/coarse
-        bindings.onRise(gamepads.p1().start(), () -> {
-            if (!ready) return;
-            targetVelTps.toggleFine();
-        });
+        liveControls.onRise(gamepads.p1().start(), targetVelTps::toggleFine);
 
         // Dpad up/down: velocity steps (only when ready)
-        bindings.onRise(gamepads.p1().dpadUp(), () -> {
-            if (!ready) return;
-            targetVelTps.inc();
-        });
-        bindings.onRise(gamepads.p1().dpadDown(), () -> {
-            if (!ready) return;
-            targetVelTps.dec();
-        });
+        liveControls.onRise(gamepads.p1().dpadUp(), targetVelTps::inc);
+        liveControls.onRise(gamepads.p1().dpadDown(), targetVelTps::dec);
 
         // Y: zero target velocity (keep enabled state as-is)
-        bindings.onRise(gamepads.p1().y(), () -> {
-            if (!ready) return;
-            targetVelTps.setTarget(0);
-        });
+        liveControls.onRise(gamepads.p1().y(), () -> targetVelTps.setTarget(0));
 
         // B: stop (disable + target=0)
-        bindings.onRise(gamepads.p1().b(), () -> {
-            if (!ready) return;
-
+        liveControls.onRise(gamepads.p1().b(), () -> {
             targetVelTps.setTarget(0);
             if (targetVelTps.isEnabled()) {
                 targetVelTps.toggleEnabled();

@@ -10,7 +10,7 @@ import java.util.function.Consumer;
 
 import edu.ftcphoenix.fw.core.math.MathUtil;
 import edu.ftcphoenix.fw.core.source.BooleanSource;
-import edu.ftcphoenix.fw.input.binding.Bindings;
+import edu.ftcphoenix.fw.input.binding.BindingRegistrar;
 
 /**
  * Single-screen scroll-and-select menu for FTC telemetry UIs.
@@ -300,10 +300,10 @@ public final class SelectionMenu<T> implements MenuScreen {
     /**
      * Register simple one-screen menu bindings that are always enabled.
      *
-     * <p>For nested menus, prefer {@link MenuNavigator#bind(Bindings, UiControls)} so one central
+     * <p>For nested menus, prefer {@link MenuNavigator#bind(BindingRegistrar, UiControls)} so one central
      * dispatcher owns navigation for the active screen.</p>
      */
-    public void bind(Bindings bindings,
+    public void bind(BindingRegistrar bindings,
                      BooleanSource upButton,
                      BooleanSource downButton,
                      BooleanSource selectButton,
@@ -321,7 +321,7 @@ public final class SelectionMenu<T> implements MenuScreen {
      *
      * @param enabled when false, bound inputs are ignored
      */
-    public void bind(Bindings bindings,
+    public void bind(BindingRegistrar bindings,
                      BooleanSource upButton,
                      BooleanSource downButton,
                      BooleanSource selectButton,

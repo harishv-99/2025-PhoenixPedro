@@ -1,6 +1,6 @@
 # Framework Improvement Tracker
 
-Last updated: 2026-07-20
+Last updated: 2026-07-21
 
 This file tracks proposed Phoenix framework improvements. It is deliberately a planning document:
 an item being listed here does **not** mean its current proposed solution has been approved. Each
@@ -119,7 +119,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 32 | DRIVE-02 | Shared drivetrain actuator handoff | Deferred | Wait for a real PTO-equipped adopting robot; preserve the approved single-owner design constraints without inventing hardware-specific APIs. |
 | 33 | VISION-01 | Shared webcam and Limelight vision ownership | Done | Parallel webcam/Limelight ownership, readiness, lifecycle recovery, migrations, documentation, and tests were approved on 2026-07-20. |
 | 34 | SENSOR-01 | Motor-current sensing | Deferred | Current completion requires controller polling measurements; revisit via a narrower conservative seam only through a new approved decision gate. |
-| 35 | INPUT-01 | Safe contextual control activation | Proposed | Support optional control modes without turning held controls into phantom press edges. |
+| 35 | INPUT-01 | Safe contextual control activation | Done | Approved robot-first contextual controls, shared registration surface, lifecycle-safe tester handoffs, and regression coverage. |
 | 36 | HAPTIC-01 | Driver haptic feedback boundary | Proposed | Expose small rate-safe rumble output while controls retain the meaning of each notification. |
 | 37 | PERF-01 | FTC hub bulk-cache ownership | Deferred | Wait for real hub-I/O benchmarks before changing the SDK automatic-caching default. |
 | 38 | PERF-02 | Loop phase diagnostics | Proposed | Measure named loop phases with a lightweight diagnostic that does not own timing or sleep. |
@@ -3741,27 +3741,385 @@ writer, and explicit lifecycle ownership.
 ### INPUT-01 - Safe contextual control activation
 
 - **Problem to confirm:** advanced TeleOp code sometimes changes the meaning of controls by robot
-  mode. Simply enabling a new group while a button is held can manufacture a fresh press edge and
-  trigger a dangerous action; recreating `Bindings` or scattering mode checks also makes ownership
-  and precedence hard to audit.
+  mode. Simply enabling a new group while a button is held can manufacture a fresh press edge, and
+  enabling a continuous manual control while a stick/trigger is displaced can command motion
+  without a fresh neutral-to-active gesture. Recreating `Bindings` or scattering mode checks also
+  makes ownership and precedence hard to audit.
 - **External evidence:** Cuttlefish's
   [`LayeredGamepad`](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/architecture/input/LayeredGamepad.java)
   primes newly activated controls from their current physical state so held buttons do not appear as
-  new presses. Its TeleOp uses this for distinct normal, manual, and endgame mappings.
+  new presses. Its TeleOp uses this for distinct normal, manual, and endgame mappings. The original
+  pinned repository is no longer readable, but Cuttlefish's public
+  [`summer-2026` import](https://github.com/6165-MSET-Cuttlefish/summer-2026/commit/1c9bfb2d170f89c009a97b1a059aaccf9aa0fb53)
+  identifies itself as the robot-agnostic framework from that exact Decode revision. Its imported
+  [`LayerStack`](https://github.com/6165-MSET-Cuttlefish/summer-2026/blob/1c9bfb2d170f89c009a97b1a059aaccf9aa0fb53/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/architecture/input/LayerStack.java)
+  selects exactly one keyed layer rather than implementing overlap or priority, while its imported
+  [`LayeredGamepad`](https://github.com/6165-MSET-Cuttlefish/summer-2026/blob/1c9bfb2d170f89c009a97b1a059aaccf9aa0fb53/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/architecture/input/LayeredGamepad.java)
+  suppresses one refresh, primes Boolean edge baselines, and then accepts held levels and displaced
+  analog values. Phoenix should express that accept-current behavior without duplicating an FTC
+  gamepad facade, while also offering the stricter neutral-rearm policy for hazardous controls.
 - **Alternatives to compare:** retain explicit mode guards in each control callback; construct one
   independent `Bindings` object per mode; add enable/disable to individual bindings; add a small
-  ordered contextual group with rearm semantics; or build a general input-layer stack with
-  priorities. Compare held buttons, analog neutral thresholds, precedence, and the flat common path.
-- **Leading hypothesis:** keep today's flat declarations as the default. If repeated Phoenix callers
-  justify extraction, allow an optional robot-owned binding group/context whose activation samples
-  current controls and requires release/neutral before its edge bindings rearm. Declaration order
-  stays visible; no global control-mode state, implicit priority stack, or automatic subsystem
-  arbitration enters the framework.
-- **Completion:** tests cover activation/deactivation while pressed, release/repress, analog neutral,
-  toggle and hold bindings, multiple enabled contexts, same-cycle transitions, and cancellation of
-  context-owned Tasks. A normal TeleOp remains unchanged, while an advanced example makes each
-  mode's meanings and precedence obvious in one controls owner.
-- **Decision record:** _Pending._
+  Boolean-only contextual group plus a scalar source transform; put parallel Boolean and scalar
+  declarations on one context with an explicit activation policy; restrict all binding APIs to new
+  neutral-aware control-source subtypes; duplicate every reusable helper overload for root/context;
+  expose one narrow registration-only capability shared by root/context; or build a general
+  input-layer stack with priorities.
+  Compare held buttons, analog neutral thresholds, transformed and sensor sources, inactive-output
+  ownership, duplicate writers, precedence, and the flat common path.
+- **Selected hypothesis after Gate 1:** keep today's flat declarations as the default and add one
+  optional, root-created `Bindings.ControlContext` for repeated contextual controls. Its declaration
+  surface is parallel with root `Bindings`, including `copyEachCycle(...)`, and construction
+  requires one explicit `ActivationPolicy`: `REARM_AFTER_NEUTRAL` or `ACCEPT_CURRENT`. Root
+  `Bindings` and `ControlContext` implement one narrow public `BindingRegistrar` declaration
+  capability so reusable helpers accept either through one signature without owning update/clear or
+  duplicating overload families. Each registered Boolean or scalar binding applies the context
+  policy independently while sharing one context-activation snapshot.
+  Contextual scalar copy is deliberately limited to final command streams where exact zero is the
+  safe inactive command; there must still be only one scalar-copy registration for a final command
+  across root bindings and all contexts. Preserve the deliberate startup-recentering policy and
+  document its operator precondition. Mutually exclusive activation predicates can model the
+  exactly-one-active mode layers evidenced by Cuttlefish, but no implicit priority, fallthrough,
+  automatic subsystem arbitration, or Task ownership enters the framework.
+- **Completion:** tests cover first activation/reactivation while a digital control is pressed,
+  release/repress, fall/mirror/level/toggle/nudge behavior, both activation policies, multiple
+  enabled contexts, activation changes during callbacks, repeated same-cycle root updates, and
+  Task-binding enqueue without implicit cancellation. Scalar tests cover activation while
+  neutral/displaced under both policies, neutral-then-move, inactive/unarmed zero output,
+  deactivation/reactivation, non-finite input, no inactive upstream sampling, and a continuous
+  zero-safe command. Migrate the proven framework tester handoffs, keep normal Phoenix TeleOp
+  behavior unchanged, and document callback guards, control contexts, navigator-versus-context
+  selection, exclusive mode-context use, the one-final-command-writer rule, and the startup-neutral
+  requirement. True priority/fallthrough, dynamic child/session ownership, non-zero inactive
+  policies, persistent-intent cleanup beyond mirror/copy neutralization, and Task cancellation
+  remain separately owned.
+- **Decision record (2026-07-21):**
+  - **Confirmed traced behavior:** every `Bindings.onRise(...)` registration creates an independent
+    `signal.risingEdge()` tracker. In several hardware testers, the picker registers `A` first and
+    an active-control callback registers the same raw `A` later. On one physical press, the picker
+    callback resolves hardware and changes `ready` to true; the later independent edge tracker sees
+    the same rise, observes the newly true gate, and may enable the selected actuator in that same
+    `Bindings.update(clock)`. `DcMotorPositionTester` can therefore toggle `RUN_TO_POSITION` from
+    the selection press before its downstream INIT update. `DcMotorPowerTester` already records the
+    selection cycle and rejects controls during that cycle, confirming the intended one-boundary
+    safety rule. `TesterSuite` also constructs and initializes a fresh selected child during its
+    menu-`A` callback, then invokes that child's loop in the same shared cycle. Fresh child edge
+    trackers establish a safe baseline, but `mirrorOnChange`, levels, and scalar copies intentionally
+    accept an initial value: selecting `DrivetrainMotorDirectionTester` with `A` can therefore mirror
+    that held selection input into its back-left motor target during the same INIT cycle. Separately,
+    `active.and(button)` manufactures a false-to-true result when a mode is
+    enabled while the physical button is already held, while conditionally updating independent
+    `Bindings` objects leaves their edge state stale across reactivation.
+  - **Current callers and common path:** `PhoenixTeleOpControls` uses one flat `Bindings` and has no
+    contextual remapping, so the beginner path must not change. `SelectionMenu`, `MenuNavigator`,
+    and related UI helpers keep raw edges sampled and guard inside callbacks; that remains the
+    smallest safe pattern for one or two conditional actions. Repeated picker-versus-active control
+    groups exist in `DcMotorPositionTester`, `DcMotorVelocityTester`, `DcMotorPowerTester`,
+    `CrServoPowerTester`, `ServoPositionTester`, `NormalizedColorSensorTester`, and the Pinpoint plus
+    AprilTag fusion tester. These are real modern callers, not legacy robot code, and they establish
+    the need for one reusable activation boundary. `SelectionMenu`, `HardwareNamePicker`,
+    `MenuNavigator`, `ScalarTuner`, `IntTuner`, and `TaskBindings` currently accept concrete
+    `Bindings`; without a common declaration capability, their existing helper calls cannot be
+    reused with a context. `PhoenixPedroAutoSelectorOpMode` already proves the distinct picker-flow
+    pattern: one `MenuNavigator` binds Up/Down/Select once and dispatches those stable meanings to
+    the current `MenuScreen` while successive choices push new pickers. The original pinned
+    Cuttlefish repository is no longer readable, but the exact-revision framework import above
+    verifies its one-selected-layer facade, activation suppression, Boolean priming, and immediate
+    post-prime analog behavior.
+  - **Small-case comparison:** one or two mappings should remain a single continuously sampled edge
+    with visible robot-owned dispatch, for example
+    `bindings.onRise(operator.a(), () -> { if (mode == ENDGAME) endgame.deploy(); });`. This adds no
+    concept and does not convert a previously held button into a later press. A controls owner may
+    use one `switch (mode)` inside that callback when the same physical input has mutually exclusive
+    meanings. Callers must still decide what simultaneous mode-selection and action inputs mean;
+    the optional context gives repeated mappings one atomic activation snapshot.
+  - **Chosen parallel API:** add one root-created context type and one construction method, with no
+    public context constructor, alias factory, or policy-default overload:
+    `Bindings.ControlContext endgameControls = bindings.contextWhen(endgameMode, Bindings.ActivationPolicy.REARM_AFTER_NEUTRAL);`.
+    The policy argument is mandatory because accepting a held/nonzero control is motion-relevant;
+    neither a hidden default nor two factory spellings improve the call. A context exposes the same
+    applicable declaration names and argument order as root `Bindings`: `onRise`, `onFall`,
+    `mirrorOnChange`, `whileHigh`, `whileLow`, both `toggleOnRise` forms, `nudgeOnRise`, and
+    `copyEachCycle`. Extract those declaration methods once into public `BindingRegistrar`,
+    implemented by both root `Bindings` and `ControlContext`. The interface has one distinct
+    capability: reusable helpers can register mappings without receiving the root's heartbeat,
+    clear, or context-construction ownership. Change helper parameter types rather than adding
+    root/context overload pairs; ordinary calls continue passing `Bindings`, while contextual calls
+    pass the context they already created. Root `Bindings` remains the simple always-live declaration
+    surface.
+    `bindings.update(clock)` remains the only heartbeat and dispatcher; a context exposes no
+    independent `update`. `TaskBindings.of(registrar, runner)` remains its one factory and accepts
+    either root or context through that same declaration capability; it only enqueues a fresh Task
+    after an accepted event. Activation stays source-driven through the `BooleanSource` passed to
+    `contextWhen(...)`; do not add imperative `enable()`/`disable()` calls whose mid-dispatch timing
+    would need a second lifecycle rule.
+  - **Activation policies:** `REARM_AFTER_NEUTRAL` and `ACCEPT_CURRENT` are context-wide choices applied
+    independently by each registration; there is no global latch that waits for every control in a
+    context to be neutral at once. Both policies use an effect-free activation frame.
+    `REARM_AFTER_NEUTRAL` arms a final Boolean only after observing false and a scalar copy only after
+    observing finite exact zero; a neutral activation-frame sample may arm for the following cycle.
+    A held true/nonzero value remains suppressed until that registration independently reaches its
+    neutral state, and the neutralizing sample itself creates no fall, mirror, level, toggle, nudge,
+    or nonzero copy effect. `ACCEPT_CURRENT` records current Boolean baselines without synthesizing
+    an initial rise or toggle, and accepts a finite scalar value, on the effect-free activation
+    frame. Beginning on the following cycle, held levels and mirrored state are visible, a later
+    release from an accepted high may produce a real fall, and a still-displaced finite scalar may
+    pass. This intentionally covers Cuttlefish's post-prime held/analog behavior without making it
+    the safer default.
+  - **Contextual scalar contract:** `ControlContext.copyEachCycle(source, consumer)` is only for a
+    conditioned final command stream where exact zero is the safe inactive command. It does not
+    sample its upstream source while inactive and writes zero while inactive, on the activation
+    frame, while `REARM_AFTER_NEUTRAL` is unarmed, or for a non-finite sample. Under
+    `REARM_AFTER_NEUTRAL`, non-finite input disarms the registration; under `ACCEPT_CURRENT`, a later
+    finite value may resume because accepting current values is the explicit policy. Each final
+    scalar command/sink must have exactly one `copyEachCycle` registration across root bindings and
+    all contexts. Servo-position hold, a non-zero stow target, mode-dependent arbitration of the
+    same command, and other fallback policies remain one robot-owned composed source registered at
+    the root. Do not also expose public `ControlContext.rearmFromZero(...)` or
+    `ScalarSource.rearmFromZeroWhen(...)`; either would restore a second spelling for contextual
+    continuous binding.
+  - **Activation and rearm contract:** the root snapshots every context's activation once before any
+    binding callback and uses those snapshots through all Boolean and scalar dispatch phases, so a
+    mode changed by a callback takes effect on the next loop rather than changing the meaning of the
+    current controls frame midway through dispatch. Every registration
+    owns its own edge/rearm state; a held `A` must not prevent an unrelated released `B` or neutral
+    stick from becoming usable. The final value supplied to a Boolean binding defines its contract:
+    false is neutral. Thus a derived `axis.above(threshold)` may use below-threshold false as its
+    intentional neutral state. If robot policy truly requires a physical return to a narrower
+    analog-neutral region, robot code first builds a final Boolean whose false state expresses that
+    policy; the generic context does not infer physical displacement from a transformed Boolean.
+    Toggle state persists across inactive intervals and neither policy overwrites it from a held
+    activation-frame input.
+  - **Deactivation, overlap, and ownership:** deactivation disarms event/level/toggle/nudge
+    registrations without manufacturing callbacks. Contextual scalar copies continue publishing
+    zero while inactive. Contextual `mirrorOnChange` publishes its effective neutral false once on
+    its initial inactive update and once when an active true mirror deactivates; it does not publish
+    false every cycle or turn deactivation into `onFall`/`whileLow`. These two continuous mirrors
+    therefore cannot leave a stale non-neutral request. Deactivation does not cancel an
+    active or queued Task, reset toggle state, or perform robot/subsystem cleanup beyond those
+    declared neutral mirrors. A mode transition that requires other effects calls the robot
+    capability/supervisor abort or the correctly owned runner operation explicitly. More than one
+    context may be active and every eligible action runs; there is no hidden winner. Mutually
+    exclusive predicates derived from one robot mode can model Cuttlefish-style exactly-one-active
+    control layers. Overlap, per-control fallthrough, input consumption, and priority are not
+    inferred. Like scalar copy, one persistent state setter must not be mirrored by competing root
+    or context registrations. `Bindings.clear()` invalidates its old contexts so later declarations on them fail
+    fast; callers retain ownership of broader capability cleanup when rebuilding bindings.
+  - **Why parallel scalar declaration is bounded:** moving `copyEachCycle(...)` onto the context is
+    safe only because choosing that method asserts a specific final-command contract: exact zero is
+    safe, and the parent root publishes it while the context cannot pass a live value. This is not a
+    generic inactive fallback for every `ScalarSource`. A servo position, non-zero hold/stow target,
+    or two mode-dependent sources for one final command must be composed once in robot code and
+    registered once at the root. Because Java `DoubleConsumer` method references do not provide a
+    stable sink identity, the framework cannot reliably detect two registrations for the same final
+    command; the one-final-copy rule is therefore an explicit ownership contract, not declaration
+    order as hidden arbitration.
+  - **Gamepad neutral contract:** `GamepadDevice` consciously captures current stick/trigger
+    positions as logical zero during construction or explicit `calibrate()`, compensating for
+    spring wear and controller center offset; its configurable deadband then maps nearby readings to
+    exact zero. Preserve that behavior. Because software cannot distinguish drift from a deliberately
+    held input at that instant, the documented precondition is that every analog control is at its
+    intended physical neutral whenever the wrapper is constructed or recalibrated. Per-use behavior
+    deadbands may still be applied before contextual scalar copy; the conditioned source must map
+    the intended neutral region to exact zero before the context applies its activation policy.
+  - **Why generic sources do not expose a neutral range:** `ScalarSource` intentionally represents
+    gamepad inputs, battery voltage, distance, analog voltage, encoder position/velocity, Plant
+    targets and errors, controller outputs, and Task output streams. Many have no neutral, while
+    others have a tolerance that changes by use: zero encoder position is a reference, zero error is
+    only “at target” under a caller-selected tolerance, and a distance sensor's inactive range
+    depends on the behavior. Adding optional neutral metadata would make every transform (`scaled`,
+    `clamped`, `ratePerSecond`, rate limiting, fallback/hold, and conditional selection) preserve,
+    change, or discard a safety claim it often cannot prove. `BooleanSource` has the same issue:
+    false is a value, not universal proof of physical release. Instead, an adapter/source pipeline
+    that is intentionally used as a control signal normalizes its inactive meaning to exact zero or
+    false before contextual declaration. A sensor with an intrinsic baseline may be
+    calibrated/conditioned to zero and then use the same narrow context; non-zero or use-specific
+    neutral policy stays explicit at its interpretation boundary. Restricting all `Bindings` methods to a
+    `ScalarControlSource`/`BooleanControlSource` subtype was also considered: it gives contextual
+    code a compile-time marker, but flat bindings do not need neutral metadata, existing sensor/UI/
+    software signals are legitimate binding inputs, ordinary transforms would either lose the
+    subtype or require a parallel transform hierarchy, and the subtype still cannot prove what a
+    consumer must do while inactive. Do not add a broad `neutralRange()` contract or neutral-aware
+    source hierarchy without a real caller that canonical zero/false cannot express.
+  - **Rejected alternatives:** callback guards are retained for small cases but repeat the mode on
+    every declaration and can observe a gate changed by an earlier same-cycle callback; independent
+    `Bindings` objects are unsafe after skipped sampling and add multiple heartbeats; per-binding
+    enable overloads multiply every sibling API; a Boolean source-level gate cannot represent an
+    inactive third state, so `whileLow` would run while disabled and deactivation could synthesize a
+    fall; a Boolean-only context plus `rearmFromZero(...)` and root scalar copy is visibly
+    non-parallel and leaves two spellings for continuous contextual binding; an unrestricted
+    context scalar copy that guesses arbitrary neutral/fallback policy would be unsafe, so the
+    selected method is explicitly zero-neutral and retains the one-final-copy ownership rule;
+    per-binding policy overloads repeat one mode-level decision and make a context internally
+    inconsistent; a policy-default overload hides a motion-relevant decision, while two named
+    context factories duplicate one construction path; one global all-controls-neutral latch lets
+    an unrelated held input block the entire context;
+    restricting `Bindings` to new control-source subtypes makes the flat API pay for contextual
+    metadata and either loses that type through ordinary transforms or recreates a parallel source
+    hierarchy; changing or deleting deliberate startup recentering loses useful hardware-error
+    compensation; recreating or resetting bindings loses registrations/toggle state or propagates
+    reset into shared upstream sources; a general layer/priority stack hides precedence and imports
+    much more machinery than Phoenix needs.
+  - **Student-facing and Framework Principles result:** flat robot code remains exactly one
+    `Bindings`, its current declarations, and one update. An advanced controls owner pays for one
+    clearly named control context and one mode source, then writes ordinary binding lines without a
+    repeated guard or repeated mode predicate. The mode and cleanup meaning stay in robot
+    controls/capabilities, the root owns the single input heartbeat, no FTC or subsystem type enters
+    core binding dispatch, and no API infers analog facts it cannot prove. The context name reflects
+    that one activation boundary covers Boolean events and zero-neutral scalar commands. The parent
+    root still owns the only heartbeat/dispatcher, while the context owns one coherent declaration
+    surface and `TaskBindings` preserves the applicable event vocabulary. The student writes, for
+    example,
+    `manualControls.copyEachCycle(operator.leftY().deadbandNormalized(0.08, -1.0, 1.0), lift::commandManualPower);`.
+    The required policy at context construction makes held-input behavior visible without another
+    wrapper, builder, repeated mode predicate, or scalar binding path.
+  - **Context count and exclusivity:** a robot with no conditional control group creates no context;
+    root `Bindings` remains its complete controls API. One optional group needs only one context,
+    alongside any always-available root mappings. Multiple contexts may overlap when they command
+    independent meanings and sinks. When contexts are being used as mutually exclusive layers that
+    remap the same physical controls or capabilities, robot code derives mutually exclusive
+    activation sources from its mode; the framework does not require global exclusivity or choose a
+    winner when predicates overlap. In every case the robot still calls only the parent
+    `bindings.update(clock)` once per cycle.
+  - **Tester ownership and simplification:** do not create or retain one parent-owned context per
+    dynamically selected `TeleOpTester`. `TesterSuite` and `HardwareSelectingTester` already own a
+    stronger boundary: a factory returns one fresh child with its own root `Bindings`, and the child
+    is stopped and discarded before replacement. A parent context would retain callbacks and child
+    or hardware references, would not release resources, and would weaken that lifecycle. Contexts
+    instead simplify stable modes inside one tester. A picker may remain one continuously sampled,
+    callback-guarded menu, while a repeated selected-device group becomes
+    `bindings.contextWhen(BooleanSource.of(() -> ready), REARM_AFTER_NEUTRAL)` and registers its
+    tuner/action bindings without repeated `if (!ready) return` checks or selection-cycle fields.
+    Use the test's existing lifecycle contract when choosing `ready` versus
+    `ready && opModeStarted`; INPUT-01 must not silently move a tester's allowed controls between
+    INIT and RUN. A directly selected tester whose mirror/level/scalar controls must reject the held
+    suite-selection input uses one always-enabled neutral-rearm context for those action controls.
+    Context deactivation still does not replace immediate hardware zero, mode restoration, BACK,
+    `stop()`, or child fail-stop cleanup.
+  - **Picker and navigator boundary:** when Up/Down/Select keep the same semantic meaning while only
+    the visible list changes, bind `MenuNavigator` once and let each `MenuScreen` receive those
+    stable events. A selection callback pushes or replaces the next picker; continuously sampled
+    edge state means a held navigation button does not become a new press on the next screen. One
+    context per picker would add registrations, retain dynamically replaced screens, and duplicate
+    dispatch already owned by the navigator. Wrap the navigator as a whole in one context only when
+    the entire wizard is optional relative to other robot controls. Use distinct contexts when the
+    controls' meanings actually change—for example from picker navigation to actuator commands—not
+    merely because the recipient list changed.
+  - **Reusable-helper boundary:** change the first parameter of menu, picker, navigator, tuner, and
+    Task-binding registration helpers from concrete `Bindings` to `BindingRegistrar`; do not add
+    sibling `ControlContext` overloads. Retain a continuously sampled callback guard only where it
+    is deliberately the smaller one-screen/one-action policy. Repeated hazardous action groups use
+    a context and should not also repeat an `active` predicate inside every helper callback. The
+    stateful `ScalarTuner`/`IntTuner` axis-update methods are not ordinary scalar-copy bindings: they
+    update persistent targets only while displaced (and integer nudge also consumes `dtSec`). Keep
+    their explicit activity gate in this item rather than pretending contextual zero-copy has the
+    same meaning; do not pass a persistent tuner target setter to contextual `copyEachCycle`.
+  - **Bounded implementation scope:** change only `Bindings`, the narrow `TaskBindings` adapter,
+    directly needed tester registration helpers/callers, focused tests, Javadocs, the sources/loop
+    and controls-owner guides, and this tracker. Add only `BindingRegistrar`, `ControlContext`, its
+    required `ActivationPolicy`, the parallel zero-neutral contextual `copyEachCycle`, and the
+    helper/TaskBindings parameter migrations needed by this task; do not add a transform to
+    `ScalarSource` or `ControlContext`, alter
+    flat binding execution order, begin API-04, add a global mode enum or priority stack, add an
+    arbitrary contextual scalar fallback API, change `GamepadDevice` calibration behavior, change
+    stateful tuner-axis semantics, replace fresh tester-child lifecycle with contexts, change
+    TaskRunner cancellation, or add season-specific control policy to Phoenix. Keep
+    `PhoenixTeleOpControls` behavior unchanged.
+  - **Software verification plan:** add focused binding tests for inactive silence, effect-free
+    activation under both policies, held activation, false rearm, accept-current baselines, fresh
+    rise/fall, mirror neutralization and both levels, toggle persistence, nudge, independent per-
+    registration rearm, two active contexts, activation mutation during a callback, root same-cycle
+    idempotency, shared predicate sample count, clear/context invalidation, and flat regressions. Add
+    TaskBindings tests proving the one `BindingRegistrar` factory accepts root/context, fresh Task
+    factories enqueue only after accepted events, and context deactivation does not cancel
+    shared-runner work. Add compile/static helper checks proving menu, picker, navigator, and tuner
+    helpers accept either registrar without sibling overloads. Add fake-backed tester regressions
+    proving selection `A` cannot also enable or mutate the selected device, selecting the
+    drivetrain-direction tester with held `A` cannot mirror a motor command, and BACK/reselection
+    rearms safely. Preserve `TesterSuite` fresh-child/stop behavior and verify a navigator screen
+    transition does not double-deliver or manufacture a held navigation edge. Add contextual scalar
+    tests for inactive zero without upstream sampling, effect-free activation, displaced activation
+    under both policies, zero-then-later movement, deactivation/reactivation, policy-specific
+    non-finite recovery, same-cycle idempotency, and continuous copy into both frame-valued and
+    persistent test consumers. Audit every root/context scalar copy to preserve one registration per
+    final command. Run the focused suites, full TeamCode unit tests, FTC Java
+    compile, public-surface/static caller audits, documentation link checks, and `git diff --check`;
+    no robot hardware is required for the input-state contract. Real-controller deadband adequacy
+    remains adoption validation.
+  - **Approval gate:** this is a major public API and lifecycle decision that materially revises the
+    previous split design. One `Bindings.ControlContext` now owns a fully parallel declaration
+    surface for Boolean bindings and zero-neutral scalar copy, with one required context-wide
+    `ActivationPolicy`; root and context share the registration-only `BindingRegistrar` capability
+    so reusable helpers keep one signature while the parent root still owns dispatch and the single
+    heartbeat. Mutually exclusive contexts may represent exactly-one-active mode layers, but stable
+    picker-to-picker navigation stays one `MenuNavigator`, dynamically selected testers remain fresh
+    lifecycle-owned children, and there is no implicit priority or duplicate-sink arbitration. The
+    deliberate gamepad startup recentering remains intact with an explicit neutral-at-construction
+    precondition. Gate 1 is complete and the item is Ready, but implementation must not begin until
+    the user approves this final INPUT-01 context-and-binding-registrar design. No framework or robot
+    code has been changed at this gate.
+  - **Approval (2026-07-21):** the user approved the final INPUT-01
+    context-and-binding-registrar design. Implementation is limited to the recorded context
+    semantics, common registration capability, directly required helper/tester migrations, focused
+    tests, and synchronized documentation; this approval does not authorize INPUT-02 or another
+    tracker item.
+  - **Implementation record (2026-07-21):**
+    - Added the registration-only `BindingRegistrar` capability, implemented by the existing root
+      `Bindings` and its new root-created `Bindings.ControlContext`. The root remains the only
+      heartbeat, clear owner, and context factory. `TaskBindings` keeps one `of(...)` factory that
+      accepts the shared registrar; no root/context overload family or imperative context lifecycle
+      was added.
+    - Implemented the approved `REARM_AFTER_NEUTRAL` and `ACCEPT_CURRENT` policies with one
+      pre-callback activation snapshot per context, effect-free activation, independent Boolean and
+      scalar registration state, persistent contextual toggle state, independent nudge inputs,
+      mirror neutralization, exact-zero contextual scalar safety, policy-specific non-finite
+      recovery, inactive upstream silence, and root same-cycle idempotency. Ordinary root binding
+      phase order and behavior remain covered by regressions.
+    - Changed reusable picker, menu, navigator, tuner, and Task-binding registration helpers to
+      accept `BindingRegistrar` through their existing API shapes. Removed the tuner button
+      helpers' now-redundant trailing activity predicate while preserving the distinct stateful
+      `updateFromAxis(clock, active)` contract.
+    - Migrated stable picker-to-live action groups in the modern hardware, calibration, and
+      localization testers to neutral-rearming contexts without replacing fresh selected-child
+      ownership, BACK, stop, resource release, or hardware fail-stop behavior. The real Phoenix
+      drivetrain-direction tester now suppresses held suite-selection input and reports applied
+      Plant targets rather than raw held-button demand.
+    - The lifecycle audit found that a context alone could not clean persistent tester intent.
+      `CrServoPowerTester` now stops, disarms, and resets its target for selection, BACK, and stop.
+      `ServoPositionTester` snapshots the newly selected device's finite SDK command (not physical
+      feedback), remains write-disabled until a fresh enable, and never transfers the prior servo's
+      retained command. `PinpointPodOffsetCalibrator` keeps its B abort on root bindings so a vision
+      failure cannot hide the stop action while a drive phase continues.
+    - Updated the Framework Principles, public Javadocs, loop/source guidance, controls-owner guide,
+      FTC UI guide, and testing guide. The primary explanation is now ordinary robot TeleOp use:
+      always-eligible root mappings plus optional normal/endgame or manual-mode contexts, with
+      tester navigation retained only as a secondary lifecycle example.
+  - **Adversarial audit (2026-07-21):** initial independent reviews found incomplete reactivation
+    coverage, reduced public method Javadocs, retained actuator requests and inversion across device
+    reselection, a vision-dependent abort binding, a synthetic drivetrain regression that did not
+    exercise the real tester, misleading raw-input telemetry, and wording that implied one
+    group-wide rearm latch or described raw rather than effective contextual Task input. Each
+    finding was corrected before this audit point. The resulting API still has one
+    context factory, one shared registration capability, one root heartbeat, no hidden priority or
+    cancellation, and no change to ordinary `PhoenixTeleOpControls` behavior.
+  - **Automated verification (2026-07-21):**
+    - Focused INPUT-01 matrix: 31 tests across `BindingsControlContextTest` (12),
+      `BindingsRootRegressionTest` (2), `TaskBindingsContextTest` (3),
+      `ContextualUiBindingTest` (2), `ContextualHardwareTesterSafetyTest` (3), and the existing
+      `TesterMenuLifecycleTest` (9), with 0 failures, 0 errors, and 0 skipped. These include real
+      fake-backed CRServo/Servo reselection and the actual Phoenix drivetrain tester entered through
+      `TesterSuite`, not only a synthetic binding example.
+    - Full `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac`: 71 suites and 684 tests,
+      with 0 failures, 0 errors, and 0 skipped; compilation succeeded. Output contained only the
+      existing Java 21/source-8 and FTC app-shell deprecation warnings.
+    - `git diff --check`, all-untracked trailing-whitespace scanning, changed-Markdown local-link
+      checks, stale/duplicate helper-signature searches, one-factory public-surface searches, and
+      external case-study-reference checks passed. `PhoenixTeleOpControls` is unchanged.
+  - **Manual verification (2026-07-21):** the user reviewed the presented INPUT-01 implementation
+    and robot-first documentation at the Android Studio audit point and replied `INPUT-01 looks
+    good`. No controller or robot hardware was available; real gamepad deadband adequacy and
+    physical device behavior remain adopting-robot validation rather than claims made by the
+    software tests.
 
 ### HAPTIC-01 - Driver haptic feedback boundary
 

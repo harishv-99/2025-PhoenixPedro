@@ -4,8 +4,10 @@ import com.qualcomm.robotcore.hardware.CRServo;
 
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 
+import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.tools.tester.BaseTeleOpTester;
 import edu.ftcphoenix.fw.ftc.ui.HardwareNamePicker;
+import edu.ftcphoenix.fw.input.binding.Bindings;
 import edu.ftcphoenix.fw.tools.tester.ui.ScalarTuner;
 
 /**
@@ -26,12 +28,14 @@ import edu.ftcphoenix.fw.tools.tester.ui.ScalarTuner;
  *       <li>Dpad Up/Down: step power</li>
  *       <li>Left stick Y: live override (sets target while moved)</li>
  *       <li>B: zero</li>
- *       <li>BACK: return to picker (change CRServo)</li>
+ *       <li>BACK: stop, disarm, and return to the picker (change CRServo)</li>
  *     </ul>
  *   </li>
  * </ul>
  *
- * <p><b>Safety:</b> power is set to 0 on stop.</p>
+ * <p><b>Safety:</b> every newly selected CRServo starts physically stopped with the tuner disabled,
+ * non-inverted, and its target reset to zero. Release A after choosing, then press it again to
+ * enable that device. Power is also reset to zero on BACK and stop.</p>
  */
 public final class CrServoPowerTester extends BaseTeleOpTester {
 
@@ -107,15 +111,19 @@ public final class CrServoPowerTester extends BaseTeleOpTester {
                 }
         );
 
+        Bindings.ControlContext liveControls = bindings.contextWhen(
+                BooleanSource.of(() -> ready),
+                Bindings.ActivationPolicy.REARM_AFTER_NEUTRAL
+        );
+
         power.bind(
-                bindings,
+                liveControls,
                 gamepads.p1().a(),        // enable
                 gamepads.p1().x(),        // invert
                 gamepads.p1().start(),    // fine/coarse
                 gamepads.p1().dpadUp(),   // inc
                 gamepads.p1().dpadDown(), // dec
-                gamepads.p1().b(),        // zero
-                () -> ready
+                gamepads.p1().b()         // zero
         );
     }
 
@@ -127,6 +135,7 @@ public final class CrServoPowerTester extends BaseTeleOpTester {
         }
 
         // Return to picker state so a different servo can be selected.
+        disarmAndResetPower();
         applyPower(0.0);
 
         ready = false;
@@ -165,6 +174,7 @@ public final class CrServoPowerTester extends BaseTeleOpTester {
     /** {@inheritDoc} */
     @Override
     protected void onStop() {
+        disarmAndResetPower();
         applyPower(0.0);
     }
 
@@ -176,12 +186,24 @@ public final class CrServoPowerTester extends BaseTeleOpTester {
         resolveError = null;
         try {
             servo = ctx.hw.get(CRServo.class, name);
+            disarmAndResetPower();
+            applyPower(0.0);
             ready = true;
         } catch (Exception ex) {
             servo = null;
             ready = false;
             resolveError = ex.getClass().getSimpleName() + ": " + ex.getMessage();
         }
+    }
+
+    private void disarmAndResetPower() {
+        if (power.isEnabled()) {
+            power.toggleEnabled();
+        }
+        if (power.isInverted()) {
+            power.toggleInvert();
+        }
+        power.setTarget(0.0);
     }
 
     private void updateAndRender() {

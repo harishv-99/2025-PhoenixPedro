@@ -7,10 +7,12 @@ import org.firstinspires.ftc.robotcore.external.Telemetry;
 
 import edu.ftcphoenix.fw.core.color.NormalizedRgba;
 import edu.ftcphoenix.fw.core.color.Rgba;
+import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.source.Source;
 import edu.ftcphoenix.fw.ftc.FtcSensors;
 import edu.ftcphoenix.fw.tools.tester.BaseTeleOpTester;
 import edu.ftcphoenix.fw.ftc.ui.HardwareNamePicker;
+import edu.ftcphoenix.fw.input.binding.Bindings;
 import edu.ftcphoenix.fw.tools.tester.ui.ScalarTuner;
 
 /**
@@ -152,37 +154,28 @@ public final class NormalizedColorSensorTester extends BaseTeleOpTester {
                 }
         );
 
-        bindings.onRise(gamepads.p1().x(), () -> {
-            if (!ready) return;
-            viewMode = viewMode.next();
-        });
+        Bindings.ControlContext liveControls = bindings.contextWhen(
+                BooleanSource.of(() -> ready),
+                Bindings.ActivationPolicy.REARM_AFTER_NEUTRAL
+        );
 
-        bindings.onRise(gamepads.p1().a(), () -> {
-            if (!ready) return;
-            toggleFreeze();
-        });
+        liveControls.onRise(gamepads.p1().x(), () -> viewMode = viewMode.next());
 
-        bindings.onRise(gamepads.p1().start(), () -> {
-            if (!ready) return;
-            gain.toggleFine();
-        });
+        liveControls.onRise(gamepads.p1().a(), this::toggleFreeze);
 
-        bindings.onRise(gamepads.p1().dpadLeft(), () -> {
-            if (!ready) return;
+        liveControls.onRise(gamepads.p1().start(), gain::toggleFine);
+
+        liveControls.onRise(gamepads.p1().dpadLeft(), () -> {
             gain.dec();
             applyGainTarget();
         });
 
-        bindings.onRise(gamepads.p1().dpadRight(), () -> {
-            if (!ready) return;
+        liveControls.onRise(gamepads.p1().dpadRight(), () -> {
             gain.inc();
             applyGainTarget();
         });
 
-        bindings.onRise(gamepads.p1().b(), () -> {
-            if (!ready) return;
-            resetGain();
-        });
+        liveControls.onRise(gamepads.p1().b(), this::resetGain);
     }
 
     /**

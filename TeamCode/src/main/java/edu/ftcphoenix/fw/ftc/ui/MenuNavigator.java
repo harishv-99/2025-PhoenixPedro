@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.function.BooleanSupplier;
 
 import edu.ftcphoenix.fw.core.source.BooleanSource;
-import edu.ftcphoenix.fw.input.binding.Bindings;
+import edu.ftcphoenix.fw.input.binding.BindingRegistrar;
 
 /**
  * Stack-based navigator for FTC telemetry UI screens.
@@ -207,7 +207,7 @@ public final class MenuNavigator {
     /**
      * Register navigator input dispatch with standard controls.
      */
-    public void bind(Bindings bindings, UiControls controls) {
+    public void bind(BindingRegistrar bindings, UiControls controls) {
         bind(bindings, controls, new BooleanSupplier() {
             @Override
             public boolean getAsBoolean() {
@@ -219,7 +219,7 @@ public final class MenuNavigator {
     /**
      * Register navigator input dispatch with an enable predicate.
      */
-    public void bind(Bindings bindings, UiControls controls, BooleanSupplier enabled) {
+    public void bind(BindingRegistrar bindings, UiControls controls, BooleanSupplier enabled) {
         if (bindings == null || controls == null) return;
         final BooleanSupplier gate = enabled == null ? new BooleanSupplier() {
             @Override
@@ -323,7 +323,10 @@ public final class MenuNavigator {
         cur.render(telemetry, ctx);
     }
 
-    private void bindOne(Bindings bindings, BooleanSource source, final BooleanSupplier enabled, final Runnable action) {
+    private void bindOne(BindingRegistrar bindings,
+                         BooleanSource source,
+                         final BooleanSupplier enabled,
+                         final Runnable action) {
         if (source == null || action == null) return;
         bindings.onRise(source, new Runnable() {
             @Override

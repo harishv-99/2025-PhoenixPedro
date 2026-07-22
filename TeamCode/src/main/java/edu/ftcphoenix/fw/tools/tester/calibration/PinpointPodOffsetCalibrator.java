@@ -11,6 +11,7 @@ import java.util.function.Function;
 import edu.ftcphoenix.fw.core.geometry.Pose2d;
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
 import edu.ftcphoenix.fw.core.math.MathUtil;
+import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.drive.DriveSignal;
 import edu.ftcphoenix.fw.drive.MecanumDrivebase;
 import edu.ftcphoenix.fw.field.TagLayout;
@@ -30,6 +31,7 @@ import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
 import edu.ftcphoenix.fw.tools.tester.BaseTeleOpTester;
 import edu.ftcphoenix.fw.ftc.ui.HardwareNamePicker;
+import edu.ftcphoenix.fw.input.binding.Bindings;
 
 /**
  * Calibrates goBILDA Pinpoint odometry pod offsets by observing translation drift while rotating in place.
@@ -451,10 +453,16 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
             aprilTagAssistNotice = "Tip: run Calib: Camera Mount to enable AprilTag assist";
         }
 
-        // Controls
-        bindings.onRise(gamepads.p1().x(), this::resetAndClear);
-        bindings.onRise(gamepads.p1().a(), this::onAPress);
-        bindings.onRise(gamepads.p1().y(), this::onYPress);
+        // Keep picker-reused calibration actions separate from a vision-device picker that uses
+        // A and X. Abort stays on the always-eligible root so an active drive phase can still be
+        // stopped if a vision readiness failure deactivates the calibration context.
+        Bindings.ControlContext calibrationControls = bindings.contextWhen(
+                BooleanSource.of(() -> visionPicker == null || selectedVisionDeviceName != null),
+                Bindings.ActivationPolicy.REARM_AFTER_NEUTRAL
+        );
+        calibrationControls.onRise(gamepads.p1().x(), this::resetAndClear);
+        calibrationControls.onRise(gamepads.p1().a(), this::onAPress);
+        calibrationControls.onRise(gamepads.p1().y(), this::onYPress);
         bindings.onRise(gamepads.p1().b(), this::abortSample);
 
         // Start in a clean state
