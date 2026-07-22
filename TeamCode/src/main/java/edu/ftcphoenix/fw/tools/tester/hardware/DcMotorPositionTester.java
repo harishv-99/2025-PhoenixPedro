@@ -5,8 +5,10 @@ import com.qualcomm.robotcore.hardware.DcMotorEx;
 
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 
+import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.tools.tester.BaseTeleOpTester;
 import edu.ftcphoenix.fw.ftc.ui.HardwareNamePicker;
+import edu.ftcphoenix.fw.input.binding.Bindings;
 import edu.ftcphoenix.fw.tools.tester.ui.IntTuner;
 import edu.ftcphoenix.fw.tools.tester.ui.ScalarTuner;
 
@@ -169,9 +171,13 @@ public final class DcMotorPositionTester extends BaseTeleOpTester {
                 }
         );
 
+        Bindings.ControlContext liveControls = bindings.contextWhen(
+                BooleanSource.of(() -> ready),
+                Bindings.ActivationPolicy.REARM_AFTER_NEUTRAL
+        );
+
         // A toggles RUN_TO_POSITION enable (only when ready)
-        bindings.onRise(gamepads.p1().a(), () -> {
-            if (!ready) return;
+        liveControls.onRise(gamepads.p1().a(), () -> {
             targetTicks.toggleEnabled();
 
             // If disabling, force motor quiet immediately.
@@ -181,48 +187,27 @@ public final class DcMotorPositionTester extends BaseTeleOpTester {
         });
 
         // X toggles motor direction (hardware-level)
-        bindings.onRise(gamepads.p1().x(), () -> {
-            if (!ready) return;
-            toggleDirection();
-        });
+        liveControls.onRise(gamepads.p1().x(), this::toggleDirection);
 
         // START toggles fine/coarse for BOTH tuners (so UI feels consistent)
-        bindings.onRise(gamepads.p1().start(), () -> {
-            if (!ready) return;
+        liveControls.onRise(gamepads.p1().start(), () -> {
             targetTicks.toggleFine();
             power.toggleFine();
         });
 
         // Target inc/dec (dpad up/down) — only when ready
-        bindings.onRise(gamepads.p1().dpadUp(), () -> {
-            if (!ready) return;
-            targetTicks.inc();
-        });
-        bindings.onRise(gamepads.p1().dpadDown(), () -> {
-            if (!ready) return;
-            targetTicks.dec();
-        });
+        liveControls.onRise(gamepads.p1().dpadUp(), targetTicks::inc);
+        liveControls.onRise(gamepads.p1().dpadDown(), targetTicks::dec);
 
         // Power inc/dec (dpad right/left) — only when ready
-        bindings.onRise(gamepads.p1().dpadRight(), () -> {
-            if (!ready) return;
-            power.inc();
-        });
-        bindings.onRise(gamepads.p1().dpadLeft(), () -> {
-            if (!ready) return;
-            power.dec();
-        });
+        liveControls.onRise(gamepads.p1().dpadRight(), power::inc);
+        liveControls.onRise(gamepads.p1().dpadLeft(), power::dec);
 
         // Reset encoder
-        bindings.onRise(gamepads.p1().y(), () -> {
-            if (!ready) return;
-            resetEncoderAndZeroTarget();
-        });
+        liveControls.onRise(gamepads.p1().y(), this::resetEncoderAndZeroTarget);
 
         // Hard stop
-        bindings.onRise(gamepads.p1().b(), () -> {
-            if (!ready) return;
-
+        liveControls.onRise(gamepads.p1().b(), () -> {
             // Disable if enabled
             if (targetTicks.isEnabled()) {
                 targetTicks.toggleEnabled();

@@ -36,6 +36,29 @@ around them. If close fails, follow the fail-stop rule above and restart the OpM
 opening a replacement. Display `VisionReadiness` separately from whether a target is currently
 visible.
 
+### Menus, selected testers, and control contexts
+
+A tester chosen from a `TesterSuite` remains a fresh child with its own root `Bindings`. The suite
+stops and discards that child before replacement. Do not keep one parent-owned control context per
+selected tester: a context would retain callbacks but would not own the child's hardware, `stop()`,
+or fail-stop recovery.
+
+Inside one stable tester, a context can separate picker controls from the selected device's action
+controls. Activate the action context from the tester's existing `ready` condition with
+`REARM_AFTER_NEUTRAL`; then the `A` press that selects hardware cannot also enable it or pass a
+live/non-neutral command.
+Menu, picker, and tuner helpers accept either the root or a context through `BindingRegistrar`, so
+the action group does not need repeated `if (!ready) return` checks. Keep any tester-specific INIT
+versus RUN restriction in the activation source.
+
+Context deactivation is input gating, not cleanup. BACK, reselection, failure, and `stop()` must
+still immediately place hardware in the tester's safe state and release owned resources.
+
+For successive pickers, bind Up/Down/Select once to `MenuNavigator` when those buttons keep the same
+meaning and only the current list changes. Use a context when the controls' meaning or eligibility
+changes—for example, picker navigation versus live actuator control—not merely when the navigator
+shows the next screen.
+
 ## Read in this order
 
 1. [`Robot Calibration Tutorials.md`](<Robot Calibration Tutorials.md>)

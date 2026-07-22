@@ -9,7 +9,7 @@ import edu.ftcphoenix.fw.core.math.MathUtil;
 import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.source.ScalarSource;
 import edu.ftcphoenix.fw.core.time.LoopClock;
-import edu.ftcphoenix.fw.input.binding.Bindings;
+import edu.ftcphoenix.fw.input.binding.BindingRegistrar;
 
 /**
  * Reusable "integer target" controller for tester UIs.
@@ -303,8 +303,10 @@ public final class IntTuner {
     /**
      * Bind a standard set of controls to manipulate this tuner.
      *
-     * <p>All actions are gated by {@code active}. Pass something like {@code () -> ready}
-     * so menu inputs don't conflict with your test controls.</p>
+     * <p>The supplied registrar owns whether these actions are eligible. Pass a
+     * {@link edu.ftcphoenix.fw.input.binding.Bindings.ControlContext} when a whole tuner control
+     * group should share one activation policy. Context rearming remains independent for each
+     * registered input.</p>
      *
      * @param bindings bindings registry to attach to
      * @param enableToggle button that toggles enabled/disabled (nullable)
@@ -312,51 +314,32 @@ public final class IntTuner {
      * @param incButton button that increments the target (nullable)
      * @param decButton button that decrements the target (nullable)
      * @param zeroButton button that resets to the disabled value (nullable)
-     * @param active optional gating predicate; if null, actions are always allowed
      */
-    public void bind(Bindings bindings,
+    public void bind(BindingRegistrar bindings,
                      BooleanSource enableToggle,
                      BooleanSource fineToggle,
                      BooleanSource incButton,
                      BooleanSource decButton,
-                     BooleanSource zeroButton,
-                     BooleanSupplier active) {
-
-        BooleanSupplier ok = (active == null) ? () -> true : active;
+                     BooleanSource zeroButton) {
 
         if (enableToggle != null) {
-            bindings.onRise(enableToggle, () -> {
-                if (!ok.getAsBoolean()) return;
-                toggleEnabled();
-            });
+            bindings.onRise(enableToggle, this::toggleEnabled);
         }
 
         if (fineToggle != null) {
-            bindings.onRise(fineToggle, () -> {
-                if (!ok.getAsBoolean()) return;
-                toggleFine();
-            });
+            bindings.onRise(fineToggle, this::toggleFine);
         }
 
         if (incButton != null) {
-            bindings.onRise(incButton, () -> {
-                if (!ok.getAsBoolean()) return;
-                inc();
-            });
+            bindings.onRise(incButton, this::inc);
         }
 
         if (decButton != null) {
-            bindings.onRise(decButton, () -> {
-                if (!ok.getAsBoolean()) return;
-                dec();
-            });
+            bindings.onRise(decButton, this::dec);
         }
 
         if (zeroButton != null) {
-            bindings.onRise(zeroButton, () -> {
-                if (!ok.getAsBoolean()) return;
-                zero();
-            });
+            bindings.onRise(zeroButton, this::zero);
         }
     }
 

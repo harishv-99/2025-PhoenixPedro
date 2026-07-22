@@ -77,6 +77,17 @@ The navigator:
 
 `SelectionMenu` remains useful inside the navigator because it implements `MenuScreen`.
 
+Bind navigation once when Up/Down/Select keep the same meaning while the current screen changes.
+For example, selecting an alliance can push a start-position picker, whose selection pushes a
+strategy picker; the navigator redirects the same continuously sampled controls to the current
+screen. A held selection button does not become a fresh press merely because a new picker appears.
+
+Do not create one control context per picker for that flow. Use a `Bindings.ControlContext` when a
+whole navigator is optional, or when controls actually change meaning or eligibility—for example,
+switching from picker navigation to live hardware controls. UI registration helpers accept either
+root `Bindings` or a context through `BindingRegistrar`; the root still owns the only
+`bindings.update(clock)` call.
+
 
 ## `SelectionMenus`
 

@@ -596,6 +596,105 @@ Why this matters:
 - mode clients can bind against shared capability families instead of raw internals
 - the composition root does not need to know specific button identities
 
+### Root bindings and optional control contexts
+
+The root `Bindings` object is the default. A declaration on it is always eligible, although its
+action still follows the declared event or level—for example, `onRise(...)` runs only on a rise.
+Most simple robots need only this root object.
+
+Create a `Bindings.ControlContext` when a group of mappings shares one changing eligibility rule,
+such as normal versus endgame controls. The context offers the same applicable registration names
+as the root, but the root still owns the only update call. In this TeleOp example, `scoring` and
+`endgame` are robot capability families owned outside the framework:
+
+```java
+public final class MyTeleOpControls {
+    private enum ControlsMode { NORMAL, ENDGAME }
+
+    private final Bindings bindings = new Bindings();
+    private ControlsMode mode = ControlsMode.NORMAL;
+
+    public MyTeleOpControls(GamepadDevice driver,
+                            GamepadDevice operator,
+                            MyScoringCapabilities scoring,
+                            MyEndgameCapabilities endgame) {
+        // Root mappings remain eligible in every mode and select the active layer.
+        bindings.onRise(operator.start(), () -> mode = ControlsMode.ENDGAME);
+        bindings.onRise(operator.back(), () -> mode = ControlsMode.NORMAL);
+        bindings.onRise(driver.back(), scoring::cancelTransientActions);
+
+        BooleanSource normalMode = BooleanSource.of(() -> mode == ControlsMode.NORMAL);
+        BooleanSource endgameMode = BooleanSource.of(() -> mode == ControlsMode.ENDGAME);
+
+        Bindings.ControlContext normalControls = bindings.contextWhen(
+                normalMode,
+                Bindings.ActivationPolicy.REARM_AFTER_NEUTRAL
+        );
+        Bindings.ControlContext endgameControls = bindings.contextWhen(
+                endgameMode,
+                Bindings.ActivationPolicy.REARM_AFTER_NEUTRAL
+        );
+
+        // The same physical button has one meaning in each mutually exclusive mode.
+        normalControls.onRise(operator.a(), scoring::requestSingleShot);
+        endgameControls.onRise(operator.a(), endgame::deploy);
+
+        // Boolean and scalar declarations use the same contextual surface.
+        endgameControls.copyEachCycle(
+                operator.leftY().deadbandNormalized(0.08, -1.0, 1.0),
+                endgame::commandWinchPower
+        );
+    }
+
+    public void update(LoopClock clock) {
+        bindings.update(clock);
+    }
+}
+```
+
+The activation policy is required because accepting a control that is already held or displaced is
+a motion-relevant decision:
+
+- `REARM_AFTER_NEUTRAL` ignores each registered control independently until that Boolean becomes
+  false or that finite scalar becomes exactly zero. One held button does not block another neutral
+  control.
+- `ACCEPT_CURRENT` establishes current Boolean baselines and accepts a current finite scalar. It is
+  useful when the new mode deliberately accepts held levels and displaced analog controls.
+
+Both policies make the activation frame effect-free. Activation does not manufacture a press or
+immediately pass a nonzero scalar. Context activation is sampled once before callbacks, so a mode
+changed by one callback takes effect on the next loop instead of changing the meaning of the rest
+of the current input frame.
+
+Contexts do not have to be globally exclusive. Independent contexts may overlap when they command
+independent meanings and outputs. When contexts remap the same physical controls or capabilities,
+derive mutually exclusive activation sources from one robot-owned mode. Phoenix does not choose a
+priority winner: every eligible registration runs.
+
+`copyEachCycle(...)` on a context has a deliberately narrow contract. Exact zero must be the safe
+inactive command, and there must be exactly one scalar-copy registration for that final command
+across the root and all contexts. A servo hold, nonzero stow value, or mode-dependent arbitration of
+one output stays a single robot-composed source registered at the root. A contextual scalar copy
+does not sample upstream while inactive and publishes zero while inactive, on its activation frame,
+while it is unarmed, or when a sample is non-finite. A non-finite sample disarms
+`REARM_AFTER_NEUTRAL`; `ACCEPT_CURRENT` may accept a later finite sample.
+
+Reusable menu, picker, tuner, and Task-binding helpers accept `BindingRegistrar`, the declaration-
+only capability shared by root `Bindings` and `ControlContext`. Students normally pass the object
+they already have; the interface does not expose `update`, `clear`, or context construction.
+
+A context is not a lifecycle owner. Deactivation suppresses its event/level actions, neutralizes
+its Boolean mirror, and keeps its contextual scalar copy at zero, but it does not cancel queued or
+active Tasks, stop hardware, reset toggle state, or perform subsystem cleanup. The controls owner
+must make those mode-transition effects explicit. Likewise, `Bindings.clear()` invalidates old
+contexts but does not replace robot cleanup.
+
+Use a context only when it removes a repeated eligibility rule. One small conditional action can
+remain one root binding with a visible callback guard. When Up/Down/Select retain the same meaning
+while a wizard advances through different lists, bind one `MenuNavigator`; changing the recipient
+screen is not a new controls mode. See
+[`FTC UI Helpers`](<../ftc-boundary/FTC UI Helpers.md>) for that distinction.
+
 
 ## Step 3.5: add one shared capability aggregate
 

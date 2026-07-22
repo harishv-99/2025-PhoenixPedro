@@ -1,8 +1,10 @@
 package edu.ftcphoenix.robots.phoenix.tester;
 
 import edu.ftcphoenix.fw.actuation.Plant;
+import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.ftc.FtcActuators;
 import edu.ftcphoenix.fw.ftc.drive.FtcMecanumDriveLane;
+import edu.ftcphoenix.fw.input.binding.Bindings;
 import edu.ftcphoenix.fw.tools.tester.BaseTeleOpTester;
 import edu.ftcphoenix.fw.tools.tester.TesterSuite;
 import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
@@ -85,16 +87,21 @@ public final class DrivetrainMotorDirectionTester extends BaseTeleOpTester {
                 .targetedByDefaultWritable(0.0)
                 .build();
 
-        bindings.mirrorOnChange(gamepads.p1().x(),
+        Bindings.ControlContext motorControls = bindings.contextWhen(
+                BooleanSource.constant(true),
+                Bindings.ActivationPolicy.REARM_AFTER_NEUTRAL
+        );
+
+        motorControls.mirrorOnChange(gamepads.p1().x(),
                 high -> plantFL.writableTarget().set(high ? TEST_POWER : 0.0));
 
-        bindings.mirrorOnChange(gamepads.p1().y(),
+        motorControls.mirrorOnChange(gamepads.p1().y(),
                 high -> plantFR.writableTarget().set(high ? TEST_POWER : 0.0));
 
-        bindings.mirrorOnChange(gamepads.p1().a(),
+        motorControls.mirrorOnChange(gamepads.p1().a(),
                 high -> plantBL.writableTarget().set(high ? TEST_POWER : 0.0));
 
-        bindings.mirrorOnChange(gamepads.p1().b(),
+        motorControls.mirrorOnChange(gamepads.p1().b(),
                 high -> plantBR.writableTarget().set(high ? TEST_POWER : 0.0));
 
         stopAll();
@@ -123,10 +130,10 @@ public final class DrivetrainMotorDirectionTester extends BaseTeleOpTester {
 
         telemHeader("Drivetrain Motor Direction");
         telemHint("Hold X/Y/A/B to run one drivetrain motor forward.");
-        ctx.telemetry.addData("FL", gamepads.p1().x().getAsBoolean(clock) ? TEST_POWER : 0.0);
-        ctx.telemetry.addData("FR", gamepads.p1().y().getAsBoolean(clock) ? TEST_POWER : 0.0);
-        ctx.telemetry.addData("BL", gamepads.p1().a().getAsBoolean(clock) ? TEST_POWER : 0.0);
-        ctx.telemetry.addData("BR", gamepads.p1().b().getAsBoolean(clock) ? TEST_POWER : 0.0);
+        ctx.telemetry.addData("FL target", plantFL.getAppliedTarget());
+        ctx.telemetry.addData("FR target", plantFR.getAppliedTarget());
+        ctx.telemetry.addData("BL target", plantBL.getAppliedTarget());
+        ctx.telemetry.addData("BR target", plantBR.getAppliedTarget());
         telemUpdate();
     }
 

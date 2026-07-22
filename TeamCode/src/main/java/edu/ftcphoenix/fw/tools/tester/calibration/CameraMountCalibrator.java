@@ -10,6 +10,7 @@ import java.util.Locale;
 import java.util.function.Function;
 
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
+import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.field.TagLayout;
 import edu.ftcphoenix.fw.ftc.FtcGameTagLayout;
 import edu.ftcphoenix.fw.ftc.FtcTagLayoutDebug;
@@ -23,6 +24,7 @@ import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagObservation;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
 import edu.ftcphoenix.fw.tools.tester.BaseTeleOpTester;
 import edu.ftcphoenix.fw.ftc.ui.HardwareNamePicker;
+import edu.ftcphoenix.fw.input.binding.Bindings;
 
 /**
  * Calibrates {@code robotToCameraPose} (camera mount extrinsics) using:
@@ -274,57 +276,44 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
                 }
         );
 
+        Bindings.ControlContext calibrationControls = bindings.contextWhen(
+                BooleanSource.of(() -> visionReady),
+                Bindings.ActivationPolicy.REARM_AFTER_NEUTRAL
+        );
+
         // B clears samples once vision is already running.
-        bindings.onRise(gamepads.p1().b(), () -> {
-            if (visionReady) {
-                avg.clear();
-            }
-        });
+        calibrationControls.onRise(gamepads.p1().b(), avg::clear);
 
         // Capture sample (only when vision is ready)
-        bindings.onRise(gamepads.p1().a(), () -> {
-            if (!visionReady) return;
+        calibrationControls.onRise(gamepads.p1().a(), () -> {
             if (lastRobotToCameraSample != null) {
                 avg.add(lastRobotToCameraSample);
             }
         });
 
         // Calibration controls (only when vision is ready)
-        bindings.onRise(gamepads.p1().y(), () -> {
-            if (!visionReady) return;
-            selectedTagId++;
-        });
+        calibrationControls.onRise(gamepads.p1().y(), () -> selectedTagId++);
 
-        bindings.onRise(gamepads.p1().x(), () -> {
-            if (!visionReady) return;
-            selectedTagId = Math.max(1, selectedTagId - 1);
-        });
+        calibrationControls.onRise(gamepads.p1().x(),
+                () -> selectedTagId = Math.max(1, selectedTagId - 1));
 
-        bindings.onRise(gamepads.p1().start(), () -> {
-            if (!visionReady) return;
-            fineSteps = !fineSteps;
-        });
+        calibrationControls.onRise(gamepads.p1().start(), () -> fineSteps = !fineSteps);
 
         // Toggle edit mode (RS). Edit mode lets you select which variable you're changing
         // instead of remembering which button maps to which axis.
-        bindings.onRise(gamepads.p1().rs(), () -> {
-            if (!visionReady) return;
-            editMode = !editMode;
-        });
+        calibrationControls.onRise(gamepads.p1().rs(), () -> editMode = !editMode);
 
         // D-pad:
         //  - QUICK mode: dpad X adjusts X, dpad Y adjusts Y (requested)
         //  - EDIT mode: up/down selects a field, left/right changes its value
-        bindings.onRise(gamepads.p1().dpadUp(), () -> {
-            if (!visionReady) return;
+        calibrationControls.onRise(gamepads.p1().dpadUp(), () -> {
             if (editMode) {
                 cycleEditField(-1);
             } else {
                 adjustRobotPose(0.0, +stepXY(), 0.0);
             }
         });
-        bindings.onRise(gamepads.p1().dpadDown(), () -> {
-            if (!visionReady) return;
+        calibrationControls.onRise(gamepads.p1().dpadDown(), () -> {
             if (editMode) {
                 cycleEditField(+1);
             } else {
@@ -332,16 +321,14 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
             }
         });
 
-        bindings.onRise(gamepads.p1().dpadLeft(), () -> {
-            if (!visionReady) return;
+        calibrationControls.onRise(gamepads.p1().dpadLeft(), () -> {
             if (editMode) {
                 adjustEditField(-1);
             } else {
                 adjustRobotPose(-stepXY(), 0.0, 0.0);
             }
         });
-        bindings.onRise(gamepads.p1().dpadRight(), () -> {
-            if (!visionReady) return;
+        calibrationControls.onRise(gamepads.p1().dpadRight(), () -> {
             if (editMode) {
                 adjustEditField(+1);
             } else {
@@ -351,16 +338,14 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
 
         // Yaw adjustment. In QUICK mode we keep the classic LB/RB mapping.
         // In EDIT mode, bumpers behave like +/- on the selected field.
-        bindings.onRise(gamepads.p1().leftBumper(), () -> {
-            if (!visionReady) return;
+        calibrationControls.onRise(gamepads.p1().leftBumper(), () -> {
             if (editMode) {
                 adjustEditField(-1);
             } else {
                 adjustRobotPose(0.0, 0.0, +stepYawRad());
             }
         });
-        bindings.onRise(gamepads.p1().rightBumper(), () -> {
-            if (!visionReady) return;
+        calibrationControls.onRise(gamepads.p1().rightBumper(), () -> {
             if (editMode) {
                 adjustEditField(+1);
             } else {

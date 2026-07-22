@@ -201,6 +201,43 @@ The same edge/toggle tools apply to sensors (ball entering/leaving a gate sensor
 
 ---
 
+## Neutral values and contextual controls
+
+`ScalarSource` and `BooleanSource` are general value streams, not control-only types. A distance,
+encoder position, target error, or battery voltage has no universal neutral value. Phoenix therefore
+does not attach a generic neutral range to every source.
+
+When a source is used as a control, normalize its intended inactive state before registering it. A
+Boolean binding treats final `false` as neutral. A contextual scalar copy using
+`Bindings.ActivationPolicy.REARM_AFTER_NEUTRAL` treats finite exact zero as neutral, so apply the
+appropriate deadband or conditioning first:
+
+```java
+ScalarSource winchPower = gamepads.p2().leftY()
+        .deadbandNormalized(0.08, -1.0, 1.0);
+
+Bindings.ControlContext endgameControls = bindings.contextWhen(
+        endgameMode,
+        Bindings.ActivationPolicy.REARM_AFTER_NEUTRAL
+);
+endgameControls.copyEachCycle(winchPower, endgame::commandWinchPower);
+```
+
+Each contextual registration rearms independently. A held button does not prevent an unrelated
+neutral stick from arming. `ACCEPT_CURRENT` is the explicit alternative when the current held or
+finite scalar value should become eligible after the effect-free activation frame.
+
+`GamepadDevice` intentionally recenters sticks and triggers when it is constructed and whenever
+`calibrate()` is called, then applies its configured deadband. This compensates for controller
+center drift and gives contextual controls an exact zero. The operator must leave every stick and
+trigger at its intended physical neutral during construction or recalibration; software cannot
+distinguish controller drift from an intentionally displaced control at that instant.
+
+For complete context ownership, scalar-output limits, and mode examples, see
+[`Framework Lanes & Robot Controls`](<../design/Framework Lanes & Robot Controls.md>).
+
+---
+
 ## Selection, accumulation, and hold-last patterns
 
 Three patterns show up constantly in real robots:

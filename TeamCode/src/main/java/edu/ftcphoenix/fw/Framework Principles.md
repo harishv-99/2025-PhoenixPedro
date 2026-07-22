@@ -223,6 +223,10 @@ Phoenix is designed around a few core goals:
    * Aim for **one obvious way** to do something. If two APIs overlap, choose one and remove the other.
    * Keep things **parallel** across similar objects:
      consistent capabilities, consistent method names, consistent argument order, and consistent nouns.
+   * When similar owners share only part of an API, expose that smallest shared capability to
+     reusable helpers instead of adding one overload family per owner. Keep heartbeat, clearing,
+     construction, and resource cleanup on the object that actually owns them; parallel declaration
+     methods must not imply parallel lifecycle ownership.
    * Choose one supported public construction layer for an API family and keep sibling operations
      parallel within that layer. A second public layer—for example, exposing both facade factories
      and concrete constructors or `of(...)` factories—needs a distinct capability, not merely

@@ -13,6 +13,7 @@ import java.util.function.Function;
 import edu.ftcphoenix.fw.core.geometry.Pose2d;
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
 import edu.ftcphoenix.fw.core.math.MathUtil;
+import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.field.TagLayout;
 import edu.ftcphoenix.fw.ftc.FtcGameTagLayout;
 import edu.ftcphoenix.fw.ftc.FtcTagLayoutDebug;
@@ -33,6 +34,7 @@ import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelectionSource;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelections;
 import edu.ftcphoenix.fw.tools.tester.BaseTeleOpTester;
 import edu.ftcphoenix.fw.ftc.ui.HardwareNamePicker;
+import edu.ftcphoenix.fw.input.binding.Bindings;
 
 /**
  * Verifies that AprilTag-based localization is working end-to-end.
@@ -288,42 +290,29 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
                 }
         );
 
+        Bindings.ControlContext liveControls = bindings.contextWhen(
+                BooleanSource.of(() -> visionReady),
+                Bindings.ActivationPolicy.REARM_AFTER_NEUTRAL
+        );
+
         // B: clear samples once the vision pipeline is already running.
-        bindings.onRise(gamepads.p1().b(), () -> {
-            if (visionReady) {
-                samples.clear();
-            }
-        });
+        liveControls.onRise(gamepads.p1().b(), samples::clear);
 
         // START: toggle tracking mode (ANY vs SINGLE)
-        bindings.onRise(gamepads.p1().start(), () -> {
-            if (!visionReady) return;
+        liveControls.onRise(gamepads.p1().start(), () -> {
             trackAny = !trackAny;
             rebuildSelectionAndEstimator();
         });
 
         // Tag ID selection (used in SINGLE mode). Dpad Left/Right are the primary controls;
         // Y/X remain as aliases so older muscle memory still works.
-        bindings.onRise(gamepads.p1().dpadRight(), () -> {
-            if (!visionReady) return;
-            incrementSelectedTagId();
-        });
-        bindings.onRise(gamepads.p1().dpadLeft(), () -> {
-            if (!visionReady) return;
-            decrementSelectedTagId();
-        });
-        bindings.onRise(gamepads.p1().y(), () -> {
-            if (!visionReady) return;
-            incrementSelectedTagId();
-        });
-        bindings.onRise(gamepads.p1().x(), () -> {
-            if (!visionReady) return;
-            decrementSelectedTagId();
-        });
+        liveControls.onRise(gamepads.p1().dpadRight(), this::incrementSelectedTagId);
+        liveControls.onRise(gamepads.p1().dpadLeft(), this::decrementSelectedTagId);
+        liveControls.onRise(gamepads.p1().y(), this::incrementSelectedTagId);
+        liveControls.onRise(gamepads.p1().x(), this::decrementSelectedTagId);
 
         // A: capture sample (only when we have a pose)
-        bindings.onRise(gamepads.p1().a(), () -> {
-            if (!visionReady) return;
+        liveControls.onRise(gamepads.p1().a(), () -> {
             if (poseEstimator == null) return;
 
             PoseEstimate est = poseEstimator.getEstimate();

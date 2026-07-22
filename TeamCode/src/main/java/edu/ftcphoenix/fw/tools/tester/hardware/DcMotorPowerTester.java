@@ -10,8 +10,10 @@ import org.firstinspires.ftc.robotcore.external.Telemetry;
 
 import java.util.Locale;
 
+import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.tools.tester.BaseTeleOpTester;
 import edu.ftcphoenix.fw.ftc.ui.HardwareNamePicker;
+import edu.ftcphoenix.fw.input.binding.Bindings;
 import edu.ftcphoenix.fw.tools.tester.ui.ScalarTuner;
 
 /**
@@ -150,22 +152,24 @@ public final class DcMotorPowerTester extends BaseTeleOpTester {
                 }
         );
 
+        Bindings.ControlContext liveControls = bindings.contextWhen(
+                BooleanSource.of(this::controlsActive),
+                Bindings.ActivationPolicy.REARM_AFTER_NEUTRAL
+        );
+
         // Standard scalar bindings (only when ready)
         power.bind(
-                bindings,
+                liveControls,
                 gamepads.p1().a(),         // enable
                 gamepads.p1().x(),         // invert
                 gamepads.p1().start(),     // fine/coarse
                 gamepads.p1().dpadUp(),    // inc
                 gamepads.p1().dpadDown(),  // dec
-                gamepads.p1().b(),         // zero
-                this::controlsActive
+                gamepads.p1().b()          // zero
         );
 
         // Keep diagnostic capture opt-in so the ordinary motor-power tester stays quiet in Logcat.
-        bindings.onRise(gamepads.p1().y(), () -> {
-            if (!controlsActive()) return;
-
+        liveControls.onRise(gamepads.p1().y(), () -> {
             if (captureVelocityComparison) {
                 endVelocityCapture("Y_TOGGLE");
             } else {
@@ -174,8 +178,8 @@ public final class DcMotorPowerTester extends BaseTeleOpTester {
         });
 
         // Exercise a longer accepted interval without sleeping or pausing the motor command loop.
-        bindings.onRise(gamepads.p1().rightBumper(), () -> {
-            if (!controlsActive() || !captureVelocityComparison) return;
+        liveControls.onRise(gamepads.p1().rightBumper(), () -> {
+            if (!captureVelocityComparison) return;
             skipNextVelocityComparisonSample = true;
         });
 

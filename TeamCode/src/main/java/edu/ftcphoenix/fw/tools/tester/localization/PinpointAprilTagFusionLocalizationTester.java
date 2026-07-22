@@ -12,6 +12,7 @@ import java.util.function.Function;
 
 import edu.ftcphoenix.fw.core.geometry.Pose2d;
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
+import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.field.TagLayout;
 import edu.ftcphoenix.fw.ftc.FtcGameTagLayout;
 import edu.ftcphoenix.fw.ftc.FtcTagLayoutDebug;
@@ -42,6 +43,7 @@ import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelectionSource;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelections;
 import edu.ftcphoenix.fw.tools.tester.BaseTeleOpTester;
 import edu.ftcphoenix.fw.ftc.ui.HardwareNamePicker;
+import edu.ftcphoenix.fw.input.binding.Bindings;
 
 /**
  * End-to-end tester for Phoenix's corrected-global-localization stack.
@@ -328,46 +330,38 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
                 }
         );
 
-        bindings.onRise(gamepads.p1().b(), () -> {
-            if (ready && localizationLane != null) {
+        Bindings.ControlContext liveControls = bindings.contextWhen(
+                BooleanSource.of(() -> ready),
+                Bindings.ActivationPolicy.REARM_AFTER_NEUTRAL
+        );
+
+        liveControls.onRise(gamepads.p1().b(), () -> {
+            if (localizationLane != null) {
                 CorrectedPoseEstimator estimator = localizationLane.globalEstimator();
                 estimator.setCorrectionEnabled(!estimator.isCorrectionEnabled());
             }
         });
 
-        bindings.onRise(gamepads.p1().start(), () -> {
-            if (!ready) return;
+        liveControls.onRise(gamepads.p1().start(), () -> {
             trackAny = !trackAny;
             rebuildSelection();
         });
 
-        bindings.onRise(gamepads.p1().dpadRight(), () -> {
-            if (!ready) return;
-            incrementSelectedTagId();
-        });
-        bindings.onRise(gamepads.p1().dpadLeft(), () -> {
-            if (!ready) return;
-            decrementSelectedTagId();
-        });
-        bindings.onRise(gamepads.p1().y(), () -> {
-            if (!ready) return;
-            incrementSelectedTagId();
-        });
-        bindings.onRise(gamepads.p1().x(), () -> {
-            if (!ready) return;
-            decrementSelectedTagId();
-        });
+        liveControls.onRise(gamepads.p1().dpadRight(), this::incrementSelectedTagId);
+        liveControls.onRise(gamepads.p1().dpadLeft(), this::decrementSelectedTagId);
+        liveControls.onRise(gamepads.p1().y(), this::incrementSelectedTagId);
+        liveControls.onRise(gamepads.p1().x(), this::decrementSelectedTagId);
 
-        bindings.onRise(gamepads.p1().a(), () -> {
-            if (!ready || localizationLane == null) return;
+        liveControls.onRise(gamepads.p1().a(), () -> {
+            if (localizationLane == null) return;
             PoseEstimate correction = localizationLane.correctionEstimator().getEstimate();
             if (correction != null && correction.hasPose) {
                 localizationLane.globalEstimator().setPose(correction.toPose2d());
             }
         });
 
-        bindings.onRise(gamepads.p1().rightBumper(), () -> {
-            if (!ready || localizationLane == null) return;
+        liveControls.onRise(gamepads.p1().rightBumper(), () -> {
+            if (localizationLane == null) return;
             localizationLane.globalEstimator().setPose(Pose2d.zero());
         });
     }

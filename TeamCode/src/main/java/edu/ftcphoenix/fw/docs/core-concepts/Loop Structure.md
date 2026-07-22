@@ -153,6 +153,12 @@ For buttons, the most common way to ensure sampling is to register a binding and
 
 `Bindings.update(clock)` is guarded so it will not fire actions twice in a cycle.
 
+Optional `Bindings.ControlContext` objects are declaration groups, not additional heartbeat owners.
+Do not update them separately; the parent `bindings.update(clock)` samples every context's
+activation once before dispatching any callbacks and uses that snapshot for the complete input
+frame. If a callback changes a mode used by a context, the new eligibility starts on the next loop.
+The root's same-cycle idempotency covers both root and contextual registrations.
+
 ### 4.3 TaskRunner is idempotent
 
 `TaskRunner.update(clock)` will not advance the current task twice in one loop cycle.

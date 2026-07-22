@@ -4,8 +4,10 @@ import com.qualcomm.robotcore.hardware.Servo;
 
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 
+import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.tools.tester.BaseTeleOpTester;
 import edu.ftcphoenix.fw.ftc.ui.HardwareNamePicker;
+import edu.ftcphoenix.fw.input.binding.Bindings;
 import edu.ftcphoenix.fw.tools.tester.ui.ScalarTuner;
 
 /**
@@ -20,16 +22,23 @@ import edu.ftcphoenix.fw.tools.tester.ui.ScalarTuner;
  *   <li><b>PICKER (no device chosen yet)</b>: Dpad Up/Down highlight, A choose, X refresh</li>
  *   <li><b>RUN (device chosen)</b>:
  *     <ul>
- *       <li>A: enable/disable apply (disabled holds last applied output)</li>
+ *       <li>A: enable/disable apply (disabled makes no position writes)</li>
  *       <li>X: invert (position becomes 1 - x)</li>
  *       <li>START: fine/coarse step</li>
  *       <li>Dpad Up/Down: step position</li>
  *       <li>Left stick Y: live override (maps [-1..1] → [0..1])</li>
  *       <li>B: center (0.5)</li>
- *       <li>BACK: return to picker (change servo)</li>
+ *       <li>BACK: disable, hold the last commanded position, and return to the picker</li>
  *     </ul>
  *   </li>
  * </ul>
+ *
+ * <p><b>Safety:</b> selecting a servo snapshots that device's current finite SDK command from
+ * {@link Servo#getPosition()} (not physical position feedback), leaves output disabled, and resets
+ * inversion to OFF for that selection. Release A after choosing, then press it again to enable
+ * writes starting from that device's own command snapshot. While disabled the loop does not call
+ * {@link Servo#setPosition(double)};
+ * BACK and stop make one explicit hold write using the selected servo's last commanded position.</p>
  */
 public final class ServoPositionTester extends BaseTeleOpTester {
 
@@ -42,6 +51,7 @@ public final class ServoPositionTester extends BaseTeleOpTester {
 
     private boolean ready = false;
     private String resolveError = null;
+    private double selectedHoldPosition = 0.5;
 
     private final ScalarTuner position =
             new ScalarTuner("Position", 0.0, 1.0, 0.01, 0.05, 0.5)
@@ -111,23 +121,24 @@ public final class ServoPositionTester extends BaseTeleOpTester {
                 }
         );
 
+        Bindings.ControlContext liveControls = bindings.contextWhen(
+                BooleanSource.of(() -> ready),
+                Bindings.ActivationPolicy.REARM_AFTER_NEUTRAL
+        );
+
         // Standard scalar bindings
         position.bind(
-                bindings,
+                liveControls,
                 gamepads.p1().a(),        // enable
                 gamepads.p1().x(),        // invert
                 gamepads.p1().start(),    // fine/coarse
                 gamepads.p1().dpadUp(),   // inc
                 gamepads.p1().dpadDown(), // dec
-                null,                     // (we override B)
-                () -> ready
+                null                      // (we override B)
         );
 
         // B: center
-        bindings.onRise(gamepads.p1().b(), () -> {
-            if (!ready) return;
-            position.setTarget(0.5);
-        });
+        liveControls.onRise(gamepads.p1().b(), () -> position.setTarget(0.5));
     }
 
     /** {@inheritDoc} */
@@ -137,11 +148,9 @@ public final class ServoPositionTester extends BaseTeleOpTester {
             return false;
         }
 
-        // Leave the servo at its last applied position (consistent with onStop()).
-        try {
-            if (servo != null) servo.setPosition(position.lastApplied());
-        } catch (Exception ignored) {
-        }
+        // Disable before releasing the selected device, then explicitly preserve its last command.
+        disablePositionControl();
+        holdSelectedPosition();
 
         ready = false;
         servo = null;
@@ -179,14 +188,8 @@ public final class ServoPositionTester extends BaseTeleOpTester {
     /** {@inheritDoc} */
     @Override
     protected void onStop() {
-        // Leave servo at whatever it was last commanded to.
-        // (HOLD_LAST_APPLIED already models this behavior.)
-        if (servo != null) {
-            try {
-                servo.setPosition(position.lastApplied());
-            } catch (Exception ignored) {
-            }
-        }
+        disablePositionControl();
+        holdSelectedPosition();
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -196,9 +199,21 @@ public final class ServoPositionTester extends BaseTeleOpTester {
     private void tryResolve(String name) {
         resolveError = null;
         try {
-            servo = ctx.hw.get(Servo.class, name);
+            Servo resolvedServo = ctx.hw.get(Servo.class, name);
+            double currentPosition = resolvedServo.getPosition();
+            if (!Double.isFinite(currentPosition)) {
+                throw new IllegalStateException(
+                        "Servo '" + name + "' returned a non-finite position");
+            }
+
+            disablePositionControl();
+            resetPositionInversion();
+            position.setTarget(currentPosition);
+            selectedHoldPosition = position.target();
+            servo = resolvedServo;
             ready = true;
         } catch (Exception ex) {
+            disablePositionControl();
             servo = null;
             ready = false;
             resolveError = ex.getClass().getSimpleName() + ": " + ex.getMessage();
@@ -208,12 +223,35 @@ public final class ServoPositionTester extends BaseTeleOpTester {
     private void updateAndRender() {
         position.updateFromAxis(clock, () -> ready);
 
-        double applied = position.applied();
-        if (servo != null) {
+        if (position.isEnabled() && servo != null) {
+            double applied = position.applied();
             servo.setPosition(applied);
+            selectedHoldPosition = applied;
         }
 
-        renderTelemetry(applied);
+        renderTelemetry();
+    }
+
+    private void disablePositionControl() {
+        if (position.isEnabled()) {
+            position.toggleEnabled();
+        }
+    }
+
+    private void resetPositionInversion() {
+        if (position.isInverted()) {
+            position.toggleInvert();
+        }
+    }
+
+    private void holdSelectedPosition() {
+        if (servo == null) {
+            return;
+        }
+        try {
+            servo.setPosition(selectedHoldPosition);
+        } catch (Exception ignored) {
+        }
     }
 
     private void renderPicker() {
@@ -236,18 +274,18 @@ public final class ServoPositionTester extends BaseTeleOpTester {
         t.update();
     }
 
-    private void renderTelemetry(double applied) {
+    private void renderTelemetry() {
         Telemetry t = ctx.telemetry;
         t.clearAll();
 
         t.addLine("=== Servo Position Tester ===");
         t.addLine("Servo: " + servoName);
-        t.addData("Enable [A]", position.isEnabled() ? "ON" : "OFF (hold last)");
+        t.addData("Enable [A]", position.isEnabled() ? "ON" : "OFF (no writes)");
         t.addData("Invert [X]", position.isInverted() ? "ON" : "OFF");
         t.addData("Step [START]", "%s (%.3f)", position.isFine() ? "FINE" : "COARSE", position.step());
         t.addData("Position target [Dpad U/D | LeftStickY]", "%.3f", position.target());
         t.addData("Center [B]", "target -> 0.500");
-        t.addData("Applied now", "%.3f", applied);
+        t.addData("Selected hold / last command", "%.3f", selectedHoldPosition);
 
         if (servo != null) {
             try {
