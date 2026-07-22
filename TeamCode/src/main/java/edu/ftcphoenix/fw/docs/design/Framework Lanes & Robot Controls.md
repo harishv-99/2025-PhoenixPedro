@@ -695,6 +695,54 @@ while a wizard advances through different lists, bind one `MenuNavigator`; chang
 screen is not a new controls mode. See
 [`FTC UI Helpers`](<../ftc-boundary/FTC UI Helpers.md>) for that distinction.
 
+### Keep driver haptics separate from gamepad input
+
+Although the FTC SDK exposes input and rumble through the same gamepad object, they have different
+roles in robot code. `GamepadDevice` remains an input source. The composition root creates one
+recipient-specific output sink for each controller that needs feedback, then gives that narrow sink
+to the controls owner or a dedicated driver-feedback owner that owns cue mapping:
+
+```java
+HapticSink driverHaptics = FtcHaptics.gamepad(gamepad1);
+HapticSink operatorHaptics = FtcHaptics.gamepad(gamepad2);
+
+controls = new MyTeleOpControls(
+        gamepads,
+        driverHaptics,
+        operatorHaptics,
+        profile.controls
+);
+```
+
+A normal state-change cue belongs at the transition, not in code that repeats every loop. For
+example, a controls owner can bind a status edge to one fixed pulse:
+
+```java
+bindings.onRise(
+        intakeFull,
+        () -> operatorHaptics.pulse(1.0, 0.50)
+);
+```
+
+That controls/driver-feedback owner chooses what the cue means, who receives it, its strength, and
+its duration. A supervisor or service may expose the status or robot policy it consumes; the
+framework only translates the resulting request to the FTC gamepad. If one state intentionally
+needs a periodic reminder, give that reminder its own `Cooldown`; do not wrap every cue in one
+shared cooldown that could suppress a later urgent warning. An urgent pulse may deliberately
+replace an ordinary pulse already in progress.
+
+Pulse strength must be finite and in `(0, 1]`; duration must be finite, positive seconds. Use
+`stop()` instead of treating zero as a second spelling for stop. `pulse(...)` is a command, not a
+delivery receipt. Through `FtcHaptics`, the SDK retains only the latest undelivered request, and a
+delivered pulse replaces the current effect. The adapter rounds a positive strength below the
+SDK's first nonzero command level up to that level, and rounds a positive sub-millisecond duration
+up to one millisecond. Controller rumble support and physical feel still vary; there is no
+availability or completion query.
+The composition root best-effort attempts `stop()` on every owned sink during OpMode cleanup (for
+example, with `CleanupActions.attemptAll(driverHaptics::stop, operatorHaptics::stop)`). That stop is
+also a queued SDK request rather than confirmation that the controller stopped immediately. The
+sink has no update heartbeat and creates no background owner.
+
 
 ## Step 3.5: add one shared capability aggregate
 

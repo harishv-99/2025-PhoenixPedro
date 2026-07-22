@@ -119,6 +119,21 @@ root continues calling `update(clock)` with the shared `LoopClock`, and the adap
 Task's same-cycle update. Use route or guidance Tasks, not timed open-loop drive, for normal Pedro
 route movement.
 
+### 3.1 Haptic commands do not add a loop phase
+
+A `HapticSink` is command-only. A controls binding or dedicated driver-feedback owner calls
+`pulse(...)` when its event occurs; the sink has no `update(clock)` method, background thread, or
+separate heartbeat. A supervisor or service may supply status or robot policy, but it does not make
+the low-level sink own cue mapping. Use `Bindings.onRise(...)` for an ordinary state-change cue. If
+the robot intentionally repeats one reminder while a condition stays true, make that repeat policy
+visible with a dedicated `Cooldown` for that event rather than calling `pulse(...)`
+unconditionally every loop.
+
+During OpMode cleanup, the composition root calls `stop()` on each haptic sink it constructed.
+For the `FtcHaptics` adapter, both pulse and stop are queued, best-effort SDK commands. The queue
+retains only the latest undelivered request, and a delivered request displaces the current effect;
+neither call reports physical delivery, and controller support varies.
+
 ---
 
 ## 4. Idempotency: “safe if called twice”

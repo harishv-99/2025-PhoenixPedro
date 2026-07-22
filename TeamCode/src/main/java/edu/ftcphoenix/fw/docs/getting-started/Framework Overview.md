@@ -20,10 +20,11 @@ Most robot code should only need imports from these packages:
 
 * `edu.ftcphoenix.fw.input` — gamepad wrappers (`Gamepads`, `GamepadDevice`) that expose axes as `ScalarSource` and buttons as `BooleanSource`.
 * `edu.ftcphoenix.fw.input.binding` — `Bindings`: map boolean signal events and levels to actions.
+* `edu.ftcphoenix.fw.haptic` — the device-neutral `HapticSink` used by robot controls for short controller feedback cues.
 * `edu.ftcphoenix.fw.task` — `Task`, `TaskRunner`, `Tasks`: non-blocking macros over time.
 * `edu.ftcphoenix.fw.actuation` — `Plant`, `Plants`, `PlantTasks`: mechanism/runtime abstractions you command with numeric targets.
 * `edu.ftcphoenix.fw.drive` — `DriveSignal`, `DriveSource`, `DriveCommandSink`, `MecanumDrivebase` (FTC-independent drive logic).
-* `edu.ftcphoenix.fw.ftc` — FTC entrypoints/adapters (e.g. `FtcDrives` for drivetrain wiring).
+* `edu.ftcphoenix.fw.ftc` — FTC entrypoints/adapters (for example, `FtcDrives` for drivetrain wiring and `FtcHaptics` for controller feedback).
 * `edu.ftcphoenix.fw.ftc.ui` — telemetry UI helpers such as `SelectionMenu`, `MenuNavigator`, and `HardwareNamePicker`.
 * `edu.ftcphoenix.fw.sensing` — sensor-facing wrappers (vision, odometry, etc.).
 * `edu.ftcphoenix.fw.localization` — pose estimation (AprilTags, odometry, lightweight fusion, optional EKF-style fusion).
