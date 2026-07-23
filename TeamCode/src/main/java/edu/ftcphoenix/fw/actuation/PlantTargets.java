@@ -17,8 +17,9 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * student-facing rule: <b>anything intended to become a Plant target should be expressed as a
  * {@link PlantTargetSource}</b>. Simple values are lifted with {@link #exact(double)} or
  * {@link #exact(ScalarSource)}. Behavior arbitration uses {@link #overlay(PlantTargetSource)}:
- * layers added with {@code add(...)} must produce a target when enabled, while
- * {@code addIfAvailable(...)} is the explicit opt-in for enabled layers that may fall through.
+ * every layer's activation gate is sampled once, then target producers are resolved lazily from
+ * highest to lowest priority. Layers added with {@code add(...)} must produce a target when enabled,
+ * while {@code addIfAvailable(...)} is the explicit opt-in for enabled layers that may fall through.
  * Periodic/equivalent target selection uses {@link #plan()}.</p>
  *
  * <h2>Typical exact target</h2>
@@ -99,7 +100,7 @@ public final class PlantTargets {
          */
         REPORT_UNAVAILABLE,
         /**
-         * Keep the lower-priority winner and record that this layer explicitly fell through.
+         * Continue to lower-priority resolution and record that this layer explicitly fell through.
          */
         FALL_THROUGH
     }
@@ -138,7 +139,12 @@ public final class PlantTargets {
     }
 
     /**
-     * Latch the current measurement the first time this source is entered, then keep returning it.
+     * Latch the current measurement while this source is continuously resolved.
+     *
+     * <p>An entry is the first resolution after construction/reset or after a loop-cycle sampling
+     * gap. Repeated resolution in the same cycle and resolution in consecutive cycles retain the
+     * same capture. Resolution after one or more unobserved cycles captures the current measurement
+     * again.</p>
      */
     public static PlantTargetSource holdMeasuredTargetOnEntry(double fallbackIfNoMeasurement) {
         return new HoldMeasuredTargetSource(fallbackIfNoMeasurement);
@@ -237,6 +243,7 @@ public final class PlantTargets {
         private final double fallback;
         private boolean latched;
         private double latchedTarget;
+        private long lastResolvedCycle = Long.MIN_VALUE;
 
         HoldMeasuredTargetSource(double fallback) {
             if (!Double.isFinite(fallback))
@@ -247,10 +254,12 @@ public final class PlantTargets {
 
         @Override
         public PlantTargetPlan resolve(PlantTargetContext context, LoopClock clock) {
-            if (!latched) {
+            long cycle = Objects.requireNonNull(clock, "clock").cycle();
+            if (!latched || hasSamplingGap(lastResolvedCycle, cycle)) {
                 latchedTarget = context.feedbackAvailable() ? context.measurement() : fallback;
                 latched = true;
             }
+            lastResolvedCycle = cycle;
             return PlantTargetPlan.holdMeasured(latchedTarget, "holding measured target captured on entry");
         }
 
@@ -258,6 +267,7 @@ public final class PlantTargets {
         public void reset() {
             latched = false;
             latchedTarget = fallback;
+            lastResolvedCycle = Long.MIN_VALUE;
         }
 
         @Override
@@ -267,19 +277,21 @@ public final class PlantTargets {
             dbg.addData(p + ".class", "HoldMeasuredTargetSource")
                     .addData(p + ".fallback", fallback)
                     .addData(p + ".latched", latched)
-                    .addData(p + ".latchedTarget", latchedTarget);
+                    .addData(p + ".latchedTarget", latchedTarget)
+                    .addData(p + ".lastResolvedCycle", lastResolvedCycle);
         }
     }
 
     /**
      * Builder for base-plus-priority plant target overlays.
      *
-     * <p>The base target should be total. Layers are evaluated in insertion order; each enabled
-     * layer that produces a target replaces the current winner, so later enabled layers have higher
-     * priority. Layers added with {@link #add(String, BooleanSource, PlantTargetSource)} must
-     * produce a target when enabled; unavailable active layers report an unavailable plan instead of
-     * silently falling through. Use {@link #addIfAvailable(String, BooleanSource, PlantTargetSource)}
-     * only when an enabled-but-unavailable layer should explicitly keep the lower-priority winner.</p>
+     * <p>The base target should be total. Every activation gate is sampled once in insertion order,
+     * then enabled target producers are resolved lazily in reverse insertion order, so later layers
+     * have higher priority. Layers added with
+     * {@link #add(String, BooleanSource, PlantTargetSource)} must produce a target when enabled;
+     * unavailable active layers report an unavailable plan instead of silently falling through.
+     * Use {@link #addIfAvailable(String, BooleanSource, PlantTargetSource)} only when an
+     * enabled-but-unavailable layer should explicitly continue to the next lower priority.</p>
      */
     public static final class OverlayBuilder {
         private final PlantTargetSource base;
@@ -334,7 +346,8 @@ public final class PlantTargets {
          * Add an enabled layer that may explicitly fall through when unavailable.
          *
          * <p>Use this only when “requested but no valid target” should let lower-priority behavior
-         * continue. Debug output still records that the layer was enabled, unavailable, and skipped.
+         * continue. Debug output still records that the layer was enabled, unavailable, and fell
+         * through.
          * For most behavior layers, prefer {@link #add(String, BooleanSource, PlantTargetSource)} so
          * missing targets are visible as failures.</p>
          */
@@ -357,9 +370,6 @@ public final class PlantTargets {
         final BooleanSource enabled;
         final PlantTargetSource target;
         final LayerUnavailablePolicy unavailablePolicy;
-        boolean lastEnabled;
-        boolean lastFellThrough;
-        PlantTargetPlan lastPlan = PlantTargetPlan.unavailable("not sampled");
 
         Layer(String name,
               BooleanSource enabled,
@@ -372,43 +382,168 @@ public final class PlantTargets {
         }
     }
 
+    private enum LayerResolutionState {
+        NOT_SAMPLED,
+        GATE_FAILED,
+        DISABLED,
+        ENABLED_NOT_REACHED,
+        SHADOWED,
+        SELECTED,
+        FELL_THROUGH,
+        TARGET_FAILED,
+        REQUIRED_UNAVAILABLE
+    }
+
+    private static final class LayerRuntimeState {
+        private static final PlantTargetPlan NOT_SAMPLED_PLAN =
+                PlantTargetPlan.unavailable("not sampled");
+        private static final PlantTargetPlan GATE_NOT_SAMPLED_PLAN =
+                PlantTargetPlan.unavailable("activation gate not sampled");
+        private static final PlantTargetPlan DISABLED_PLAN =
+                PlantTargetPlan.unavailable("layer disabled");
+        private static final PlantTargetPlan ENABLED_NOT_REACHED_PLAN =
+                PlantTargetPlan.unavailable("enabled layer target not reached");
+        private static final PlantTargetPlan SHADOWED_PLAN =
+                PlantTargetPlan.unavailable("enabled layer target shadowed by higher-priority layer");
+        private static final PlantTargetPlan GATE_FAILED_PLAN =
+                PlantTargetPlan.unavailable("activation gate sampling failed");
+        private static final PlantTargetPlan TARGET_FAILED_PLAN =
+                PlantTargetPlan.unavailable("target resolution failed");
+
+        boolean enabled;
+        boolean targetSampled;
+        boolean fellThrough;
+        LayerResolutionState resolutionState = LayerResolutionState.NOT_SAMPLED;
+        PlantTargetPlan plan = NOT_SAMPLED_PLAN;
+
+        void clearForGateSampling() {
+            enabled = false;
+            targetSampled = false;
+            fellThrough = false;
+            resolutionState = LayerResolutionState.NOT_SAMPLED;
+            plan = GATE_NOT_SAMPLED_PLAN;
+        }
+
+        void reset() {
+            enabled = false;
+            targetSampled = false;
+            fellThrough = false;
+            resolutionState = LayerResolutionState.NOT_SAMPLED;
+            plan = NOT_SAMPLED_PLAN;
+        }
+    }
+
     private static final class OverlayTargetSource implements PlantTargetSource {
+        private static final PlantTargetPlan INCOMPLETE_PLAN =
+                PlantTargetPlan.unavailable("overlay resolution did not complete");
+
         private final PlantTargetSource base;
         private final Layer[] layers;
+        private final LayerRuntimeState[] layerStates;
         private PlantTargetPlan lastPlan = PlantTargetPlan.unavailable("not sampled");
-        private String lastWinner = "base";
+        private String lastWinner = "not sampled";
+        private boolean lastBaseSampled;
 
         OverlayTargetSource(PlantTargetSource base, Layer[] layers) {
             this.base = base;
             this.layers = layers;
+            this.layerStates = new LayerRuntimeState[layers.length];
+            for (int i = 0; i < layerStates.length; i++) {
+                layerStates[i] = new LayerRuntimeState();
+            }
         }
 
         @Override
         public PlantTargetPlan resolve(PlantTargetContext context, LoopClock clock) {
-            PlantTargetPlan winner = base.resolve(context, clock);
-            lastWinner = "base";
-            for (Layer layer : layers) {
-                boolean enabled = layer.enabled.getAsBoolean(clock);
-                layer.lastEnabled = enabled;
-                layer.lastFellThrough = false;
-                if (!enabled) {
-                    layer.lastPlan = PlantTargetPlan.unavailable("layer disabled");
-                    continue;
+            Objects.requireNonNull(clock, "clock");
+            lastPlan = INCOMPLETE_PLAN;
+            lastWinner = "not resolved";
+            lastBaseSampled = false;
+
+            for (LayerRuntimeState state : layerStates) {
+                state.clearForGateSampling();
+            }
+
+            // Activation sources are arbitration state, not target-producing branches. Sample every
+            // gate once before resolving a target so queues, edges, and debounce state stay current,
+            // and so target-side effects cannot change this loop's priority snapshot.
+            for (int i = 0; i < layers.length; i++) {
+                Layer layer = layers[i];
+                LayerRuntimeState state = layerStates[i];
+                try {
+                    state.enabled = layer.enabled.getAsBoolean(clock);
+                } catch (RuntimeException failure) {
+                    state.resolutionState = LayerResolutionState.GATE_FAILED;
+                    state.plan = LayerRuntimeState.GATE_FAILED_PLAN;
+                    lastWinner = layer.name + " activation failed";
+                    lastPlan = state.plan;
+                    throw failure;
                 }
-                PlantTargetPlan plan = layer.target.resolve(context, clock);
-                layer.lastPlan = plan;
+                state.resolutionState = state.enabled
+                        ? LayerResolutionState.ENABLED_NOT_REACHED
+                        : LayerResolutionState.DISABLED;
+                state.plan = state.enabled
+                        ? LayerRuntimeState.ENABLED_NOT_REACHED_PLAN
+                        : LayerRuntimeState.DISABLED_PLAN;
+            }
+
+            PlantTargetPlan winner = null;
+            int decisiveLayerIndex = -1;
+            for (int i = layers.length - 1; i >= 0; i--) {
+                Layer layer = layers[i];
+                LayerRuntimeState state = layerStates[i];
+                if (!state.enabled) continue;
+
+                state.targetSampled = true;
+                PlantTargetPlan plan;
+                try {
+                    plan = layer.target.resolve(context, clock);
+                    if (plan == null) {
+                        throw new NullPointerException(
+                                "Plant target layer '" + layer.name + "' returned null plan");
+                    }
+                } catch (RuntimeException failure) {
+                    state.resolutionState = LayerResolutionState.TARGET_FAILED;
+                    state.plan = LayerRuntimeState.TARGET_FAILED_PLAN;
+                    lastWinner = layer.name + " target failed";
+                    lastPlan = state.plan;
+                    throw failure;
+                }
+                state.plan = plan;
                 if (!plan.hasTarget()) {
                     if (layer.unavailablePolicy == LayerUnavailablePolicy.FALL_THROUGH) {
-                        layer.lastFellThrough = true;
+                        state.fellThrough = true;
+                        state.resolutionState = LayerResolutionState.FELL_THROUGH;
                         continue;
                     }
+                    state.resolutionState = LayerResolutionState.REQUIRED_UNAVAILABLE;
                     lastWinner = layer.name + " unavailable";
                     winner = PlantTargetPlan.unavailable("enabled plant target layer '" + layer.name + "' produced no target: " + plan.reason());
+                    decisiveLayerIndex = i;
                     break;
                 }
+                state.resolutionState = LayerResolutionState.SELECTED;
                 lastWinner = layer.name;
                 winner = plan;
+                decisiveLayerIndex = i;
+                break;
             }
+
+            if (decisiveLayerIndex >= 0) {
+                for (int i = decisiveLayerIndex - 1; i >= 0; i--) {
+                    LayerRuntimeState state = layerStates[i];
+                    if (state.enabled
+                            && state.resolutionState == LayerResolutionState.ENABLED_NOT_REACHED) {
+                        state.resolutionState = LayerResolutionState.SHADOWED;
+                        state.plan = LayerRuntimeState.SHADOWED_PLAN;
+                    }
+                }
+            } else {
+                lastBaseSampled = true;
+                lastWinner = "base";
+                winner = base.resolve(context, clock);
+            }
+
             lastPlan = winner;
             return winner;
         }
@@ -419,12 +554,13 @@ public final class PlantTargets {
             for (Layer layer : layers) {
                 layer.enabled.reset();
                 layer.target.reset();
-                layer.lastEnabled = false;
-                layer.lastFellThrough = false;
-                layer.lastPlan = PlantTargetPlan.unavailable("not sampled");
+            }
+            for (LayerRuntimeState state : layerStates) {
+                state.reset();
             }
             lastPlan = PlantTargetPlan.unavailable("not sampled");
-            lastWinner = "base";
+            lastWinner = "not sampled";
+            lastBaseSampled = false;
         }
 
         @Override
@@ -434,16 +570,20 @@ public final class PlantTargets {
             dbg.addData(p + ".class", "PlantTargetOverlay")
                     .addData(p + ".winner", lastWinner)
                     .addData(p + ".plan", lastPlan)
+                    .addData(p + ".baseSampled", lastBaseSampled)
                     .addData(p + ".layers", layers.length);
             base.debugDump(dbg, p + ".base");
             for (int i = 0; i < layers.length; i++) {
                 Layer layer = layers[i];
+                LayerRuntimeState state = layerStates[i];
                 String lp = p + ".layer" + i;
                 dbg.addData(lp + ".name", layer.name)
-                        .addData(lp + ".enabled", layer.lastEnabled)
+                        .addData(lp + ".enabled", state.enabled)
+                        .addData(lp + ".targetSampled", state.targetSampled)
+                        .addData(lp + ".resolutionState", state.resolutionState)
                         .addData(lp + ".unavailablePolicy", layer.unavailablePolicy)
-                        .addData(lp + ".fellThrough", layer.lastFellThrough)
-                        .addData(lp + ".plan", layer.lastPlan);
+                        .addData(lp + ".fellThrough", state.fellThrough)
+                        .addData(lp + ".plan", state.plan);
                 layer.target.debugDump(dbg, lp + ".target");
             }
         }
@@ -557,7 +697,10 @@ public final class PlantTargets {
         PlantTargetSource holdLastTarget(double initialTarget);
 
         /**
-         * Latch current measurement on entry; use fallback when no measurement is available.
+         * Latch current measurement on each continuously sampled unavailable entry.
+         *
+         * <p>A sampling gap ends the current unavailable entry. If this planner is selected again
+         * and remains unavailable, it captures the then-current measurement.</p>
          */
         PlantTargetSource holdMeasuredTargetOnEntry(double fallbackIfNoMeasurement);
 
@@ -725,8 +868,14 @@ public final class PlantTargets {
 
         @Override
         public PlantTargetPlan resolve(PlantTargetContext context, LoopClock clock) {
-            if (clock != null && clock.cycle() == lastCycle) return lastPlan;
-            if (clock != null) lastCycle = clock.cycle();
+            long cycle = Objects.requireNonNull(clock, "clock").cycle();
+            if (cycle == lastCycle) return lastPlan;
+            if (unavailableKind == UnavailableKind.HOLD_MEASURED
+                    && hasSamplingGap(lastCycle, cycle)) {
+                unavailableActive = false;
+                heldMeasuredTarget = Double.NaN;
+            }
+            lastCycle = cycle;
 
             PlantTargetRequest request = requestSource.get(clock);
             if (request == null || !request.hasCandidates()) {
@@ -896,5 +1045,10 @@ public final class PlantTargets {
 
     private static String cleanName(String name) {
         return name == null || name.trim().isEmpty() ? "layer" : name.trim();
+    }
+
+    private static boolean hasSamplingGap(long lastResolvedCycle, long cycle) {
+        if (lastResolvedCycle == Long.MIN_VALUE) return false;
+        return cycle != lastResolvedCycle && cycle != lastResolvedCycle + 1L;
     }
 }
