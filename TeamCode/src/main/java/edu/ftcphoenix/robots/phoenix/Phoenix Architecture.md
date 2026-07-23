@@ -563,6 +563,38 @@ through `PhoenixCapabilities`, and applies immediate drive zero through the reta
 attempts every safety action and does not release the park continuation after failed cleanup. This
 is robot-owned match policy, not a callback added to generic `Tasks` or an imperative Plant write.
 
+## Loop phase diagnostics
+
+Phoenix has an optional composition-root profiler for investigating a slow or inconsistent loop.
+It is disabled for normal robot operation. To use it, change
+`ENABLE_LOOP_PHASE_PROFILING` near the top of `PhoenixRobot` from `false` to `true`, rebuild and
+deploy the robot code, and run the TeleOp or Auto that needs investigation. Restore the constant to
+`false` after the diagnostic run. Phoenix resets the profiler's measurement window beside the
+shared clock at the FTC START boundary.
+
+When enabled, `loopProfile.*` rows appear on the FTC Driver Station in the same telemetry frame as
+the normal Phoenix status. Latest values describe the preceding completed profiled span; average
+and maximum values cover all completed spans since FTC START reset the measurement window. This
+span covers the explicit boundaries inside `PhoenixRobot.updateTeleOp()` or `updateAuto()`, not the
+complete FTC callback. The displayed sample is intentionally one cycle behind: Phoenix must commit
+the current telemetry frame before it can finish measuring that frame's `telemetry` phase. No
+second telemetry update is performed.
+
+TeleOp distinguishes `visionReadiness`, `localization`, `targeting`, `controls`, `scoring`,
+`driveAssist`, `drive`, `snapshots`, and `telemetry`. Auto uses the same applicable names and
+replaces the TeleOp control/assist phases with `tasks`. `visionReadiness` measures Phoenix's
+readiness sample, not asynchronous camera processing. These are stable high-level ownership
+boundaries, not timings inside every subsystem. They measure only synchronous work inside those
+calls; vendor or camera work running on another thread is not directly attributed to a Phoenix
+phase.
+
+Use the profiler when drive or controls occasionally feel delayed, a Pedro route looks uneven, or
+adding vision, localization, mechanism work, or telemetry makes the loop slower. It can show which
+high-level phase deserves closer investigation and provide before/after evidence for an
+optimization. It does not identify a hardware fault or prove a scheduling guarantee, and robot
+behavior must never branch on its results. `LoopClock` remains Phoenix's one behavioral heartbeat;
+the profiler's private monotonic stopwatch is diagnostic only. With the constant left `false`, the
+profiler performs no stopwatch reads, allocations, or telemetry output.
 
 ## Loop order
 

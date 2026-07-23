@@ -231,6 +231,81 @@ Avoid these patterns:
 
 If you need time, take it from the `LoopClock`.
 
+### 5.1 Optional loop-phase diagnostics
+
+When the whole loop is slow and you need to find the owner, the composition root may opt into a
+`LoopPhaseProfiler`. This is a diagnostic observer, not another behavioral clock. It hides its own
+monotonic stopwatch, never advances `LoopClock`, and must never supply a value that changes Tasks,
+controllers, targets, guards, or other robot behavior.
+
+Keep the normal loop order visible and mark only stable, high-level boundaries. `finishPhase(name)`
+names the interval that just completed, starting at `startCycle(clock)` or the preceding
+`finishPhase(...)`. The profiler deliberately has no nested-span, callback, scheduler, sleep, or
+loop-rate API.
+
+```java
+private static final boolean DEBUG_LOOP_PHASES = false;
+
+private final LoopPhaseProfiler loopPhases =
+        LoopPhaseProfiler.create(DEBUG_LOOP_PHASES);
+private DebugSink debugSink = NullDebugSink.INSTANCE;
+
+@Override
+public void init() {
+    // Retain one output adapter; do not allocate it inside loop().
+    debugSink = DEBUG_LOOP_PHASES
+            ? new FtcTelemetryDebugSink(telemetry)
+            : NullDebugSink.INSTANCE;
+}
+
+@Override
+public void start() {
+    clock.reset(getRuntime());
+    loopPhases.reset();
+}
+
+@Override
+public void loop() {
+    clock.update(getRuntime());
+    loopPhases.startCycle(clock);
+
+    localization.update(clock);
+    loopPhases.finishPhase("localization");
+
+    bindings.update(clock);
+    loopPhases.finishPhase("bindings");
+
+    macroRunner.update(clock);
+    loopPhases.finishPhase("tasks");
+
+    drivebase.update(clock);
+    drivebase.drive(driveSource.get(clock).clamped());
+    loopPhases.finishPhase("drive");
+
+    shooter.update(clock);
+    loopPhases.finishPhase("plants");
+
+    // During this cycle, this displays the previous completed cycle.
+    loopPhases.debugDump(debugSink, "loopPhases");
+    telemetry.update();
+    loopPhases.finishPhase("telemetry");
+
+    loopPhases.finishCycle(clock);
+}
+```
+
+Leave `DEBUG_LOOP_PHASES` false during ordinary robot operation. When it is true,
+`snapshot()` and `debugDump(...)` report only fully completed cycles. Because telemetry is rendered
+before its own phase can finish, that phase first appears on the next telemetry frame. Use stable
+literal names such as `"localization"` and `"tasks"`; do not generate one name per device, route,
+or target.
+
+The reported seconds are monotonic elapsed wall time. They can include operating-system scheduling
+pauses and profiler overhead; they are not CPU time and do not cover work before `startCycle` or
+after `finishCycle`, so they are not the complete FTC callback period. If the same profiler has
+already collected data when the composition root deliberately resets its `LoopClock`, call
+`loopPhases.reset()` at that boundary while no profiler cycle is active, as the example does.
+
 ---
 
 ## 6. Rate limiting and the drive update call
