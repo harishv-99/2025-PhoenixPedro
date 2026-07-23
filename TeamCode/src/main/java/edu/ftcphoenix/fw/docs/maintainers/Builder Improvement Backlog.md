@@ -42,7 +42,7 @@ must answer exactly one preference question (`nearestToMeasurement()`, `preferIn
 `preferDecreasing()`, or `preferRangeCenter()`), then exactly one unreachable-candidate question
 (`rejectUnreachable()` or `clampUnreachableToRange()`). Each answer returns a type that exposes
 only the next question, so a later call cannot silently replace an earlier choice. `doneAccept()`
-remains because `accept()` is a multi-setting optional tuning branch (`maxRequestAgeSec(...)`,
+remains because `accept()` is a multi-setting optional tuning branch (`maxObservationAgeSec(...)`,
 `minQuality(...)`).
 
 The older target-planner family and scalar overlay helper were removed instead of kept as parallel

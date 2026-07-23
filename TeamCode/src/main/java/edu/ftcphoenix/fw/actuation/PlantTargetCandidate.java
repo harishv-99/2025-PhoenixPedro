@@ -6,6 +6,13 @@ package edu.ftcphoenix.fw.actuation;
  * <p>A candidate may be exact or periodic-equivalent, and absolute or relative to the current
  * measurement. A tray with several valid slots can issue a request with several candidates; a turret
  * facing a point usually issues one periodic-equivalent candidate.</p>
+ *
+ * <p>Ordinary factories describe timeless robot intent. {@code observed...} factories describe a
+ * value derived from an observation and carry that observation's stable timestamp in the consuming
+ * {@link edu.ftcphoenix.fw.core.time.LoopClock} timebase. Observation age is derived by the planner
+ * when the request is resolved; it is not stored as a second, potentially contradictory freshness fact.
+ * Quality and timestamp metadata are checked during resolution so a malformed live observation can
+ * follow the plan's unavailable policy instead of throwing while the source constructs it.</p>
  */
 public final class PlantTargetCandidate {
 
@@ -16,8 +23,8 @@ public final class PlantTargetCandidate {
     public final boolean usesPlantPeriod;
     public final boolean relative;
     public final double quality;
-    public final double ageSec;
     public final double timestampSec;
+    private final boolean observed;
 
     private PlantTargetCandidate(String id,
                                  double value,
@@ -26,8 +33,8 @@ public final class PlantTargetCandidate {
                                  boolean usesPlantPeriod,
                                  boolean relative,
                                  double quality,
-                                 double ageSec,
-                                 double timestampSec) {
+                                 double timestampSec,
+                                 boolean observed) {
         if (!Double.isFinite(value)) {
             throw new IllegalArgumentException("Plant target candidate value must be finite");
         }
@@ -41,22 +48,30 @@ public final class PlantTargetCandidate {
         this.usesPlantPeriod = usesPlantPeriod;
         this.relative = relative;
         this.quality = quality;
-        this.ageSec = ageSec;
         this.timestampSec = timestampSec;
+        this.observed = observed;
     }
 
     /**
      * Creates an absolute exact candidate.
      */
     public static PlantTargetCandidate exact(String id, double value) {
-        return exact(id, value, 1.0, 0.0, Double.NaN);
+        return new PlantTargetCandidate(id, value, false, Double.NaN, false, false,
+                1.0, Double.NaN, false);
     }
 
     /**
-     * Creates an absolute exact candidate with quality/timing metadata.
+     * Creates an absolute exact candidate derived from an observation.
+     *
+     * @param quality observation quality for planner acceptance
+     * @param timestampSec stable observation timestamp in the consuming loop clock's timebase
      */
-    public static PlantTargetCandidate exact(String id, double value, double quality, double ageSec, double timestampSec) {
-        return new PlantTargetCandidate(id, value, false, Double.NaN, false, false, quality, ageSec, timestampSec);
+    public static PlantTargetCandidate observedExact(String id,
+                                                     double value,
+                                                     double quality,
+                                                     double timestampSec) {
+        return new PlantTargetCandidate(id, value, false, Double.NaN, false, false,
+                quality, timestampSec, true);
     }
 
     /**
@@ -64,71 +79,118 @@ public final class PlantTargetCandidate {
      * declared period.
      */
     public static PlantTargetCandidate equivalentPosition(String id, double value) {
-        return equivalentPosition(id, value, 1.0, 0.0, Double.NaN);
+        return new PlantTargetCandidate(id, value, true, Double.NaN, true, false,
+                1.0, Double.NaN, false);
     }
 
     /**
-     * Creates a plant-period equivalent-position candidate with quality/timing metadata.
+     * Creates a plant-period equivalent-position candidate derived from an observation.
+     *
+     * @param quality observation quality for planner acceptance
+     * @param timestampSec stable observation timestamp in the consuming loop clock's timebase
      */
-    public static PlantTargetCandidate equivalentPosition(String id,
-                                                          double value,
-                                                          double quality,
-                                                          double ageSec,
-                                                          double timestampSec) {
-        return new PlantTargetCandidate(id, value, true, Double.NaN, true, false, quality, ageSec, timestampSec);
+    public static PlantTargetCandidate observedEquivalentPosition(String id,
+                                                                  double value,
+                                                                  double quality,
+                                                                  double timestampSec) {
+        return new PlantTargetCandidate(id, value, true, Double.NaN, true, false,
+                quality, timestampSec, true);
     }
 
     /**
      * Creates an absolute periodic candidate with an explicit period.
      */
     public static PlantTargetCandidate periodic(String id, double value, double period) {
-        return periodic(id, value, period, 1.0, 0.0, Double.NaN);
+        return new PlantTargetCandidate(id, value, true, period, false, false,
+                1.0, Double.NaN, false);
     }
 
     /**
-     * Creates an absolute periodic candidate with quality/timing metadata.
+     * Creates an absolute periodic candidate derived from an observation.
+     *
+     * @param quality observation quality for planner acceptance
+     * @param timestampSec stable observation timestamp in the consuming loop clock's timebase
      */
-    public static PlantTargetCandidate periodic(String id, double value, double period, double quality, double ageSec, double timestampSec) {
-        return new PlantTargetCandidate(id, value, true, period, false, false, quality, ageSec, timestampSec);
+    public static PlantTargetCandidate observedPeriodic(String id,
+                                                        double value,
+                                                        double period,
+                                                        double quality,
+                                                        double timestampSec) {
+        return new PlantTargetCandidate(id, value, true, period, false, false,
+                quality, timestampSec, true);
     }
 
     /**
      * Creates a relative exact candidate: target = current measurement + delta.
      */
     public static PlantTargetCandidate relative(String id, double delta) {
-        return new PlantTargetCandidate(id, delta, false, Double.NaN, false, true, 1.0, 0.0, Double.NaN);
+        return new PlantTargetCandidate(id, delta, false, Double.NaN, false, true,
+                1.0, Double.NaN, false);
+    }
+
+    /**
+     * Creates a relative exact candidate derived from an observation.
+     *
+     * @param quality observation quality for planner acceptance
+     * @param timestampSec stable observation timestamp in the consuming loop clock's timebase
+     */
+    public static PlantTargetCandidate observedRelative(String id,
+                                                        double delta,
+                                                        double quality,
+                                                        double timestampSec) {
+        return new PlantTargetCandidate(id, delta, false, Double.NaN, false, true,
+                quality, timestampSec, true);
     }
 
     /**
      * Creates a relative equivalent-position candidate using the downstream plant's period.
      */
     public static PlantTargetCandidate relativeEquivalentPosition(String id, double delta) {
-        return relativeEquivalentPosition(id, delta, 1.0, 0.0, Double.NaN);
+        return new PlantTargetCandidate(id, delta, true, Double.NaN, true, true,
+                1.0, Double.NaN, false);
     }
 
     /**
-     * Creates a relative equivalent-position candidate using the downstream plant's period.
+     * Creates a relative equivalent-position candidate derived from an observation and using the
+     * downstream plant's period.
+     *
+     * @param quality observation quality for planner acceptance
+     * @param timestampSec stable observation timestamp in the consuming loop clock's timebase
      */
-    public static PlantTargetCandidate relativeEquivalentPosition(String id,
-                                                                  double delta,
-                                                                  double quality,
-                                                                  double ageSec,
-                                                                  double timestampSec) {
-        return new PlantTargetCandidate(id, delta, true, Double.NaN, true, true, quality, ageSec, timestampSec);
-    }
-
-    /**
-     * Creates a relative periodic candidate: target = current measurement + delta + k*period.
-     */
-    public static PlantTargetCandidate relativePeriodic(String id, double delta, double period, double quality, double ageSec, double timestampSec) {
-        return new PlantTargetCandidate(id, delta, true, period, false, true, quality, ageSec, timestampSec);
+    public static PlantTargetCandidate observedRelativeEquivalentPosition(String id,
+                                                                          double delta,
+                                                                          double quality,
+                                                                          double timestampSec) {
+        return new PlantTargetCandidate(id, delta, true, Double.NaN, true, true,
+                quality, timestampSec, true);
     }
 
     /**
      * Creates a relative periodic candidate: target = current measurement + delta + k*period.
      */
     public static PlantTargetCandidate relativePeriodic(String id, double delta, double period) {
-        return relativePeriodic(id, delta, period, 1.0, 0.0, Double.NaN);
+        return new PlantTargetCandidate(id, delta, true, period, false, true,
+                1.0, Double.NaN, false);
+    }
+
+    /**
+     * Creates a relative periodic candidate derived from an observation:
+     * target = current measurement + delta + k*period.
+     *
+     * @param quality observation quality for planner acceptance
+     * @param timestampSec stable observation timestamp in the consuming loop clock's timebase
+     */
+    public static PlantTargetCandidate observedRelativePeriodic(String id,
+                                                                double delta,
+                                                                double period,
+                                                                double quality,
+                                                                double timestampSec) {
+        return new PlantTargetCandidate(id, delta, true, period, false, true,
+                quality, timestampSec, true);
+    }
+
+    boolean isObserved() {
+        return observed;
     }
 
     @Override
@@ -137,6 +199,6 @@ public final class PlantTargetCandidate {
                 + ", periodic=" + periodic + ", period=" + period
                 + ", usesPlantPeriod=" + usesPlantPeriod
                 + ", relative=" + relative + ", quality=" + quality
-                + ", ageSec=" + ageSec + ", timestampSec=" + timestampSec + '}';
+                + ", observed=" + observed + ", timestampSec=" + timestampSec + '}';
     }
 }

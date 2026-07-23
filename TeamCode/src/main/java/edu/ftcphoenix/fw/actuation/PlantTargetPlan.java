@@ -84,26 +84,31 @@ public final class PlantTargetPlan {
     public static PlantTargetPlan exact(double target, String reason) {
         requireFinite(target, "target");
         return new PlantTargetPlan(true, target, Kind.EXACT, true, false, false,
-                "exact", 1.0, 0.0, Double.NaN, clean(reason, "exact target"));
+                "exact", 1.0, Double.NaN, Double.NaN, clean(reason, "exact target"));
     }
 
-    /**
-     * Create a planned candidate target.
-     */
-    public static PlantTargetPlan planned(double target,
-                                          PlantTargetCandidate candidate,
-                                          boolean clampedByPlanner,
-                                          String reason) {
+    /** Create a planned candidate after the framework planner has validated its metadata. */
+    static PlantTargetPlan planned(double target,
+                                   PlantTargetCandidate candidate,
+                                   double selectedAgeSec,
+                                   boolean clampedByPlanner,
+                                   String reason) {
         requireFinite(target, "target");
         Objects.requireNonNull(candidate, "candidate");
+        if (candidate.isObserved()
+                && (!Double.isFinite(selectedAgeSec) || selectedAgeSec < 0.0)) {
+            throw new IllegalArgumentException(
+                    "selectedAgeSec for an observed candidate must be finite and >= 0, got "
+                            + selectedAgeSec);
+        }
         return new PlantTargetPlan(true, target, Kind.PLANNED_CANDIDATE,
                 !clampedByPlanner,
                 false,
                 clampedByPlanner,
                 candidate.id,
                 candidate.quality,
-                candidate.ageSec,
-                candidate.timestampSec,
+                candidate.isObserved() ? selectedAgeSec : Double.NaN,
+                candidate.isObserved() ? candidate.timestampSec : Double.NaN,
                 clean(reason, "planned target"));
     }
 
@@ -113,7 +118,7 @@ public final class PlantTargetPlan {
     public static PlantTargetPlan fallback(double target, String reason) {
         requireFinite(target, "target");
         return new PlantTargetPlan(true, target, Kind.FALLBACK, false, true, false,
-                "fallback", 1.0, 0.0, Double.NaN, clean(reason, "fallback target"));
+                "fallback", 1.0, Double.NaN, Double.NaN, clean(reason, "fallback target"));
     }
 
     /**
@@ -122,7 +127,7 @@ public final class PlantTargetPlan {
     public static PlantTargetPlan holdLast(double target, String reason) {
         requireFinite(target, "target");
         return new PlantTargetPlan(true, target, Kind.HOLD_LAST_TARGET, false, true, false,
-                "hold-last", 1.0, 0.0, Double.NaN, clean(reason, "holding last target"));
+                "hold-last", 1.0, Double.NaN, Double.NaN, clean(reason, "holding last target"));
     }
 
     /**
@@ -131,7 +136,8 @@ public final class PlantTargetPlan {
     public static PlantTargetPlan holdMeasured(double target, String reason) {
         requireFinite(target, "target");
         return new PlantTargetPlan(true, target, Kind.HOLD_MEASURED_TARGET, false, true, false,
-                "hold-measured", 1.0, 0.0, Double.NaN, clean(reason, "holding measured target"));
+                "hold-measured", 1.0, Double.NaN, Double.NaN,
+                clean(reason, "holding measured target"));
     }
 
     /**
@@ -202,14 +208,18 @@ public final class PlantTargetPlan {
     }
 
     /**
-     * Age metadata copied from the chosen candidate, in seconds.
+     * Age of the chosen observation when the plan was resolved, in seconds.
+     *
+     * <p>Returns {@link Double#NaN} unless this plan selected an observed candidate.</p>
      */
     public double selectedAgeSec() {
         return selectedAgeSec;
     }
 
     /**
-     * Timestamp metadata copied from the chosen candidate, in seconds, if supplied.
+     * Stable timestamp of the chosen observation, in seconds in the loop clock's timebase.
+     *
+     * <p>Returns {@link Double#NaN} unless this plan selected an observed candidate.</p>
      */
     public double selectedTimestampSec() {
         return selectedTimestampSec;

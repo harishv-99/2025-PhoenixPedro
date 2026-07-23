@@ -40,10 +40,16 @@ public final class PlantTargetRequest {
     }
 
     /**
-     * Creates an exact request with quality/timing metadata.
+     * Creates an exact request derived from an observation.
+     *
+     * @param quality observation quality for planner acceptance
+     * @param timestampSec stable observation timestamp in the consuming loop clock's timebase
      */
-    public static PlantTargetRequest exact(String id, double value, double quality, double ageSec, double timestampSec) {
-        return oneOf(PlantTargetCandidate.exact(id, value, quality, ageSec, timestampSec));
+    public static PlantTargetRequest observedExact(String id,
+                                                   double value,
+                                                   double quality,
+                                                   double timestampSec) {
+        return oneOf(PlantTargetCandidate.observedExact(id, value, quality, timestampSec));
     }
 
     /**
@@ -54,10 +60,16 @@ public final class PlantTargetRequest {
     }
 
     /**
-     * Creates an equivalent-position request with quality/timing metadata.
+     * Creates an equivalent-position request derived from an observation.
+     *
+     * @param quality observation quality for planner acceptance
+     * @param timestampSec stable observation timestamp in the consuming loop clock's timebase
      */
-    public static PlantTargetRequest equivalentPosition(String id, double value, double quality, double ageSec, double timestampSec) {
-        return oneOf(PlantTargetCandidate.equivalentPosition(id, value, quality, ageSec, timestampSec));
+    public static PlantTargetRequest observedEquivalentPosition(String id,
+                                                                double value,
+                                                                double quality,
+                                                                double timestampSec) {
+        return oneOf(PlantTargetCandidate.observedEquivalentPosition(id, value, quality, timestampSec));
     }
 
     /**
@@ -68,10 +80,17 @@ public final class PlantTargetRequest {
     }
 
     /**
-     * Creates a periodic request with quality/timing metadata.
+     * Creates a periodic request derived from an observation.
+     *
+     * @param quality observation quality for planner acceptance
+     * @param timestampSec stable observation timestamp in the consuming loop clock's timebase
      */
-    public static PlantTargetRequest periodic(String id, double value, double period, double quality, double ageSec, double timestampSec) {
-        return oneOf(PlantTargetCandidate.periodic(id, value, period, quality, ageSec, timestampSec));
+    public static PlantTargetRequest observedPeriodic(String id,
+                                                      double value,
+                                                      double period,
+                                                      double quality,
+                                                      double timestampSec) {
+        return oneOf(PlantTargetCandidate.observedPeriodic(id, value, period, quality, timestampSec));
     }
 
     /**
@@ -82,6 +101,19 @@ public final class PlantTargetRequest {
     }
 
     /**
+     * Creates a relative exact request derived from an observation.
+     *
+     * @param quality observation quality for planner acceptance
+     * @param timestampSec stable observation timestamp in the consuming loop clock's timebase
+     */
+    public static PlantTargetRequest observedRelative(String id,
+                                                      double delta,
+                                                      double quality,
+                                                      double timestampSec) {
+        return oneOf(PlantTargetCandidate.observedRelative(id, delta, quality, timestampSec));
+    }
+
+    /**
      * Creates a relative periodic-equivalent request using the consuming plant's period.
      */
     public static PlantTargetRequest relativeEquivalentPosition(String id, double delta) {
@@ -89,17 +121,18 @@ public final class PlantTargetRequest {
     }
 
     /**
-     * Creates a relative periodic-equivalent request using the consuming plant's period.
+     * Creates a relative periodic-equivalent request derived from an observation and using the
+     * consuming plant's period.
+     *
+     * @param quality observation quality for planner acceptance
+     * @param timestampSec stable observation timestamp in the consuming loop clock's timebase
      */
-    public static PlantTargetRequest relativeEquivalentPosition(String id, double delta, double quality, double ageSec, double timestampSec) {
-        return oneOf(PlantTargetCandidate.relativeEquivalentPosition(id, delta, quality, ageSec, timestampSec));
-    }
-
-    /**
-     * Creates a relative periodic request: target = current measurement + delta + k*period.
-     */
-    public static PlantTargetRequest relativePeriodic(String id, double delta, double period, double quality, double ageSec, double timestampSec) {
-        return oneOf(PlantTargetCandidate.relativePeriodic(id, delta, period, quality, ageSec, timestampSec));
+    public static PlantTargetRequest observedRelativeEquivalentPosition(String id,
+                                                                        double delta,
+                                                                        double quality,
+                                                                        double timestampSec) {
+        return oneOf(PlantTargetCandidate.observedRelativeEquivalentPosition(
+                id, delta, quality, timestampSec));
     }
 
     /**
@@ -107,6 +140,22 @@ public final class PlantTargetRequest {
      */
     public static PlantTargetRequest relativePeriodic(String id, double delta, double period) {
         return oneOf(PlantTargetCandidate.relativePeriodic(id, delta, period));
+    }
+
+    /**
+     * Creates a relative periodic request derived from an observation:
+     * target = current measurement + delta + k*period.
+     *
+     * @param quality observation quality for planner acceptance
+     * @param timestampSec stable observation timestamp in the consuming loop clock's timebase
+     */
+    public static PlantTargetRequest observedRelativePeriodic(String id,
+                                                              double delta,
+                                                              double period,
+                                                              double quality,
+                                                              double timestampSec) {
+        return oneOf(PlantTargetCandidate.observedRelativePeriodic(
+                id, delta, period, quality, timestampSec));
     }
 
     /**

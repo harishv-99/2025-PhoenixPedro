@@ -297,6 +297,22 @@ Behavior guards and Plant guards are intentionally parallel, but they attach at 
 * **Behavior target generation** happens before the Plant protects hardware. Use `PlantTargets.exact(...)`, `PlantTargets.overlay(...)`, `PlantTargets.plan(...)`, `ScalarTarget`, and output queues to answer “what target does the robot want?” Plain `ScalarSource`s are still useful number streams, but anything that will become a Plant target should be lifted into `PlantTargets`.
 * **Plant target guards** live in the builder's `targetGuards()` branch and protect hardware after the requested target is resolved: max target rate, hold-last interlocks, and fallback targets. These answer “what may this hardware safely apply?” A Plant with a fixed declared range rejects a static fallback outside that range when built, and every Plant rechecks the dynamic guard result before it becomes the applied target.
 
+Candidate freshness has one owner and one timebase. Ordinary `PlantTargetCandidate` and
+`PlantTargetRequest` factories describe timeless/current robot intent. A value derived from a
+sensor observation uses the parallel `observed...` factory and supplies quality plus one stable
+observation timestamp in the consuming `LoopClock` timebase. The planner derives observation age
+when it resolves the request; an optional `maxObservationAgeSec(...)` gate applies only to observed
+candidates. Invalid observation metadata rejects that candidate; if no valid candidate remains, the
+planner follows its explicit unavailable policy. Invalid metadata must never be silently
+reclassified as timeless intent.
+
+When an observation-derived target producer receives age rather than capture time, its reusable
+source/adapter owner converts `clock.nowSec() - sampledAgeSec` exactly once before publishing the
+immutable snapshot used for target construction, then retains the resulting timestamp. A target
+request source must not repeat that conversion whenever a cached observation or request is sampled,
+because doing so would make it appear newly acquired. Keep this anchoring at or before the target's
+source boundary rather than adding timestamp bookkeeping to ordinary mechanism code.
+
 Keep static range declarations such as `bounded(min, max)` close to the Plant topology because they define the legal plant coordinate system. Direct power Plants are the simpler fixed-domain case: their normalized range is always `[-1, +1]`, so the builder does not ask students to declare it. Keep dynamic protection such as rate limits and interlocks in `targetGuards()`.
 
 For framework-regulated Plants, keep three different bounds at their proper layers:
