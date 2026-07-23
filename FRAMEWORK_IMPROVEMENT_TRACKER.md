@@ -1,6 +1,6 @@
 # Framework Improvement Tracker
 
-Last updated: 2026-07-21
+Last updated: 2026-07-22
 
 This file tracks proposed Phoenix framework improvements. It is deliberately a planning document:
 an item being listed here does **not** mean its current proposed solution has been approved. Each
@@ -122,7 +122,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 35 | INPUT-01 | Safe contextual control activation | Done | Approved robot-first contextual controls, shared registration surface, lifecycle-safe tester handoffs, and regression coverage. |
 | 36 | HAPTIC-01 | Driver haptic feedback boundary | Done | Approved fixed-pulse sink, truthful FTC conversion, focused coverage, and full software verification; physical rumble behavior remains adopting-robot validation. |
 | 37 | PERF-01 | FTC hub bulk-cache ownership | Deferred | Wait for real hub-I/O benchmarks before changing the SDK automatic-caching default. |
-| 38 | PERF-02 | Loop phase diagnostics | Proposed | Measure named loop phases with a lightweight diagnostic that does not own timing or sleep. |
+| 38 | PERF-02 | Loop phase diagnostics | Done | Approved and reviewed sequential profiler, bounded atomic statistics, off-by-default Phoenix telemetry integration, focused/full verification; enabled hardware overhead remains adopting-robot validation. |
 | 39 | PERF-03 | Contract-safe hardware write deduplication | Deferred | Wait for per-adapter measurements and controller/watchdog evidence before suppressing writes. |
 | 40 | TARGET-01 | Lazy Plant target overlay selection | Proposed | Resolve the selected highest-priority layer first and avoid sampling shadowed layers. |
 | 41 | TARGET-02 | Candidate freshness | Proposed | Compute effective age from the loop clock and timestamp, with validation. |
@@ -4311,27 +4311,196 @@ writer, and explicit lifecycle ownership.
 
 ### PERF-02 - Loop phase diagnostics
 
-- **Problem to confirm:** Phoenix can report overall loop timing but cannot identify whether input,
-  localization, services, Tasks, Plant realization, vision, or telemetry owns a slow cycle. Students
-  therefore troubleshoot performance with ad hoc timers or by commenting out behavior.
-- **External evidence:** Cuttlefish's
-  [`LoopProfiler`](https://github.com/6165-MSET-Cuttlefish/Decode/blob/1a9ff399298a95639c08daf0434463d9b035d383/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/core/LoopProfiler.java)
-  records named segment durations and surfaces bottlenecks during robot development. SaMoTech's
+- **Confirmed problem:** `LoopClock.update(runtime)` samples once at the outer loop boundary, so
+  `dtSec()` reports the preceding top-of-loop-to-top-of-loop period. Its value is intentionally
+  frozen for the rest of that cycle and cannot attribute current-cycle work. Framework examples
+  can render that overall period through `LoopClock.debugDump(...)`, but modern `PhoenixRobot` does
+  not currently present it and has no way to distinguish whether vision readiness, localization,
+  targeting, controls, scoring/Plant realization, drive, Auto Tasks, or telemetry owned a slow
+  cycle. Those useful boundaries are inside `PhoenixRobot.updateTeleOp()` and `updateAuto()`, so an
+  OpMode-local stopwatch can measure only the whole call. Students otherwise repeat ad hoc timing
+  and aggregation code or remove behavior experimentally.
+- **Complete current caller and ownership audit:** the repository has thirteen modern production or
+  example `LoopClock` owners and one supported construction path, `new LoopClock()`. Phoenix advances
+  its private clock in `updateAny(runtime)` before either mode-specific update. The FTC tester host,
+  the basic Pedro example, the Phoenix INIT selector, and framework examples also expose explicit
+  root-level order, but no production or test source contains a reusable named-phase profiler.
+  Existing `System.nanoTime()`, `System.currentTimeMillis()`, and `ElapsedTime` uses are either
+  vendor/freshness boundaries, legacy Pedro tuning, or SDK samples; none is a supported loop
+  diagnostic. `DebugSink` is output-only, `PhoenixTelemetryPresenter` owns Phoenix formatting and
+  the single telemetry commit, and COMMON-02 separately owns any future telemetry-commit change.
+- **Confirmed external evidence:** the original Cuttlefish Decode snapshot is no longer publicly
+  readable, so this gate rechecked its accessible
+  [public fidelity port at pinned commit `42d1ce8`](https://github.com/6165-MSET-Cuttlefish/summer-2026/blob/42d1ce8ffe3dd62187b93771f1a5455c85fff6cd/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/architecture/telemetry/LoopProfiler.java).
+  Its sequential `start()`/`mark(name)` path demonstrates the value of high-level named boundaries,
+  while its additional token path explicitly permits double counting on a repeated leave, its name
+  map is unbounded, and reporting allocates and sorts. SaMoTech's pinned
   [`TaskTimer`](https://github.com/SaMoTechRobotics/FTC-Decode/blob/c8ff047c4245f79d934e622c05481269b5cc42da/TeamCode/src/main/java/util/TaskTimer.java)
-  independently times named chassis, shooter, turret, indicator, and drawing phases, while its Auto
-  records expected versus actual semantic-step duration. This supports observation and snapshots,
-  not another scheduler or clock.
-- **Alternatives to compare:** document manual timing; add local timers only to Phoenix; create a
-  lightweight named-phase diagnostic; integrate with telemetry/tracing libraries; or let a profiler
-  own the loop clock and rate. Measure allocation and telemetry overhead before choosing defaults.
-- **Leading hypothesis:** an optional diagnostic may observe a supplied monotonic time source and
-  aggregate named phase timings, but it never advances `LoopClock`, sleeps, schedules work, or hides
-  loop order. The composition root marks only useful high-level boundaries, and presenters decide
-  when to render a snapshot.
-- **Completion:** tests cover phase order, repeated names, nested/unfinished phases, cycle rollover,
-  bounded allocation/history, disabled overhead, and immutable snapshots. A Phoenix diagnostic
-  example identifies a simulated slow phase without changing behavior or the one-clock contract.
-- **Decision record:** _Pending._
+  uses a global static map, wall-clock milliseconds, paired start/end calls, and direct logging. A
+  real SaMoTech drive caller starts `Update Field Poses` twice without ending it, illustrating the
+  fragility of paired calls. The useful shared evidence is phase observation, not either project's
+  global state, paired/token API, output coupling, or another scheduler.
+- **Side-by-side alternatives and student-visible code:**
+
+  | Approach | Representative composition-root code | Result |
+  |---|---|---|
+  | Documentation/manual timing | `long start = System.nanoTime(); ...` around every phase | Adds no framework type, but every robot must choose a clock, convert units, pair reads, aggregate, bound history, handle missing calls, and format output. Rejected. |
+  | Phoenix-local helper | `phoenixProfiler.finishPhase("localization");` | Can solve Phoenix, but repeats the same diagnostic mechanics in every future robot, framework example, and tester. Rejected. |
+  | Extend `LoopClock` | advance or resample it after each phase | Corrupts the one behavioral heartbeat and changes the meaning of `nowSec()`/`dtSec()` inside one cycle. Rejected. |
+  | Paired scopes/tokens | `try (Phase ignored = phases.begin("localization")) { ... }` | Doubles or nests instrumentation, adds allocation/lifetime semantics, and creates unfinished, double-close, inclusive/exclusive, and exception questions that flat root phases do not need. Rejected. |
+  | Callback wrapper | `phases.measure("localization", () -> localization.update(clock));` | Hides the visible loop order behind callbacks and needs `Runnable`, value-returning, checked-failure, and capture variants. Rejected. |
+  | Enum-keyed generic profiler | `phases.finishPhase(Phase.LOCALIZATION);` | Prevents spelling mistakes and predeclares bounds, but makes each adopting robot define an enum and carry a generic snapshot solely to label development diagnostics. Stable literal names plus a hard registry cap provide the needed safety with less student API. Rejected for this first API. |
+  | Sequential framework profiler | `phases.finishPhase("localization");` after the visible update | One extra boundary line per useful high-level phase; common timing, aggregation, recovery, bounds, snapshots, and debug output move into the framework. Selected. |
+- **Selected public API and one construction layer:** add one final SDK-free
+  `fw.core.debug.LoopPhaseProfiler`. Its only public construction path is
+  `LoopPhaseProfiler.create(boolean enabled)`; there is no public constructor, `of(...)` alias,
+  enabled/disabled factory pair, builder, public time-source parameter, or runtime `setEnabled`.
+  The ordinary surface is `startCycle(LoopClock)`, `finishPhase(String)`,
+  `finishCycle(LoopClock)`, `snapshot()`, `debugDump(DebugSink, String)`, and an inactive-only
+  `reset()` for an explicitly new measurement window or reuse across a deliberate `LoopClock`
+  reset. `LoopPhaseProfiler.Snapshot` exposes enabled/completed/incomplete/last-cycle facts; latest,
+  mean, and maximum observed-total and unattributed durations; and a stable immutable
+  `List<LoopPhaseProfiler.PhaseTiming>`. Each phase entry exposes only its name, sample count,
+  last-observed cycle, and latest/mean/maximum duration. Every duration accessor has a `Sec` suffix.
+  Snapshot and phase-entry constructors remain private. Disabled creation returns a shared inert
+  implementation/state and a shared empty snapshot; every disabled operation returns before
+  validation, stopwatch reads, lookup, allocation, telemetry output, or mutation.
+- **Timing and one-clock contract:** enabled profiling owns a private diagnostic-only
+  `System.nanoTime()` stopwatch, hidden behind a package-private deterministic test seam. It uses the
+  supplied `LoopClock` only for owner identity and `cycle()` correlation. It never advances or
+  resets that clock, exposes its stopwatch to robot behavior, sleeps, schedules, rate-limits, or
+  supplies a behavioral timestamp. Durations are monotonic elapsed wall time, not CPU time or a
+  complete FTC callback period: the observed total excludes work before `startCycle` and after
+  `finishCycle`, includes OS scheduling pauses and profiler overhead, and is not synchronized with
+  sensor timestamps. `finishPhase` samples once on entry to close the named phase and again after
+  its internal lookup/accounting to begin the next phase, so observer bookkeeping is not silently
+  charged to the following robot owner; that gap remains visible in unattributed time. Public
+  duration names and debug keys use explicit seconds.
+- **Sequential phase and lifecycle contract:** `finishPhase("localization")` attributes the interval
+  since `startCycle` or the preceding `finishPhase` to the just-completed phase. Repeating a name in
+  one cycle sums its segments into one phase sample; conditional absence does not add a false zero
+  sample; first-observed name order stays stable. There is deliberately no nested phase API. A
+  second same-cycle start or retry, an orphan finish, a different clock, an invalid name, a time
+  regression, or a same-cycle duplicate completion fails fast with an actionable error and discards
+  the active scratch sample. If a prior cycle was left unfinished because observed robot work threw,
+  the next later cycle discards and counts that incomplete cycle before starting normally, so
+  diagnostics do not permanently poison recovery. Because `LoopClock` exposes no reset generation,
+  callers must pair every deliberate clock reset with an inactive profiler `reset()`; numeric cycle
+  comparison catches ordinary duplicate/non-advancing use but cannot prove that a reset followed by
+  several clock updates never occurred. `reset()` while a cycle is active fails fast; an inactive
+  reset clears measurements, known names, and clock/cycle binding so the next cycle establishes a
+  fresh observation window.
+- **Bounded aggregation and snapshots:** phase totals remain in per-cycle scratch state and commit
+  atomically only after a valid `finishCycle`; no malformed partial cycle becomes plausible history.
+  The profiler retains a fixed maximum of 32 distinct stable names and constant-size online latest,
+  mean, maximum, sample-count, and last-observed-cycle statistics for each phase, the total observed
+  span, and unattributed/observer time. It retains no per-cycle history, percentile, threshold, or
+  arbitrary rolling-window policy. The 33rd name fails actionably and advises against dynamic names.
+  `snapshot()` allocates only on request, returns immutable copies in stable order, never reads the
+  stopwatch, and cannot change an active cycle; old snapshots remain unchanged. `debugDump(...)`
+  follows the framework's nullable-sink/stable-key convention and renders only completed data.
+- **Phoenix integration and student simplicity:** wire the profiler at the `PhoenixRobot`
+  composition root behind one private, off-by-default diagnostic constant, and mark its existing
+  high-level TeleOp/Auto phases without adding a `PhoenixRobot` constructor, profile field, base
+  OpMode, or subsystem instrumentation. When enabled, a retained `FtcTelemetryDebugSink` adds the
+  last completed profiler state to the existing Phoenix telemetry frame before the one existing
+  presenter commit; the just-measured telemetry phase therefore becomes visible on the next frame.
+  The default-disabled robot still uses the identical explicit loop order and gains no time reads,
+  allocation, extra telemetry row, scheduler, or heartbeat. Future robots need only the same one
+  creation line and one marker after each phase they actually want to distinguish.
+- **Rejected and deferred scope:** do not add tracing/Dashboard dependencies, a second telemetry
+  commit, automatic reflection/instrumentation, framework-defined season phase names, a public
+  monotonic clock, nested or asynchronous spans, thread safety, callbacks, scopes, budgets, alerts,
+  percentiles, rolling history, CPU/GC claims, or profiler-owned loop rate. Do not instrument every
+  subsystem or migrate unrelated examples/testers in this item. A richer trace is a separate need,
+  not a second spelling layered onto this API.
+- **Bounded implementation scope:** add the core profiler and immutable nested snapshots, focused
+  unit tests with a package-private fake monotonic source, off-by-default Phoenix root markers and
+  same-frame debug rendering, synchronized Framework Principles/loop/architecture guidance, and this
+  tracker only. No hardware resource or behavior path changes.
+- **Software verification plan:** tests cover exact sequential attribution and explicit units;
+  repeated and conditionally absent names; stable order; latest/mean/max/count totals; atomic
+  unfinished-cycle discard and recovery; every lifecycle misuse; clock reset/rebind; equal,
+  regressing, negative-origin, and wrapping nano values; stopwatch call counts; zero disabled source
+  calls/state/output/allocation paths; exactly 32 versus 33 names; constant registry/storage over a
+  long run; immutable prior snapshots; nullable/stable debug output; and a simulated Phoenix-shaped
+  slow phase without sleeping or changing behavior. Static checks prove no FTC/Android/Telemetry
+  dependency in the core type and one public construction path. Run focused tests, full TeamCode
+  unit tests, FTC Java compilation, changed-Markdown link checks, and `git diff --check`. Software
+  tests cannot establish enabled Control Hub overhead or timing resolution, so the feature remains
+  opt-in and those measurements remain adopting-robot validation rather than a completion blocker.
+- **Decision record (2026-07-22):** the leading lightweight named-phase hypothesis remains viable;
+  no material design reversal is needed. Gate 1 selects the one sequential string-boundary API,
+  narrows the original nested-phase wording to explicit rejection/detection, and replaces arbitrary
+  retained history with bounded online statistics. This is the smallest design that preserves
+  visible student loop order, the one-`LoopClock` behavioral truth, diagnostic/output ownership, and
+  reusable framework value. PERF-02 is Ready, but it introduces a public API and instrumentation
+  lifecycle, so implementation must not begin until the user explicitly approves this design. No
+  framework or robot implementation code has been changed at this gate.
+- **Approval (2026-07-22):** the user explicitly approved the PERF-02 sequential phase-profiler
+  design. Implementation is limited to the recorded core diagnostic, bounded completed snapshots,
+  off-by-default Phoenix composition-root markers/debug rendering, focused tests, and synchronized
+  documentation. This approval does not authorize PERF-01, PERF-03, or another tracker item.
+- **Implementation record (2026-07-22):**
+  - Added the final SDK-free `LoopPhaseProfiler` with the sole public
+    `create(boolean enabled)` construction path, private monotonic `System.nanoTime()` source, and
+    package-private deterministic test seam. The public loop surface remains the approved flat
+    `startCycle(clock)` / `finishPhase(name)` / `finishCycle(clock)` sequence plus distinct
+    inactive `reset()`, completed immutable `snapshot()`, and standard `debugDump(...)` capabilities.
+    No public stopwatch, constructor, alias, scope, callback, scheduler, or telemetry dependency was
+    added.
+  - Implemented a fixed 32-name registry with primitive constant-size scratch/statistic storage,
+    repeated-name summation, conditional-phase omission, stable first-committed order, online
+    latest/average/maximum values, explicit seconds, total/unattributed observations, and immutable
+    on-request copies. Disabled creation returns a shared inert profiler/snapshot before validation,
+    time reads, lookup, allocation, output, or mutation.
+  - Made cycle completion atomic: only a valid `finishCycle` commits statistics. A later cycle
+    discards and counts unfinished work, newly encountered names roll back with that discarded
+    cycle, same-cycle retries remain rejected after any failed attempt, and obvious clock/cycle/time
+    misuse fails actionably. Since resettable numeric cycle values cannot prove a hidden earlier
+    reset, the public contract truthfully requires callers to reset the inactive profiler beside
+    every deliberate `LoopClock.reset()` rather than claiming universal inference.
+  - Added one private false `ENABLE_LOOP_PHASE_PROFILING` constant to `PhoenixRobot`, one profiler,
+    and one retained telemetry/null debug sink without changing constructors or `PhoenixProfile`.
+    TeleOp and Auto mark their existing high-level synchronous ownership boundaries; the profiler
+    resets immediately before the shared clock at FTC START. Completed debug rows join the existing
+    Driver Station frame before the sole presenter commit, while the just-measured telemetry phase
+    appears on the next frame. `visionReadiness` is deliberately named so it does not claim to time
+    asynchronous camera work.
+  - Updated the Framework Principles, loop guide, and Phoenix Architecture with the one-clock
+    observer rule, copy-pastable retained-sink example, explicit enablement, previous-frame display,
+    measurement-window statistics, paired-reset contract, use cases, and wall-time limitations.
+- **Adversarial audit (2026-07-22):** independent API/simplicity, correctness/test, and documentation
+  reviews reconfirmed one public construction layer, distinct public capabilities, a core package
+  with no FTC/Android dependency, fixed literal Phoenix markers, one telemetry commit, and inert
+  default behavior. Initial review found that names first seen in an incomplete cycle could consume
+  hidden registry capacity, a failed observation could be retried in the same `LoopClock` cycle,
+  reset detection wording claimed more than numeric cycle input can prove, Phoenix documentation
+  conflated preceding latest data with measurement-window average/max and a full FTC callback, and
+  the loop example left its debug sink unexplained. The implementation, regressions, tracker, and
+  guides were corrected; focused re-reviews found no remaining issue.
+- **Automated verification (2026-07-22):**
+  - Focused `LoopPhaseProfilerTest`: 24 deterministic tests, 0 failures, 0 errors, and 0 skipped.
+    Coverage includes exact attribution, repeated/conditional phases, online statistics, stable
+    order, atomic incomplete recovery and registry rollback, same-cycle retry rejection, explicit
+    reset/rebind, equal/regressing/negative-origin/wrapping nanos, exact stopwatch call counts,
+    shared disabled behavior, the 32/33 boundary, 10,000-cycle constant storage, immutable old
+    snapshots, every stable debug key, a Phoenix-shaped slow owner, and the one-factory surface.
+  - Full `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac`: 74 suites and 721 tests,
+    with 0 failures, 0 errors, and 0 skipped; compilation succeeded. Output contained only the
+    existing Java 21/source-8 and FTC app-shell deprecation warnings.
+  - `git diff --check`, tracked/untracked trailing-whitespace scanning, changed-Markdown local-link
+    validation, core FTC/Android/Telemetry import checks, one-public-factory/no-public-constructor
+    checks, and the Phoenix off-by-default flag check passed.
+- **Hardware boundary:** no robot hardware is required to review the API, loop order, output
+  ownership, or deterministic accounting. Software tests do not measure enabled profiler overhead,
+  timer resolution, OS scheduling, or real Driver Station update cost on a Control Hub. Profiling
+  therefore remains off by default, and those physical measurements remain adopting-robot
+  validation rather than claims made by PERF-02.
+- **Manual verification (2026-07-22):** the user reviewed PERF-02 in Android Studio and replied
+  `PERF-02 looks good`. PERF-02 is **Done** and publication is authorized for this item only. No
+  hardware was available; enabled Control Hub overhead, timer resolution, and physical Driver
+  Station cadence remain adopting-robot validation.
 
 ### PERF-03 - Contract-safe hardware write deduplication
 

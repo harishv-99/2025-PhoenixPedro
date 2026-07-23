@@ -7,6 +7,9 @@ import org.firstinspires.ftc.robotcore.external.Telemetry;
 
 import java.util.Objects;
 
+import edu.ftcphoenix.fw.core.debug.DebugSink;
+import edu.ftcphoenix.fw.core.debug.LoopPhaseProfiler;
+import edu.ftcphoenix.fw.core.debug.NullDebugSink;
 import edu.ftcphoenix.fw.core.geometry.Pose2d;
 import edu.ftcphoenix.fw.core.lifecycle.CleanupActions;
 import edu.ftcphoenix.fw.core.source.BooleanSource;
@@ -14,6 +17,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.drive.DriveCommandSink;
 import edu.ftcphoenix.fw.drive.DriveSignal;
 import edu.ftcphoenix.fw.drive.DriveSource;
+import edu.ftcphoenix.fw.ftc.FtcTelemetryDebugSink;
 import edu.ftcphoenix.fw.ftc.drive.FtcMecanumDriveLane;
 import edu.ftcphoenix.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane;
 import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLane;
@@ -47,6 +51,8 @@ import edu.ftcphoenix.fw.task.TaskRunner;
  */
 public final class PhoenixRobot {
 
+    private static final boolean ENABLE_LOOP_PHASE_PROFILING = false;
+
     private final LoopClock clock = new LoopClock();
     private final PhoenixShutdown shutdown = new PhoenixShutdown();
     private final HardwareMap hardwareMap;
@@ -54,6 +60,8 @@ public final class PhoenixRobot {
     private final Gamepads gamepads;
     private final PhoenixProfile profile;
     private final PhoenixTelemetryPresenter telemetryPresenter;
+    private final LoopPhaseProfiler loopPhaseProfiler;
+    private final DebugSink loopPhaseDebugSink;
     private final TeleOpPoseRestoreLifecycle teleOpPoseRestore =
             new TeleOpPoseRestoreLifecycle();
 
@@ -104,6 +112,10 @@ public final class PhoenixRobot {
         this.gamepads = Gamepads.create(gamepad1, gamepad2);
         this.profile = Objects.requireNonNull(profile, "profile").copy();
         this.telemetryPresenter = new PhoenixTelemetryPresenter(telemetry, this.profile);
+        this.loopPhaseProfiler = LoopPhaseProfiler.create(ENABLE_LOOP_PHASE_PROFILING);
+        this.loopPhaseDebugSink = ENABLE_LOOP_PHASE_PROFILING
+                ? new FtcTelemetryDebugSink(telemetry)
+                : NullDebugSink.INSTANCE;
     }
 
     /**
@@ -317,6 +329,7 @@ public final class PhoenixRobot {
      * @param runtime current FTC runtime in seconds
      */
     public void startAny(double runtime) {
+        loopPhaseProfiler.reset();
         clock.reset(runtime);
         teleOpPoseRestore.markStartBoundary();
         if (autoRoutineLifecycle != null) {
@@ -365,7 +378,8 @@ public final class PhoenixRobot {
      * <p>
      * Loop order is intentionally explicit: vision component readiness, localization lane,
      * targeting, controls, scoring path, drive-assist service, drive lane, then telemetry
-     * presentation.
+     * presentation. When the private loop-phase diagnostic is enabled, it observes those same
+     * boundaries and stages the preceding completed sample before the one telemetry commit.
      * </p>
      */
     public void updateTeleOp() {
@@ -380,24 +394,39 @@ public final class PhoenixRobot {
             return;
         }
 
+        loopPhaseProfiler.startCycle(clock);
+
         VisionReadiness visionReadiness = vision.readiness(clock);
+        loopPhaseProfiler.finishPhase("visionReadiness");
+
         localization.update(clock);
+        loopPhaseProfiler.finishPhase("localization");
+
         scoringTargeting.update(clock);
+        loopPhaseProfiler.finishPhase("targeting");
+
         teleOpControls.update(clock);
+        loopPhaseProfiler.finishPhase("controls");
 
         scoringPath.update(clock);
         ScoringPath.Status scoringStatus = scoringPath.status();
+        loopPhaseProfiler.finishPhase("scoring");
 
         driveAssists.update(clock, scoringStatus);
         DriveSignal cmd = teleOpDriveSource.get(clock).clamped();
+        loopPhaseProfiler.finishPhase("driveAssist");
+
         drive.update(clock);
         drive.drive(cmd);
+        loopPhaseProfiler.finishPhase("drive");
 
         ScoringTargeting.Status targetingStatus = scoringTargeting.status(clock);
         PhoenixDriveAssistService.Status driveAssistStatus = driveAssists.status();
         PoseEstimate globalPose = localization.globalEstimator().getEstimate();
         PoseEstimate odomPose = localization.predictor().getEstimate();
+        loopPhaseProfiler.finishPhase("snapshots");
 
+        loopPhaseProfiler.debugDump(loopPhaseDebugSink, "loopProfile");
         telemetryPresenter.emitTeleOp(
                 scoringStatus,
                 targetingStatus,
@@ -407,6 +436,8 @@ public final class PhoenixRobot {
                 globalPose,
                 odomPose
         );
+        loopPhaseProfiler.finishPhase("telemetry");
+        loopPhaseProfiler.finishCycle(clock);
     }
 
     /**
@@ -414,7 +445,8 @@ public final class PhoenixRobot {
      *
      * <p>Loop order is explicit and matches Phoenix ownership boundaries: vision component
      * readiness, localization, targeting, the continuously owned external drive heartbeat, the
-     * installed autonomous root, the scoring path, and finally telemetry.</p>
+     * installed autonomous root, the scoring path, and finally telemetry. Optional loop-phase
+     * diagnostics observe those same boundaries and never supply behavior timing.</p>
      */
     public void updateAuto() {
         if (vision == null
@@ -426,19 +458,33 @@ public final class PhoenixRobot {
             return;
         }
 
+        loopPhaseProfiler.startCycle(clock);
+
         VisionReadiness visionReadiness = vision.readiness(clock);
+        loopPhaseProfiler.finishPhase("visionReadiness");
+
         localization.update(clock);
+        loopPhaseProfiler.finishPhase("localization");
+
         scoringTargeting.update(clock);
+        loopPhaseProfiler.finishPhase("targeting");
+
         autonomousDrive.update(clock);
+        loopPhaseProfiler.finishPhase("drive");
+
         autoRoutineLifecycle.update(clock);
+        loopPhaseProfiler.finishPhase("tasks");
 
         scoringPath.update(clock);
         ScoringPath.Status scoringStatus = scoringPath.status();
+        loopPhaseProfiler.finishPhase("scoring");
 
         ScoringTargeting.Status targetingStatus = scoringTargeting.status(clock);
         PoseEstimate globalPose = localization.globalEstimator().getEstimate();
         PoseEstimate odomPose = localization.predictor().getEstimate();
+        loopPhaseProfiler.finishPhase("snapshots");
 
+        loopPhaseProfiler.debugDump(loopPhaseDebugSink, "loopProfile");
         telemetryPresenter.emitAuto(
                 scoringStatus,
                 targetingStatus,
@@ -447,6 +493,8 @@ public final class PhoenixRobot {
                 globalPose,
                 odomPose
         );
+        loopPhaseProfiler.finishPhase("telemetry");
+        loopPhaseProfiler.finishCycle(clock);
     }
 
     /**

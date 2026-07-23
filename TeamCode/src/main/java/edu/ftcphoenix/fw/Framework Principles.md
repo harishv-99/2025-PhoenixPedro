@@ -783,6 +783,20 @@ For an external drive/follower integration, stopping is a separate safety invari
 apply a physical stopped state immediately. Staging zero for a future heartbeat is not sufficient,
 and a callback-time stop must still be the final output after the enclosing vendor update returns.
 
+Optional loop-phase diagnostics belong at the composition root and remain observers of this one
+heartbeat. `LoopPhaseProfiler` may use its hidden monotonic stopwatch to measure elapsed wall time
+between explicit high-level boundaries, but it never advances `LoopClock`, supplies time to robot
+behavior, sleeps, schedules work, or owns loop rate. Keep its API flat and sequential:
+`startCycle(clock)`, then `finishPhase("stableName")` after each just-completed phase, then
+`finishCycle(clock)`. Use stable literal phase names, not dynamic per-object names, and do not add
+nested spans. Profiling is off by default; snapshots and `debugDump(...)` expose only completed
+diagnostic data and must never influence a Task, controller, source, guard, or safety decision.
+
+These measurements are elapsed wall time, including possible scheduler pauses and observer
+overhead—not CPU time or the complete interval between FTC loop callbacks. If an already-used
+profiler is retained across a deliberate `LoopClock.reset(...)`, reset the inactive profiler at the
+same lifecycle boundary before starting another profiled cycle.
+
 ---
 
 ## 7. Nomenclature and coordinate conventions
