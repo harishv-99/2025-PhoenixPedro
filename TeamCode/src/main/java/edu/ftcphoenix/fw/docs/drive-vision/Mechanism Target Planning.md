@@ -229,6 +229,12 @@ while the Plant status reports `RATE_LIMITED` because the applied target is stil
 requested target. This separation keeps behavior target generation separate from hardware protection
 while making telemetry easier to read.
 
+For a `PLANNED_CANDIDATE`, `selectedQuality()` reports the chosen candidate's quality. When that
+candidate came from an observation, `selectedTimestampSec()` retains its stable `LoopClock`
+timestamp and `selectedAgeSec()` reports the age derived when this plan was resolved. A timeless
+candidate instead reports quality `1.0` and `NaN` for both timing diagnostics. These are selection
+facts, not a second hardware-arrival signal.
+
 ## Smart planning: equivalent and candidate targets
 
 Use `PlantTargets.plan()` when a request can be satisfied by more than one scalar value, or when the
@@ -242,7 +248,7 @@ object. During `plant.update(clock)`, the Plant supplies:
 
 The planner builder intentionally asks one required question at a time: `request(...)`, then one
 candidate preference, then one unreachable-candidate policy, then `whenUnavailable()`. Optional
-request-age/quality tuning lives in `accept()...doneAccept()` after the required motion-semantics
+observation-age/quality tuning lives in `accept()...doneAccept()` after the required motion-semantics
 choices have been made.
 
 A free spinner or tray can declare its own period in Plant units:
@@ -306,6 +312,40 @@ The planner does not know what “purple” means. It only sees Plant-unit candi
 choice, the returned type exposes only the next question. There is no later-replacement model. Branches that may set several independent tuning values, such as
 `accept()`, still end with an explicit `doneAccept()`.
 
+### Current intent versus observations
+
+Use the ordinary factories for current robot intent: presets, inventory choices, or other requests
+that do not become stale with time. Use the explicitly named `observed...` factories when a target
+was calculated from a camera, localization estimate, or another sampled observation. An observed
+factory takes one quality value and one stable observation timestamp in the consuming `LoopClock`
+timebase; it does not also ask robot code to supply a potentially contradictory age.
+
+`PlantTargetRequest` provides the concise one-candidate form, while `PlantTargetCandidate` provides
+the same families for `oneOf(...)` lists:
+
+| Target meaning | Current/timeless factory | Observation-derived factory |
+| --- | --- | --- |
+| Absolute exact | `exact(...)` | `observedExact(...)` |
+| Absolute, using the Plant's period | `equivalentPosition(...)` | `observedEquivalentPosition(...)` |
+| Absolute, with an explicit period | `periodic(...)` | `observedPeriodic(...)` |
+| Measurement-relative exact | `relative(...)` | `observedRelative(...)` |
+| Measurement-relative, using the Plant's period | `relativeEquivalentPosition(...)` | `observedRelativeEquivalentPosition(...)` |
+| Measurement-relative, with an explicit period | `relativePeriodic(...)` | `observedRelativePeriodic(...)` |
+
+The reusable source or adapter that publishes an observation-derived target also owns timestamp
+anchoring. If its upstream API reports an age, that owner computes
+`clock.nowSec() - sampledAgeSec` once before publishing the immutable snapshot used for target
+construction and retains that timestamp. A target-request source must not repeat the conversion
+whenever a cached observation or request is sampled, because that would make it appear fresh. This
+responsibility stays at or before the target's source boundary; ordinary mechanism code only
+forwards the snapshot's quality and timestamp.
+
+The planner derives age at resolution. `.maxObservationAgeSec(...)` applies only to observed
+candidates; timeless intent is not rejected by that gate. A non-finite or out-of-range quality, an
+invalid timestamp, or a timestamp too far in the future makes that observed candidate unavailable.
+The planner may still choose a later valid candidate, and if none remains, its existing
+`whenUnavailable()` policy supplies the one declared fallback, hold, or unavailable result.
+
 ## `whenUnavailable()` versus overlay
 
 These two tools are intentionally parallel but not interchangeable.
@@ -363,11 +403,10 @@ Source<PlantTargetRequest> turretFacingRequest = clock -> {
     }
 
     double targetDeg = Math.toDegrees(facing.solution().facingErrorRad());
-    return PlantTargetRequest.equivalentPosition(
+    return PlantTargetRequest.observedEquivalentPosition(
             facing.sourceId(),
             targetDeg,
             facing.quality(),
-            facing.ageSec(),
             facing.timestampSec()
     );
 };
@@ -376,9 +415,12 @@ PlantTargetSource turretTarget = PlantTargets.plan()
         .request(turretFacingRequest)
         .nearestToMeasurement()
         .rejectUnreachable()
-        .accept().maxRequestAgeSec(0.20).minQuality(0.45).doneAccept()
+        .accept().maxObservationAgeSec(0.20).minQuality(0.45).doneAccept()
         .whenUnavailable().holdMeasuredTargetOnEntry(0.0);
 ```
+
+The `observedEquivalentPosition(...)` name makes the freshness contract visible at the call site,
+while the source-owned snapshot keeps student code to one quality value and one timestamp.
 
 The Plant reports physical arrival with `atTarget()` and `atTarget(value)`. Target planning reports
 selection status with `PlantTargetPlan`; it does not claim the mechanism has physically arrived.

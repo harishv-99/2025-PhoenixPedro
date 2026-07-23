@@ -176,7 +176,7 @@ public final class PlantTargets {
      *
      * <p>The staged builder asks required questions in order: request source, candidate
      * preference, unreachable-candidate policy, then unavailable-target policy. Optional
-     * request-age/quality tuning is available after the required preference and unreachable
+     * observation-age/quality tuning is available after the required preference and unreachable
      * answers. This shape avoids hidden defaults for choices that affect motion semantics.</p>
      */
     public static PlanRequestStage plan() {
@@ -663,16 +663,28 @@ public final class PlantTargets {
     }
 
     /**
-     * Request age/quality acceptance tuning branch.
+     * Observed-candidate age/quality acceptance tuning branch.
      */
     public interface PlanAcceptBranch {
         /**
-         * Ignore candidates older than {@code ageSec}.
+         * Ignore observed candidates older than {@code ageSec} at planner resolution.
+         *
+         * <p>Timeless candidates created with the short factories are not observations and are not
+         * affected by this limit.</p>
+         *
+         * @param ageSec finite maximum observation age in seconds, inclusive
+         * @throws IllegalArgumentException if {@code ageSec} is negative or non-finite
          */
-        PlanAcceptBranch maxRequestAgeSec(double ageSec);
+        PlanAcceptBranch maxObservationAgeSec(double ageSec);
 
         /**
-         * Ignore candidates below the supplied quality threshold.
+         * Ignore candidates below the supplied inclusive quality threshold.
+         *
+         * <p>Timeless candidates have implicit quality {@code 1.0}.</p>
+         *
+         * @param quality finite minimum quality in {@code [0, 1]}
+         * @throws IllegalArgumentException if {@code quality} is outside {@code [0, 1]} or
+         *                                  non-finite
          */
         PlanAcceptBranch minQuality(double quality);
 
@@ -717,7 +729,7 @@ public final class PlantTargets {
         private Source<PlantTargetRequest> request;
         private CandidatePreference preference;
         private UnreachablePolicy unreachablePolicy;
-        private double maxRequestAgeSec = Double.POSITIVE_INFINITY;
+        private double maxObservationAgeSec = Double.POSITIVE_INFINITY;
         private double minQuality = 0.0;
 
         @Override
@@ -773,15 +785,17 @@ public final class PlantTargets {
         }
 
         @Override
-        public PlanAcceptBranch maxRequestAgeSec(double ageSec) {
+        public PlanAcceptBranch maxObservationAgeSec(double ageSec) {
             if (ageSec < 0.0 || !Double.isFinite(ageSec))
-                throw new IllegalArgumentException("maxRequestAgeSec must be finite and >= 0");
-            maxRequestAgeSec = ageSec;
+                throw new IllegalArgumentException("maxObservationAgeSec must be finite and >= 0");
+            maxObservationAgeSec = ageSec;
             return this;
         }
 
         @Override
         public PlanAcceptBranch minQuality(double quality) {
+            if (!Double.isFinite(quality) || quality < 0.0 || quality > 1.0)
+                throw new IllegalArgumentException("minQuality must be finite and in [0, 1]");
             minQuality = quality;
             return this;
         }
@@ -795,28 +809,28 @@ public final class PlantTargets {
         public PlantTargetSource fallbackTo(double target) {
             validateRequest();
             return new PlannerTargetSource(request, preference, unreachablePolicy,
-                    maxRequestAgeSec, minQuality, UnavailableKind.FALLBACK, target);
+                    maxObservationAgeSec, minQuality, UnavailableKind.FALLBACK, target);
         }
 
         @Override
         public PlantTargetSource holdLastTarget(double initialTarget) {
             validateRequest();
             return new PlannerTargetSource(request, preference, unreachablePolicy,
-                    maxRequestAgeSec, minQuality, UnavailableKind.HOLD_LAST, initialTarget);
+                    maxObservationAgeSec, minQuality, UnavailableKind.HOLD_LAST, initialTarget);
         }
 
         @Override
         public PlantTargetSource holdMeasuredTargetOnEntry(double fallbackIfNoMeasurement) {
             validateRequest();
             return new PlannerTargetSource(request, preference, unreachablePolicy,
-                    maxRequestAgeSec, minQuality, UnavailableKind.HOLD_MEASURED, fallbackIfNoMeasurement);
+                    maxObservationAgeSec, minQuality, UnavailableKind.HOLD_MEASURED, fallbackIfNoMeasurement);
         }
 
         @Override
         public PlantTargetSource reportUnavailable() {
             validateRequest();
             return new PlannerTargetSource(request, preference, unreachablePolicy,
-                    maxRequestAgeSec, minQuality, UnavailableKind.REJECT, Double.NaN);
+                    maxObservationAgeSec, minQuality, UnavailableKind.REJECT, Double.NaN);
         }
 
         private void validateRequest() {
@@ -833,7 +847,7 @@ public final class PlantTargets {
         private final Source<PlantTargetRequest> requestSource;
         private final CandidatePreference preference;
         private final UnreachablePolicy unreachablePolicy;
-        private final double maxRequestAgeSec;
+        private final double maxObservationAgeSec;
         private final double minQuality;
         private final UnavailableKind unavailableKind;
         private final double unavailableValue;
@@ -847,14 +861,14 @@ public final class PlantTargets {
         PlannerTargetSource(Source<PlantTargetRequest> requestSource,
                             CandidatePreference preference,
                             UnreachablePolicy unreachablePolicy,
-                            double maxRequestAgeSec,
+                            double maxObservationAgeSec,
                             double minQuality,
                             UnavailableKind unavailableKind,
                             double unavailableValue) {
             this.requestSource = Objects.requireNonNull(requestSource, "requestSource");
             this.preference = Objects.requireNonNull(preference, "preference");
             this.unreachablePolicy = Objects.requireNonNull(unreachablePolicy, "unreachablePolicy");
-            this.maxRequestAgeSec = maxRequestAgeSec;
+            this.maxObservationAgeSec = maxObservationAgeSec;
             this.minQuality = minQuality;
             this.unavailableKind = Objects.requireNonNull(unavailableKind, "unavailableKind");
             this.unavailableValue = unavailableValue;
@@ -883,16 +897,18 @@ public final class PlantTargets {
                 return lastPlan;
             }
 
-            CandidateChoice best = chooseBest(request, context);
+            CandidateSearch search = chooseBest(request, context, clock);
+            CandidateChoice best = search.choice;
             if (best == null) {
-                lastPlan = unavailable(context, "no plant target candidate passed gates or range");
+                lastPlan = unavailable(context, search.rejectionReason);
                 return lastPlan;
             }
 
             unavailableActive = false;
             heldMeasuredTarget = Double.NaN;
             lastTarget = best.target;
-            lastPlan = PlantTargetPlan.planned(best.target, best.candidate, best.clamped,
+            lastPlan = PlantTargetPlan.planned(best.target, best.candidate, best.selectedAgeSec,
+                    best.clamped,
                     best.clamped ? "candidate clamped to range" : "selected plant target candidate");
             return lastPlan;
         }
@@ -920,37 +936,96 @@ public final class PlantTargets {
             return PlantTargetPlan.holdMeasured(heldMeasuredTarget, reason);
         }
 
-        private CandidateChoice chooseBest(PlantTargetRequest request, PlantTargetContext context) {
+        private CandidateSearch chooseBest(PlantTargetRequest request,
+                                           PlantTargetContext context,
+                                           LoopClock clock) {
             ScalarRange range = context.targetRange();
-            if (range == null || !range.valid) return null;
+            if (range == null || !range.valid)
+                return CandidateSearch.rejected("plant target range is unavailable");
             double measurement = context.feedbackAvailable() ? context.measurement() : context.previousAppliedTarget();
             if (!Double.isFinite(measurement)) measurement = 0.0;
 
             CandidateChoice best = null;
+            String firstRejection = null;
             for (PlantTargetCandidate candidate : request.candidates()) {
-                if (!candidatePassesGate(candidate)) continue;
-                CandidateChoice choice = chooseForCandidate(candidate, measurement, range, context);
+                CandidateAcceptance acceptance = candidateAcceptance(candidate, clock);
+                if (!acceptance.accepted) {
+                    if (firstRejection == null) firstRejection = acceptance.reason;
+                    continue;
+                }
+                CandidateChoice choice = chooseForCandidate(candidate, acceptance.ageSec,
+                        measurement, range, context);
+                if (choice == null && firstRejection == null) {
+                    firstRejection = "candidate '" + candidate.id
+                            + "' did not produce a reachable target";
+                }
                 if (choice != null && (best == null || score(choice, measurement, range) < score(best, measurement, range))) {
                     best = choice;
                 }
             }
-            return best;
+            return best != null
+                    ? CandidateSearch.selected(best)
+                    : CandidateSearch.rejected(firstRejection != null
+                    ? firstRejection
+                    : "no plant target candidate passed observation gates or range");
         }
 
-        private boolean candidatePassesGate(PlantTargetCandidate candidate) {
-            return candidate.quality >= minQuality
-                    && (!Double.isFinite(maxRequestAgeSec) || candidate.ageSec <= maxRequestAgeSec);
+        private CandidateAcceptance candidateAcceptance(PlantTargetCandidate candidate,
+                                                        LoopClock clock) {
+            if (!candidate.isObserved()) return CandidateAcceptance.accepted(Double.NaN);
+
+            if (!Double.isFinite(candidate.quality)
+                    || candidate.quality < 0.0
+                    || candidate.quality > 1.0) {
+                return CandidateAcceptance.rejected("candidate '" + candidate.id
+                        + "' has invalid observed quality " + candidate.quality
+                        + "; expected a finite value in [0, 1]");
+            }
+            if (!Double.isFinite(candidate.timestampSec)) {
+                return CandidateAcceptance.rejected("candidate '" + candidate.id
+                        + "' has invalid observation timestamp " + candidate.timestampSec
+                        + "; expected a finite LoopClock time");
+            }
+
+            double nowSec = clock.nowSec();
+            if (!Double.isFinite(nowSec)) {
+                return CandidateAcceptance.rejected("planner LoopClock time is non-finite: " + nowSec);
+            }
+            if (candidate.timestampSec - nowSec > FUTURE_OBSERVATION_TOLERANCE_SEC) {
+                return CandidateAcceptance.rejected("candidate '" + candidate.id
+                        + "' observation timestamp " + candidate.timestampSec
+                        + " is later than LoopClock time " + nowSec);
+            }
+
+            double ageSec = Math.max(0.0, nowSec - candidate.timestampSec);
+            if (!Double.isFinite(ageSec)) {
+                return CandidateAcceptance.rejected("candidate '" + candidate.id
+                        + "' produced non-finite observation age");
+            }
+            if (candidate.quality < minQuality) {
+                return CandidateAcceptance.rejected("candidate '" + candidate.id
+                        + "' observed quality " + candidate.quality
+                        + " is below minimum " + minQuality);
+            }
+            if (Double.isFinite(maxObservationAgeSec) && ageSec > maxObservationAgeSec) {
+                return CandidateAcceptance.rejected("candidate '" + candidate.id
+                        + "' observation age " + ageSec
+                        + " exceeds maximum " + maxObservationAgeSec + " seconds");
+            }
+            return CandidateAcceptance.accepted(ageSec);
         }
 
         private CandidateChoice chooseForCandidate(PlantTargetCandidate c,
+                                                   double selectedAgeSec,
                                                    double measurement,
                                                    ScalarRange range,
                                                    PlantTargetContext context) {
             double base = c.relative ? measurement + c.value : c.value;
             if (!c.periodic) {
-                if (range.contains(base)) return new CandidateChoice(c, base, false);
+                if (range.contains(base))
+                    return new CandidateChoice(c, base, selectedAgeSec, false);
                 if (unreachablePolicy == UnreachablePolicy.CLAMP_TO_RANGE && range.valid)
-                    return new CandidateChoice(c, range.clamp(base), true);
+                    return new CandidateChoice(c, range.clamp(base), selectedAgeSec, true);
                 return null;
             }
 
@@ -966,7 +1041,7 @@ public final class PlantTargets {
                 } else {
                     k = Math.rint((measurement - base) / period);
                 }
-                return new CandidateChoice(c, base + k * period, false);
+                return new CandidateChoice(c, base + k * period, selectedAgeSec, false);
             }
 
             double minK = Double.isFinite(range.minValue)
@@ -979,14 +1054,14 @@ public final class PlantTargets {
             for (long k = (long) minK; k <= (long) maxK; k++) {
                 double v = base + k * period;
                 if (!range.contains(v)) continue;
-                CandidateChoice choice = new CandidateChoice(c, v, false);
+                CandidateChoice choice = new CandidateChoice(c, v, selectedAgeSec, false);
                 if (best == null || score(choice, measurement, range) < score(best, measurement, range)) {
                     best = choice;
                 }
             }
             if (best != null) return best;
             if (unreachablePolicy == UnreachablePolicy.CLAMP_TO_RANGE && range.valid)
-                return new CandidateChoice(c, range.clamp(base), true);
+                return new CandidateChoice(c, range.clamp(base), selectedAgeSec, true);
             return null;
         }
 
@@ -1023,7 +1098,7 @@ public final class PlantTargets {
             dbg.addData(p + ".class", "PlantTargetPlanner")
                     .addData(p + ".preference", preference)
                     .addData(p + ".unreachablePolicy", unreachablePolicy)
-                    .addData(p + ".maxRequestAgeSec", maxRequestAgeSec)
+                    .addData(p + ".maxObservationAgeSec", maxObservationAgeSec)
                     .addData(p + ".minQuality", minQuality)
                     .addData(p + ".unavailablePolicy", unavailableKind)
                     .addData(p + ".lastPlan", lastPlan);
@@ -1034,14 +1109,61 @@ public final class PlantTargets {
     private static final class CandidateChoice {
         final PlantTargetCandidate candidate;
         final double target;
+        final double selectedAgeSec;
         final boolean clamped;
 
-        CandidateChoice(PlantTargetCandidate candidate, double target, boolean clamped) {
+        CandidateChoice(PlantTargetCandidate candidate,
+                        double target,
+                        double selectedAgeSec,
+                        boolean clamped) {
             this.candidate = candidate;
             this.target = target;
+            this.selectedAgeSec = selectedAgeSec;
             this.clamped = clamped;
         }
     }
+
+    /** Result of checking one candidate's live observation metadata. */
+    private static final class CandidateAcceptance {
+        final boolean accepted;
+        final double ageSec;
+        final String reason;
+
+        private CandidateAcceptance(boolean accepted, double ageSec, String reason) {
+            this.accepted = accepted;
+            this.ageSec = ageSec;
+            this.reason = reason;
+        }
+
+        static CandidateAcceptance accepted(double ageSec) {
+            return new CandidateAcceptance(true, ageSec, "");
+        }
+
+        static CandidateAcceptance rejected(String reason) {
+            return new CandidateAcceptance(false, Double.NaN, reason);
+        }
+    }
+
+    /** Candidate search outcome retaining an actionable first rejection when no candidate wins. */
+    private static final class CandidateSearch {
+        final CandidateChoice choice;
+        final String rejectionReason;
+
+        private CandidateSearch(CandidateChoice choice, String rejectionReason) {
+            this.choice = choice;
+            this.rejectionReason = rejectionReason;
+        }
+
+        static CandidateSearch selected(CandidateChoice choice) {
+            return new CandidateSearch(choice, "");
+        }
+
+        static CandidateSearch rejected(String reason) {
+            return new CandidateSearch(null, reason);
+        }
+    }
+
+    private static final double FUTURE_OBSERVATION_TOLERANCE_SEC = 1.0e-6;
 
     private static String cleanName(String name) {
         return name == null || name.trim().isEmpty() ? "layer" : name.trim();

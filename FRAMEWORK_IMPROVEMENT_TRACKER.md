@@ -125,30 +125,31 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 38 | PERF-02 | Loop phase diagnostics | Done | Approved and reviewed sequential profiler, bounded atomic statistics, off-by-default Phoenix telemetry integration, focused/full verification; enabled hardware overhead remains adopting-robot validation. |
 | 39 | PERF-03 | Contract-safe hardware write deduplication | Deferred | Wait for per-adapter measurements and controller/watchdog evidence before suppressing writes. |
 | 40 | TARGET-01 | Lazy Plant target overlay selection | Done | Two-pass lazy target resolution, measured-hold re-entry, truthful diagnostics, documentation, and 22 focused tests are complete and approved. |
-| 41 | TARGET-02 | Candidate freshness | Proposed | Compute effective age from the loop clock and timestamp, with validation. |
-| 42 | TARGET-03 | Periodic planner complexity | Proposed | Replace range iteration with constant-time candidate mathematics. |
-| 43 | CYCLE-01 | Stateful drive-source cycle safety | Proposed | Memoize stateful composition once per `clock.cycle()` and propagate reset deliberately. |
-| 44 | CYCLE-02 | Localization cycle safety | Proposed | Guard predictors/estimators against duplicate same-cycle updates. |
-| 45 | SOURCE-01 | Boolean composition sampling | Proposed | Sample both operands once per cycle before combining stateful results. |
-| 46 | API-01 | Writable Plant command binding | Proposed | Keep one simple `Plant` if builder provenance can prevent silent no-op writes. |
-| 47 | API-02 | Feedback tolerance choice | Proposed | Ask for tolerance after unit mapping; retain an explicitly named native default only if useful. |
-| 48 | API-04 | Binding execution order | Proposed | Preserve declaration order unless explicit phases are proven necessary. |
-| 49 | API-05 | One beginner drive entry point | Proposed | Teach the lane as the robot-facing path and keep the raw factory as a lower-level tool. |
-| 50 | COMMON-02 | Telemetry commit ownership | Proposed | Renderers add data; the composition root commits once. |
-| 51 | CHECK-01 | Staged whole-robot system check | Deferred | Meaningful Phoenix thresholds, hazardous-motion confirmation, and physical safe-state evidence require the assembled robot. |
-| 52 | EXAMPLE-01 | Compiling modern starter robot | Proposed | Add a small multi-file reference, not an inheritance framework. |
-| 53 | EXAMPLE-03 | Advanced moving-target reference | Proposed | Prove progress-triggered scoring and a bounded moving turret without putting game physics in the framework. |
-| 54 | BOUNDARY-01 | FTC boundary enforcement | Proposed | Fix existing import leaks, then add a focused forbidden-import check. |
-| 55 | DOC-01 | Stale and non-compiling documentation | Proposed | Correct loop/API examples and validate links/examples where practical. |
-| 56 | CI-01 | Framework verification in CI | Proposed | Run focused unit tests, TeamCode compilation, docs checks, and boundary checks. |
-| 57 | CLEAN-01 | Alias and risky convenience cleanup | Proposed | Remove only APIs proven redundant or unsafe by caller search. |
-| 58 | SAFE-04 | PowerOutput failure cleanup and seam truth | Deferred | Current completion requires representative actuator observation; a narrower software-seam contract needs a new approved decision gate. |
-| 59 | CAL-01 | Calibration-search power validation | Proposed | Reject invalid normalized search power before stopping normal output or changing calibration state. |
-| 60 | CAL-02 | Position-calibration reference validity | Proposed | Validate calibration reference and hold answers at the boundary that owns their units and lifecycle. |
-| 61 | MAP-01 | FTC actuator mapping-domain validation | Proposed | Validate finite child transforms and raw actuator domains before command mapping can be silently clamped. |
-| 62 | RANGE-01 | ScalarRange construction validity | Proposed | Define and enforce finite, half-bounded, and unbounded range construction without allowing `NaN`. |
-| 63 | FTC-02 | Device-managed controller configuration validation | Proposed | Validate FTC PIDF/P, maximum-power, and related staged answers before SDK access or mode changes. |
-| 64 | CONFIG-01 | Owner-configuration snapshot audit | Deferred | Revisit specific owners only when a traced caller shows mutation drift or invalid retained state. |
+| 41 | TARGET-02 | Candidate freshness | Done | Timestamp-canonical observed/timeless APIs, derived age, fail-closed metadata handling, diagnostics, docs, and tests were reviewed and approved on 2026-07-23. |
+| 42 | VISION-02 | Stable AprilTag observation timestamps | Proposed | Anchor age-native frame time once at acquisition and remove consumer-side re-timestamping that can rejuvenate cached snapshots. |
+| 43 | TARGET-03 | Periodic planner complexity | Proposed | Replace range iteration with constant-time candidate mathematics. |
+| 44 | CYCLE-01 | Stateful drive-source cycle safety | Proposed | Memoize stateful composition once per `clock.cycle()` and propagate reset deliberately. |
+| 45 | CYCLE-02 | Localization cycle safety | Proposed | Guard predictors/estimators against duplicate same-cycle updates. |
+| 46 | SOURCE-01 | Boolean composition sampling | Proposed | Sample both operands once per cycle before combining stateful results. |
+| 47 | API-01 | Writable Plant command binding | Proposed | Keep one simple `Plant` if builder provenance can prevent silent no-op writes. |
+| 48 | API-02 | Feedback tolerance choice | Proposed | Ask for tolerance after unit mapping; retain an explicitly named native default only if useful. |
+| 49 | API-04 | Binding execution order | Proposed | Preserve declaration order unless explicit phases are proven necessary. |
+| 50 | API-05 | One beginner drive entry point | Proposed | Teach the lane as the robot-facing path and keep the raw factory as a lower-level tool. |
+| 51 | COMMON-02 | Telemetry commit ownership | Proposed | Renderers add data; the composition root commits once. |
+| 52 | CHECK-01 | Staged whole-robot system check | Deferred | Meaningful Phoenix thresholds, hazardous-motion confirmation, and physical safe-state evidence require the assembled robot. |
+| 53 | EXAMPLE-01 | Compiling modern starter robot | Proposed | Add a small multi-file reference, not an inheritance framework. |
+| 54 | EXAMPLE-03 | Advanced moving-target reference | Proposed | Prove progress-triggered scoring and a bounded moving turret without putting game physics in the framework. |
+| 55 | BOUNDARY-01 | FTC boundary enforcement | Proposed | Fix existing import leaks, then add a focused forbidden-import check. |
+| 56 | DOC-01 | Stale and non-compiling documentation | Proposed | Correct loop/API examples and validate links/examples where practical. |
+| 57 | CI-01 | Framework verification in CI | Proposed | Run focused unit tests, TeamCode compilation, docs checks, and boundary checks. |
+| 58 | CLEAN-01 | Alias and risky convenience cleanup | Proposed | Remove only APIs proven redundant or unsafe by caller search. |
+| 59 | SAFE-04 | PowerOutput failure cleanup and seam truth | Deferred | Current completion requires representative actuator observation; a narrower software-seam contract needs a new approved decision gate. |
+| 60 | CAL-01 | Calibration-search power validation | Proposed | Reject invalid normalized search power before stopping normal output or changing calibration state. |
+| 61 | CAL-02 | Position-calibration reference validity | Proposed | Validate calibration reference and hold answers at the boundary that owns their units and lifecycle. |
+| 62 | MAP-01 | FTC actuator mapping-domain validation | Proposed | Validate finite child transforms and raw actuator domains before command mapping can be silently clamped. |
+| 63 | RANGE-01 | ScalarRange construction validity | Proposed | Define and enforce finite, half-bounded, and unbounded range construction without allowing `NaN`. |
+| 64 | FTC-02 | Device-managed controller configuration validation | Proposed | Validate FTC PIDF/P, maximum-power, and related staged answers before SDK access or mode changes. |
+| 65 | CONFIG-01 | Owner-configuration snapshot audit | Deferred | Revisit specific owners only when a traced caller shows mutation drift or invalid retained state. |
 
 The completed order was intentionally front-loaded with testability, robot lifecycle, actuator
 safety, deterministic Task behavior, Pedro ownership, truthful route outcomes, and the reusable
@@ -4891,7 +4892,283 @@ writer, and explicit lifecycle ownership.
   compatibility with candidates that cannot provide timestamps.
 - **Completion:** stale cached candidates fail their gates; invalid quality, age, and timestamp values
   fail early or follow one documented unavailable policy.
-- **Decision record:** _Pending._
+- **Decision record (2026-07-22):**
+  - **Confirmed behavior:** every metadata-bearing `PlantTargetRequest` factory delegates to the
+    matching `PlantTargetCandidate` factory. Candidate construction validates target value and an
+    explicit period, but stores `quality`, `ageSec`, and `timestampSec` unchanged. The planner's
+    `candidatePassesGate(...)` compares only `candidate.quality` and the fixed
+    `candidate.ageSec`; `timestampSec` is never read. For example, one cached request with
+    `ageSec = 0.02`, `timestampSec = 1.0`, and a configured maximum age of `0.20` is still selected
+    when `clock.nowSec() == 10.0`, because only `0.02 <= 0.20` is evaluated. The resulting
+    `PlantTargetPlan` also copies `0.02`, so diagnostics incorrectly continue to report it as young.
+  - **Malformed-metadata path:** positive-infinite quality and negative age can currently pass;
+    timestamp infinities are accepted and ignored; a `NaN` age is ignored entirely when the optional
+    maximum-age gate is absent; and `minQuality(...)` accepts `NaN`, infinities, negative values, or
+    values above one. If no candidate passes, the planner already routes through the required
+    `whenUnavailable()` answer: report unavailable, fixed fallback, hold last, or hold measured.
+    That existing policy is the correct fail-closed boundary for bad live observation data.
+  - **Current callers:** exhaustive production, Phoenix, tool, modern-example, test, and Markdown
+    searches found no Phoenix/tool/example Java caller of `PlantTargets.plan()`,
+    `PlantTargetRequest`, or `PlantTargetCandidate`. Phoenix Architecture describes a future turret
+    use. The student-facing executable-shaped calls are in `Mechanism Target Planning.md`; its
+    spatial example forwards `facing.quality()`, `facing.ageSec()`, and
+    `facing.timestampSec()`. Existing tests contain three planner calls for TARGET-01 measured/last
+    hold lifecycle only; none exercises candidate metadata or the acceptance branch.
+  - **Construction-path and distinct-capability audit:**
+    - `PlantTargets.plan()` is the only planner construction entry. Its staged path is
+      `request(Source<PlantTargetRequest>)`, one of four direct preference answers, one of two direct
+      unreachable answers, the optional multi-setting `accept()` branch, and one of four terminal
+      unavailable answers. There is no public planner constructor or `of(...)` factory.
+    - `Source<PlantTargetRequest>` and `PlantTargetRequest` have independent value: robot services
+      can store, compose, and repeatedly evaluate a request source outside the one builder step.
+      They are not immediately consumed selector wrappers, so replacing `request(...)` with several
+      stage-specific target methods would lose dynamic multi-candidate composition.
+    - `PlantTargetRequest.*` is the concise one-candidate construction layer.
+      `PlantTargetCandidate.*` is the necessary multi-candidate layer used with `oneOf(...)`; a
+      dynamic inventory caller stores candidates in a list before constructing the request. The
+      varargs and `List` request forms respectively support literal and accumulated candidate sets.
+      These layers therefore provide distinct capabilities and are retained.
+    - Exact, equivalent-position, periodic, relative-equivalent, and relative-periodic candidates
+      have simple factories; every sensed form except exact `relative(...)` also has a
+      quality/age/timestamp overload. A relative exact observation currently cannot participate in
+      freshness/quality gating at all. Parallel overloads on `PlantTargetCandidate.relative(...)`
+      and `PlantTargetRequest.relative(...)` provide that missing capability without a new type or
+      construction layer.
+  - **Ordinary call-site comparison:**
+    - **Recommended conservative design (unchanged existing call):**
+      `PlantTargetRequest.equivalentPosition(sourceId, targetDeg, quality, reportedAgeSec,
+      observationTimestampSec)`. The student supplies one candidate family/value and forwards three
+      observation facts. The planner configuration separately supplies the two policy answers once:
+      maximum accepted age and minimum accepted quality. Reported age is acquisition/solve latency
+      at publication; timestamp is stable observation identity in the `LoopClock` timebase and lets
+      the framework continue aging a cached result. They are independent evidence, not two policy
+      answers.
+    - **Timestamp-only candidate:** shortens the advanced factory by one scalar, but age-only sensors
+      must synthesize timestamps in robot code and sources that cannot prove a timestamp lose their
+      usable age fact. It also discards the conservative check when reported latency and clock math
+      disagree.
+    - **`CandidateFreshness`/metadata wrapper:** names the alternatives but adds a public noun that
+      ordinary code constructs only to pass immediately, makes candidate lists longer, and does not
+      improve ownership or correctness beyond the planner-local rule.
+    - **Separate age-only and timestamp-only factory families:** creates parallel spellings and asks
+      robot code to branch when a source sometimes has a timestamp. It cannot use both facts
+      conservatively.
+  - **Alternatives considered:**
+    - Documentation-only or continuing to trust `ageSec` leaves the confirmed stale-cache failure.
+    - A smallest local `max(ageSec, nowSec - timestampSec)` comparison fixes the main trace but is
+      incomplete by itself: malformed metadata can still pass, future timestamps can rejuvenate a
+      result, `minQuality` remains invalid, and selected-plan diagnostics remain misleading.
+    - Timestamp-only canonical freshness is mathematically attractive but makes existing age-only
+      sources harder to adapt and moves timebase conversion into robot code.
+    - Tracking timestamp-less candidates by object identity, candidate ID, or first-seen time was
+      rejected because none proves that two returned candidates represent the same observation.
+    - Throwing while constructing a candidate was rejected for live metadata. A bad sensor sample
+      should reject that candidate and allow another candidate or the already-required unavailable
+      policy to keep the mechanism safe; it should not crash an OpMode. Invalid builder tuning is
+      programmer configuration and should still fail immediately with an actionable exception.
+    - Renaming or restructuring the established `accept()` branch was rejected as unrelated API
+      churn. It already has distinct value as a multi-setting optional tuning branch.
+  - **Chosen design:**
+    1. Keep all existing request/candidate calls and planner stages. Add only the two missing
+       `relative(id, delta, quality, ageSec, timestampSec)` overloads, one at each justified
+       construction layer.
+    2. Validate each candidate at planner resolution before geometry: quality must be finite and in
+       `[0, 1]`; reported age must be finite and non-negative; timestamp must be `NaN` for unknown or
+       finite in the current `LoopClock` timebase. A timestamp more than `1e-6` seconds in the future
+       is invalid; a difference within that numeric tolerance contributes zero derived age.
+    3. When a timestamp is known, compute
+       `effectiveAgeSec = max(reportedAgeSec, max(0, clock.nowSec() - timestampSec))`. With a `NaN`
+       timestamp, use the reported age. Apply the configured maximum to that effective age with the
+       current inclusive boundary; apply minimum quality inclusively. Invalid, stale, or low-quality
+       candidates are skipped, so a later valid candidate remains eligible. If none wins, use the
+       caller's existing explicit unavailable policy with an actionable first-rejection reason.
+    4. Validate `minQuality(...)` as finite and in `[0, 1]`; retain the existing finite,
+       non-negative validation for `maxRequestAgeSec(...)`.
+    5. Preserve the candidate's quality and original timestamp in `PlantTargetPlan`, but make
+       `selectedAgeSec()` report the effective age actually used by selection. Use an internal plan
+       construction path rather than adding another public metadata type or changing the existing
+       public `PlantTargetPlan.planned(...)` signature.
+    6. A metadata-free candidate remains ordinary current robot intent (`quality = 1`, age zero,
+       unknown timestamp). With no configured maximum age, the planner does not invent a staleness
+       limit, though it still rejects malformed metadata and reports effective age. A timestamp-less
+       observation remains compatible, but its producer must update reported age whenever it is
+       returned; the framework cannot truthfully age a cached value that supplies no capture time.
+    7. Planner/source reset remains paired with a deliberate `LoopClock` reset. TARGET-02 will not
+       invent clock-rollback recovery, change same-cycle memoization, alter candidate preference/tie
+       ordering, change overlay fall-through, or implement TARGET-03 periodic mathematics.
+  - **Framework Principles and simplicity check:** the planner owns current-loop freshness because
+    it alone has both `LoopClock` and acceptance policy; producers own immutable observation facts;
+    and the existing unavailable branch owns safe behavior after rejection. The ordinary simple
+    factories remain two arguments, the advanced spatial mapping remains the same five-argument
+    forwarding call, and no new public noun or builder question is introduced. Runtime data fails
+    closed without hiding other valid candidates; configuration fails fast. Diagnostics report the
+    fact actually used. The two added relative overloads satisfy a real missing capability rather
+    than symmetry alone.
+  - **Bounded implementation scope:** update `PlantTargetCandidate`, `PlantTargetRequest`,
+    `PlantTargetPlan`, and planner internals/Javadocs in `PlantTargets`; add one focused
+    `PlantTargetsPlannerFreshnessTest`; synchronize the concise Plant-target section in Framework
+    Principles and the freshness contract/spatial example in `Mechanism Target Planning.md`.
+    Phoenix robot Java, tools, existing examples, spatial/source ownership, other freshness APIs,
+    and later tracker items remain unchanged.
+  - **Verification plan:** focused tests will cover a cached timestamped candidate aging through the
+    exact inclusive boundary; reported-versus-derived conservative maxima in both directions;
+    timestamp-absent fresh/stale compatibility; no configured age limit; quality thresholds;
+    invalid quality/age/timestamp and future timestamps; stale/invalid-first plus valid-later
+    selection; declaration-order ties; all four unavailable policies and fresh/stale recovery;
+    same-cycle memoization, next-cycle recomputation, reset, zero-delta and large time jumps;
+    truthful selected effective age/original timestamp; builder validation; and both new relative
+    overloads. Then run the focused suite, full TeamCode unit tests and compilation, public-signature
+    and exhaustive caller audits, Markdown links/fences, whitespace checks, and `git diff --check`.
+    No robot hardware evidence is needed because the contract is deterministic loop-clock and value
+    selection behavior.
+  - **Approval gate:** candidate acceptance semantics and the relative metadata overloads are public
+    API decisions. Stop before implementation and request explicit approval of the TARGET-02
+    conservative-freshness design.
+
+- **Reopened decision (2026-07-22; supersedes the conservative-freshness choice above):** the user
+  challenged why TARGET-02 should retain timestamp-less age. A second exhaustive source/caller/API
+  audit found no concrete reason to do so, and the leading hypothesis therefore changed materially.
+  The earlier approval request is withdrawn; this revised design requires fresh approval.
+  - **Capability evidence:** no production, Phoenix, tool, example, or test Java caller constructs a
+    metadata-bearing target candidate/request. The documented spatial path already receives a
+    `LoopClock`-domain timestamp. `PoseEstimate` requires a timestamp; the absolute-pose and AprilTag
+    spatial lanes forward timestamps; webcam detections expose a frame acquisition time; and the
+    Limelight owner has both a stable result timestamp/identity and the loop clock. A source that
+    natively reports age can convert it once, while creating its immutable snapshot, with
+    `observedAtSec = clock.nowSec() - sampledAgeSec` and retain that timestamp thereafter.
+  - **Why age-only is rejected:** age is relative to the instant at which it was sampled. If a
+    producer caches a candidate whose fixed age is `0.02`, the planner cannot distinguish that old
+    observation from a newly sampled one. Recomputing `now - age` in each consumer merely gives the
+    cached observation a new timestamp every loop. Candidate identity, ID, object identity, and
+    first-seen tracking also cannot prove whether two values are the same observation. The source or
+    adapter that owns acquisition is the only layer able to answer that question once and retain it.
+  - **Ordinary robot-code comparison:** persistent/current robot intent stays concise and has no
+    freshness metadata:
+
+    ```java
+    PlantTargetRequest.equivalentPosition("slot-2", 240.0);
+    ```
+
+    An observation-derived request says so explicitly and forwards one freshness fact rather than
+    two overlapping values:
+
+    ```java
+    PlantTargetRequest.observedEquivalentPosition(
+            facing.sourceId(), targetDeg, facing.quality(), facing.timestampSec());
+    ```
+
+    The acceptance policy likewise describes what it limits:
+
+    ```java
+    .accept()
+        .maxObservationAgeSec(0.20)
+        .minQuality(0.45)
+        .doneAccept()
+    ```
+
+  - **Revised chosen design:**
+    1. Keep the existing short geometry factories for timeless/current robot intent. Replace every
+       public quality/age/timestamp overload with a parallel `observed...` factory that accepts only
+       quality and one stable observation timestamp in the current `LoopClock` timebase. Provide the
+       same six pairs on both justified construction layers: exact, equivalent position, explicit
+       periodic, relative exact, relative equivalent position, and relative explicit periodic.
+       This both supplies the currently missing observed-relative-exact capability and keeps the
+       `PlantTargetRequest` one-candidate convenience parallel with `PlantTargetCandidate` lists.
+    2. Mark observation-derived candidates internally. Do not use `NaN` alone to distinguish them
+       from timeless intent: an invalid timestamp supplied to an `observed...` factory must be
+       rejected, not silently reclassified as timeless. Remove candidate `ageSec`; do not retain or
+       deprecate the old age-bearing overloads because there is no repository migration cost or
+       demonstrated external compatibility requirement.
+    3. At planner resolution, require observed quality to be finite and in `[0, 1]` and the timestamp
+       to be finite and no more than `1e-6` seconds in the future. Derive age exactly once as
+       `max(0, clock.nowSec() - observationTimestampSec)`. Apply minimum quality and renamed
+       `maxObservationAgeSec(...)` gates inclusively. Invalid, stale, or low-quality observations
+       skip to the next candidate; if none wins, the existing explicit `whenUnavailable()` policy
+       remains the single fail-closed answer. Invalid builder thresholds still fail immediately.
+    4. Timeless candidates have implicit quality `1.0` and are not subject to an observation-age
+       limit. A valid old observation is eligible when the caller deliberately configures no maximum
+       observation age; the framework does not invent that policy. Malformed observed metadata is
+       always unavailable, even without an optional gate.
+    5. `PlantTargetPlan.selectedAgeSec()` reports the selection-time age derived by the planner and
+       `selectedTimestampSec()` preserves the observation timestamp; both report `NaN` when timing
+       does not apply to a timeless candidate. Make candidate-plan construction framework-internal
+       so custom sources cannot create a `PLANNED_CANDIDATE` plan while bypassing the one freshness
+       calculation. Public custom sources retain exact, fallback, hold, and unavailable plans; public
+       candidate selection has one supported route through `PlantTargets.plan()`.
+    6. Keep source/adapter timestamp anchoring as an ownership contract, not robot-code boilerplate.
+       TARGET-02 will document that an age-native reusable owner converts age once when publishing a
+       snapshot. It will not add a metadata wrapper, parallel age/timestamp factory families,
+       candidate identity heuristics, an implicit default staleness limit, or unrelated vision API
+       restructuring.
+  - **Alternatives reconsidered:** keeping both age and timestamp makes every sensed call answer the
+    same freshness question twice and asks the planner to reconcile disagreement that the producer
+    should resolve. A timestamp-only same-name overload is shorter in autocomplete but obscures the
+    important distinction between timeless intent and observed data; explicit `observed...` names
+    retain the same number of factory paths while making misuse visible. Throwing from an
+    `observed...` factory for malformed live metadata would force robot code to prevalidate or catch
+    sensor faults, so runtime metadata instead follows the planner's safe unavailable policy. A
+    `CandidateFreshness` wrapper adds a noun used only to pass two scalars immediately.
+  - **Framework Principles and simplicity check:** this design answers freshness once at the owner
+    that can prove acquisition time, uses the framework's single `LoopClock` timebase, does not infer
+    observation identity, deletes overlapping legacy paths, keeps sibling factories parallel, and
+    leaves timeless robot intent at its existing two/three-argument call. Sensor-to-target robot code
+    becomes one scalar shorter than the current documentation and cannot accidentally rely on a
+    non-aging age value when it uses the explicitly observed path.
+  - **Revised implementation/verification scope:** update `PlantTargetCandidate`,
+    `PlantTargetRequest`, candidate-plan construction, planner internals/Javadocs in `PlantTargets`,
+    Framework Principles, and `Mechanism Target Planning.md`; add a focused
+    `PlantTargetsPlannerFreshnessTest`. Verify observed/timeless factories and their parallel API,
+    cached timestamp aging through the inclusive boundary, invalid/future timestamps, quality,
+    later-candidate recovery, all unavailable policies, same-cycle/reset behavior, truthful plan
+    diagnostics, builder validation, caller/signature audits, focused/full TeamCode tests and
+    compilation, documentation fences/links, and whitespace. No robot hardware evidence is needed.
+  - **Revised approval gate:** this removes and renames public factories/policy and narrows public
+    candidate-plan construction. Per the framework-improvement workflow, stop before implementation
+    and request explicit approval with `Approve TARGET-02 timestamp-canonical freshness design`.
+  - **Design approval (2026-07-22):** the user replied
+    `Approve TARGET-02 timestamp-canonical freshness design`. This authorizes Gate 2 implementation
+    of the revised bounded scope above for TARGET-02 only; it does not authorize TARGET-03.
+  - **Implementation (2026-07-22):** the approved timestamp-canonical design is complete.
+    - `PlantTargetCandidate` and `PlantTargetRequest` now expose the same six ordered
+      timeless/`observed...` factory pairs. Observed factories accept geometry followed by quality
+      and one stable `LoopClock` timestamp. Age fields and every age-bearing overload were deleted,
+      and the missing observed-relative-exact path was added at both justified construction layers.
+    - The planner distinguishes observed candidates internally, validates live quality/timestamp
+      metadata, derives age from the current clock, applies inclusive minimum-quality and renamed
+      `maxObservationAgeSec(...)` tuning, preserves declaration-order scoring, skips rejected
+      candidates, and reports the first actionable rejection only if no candidate wins. Invalid
+      tuning still fails immediately.
+    - Candidate-plan construction is package-private and used only by `PlantTargets`; public custom
+      sources retain distinct exact/fallback/hold/unavailable plan factories. Selected observation
+      diagnostics retain timestamp and derived age, while timeless candidates and all non-observation
+      plans report `NaN` timing rather than a misleading zero.
+    - Framework Principles, the mechanism-planning guide, maintainer builder notes, Javadocs, and the
+      spatial example now use the observed/timeless vocabulary and one-time timestamp anchoring rule.
+  - **Adversarial/API audit:** independent reviews found and resolved non-observation plans claiming
+    zero age, one reversed sibling-factory declaration order, and imprecise unavailable-policy
+    wording. A separate existing upstream risk remains: `AprilTagDetections.frameTimestampSec(...)`
+    may re-anchor an age-only cached snapshot. That is not repairable inside the target planner and
+    was intentionally excluded by the approved scope, so proposed high-priority VISION-02 now owns
+    the acquisition/vision-boundary decision rather than silently expanding TARGET-02.
+  - **Automated verification (2026-07-22):** `PlantTargetsPlannerFreshnessTest` has **13 tests** and,
+    together with the 22 existing overlay regression tests, reports **35 tests, 0 failures, 0 errors,
+    0 skipped**. The complete `:TeamCode:testDebugUnitTest` result reports **756 tests, 0 failures,
+    0 errors, 0 skipped** across 76 suites. `:TeamCode:compileDebugJavaWithJavac` passes. Exhaustive
+    public-factory/caller searches found six parallel pairs per retained layer, exactly one internal
+    `PlantTargetPlan.planned(...)` caller, no age-bearing target factories, and no old
+    `maxRequestAgeSec(...)` use. Markdown fences, changed-file trailing whitespace,
+    and `git diff --check` pass. Gradle emits only the existing Java 8 source/target deprecation and
+    FTC sample deprecation warnings.
+  - **Hardware scope:** no physical run is useful for this item; candidate acceptance is deterministic
+    `LoopClock` value-selection behavior. VISION-02 separately owns truth at webcam/Limelight
+    acquisition boundaries.
+  - **Android Studio audit point:** inspect the observed/timeless factory pairs, planner validation
+    and age derivation, plan diagnostics, focused tests, and synchronized guide/principle wording.
+    Stop without staging, committing, publishing, or starting VISION-02 until the user replies
+    `TARGET-02 looks good`.
+  - **Manual verification (2026-07-23):** the user reviewed TARGET-02 in Android Studio and replied
+    `TARGET-02 looks good`. TARGET-02 is **Done**, and this approval authorizes Gate 3 finalization,
+    publication, and merge for this item only. It does not authorize starting VISION-02.
 
 ### TARGET-03 - Periodic planner complexity
 
@@ -7436,6 +7713,31 @@ writer, and explicit lifecycle ownership.
   copy, immutable reusable value, direct staged answer, and no-change design.
 - **Decision record (updated 2026-07-17):** **Deferred for concrete DriveGuidance caller evidence.**
   This is an audit note, not an implementation-ready umbrella task.
+
+### VISION-02 - Stable AprilTag observation timestamps
+
+- **Problem to confirm:** TARGET-02's adversarial review found that
+  `AprilTagDetections.frameTimestampSec(clock)` derives `clock.nowSec() - ageSec` on every call when
+  the snapshot has no explicit timestamp. Re-reading one cached age-only detections object can
+  therefore assign the same frame a newer timestamp every loop. `AprilTagSpatialSolveLane` consumes
+  that helper, while current FTC webcam and Limelight adapters publish age-only detection snapshots.
+- **Alternatives to compare:** require every detections snapshot to carry a stable `LoopClock`
+  timestamp; let each FTC owner stamp once using camera-frame/result identity; retain age-only
+  snapshots but make timestamp-dependent consumers reject them; or add cache/identity inference in
+  the spatial consumer. Audit webcam acquisition time, Limelight control-hub result identity,
+  localization, custom sensors, tests, and every public detections factory before choosing.
+- **Leading hypothesis:** acquisition owners have the facts needed to anchor time. The webcam owner
+  should translate frame acquisition time once; the Limelight owner should latch one timestamp per
+  stable result identity; immutable detection snapshots should retain it; and downstream getters
+  should return the retained timestamp rather than re-anchoring age. Keep age only as a diagnostic
+  if it still has distinct value, and do not move vendor identity logic into spatial or robot code.
+- **Completion:** repeatedly consuming one cached frame preserves one timestamp and its derived age
+  grows; new frames/results receive new timestamps; webcam, Limelight, localization, spatial, and
+  no-result paths remain truthful; and target-planner examples receive stable timestamps without
+  student bookkeeping.
+- **Decision record:** _Pending; split from the TARGET-02 adversarial review on 2026-07-22. TARGET-02
+  deliberately fixes the candidate/planner boundary only and does not claim to resolve this
+  upstream vision ownership issue._
 
 ## Explicitly deferred architectural ideas
 
