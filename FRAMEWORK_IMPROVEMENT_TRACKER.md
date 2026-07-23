@@ -124,7 +124,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 37 | PERF-01 | FTC hub bulk-cache ownership | Deferred | Wait for real hub-I/O benchmarks before changing the SDK automatic-caching default. |
 | 38 | PERF-02 | Loop phase diagnostics | Done | Approved and reviewed sequential profiler, bounded atomic statistics, off-by-default Phoenix telemetry integration, focused/full verification; enabled hardware overhead remains adopting-robot validation. |
 | 39 | PERF-03 | Contract-safe hardware write deduplication | Deferred | Wait for per-adapter measurements and controller/watchdog evidence before suppressing writes. |
-| 40 | TARGET-01 | Lazy Plant target overlay selection | Proposed | Resolve the selected highest-priority layer first and avoid sampling shadowed layers. |
+| 40 | TARGET-01 | Lazy Plant target overlay selection | Done | Two-pass lazy target resolution, measured-hold re-entry, truthful diagnostics, documentation, and 22 focused tests are complete and approved. |
 | 41 | TARGET-02 | Candidate freshness | Proposed | Compute effective age from the loop clock and timestamp, with validation. |
 | 42 | TARGET-03 | Periodic planner complexity | Proposed | Replace range iteration with constant-time candidate mathematics. |
 | 43 | CYCLE-01 | Stateful drive-source cycle safety | Proposed | Memoize stateful composition once per `clock.cycle()` and propagate reset deliberately. |
@@ -4720,9 +4720,166 @@ writer, and explicit lifecycle ownership.
   selected-only capture source.
 - **Leading hypothesis:** lazy highest-priority-first resolution best matches overlay semantics and
   avoids hidden side effects without exposing lifecycle complexity to robot code.
-- **Completion:** shadowed sources are not sampled; fallback/add-if-available behavior stays explicit;
+- **Completion:** shadowed target producers are not sampled; every activation gate remains a truthful
+  once-per-cycle input; fallback/`addIfAvailable(...)` behavior stays explicit; and measured-hold
   re-entry behavior is covered by tests and documentation.
-- **Decision record:** _Pending._
+- **Decision record (2026-07-22):** **Ready for explicit approval.** The leading lazy-selection
+  direction remains correct, with two required internal refinements: activation gates must be
+  sampled separately from target producers, and both measured-hold implementations must recognize
+  a sampling gap as a new entry. This changes observable overlay and hold lifecycle semantics, so no
+  framework implementation may be edited until the user approves this design.
+  - **Confirmed current behavior:** `OverlayTargetSource.resolve(...)` first resolves the base, then
+    walks layers in declaration order. Every enabled lower target therefore runs before a later,
+    higher-priority winner. A base `holdMeasuredTargetOnEntry(...)` can latch measurement `A` while
+    a higher override actually wins, then later return stale `A` when the override ends instead of
+    capturing current measurement `B`. A lower normal `add(...)` layer that returns unavailable also
+    breaks the loop before a valid later/higher layer is considered, contradicting the documented
+    “later enabled layers have higher priority” rule. There is no focused overlay test today.
+  - **Public construction-path audit:** overlay construction has one public layer:
+    `PlantTargets.overlay(...)` returns `OverlayBuilder`, repeatable `add(...)` and
+    `addIfAvailable(...)` calls declare layers, and `build()` returns the final
+    `PlantTargetSource`. The `double`, `ScalarSource`, and `PlantTargetSource` overloads are useful
+    lifts of the same concept rather than competing arbitration APIs. Normal `add(...)` and
+    `addIfAvailable(...)` remain deliberately distinct because “required target” and “try then fall
+    through” are different failure policies. The direct
+    `PlantTargets.holdMeasuredTargetOnEntry(...)` factory and planner
+    `whenUnavailable().holdMeasuredTargetOnEntry(...)` answer are both supported and must have
+    parallel entry meaning. No constructor, `of(...)`, second overlay builder, or selected-only
+    target path exists.
+  - **Builder-reuse and redundant-layer audit:** every repository caller builds one overlay inline;
+    none retains `OverlayBuilder`, calls `build()` twice, or mutates it after build. `add(...)` is a
+    genuinely repeatable layer declaration, not a staged single-answer question. TARGET-01 will not
+    invent builder sealing/copying semantics or reset children on selection changes. The unrelated
+    `fromScalar(...)` alias and other public-surface cleanup remain in CLEAN-01; this item will not
+    add siblings to them or remove them opportunistically.
+  - **Current callers:** compiled production/reference code has five overlay construction sites:
+    three one-layer feed-pulse overlays in Phoenix `ScoringPath`, one in
+    `TeleOp_07_SupervisorPoseMechanism`, and one in
+    `TeleOp_09_LayeredShooterMechanism`. Their bases are pure current-value sources and their output
+    queues are explicitly updated before Plant update, so selected output is unchanged. No compiled
+    Java caller currently uses `addIfAvailable(...)` or the standalone measured-hold source.
+    Multi-layer priority, explicit fall-through, and measured-hold examples are nevertheless part
+    of the supported public contract in `Mechanism Target Planning.md`; the FTC Plant, output queue,
+    quickstart, layered-shooter, supervisor, and Phoenix architecture guides also teach overlays.
+  - **Ordinary robot code stays the same:** students still decide only the total base, each behavior
+    name/gate/target, declaration order, and—only when genuinely needed—whether failure should
+    explicitly fall through:
+
+    ```java
+    PlantTargetSource feederTarget = PlantTargets.overlay(baseTarget)
+            .add("feedPulse", feedPulseQueue.activeSource(), feedPulseQueue)
+            .add("eject", ejectRequested, -1.0)
+            .build();
+    ```
+
+    No lifecycle call, wrapper type, selector object, or second target spelling is added.
+  - **Alternatives compared:** documentation-only cannot prevent hidden capture, shadowed failures,
+    or the lower-unavailable priority defect. A local change only to measured hold leaves all other
+    stateful target producers and priority failure intact. A fully lazy highest-to-low scan of both
+    gates and targets is shorter internally, but it would pause lower stateful activation signals,
+    debounce/edge progression, and `OutputTaskRunner.activeSource()` updates while a higher layer is
+    active; an old pulse could then resume unexpectedly after the override. Robot-local nested
+    `choose(...)` or negated gates repeats arbitration and fall-through policy. Public
+    `onSelected`/`onDeselected` hooks, an overlay lifecycle interface, `.lazy()` modes, or a new
+    selected-only hold source add concepts and shared-source ownership questions. Automatically
+    calling child `reset()` when shadowed can clear planners or cancel/empty queue owners and is not
+    a selection operation.
+  - **Chosen overlay algorithm:** first sample every memoized activation gate exactly once in
+    declaration order and retain that per-loop snapshot. Then inspect layers from last to first and
+    resolve target producers only as needed. The first enabled producer whose plan has a target
+    wins. An enabled normal `add(...)` target that is unavailable terminates with that explicit
+    failure; an enabled `addIfAvailable(...)` target records fall-through and continues to the next
+    lower layer. Resolve
+    the base only when no layer wins or blocks. Lower targets and the base are therefore not sampled
+    under a higher winner, while activation facts and queue heartbeats remain current. Selection for
+    the loop is frozen before target resolution, avoiding target-side effects that change a later
+    gate during the same arbitration pass.
+  - **Measured-hold entry semantics:** for the standalone hold, “entry” means its first resolution
+    after construction/reset or after at least one `LoopClock.cycle()` in which it was not resolved.
+    Continuous-cycle and repeated same-cycle resolutions retain one capture; selection after a
+    sampling gap captures the then-current measurement, or the caller's finite fallback if feedback
+    is unavailable. The planner's `HOLD_MEASURED` unavailable policy uses the same sampling-gap rule
+    for a new unavailable entry, without clearing its unrelated hold-last/request history. General
+    target children are never reset merely because another layer wins.
+  - **Diagnostics and failure truth:** reset each overlay layer's per-resolution diagnostic state
+    before arbitration and distinguish disabled, enabled-but-shadowed, selected,
+    explicitly-fell-through, and required-but-unavailable outcomes without resolving a target for
+    telemetry. Existing target/gate exceptions remain failures rather than becoming silent
+    fall-through. An unavailable lower layer cannot mask a valid higher winner because it is not
+    selected; an unavailable selected normal layer cannot silently expose a lower command.
+  - **Framework Principles assessment:** this keeps one final `PlantTargetSource`, one Plant sample
+    and writer, explicit priority/fall-through, and the single `LoopClock` heartbeat. It preserves
+    per-cycle progression for activation sources while making conditional target branches genuinely
+    lazy, keeps state and reset ownership in their existing owners, and moves reusable arbitration
+    complexity into the framework with no added student-facing noun or call.
+  - **Bounded implementation scope:** change only private overlay/hold state in `PlantTargets`, the
+    conditional-resolution contract in `PlantTargetSource` Javadocs, focused framework tests, the
+    Plant-target section of Framework Principles, `Mechanism Target Planning.md`, and the stale
+    “base always runs” wording in `Supervisors & Pipelines.md`. Inspect other overlay snippets for
+    semantic accuracy but do not rewrite valid call sites or Phoenix robot behavior. Do not absorb
+    TARGET-02 freshness, TARGET-03 candidate mathematics, SOURCE-01 Boolean-combinator semantics,
+    CYCLE-01 whole-source memoization, CLEAN-01 aliases, builder-reuse policy, or selection-driven
+    queue reset. The audit also found that generic memoized sources mark a cycle before an upstream
+    sample succeeds; same-cycle retry behavior is a separate source fail-stop candidate and is not
+    changed under TARGET-01.
+  - **Verification plan:** add a focused `PlantTargetsOverlayTest` covering all gates sampled once,
+    base/lower target laziness, later-layer priority over a lower unavailable layer, required
+    unavailable blocking, `addIfAvailable(...)` fall-through chains, base-only fallback, frozen
+    gate snapshots, reset propagation, and truthful changing diagnostics. Cover standalone and
+    planner measured holds for first capture, continuous cycles, repeated same-cycle resolution,
+    shadow/re-entry recapture, unavailable feedback fallback, and explicit reset. Add one real Plant
+    integration assertion that only the selected requested target is applied. Run the focused suite,
+    full `:TeamCode:testDebugUnitTest`, `:TeamCode:compileDebugJavaWithJavac`, exhaustive caller/API
+    searches, documentation-link/whitespace checks, and `git diff --check`. No hardware evidence is
+    required because this is deterministic source-selection and lifecycle behavior.
+  - **Approval gate:** this preserves every public call signature but changes observable sampling,
+    priority, failure shielding, and measured-hold re-entry semantics. Stop before implementation
+    and request explicit approval of the TARGET-01 two-phase lazy-overlay design.
+  - **Design approval (2026-07-22):** the user approved the TARGET-01 two-phase lazy-overlay design
+    with `Approve TARGET-01 two-phase lazy overlay design`. Gate 2 implementation is authorized for
+    this item only.
+  - **Gate 2 implementation (2026-07-22):**
+    - `PlantTargets.overlay(...)` now clears per-overlay diagnostic state, samples every memoized
+      activation gate once in declaration order, then resolves target producers from last/highest
+      priority to first/lowest. A selected normal unavailable layer blocks; an
+      `addIfAvailable(...)` layer records fall-through; the base resolves only when no layer wins or
+      blocks. Gate and selected-target exceptions preserve the original failure and never trigger a
+      fallback target.
+    - Overlay diagnostics retain the existing winner/enabled/fell-through/plan keys and now report
+      base/target sampling plus disabled, shadowed, selected, fell-through, required-unavailable,
+      gate-failed, and target-failed outcomes. Mutable diagnostic snapshots are owned by each built
+      overlay rather than the reusable layer specification. Successful resolution adds no new
+      per-loop diagnostic object or dynamic error-message allocation.
+    - The standalone measured hold recaptures after a resolution-cycle gap; same-cycle and
+      consecutive-cycle resolutions retain one capture. Planner `HOLD_MEASURED` applies the same
+      re-entry rule without clearing candidate or hold-last history. Explicit reset forces a fresh
+      entry, and the affected stateful sources fail fast when the required `LoopClock` is missing.
+    - Synchronized `PlantTargetSource`/`PlantTargets` Javadocs, Framework Principles,
+      `Mechanism Target Planning.md`, and `Supervisors & Pipelines.md`. All existing Phoenix and
+      example construction calls remain unchanged; no public/protected production signature or
+      robot behavior file changed.
+  - **Automated verification (2026-07-22):**
+    - Focused `PlantTargetsOverlayTest`: 22 tests, 0 failures, 0 errors, and 0 skipped. Coverage
+      includes gate order/memoization, frozen snapshots, lazy winner/base behavior, required failure,
+      successful and chained optional fall-through, exception shielding/diagnostics, reset
+      propagation, standalone/planner measured-hold entry and fallback, hold-last isolation, and a
+      real power-Plant application assertion.
+    - Full `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` passed: 75 XML suites,
+      743 tests, 0 failures, 0 errors, and 0 skipped. Output contained only the repository's existing
+      Java-8-on-JDK-21 source/target and deprecated FTC controller sample warnings.
+    - `git diff --check`, changed-file trailing-whitespace/final-newline checks, Markdown fence and
+      relative-link checks, exhaustive overlay caller search, and an affected-Java public/protected
+      signature diff all passed. Three independent final reviews of implementation/performance,
+      test validity, and documentation/API simplicity reported no remaining blocker.
+    - No robot hardware evidence is required or claimed because the changed contract is fully
+      deterministic source selection, loop-cycle re-entry, and diagnostics behavior.
+  - **Manual verification scope:** inspect the two-pass loops, `add(...)` versus
+    `addIfAvailable(...)` branches, measured-hold gap/reset state, per-overlay debug states, focused
+    tests, and synchronized docs in Android Studio. Confirm that the five existing Phoenix/tool
+    overlay calls are unchanged. No physical robot run is needed for this item.
+  - **Manual verification (2026-07-22):** the user reviewed TARGET-01 in Android Studio and replied
+    `TARGET-01 looks good`. TARGET-01 is **Done**, and this approval authorizes Gate 3 finalization,
+    publication, and merge for this item only. No robot-hardware validation was required or claimed.
 
 ### TARGET-02 - Candidate freshness
 

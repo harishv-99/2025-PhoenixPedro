@@ -183,8 +183,19 @@ Plant feeder = FtcActuators.plant(hardwareMap)
         .build();
 ```
 
-The Boolean on each layer means “this behavior is requested.” If an enabled `add(...)` layer cannot
-produce a target, the overlay reports that layer as unavailable instead of silently falling through.
+The Boolean on each layer means “this behavior is requested.” Overlay resolution has two passes:
+
+1. Sample every layer's activation gate exactly once for the loop. This keeps stateful gates current
+   even while another layer has priority.
+2. Starting with the last-added, highest-priority enabled layer, resolve target producers only until
+   the result is determined.
+
+An available target from either layer form wins. If an enabled `add(...)` layer is unavailable, the
+overlay reports it as unavailable and does not consult lower-priority targets. Disabled and shadowed
+target producers are not resolved, and the total base target is resolved only after every layer is
+disabled or explicitly falls through. Robot code does not need to notify sources about selection
+changes or reset them when priorities change; the overlay call above is the complete declaration.
+
 Do not hide target validity inside the Boolean unless that is truly the behavior you want. It is
 usually easier to debug when the layer is enabled and its target source reports why it used a fallback,
 hold target, or explicit unavailable result.
@@ -201,7 +212,8 @@ PlantTargetSource turretTarget = PlantTargets.overlay(PlantTargets.holdMeasuredT
 
 `addIfAvailable(...)` is intentionally named differently from `add(...)` because it changes the
 meaning of an enabled-but-unavailable layer. Debug output records that the layer was enabled and fell
-through, so this is not a hidden Boolean filter.
+through to the next enabled lower-priority layer, or ultimately the base, so this is not a hidden
+Boolean filter. Disabled and shadowed target producers still are not resolved.
 
 ## Target-plan diagnostics
 
@@ -331,9 +343,12 @@ PlantTargetSource turretTarget = PlantTargets.overlay(PlantTargets.holdMeasuredT
         .build();
 ```
 
-`holdMeasuredTargetOnEntry(...)` still provides a target every cycle. It latches the current
+`holdMeasuredTargetOnEntry(...)` is a total source whenever it is resolved. It latches the current
 measurement when the hold source is entered, then keeps emitting that captured value. It does not
-mean “skip commanding the Plant this loop.”
+mean “skip commanding the Plant this loop.” Inside an overlay, “entered” means consecutive
+resolution cycles in which that hold source is actually resolved. If it is disabled or shadowed for
+a complete resolution cycle, its next resolution is a new entry and captures the then-current
+measurement. Robot code does not call a selection reset or lifecycle hook to make that happen.
 
 ## Spatial-derived requests
 

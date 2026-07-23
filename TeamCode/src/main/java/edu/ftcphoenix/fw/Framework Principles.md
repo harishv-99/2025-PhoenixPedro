@@ -282,6 +282,16 @@ Key methods (see `edu.ftcphoenix.fw.actuation.Plant`):
 
 A Plant may be open-loop (power, commanded servo position), device-managed closed-loop (for example FTC motor velocity/position), or framework-regulated closed-loop over a raw actuator command. The public rule is the same for all of them: **behavior shapes sources; Plants protect and apply one target per loop**.
 
+Priority overlays keep activation and target production separate. In every Plant loop, an overlay
+samples every layer's activation gate exactly once, then resolves enabled target producers lazily
+from highest priority to lowest. An enabled `add(...)` layer that is unavailable blocks lower
+layers; only the explicitly named `addIfAvailable(...)` form falls through. The total base resolves
+only after every layer is disabled or explicitly falls through. Shadowed target producers are not
+sampled merely to maintain hidden state. A measured hold therefore stays entered only across
+consecutive resolution cycles in which it is actually resolved; after a resolution-cycle gap, its
+next resolution captures a fresh measurement. Keep this behavior inside the source graph rather
+than adding selection-reset calls or lifecycle hooks to robot code.
+
 Behavior guards and Plant guards are intentionally parallel, but they attach at different layers:
 
 * **Behavior target generation** happens before the Plant protects hardware. Use `PlantTargets.exact(...)`, `PlantTargets.overlay(...)`, `PlantTargets.plan(...)`, `ScalarTarget`, and output queues to answer “what target does the robot want?” Plain `ScalarSource`s are still useful number streams, but anything that will become a Plant target should be lifted into `PlantTargets`.

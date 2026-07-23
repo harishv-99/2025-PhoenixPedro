@@ -20,8 +20,14 @@ public interface PlantTargetSource {
     /**
      * Resolve this source for the current plant update.
      *
+     * <p>Conditional composition may skip this method while another target producer has higher
+     * priority. In particular, {@link PlantTargets#overlay(PlantTargetSource)} samples every layer's
+     * activation gate but resolves only the selected target path and any explicit
+     * {@code addIfAvailable(...)} fall-through attempts. Implementations must not rely on being
+     * resolved while shadowed; independently recurring work needs its own explicit loop owner.</p>
+     *
      * @param context plant facts for this loop
-     * @param clock   current loop clock
+     * @param clock   non-null current loop clock
      * @return target-selection plan; final sources should normally return {@code hasTarget() == true}
      */
     PlantTargetPlan resolve(PlantTargetContext context, LoopClock clock);

@@ -226,7 +226,18 @@ PlantTargetSource finalTarget = PlantTargets.overlay(base)
 plant.update(clock);
 ```
 
-Semantics: base always runs; enabled layers override; **last enabled target-producing layer wins**. If an enabled `add(...)` layer cannot produce a target, the overlay reports that layer as unavailable instead of silently ignoring it. Use `addIfAvailable(...)` only when an enabled layer is intentionally allowed to fall through to the lower-priority winner.
+Semantics: every layer's activation gate is sampled exactly once each loop, then enabled target
+producers are resolved lazily from the last-added, highest-priority layer downward. The first
+available enabled layer wins. A normal `add(...)` layer that is enabled but unavailable makes the
+overlay unavailable and blocks lower-priority targets. Use `addIfAvailable(...)` only when that
+condition is intentionally allowed to fall through to the next enabled layer. The base resolves
+only after every layer is disabled or explicitly falls through; disabled and shadowed target
+producers do not run.
+
+These are overlay semantics, not extra subsystem bookkeeping. The declaration above stays the same,
+and robot code does not reset or notify sources as priority changes. In particular, a
+`holdMeasuredTargetOnEntry(...)` source captures again when selected after a complete resolution
+cycle in which it was not resolved, instead of retaining a value captured while it was shadowed.
 
 ---
 
