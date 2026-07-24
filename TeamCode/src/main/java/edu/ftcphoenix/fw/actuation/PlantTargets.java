@@ -981,26 +981,16 @@ public final class PlantTargets {
                         + "' has invalid observed quality " + candidate.quality
                         + "; expected a finite value in [0, 1]");
             }
-            if (!Double.isFinite(candidate.timestampSec)) {
+            if (!candidate.timestamp.isAvailable()) {
                 return CandidateAcceptance.rejected("candidate '" + candidate.id
-                        + "' has invalid observation timestamp " + candidate.timestampSec
-                        + "; expected a finite LoopClock time");
+                        + "' has no available observation timestamp");
             }
 
-            double nowSec = clock.nowSec();
-            if (!Double.isFinite(nowSec)) {
-                return CandidateAcceptance.rejected("planner LoopClock time is non-finite: " + nowSec);
-            }
-            if (candidate.timestampSec - nowSec > FUTURE_OBSERVATION_TOLERANCE_SEC) {
-                return CandidateAcceptance.rejected("candidate '" + candidate.id
-                        + "' observation timestamp " + candidate.timestampSec
-                        + " is later than LoopClock time " + nowSec);
-            }
-
-            double ageSec = Math.max(0.0, nowSec - candidate.timestampSec);
+            double ageSec = candidate.timestamp.ageSec(clock);
             if (!Double.isFinite(ageSec)) {
                 return CandidateAcceptance.rejected("candidate '" + candidate.id
-                        + "' produced non-finite observation age");
+                        + "' observation timestamp is not valid in the current LoopClock epoch "
+                        + "or is materially later than the current loop time");
             }
             if (candidate.quality < minQuality) {
                 return CandidateAcceptance.rejected("candidate '" + candidate.id
@@ -1162,8 +1152,6 @@ public final class PlantTargets {
             return new CandidateSearch(null, reason);
         }
     }
-
-    private static final double FUTURE_OBSERVATION_TOLERANCE_SEC = 1.0e-6;
 
     private static String cleanName(String name) {
         return name == null || name.trim().isEmpty() ? "layer" : name.trim();

@@ -380,14 +380,14 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
         TagSelectionResult selection = scoringSelection.get(clock);
         AprilTagObservation obs = selection.hasFreshSelectedObservation
                 ? selection.selectedObservation
-                : AprilTagObservation.noTarget(Double.POSITIVE_INFINITY);
+                : AprilTagObservation.noTarget();
         lastHasTarget = obs.hasTarget;
         lastTagRangeInches = obs.cameraRangeInches();
         lastCameraBearingRad = obs.cameraBearingRad();
         lastRobotBearingRad = obs.hasTarget
                 ? CameraMountLogic.robotBearingRad(obs, cameraMount)
                 : 0.0;
-        lastTagAgeSec = obs.ageSec;
+        lastTagAgeSec = obs.frameAgeSec(clock);
         lastTagId = obs.id;
 
         // When no macro is active, choose safe default targets.
@@ -499,7 +499,7 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
         TagSelectionResult selection = scoringSelection.get(clock);
         AprilTagObservation obs = selection.hasFreshSelectedObservation
                 ? selection.selectedObservation
-                : AprilTagObservation.noTarget(Double.POSITIVE_INFINITY);
+                : AprilTagObservation.noTarget();
         if (!obs.hasTarget) {
             lastMacroStatus = "no tag: macro not started";
             return;

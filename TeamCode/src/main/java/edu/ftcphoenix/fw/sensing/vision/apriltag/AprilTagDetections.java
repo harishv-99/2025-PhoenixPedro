@@ -8,18 +8,18 @@ import java.util.Objects;
 import java.util.Set;
 
 import edu.ftcphoenix.fw.core.time.LoopClock;
+import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 
 /**
  * Immutable snapshot of the AprilTag detections produced from one processed camera frame.
  *
- * <p>All observations in {@link #observations} are understood to come from the same underlying
- * frame. This is important for multi-tag reasoning: selection policies, telemetry, and
- * localization can all operate on a coherent per-loop snapshot instead of issuing independent
- * sensor reads.</p>
+ * <p>All observations in {@link #observations} come from the frame identified by
+ * {@link #frameTimestamp()}. Keeping the reset epoch and time coordinate together prevents a
+ * retained frame from becoming plausible again after {@link LoopClock#reset(double)}.</p>
  *
  * <h2>Why Phoenix returns all detections</h2>
  * <ul>
- *   <li><b>Selection should be explicit:</b> the framework no longer hides a global “best tag”
+ *   <li><b>Selection should be explicit:</b> the framework does not hide a global “best tag”
  *       policy inside the sensor boundary.</li>
  *   <li><b>Localization may use more than one tag:</b> a pose estimator can combine several fixed
  *       tags from the same frame to reduce noise.</li>
@@ -29,172 +29,150 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  */
 public final class AprilTagDetections {
 
-    /**
-     * Age of the underlying camera frame, in seconds, when this snapshot was created.
-     *
-     * <p>When the implementation cannot determine a meaningful frame age, it may use 0 for
-     * “captured just now” or {@link Double#POSITIVE_INFINITY} for “unknown / unusably stale”.</p>
-     */
-    public final double ageSec;
+    private static final AprilTagDetections NONE = new AprilTagDetections(
+            LoopTimestamp.unavailable(),
+            Collections.<AprilTagObservation>emptyList()
+    );
 
-    /**
-     * Timestamp of the underlying camera frame in the same timebase as LoopClock, or NaN when unknown.
-     *
-     * <p>When unknown, callers can compute an approximate timestamp as clock.nowSec() - ageSec.</p>
-     */
-    public final double timestampSec;
+    private final LoopTimestamp frameTimestamp;
 
-    /**
-     * Immutable observations from the frame, expressed in Phoenix framing.
-     */
+    /** Immutable observations from the frame, expressed in Phoenix framing. */
     public final List<AprilTagObservation> observations;
 
-    private AprilTagDetections(double ageSec, double timestampSec, List<AprilTagObservation> observations) {
-        this.ageSec = ageSec;
-        this.timestampSec = timestampSec;
+    private AprilTagDetections(LoopTimestamp frameTimestamp,
+                               List<AprilTagObservation> observations) {
+        this.frameTimestamp = frameTimestamp;
         this.observations = observations;
     }
 
     /**
-     * Returns an empty detections snapshot with unknown / unusably stale age.
+     * Returns an empty snapshot when there is no trustworthy processed frame.
+     *
+     * <p>This value has an unavailable frame timestamp and is never fresh.</p>
      */
     public static AprilTagDetections none() {
-        return none(Double.POSITIVE_INFINITY);
+        return NONE;
     }
 
     /**
-     * Returns an empty detections snapshot with a caller-provided age.
-     */
-    public static AprilTagDetections none(double ageSec) {
-        return new AprilTagDetections(ageSec, Double.NaN, Collections.<AprilTagObservation>emptyList());
-    }
-
-    /**
-     * Creates a detections snapshot.
+     * Creates one immutable frame snapshot.
      *
-     * @param ageSec       age of the underlying frame in seconds
-     * @param observations detections from that frame; may be empty but must not be null
+     * <p>Every observation must carry the same available, current-epoch frame timestamp. This
+     * preserves the class's one-frame contract while camera backends still own how frame identity
+     * is acquired.</p>
+     *
+     * @param frameTimestamp timestamp of the processed frame
+     * @param observations   detections from that frame; may be empty but must not be null
      * @return immutable detections snapshot
      */
-    public static AprilTagDetections of(double ageSec, List<AprilTagObservation> observations) {
-        return of(ageSec, Double.NaN, observations);
-    }
-
-    /**
-     * Creates a detections snapshot with an explicit frame timestamp.
-     * <p>
-     * ageSec       age of the underlying frame in seconds
-     * timestampSec timestamp of the frame in the LoopClock timebase, or NaN if unknown
-     * observations detections from that frame; may be empty but must not be null
-     * immutable detections snapshot
-     */
-    public static AprilTagDetections of(double ageSec, double timestampSec, List<AprilTagObservation> observations) {
+    public static AprilTagDetections of(LoopTimestamp frameTimestamp,
+                                        List<AprilTagObservation> observations) {
+        requireAvailableTimestamp(frameTimestamp);
         Objects.requireNonNull(observations, "observations");
-        ArrayList<AprilTagObservation> copy = new ArrayList<AprilTagObservation>(observations.size());
-        for (AprilTagObservation obs : observations) {
-            copy.add(Objects.requireNonNull(obs, "observations must not contain null"));
+        ArrayList<AprilTagObservation> copy =
+                new ArrayList<AprilTagObservation>(observations.size());
+        for (AprilTagObservation observation : observations) {
+            AprilTagObservation obs = Objects.requireNonNull(
+                    observation,
+                    "observations must not contain null"
+            );
+            if (!obs.hasTarget) {
+                throw new IllegalArgumentException(
+                        "observations must contain detected targets, not noTarget()");
+            }
+            double offsetSec = obs.frameTimestamp().secondsSince(frameTimestamp);
+            if (!Double.isFinite(offsetSec) || offsetSec != 0.0) {
+                throw new IllegalArgumentException(
+                        "every AprilTag observation must use the detections frameTimestamp");
+            }
+            copy.add(obs);
         }
-        return new AprilTagDetections(ageSec, timestampSec, Collections.unmodifiableList(copy));
+        return new AprilTagDetections(
+                frameTimestamp,
+                Collections.unmodifiableList(copy)
+        );
+    }
+
+    /** Returns this snapshot's camera-frame timestamp. */
+    public LoopTimestamp frameTimestamp() {
+        return frameTimestamp;
     }
 
     /**
-     * Returns the best available frame timestamp for this snapshot.
+     * Returns the current age of this snapshot's camera frame.
      *
-     * <p>If timestampSec is known, it is returned directly. Otherwise this uses
-     * clock.nowSec() - ageSec when age is finite, or NaN when neither value is usable.</p>
-     *
-     * @param clock current loop clock
-     * @return timestamp in the LoopClock timebase, or NaN if unknown
+     * @param clock the same stable loop clock that created the timestamp
+     * @return non-negative age in seconds, or {@code NaN} when unavailable or reset-invalidated
      */
-    public double frameTimestampSec(LoopClock clock) {
-        if (Double.isFinite(timestampSec)) {
-            return timestampSec;
-        }
-        if (clock != null && Double.isFinite(ageSec)) {
-            return clock.nowSec() - ageSec;
-        }
-        return Double.NaN;
+    public double frameAgeSec(LoopClock clock) {
+        return frameTimestamp.ageSec(clock);
     }
 
-    /**
-     * Returns {@code true} when this frame age is within {@code maxAgeSec}.
-     */
-    public boolean isFresh(double maxAgeSec) {
-        return Double.isFinite(ageSec) && ageSec <= maxAgeSec;
+    /** Returns whether this frame is no older than the inclusive maximum age. */
+    public boolean isFresh(LoopClock clock, double maxAgeSec) {
+        return frameTimestamp.isFresh(clock, maxAgeSec);
     }
 
-    /**
-     * Returns the first fresh observation for {@code id}, or {@link AprilTagObservation#noTarget(double)}.
-     */
-    public AprilTagObservation forId(int id, double maxAgeSec) {
-        if (maxAgeSec < 0.0 || !isFresh(maxAgeSec)) {
-            return AprilTagObservation.noTarget(ageSec);
+    /** Returns the first fresh observation for {@code id}, or no target. */
+    public AprilTagObservation forId(LoopClock clock, int id, double maxAgeSec) {
+        if (!isFresh(clock, maxAgeSec)) {
+            return AprilTagObservation.noTarget();
         }
         for (AprilTagObservation obs : observations) {
-            if (obs != null && obs.hasTarget && obs.id == id && obs.ageSec <= maxAgeSec) {
+            if (obs.id == id) {
                 return obs;
             }
         }
-        return AprilTagObservation.noTarget(ageSec);
+        return AprilTagObservation.noTarget();
     }
 
-    /**
-     * Returns all fresh observations, preserving frame order.
-     */
-    public List<AprilTagObservation> freshObservations(double maxAgeSec) {
-        if (maxAgeSec < 0.0 || !isFresh(maxAgeSec) || observations.isEmpty()) {
+    /** Returns all fresh observations, preserving frame order. */
+    public List<AprilTagObservation> freshObservations(LoopClock clock, double maxAgeSec) {
+        if (!isFresh(clock, maxAgeSec)) {
             return Collections.emptyList();
         }
-        ArrayList<AprilTagObservation> out = new ArrayList<AprilTagObservation>(observations.size());
-        for (AprilTagObservation obs : observations) {
-            if (obs != null && obs.hasTarget && obs.ageSec <= maxAgeSec) {
-                out.add(obs);
-            }
-        }
-        return Collections.unmodifiableList(out);
+        return observations;
     }
 
-    /**
-     * Returns all fresh observations whose IDs are contained in {@code idsOfInterest}.
-     */
-    public List<AprilTagObservation> freshMatching(Set<Integer> idsOfInterest, double maxAgeSec) {
+    /** Returns all fresh observations whose IDs are contained in {@code idsOfInterest}. */
+    public List<AprilTagObservation> freshMatching(LoopClock clock,
+                                                   Set<Integer> idsOfInterest,
+                                                   double maxAgeSec) {
         Objects.requireNonNull(idsOfInterest, "idsOfInterest");
-        if (idsOfInterest.isEmpty()) {
-            return Collections.emptyList();
-        }
-        if (maxAgeSec < 0.0 || !isFresh(maxAgeSec) || observations.isEmpty()) {
+        if (idsOfInterest.isEmpty() || !isFresh(clock, maxAgeSec) || observations.isEmpty()) {
             return Collections.emptyList();
         }
         ArrayList<AprilTagObservation> out = new ArrayList<AprilTagObservation>();
         for (AprilTagObservation obs : observations) {
-            if (obs != null && obs.hasTarget && obs.ageSec <= maxAgeSec && idsOfInterest.contains(obs.id)) {
+            if (idsOfInterest.contains(obs.id)) {
                 out.add(obs);
             }
         }
         return Collections.unmodifiableList(out);
     }
 
-    /**
-     * Returns the set of fresh visible IDs.
-     */
-    public Set<Integer> visibleIds(double maxAgeSec) {
-        if (maxAgeSec < 0.0 || !isFresh(maxAgeSec) || observations.isEmpty()) {
+    /** Returns the set of fresh visible IDs. */
+    public Set<Integer> visibleIds(LoopClock clock, double maxAgeSec) {
+        if (!isFresh(clock, maxAgeSec) || observations.isEmpty()) {
             return Collections.emptySet();
         }
         LinkedHashSet<Integer> ids = new LinkedHashSet<Integer>();
         for (AprilTagObservation obs : observations) {
-            if (obs != null && obs.hasTarget && obs.ageSec <= maxAgeSec) {
-                ids.add(obs.id);
-            }
+            ids.add(obs.id);
         }
         return Collections.unmodifiableSet(ids);
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    private static void requireAvailableTimestamp(LoopTimestamp timestamp) {
+        if (timestamp == null || !timestamp.isAvailable()) {
+            throw new IllegalArgumentException(
+                    "frameTimestamp must be an available LoopTimestamp created by LoopClock");
+        }
+    }
+
     @Override
     public String toString() {
-        return "AprilTagDetections{ageSec=" + ageSec + ", observations=" + observations + "}";
+        return "AprilTagDetections{frameTimestamp=" + frameTimestamp
+                + ", observations=" + observations + "}";
     }
 }

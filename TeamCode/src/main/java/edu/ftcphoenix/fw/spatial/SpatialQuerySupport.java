@@ -65,7 +65,7 @@ final class SpatialQuerySupport {
         }
         if (reference instanceof References.TagPointRef) {
             References.TagPointRef tp = (References.TagPointRef) reference;
-            AprilTagObservation obs = observationForId(detections, tp.tagId, maxAgeSec);
+            AprilTagObservation obs = observationForId(clock, detections, tp.tagId, maxAgeSec);
             return composeRobotThingFromObservation(obs, cameraMount, new Pose2d(tp.forwardInches, tp.leftInches, 0.0));
         }
         if (reference instanceof References.SelectedTagPointRef) {
@@ -90,7 +90,7 @@ final class SpatialQuerySupport {
         }
         if (reference instanceof References.TagFrameRef) {
             References.TagFrameRef tf = (References.TagFrameRef) reference;
-            AprilTagObservation obs = observationForId(detections, tf.tagId, maxAgeSec);
+            AprilTagObservation obs = observationForId(clock, detections, tf.tagId, maxAgeSec);
             return composeRobotThingFromObservation(obs, cameraMount, new Pose2d(tf.forwardInches, tf.leftInches, tf.headingRad));
         }
         if (reference instanceof References.SelectedTagFrameRef) {
@@ -116,13 +116,14 @@ final class SpatialQuerySupport {
         return new Pose2d(robotToThing.xInches, robotToThing.yInches, robotToThing.headingRad);
     }
 
-    static AprilTagObservation observationForId(AprilTagDetections detections,
+    static AprilTagObservation observationForId(LoopClock clock,
+                                                AprilTagDetections detections,
                                                 int id,
                                                 double maxAgeSec) {
         if (detections == null) {
-            return AprilTagObservation.noTarget(Double.POSITIVE_INFINITY);
+            return AprilTagObservation.noTarget();
         }
-        return detections.forId(id, maxAgeSec);
+        return detections.forId(clock, id, maxAgeSec);
     }
 
     static TagSelectionResult pointSelectionSnapshot(ReferencePoint2d ref,
@@ -137,7 +138,10 @@ final class SpatialQuerySupport {
         }
         if (ref instanceof References.TagPointRef) {
             References.TagPointRef tp = (References.TagPointRef) ref;
-            return fixedTagSelection(tp.tagId, observationForId(detections, tp.tagId, maxAgeSec));
+            return fixedTagSelection(
+                    tp.tagId,
+                    observationForId(clock, detections, tp.tagId, maxAgeSec)
+            );
         }
         if (ref instanceof References.SelectedTagPointRef) {
             TagSelectionResult sel = ((References.SelectedTagPointRef) ref).selection.get(clock);
@@ -155,7 +159,10 @@ final class SpatialQuerySupport {
         }
         if (ref instanceof References.TagFrameRef) {
             References.TagFrameRef tf = (References.TagFrameRef) ref;
-            return fixedTagSelection(tf.tagId, observationForId(detections, tf.tagId, maxAgeSec));
+            return fixedTagSelection(
+                    tf.tagId,
+                    observationForId(clock, detections, tf.tagId, maxAgeSec)
+            );
         }
         if (ref instanceof References.SelectedTagFrameRef) {
             TagSelectionResult sel = ((References.SelectedTagFrameRef) ref).selection.get(clock);
@@ -199,7 +206,7 @@ final class SpatialQuerySupport {
     static TagSelectionResult fixedTagSelection(int tagId, AprilTagObservation obs) {
         boolean fresh = obs != null && obs.hasTarget;
         Set<Integer> visibleIds = fresh ? Collections.singleton(tagId) : Collections.<Integer>emptySet();
-        AprilTagObservation shown = fresh ? obs : AprilTagObservation.noTarget(Double.POSITIVE_INFINITY);
+        AprilTagObservation shown = fresh ? obs : AprilTagObservation.noTarget();
         return new TagSelectionResult(
                 fresh,
                 tagId,

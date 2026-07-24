@@ -9,6 +9,7 @@ import java.util.Objects;
 
 import edu.ftcphoenix.fw.core.geometry.Pose2d;
 import edu.ftcphoenix.fw.core.time.LoopClock;
+import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 import edu.ftcphoenix.fw.ftc.localization.PinpointKinematicSnapshot;
 import edu.ftcphoenix.fw.ftc.localization.PinpointOdometryPredictor;
 
@@ -34,7 +35,7 @@ final class PedroPathingPassiveLocalizer implements Localizer {
         final boolean hasPose;
         final boolean hasVelocity;
         final long cycle;
-        final double timestampSec;
+        final LoopTimestamp timestamp;
         final double phoenixFieldVelocityXInchesPerSec;
         final double phoenixFieldVelocityYInchesPerSec;
         final double angularVelocityRadPerSec;
@@ -44,7 +45,7 @@ final class PedroPathingPassiveLocalizer implements Localizer {
                boolean hasPose,
                boolean hasVelocity,
                long cycle,
-               double timestampSec,
+               LoopTimestamp timestamp,
                double phoenixFieldVelocityXInchesPerSec,
                double phoenixFieldVelocityYInchesPerSec,
                double angularVelocityRadPerSec,
@@ -53,7 +54,7 @@ final class PedroPathingPassiveLocalizer implements Localizer {
             this.hasPose = hasPose;
             this.hasVelocity = hasVelocity;
             this.cycle = cycle;
-            this.timestampSec = timestampSec;
+            this.timestamp = Objects.requireNonNull(timestamp, "timestamp");
             this.phoenixFieldVelocityXInchesPerSec = phoenixFieldVelocityXInchesPerSec;
             this.phoenixFieldVelocityYInchesPerSec = phoenixFieldVelocityYInchesPerSec;
             this.angularVelocityRadPerSec = angularVelocityRadPerSec;
@@ -66,7 +67,7 @@ final class PedroPathingPassiveLocalizer implements Localizer {
                     false,
                     false,
                     PinpointKinematicSnapshot.NO_CYCLE,
-                    0.0,
+                    LoopTimestamp.unavailable(),
                     0.0,
                     0.0,
                     0.0,
@@ -84,7 +85,7 @@ final class PedroPathingPassiveLocalizer implements Localizer {
                     value.hasPose,
                     value.hasVelocity,
                     value.cycle,
-                    value.timestampSec,
+                    value.timestamp,
                     value.fieldVelocityXInchesPerSec,
                     value.fieldVelocityYInchesPerSec,
                     value.angularVelocityRadPerSec,
@@ -270,7 +271,7 @@ final class PedroPathingPassiveLocalizer implements Localizer {
                             + "; wait for a valid post-reset sample before driving Pedro"
             );
         }
-        requireFiniteSample(next);
+        requireFiniteSample(next, expectedClock);
 
         currentSample = next;
         heartbeatCompleted = true;
@@ -333,13 +334,16 @@ final class PedroPathingPassiveLocalizer implements Localizer {
             throw new IllegalStateException(message);
         }
         requireFinitePose(sample.phoenixFieldToRobotPose, "Pinpoint pose");
-        requireFinite(sample.timestampSec, "Pinpoint sample timestampSec");
         requireFinite(sample.totalHeadingRad, "Pinpoint totalHeadingRad");
         return sample;
     }
 
-    private static void requireFiniteSample(Sample sample) {
+    private static void requireFiniteSample(Sample sample, LoopClock clock) {
         requirePoseSample(sample, "Pinpoint pose is unavailable");
+        if (!Double.isFinite(sample.timestamp.ageSec(clock))) {
+            throw new IllegalStateException(
+                    "Pinpoint sample timestamp is not valid in the current LoopClock reset epoch");
+        }
         requireFinite(sample.phoenixFieldVelocityXInchesPerSec,
                 "Pinpoint fieldVelocityXInchesPerSec");
         requireFinite(sample.phoenixFieldVelocityYInchesPerSec,

@@ -1,8 +1,11 @@
 package edu.ftcphoenix.fw.spatial;
 
+import java.util.Objects;
+
 import edu.ftcphoenix.fw.core.geometry.Pose2d;
 import edu.ftcphoenix.fw.core.source.TimeAwareSource;
 import edu.ftcphoenix.fw.core.time.LoopClock;
+import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 import edu.ftcphoenix.fw.field.TagLayout;
 
 /**
@@ -11,7 +14,8 @@ import edu.ftcphoenix.fw.field.TagLayout;
  * <p>The request includes both current-loop sampled frame poses and time-aware frame providers.
  * Lanes that solve from current state can use {@link #robotToTranslationFrame} and
  * {@link #robotToFacingFrame}. Lanes that interpret delayed sensor measurements should call
- * {@link #robotToTranslationFrameAt(double)} or {@link #robotToFacingFrameAt(double)} with the
+ * {@link #robotToTranslationFrameAt(LoopTimestamp)} or
+ * {@link #robotToFacingFrameAt(LoopTimestamp)} with the
  * measurement timestamp so moving mechanism frames are interpreted at the right time.</p>
  */
 public final class SpatialSolveRequest {
@@ -46,20 +50,28 @@ public final class SpatialSolveRequest {
     /**
      * Returns the translation frame at a measurement timestamp, falling back to current frame if needed.
      */
-    public Pose2d robotToTranslationFrameAt(double timestampSec) {
-        if (translationFrame == null || !Double.isFinite(timestampSec)) {
+    public Pose2d robotToTranslationFrameAt(LoopTimestamp timestamp) {
+        Objects.requireNonNull(timestamp, "timestamp");
+        if (translationFrame == null || !Double.isFinite(timestamp.ageSec(clock))) {
             return robotToTranslationFrame;
         }
-        return translationFrame.getAt(clock, timestampSec);
+        return Objects.requireNonNull(
+                translationFrame.getAt(clock, timestamp),
+                "translationFrame.getAt(clock, timestamp) returned null"
+        );
     }
 
     /**
      * Returns the facing frame at a measurement timestamp, falling back to current frame if needed.
      */
-    public Pose2d robotToFacingFrameAt(double timestampSec) {
-        if (facingFrame == null || !Double.isFinite(timestampSec)) {
+    public Pose2d robotToFacingFrameAt(LoopTimestamp timestamp) {
+        Objects.requireNonNull(timestamp, "timestamp");
+        if (facingFrame == null || !Double.isFinite(timestamp.ageSec(clock))) {
             return robotToFacingFrame;
         }
-        return facingFrame.getAt(clock, timestampSec);
+        return Objects.requireNonNull(
+                facingFrame.getAt(clock, timestamp),
+                "facingFrame.getAt(clock, timestamp) returned null"
+        );
     }
 }

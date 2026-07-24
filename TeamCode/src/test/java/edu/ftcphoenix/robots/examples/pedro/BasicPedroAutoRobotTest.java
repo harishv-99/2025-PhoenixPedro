@@ -10,6 +10,7 @@ import edu.ftcphoenix.fw.actuation.Plant;
 import edu.ftcphoenix.fw.actuation.PlantTargetStatus;
 import edu.ftcphoenix.fw.core.source.ScalarTarget;
 import edu.ftcphoenix.fw.core.time.LoopClock;
+import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 import edu.ftcphoenix.fw.drive.DriveCommandSink;
 import edu.ftcphoenix.fw.drive.DriveSignal;
 import edu.ftcphoenix.fw.localization.AbsolutePoseEstimator;
@@ -48,11 +49,11 @@ public final class BasicPedroAutoRobotTest {
         assertEquals(
                 Arrays.asList(
                         "startPose",
-                        "localization(cycle=1,dt=0.25)",
-                        "drive.update(cycle=1)",
-                        "task.start(cycle=1)",
-                        "task.update(cycle=1)",
-                        "plant.update(cycle=1)"
+                        "localization(cycle=2,dt=0.25)",
+                        "drive.update(cycle=2)",
+                        "task.start(cycle=2)",
+                        "task.update(cycle=2)",
+                        "plant.update(cycle=2)"
                 ),
                 events
         );
@@ -141,11 +142,11 @@ public final class BasicPedroAutoRobotTest {
         assertEquals(
                 Arrays.asList(
                         "startPose",
-                        "localization(cycle=1,dt=0.02)",
-                        "drive.update(cycle=1)",
-                        "task.start(cycle=1)",
-                        "task.update(cycle=1)",
-                        "plant.update(cycle=1)",
+                        "localization(cycle=2,dt=0.02)",
+                        "drive.update(cycle=2)",
+                        "task.start(cycle=2)",
+                        "task.update(cycle=2)",
+                        "plant.update(cycle=2)",
                         "task.cancel",
                         "plant.stop",
                         "drive.stop"
@@ -185,7 +186,7 @@ public final class BasicPedroAutoRobotTest {
 
         @Override
         public PoseEstimate getEstimate() {
-            return PoseEstimate.noPose(0.0);
+            return PoseEstimate.noPose(LoopTimestamp.unavailable());
         }
     }
 

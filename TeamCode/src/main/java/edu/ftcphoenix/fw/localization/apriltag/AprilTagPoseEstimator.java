@@ -5,6 +5,7 @@ import java.util.Objects;
 import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
 import edu.ftcphoenix.fw.core.time.LoopClock;
+import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 import edu.ftcphoenix.fw.field.TagLayout;
 import edu.ftcphoenix.fw.localization.AbsolutePoseEstimator;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
@@ -174,7 +175,7 @@ public final class AprilTagPoseEstimator implements AbsolutePoseEstimator {
         if (this.cfg.cameraMount == null) {
             this.cfg.cameraMount = CameraMountConfig.identity();
         }
-        this.lastEstimate = PoseEstimate.noPose(0.0);
+        this.lastEstimate = PoseEstimate.noPose(LoopTimestamp.unavailable());
     }
 
     /**
@@ -183,22 +184,22 @@ public final class AprilTagPoseEstimator implements AbsolutePoseEstimator {
     @Override
     public void update(LoopClock clock) {
         Objects.requireNonNull(clock, "clock");
-        final double nowSec = clock.nowSec();
+        final LoopTimestamp nowTimestamp = clock.nowTimestamp();
         lastDetections = tags.get(clock);
         lastSolve = FixedTagFieldPoseSolver.Result.none();
 
-        if (lastDetections == null || !lastDetections.isFresh(cfg.maxDetectionAgeSec)) {
-            lastEstimate = PoseEstimate.noPose(nowSec);
+        if (lastDetections == null || !lastDetections.isFresh(clock, cfg.maxDetectionAgeSec)) {
+            lastEstimate = PoseEstimate.noPose(nowTimestamp);
             return;
         }
 
         AprilTagDetections freshDetections = AprilTagDetections.of(
-                lastDetections.ageSec,
-                lastDetections.freshMatching(layout.ids(), cfg.maxDetectionAgeSec)
+                lastDetections.frameTimestamp(),
+                lastDetections.freshMatching(clock, layout.ids(), cfg.maxDetectionAgeSec)
         );
 
         if (freshDetections.observations.isEmpty()) {
-            lastEstimate = PoseEstimate.noPose(nowSec);
+            lastEstimate = PoseEstimate.noPose(nowTimestamp);
             return;
         }
 
@@ -210,14 +211,17 @@ public final class AprilTagPoseEstimator implements AbsolutePoseEstimator {
         );
 
         if (!lastSolve.hasPose) {
-            lastEstimate = PoseEstimate.noPose(nowSec);
+            lastEstimate = PoseEstimate.noPose(nowTimestamp);
             return;
         }
 
-        double ageSec = freshDetections.ageSec;
-        double timestampSec = nowSec - ageSec;
         Pose3d fieldToRobotPose = lastSolve.fieldToRobotPose;
-        lastEstimate = new PoseEstimate(fieldToRobotPose, true, lastSolve.quality, ageSec, timestampSec);
+        lastEstimate = new PoseEstimate(
+                fieldToRobotPose,
+                true,
+                lastSolve.quality,
+                freshDetections.frameTimestamp()
+        );
     }
 
     /**
@@ -238,7 +242,7 @@ public final class AprilTagPoseEstimator implements AbsolutePoseEstimator {
         }
         String p = (prefix == null || prefix.isEmpty()) ? "tagPose" : prefix;
         dbg.addData(p + ".class", getClass().getSimpleName())
-                .addData(p + ".detections.ageSec", lastDetections.ageSec)
+                .addData(p + ".detections.timestampAvailable", lastDetections.frameTimestamp().isAvailable())
                 .addData(p + ".detections.count", lastDetections.observations.size())
                 .addData(p + ".cfg.maxDetectionAgeSec", cfg.maxDetectionAgeSec)
                 .addData(p + ".solve.candidates", lastSolve.candidateCount)
@@ -249,7 +253,7 @@ public final class AprilTagPoseEstimator implements AbsolutePoseEstimator {
                 .addData(p + ".solve.rangeInches", lastSolve.rangeInches)
                 .addData(p + ".hasPose", lastEstimate.hasPose)
                 .addData(p + ".quality", lastEstimate.quality)
-                .addData(p + ".timestampSec", lastEstimate.timestampSec);
+                .addData(p + ".timestampAvailable", lastEstimate.timestamp.isAvailable());
 
         if (lastEstimate.hasPose && lastEstimate.fieldToRobotPose != null) {
             Pose3d est = lastEstimate.fieldToRobotPose;
@@ -265,7 +269,7 @@ public final class AprilTagPoseEstimator implements AbsolutePoseEstimator {
             FixedTagFieldPoseSolver.Contribution c = lastSolve.acceptedContributions.get(i);
             String q = p + ".accepted[" + i + "]";
             dbg.addData(q + ".id", c.observation.id)
-                    .addData(q + ".ageSec", c.observation.ageSec)
+                    .addData(q + ".timestampAvailable", c.observation.frameTimestamp().isAvailable())
                     .addData(q + ".weight", c.weight)
                     .addData(q + ".usedObservationFieldPose", c.usedObservationFieldPose)
                     .addData(q + ".cameraBearingRad", c.observation.cameraBearingRad())

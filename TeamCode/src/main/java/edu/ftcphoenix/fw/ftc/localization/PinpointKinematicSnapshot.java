@@ -4,6 +4,7 @@ import java.util.Objects;
 
 import edu.ftcphoenix.fw.core.geometry.Pose2d;
 import edu.ftcphoenix.fw.core.time.LoopClock;
+import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 
 /**
  * Immutable same-cycle planar pose and velocity sample from a Pinpoint odometry owner.
@@ -34,8 +35,8 @@ public final class PinpointKinematicSnapshot {
     /** {@link LoopClock#cycle()} associated with this sample, or {@link #NO_CYCLE}. */
     public final long cycle;
 
-    /** Sample time in seconds from the shared {@link LoopClock} timebase. */
-    public final double timestampSec;
+    /** Epoch-safe sample time from the shared {@link LoopClock}. */
+    public final LoopTimestamp timestamp;
 
     /** Field-frame +X velocity in inches per second. */
     public final double fieldVelocityXInchesPerSec;
@@ -53,14 +54,14 @@ public final class PinpointKinematicSnapshot {
                                       boolean hasPose,
                                       boolean hasVelocity,
                                       long cycle,
-                                      double timestampSec,
+                                      LoopTimestamp timestamp,
                                       double fieldVelocityXInchesPerSec,
                                       double fieldVelocityYInchesPerSec,
                                       double angularVelocityRadPerSec,
                                       double totalHeadingRad) {
         this.fieldToRobotPose = Objects.requireNonNull(fieldToRobotPose, "fieldToRobotPose");
         requireCycle(cycle);
-        requireFinite(timestampSec, "timestampSec");
+        this.timestamp = Objects.requireNonNull(timestamp, "timestamp");
         requireFinite(totalHeadingRad, "totalHeadingRad");
 
         if (hasPose) {
@@ -77,7 +78,6 @@ public final class PinpointKinematicSnapshot {
         this.hasPose = hasPose;
         this.hasVelocity = hasVelocity;
         this.cycle = cycle;
-        this.timestampSec = timestampSec;
         this.fieldVelocityXInchesPerSec = hasVelocity ? fieldVelocityXInchesPerSec : 0.0;
         this.fieldVelocityYInchesPerSec = hasVelocity ? fieldVelocityYInchesPerSec : 0.0;
         this.angularVelocityRadPerSec = hasVelocity ? angularVelocityRadPerSec : 0.0;
@@ -86,14 +86,14 @@ public final class PinpointKinematicSnapshot {
 
     /** Create a snapshot with no valid pose or measured velocity. */
     static PinpointKinematicSnapshot unavailable(long cycle,
-                                                  double timestampSec,
+                                                  LoopTimestamp timestamp,
                                                   double totalHeadingRad) {
         return new PinpointKinematicSnapshot(
                 Pose2d.zero(),
                 false,
                 false,
                 cycle,
-                timestampSec,
+                timestamp,
                 0.0,
                 0.0,
                 0.0,
@@ -105,7 +105,7 @@ public final class PinpointKinematicSnapshot {
     static PinpointKinematicSnapshot sampled(Pose2d fieldToRobotPose,
                                              boolean hasVelocity,
                                              long cycle,
-                                             double timestampSec,
+                                             LoopTimestamp timestamp,
                                              double fieldVelocityXInchesPerSec,
                                              double fieldVelocityYInchesPerSec,
                                              double angularVelocityRadPerSec,
@@ -115,7 +115,7 @@ public final class PinpointKinematicSnapshot {
                 true,
                 hasVelocity,
                 cycle,
-                timestampSec,
+                timestamp,
                 fieldVelocityXInchesPerSec,
                 fieldVelocityYInchesPerSec,
                 angularVelocityRadPerSec,
@@ -135,7 +135,7 @@ public final class PinpointKinematicSnapshot {
                 true,
                 hasVelocity,
                 cycle,
-                timestampSec,
+                timestamp,
                 fieldVelocityXInchesPerSec,
                 fieldVelocityYInchesPerSec,
                 angularVelocityRadPerSec,
@@ -150,7 +150,7 @@ public final class PinpointKinematicSnapshot {
                 hasPose,
                 false,
                 cycle,
-                timestampSec,
+                timestamp,
                 0.0,
                 0.0,
                 0.0,
@@ -160,7 +160,10 @@ public final class PinpointKinematicSnapshot {
 
     /** Return whether this snapshot belongs to the supplied loop cycle. */
     public boolean isCurrentFor(LoopClock clock) {
-        return clock != null && cycle != NO_CYCLE && cycle == clock.cycle();
+        return clock != null
+                && cycle != NO_CYCLE
+                && cycle == clock.cycle()
+                && Double.isFinite(timestamp.ageSec(clock));
     }
 
     /** Return whether both pose and measured physical velocity are available. */
@@ -187,7 +190,7 @@ public final class PinpointKinematicSnapshot {
                 ", hasPose=" + hasPose +
                 ", hasVelocity=" + hasVelocity +
                 ", cycle=" + cycle +
-                ", timestampSec=" + timestampSec +
+                ", timestamp=" + timestamp +
                 ", fieldVelocityXInchesPerSec=" + fieldVelocityXInchesPerSec +
                 ", fieldVelocityYInchesPerSec=" + fieldVelocityYInchesPerSec +
                 ", angularVelocityRadPerSec=" + angularVelocityRadPerSec +

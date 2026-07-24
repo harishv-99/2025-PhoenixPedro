@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Objects;
 
 import edu.ftcphoenix.fw.core.geometry.Pose2d;
+import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 
 /**
  * One coherent per-loop sample from {@link SpatialQuery}.
@@ -16,6 +17,8 @@ import edu.ftcphoenix.fw.core.geometry.Pose2d;
  */
 public final class SpatialQueryResult {
 
+    /** Epoch-safe time at which this coherent query snapshot was resolved. */
+    public final LoopTimestamp sampleTimestamp;
     public final TranslationTarget2d translationTarget;
     public final FacingTarget2d facingTarget;
     public final Pose2d robotToTranslationFrame;
@@ -23,11 +26,13 @@ public final class SpatialQueryResult {
 
     private final List<SpatialLaneResult> laneResults;
 
-    SpatialQueryResult(TranslationTarget2d translationTarget,
+    SpatialQueryResult(LoopTimestamp sampleTimestamp,
+                       TranslationTarget2d translationTarget,
                        FacingTarget2d facingTarget,
                        Pose2d robotToTranslationFrame,
                        Pose2d robotToFacingFrame,
                        List<SpatialLaneResult> laneResults) {
+        this.sampleTimestamp = Objects.requireNonNull(sampleTimestamp, "sampleTimestamp");
         this.translationTarget = translationTarget;
         this.facingTarget = facingTarget;
         this.robotToTranslationFrame = Objects.requireNonNull(robotToTranslationFrame, "robotToTranslationFrame");
@@ -58,7 +63,8 @@ public final class SpatialQueryResult {
 
     @Override
     public String toString() {
-        return "SpatialQueryResult{translationTarget=" + translationTarget
+        return "SpatialQueryResult{sampleTimestamp=" + sampleTimestamp
+                + ", translationTarget=" + translationTarget
                 + ", facingTarget=" + facingTarget
                 + ", robotToTranslationFrame=" + robotToTranslationFrame
                 + ", robotToFacingFrame=" + robotToFacingFrame

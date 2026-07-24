@@ -196,12 +196,9 @@ final class DriveGuidanceEvaluator {
                                                            DriveGuidanceSpec.Localization cfg,
                                                            SpatialQueryResult sample) {
         PoseEstimate est = cfg.poseEstimator.getEstimate();
-        double estAgeSec = (est != null)
-                ? Math.max(est.ageSec, clock.nowSec() - est.timestampSec)
-                : Double.POSITIVE_INFINITY;
         boolean valid = est != null
                 && est.hasPose
-                && estAgeSec <= cfg.maxAgeSec
+                && est.timestamp.isFresh(clock, cfg.maxAgeSec)
                 && est.quality >= cfg.minQuality;
         if (!valid) {
             return TranslationSolve.invalid();

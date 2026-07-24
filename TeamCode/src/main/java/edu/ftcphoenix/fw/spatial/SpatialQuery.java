@@ -7,6 +7,7 @@ import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.geometry.Pose2d;
 import edu.ftcphoenix.fw.core.source.Source;
 import edu.ftcphoenix.fw.core.time.LoopClock;
+import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 import edu.ftcphoenix.fw.field.TagLayout;
 
 /**
@@ -175,6 +176,7 @@ public final class SpatialQuery implements Source<SpatialQueryResult> {
         if (cycle == lastCycle && lastResult != null) {
             return lastResult;
         }
+        LoopTimestamp sampleTimestamp = clock.nowTimestamp();
 
         Pose2d robotToTranslationFrame = Objects.requireNonNull(
                 spec.controlFrames.translationFrame().get(clock),
@@ -204,6 +206,7 @@ public final class SpatialQuery implements Source<SpatialQueryResult> {
 
         lastCycle = cycle;
         lastResult = new SpatialQueryResult(
+                sampleTimestamp,
                 spec.translationTarget,
                 spec.facingTarget,
                 robotToTranslationFrame,

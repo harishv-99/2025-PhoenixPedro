@@ -230,10 +230,10 @@ requested target. This separation keeps behavior target generation separate from
 while making telemetry easier to read.
 
 For a `PLANNED_CANDIDATE`, `selectedQuality()` reports the chosen candidate's quality. When that
-candidate came from an observation, `selectedTimestampSec()` retains its stable `LoopClock`
-timestamp and `selectedAgeSec()` reports the age derived when this plan was resolved. A timeless
-candidate instead reports quality `1.0` and `NaN` for both timing diagnostics. These are selection
-facts, not a second hardware-arrival signal.
+candidate came from an observation, `selectedTimestamp()` retains its epoch-safe `LoopTimestamp`
+and `selectedAgeSec()` reports the age derived when this plan was resolved. A timeless candidate
+instead reports quality `1.0`, an unavailable timestamp, and `NaN` age. These are selection facts,
+not a second hardware-arrival signal.
 
 ## Smart planning: equivalent and candidate targets
 
@@ -333,10 +333,11 @@ the same families for `oneOf(...)` lists:
 | Measurement-relative, with an explicit period | `relativePeriodic(...)` | `observedRelativePeriodic(...)` |
 
 The reusable source or adapter that publishes an observation-derived target also owns timestamp
-anchoring. If its upstream API reports an age, that owner computes
-`clock.nowSec() - sampledAgeSec` once before publishing the immutable snapshot used for target
-construction and retains that timestamp. A target-request source must not repeat the conversion
-whenever a cached observation or request is sampled, because that would make it appear fresh. This
+anchoring. If its upstream API reports an age, that owner calls
+`clock.timestampSecondsAgo(sampledAgeSec)` once before publishing the immutable snapshot used for
+target construction and retains that `LoopTimestamp`. A target-request source must not repeat the
+conversion whenever a cached observation or request is sampled, because that would make it appear
+fresh. This
 responsibility stays at or before the target's source boundary; ordinary mechanism code only
 forwards the snapshot's quality and timestamp.
 
@@ -407,7 +408,7 @@ Source<PlantTargetRequest> turretFacingRequest = clock -> {
             facing.sourceId(),
             targetDeg,
             facing.quality(),
-            facing.timestampSec()
+            facing.timestamp()
     );
 };
 

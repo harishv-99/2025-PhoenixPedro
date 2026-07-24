@@ -8,6 +8,7 @@ import edu.ftcphoenix.fw.core.source.Source;
 import edu.ftcphoenix.fw.core.source.TimeAwareSource;
 import edu.ftcphoenix.fw.core.source.TimeAwareSources;
 import edu.ftcphoenix.fw.core.time.LoopClock;
+import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 
 /**
  * Convenience factories for {@code robot -> frame} providers used by {@link SpatialControlFrames}.
@@ -32,7 +33,7 @@ public final class RobotFrames {
         Objects.requireNonNull(robotToFrame, "robotToFrame");
         return new TimeAwareSource<Pose2d>() {
             @Override
-            public Pose2d getAt(LoopClock clock, double timestampSec) {
+            public Pose2d getAt(LoopClock clock, LoopTimestamp timestamp) {
                 return robotToFrame;
             }
 

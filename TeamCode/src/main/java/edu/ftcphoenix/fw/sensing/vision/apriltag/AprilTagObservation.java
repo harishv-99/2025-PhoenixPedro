@@ -1,6 +1,8 @@
 package edu.ftcphoenix.fw.sensing.vision.apriltag;
 
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
+import edu.ftcphoenix.fw.core.time.LoopClock;
+import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 
 /**
  * Immutable snapshot of a single AprilTag observation (sensor measurement), expressed in
@@ -82,6 +84,14 @@ import edu.ftcphoenix.fw.core.geometry.Pose3d;
  */
 public final class AprilTagObservation {
 
+    private static final AprilTagObservation NO_TARGET = new AprilTagObservation(
+            false,
+            -1,
+            LoopTimestamp.unavailable(),
+            null,
+            null
+    );
+
     /**
      * True if this observation represents a real detected tag.
      */
@@ -94,13 +104,8 @@ public final class AprilTagObservation {
      */
     public final int id;
 
-    /**
-     * Age of this observation in seconds.
-     *
-     * <p>This is the elapsed time between the camera frame that produced this observation and
-     * the moment the observation was created.</p>
-     */
-    public final double ageSec;
+    /** Timestamp of the camera frame that produced this observation. */
+    private final LoopTimestamp frameTimestamp;
 
     /**
      * Tag pose expressed in the Phoenix camera frame: {@code cameraToTagPose}.
@@ -119,12 +124,12 @@ public final class AprilTagObservation {
 
     private AprilTagObservation(boolean hasTarget,
                                 int id,
-                                double ageSec,
+                                LoopTimestamp frameTimestamp,
                                 Pose3d cameraToTagPose,
                                 Pose3d fieldToRobotPose) {
         this.hasTarget = hasTarget;
         this.id = id;
-        this.ageSec = ageSec;
+        this.frameTimestamp = frameTimestamp;
         this.cameraToTagPose = cameraToTagPose;
         this.fieldToRobotPose = fieldToRobotPose;
     }
@@ -132,10 +137,10 @@ public final class AprilTagObservation {
     /**
      * Create an observation representing "no target".
      *
-     * @param ageSec how long ago the last camera frame was, in seconds
+     * <p>The sentinel has no camera-frame timestamp and is never fresh.</p>
      */
-    public static AprilTagObservation noTarget(double ageSec) {
-        return new AprilTagObservation(false, -1, ageSec, null, null);
+    public static AprilTagObservation noTarget() {
+        return NO_TARGET;
     }
 
     /**
@@ -143,13 +148,16 @@ public final class AprilTagObservation {
      *
      * @param id              AprilTag ID
      * @param cameraToTagPose tag pose in Phoenix camera frame (non-null)
-     * @param ageSec          age of the underlying camera frame (seconds)
+     * @param frameTimestamp timestamp of the underlying camera frame
      */
-    public static AprilTagObservation target(int id, Pose3d cameraToTagPose, double ageSec) {
+    public static AprilTagObservation target(int id,
+                                             Pose3d cameraToTagPose,
+                                             LoopTimestamp frameTimestamp) {
         if (cameraToTagPose == null) {
             throw new IllegalArgumentException("cameraToTagPose must be non-null when hasTarget is true");
         }
-        return new AprilTagObservation(true, id, ageSec, cameraToTagPose, null);
+        requireAvailableTimestamp(frameTimestamp);
+        return new AprilTagObservation(true, id, frameTimestamp, cameraToTagPose, null);
     }
 
     /**
@@ -159,19 +167,41 @@ public final class AprilTagObservation {
      * @param id               AprilTag ID
      * @param cameraToTagPose  tag pose in Phoenix camera frame (non-null)
      * @param fieldToRobotPose robot pose in Phoenix field frame (non-null)
-     * @param ageSec           age of the underlying camera frame (seconds)
+     * @param frameTimestamp   timestamp of the underlying camera frame
      */
     public static AprilTagObservation target(int id,
                                              Pose3d cameraToTagPose,
                                              Pose3d fieldToRobotPose,
-                                             double ageSec) {
+                                             LoopTimestamp frameTimestamp) {
         if (cameraToTagPose == null) {
             throw new IllegalArgumentException("cameraToTagPose must be non-null when hasTarget is true");
         }
         if (fieldToRobotPose == null) {
             throw new IllegalArgumentException("fieldToRobotPose must be non-null when provided");
         }
-        return new AprilTagObservation(true, id, ageSec, cameraToTagPose, fieldToRobotPose);
+        requireAvailableTimestamp(frameTimestamp);
+        return new AprilTagObservation(
+                true,
+                id,
+                frameTimestamp,
+                cameraToTagPose,
+                fieldToRobotPose
+        );
+    }
+
+    /** Returns the timestamp of the camera frame, or {@link LoopTimestamp#unavailable()}. */
+    public LoopTimestamp frameTimestamp() {
+        return frameTimestamp;
+    }
+
+    /**
+     * Returns the current age of the camera frame.
+     *
+     * @param clock the same stable loop clock that created the timestamp
+     * @return non-negative age in seconds, or {@code NaN} when unavailable or reset-invalidated
+     */
+    public double frameAgeSec(LoopClock clock) {
+        return frameTimestamp.ageSec(clock);
     }
 
     /**
@@ -184,11 +214,19 @@ public final class AprilTagObservation {
     /**
      * Convenience helper to test whether this observation is considered "fresh enough".
      *
+     * @param clock the same stable loop clock that created the frame timestamp
      * @param maxAgeSec maximum acceptable age in seconds
-     * @return true if this observation has a target and {@link #ageSec} is <= maxAgeSec
+     * @return true if this observation has a target and its frame is no older than maxAgeSec
      */
-    public boolean isFresh(double maxAgeSec) {
-        return hasTarget && ageSec <= maxAgeSec;
+    public boolean isFresh(LoopClock clock, double maxAgeSec) {
+        return hasTarget && frameTimestamp.isFresh(clock, maxAgeSec);
+    }
+
+    private static void requireAvailableTimestamp(LoopTimestamp timestamp) {
+        if (timestamp == null || !timestamp.isAvailable()) {
+            throw new IllegalArgumentException(
+                    "frameTimestamp must be an available LoopTimestamp created by LoopClock");
+        }
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -249,11 +287,11 @@ public final class AprilTagObservation {
     @Override
     public String toString() {
         if (!hasTarget) {
-            return "AprilTagObservation{no target, ageSec=" + ageSec + "}";
+            return "AprilTagObservation{no target}";
         }
         return "AprilTagObservation{"
                 + "id=" + id
-                + ", ageSec=" + ageSec
+                + ", frameTimestamp=" + frameTimestamp
                 + ", cameraBearingRad=" + cameraBearingRad()
                 + ", cameraRangeInches=" + cameraRangeInches()
                 + ", hasFieldToRobotPose=" + (fieldToRobotPose != null)

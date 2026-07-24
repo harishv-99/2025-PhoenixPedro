@@ -8,6 +8,7 @@ import java.util.Objects;
 
 import edu.ftcphoenix.fw.core.lifecycle.CleanupActions;
 import edu.ftcphoenix.fw.core.time.LoopClock;
+import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 import edu.ftcphoenix.fw.ftc.vision.FtcLimelightVisionLane;
 import edu.ftcphoenix.fw.ftc.vision.FtcWebcamVisionPortalLane;
 import edu.ftcphoenix.fw.ftc.vision.VisionReadiness;
@@ -35,32 +36,32 @@ public final class CustomVisionOwnershipExample {
     /** Small immutable, timestamped result consumed by robot strategy. */
     public static final class Snapshot {
         private static final Snapshot UNAVAILABLE =
-                new Snapshot(false, 0, Double.NaN);
+                new Snapshot(false, 0, LoopTimestamp.unavailable());
 
         public final boolean hasTarget;
         public final int candidateCount;
-        /** Approximate observation time in the current OpMode's {@link LoopClock} timebase. */
-        public final double observedAtSec;
+        /** Observation time owned by the current OpMode's {@link LoopClock}. */
+        public final LoopTimestamp timestamp;
 
-        private Snapshot(boolean hasTarget, int candidateCount, double observedAtSec) {
+        private Snapshot(boolean hasTarget, int candidateCount, LoopTimestamp timestamp) {
             this.hasTarget = hasTarget;
             this.candidateCount = candidateCount;
-            this.observedAtSec = observedAtSec;
+            this.timestamp = timestamp;
         }
 
         /** Returns one accepted observation, including a ready frame that saw no target. */
         public static Snapshot observed(
                 boolean hasTarget,
                 int candidateCount,
-                double observedAtSec
+                LoopTimestamp timestamp
         ) {
             if (candidateCount < 0) {
                 throw new IllegalArgumentException("candidateCount must be >= 0");
             }
-            if (!Double.isFinite(observedAtSec)) {
-                throw new IllegalArgumentException("observedAtSec must be finite");
+            if (timestamp == null || !timestamp.isAvailable()) {
+                throw new IllegalArgumentException("timestamp must be available");
             }
-            return new Snapshot(hasTarget, candidateCount, observedAtSec);
+            return new Snapshot(hasTarget, candidateCount, timestamp);
         }
 
         /** Returns the intentional no-observation value used while this capability is not ready. */
@@ -256,7 +257,7 @@ public final class CustomVisionOwnershipExample {
             return Snapshot.observed(
                     result.isTargetValid(),
                     candidates,
-                    clock.nowSec() - result.ageSec()
+                    clock.timestampSecondsAgo(result.ageSec())
             );
         }
 

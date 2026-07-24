@@ -1,5 +1,7 @@
 package edu.ftcphoenix.fw.localization.fusion;
 
+import edu.ftcphoenix.fw.core.time.LoopTimestamp;
+
 /**
  * Immutable debug/status snapshot shared by predictor + correction localizers.
  *
@@ -35,17 +37,17 @@ public final class CorrectionStats {
      */
     public final int projectedCorrectionCount;
     /**
-     * Wall-clock timestamp when a correction was last accepted, or {@code NaN} if never.
+     * Loop timestamp when a correction was last accepted, or unavailable if never.
      */
-    public final double lastCorrectionAcceptedSec;
+    public final LoopTimestamp lastCorrectionAccepted;
     /**
-     * Measurement timestamp of the most recently accepted correction, or {@code NaN} if never.
+     * Measurement timestamp of the most recently accepted correction, or unavailable if never.
      */
-    public final double lastAcceptedCorrectionMeasurementTimestampSec;
+    public final LoopTimestamp lastAcceptedCorrectionMeasurementTimestamp;
     /**
-     * Measurement timestamp of the most recently evaluated correction, or {@code NaN} if never.
+     * Measurement timestamp of the most recently evaluated correction, or unavailable if never.
      */
-    public final double lastEvaluatedCorrectionTimestampSec;
+    public final LoopTimestamp lastEvaluatedCorrectionTimestamp;
     /**
      * Whether the most recently accepted correction used measurement-time replay.
      */
@@ -60,9 +62,9 @@ public final class CorrectionStats {
                            int skippedOutOfOrderCorrectionCount,
                            int replayedCorrectionCount,
                            int projectedCorrectionCount,
-                           double lastCorrectionAcceptedSec,
-                           double lastAcceptedCorrectionMeasurementTimestampSec,
-                           double lastEvaluatedCorrectionTimestampSec,
+                           LoopTimestamp lastCorrectionAccepted,
+                           LoopTimestamp lastAcceptedCorrectionMeasurementTimestamp,
+                           LoopTimestamp lastEvaluatedCorrectionTimestamp,
                            boolean lastCorrectionUsedReplay) {
         this.acceptedCorrectionCount = acceptedCorrectionCount;
         this.rejectedCorrectionCount = rejectedCorrectionCount;
@@ -70,9 +72,15 @@ public final class CorrectionStats {
         this.skippedOutOfOrderCorrectionCount = skippedOutOfOrderCorrectionCount;
         this.replayedCorrectionCount = replayedCorrectionCount;
         this.projectedCorrectionCount = projectedCorrectionCount;
-        this.lastCorrectionAcceptedSec = lastCorrectionAcceptedSec;
-        this.lastAcceptedCorrectionMeasurementTimestampSec = lastAcceptedCorrectionMeasurementTimestampSec;
-        this.lastEvaluatedCorrectionTimestampSec = lastEvaluatedCorrectionTimestampSec;
+        if (lastCorrectionAccepted == null
+                || lastAcceptedCorrectionMeasurementTimestamp == null
+                || lastEvaluatedCorrectionTimestamp == null) {
+            throw new IllegalArgumentException(
+                    "CorrectionStats timestamps are required; use LoopTimestamp.unavailable() when absent");
+        }
+        this.lastCorrectionAccepted = lastCorrectionAccepted;
+        this.lastAcceptedCorrectionMeasurementTimestamp = lastAcceptedCorrectionMeasurementTimestamp;
+        this.lastEvaluatedCorrectionTimestamp = lastEvaluatedCorrectionTimestamp;
         this.lastCorrectionUsedReplay = lastCorrectionUsedReplay;
     }
 
@@ -81,7 +89,10 @@ public final class CorrectionStats {
      */
     public static CorrectionStats none() {
         return new CorrectionStats(0, 0, 0, 0, 0, 0,
-                Double.NaN, Double.NaN, Double.NaN, false);
+                LoopTimestamp.unavailable(),
+                LoopTimestamp.unavailable(),
+                LoopTimestamp.unavailable(),
+                false);
     }
 
     @Override
@@ -93,9 +104,9 @@ public final class CorrectionStats {
                 ", skippedOutOfOrderCorrectionCount=" + skippedOutOfOrderCorrectionCount +
                 ", replayedCorrectionCount=" + replayedCorrectionCount +
                 ", projectedCorrectionCount=" + projectedCorrectionCount +
-                ", lastCorrectionAcceptedSec=" + lastCorrectionAcceptedSec +
-                ", lastAcceptedCorrectionMeasurementTimestampSec=" + lastAcceptedCorrectionMeasurementTimestampSec +
-                ", lastEvaluatedCorrectionTimestampSec=" + lastEvaluatedCorrectionTimestampSec +
+                ", lastCorrectionAccepted=" + lastCorrectionAccepted +
+                ", lastAcceptedCorrectionMeasurementTimestamp=" + lastAcceptedCorrectionMeasurementTimestamp +
+                ", lastEvaluatedCorrectionTimestamp=" + lastEvaluatedCorrectionTimestamp +
                 ", lastCorrectionUsedReplay=" + lastCorrectionUsedReplay +
                 '}';
     }

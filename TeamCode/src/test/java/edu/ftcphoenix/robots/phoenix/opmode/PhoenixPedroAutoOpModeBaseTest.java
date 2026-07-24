@@ -25,6 +25,7 @@ import java.util.List;
 import edu.ftcphoenix.fw.core.geometry.Pose2d;
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
 import edu.ftcphoenix.fw.core.time.LoopClock;
+import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 import edu.ftcphoenix.fw.drive.DriveCommandSink;
 import edu.ftcphoenix.fw.drive.DriveSignal;
 import edu.ftcphoenix.fw.integrations.pedro.PedroFieldTransform;
@@ -209,6 +210,7 @@ public final class PhoenixPedroAutoOpModeBaseTest {
         PhoenixRobot robot = robotWithAutoLifecycle(mode);
         LoopClock robotClock = (LoopClock) getField(PhoenixRobot.class, robot, "clock");
         robotClock.reset(4.25);
+        long cycleBeforeStart = robotClock.cycle();
         runtimeFixture.predictorAccess.observedClock = robotClock;
 
         // Production initialization assigns the selected start once while building the route.
@@ -258,8 +260,8 @@ public final class PhoenixPedroAutoOpModeBaseTest {
         assertEquals(1, root.updates);
         assertEquals(28.5, root.startedAtSec, 0.0);
         assertEquals(28.5, root.updatedAtSec, 0.0);
-        assertEquals(0L, root.startedCycle);
-        assertEquals(0L, root.updatedCycle);
+        assertEquals(cycleBeforeStart + 1L, root.startedCycle);
+        assertEquals(cycleBeforeStart + 1L, root.updatedCycle);
         assertEquals("startPose", events.get(0));
         assertEquals("root.start", events.get(1));
         assertEquals("root.update", events.get(2));
@@ -499,7 +501,8 @@ public final class PhoenixPedroAutoOpModeBaseTest {
         AllowedInjectedMatchAuto mode = configuredAllowedInjectedMatchAuto(telemetry);
         List<String> events = new ArrayList<String>();
         PassiveRuntimeFixture runtimeFixture = new PassiveRuntimeFixture(events);
-        runtimeFixture.motionPredictor.estimate = PoseEstimate.noPose(0.0);
+        runtimeFixture.motionPredictor.estimate =
+                PoseEstimate.noPose(LoopTimestamp.unavailable());
         PhoenixPedroPathFactory.RouteAvailability availability =
                 PhoenixPedroPathFactory.routeAvailabilityFor(mode.autoSpec());
         PhoenixReadiness.Result allowedReadiness = PhoenixReadiness.pedroAuto(
@@ -805,8 +808,7 @@ public final class PhoenixPedroAutoOpModeBaseTest {
                 new Pose3d(xInches, yInches, 0.0, headingRad, 0.0, 0.0),
                 true,
                 1.0,
-                0.0,
-                0.0
+                LoopTimestamp.unavailable()
         );
     }
 
@@ -1082,7 +1084,7 @@ public final class PhoenixPedroAutoOpModeBaseTest {
                     boolean.class,
                     boolean.class,
                     long.class,
-                    double.class,
+                    LoopTimestamp.class,
                     double.class,
                     double.class,
                     double.class,
@@ -1124,7 +1126,7 @@ public final class PhoenixPedroAutoOpModeBaseTest {
                     hasPose,
                     false,
                     Long.MIN_VALUE,
-                    0.0,
+                    LoopTimestamp.unavailable(),
                     0.0,
                     0.0,
                     0.0,
@@ -1221,7 +1223,7 @@ public final class PhoenixPedroAutoOpModeBaseTest {
 
         @Override
         public MotionDelta getLatestMotionDelta() {
-            return MotionDelta.none(0.0);
+            return MotionDelta.none(LoopTimestamp.unavailable());
         }
     }
 

@@ -2,12 +2,14 @@ package edu.ftcphoenix.fw.localization.fusion;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.Objects;
 
 import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.geometry.Pose2d;
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
 import edu.ftcphoenix.fw.core.math.MathUtil;
 import edu.ftcphoenix.fw.core.time.LoopClock;
+import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 import edu.ftcphoenix.fw.localization.AbsolutePoseEstimator;
 import edu.ftcphoenix.fw.localization.MotionDelta;
 import edu.ftcphoenix.fw.localization.MotionPredictor;
@@ -205,11 +207,11 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
     }
 
     private static final class PredictorSample {
-        final double timestampSec;
+        final LoopTimestamp timestamp;
         final Pose3d pose;
 
-        PredictorSample(double timestampSec, Pose3d pose) {
-            this.timestampSec = timestampSec;
+        PredictorSample(LoopTimestamp timestamp, Pose3d pose) {
+            this.timestamp = Objects.requireNonNull(timestamp, "timestamp");
             this.pose = pose;
         }
     }
@@ -224,7 +226,7 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
     private Pose3d fusedPose = Pose3d.zero();
     private Pose3d lastPredictorPose = Pose3d.zero();
 
-    private PoseEstimate lastEstimate = PoseEstimate.noPose(0.0);
+    private PoseEstimate lastEstimate = PoseEstimate.noPose(LoopTimestamp.unavailable());
     private final Deque<PredictorSample> predictorHistory = new ArrayDeque<PredictorSample>();
 
     // Replay base: the most recent moment at which the fused pose was explicitly anchored
@@ -232,14 +234,14 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
     // motion is purely predictor-driven, so reconstructing the fused pose at a measurement timestamp
     // is just "base fused pose" composed with the predictor delta from base->measurement.
     private boolean replayBaseValid = false;
-    private double replayBaseTimestampSec = Double.NaN;
+    private LoopTimestamp replayBaseTimestamp = LoopTimestamp.unavailable();
     private Pose3d replayBaseFusedPose = Pose3d.zero();
     private Pose3d replayBasePredictorPose = Pose3d.zero();
 
     // Debug/telemetry helpers.
-    private double lastCorrectionAcceptedSec = Double.NaN;
-    private double lastAcceptedCorrectionMeasurementTimestampSec = Double.NaN;
-    private double lastEvaluatedCorrectionTimestampSec = Double.NaN;
+    private LoopTimestamp lastCorrectionAccepted = LoopTimestamp.unavailable();
+    private LoopTimestamp lastAcceptedCorrectionMeasurementTimestamp = LoopTimestamp.unavailable();
+    private LoopTimestamp lastEvaluatedCorrectionTimestamp = LoopTimestamp.unavailable();
     private Pose3d lastCorrectionPose = Pose3d.zero();
     private Pose3d lastLatencyCompensatedCorrectionPose = Pose3d.zero();
     private Pose3d lastReplayReferencePose = Pose3d.zero();
@@ -294,17 +296,17 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
     }
 
     /**
-     * The timestamp (clock.nowSec) when correction was last accepted, or NaN if never.
+     * The loop timestamp when correction was last accepted, or unavailable if never.
      */
-    public double getLastCorrectionAcceptedSec() {
-        return lastCorrectionAcceptedSec;
+    public LoopTimestamp getLastCorrectionAccepted() {
+        return lastCorrectionAccepted;
     }
 
     /**
-     * Measurement timestamp of the most recently accepted correction frame, or NaN if never.
+     * Measurement timestamp of the most recently accepted correction frame, or unavailable if never.
      */
-    public double getLastAcceptedCorrectionMeasurementTimestampSec() {
-        return lastAcceptedCorrectionMeasurementTimestampSec;
+    public LoopTimestamp getLastAcceptedCorrectionMeasurementTimestamp() {
+        return lastAcceptedCorrectionMeasurementTimestamp;
     }
 
     /**
@@ -377,9 +379,9 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
                 skippedOutOfOrderCorrectionCount,
                 replayedCorrectionCount,
                 projectedCorrectionCount,
-                lastCorrectionAcceptedSec,
-                lastAcceptedCorrectionMeasurementTimestampSec,
-                lastEvaluatedCorrectionTimestampSec,
+                lastCorrectionAccepted,
+                lastAcceptedCorrectionMeasurementTimestamp,
+                lastEvaluatedCorrectionTimestamp,
                 lastCorrectionUsedReplay
         );
     }
@@ -390,7 +392,10 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
      */
     @Override
     public void update(LoopClock clock) {
-        final double nowSec = clock != null ? clock.nowSec() : 0.0;
+        Objects.requireNonNull(clock, "clock");
+        final LoopTimestamp nowTimestamp = clock.nowTimestamp();
+
+        invalidateHistoryAcrossReset(nowTimestamp);
 
         // Update sources.
         predictor.update(clock);
@@ -399,13 +404,20 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
         final PoseEstimate predictorEst = predictor.getEstimate();
         final MotionDelta predictorDelta = predictor.getLatestMotionDelta();
         final PoseEstimate correctionEst = correction.getEstimate();
-        final Pose3d currentPredictorPose = (predictorEst != null && predictorEst.hasPose)
+        final boolean predictorTimestampCurrent = predictorEst != null
+                && predictorEst.timestamp != null
+                && Double.isFinite(predictorEst.timestamp.ageSec(clock));
+        final Pose3d currentPredictorPose = (predictorEst != null
+                && predictorEst.hasPose
+                && predictorTimestampCurrent)
                 ? planarize(predictorEst.fieldToRobotPose)
                 : null;
-        final double currentPredictorTimestampSec = estimateTimestampOr(predictorEst, nowSec);
+        final LoopTimestamp currentPredictorTimestamp = predictorTimestampCurrent
+                ? predictorEst.timestamp
+                : LoopTimestamp.unavailable();
 
         if (currentPredictorPose != null) {
-            recordPredictorSample(currentPredictorTimestampSec, currentPredictorPose);
+            recordPredictorSample(currentPredictorTimestamp, currentPredictorPose);
         }
 
         boolean evaluatedCorrectionThisLoop = false;
@@ -413,12 +425,14 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
         // If we are not initialized yet, pick an initial pose.
         if (!initialized) {
             boolean initializedFromCorrection = false;
-            if (correctionEnabled && cfg.enableInitializeFromCorrection && shouldEvaluateCorrectionMeasurement(correctionEst)) {
+            if (correctionEnabled
+                    && cfg.enableInitializeFromCorrection
+                    && shouldEvaluateCorrectionMeasurement(correctionEst, clock)) {
                 evaluatedCorrectionThisLoop = true;
-                if (isCorrectionAcceptable(correctionEst, nowSec)) {
+                if (isCorrectionAcceptable(correctionEst, clock)) {
                     Pose3d correctionPose = planarize(correctionEst.fieldToRobotPose);
                     Pose3d initialPose = cfg.enableLatencyCompensation
-                            ? projectCorrectionPoseToNow(correctionPose, correctionEst.timestampSec, currentPredictorPose)
+                            ? projectCorrectionPoseToNow(correctionPose, correctionEst.timestamp, currentPredictorPose)
                             : correctionPose;
 
                     fusedPose = initialPose;
@@ -426,14 +440,14 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
                     lastCorrectionPose = correctionPose;
                     lastLatencyCompensatedCorrectionPose = initialPose;
                     lastReplayReferencePose = correctionPose;
-                    lastCorrectionAcceptedSec = nowSec;
-                    lastAcceptedCorrectionMeasurementTimestampSec = correctionEst.timestampSec;
+                    lastCorrectionAccepted = nowTimestamp;
+                    lastAcceptedCorrectionMeasurementTimestamp = correctionEst.timestamp;
                     lastCorrectionUsedReplay = false;
                     acceptedCorrectionCount++;
                     projectedCorrectionCount++;
 
                     boolean pushedToPredictor = pushFusedPoseToPredictor();
-                    rebaseAfterPoseChange(nowSec, currentPredictorPose, pushedToPredictor);
+                    rebaseAfterPoseChange(nowTimestamp, currentPredictorPose, pushedToPredictor);
                     initializedFromCorrection = true;
                 } else {
                     rejectedCorrectionCount++;
@@ -444,16 +458,19 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
                 fusedPose = currentPredictorPose;
                 initialized = true;
                 lastPredictorPose = currentPredictorPose;
-                resetPredictorHistory(nowSec, currentPredictorPose);
-                setReplayBase(nowSec, fusedPose, currentPredictorPose);
+                resetPredictorHistory(nowTimestamp, currentPredictorPose);
+                setReplayBase(nowTimestamp, fusedPose, currentPredictorPose);
             } else if (!initialized && !initializedFromCorrection) {
                 // No pose from either source yet.
-                lastEstimate = PoseEstimate.noPose(nowSec);
+                lastEstimate = PoseEstimate.noPose(nowTimestamp);
                 return;
             }
         } else {
             // Propagate fused pose using the predictor's explicit motion delta.
-            if (predictorDelta != null && predictorDelta.hasDelta) {
+            if (predictorDelta != null
+                    && predictorDelta.hasDelta
+                    && Double.isFinite(predictorDelta.durationSec())
+                    && predictorDelta.durationSec() >= 0.0) {
                 fusedPose = planarize(fusedPose.then(predictorDelta.deltaPose));
             }
             if (currentPredictorPose != null) {
@@ -462,11 +479,13 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
         }
 
         // Apply correction if available.
-        if (correctionEnabled && !evaluatedCorrectionThisLoop && shouldEvaluateCorrectionMeasurement(correctionEst)) {
-            if (!isCorrectionAcceptable(correctionEst, nowSec)) {
+        if (correctionEnabled
+                && !evaluatedCorrectionThisLoop
+                && shouldEvaluateCorrectionMeasurement(correctionEst, clock)) {
+            if (!isCorrectionAcceptable(correctionEst, clock)) {
                 rejectedCorrectionCount++;
             } else {
-                maybeApplyCorrection(correctionEst, currentPredictorPose, nowSec);
+                maybeApplyCorrection(correctionEst, currentPredictorPose, nowTimestamp);
             }
         }
 
@@ -475,15 +494,15 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
                 ? MathUtil.clamp(predictorEst.quality, 0.0, 1.0)
                 : 0.0;
 
-        if (!Double.isNaN(lastCorrectionAcceptedSec)) {
-            double age = nowSec - lastCorrectionAcceptedSec;
-            if (age >= 0.0 && age < cfg.correctionConfidenceHoldSec) {
-                double boost = 1.0 - (age / cfg.correctionConfidenceHoldSec);
+        double correctionAgeSec = lastCorrectionAccepted.ageSec(clock);
+        if (Double.isFinite(correctionAgeSec)) {
+            if (correctionAgeSec < cfg.correctionConfidenceHoldSec) {
+                double boost = 1.0 - (correctionAgeSec / cfg.correctionConfidenceHoldSec);
                 quality = MathUtil.clamp(Math.max(quality, boost), 0.0, 1.0);
             }
         }
 
-        lastEstimate = new PoseEstimate(fusedPose, true, quality, 0.0, nowSec);
+        lastEstimate = new PoseEstimate(fusedPose, true, quality, nowTimestamp);
     }
 
     /**
@@ -505,9 +524,9 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
             return;
         }
 
-        final double nowSec = (lastEstimate != null && Double.isFinite(lastEstimate.timestampSec))
-                ? lastEstimate.timestampSec
-                : 0.0;
+        final LoopTimestamp nowTimestamp = (lastEstimate != null && lastEstimate.timestamp != null)
+                ? lastEstimate.timestamp
+                : LoopTimestamp.unavailable();
 
         fusedPose = new Pose3d(pose.xInches, pose.yInches, 0.0, MathUtil.wrapToPi(pose.headingRad), 0.0, 0.0);
         initialized = true;
@@ -519,26 +538,31 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
         }
 
         boolean pushedToPredictor = pushFusedPoseToPredictor();
-        rebaseAfterPoseChange(nowSec, currentPredictorPose, pushedToPredictor);
+        rebaseAfterPoseChange(nowTimestamp, currentPredictorPose, pushedToPredictor);
     }
 
-    private boolean shouldEvaluateCorrectionMeasurement(PoseEstimate correctionEst) {
-        if (correctionEst == null || !correctionEst.hasPose) {
+    private boolean shouldEvaluateCorrectionMeasurement(PoseEstimate correctionEst, LoopClock clock) {
+        if (correctionEst == null
+                || !correctionEst.hasPose
+                || correctionEst.timestamp == null
+                || !Double.isFinite(clock.nowTimestamp().secondsSince(correctionEst.timestamp))) {
             return false;
         }
-        double ts = correctionEst.timestampSec;
-        if (!Double.isFinite(ts)) {
-            return false;
-        }
-        if (Double.isNaN(lastEvaluatedCorrectionTimestampSec)) {
-            lastEvaluatedCorrectionTimestampSec = ts;
+        LoopTimestamp timestamp = correctionEst.timestamp;
+        if (!lastEvaluatedCorrectionTimestamp.isAvailable()) {
+            lastEvaluatedCorrectionTimestamp = timestamp;
             return true;
         }
-        if (ts > lastEvaluatedCorrectionTimestampSec + TIMESTAMP_EPS_SEC) {
-            lastEvaluatedCorrectionTimestampSec = ts;
+        double elapsedSec = timestamp.secondsSince(lastEvaluatedCorrectionTimestamp);
+        if (!Double.isFinite(elapsedSec)) {
+            lastEvaluatedCorrectionTimestamp = timestamp;
             return true;
         }
-        if (Math.abs(ts - lastEvaluatedCorrectionTimestampSec) <= TIMESTAMP_EPS_SEC) {
+        if (elapsedSec > TIMESTAMP_EPS_SEC) {
+            lastEvaluatedCorrectionTimestamp = timestamp;
+            return true;
+        }
+        if (Math.abs(elapsedSec) <= TIMESTAMP_EPS_SEC) {
             skippedDuplicateCorrectionCount++;
         } else {
             skippedOutOfOrderCorrectionCount++;
@@ -546,23 +570,21 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
         return false;
     }
 
-    private boolean isCorrectionAcceptable(PoseEstimate correctionEst, double nowSec) {
+    private boolean isCorrectionAcceptable(PoseEstimate correctionEst, LoopClock clock) {
         if (correctionEst == null || !correctionEst.hasPose || correctionEst.fieldToRobotPose == null) {
             return false;
         }
-        if (!Double.isFinite(correctionEst.timestampSec)) {
+        if (correctionEst.timestamp == null) {
             return false;
         }
-        if (correctionEst.timestampSec > nowSec + TIMESTAMP_EPS_SEC) {
+        double ageSec = correctionEst.timestamp.ageSec(clock);
+        if (!Double.isFinite(ageSec)) {
             return false;
         }
 
         // Freshness gate.
-        if (cfg.maxCorrectionAgeSec > 0.0) {
-            double age = nowSec - correctionEst.timestampSec;
-            if (!Double.isFinite(age) || age < -TIMESTAMP_EPS_SEC || age > cfg.maxCorrectionAgeSec) {
-                return false;
-            }
+        if (cfg.maxCorrectionAgeSec > 0.0 && ageSec > cfg.maxCorrectionAgeSec) {
+            return false;
         }
 
         // Quality gate.
@@ -575,10 +597,12 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
         return !(Double.isNaN(p.xInches) || Double.isNaN(p.yInches) || Double.isNaN(p.yawRad));
     }
 
-    private void maybeApplyCorrection(PoseEstimate correctionEst, Pose3d currentPredictorPose, double nowSec) {
+    private void maybeApplyCorrection(PoseEstimate correctionEst,
+                                      Pose3d currentPredictorPose,
+                                      LoopTimestamp nowTimestamp) {
         Pose3d correctionPoseAtMeasurement = planarize(correctionEst.fieldToRobotPose);
         Pose3d compensatedCorrectionPoseAtNow = cfg.enableLatencyCompensation
-                ? projectCorrectionPoseToNow(correctionPoseAtMeasurement, correctionEst.timestampSec, currentPredictorPose)
+                ? projectCorrectionPoseToNow(correctionPoseAtMeasurement, correctionEst.timestamp, currentPredictorPose)
                 : correctionPoseAtMeasurement;
 
         lastCorrectionPose = correctionPoseAtMeasurement;
@@ -586,8 +610,7 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
 
         if (cfg.enableLatencyCompensation
                 && replayBaseValid
-                && Double.isFinite(replayBaseTimestampSec)
-                && correctionEst.timestampSec + TIMESTAMP_EPS_SEC < replayBaseTimestampSec) {
+                && correctionEst.timestamp.secondsSince(replayBaseTimestamp) < -TIMESTAMP_EPS_SEC) {
             // This frame predates the most recent accepted correction/reset base. Re-applying it
             // would drag the estimator back across a newer anchor, so reject it.
             lastReplayReferencePose = replayBaseFusedPose;
@@ -604,9 +627,9 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
         boolean usedReplay = false;
 
         if (cfg.enableLatencyCompensation && currentPredictorPose != null) {
-            Pose3d predictorAtMeasurement = interpolatePredictorPose(correctionEst.timestampSec);
+            Pose3d predictorAtMeasurement = interpolatePredictorPose(correctionEst.timestamp);
             if (predictorAtMeasurement != null) {
-                Pose3d fusedAtMeasurement = reconstructFusedPoseAt(correctionEst.timestampSec, predictorAtMeasurement);
+                Pose3d fusedAtMeasurement = reconstructFusedPoseAt(correctionEst.timestamp, predictorAtMeasurement);
                 if (fusedAtMeasurement != null) {
                     Pose3d predictorDeltaSinceMeasurement = predictorAtMeasurement.inverse().then(currentPredictorPose);
                     lastReplayReferencePose = fusedAtMeasurement;
@@ -647,8 +670,8 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
         }
 
         fusedPose = correctedPoseNow;
-        lastCorrectionAcceptedSec = nowSec;
-        lastAcceptedCorrectionMeasurementTimestampSec = correctionEst.timestampSec;
+        lastCorrectionAccepted = nowTimestamp;
+        lastAcceptedCorrectionMeasurementTimestamp = correctionEst.timestamp;
         lastCorrectionUsedReplay = usedReplay;
         acceptedCorrectionCount++;
         if (usedReplay) {
@@ -658,7 +681,7 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
         }
 
         boolean pushedToPredictor = pushFusedPoseToPredictor();
-        rebaseAfterPoseChange(nowSec, currentPredictorPose, pushedToPredictor);
+        rebaseAfterPoseChange(nowTimestamp, currentPredictorPose, pushedToPredictor);
     }
 
     private boolean isCorrectionJumpAcceptable(Pose3d referencePose, Pose3d targetPose) {
@@ -695,7 +718,9 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
         return false;
     }
 
-    private void rebaseAfterPoseChange(double nowSec, Pose3d currentPredictorPose, boolean pushedToPredictor) {
+    private void rebaseAfterPoseChange(LoopTimestamp nowTimestamp,
+                                       Pose3d currentPredictorPose,
+                                       boolean pushedToPredictor) {
         Pose3d basePredictorPose;
         if (pushedToPredictor) {
             lastPredictorPose = fusedPose;
@@ -708,25 +733,31 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
             basePredictorPose = fusedPose;
         }
 
-        resetPredictorHistory(nowSec, basePredictorPose);
-        setReplayBase(nowSec, fusedPose, basePredictorPose);
+        resetPredictorHistory(nowTimestamp, basePredictorPose);
+        setReplayBase(nowTimestamp, fusedPose, basePredictorPose);
     }
 
-    private void setReplayBase(double timestampSec, Pose3d fusedPoseAtBase, Pose3d predictorPoseAtBase) {
-        replayBaseValid = Double.isFinite(timestampSec) && fusedPoseAtBase != null && predictorPoseAtBase != null;
-        replayBaseTimestampSec = replayBaseValid ? timestampSec : Double.NaN;
+    private void setReplayBase(LoopTimestamp timestamp,
+                               Pose3d fusedPoseAtBase,
+                               Pose3d predictorPoseAtBase) {
+        replayBaseValid = timestamp != null
+                && timestamp.isAvailable()
+                && fusedPoseAtBase != null
+                && predictorPoseAtBase != null;
+        replayBaseTimestamp = replayBaseValid ? timestamp : LoopTimestamp.unavailable();
         replayBaseFusedPose = replayBaseValid ? planarize(fusedPoseAtBase) : Pose3d.zero();
         replayBasePredictorPose = replayBaseValid ? planarize(predictorPoseAtBase) : Pose3d.zero();
     }
 
-    private Pose3d reconstructFusedPoseAt(double timestampSec, Pose3d predictorPoseAtTimestamp) {
+    private Pose3d reconstructFusedPoseAt(LoopTimestamp timestamp, Pose3d predictorPoseAtTimestamp) {
         if (!replayBaseValid || predictorPoseAtTimestamp == null) {
             return null;
         }
-        if (!Double.isFinite(timestampSec) || !Double.isFinite(replayBaseTimestampSec)) {
+        if (timestamp == null || !timestamp.isAvailable()) {
             return null;
         }
-        if (timestampSec + TIMESTAMP_EPS_SEC < replayBaseTimestampSec) {
+        double elapsedFromBaseSec = timestamp.secondsSince(replayBaseTimestamp);
+        if (!Double.isFinite(elapsedFromBaseSec) || elapsedFromBaseSec < -TIMESTAMP_EPS_SEC) {
             return null;
         }
 
@@ -747,28 +778,24 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
                 0.0);
     }
 
-    private static double estimateTimestampOr(PoseEstimate est, double fallbackNowSec) {
-        if (est != null && Double.isFinite(est.timestampSec)) {
-            return est.timestampSec;
-        }
-        return fallbackNowSec;
-    }
-
-    private void recordPredictorSample(double timestampSec, Pose3d predictorPose) {
-        if (!Double.isFinite(timestampSec) || predictorPose == null) {
+    private void recordPredictorSample(LoopTimestamp timestamp, Pose3d predictorPose) {
+        if (timestamp == null || !timestamp.isAvailable() || predictorPose == null) {
             return;
         }
 
         PredictorSample last = predictorHistory.peekLast();
-        if (last != null && timestampSec <= last.timestampSec) {
-            predictorHistory.clear();
+        if (last != null) {
+            double elapsedSec = timestamp.secondsSince(last.timestamp);
+            if (!Double.isFinite(elapsedSec) || elapsedSec <= 0.0) {
+                predictorHistory.clear();
+            }
         }
 
-        predictorHistory.addLast(new PredictorSample(timestampSec, planarize(predictorPose)));
-        prunePredictorHistory(timestampSec);
+        predictorHistory.addLast(new PredictorSample(timestamp, planarize(predictorPose)));
+        prunePredictorHistory(timestamp);
     }
 
-    private void prunePredictorHistory(double nowSec) {
+    private void prunePredictorHistory(LoopTimestamp nowTimestamp) {
         double keepSec = Math.max(0.0, cfg.predictorHistorySec);
         if (keepSec <= 0.0) {
             while (predictorHistory.size() > 1) {
@@ -777,34 +804,41 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
             return;
         }
 
-        double minTime = nowSec - keepSec;
         while (predictorHistory.size() > 2) {
             PredictorSample[] samples = predictorHistory.toArray(new PredictorSample[0]);
-            if (samples.length < 2 || samples[1].timestampSec >= minTime) {
+            if (samples.length < 2) {
+                break;
+            }
+            double secondAgeSec = nowTimestamp.secondsSince(samples[1].timestamp);
+            if (!Double.isFinite(secondAgeSec) || secondAgeSec < 0.0) {
+                predictorHistory.clear();
+                return;
+            }
+            if (secondAgeSec <= keepSec) {
                 break;
             }
             predictorHistory.removeFirst();
         }
     }
 
-    private void resetPredictorHistory(double timestampSec, Pose3d pose) {
+    private void resetPredictorHistory(LoopTimestamp timestamp, Pose3d pose) {
         predictorHistory.clear();
-        if (Double.isFinite(timestampSec) && pose != null) {
-            predictorHistory.addLast(new PredictorSample(timestampSec, planarize(pose)));
+        if (timestamp != null && timestamp.isAvailable() && pose != null) {
+            predictorHistory.addLast(new PredictorSample(timestamp, planarize(pose)));
         }
     }
 
     private Pose3d projectCorrectionPoseToNow(Pose3d correctionPoseAtMeasurement,
-                                              double measurementTimestampSec,
+                                              LoopTimestamp measurementTimestamp,
                                               Pose3d currentPredictorPose) {
         if (correctionPoseAtMeasurement == null || currentPredictorPose == null) {
             return correctionPoseAtMeasurement;
         }
-        if (!Double.isFinite(measurementTimestampSec)) {
+        if (measurementTimestamp == null || !measurementTimestamp.isAvailable()) {
             return correctionPoseAtMeasurement;
         }
 
-        Pose3d predictorAtMeasurement = interpolatePredictorPose(measurementTimestampSec);
+        Pose3d predictorAtMeasurement = interpolatePredictorPose(measurementTimestamp);
         if (predictorAtMeasurement == null) {
             return correctionPoseAtMeasurement;
         }
@@ -813,8 +847,8 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
         return planarize(correctionPoseAtMeasurement.then(predictorDeltaSinceMeasurement));
     }
 
-    private Pose3d interpolatePredictorPose(double timestampSec) {
-        if (predictorHistory.isEmpty()) {
+    private Pose3d interpolatePredictorPose(LoopTimestamp timestamp) {
+        if (timestamp == null || !timestamp.isAvailable() || predictorHistory.isEmpty()) {
             return null;
         }
 
@@ -822,7 +856,12 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
         if (samples.length == 0) {
             return null;
         }
-        if (timestampSec < samples[0].timestampSec || timestampSec > samples[samples.length - 1].timestampSec) {
+        double sinceFirstSec = timestamp.secondsSince(samples[0].timestamp);
+        double untilLastSec = samples[samples.length - 1].timestamp.secondsSince(timestamp);
+        if (!Double.isFinite(sinceFirstSec)
+                || !Double.isFinite(untilLastSec)
+                || sinceFirstSec < 0.0
+                || untilLastSec < 0.0) {
             return null;
         }
         if (samples.length == 1) {
@@ -831,20 +870,34 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
 
         PredictorSample prev = samples[0];
         for (PredictorSample next : samples) {
-            if (next.timestampSec < timestampSec) {
+            double querySinceNextSec = timestamp.secondsSince(next.timestamp);
+            if (!Double.isFinite(querySinceNextSec)) {
+                predictorHistory.clear();
+                return null;
+            }
+            if (querySinceNextSec > 0.0) {
                 prev = next;
                 continue;
             }
-            if (Math.abs(next.timestampSec - timestampSec) <= 1e-9 || next == prev) {
+            if (Math.abs(querySinceNextSec) <= 1e-9 || next == prev) {
                 return next.pose;
             }
 
-            double dt = next.timestampSec - prev.timestampSec;
+            double dt = next.timestamp.secondsSince(prev.timestamp);
+            if (!Double.isFinite(dt)) {
+                predictorHistory.clear();
+                return null;
+            }
             if (dt <= 1e-9) {
                 return next.pose;
             }
 
-            double t = MathUtil.clamp01((timestampSec - prev.timestampSec) / dt);
+            double fromPreviousSec = timestamp.secondsSince(prev.timestamp);
+            if (!Double.isFinite(fromPreviousSec)) {
+                predictorHistory.clear();
+                return null;
+            }
+            double t = MathUtil.clamp01(fromPreviousSec / dt);
             return interpolatePose(prev.pose, next.pose, t);
         }
 
@@ -861,6 +914,32 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
                 0.0,
                 0.0
         );
+    }
+
+    /** Drop only timestamp-dependent state when the shared clock enters a new reset epoch. */
+    private void invalidateHistoryAcrossReset(LoopTimestamp nowTimestamp) {
+        PredictorSample lastSample = predictorHistory.peekLast();
+        if (lastSample != null) {
+            double elapsedSec = nowTimestamp.secondsSince(lastSample.timestamp);
+            if (!Double.isFinite(elapsedSec) || elapsedSec < 0.0) {
+                predictorHistory.clear();
+            }
+        }
+
+        if (replayBaseValid) {
+            double elapsedSec = nowTimestamp.secondsSince(replayBaseTimestamp);
+            if (!Double.isFinite(elapsedSec) || elapsedSec < 0.0) {
+                replayBaseValid = false;
+                replayBaseTimestamp = LoopTimestamp.unavailable();
+                replayBaseFusedPose = Pose3d.zero();
+                replayBasePredictorPose = Pose3d.zero();
+            }
+        }
+
+        if (lastEvaluatedCorrectionTimestamp.isAvailable()
+                && !Double.isFinite(nowTimestamp.secondsSince(lastEvaluatedCorrectionTimestamp))) {
+            lastEvaluatedCorrectionTimestamp = LoopTimestamp.unavailable();
+        }
     }
 
     /**
@@ -881,9 +960,9 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
                 .addData(p + ".skippedOutOfOrderCorrectionCount", skippedOutOfOrderCorrectionCount)
                 .addData(p + ".replayedCorrectionCount", replayedCorrectionCount)
                 .addData(p + ".projectedCorrectionCount", projectedCorrectionCount)
-                .addData(p + ".lastCorrectionAcceptedSec", lastCorrectionAcceptedSec)
-                .addData(p + ".lastAcceptedCorrectionMeasurementTimestampSec", lastAcceptedCorrectionMeasurementTimestampSec)
-                .addData(p + ".lastEvaluatedCorrectionTimestampSec", lastEvaluatedCorrectionTimestampSec)
+                .addData(p + ".lastCorrectionAccepted", lastCorrectionAccepted)
+                .addData(p + ".lastAcceptedCorrectionMeasurementTimestamp", lastAcceptedCorrectionMeasurementTimestamp)
+                .addData(p + ".lastEvaluatedCorrectionTimestamp", lastEvaluatedCorrectionTimestamp)
                 .addData(p + ".cfg.maxCorrectionAgeSec", cfg.maxCorrectionAgeSec)
                 .addData(p + ".cfg.minCorrectionQuality", cfg.minCorrectionQuality)
                 .addData(p + ".cfg.correctionPositionGain", cfg.correctionPositionGain)
@@ -902,7 +981,7 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
                 .addData(p + ".lastReplayReferencePose", lastReplayReferencePose)
                 .addData(p + ".lastCorrectionUsedReplay", lastCorrectionUsedReplay)
                 .addData(p + ".replayBaseValid", replayBaseValid)
-                .addData(p + ".replayBaseTimestampSec", replayBaseTimestampSec)
+                .addData(p + ".replayBaseTimestamp", replayBaseTimestamp)
                 .addData(p + ".replayBaseFusedPose", replayBaseFusedPose)
                 .addData(p + ".replayBasePredictorPose", replayBasePredictorPose)
                 .addData(p + ".predictorHistorySize", predictorHistory.size())

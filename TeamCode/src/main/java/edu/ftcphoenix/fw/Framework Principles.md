@@ -76,6 +76,12 @@ Phoenix is designed around a few core goals:
 
    Phoenix assumes a single loop heartbeat (`LoopClock`) that everything else uses.
    This enables robust button edge detection, predictable task timing, and consistent rate limiting.
+   Treat `cycle()` as a per-cycle identity, not an elapsed-loop count. It remains monotonic for one
+   `LoopClock` lifetime and advances immediately at an explicit reset so post-reset reads cannot
+   alias pre-reset caches. A captured measurement that crosses component boundaries carries one
+   clock-created `LoopTimestamp`, not independently passable timestamp and epoch scalars. The value
+   owns clock identity, reset-epoch invalidation, freshness, and pairwise comparisons; consumers do
+   not reconstruct those rules.
    When a third-party follower's supported lifecycle requires updates beyond active route/guidance
    Tasks, it also needs one stable composition-root heartbeat every relevant OpMode loop; those
    Tasks may select behavior but must not become its only lifecycle owner. If both layers can reach
@@ -300,15 +306,15 @@ Behavior guards and Plant guards are intentionally parallel, but they attach at 
 Candidate freshness has one owner and one timebase. Ordinary `PlantTargetCandidate` and
 `PlantTargetRequest` factories describe timeless/current robot intent. A value derived from a
 sensor observation uses the parallel `observed...` factory and supplies quality plus one stable
-observation timestamp in the consuming `LoopClock` timebase. The planner derives observation age
+`LoopTimestamp` created by the consuming `LoopClock`. The planner derives observation age
 when it resolves the request; an optional `maxObservationAgeSec(...)` gate applies only to observed
 candidates. Invalid observation metadata rejects that candidate; if no valid candidate remains, the
 planner follows its explicit unavailable policy. Invalid metadata must never be silently
 reclassified as timeless intent.
 
 When an observation-derived target producer receives age rather than capture time, its reusable
-source/adapter owner converts `clock.nowSec() - sampledAgeSec` exactly once before publishing the
-immutable snapshot used for target construction, then retains the resulting timestamp. A target
+source/adapter owner calls `clock.timestampSecondsAgo(sampledAgeSec)` exactly once before publishing
+the immutable snapshot used for target construction, then retains the resulting timestamp. A target
 request source must not repeat that conversion whenever a cached observation or request is sampled,
 because doing so would make it appear newly acquired. Keep this anchoring at or before the target's
 source boundary rather than adding timestamp bookkeeping to ordinary mechanism code.
@@ -796,6 +802,11 @@ Why the cycle id matters:
 * Edge/toggle sources, bindings, task runners, and similar systems need a clear definition of “one loop cycle.”
 * Phoenix uses `LoopClock.cycle()` as that identity.
 
+`cycle()` is monotonic for the lifetime of one `LoopClock`. An explicit `reset(...)` advances the
+cycle immediately even if the supplied time is unchanged; it never returns the cycle to zero. This
+ensures every cycle-memoized owner misses its old cache at a lifecycle boundary. Reset still does
+not replace explicit state resets owned by sources, Tasks, controllers, or vendor integrations.
+
 Several core systems are **idempotent by cycle**:
 
 * `Bindings.update(clock)`
@@ -804,6 +815,15 @@ Several core systems are **idempotent by cycle**:
 * Third-party adapters whose required lifecycle lets both a composition root and active Tasks call their update hook
 
 Idempotency prevents subtle bugs when code is layered (menus, testers, helpers) and multiple layers try to “helpfully” update the same system.
+
+Captured observation time uses `LoopTimestamp`. Only the owning clock creates a valid value, through
+`nowTimestamp()` or the explicit age-native boundary `timestampSecondsAgo(ageSec)`. The timestamp
+privately keeps the clock identity, reset epoch, and seconds coordinate together. Consumers call
+`ageSec(clock)`, `isFresh(clock, maxAgeSec)`, or `secondsSince(earlier)`; they do not carry a raw
+epoch, expose a raw timestamp coordinate, or repeat future-time/reset checks. `unavailable()` is the
+non-null no-measurement-time sentinel. Vendor timestamps remain private boundary values until the
+boundary translates them once. Task-local timers may remain primitive seconds when they never
+escape their one lifecycle.
 
 For an external drive/follower integration, stopping is a separate safety invariant: `stop()` must
 apply a physical stopped state immediately. Staging zero for a future heartbeat is not sufficient,

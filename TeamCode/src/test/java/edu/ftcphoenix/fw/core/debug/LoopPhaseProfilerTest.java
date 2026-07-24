@@ -118,7 +118,7 @@ public final class LoopPhaseProfilerTest {
         assertEquals(0.0005, snapshot.averageUnattributedDurationSec(), EPSILON);
         assertEquals(0.001, snapshot.maxUnattributedDurationSec(), EPSILON);
         assertPhase(snapshot, "A", 2L, manualClock.clock().cycle(), 0.004, 0.003, 0.004);
-        assertPhase(snapshot, "B", 1L, 0L, 0.003, 0.003, 0.003);
+        assertPhase(snapshot, "B", 1L, 1L, 0.003, 0.003, 0.003);
     }
 
     @Test
@@ -144,7 +144,7 @@ public final class LoopPhaseProfilerTest {
         assertEquals(1L, snapshot.completedCycleCount());
         assertEquals(1L, snapshot.incompleteCycleCount());
         assertEquals(Arrays.asList("recovered"), phaseNames(snapshot));
-        assertPhase(snapshot, "recovered", 1L, 1L, 0.002, 0.002, 0.002);
+        assertPhase(snapshot, "recovered", 1L, 2L, 0.002, 0.002, 0.002);
         assertEquals(0.003, snapshot.latestObservedDurationSec(), EPSILON);
         assertEquals(0.001, snapshot.latestUnattributedDurationSec(), EPSILON);
     }
@@ -251,7 +251,7 @@ public final class LoopPhaseProfilerTest {
     }
 
     @Test
-    public void loopClockResetRequiresProfilerResetAndResetClearsTheMeasurementWindow() {
+    public void loopClockResetAdvancesCycleAndProfilerResetClearsTheMeasurementWindow() {
         CountingNanoSource nanos = new CountingNanoSource();
         LoopPhaseProfiler profiler = LoopPhaseProfiler.createForTest(true, nanos);
         ManualLoopClock manualClock = new ManualLoopClock();
@@ -262,10 +262,9 @@ public final class LoopPhaseProfilerTest {
         profiler.finishCycle(manualClock.clock());
         assertEquals(1L, profiler.snapshot().completedCycleCount());
 
+        long cycleBeforeReset = manualClock.clock().cycle();
         manualClock.clock().reset(0.0);
-        assertActionable(assertThrows(IllegalStateException.class,
-                () -> profiler.startCycle(manualClock.clock())));
-
+        assertEquals(cycleBeforeReset + 1L, manualClock.clock().cycle());
         profiler.reset();
         LoopPhaseProfiler.Snapshot empty = profiler.snapshot();
         assertEquals(0L, empty.completedCycleCount());

@@ -405,6 +405,36 @@ public final class FtcWebcamVisionPortalLaneTest {
     }
 
     @Test
+    public void aprilTagAdapterNeverMakesOlderUsableGeometryLookNewer() {
+        FakePortal portal = new FakePortal();
+        FakeAprilTagProcessor processor = new FakeAprilTagProcessor();
+        MutableNanoClock nanos = new MutableNanoClock(1_000_000_000L);
+        FtcWebcamVisionPortalLane owner = new FtcWebcamVisionPortalLane(
+                validConfig(), new RecordingFactory(portal), nanos,
+                VALID_RESOLUTION_READER, processor);
+        FtcWebcamAprilTagSupport.PortalAprilTagSensor sensor =
+                new FtcWebcamAprilTagSupport.PortalAprilTagSensor(owner, processor);
+        ManualLoopClock time = new ManualLoopClock(10.0);
+        nanos.now = 2_000_000_000L;
+
+        processor.setValidDetections(1_900_000_000L, 1_500_000_000L);
+        AprilTagDetections mixed = sensor.get(time.clock());
+
+        assertEquals(2, mixed.observations.size());
+        assertEquals(0.5, mixed.frameAgeSec(time.clock()), 1e-9);
+        assertEquals(0.5, mixed.observations.get(0).frameAgeSec(time.clock()), 1e-9);
+        assertEquals(0.5, mixed.observations.get(1).frameAgeSec(time.clock()), 1e-9);
+
+        time.nextCycle(0.0);
+        processor.setValidAndInvalidDetections(1_900_000_000L, 1_500_000_000L);
+        AprilTagDetections invalidOlder = sensor.get(time.clock());
+
+        assertEquals(1, invalidOlder.observations.size());
+        assertEquals(0.1, invalidOlder.frameAgeSec(time.clock()), 1e-9);
+        owner.close();
+    }
+
+    @Test
     public void freshReconstructionHasIndependentConfigProcessorsAndOwnership() {
         FtcWebcamVisionPortalLane.Config cfg = validConfig();
         FakePortal firstPortal = new FakePortal();
@@ -688,6 +718,18 @@ public final class FtcWebcamVisionPortalLaneTest {
             setDetection(frameAcquisitionNanos, null, rawPose, robotPose);
         }
 
+        void setValidDetections(long firstFrameNanos, long secondFrameNanos) {
+            detections.clear();
+            detections.add(detection(7, firstFrameNanos, defaultFtcPose()));
+            detections.add(detection(8, secondFrameNanos, defaultFtcPose()));
+        }
+
+        void setValidAndInvalidDetections(long validFrameNanos, long invalidFrameNanos) {
+            detections.clear();
+            detections.add(detection(7, validFrameNanos, defaultFtcPose()));
+            detections.add(detection(8, invalidFrameNanos, null));
+        }
+
         private void setDetection(
                 long frameAcquisitionNanos,
                 AprilTagPoseFtc ftcPose,
@@ -696,17 +738,22 @@ public final class FtcWebcamVisionPortalLaneTest {
         ) {
             detections.clear();
             detections.add(new AprilTagDetection(
-                    7,
-                    0,
-                    1.0f,
-                    null,
-                    null,
-                    null,
-                    ftcPose,
-                    rawPose,
-                    robotPose,
-                    frameAcquisitionNanos
-            ));
+                    7, 0, 1.0f, null, null, null,
+                    ftcPose, rawPose, robotPose, frameAcquisitionNanos));
+        }
+
+        private static AprilTagDetection detection(int id,
+                                                   long frameAcquisitionNanos,
+                                                   AprilTagPoseFtc ftcPose) {
+            return new AprilTagDetection(
+                    id, 0, 1.0f, null, null, null,
+                    ftcPose, null, null, frameAcquisitionNanos);
+        }
+
+        private static AprilTagPoseFtc defaultFtcPose() {
+            return new AprilTagPoseFtc(
+                    1.0, 2.0, 3.0, 0.1, 0.2, 0.3,
+                    2.0, 0.0, 0.0);
         }
 
         @Override

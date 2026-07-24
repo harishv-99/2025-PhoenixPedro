@@ -14,14 +14,15 @@ public final class ManualLoopClock {
     private double nowSec;
 
     /**
-     * Start at time zero with cycle zero.
+     * Start at time zero. The constructor's explicit reset owns the first cycle identity.
      */
     public ManualLoopClock() {
         this(0.0);
     }
 
     /**
-     * Start at the supplied absolute time with cycle zero.
+     * Start at the supplied absolute time. The constructor's explicit reset owns the first cycle
+     * identity.
      *
      * @param initialTimeSec initial absolute time in seconds; must be finite
      */

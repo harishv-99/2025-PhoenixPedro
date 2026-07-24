@@ -91,8 +91,8 @@ public final class PhoenixAutoRoutineLifecycleTest {
         assertEquals(1, root.updates);
         assertEquals(7.25, root.startedAtSec, 0.0);
         assertEquals(7.25, root.updatedAtSec, 0.0);
-        assertEquals(0L, root.startedCycle);
-        assertEquals(0L, root.updatedCycle);
+        assertEquals(1L, root.startedCycle);
+        assertEquals(1L, root.updatedCycle);
 
         try {
             lifecycle.start(clock);

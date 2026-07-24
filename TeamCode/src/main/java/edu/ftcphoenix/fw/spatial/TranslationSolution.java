@@ -3,6 +3,7 @@ package edu.ftcphoenix.fw.spatial;
 import java.util.Objects;
 
 import edu.ftcphoenix.fw.core.geometry.Pose2d;
+import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 
 /**
  * Solved translation relationship from one spatial solve lane.
@@ -15,8 +16,8 @@ import edu.ftcphoenix.fw.core.geometry.Pose2d;
  * </ul>
  *
  * <p>This lets a drivetrain, an extension planner, or a manipulator planner reuse the same solve
- * result without duplicating geometry. The solution carries quality and timing metadata so consumers
- * can apply consistent gates.</p>
+ * result without duplicating geometry. The solution carries quality and an epoch-safe measurement
+ * timestamp so consumers can apply consistent gates.</p>
  */
 public final class TranslationSolution {
 
@@ -25,21 +26,7 @@ public final class TranslationSolution {
     public final boolean hasRangeInches;
     public final double rangeInches;
     public final double quality;
-    public final double ageSec;
-    public final double timestampSec;
-
-    /**
-     * Creates a translation solution without an explicit timestamp.
-     */
-    public TranslationSolution(Pose2d robotToTargetPoint,
-                               Pose2d translationFrameToTargetPoint,
-                               boolean hasRangeInches,
-                               double rangeInches,
-                               double quality,
-                               double ageSec) {
-        this(robotToTargetPoint, translationFrameToTargetPoint, hasRangeInches, rangeInches,
-                quality, ageSec, Double.NaN);
-    }
+    public final LoopTimestamp timestamp;
 
     /**
      * Creates a translation solution.
@@ -49,16 +36,14 @@ public final class TranslationSolution {
                                boolean hasRangeInches,
                                double rangeInches,
                                double quality,
-                               double ageSec,
-                               double timestampSec) {
+                               LoopTimestamp timestamp) {
         this.robotToTargetPoint = Objects.requireNonNull(robotToTargetPoint, "robotToTargetPoint");
         this.translationFrameToTargetPoint = Objects.requireNonNull(translationFrameToTargetPoint,
                 "translationFrameToTargetPoint");
         this.hasRangeInches = hasRangeInches;
         this.rangeInches = rangeInches;
         this.quality = quality;
-        this.ageSec = ageSec;
-        this.timestampSec = timestampSec;
+        this.timestamp = Objects.requireNonNull(timestamp, "timestamp");
     }
 
     /**
@@ -95,7 +80,6 @@ public final class TranslationSolution {
                 + ", hasRangeInches=" + hasRangeInches
                 + ", rangeInches=" + rangeInches
                 + ", quality=" + quality
-                + ", ageSec=" + ageSec
-                + ", timestampSec=" + timestampSec + '}';
+                + ", timestamp=" + timestamp + '}';
     }
 }

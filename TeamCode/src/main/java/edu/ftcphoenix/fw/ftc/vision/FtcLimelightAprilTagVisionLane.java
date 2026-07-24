@@ -10,12 +10,14 @@ import org.firstinspires.ftc.robotcore.external.navigation.Position;
 import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
 import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
 import edu.ftcphoenix.fw.core.time.LoopClock;
+import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 import edu.ftcphoenix.fw.ftc.FtcFrames;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagDetections;
@@ -246,7 +248,7 @@ public final class FtcLimelightAprilTagVisionLane extends FtcLimelightVisionLane
             if (!readiness(clock).isReady()) {
                 lastCycle = cycle;
                 lastPipelineGeneration = generation;
-                lastDetections = AprilTagDetections.none(Double.POSITIVE_INFINITY);
+                lastDetections = AprilTagDetections.none();
                 return lastDetections;
             }
             if (cycle == lastCycle && generation == lastPipelineGeneration) {
@@ -272,10 +274,13 @@ public final class FtcLimelightAprilTagVisionLane extends FtcLimelightVisionLane
                 return AprilTagDetections.none();
             }
 
-            double ageSec = result.ageSec();
+            LoopTimestamp frameTimestamp = clock.timestampSecondsAgo(result.ageSec());
             List<LLResultTypes.FiducialResult> fiducials = result.fiducialResults();
             if (fiducials.isEmpty()) {
-                return AprilTagDetections.none(ageSec);
+                return AprilTagDetections.of(
+                        frameTimestamp,
+                        Collections.<AprilTagObservation>emptyList()
+                );
             }
 
             ArrayList<AprilTagObservation> out =
@@ -287,13 +292,16 @@ public final class FtcLimelightAprilTagVisionLane extends FtcLimelightVisionLane
                     out.add(AprilTagObservation.target(
                             fiducial.getFiducialId(),
                             cameraToTagPose,
-                            ageSec
+                            frameTimestamp
                     ));
                 }
             }
             return out.isEmpty()
-                    ? AprilTagDetections.none(ageSec)
-                    : AprilTagDetections.of(ageSec, out);
+                    ? AprilTagDetections.of(
+                            frameTimestamp,
+                            Collections.<AprilTagObservation>emptyList()
+                    )
+                    : AprilTagDetections.of(frameTimestamp, out);
         }
     }
 }

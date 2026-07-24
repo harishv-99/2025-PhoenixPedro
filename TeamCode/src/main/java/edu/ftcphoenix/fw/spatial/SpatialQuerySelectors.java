@@ -14,7 +14,8 @@ public final class SpatialQuerySelectors {
     }
 
     /**
-     * Returns the first facing solution, in solve-set order, that passes {@code gate}.
+     * Returns the first facing solution, in solve-set order, that passes {@code gate} at the
+     * result's coherent sample timestamp.
      */
     public static SpatialFacingSelection firstValidFacing(SpatialQueryResult result, SpatialSolutionGate gate) {
         if (result == null) {
@@ -23,7 +24,7 @@ public final class SpatialQuerySelectors {
         SpatialSolutionGate g = gate != null ? gate : SpatialSolutionGate.defaults();
         for (int i = 0; i < result.laneCount(); i++) {
             SpatialLaneResult lane = result.laneResult(i);
-            if (lane != null && g.accepts(lane.facing)) {
+            if (lane != null && g.accepts(lane.facing, result.sampleTimestamp)) {
                 return new SpatialFacingSelection(i, lane.facing, lane.facingSelection);
             }
         }
@@ -31,7 +32,8 @@ public final class SpatialQuerySelectors {
     }
 
     /**
-     * Returns the first translation solution, in solve-set order, that passes {@code gate}.
+     * Returns the first translation solution, in solve-set order, that passes {@code gate} at the
+     * result's coherent sample timestamp.
      */
     public static SpatialTranslationSelection firstValidTranslation(SpatialQueryResult result,
                                                                     SpatialSolutionGate gate) {
@@ -41,7 +43,7 @@ public final class SpatialQuerySelectors {
         SpatialSolutionGate g = gate != null ? gate : SpatialSolutionGate.defaults();
         for (int i = 0; i < result.laneCount(); i++) {
             SpatialLaneResult lane = result.laneResult(i);
-            if (lane != null && g.accepts(lane.translation)) {
+            if (lane != null && g.accepts(lane.translation, result.sampleTimestamp)) {
                 return new SpatialTranslationSelection(i, lane.translation, lane.translationSelection);
             }
         }

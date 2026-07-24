@@ -83,8 +83,8 @@ public final class CameraMountLogic {
      * robot frame. The returned {@link TargetObservation2d} includes full 2D position (forward/left)
      * and bearing.</p>
      *
-     * <p>AprilTag observations currently do not expose a separate “quality” metric, so this returns a
-     * default quality of 1.0 and uses {@link AprilTagObservation#ageSec} for {@link TargetObservation2d#ageSec}.</p>
+     * <p>AprilTag observations currently do not expose a separate “quality” metric, so this returns
+     * a default quality of 1.0 and forwards the observation's epoch-safe frame timestamp.</p>
      */
     public static TargetObservation2d robotObservation2d(AprilTagObservation obs, CameraMountConfig mount) {
         Objects.requireNonNull(obs, "obs");
@@ -102,7 +102,7 @@ public final class CameraMountLogic {
                 robotToTag.yInches,
                 robotToTag.yawRad,
                 1.0,
-                obs.ageSec
+                obs.frameTimestamp()
         );
     }
 }

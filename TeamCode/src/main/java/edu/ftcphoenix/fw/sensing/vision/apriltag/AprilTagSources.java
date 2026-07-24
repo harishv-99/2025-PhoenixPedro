@@ -23,11 +23,14 @@ public final class AprilTagSources {
 
     /**
      * Returns a source that looks up one specific fresh tag observation by ID.
+     *
+     * @param maxAgeSec inclusive finite, non-negative maximum detection age
      */
     public static Source<AprilTagObservation> observationForId(Source<AprilTagDetections> detections,
                                                                int id,
                                                                double maxAgeSec) {
         Objects.requireNonNull(detections, "detections");
+        requireValidMaxAgeSec(maxAgeSec);
         return new Source<AprilTagObservation>() {
             /**
              * {@inheritDoc}
@@ -35,7 +38,7 @@ public final class AprilTagSources {
             @Override
             public AprilTagObservation get(LoopClock clock) {
                 AprilTagDetections dets = Objects.requireNonNull(detections.get(clock), "detections returned null");
-                return dets.forId(id, maxAgeSec);
+                return dets.forId(clock, id, maxAgeSec);
             }
 
             /**
@@ -62,6 +65,8 @@ public final class AprilTagSources {
 
     /**
      * Returns a boolean source that is true when the given ID is freshly visible.
+     *
+     * @param maxAgeSec inclusive finite, non-negative maximum detection age
      */
     public static BooleanSource hasFresh(Source<AprilTagDetections> detections, int id, double maxAgeSec) {
         return observationForId(detections, id, maxAgeSec).mapToBoolean(new java.util.function.Predicate<AprilTagObservation>() {
@@ -77,12 +82,15 @@ public final class AprilTagSources {
 
     /**
      * Returns a boolean source that is true when any ID in {@code idsOfInterest} is freshly visible.
+     *
+     * @param maxAgeSec inclusive finite, non-negative maximum detection age
      */
     public static BooleanSource hasFreshAny(Source<AprilTagDetections> detections,
                                             Set<Integer> idsOfInterest,
                                             double maxAgeSec) {
         Objects.requireNonNull(detections, "detections");
         Objects.requireNonNull(idsOfInterest, "idsOfInterest");
+        requireValidMaxAgeSec(maxAgeSec);
         return new BooleanSource() {
             /**
              * {@inheritDoc}
@@ -90,7 +98,7 @@ public final class AprilTagSources {
             @Override
             public boolean getAsBoolean(LoopClock clock) {
                 AprilTagDetections dets = Objects.requireNonNull(detections.get(clock), "detections returned null");
-                return !dets.freshMatching(idsOfInterest, maxAgeSec).isEmpty();
+                return !dets.freshMatching(clock, idsOfInterest, maxAgeSec).isEmpty();
             }
 
             /**
@@ -105,9 +113,12 @@ public final class AprilTagSources {
 
     /**
      * Returns a source exposing the set of freshly visible IDs.
+     *
+     * @param maxAgeSec inclusive finite, non-negative maximum detection age
      */
     public static Source<Set<Integer>> visibleIds(Source<AprilTagDetections> detections, double maxAgeSec) {
         Objects.requireNonNull(detections, "detections");
+        requireValidMaxAgeSec(maxAgeSec);
         return new Source<Set<Integer>>() {
             /**
              * {@inheritDoc}
@@ -115,7 +126,7 @@ public final class AprilTagSources {
             @Override
             public Set<Integer> get(LoopClock clock) {
                 AprilTagDetections dets = Objects.requireNonNull(detections.get(clock), "detections returned null");
-                return dets.visibleIds(maxAgeSec);
+                return dets.visibleIds(clock, maxAgeSec);
             }
 
             /**
@@ -126,5 +137,12 @@ public final class AprilTagSources {
                 detections.reset();
             }
         };
+    }
+
+    private static void requireValidMaxAgeSec(double maxAgeSec) {
+        if (!Double.isFinite(maxAgeSec) || maxAgeSec < 0.0) {
+            throw new IllegalArgumentException(
+                    "maxAgeSec must be finite and >= 0, got " + maxAgeSec);
+        }
     }
 }

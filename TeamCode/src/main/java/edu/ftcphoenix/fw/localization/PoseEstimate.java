@@ -3,6 +3,7 @@ package edu.ftcphoenix.fw.localization;
 import edu.ftcphoenix.fw.core.geometry.Pose2d;
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
 import edu.ftcphoenix.fw.core.time.LoopClock;
+import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 
 /**
  * Immutable snapshot of the robot's estimated pose on the field (6DOF).
@@ -14,8 +15,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *   <li>The robot's pose in the field coordinate system (if available).</li>
  *   <li>Whether a valid pose is currently available.</li>
  *   <li>A simple quality score (0–1) for selection/fusion/debugging.</li>
- *   <li>How "old" the estimate is relative to now.</li>
- *   <li>The absolute timestamp at which the underlying measurement was taken.</li>
+ *   <li>The epoch-safe timestamp at which the underlying measurement was taken.</li>
  * </ul>
  *
  * <h2>Field coordinate system (FTC)</h2>
@@ -38,12 +38,9 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *
  * <h2>Time semantics</h2>
  *
- * <ul>
- *   <li>{@link #timestampSec} is the time (in seconds, from an arbitrary monotonic epoch)
- *       at which the underlying measurement was taken.</li>
- *   <li>{@link #ageSec} is the age of the estimate (how long ago the measurement was taken)
- *       <em>at the time the {@code PoseEstimate} instance was created</em>.</li>
- * </ul>
+ * <p>{@link #timestamp} keeps the originating {@link LoopClock} and reset epoch attached to the
+ * measurement time. Consumers derive age with {@link LoopTimestamp#ageSec(LoopClock)} rather than
+ * retaining a second age value that can drift from the timestamp.</p>
  */
 public final class PoseEstimate {
 
@@ -72,20 +69,14 @@ public final class PoseEstimate {
     public final double quality;
 
     /**
-     * Age of this estimate in seconds at the time it was created.
+     * Epoch-safe time at which the underlying measurement was taken.
      *
-     * <p>Example: if a camera frame was captured 50 ms before the current loop iteration, an
-     * estimator might set {@code ageSec = 0.050} for the pose derived from that frame.</p>
+     * <p>Use {@link LoopTimestamp#ageSec(LoopClock)} or
+     * {@link LoopTimestamp#isFresh(LoopClock, double)} to interpret this value. A no-pose result
+     * may still carry the time at which that result was produced; it does not claim an underlying
+     * measurement exists.</p>
      */
-    public final double ageSec;
-
-    /**
-     * Timestamp in seconds at which the underlying measurement was taken.
-     *
-     * <p>This value is in the same timebase as the {@link LoopClock}
-     * used by the estimator (typically seconds since OpMode start or another monotonic clock).</p>
-     */
-    public final double timestampSec;
+    public final LoopTimestamp timestamp;
 
     /**
      * Constructs a new {@code PoseEstimate}.
@@ -93,22 +84,22 @@ public final class PoseEstimate {
      * @param fieldToRobotPose robot pose in the FTC field coordinate system (field→robot; 6DOF)
      * @param hasPose      whether this represents a valid pose
      * @param quality      quality score in [0.0, 1.0]
-     * @param ageSec       age of the estimate in seconds
-     * @param timestampSec time at which the underlying measurement was taken
+     * @param timestamp    epoch-safe time at which the underlying measurement was taken
      */
     public PoseEstimate(Pose3d fieldToRobotPose,
                         boolean hasPose,
                         double quality,
-                        double ageSec,
-                        double timestampSec) {
+                        LoopTimestamp timestamp) {
         if (fieldToRobotPose == null) {
             throw new IllegalArgumentException("fieldToRobotPose is required");
+        }
+        if (timestamp == null) {
+            throw new IllegalArgumentException("timestamp is required; use LoopTimestamp.unavailable() when no truthful time exists");
         }
         this.fieldToRobotPose = fieldToRobotPose;
         this.hasPose = hasPose;
         this.quality = quality;
-        this.ageSec = ageSec;
-        this.timestampSec = timestampSec;
+        this.timestamp = timestamp;
     }
 
     /**
@@ -130,20 +121,19 @@ public final class PoseEstimate {
      *   <li>{@link #hasPose} will be {@code false}.</li>
      *   <li>{@link #fieldToRobotPose} will be the 6DOF identity pose by default.</li>
      *   <li>{@link #quality} will be 0.0.</li>
-     *   <li>{@link #ageSec} will be 0.0.</li>
-     *   <li>{@link #timestampSec} will be set to {@code nowSec}.</li>
+     *   <li>{@link #timestamp} will identify when this no-result snapshot was produced, or be
+     *       unavailable when no truthful production time exists.</li>
      * </ul>
      *
-     * @param nowSec current time in seconds, from the same timebase used by the estimator
+     * @param timestamp time at which this no-result snapshot was produced
      * @return a {@code PoseEstimate} with {@link #hasPose} = false
      */
-    public static PoseEstimate noPose(double nowSec) {
+    public static PoseEstimate noPose(LoopTimestamp timestamp) {
         return new PoseEstimate(
                 Pose3d.zero(),
                 false,
                 0.0,
-                0.0,
-                nowSec
+                timestamp
         );
     }
 
@@ -153,13 +143,12 @@ public final class PoseEstimate {
     @Override
     public String toString() {
         if (!hasPose) {
-            return "PoseEstimate{no pose, timestampSec=" + timestampSec + "}";
+            return "PoseEstimate{no pose, timestamp=" + timestamp + "}";
         }
         return "PoseEstimate{" +
                 "fieldToRobotPose=" + fieldToRobotPose +
                 ", quality=" + quality +
-                ", ageSec=" + ageSec +
-                ", timestampSec=" + timestampSec +
+                ", timestamp=" + timestamp +
                 '}';
     }
 }

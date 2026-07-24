@@ -4,6 +4,7 @@ import org.junit.Test;
 
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
 import edu.ftcphoenix.fw.core.time.LoopClock;
+import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 import edu.ftcphoenix.fw.drive.DriveCommandSink;
 import edu.ftcphoenix.fw.drive.DriveSignal;
 import edu.ftcphoenix.fw.localization.AbsolutePoseEstimator;
@@ -25,7 +26,7 @@ public final class DriveGuidanceTaskSingleUseTest {
         ManualLoopClock manualClock = new ManualLoopClock();
         RecordingDriveSink drive = new RecordingDriveSink();
         DriveGuidanceTask task = new DriveGuidanceTask(
-                "autoAlign", drive, unavailablePlan(manualClock.clock().nowSec()), config());
+                "autoAlign", drive, unavailablePlan(manualClock.clock().nowTimestamp()), config());
 
         task.start(manualClock.clock());
         assertEquals(1, drive.stopCount);
@@ -43,7 +44,7 @@ public final class DriveGuidanceTaskSingleUseTest {
         ManualLoopClock manualClock = new ManualLoopClock();
         RecordingDriveSink drive = new RecordingDriveSink();
         DriveGuidanceTask task = new DriveGuidanceTask(
-                "cancelledAlign", drive, unavailablePlan(manualClock.clock().nowSec()), config());
+                "cancelledAlign", drive, unavailablePlan(manualClock.clock().nowTimestamp()), config());
 
         task.start(manualClock.clock());
         task.cancel();
@@ -64,7 +65,7 @@ public final class DriveGuidanceTaskSingleUseTest {
     public void freshPlanTasksCanStartIndependently() {
         ManualLoopClock manualClock = new ManualLoopClock();
         RecordingDriveSink drive = new RecordingDriveSink();
-        DriveGuidancePlan plan = unavailablePlan(manualClock.clock().nowSec());
+        DriveGuidancePlan plan = unavailablePlan(manualClock.clock().nowTimestamp());
         Task first = plan.task(drive, config());
         Task second = plan.task(drive, config());
 
@@ -81,7 +82,7 @@ public final class DriveGuidanceTaskSingleUseTest {
         ManualLoopClock manualClock = new ManualLoopClock();
         RecordingDriveSink drive = new RecordingDriveSink();
         DriveGuidanceTask task = new DriveGuidanceTask(
-                "cancelBeforeStart", drive, unavailablePlan(manualClock.clock().nowSec()), config());
+                "cancelBeforeStart", drive, unavailablePlan(manualClock.clock().nowTimestamp()), config());
 
         try {
             task.update(manualClock.clock());
@@ -111,7 +112,7 @@ public final class DriveGuidanceTaskSingleUseTest {
         DriveGuidanceTask.Config cfg = config();
         cfg.timeoutSec = 0.1;
         DriveGuidanceTask task = new DriveGuidanceTask(
-                "timeout", drive, unavailablePlan(manualClock.clock().nowSec()), cfg);
+                "timeout", drive, unavailablePlan(manualClock.clock().nowTimestamp()), cfg);
 
         task.start(manualClock.clock());
         manualClock.nextCycle(0.11);
@@ -130,7 +131,7 @@ public final class DriveGuidanceTaskSingleUseTest {
         RecordingDriveSink drive = new RecordingDriveSink();
         drive.throwOnStopNumber = 1;
         DriveGuidanceTask task = new DriveGuidanceTask(
-                "failedStart", drive, unavailablePlan(manualClock.clock().nowSec()), config());
+                "failedStart", drive, unavailablePlan(manualClock.clock().nowTimestamp()), config());
 
         try {
             task.start(manualClock.clock());
@@ -152,7 +153,7 @@ public final class DriveGuidanceTaskSingleUseTest {
         RecordingDriveSink drive = new RecordingDriveSink();
         drive.throwOnStopNumber = 2;
         DriveGuidanceTask task = new DriveGuidanceTask(
-                "throwingCancel", drive, unavailablePlan(manualClock.clock().nowSec()), config());
+                "throwingCancel", drive, unavailablePlan(manualClock.clock().nowTimestamp()), config());
         task.start(manualClock.clock());
 
         try {
@@ -187,12 +188,12 @@ public final class DriveGuidanceTaskSingleUseTest {
         assertTrue(failure.getMessage().contains(freshTaskHint));
     }
 
-    private static DriveGuidancePlan unavailablePlan(double nowSec) {
+    private static DriveGuidancePlan unavailablePlan(LoopTimestamp timestamp) {
         return DriveGuidance.plan()
                 .translateTo()
                     .fieldPointInches(12.0, 0.0)
                 .solveWith()
-                    .localizationOnlyWithDefaults(new NoPoseEstimator(nowSec))
+                    .localizationOnlyWithDefaults(new NoPoseEstimator(timestamp))
                 .build();
     }
 
@@ -206,8 +207,8 @@ public final class DriveGuidanceTaskSingleUseTest {
     private static final class NoPoseEstimator implements AbsolutePoseEstimator {
         private final PoseEstimate estimate;
 
-        NoPoseEstimator(double nowSec) {
-            estimate = new PoseEstimate(Pose3d.zero(), false, 0.0, 0.0, nowSec);
+        NoPoseEstimator(LoopTimestamp timestamp) {
+            estimate = new PoseEstimate(Pose3d.zero(), false, 0.0, timestamp);
         }
 
         @Override

@@ -394,7 +394,8 @@ public final class TagSelections {
             lastCycle = cyc;
 
             AprilTagDetections dets = Objects.requireNonNull(detections.get(clock), "detections returned null");
-            List<AprilTagObservation> candidates = dets.freshMatching(candidateIds, maxAgeSec);
+            List<AprilTagObservation> candidates =
+                    dets.freshMatching(clock, candidateIds, maxAgeSec);
             LinkedHashSet<Integer> visibleIds = new LinkedHashSet<Integer>();
             for (AprilTagObservation obs : candidates) {
                 visibleIds.add(obs.id);
@@ -425,12 +426,12 @@ public final class TagSelections {
                 return new TagSelectionResult(
                         false,
                         -1,
-                        AprilTagObservation.noTarget(Double.POSITIVE_INFINITY),
+                        AprilTagObservation.noTarget(),
                         false,
                         -1,
                         false,
                         false,
-                        AprilTagObservation.noTarget(Double.POSITIVE_INFINITY),
+                        AprilTagObservation.noTarget(),
                         visibleIds,
                         lastPolicyName,
                         "no preview candidate",
@@ -466,12 +467,12 @@ public final class TagSelections {
                 last = new TagSelectionResult(
                         preview != null,
                         preview != null ? preview.observation.id : -1,
-                        preview != null ? preview.observation : AprilTagObservation.noTarget(Double.POSITIVE_INFINITY),
+                        preview != null ? preview.observation : AprilTagObservation.noTarget(),
                         false,
                         -1,
                         false,
                         false,
-                        AprilTagObservation.noTarget(Double.POSITIVE_INFINITY),
+                        AprilTagObservation.noTarget(),
                         visibleIds,
                         preview != null ? preview.policyName : lastPolicyName,
                         preview != null ? preview.reason : "selection inactive",
@@ -523,7 +524,7 @@ public final class TagSelections {
                         hasFreshSelected = true;
                     } else {
                         clearSelection();
-                        selectedObs = AprilTagObservation.noTarget(Double.POSITIVE_INFINITY);
+                        selectedObs = AprilTagObservation.noTarget();
                         hasFreshSelected = false;
                     }
                 }
@@ -532,12 +533,12 @@ public final class TagSelections {
             return new TagSelectionResult(
                     preview != null,
                     preview != null ? preview.observation.id : -1,
-                    preview != null ? preview.observation : AprilTagObservation.noTarget(Double.POSITIVE_INFINITY),
+                    preview != null ? preview.observation : AprilTagObservation.noTarget(),
                     selectedTagId >= 0,
                     selectedTagId,
                     latched,
                     hasFreshSelected,
-                    hasFreshSelected ? selectedObs : AprilTagObservation.noTarget(Double.POSITIVE_INFINITY),
+                    hasFreshSelected ? selectedObs : AprilTagObservation.noTarget(),
                     visibleIds,
                     preview != null ? preview.policyName : lastPolicyName,
                     preview != null ? preview.reason : lastReason,

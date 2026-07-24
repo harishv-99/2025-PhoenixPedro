@@ -675,7 +675,7 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
         TagSelectionResult selectionResult = selection.get(clock);
         AprilTagObservation obs = selectionResult.hasFreshSelectedObservation
                 ? selectionResult.selectedObservation
-                : AprilTagObservation.noTarget(Double.POSITIVE_INFINITY);
+                : AprilTagObservation.noTarget();
         PoseEstimate est = poseEstimator.getEstimate();
 
         renderTelemetry(obs, est);
@@ -716,7 +716,7 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
             t.addLine("  Tips: check lighting, focus, camera stream, and tag visibility.");
         } else {
             t.addData("  Tag id", obs.id);
-            t.addData("  Age", "%.0f ms", obs.ageSec * 1000.0);
+            t.addData("  Age", "%.0f ms", obs.frameAgeSec(clock) * 1000.0);
             t.addData("  Range", "%.1f in", obs.cameraRangeInches());
             t.addData("  Bearing", "%.1f°", Math.toDegrees(obs.cameraBearingRad()));
             t.addData("  cameraToTag", "fwd=%.1f in | left=%.1f in | up=%.1f in",
@@ -743,8 +743,7 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
             Pose3d p = est.fieldToRobotPose;
             t.addData("  fieldToRobot", "x=%.1f y=%.1f | yaw=%.1f°",
                     p.xInches, p.yInches, Math.toDegrees(p.yawRad));
-            t.addData("  Pose time", "%.3f s", est.timestampSec);
-            t.addData("  Pose age", "%.0f ms", est.ageSec * 1000.0);
+            t.addData("  Pose age", "%.0f ms", est.timestamp.ageSec(clock) * 1000.0);
         }
 
         t.addLine("");
