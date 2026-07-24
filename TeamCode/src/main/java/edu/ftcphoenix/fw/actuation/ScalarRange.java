@@ -94,12 +94,17 @@ public final class ScalarRange {
     }
 
     /**
-     * Returns the finite center of the range, or NaN if either side is unbounded.
+     * Returns the finite center of the range without overflowing finite endpoints, or NaN if
+     * either side is unbounded.
      */
     public double center() {
-        return valid && Double.isFinite(minValue) && Double.isFinite(maxValue)
-                ? 0.5 * (minValue + maxValue)
-                : Double.NaN;
+        if (!valid || !Double.isFinite(minValue) || !Double.isFinite(maxValue)) {
+            return Double.NaN;
+        }
+        if (minValue < 0.0 && maxValue >= 0.0) {
+            return (minValue + maxValue) / 2.0;
+        }
+        return minValue + (maxValue - minValue) / 2.0;
     }
 
     @Override

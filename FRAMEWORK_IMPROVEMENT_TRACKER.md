@@ -128,7 +128,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 41 | TARGET-02 | Candidate freshness | Done | Timestamp-canonical observed/timeless APIs, derived age, fail-closed metadata handling, diagnostics, docs, and tests were reviewed and approved on 2026-07-23. |
 | 42 | TIME-01 | Epoch-safe LoopClock timestamps | Done | Typed timestamps, reset-safe portable timing, monotonic cycle identity, caller migration, documentation, software verification, and Android Studio review are complete. |
 | 43 | VISION-02 | Stable AprilTag observation timestamps | Done | Stable backend-owned frame timestamps, exact propagation, fail-closed reset/replay handling, synchronized documentation, verification, and Android Studio review are complete. |
-| 44 | TARGET-03 | Periodic planner complexity | Proposed | Replace range iteration with constant-time candidate mathematics. |
+| 44 | TARGET-03 | Periodic planner complexity | Done | Constant-time deterministic periodic selection, synchronized docs, and 21 focused regressions were reviewed and approved on 2026-07-23. |
 | 45 | CYCLE-01 | Stateful drive-source cycle safety | Proposed | Memoize stateful composition once per `clock.cycle()` and propagate reset deliberately. |
 | 46 | CYCLE-02 | Localization cycle safety | Proposed | Guard predictors/estimators against duplicate same-cycle updates. |
 | 47 | SOURCE-01 | Boolean composition sampling | Proposed | Sample both operands once per cycle before combining stateful results. |
@@ -5181,7 +5181,171 @@ writer, and explicit lifecycle ownership.
 - **Leading hypothesis:** constant-time analytic candidates are both simpler and safer.
 - **Completion:** results match existing intended preferences at boundaries and ties without loops
   proportional to the target range.
-- **Decision record:** _Pending._
+- **Decision record (2026-07-23):** **Ready; stop for design approval before implementation.** The
+  leading hypothesis remains viable, but the audit found public selection-semantics corrections
+  that warrant explicit approval even though the student-facing API shape does not change.
+  - **Current behavior and confirmed failure:** a bounded periodic family
+    `target = base + k * period` walks every integer `k` between its target-range bounds. Work is
+    therefore proportional to range width divided by period and can stall the cooperative robot
+    loop. If the upper index casts to `Long.MAX_VALUE`, incrementing the loop counter wraps to
+    `Long.MIN_VALUE` and can make the search effectively nonterminating. A half-bounded range uses
+    an arbitrary eight-period window; it can still do distance-proportional work and can report an
+    unavailable plan even when the finite boundary itself is a reachable representative.
+  - **Related correctness findings:** bounded midpoint ties accidentally keep the lower target,
+    while the fully unbounded shortcut uses `Math.rint(...)` and therefore ties to an even index.
+    `preferIncreasing()` and `preferDecreasing()` use an undocumented `1e9` Plant-unit penalty, so
+    a sufficiently distant preferred-direction target loses to an opposite-direction target and
+    the result changes when the same mechanism is expressed in degrees versus ticks. The current
+    range-center calculation can overflow for two finite same-sign bounds. Derived quotient,
+    product, relative-base, or distance arithmetic can also become non-finite and throw later
+    instead of following the planner's unavailable policy. Finally, a Plant-period candidate checks
+    only whether `context.period()` is positive, not whether the Plant actually declared periodic
+    topology as documented.
+  - **Public construction and caller audit:** the only planner construction path is the staged
+    `PlantTargets.plan().request(...).<preference>().<unreachable-policy>().whenUnavailable()...`
+    path. `PlantTargetRequest` provides the concise one-candidate factories, while
+    `PlantTargetCandidate` has the parallel factories needed by `oneOf(...)` varargs or dynamic
+    lists. Plant-owned versus explicit periods, absolute versus relative values, and timeless
+    versus observed values are distinct capabilities, so both layers remain. No modern Phoenix or
+    framework production Java code currently invokes the periodic planner; the executable callers
+    are freshness/overlay tests, and the main student call sites are the tray/turret examples in
+    `Mechanism Target Planning.md`. Public `CandidatePreference` and `UnreachablePolicy` enums are
+    not accepted or returned by any public method and have no callers, but their visibility is an
+    unrelated API-surface decision: defer it to CLEAN-01, which must repeat the caller/signature
+    search before removing them. Do not add an enum-taking planner overload.
+  - **Alternatives reconsidered:** keep full enumeration (preserves accidental outputs but violates
+    non-blocking loop behavior); cap the walk to a fixed number of turns (quick but still rejects
+    reachable answers based on an arbitrary cutoff); use only one rounded index (smallest code but
+    brittle at inclusive floating-point bounds and overflow); introduce `searchWindow(...)` or
+    `maxCandidates(...)` in robot code (leaks an implementation detail and duplicates the existing
+    preference question); or use arbitrary-precision decimal search (more allocation and
+    complexity than this double-valued FTC API requires). The selected design is a constant-size
+    analytic stencil: it retains simple calls, handles all range shapes, and bounds work without an
+    arbitrary robot-facing tuning value.
+  - **Selected internal design:** for each explicit request candidate, derive at most twelve index
+    probes around the preference anchor and each finite range endpoint. Each anchor contributes the
+    neighbors around its analytic floor/ceiling index; there is no range walk and no `long` cast.
+    Use overflow-aware quotient/target helpers, then accept only finite targets actually contained
+    by the inclusive range. Work is `O(request candidate count)` and independent of range width and
+    period. If no equivalent survives, preserve the current unreachable-policy distinction:
+    `rejectUnreachable()` reports unavailable, while `clampUnreachableToRange()` may clamp the
+    finite canonical base and marks that result as not satisfying the periodic request. A
+    Plant-period candidate additionally requires periodic Plant topology. Repair
+    `ScalarRange.center()` with an overflow-safe finite midpoint because range-center selection
+    directly depends on that promise; reject malformed/non-finite derived planner arithmetic, but
+    leave range-factory shape and `NaN` construction policy to RANGE-01.
+  - **Selected preference contract:** `nearestToMeasurement()` chooses the closest legal target.
+    `preferIncreasing()` first chooses the closest legal target at or above the measurement and
+    falls back to the closest below only when no increasing target exists;
+    `preferDecreasing()` is symmetric. `preferRangeCenter()` chooses the legal target closest to an
+    overflow-safe center when both bounds are finite and continues to fall back to nearest
+    measurement when no finite center exists. Bounds are inclusive. Within one periodic family, an
+    exact nearest/range-center midpoint tie chooses the lower target for every range shape. An exact
+    tie between distinct request candidates retains their declared order. Use an explicit
+    direction/distance comparator rather than a unit-dependent numeric penalty or an
+    overflow-prone absolute-distance score.
+  - **Framework Principles and student simplicity:** this keeps target choice inside the
+    source-driven Plant planner, preserves one staged public path, adds no student bookkeeping, and
+    makes the cooperative loop's work bounded. Unit-independent direction rules, deterministic
+    ties, fail-closed finite results, and synchronized Javadocs/examples follow the framework's
+    truthful-interface and target-safety requirements. Add the concise deterministic,
+    unit-independent preference requirement to `Framework Principles.md`; keep the numeric stencil
+    as a private implementation detail in Javadocs and the main planning guide.
+  - **Robot-code comparison:** before and after, the ordinary call remains exactly:
+
+    ```java
+    PlantTargets.plan()
+            .request(clock -> PlantTargetRequest.equivalentPosition("faceGoal", desiredAngleDeg.get()))
+            .nearestToMeasurement()
+            .rejectUnreachable()
+            .whenUnavailable().holdMeasuredTargetOnEntry(0.0);
+    ```
+
+    Robot programmers do not select a search bound, enumerate turns, or perform range mathematics.
+    The improvement is that the same call remains quick and truthful for wide, one-sided, and
+    unbounded mechanisms.
+  - **Bounded implementation scope:** change only the private periodic selection/comparison in
+    `PlantTargets`, its affected public Javadocs/diagnostics, the overflow-safe
+    `ScalarRange.center()` implementation, the relevant Framework Principles and Mechanism Target
+    Planning wording, and focused software tests. Do not redesign candidate/request factories,
+    range factories, Plant ownership, or Phoenix robot code, and do not begin CYCLE-01.
+  - **Verification plan:** add `PlantTargetsPeriodicPlannerTest` with an independent small-domain
+    brute-force oracle covering all four preferences, both unreachable policies, bounded,
+    half-bounded, and unbounded ranges, Plant versus explicit periods, and absolute versus relative
+    candidates. Add deterministic tests for inclusive bounds, lower midpoint ties, request-order
+    ties, opposite-direction fallback, scale-independent direction beyond `1e9`, range-center near
+    `Double.MAX_VALUE`, canonical-base clamp, far-outside one-sided measurements, relative-base and
+    quotient/product overflow, an index beyond `long`, malformed derived values, and rejection of a
+    Plant-period candidate on linear topology. Include one generous timeout around enormous
+    candidate spaces plus a code audit that the production selector has a fixed probe bound. Run
+    the focused suite, full TeamCode unit tests, TeamCode Java compilation, public-caller and
+    documentation checks, and `git diff --check`. No robot hardware is required for deterministic
+    selection math.
+  - **Approval gate:** implementation has not started. Proceed only if the user replies
+    `Approve TARGET-03 constant-time deterministic planner design`.
+  - **Design approval (2026-07-23):** the user replied
+    `Approve TARGET-03 constant-time deterministic planner design`. This authorizes Gate 2
+    implementation of TARGET-03 only; it does not authorize CYCLE-01 or any other tracker item.
+  - **Implementation (2026-07-23):** `PlantTargets` no longer enumerates the periodic family or
+    casts a candidate index to `long`. Each explicit request candidate examines four representatives
+    around the preference reference and four around each finite range endpoint, for at most twelve
+    probes independent of range width and period. A direct floor/ceiling stencil preserves exact
+    `base + k * period` boundaries while adjacent integer indices remain representable; a
+    target-space remainder stencil handles larger indices, quotient/product overflow, and
+    cancellation. The large-index path merges a representation-preserving direct target into the
+    nearest lower/upper slots, so exact inclusive bounds remain selectable without a fifth probe.
+    Only finite in-range representatives may win, a non-finite relative base fails closed, and a
+    canonical-base clamp must itself be finite and contained. Plant-period candidates now require
+    periodic Plant topology.
+  - **Deterministic preference behavior:** increasing/decreasing selection now compares a preferred
+    direction bucket before distance, removing the unit-dependent `1e9` penalty. Nearest and finite
+    range-center comparisons use an overflow-safe midpoint/distance comparison. An intra-family
+    midpoint tie chooses the lower target; a cross-candidate tie retains request order. Bounds stay
+    inclusive, and half-bounded/unbounded center preference falls back to measurement. The
+    overflow-safe `ScalarRange.center()` now preserves finite same-sign extremes and correct
+    opposite-sign/subnormal rounding.
+  - **Student-facing result:** the staged planner call is unchanged; robot code supplies request,
+    preference, unreachable policy, and unavailable policy exactly once and never supplies a search
+    window, turn count, or numeric tolerance. Framework Principles, public Javadocs, and Mechanism
+    Target Planning now state the bounded-work and deterministic preference contract without
+    exposing the private numeric stencil. No production Phoenix, framework tool, or robot caller
+    required migration. The two existing Request/Candidate construction layers retain their
+    distinct one-candidate and `oneOf(...)` composition value; unused public preference/policy enum
+    visibility remains assigned to CLEAN-01, and range-factory validation remains RANGE-01.
+  - **Adversarial review:** independent numeric, API/simplicity, and test reviews found and closed
+    one-sided-range rejection, `Long.MAX_VALUE` wrap, exact-index loss above `2^53`, signed
+    subnormal phase loss, remainder wraparound, extreme/subnormal midpoint comparisons, Plant
+    topology drift, range-center overflow, and exact singleton-boundary ULP shifts at both ordinary
+    and very large indices. The final four-slot hybrid was checked against **1,907,685** randomized
+    remainder-branch exact-boundary cases and **2,250,023** direct/regrouped overflow cases with no
+    counterexample. The final reviews report no remaining blocker, no public API-shape change, and
+    no adjacent-item scope leakage.
+  - **Automated verification (2026-07-23):** the new
+    `PlantTargetsPeriodicPlannerTest` reports **21 tests, 0 failures, 0 errors, 0 skipped**, including
+    a small-domain brute-force oracle; all preferences and range shapes; reject/clamp and
+    Plant/explicit/relative period paths; direction/tie/order rules; bounded completion; exact
+    inclusive boundaries; indices beyond `long` and exact-double adjacency; quotient/product and
+    relative-base overflow; remainder wrap; topology validation; and finite extreme/subnormal
+    centers. The complete `:TeamCode:testDebugUnitTest` suite reports **87 suites / 842 tests,
+    0 failures, 0 errors, 0 skipped**, and `:TeamCode:compileDebugJavaWithJavac` succeeds. The
+    affected caller/public-signature scan finds only the staged construction path and no production
+    migration; the selector contains no range-proportional loop. All changed-file whitespace/final
+    newlines, three Markdown fence sets, ten local Markdown links, and `git diff --check` pass.
+    Gradle emits only the existing Java 8 source/target and FTC sample deprecation warnings. An
+    initial parallel invocation hit a transient FtcRobotController bundle-artifact failure before
+    TeamCode verification; serial full reruns succeeded.
+  - **Hardware scope:** no robot hardware is needed to verify deterministic scalar selection,
+    finite arithmetic, topology checks, or bounded probe count. Hardware remains ordinary adoption
+    validation for a mechanism's configured period and range, not a TARGET-03 evidence gate.
+  - **Android Studio audit point (2026-07-23):** inspect the private periodic selector and preference
+    comparison in `PlantTargets`, overflow-safe `ScalarRange.center()`, the 21-test focused suite,
+    and the synchronized Framework Principles/Mechanism Target Planning wording. Confirm the
+    ordinary staged robot call is unchanged and no search-control API was added. No files are
+    staged, committed, pushed, or merged. Stop without starting CYCLE-01 until the user replies
+    `TARGET-03 looks good`.
+  - **Manual verification and approval (2026-07-23):** the user completed the Android Studio review
+    and replied `TARGET-03 looks good`. This authorizes finalization, publication, and merge of
+    TARGET-03 only; it does not authorize starting CYCLE-01 or another tracker item.
 
 ### CYCLE-01 - Stateful drive-source cycle safety
 

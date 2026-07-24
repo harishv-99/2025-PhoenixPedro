@@ -316,6 +316,17 @@ candidates. Invalid observation metadata rejects that candidate; if no valid can
 planner follows its explicit unavailable policy. Invalid metadata must never be silently
 reclassified as timeless intent.
 
+Periodic planning must do a fixed, bounded amount of work independent of how many equivalent
+positions fit between the Plant's inclusive range bounds. `nearestToMeasurement()` and
+`preferRangeCenter()` choose the lower-valued equivalent position on an exact tie within one
+periodic family. Increasing/decreasing preferences are direction-first across the complete request:
+choose the closest legal target on the requested side of the measurement, and consider the opposite
+side only when no requested candidate has a legal target on the preferred side. Range-center
+preference uses the center only when both range bounds are finite; a one-sided or unbounded range
+falls back to nearest-to-measurement behavior. Exact ties between distinct request candidates retain
+their declaration order. Keep the fixed candidate mathematics private; robot code supplies motion
+policy, not search windows or iteration limits.
+
 When an observation-derived target producer receives age rather than capture time, its reusable
 source/adapter owner calls `clock.timestampSecondsAgo(sampledAgeSec)` exactly once before publishing
 the immutable snapshot used for target construction, then retains the resulting timestamp. A target
