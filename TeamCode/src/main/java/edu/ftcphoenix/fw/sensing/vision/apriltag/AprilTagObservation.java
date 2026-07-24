@@ -81,6 +81,10 @@ import edu.ftcphoenix.fw.core.time.LoopTimestamp;
  * Bearing and range are derived from {@link #cameraToTagPose} and are not stored separately to avoid
  * redundancy and drift.
  * </p>
+ *
+ * <p>The public {@code target(...)} factories create geometry-only values. One
+ * {@link AprilTagDetections} snapshot attaches its frame timestamp to immutable copies, so custom
+ * sensor owners state frame time once instead of repeating it for every tag.</p>
  */
 public final class AprilTagObservation {
 
@@ -104,7 +108,14 @@ public final class AprilTagObservation {
      */
     public final int id;
 
-    /** Timestamp of the camera frame that produced this observation. */
+    /**
+     * Timestamp of the camera frame that produced this observation.
+     *
+     * <p>A geometry-only target created through {@link #target(int, Pose3d)} or
+     * {@link #target(int, Pose3d, Pose3d)} has an unavailable timestamp until
+     * {@link AprilTagDetections#fromFrame(LoopTimestamp, java.util.List)} attaches the owning
+     * frame timestamp to an immutable copy.</p>
+     */
     private final LoopTimestamp frameTimestamp;
 
     /**
@@ -146,44 +157,56 @@ public final class AprilTagObservation {
     /**
      * Create an observation representing a detected tag, expressed in Phoenix framing.
      *
+     * <p>This factory describes geometry only. The returned target has no freshness claim until it
+     * is included in an {@link AprilTagDetections#fromFrame(LoopTimestamp, java.util.List)}
+     * snapshot.</p>
+     *
      * @param id              AprilTag ID
      * @param cameraToTagPose tag pose in Phoenix camera frame (non-null)
-     * @param frameTimestamp timestamp of the underlying camera frame
+     * @return geometry-only target observation awaiting a frame timestamp
+     * @throws IllegalArgumentException if {@code cameraToTagPose} is null
      */
     public static AprilTagObservation target(int id,
-                                             Pose3d cameraToTagPose,
-                                             LoopTimestamp frameTimestamp) {
+                                             Pose3d cameraToTagPose) {
         if (cameraToTagPose == null) {
             throw new IllegalArgumentException("cameraToTagPose must be non-null when hasTarget is true");
         }
-        requireAvailableTimestamp(frameTimestamp);
-        return new AprilTagObservation(true, id, frameTimestamp, cameraToTagPose, null);
+        return new AprilTagObservation(
+                true,
+                id,
+                LoopTimestamp.unavailable(),
+                cameraToTagPose,
+                null
+        );
     }
 
     /**
      * Create an observation representing a detected tag with an additional field-centric robot pose
      * measurement.
      *
+     * <p>This factory describes geometry only. The returned target has no freshness claim until it
+     * is included in an {@link AprilTagDetections#fromFrame(LoopTimestamp, java.util.List)}
+     * snapshot.</p>
+     *
      * @param id               AprilTag ID
      * @param cameraToTagPose  tag pose in Phoenix camera frame (non-null)
      * @param fieldToRobotPose robot pose in Phoenix field frame (non-null)
-     * @param frameTimestamp   timestamp of the underlying camera frame
+     * @return geometry-only target observation awaiting a frame timestamp
+     * @throws IllegalArgumentException if either pose is null
      */
     public static AprilTagObservation target(int id,
                                              Pose3d cameraToTagPose,
-                                             Pose3d fieldToRobotPose,
-                                             LoopTimestamp frameTimestamp) {
+                                             Pose3d fieldToRobotPose) {
         if (cameraToTagPose == null) {
             throw new IllegalArgumentException("cameraToTagPose must be non-null when hasTarget is true");
         }
         if (fieldToRobotPose == null) {
             throw new IllegalArgumentException("fieldToRobotPose must be non-null when provided");
         }
-        requireAvailableTimestamp(frameTimestamp);
         return new AprilTagObservation(
                 true,
                 id,
-                frameTimestamp,
+                LoopTimestamp.unavailable(),
                 cameraToTagPose,
                 fieldToRobotPose
         );
@@ -219,14 +242,41 @@ public final class AprilTagObservation {
      * @return true if this observation has a target and its frame is no older than maxAgeSec
      */
     public boolean isFresh(LoopClock clock, double maxAgeSec) {
-        return hasTarget && frameTimestamp.isFresh(clock, maxAgeSec);
+        return frameTimestamp.isFresh(clock, maxAgeSec) && hasTarget;
     }
 
-    private static void requireAvailableTimestamp(LoopTimestamp timestamp) {
+    /**
+     * Return this target attached to {@code timestamp} without mutating the original geometry.
+     *
+     * <p>An already attached target may be reused only with the exact same {@link LoopTimestamp}
+     * instance. This lets frame-preserving transforms rebuild a snapshot while preventing a cached
+     * observation from being rejuvenated under a different frame time.</p>
+     */
+    AprilTagObservation attachedToFrame(LoopTimestamp timestamp) {
+        if (!hasTarget) {
+            throw new IllegalArgumentException(
+                    "AprilTagDetections.fromFrame observations must contain detected targets, "
+                            + "not AprilTagObservation.noTarget()");
+        }
         if (timestamp == null || !timestamp.isAvailable()) {
             throw new IllegalArgumentException(
                     "frameTimestamp must be an available LoopTimestamp created by LoopClock");
         }
+        if (frameTimestamp.isAvailable()) {
+            if (frameTimestamp != timestamp) {
+                throw new IllegalArgumentException(
+                        "AprilTagObservation is already attached to a different frameTimestamp; "
+                                + "do not restamp cached observations");
+            }
+            return this;
+        }
+        return new AprilTagObservation(
+                true,
+                id,
+                timestamp,
+                cameraToTagPose,
+                fieldToRobotPose
+        );
     }
 
     // ---------------------------------------------------------------------------------------------

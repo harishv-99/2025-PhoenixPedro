@@ -127,7 +127,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 40 | TARGET-01 | Lazy Plant target overlay selection | Done | Two-pass lazy target resolution, measured-hold re-entry, truthful diagnostics, documentation, and 22 focused tests are complete and approved. |
 | 41 | TARGET-02 | Candidate freshness | Done | Timestamp-canonical observed/timeless APIs, derived age, fail-closed metadata handling, diagnostics, docs, and tests were reviewed and approved on 2026-07-23. |
 | 42 | TIME-01 | Epoch-safe LoopClock timestamps | Done | Typed timestamps, reset-safe portable timing, monotonic cycle identity, caller migration, documentation, software verification, and Android Studio review are complete. |
-| 43 | VISION-02 | Stable AprilTag observation timestamps | Ready | Approved camera-frame design; implementation waits for TIME-01 so timestamps remain safe after leaving the acquisition owner. |
+| 43 | VISION-02 | Stable AprilTag observation timestamps | Done | Stable backend-owned frame timestamps, exact propagation, fail-closed reset/replay handling, synchronized documentation, verification, and Android Studio review are complete. |
 | 44 | TARGET-03 | Periodic planner complexity | Proposed | Replace range iteration with constant-time candidate mathematics. |
 | 45 | CYCLE-01 | Stateful drive-source cycle safety | Proposed | Memoize stateful composition once per `clock.cycle()` and propagate reset deliberately. |
 | 46 | CYCLE-02 | Localization cycle safety | Proposed | Guard predictors/estimators against duplicate same-cycle updates. |
@@ -8037,10 +8037,10 @@ writer, and explicit lifecycle ownership.
       loop without improving the final immutable contract. Geometry-only observation factories plus
       one frame factory preserve the current extension shape with fewer arguments; the frame factory
       owns attachment and rejects accidental restamping.
-    - Converting the generic `TargetObservation2d` API to timestamp-canonical form is not included.
-      It explicitly represents a newly created generic sample, has no current production freshness
-      consumer, and does not yet justify broadening this item. Its AprilTag adapter will derive the
-      creation-time age from the canonical tag timestamp on each source sample.
+    - VISION-02 does not redesign the generic `TargetObservation2d` API. The subsequently completed
+      TIME-01 prerequisite made that value timestamp-canonical across the framework, so the
+      AprilTag adapter now forwards the exact retained `LoopTimestamp`; it does not derive a new
+      creation-time age or restamp the observation.
   - **Chosen public value design:**
     1. Make `AprilTagDetections` store one available `LoopTimestamp frameTimestamp` plus its
        immutable observation list. Keep `none()` for “no trustworthy processed frame” and add one
@@ -8099,8 +8099,8 @@ writer, and explicit lifecycle ownership.
        timestamped empty detections frame, while an unready/no-result state remains `none()`.
     5. Replace the public camera-mount conversion with
        `CameraMountLogic.robotObservation2d(obs, mount, clock)`. It rejects unframed, invalid, or
-       materially future observation timing and derives the generic `TargetObservation2d`
-       creation-time age from the observation's retained frame timestamp. Migrate
+       materially future observation timing and forwards the observation's exact retained
+       `LoopTimestamp` into the timestamp-canonical generic `TargetObservation2d`. Migrate
        `ObservationSources` and every caller; do not keep a parallel clock-less overload.
     6. Migrate pose estimation, spatial solving, tag sources/selections, direct Limelight
        localization, tools, Phoenix telemetry, and the custom-vision example to forward the retained
@@ -8188,6 +8188,62 @@ writer, and explicit lifecycle ownership.
       design and requires its own major-API approval. VISION-02 stays **Ready**, retains the already
       approved camera-frame behavior, and waits for TIME-01 before implementation; do not use
       `Approve VISION-02 LoopClock epoch accessor`.
+  - **Gate 2 prerequisite satisfied and implementation resumed (2026-07-23):** TIME-01 is complete,
+    reviewed, published, and merged. Its `LoopTimestamp` contract and monotonic cycle identity close
+    the preflight reset/cache gap without exposing a raw epoch or adding camera-specific reset calls.
+    The approved VISION-02 design remains the smallest principle-consistent approach: acquisition
+    owners anchor one timestamp per stable vendor frame/result identity, core snapshots attach that
+    timestamp once to geometry-only observations, and consumers derive age from the shared clock.
+    Implementation is therefore proceeding under the existing approval with no material design
+    change and remains bounded to VISION-02 only.
+  - **Implementation (2026-07-23):** the portable AprilTag snapshot now has one
+    `AprilTagDetections.fromFrame(LoopTimestamp, List)` construction path. Its geometry-only
+    `AprilTagObservation.target(...)` family receives that exact timestamp on immutable copies;
+    attached observations cannot be restamped, `none()` means no trustworthy processed frame, and
+    a timestamped empty list means a trustworthy no-target frame. Freshness, tag selection,
+    AprilTag pose estimation, spatial conversion, and target-observation conversion all derive age
+    from or forward that retained timestamp without reconstructing it at consumption time.
+  - **Acquisition-boundary implementation (2026-07-23):** one package-private constant-memory FTC
+    timestamp anchor maps a stable vendor identity to a `LoopTimestamp` once. The webcam adapter
+    keys processor generation plus acquisition nanoseconds and rejects mixed, invalid, future, and
+    regressing frame timing. The Limelight adapter prefers the camera-local result timestamp,
+    falls back to stable Control Hub receipt identity, estimates exposure time from receipt
+    staleness plus capture/targeting latency, isolates pipeline generations, and distinguishes a
+    confirmed no-target result from unavailable data. Both adapters reject retained identities
+    after clock resets and use monotonic vendor-identity gates to reject older replay across
+    repeated resets. `ResultSnapshot.frameTimestamp()` is the semantic timing fact; the renamed
+    `resultReceivedAtControlHubMillis()` remains diagnostic transport metadata. The direct
+    Limelight pose estimator now requires a positive freshness limit and applies it consistently.
+  - **Student-facing simplicity:** ordinary webcam and Limelight robot code remains
+    `visionLane.tagSensor()` followed by normal tag selection; it does not manage frame IDs,
+    latencies, timestamps, or reset epochs. Only an advanced custom `AprilTagSensor` adapter names
+    one acquisition timestamp once with `fromFrame(frameTimestamp, observations)`, instead of
+    repeating timing on every observation. The Framework Principles, AprilTag/localization and
+    spatial guides, custom-owner example, shooter walkthrough, Phoenix architecture, and public
+    Javadocs now state that contract explicitly.
+  - **Adversarial review corrections (2026-07-23):** three independent read-only reviews found and
+    closed the remaining propagation-test, future-sample, primary Limelight identity, public
+    Javadoc, custom-adapter wording, tracker-refinement, zero-freshness, and unbounded reset-history
+    gaps. The final code audit reports no remaining P1/P2 issue.
+  - **Automated verification (2026-07-23):** the seven focused timestamp suites report **57 tests,
+    0 failures, 0 errors, 0 skipped**, covering portable frame/observation values, camera-mount and
+    localization propagation, the shared anchor, both FTC camera backends, and spatial history.
+    The complete `:TeamCode:testDebugUnitTest` suite reports **86 suites / 821 tests, 0 failures,
+    0 errors, 0 skipped**, and `:TeamCode:compileDebugJavaWithJavac` succeeds. Exhaustive removed-API
+    and caller scans are clean, changed Markdown fences and links are valid, and `git diff --check`
+    passes. Gradle emits only the existing Java 8 source/target and FTC sample deprecation warnings.
+  - **Hardware scope:** no camera hardware is needed to validate the deterministic identity,
+    immutability, reset, propagation, or freshness contract. A real webcam and Limelight remain
+    adoption validation for firmware behavior across no-target frames, device reboot, and pipeline
+    changes, and for measuring the accuracy of the best-effort exposure-time estimate; this item
+    does not claim that software tests measured physical capture time.
+  - **Android Studio audit point (2026-07-23):** inspect the portable factories and exact timestamp
+    propagation, the shared bounded anchor, webcam and Limelight identity/reset handling, the
+    focused tests, and synchronized principle/guide wording. No files are staged, committed,
+    pushed, or merged. Stop before another item until the user replies `VISION-02 looks good`.
+  - **Manual verification (2026-07-23):** the user reviewed the implementation in Android Studio
+    and replied `VISION-02 looks good`. VISION-02 is **Done**, and this approval authorizes Gate 3
+    staging, publication, and merge for this item only; it does not authorize starting TARGET-03.
 
 ## Explicitly deferred architectural ideas
 

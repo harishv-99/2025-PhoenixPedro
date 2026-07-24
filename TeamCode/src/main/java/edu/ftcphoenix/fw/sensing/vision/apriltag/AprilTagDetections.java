@@ -57,16 +57,26 @@ public final class AprilTagDetections {
     /**
      * Creates one immutable frame snapshot.
      *
-     * <p>Every observation must carry the same available, current-epoch frame timestamp. This
-     * preserves the class's one-frame contract while camera backends still own how frame identity
-     * is acquired.</p>
+     * <p>Geometry-only observations receive this one frame timestamp on immutable copies. An
+     * observation that is already attached to this exact {@link LoopTimestamp} instance may be
+     * reused; one attached to a different timestamp is rejected instead of being made artificially
+     * fresh. This preserves the class's one-frame contract while camera backends still own how
+     * frame identity is acquired.</p>
      *
-     * @param frameTimestamp timestamp of the processed frame
-     * @param observations   detections from that frame; may be empty but must not be null
+     * <p>An empty observation list means a trustworthy frame was processed and contained no usable
+     * tags. Use {@link #none()} instead when there is no trustworthy processed frame.</p>
+     *
+     * @param frameTimestamp available timestamp of the processed frame; must not be null
+     * @param observations detections from that frame; may be empty, but the list and its members
+     *                     must not be null
      * @return immutable detections snapshot
+     * @throws IllegalArgumentException if the timestamp is null or unavailable, a member is
+     *                                  {@link AprilTagObservation#noTarget()}, or a member is
+     *                                  already attached to a different timestamp
+     * @throws NullPointerException if the list or a list member is null
      */
-    public static AprilTagDetections of(LoopTimestamp frameTimestamp,
-                                        List<AprilTagObservation> observations) {
+    public static AprilTagDetections fromFrame(LoopTimestamp frameTimestamp,
+                                               List<AprilTagObservation> observations) {
         requireAvailableTimestamp(frameTimestamp);
         Objects.requireNonNull(observations, "observations");
         ArrayList<AprilTagObservation> copy =
@@ -76,16 +86,7 @@ public final class AprilTagDetections {
                     observation,
                     "observations must not contain null"
             );
-            if (!obs.hasTarget) {
-                throw new IllegalArgumentException(
-                        "observations must contain detected targets, not noTarget()");
-            }
-            double offsetSec = obs.frameTimestamp().secondsSince(frameTimestamp);
-            if (!Double.isFinite(offsetSec) || offsetSec != 0.0) {
-                throw new IllegalArgumentException(
-                        "every AprilTag observation must use the detections frameTimestamp");
-            }
-            copy.add(obs);
+            copy.add(obs.attachedToFrame(frameTimestamp));
         }
         return new AprilTagDetections(
                 frameTimestamp,
@@ -139,7 +140,7 @@ public final class AprilTagDetections {
                                                    Set<Integer> idsOfInterest,
                                                    double maxAgeSec) {
         Objects.requireNonNull(idsOfInterest, "idsOfInterest");
-        if (idsOfInterest.isEmpty() || !isFresh(clock, maxAgeSec) || observations.isEmpty()) {
+        if (!isFresh(clock, maxAgeSec) || idsOfInterest.isEmpty() || observations.isEmpty()) {
             return Collections.emptyList();
         }
         ArrayList<AprilTagObservation> out = new ArrayList<AprilTagObservation>();

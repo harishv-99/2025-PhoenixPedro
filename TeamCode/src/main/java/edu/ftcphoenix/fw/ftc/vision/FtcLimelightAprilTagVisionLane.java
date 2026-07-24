@@ -52,7 +52,12 @@ public final class FtcLimelightAprilTagVisionLane extends FtcLimelightVisionLane
          */
         public int pollRateHz = 100;
 
-        /** Maximum age of a result that may confirm the AprilTag pipeline. */
+        /**
+         * Maximum Control Hub receipt staleness that may confirm the AprilTag pipeline.
+         *
+         * <p>This is owner-internal transport readiness. Tag and localization consumers derive
+         * estimated exposure age from the retained frame timestamp.</p>
+         */
         public double maxResultAgeSec = 0.25;
 
         /** Camera extrinsics expressed in the Phoenix robot frame. */
@@ -270,14 +275,14 @@ public final class FtcLimelightAprilTagVisionLane extends FtcLimelightVisionLane
 
         private AprilTagDetections readDetections(LoopClock clock) {
             ResultSnapshot result = confirmedAprilTagResult(clock);
-            if (!result.hasResult() || !result.isTargetValid()) {
+            if (!result.hasResult()) {
                 return AprilTagDetections.none();
             }
 
-            LoopTimestamp frameTimestamp = clock.timestampSecondsAgo(result.ageSec());
+            LoopTimestamp frameTimestamp = result.frameTimestamp();
             List<LLResultTypes.FiducialResult> fiducials = result.fiducialResults();
-            if (fiducials.isEmpty()) {
-                return AprilTagDetections.of(
+            if (!result.isTargetValid() || fiducials.isEmpty()) {
+                return AprilTagDetections.fromFrame(
                         frameTimestamp,
                         Collections.<AprilTagObservation>emptyList()
                 );
@@ -291,17 +296,16 @@ public final class FtcLimelightAprilTagVisionLane extends FtcLimelightVisionLane
                 if (cameraToTagPose != null) {
                     out.add(AprilTagObservation.target(
                             fiducial.getFiducialId(),
-                            cameraToTagPose,
-                            frameTimestamp
+                            cameraToTagPose
                     ));
                 }
             }
             return out.isEmpty()
-                    ? AprilTagDetections.of(
+                    ? AprilTagDetections.fromFrame(
                             frameTimestamp,
                             Collections.<AprilTagObservation>emptyList()
                     )
-                    : AprilTagDetections.of(frameTimestamp, out);
+                    : AprilTagDetections.fromFrame(frameTimestamp, out);
         }
     }
 }

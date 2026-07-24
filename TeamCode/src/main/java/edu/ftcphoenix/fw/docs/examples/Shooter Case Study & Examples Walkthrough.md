@@ -32,7 +32,9 @@ That keeps all three systems talking about the same tag.
 
 ## 2. Why selection is separate from detections
 
-The AprilTag camera boundary returns raw `AprilTagDetections` from one processed frame.
+The AprilTag camera boundary returns raw `AprilTagDetections` from one processed frame. The frame
+owns one stable `LoopTimestamp`; selected observations retain that exact timestamp, so a cached
+camera result cannot become fresh again merely because robot code reads it in a later loop.
 
 That is useful because:
 

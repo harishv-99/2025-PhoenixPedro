@@ -271,10 +271,9 @@ public final class SpatialTimestampTest {
     private static AprilTagDetections detectionsAt(LoopTimestamp timestamp) {
         AprilTagObservation observation = AprilTagObservation.target(
                 5,
-                Pose3d.zero(),
-                timestamp
+                Pose3d.zero()
         );
-        return AprilTagDetections.of(timestamp, Collections.singletonList(observation));
+        return AprilTagDetections.fromFrame(timestamp, Collections.singletonList(observation));
     }
 
     private static final class CountingLane implements SpatialSolveLane {

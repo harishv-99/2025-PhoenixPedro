@@ -147,6 +147,13 @@ once:
 LoopTimestamp frameTimestamp = clock.timestampSecondsAgo(frameAgeSec);
 ```
 
+For AprilTags, the webcam or Limelight acquisition owner performs that anchoring once and
+`AprilTagDetections.fromFrame(...)` attaches the one frame timestamp to every geometry-only tag
+observation. A consumer that converts a selected tag into generic robot-relative geometry uses
+`CameraMountLogic.robotObservation2d(observation, mount, clock)`; the conversion forwards the exact
+timestamp and fails closed if it is unavailable, from a prior reset, or materially in the future.
+It does not invent a new capture time.
+
 That one value can be retained across a deliberate `LoopClock.reset()` without losing its origin,
 but it becomes invalid as current-epoch evidence: `ageSec(clock)` returns `NaN` and
 `isFresh(clock, ...)` returns false. Consumers never read or compare a clock epoch. They derive

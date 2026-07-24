@@ -89,8 +89,8 @@ public final class CustomVisionOwnershipExample {
          * Robot-owned typed processor contract. Its implementation discards pre-generation
          * results and reports readiness only after publishing a newer immutable snapshot that is
          * still within the robot's chosen freshness bound. Both result methods evaluate against
-         * the supplied {@link LoopClock}; the snapshot method converts the stored frame age into
-         * that clock's timebase. A fresh frame that saw no target is still a ready observation.
+         * the supplied {@link LoopClock}; the immutable snapshot retains the frame's one
+         * {@link LoopTimestamp}. A fresh frame that saw no target is still a ready observation.
          */
         public interface AimingProcessor extends VisionProcessor {
             void beginResultGeneration();
@@ -257,7 +257,7 @@ public final class CustomVisionOwnershipExample {
             return Snapshot.observed(
                     result.isTargetValid(),
                     candidates,
-                    clock.timestampSecondsAgo(result.ageSec())
+                    result.frameTimestamp()
             );
         }
 

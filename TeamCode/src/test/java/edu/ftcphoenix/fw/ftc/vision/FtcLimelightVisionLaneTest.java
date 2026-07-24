@@ -1,5 +1,7 @@
 package edu.ftcphoenix.fw.ftc.vision;
 
+import com.qualcomm.hardware.limelightvision.LLResultTypes;
+
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.Pose3D;
@@ -9,6 +11,7 @@ import org.junit.Test;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -195,19 +198,27 @@ public final class FtcLimelightVisionLaneTest {
 
         assertResultState(lane, device, manual, result(100, 0.01, 0, true), false, "newer");
         assertResultState(lane, device, manual, result(101, 0.01, 1, true), false, "reports pipeline");
-        assertResultState(lane, device, manual, result(101, Double.NaN, 0, true), false, "invalid age");
-        assertResultState(lane, device, manual, result(101, -0.01, 0, true), false, "invalid age");
+        assertResultState(lane, device, manual, result(101, Double.NaN, 0, true), false, "invalid receipt timing");
+        assertResultState(lane, device, manual, result(101, -0.01, 0, true), false, "invalid receipt timing");
         assertResultState(lane, device, manual,
                 result(101, Double.POSITIVE_INFINITY, 0, true), false,
-                "invalid age");
+                "invalid receipt timing");
+        assertResultState(lane, device, manual,
+                timedResult(101, 0.01, 1000.0, Double.NaN, 0.0, 0, true), false,
+                "invalid or reset-stale frame timing");
+        assertResultState(lane, device, manual,
+                timedResult(101, 0.01, 1000.0, 0.0, -1.0, 0, true), false,
+                "invalid or reset-stale frame timing");
         assertResultState(lane, device, manual, result(101, 0.251, 0, true), false, "stale");
 
-        assertResultState(lane, device, manual, result(101, 0.25, 0, false), true, "ready");
+        assertResultState(lane, device, manual,
+                timedResult(101, 0.25, 2000.0, 0.0, 0.0, 0, false), true, "ready");
         FtcLimelightVisionLane.ResultSnapshot noTarget = lane.confirmedPipelineResult(manual.clock());
         assertTrue(noTarget.hasResult());
         assertFalse(noTarget.isTargetValid());
         assertEquals(0, noTarget.pipelineIndex());
-        assertEquals(0.25, noTarget.ageSec(), 1e-9);
+        assertEquals(101L, noTarget.resultReceivedAtControlHubMillis());
+        assertEquals(0.25, noTarget.frameTimestamp().ageSec(manual.clock()), 1e-9);
     }
 
     @Test
@@ -232,6 +243,126 @@ public final class FtcLimelightVisionLaneTest {
         manual.nextCycle(0.02);
         assertTrue(lane.confirmedPipelineResult(manual.clock()).isTargetValid());
         assertEquals(2, device.latestReads);
+    }
+
+    @Test
+    public void stableResultIdentityRetainsOneExposureTimestampAndNewResultAdvancesIt() {
+        FakeDevice device = new FakeDevice();
+        FtcLimelightVisionLane lane = open(device);
+        ManualLoopClock manual = new ManualLoopClock(20.0);
+
+        device.result = timedResult(101, 0.05, 500.0, 20.0, 30.0, 0, true);
+        FtcLimelightVisionLane.ResultSnapshot first =
+                lane.confirmedPipelineResult(manual.clock());
+        assertTrue(first.hasResult());
+        assertEquals(0.10, first.frameTimestamp().ageSec(manual.clock()), 1e-9);
+
+        manual.nextCycle(0.10);
+        device.result = timedResult(102, 0.15, 500.0, 20.0, 30.0, 0, true);
+        FtcLimelightVisionLane.ResultSnapshot repeated =
+                lane.confirmedPipelineResult(manual.clock());
+        assertSame(first.frameTimestamp(), repeated.frameTimestamp());
+        assertEquals(0.20, repeated.frameTimestamp().ageSec(manual.clock()), 1e-9);
+
+        manual.nextCycle(0.10);
+        device.result = timedResult(102, 0.02, 501.0, 20.0, 30.0, 0, true);
+        FtcLimelightVisionLane.ResultSnapshot newer =
+                lane.confirmedPipelineResult(manual.clock());
+        assertTrue(newer.hasResult());
+        assertFalse(first.frameTimestamp() == newer.frameTimestamp());
+        assertEquals(0.07, newer.frameTimestamp().ageSec(manual.clock()), 1e-9);
+    }
+
+    @Test
+    public void missingLocalIdentityFallsBackToStableControlHubReceipt() {
+        FakeDevice device = new FakeDevice();
+        FtcLimelightVisionLane lane = open(device);
+        ManualLoopClock manual = new ManualLoopClock(3.0);
+
+        device.result = timedResult(101, 0.01, 0.0, 0.0, 0.0, 0, true);
+        FtcLimelightVisionLane.ResultSnapshot first =
+                lane.confirmedPipelineResult(manual.clock());
+        manual.nextCycle(0.05);
+        device.result = timedResult(101, 0.06, Double.NaN, 0.0, 0.0, 0, true);
+        FtcLimelightVisionLane.ResultSnapshot repeated =
+                lane.confirmedPipelineResult(manual.clock());
+        assertSame(first.frameTimestamp(), repeated.frameTimestamp());
+
+        manual.nextCycle(0.05);
+        device.result = timedResult(102, 0.01, 0.0, 0.0, 0.0, 0, true);
+        FtcLimelightVisionLane.ResultSnapshot newer =
+                lane.confirmedPipelineResult(manual.clock());
+        assertTrue(newer.hasResult());
+        assertFalse(first.frameTimestamp() == newer.frameTimestamp());
+    }
+
+    @Test
+    public void sameGenerationLocalAndFallbackIdentityRegressionsFailClosed() {
+        FakeDevice localDevice = new FakeDevice();
+        FtcLimelightVisionLane localLane = open(localDevice);
+        ManualLoopClock localClock = new ManualLoopClock(3.0);
+
+        localDevice.result = timedResult(101, 0.01, 500.0, 0.0, 0.0, 0, true);
+        assertTrue(localLane.confirmedPipelineResult(localClock.clock()).hasResult());
+        localDevice.result = timedResult(102, 0.01, 501.0, 0.0, 0.0, 0, true);
+        localClock.nextCycle(0.02);
+        assertTrue(localLane.confirmedPipelineResult(localClock.clock()).hasResult());
+        localDevice.result = timedResult(103, 0.01, 500.0, 0.0, 0.0, 0, true);
+        localClock.nextCycle(0.02);
+        assertNotReady(localLane.pipelineReadiness(localClock.clock()), "frame timing");
+        assertFalse(localLane.confirmedPipelineResult(localClock.clock()).hasResult());
+
+        FakeDevice fallbackDevice = new FakeDevice();
+        FtcLimelightVisionLane fallbackLane = open(fallbackDevice);
+        ManualLoopClock fallbackClock = new ManualLoopClock(6.0);
+        fallbackDevice.result = timedResult(101, 0.01, 0.0, 0.0, 0.0, 0, true);
+        assertTrue(fallbackLane.confirmedPipelineResult(fallbackClock.clock()).hasResult());
+        fallbackDevice.result = timedResult(102, 0.01, 0.0, 0.0, 0.0, 0, true);
+        fallbackClock.nextCycle(0.02);
+        assertTrue(fallbackLane.confirmedPipelineResult(fallbackClock.clock()).hasResult());
+        fallbackDevice.result = timedResult(101, 0.01, 0.0, 0.0, 0.0, 0, true);
+        fallbackClock.nextCycle(0.02);
+        assertNotReady(fallbackLane.pipelineReadiness(fallbackClock.clock()), "frame timing");
+        assertFalse(fallbackLane.confirmedPipelineResult(fallbackClock.clock()).hasResult());
+    }
+
+    @Test
+    public void clockResetBlocksRetainedResultUntilGenuinelyNewIdentityArrives() {
+        FakeDevice device = new FakeDevice();
+        FtcLimelightVisionLane lane = open(device);
+        ManualLoopClock manual = new ManualLoopClock(4.0);
+        device.result = timedResult(101, 0.01, 700.0, 0.0, 0.0, 0, true);
+
+        FtcLimelightVisionLane.ResultSnapshot beforeReset =
+                lane.confirmedPipelineResult(manual.clock());
+        assertTrue(beforeReset.hasResult());
+
+        manual.clock().reset(4.0);
+        assertNotReady(lane.pipelineReadiness(manual.clock()), "reset-stale frame timing");
+        assertFalse(lane.confirmedPipelineResult(manual.clock()).hasResult());
+
+        manual.nextCycle(0.02);
+        assertFalse(lane.confirmedPipelineResult(manual.clock()).hasResult());
+
+        device.result = timedResult(102, 0.01, 701.0, 0.0, 0.0, 0, true);
+        manual.nextCycle(0.02);
+        FtcLimelightVisionLane.ResultSnapshot afterReset =
+                lane.confirmedPipelineResult(manual.clock());
+        assertTrue(afterReset.hasResult());
+        assertFalse(beforeReset.frameTimestamp() == afterReset.frameTimestamp());
+        assertEquals(0.01, afterReset.frameTimestamp().ageSec(manual.clock()), 1e-9);
+
+        // On another clock reset, the bounded anchor blocks the retained result and the owner's
+        // monotonic local timestamp rejects replay of the older pre-reset result.
+        manual.clock().reset(4.04);
+        assertFalse(lane.confirmedPipelineResult(manual.clock()).hasResult());
+        device.result = timedResult(103, 0.01, 700.0, 0.0, 0.0, 0, true);
+        manual.nextCycle(0.02);
+        assertFalse(lane.confirmedPipelineResult(manual.clock()).hasResult());
+
+        device.result = timedResult(104, 0.01, 702.0, 0.0, 0.0, 0, true);
+        manual.nextCycle(0.02);
+        assertTrue(lane.confirmedPipelineResult(manual.clock()).hasResult());
     }
 
     @Test
@@ -284,7 +415,47 @@ public final class FtcLimelightVisionLaneTest {
         estimatorCfg.mode = null;
         expectFailure(IllegalArgumentException.class,
                 () -> new LimelightFieldPoseEstimator(lane, null, estimatorCfg));
+        LimelightFieldPoseEstimator.Config zeroAgeCfg =
+                LimelightFieldPoseEstimator.Config.defaults();
+        zeroAgeCfg.maxResultAgeSec = 0.0;
+        expectFailure(IllegalArgumentException.class,
+                () -> new LimelightFieldPoseEstimator(lane, null, zeroAgeCfg));
         lane.close();
+    }
+
+    @Test
+    public void directPoseEstimatorForwardsTheOwnersExactFrameTimestamp() {
+        FakeDevice device = new FakeDevice();
+        FtcLimelightAprilTagVisionLane.Config laneCfg =
+                FtcLimelightAprilTagVisionLane.Config.defaults();
+        FtcLimelightAprilTagVisionLane lane = new FtcLimelightAprilTagVisionLane(
+                laneCfg, new RecordingFactory(device));
+        ManualLoopClock manual = new ManualLoopClock(8.0);
+        device.result = resultWithPoseAndOneFiducial(
+                101,
+                0.04,
+                900.0,
+                10.0,
+                20.0,
+                pose(1.0, 2.0, 0.1, 0.2, 0.0, 0.0)
+        );
+
+        FtcLimelightVisionLane.ResultSnapshot result =
+                lane.confirmedAprilTagResult(manual.clock());
+        assertTrue(result.hasResult());
+        assertEquals(0.07, result.frameTimestamp().ageSec(manual.clock()), 1e-9);
+
+        LimelightFieldPoseEstimator.Config estimatorCfg =
+                LimelightFieldPoseEstimator.Config.defaults();
+        estimatorCfg.maxResultAgeSec = 0.5;
+        LimelightFieldPoseEstimator estimator =
+                new LimelightFieldPoseEstimator(lane, null, estimatorCfg);
+        estimator.update(manual.clock());
+
+        PoseEstimate estimate = estimator.getEstimate();
+        assertTrue(estimate.hasPose);
+        assertSame(result.frameTimestamp(), estimate.timestamp);
+        assertEquals(0.07, estimate.timestamp.ageSec(manual.clock()), 1e-9);
     }
 
     @Test
@@ -292,17 +463,23 @@ public final class FtcLimelightVisionLaneTest {
         FakeDevice device = new FakeDevice();
         FtcLimelightVisionLane lane = open(device);
         ManualLoopClock manual = new ManualLoopClock();
-        device.result = result(101, 0.01, 0, true);
-        assertTrue(lane.pipelineReadiness(manual.clock()).isReady());
+        device.result = timedResult(101, 0.01, 777.0, 0.0, 0.0, 0, true);
+        FtcLimelightVisionLane.ResultSnapshot generationOne =
+                lane.confirmedPipelineResult(manual.clock());
+        assertTrue(generationOne.hasResult());
 
         device.nowMillis = 200;
         assertTrue(lane.requestPipeline(1));
         assertEquals(2L, lane.pipelineGeneration());
         assertNotReady(lane.pipelineReadiness(manual.clock()), "newer");
+        assertFalse(lane.confirmedPipelineResult(manual.clock()).hasResult());
 
-        device.result = result(201, 0.01, 1, true);
+        device.result = timedResult(201, 0.01, 777.0, 0.0, 0.0, 1, true);
         manual.nextCycle(0.02);
-        assertTrue(lane.pipelineReadiness(manual.clock()).isReady());
+        FtcLimelightVisionLane.ResultSnapshot generationTwo =
+                lane.confirmedPipelineResult(manual.clock());
+        assertTrue(generationTwo.hasResult());
+        assertFalse(generationOne.frameTimestamp() == generationTwo.frameTimestamp());
 
         device.nowMillis = 300;
         assertTrue(lane.requestPipeline(0));
@@ -329,11 +506,13 @@ public final class FtcLimelightVisionLaneTest {
         device.result = result(101, 0.01, 0, false);
 
         assertTrue(lane.tagSensor().get(manual.clock()).observations.isEmpty());
+        assertTrue(lane.tagSensor().get(manual.clock()).frameTimestamp().isAvailable());
         assertEquals(1, device.latestReads);
 
         device.nowMillis = 200;
         lane.requestPipeline(1);
         assertTrue(lane.tagSensor().get(manual.clock()).observations.isEmpty());
+        assertFalse(lane.tagSensor().get(manual.clock()).frameTimestamp().isAvailable());
         assertEquals("switch-away must bypass the same-cycle tag cache", 1,
                 device.latestReads);
 
@@ -346,6 +525,37 @@ public final class FtcLimelightVisionLaneTest {
         lane.close();
         assertTrue(lane.tagSensor().get(manual.clock()).observations.isEmpty());
         assertEquals("closed sensor must not read the device", 2, device.latestReads);
+    }
+
+    @Test
+    public void confirmedNoTargetIsTimestampedEmptyFrameWhileUnavailableResultIsNot() {
+        FakeDevice device = new FakeDevice();
+        FtcLimelightAprilTagVisionLane lane = new FtcLimelightAprilTagVisionLane(
+                FtcLimelightAprilTagVisionLane.Config.defaults(),
+                new RecordingFactory(device)
+        );
+        ManualLoopClock manual = new ManualLoopClock(5.0);
+        device.result = timedResult(101, 0.02, 333.0, 5.0, 10.0, 0, false);
+
+        edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagDetections emptyFrame =
+                lane.tagSensor().get(manual.clock());
+        assertTrue(emptyFrame.observations.isEmpty());
+        assertTrue(emptyFrame.frameTimestamp().isAvailable());
+        assertEquals(0.035, emptyFrame.frameAgeSec(manual.clock()), 1e-9);
+
+        lane.tagSensor().reset();
+        manual.nextCycle(0.02);
+        edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagDetections afterSourceReset =
+                lane.tagSensor().get(manual.clock());
+        assertSame(emptyFrame.frameTimestamp(), afterSourceReset.frameTimestamp());
+        assertEquals(0.055, afterSourceReset.frameAgeSec(manual.clock()), 1e-9);
+
+        device.result = null;
+        manual.nextCycle(0.02);
+        edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagDetections unavailable =
+                lane.tagSensor().get(manual.clock());
+        assertTrue(unavailable.observations.isEmpty());
+        assertFalse(unavailable.frameTimestamp().isAvailable());
     }
 
     @Test
@@ -455,8 +665,35 @@ public final class FtcLimelightVisionLaneTest {
             int pipelineIndex,
             boolean targetValid
     ) {
+        return timedResult(
+                timestampMillis,
+                ageSec,
+                timestampMillis,
+                0.0,
+                0.0,
+                pipelineIndex,
+                targetValid
+        );
+    }
+
+    private static FtcLimelightVisionLane.DeviceResult timedResult(
+            long resultReceivedAtControlHubMillis,
+            double receiptStalenessSec,
+            double limelightTimestampMillis,
+            double captureLatencyMillis,
+            double targetingLatencyMillis,
+            int pipelineIndex,
+            boolean targetValid
+    ) {
         return FtcLimelightVisionLane.DeviceResult.metadata(
-                timestampMillis, ageSec, pipelineIndex, targetValid);
+                resultReceivedAtControlHubMillis,
+                receiptStalenessSec,
+                limelightTimestampMillis,
+                captureLatencyMillis,
+                targetingLatencyMillis,
+                pipelineIndex,
+                targetValid
+        );
     }
 
     private static FtcLimelightVisionLane.DeviceResult resultWithPoses(
@@ -467,6 +704,9 @@ public final class FtcLimelightVisionLaneTest {
         return new FtcLimelightVisionLane.DeviceResult(
                 timestampMillis,
                 0.01,
+                timestampMillis,
+                0.0,
+                0.0,
                 0,
                 "fiducial",
                 true,
@@ -478,6 +718,54 @@ public final class FtcLimelightVisionLaneTest {
                 botpose,
                 botposeMt2
         );
+    }
+
+    private static FtcLimelightVisionLane.DeviceResult resultWithPoseAndOneFiducial(
+            long resultReceivedAtControlHubMillis,
+            double receiptStalenessSec,
+            double limelightTimestampMillis,
+            double captureLatencyMillis,
+            double targetingLatencyMillis,
+            Pose3D botpose
+    ) {
+        return new FtcLimelightVisionLane.DeviceResult(
+                resultReceivedAtControlHubMillis,
+                receiptStalenessSec,
+                limelightTimestampMillis,
+                captureLatencyMillis,
+                targetingLatencyMillis,
+                0,
+                "fiducial",
+                true,
+                null,
+                null,
+                null,
+                Collections.<LLResultTypes.FiducialResult>singletonList(
+                        testFiducialResult()),
+                null,
+                botpose,
+                null
+        );
+    }
+
+    private static LLResultTypes.FiducialResult testFiducialResult() {
+        try {
+            // FTC exposes no public constructor for this SDK value. This fixture needs only one
+            // non-null list member because the direct-pose estimator reads the list cardinality,
+            // not any fiducial fields.
+            Class<?> unsafeType = Class.forName("sun.misc.Unsafe");
+            java.lang.reflect.Field singleton = unsafeType.getDeclaredField("theUnsafe");
+            singleton.setAccessible(true);
+            Object unsafe = singleton.get(null);
+            java.lang.reflect.Method allocate =
+                    unsafeType.getMethod("allocateInstance", Class.class);
+            return (LLResultTypes.FiducialResult) allocate.invoke(
+                    unsafe,
+                    LLResultTypes.FiducialResult.class
+            );
+        } catch (ReflectiveOperationException e) {
+            throw new AssertionError("Could not create a test-only Limelight fiducial value", e);
+        }
     }
 
     private static Pose3D pose(

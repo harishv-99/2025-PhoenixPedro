@@ -145,12 +145,17 @@ final class FtcWebcamAprilTagSupport {
         }
     }
 
+    /** Adapts one owned SDK processor into cycle-stable, timestamped AprilTag frame snapshots. */
     static final class PortalAprilTagSensor implements AprilTagSensor {
         private final FtcWebcamVisionPortalLane owner;
         private final AprilTagProcessor processor;
+        private final FtcFrameTimestampAnchor frameTimestampAnchor =
+                new FtcFrameTimestampAnchor();
 
         private long lastCycle = Long.MIN_VALUE;
         private long lastDataGeneration = Long.MIN_VALUE;
+        private long frameIdentityGeneration = Long.MIN_VALUE;
+        private long newestFrameAcquisitionNanos = Long.MIN_VALUE;
         private AprilTagDetections lastDetections = AprilTagDetections.none();
 
         PortalAprilTagSensor(
@@ -184,7 +189,11 @@ final class FtcWebcamAprilTagSupport {
             }
 
             AprilTagDetections next =
-                    readDetections(clock, owner.acceptProcessorFramesAfterNanos(processor));
+                    readDetections(
+                            clock,
+                            dataGeneration,
+                            owner.acceptProcessorFramesAfterNanos(processor)
+                    );
             lastCycle = cycle;
             lastDataGeneration = dataGeneration;
             lastDetections = next;
@@ -193,6 +202,8 @@ final class FtcWebcamAprilTagSupport {
 
         @Override
         public void reset() {
+            // Reset only the source's per-cycle publication cache. Vendor-frame identity history
+            // must survive so the retained processor result cannot be observed as a new frame.
             lastCycle = Long.MIN_VALUE;
             lastDataGeneration = Long.MIN_VALUE;
             lastDetections = AprilTagDetections.none();
@@ -216,27 +227,28 @@ final class FtcWebcamAprilTagSupport {
             dbg.addData(p + ".dataGeneration", lastDataGeneration);
         }
 
-        private AprilTagDetections readDetections(LoopClock clock, long acceptFramesAfterNanos) {
+        private AprilTagDetections readDetections(
+                LoopClock clock,
+                long dataGeneration,
+                long acceptFramesAfterNanos
+        ) {
             List<AprilTagDetection> detections = processor.getDetections();
             if (detections == null || detections.isEmpty()) {
                 return AprilTagDetections.none();
             }
 
+            if (dataGeneration != frameIdentityGeneration) {
+                frameIdentityGeneration = dataGeneration;
+                newestFrameAcquisitionNanos = Long.MIN_VALUE;
+            }
+
             long nowNanos = owner.monotonicNowNanos();
             ArrayList<PendingObservation> pending =
                     new ArrayList<PendingObservation>(detections.size());
-            double snapshotAgeSec = Double.NEGATIVE_INFINITY;
+            long snapshotFrameAcquisitionNanos = Long.MIN_VALUE;
 
             for (AprilTagDetection detection : detections) {
                 if (detection == null) {
-                    continue;
-                }
-                long frameTime = detection.frameAcquisitionNanoTime;
-                if (frameTime == 0L
-                        || frameTime <= acceptFramesAfterNanos
-                        || frameTime > nowNanos) {
-                    // A retained pre-enable/pre-resume result is not evidence from this generation.
-                    // A future timestamp is not a trustworthy current frame either.
                     continue;
                 }
                 if (detection.rawPose == null && detection.ftcPose == null) {
@@ -261,6 +273,21 @@ final class FtcWebcamAprilTagSupport {
                     continue;
                 }
 
+                long frameTime = detection.frameAcquisitionNanoTime;
+                if (frameTime == 0L
+                        || frameTime <= acceptFramesAfterNanos
+                        || frameTime > nowNanos) {
+                    // A usable observation without current-generation timing makes the entire
+                    // nominally one-frame SDK snapshot untrustworthy. Do not silently publish the
+                    // remaining geometry as though it proved a coherent camera frame.
+                    return AprilTagDetections.none();
+                }
+                if (snapshotFrameAcquisitionNanos != Long.MIN_VALUE
+                        && frameTime != snapshotFrameAcquisitionNanos) {
+                    return AprilTagDetections.none();
+                }
+                snapshotFrameAcquisitionNanos = frameTime;
+
                 Pose3d fieldToRobotPose = null;
                 if (detection.robotPose != null) {
                     Position position = detection.robotPose.getPosition();
@@ -280,22 +307,33 @@ final class FtcWebcamAprilTagSupport {
                         cameraToTagPose,
                         fieldToRobotPose
                 ));
-                double ageSec = (nowNanos - frameTime) / NANOS_PER_SECOND;
-                // This value type represents one coherent frame. Until the camera-identity work in
-                // VISION-02 can reject mixed SDK lists, use the oldest accepted capture so no older
-                // geometry is made fresher by a newer list member.
-                if (ageSec > snapshotAgeSec) {
-                    snapshotAgeSec = ageSec;
-                }
             }
 
             if (pending.isEmpty()) {
                 return AprilTagDetections.none();
             }
-            if (!Double.isFinite(snapshotAgeSec)) {
-                snapshotAgeSec = 0.0;
+            if (snapshotFrameAcquisitionNanos < newestFrameAcquisitionNanos) {
+                // The processor's System.nanoTime-domain capture identity must not move backward
+                // inside one data generation. A retained older SDK result is not a new frame.
+                return AprilTagDetections.none();
             }
-            LoopTimestamp frameTimestamp = clock.timestampSecondsAgo(snapshotAgeSec);
+
+            double snapshotAgeSec = (
+                    (double) nowNanos - (double) snapshotFrameAcquisitionNanos
+            ) / NANOS_PER_SECOND;
+            LoopTimestamp frameTimestamp = frameTimestampAnchor.anchor(
+                    clock,
+                    new WebcamFrameIdentity(
+                            dataGeneration,
+                            snapshotFrameAcquisitionNanos
+                    ),
+                    snapshotAgeSec
+            );
+            if (!frameTimestamp.isAvailable()) {
+                return AprilTagDetections.none();
+            }
+
+            newestFrameAcquisitionNanos = snapshotFrameAcquisitionNanos;
             ArrayList<AprilTagObservation> observations =
                     new ArrayList<AprilTagObservation>(pending.size());
             for (PendingObservation observation : pending) {
@@ -303,16 +341,14 @@ final class FtcWebcamAprilTagSupport {
                         ? AprilTagObservation.target(
                                 observation.id,
                                 observation.cameraToTagPose,
-                                observation.fieldToRobotPose,
-                                frameTimestamp
+                                observation.fieldToRobotPose
                         )
                         : AprilTagObservation.target(
                                 observation.id,
-                                observation.cameraToTagPose,
-                                frameTimestamp
+                                observation.cameraToTagPose
                         ));
             }
-            return AprilTagDetections.of(frameTimestamp, observations);
+            return AprilTagDetections.fromFrame(frameTimestamp, observations);
         }
 
         private static LinkedHashSet<Integer> visibleIds(AprilTagDetections detections) {
@@ -321,6 +357,37 @@ final class FtcWebcamAprilTagSupport {
                 ids.add(observation.id);
             }
             return ids;
+        }
+    }
+
+    /** Stable identity of one FTC AprilTag processor frame in one processor-data generation. */
+    private static final class WebcamFrameIdentity {
+        final long dataGeneration;
+        final long frameAcquisitionNanos;
+
+        WebcamFrameIdentity(long dataGeneration, long frameAcquisitionNanos) {
+            this.dataGeneration = dataGeneration;
+            this.frameAcquisitionNanos = frameAcquisitionNanos;
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            if (this == other) {
+                return true;
+            }
+            if (!(other instanceof WebcamFrameIdentity)) {
+                return false;
+            }
+            WebcamFrameIdentity that = (WebcamFrameIdentity) other;
+            return dataGeneration == that.dataGeneration
+                    && frameAcquisitionNanos == that.frameAcquisitionNanos;
+        }
+
+        @Override
+        public int hashCode() {
+            int result = Long.valueOf(dataGeneration).hashCode();
+            result = 31 * result + Long.valueOf(frameAcquisitionNanos).hashCode();
+            return result;
         }
     }
 

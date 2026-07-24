@@ -26,6 +26,7 @@ import java.util.IdentityHashMap;
 import edu.ftcphoenix.fw.core.geometry.Mat3;
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
 import edu.ftcphoenix.fw.core.time.LoopClock;
+import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 import edu.ftcphoenix.fw.ftc.FtcFrames;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagDetections;
@@ -34,6 +35,7 @@ import edu.ftcphoenix.fw.testing.ManualLoopClock;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -342,7 +344,9 @@ public final class FtcWebcamVisionPortalLaneTest {
         assertTrue("same-cycle sampling must remain stable",
                 sensor.get(clock).observations.isEmpty());
         manual.nextCycle(0.02);
-        assertEquals(1, sensor.get(clock).observations.size());
+        AprilTagDetections afterGenerationChange = sensor.get(clock);
+        assertEquals(1, afterGenerationChange.observations.size());
+        assertNotSame(fresh.frameTimestamp(), afterGenerationChange.frameTimestamp());
 
         nanos.now = 250;
         processor.setDetection(300);
@@ -405,7 +409,99 @@ public final class FtcWebcamVisionPortalLaneTest {
     }
 
     @Test
-    public void aprilTagAdapterNeverMakesOlderUsableGeometryLookNewer() {
+    public void aprilTagAdapterRetainsOneTimestampForRepeatedFrameAndSourceReset() {
+        FakePortal portal = new FakePortal();
+        FakeAprilTagProcessor processor = new FakeAprilTagProcessor();
+        MutableNanoClock nanos = new MutableNanoClock(1_000_000_000L);
+        FtcWebcamVisionPortalLane owner = new FtcWebcamVisionPortalLane(
+                validConfig(), new RecordingFactory(portal), nanos,
+                VALID_RESOLUTION_READER, processor);
+        FtcWebcamAprilTagSupport.PortalAprilTagSensor sensor =
+                new FtcWebcamAprilTagSupport.PortalAprilTagSensor(owner, processor);
+        ManualLoopClock time = new ManualLoopClock(10.0);
+
+        AprilTagDetections emptySdkList = sensor.get(time.clock());
+        assertTrue(emptySdkList.observations.isEmpty());
+        assertFalse(emptySdkList.frameTimestamp().isAvailable());
+
+        time.nextCycle(0.0);
+        nanos.now = 2_000_000_000L;
+        processor.setDetection(1_900_000_000L);
+
+        AprilTagDetections first = sensor.get(time.clock());
+        LoopTimestamp firstTimestamp = first.frameTimestamp();
+        assertEquals(0.1, first.frameAgeSec(time.clock()), 1e-9);
+        assertSame(firstTimestamp, first.observations.get(0).frameTimestamp());
+
+        // A source reset invalidates only the per-cycle cache. The retained SDK frame identity
+        // must not be translated into a new timestamp.
+        sensor.reset();
+        AprilTagDetections afterSourceReset = sensor.get(time.clock());
+        assertSame(firstTimestamp, afterSourceReset.frameTimestamp());
+
+        // Advance the two clocks by deliberately different amounts. Re-translating the changing
+        // SDK age here would move the capture time; retaining the anchor keeps it exact.
+        time.nextCycle(0.4);
+        nanos.now = 2_200_000_000L;
+        AprilTagDetections repeated = sensor.get(time.clock());
+        assertSame(firstTimestamp, repeated.frameTimestamp());
+        assertEquals(0.5, repeated.frameAgeSec(time.clock()), 1e-9);
+
+        processor.setDetection(2_100_000_000L);
+        time.nextCycle(0.0);
+        AprilTagDetections newer = sensor.get(time.clock());
+        assertNotSame(firstTimestamp, newer.frameTimestamp());
+        assertEquals(0.1, newer.frameAgeSec(time.clock()), 1e-9);
+        assertEquals(0.4, newer.frameTimestamp().secondsSince(firstTimestamp), 1e-9);
+        owner.close();
+    }
+
+    @Test
+    public void aprilTagAdapterBlocksRetainedFrameAcrossClockResetUntilNewFrame() {
+        FakePortal portal = new FakePortal();
+        FakeAprilTagProcessor processor = new FakeAprilTagProcessor();
+        MutableNanoClock nanos = new MutableNanoClock(1_000_000_000L);
+        FtcWebcamVisionPortalLane owner = new FtcWebcamVisionPortalLane(
+                validConfig(), new RecordingFactory(portal), nanos,
+                VALID_RESOLUTION_READER, processor);
+        FtcWebcamAprilTagSupport.PortalAprilTagSensor sensor =
+                new FtcWebcamAprilTagSupport.PortalAprilTagSensor(owner, processor);
+        ManualLoopClock time = new ManualLoopClock(10.0);
+        nanos.now = 2_000_000_000L;
+        processor.setDetection(1_900_000_000L);
+
+        assertEquals(1, sensor.get(time.clock()).observations.size());
+
+        // TIME-01 makes even a same-value reset a distinct timestamp epoch and cycle.
+        time.clock().reset(10.0);
+        assertTrue(sensor.get(time.clock()).observations.isEmpty());
+
+        // Resetting the sensor must not erase the blocked vendor-frame identity.
+        sensor.reset();
+        assertTrue(sensor.get(time.clock()).observations.isEmpty());
+
+        processor.setDetection(1_950_000_000L);
+        time.nextCycle(0.0);
+        AprilTagDetections newFrame = sensor.get(time.clock());
+        assertEquals(1, newFrame.observations.size());
+        assertEquals(0.05, newFrame.frameAgeSec(time.clock()), 1e-9);
+
+        // A second reset advances the anchor's bounded reset barrier. The owner's monotonic
+        // capture identity still rejects replay of the older first frame.
+        time.clock().reset(10.0);
+        assertTrue(sensor.get(time.clock()).observations.isEmpty());
+        processor.setDetection(1_900_000_000L);
+        time.nextCycle(0.0);
+        assertTrue(sensor.get(time.clock()).observations.isEmpty());
+
+        processor.setDetection(1_975_000_000L);
+        time.nextCycle(0.0);
+        assertEquals(1, sensor.get(time.clock()).observations.size());
+        owner.close();
+    }
+
+    @Test
+    public void aprilTagAdapterRejectsMixedAndRegressingUsableFrames() {
         FakePortal portal = new FakePortal();
         FakeAprilTagProcessor processor = new FakeAprilTagProcessor();
         MutableNanoClock nanos = new MutableNanoClock(1_000_000_000L);
@@ -420,10 +516,12 @@ public final class FtcWebcamVisionPortalLaneTest {
         processor.setValidDetections(1_900_000_000L, 1_500_000_000L);
         AprilTagDetections mixed = sensor.get(time.clock());
 
-        assertEquals(2, mixed.observations.size());
-        assertEquals(0.5, mixed.frameAgeSec(time.clock()), 1e-9);
-        assertEquals(0.5, mixed.observations.get(0).frameAgeSec(time.clock()), 1e-9);
-        assertEquals(0.5, mixed.observations.get(1).frameAgeSec(time.clock()), 1e-9);
+        assertTrue(mixed.observations.isEmpty());
+
+        time.nextCycle(0.0);
+        processor.setValidDetections(1_900_000_000L, 0L);
+        assertTrue("one usable detection with invalid timing closes the whole frame",
+                sensor.get(time.clock()).observations.isEmpty());
 
         time.nextCycle(0.0);
         processor.setValidAndInvalidDetections(1_900_000_000L, 1_500_000_000L);
@@ -431,6 +529,14 @@ public final class FtcWebcamVisionPortalLaneTest {
 
         assertEquals(1, invalidOlder.observations.size());
         assertEquals(0.1, invalidOlder.frameAgeSec(time.clock()), 1e-9);
+
+        time.nextCycle(0.0);
+        processor.setDetection(1_800_000_000L);
+        assertTrue(sensor.get(time.clock()).observations.isEmpty());
+
+        time.nextCycle(0.0);
+        processor.setDetection(1_950_000_000L);
+        assertEquals(1, sensor.get(time.clock()).observations.size());
         owner.close();
     }
 
