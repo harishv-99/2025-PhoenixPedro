@@ -20,7 +20,8 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * every layer's activation gate is sampled once, then target producers are resolved lazily from
  * highest to lowest priority. Layers added with {@code add(...)} must produce a target when enabled,
  * while {@code addIfAvailable(...)} is the explicit opt-in for enabled layers that may fall through.
- * Periodic/equivalent target selection uses {@link #plan()}.</p>
+ * Periodic/equivalent target selection uses {@link #plan()}; its work is bounded by the explicit
+ * request-candidate count rather than the number of equivalent positions in a Plant's range.</p>
  *
  * <h2>Typical exact target</h2>
  * <pre>{@code
@@ -61,18 +62,23 @@ public final class PlantTargets {
     public enum CandidatePreference {
         /**
          * Choose the reachable candidate closest to the current measurement.
+         * Within one periodic family, an exact midpoint tie chooses the lower target.
          */
         NEAREST_TO_MEASUREMENT,
         /**
-         * Prefer candidates that move upward/increasing from the current measurement.
+         * Choose the closest candidate at or above the current measurement, falling back to the
+         * closest candidate below only when no increasing candidate is reachable.
          */
         PREFER_INCREASING,
         /**
-         * Prefer candidates that move downward/decreasing from the current measurement.
+         * Choose the closest candidate at or below the current measurement, falling back to the
+         * closest candidate above only when no decreasing candidate is reachable.
          */
         PREFER_DECREASING,
         /**
-         * Prefer candidates closest to the center of the legal range.
+         * Choose candidates closest to the center of a finite legal range, with lower periodic
+         * targets winning exact midpoint ties. When the range has no finite center, fall back to
+         * nearest-to-measurement selection.
          */
         PREFER_RANGE_CENTER
     }
@@ -612,22 +618,28 @@ public final class PlantTargets {
      */
     public interface PlanPreferenceStage {
         /**
-         * Choose the reachable candidate nearest to the current measurement.
+         * Choose the reachable candidate nearest to the current measurement. Within one periodic
+         * family, an exact midpoint tie chooses the lower target. An exact tie between distinct
+         * request candidates retains their declared order.
          */
         PlanUnreachableStage nearestToMeasurement();
 
         /**
-         * Prefer candidates that move upward/increasing from the current measurement.
+         * Choose the closest reachable candidate at or above the current measurement. Fall back to
+         * the closest candidate below only when no increasing candidate is reachable.
          */
         PlanUnreachableStage preferIncreasing();
 
         /**
-         * Prefer candidates that move downward/decreasing from the current measurement.
+         * Choose the closest reachable candidate at or below the current measurement. Fall back to
+         * the closest candidate above only when no decreasing candidate is reachable.
          */
         PlanUnreachableStage preferDecreasing();
 
         /**
-         * Prefer candidates closest to the legal range center.
+         * Choose candidates closest to a finite legal range center, with lower periodic targets
+         * winning exact midpoint ties. Fall back to nearest-to-measurement selection when the range
+         * has no finite center.
          */
         PlanUnreachableStage preferRangeCenter();
     }
@@ -844,6 +856,8 @@ public final class PlantTargets {
     }
 
     private static final class PlannerTargetSource implements PlantTargetSource {
+        private static final double FIRST_INDEX_WITHOUT_UNIT_NEIGHBORS = 0x1.0p53;
+
         private final Source<PlantTargetRequest> requestSource;
         private final CandidatePreference preference;
         private final UnreachablePolicy unreachablePolicy;
@@ -940,7 +954,7 @@ public final class PlantTargets {
                                            PlantTargetContext context,
                                            LoopClock clock) {
             ScalarRange range = context.targetRange();
-            if (range == null || !range.valid)
+            if (!isUsablePlannerRange(range))
                 return CandidateSearch.rejected("plant target range is unavailable");
             double measurement = context.feedbackAvailable() ? context.measurement() : context.previousAppliedTarget();
             if (!Double.isFinite(measurement)) measurement = 0.0;
@@ -959,7 +973,8 @@ public final class PlantTargets {
                     firstRejection = "candidate '" + candidate.id
                             + "' did not produce a reachable target";
                 }
-                if (choice != null && (best == null || score(choice, measurement, range) < score(best, measurement, range))) {
+                if (choice != null && (best == null
+                        || comparePreference(choice, best, measurement, range) < 0)) {
                     best = choice;
                 }
             }
@@ -1011,64 +1026,282 @@ public final class PlantTargets {
                                                    ScalarRange range,
                                                    PlantTargetContext context) {
             double base = c.relative ? measurement + c.value : c.value;
+            if (!Double.isFinite(base)) return null;
             if (!c.periodic) {
                 if (range.contains(base))
                     return new CandidateChoice(c, base, selectedAgeSec, false);
-                if (unreachablePolicy == UnreachablePolicy.CLAMP_TO_RANGE && range.valid)
-                    return new CandidateChoice(c, range.clamp(base), selectedAgeSec, true);
-                return null;
+                return clampedChoice(c, base, selectedAgeSec, range);
             }
 
+            if (c.usesPlantPeriod && !context.periodic()) return null;
             double period = c.usesPlantPeriod ? context.period() : c.period;
             if (!(period > 0.0) || !Double.isFinite(period)) return null;
 
-            if (range.isUnbounded()) {
-                double k;
-                if (preference == CandidatePreference.PREFER_INCREASING) {
-                    k = Math.ceil((measurement - base) / period);
-                } else if (preference == CandidatePreference.PREFER_DECREASING) {
-                    k = Math.floor((measurement - base) / period);
-                } else {
-                    k = Math.rint((measurement - base) / period);
-                }
-                return new CandidateChoice(c, base + k * period, selectedAgeSec, false);
-            }
-
-            double minK = Double.isFinite(range.minValue)
-                    ? Math.ceil((range.minValue - base) / period)
-                    : Math.rint((measurement - base) / period) - 8;
-            double maxK = Double.isFinite(range.maxValue)
-                    ? Math.floor((range.maxValue - base) / period)
-                    : Math.rint((measurement - base) / period) + 8;
             CandidateChoice best = null;
-            for (long k = (long) minK; k <= (long) maxK; k++) {
-                double v = base + k * period;
-                if (!range.contains(v)) continue;
-                CandidateChoice choice = new CandidateChoice(c, v, selectedAgeSec, false);
-                if (best == null || score(choice, measurement, range) < score(best, measurement, range)) {
-                    best = choice;
-                }
+            double reference = preferenceReference(measurement, range);
+            best = considerPeriodicAnchor(c, base, period, selectedAgeSec,
+                    reference, measurement, range, best);
+            if (Double.isFinite(range.minValue)) {
+                best = considerPeriodicAnchor(c, base, period, selectedAgeSec,
+                        range.minValue, measurement, range, best);
+            }
+            if (Double.isFinite(range.maxValue)) {
+                best = considerPeriodicAnchor(c, base, period, selectedAgeSec,
+                        range.maxValue, measurement, range, best);
             }
             if (best != null) return best;
-            if (unreachablePolicy == UnreachablePolicy.CLAMP_TO_RANGE && range.valid)
-                return new CandidateChoice(c, range.clamp(base), selectedAgeSec, true);
-            return null;
+            return clampedChoice(c, base, selectedAgeSec, range);
         }
 
-        private double score(CandidateChoice choice, double measurement, ScalarRange range) {
-            if (preference == CandidatePreference.PREFER_INCREASING) {
-                double delta = choice.target - measurement;
-                return delta >= 0.0 ? delta : Math.abs(delta) + 1.0e9;
+        /**
+         * Examines the four representatives corresponding to floor-1, floor, ceil, and ceil+1
+         * around one relevant coordinate. Direct index materialization preserves ordinary exact
+         * boundary values; target-space remainder arithmetic handles indices beyond exact
+         * {@code double} or {@code long} integer precision. Three calls at most (preference
+         * reference plus two finite bounds) keep periodic work independent of the number of
+         * equivalent targets in the legal range.
+         */
+        private CandidateChoice considerPeriodicAnchor(PlantTargetCandidate candidate,
+                                                        double base,
+                                                        double period,
+                                                        double selectedAgeSec,
+                                                        double anchor,
+                                                        double measurement,
+                                                        ScalarRange range,
+                                                        CandidateChoice best) {
+            double index = periodicIndex(anchor, base, period);
+            if (Double.isFinite(index)
+                    && Math.abs(index) < FIRST_INDEX_WITHOUT_UNIT_NEIGHBORS) {
+                double floor = Math.floor(index);
+                double ceil = Math.ceil(index);
+                best = considerPeriodicIndex(candidate, base, period, selectedAgeSec,
+                        floor - 1.0, measurement, range, best);
+                best = considerPeriodicIndex(candidate, base, period, selectedAgeSec,
+                        floor, measurement, range, best);
+                best = considerPeriodicIndex(candidate, base, period, selectedAgeSec,
+                        ceil, measurement, range, best);
+                return considerPeriodicIndex(candidate, base, period, selectedAgeSec,
+                        ceil + 1.0, measurement, range, best);
             }
-            if (preference == CandidatePreference.PREFER_DECREASING) {
-                double delta = measurement - choice.target;
-                return delta >= 0.0 ? delta : Math.abs(delta) + 1.0e9;
+
+            double phase = periodicPhase(base, anchor, period);
+            if (!Double.isFinite(phase)) return best;
+
+            double down;
+            double up;
+            if (phase < 0.0) {
+                down = phase;
+                up = finiteSum(phase, period);
+            } else if (phase > 0.0) {
+                down = finiteSum(phase, -period);
+                up = phase;
+            } else {
+                down = 0.0;
+                up = 0.0;
             }
+
+            double floorTarget = finiteSum(anchor, down);
+            double ceilTarget = finiteSum(anchor, up);
+            double belowOuter = finiteSum(floorTarget, -period);
+            double aboveOuter = finiteSum(ceilTarget, period);
+            double lower = Double.NaN;
+            double upper = Double.NaN;
+            lower = closerAtOrBelow(anchor, lower, floorTarget);
+            lower = closerAtOrBelow(anchor, lower, ceilTarget);
+            upper = closerAtOrAbove(anchor, upper, floorTarget);
+            upper = closerAtOrAbove(anchor, upper, ceilTarget);
+            if (Double.isFinite(index)) {
+                // Preserve exact base + k*period boundary values without adding a fifth probe.
+                double directTarget = periodicTarget(base, Math.rint(index), period);
+                lower = closerAtOrBelow(anchor, lower, directTarget);
+                upper = closerAtOrAbove(anchor, upper, directTarget);
+            }
+
+            best = considerPeriodicTarget(candidate, selectedAgeSec,
+                    belowOuter, measurement, range, best);
+            best = considerPeriodicTarget(candidate, selectedAgeSec,
+                    lower, measurement, range, best);
+            best = considerPeriodicTarget(candidate, selectedAgeSec,
+                    upper, measurement, range, best);
+            return considerPeriodicTarget(candidate, selectedAgeSec,
+                    aboveOuter, measurement, range, best);
+        }
+
+        private CandidateChoice considerPeriodicIndex(PlantTargetCandidate candidate,
+                                                       double base,
+                                                       double period,
+                                                       double selectedAgeSec,
+                                                       double index,
+                                                       double measurement,
+                                                       ScalarRange range,
+                                                       CandidateChoice best) {
+            if (!Double.isFinite(index)) return best;
+            return considerPeriodicTarget(candidate, selectedAgeSec,
+                    periodicTarget(base, index, period), measurement, range, best);
+        }
+
+        private CandidateChoice considerPeriodicTarget(PlantTargetCandidate candidate,
+                                                        double selectedAgeSec,
+                                                        double target,
+                                                        double measurement,
+                                                        ScalarRange range,
+                                                        CandidateChoice best) {
+            if (!Double.isFinite(target) || !range.contains(target)) return best;
+
+            CandidateChoice choice = new CandidateChoice(candidate, target, selectedAgeSec, false);
+            int comparison = best == null
+                    ? -1
+                    : comparePreference(choice, best, measurement, range);
+            if (comparison < 0 || (comparison == 0 && choice.target < best.target)) {
+                return choice;
+            }
+            return best;
+        }
+
+        private CandidateChoice clampedChoice(PlantTargetCandidate candidate,
+                                               double base,
+                                               double selectedAgeSec,
+                                               ScalarRange range) {
+            if (unreachablePolicy != UnreachablePolicy.CLAMP_TO_RANGE
+                    || !Double.isFinite(base)) {
+                return null;
+            }
+            double clamped = range.clamp(base);
+            return Double.isFinite(clamped) && range.contains(clamped)
+                    ? new CandidateChoice(candidate, clamped, selectedAgeSec, true)
+                    : null;
+        }
+
+        private double preferenceReference(double measurement, ScalarRange range) {
             if (preference == CandidatePreference.PREFER_RANGE_CENTER) {
                 double center = range.center();
-                if (Double.isFinite(center)) return Math.abs(choice.target - center);
+                if (Double.isFinite(center)) return center;
             }
-            return Math.abs(choice.target - measurement);
+            return measurement;
+        }
+
+        /** Returns a negative value when {@code left} is preferred over {@code right}. */
+        private int comparePreference(CandidateChoice left,
+                                      CandidateChoice right,
+                                      double measurement,
+                                      ScalarRange range) {
+            if (preference == CandidatePreference.PREFER_INCREASING) {
+                return compareDirectional(left.target, right.target, measurement, true);
+            }
+            if (preference == CandidatePreference.PREFER_DECREASING) {
+                return compareDirectional(left.target, right.target, measurement, false);
+            }
+            return compareDistance(left.target, right.target,
+                    preferenceReference(measurement, range));
+        }
+
+        private static int compareDirectional(double left,
+                                              double right,
+                                              double measurement,
+                                              boolean increasing) {
+            boolean leftPreferred = increasing ? left >= measurement : left <= measurement;
+            boolean rightPreferred = increasing ? right >= measurement : right <= measurement;
+            if (leftPreferred != rightPreferred) return leftPreferred ? -1 : 1;
+            return compareDistance(left, right, measurement);
+        }
+
+        /** Compares finite values by distance without letting subtraction overflow reverse order. */
+        private static int compareDistance(double left, double right, double reference) {
+            if (left == right) return 0;
+            if (left == reference) return -1;
+            if (right == reference) return 1;
+
+            if (left <= reference && right <= reference) {
+                return left > right ? -1 : 1;
+            }
+            if (left >= reference && right >= reference) {
+                return left < right ? -1 : 1;
+            }
+
+            double lower = Math.min(left, right);
+            double upper = Math.max(left, right);
+            double midpoint = safeMidpoint(lower, upper);
+            int distanceComparison;
+            if (reference < midpoint) {
+                distanceComparison = -1;
+            } else if (reference > midpoint) {
+                distanceComparison = 1;
+            } else {
+                distanceComparison = Double.compare(
+                        reference - lower,
+                        upper - reference);
+            }
+            return left == lower ? distanceComparison : -distanceComparison;
+        }
+
+        private static double finiteSum(double left, double right) {
+            double sum = left + right;
+            return Double.isFinite(sum) ? sum : Double.NaN;
+        }
+
+        private static double periodicTarget(double base, double index, double period) {
+            double target = base + index * period;
+            if (Double.isFinite(target)) return target;
+
+            double regrouped = period * (index + base / period);
+            return Double.isFinite(regrouped) ? regrouped : Double.NaN;
+        }
+
+        private static double periodicIndex(double anchor, double base, double period) {
+            double index = (anchor - base) / period;
+            if (Double.isFinite(index)) return index;
+
+            double regrouped = anchor / period - base / period;
+            return Double.isFinite(regrouped) ? regrouped : Double.NaN;
+        }
+
+        private static double closerAtOrBelow(double anchor, double current, double candidate) {
+            if (!Double.isFinite(candidate) || candidate > anchor) return current;
+            return !Double.isFinite(current) || candidate > current ? candidate : current;
+        }
+
+        private static double closerAtOrAbove(double anchor, double current, double candidate) {
+            if (!Double.isFinite(candidate) || candidate < anchor) return current;
+            return !Double.isFinite(current) || candidate < current ? candidate : current;
+        }
+
+        private static double safeMidpoint(double lower, double upper) {
+            if (lower < 0.0 && upper >= 0.0) {
+                return (lower + upper) / 2.0;
+            }
+            return lower + (upper - lower) / 2.0;
+        }
+
+        private static double periodicPhase(double base, double anchor, double period) {
+            double baseRemainder = Math.IEEEremainder(base, period);
+            double anchorRemainder = Math.IEEEremainder(anchor, period);
+            if (!Double.isFinite(baseRemainder) || !Double.isFinite(anchorRemainder)) {
+                return Double.NaN;
+            }
+
+            double rawDifference = baseRemainder - anchorRemainder;
+            double halfPeriod = period / 2.0;
+            if (baseRemainder >= 0.0
+                    && anchorRemainder < 0.0
+                    && rawDifference >= halfPeriod) {
+                return (baseRemainder - period) - anchorRemainder;
+            }
+            if (baseRemainder < 0.0
+                    && anchorRemainder >= 0.0
+                    && rawDifference <= -halfPeriod) {
+                return (baseRemainder + period) - anchorRemainder;
+            }
+            return rawDifference;
+        }
+
+        private static boolean isUsablePlannerRange(ScalarRange range) {
+            return range != null
+                    && range.valid
+                    && !Double.isNaN(range.minValue)
+                    && !Double.isNaN(range.maxValue)
+                    && range.minValue != Double.POSITIVE_INFINITY
+                    && range.maxValue != Double.NEGATIVE_INFINITY
+                    && range.minValue <= range.maxValue;
         }
 
         @Override

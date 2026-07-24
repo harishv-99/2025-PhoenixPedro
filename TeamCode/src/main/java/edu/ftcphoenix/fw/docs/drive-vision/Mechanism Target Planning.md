@@ -312,6 +312,26 @@ The planner does not know what “purple” means. It only sees Plant-unit candi
 choice, the returned type exposes only the next question. There is no later-replacement model. Branches that may set several independent tuning values, such as
 `accept()`, still end with an explicit `doneAccept()`.
 
+### How periodic candidates are selected
+
+A periodic candidate describes an entire family of equivalent positions. The planner considers only
+a fixed, bounded set of positions that could win; its work does not grow when a wider range or
+smaller period contains more equivalents. This is an internal guarantee, so robot code does not set
+a search window or candidate limit.
+
+Selection follows these rules:
+
+- Plant range bounds are inclusive.
+- `nearestToMeasurement()` chooses the closest legal position. An exact tie between two equivalent
+  positions in the same periodic family goes to the lower value.
+- `preferIncreasing()` first chooses the closest legal target at or above the measurement across the
+  complete request. It considers targets below the measurement only when none is legal on the
+  preferred side. `preferDecreasing()` applies the same rule in the opposite direction.
+- `preferRangeCenter()` uses the center when both range bounds are finite. On a one-sided or
+  unbounded range, it behaves like `nearestToMeasurement()`. An exact tie within one periodic family
+  goes to the lower value.
+- If distinct request candidates are otherwise exactly tied, the candidate declared first wins.
+
 ### Current intent versus observations
 
 Use the ordinary factories for current robot intent: presets, inventory choices, or other requests
