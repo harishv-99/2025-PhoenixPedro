@@ -193,7 +193,7 @@ public final class AprilTagPoseEstimator implements AbsolutePoseEstimator {
             return;
         }
 
-        AprilTagDetections freshDetections = AprilTagDetections.of(
+        AprilTagDetections freshDetections = AprilTagDetections.fromFrame(
                 lastDetections.frameTimestamp(),
                 lastDetections.freshMatching(clock, layout.ids(), cfg.maxDetectionAgeSec)
         );

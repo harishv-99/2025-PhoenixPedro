@@ -18,6 +18,8 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *       {@link LoopClock#cycle()} so multiple consumers can safely share one sensor instance.</li>
  *   <li><b>Keep raw data available:</b> callers can inspect all visible tags from one frame,
  *       which enables multi-tag localization and explicit selection policies.</li>
+ *   <li><b>Keep frame time stable:</b> a repeated backend frame returns its original
+ *       {@code LoopTimestamp}; sampling a cached result must not make it newly acquired.</li>
  *   <li><b>Selection is separate from sensing:</b> if robot code wants “the tag we are currently
  *       aiming at”, build a {@link TagSelectionSource} on top of this sensor.</li>
  * </ul>
@@ -52,9 +54,12 @@ public interface AprilTagSensor extends Source<AprilTagDetections> {
     /**
      * Returns the latest processed detections for the current loop.
      *
-     * <p>The returned snapshot must never be {@code null}. When there are no usable detections,
-     * implementations should return {@link AprilTagDetections#none()} (or a snapshot whose
-     * observation list is empty).</p>
+     * <p>The returned snapshot must never be {@code null}. Return
+     * {@link AprilTagDetections#none()} when no trustworthy processed-frame identity exists. When
+     * the backend can identify a trustworthy frame that contained no usable tags, return a
+     * timestamped empty snapshot through
+     * {@link AprilTagDetections#fromFrame(edu.ftcphoenix.fw.core.time.LoopTimestamp,
+     * java.util.List)}. Those states are deliberately different.</p>
      *
      * @param clock current loop clock (required)
      * @return immutable AprilTag detections snapshot for this loop

@@ -26,7 +26,8 @@ public final class ObservationSources {
      * <p>The selector decides which tag is semantically relevant; this helper simply converts the
      * selector's <em>fresh selected observation</em> into a planar robot-frame observation.
      * When no fresh selected observation exists, the source returns {@link TargetObservation2d#none()}.
-     * </p>
+     * The selected observation's exact camera-frame timestamp is forwarded; this source does not
+     * create a new timestamp when a retained selection is sampled.</p>
      */
     public static ObservationSource2d aprilTag(TagSelectionSource selection, CameraMountConfig mount) {
         Objects.requireNonNull(selection, "selection must not be null");
@@ -43,7 +44,7 @@ public final class ObservationSources {
                     return TargetObservation2d.none();
                 }
                 AprilTagObservation obs = sel.selectedObservation;
-                return CameraMountLogic.robotObservation2d(obs, mount);
+                return CameraMountLogic.robotObservation2d(obs, mount, clock);
             }
 
             /**

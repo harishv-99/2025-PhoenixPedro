@@ -40,6 +40,10 @@ Phoenix is designed around a few core goals:
    artificial universal-camera interface. Robot code may put a small semantic interface above
    either realization so Auto and TeleOp ask for meanings such as `AIMING` and consume the same
    robot-owned immutable, timestamped snapshot without importing FTC or vendor result types.
+   The acquisition owner also owns frame/result identity: it anchors an age-native vendor result
+   to one `LoopTimestamp` once and returns that exact timestamp while the vendor identity repeats.
+   Consumers never reconstruct `now - cachedAge`, and a retained pre-reset identity stays
+   unavailable until the owner observes a genuinely new frame/result in the current clock epoch.
 
 3. **Beginner-friendly, mentor-powerful**
 
@@ -318,6 +322,11 @@ the immutable snapshot used for target construction, then retains the resulting 
 request source must not repeat that conversion whenever a cached observation or request is sampled,
 because doing so would make it appear newly acquired. Keep this anchoring at or before the target's
 source boundary rather than adding timestamp bookkeeping to ordinary mechanism code.
+
+For a multi-observation camera frame, publish the frame timestamp once beside the immutable geometry
+list and attach that same value to every selected observation. A trustworthy processed frame with no
+usable targets is distinct from no trustworthy frame; do not represent either state with a
+timestamped `noTarget()` observation. Mixed frame identities fail closed at the camera boundary.
 
 Keep static range declarations such as `bounded(min, max)` close to the Plant topology because they define the legal plant coordinate system. Direct power Plants are the simpler fixed-domain case: their normalized range is always `[-1, +1]`, so the builder does not ask students to declare it. Keep dynamic protection such as rate limits and interlocks in `targetGuards()`.
 

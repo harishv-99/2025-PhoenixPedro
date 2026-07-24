@@ -64,9 +64,7 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
          */
         public Mode mode = Mode.BOTPOSE;
 
-        /**
-         * Reject or ignore results older than this many seconds.
-         */
+        /** Reject results whose estimated camera-exposure age exceeds this positive number of seconds. */
         public double maxResultAgeSec = 0.25;
 
         /**
@@ -154,7 +152,7 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
             if (c.mode == null) {
                 throw new IllegalArgumentException(p + ".mode must not be null");
             }
-            requireNonNegative(c.maxResultAgeSec, p + ".maxResultAgeSec");
+            requirePositive(c.maxResultAgeSec, p + ".maxResultAgeSec");
             if (c.minVisibleTags < 1) {
                 throw new IllegalArgumentException(p + ".minVisibleTags must be >= 1");
             }
@@ -165,12 +163,6 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
             requirePositive(c.maxTranslationSpeedInPerSec, p + ".maxTranslationSpeedInPerSec");
             requirePositive(c.maxYawRateRadPerSec, p + ".maxYawRateRadPerSec");
             return c;
-        }
-
-        private static void requireNonNegative(double v, String name) {
-            if (!Double.isFinite(v) || v < 0.0) {
-                throw new IllegalArgumentException(name + " must be finite and >= 0");
-            }
         }
 
         private static void requirePositive(double v, String name) {
@@ -243,10 +235,10 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
             return;
         }
 
-        LoopTimestamp measurementTimestamp = clock.timestampSecondsAgo(result.ageSec());
+        LoopTimestamp measurementTimestamp = result.frameTimestamp();
         double ageSec = measurementTimestamp.ageSec(clock);
-        if (!Double.isFinite(ageSec) || ageSec < 0.0) {
-            lastRejectReason = "confirmed result reported an invalid age";
+        if (!Double.isFinite(ageSec)) {
+            lastRejectReason = "confirmed result reported invalid frame timing";
             lastEstimate = PoseEstimate.noPose(nowTimestamp);
             return;
         }
@@ -257,7 +249,7 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
             return;
         }
 
-        if (cfg.maxResultAgeSec > 0.0 && ageSec > cfg.maxResultAgeSec) {
+        if (ageSec > cfg.maxResultAgeSec) {
             lastRejectReason = "result age exceeded maxResultAgeSec";
             lastEstimate = PoseEstimate.noPose(nowTimestamp);
             return;
@@ -286,10 +278,7 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
         }
 
         lastBaseQuality = lastVisibleTagCount >= 2 ? cfg.multiTagQuality : cfg.singleTagQuality;
-        double ageScale = 1.0;
-        if (cfg.maxResultAgeSec > 0.0) {
-            ageScale = MathUtil.clamp01(1.0 - (ageSec / cfg.maxResultAgeSec));
-        }
+        double ageScale = MathUtil.clamp01(1.0 - (ageSec / cfg.maxResultAgeSec));
         double quality = MathUtil.clamp(lastBaseQuality * ageScale, 0.0, 1.0);
 
         if (predictor != null) {

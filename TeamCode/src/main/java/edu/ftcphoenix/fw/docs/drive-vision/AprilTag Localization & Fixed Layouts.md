@@ -149,6 +149,38 @@ CameraMountConfig mount = visionLane.cameraMountConfig();
 VisionReadiness readiness = visionLane.readiness(clock);
 ```
 
+The supplied webcam and Limelight owners perform frame construction automatically; ordinary robot
+code reads `visionLane.tagSensor()` and does not manage timestamps. Only an advanced custom
+`AprilTagSensor` adapter builds tag geometry and attaches its acquisition owner's one timestamp at
+the frame boundary:
+
+```java
+List<AprilTagObservation> observations = Arrays.asList(
+        AprilTagObservation.target(5, cameraToTagPose),
+        AprilTagObservation.target(8, otherCameraToTagPose, fieldToRobotPose)
+);
+AprilTagDetections frame = AprilTagDetections.fromFrame(frameTimestamp, observations);
+```
+
+Every observation returned by `frame` retains that exact `LoopTimestamp`, so caching the frame or a
+selected observation does not make it newly captured. `AprilTagDetections.none()` means there is no
+trustworthy processed frame. In contrast,
+`AprilTagDetections.fromFrame(frameTimestamp, Collections.emptyList())` means a trustworthy frame
+was processed and contained no usable tags. `AprilTagObservation.noTarget()` remains a lookup/result
+sentinel and is never inserted into a frame.
+
+FTC owners translate vendor timing once per stable camera frame/result identity. Re-reading a
+cached SDK result returns its original Phoenix timestamp; it never recomputes `now - cachedAge`.
+After a deliberate `LoopClock.reset(...)`, that retained identity fails closed until the camera
+publishes a genuinely new frame/result in the current clock epoch. Robot code does not manage frame
+IDs, reset epochs, or timestamp caches.
+
+For Limelight, `ResultSnapshot.frameTimestamp()` is the owner's best SDK-supported estimate of
+camera exposure time: Control Hub receipt staleness plus the reported capture and targeting
+latencies are translated once when a new result identity appears. It is not a claim of measured
+network or physical exposure accuracy. `resultReceivedAtControlHubMillis()` remains a separate
+transport/diagnostic fact; use the frame timestamp for localization and observation freshness.
+
 `readiness` describes the configured AprilTag component, not whether a tag is currently visible.
 A streaming webcam with its required processor enabled can be ready with zero detections. A
 Limelight AprilTag lane becomes ready only after it is running, connected, accepted the pipeline

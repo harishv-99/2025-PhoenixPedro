@@ -232,6 +232,7 @@ the camera rig is not only for localization.
 - backend-specific processor / pipeline setup
 - confirmation that the configured component can safely provide results (not target visibility)
 - camera mount
+- stable backend frame/result identity and its one epoch-safe `LoopTimestamp`
 - AprilTag sensor lifetime
 - vision-device cleanup
 
@@ -260,7 +261,9 @@ pipeline has one universal result shape. If Phoenix later adds game-specific vis
 robot-owned typed interface should map those meanings onto the appropriate concrete owner and
 publish immutable Phoenix snapshots. The webcam realization can enable processors that were all
 declared when its portal was built; the Limelight realization requests one pipeline on a mode
-transition and waits for a fresh confirmed result. Strategy stays vendor-neutral in both cases.
+transition and waits for a fresh confirmed result. Re-reading a retained vendor result preserves
+its original acquisition timestamp; Phoenix strategy never rebuilds `now - age` or owns backend
+frame IDs. Strategy stays vendor-neutral in both cases.
 
 ## TeleOp controls live in one place
 

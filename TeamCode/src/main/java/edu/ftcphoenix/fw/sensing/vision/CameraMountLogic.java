@@ -3,6 +3,7 @@ package edu.ftcphoenix.fw.sensing.vision;
 import java.util.Objects;
 
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
+import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.sensing.observation.TargetObservation2d;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagObservation;
 
@@ -84,13 +85,28 @@ public final class CameraMountLogic {
      * and bearing.</p>
      *
      * <p>AprilTag observations currently do not expose a separate “quality” metric, so this returns
-     * a default quality of 1.0 and forwards the observation's epoch-safe frame timestamp.</p>
+     * a default quality of 1.0 and forwards the observation's epoch-safe frame timestamp. A target
+     * with no trustworthy current-epoch frame time fails closed as no observation. Age limits remain
+     * the caller's policy; this conversion checks only that the timestamp is valid now.</p>
+     *
+     * @param obs observation; must not be null
+     * @param mount camera mount; must not be null
+     * @param clock the stable loop clock that owns the observation timestamp
+     * @return the robot-relative observation, or no target when geometry or timing is unavailable
+     * @throws IllegalArgumentException if a target's timestamp belongs to a different
+     *                                  {@link LoopClock}, indicating a composition-root wiring
+     *                                  error
      */
-    public static TargetObservation2d robotObservation2d(AprilTagObservation obs, CameraMountConfig mount) {
+    public static TargetObservation2d robotObservation2d(
+            AprilTagObservation obs,
+            CameraMountConfig mount,
+            LoopClock clock
+    ) {
         Objects.requireNonNull(obs, "obs");
         Objects.requireNonNull(mount, "mount");
+        Objects.requireNonNull(clock, "clock");
 
-        if (!obs.hasTarget) {
+        if (!obs.hasTarget || !Double.isFinite(obs.frameAgeSec(clock))) {
             return TargetObservation2d.none();
         }
 

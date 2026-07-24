@@ -18,6 +18,7 @@ import java.util.Objects;
 import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.lifecycle.CleanupActions;
 import edu.ftcphoenix.fw.core.time.LoopClock;
+import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 
 /**
  * FTC-boundary owner for one Limelight and its selected onboard pipeline.
@@ -52,7 +53,12 @@ public class FtcLimelightVisionLane implements AutoCloseable {
          */
         public int pollRateHz = 100;
 
-        /** Maximum age of a result that may confirm the requested pipeline. */
+        /**
+         * Maximum Control Hub receipt staleness that may confirm the requested pipeline.
+         *
+         * <p>This is owner-internal transport readiness. Semantic consumers derive estimated
+         * exposure age from the retained {@link ResultSnapshot#frameTimestamp()}.</p>
+         */
         public double maxResultAgeSec = 0.25;
 
         private Config() {
@@ -105,8 +111,8 @@ public class FtcLimelightVisionLane implements AutoCloseable {
         private static final ResultSnapshot NONE = new ResultSnapshot();
 
         private final boolean hasResult;
-        private final long controlHubTimestampMillis;
-        private final double ageSec;
+        private final long resultReceivedAtControlHubMillis;
+        private final LoopTimestamp frameTimestamp;
         private final int pipelineIndex;
         private final String pipelineType;
         private final boolean targetValid;
@@ -120,8 +126,8 @@ public class FtcLimelightVisionLane implements AutoCloseable {
 
         private ResultSnapshot() {
             this.hasResult = false;
-            this.controlHubTimestampMillis = Long.MIN_VALUE;
-            this.ageSec = Double.POSITIVE_INFINITY;
+            this.resultReceivedAtControlHubMillis = Long.MIN_VALUE;
+            this.frameTimestamp = LoopTimestamp.unavailable();
             this.pipelineIndex = -1;
             this.pipelineType = "";
             this.targetValid = false;
@@ -134,10 +140,10 @@ public class FtcLimelightVisionLane implements AutoCloseable {
             this.botposeMt2 = null;
         }
 
-        private ResultSnapshot(DeviceResult result) {
+        private ResultSnapshot(DeviceResult result, LoopTimestamp frameTimestamp) {
             this.hasResult = true;
-            this.controlHubTimestampMillis = result.controlHubTimestampMillis;
-            this.ageSec = result.ageSec;
+            this.resultReceivedAtControlHubMillis = result.resultReceivedAtControlHubMillis;
+            this.frameTimestamp = Objects.requireNonNull(frameTimestamp, "frameTimestamp");
             this.pipelineIndex = result.pipelineIndex;
             this.pipelineType = result.pipelineType;
             this.targetValid = result.targetValid;
@@ -155,14 +161,26 @@ public class FtcLimelightVisionLane implements AutoCloseable {
             return hasResult;
         }
 
-        /** @return Control Hub wall-clock timestamp supplied by the SDK, in milliseconds. */
-        public long controlHubTimestampMillis() {
-            return controlHubTimestampMillis;
+        /**
+         * @return Control Hub wall-clock time when the SDK received this result, in milliseconds,
+         *         or {@link Long#MIN_VALUE} when no confirmed result is available
+         *
+         * <p>This is a transport/diagnostic fact, not the camera-frame capture time. Use
+         * {@link #frameTimestamp()} for freshness and localization.</p>
+         */
+        public long resultReceivedAtControlHubMillis() {
+            return resultReceivedAtControlHubMillis;
         }
 
-        /** @return result age in seconds when this snapshot was sampled. */
-        public double ageSec() {
-            return ageSec;
+        /**
+         * Returns the retained timestamp for this result's estimated camera exposure time.
+         *
+         * <p>The owner anchors this value once per stable Limelight result identity. Re-reading a
+         * cached result therefore never makes its frame appear newer. An unavailable result carries
+         * {@link LoopTimestamp#unavailable()}.</p>
+         */
+        public LoopTimestamp frameTimestamp() {
+            return frameTimestamp;
         }
 
         /** @return pipeline index reported by this result, or -1 when unavailable. */
@@ -253,8 +271,11 @@ public class FtcLimelightVisionLane implements AutoCloseable {
     }
 
     static final class DeviceResult {
-        final long controlHubTimestampMillis;
-        final double ageSec;
+        final long resultReceivedAtControlHubMillis;
+        final double receiptStalenessSec;
+        final double limelightTimestampMillis;
+        final double captureLatencyMillis;
+        final double targetingLatencyMillis;
         final int pipelineIndex;
         final String pipelineType;
         final boolean targetValid;
@@ -266,8 +287,11 @@ public class FtcLimelightVisionLane implements AutoCloseable {
         final Pose3D botpose;
         final Pose3D botposeMt2;
 
-        DeviceResult(long controlHubTimestampMillis,
-                     double ageSec,
+        DeviceResult(long resultReceivedAtControlHubMillis,
+                     double receiptStalenessSec,
+                     double limelightTimestampMillis,
+                     double captureLatencyMillis,
+                     double targetingLatencyMillis,
                      int pipelineIndex,
                      String pipelineType,
                      boolean targetValid,
@@ -278,8 +302,11 @@ public class FtcLimelightVisionLane implements AutoCloseable {
                      List<LLResultTypes.ColorResult> colorResults,
                      Pose3D botpose,
                      Pose3D botposeMt2) {
-            this.controlHubTimestampMillis = controlHubTimestampMillis;
-            this.ageSec = ageSec;
+            this.resultReceivedAtControlHubMillis = resultReceivedAtControlHubMillis;
+            this.receiptStalenessSec = receiptStalenessSec;
+            this.limelightTimestampMillis = limelightTimestampMillis;
+            this.captureLatencyMillis = captureLatencyMillis;
+            this.targetingLatencyMillis = targetingLatencyMillis;
             this.pipelineIndex = pipelineIndex;
             this.pipelineType = pipelineType != null ? pipelineType : "";
             this.targetValid = targetValid;
@@ -292,13 +319,19 @@ public class FtcLimelightVisionLane implements AutoCloseable {
             this.botposeMt2 = copyPose(botposeMt2);
         }
 
-        static DeviceResult metadata(long controlHubTimestampMillis,
-                                     double ageSec,
+        static DeviceResult metadata(long resultReceivedAtControlHubMillis,
+                                     double receiptStalenessSec,
+                                     double limelightTimestampMillis,
+                                     double captureLatencyMillis,
+                                     double targetingLatencyMillis,
                                      int pipelineIndex,
                                      boolean targetValid) {
             return new DeviceResult(
-                    controlHubTimestampMillis,
-                    ageSec,
+                    resultReceivedAtControlHubMillis,
+                    receiptStalenessSec,
+                    limelightTimestampMillis,
+                    captureLatencyMillis,
+                    targetingLatencyMillis,
                     pipelineIndex,
                     "",
                     targetValid,
@@ -317,16 +350,81 @@ public class FtcLimelightVisionLane implements AutoCloseable {
         final boolean running;
         final boolean connected;
         final DeviceResult result;
+        final LoopTimestamp frameTimestamp;
 
-        DeviceSample(boolean running, boolean connected, DeviceResult result) {
+        DeviceSample(boolean running,
+                     boolean connected,
+                     DeviceResult result,
+                     LoopTimestamp frameTimestamp) {
             this.running = running;
             this.connected = connected;
             this.result = result;
+            this.frameTimestamp = frameTimestamp;
+        }
+    }
+
+    /** Stable Limelight result identity within one requested-pipeline generation. */
+    private static final class ResultIdentity {
+        final long pipelineGeneration;
+        final boolean usesLimelightTimestamp;
+        final long identityBits;
+
+        private ResultIdentity(long pipelineGeneration,
+                               boolean usesLimelightTimestamp,
+                               long identityBits) {
+            this.pipelineGeneration = pipelineGeneration;
+            this.usesLimelightTimestamp = usesLimelightTimestamp;
+            this.identityBits = identityBits;
+        }
+
+        static ResultIdentity from(long pipelineGeneration, DeviceResult result) {
+            if (Double.isFinite(result.limelightTimestampMillis)
+                    && result.limelightTimestampMillis > 0.0) {
+                return new ResultIdentity(
+                        pipelineGeneration,
+                        true,
+                        Double.doubleToLongBits(result.limelightTimestampMillis)
+                );
+            }
+            return new ResultIdentity(
+                    pipelineGeneration,
+                    false,
+                    result.resultReceivedAtControlHubMillis
+            );
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            if (this == other) {
+                return true;
+            }
+            if (!(other instanceof ResultIdentity)) {
+                return false;
+            }
+            ResultIdentity that = (ResultIdentity) other;
+            return pipelineGeneration == that.pipelineGeneration
+                    && usesLimelightTimestamp == that.usesLimelightTimestamp
+                    && identityBits == that.identityBits;
+        }
+
+        @Override
+        public int hashCode() {
+            int result = (int) (pipelineGeneration ^ (pipelineGeneration >>> 32));
+            result = 31 * result + (usesLimelightTimestamp ? 1 : 0);
+            result = 31 * result + (int) (identityBits ^ (identityBits >>> 32));
+            return result;
         }
     }
 
     private final Config cfg;
     private final Device device;
+    private final FtcFrameTimestampAnchor resultTimestampAnchor =
+            new FtcFrameTimestampAnchor();
+
+    private long identityPipelineGeneration = Long.MIN_VALUE;
+    private double greatestLimelightTimestampMillis = Double.NaN;
+    private long greatestFallbackReceiptMillis = Long.MIN_VALUE;
+    private ResultIdentity lastAcceptedResultIdentity;
 
     private int requestedPipelineIndex;
     private long pipelineGeneration = 1L;
@@ -490,7 +588,7 @@ public class FtcLimelightVisionLane implements AutoCloseable {
         }
 
         DeviceSample sample = sample(clock);
-        lastReadiness = evaluatePipelineReadiness(sample);
+        lastReadiness = evaluatePipelineReadiness(sample, clock);
         return lastReadiness;
     }
 
@@ -503,7 +601,7 @@ public class FtcLimelightVisionLane implements AutoCloseable {
             return ResultSnapshot.NONE;
         }
         DeviceSample sample = sample(clock);
-        return new ResultSnapshot(sample.result);
+        return new ResultSnapshot(sample.result, sample.frameTimestamp);
     }
 
     static ResultSnapshot unavailableResult() {
@@ -597,7 +695,16 @@ public class FtcLimelightVisionLane implements AutoCloseable {
             if (sample.result != null) {
                 dbg.addData(p + ".sample.pipeline", sample.result.pipelineIndex)
                         .addData(p + ".sample.pipelineType", sample.result.pipelineType)
-                        .addData(p + ".sample.ageSec", sample.result.ageSec)
+                        .addData(p + ".sample.receiptStalenessSec",
+                                sample.result.receiptStalenessSec)
+                        .addData(p + ".sample.limelightTimestampMillis",
+                                sample.result.limelightTimestampMillis)
+                        .addData(p + ".sample.captureLatencyMillis",
+                                sample.result.captureLatencyMillis)
+                        .addData(p + ".sample.targetingLatencyMillis",
+                                sample.result.targetingLatencyMillis)
+                        .addData(p + ".sample.frameTimestampAvailable",
+                                sample.frameTimestamp.isAvailable())
                         .addData(p + ".sample.targetValid", sample.result.targetValid)
                         .addData(p + ".sample.fiducialCount", sample.result.fiducialResults.size())
                         .addData(p + ".sample.detectorCount", sample.result.detectorResults.size())
@@ -616,13 +723,23 @@ public class FtcLimelightVisionLane implements AutoCloseable {
         // The FTC SDK may synthesize an apparently fresh pipeline-zero result before a real device
         // result exists. Do not even admit that value into the sample while polling is unavailable.
         DeviceResult result = running && connected ? device.latestResult() : null;
-        lastSample = new DeviceSample(running, connected, result);
+        LoopTimestamp frameTimestamp = resultBelongsToCurrentRequest(result)
+                ? anchorFrameTimestamp(clock, result)
+                : LoopTimestamp.unavailable();
+        lastSample = new DeviceSample(running, connected, result, frameTimestamp);
         sampledCycle = cycle;
         sampledGeneration = pipelineGeneration;
         return lastSample;
     }
 
-    private VisionReadiness evaluatePipelineReadiness(DeviceSample sample) {
+    /** Returns whether result identity may enter the current pipeline generation's timestamp state. */
+    private boolean resultBelongsToCurrentRequest(DeviceResult result) {
+        return result != null
+                && result.resultReceivedAtControlHubMillis > requestCompletionBaselineMillis
+                && result.pipelineIndex == requestedPipelineIndex;
+    }
+
+    private VisionReadiness evaluatePipelineReadiness(DeviceSample sample, LoopClock clock) {
         if (!sample.running) {
             return VisionReadiness.notReady(
                     "Limelight polling is not running; close this owner and replace it only after close succeeds");
@@ -633,7 +750,7 @@ public class FtcLimelightVisionLane implements AutoCloseable {
         if (sample.result == null) {
             return VisionReadiness.notReady("Limelight has not produced a result yet");
         }
-        if (sample.result.controlHubTimestampMillis <= requestCompletionBaselineMillis) {
+        if (sample.result.resultReceivedAtControlHubMillis <= requestCompletionBaselineMillis) {
             return VisionReadiness.notReady("Waiting for a result newer than pipeline request generation "
                     + pipelineGeneration);
         }
@@ -641,14 +758,84 @@ public class FtcLimelightVisionLane implements AutoCloseable {
             return VisionReadiness.notReady("Waiting for Limelight pipeline " + requestedPipelineIndex
                     + "; latest result reports pipeline " + sample.result.pipelineIndex);
         }
-        if (!Double.isFinite(sample.result.ageSec) || sample.result.ageSec < 0.0) {
-            return VisionReadiness.notReady("Limelight result reported an invalid age");
+        if (!Double.isFinite(sample.result.receiptStalenessSec)
+                || sample.result.receiptStalenessSec < 0.0) {
+            return VisionReadiness.notReady("Limelight result reported invalid receipt timing");
         }
-        if (sample.result.ageSec > cfg.maxResultAgeSec) {
-            return VisionReadiness.notReady("Limelight result is stale (age " + sample.result.ageSec
+        if (sample.result.receiptStalenessSec > cfg.maxResultAgeSec) {
+            return VisionReadiness.notReady("Limelight result is stale (receipt age "
+                    + sample.result.receiptStalenessSec
                     + " sec; max " + cfg.maxResultAgeSec + " sec)");
         }
+        if (!Double.isFinite(sample.frameTimestamp.ageSec(clock))) {
+            return VisionReadiness.notReady(
+                    "Limelight result has invalid or reset-stale frame timing; wait for a new result");
+        }
         return VisionReadiness.ready();
+    }
+
+    /** Anchors the best SDK-supported exposure-time estimate for one eligible result identity. */
+    private LoopTimestamp anchorFrameTimestamp(LoopClock clock, DeviceResult result) {
+        double exposureAgeSec = estimatedExposureAgeSec(result);
+        if (!Double.isFinite(exposureAgeSec) || exposureAgeSec < 0.0) {
+            return LoopTimestamp.unavailable();
+        }
+        ResultIdentity identity = acceptedResultIdentity(result);
+        return resultTimestampAnchor.anchor(clock, identity, exposureAgeSec);
+    }
+
+    /**
+     * Returns a monotonic identity for this pipeline generation, or {@code null} for replay.
+     *
+     * <p>Limelight-local time is primary. Control Hub receipt time is the conservative fallback
+     * when the camera does not provide a usable local timestamp.</p>
+     */
+    private ResultIdentity acceptedResultIdentity(DeviceResult result) {
+        if (identityPipelineGeneration != pipelineGeneration) {
+            identityPipelineGeneration = pipelineGeneration;
+            greatestLimelightTimestampMillis = Double.NaN;
+            greatestFallbackReceiptMillis = Long.MIN_VALUE;
+            lastAcceptedResultIdentity = null;
+        }
+
+        ResultIdentity candidate = ResultIdentity.from(pipelineGeneration, result);
+        if (candidate.usesLimelightTimestamp) {
+            double timestampMillis = result.limelightTimestampMillis;
+            if (Double.isFinite(greatestLimelightTimestampMillis)) {
+                int order = Double.compare(timestampMillis, greatestLimelightTimestampMillis);
+                if (order < 0 || (order == 0 && !candidate.equals(lastAcceptedResultIdentity))) {
+                    return null;
+                }
+            }
+            greatestLimelightTimestampMillis = timestampMillis;
+        } else {
+            long receiptMillis = result.resultReceivedAtControlHubMillis;
+            if (greatestFallbackReceiptMillis != Long.MIN_VALUE) {
+                int order = Long.compare(receiptMillis, greatestFallbackReceiptMillis);
+                if (order < 0 || (order == 0 && !candidate.equals(lastAcceptedResultIdentity))) {
+                    return null;
+                }
+            }
+            greatestFallbackReceiptMillis = receiptMillis;
+        }
+        lastAcceptedResultIdentity = candidate;
+        return candidate;
+    }
+
+    /** Returns receipt staleness plus capture and targeting latency, in seconds. */
+    private static double estimatedExposureAgeSec(DeviceResult result) {
+        if (!Double.isFinite(result.receiptStalenessSec)
+                || result.receiptStalenessSec < 0.0
+                || !Double.isFinite(result.captureLatencyMillis)
+                || result.captureLatencyMillis < 0.0
+                || !Double.isFinite(result.targetingLatencyMillis)
+                || result.targetingLatencyMillis < 0.0) {
+            return Double.NaN;
+        }
+        double processingLatencySec =
+                (result.captureLatencyMillis + result.targetingLatencyMillis) / 1000.0;
+        double exposureAgeSec = result.receiptStalenessSec + processingLatencySec;
+        return Double.isFinite(exposureAgeSec) ? exposureAgeSec : Double.NaN;
     }
 
     private void requireUsable() {
@@ -813,6 +1000,9 @@ public class FtcLimelightVisionLane implements AutoCloseable {
             return new DeviceResult(
                     result.getControlHubTimeStamp(),
                     result.getStaleness() / MILLIS_PER_SECOND,
+                    result.getTimestamp(),
+                    result.getCaptureLatency(),
+                    result.getTargetingLatency(),
                     result.getPipelineIndex(),
                     result.getPipelineType(),
                     result.isValid(),
