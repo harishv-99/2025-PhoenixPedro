@@ -35,10 +35,10 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * AprilTagDetections dets = tags.get(clock);
  *
  * // Raw inspection.
- * telemetry.addData("visibleIds", dets.visibleIds(0.25).toString());
+ * telemetry.addData("visibleIds", dets.visibleIds(clock, 0.25).toString());
  *
  * // Explicit lookup by ID.
- * AprilTagObservation obs = dets.forId(5, 0.25);
+ * AprilTagObservation obs = dets.forId(clock, 5, 0.25);
  * if (obs.hasTarget) {
  *     telemetry.addData("bearingDeg", Math.toDegrees(obs.cameraBearingRad()));
  * }

@@ -4,6 +4,7 @@ import org.junit.Test;
 
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
 import edu.ftcphoenix.fw.core.time.LoopClock;
+import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 import edu.ftcphoenix.fw.field.SimpleTagLayout;
 import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLane;
 import edu.ftcphoenix.fw.ftc.vision.VisionReadiness;
@@ -111,21 +112,20 @@ public final class FtcOdometryAprilTagLocalizationLaneTest {
 
     private static final class RecordingPredictor implements MotionPredictor {
         int updateCount;
-        private PoseEstimate estimate = PoseEstimate.noPose(0.0);
-        private MotionDelta delta = MotionDelta.none(0.0);
+        private PoseEstimate estimate = PoseEstimate.noPose(LoopTimestamp.unavailable());
+        private MotionDelta delta = MotionDelta.none(LoopTimestamp.unavailable());
 
         @Override
         public void update(LoopClock clock) {
             updateCount++;
-            double nowSec = clock.nowSec();
+            LoopTimestamp timestamp = clock.nowTimestamp();
             estimate = new PoseEstimate(
                     new Pose3d(updateCount, 0.0, 0.0, 0.0, 0.0, 0.0),
                     true,
                     1.0,
-                    0.0,
-                    nowSec
+                    timestamp
             );
-            delta = MotionDelta.none(nowSec);
+            delta = MotionDelta.none(timestamp);
         }
 
         @Override

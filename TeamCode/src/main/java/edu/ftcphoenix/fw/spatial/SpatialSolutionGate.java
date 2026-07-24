@@ -1,5 +1,9 @@
 package edu.ftcphoenix.fw.spatial;
 
+import java.util.Objects;
+
+import edu.ftcphoenix.fw.core.time.LoopTimestamp;
+
 /**
  * Shared freshness/quality gate for selecting spatial lane solutions.
  *
@@ -8,10 +12,19 @@ package edu.ftcphoenix.fw.spatial;
  */
 public final class SpatialSolutionGate {
 
+    private static final double SAMPLE_TIME_FUTURE_TOLERANCE_SEC = 1.0e-6;
+
     public final double maxAgeSec;
     public final double minQuality;
 
     private SpatialSolutionGate(double maxAgeSec, double minQuality) {
+        if (Double.isNaN(maxAgeSec) || maxAgeSec < 0.0) {
+            throw new IllegalArgumentException(
+                    "maxAgeSec must be >= 0 or positive infinity, got " + maxAgeSec);
+        }
+        if (!Double.isFinite(minQuality)) {
+            throw new IllegalArgumentException("minQuality must be finite, got " + minQuality);
+        }
         this.maxAgeSec = maxAgeSec;
         this.minQuality = minQuality;
     }
@@ -31,21 +44,33 @@ public final class SpatialSolutionGate {
     }
 
     /**
-     * Returns true when a facing solution passes this gate.
+     * Returns true when a facing solution passes this gate at the supplied coherent query-sample
+     * time. The two timestamps retain their clock and epoch, so reset-invalidated or mismatched
+     * timing cannot be accepted as current data.
      */
-    public boolean accepts(FacingSolution solution) {
+    public boolean accepts(FacingSolution solution, LoopTimestamp sampleTimestamp) {
         return solution != null
                 && solution.quality >= minQuality
-                && (!Double.isFinite(maxAgeSec) || solution.ageSec <= maxAgeSec);
+                && acceptsTimestamp(solution.timestamp, sampleTimestamp);
     }
 
     /**
-     * Returns true when a translation solution passes this gate.
+     * Returns true when a translation solution passes this gate at the supplied coherent
+     * query-sample time.
      */
-    public boolean accepts(TranslationSolution solution) {
+    public boolean accepts(TranslationSolution solution, LoopTimestamp sampleTimestamp) {
         return solution != null
                 && solution.quality >= minQuality
-                && (!Double.isFinite(maxAgeSec) || solution.ageSec <= maxAgeSec);
+                && acceptsTimestamp(solution.timestamp, sampleTimestamp);
+    }
+
+    private boolean acceptsTimestamp(LoopTimestamp timestamp, LoopTimestamp sampleTimestamp) {
+        Objects.requireNonNull(timestamp, "timestamp");
+        Objects.requireNonNull(sampleTimestamp, "sampleTimestamp");
+        double ageSec = sampleTimestamp.secondsSince(timestamp);
+        return Double.isFinite(ageSec)
+                && ageSec >= -SAMPLE_TIME_FUTURE_TOLERANCE_SEC
+                && (!Double.isFinite(maxAgeSec) || Math.max(0.0, ageSec) <= maxAgeSec);
     }
 
     /**

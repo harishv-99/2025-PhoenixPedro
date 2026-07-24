@@ -12,6 +12,7 @@ import org.junit.Test;
 import java.lang.reflect.Proxy;
 
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
+import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
 import edu.ftcphoenix.robots.phoenix.PhoenixMatchHandoff;
 import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
@@ -41,8 +42,7 @@ public final class PhoenixTestersOpModeTest {
                         new Pose3d(9.0, -3.0, 0.0, 0.4, 0.0, 0.0),
                         true,
                         1.0,
-                        0.0,
-                        0.0
+                        LoopTimestamp.unavailable()
                 )
         );
 

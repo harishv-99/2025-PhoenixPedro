@@ -1,5 +1,9 @@
 package edu.ftcphoenix.fw.actuation;
 
+import java.util.Objects;
+
+import edu.ftcphoenix.fw.core.time.LoopTimestamp;
+
 /**
  * One acceptable scalar target family in a plant's public units.
  *
@@ -8,11 +12,11 @@ package edu.ftcphoenix.fw.actuation;
  * facing a point usually issues one periodic-equivalent candidate.</p>
  *
  * <p>Ordinary factories describe timeless robot intent. {@code observed...} factories describe a
- * value derived from an observation and carry that observation's stable timestamp in the consuming
- * {@link edu.ftcphoenix.fw.core.time.LoopClock} timebase. Observation age is derived by the planner
- * when the request is resolved; it is not stored as a second, potentially contradictory freshness fact.
- * Quality and timestamp metadata are checked during resolution so a malformed live observation can
- * follow the plan's unavailable policy instead of throwing while the source constructs it.</p>
+ * value derived from an observation and carry that observation's stable {@link LoopTimestamp}.
+ * Observation age is derived by the planner when the request is resolved; it is not stored as a
+ * second, potentially contradictory freshness fact. Quality and timestamp metadata are checked
+ * during resolution so a malformed live observation can follow the plan's unavailable policy
+ * instead of throwing while the source constructs it.</p>
  */
 public final class PlantTargetCandidate {
 
@@ -23,7 +27,7 @@ public final class PlantTargetCandidate {
     public final boolean usesPlantPeriod;
     public final boolean relative;
     public final double quality;
-    public final double timestampSec;
+    public final LoopTimestamp timestamp;
     private final boolean observed;
 
     private PlantTargetCandidate(String id,
@@ -33,7 +37,7 @@ public final class PlantTargetCandidate {
                                  boolean usesPlantPeriod,
                                  boolean relative,
                                  double quality,
-                                 double timestampSec,
+                                 LoopTimestamp timestamp,
                                  boolean observed) {
         if (!Double.isFinite(value)) {
             throw new IllegalArgumentException("Plant target candidate value must be finite");
@@ -48,7 +52,7 @@ public final class PlantTargetCandidate {
         this.usesPlantPeriod = usesPlantPeriod;
         this.relative = relative;
         this.quality = quality;
-        this.timestampSec = timestampSec;
+        this.timestamp = Objects.requireNonNull(timestamp, "timestamp");
         this.observed = observed;
     }
 
@@ -57,21 +61,21 @@ public final class PlantTargetCandidate {
      */
     public static PlantTargetCandidate exact(String id, double value) {
         return new PlantTargetCandidate(id, value, false, Double.NaN, false, false,
-                1.0, Double.NaN, false);
+                1.0, LoopTimestamp.unavailable(), false);
     }
 
     /**
      * Creates an absolute exact candidate derived from an observation.
      *
      * @param quality observation quality for planner acceptance
-     * @param timestampSec stable observation timestamp in the consuming loop clock's timebase
+     * @param timestamp stable observation timestamp from the consuming loop clock
      */
     public static PlantTargetCandidate observedExact(String id,
                                                      double value,
                                                      double quality,
-                                                     double timestampSec) {
+                                                     LoopTimestamp timestamp) {
         return new PlantTargetCandidate(id, value, false, Double.NaN, false, false,
-                quality, timestampSec, true);
+                quality, timestamp, true);
     }
 
     /**
@@ -80,21 +84,21 @@ public final class PlantTargetCandidate {
      */
     public static PlantTargetCandidate equivalentPosition(String id, double value) {
         return new PlantTargetCandidate(id, value, true, Double.NaN, true, false,
-                1.0, Double.NaN, false);
+                1.0, LoopTimestamp.unavailable(), false);
     }
 
     /**
      * Creates a plant-period equivalent-position candidate derived from an observation.
      *
      * @param quality observation quality for planner acceptance
-     * @param timestampSec stable observation timestamp in the consuming loop clock's timebase
+     * @param timestamp stable observation timestamp from the consuming loop clock
      */
     public static PlantTargetCandidate observedEquivalentPosition(String id,
                                                                   double value,
                                                                   double quality,
-                                                                  double timestampSec) {
+                                                                  LoopTimestamp timestamp) {
         return new PlantTargetCandidate(id, value, true, Double.NaN, true, false,
-                quality, timestampSec, true);
+                quality, timestamp, true);
     }
 
     /**
@@ -102,22 +106,22 @@ public final class PlantTargetCandidate {
      */
     public static PlantTargetCandidate periodic(String id, double value, double period) {
         return new PlantTargetCandidate(id, value, true, period, false, false,
-                1.0, Double.NaN, false);
+                1.0, LoopTimestamp.unavailable(), false);
     }
 
     /**
      * Creates an absolute periodic candidate derived from an observation.
      *
      * @param quality observation quality for planner acceptance
-     * @param timestampSec stable observation timestamp in the consuming loop clock's timebase
+     * @param timestamp stable observation timestamp from the consuming loop clock
      */
     public static PlantTargetCandidate observedPeriodic(String id,
                                                         double value,
                                                         double period,
                                                         double quality,
-                                                        double timestampSec) {
+                                                        LoopTimestamp timestamp) {
         return new PlantTargetCandidate(id, value, true, period, false, false,
-                quality, timestampSec, true);
+                quality, timestamp, true);
     }
 
     /**
@@ -125,21 +129,21 @@ public final class PlantTargetCandidate {
      */
     public static PlantTargetCandidate relative(String id, double delta) {
         return new PlantTargetCandidate(id, delta, false, Double.NaN, false, true,
-                1.0, Double.NaN, false);
+                1.0, LoopTimestamp.unavailable(), false);
     }
 
     /**
      * Creates a relative exact candidate derived from an observation.
      *
      * @param quality observation quality for planner acceptance
-     * @param timestampSec stable observation timestamp in the consuming loop clock's timebase
+     * @param timestamp stable observation timestamp from the consuming loop clock
      */
     public static PlantTargetCandidate observedRelative(String id,
                                                         double delta,
                                                         double quality,
-                                                        double timestampSec) {
+                                                        LoopTimestamp timestamp) {
         return new PlantTargetCandidate(id, delta, false, Double.NaN, false, true,
-                quality, timestampSec, true);
+                quality, timestamp, true);
     }
 
     /**
@@ -147,7 +151,7 @@ public final class PlantTargetCandidate {
      */
     public static PlantTargetCandidate relativeEquivalentPosition(String id, double delta) {
         return new PlantTargetCandidate(id, delta, true, Double.NaN, true, true,
-                1.0, Double.NaN, false);
+                1.0, LoopTimestamp.unavailable(), false);
     }
 
     /**
@@ -155,14 +159,14 @@ public final class PlantTargetCandidate {
      * downstream plant's period.
      *
      * @param quality observation quality for planner acceptance
-     * @param timestampSec stable observation timestamp in the consuming loop clock's timebase
+     * @param timestamp stable observation timestamp from the consuming loop clock
      */
     public static PlantTargetCandidate observedRelativeEquivalentPosition(String id,
                                                                           double delta,
                                                                           double quality,
-                                                                          double timestampSec) {
+                                                                          LoopTimestamp timestamp) {
         return new PlantTargetCandidate(id, delta, true, Double.NaN, true, true,
-                quality, timestampSec, true);
+                quality, timestamp, true);
     }
 
     /**
@@ -170,7 +174,7 @@ public final class PlantTargetCandidate {
      */
     public static PlantTargetCandidate relativePeriodic(String id, double delta, double period) {
         return new PlantTargetCandidate(id, delta, true, period, false, true,
-                1.0, Double.NaN, false);
+                1.0, LoopTimestamp.unavailable(), false);
     }
 
     /**
@@ -178,15 +182,15 @@ public final class PlantTargetCandidate {
      * target = current measurement + delta + k*period.
      *
      * @param quality observation quality for planner acceptance
-     * @param timestampSec stable observation timestamp in the consuming loop clock's timebase
+     * @param timestamp stable observation timestamp from the consuming loop clock
      */
     public static PlantTargetCandidate observedRelativePeriodic(String id,
                                                                 double delta,
                                                                 double period,
                                                                 double quality,
-                                                                double timestampSec) {
+                                                                LoopTimestamp timestamp) {
         return new PlantTargetCandidate(id, delta, true, period, false, true,
-                quality, timestampSec, true);
+                quality, timestamp, true);
     }
 
     boolean isObserved() {
@@ -199,6 +203,6 @@ public final class PlantTargetCandidate {
                 + ", periodic=" + periodic + ", period=" + period
                 + ", usesPlantPeriod=" + usesPlantPeriod
                 + ", relative=" + relative + ", quality=" + quality
-                + ", observed=" + observed + ", timestampSec=" + timestampSec + '}';
+                + ", observed=" + observed + ", timestamp=" + timestamp + '}';
     }
 }

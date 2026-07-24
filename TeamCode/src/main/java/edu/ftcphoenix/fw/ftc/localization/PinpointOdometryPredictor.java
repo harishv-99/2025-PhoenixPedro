@@ -14,6 +14,7 @@ import edu.ftcphoenix.fw.core.geometry.Pose2d;
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
 import edu.ftcphoenix.fw.core.math.MathUtil;
 import edu.ftcphoenix.fw.core.time.LoopClock;
+import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 import edu.ftcphoenix.fw.localization.MotionDelta;
 import edu.ftcphoenix.fw.localization.MotionPredictor;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
@@ -281,12 +282,12 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
     private final GoBildaPinpointDriver odo;
     private final Config cfg;
 
-    private PoseEstimate lastEstimate = PoseEstimate.noPose(0.0);
-    private MotionDelta lastMotionDelta = MotionDelta.none(0.0);
+    private PoseEstimate lastEstimate = PoseEstimate.noPose(LoopTimestamp.unavailable());
+    private MotionDelta lastMotionDelta = MotionDelta.none(LoopTimestamp.unavailable());
     private PinpointKinematicSnapshot lastKinematicSnapshot =
             PinpointKinematicSnapshot.unavailable(
                     PinpointKinematicSnapshot.NO_CYCLE,
-                    0.0,
+                    LoopTimestamp.unavailable(),
                     0.0
             );
     private long lastUpdateCycle = Long.MIN_VALUE;
@@ -362,19 +363,19 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
      *
      * <p>Repeated calls with the same non-null {@link LoopClock#cycle()} are no-ops, so layered
      * estimator/integration code cannot poll the hardware twice in one robot loop. A null clock is
-     * retained only for lower-level tools: each null-clock call polls, timestamps the sample at
-     * {@code 0.0}, and marks its cycle as {@link PinpointKinematicSnapshot#NO_CYCLE}, so it cannot
-     * claim normal same-cycle freshness.</p>
+     * retained only for lower-level tools: each null-clock call polls, gives the sample an
+     * unavailable timestamp, and marks its cycle as {@link PinpointKinematicSnapshot#NO_CYCLE}, so
+     * it cannot claim normal same-cycle freshness.</p>
      *
      * @param clock shared robot loop clock, or {@code null} only for lower-level untimed tools
      */
     @Override
     public void update(LoopClock clock) {
         final long cycle;
-        final double nowSec;
+        final LoopTimestamp timestamp;
         if (clock != null) {
             cycle = clock.cycle();
-            nowSec = clock.nowSec();
+            timestamp = clock.nowTimestamp();
             if (lastUpdateCycle == cycle) {
                 return;
             }
@@ -382,7 +383,7 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
             lastUpdateCycle = cycle;
         } else {
             cycle = PinpointKinematicSnapshot.NO_CYCLE;
-            nowSec = 0.0;
+            timestamp = LoopTimestamp.unavailable();
             // Untimed tooling cannot participate in or poison the normal LoopClock cycle guard.
             lastUpdateCycle = Long.MIN_VALUE;
         }
@@ -391,11 +392,11 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
         Pose2D pos = odo.getPosition();
 
         if (pos == null) {
-            lastEstimate = PoseEstimate.noPose(nowSec);
-            lastMotionDelta = MotionDelta.none(nowSec);
+            lastEstimate = PoseEstimate.noPose(timestamp);
+            lastMotionDelta = MotionDelta.none(timestamp);
             lastKinematicSnapshot = PinpointKinematicSnapshot.unavailable(
                     cycle,
-                    nowSec,
+                    timestamp,
                     totalHeadingRad
             );
             return;
@@ -406,11 +407,11 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
         double headingRad = normalizeDriverHeadingRad(pos.getHeading(AngleUnit.RADIANS));
 
         if (!isFinite(xIn, yIn, headingRad)) {
-            lastEstimate = PoseEstimate.noPose(nowSec);
-            lastMotionDelta = MotionDelta.none(nowSec);
+            lastEstimate = PoseEstimate.noPose(timestamp);
+            lastMotionDelta = MotionDelta.none(timestamp);
             lastKinematicSnapshot = PinpointKinematicSnapshot.unavailable(
                     cycle,
-                    nowSec,
+                    timestamp,
                     totalHeadingRad
             );
             return;
@@ -439,26 +440,28 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
 
         Pose3d pose = new Pose3d(xIn, yIn, 0.0, headingRad, 0.0, 0.0);
         PoseEstimate previous = lastEstimate;
-        if (previous != null && previous.hasPose) {
-            double startSec = Double.isFinite(previous.timestampSec) ? previous.timestampSec : nowSec;
+        double elapsedSec = previous != null
+                ? timestamp.secondsSince(previous.timestamp)
+                : Double.NaN;
+        if (previous != null && previous.hasPose && Double.isFinite(elapsedSec) && elapsedSec >= 0.0) {
             Pose3d previousPose = previous.fieldToRobotPose;
             lastMotionDelta = new MotionDelta(
                     previousPose.inverse().then(pose),
                     true,
                     cfg.quality,
-                    startSec,
-                    nowSec
+                    previous.timestamp,
+                    timestamp
             );
         } else {
-            lastMotionDelta = MotionDelta.none(nowSec);
+            lastMotionDelta = MotionDelta.none(timestamp);
         }
 
-        lastEstimate = new PoseEstimate(pose, true, cfg.quality, 0.0, nowSec);
+        lastEstimate = new PoseEstimate(pose, true, cfg.quality, timestamp);
         lastKinematicSnapshot = PinpointKinematicSnapshot.sampled(
                 pose.toPose2d(),
                 hasVelocity,
                 cycle,
-                nowSec,
+                timestamp,
                 fieldVelocityXInchesPerSec,
                 fieldVelocityYInchesPerSec,
                 angularVelocityRadPerSec,
@@ -498,15 +501,15 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
      */
     public void resetPosAndIMU() {
         odo.resetPosAndIMU();
-        double ts = (lastEstimate != null && Double.isFinite(lastEstimate.timestampSec)) ? lastEstimate.timestampSec : 0.0;
-        lastEstimate = PoseEstimate.noPose(ts);
-        lastMotionDelta = MotionDelta.none(ts);
+        LoopTimestamp timestamp = lastTimestamp();
+        lastEstimate = PoseEstimate.noPose(timestamp);
+        lastMotionDelta = MotionDelta.none(timestamp);
         hasPreviousPhysicalHeading = false;
         previousPhysicalHeadingRad = 0.0;
         totalHeadingRad = 0.0;
         lastKinematicSnapshot = PinpointKinematicSnapshot.unavailable(
                 lastKinematicSnapshot.cycle,
-                ts,
+                timestamp,
                 0.0
         );
     }
@@ -516,8 +519,8 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
      */
     public void recalibrateIMU() {
         odo.recalibrateIMU();
-        double ts = (lastEstimate != null && Double.isFinite(lastEstimate.timestampSec)) ? lastEstimate.timestampSec : 0.0;
-        lastMotionDelta = MotionDelta.none(ts);
+        LoopTimestamp timestamp = lastTimestamp();
+        lastMotionDelta = MotionDelta.none(timestamp);
         // Establish a new physical-heading baseline after calibration; a calibration jump is not motion.
         hasPreviousPhysicalHeading = false;
         lastKinematicSnapshot = lastKinematicSnapshot.withoutVelocity();
@@ -542,7 +545,7 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
                 rebasedPose.headingRad
         );
         odo.setPosition(set);
-        double ts = (lastEstimate != null && Double.isFinite(lastEstimate.timestampSec)) ? lastEstimate.timestampSec : 0.0;
+        LoopTimestamp timestamp = lastTimestamp();
         lastEstimate = new PoseEstimate(new Pose3d(
                 rebasedPose.xInches,
                 rebasedPose.yInches,
@@ -550,12 +553,18 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
                 rebasedPose.headingRad,
                 0.0,
                 0.0
-        ), true, cfg.quality, 0.0, ts);
-        lastMotionDelta = MotionDelta.none(ts);
+        ), true, cfg.quality, timestamp);
+        lastMotionDelta = MotionDelta.none(timestamp);
         // A coordinate correction is not physical motion; retain the last measured velocity/turn.
         previousPhysicalHeadingRad = rebasedPose.headingRad;
         hasPreviousPhysicalHeading = true;
         lastKinematicSnapshot = lastKinematicSnapshot.withRebasedPose(rebasedPose);
+    }
+
+    private LoopTimestamp lastTimestamp() {
+        return lastEstimate != null && lastEstimate.timestamp != null
+                ? lastEstimate.timestamp
+                : LoopTimestamp.unavailable();
     }
 
     /** Accumulate the shortest signed physical turn across a wrapped-heading boundary. */

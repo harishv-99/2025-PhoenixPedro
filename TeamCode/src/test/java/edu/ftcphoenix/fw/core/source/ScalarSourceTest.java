@@ -12,6 +12,7 @@ import edu.ftcphoenix.fw.testing.ManualLoopClock;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 /** Verifies representative per-cycle behavior for scalar source composition. */
 public final class ScalarSourceTest {
@@ -50,6 +51,40 @@ public final class ScalarSourceTest {
         assertEquals(1, resetCount[0]);
         assertEquals(3.0, memoized.getAsDouble(manualClock.clock()), EPSILON);
         assertEquals(3, sampleCount[0]);
+    }
+
+    @Test
+    public void holdLastValidDoesNotRejuvenateValueAcrossSameTimeReset() {
+        MutableScalarSource raw = new MutableScalarSource(8.0);
+        ManualLoopClock time = new ManualLoopClock(4.0);
+        ScalarSource held = raw.holdLastValid(Double::isFinite, 1.0, -1.0);
+
+        assertEquals(8.0, held.getAsDouble(time.clock()), EPSILON);
+        raw.value = Double.NaN;
+        time.clock().reset(4.0);
+
+        assertEquals(-1.0, held.getAsDouble(time.clock()), EPSILON);
+
+        time.nextCycle(0.0);
+        raw.value = 9.0;
+        assertEquals(9.0, held.getAsDouble(time.clock()), EPSILON);
+    }
+
+    @Test
+    public void holdLastValidRejectsNonFiniteOrNegativeDuration() {
+        for (double duration : new double[]{
+                -0.01,
+                Double.NaN,
+                Double.POSITIVE_INFINITY,
+                Double.NEGATIVE_INFINITY
+        }) {
+            try {
+                ScalarSource.constant(1.0).holdLastFinite(duration, -1.0);
+                fail("Expected invalid maxHoldSec " + duration + " to be rejected");
+            } catch (IllegalArgumentException expected) {
+                assertTrue(expected.getMessage().contains("maxHoldSec"));
+            }
+        }
     }
 
     @Test
@@ -131,6 +166,27 @@ public final class ScalarSourceTest {
         assertEquals(0.0, rate.getAsDouble(clock), EPSILON);
 
         clock.update(5.5);
+        position.value = 101.0;
+        assertEquals(2.0, rate.getAsDouble(clock), EPSILON);
+    }
+
+    @Test
+    public void ratePerSecondRebaselinesAcrossSameTimeReset() {
+        MutableScalarSource position = new MutableScalarSource(10.0);
+        LoopClock clock = new LoopClock();
+        clock.reset(5.0);
+        ScalarSource rate = position.ratePerSecond();
+
+        assertEquals(0.0, rate.getAsDouble(clock), EPSILON);
+        clock.update(6.0);
+        position.value = 12.0;
+        assertEquals(2.0, rate.getAsDouble(clock), EPSILON);
+
+        clock.reset(6.0);
+        position.value = 100.0;
+        assertEquals(0.0, rate.getAsDouble(clock), EPSILON);
+
+        clock.update(6.5);
         position.value = 101.0;
         assertEquals(2.0, rate.getAsDouble(clock), EPSILON);
     }

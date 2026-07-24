@@ -149,6 +149,9 @@ To avoid brittle behavior, several Phoenix components are **idempotent by `clock
 That means:
 
 * If the component was already updated during the current cycle, additional calls do nothing.
+* `cycle()` is an identity, not a count of elapsed loops. It stays monotonic for the lifetime of one
+  clock and advances immediately at every explicit `clock.reset(...)`, so a post-reset read cannot
+  reuse a pre-reset cache entry even when the reset time is unchanged.
 
 ### 4.1 Sources, edges, and memoization are cycle-idempotent
 
@@ -231,7 +234,32 @@ Avoid these patterns:
 
 If you need time, take it from the `LoopClock`.
 
-### 5.1 Optional loop-phase diagnostics
+### 5.1 Captured measurement time
+
+When a measurement time must cross component boundaries, keep it as one `LoopTimestamp`:
+
+```java
+LoopTimestamp capturedNow = clock.nowTimestamp();
+LoopTimestamp delayedFrame = clock.timestampSecondsAgo(frameAgeSec);
+
+double ageSec = delayedFrame.ageSec(clock);
+boolean usable = delayedFrame.isFresh(clock, 0.20);
+double spacingSec = capturedNow.secondsSince(delayedFrame);
+```
+
+The value privately retains its clock and reset epoch as well as its coordinate. Consumers do not
+store or compare a separate epoch, and there is intentionally no raw timestamp accessor. A reset
+invalidates older timestamps automatically; an unavailable or prior-epoch timestamp returns `NaN`
+age and is not fresh. Passing a timestamp to a different `LoopClock` is a wiring error.
+
+Use `timestampSecondsAgo(...)` once where an age-native sensor or vendor result enters the
+framework, then retain and forward that timestamp. Recomputing `now - cachedAge` each time a cached
+result is sampled would incorrectly make it appear newly captured. `LoopTimestamp.unavailable()`
+is the explicit non-null value when no truthful measurement time exists. Raw vendor/FTC clock
+coordinates stay private to their boundary until translated; lifecycle-local Task start/deadline
+seconds do not need this wrapper when they never escape that Task.
+
+### 5.2 Optional loop-phase diagnostics
 
 When the whole loop is slow and you need to find the owner, the composition root may opt into a
 `LoopPhaseProfiler`. This is a diagnostic observer, not another behavioral clock. It hides its own

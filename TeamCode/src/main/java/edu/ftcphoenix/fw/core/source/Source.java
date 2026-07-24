@@ -8,6 +8,7 @@ import java.util.function.ToDoubleFunction;
 
 import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.time.LoopClock;
+import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 
 /**
  * A {@code Source<T>} produces a value once per loop.
@@ -280,8 +281,9 @@ public interface Source<T> {
      * noisy classifier that sometimes outputs an "unknown" value; holding the last non-unknown
      * value for a short time makes downstream logic much more stable.</p>
      *
-     * <p>Unlike some time-based filters, this implementation uses {@link LoopClock#nowSec()} so it
-     * still behaves correctly even if the source is not sampled every loop.</p>
+     * <p>The retained value carries a clock-owned timestamp, so the hold duration remains correct
+     * when the source is not sampled every loop and a deliberate clock reset cannot make an old
+     * value current again.</p>
      *
      * <p>When the input becomes invalid:
      * <ul>
@@ -298,14 +300,15 @@ public interface Source<T> {
      * </p>
      *
      * @param isValid    predicate that defines which values are considered valid
-     * @param maxHoldSec maximum age of the held value in seconds; must be {@code >= 0}
+     * @param maxHoldSec finite maximum age of the held value in seconds; must be {@code >= 0}
      * @param fallback   value returned when no valid value is available (or the hold has expired)
      */
     default Source<T> holdLastValid(Predicate<? super T> isValid, double maxHoldSec, T fallback) {
         Objects.requireNonNull(isValid, "isValid");
         Objects.requireNonNull(fallback, "fallback");
-        if (maxHoldSec < 0.0) {
-            throw new IllegalArgumentException("maxHoldSec must be >= 0, got " + maxHoldSec);
+        if (!Double.isFinite(maxHoldSec) || maxHoldSec < 0.0) {
+            throw new IllegalArgumentException(
+                    "maxHoldSec must be finite and >= 0, got " + maxHoldSec);
         }
 
         Source<T> self = this;
@@ -315,11 +318,9 @@ public interface Source<T> {
 
             private T lastValid = fallback;
             private boolean hasValid = false;
-            private double lastValidSec = Double.NEGATIVE_INFINITY;
-            /**
-             * The last time {@link #get(LoopClock)} was sampled (for debug only).
-             */
-            private double lastSampleSec = Double.NEGATIVE_INFINITY;
+            private LoopTimestamp lastValidTimestamp = LoopTimestamp.unavailable();
+            /** Derived diagnostic age at the most recent sample. */
+            private double lastValidAgeSec = Double.POSITIVE_INFINITY;
 
             /**
              * {@inheritDoc}
@@ -333,18 +334,19 @@ public interface Source<T> {
                 lastCycle = cyc;
 
                 T cur = Objects.requireNonNull(self.get(clock), "source returned null");
-                double now = clock.nowSec();
-                lastSampleSec = now;
-
                 if (isValid.test(cur)) {
                     hasValid = true;
                     lastValid = cur;
-                    lastValidSec = now;
+                    lastValidTimestamp = clock.nowTimestamp();
+                    lastValidAgeSec = 0.0;
                     lastOut = cur;
                     return lastOut;
                 }
 
-                if (hasValid && (now - lastValidSec) <= maxHoldSec) {
+                lastValidAgeSec = hasValid
+                        ? lastValidTimestamp.ageSec(clock)
+                        : Double.POSITIVE_INFINITY;
+                if (Double.isFinite(lastValidAgeSec) && lastValidAgeSec <= maxHoldSec) {
                     lastOut = lastValid;
                     return lastOut;
                 }
@@ -363,8 +365,8 @@ public interface Source<T> {
                 lastOut = fallback;
                 hasValid = false;
                 lastValid = fallback;
-                lastValidSec = Double.NEGATIVE_INFINITY;
-                lastSampleSec = Double.NEGATIVE_INFINITY;
+                lastValidTimestamp = LoopTimestamp.unavailable();
+                lastValidAgeSec = Double.POSITIVE_INFINITY;
             }
 
             /**
@@ -376,11 +378,10 @@ public interface Source<T> {
                     return;
                 }
                 String p = (prefix == null || prefix.isEmpty()) ? "holdLastValid" : prefix;
-                double ageSec = hasValid ? Math.max(0.0, lastSampleSec - lastValidSec) : Double.POSITIVE_INFINITY;
                 dbg.addData(p + ".class", "HoldLastValid")
                         .addData(p + ".maxHoldSec", maxHoldSec)
                         .addData(p + ".hasValid", hasValid)
-                        .addData(p + ".lastValidAgeSec", ageSec);
+                        .addData(p + ".lastValidAgeSec", lastValidAgeSec);
                 self.debugDump(dbg, p + ".src");
             }
         };

@@ -255,8 +255,9 @@ public final class TesterSuite extends BaseTeleOpTester {
     /** {@inheritDoc} */
     @Override
     protected void onStart() {
-        // The FTC root resets the shared clock when RUN begins, so INIT cycle numbers may be
-        // reused. Do not let an INIT-phase BACK result suppress a distinct RUN-phase press.
+        // The FTC root resets the shared clock when RUN begins. The clock advances to a fresh
+        // monotonic cycle identity, and this suite also clears its lifecycle-owned BACK state so
+        // an INIT-phase result cannot suppress a distinct RUN-phase press.
         lastBackCycle = Long.MIN_VALUE;
         lastBackConsumed = false;
         opModeStarted = true;

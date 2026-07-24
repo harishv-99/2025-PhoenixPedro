@@ -15,6 +15,7 @@ import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
 import edu.ftcphoenix.fw.core.math.MathUtil;
 import edu.ftcphoenix.fw.core.time.LoopClock;
+import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 import edu.ftcphoenix.fw.ftc.vision.FtcLimelightAprilTagVisionLane;
 import edu.ftcphoenix.fw.ftc.vision.FtcLimelightVisionLane;
 import edu.ftcphoenix.fw.localization.AbsolutePoseEstimator;
@@ -189,7 +190,7 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
     private final MotionPredictor predictor;
     private final Config cfg;
 
-    private PoseEstimate lastEstimate = PoseEstimate.noPose(0.0);
+    private PoseEstimate lastEstimate = PoseEstimate.noPose(LoopTimestamp.unavailable());
     private double lastTranslationSpeedInPerSec = 0.0;
     private double lastYawRateRadPerSec = 0.0;
     private int lastVisibleTagCount = 0;
@@ -223,7 +224,7 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
     @Override
     public void update(LoopClock clock) {
         Objects.requireNonNull(clock, "clock");
-        final double nowSec = clock.nowSec();
+        final LoopTimestamp nowTimestamp = clock.nowTimestamp();
         lastRejectReason = "none";
         lastVisibleTagCount = 0;
         lastBaseQuality = 0.0;
@@ -238,27 +239,27 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
         FtcLimelightVisionLane.ResultSnapshot result = lane.confirmedAprilTagResult(clock);
         if (!result.hasResult()) {
             lastRejectReason = "AprilTag pipeline is not ready";
-            lastEstimate = PoseEstimate.noPose(nowSec);
+            lastEstimate = PoseEstimate.noPose(nowTimestamp);
             return;
         }
 
-        double ageSec = result.ageSec();
+        LoopTimestamp measurementTimestamp = clock.timestampSecondsAgo(result.ageSec());
+        double ageSec = measurementTimestamp.ageSec(clock);
         if (!Double.isFinite(ageSec) || ageSec < 0.0) {
             lastRejectReason = "confirmed result reported an invalid age";
-            lastEstimate = PoseEstimate.noPose(nowSec);
+            lastEstimate = PoseEstimate.noPose(nowTimestamp);
             return;
         }
-        double timestampSec = nowSec - ageSec;
 
         if (!result.isTargetValid()) {
             lastRejectReason = "confirmed pipeline result has no target";
-            lastEstimate = PoseEstimate.noPose(nowSec);
+            lastEstimate = PoseEstimate.noPose(nowTimestamp);
             return;
         }
 
         if (cfg.maxResultAgeSec > 0.0 && ageSec > cfg.maxResultAgeSec) {
             lastRejectReason = "result age exceeded maxResultAgeSec";
-            lastEstimate = PoseEstimate.noPose(nowSec);
+            lastEstimate = PoseEstimate.noPose(nowTimestamp);
             return;
         }
 
@@ -266,21 +267,21 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
         lastVisibleTagCount = fiducials.size();
         if (lastVisibleTagCount < cfg.minVisibleTags) {
             lastRejectReason = "not enough visible tags for direct pose";
-            lastEstimate = PoseEstimate.noPose(nowSec);
+            lastEstimate = PoseEstimate.noPose(nowTimestamp);
             return;
         }
 
         Pose3D botpose = readBotpose(result, cfg.mode);
         if (botpose == null) {
             lastRejectReason = "direct botpose was unavailable";
-            lastEstimate = PoseEstimate.noPose(nowSec);
+            lastEstimate = PoseEstimate.noPose(nowTimestamp);
             return;
         }
 
         Pose3d fieldToRobotPose = phoenixFieldPose(botpose);
         if (fieldToRobotPose == null) {
             lastRejectReason = "could not decode botpose";
-            lastEstimate = PoseEstimate.noPose(nowSec);
+            lastEstimate = PoseEstimate.noPose(nowTimestamp);
             return;
         }
 
@@ -301,7 +302,7 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
                         && (lastTranslationSpeedInPerSec > cfg.maxTranslationSpeedInPerSec
                         || lastYawRateRadPerSec > cfg.maxYawRateRadPerSec)) {
                     lastRejectReason = "predictor motion exceeded hard limits";
-                    lastEstimate = PoseEstimate.noPose(nowSec);
+                    lastEstimate = PoseEstimate.noPose(nowTimestamp);
                     return;
                 }
 
@@ -316,7 +317,7 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
             }
         }
 
-        lastEstimate = new PoseEstimate(fieldToRobotPose, true, quality, ageSec, timestampSec);
+        lastEstimate = new PoseEstimate(fieldToRobotPose, true, quality, measurementTimestamp);
     }
 
     /**
@@ -341,8 +342,7 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
         dbg.addData(p + ".mode", cfg.mode)
                 .addData(p + ".hasPose", lastEstimate.hasPose)
                 .addData(p + ".quality", lastEstimate.quality)
-                .addData(p + ".ageSec", lastEstimate.ageSec)
-                .addData(p + ".timestampSec", lastEstimate.timestampSec)
+                .addData(p + ".timestampAvailable", lastEstimate.timestamp.isAvailable())
                 .addData(p + ".fieldToRobotPose", lastEstimate.fieldToRobotPose)
                 .addData(p + ".visibleTagCount", lastVisibleTagCount)
                 .addData(p + ".baseQuality", lastBaseQuality)

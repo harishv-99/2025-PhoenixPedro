@@ -12,6 +12,7 @@ import com.pedropathing.paths.PathConstraints;
 import org.junit.Test;
 
 import edu.ftcphoenix.fw.core.geometry.Pose2d;
+import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 import edu.ftcphoenix.fw.testing.ManualLoopClock;
 
 import static org.junit.Assert.assertEquals;
@@ -52,7 +53,7 @@ public final class PedroPathingPassiveLocalizerTest {
         Fixture fixture = new Fixture();
         fixture.access.sample = sampled(
                 fixture.clock.clock().cycle(),
-                fixture.clock.clock().nowSec(),
+                fixture.clock.clock().nowTimestamp(),
                 new Pose2d(10.0, -5.0, 0.25),
                 3.0,
                 4.0,
@@ -83,7 +84,7 @@ public final class PedroPathingPassiveLocalizerTest {
         Fixture stale = new Fixture();
         stale.access.sample = sampled(
                 stale.clock.clock().cycle() + 1,
-                stale.clock.clock().nowSec(),
+                stale.clock.clock().nowTimestamp(),
                 Pose2d.zero(),
                 0.0,
                 0.0,
@@ -103,7 +104,7 @@ public final class PedroPathingPassiveLocalizerTest {
                 false,
                 false,
                 noPose.clock.clock().cycle(),
-                noPose.clock.clock().nowSec(),
+                noPose.clock.clock().nowTimestamp(),
                 0.0,
                 0.0,
                 0.0,
@@ -120,7 +121,7 @@ public final class PedroPathingPassiveLocalizerTest {
                 true,
                 false,
                 noVelocity.clock.clock().cycle(),
-                noVelocity.clock.clock().nowSec(),
+                noVelocity.clock.clock().nowTimestamp(),
                 0.0,
                 0.0,
                 0.0,
@@ -133,11 +134,38 @@ public final class PedroPathingPassiveLocalizerTest {
     }
 
     @Test
+    public void sameCycleSampleWithPriorEpochTimestampFailsClosedAfterReset() {
+        Fixture fixture = new Fixture();
+        LoopTimestamp priorEpochTimestamp = fixture.clock.clock().nowTimestamp();
+
+        // Keep the exact same numeric clock value, and make cycle identity look current. The
+        // retained timestamp's reset epoch must still prevent Pedro from consuming the sample.
+        fixture.clock.clock().reset(fixture.clock.clock().nowSec());
+        fixture.access.sample = sampled(
+                fixture.clock.clock().cycle(),
+                priorEpochTimestamp,
+                Pose2d.zero(),
+                0.0,
+                0.0,
+                0.0,
+                0.0
+        );
+        int breaksBeforeUpdate = fixture.drivetrain.breakCount;
+
+        assertFailsContaining(
+                () -> fixture.adapter.update(fixture.clock.clock()),
+                "current LoopClock reset epoch"
+        );
+        assertTrue(fixture.drivetrain.breakCount > breaksBeforeUpdate);
+    }
+
+    @Test
     public void repeatedPreHeartbeatStartAndCorrectionRebasesPreservePhysicalVelocityAndHeading() {
         FakePredictorAccess access = new FakePredictorAccess();
+        ManualLoopClock initialClock = new ManualLoopClock(2.0);
         access.sample = sampled(
                 -1L,
-                2.0,
+                initialClock.clock().nowTimestamp(),
                 new Pose2d(4.0, 5.0, 0.2),
                 6.0,
                 -2.0,
@@ -170,7 +198,7 @@ public final class PedroPathingPassiveLocalizerTest {
         ManualLoopClock clock = new ManualLoopClock(2.0);
         access.sample = sampled(
                 clock.clock().cycle(),
-                clock.clock().nowSec(),
+                clock.clock().nowTimestamp(),
                 access.sample.phoenixFieldToRobotPose,
                 6.0,
                 -2.0,
@@ -269,7 +297,7 @@ public final class PedroPathingPassiveLocalizerTest {
     }
 
     private static PedroPathingPassiveLocalizer.Sample sampled(long cycle,
-                                                               double timestampSec,
+                                                               LoopTimestamp timestamp,
                                                                Pose2d pose,
                                                                double velocityX,
                                                                double velocityY,
@@ -280,7 +308,7 @@ public final class PedroPathingPassiveLocalizerTest {
                 true,
                 true,
                 cycle,
-                timestampSec,
+                timestamp,
                 velocityX,
                 velocityY,
                 angularVelocity,
@@ -349,7 +377,7 @@ public final class PedroPathingPassiveLocalizerTest {
                     true,
                     sample.hasVelocity,
                     sample.cycle,
-                    sample.timestampSec,
+                    sample.timestamp,
                     sample.phoenixFieldVelocityXInchesPerSec,
                     sample.phoenixFieldVelocityYInchesPerSec,
                     sample.angularVelocityRadPerSec,

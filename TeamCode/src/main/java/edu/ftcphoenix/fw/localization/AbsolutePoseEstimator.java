@@ -84,8 +84,7 @@ public interface AbsolutePoseEstimator {
 
         dbg.addData(p + ".hasPose", est.hasPose)
                 .addData(p + ".quality", est.quality)
-                .addData(p + ".ageSec", est.ageSec)
-                .addData(p + ".timestampSec", est.timestampSec);
+                .addData(p + ".timestampAvailable", est.timestamp.isAvailable());
 
         if (est.hasPose) {
             dbg.addData(p + ".fieldToRobotPose", est.fieldToRobotPose);

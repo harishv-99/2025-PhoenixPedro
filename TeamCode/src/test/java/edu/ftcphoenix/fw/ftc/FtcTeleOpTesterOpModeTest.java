@@ -261,17 +261,17 @@ public final class FtcTeleOpTesterOpModeTest {
         mode.runtimeSec = 10.25;
         mode.init_loop();
         assertEquals(0.25, tester.initLoopDtSec, 0.0);
-        assertEquals(1L, tester.initLoopCycle);
+        assertEquals(2L, tester.initLoopCycle);
 
         mode.runtimeSec = 20.0;
         mode.start();
         assertEquals(0.0, tester.startDtSec, 0.0);
-        assertEquals(0L, tester.startCycle);
+        assertEquals(3L, tester.startCycle);
 
         mode.runtimeSec = 20.4;
         mode.loop();
         assertEquals(0.4, tester.loopDtSec, 0.0000000001);
-        assertEquals(1L, tester.loopCycle);
+        assertEquals(4L, tester.loopCycle);
 
         mode.stop();
     }

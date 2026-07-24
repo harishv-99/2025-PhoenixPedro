@@ -1,6 +1,6 @@
 # Framework Improvement Tracker
 
-Last updated: 2026-07-22
+Last updated: 2026-07-23
 
 This file tracks proposed Phoenix framework improvements. It is deliberately a planning document:
 an item being listed here does **not** mean its current proposed solution has been approved. Each
@@ -126,30 +126,31 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 39 | PERF-03 | Contract-safe hardware write deduplication | Deferred | Wait for per-adapter measurements and controller/watchdog evidence before suppressing writes. |
 | 40 | TARGET-01 | Lazy Plant target overlay selection | Done | Two-pass lazy target resolution, measured-hold re-entry, truthful diagnostics, documentation, and 22 focused tests are complete and approved. |
 | 41 | TARGET-02 | Candidate freshness | Done | Timestamp-canonical observed/timeless APIs, derived age, fail-closed metadata handling, diagnostics, docs, and tests were reviewed and approved on 2026-07-23. |
-| 42 | VISION-02 | Stable AprilTag observation timestamps | Proposed | Anchor age-native frame time once at acquisition and remove consumer-side re-timestamping that can rejuvenate cached snapshots. |
-| 43 | TARGET-03 | Periodic planner complexity | Proposed | Replace range iteration with constant-time candidate mathematics. |
-| 44 | CYCLE-01 | Stateful drive-source cycle safety | Proposed | Memoize stateful composition once per `clock.cycle()` and propagate reset deliberately. |
-| 45 | CYCLE-02 | Localization cycle safety | Proposed | Guard predictors/estimators against duplicate same-cycle updates. |
-| 46 | SOURCE-01 | Boolean composition sampling | Proposed | Sample both operands once per cycle before combining stateful results. |
-| 47 | API-01 | Writable Plant command binding | Proposed | Keep one simple `Plant` if builder provenance can prevent silent no-op writes. |
-| 48 | API-02 | Feedback tolerance choice | Proposed | Ask for tolerance after unit mapping; retain an explicitly named native default only if useful. |
-| 49 | API-04 | Binding execution order | Proposed | Preserve declaration order unless explicit phases are proven necessary. |
-| 50 | API-05 | One beginner drive entry point | Proposed | Teach the lane as the robot-facing path and keep the raw factory as a lower-level tool. |
-| 51 | COMMON-02 | Telemetry commit ownership | Proposed | Renderers add data; the composition root commits once. |
-| 52 | CHECK-01 | Staged whole-robot system check | Deferred | Meaningful Phoenix thresholds, hazardous-motion confirmation, and physical safe-state evidence require the assembled robot. |
-| 53 | EXAMPLE-01 | Compiling modern starter robot | Proposed | Add a small multi-file reference, not an inheritance framework. |
-| 54 | EXAMPLE-03 | Advanced moving-target reference | Proposed | Prove progress-triggered scoring and a bounded moving turret without putting game physics in the framework. |
-| 55 | BOUNDARY-01 | FTC boundary enforcement | Proposed | Fix existing import leaks, then add a focused forbidden-import check. |
-| 56 | DOC-01 | Stale and non-compiling documentation | Proposed | Correct loop/API examples and validate links/examples where practical. |
-| 57 | CI-01 | Framework verification in CI | Proposed | Run focused unit tests, TeamCode compilation, docs checks, and boundary checks. |
-| 58 | CLEAN-01 | Alias and risky convenience cleanup | Proposed | Remove only APIs proven redundant or unsafe by caller search. |
-| 59 | SAFE-04 | PowerOutput failure cleanup and seam truth | Deferred | Current completion requires representative actuator observation; a narrower software-seam contract needs a new approved decision gate. |
-| 60 | CAL-01 | Calibration-search power validation | Proposed | Reject invalid normalized search power before stopping normal output or changing calibration state. |
-| 61 | CAL-02 | Position-calibration reference validity | Proposed | Validate calibration reference and hold answers at the boundary that owns their units and lifecycle. |
-| 62 | MAP-01 | FTC actuator mapping-domain validation | Proposed | Validate finite child transforms and raw actuator domains before command mapping can be silently clamped. |
-| 63 | RANGE-01 | ScalarRange construction validity | Proposed | Define and enforce finite, half-bounded, and unbounded range construction without allowing `NaN`. |
-| 64 | FTC-02 | Device-managed controller configuration validation | Proposed | Validate FTC PIDF/P, maximum-power, and related staged answers before SDK access or mode changes. |
-| 65 | CONFIG-01 | Owner-configuration snapshot audit | Deferred | Revisit specific owners only when a traced caller shows mutation drift or invalid retained state. |
+| 42 | TIME-01 | Epoch-safe LoopClock timestamps | Done | Typed timestamps, reset-safe portable timing, monotonic cycle identity, caller migration, documentation, software verification, and Android Studio review are complete. |
+| 43 | VISION-02 | Stable AprilTag observation timestamps | Ready | Approved camera-frame design; implementation waits for TIME-01 so timestamps remain safe after leaving the acquisition owner. |
+| 44 | TARGET-03 | Periodic planner complexity | Proposed | Replace range iteration with constant-time candidate mathematics. |
+| 45 | CYCLE-01 | Stateful drive-source cycle safety | Proposed | Memoize stateful composition once per `clock.cycle()` and propagate reset deliberately. |
+| 46 | CYCLE-02 | Localization cycle safety | Proposed | Guard predictors/estimators against duplicate same-cycle updates. |
+| 47 | SOURCE-01 | Boolean composition sampling | Proposed | Sample both operands once per cycle before combining stateful results. |
+| 48 | API-01 | Writable Plant command binding | Proposed | Keep one simple `Plant` if builder provenance can prevent silent no-op writes. |
+| 49 | API-02 | Feedback tolerance choice | Proposed | Ask for tolerance after unit mapping; retain an explicitly named native default only if useful. |
+| 50 | API-04 | Binding execution order | Proposed | Preserve declaration order unless explicit phases are proven necessary. |
+| 51 | API-05 | One beginner drive entry point | Proposed | Teach the lane as the robot-facing path and keep the raw factory as a lower-level tool. |
+| 52 | COMMON-02 | Telemetry commit ownership | Proposed | Renderers add data; the composition root commits once. |
+| 53 | CHECK-01 | Staged whole-robot system check | Deferred | Meaningful Phoenix thresholds, hazardous-motion confirmation, and physical safe-state evidence require the assembled robot. |
+| 54 | EXAMPLE-01 | Compiling modern starter robot | Proposed | Add a small multi-file reference, not an inheritance framework. |
+| 55 | EXAMPLE-03 | Advanced moving-target reference | Proposed | Prove progress-triggered scoring and a bounded moving turret without putting game physics in the framework. |
+| 56 | BOUNDARY-01 | FTC boundary enforcement | Proposed | Fix existing import leaks, then add a focused forbidden-import check. |
+| 57 | DOC-01 | Stale and non-compiling documentation | Proposed | Correct loop/API examples and validate links/examples where practical. |
+| 58 | CI-01 | Framework verification in CI | Proposed | Run focused unit tests, TeamCode compilation, docs checks, and boundary checks. |
+| 59 | CLEAN-01 | Alias and risky convenience cleanup | Proposed | Remove only APIs proven redundant or unsafe by caller search. |
+| 60 | SAFE-04 | PowerOutput failure cleanup and seam truth | Deferred | Current completion requires representative actuator observation; a narrower software-seam contract needs a new approved decision gate. |
+| 61 | CAL-01 | Calibration-search power validation | Proposed | Reject invalid normalized search power before stopping normal output or changing calibration state. |
+| 62 | CAL-02 | Position-calibration reference validity | Proposed | Validate calibration reference and hold answers at the boundary that owns their units and lifecycle. |
+| 63 | MAP-01 | FTC actuator mapping-domain validation | Proposed | Validate finite child transforms and raw actuator domains before command mapping can be silently clamped. |
+| 64 | RANGE-01 | ScalarRange construction validity | Proposed | Define and enforce finite, half-bounded, and unbounded range construction without allowing `NaN`. |
+| 65 | FTC-02 | Device-managed controller configuration validation | Proposed | Validate FTC PIDF/P, maximum-power, and related staged answers before SDK access or mode changes. |
+| 66 | CONFIG-01 | Owner-configuration snapshot audit | Deferred | Revisit specific owners only when a traced caller shows mutation drift or invalid retained state. |
 
 The completed order was intentionally front-loaded with testability, robot lifecycle, actuator
 safety, deterministic Task behavior, Pedro ownership, truthful route outcomes, and the reusable
@@ -2856,8 +2857,9 @@ writer, and explicit lifecycle ownership.
   - **Root lifecycle and telemetry (2026-07-14):** Phoenix now exposes one INIT-only
     `installAutoRoutine(Task)` path while its `TaskRunner` stays private behind
     `AutoRoutineLifecycle`. FTC START is captured before last-chance initialization, resets the one
-    shared clock, and starts the installed root immediately at cycle zero; physical outbound work
-    remains arm-only until the first later ordered Auto loop. The installed root is retained after
+    shared clock, and starts the installed root immediately at the reset cycle identity (cycle zero
+    under the then-current clock contract; TIME-01 later made reset identities monotonic); physical
+    outbound work remains arm-only until the first later ordered Auto loop. The installed root is retained after
     terminal completion, obsolete queue telemetry was removed, and routine name/outcome plus the
     private policy trigger retain normal, cutoff, suppressed, construction-failure, and final-route
     state.
@@ -7714,6 +7716,200 @@ writer, and explicit lifecycle ownership.
 - **Decision record (updated 2026-07-17):** **Deferred for concrete DriveGuidance caller evidence.**
   This is an audit note, not an implementation-ready umbrella task.
 
+### TIME-01 - Epoch-safe LoopClock timestamps
+
+- **Problem to confirm:** a scalar timestamp in the `LoopClock.nowSec()` coordinate does not retain
+  which `LoopClock` or deliberate clock-reset epoch produced it. Asking infrastructure consumers to
+  carry a second raw `epoch` value would duplicate pairing, validation, freshness, and comparison
+  logic throughout vision, localization, spatial solving, target planning, and history-backed
+  sources. Resetting `LoopClock` also returns `cycle()` to zero, so a cycle-memoized owner can return
+  a pre-reset cached value before it gets a chance to reject that value's timestamp.
+- **Decision record (2026-07-23):** **Ready; major API approval required before implementation.**
+  This item was split out of the VISION-02 implementation preflight after the reset-safety audit
+  proved that the same invariant applies beyond camera ownership. VISION-02 remains a separate
+  camera-frame acquisition item and waits for this reusable timing foundation.
+  - **Confirmed behavior:** `LoopClock.reset(...)` currently resets both time and `cycle()` and can
+    reset them to exactly the values they already have. A retained scalar timestamp therefore
+    cannot distinguish `reset(0.0)` at cycle zero from no reset. More importantly, many stateful
+    owners memoize only by the scalar `clock.cycle()`: an exact pre-/post-reset cycle collision can
+    return the old snapshot without running any timestamp check. The current public timing spine
+    also repeatedly implements `nowSec - timestampSec`, `Math.max(storedAge, now - timestamp)`,
+    finiteness checks, future-time tolerance, and bare-double ordering/deduplication. These are the
+    same rules, not independent robot policy.
+  - **Current callers and escaped values:** the audit found portable LoopClock-domain timestamp
+    scalars across approximately 30 main framework files. They escape acquisition owners through
+    `PoseEstimate`, `MotionDelta`, `PinpointKinematicSnapshot`, `TimeAwareSource`, AprilTag values,
+    `FacingSolution`, `TranslationSolution`, TARGET-02 candidates/requests/plans, correction
+    histories, and diagnostics. A vision-only timestamp wrapper would immediately lose its reset
+    identity when converted to `PoseEstimate` or a target request, while a public raw epoch would
+    make every one of these values carry two arguments that could be accidentally mismatched.
+    Task-local start/deadline seconds do not escape their one Task lifecycle and are not part of
+    this problem. FTC/vendor capture clocks and the process-monotonic Auto-to-TeleOp handoff are also
+    separate domains and remain boundary-owned scalars until deliberately translated.
+  - **Ordinary robot-code comparison:** robot code should pass one value, not an epoch and a scalar.
+    A TARGET-02 call remains the same conceptual size:
+
+    ```java
+    return PlantTargetRequest.observedEquivalentPosition(
+            facing.sourceId(),
+            targetDeg,
+            facing.quality(),
+            facing.timestamp()
+    );
+    ```
+
+    A custom age-native sensor owner anchors its fact once with
+    `clock.timestampSecondsAgo(frameAgeSec)`. Consumers ask the retained value for
+    `timestamp.ageSec(clock)`, `timestamp.isFresh(clock, maxAgeSec)`, or the signed duration
+    `newerTimestamp.secondsSince(olderTimestamp)`; they never read, store, or compare an epoch.
+    Existing high-level selection builders continue to own freshness policy and add no
+    student-facing answer.
+  - **Alternatives considered:**
+    - Documentation-only or retaining raw `double timestampSec` values leaves reset aliasing,
+      repeated comparison code, and age/timestamp drift intact.
+    - A public `long LoopClock.epoch()` is the smallest camera-owner patch, but it exposes two
+      independently passable primitives. It cannot keep an escaped pose, spatial result, or target
+      candidate paired correctly and it does not identify timestamps from two different clocks.
+    - An opaque epoch token still requires every value and method to carry a two-argument pair; it
+      prevents numeric epoch mistakes but not separation or repetitive comparisons.
+    - A camera-only frame-time wrapper fixes one boundary but creates a parallel time type and loses
+      its invariant at the existing localization, spatial, and target-planning conversions.
+    - Reset callbacks or clearing every consumer from the composition root cannot invalidate
+      already copied immutable facts and adds lifecycle bookkeeping to robot code.
+    - Detecting reset from time/cycle regression misses exact same-value resets. Making only
+      `cycle()` monotonic prevents cache collision but does not make two timestamp scalars
+      comparable across a reset.
+    - Passing a complete clock snapshot with time, delta, cycle, and reset identity gives captured
+      measurements unrelated heartbeat fields and makes every data value larger conceptually.
+    - A public `timestampAtSec(double)` factory is not required by a current production producer.
+      It could incorrectly bless an arbitrary or prior-epoch scalar as belonging to the current
+      clock. Current samples, delayed camera/sensor facts, and propagation are fully covered by
+      “now,” “seconds ago,” and forwarding an existing typed value; tests do not justify a
+      production escape hatch.
+    - Java `Comparable` is not appropriate because timestamps from different clocks or reset epochs
+      have no truthful total ordering.
+  - **Chosen timestamp design:**
+    1. Add one final immutable core value, `LoopTimestamp`. It privately retains its originating
+       `LoopClock` identity, reset epoch, and finite seconds coordinate. There is no public
+       constructor, `of(...)`, raw epoch accessor, or public scalar timestamp accessor. A valid
+       timestamp is created only by the clock that owns its timebase through
+       `nowTimestamp()` or `timestampSecondsAgo(...)`. The latter is the explicit boundary path for
+       an age-native measurement and rejects non-finite or negative age. An existing captured fact
+       is propagated unchanged rather than reconstructed from a scalar.
+       `LoopTimestamp.unavailable()` is the one distinct no-fact sentinel used instead of `null`
+       when a containing value has no truthful measurement time. A no-result value may still carry
+       `nowTimestamp()` when its own contract explicitly timestamps the production of that result;
+       it must not pretend that time is an underlying measurement time. A structural
+       `isAvailable()` distinguishes only the sentinel and does not claim freshness or a current
+       epoch.
+    2. Put the reusable interpretation on `LoopTimestamp`: `ageSec(clock)` and
+       `isFresh(clock, maxAgeSec)` centralize finite/non-negative validation, the TARGET-02
+       one-microsecond future tolerance, inclusive freshness boundaries, clock identity, and reset
+       epoch. Unavailable or prior-epoch values fail closed (`NaN` age and not fresh); passing a
+       different `LoopClock` is an actionable wiring error. One signed `secondsSince(...)` operation
+       owns pairwise duration, ordering, deduplication, and interpolation without exposing a scalar
+       coordinate or adding redundant before/after methods. It returns `NaN` for unavailable or
+       non-current/different-epoch values so an ordinary reset invalidates retained history without
+       crashing the loop, and throws an actionable error for different clock ownership. Callers
+       apply their algorithm-specific tolerance to the signed duration; the TARGET-02 one-microsecond
+       future tolerance belongs only to age/freshness against the current clock.
+    3. Replace portable public `double timestampSec` and canonical stored-age pairs with the one
+       typed value. `TimeAwareSource.getAt(...)`, localization measurements/deltas, history keys,
+       spatial solutions/selections, generic observations, and TARGET-02's observed candidate path
+       carry `LoopTimestamp`. Derived `ageSec` remains only as an on-demand diagnostic snapshot when
+       it has a distinct documented meaning; it is not a second canonical freshness input. Delete
+       the replaced scalar APIs and migrate all in-repository callers together rather than retaining
+       deprecated parallel paths.
+    4. Keep raw FTC/vendor timestamps private to their boundary. The boundary computes a truthful
+       coordinate or age, asks its current `LoopClock` to create one `LoopTimestamp`, and thereafter
+       forwards that value unchanged. Lifecycle-local Task timers remain primitive seconds because
+       they never cross an epoch or public measurement boundary.
+  - **Chosen cycle design:** preserve `cycle()` as the stable per-cycle identity, but make it
+    monotonically increasing for the lifetime of one `LoopClock`. Every explicit `reset(...)`
+    advances it immediately instead of returning it to zero, even when the reset time is unchanged;
+    this makes post-reset reads miss every pre-reset cycle cache before the next update. The first
+    implicit `update(...)` initializes directly as cycle one rather than invoking public-reset
+    semantics. `cycle()` is an identity, not an elapsed-loop count. This does not replace explicit
+    state resets or permit switching among multiple `LoopClock` objects; the one-stable-clock
+    ownership principle remains.
+  - **Framework Principles and simplicity check:** one clock still owns the heartbeat and all
+    translations; SDK/vendor details stay at explicit boundaries; reusable timing correctness lives
+    in core instead of robot or season code; and students carry one named value whose type prevents
+    mismatched primitives. The wrapper is justified by concrete cross-layer reuse and misuse
+    prevention, unlike the previously rejected camera-only noun. The common call remains one timing
+    argument and the advanced sensor-owner call becomes shorter than separately constructing an
+    epoch/timestamp pair.
+  - **Bounded implementation scope:** add `LoopTimestamp` and its `LoopClock` factories; change
+    `LoopClock.reset(...)` cycle identity; migrate the portable timing spine named above, its current
+    production callers, tests, Javadocs, examples, and relevant framework guides; and update
+    Framework Principles with the epoch-safe captured-time and monotonic-cycle rules. VISION-02 does
+    not implement webcam/Limelight frame identity, latency anchoring, or camera result propagation
+    in this item; it consumes the completed type afterward. Do not start TARGET-03 or the broader
+    CYCLE-01/CYCLE-02 state-update audits.
+  - **Verification plan:** extend `LoopClockTest` for construction, first implicit update, normal
+    updates, reset-to-the-same-value, repeated resets, immediate post-reset identity, and monotonic
+    cycle behavior. Add `LoopTimestampTest` for both clock factories, unavailable values, current age,
+    inclusive freshness, tolerated and materially future values, prior epochs, different clocks,
+    ordering, and durations. Add at least one exact-cycle-reset cache regression and migrate focused
+    target-planning, generic-observation, spatial, localization, predictor/fusion, and time-aware
+    history tests. Run exhaustive public-signature/caller searches for portable
+    `double timestampSec` and redundant canonical `ageSec`, the focused suites, full TeamCode unit
+    tests, TeamCode Java compilation, Markdown checks, and `git diff --check`. No hardware is needed
+    to prove these deterministic value, reset, and cache contracts.
+  - **Approval gate:** this is a cross-framework breaking API migration and changes public
+    `LoopClock.cycle()` reset semantics. Per the framework-improvement workflow, stop before
+    implementation and request explicit approval with
+    `Approve TIME-01 epoch-safe LoopTimestamp prerequisite`.
+  - **Design approval (2026-07-23):** the user replied
+    `Approve TIME-01 epoch-safe LoopTimestamp prerequisite`. This authorizes Gate 2 implementation
+    of TIME-01 only. VISION-02 remains paused until this prerequisite is implemented, reviewed,
+    published, and merged.
+  - **Implementation (2026-07-23):** core now provides one immutable `LoopTimestamp` created only by
+    `LoopClock.nowTimestamp()` or the explicit age-native boundary
+    `LoopClock.timestampSecondsAgo(...)`. It privately retains clock identity, reset epoch, and its
+    finite coordinate; `ageSec(...)`, `isFresh(...)`, and `secondsSince(...)` centralize reset,
+    clock-wiring, inclusive freshness, future-tolerance, duration, ordering, and deduplication
+    behavior without exposing a raw epoch or seconds accessor. `LoopClock.cycle()` is now monotonic
+    for one clock lifetime and advances immediately on every explicit reset, including reset to the
+    same numeric time.
+  - **Portable timing migration and simplicity (2026-07-23):** TARGET-02 candidates/requests/plans,
+    generic observations, pose estimates, motion deltas, Pinpoint snapshots, time-aware sources,
+    spatial solutions/selections, correction histories/diagnostics, AprilTag portable values, FTC
+    estimator boundaries, Pedro localization, current callers, examples, and telemetry now pass one
+    typed timestamp. Replaced raw scalar APIs were deleted rather than deprecated. Derived age
+    remains only where it is a current diagnostic or an explicit policy input. Ordinary robot code
+    still supplies one timing argument, while reusable sensor owners translate a native age once;
+    students never carry or compare a separate epoch.
+  - **Reset-safety refinements (2026-07-23):** cycle caches miss immediately after reset;
+    `Source`/`ScalarSource` last-valid holds fail closed instead of rejuvenating retained values;
+    position-derived rate feedback re-establishes its baseline; spatial frame/mount history and
+    AprilTag selection reject unavailable, stale, or prior-epoch observations before history lookup;
+    and localization fusion/EKF history ordering, interpolation, replay, and duplicate handling use
+    the typed comparison. Freshness-source factories now reject invalid maximum-age configuration at
+    construction rather than waiting for a loop sample.
+  - **VISION-02 boundary (2026-07-23):** this prerequisite deliberately does not implement stable
+    webcam/Limelight frame identity, camera-latency anchoring, or the approved geometry-only
+    AprilTag frame factory. Current FTC adapters translate their existing age facts into
+    `LoopTimestamp`; VISION-02 remains **Ready** and paused until TIME-01 is reviewed, published, and
+    merged.
+  - **Automated verification (2026-07-23):** the focused TIME-01/core migration set passes 70 tests,
+    including exact same-time reset invalidation, different-clock failures, inclusive/future
+    freshness, exact-cycle cache invalidation, time-aware history, target planning, spatial history,
+    AprilTag values, fusion/EKF interpolation and replay, and Pedro passive localization. The final
+    unfiltered `:TeamCode:compileDebugJavaWithJavac :TeamCode:testDebugUnitTest` run passes with
+    **83 suites / 801 tests / 0 failures / 0 errors / 0 skipped**. Public-signature/caller scans find
+    no remaining portable `double timestampSec` APIs, old timestamp getters, or downstream
+    `now - sampledAge` reconstruction; the remaining raw FTC/vendor and match-handoff time domains
+    stay at their documented boundaries. Changed-Markdown fence and local-link checks pass, and
+    `git diff --check` passes. Independent timing/core, localization/fusion, spatial/observation,
+    API/documentation, and adversarial reviews found no remaining priority issue.
+  - **Android Studio audit point (2026-07-23):** implementation and deterministic software
+    verification were presented for user inspection. No robot hardware is required for this
+    value/reset/cache contract; physical camera timing remains VISION-02 adoption validation.
+  - **Manual verification (2026-07-23):** the user replied `TIME-01 looks good`, approving the
+    implementation for Gate 3 publication and merge. TIME-01 is **Done**; this approval does not
+    authorize starting VISION-02 or another tracker item.
+
 ### VISION-02 - Stable AprilTag observation timestamps
 
 - **Problem to confirm:** TARGET-02's adversarial review found that
@@ -7724,7 +7920,7 @@ writer, and explicit lifecycle ownership.
 - **Alternatives to compare:** require every detections snapshot to carry a stable `LoopClock`
   timestamp; let each FTC owner stamp once using camera-frame/result identity; retain age-only
   snapshots but make timestamp-dependent consumers reject them; or add cache/identity inference in
-  the spatial consumer. Audit webcam acquisition time, Limelight control-hub result identity,
+  the spatial consumer. Audit webcam acquisition time, Limelight result identity,
   localization, custom sensors, tests, and every public detections factory before choosing.
 - **Leading hypothesis:** acquisition owners have the facts needed to anchor time. The webcam owner
   should translate frame acquisition time once; the Limelight owner should latch one timestamp per
@@ -7735,9 +7931,263 @@ writer, and explicit lifecycle ownership.
   grows; new frames/results receive new timestamps; webcam, Limelight, localization, spatial, and
   no-result paths remain truthful; and target-planner examples receive stable timestamps without
   student bookkeeping.
-- **Decision record:** _Pending; split from the TARGET-02 adversarial review on 2026-07-22. TARGET-02
-  deliberately fixes the candidate/planner boundary only and does not claim to resolve this
-  upstream vision ownership issue._
+- **Decision record (2026-07-23):** **Ready; major API approval required before implementation.**
+  This supersedes the pending hypothesis above while preserving its acquisition-owner direction.
+  TARGET-02 deliberately fixed only the candidate/planner boundary; VISION-02 owns the upstream
+  camera-frame contract.
+  - **Confirmed behavior:** `AprilTagDetections` currently stores both a creation-time `ageSec` and
+    an optional `timestampSec`. Its public age-only factories leave the timestamp unknown, and
+    `frameTimestampSec(clock)` then computes `clock.nowSec() - ageSec` every time it is called. For
+    one cached snapshot with `ageSec = 0.10`, calls at loop times `5.0` and `6.0` therefore report
+    timestamps `4.90` and `5.90` for the same camera frame. The opposite error exists in
+    `isFresh(...)`, `forId(...)`, `freshObservations(...)`, `freshMatching(...)`, and
+    `visibleIds(...)`: they compare the fixed creation-time age without a clock, so that same
+    snapshot can remain fresh forever. The public dual age/timestamp factory can also accept two
+    contradictory answers to one freshness question.
+  - **Traced consequences:** `AprilTagSpatialSolveLane` is the only timestamp-fallback caller, then
+    separately copies frozen detection age into its solutions. `AprilTagPoseEstimator` filters by
+    frozen age, rebuilds an age-only detections object, and recomputes `now - age`, discarding even
+    an explicit upstream timestamp. `AprilTagSources`, `TagSelections`, and `SpatialQuerySupport`
+    all gate through the same clock-less helpers. A cached frame can consequently defeat tag
+    selection expiry, dynamic camera-mount history lookup, corrected-localization timestamp
+    deduplication/replay, spatial freshness, and the stable timestamp expected by TARGET-02.
+    `LimelightFieldPoseEstimator` and `CustomVisionOwnershipExample` independently repeat
+    `clock.nowSec() - result.ageSec()`, so fixing only the AprilTag value object would leave the
+    direct Limelight path wrong.
+  - **Current construction paths and ordinary robot code:** the public detections surface is
+    `none()`, `none(ageSec)`, `of(ageSec, observations)`, and
+    `of(ageSec, timestampSec, observations)`; there is no public constructor. In-repository
+    nonempty snapshots are created only by the FTC webcam and Limelight adapters, while custom
+    `AprilTagSensor` implementations are the advanced external extension seam. Normal robot code
+    constructs a vision lane, borrows its `tagSensor()`, and usually configures
+    `TagSelections...freshWithinSec(...)`; that student-facing path will not gain another object or
+    builder answer. Direct raw inspection already has the shared clock for `tags.get(clock)` and
+    will pass that same clock when asking for age/freshness.
+  - **Acquisition evidence:** the pinned FTC SDK documents webcam
+    `frameAcquisitionNanoTime`/`CameraFrame.getCaptureTime()` in the Control Hub
+    `System.nanoTime()` domain, and the AprilTag processor assigns the one capture value to every
+    detection from that processed frame. It is therefore a stable webcam frame identity, while the
+    owner must translate its origin into the `LoopClock` domain rather than treating raw nanoseconds
+    as loop seconds. For Limelight, the pinned SDK sets `controlHubTimeStamp` when it receives/parses
+    a result and calculates staleness from that wall-clock receipt; that is not camera capture time.
+    The same SDK exposes Limelight-local result timestamp `ts`, capture latency `cl`, and targeting
+    latency `tl`. The
+    [Limelight JSON results specification](https://docs.limelightvision.io/docs/docs-limelight/apis/json-results-specification)
+    defines `ts` as milliseconds from camera boot, `cl` as the delay from exposure to tracking, and
+    `tl` as tracking latency. Use the stable camera-local value as the primary result identity and
+    the Control Hub receipt value only when that local identity is unavailable, not as a claimed
+    exposure timestamp.
+  - **Ordinary call-site comparison:** the most common selection call stays unchanged:
+
+    ```java
+    TagSelectionSource scoringTag = TagSelections.from(vision.tagSensor())
+            .among(SCORING_TAG_IDS)
+            .freshWithinSec(0.25)
+            .choose(TagSelectionPolicies.closestRange())
+            .continuous()
+            .build();
+    ```
+
+    Direct inspection becomes explicit about the one loop heartbeat, without a second freshness
+    value:
+
+    ```java
+    AprilTagDetections detections = vision.tagSensor().get(clock);
+    Set<Integer> visible = detections.visibleIds(clock, 0.25);
+    AprilTagObservation tag = detections.forId(clock, 5, 0.25);
+    double ageSec = tag.frameAgeSec(clock);
+    ```
+
+    An advanced sensor owner creates complete tag geometry without repeating timing for every tag,
+    then publishes its one proven frame fact once:
+
+    ```java
+    List<AprilTagObservation> observations = new ArrayList<>();
+    observations.add(AprilTagObservation.target(tagId, cameraToTagPose));
+    observations.add(AprilTagObservation.target(
+            secondTagId, secondCameraToTagPose, fieldToRobotPose));
+    return AprilTagDetections.fromFrame(frameTimestamp, observations);
+    ```
+
+    This is one scalar shorter than the current dual factory and cannot silently reinterpret an old
+    `of(ageSec, observations)` call as a timestamp call. A missing lookup uses
+    `AprilTagObservation.noTarget()`; a trustworthy frame that saw no tags uses
+    `AprilTagDetections.fromFrame(frameTimestamp, Collections.emptyList())`.
+  - **Alternatives considered:**
+    - Documentation-only or no change leaves both reproduced cache failures.
+    - Stamping only the two FTC adapters is the smallest local patch, but leaves public age-only
+      custom sensors, frozen selection helpers, direct Limelight consumers, and contradictory
+      age/timestamp construction intact. It fixes current owners without making the framework seam
+      safe.
+    - Keeping stored age as a public diagnostic still gives independently retained snapshots and
+      observations a value that stops aging. Naming it `sampledAgeSec` would be honest but adds a
+      second timing fact that no current caller needs once a timestamp exists.
+    - Inferring identity or caching timestamps in spatial/localization consumers puts vendor-frame
+      knowledge in the wrong layer and cannot prove whether two new wrapper objects represent one
+      observation.
+    - Rejecting timestamp-less values only in timestamp-dependent consumers fails safely but
+      unnecessarily disables existing selection/localization behavior and preserves the unsafe
+      construction path.
+    - A camera-specific timestamp/identity wrapper adds a noun used only to pass one scalar and a
+      list, then loses its identity when the result becomes a pose or target candidate. TIME-01's
+      generic `LoopTimestamp` is different: the cross-layer audit proved that it owns the same
+      reset/comparison invariant across vision, localization, spatial solving, and target planning.
+      A mutable frame builder can prevent an unattached observation from existing, but makes an
+      advanced adapter learn builder mutability/reuse rules and changes its existing list-building
+      loop without improving the final immutable contract. Geometry-only observation factories plus
+      one frame factory preserve the current extension shape with fewer arguments; the frame factory
+      owns attachment and rejects accidental restamping.
+    - Converting the generic `TargetObservation2d` API to timestamp-canonical form is not included.
+      It explicitly represents a newly created generic sample, has no current production freshness
+      consumer, and does not yet justify broadening this item. Its AprilTag adapter will derive the
+      creation-time age from the canonical tag timestamp on each source sample.
+  - **Chosen public value design:**
+    1. Make `AprilTagDetections` store one available `LoopTimestamp frameTimestamp` plus its
+       immutable observation list. Keep `none()` for “no trustworthy processed frame” and add one
+       explicitly named `fromFrame(frameTimestamp, observations)` factory; an empty list represents
+       a trustworthy processed frame with no usable tags. Remove `ageSec`, generic `timestampSec`, both age-only
+       factories, the dual factory, and the `frameTimestampSec(clock)` fallback rather than
+       deprecating parallel paths.
+    2. Derive `frameAgeSec(clock)` from the current shared clock. Make every freshness/selection
+       helper accept that clock and fail closed for unavailable, non-finite, or materially future
+       timestamps. A derived getter is not a second stored freshness representation.
+    3. Replace the public observation factories with the complete parallel geometry family
+       `noTarget()`, `target(id, cameraToTagPose)`, and
+       `target(id, cameraToTagPose, fieldToRobotPose)`. A target made by these factories is valid
+       tag geometry but has no freshness claim until a detections frame owns it; its frame timestamp
+       is unknown and its freshness helpers fail closed. `fromFrame(...)` validates that every list
+       member is a real target, then attaches the one frame timestamp to immutable observation
+       copies. A selected observation retained from that snapshot therefore provides
+       `frameTimestamp()`, `frameAgeSec(clock)`, and `isFresh(clock, maxAgeSec)` without asking an
+       adapter to repeat the timestamp for every tag. Passing an observation already attached to the
+       same exact frame timestamp is allowed; passing one attached to a different frame throws an
+       actionable error rather than rejuvenating it. `noTarget()` is a result sentinel, is rejected
+       inside a detections list, carries no frame timestamp, and is never fresh.
+    4. Rename the canonical factory instead of changing the meaning of
+       `of(double, List<AprilTagObservation>)`; external age-based code must fail at compile time
+       with an actionable migration rather than compile with an age misread as a timestamp.
+  - **Chosen acquisition and propagation design:**
+    1. Add one small package-private FTC timestamp anchor/bridge, not a robot-facing abstraction.
+       It maps an age-native vendor result into one `LoopTimestamp` once per stable vendor identity
+       and returns that same retained value for repeats. A deliberate `LoopClock`
+       epoch reset invalidates cached output before any same-cycle return and blocks that retained
+       vendor identity; the owner publishes unavailable until it observes a genuinely new vendor
+       frame/result and anchors that new identity in the new clock domain. Ordinary source reset
+       without a clock-epoch change preserves identity history and must not make the same vendor
+       frame newly observed.
+    2. The webcam owner keys by processor-data generation plus `frameAcquisitionNanoTime`, computes
+       the System-nano-to-LoopClock translation once, and derives all later age from the retained
+       timestamp. Mixed usable frame timestamps violate the documented one-frame snapshot and fail
+       the whole snapshot closed; a same-generation regressing acquisition time also fails closed.
+       Empty SDK detections remain unavailable because the FTC processor supplies no empty-frame
+       capture identity.
+    3. The generic Limelight owner captures SDK `ts`, `cl`, and `tl` in addition to its stable
+       Control Hub receipt time. It keys a result by pipeline generation and Limelight-local
+       timestamp, using the stable receipt identity only when the SDK supplies no usable local
+       identity. On first publication it anchors the best available approximate exposure time as
+       current loop time minus receipt staleness, capture latency, and targeting latency; repeats
+       retain that exact timestamp. Pipeline changes clear the result-identity epoch. Invalid timing
+       fails closed. This is intentionally described as the best SDK-supported estimate, not proof
+       of physical exposure time or network latency.
+    4. `FtcLimelightVisionLane.ResultSnapshot` exposes the one retained
+       `frameTimestamp()` needed by semantic adapters and direct localization. Remove its public
+       relative `ageSec()` because it freezes when the immutable result is retained. The absolute
+       Control Hub receipt time is a distinct transport/diagnostic fact rather than a second camera
+       freshness answer, so retain it under the explicit name
+       `resultReceivedAtControlHubMillis()` and delete the ambiguous old accessor. Receipt staleness
+       remains owner-internal readiness policy. A confirmed processed no-target result becomes a
+       timestamped empty detections frame, while an unready/no-result state remains `none()`.
+    5. Replace the public camera-mount conversion with
+       `CameraMountLogic.robotObservation2d(obs, mount, clock)`. It rejects unframed, invalid, or
+       materially future observation timing and derives the generic `TargetObservation2d`
+       creation-time age from the observation's retained frame timestamp. Migrate
+       `ObservationSources` and every caller; do not keep a parallel clock-less overload.
+    6. Migrate pose estimation, spatial solving, tag sources/selections, direct Limelight
+       localization, tools, Phoenix telemetry, and the custom-vision example to forward the retained
+       timestamp or derive current age from it. No robot/Phoenix behavior owns a frame identity or
+       calls `now - sampledAge`.
+  - **Framework Principles and simplicity check:** acquisition owners keep FTC/vendor identity and
+    clock-origin conversion at explicit boundaries; all behavior uses the one `LoopClock`; immutable
+    snapshots remain safe when cached; spatial/localization layers consume backend-neutral frame
+    facts; and robot code learns one freshness representation rather than age plus timestamp. The
+    normal `TagSelections` builder is unchanged, direct inspection adds only the clock already in
+    scope, advanced custom sensors answer frame time once, invalid live timing fails closed, and no
+    camera-specific wrapper or vendor type leaks into core.
+  - **Bounded implementation scope:** update `AprilTagDetections`, `AprilTagObservation`,
+    `AprilTagSensor`, `AprilTagSources`, tag selection result/sources, camera-mount observation
+    conversion, FTC webcam support, the generic and AprilTag Limelight owners, AprilTag pose
+    estimation, AprilTag spatial solving/support, direct Limelight field-pose estimation, affected
+    framework tools/examples, Phoenix telemetry sentinels, and no-op sensor tests. Synchronize
+    Framework Principles, AprilTag localization, Spatial Queries, custom vision ownership, shooter
+    walkthrough/Javadocs, and all affected examples. Do not redesign generic observation timing,
+    change vision ownership/lifecycle beyond timestamp cache invalidation, or begin TARGET-03.
+  - **Verification plan:** add focused core tests proving one cached detections object and one
+    independently retained observation keep an exact timestamp while derived age grows; inclusive
+    freshness boundaries; invalid/future metadata; timestamped-empty versus unavailable snapshots;
+    and cached `TagSelections` expiry. Extend `FtcWebcamVisionPortalLaneTest` for same-frame repeats,
+    new frames, mixed/regressing/future frames, generation changes, ordinary source reset, and a
+    clock-epoch reset that remains unavailable until a genuinely new frame.
+    Extend `FtcLimelightVisionLaneTest` for same/new result identity, missing-local-identity receipt
+    fallback, capture plus targeting latency, pipeline changes, a clock reset that rejects the
+    retained result, invalid timing, no-target frames, same-cycle memoization, and exact
+    direct-estimator propagation. Add
+    core observation-construction tests for all three replacement factories, frame attachment,
+    same-frame reuse, different-frame rejection, and no-target-list rejection. Add/extend AprilTag
+    pose/spatial tests to prove the original timestamp reaches localization and dynamic mount
+    history. Then run the
+    focused suites, full TeamCode unit tests, TeamCode Java compilation, exhaustive caller and
+    public-signature audits, Markdown link/fence checks, changed-file whitespace/newline checks, and
+    `git diff --check`.
+  - **Hardware/evidence scope:** webcam timestamp-domain identity is documented by the pinned FTC
+    SDK; Limelight result identity and latency fields are documented by the pinned SDK and vendor
+    result specification. Deterministic cache/propagation behavior therefore needs no hardware to
+    complete. A real device remains adoption validation for firmware behavior across no-target
+    frames, camera reboot, and pipeline changes, and for quantifying transport/exposure error; this
+    item will not claim that software tests measured physical capture accuracy.
+  - **Approval gate:** this deletes/renames public snapshot and Limelight-result APIs and changes
+    freshness helpers to require `LoopClock`. Per the framework-improvement workflow, stop before
+    implementation and request explicit approval with
+    `Approve VISION-02 timestamp-canonical frame design`.
+  - **Design approval (2026-07-23):** the user replied
+    `Approve VISION-02 timestamp-canonical frame design`. This authorizes Gate 2 implementation of
+    the bounded timestamp-canonical frame design for VISION-02 only; it does not authorize
+    TARGET-03 or any other tracker item.
+  - **Gate 2 preflight reopening (2026-07-23):** implementation has not started. The acquisition
+    audit found that the approved clock-reset rule cannot be implemented exactly from the current
+    public `LoopClock` facts. `reset(...)` returns `cycle()` to zero and may set `nowSec()` to the
+    same value it already had, so a retained frame owner cannot always distinguish a deliberate
+    reset from an unchanged clock. In particular, cycle/time-regression heuristics cannot detect
+    `reset(0.0)` while the clock is already at cycle zero and time zero. Claiming exact epoch
+    invalidation while using that heuristic would violate fail-closed timing and truthful API
+    principles.
+    - **Alternatives reconsidered:** infer resets from cycle/time regression (no API change but an
+      unprovable same-value hole); add camera-specific `onClockReset()` calls (student/composition
+      root bookkeeping and parallel lifecycle drift); change `cycle()` so it never resets (larger
+      breaking semantic change for every cycle-aware owner); or expose the timebase identity that
+      `LoopClock` already owns.
+    - **Superseded supplemental proposal (not approved):** add one read-only
+      `long LoopClock.epoch()` fact. A newly
+      constructed clock begins in epoch zero; every explicit `reset(...)` advances the epoch even
+      when time and cycle values happen to be unchanged. First-use implicit initialization through
+      `update(...)` remains epoch zero. The FTC timestamp anchor retains both the `LoopClock` object
+      identity and `epoch()`; any change invalidates and blocks the old vendor frame identity until
+      a genuinely new frame/result arrives. `epoch()` is diagnostic/infrastructure state beside
+      `cycle()`, not a second clock, timer, or robot-facing reset call.
+    - **Original simplicity assessment:** ordinary robot, camera, selection, spatial, localization,
+      and target-planner code adds no call. The one new concept appears only to reusable owners that
+      retain facts across deliberate clock resets. It is smaller and more truthful than callbacks,
+      heuristics, or changing cycle semantics, and it preserves one `LoopClock` heartbeat.
+    - **Verification addition:** extend `LoopClockTest` for construction, implicit first update,
+      repeated explicit resets including reset-to-the-same-value, and unchanged epoch across normal
+      updates; make both camera-owner reset tests use the exact same-value case.
+    - **Withdrawn supplemental approval gate:** the raw `epoch()` proposal was not approved. A
+      follow-up consumer audit found that timestamps leave camera ownership through localization,
+      spatial, and target-planning values, where a raw epoch would have to be copied and compared
+      repeatedly. The exact-reset audit also found cycle-only cache collisions that a timestamp
+      accessor does not prevent. TIME-01 records the replacement `LoopTimestamp` plus monotonic-cycle
+      design and requires its own major-API approval. VISION-02 stays **Ready**, retains the already
+      approved camera-frame behavior, and waits for TIME-01 before implementation; do not use
+      `Approve VISION-02 LoopClock epoch accessor`.
 
 ## Explicitly deferred architectural ideas
 

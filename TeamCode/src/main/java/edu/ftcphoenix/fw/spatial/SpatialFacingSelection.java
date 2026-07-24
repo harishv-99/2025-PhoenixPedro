@@ -1,5 +1,6 @@
 package edu.ftcphoenix.fw.spatial;
 
+import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelectionResult;
 
 /**
@@ -38,16 +39,9 @@ public final class SpatialFacingSelection {
     }
 
     /**
-     * Age of the underlying solution in seconds.
+     * Returns the epoch-safe timestamp of the underlying solution.
      */
-    public double ageSec() {
-        return solution.ageSec;
-    }
-
-    /**
-     * Timestamp of the underlying solution, or NaN if unknown.
-     */
-    public double timestampSec() {
-        return solution.timestampSec;
+    public LoopTimestamp timestamp() {
+        return solution.timestamp;
     }
 }

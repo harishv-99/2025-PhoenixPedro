@@ -15,6 +15,7 @@ import java.util.List;
 
 import edu.ftcphoenix.fw.core.geometry.Pose2d;
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
+import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 import edu.ftcphoenix.fw.ftc.FtcAutoToTeleOpHandoff;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
 import edu.ftcphoenix.fw.localization.PoseResetter;
@@ -103,7 +104,7 @@ public final class PhoenixMatchHandoffTest {
     @Test
     public void invalidEstimateIsRejectedBeforePublication() {
         assertPublishRejected(
-                PoseEstimate.noPose(0.0),
+                PoseEstimate.noPose(LoopTimestamp.unavailable()),
                 "hasPose=false"
         );
         assertPublishRejected(
@@ -316,8 +317,7 @@ public final class PhoenixMatchHandoffTest {
                 ),
                 hasPose,
                 0.9,
-                0.01,
-                10.0
+                LoopTimestamp.unavailable()
         );
     }
 

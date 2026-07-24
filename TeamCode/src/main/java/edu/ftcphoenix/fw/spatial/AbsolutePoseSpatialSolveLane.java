@@ -37,6 +37,13 @@ public final class AbsolutePoseSpatialSolveLane implements SpatialSolveLane {
                                         double maxAgeSec,
                                         double minQuality) {
         this.poseEstimator = Objects.requireNonNull(poseEstimator, "poseEstimator");
+        if (!Double.isFinite(maxAgeSec) || maxAgeSec < 0.0) {
+            throw new IllegalArgumentException(
+                    "maxAgeSec must be finite and >= 0, got " + maxAgeSec);
+        }
+        if (!Double.isFinite(minQuality)) {
+            throw new IllegalArgumentException("minQuality must be finite, got " + minQuality);
+        }
         this.maxAgeSec = maxAgeSec;
         this.minQuality = minQuality;
     }
@@ -44,18 +51,17 @@ public final class AbsolutePoseSpatialSolveLane implements SpatialSolveLane {
     @Override
     public SpatialLaneResult solve(SpatialSolveRequest request) {
         PoseEstimate est = poseEstimator.getEstimate();
-        double estAgeSec = (est != null)
-                ? Math.max(est.ageSec, request.clock.nowSec() - est.timestampSec)
-                : Double.POSITIVE_INFINITY;
-        boolean valid = est != null && est.hasPose && estAgeSec <= maxAgeSec && est.quality >= minQuality;
+        boolean valid = est != null
+                && est.hasPose
+                && est.timestamp.isFresh(request.clock, maxAgeSec)
+                && est.quality >= minQuality;
         if (!valid) {
             return SpatialLaneResult.none();
         }
 
-        double timestampSec = est.timestampSec;
         Pose2d fieldToRobot = est.toPose2d();
-        Pose2d translationFrame = request.robotToTranslationFrameAt(timestampSec);
-        Pose2d facingFrame = request.robotToFacingFrameAt(timestampSec);
+        Pose2d translationFrame = request.robotToTranslationFrameAt(est.timestamp);
+        Pose2d facingFrame = request.robotToFacingFrameAt(est.timestamp);
 
         TranslationSolution translation = null;
         if (request.translationTarget != null) {
@@ -72,8 +78,7 @@ public final class AbsolutePoseSpatialSolveLane implements SpatialSolveLane {
                         false,
                         Double.NaN,
                         est.quality,
-                        estAgeSec,
-                        timestampSec
+                        est.timestamp
                 );
             }
         }
@@ -85,8 +90,7 @@ public final class AbsolutePoseSpatialSolveLane implements SpatialSolveLane {
                     facingFrame,
                     ((SpatialTargets.FieldHeading) request.facingTarget).fieldHeadingRad,
                     est.quality,
-                    estAgeSec,
-                    timestampSec
+                    est.timestamp
             );
         } else if (request.facingTarget instanceof SpatialTargets.ReferenceFrameHeadingTarget) {
             SpatialTargets.ReferenceFrameHeadingTarget target = (SpatialTargets.ReferenceFrameHeadingTarget) request.facingTarget;
@@ -101,8 +105,7 @@ public final class AbsolutePoseSpatialSolveLane implements SpatialSolveLane {
                         facingFrame,
                         fieldToFrame.headingRad + target.headingOffsetRad,
                         est.quality,
-                        estAgeSec,
-                        timestampSec
+                        est.timestamp
                 );
             }
         } else if (request.facingTarget != null) {
@@ -117,8 +120,7 @@ public final class AbsolutePoseSpatialSolveLane implements SpatialSolveLane {
                         facingFrame,
                         fieldToFacingPoint,
                         est.quality,
-                        estAgeSec,
-                        timestampSec
+                        est.timestamp
                 );
             }
         }

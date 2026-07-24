@@ -185,7 +185,7 @@ public final class PedroPathingDriveAdapterTest {
     public void guidanceSharesRootHeartbeatAndLeavesLaterScoringWaitStopped() {
         Fixture fixture = new Fixture(START);
         MutablePhoenixPoseEstimator estimator = new MutablePhoenixPoseEstimator();
-        estimator.setPose(0.0, fixture.clock.clock().nowSec());
+        estimator.setPose(0.0, fixture.clock.clock().nowTimestamp());
         DriveGuidancePlan plan = DriveGuidance.plan()
                 .translateTo()
                     .fieldPointInches(12.0, 0.0)
@@ -218,7 +218,7 @@ public final class PedroPathingDriveAdapterTest {
         assertEquals(3, fixture.localizer.updateCount);
         assertTrue(fixture.drivetrain.sawNonZeroDrive);
 
-        estimator.setPose(12.0, fixture.clock.clock().nowSec());
+        estimator.setPose(12.0, fixture.clock.clock().nowTimestamp());
         fixture.clock.nextCycle(0.02);
         fixture.adapter.update(fixture.clock.clock());
         task.update(fixture.clock.clock());
@@ -1144,15 +1144,17 @@ public final class PedroPathingDriveAdapterTest {
     }
 
     private static final class MutablePhoenixPoseEstimator implements AbsolutePoseEstimator {
-        private PoseEstimate estimate = PoseEstimate.noPose(0.0);
+        private PoseEstimate estimate = PoseEstimate.noPose(
+                edu.ftcphoenix.fw.core.time.LoopTimestamp.unavailable()
+        );
 
-        void setPose(double fieldXInches, double nowSec) {
+        void setPose(double fieldXInches,
+                     edu.ftcphoenix.fw.core.time.LoopTimestamp timestamp) {
             estimate = new PoseEstimate(
                     new Pose3d(fieldXInches, 0.0, 0.0, 0.0, 0.0, 0.0),
                     true,
                     1.0,
-                    0.0,
-                    nowSec
+                    timestamp
             );
         }
 

@@ -710,7 +710,7 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
         TagSelectionResult selectionResult = selection.get(clock);
         AprilTagObservation obs = selectionResult.hasFreshSelectedObservation
                 ? selectionResult.selectedObservation
-                : AprilTagObservation.noTarget(Double.POSITIVE_INFINITY);
+                : AprilTagObservation.noTarget();
 
         Telemetry t = ctx.telemetry;
         t.clearAll();
@@ -758,7 +758,7 @@ public final class PinpointAprilTagFusionLocalizationTester extends BaseTeleOpTe
             t.addLine("  Tips: check lighting, focus, layout coverage, and tag visibility.");
         } else {
             t.addData("  Tag id", obs.id);
-            t.addData("  Age", "%.0f ms", obs.ageSec * 1000.0);
+            t.addData("  Age", "%.0f ms", obs.frameAgeSec(clock) * 1000.0);
             t.addData("  Range", "%.1f in", obs.cameraRangeInches());
             t.addData("  Bearing", "%.1f°", Math.toDegrees(obs.cameraBearingRad()));
             t.addData("  cameraToTag", "fwd=%.1f in | left=%.1f in | up=%.1f in",

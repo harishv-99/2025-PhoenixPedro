@@ -4,6 +4,7 @@ import java.util.Objects;
 
 import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.time.LoopClock;
+import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 
 /**
  * Factory helpers for {@link TimeAwareSource} values.
@@ -25,7 +26,7 @@ public final class TimeAwareSources {
         Objects.requireNonNull(value, "value");
         return new TimeAwareSource<T>() {
             @Override
-            public T getAt(LoopClock clock, double timestampSec) {
+            public T getAt(LoopClock clock, LoopTimestamp timestamp) {
                 return value;
             }
 
@@ -57,7 +58,7 @@ public final class TimeAwareSources {
         Objects.requireNonNull(source, "source");
         return new TimeAwareSource<T>() {
             @Override
-            public T getAt(LoopClock clock, double timestampSec) {
+            public T getAt(LoopClock clock, LoopTimestamp timestamp) {
                 return Objects.requireNonNull(source.get(clock), "source returned null");
             }
 

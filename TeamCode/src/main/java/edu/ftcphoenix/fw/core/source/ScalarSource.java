@@ -9,6 +9,7 @@ import edu.ftcphoenix.fw.core.control.SlewRateLimiter;
 import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.math.MathUtil;
 import edu.ftcphoenix.fw.core.time.LoopClock;
+import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 
 /**
  * A {@link Source} that produces a {@code double} each loop.
@@ -96,17 +97,18 @@ public interface ScalarSource extends Source<Double> {
      * <p>This is a scalar specialization of {@link Source#holdLastValid(java.util.function.Predicate, double, Object)}
      * that avoids boxing and provides a common "sensor validity" tool for automation.</p>
      *
-     * <p>Implementation uses {@link LoopClock#nowSec()} so the max hold is enforced even if this
-     * source is not sampled every loop.</p>
+     * <p>The retained value carries a clock-owned timestamp, so the max hold is enforced even if
+     * this source is not sampled every loop and a deliberate clock reset cannot rejuvenate it.</p>
      *
      * @param isValid    predicate that defines which samples are valid
-     * @param maxHoldSec maximum age of the held value in seconds; must be {@code >= 0}
+     * @param maxHoldSec finite maximum age of the held value in seconds; must be {@code >= 0}
      * @param fallback   value returned when no valid value is available (or the hold has expired)
      */
     default ScalarSource holdLastValid(DoublePredicate isValid, double maxHoldSec, double fallback) {
         Objects.requireNonNull(isValid, "isValid");
-        if (maxHoldSec < 0.0) {
-            throw new IllegalArgumentException("maxHoldSec must be >= 0, got " + maxHoldSec);
+        if (!Double.isFinite(maxHoldSec) || maxHoldSec < 0.0) {
+            throw new IllegalArgumentException(
+                    "maxHoldSec must be finite and >= 0, got " + maxHoldSec);
         }
 
         ScalarSource self = this;
@@ -116,9 +118,9 @@ public interface ScalarSource extends Source<Double> {
 
             private double lastValid = fallback;
             private boolean hasValid = false;
-            private double lastValidSec = Double.NEGATIVE_INFINITY;
-            /** The last time {@link #getAsDouble(LoopClock)} was sampled (for debug only). */
-            private double lastSampleSec = Double.NEGATIVE_INFINITY;
+            private LoopTimestamp lastValidTimestamp = LoopTimestamp.unavailable();
+            /** Derived diagnostic age at the most recent sample. */
+            private double lastValidAgeSec = Double.POSITIVE_INFINITY;
 
             /**
              * {@inheritDoc}
@@ -132,18 +134,19 @@ public interface ScalarSource extends Source<Double> {
                 lastCycle = cyc;
 
                 double cur = self.getAsDouble(clock);
-                double now = clock.nowSec();
-                lastSampleSec = now;
-
                 if (isValid.test(cur)) {
                     hasValid = true;
                     lastValid = cur;
-                    lastValidSec = now;
+                    lastValidTimestamp = clock.nowTimestamp();
+                    lastValidAgeSec = 0.0;
                     lastOut = cur;
                     return lastOut;
                 }
 
-                if (hasValid && (now - lastValidSec) <= maxHoldSec) {
+                lastValidAgeSec = hasValid
+                        ? lastValidTimestamp.ageSec(clock)
+                        : Double.POSITIVE_INFINITY;
+                if (Double.isFinite(lastValidAgeSec) && lastValidAgeSec <= maxHoldSec) {
                     lastOut = lastValid;
                     return lastOut;
                 }
@@ -162,8 +165,8 @@ public interface ScalarSource extends Source<Double> {
                 lastOut = fallback;
                 hasValid = false;
                 lastValid = fallback;
-                lastValidSec = Double.NEGATIVE_INFINITY;
-                lastSampleSec = Double.NEGATIVE_INFINITY;
+                lastValidTimestamp = LoopTimestamp.unavailable();
+                lastValidAgeSec = Double.POSITIVE_INFINITY;
             }
 
             /**
@@ -173,11 +176,10 @@ public interface ScalarSource extends Source<Double> {
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) return;
                 String p = (prefix == null || prefix.isEmpty()) ? "holdLastValid" : prefix;
-                double ageSec = hasValid ? Math.max(0.0, lastSampleSec - lastValidSec) : Double.POSITIVE_INFINITY;
                 dbg.addData(p + ".class", "HoldLastValidScalar")
                         .addData(p + ".maxHoldSec", maxHoldSec)
                         .addData(p + ".hasValid", hasValid)
-                        .addData(p + ".lastValidAgeSec", ageSec)
+                        .addData(p + ".lastValidAgeSec", lastValidAgeSec)
                         .addData(p + ".fallback", fallback);
                 self.debugDump(dbg, p + ".src");
             }
@@ -454,10 +456,10 @@ public interface ScalarSource extends Source<Double> {
      * Derive this source's rate of change per second.
      *
      * <p>The returned source treats this source as an unwrapped linear position signal. It uses
-     * elapsed {@link LoopClock#nowSec()} time between accepted samples rather than the clock's most
+     * elapsed time between clock-owned accepted-sample timestamps rather than the clock's most
      * recent {@link LoopClock#dtSec()} interval, so the result remains correct when the source is
      * not sampled every loop. The first finite sample establishes a baseline and returns
-     * {@code 0.0}.</p>
+     * {@code 0.0}; a deliberate clock reset invalidates the old baseline.</p>
      *
      * <p>Sampling is idempotent by {@link LoopClock#cycle()}. A new-cycle sample at the same time
      * retains the previous finite rate without consuming the position change; that change remains
@@ -477,7 +479,7 @@ public interface ScalarSource extends Source<Double> {
 
             private boolean hasBaseline = false;
             private double lastAcceptedValue = Double.NaN;
-            private double lastAcceptedSec = Double.NaN;
+            private LoopTimestamp lastAcceptedTimestamp = LoopTimestamp.unavailable();
             private double lastFiniteRatePerSec = 0.0;
 
             @Override
@@ -497,22 +499,21 @@ public interface ScalarSource extends Source<Double> {
                     return lastOutput;
                 }
 
-                if (!hasBaseline || nowSec < lastAcceptedSec) {
+                LoopTimestamp sampleTimestamp = clock.nowTimestamp();
+                double elapsedSec = hasBaseline
+                        ? sampleTimestamp.secondsSince(lastAcceptedTimestamp)
+                        : Double.NaN;
+                if (!hasBaseline || !Double.isFinite(elapsedSec) || elapsedSec < 0.0) {
                     hasBaseline = true;
                     lastAcceptedValue = value;
-                    lastAcceptedSec = nowSec;
+                    lastAcceptedTimestamp = sampleTimestamp;
                     lastFiniteRatePerSec = 0.0;
                     lastOutput = 0.0;
                     return lastOutput;
                 }
 
-                double elapsedSec = nowSec - lastAcceptedSec;
                 if (elapsedSec == 0.0) {
                     lastOutput = lastFiniteRatePerSec;
-                    return lastOutput;
-                }
-                if (!Double.isFinite(elapsedSec)) {
-                    lastOutput = Double.NaN;
                     return lastOutput;
                 }
 
@@ -523,7 +524,7 @@ public interface ScalarSource extends Source<Double> {
                 }
 
                 lastAcceptedValue = value;
-                lastAcceptedSec = nowSec;
+                lastAcceptedTimestamp = sampleTimestamp;
                 lastFiniteRatePerSec = ratePerSec;
                 lastOutput = ratePerSec;
                 return lastOutput;
@@ -536,7 +537,7 @@ public interface ScalarSource extends Source<Double> {
                 lastOutput = 0.0;
                 hasBaseline = false;
                 lastAcceptedValue = Double.NaN;
-                lastAcceptedSec = Double.NaN;
+                lastAcceptedTimestamp = LoopTimestamp.unavailable();
                 lastFiniteRatePerSec = 0.0;
             }
 
@@ -547,7 +548,8 @@ public interface ScalarSource extends Source<Double> {
                 dbg.addData(p + ".class", "RatePerSecondScalar")
                         .addData(p + ".hasBaseline", hasBaseline)
                         .addData(p + ".lastAcceptedValue", lastAcceptedValue)
-                        .addData(p + ".lastAcceptedSec", lastAcceptedSec)
+                        .addData(p + ".lastAcceptedTimestampAvailable",
+                                lastAcceptedTimestamp.isAvailable())
                         .addData(p + ".lastFiniteRatePerSec", lastFiniteRatePerSec)
                         .addData(p + ".lastOutput", lastOutput);
                 self.debugDump(dbg, p + ".src");

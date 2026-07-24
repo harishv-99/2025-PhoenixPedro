@@ -24,8 +24,9 @@ Do not use `SpatialQuery` when the target is already a plant-unit value. A lift 
 - `SpatialControlFrames`: robot-relative frame providers for translation and facing.
 - `SpatialSolveLane`: one strategy for solving the relationship, such as absolute pose or live AprilTags.
 - `SpatialQueryResult`: ordered per-lane results from one loop.
-- `TranslationSolution`: solved target point in robot and controlled-frame coordinates.
-- `FacingSolution`: signed facing error in radians.
+- `TranslationSolution`: solved target point in robot and controlled-frame coordinates, with the
+  epoch-safe timestamp of the underlying measurement.
+- `FacingSolution`: signed facing error in radians, with the same kind of measurement timestamp.
 
 The key naming rule is:
 
@@ -134,7 +135,27 @@ The query controls the turret tool frame. The AprilTag lane uses the dynamic cam
 
 Fast moving mechanisms need more than “current pose.” A camera frame may be old by the time the loop reads it. If a turret moved during that delay, the AprilTag lane should interpret the tag using the turret camera mount from the frame timestamp.
 
-Phoenix therefore supports `TimeAwareSource<T>` for dynamic frames and camera mounts. Fixed frames use `RobotFrames.rigid(...)` or `TimeAwareSources.fixed(...)`. Current-only dynamic frames can use `RobotFrames.currentOnly(...)`, but moving sensors should eventually use a history-backed source.
+Phoenix therefore supports `TimeAwareSource<T>` for dynamic frames and camera mounts. Its
+historical lookup receives one `LoopTimestamp`, not a raw timestamp plus a reset epoch. Fixed frames
+use `RobotFrames.rigid(...)` or `TimeAwareSources.fixed(...)`. Current-only dynamic frames can use
+`RobotFrames.currentOnly(...)`, but moving sensors should eventually use a history-backed source.
+
+A source owner that receives age instead of an absolute Phoenix timestamp anchors the measurement
+once:
+
+```java
+LoopTimestamp frameTimestamp = clock.timestampSecondsAgo(frameAgeSec);
+```
+
+That one value can be retained across a deliberate `LoopClock.reset()` without losing its origin,
+but it becomes invalid as current-epoch evidence: `ageSec(clock)` returns `NaN` and
+`isFresh(clock, ...)` returns false. Consumers never read or compare a clock epoch. They derive
+current age only when needed:
+
+```java
+double ageSec = facing.timestamp().ageSec(clock);
+boolean stillFresh = facing.timestamp().isFresh(clock, 0.20);
+```
 
 Rule of thumb:
 
@@ -153,6 +174,10 @@ SpatialSolutionGate gate = SpatialSolutionGate.builder()
 SpatialQueryResult result = query.get(clock);
 SpatialFacingSelection facing = SpatialQuerySelectors.firstValidFacing(result, gate);
 ```
+
+The selector compares each measurement timestamp with the query result's one coherent
+`sampleTimestamp`, so robot code does not pass a second time or epoch argument. A retained result is
+a snapshot of that query cycle; call `query.get(clock)` again when you need a current decision.
 
 The same selector/gate concepts should be used by Drive Guidance and mechanism target request builders so “valid enough” means the same thing across the framework.
 

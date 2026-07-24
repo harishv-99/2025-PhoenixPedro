@@ -207,6 +207,7 @@ public final class FtcLimelightVisionLaneTest {
         assertTrue(noTarget.hasResult());
         assertFalse(noTarget.isTargetValid());
         assertEquals(0, noTarget.pipelineIndex());
+        assertEquals(0.25, noTarget.ageSec(), 1e-9);
     }
 
     @Test
@@ -278,7 +279,7 @@ public final class FtcLimelightVisionLaneTest {
         estimator.update(manual.clock());
         PoseEstimate estimate = estimator.getEstimate();
         assertFalse(estimate.hasPose);
-        assertEquals(12.5, estimate.timestampSec, 1e-9);
+        assertEquals(0.0, estimate.timestamp.ageSec(manual.clock()), 1e-9);
 
         estimatorCfg.mode = null;
         expectFailure(IllegalArgumentException.class,

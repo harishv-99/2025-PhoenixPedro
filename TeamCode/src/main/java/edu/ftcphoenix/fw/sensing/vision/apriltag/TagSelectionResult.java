@@ -56,12 +56,16 @@ public final class TagSelectionResult {
                               double metricValue) {
         this.hasPreview = hasPreview;
         this.previewTagId = hasPreview ? previewTagId : -1;
-        this.previewObservation = previewObservation != null ? previewObservation : AprilTagObservation.noTarget(Double.POSITIVE_INFINITY);
+        this.previewObservation = previewObservation != null
+                ? previewObservation
+                : AprilTagObservation.noTarget();
         this.hasSelection = hasSelection;
         this.selectedTagId = hasSelection ? selectedTagId : -1;
         this.latched = latched;
         this.hasFreshSelectedObservation = hasFreshSelectedObservation;
-        this.selectedObservation = selectedObservation != null ? selectedObservation : AprilTagObservation.noTarget(Double.POSITIVE_INFINITY);
+        this.selectedObservation = selectedObservation != null
+                ? selectedObservation
+                : AprilTagObservation.noTarget();
         LinkedHashSet<Integer> ids = new LinkedHashSet<Integer>();
         if (visibleCandidateIds != null) {
             ids.addAll(visibleCandidateIds);
@@ -79,12 +83,12 @@ public final class TagSelectionResult {
         return new TagSelectionResult(
                 false,
                 -1,
-                AprilTagObservation.noTarget(Double.POSITIVE_INFINITY),
+                AprilTagObservation.noTarget(),
                 false,
                 -1,
                 false,
                 false,
-                AprilTagObservation.noTarget(Double.POSITIVE_INFINITY),
+                AprilTagObservation.noTarget(),
                 visibleCandidateIds,
                 "none",
                 "no selection",

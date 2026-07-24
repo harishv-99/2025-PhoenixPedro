@@ -17,6 +17,7 @@ import java.util.List;
 
 import edu.ftcphoenix.fw.core.geometry.Pose2d;
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
+import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 import edu.ftcphoenix.fw.drive.DriveCommandSink;
 import edu.ftcphoenix.fw.drive.DriveSignal;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
@@ -55,8 +56,7 @@ public final class PhoenixTeleOpTest {
                         new Pose3d(14.0, -6.0, 0.0, 0.75, 0.0, 0.0),
                         true,
                         1.0,
-                        0.0,
-                        0.0
+                        LoopTimestamp.unavailable()
                 )
         );
 

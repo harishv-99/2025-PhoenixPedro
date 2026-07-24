@@ -28,7 +28,8 @@ public final class PhoenixDriveAssistServiceTest {
     public void unavailablePoseAssistsLeaveManualDriveUnchanged() {
         ManualLoopClock manualClock = new ManualLoopClock();
         RecordingAimOverlay aimOverlay = new RecordingAimOverlay();
-        PhoenixDriveAssistService service = createService(false, aimOverlay);
+        PhoenixDriveAssistService service = createService(
+                manualClock.clock(), false, aimOverlay);
 
         service.update(manualClock.clock(), scoringStatus(true));
         DriveSignal output = service.driveSource().get(manualClock.clock());
@@ -46,7 +47,8 @@ public final class PhoenixDriveAssistServiceTest {
     public void availablePoseAssistsCanBraceAndOverrideOnlyOmega() {
         ManualLoopClock manualClock = new ManualLoopClock();
         RecordingAimOverlay aimOverlay = new RecordingAimOverlay();
-        PhoenixDriveAssistService service = createService(true, aimOverlay);
+        PhoenixDriveAssistService service = createService(
+                manualClock.clock(), true, aimOverlay);
 
         service.update(manualClock.clock(), scoringStatus(true));
         DriveSignal output = service.driveSource().get(manualClock.clock());
@@ -61,6 +63,7 @@ public final class PhoenixDriveAssistServiceTest {
     }
 
     private static PhoenixDriveAssistService createService(
+            LoopClock clock,
             boolean poseAssistsAvailable,
             DriveOverlay aimOverlay
     ) {
@@ -75,8 +78,7 @@ public final class PhoenixDriveAssistServiceTest {
                     new Pose3d(9.0, -4.0, 0.0, 0.5, 0.0, 0.0),
                     true,
                     1.0,
-                    0.0,
-                    0.0
+                    clock.nowTimestamp()
             );
 
             @Override

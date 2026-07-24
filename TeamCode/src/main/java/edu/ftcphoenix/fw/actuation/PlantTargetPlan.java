@@ -2,6 +2,8 @@ package edu.ftcphoenix.fw.actuation;
 
 import java.util.Objects;
 
+import edu.ftcphoenix.fw.core.time.LoopTimestamp;
+
 /**
  * Result of resolving a {@link PlantTargetSource} for one plant update.
  *
@@ -51,7 +53,7 @@ public final class PlantTargetPlan {
     private final String selectedCandidateId;
     private final double selectedQuality;
     private final double selectedAgeSec;
-    private final double selectedTimestampSec;
+    private final LoopTimestamp selectedTimestamp;
     private final String reason;
 
     private PlantTargetPlan(boolean hasTarget,
@@ -63,7 +65,7 @@ public final class PlantTargetPlan {
                             String selectedCandidateId,
                             double selectedQuality,
                             double selectedAgeSec,
-                            double selectedTimestampSec,
+                            LoopTimestamp selectedTimestamp,
                             String reason) {
         this.hasTarget = hasTarget;
         this.target = target;
@@ -74,7 +76,7 @@ public final class PlantTargetPlan {
         this.selectedCandidateId = selectedCandidateId != null ? selectedCandidateId : "";
         this.selectedQuality = selectedQuality;
         this.selectedAgeSec = selectedAgeSec;
-        this.selectedTimestampSec = selectedTimestampSec;
+        this.selectedTimestamp = Objects.requireNonNull(selectedTimestamp, "selectedTimestamp");
         this.reason = reason != null ? reason : "";
     }
 
@@ -84,7 +86,8 @@ public final class PlantTargetPlan {
     public static PlantTargetPlan exact(double target, String reason) {
         requireFinite(target, "target");
         return new PlantTargetPlan(true, target, Kind.EXACT, true, false, false,
-                "exact", 1.0, Double.NaN, Double.NaN, clean(reason, "exact target"));
+                "exact", 1.0, Double.NaN, LoopTimestamp.unavailable(),
+                clean(reason, "exact target"));
     }
 
     /** Create a planned candidate after the framework planner has validated its metadata. */
@@ -108,7 +111,7 @@ public final class PlantTargetPlan {
                 candidate.id,
                 candidate.quality,
                 candidate.isObserved() ? selectedAgeSec : Double.NaN,
-                candidate.isObserved() ? candidate.timestampSec : Double.NaN,
+                candidate.isObserved() ? candidate.timestamp : LoopTimestamp.unavailable(),
                 clean(reason, "planned target"));
     }
 
@@ -118,7 +121,8 @@ public final class PlantTargetPlan {
     public static PlantTargetPlan fallback(double target, String reason) {
         requireFinite(target, "target");
         return new PlantTargetPlan(true, target, Kind.FALLBACK, false, true, false,
-                "fallback", 1.0, Double.NaN, Double.NaN, clean(reason, "fallback target"));
+                "fallback", 1.0, Double.NaN, LoopTimestamp.unavailable(),
+                clean(reason, "fallback target"));
     }
 
     /**
@@ -127,7 +131,8 @@ public final class PlantTargetPlan {
     public static PlantTargetPlan holdLast(double target, String reason) {
         requireFinite(target, "target");
         return new PlantTargetPlan(true, target, Kind.HOLD_LAST_TARGET, false, true, false,
-                "hold-last", 1.0, Double.NaN, Double.NaN, clean(reason, "holding last target"));
+                "hold-last", 1.0, Double.NaN, LoopTimestamp.unavailable(),
+                clean(reason, "holding last target"));
     }
 
     /**
@@ -136,7 +141,7 @@ public final class PlantTargetPlan {
     public static PlantTargetPlan holdMeasured(double target, String reason) {
         requireFinite(target, "target");
         return new PlantTargetPlan(true, target, Kind.HOLD_MEASURED_TARGET, false, true, false,
-                "hold-measured", 1.0, Double.NaN, Double.NaN,
+                "hold-measured", 1.0, Double.NaN, LoopTimestamp.unavailable(),
                 clean(reason, "holding measured target"));
     }
 
@@ -145,7 +150,8 @@ public final class PlantTargetPlan {
      */
     public static PlantTargetPlan unavailable(String reason) {
         return new PlantTargetPlan(false, Double.NaN, Kind.UNAVAILABLE, false, false, false,
-                "", Double.NaN, Double.NaN, Double.NaN, clean(reason, "target unavailable"));
+                "", Double.NaN, Double.NaN, LoopTimestamp.unavailable(),
+                clean(reason, "target unavailable"));
     }
 
     /**
@@ -217,12 +223,13 @@ public final class PlantTargetPlan {
     }
 
     /**
-     * Stable timestamp of the chosen observation, in seconds in the loop clock's timebase.
+     * Epoch-safe timestamp of the chosen observation.
      *
-     * <p>Returns {@link Double#NaN} unless this plan selected an observed candidate.</p>
+     * <p>Returns {@link LoopTimestamp#unavailable()} unless this plan selected an observed
+     * candidate.</p>
      */
-    public double selectedTimestampSec() {
-        return selectedTimestampSec;
+    public LoopTimestamp selectedTimestamp() {
+        return selectedTimestamp;
     }
 
     /**

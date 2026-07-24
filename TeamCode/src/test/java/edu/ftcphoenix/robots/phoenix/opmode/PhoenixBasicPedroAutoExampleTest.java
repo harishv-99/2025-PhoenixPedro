@@ -16,6 +16,7 @@ import java.util.List;
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
+import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
 import edu.ftcphoenix.robots.examples.pedro.BasicPedroAutoRobot;
 import edu.ftcphoenix.robots.examples.pedro.BasicPedroAutoRobotTest;
@@ -95,8 +96,7 @@ public final class PhoenixBasicPedroAutoExampleTest {
                         new Pose3d(1.0, 2.0, 0.0, 0.3, 0.0, 0.0),
                         true,
                         1.0,
-                        0.0,
-                        0.0
+                        LoopTimestamp.unavailable()
                 )
         );
         BasicPedroAutoRobot robot =

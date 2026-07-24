@@ -13,13 +13,16 @@ import edu.ftcphoenix.fw.core.debug.DebugSink;
  *   <li>Track the current loop time (in seconds).</li>
  *   <li>Track the delta time ({@code dtSec}) between successive updates.</li>
  *   <li>Expose a monotonically increasing {@link #cycle()} counter for per-loop identity.</li>
+ *   <li>Create epoch-safe {@link LoopTimestamp} values for captured measurements.</li>
  *   <li>Provide a simple {@link #reset(double)} hook to restart timing.</li>
  * </ul>
  *
  * <h2>Cycle / frame id</h2>
  * <p>{@link #cycle()} increments once per call to {@link #update(double)} after the clock has been
- * started. When robot code follows the intended pattern (calling {@link #update(double)} exactly
- * once per OpMode cycle), {@code cycle()} is a stable per-cycle identity.</p>
+ * started and once immediately at every explicit {@link #reset(double)} boundary. It never returns
+ * to zero during this clock's lifetime. When robot code follows the intended pattern (calling
+ * {@link #update(double)} exactly once per OpMode cycle), {@code cycle()} is a stable per-cycle
+ * identity and a reset cannot alias a cached pre-reset cycle.</p>
  *
  * <p>This is useful for making other per-cycle systems (like input edge tracking and bindings)
  * idempotent: if their update methods are accidentally called twice in the same loop cycle, the
@@ -59,9 +62,12 @@ public final class LoopClock {
      * Monotonically increasing loop cycle counter.
      *
      * <p>Intended to increment once per OpMode cycle (i.e., once per call to {@link #update(double)}
-     * when used correctly).</p>
+     * when used correctly) and once immediately at an explicit {@link #reset(double)} boundary.</p>
      */
     private long cycle;
+
+    /** Reset-epoch identity retained only inside {@link LoopTimestamp}. */
+    private long timestampEpoch;
 
     /**
      * Whether {@link #update(double)} or {@link #reset(double)} has been called at least once.
@@ -79,6 +85,7 @@ public final class LoopClock {
         this.nowSec = 0.0;
         this.dtSec = 0.0;
         this.cycle = 0L;
+        this.timestampEpoch = 0L;
         this.started = false;
     }
 
@@ -87,8 +94,9 @@ public final class LoopClock {
      *
      * <p>After reset, {@link #dtSec()} will return 0 until the next update.</p>
      *
-     * <p>Reset also clears the cycle counter to 0. The next call to {@link #update(double)}
-     * will advance the cycle counter.</p>
+     * <p>Reset advances {@link #cycle()} immediately and invalidates previously captured
+     * {@link LoopTimestamp} values. The cycle counter stays monotonic rather than returning to
+     * zero, so a per-cycle cache cannot mistake post-reset state for an old cycle.</p>
      *
      * @param currentTimeSec current absolute time in seconds (e.g., from getRuntime())
      */
@@ -97,7 +105,8 @@ public final class LoopClock {
         this.nowSec = currentTimeSec;
         this.dtSec = 0.0;
 
-        this.cycle = 0L;
+        this.cycle++;
+        this.timestampEpoch++;
         this.started = true;
     }
 
@@ -115,9 +124,11 @@ public final class LoopClock {
     public void update(double currentTimeSec) {
         if (!started) {
             // First update after construction: initialize and report dt=0 for this first update.
-            reset(currentTimeSec);
-            // Still count this as a loop cycle.
-            cycle++;
+            this.lastSec = currentTimeSec;
+            this.nowSec = currentTimeSec;
+            this.dtSec = 0.0;
+            this.started = true;
+            this.cycle = 1L;
             return;
         }
 
@@ -143,8 +154,8 @@ public final class LoopClock {
     /**
      * @return delta time in seconds between the last two updates.
      *
-     * <p>Will be 0.0 on the first update after {@link #reset(double)} or after
-     * construction.</p>
+     * <p>Will be 0.0 immediately after {@link #reset(double)} and on the first implicit update
+     * after construction.</p>
      */
     public double dtSec() {
         return dtSec;
@@ -154,10 +165,63 @@ public final class LoopClock {
      * @return monotonically increasing loop cycle counter.
      *
      * <p>When {@link #update(double)} is called once per OpMode cycle, this value uniquely
-     * identifies the current loop cycle and can be used as a per-cycle id (frame id).</p>
+     * identifies the current loop cycle and can be used as a per-cycle id (frame id). Explicit
+     * reset advances the identity immediately; it does not return to zero.</p>
      */
     public long cycle() {
         return cycle;
+    }
+
+    /**
+     * Captures the clock's current time together with its clock and reset-epoch identity.
+     *
+     * @return an epoch-safe timestamp for {@link #nowSec()}
+     * @throws IllegalStateException if the clock has not been initialized or its current time is
+     *                               not finite
+     */
+    public LoopTimestamp nowTimestamp() {
+        requireTimestampReady();
+        return LoopTimestamp.captured(this, timestampEpoch, nowSec);
+    }
+
+    /**
+     * Captures a delayed measurement reported as an age from this clock's current time.
+     *
+     * <p>Use this once at an age-native sensor or vendor boundary, then forward the returned
+     * timestamp unchanged. Consumers should not repeatedly reconstruct timestamps from a cached
+     * age.</p>
+     *
+     * @param ageSec finite, non-negative measurement age in seconds
+     * @return an epoch-safe timestamp for {@code nowSec() - ageSec}
+     */
+    public LoopTimestamp timestampSecondsAgo(double ageSec) {
+        if (!Double.isFinite(ageSec) || ageSec < 0.0) {
+            throw new IllegalArgumentException(
+                    "ageSec must be finite and >= 0, got " + ageSec);
+        }
+        requireTimestampReady();
+        double capturedSec = nowSec - ageSec;
+        if (!Double.isFinite(capturedSec)) {
+            throw new IllegalArgumentException(
+                    "ageSec " + ageSec + " produces a non-finite timestamp from nowSec " + nowSec);
+        }
+        return LoopTimestamp.captured(this, timestampEpoch, capturedSec);
+    }
+
+    long timestampEpoch() {
+        return timestampEpoch;
+    }
+
+    private void requireTimestampReady() {
+        if (!started) {
+            throw new IllegalStateException(
+                    "LoopClock must be initialized with reset(...) or update(...) before "
+                            + "capturing a timestamp");
+        }
+        if (!Double.isFinite(nowSec)) {
+            throw new IllegalStateException(
+                    "LoopClock cannot capture a timestamp from non-finite nowSec " + nowSec);
+        }
     }
 
     /**

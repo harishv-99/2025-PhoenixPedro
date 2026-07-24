@@ -4,6 +4,7 @@ import org.junit.Test;
 
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
 import edu.ftcphoenix.fw.core.time.LoopClock;
+import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 import edu.ftcphoenix.fw.drive.DriveCommandSink;
 import edu.ftcphoenix.fw.drive.DriveSignal;
 import edu.ftcphoenix.fw.localization.AbsolutePoseEstimator;
@@ -24,7 +25,7 @@ public final class DriveGuidanceTaskTimingTest {
         ManualLoopClock manualClock = new ManualLoopClock();
         manualClock.nextCycle(1.0);
 
-        MutablePoseEstimator estimator = new MutablePoseEstimator(manualClock.clock().nowSec());
+        MutablePoseEstimator estimator = new MutablePoseEstimator(manualClock.clock().nowTimestamp());
         RecordingDriveSink drive = new RecordingDriveSink();
         DriveGuidanceTask task = new DriveGuidanceTask(drive, planFor(estimator), config(0.10));
         TaskRunner runner = new TaskRunner();
@@ -49,7 +50,7 @@ public final class DriveGuidanceTaskTimingTest {
     @Test
     public void usableCommandResetsConsecutiveNoGuidanceInterval() {
         ManualLoopClock manualClock = new ManualLoopClock();
-        MutablePoseEstimator estimator = new MutablePoseEstimator(manualClock.clock().nowSec());
+        MutablePoseEstimator estimator = new MutablePoseEstimator(manualClock.clock().nowTimestamp());
         RecordingDriveSink drive = new RecordingDriveSink();
         DriveGuidanceTask task = new DriveGuidanceTask(drive, planFor(estimator), config(0.10));
         TaskRunner runner = new TaskRunner();
@@ -61,13 +62,13 @@ public final class DriveGuidanceTaskTimingTest {
         assertFalse(task.isComplete());
 
         manualClock.nextCycle(0.01);
-        estimator.setAvailable(manualClock.clock().nowSec());
+        estimator.setAvailable(manualClock.clock().nowTimestamp());
         runner.update(manualClock.clock());
         assertFalse(task.isComplete());
         assertTrue(drive.driveCount > 0);
 
         manualClock.nextCycle(0.01);
-        estimator.setUnavailable(manualClock.clock().nowSec());
+        estimator.setUnavailable(manualClock.clock().nowTimestamp());
         runner.update(manualClock.clock());
 
         manualClock.nextCycle(0.08);
@@ -99,16 +100,16 @@ public final class DriveGuidanceTaskTimingTest {
     private static final class MutablePoseEstimator implements AbsolutePoseEstimator {
         private PoseEstimate estimate;
 
-        MutablePoseEstimator(double nowSec) {
-            setUnavailable(nowSec);
+        MutablePoseEstimator(LoopTimestamp timestamp) {
+            setUnavailable(timestamp);
         }
 
-        void setAvailable(double nowSec) {
-            estimate = new PoseEstimate(Pose3d.zero(), true, 1.0, 0.0, nowSec);
+        void setAvailable(LoopTimestamp timestamp) {
+            estimate = new PoseEstimate(Pose3d.zero(), true, 1.0, timestamp);
         }
 
-        void setUnavailable(double nowSec) {
-            estimate = PoseEstimate.noPose(nowSec);
+        void setUnavailable(LoopTimestamp timestamp) {
+            estimate = PoseEstimate.noPose(timestamp);
         }
 
         @Override

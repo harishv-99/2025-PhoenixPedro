@@ -2,6 +2,7 @@ package edu.ftcphoenix.fw.localization;
 
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
 import edu.ftcphoenix.fw.core.math.MathUtil;
+import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 
 /**
  * Immutable timestamped motion increment produced by a {@link MotionPredictor}.
@@ -37,12 +38,12 @@ public final class MotionDelta {
     /**
      * Timestamp of the earlier predictor sample used to form this delta.
      */
-    public final double startTimestampSec;
+    public final LoopTimestamp startTimestamp;
 
     /**
      * Timestamp of the later predictor sample used to form this delta.
      */
-    public final double endTimestampSec;
+    public final LoopTimestamp endTimestamp;
 
     /**
      * Creates a new motion increment.
@@ -50,29 +51,34 @@ public final class MotionDelta {
      * @param deltaPose         relative transform from the previous predictor pose to the current pose
      * @param hasDelta          whether this instance represents a usable motion increment
      * @param quality           simple trust score in [0, 1]
-     * @param startTimestampSec timestamp of the earlier sample
-     * @param endTimestampSec   timestamp of the later sample
+     * @param startTimestamp timestamp of the earlier sample
+     * @param endTimestamp   timestamp of the later sample
      */
     public MotionDelta(Pose3d deltaPose,
                        boolean hasDelta,
                        double quality,
-                       double startTimestampSec,
-                       double endTimestampSec) {
+                       LoopTimestamp startTimestamp,
+                       LoopTimestamp endTimestamp) {
         if (deltaPose == null) {
             throw new IllegalArgumentException("deltaPose is required");
+        }
+        if (startTimestamp == null || endTimestamp == null) {
+            throw new IllegalArgumentException(
+                    "startTimestamp and endTimestamp are required; use LoopTimestamp.unavailable() when needed");
         }
         this.deltaPose = deltaPose;
         this.hasDelta = hasDelta;
         this.quality = quality;
-        this.startTimestampSec = startTimestampSec;
-        this.endTimestampSec = endTimestampSec;
+        this.startTimestamp = startTimestamp;
+        this.endTimestamp = endTimestamp;
     }
 
     /**
-     * @return {@code endTimestampSec - startTimestampSec}.
+     * @return signed seconds from {@link #startTimestamp} to {@link #endTimestamp}, or
+     *         {@code NaN} when either timestamp is unavailable or no longer in the current epoch
      */
     public double durationSec() {
-        return endTimestampSec - startTimestampSec;
+        return endTimestamp.secondsSince(startTimestamp);
     }
 
     /**
@@ -92,20 +98,20 @@ public final class MotionDelta {
     /**
      * Creates a value representing "no usable delta" at a single timestamp.
      */
-    public static MotionDelta none(double timestampSec) {
-        return new MotionDelta(Pose3d.zero(), false, 0.0, timestampSec, timestampSec);
+    public static MotionDelta none(LoopTimestamp timestamp) {
+        return new MotionDelta(Pose3d.zero(), false, 0.0, timestamp, timestamp);
     }
 
     @Override
     public String toString() {
         if (!hasDelta) {
-            return "MotionDelta{no delta, timestampSec=" + endTimestampSec + "}";
+            return "MotionDelta{no delta, timestamp=" + endTimestamp + "}";
         }
         return "MotionDelta{" +
                 "deltaPose=" + deltaPose +
                 ", quality=" + quality +
-                ", startTimestampSec=" + startTimestampSec +
-                ", endTimestampSec=" + endTimestampSec +
+                ", startTimestamp=" + startTimestamp +
+                ", endTimestamp=" + endTimestamp +
                 '}';
     }
 }

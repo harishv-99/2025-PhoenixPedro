@@ -1,6 +1,7 @@
 package edu.ftcphoenix.fw.core.source;
 
 import edu.ftcphoenix.fw.core.time.LoopClock;
+import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 
 /**
  * A {@link Source} that can answer either for the current loop or for a previous timestamp.
@@ -11,7 +12,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * moved.</p>
  *
  * <p>Implementations that do not keep history may return the current value from
- * {@link #getAt(LoopClock, double)}. Use {@link TimeAwareSources#currentOnly(Source)} for that
+ * {@link #getAt(LoopClock, LoopTimestamp)}. Use {@link TimeAwareSources#currentOnly(Source)} for that
  * explicit fallback, and prefer a real history-backed source for fast-moving mechanisms.</p>
  *
  * @param <T> sampled value type
@@ -19,20 +20,21 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
 public interface TimeAwareSource<T> extends Source<T> {
 
     /**
-     * Returns the value associated with {@code timestampSec} when available.
+     * Returns the value associated with {@code timestamp} when available.
      *
-     * @param clock        current loop clock, used for timebase and for current-only fallbacks
-     * @param timestampSec timestamp in the same timebase as {@link LoopClock#nowSec()}
+     * @param clock     current loop clock, used for timebase and for current-only fallbacks
+     * @param timestamp epoch-safe requested time created by that same clock
      * @return value at or near the requested timestamp; never {@code null}
      */
-    T getAt(LoopClock clock, double timestampSec);
+    T getAt(LoopClock clock, LoopTimestamp timestamp);
 
     /**
-     * Samples the current-loop value. By default this delegates to {@link #getAt(LoopClock, double)}
-     * using {@link LoopClock#nowSec()}.
+     * Samples the current-loop value. By default this delegates to
+     * {@link #getAt(LoopClock, LoopTimestamp)}
+     * using {@link LoopClock#nowTimestamp()}.
      */
     @Override
     default T get(LoopClock clock) {
-        return getAt(clock, clock.nowSec());
+        return getAt(clock, clock.nowTimestamp());
     }
 }

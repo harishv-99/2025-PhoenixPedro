@@ -6,6 +6,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
+import edu.ftcphoenix.fw.core.time.LoopTimestamp;
+
 /**
  * Request describing plant-unit targets that would satisfy a mechanism goal.
  *
@@ -43,13 +45,13 @@ public final class PlantTargetRequest {
      * Creates an exact request derived from an observation.
      *
      * @param quality observation quality for planner acceptance
-     * @param timestampSec stable observation timestamp in the consuming loop clock's timebase
+     * @param timestamp stable observation timestamp from the consuming loop clock
      */
     public static PlantTargetRequest observedExact(String id,
                                                    double value,
                                                    double quality,
-                                                   double timestampSec) {
-        return oneOf(PlantTargetCandidate.observedExact(id, value, quality, timestampSec));
+                                                   LoopTimestamp timestamp) {
+        return oneOf(PlantTargetCandidate.observedExact(id, value, quality, timestamp));
     }
 
     /**
@@ -63,13 +65,13 @@ public final class PlantTargetRequest {
      * Creates an equivalent-position request derived from an observation.
      *
      * @param quality observation quality for planner acceptance
-     * @param timestampSec stable observation timestamp in the consuming loop clock's timebase
+     * @param timestamp stable observation timestamp from the consuming loop clock
      */
     public static PlantTargetRequest observedEquivalentPosition(String id,
                                                                 double value,
                                                                 double quality,
-                                                                double timestampSec) {
-        return oneOf(PlantTargetCandidate.observedEquivalentPosition(id, value, quality, timestampSec));
+                                                                LoopTimestamp timestamp) {
+        return oneOf(PlantTargetCandidate.observedEquivalentPosition(id, value, quality, timestamp));
     }
 
     /**
@@ -83,14 +85,14 @@ public final class PlantTargetRequest {
      * Creates a periodic request derived from an observation.
      *
      * @param quality observation quality for planner acceptance
-     * @param timestampSec stable observation timestamp in the consuming loop clock's timebase
+     * @param timestamp stable observation timestamp from the consuming loop clock
      */
     public static PlantTargetRequest observedPeriodic(String id,
                                                       double value,
                                                       double period,
                                                       double quality,
-                                                      double timestampSec) {
-        return oneOf(PlantTargetCandidate.observedPeriodic(id, value, period, quality, timestampSec));
+                                                      LoopTimestamp timestamp) {
+        return oneOf(PlantTargetCandidate.observedPeriodic(id, value, period, quality, timestamp));
     }
 
     /**
@@ -104,13 +106,13 @@ public final class PlantTargetRequest {
      * Creates a relative exact request derived from an observation.
      *
      * @param quality observation quality for planner acceptance
-     * @param timestampSec stable observation timestamp in the consuming loop clock's timebase
+     * @param timestamp stable observation timestamp from the consuming loop clock
      */
     public static PlantTargetRequest observedRelative(String id,
                                                       double delta,
                                                       double quality,
-                                                      double timestampSec) {
-        return oneOf(PlantTargetCandidate.observedRelative(id, delta, quality, timestampSec));
+                                                      LoopTimestamp timestamp) {
+        return oneOf(PlantTargetCandidate.observedRelative(id, delta, quality, timestamp));
     }
 
     /**
@@ -125,14 +127,14 @@ public final class PlantTargetRequest {
      * consuming plant's period.
      *
      * @param quality observation quality for planner acceptance
-     * @param timestampSec stable observation timestamp in the consuming loop clock's timebase
+     * @param timestamp stable observation timestamp from the consuming loop clock
      */
     public static PlantTargetRequest observedRelativeEquivalentPosition(String id,
                                                                         double delta,
                                                                         double quality,
-                                                                        double timestampSec) {
+                                                                        LoopTimestamp timestamp) {
         return oneOf(PlantTargetCandidate.observedRelativeEquivalentPosition(
-                id, delta, quality, timestampSec));
+                id, delta, quality, timestamp));
     }
 
     /**
@@ -147,15 +149,15 @@ public final class PlantTargetRequest {
      * target = current measurement + delta + k*period.
      *
      * @param quality observation quality for planner acceptance
-     * @param timestampSec stable observation timestamp in the consuming loop clock's timebase
+     * @param timestamp stable observation timestamp from the consuming loop clock
      */
     public static PlantTargetRequest observedRelativePeriodic(String id,
                                                               double delta,
                                                               double period,
                                                               double quality,
-                                                              double timestampSec) {
+                                                              LoopTimestamp timestamp) {
         return oneOf(PlantTargetCandidate.observedRelativePeriodic(
-                id, delta, period, quality, timestampSec));
+                id, delta, period, quality, timestamp));
     }
 
     /**

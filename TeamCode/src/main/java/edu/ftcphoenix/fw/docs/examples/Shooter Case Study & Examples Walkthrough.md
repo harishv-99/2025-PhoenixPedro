@@ -111,7 +111,7 @@ Instead of doing a separate camera lookup, the example reads the fresh selected 
 TagSelectionResult selection = scoringSelection.get(clock);
 AprilTagObservation obs = selection.hasFreshSelectedObservation
         ? selection.selectedObservation
-        : AprilTagObservation.noTarget(Double.POSITIVE_INFINITY);
+        : AprilTagObservation.noTarget();
 ```
 
 That avoids duplicated “which tag?” logic.

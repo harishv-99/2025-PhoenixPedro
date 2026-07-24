@@ -161,7 +161,12 @@ For a fixed webcam or fixed Limelight, pass a fixed `CameraMountConfig`:
     .doneAprilTagsOnly()
 ```
 
-For a moving camera used outside DriveGuidance, pass a timestamp-aware source through `SpatialSolveSet.builder().aprilTags(...)`; see [`Spatial Queries.md`](<Spatial Queries.md>) and [`Mechanism Target Planning.md`](<Mechanism Target Planning.md>). This lets the AprilTag lane interpret delayed camera frames using the camera pose from the frame timestamp.
+For a moving camera used outside DriveGuidance, pass a timestamp-aware source through
+`SpatialSolveSet.builder().aprilTags(...)`; see [`Spatial Queries.md`](<Spatial Queries.md>) and
+[`Mechanism Target Planning.md`](<Mechanism Target Planning.md>). This lets the AprilTag lane
+interpret delayed camera frames using the camera pose from the frame timestamp. Phoenix carries that
+capture time as one `LoopTimestamp`, so camera, frame-history, spatial, and guidance code do not
+separately pass or compare a raw clock epoch and timestamp.
 
 ## Control frames and off-center facing
 

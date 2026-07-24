@@ -1,6 +1,10 @@
 package edu.ftcphoenix.fw.sensing.observation;
 
+import java.util.Objects;
+
 import edu.ftcphoenix.fw.core.math.MathUtil;
+import edu.ftcphoenix.fw.core.time.LoopClock;
+import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 
 /**
  * A lightweight 2D observation of a target relative to the robot.
@@ -19,9 +23,11 @@ import edu.ftcphoenix.fw.core.math.MathUtil;
  * this by setting {@link #forwardInches} and {@link #leftInches} to {@link Double#NaN} while still
  * providing {@link #bearingRad}. Use {@link #hasPosition()} to check.</p>
  *
- * <h2>Quality and age</h2>
+ * <h2>Quality and capture time</h2>
  * <p>Quality is a unitless score in [0, 1] where 1 is “very confident”. The meaning is sensor-specific
- * but the gating logic in higher-level code typically uses it as a simple threshold.</p>
+ * but the gating logic in higher-level code typically uses it as a simple threshold. The epoch-safe
+ * {@link #timestamp} keeps observation freshness valid across deliberate clock resets without
+ * requiring consumers to carry a separate epoch.</p>
  */
 public final class TargetObservation2d {
 
@@ -69,10 +75,8 @@ public final class TargetObservation2d {
      */
     public final double quality;
 
-    /**
-     * Age of this sample in seconds (0 means fresh).
-     */
-    public final double ageSec;
+    /** Epoch-safe timestamp of this measurement. */
+    public final LoopTimestamp timestamp;
 
     private TargetObservation2d(boolean hasTarget,
                                 int targetId,
@@ -81,7 +85,7 @@ public final class TargetObservation2d {
                                 double bearingRad,
                                 double targetHeadingRad,
                                 double quality,
-                                double ageSec) {
+                                LoopTimestamp timestamp) {
         this.hasTarget = hasTarget;
         this.targetId = targetId;
         this.forwardInches = forwardInches;
@@ -89,7 +93,7 @@ public final class TargetObservation2d {
         this.bearingRad = bearingRad;
         this.targetHeadingRad = targetHeadingRad;
         this.quality = MathUtil.clamp(quality, 0.0, 1.0);
-        this.ageSec = Math.max(0.0, ageSec);
+        this.timestamp = Objects.requireNonNull(timestamp, "timestamp");
     }
 
     /**
@@ -104,7 +108,7 @@ public final class TargetObservation2d {
                 0.0,
                 Double.NaN,
                 0.0,
-                Double.POSITIVE_INFINITY
+                LoopTimestamp.unavailable()
         );
     }
 
@@ -114,8 +118,8 @@ public final class TargetObservation2d {
     public static TargetObservation2d ofRobotRelativePosition(double forwardInches,
                                                               double leftInches,
                                                               double quality,
-                                                              double ageSec) {
-        return ofRobotRelativePosition(-1, forwardInches, leftInches, quality, ageSec);
+                                                              LoopTimestamp timestamp) {
+        return ofRobotRelativePosition(-1, forwardInches, leftInches, quality, timestamp);
     }
 
     /**
@@ -125,7 +129,7 @@ public final class TargetObservation2d {
                                                               double forwardInches,
                                                               double leftInches,
                                                               double quality,
-                                                              double ageSec) {
+                                                              LoopTimestamp timestamp) {
         double bearing = Math.atan2(leftInches, forwardInches);
         return new TargetObservation2d(
                 true,
@@ -135,7 +139,7 @@ public final class TargetObservation2d {
                 bearing,
                 Double.NaN,
                 quality,
-                ageSec
+                timestamp
         );
     }
 
@@ -151,7 +155,7 @@ public final class TargetObservation2d {
                                                           double leftInches,
                                                           double targetHeadingRad,
                                                           double quality,
-                                                          double ageSec) {
+                                                          LoopTimestamp timestamp) {
         double bearing = Math.atan2(leftInches, forwardInches);
         return new TargetObservation2d(
                 true,
@@ -161,7 +165,7 @@ public final class TargetObservation2d {
                 bearing,
                 targetHeadingRad,
                 quality,
-                ageSec
+                timestamp
         );
     }
 
@@ -170,8 +174,8 @@ public final class TargetObservation2d {
      */
     public static TargetObservation2d ofRobotRelativeBearing(double bearingRad,
                                                              double quality,
-                                                             double ageSec) {
-        return ofRobotRelativeBearing(-1, bearingRad, quality, ageSec);
+                                                             LoopTimestamp timestamp) {
+        return ofRobotRelativeBearing(-1, bearingRad, quality, timestamp);
     }
 
     /**
@@ -180,7 +184,7 @@ public final class TargetObservation2d {
     public static TargetObservation2d ofRobotRelativeBearing(int targetId,
                                                              double bearingRad,
                                                              double quality,
-                                                             double ageSec) {
+                                                             LoopTimestamp timestamp) {
         return new TargetObservation2d(
                 true,
                 targetId,
@@ -189,7 +193,7 @@ public final class TargetObservation2d {
                 bearingRad,
                 Double.NaN,
                 quality,
-                ageSec
+                timestamp
         );
     }
 
@@ -214,6 +218,16 @@ public final class TargetObservation2d {
         return hasTarget && targetId >= 0;
     }
 
+    /** Returns this observation's current age, or NaN when its timestamp is no longer valid. */
+    public double ageSec(LoopClock clock) {
+        return timestamp.ageSec(clock);
+    }
+
+    /** Returns whether this observation is valid now and within the inclusive maximum age. */
+    public boolean isFresh(LoopClock clock, double maxAgeSec) {
+        return timestamp.isFresh(clock, maxAgeSec);
+    }
+
     /**
      * {@inheritDoc}
      */
@@ -231,7 +245,7 @@ public final class TargetObservation2d {
                 + ", bearingRad=" + bearingRad
                 + (hasOrientation() ? (", targetHeadingRad=" + targetHeadingRad) : "")
                 + ", quality=" + quality
-                + ", ageSec=" + ageSec
+                + ", timestamp=" + timestamp
                 + "}";
     }
 }

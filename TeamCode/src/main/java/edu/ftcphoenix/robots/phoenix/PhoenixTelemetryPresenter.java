@@ -225,7 +225,7 @@ public final class PhoenixTelemetryPresenter {
 
         AprilTagObservation obs = selection.hasFreshSelectedObservation
                 ? selection.selectedObservation
-                : AprilTagObservation.noTarget(Double.POSITIVE_INFINITY);
+                : AprilTagObservation.noTarget();
         DriveGuidanceStatus aimStatus = targeting.aimStatus;
 
         telemetry.addData("tagId", selection.selectedTagId);

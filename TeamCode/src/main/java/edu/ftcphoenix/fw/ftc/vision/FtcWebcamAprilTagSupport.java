@@ -16,6 +16,7 @@ import org.firstinspires.ftc.vision.apriltag.AprilTagPoseRaw;
 import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 
@@ -24,6 +25,7 @@ import edu.ftcphoenix.fw.core.geometry.Mat3;
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
 import edu.ftcphoenix.fw.core.geometry.Vec3;
 import edu.ftcphoenix.fw.core.time.LoopClock;
+import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 import edu.ftcphoenix.fw.ftc.FtcFrames;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagDetections;
@@ -174,7 +176,7 @@ final class FtcWebcamAprilTagSupport {
             if (!owner.processorReadiness(processor).isReady()) {
                 lastCycle = cycle;
                 lastDataGeneration = dataGeneration;
-                lastDetections = AprilTagDetections.none(Double.POSITIVE_INFINITY);
+                lastDetections = AprilTagDetections.none();
                 return lastDetections;
             }
             if (cycle == lastCycle && dataGeneration == lastDataGeneration) {
@@ -182,7 +184,7 @@ final class FtcWebcamAprilTagSupport {
             }
 
             AprilTagDetections next =
-                    readDetections(owner.acceptProcessorFramesAfterNanos(processor));
+                    readDetections(clock, owner.acceptProcessorFramesAfterNanos(processor));
             lastCycle = cycle;
             lastDataGeneration = dataGeneration;
             lastDetections = next;
@@ -203,24 +205,27 @@ final class FtcWebcamAprilTagSupport {
             }
             String p = (prefix == null || prefix.isEmpty()) ? "webcamVision.tags" : prefix;
             dbg.addData(p + ".detections.count", lastDetections.observations.size());
-            dbg.addData(p + ".detections.ageSec", lastDetections.ageSec);
             dbg.addData(
                     p + ".detections.visibleIds",
-                    lastDetections.visibleIds(Double.POSITIVE_INFINITY).toString()
+                    visibleIds(lastDetections).toString()
+            );
+            dbg.addData(
+                    p + ".detections.hasFrameTimestamp",
+                    lastDetections.frameTimestamp().isAvailable()
             );
             dbg.addData(p + ".dataGeneration", lastDataGeneration);
         }
 
-        private AprilTagDetections readDetections(long acceptFramesAfterNanos) {
+        private AprilTagDetections readDetections(LoopClock clock, long acceptFramesAfterNanos) {
             List<AprilTagDetection> detections = processor.getDetections();
             if (detections == null || detections.isEmpty()) {
-                return AprilTagDetections.none(Double.POSITIVE_INFINITY);
+                return AprilTagDetections.none();
             }
 
             long nowNanos = owner.monotonicNowNanos();
-            ArrayList<AprilTagObservation> observations =
-                    new ArrayList<AprilTagObservation>(detections.size());
-            double snapshotAgeSec = Double.POSITIVE_INFINITY;
+            ArrayList<PendingObservation> pending =
+                    new ArrayList<PendingObservation>(detections.size());
+            double snapshotAgeSec = Double.NEGATIVE_INFINITY;
 
             for (AprilTagDetection detection : detections) {
                 if (detection == null) {
@@ -236,11 +241,6 @@ final class FtcWebcamAprilTagSupport {
                 }
                 if (detection.rawPose == null && detection.ftcPose == null) {
                     continue;
-                }
-
-                double ageSec = (nowNanos - frameTime) / NANOS_PER_SECOND;
-                if (ageSec < snapshotAgeSec) {
-                    snapshotAgeSec = ageSec;
                 }
 
                 Pose3d cameraToTagPose = detection.rawPose != null
@@ -275,23 +275,65 @@ final class FtcWebcamAprilTagSupport {
                     );
                 }
 
-                observations.add(fieldToRobotPose != null
-                        ? AprilTagObservation.target(
-                                detection.id,
-                                cameraToTagPose,
-                                fieldToRobotPose,
-                                ageSec
-                        )
-                        : AprilTagObservation.target(detection.id, cameraToTagPose, ageSec));
+                pending.add(new PendingObservation(
+                        detection.id,
+                        cameraToTagPose,
+                        fieldToRobotPose
+                ));
+                double ageSec = (nowNanos - frameTime) / NANOS_PER_SECOND;
+                // This value type represents one coherent frame. Until the camera-identity work in
+                // VISION-02 can reject mixed SDK lists, use the oldest accepted capture so no older
+                // geometry is made fresher by a newer list member.
+                if (ageSec > snapshotAgeSec) {
+                    snapshotAgeSec = ageSec;
+                }
             }
 
-            if (observations.isEmpty()) {
-                return AprilTagDetections.none(Double.POSITIVE_INFINITY);
+            if (pending.isEmpty()) {
+                return AprilTagDetections.none();
             }
             if (!Double.isFinite(snapshotAgeSec)) {
                 snapshotAgeSec = 0.0;
             }
-            return AprilTagDetections.of(snapshotAgeSec, observations);
+            LoopTimestamp frameTimestamp = clock.timestampSecondsAgo(snapshotAgeSec);
+            ArrayList<AprilTagObservation> observations =
+                    new ArrayList<AprilTagObservation>(pending.size());
+            for (PendingObservation observation : pending) {
+                observations.add(observation.fieldToRobotPose != null
+                        ? AprilTagObservation.target(
+                                observation.id,
+                                observation.cameraToTagPose,
+                                observation.fieldToRobotPose,
+                                frameTimestamp
+                        )
+                        : AprilTagObservation.target(
+                                observation.id,
+                                observation.cameraToTagPose,
+                                frameTimestamp
+                        ));
+            }
+            return AprilTagDetections.of(frameTimestamp, observations);
+        }
+
+        private static LinkedHashSet<Integer> visibleIds(AprilTagDetections detections) {
+            LinkedHashSet<Integer> ids = new LinkedHashSet<Integer>();
+            for (AprilTagObservation observation : detections.observations) {
+                ids.add(observation.id);
+            }
+            return ids;
+        }
+    }
+
+    /** Geometry captured before one frame timestamp is attached to every observation. */
+    private static final class PendingObservation {
+        final int id;
+        final Pose3d cameraToTagPose;
+        final Pose3d fieldToRobotPose;
+
+        PendingObservation(int id, Pose3d cameraToTagPose, Pose3d fieldToRobotPose) {
+            this.id = id;
+            this.cameraToTagPose = cameraToTagPose;
+            this.fieldToRobotPose = fieldToRobotPose;
         }
     }
 

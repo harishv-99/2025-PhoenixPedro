@@ -63,7 +63,7 @@ public final class TagSelectionSources {
     }
 
     /**
-     * The currently selected fresh observation, or {@link AprilTagObservation#noTarget(double)}.
+     * The currently selected fresh observation, or {@link AprilTagObservation#noTarget()}.
      */
     public static Source<AprilTagObservation> selectedObservation(TagSelectionSource selection) {
         Objects.requireNonNull(selection, "selection");
@@ -75,7 +75,7 @@ public final class TagSelectionSources {
             public AprilTagObservation apply(TagSelectionResult result) {
                 return (result != null && result.hasFreshSelectedObservation)
                         ? result.selectedObservation
-                        : AprilTagObservation.noTarget(Double.POSITIVE_INFINITY);
+                        : AprilTagObservation.noTarget();
             }
         });
     }

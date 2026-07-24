@@ -289,14 +289,14 @@ public final class TeleOp_05_ShooterTagAimVision extends OpMode {
         TagSelectionResult selection = scoringSelection.get(clock);
         AprilTagObservation obs = selection.hasFreshSelectedObservation
                 ? selection.selectedObservation
-                : AprilTagObservation.noTarget(Double.POSITIVE_INFINITY);
+                : AprilTagObservation.noTarget();
         lastHasTarget = obs.hasTarget;
         lastTagRangeInches = obs.cameraRangeInches();
         lastCameraBearingRad = obs.cameraBearingRad();
         lastRobotBearingRad = obs.hasTarget
                 ? CameraMountLogic.robotBearingRad(obs, cameraMount)
                 : 0.0;
-        lastTagAgeSec = obs.ageSec;
+        lastTagAgeSec = obs.frameAgeSec(clock);
         lastTagId = obs.id;
 
         if (shooterEnabled && obs.hasTarget) {

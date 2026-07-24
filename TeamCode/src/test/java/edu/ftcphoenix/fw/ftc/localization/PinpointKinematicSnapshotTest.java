@@ -23,7 +23,7 @@ public final class PinpointKinematicSnapshotTest {
                 new Pose2d(12.0, -7.0, 0.4),
                 true,
                 manualClock.clock().cycle(),
-                manualClock.clock().nowSec(),
+                manualClock.clock().nowTimestamp(),
                 20.0,
                 -3.0,
                 1.2,
@@ -46,12 +46,33 @@ public final class PinpointKinematicSnapshotTest {
     }
 
     @Test
+    public void resetInvalidatesExactTimeSnapshotImmediately() {
+        ManualLoopClock manualClock = new ManualLoopClock(4.0);
+        PinpointKinematicSnapshot sample = PinpointKinematicSnapshot.sampled(
+                Pose2d.zero(),
+                true,
+                manualClock.clock().cycle(),
+                manualClock.clock().nowTimestamp(),
+                0.0,
+                0.0,
+                0.0,
+                0.0
+        );
+
+        assertTrue(sample.isCurrentFor(manualClock.clock()));
+        manualClock.clock().reset(4.0);
+        assertFalse(sample.isCurrentFor(manualClock.clock()));
+    }
+
+    @Test
     public void poseRebasePreservesPhysicalMotionAndPollIdentity() {
+        ManualLoopClock manualClock = new ManualLoopClock();
+        manualClock.nextCycle(1.5);
         PinpointKinematicSnapshot sample = PinpointKinematicSnapshot.sampled(
                 new Pose2d(1.0, 2.0, 0.3),
                 true,
                 9L,
-                1.5,
+                manualClock.clock().nowTimestamp(),
                 4.0,
                 5.0,
                 0.6,
@@ -67,7 +88,7 @@ public final class PinpointKinematicSnapshotTest {
         assertEquals(50.0, rebased.fieldToRobotPose.yInches, EPSILON);
         assertEquals(-1.0, rebased.fieldToRobotPose.headingRad, EPSILON);
         assertEquals(sample.cycle, rebased.cycle);
-        assertEquals(sample.timestampSec, rebased.timestampSec, EPSILON);
+        assertTrue(sample.timestamp == rebased.timestamp);
         assertEquals(sample.fieldVelocityXInchesPerSec,
                 rebased.fieldVelocityXInchesPerSec, EPSILON);
         assertEquals(sample.fieldVelocityYInchesPerSec,
@@ -79,11 +100,13 @@ public final class PinpointKinematicSnapshotTest {
 
     @Test
     public void motionInvalidationZerosVelocityWithoutInventingPoseOrHeading() {
+        ManualLoopClock manualClock = new ManualLoopClock();
+        manualClock.nextCycle(0.8);
         PinpointKinematicSnapshot sample = PinpointKinematicSnapshot.sampled(
                 new Pose2d(3.0, 4.0, 0.5),
                 true,
                 4L,
-                0.8,
+                manualClock.clock().nowTimestamp(),
                 6.0,
                 7.0,
                 0.9,
@@ -109,7 +132,7 @@ public final class PinpointKinematicSnapshotTest {
     public void unavailableSnapshotHasNoFalseZeroVelocityMeasurement() {
         PinpointKinematicSnapshot unavailable = PinpointKinematicSnapshot.unavailable(
                 PinpointKinematicSnapshot.NO_CYCLE,
-                0.0,
+                edu.ftcphoenix.fw.core.time.LoopTimestamp.unavailable(),
                 3.0
         );
 

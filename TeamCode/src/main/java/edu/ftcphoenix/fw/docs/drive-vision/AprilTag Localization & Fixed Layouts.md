@@ -382,6 +382,19 @@ When you combine a `MotionPredictor` with an absolute correction source, Phoenix
 
 That is more trustworthy than repeatedly blending the same delayed frame against "now".
 
+These measurements carry one `LoopTimestamp`, not a separate timestamp number plus an age or reset
+counter. The value keeps its `LoopClock` and reset epoch attached internally. Estimators derive age
+with `estimate.timestamp.ageSec(clock)`, and history owners compare two captured times with
+`newer.secondsSince(older)`. Robot code never stores or compares an epoch. A deliberate clock reset
+automatically makes retained pre-reset timestamps ineligible for freshness or replay; correction
+estimators clear their affected history and wait for current-epoch measurements rather than
+interpolating across the reset.
+
+An unavailable timestamp means that no truthful measurement time exists. It is not equivalent to
+"captured now," and localization must fail closed when a timed pose or motion delta cannot be
+placed in the current clock epoch. Passing a timestamp from a different `LoopClock` is a wiring
+error: keep one stable loop clock for the complete OpMode.
+
 Typical fusion setup:
 
 ```java
@@ -411,6 +424,8 @@ Notes:
 - `predictorHistorySec` should be at least `maxCorrectionAgeSec` when latency compensation is enabled.
 - corrected estimators now consume an explicit `MotionDelta` from the predictor instead of reverse-engineering motion from two unrelated pose snapshots.
 - if the corrected pose is pushed back into the predictor, the estimator also rebases its predictor baseline/history so the next predictor delta does not re-apply that jump.
+- `PoseEstimate` and `MotionDelta` expose `LoopTimestamp` values; derive age or duration from those
+  values instead of retaining a second scalar age.
 
 ---
 

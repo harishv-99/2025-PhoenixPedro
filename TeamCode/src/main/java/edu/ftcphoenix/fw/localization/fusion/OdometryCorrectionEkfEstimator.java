@@ -2,12 +2,14 @@ package edu.ftcphoenix.fw.localization.fusion;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.Objects;
 
 import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.geometry.Pose2d;
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
 import edu.ftcphoenix.fw.core.math.MathUtil;
 import edu.ftcphoenix.fw.core.time.LoopClock;
+import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 import edu.ftcphoenix.fw.localization.AbsolutePoseEstimator;
 import edu.ftcphoenix.fw.localization.MotionDelta;
 import edu.ftcphoenix.fw.localization.MotionPredictor;
@@ -327,11 +329,11 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
     }
 
     private static final class PredictorSample {
-        final double timestampSec;
+        final LoopTimestamp timestamp;
         final Pose3d pose;
 
-        PredictorSample(double timestampSec, Pose3d pose) {
-            this.timestampSec = timestampSec;
+        PredictorSample(LoopTimestamp timestamp, Pose3d pose) {
+            this.timestamp = Objects.requireNonNull(timestamp, "timestamp");
             this.pose = pose;
         }
     }
@@ -340,13 +342,16 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
         final Pose3d pose;
         final double[][] covariance;
         final Pose3d predictorPose;
-        final double timestampSec;
+        final LoopTimestamp timestamp;
 
-        StateSnapshot(Pose3d pose, double[][] covariance, Pose3d predictorPose, double timestampSec) {
+        StateSnapshot(Pose3d pose,
+                      double[][] covariance,
+                      Pose3d predictorPose,
+                      LoopTimestamp timestamp) {
             this.pose = pose;
             this.covariance = covariance;
             this.predictorPose = predictorPose;
-            this.timestampSec = timestampSec;
+            this.timestamp = Objects.requireNonNull(timestamp, "timestamp");
         }
     }
 
@@ -361,19 +366,19 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
     private double[][] stateCovariance = diagonal(1.0, 1.0, 1.0);
     private Pose3d lastPredictorPose = Pose3d.zero();
 
-    private PoseEstimate lastEstimate = PoseEstimate.noPose(0.0);
+    private PoseEstimate lastEstimate = PoseEstimate.noPose(LoopTimestamp.unavailable());
     private final Deque<PredictorSample> predictorHistory = new ArrayDeque<PredictorSample>();
 
     private boolean replayBaseValid = false;
-    private double replayBaseTimestampSec = Double.NaN;
+    private LoopTimestamp replayBaseTimestamp = LoopTimestamp.unavailable();
     private Pose3d replayBasePose = Pose3d.zero();
     private double[][] replayBaseCovariance = diagonal(1.0, 1.0, 1.0);
     private Pose3d replayBasePredictorPose = Pose3d.zero();
 
     // Debug/telemetry helpers.
-    private double lastCorrectionAcceptedSec = Double.NaN;
-    private double lastAcceptedCorrectionMeasurementTimestampSec = Double.NaN;
-    private double lastEvaluatedCorrectionTimestampSec = Double.NaN;
+    private LoopTimestamp lastCorrectionAccepted = LoopTimestamp.unavailable();
+    private LoopTimestamp lastAcceptedCorrectionMeasurementTimestamp = LoopTimestamp.unavailable();
+    private LoopTimestamp lastEvaluatedCorrectionTimestamp = LoopTimestamp.unavailable();
     private Pose3d lastCorrectionPose = Pose3d.zero();
     private Pose3d lastLatencyCompensatedCorrectionPose = Pose3d.zero();
     private Pose3d lastReplayReferencePose = Pose3d.zero();
@@ -480,17 +485,17 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
     }
 
     /**
-     * The timestamp (clock.nowSec) when correction was last accepted, or NaN if never.
+     * The loop timestamp when correction was last accepted, or unavailable if never.
      */
-    public double getLastCorrectionAcceptedSec() {
-        return lastCorrectionAcceptedSec;
+    public LoopTimestamp getLastCorrectionAccepted() {
+        return lastCorrectionAccepted;
     }
 
     /**
-     * Measurement timestamp of the most recently accepted correction frame, or NaN if never.
+     * Measurement timestamp of the most recently accepted correction frame, or unavailable if never.
      */
-    public double getLastAcceptedCorrectionMeasurementTimestampSec() {
-        return lastAcceptedCorrectionMeasurementTimestampSec;
+    public LoopTimestamp getLastAcceptedCorrectionMeasurementTimestamp() {
+        return lastAcceptedCorrectionMeasurementTimestamp;
     }
 
     /**
@@ -561,9 +566,9 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
                 skippedOutOfOrderCorrectionCount,
                 replayedCorrectionCount,
                 projectedCorrectionCount,
-                lastCorrectionAcceptedSec,
-                lastAcceptedCorrectionMeasurementTimestampSec,
-                lastEvaluatedCorrectionTimestampSec,
+                lastCorrectionAccepted,
+                lastAcceptedCorrectionMeasurementTimestamp,
+                lastEvaluatedCorrectionTimestamp,
                 lastCorrectionUsedReplay
         );
     }
@@ -574,7 +579,10 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
      */
     @Override
     public void update(LoopClock clock) {
-        final double nowSec = clock != null ? clock.nowSec() : 0.0;
+        Objects.requireNonNull(clock, "clock");
+        final LoopTimestamp nowTimestamp = clock.nowTimestamp();
+
+        invalidateHistoryAcrossReset(nowTimestamp);
 
         predictor.update(clock);
         correction.update(clock);
@@ -582,23 +590,38 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
         final PoseEstimate predictorEst = predictor.getEstimate();
         final MotionDelta predictorDelta = predictor.getLatestMotionDelta();
         final PoseEstimate correctionEst = correction.getEstimate();
-        final Pose3d currentPredictorPose = (predictorEst != null && predictorEst.hasPose)
+        final boolean predictorTimestampCurrent = predictorEst != null
+                && predictorEst.timestamp != null
+                && Double.isFinite(predictorEst.timestamp.ageSec(clock));
+        final Pose3d currentPredictorPose = (predictorEst != null
+                && predictorEst.hasPose
+                && predictorTimestampCurrent)
                 ? planarize(predictorEst.fieldToRobotPose)
                 : null;
-        final double currentPredictorTimestampSec = estimateTimestampOr(predictorEst, nowSec);
+        final LoopTimestamp currentPredictorTimestamp = predictorTimestampCurrent
+                ? predictorEst.timestamp
+                : LoopTimestamp.unavailable();
 
         if (currentPredictorPose != null) {
-            recordPredictorSample(currentPredictorTimestampSec, currentPredictorPose);
+            recordPredictorSample(currentPredictorTimestamp, currentPredictorPose);
         }
 
         boolean evaluatedCorrectionThisLoop = false;
 
         if (!initialized) {
             boolean initializedFromCorrection = false;
-            if (correctionEnabled && cfg.enableInitializeFromCorrection && shouldEvaluateCorrectionMeasurement(correctionEst)) {
+            if (correctionEnabled
+                    && cfg.enableInitializeFromCorrection
+                    && shouldEvaluateCorrectionMeasurement(correctionEst, clock)) {
                 evaluatedCorrectionThisLoop = true;
-                if (isCorrectionAcceptable(correctionEst, nowSec)) {
-                    initializeFromCorrection(correctionEst, currentPredictorPose, currentPredictorTimestampSec, nowSec);
+                if (isCorrectionAcceptable(correctionEst, clock)) {
+                    initializeFromCorrection(
+                            correctionEst,
+                            currentPredictorPose,
+                            currentPredictorTimestamp,
+                            nowTimestamp,
+                            clock
+                    );
                     initializedFromCorrection = initialized;
                 } else {
                     rejectedCorrectionCount++;
@@ -610,15 +633,25 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
                 stateCovariance = initialPredictorCovariance();
                 initialized = true;
                 lastPredictorPose = currentPredictorPose;
-                resetPredictorHistory(currentPredictorTimestampSec, currentPredictorPose);
-                setReplayBase(currentPredictorTimestampSec, statePose, stateCovariance, currentPredictorPose);
+                resetPredictorHistory(currentPredictorTimestamp, currentPredictorPose);
+                setReplayBase(currentPredictorTimestamp, statePose, stateCovariance, currentPredictorPose);
             } else if (!initialized && !initializedFromCorrection) {
-                lastEstimate = PoseEstimate.noPose(nowSec);
+                lastEstimate = PoseEstimate.noPose(nowTimestamp);
                 return;
             }
         } else {
-            if (predictorDelta != null && predictorDelta.hasDelta && currentPredictorPose != null) {
-                StateSnapshot predicted = predictStep(statePose, stateCovariance, predictorDelta.deltaPose, currentPredictorPose, currentPredictorTimestampSec);
+            if (predictorDelta != null
+                    && predictorDelta.hasDelta
+                    && Double.isFinite(predictorDelta.durationSec())
+                    && predictorDelta.durationSec() >= 0.0
+                    && currentPredictorPose != null) {
+                StateSnapshot predicted = predictStep(
+                        statePose,
+                        stateCovariance,
+                        predictorDelta.deltaPose,
+                        currentPredictorPose,
+                        currentPredictorTimestamp
+                );
                 statePose = predicted.pose;
                 stateCovariance = predicted.covariance;
             }
@@ -627,15 +660,28 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
             }
         }
 
-        if (correctionEnabled && !evaluatedCorrectionThisLoop && shouldEvaluateCorrectionMeasurement(correctionEst)) {
-            if (!isCorrectionAcceptable(correctionEst, nowSec)) {
+        if (correctionEnabled
+                && !evaluatedCorrectionThisLoop
+                && shouldEvaluateCorrectionMeasurement(correctionEst, clock)) {
+            if (!isCorrectionAcceptable(correctionEst, clock)) {
                 rejectedCorrectionCount++;
             } else {
-                maybeApplyCorrection(correctionEst, currentPredictorPose, currentPredictorTimestampSec, nowSec);
+                maybeApplyCorrection(
+                        correctionEst,
+                        currentPredictorPose,
+                        currentPredictorTimestamp,
+                        nowTimestamp,
+                        clock
+                );
             }
         }
 
-        lastEstimate = new PoseEstimate(statePose, true, covarianceQuality(stateCovariance), 0.0, nowSec);
+        lastEstimate = new PoseEstimate(
+                statePose,
+                true,
+                covarianceQuality(stateCovariance),
+                nowTimestamp
+        );
     }
 
     /**
@@ -656,32 +702,40 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
             return;
         }
 
-        final double nowSec = (lastEstimate != null && Double.isFinite(lastEstimate.timestampSec))
-                ? lastEstimate.timestampSec
-                : 0.0;
+        final LoopTimestamp nowTimestamp = (lastEstimate != null && lastEstimate.timestamp != null)
+                ? lastEstimate.timestamp
+                : LoopTimestamp.unavailable();
 
         statePose = new Pose3d(pose.xInches, pose.yInches, 0.0, MathUtil.wrapToPi(pose.headingRad), 0.0, 0.0);
         stateCovariance = manualAnchorCovariance();
         initialized = true;
 
         Pose3d currentPredictorPose = null;
-        double currentPredictorTimestampSec = nowSec;
+        LoopTimestamp currentPredictorTimestamp = nowTimestamp;
         PoseEstimate predictorEst = predictor.getEstimate();
         if (predictorEst != null && predictorEst.hasPose) {
             currentPredictorPose = planarize(predictorEst.fieldToRobotPose);
-            currentPredictorTimestampSec = estimateTimestampOr(predictorEst, nowSec);
+            if (predictorEst.timestamp != null && predictorEst.timestamp.isAvailable()) {
+                currentPredictorTimestamp = predictorEst.timestamp;
+            }
         }
 
         boolean pushedToPredictor = pushFilteredPoseToPredictor();
         clearRecentCorrectionState();
-        rebaseAfterPoseChange(currentPredictorTimestampSec, currentPredictorPose, pushedToPredictor);
-        lastEstimate = new PoseEstimate(statePose, true, covarianceQuality(stateCovariance), 0.0, nowSec);
+        rebaseAfterPoseChange(currentPredictorTimestamp, currentPredictorPose, pushedToPredictor);
+        lastEstimate = new PoseEstimate(
+                statePose,
+                true,
+                covarianceQuality(stateCovariance),
+                nowTimestamp
+        );
     }
 
     private void initializeFromCorrection(PoseEstimate correctionEst,
                                           Pose3d currentPredictorPose,
-                                          double currentPredictorTimestampSec,
-                                          double nowSec) {
+                                          LoopTimestamp currentPredictorTimestamp,
+                                          LoopTimestamp nowTimestamp,
+                                          LoopClock clock) {
         Pose3d correctionPoseAtMeasurement = planarize(correctionEst.fieldToRobotPose);
         lastCorrectionPose = correctionPoseAtMeasurement;
         lastReplayReferencePose = correctionPoseAtMeasurement;
@@ -696,15 +750,21 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
             currentState = propagateFromArbitraryState(
                     correctionPoseAtMeasurement,
                     measCov,
-                    correctionEst.timestampSec,
-                    currentPredictorTimestampSec
+                    correctionEst.timestamp,
+                    currentPredictorTimestamp
             );
-            usedReplay = currentState != null && currentPredictorTimestampSec > correctionEst.timestampSec + TIMESTAMP_EPS_SEC;
+            usedReplay = currentState != null
+                    && currentPredictorTimestamp.secondsSince(correctionEst.timestamp)
+                    > TIMESTAMP_EPS_SEC;
         }
 
         if (currentState == null) {
-            Pose3d projectedCorrectionPoseNow = projectCorrectionPoseToNow(correctionPoseAtMeasurement, correctionEst.timestampSec, currentPredictorPose);
-            double projectedAgeSec = Math.max(0.0, nowSec - correctionEst.timestampSec);
+            Pose3d projectedCorrectionPoseNow = projectCorrectionPoseToNow(
+                    correctionPoseAtMeasurement,
+                    correctionEst.timestamp,
+                    currentPredictorPose
+            );
+            double projectedAgeSec = correctionEst.timestamp.ageSec(clock);
             statePose = projectedCorrectionPoseNow;
             stateCovariance = measurementCovariance(correctionEst.quality, true, projectedAgeSec);
             lastLatencyCompensatedCorrectionPose = projectedCorrectionPoseNow;
@@ -723,31 +783,39 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
         }
 
         initialized = true;
-        lastCorrectionAcceptedSec = nowSec;
-        lastAcceptedCorrectionMeasurementTimestampSec = correctionEst.timestampSec;
+        lastCorrectionAccepted = nowTimestamp;
+        lastAcceptedCorrectionMeasurementTimestamp = correctionEst.timestamp;
         acceptedCorrectionCount++;
 
         boolean pushedToPredictor = pushFilteredPoseToPredictor();
-        rebaseAfterPoseChange(currentPredictorTimestampSec, currentPredictorPose, pushedToPredictor);
+        LoopTimestamp rebaseTimestamp = currentPredictorTimestamp.isAvailable()
+                ? currentPredictorTimestamp
+                : nowTimestamp;
+        rebaseAfterPoseChange(rebaseTimestamp, currentPredictorPose, pushedToPredictor);
     }
 
-    private boolean shouldEvaluateCorrectionMeasurement(PoseEstimate correctionEst) {
-        if (correctionEst == null || !correctionEst.hasPose) {
+    private boolean shouldEvaluateCorrectionMeasurement(PoseEstimate correctionEst, LoopClock clock) {
+        if (correctionEst == null
+                || !correctionEst.hasPose
+                || correctionEst.timestamp == null
+                || !Double.isFinite(clock.nowTimestamp().secondsSince(correctionEst.timestamp))) {
             return false;
         }
-        double ts = correctionEst.timestampSec;
-        if (!Double.isFinite(ts)) {
-            return false;
-        }
-        if (Double.isNaN(lastEvaluatedCorrectionTimestampSec)) {
-            lastEvaluatedCorrectionTimestampSec = ts;
+        LoopTimestamp timestamp = correctionEst.timestamp;
+        if (!lastEvaluatedCorrectionTimestamp.isAvailable()) {
+            lastEvaluatedCorrectionTimestamp = timestamp;
             return true;
         }
-        if (ts > lastEvaluatedCorrectionTimestampSec + TIMESTAMP_EPS_SEC) {
-            lastEvaluatedCorrectionTimestampSec = ts;
+        double elapsedSec = timestamp.secondsSince(lastEvaluatedCorrectionTimestamp);
+        if (!Double.isFinite(elapsedSec)) {
+            lastEvaluatedCorrectionTimestamp = timestamp;
             return true;
         }
-        if (Math.abs(ts - lastEvaluatedCorrectionTimestampSec) <= TIMESTAMP_EPS_SEC) {
+        if (elapsedSec > TIMESTAMP_EPS_SEC) {
+            lastEvaluatedCorrectionTimestamp = timestamp;
+            return true;
+        }
+        if (Math.abs(elapsedSec) <= TIMESTAMP_EPS_SEC) {
             skippedDuplicateCorrectionCount++;
         } else {
             skippedOutOfOrderCorrectionCount++;
@@ -755,22 +823,20 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
         return false;
     }
 
-    private boolean isCorrectionAcceptable(PoseEstimate correctionEst, double nowSec) {
+    private boolean isCorrectionAcceptable(PoseEstimate correctionEst, LoopClock clock) {
         if (correctionEst == null || !correctionEst.hasPose || correctionEst.fieldToRobotPose == null) {
             return false;
         }
-        if (!Double.isFinite(correctionEst.timestampSec)) {
+        if (correctionEst.timestamp == null) {
             return false;
         }
-        if (correctionEst.timestampSec > nowSec + TIMESTAMP_EPS_SEC) {
+        double ageSec = correctionEst.timestamp.ageSec(clock);
+        if (!Double.isFinite(ageSec)) {
             return false;
         }
 
-        if (cfg.maxCorrectionAgeSec > 0.0) {
-            double age = nowSec - correctionEst.timestampSec;
-            if (!Double.isFinite(age) || age < -TIMESTAMP_EPS_SEC || age > cfg.maxCorrectionAgeSec) {
-                return false;
-            }
+        if (cfg.maxCorrectionAgeSec > 0.0 && ageSec > cfg.maxCorrectionAgeSec) {
+            return false;
         }
 
         if (!Double.isFinite(correctionEst.quality) || correctionEst.quality < cfg.minCorrectionQuality) {
@@ -783,18 +849,22 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
 
     private void maybeApplyCorrection(PoseEstimate correctionEst,
                                       Pose3d currentPredictorPose,
-                                      double currentPredictorTimestampSec,
-                                      double nowSec) {
+                                      LoopTimestamp currentPredictorTimestamp,
+                                      LoopTimestamp nowTimestamp,
+                                      LoopClock clock) {
         Pose3d correctionPoseAtMeasurement = planarize(correctionEst.fieldToRobotPose);
-        Pose3d projectedCorrectionPoseAtNow = projectCorrectionPoseToNow(correctionPoseAtMeasurement, correctionEst.timestampSec, currentPredictorPose);
+        Pose3d projectedCorrectionPoseAtNow = projectCorrectionPoseToNow(
+                correctionPoseAtMeasurement,
+                correctionEst.timestamp,
+                currentPredictorPose
+        );
 
         lastCorrectionPose = correctionPoseAtMeasurement;
         lastLatencyCompensatedCorrectionPose = projectedCorrectionPoseAtNow;
 
         if (cfg.enableLatencyCompensation
                 && replayBaseValid
-                && Double.isFinite(replayBaseTimestampSec)
-                && correctionEst.timestampSec + TIMESTAMP_EPS_SEC < replayBaseTimestampSec) {
+                && correctionEst.timestamp.secondsSince(replayBaseTimestamp) < -TIMESTAMP_EPS_SEC) {
             lastReplayReferencePose = replayBasePose;
             lastCorrectionUsedReplay = false;
             rejectedCorrectionCount++;
@@ -805,7 +875,7 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
         boolean usedReplay = false;
 
         if (cfg.enableLatencyCompensation) {
-            StateSnapshot predictedAtMeasurement = predictFromReplayBaseTo(correctionEst.timestampSec);
+            StateSnapshot predictedAtMeasurement = predictFromReplayBaseTo(correctionEst.timestamp);
             if (predictedAtMeasurement != null) {
                 lastReplayReferencePose = predictedAtMeasurement.pose;
                 StateSnapshot correctedAtMeasurement = measurementUpdate(
@@ -816,14 +886,14 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
                         false,
                         0.0,
                         predictedAtMeasurement.predictorPose,
-                        correctionEst.timestampSec
+                        correctionEst.timestamp
                 );
                 if (correctedAtMeasurement != null) {
                     StateSnapshot replayed = propagateFromArbitraryState(
                             correctedAtMeasurement.pose,
                             correctedAtMeasurement.covariance,
-                            correctionEst.timestampSec,
-                            currentPredictorTimestampSec
+                            correctionEst.timestamp,
+                            currentPredictorTimestamp
                     );
                     correctedNow = (replayed != null) ? replayed : correctedAtMeasurement;
                     usedReplay = true;
@@ -837,7 +907,7 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
 
         if (correctedNow == null) {
             lastReplayReferencePose = statePose;
-            double projectedAgeSec = Math.max(0.0, nowSec - correctionEst.timestampSec);
+            double projectedAgeSec = correctionEst.timestamp.ageSec(clock);
             correctedNow = measurementUpdate(
                     statePose,
                     stateCovariance,
@@ -846,7 +916,7 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
                     true,
                     projectedAgeSec,
                     currentPredictorPose,
-                    currentPredictorTimestampSec
+                    currentPredictorTimestamp
             );
             if (correctedNow == null) {
                 rejectedCorrectionCount++;
@@ -857,8 +927,8 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
 
         statePose = correctedNow.pose;
         stateCovariance = correctedNow.covariance;
-        lastCorrectionAcceptedSec = nowSec;
-        lastAcceptedCorrectionMeasurementTimestampSec = correctionEst.timestampSec;
+        lastCorrectionAccepted = nowTimestamp;
+        lastAcceptedCorrectionMeasurementTimestamp = correctionEst.timestamp;
         lastCorrectionUsedReplay = usedReplay;
         acceptedCorrectionCount++;
         if (usedReplay) {
@@ -868,18 +938,21 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
         }
 
         boolean pushedToPredictor = pushFilteredPoseToPredictor();
-        rebaseAfterPoseChange(currentPredictorTimestampSec, currentPredictorPose, pushedToPredictor);
+        LoopTimestamp rebaseTimestamp = currentPredictorTimestamp.isAvailable()
+                ? currentPredictorTimestamp
+                : nowTimestamp;
+        rebaseAfterPoseChange(rebaseTimestamp, currentPredictorPose, pushedToPredictor);
     }
 
-    private StateSnapshot predictFromReplayBaseTo(double timestampSec) {
+    private StateSnapshot predictFromReplayBaseTo(LoopTimestamp timestamp) {
         if (!replayBaseValid) {
             return null;
         }
         return propagateFromArbitraryState(
                 replayBasePose,
                 replayBaseCovariance,
-                replayBaseTimestampSec,
-                timestampSec
+                replayBaseTimestamp,
+                timestamp
         );
     }
 
@@ -890,7 +963,7 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
                                             boolean projectedMeasurement,
                                             double projectedAgeSec,
                                             Pose3d predictorPose,
-                                            double timestampSec) {
+                                            LoopTimestamp timestamp) {
         if (priorPose == null || priorCovariance == null || measurementPose == null) {
             return null;
         }
@@ -951,7 +1024,7 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
                 planarize(updatedPose),
                 sanitizeCovariance(updatedCovariance),
                 predictorPose,
-                timestampSec
+                timestamp
         );
     }
 
@@ -959,7 +1032,7 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
                                       double[][] priorCovariance,
                                       Pose3d odomDelta,
                                       Pose3d resultingPredictorPose,
-                                      double timestampSec) {
+                                      LoopTimestamp timestamp) {
         Pose3d delta = planarize(odomDelta);
         Pose3d predictedPose = planarize(priorPose.then(delta));
 
@@ -1001,26 +1074,35 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
                 predictedPose,
                 sanitizeCovariance(predictedCovariance),
                 resultingPredictorPose,
-                timestampSec
+                timestamp
         );
     }
 
     private StateSnapshot propagateFromArbitraryState(Pose3d startPose,
                                                       double[][] startCovariance,
-                                                      double startTimestampSec,
-                                                      double endTimestampSec) {
+                                                      LoopTimestamp startTimestamp,
+                                                      LoopTimestamp endTimestamp) {
         if (startPose == null || startCovariance == null) {
             return null;
         }
-        if (!Double.isFinite(startTimestampSec) || !Double.isFinite(endTimestampSec)) {
+        if (startTimestamp == null
+                || endTimestamp == null
+                || !startTimestamp.isAvailable()
+                || !endTimestamp.isAvailable()) {
             return null;
         }
-        if (endTimestampSec + TIMESTAMP_EPS_SEC < startTimestampSec) {
+        double totalDurationSec = endTimestamp.secondsSince(startTimestamp);
+        if (!Double.isFinite(totalDurationSec) || totalDurationSec < -TIMESTAMP_EPS_SEC) {
             return null;
         }
-        if (Math.abs(endTimestampSec - startTimestampSec) <= TIMESTAMP_EPS_SEC) {
-            Pose3d predictorPose = interpolatePredictorPose(endTimestampSec);
-            return new StateSnapshot(planarize(startPose), sanitizeCovariance(copy(startCovariance)), predictorPose, endTimestampSec);
+        if (Math.abs(totalDurationSec) <= TIMESTAMP_EPS_SEC) {
+            Pose3d predictorPose = interpolatePredictorPose(endTimestamp);
+            return new StateSnapshot(
+                    planarize(startPose),
+                    sanitizeCovariance(copy(startCovariance)),
+                    predictorPose,
+                    endTimestamp
+            );
         }
 
         PredictorSample[] samples = predictorHistory.toArray(new PredictorSample[0]);
@@ -1028,8 +1110,8 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
             return null;
         }
 
-        Pose3d startPredictorPose = interpolatePredictorPose(startTimestampSec);
-        Pose3d endPredictorPose = interpolatePredictorPose(endTimestampSec);
+        Pose3d startPredictorPose = interpolatePredictorPose(startTimestamp);
+        Pose3d endPredictorPose = interpolatePredictorPose(endTimestamp);
         if (startPredictorPose == null || endPredictorPose == null) {
             return null;
         }
@@ -1037,13 +1119,19 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
         Pose3d pose = planarize(startPose);
         double[][] covariance = sanitizeCovariance(copy(startCovariance));
         Pose3d prevPredictorPose = startPredictorPose;
-        double prevTimestampSec = startTimestampSec;
+        LoopTimestamp prevTimestamp = startTimestamp;
 
         for (PredictorSample sample : samples) {
-            if (sample.timestampSec <= startTimestampSec + TIMESTAMP_EPS_SEC) {
+            double sampleFromStartSec = sample.timestamp.secondsSince(startTimestamp);
+            double endFromSampleSec = endTimestamp.secondsSince(sample.timestamp);
+            if (!Double.isFinite(sampleFromStartSec) || !Double.isFinite(endFromSampleSec)) {
+                predictorHistory.clear();
+                return null;
+            }
+            if (sampleFromStartSec <= TIMESTAMP_EPS_SEC) {
                 continue;
             }
-            if (sample.timestampSec >= endTimestampSec - TIMESTAMP_EPS_SEC) {
+            if (endFromSampleSec <= TIMESTAMP_EPS_SEC) {
                 break;
             }
             Pose3d nextPredictorPose = sample.pose;
@@ -1052,27 +1140,32 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
                     covariance,
                     prevPredictorPose.inverse().then(nextPredictorPose),
                     nextPredictorPose,
-                    sample.timestampSec
+                    sample.timestamp
             );
             pose = predicted.pose;
             covariance = predicted.covariance;
             prevPredictorPose = nextPredictorPose;
-            prevTimestampSec = sample.timestampSec;
+            prevTimestamp = sample.timestamp;
         }
 
-        if (endTimestampSec > prevTimestampSec + TIMESTAMP_EPS_SEC) {
+        double remainingSec = endTimestamp.secondsSince(prevTimestamp);
+        if (!Double.isFinite(remainingSec)) {
+            predictorHistory.clear();
+            return null;
+        }
+        if (remainingSec > TIMESTAMP_EPS_SEC) {
             StateSnapshot predicted = predictStep(
                     pose,
                     covariance,
                     prevPredictorPose.inverse().then(endPredictorPose),
                     endPredictorPose,
-                    endTimestampSec
+                    endTimestamp
             );
             pose = predicted.pose;
             covariance = predicted.covariance;
         }
 
-        return new StateSnapshot(pose, covariance, endPredictorPose, endTimestampSec);
+        return new StateSnapshot(pose, covariance, endPredictorPose, endTimestamp);
     }
 
     private boolean pushFilteredPoseToPredictor() {
@@ -1084,12 +1177,14 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
     }
 
     private void clearRecentCorrectionState() {
-        lastCorrectionAcceptedSec = Double.NaN;
-        lastAcceptedCorrectionMeasurementTimestampSec = Double.NaN;
+        lastCorrectionAccepted = LoopTimestamp.unavailable();
+        lastAcceptedCorrectionMeasurementTimestamp = LoopTimestamp.unavailable();
         lastCorrectionUsedReplay = false;
     }
 
-    private void rebaseAfterPoseChange(double timestampSec, Pose3d currentPredictorPose, boolean pushedToPredictor) {
+    private void rebaseAfterPoseChange(LoopTimestamp timestamp,
+                                       Pose3d currentPredictorPose,
+                                       boolean pushedToPredictor) {
         Pose3d basePredictorPose;
         if (pushedToPredictor) {
             lastPredictorPose = statePose;
@@ -1102,16 +1197,20 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
             basePredictorPose = statePose;
         }
 
-        resetPredictorHistory(timestampSec, basePredictorPose);
-        setReplayBase(timestampSec, statePose, stateCovariance, basePredictorPose);
+        resetPredictorHistory(timestamp, basePredictorPose);
+        setReplayBase(timestamp, statePose, stateCovariance, basePredictorPose);
     }
 
-    private void setReplayBase(double timestampSec,
+    private void setReplayBase(LoopTimestamp timestamp,
                                Pose3d pose,
                                double[][] covariance,
                                Pose3d predictorPoseAtBase) {
-        replayBaseValid = Double.isFinite(timestampSec) && pose != null && covariance != null && predictorPoseAtBase != null;
-        replayBaseTimestampSec = replayBaseValid ? timestampSec : Double.NaN;
+        replayBaseValid = timestamp != null
+                && timestamp.isAvailable()
+                && pose != null
+                && covariance != null
+                && predictorPoseAtBase != null;
+        replayBaseTimestamp = replayBaseValid ? timestamp : LoopTimestamp.unavailable();
         replayBasePose = replayBaseValid ? planarize(pose) : Pose3d.zero();
         replayBaseCovariance = replayBaseValid ? sanitizeCovariance(copy(covariance)) : diagonal(1.0, 1.0, 1.0);
         replayBasePredictorPose = replayBaseValid ? planarize(predictorPoseAtBase) : Pose3d.zero();
@@ -1172,27 +1271,30 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
         return Math.sqrt(Math.max(MIN_VARIANCE, covariance[2][2]));
     }
 
-    private void recordPredictorSample(double timestampSec, Pose3d predictorPose) {
-        if (!Double.isFinite(timestampSec) || predictorPose == null) {
+    private void recordPredictorSample(LoopTimestamp timestamp, Pose3d predictorPose) {
+        if (timestamp == null || !timestamp.isAvailable() || predictorPose == null) {
             return;
         }
 
         PredictorSample last = predictorHistory.peekLast();
-        if (last != null && timestampSec <= last.timestampSec) {
-            predictorHistory.clear();
-            predictorHistory.addLast(new PredictorSample(timestampSec, planarize(predictorPose)));
-            if (initialized) {
-                setReplayBase(timestampSec, statePose, stateCovariance, planarize(predictorPose));
-                lastPredictorPose = planarize(predictorPose);
+        if (last != null) {
+            double elapsedSec = timestamp.secondsSince(last.timestamp);
+            if (!Double.isFinite(elapsedSec) || elapsedSec <= 0.0) {
+                predictorHistory.clear();
+                predictorHistory.addLast(new PredictorSample(timestamp, planarize(predictorPose)));
+                if (initialized) {
+                    setReplayBase(timestamp, statePose, stateCovariance, planarize(predictorPose));
+                    lastPredictorPose = planarize(predictorPose);
+                }
+                return;
             }
-            return;
         }
 
-        predictorHistory.addLast(new PredictorSample(timestampSec, planarize(predictorPose)));
-        prunePredictorHistory(timestampSec);
+        predictorHistory.addLast(new PredictorSample(timestamp, planarize(predictorPose)));
+        prunePredictorHistory(timestamp);
     }
 
-    private void prunePredictorHistory(double nowSec) {
+    private void prunePredictorHistory(LoopTimestamp nowTimestamp) {
         double keepSec = Math.max(0.0, cfg.predictorHistorySec);
         if (keepSec <= 0.0) {
             while (predictorHistory.size() > 1) {
@@ -1201,34 +1303,41 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
             return;
         }
 
-        double minTime = nowSec - keepSec;
         while (predictorHistory.size() > 2) {
             PredictorSample[] samples = predictorHistory.toArray(new PredictorSample[0]);
-            if (samples.length < 2 || samples[1].timestampSec >= minTime) {
+            if (samples.length < 2) {
+                break;
+            }
+            double secondAgeSec = nowTimestamp.secondsSince(samples[1].timestamp);
+            if (!Double.isFinite(secondAgeSec) || secondAgeSec < 0.0) {
+                predictorHistory.clear();
+                return;
+            }
+            if (secondAgeSec <= keepSec) {
                 break;
             }
             predictorHistory.removeFirst();
         }
     }
 
-    private void resetPredictorHistory(double timestampSec, Pose3d pose) {
+    private void resetPredictorHistory(LoopTimestamp timestamp, Pose3d pose) {
         predictorHistory.clear();
-        if (Double.isFinite(timestampSec) && pose != null) {
-            predictorHistory.addLast(new PredictorSample(timestampSec, planarize(pose)));
+        if (timestamp != null && timestamp.isAvailable() && pose != null) {
+            predictorHistory.addLast(new PredictorSample(timestamp, planarize(pose)));
         }
     }
 
     private Pose3d projectCorrectionPoseToNow(Pose3d correctionPoseAtMeasurement,
-                                              double measurementTimestampSec,
+                                              LoopTimestamp measurementTimestamp,
                                               Pose3d currentPredictorPose) {
         if (correctionPoseAtMeasurement == null || currentPredictorPose == null) {
             return correctionPoseAtMeasurement;
         }
-        if (!Double.isFinite(measurementTimestampSec)) {
+        if (measurementTimestamp == null || !measurementTimestamp.isAvailable()) {
             return correctionPoseAtMeasurement;
         }
 
-        Pose3d predictorAtMeasurement = interpolatePredictorPose(measurementTimestampSec);
+        Pose3d predictorAtMeasurement = interpolatePredictorPose(measurementTimestamp);
         if (predictorAtMeasurement == null) {
             return correctionPoseAtMeasurement;
         }
@@ -1237,8 +1346,8 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
         return planarize(correctionPoseAtMeasurement.then(predictorDeltaSinceMeasurement));
     }
 
-    private Pose3d interpolatePredictorPose(double timestampSec) {
-        if (predictorHistory.isEmpty()) {
+    private Pose3d interpolatePredictorPose(LoopTimestamp timestamp) {
+        if (timestamp == null || !timestamp.isAvailable() || predictorHistory.isEmpty()) {
             return null;
         }
 
@@ -1246,8 +1355,12 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
         if (samples.length == 0) {
             return null;
         }
-        if (timestampSec < samples[0].timestampSec - TIMESTAMP_EPS_SEC
-                || timestampSec > samples[samples.length - 1].timestampSec + TIMESTAMP_EPS_SEC) {
+        double sinceFirstSec = timestamp.secondsSince(samples[0].timestamp);
+        double untilLastSec = samples[samples.length - 1].timestamp.secondsSince(timestamp);
+        if (!Double.isFinite(sinceFirstSec)
+                || !Double.isFinite(untilLastSec)
+                || sinceFirstSec < -TIMESTAMP_EPS_SEC
+                || untilLastSec < -TIMESTAMP_EPS_SEC) {
             return null;
         }
         if (samples.length == 1) {
@@ -1256,20 +1369,30 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
 
         PredictorSample prev = samples[0];
         for (PredictorSample next : samples) {
-            if (next.timestampSec < timestampSec - TIMESTAMP_EPS_SEC) {
+            double querySinceNextSec = timestamp.secondsSince(next.timestamp);
+            if (!Double.isFinite(querySinceNextSec)) {
+                predictorHistory.clear();
+                return null;
+            }
+            if (querySinceNextSec > TIMESTAMP_EPS_SEC) {
                 prev = next;
                 continue;
             }
-            if (Math.abs(next.timestampSec - timestampSec) <= TIMESTAMP_EPS_SEC || next == prev) {
+            if (Math.abs(querySinceNextSec) <= TIMESTAMP_EPS_SEC || next == prev) {
                 return next.pose;
             }
 
-            double dt = next.timestampSec - prev.timestampSec;
-            if (dt <= TIMESTAMP_EPS_SEC) {
+            double dt = next.timestamp.secondsSince(prev.timestamp);
+            if (!Double.isFinite(dt) || dt <= TIMESTAMP_EPS_SEC) {
                 return next.pose;
             }
 
-            double t = MathUtil.clamp01((timestampSec - prev.timestampSec) / dt);
+            double fromPreviousSec = timestamp.secondsSince(prev.timestamp);
+            if (!Double.isFinite(fromPreviousSec)) {
+                predictorHistory.clear();
+                return null;
+            }
+            double t = MathUtil.clamp01(fromPreviousSec / dt);
             return interpolatePose(prev.pose, next.pose, t);
         }
 
@@ -1302,11 +1425,31 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
         );
     }
 
-    private static double estimateTimestampOr(PoseEstimate est, double fallbackNowSec) {
-        if (est != null && Double.isFinite(est.timestampSec)) {
-            return est.timestampSec;
+    /** Drop only timestamp-dependent state when the shared clock enters a new reset epoch. */
+    private void invalidateHistoryAcrossReset(LoopTimestamp nowTimestamp) {
+        PredictorSample lastSample = predictorHistory.peekLast();
+        if (lastSample != null) {
+            double elapsedSec = nowTimestamp.secondsSince(lastSample.timestamp);
+            if (!Double.isFinite(elapsedSec) || elapsedSec < 0.0) {
+                predictorHistory.clear();
+            }
         }
-        return fallbackNowSec;
+
+        if (replayBaseValid) {
+            double elapsedSec = nowTimestamp.secondsSince(replayBaseTimestamp);
+            if (!Double.isFinite(elapsedSec) || elapsedSec < 0.0) {
+                replayBaseValid = false;
+                replayBaseTimestamp = LoopTimestamp.unavailable();
+                replayBasePose = Pose3d.zero();
+                replayBaseCovariance = diagonal(1.0, 1.0, 1.0);
+                replayBasePredictorPose = Pose3d.zero();
+            }
+        }
+
+        if (lastEvaluatedCorrectionTimestamp.isAvailable()
+                && !Double.isFinite(nowTimestamp.secondsSince(lastEvaluatedCorrectionTimestamp))) {
+            lastEvaluatedCorrectionTimestamp = LoopTimestamp.unavailable();
+        }
     }
 
     private static double[][] identity() {
@@ -1442,9 +1585,9 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
                 .addData(p + ".skippedOutOfOrderCorrectionCount", skippedOutOfOrderCorrectionCount)
                 .addData(p + ".replayedCorrectionCount", replayedCorrectionCount)
                 .addData(p + ".projectedCorrectionCount", projectedCorrectionCount)
-                .addData(p + ".lastCorrectionAcceptedSec", lastCorrectionAcceptedSec)
-                .addData(p + ".lastAcceptedCorrectionMeasurementTimestampSec", lastAcceptedCorrectionMeasurementTimestampSec)
-                .addData(p + ".lastEvaluatedCorrectionTimestampSec", lastEvaluatedCorrectionTimestampSec)
+                .addData(p + ".lastCorrectionAccepted", lastCorrectionAccepted)
+                .addData(p + ".lastAcceptedCorrectionMeasurementTimestamp", lastAcceptedCorrectionMeasurementTimestamp)
+                .addData(p + ".lastEvaluatedCorrectionTimestamp", lastEvaluatedCorrectionTimestamp)
                 .addData(p + ".lastCorrectionPose", lastCorrectionPose)
                 .addData(p + ".lastLatencyCompensatedCorrectionPose", lastLatencyCompensatedCorrectionPose)
                 .addData(p + ".lastReplayReferencePose", lastReplayReferencePose)
@@ -1457,7 +1600,7 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
                 .addData(p + ".positionStdIn", getPositionStdIn())
                 .addData(p + ".headingStdRad", getHeadingStdRad())
                 .addData(p + ".replayBaseValid", replayBaseValid)
-                .addData(p + ".replayBaseTimestampSec", replayBaseTimestampSec)
+                .addData(p + ".replayBaseTimestamp", replayBaseTimestamp)
                 .addData(p + ".replayBasePose", replayBasePose)
                 .addData(p + ".replayBasePredictorPose", replayBasePredictorPose)
                 .addData(p + ".predictorHistorySize", predictorHistory.size())
