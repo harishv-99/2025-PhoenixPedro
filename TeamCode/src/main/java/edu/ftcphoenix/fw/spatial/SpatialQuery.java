@@ -204,8 +204,7 @@ public final class SpatialQuery implements Source<SpatialQueryResult> {
             results.add(result != null ? result : SpatialLaneResult.none());
         }
 
-        lastCycle = cycle;
-        lastResult = new SpatialQueryResult(
+        SpatialQueryResult result = new SpatialQueryResult(
                 sampleTimestamp,
                 spec.translationTarget,
                 spec.facingTarget,
@@ -213,22 +212,24 @@ public final class SpatialQuery implements Source<SpatialQueryResult> {
                 robotToFacingFrame,
                 results
         );
-        return lastResult;
+        lastResult = result;
+        // Publish the cycle identity last so any construction failure remains retryable.
+        lastCycle = cycle;
+        return result;
     }
 
     /**
-     * Clears query-local latch/caching state and resets owned solve lanes and frame providers.
+     * Clears only this runtime query's per-cycle result cache.
+     *
+     * <p>The spec's frame providers, solve lanes, target-selection sources, estimators, and sensors
+     * are supplied collaborators rather than resources owned by this query. Reset their actual
+     * owners explicitly when their lifecycle requires it. This local reset lets multiple runtime
+     * queries safely share one immutable {@link SpatialQuerySpec} and its dependencies.</p>
      */
     @Override
     public void reset() {
         lastCycle = Long.MIN_VALUE;
         lastResult = null;
-        spec.controlFrames.reset();
-        for (SpatialSolveLane lane : spec.solveSet.lanes()) {
-            lane.reset();
-        }
-        SpatialQuerySupport.resetSelections(spec.translationTarget);
-        SpatialQuerySupport.resetSelections(spec.facingTarget);
     }
 
     /**

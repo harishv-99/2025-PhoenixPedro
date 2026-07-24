@@ -101,8 +101,20 @@ SpatialQuery driveSide = SpatialQuery.from(spec);
 SpatialQuery telemetrySide = SpatialQuery.from(spec);
 ```
 
-Do not share one stateful `SpatialQuery` between independent owners if either owner may call
-`reset()`. Share a `SpatialQuerySpec` and create independent runtime queries from it.
+Create one stateful `SpatialQuery` per independent consumer and share the immutable
+`SpatialQuerySpec`. Each runtime owns its per-cycle result cache and explicit reset boundary. A
+repeated read in one cycle returns the same completed result; the cache is committed only after all
+frame and lane sampling succeeds.
+
+The objects supplied through the spec remain borrowed dependencies. `SpatialQuery.reset()` clears
+only that runtime query's cached result. It does not reset the spec's frame providers, solve lanes,
+sensors, estimators, or selected-tag policies, because those may also serve another query or a
+robot-owned targeting service. Reset those collaborators only through their actual composition-root
+owner when that owner's lifecycle requires it.
+
+`LoopClock.reset(...)` is separate again: it advances the cycle identity, which prevents any
+pre-reset result from being reused, but it does not call `SpatialQuery.reset()` or clear component
+state.
 
 ## Control frame vs camera frame
 

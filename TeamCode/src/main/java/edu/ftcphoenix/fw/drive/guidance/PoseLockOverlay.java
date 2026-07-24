@@ -20,6 +20,10 @@ import edu.ftcphoenix.fw.localization.PoseEstimate;
  *
  * <p><b>Requires a field pose estimator.</b> If you do not have reliable localization, prefer a
  * simpler heading-hold overlay or no lock at all.</p>
+ *
+ * <p>This overlay owns its captured target and protects pose sampling by
+ * {@link LoopClock#cycle()}. Repeated reads after one successful evaluation return the same
+ * result; {@link #onEnable(LoopClock)} establishes a fresh activation and cache boundary.</p>
  */
 final class PoseLockOverlay implements DriveOverlay {
 
@@ -28,6 +32,7 @@ final class PoseLockOverlay implements DriveOverlay {
 
     private Pose2d targetFieldToRobot = null;
     private DriveOverlayOutput lastOut = DriveOverlayOutput.zero();
+    private long lastCycle = Long.MIN_VALUE;
 
     PoseLockOverlay(AbsolutePoseEstimator poseEstimator, DriveGuidancePlan.Tuning tuning) {
         this.poseEstimator = Objects.requireNonNull(poseEstimator, "poseEstimator");
@@ -39,11 +44,14 @@ final class PoseLockOverlay implements DriveOverlay {
      */
     @Override
     public void onEnable(LoopClock clock) {
+        // Establish a fresh activation boundary before touching a dependency that may fail.
+        targetFieldToRobot = null;
+        lastOut = DriveOverlayOutput.zero();
+        lastCycle = Long.MIN_VALUE;
+
         PoseEstimate est = poseEstimator.getEstimate();
         if (est != null && est.hasPose) {
             targetFieldToRobot = est.toPose2d();
-        } else {
-            targetFieldToRobot = null;
         }
     }
 
@@ -52,19 +60,23 @@ final class PoseLockOverlay implements DriveOverlay {
      */
     @Override
     public DriveOverlayOutput get(LoopClock clock) {
+        Objects.requireNonNull(clock, "clock");
+        long cycle = clock.cycle();
+        if (cycle == lastCycle) {
+            return lastOut;
+        }
+
         PoseEstimate est = poseEstimator.getEstimate();
 
         if (targetFieldToRobot == null || est == null || !est.hasPose) {
             // No valid pose: do not override anything.
-            lastOut = DriveOverlayOutput.zero();
-            return lastOut;
+            return rememberSuccessfulResult(cycle, DriveOverlayOutput.zero());
         }
 
         // Basic age/quality gating.
         if (!est.timestamp.isFresh(clock, DriveGuidanceSpec.Localization.DEFAULT_MAX_AGE_SEC)
                 || est.quality < DriveGuidanceSpec.Localization.DEFAULT_MIN_QUALITY) {
-            lastOut = DriveOverlayOutput.zero();
-            return lastOut;
+            return rememberSuccessfulResult(cycle, DriveOverlayOutput.zero());
         }
 
         Pose2d fieldToRobot = est.toPose2d();
@@ -84,8 +96,14 @@ final class PoseLockOverlay implements DriveOverlay {
         double omega = DriveGuidanceControllers.omegaCmd(headingErr, tuning);
 
         DriveSignal cmd = new DriveSignal(t.axial, t.lateral, omega);
-        lastOut = new DriveOverlayOutput(cmd, DriveOverlayMask.ALL);
-        return lastOut;
+        return rememberSuccessfulResult(
+                cycle, new DriveOverlayOutput(cmd, DriveOverlayMask.ALL));
+    }
+
+    private DriveOverlayOutput rememberSuccessfulResult(long cycle, DriveOverlayOutput result) {
+        lastOut = result;
+        lastCycle = cycle;
+        return result;
     }
 
     /**

@@ -223,31 +223,4 @@ final class SpatialQuerySupport {
         );
     }
 
-    static void resetSelections(TranslationTarget2d target) {
-        if (target instanceof SpatialTargets.ReferencePointTarget) {
-            resetReferenceSelection(((SpatialTargets.ReferencePointTarget) target).reference);
-        }
-    }
-
-    static void resetSelections(FacingTarget2d target) {
-        if (target instanceof SpatialTargets.ReferencePointTarget) {
-            resetReferenceSelection(((SpatialTargets.ReferencePointTarget) target).reference);
-        } else if (target instanceof SpatialTargets.ReferenceFrameHeadingTarget) {
-            resetReferenceSelection(((SpatialTargets.ReferenceFrameHeadingTarget) target).reference);
-        }
-    }
-
-    static void resetReferenceSelection(ReferencePoint2d ref) {
-        if (ref instanceof References.SelectedTagPointRef) {
-            ((References.SelectedTagPointRef) ref).selection.reset();
-        } else if (References.isFramePoint(ref)) {
-            resetReferenceSelection(References.framePointBaseFrame(ref));
-        }
-    }
-
-    static void resetReferenceSelection(ReferenceFrame2d ref) {
-        if (ref instanceof References.SelectedTagFrameRef) {
-            ((References.SelectedTagFrameRef) ref).selection.reset();
-        }
-    }
 }

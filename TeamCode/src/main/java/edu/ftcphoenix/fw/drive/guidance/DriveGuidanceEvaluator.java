@@ -42,8 +42,9 @@ final class DriveGuidanceEvaluator {
     }
 
     /**
-     * Resets runtime state that is captured on enable, such as robot-relative translation anchors
-     * and sticky selected-tag references.
+     * Resets evaluator-owned runtime state captured on enable, such as robot-relative translation
+     * anchors, and clears the runtime spatial-query cache. Selected-tag policies and the other
+     * spatial-spec collaborators remain owned by their suppliers.
      */
     void onEnable() {
         fieldToTranslationFrameAnchor = null;

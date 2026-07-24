@@ -63,7 +63,9 @@ import edu.ftcphoenix.fw.drive.DriveSource;
  * <h2>Note on shaping</h2>
  * <p>
  * Stick shaping uses {@link ScalarSource#shaped(double, double, double, double)} with min/max of
- * {@code [-1, +1]} because this class is mapping normalized controller-style axes.
+ * {@code [-1, +1]} because this class is mapping normalized controller-style axes. Each raw
+ * axis is sampled once per {@link #get(LoopClock)} call; that one sample drives both the command
+ * and its diagnostics.
  * </p>
  */
 public final class GamepadDriveSource implements DriveSource {
@@ -144,7 +146,7 @@ public final class GamepadDriveSource implements DriveSource {
     private final ScalarSource axisAxialRaw;   // +forward in robot-driving intuition
     private final ScalarSource axisOmegaRaw;   // raw +clockwise (typical)
 
-    // Shaped axes in Phoenix DriveSignal conventions.
+    // Shaped wrappers read the one per-get snapshot retained in the diagnostic fields below.
     private final ScalarSource axisAxialCmd;
     private final ScalarSource axisLateralCmd; // +left
     private final ScalarSource axisOmegaCmd;   // +CCW
@@ -188,28 +190,19 @@ public final class GamepadDriveSource implements DriveSource {
         this.axisOmegaRaw = axisOmegaRaw;
         this.cfg = cfg.copy();
 
-        // Build shaped command axes (pre-built wrappers, no per-loop allocation).
-        //
-        // Notes on sign:
-        // - DriveSignal.lateral is +left, but stick X raw is usually +right → invert.
-        // - DriveSignal.omega is +CCW, but stick turn raw is usually +clockwise → invert.
-        ScalarSource axial = this.axisAxialRaw
+        // Keep shaping in ScalarSource while decoupling it from the externally supplied sources.
+        // get(clock) captures each external axis once, then these wrappers all read that snapshot.
+        this.axisAxialCmd = ScalarSource.of(() -> lastAxialRaw)
                 .shaped(this.cfg.deadband, this.cfg.translateExpo, -1.0, 1.0)
                 .scaled(this.cfg.translateScale);
-
-        ScalarSource lateralLeft = this.axisLateralRaw
+        this.axisLateralCmd = ScalarSource.of(() -> lastLateralRaw)
                 .shaped(this.cfg.deadband, this.cfg.translateExpo, -1.0, 1.0)
                 .scaled(this.cfg.translateScale)
                 .inverted();
-
-        ScalarSource omegaCcw = this.axisOmegaRaw
+        this.axisOmegaCmd = ScalarSource.of(() -> lastOmegaRaw)
                 .shaped(this.cfg.deadband, this.cfg.rotateExpo, -1.0, 1.0)
                 .scaled(this.cfg.rotateScale)
                 .inverted();
-
-        this.axisAxialCmd = axial;
-        this.axisLateralCmd = lateralLeft;
-        this.axisOmegaCmd = omegaCcw;
     }
 
     /**
@@ -220,13 +213,16 @@ public final class GamepadDriveSource implements DriveSource {
      */
     @Override
     public DriveSignal get(LoopClock clock) {
-        // Sample raw axes for debug. These are the calibrated (but unshaped) values from the
-        // upstream sources.
-        lastLateralRaw = axisLateralRaw.getAsDouble(clock);
-        lastAxialRaw = axisAxialRaw.getAsDouble(clock);
-        lastOmegaRaw = axisOmegaRaw.getAsDouble(clock);
+        // These are the calibrated (but unshaped) upstream values. Keep them local until all three
+        // samples succeed so command and diagnostics describe the same sampling pass.
+        double lateralRaw = axisLateralRaw.getAsDouble(clock);
+        double axialRaw = axisAxialRaw.getAsDouble(clock);
+        double omegaRaw = axisOmegaRaw.getAsDouble(clock);
 
-        // Sample shaped command axes.
+        lastLateralRaw = lateralRaw;
+        lastAxialRaw = axialRaw;
+        lastOmegaRaw = omegaRaw;
+
         double ax = axisAxialCmd.getAsDouble(clock);
         double lat = axisLateralCmd.getAsDouble(clock);
         double om = axisOmegaCmd.getAsDouble(clock);
@@ -234,6 +230,20 @@ public final class GamepadDriveSource implements DriveSource {
         DriveSignal out = new DriveSignal(ax, lat, om);
         lastSignal = out;
         return out;
+    }
+
+    /**
+     * Clear local diagnostics and reset the three structural axis sources.
+     */
+    @Override
+    public void reset() {
+        lastLateralRaw = 0.0;
+        lastAxialRaw = 0.0;
+        lastOmegaRaw = 0.0;
+        lastSignal = DriveSignal.zero();
+        axisLateralRaw.reset();
+        axisAxialRaw.reset();
+        axisOmegaRaw.reset();
     }
 
     /**

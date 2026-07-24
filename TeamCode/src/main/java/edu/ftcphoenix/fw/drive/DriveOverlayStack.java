@@ -28,6 +28,8 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *   <li>If multiple enabled layers claim the same DOF, <b>the last layer wins</b> for that DOF.</li>
  *   <li>Each overlay still receives {@link DriveOverlay#onEnable(LoopClock)} and
  *       {@link DriveOverlay#onDisable(LoopClock)} when it toggles.</li>
+ *   <li>A completed stack evaluation is cached by {@link LoopClock#cycle()}, so repeated reads in
+ *       one loop return the same command without resampling gates or overlays.</li>
  * </ul>
  *
  * <h2>Example</h2>
@@ -57,10 +59,15 @@ public final class DriveOverlayStack {
 
     /**
      * Builder that collects overlay layers and produces a composed {@link DriveSource}.
+     *
+     * <p>A builder is single-use: {@link #build()} consumes it, including when it has no layers.
+     * A second build or any later add fails with an actionable error. Create a new builder when a
+     * second independently owned stack is needed.</p>
      */
     public static final class Builder {
         private final DriveSource base;
         private final ArrayList<Layer> layers = new ArrayList<Layer>();
+        private boolean built;
 
         private Builder(DriveSource base) {
             this.base = Objects.requireNonNull(base, "base");
@@ -78,6 +85,7 @@ public final class DriveOverlayStack {
                            BooleanSource enabledWhen,
                            DriveOverlay overlay,
                            DriveOverlayMask requestedMask) {
+            requireNotBuilt("add an overlay");
             if (name == null || name.trim().isEmpty()) {
                 throw new IllegalArgumentException("name must be non-null and non-empty");
             }
@@ -86,6 +94,14 @@ public final class DriveOverlayStack {
             Objects.requireNonNull(requestedMask, "requestedMask");
             if (requestedMask.isNone()) {
                 throw new IllegalArgumentException("requestedMask must not be NONE");
+            }
+            for (int i = 0; i < layers.size(); i++) {
+                if (layers.get(i).overlay == overlay) {
+                    throw new IllegalArgumentException(
+                            "overlay instance is already owned by layer '"
+                                    + layers.get(i).name
+                                    + "'; create a fresh DriveOverlay for each activation owner");
+                }
             }
             layers.add(new Layer(name, enabledWhen, overlay, requestedMask));
             return this;
@@ -97,6 +113,7 @@ public final class DriveOverlayStack {
         public Builder add(BooleanSource enabledWhen,
                            DriveOverlay overlay,
                            DriveOverlayMask requestedMask) {
+            requireNotBuilt("add an overlay");
             String name = "overlay" + layers.size();
             return add(name, enabledWhen, overlay, requestedMask);
         }
@@ -122,13 +139,25 @@ public final class DriveOverlayStack {
          * Finish the builder.
          *
          * <p>If no layers were added, this returns the original {@code base} source.</p>
+         *
+         * <p>This consumes the builder. It cannot be built or modified again.</p>
          */
         public DriveSource build() {
+            requireNotBuilt("build the stack again");
+            built = true;
             if (layers.isEmpty()) {
                 return base;
             }
             Layer[] arr = layers.toArray(new Layer[0]);
             return new StackedDriveSource(base, arr);
+        }
+
+        private void requireNotBuilt(String attemptedAction) {
+            if (built) {
+                throw new IllegalStateException(
+                        "DriveOverlayStack.Builder is single-use and has already been built; "
+                                + "create a new builder to " + attemptedAction);
+            }
         }
     }
 
@@ -166,6 +195,7 @@ public final class DriveOverlayStack {
 
         private DriveSignal lastBase = DriveSignal.zero();
         private DriveSignal lastOut = DriveSignal.zero();
+        private long lastCycle = Long.MIN_VALUE;
 
         StackedDriveSource(DriveSource base, Layer[] layers) {
             this.base = Objects.requireNonNull(base, "base");
@@ -177,6 +207,15 @@ public final class DriveOverlayStack {
          */
         @Override
         public DriveSignal get(LoopClock clock) {
+            long cycle = clock != null ? clock.cycle() : Long.MIN_VALUE;
+            if (clock != null && cycle == lastCycle) {
+                return lastOut;
+            }
+            if (clock == null) {
+                // Preserve legacy clockless sampling without letting it alias a real cycle.
+                lastCycle = Long.MIN_VALUE;
+            }
+
             DriveSignal cmd = base.get(clock);
             lastBase = cmd;
 
@@ -220,7 +259,33 @@ public final class DriveOverlayStack {
             }
 
             lastOut = cmd;
+            if (clock != null) {
+                // Commit only after the base, every gate, lifecycle hook, and overlay succeeds.
+                lastCycle = cycle;
+            }
             return cmd;
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public void reset() {
+            // reset() has no LoopClock: clear local activation without synthesizing onDisable(null).
+            lastCycle = Long.MIN_VALUE;
+            lastBase = DriveSignal.zero();
+            lastOut = DriveSignal.zero();
+            for (int i = 0; i < layers.length; i++) {
+                Layer layer = layers[i];
+                layer.lastEnabled = false;
+                layer.lastOut = DriveOverlayOutput.zero();
+                layer.lastEffectiveMask = DriveOverlayMask.NONE;
+            }
+
+            base.reset();
+            for (int i = 0; i < layers.length; i++) {
+                layers[i].enabledWhen.reset();
+            }
         }
 
         /**

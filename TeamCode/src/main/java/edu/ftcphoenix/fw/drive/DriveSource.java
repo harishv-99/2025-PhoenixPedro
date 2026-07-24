@@ -159,6 +159,18 @@ public interface DriveSource extends Source<DriveSignal> {
              * {@inheritDoc}
              */
             @Override
+            public void reset() {
+                lastEnabled = false;
+                lastBase = DriveSignal.zero();
+                lastOut = DriveSignal.zero();
+                self.reset();
+                when.reset();
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
             public void debugDump(DebugSink dbg, String prefix) {
                 if (dbg == null) {
                     return;
@@ -206,6 +218,16 @@ public interface DriveSource extends Source<DriveSignal> {
                 lastBase = self.get(clock);
                 lastOut = lastBase.scaled(translationScale, omegaScale);
                 return lastOut;
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public void reset() {
+                lastBase = DriveSignal.zero();
+                lastOut = DriveSignal.zero();
+                self.reset();
             }
 
             /**
@@ -272,24 +294,35 @@ public interface DriveSource extends Source<DriveSignal> {
                 if (clock != null && cycle == lastCycle) {
                     return lastOut;
                 }
-                lastCycle = cycle;
-                lastBase = self.get(clock);
-                lastOut = new DriveSignal(
-                        axialLimiter.calculate(lastBase.axial, clock),
-                        lateralLimiter.calculate(lastBase.lateral, clock),
-                        omegaLimiter.calculate(lastBase.omega, clock));
-                return lastOut;
+                if (clock == null) {
+                    // Preserve legacy clockless sampling without letting it alias a real cycle.
+                    lastCycle = Long.MIN_VALUE;
+                }
+
+                DriveSignal base = self.get(clock);
+                DriveSignal out = new DriveSignal(
+                        axialLimiter.calculate(base.axial, clock),
+                        lateralLimiter.calculate(base.lateral, clock),
+                        omegaLimiter.calculate(base.omega, clock));
+
+                lastBase = base;
+                lastOut = out;
+                if (clock != null) {
+                    // A failed upstream sample must remain retryable in this cycle.
+                    lastCycle = cycle;
+                }
+                return out;
             }
 
             @Override
             public void reset() {
-                self.reset();
                 axialLimiter.reset();
                 lateralLimiter.reset();
                 omegaLimiter.reset();
                 lastCycle = Long.MIN_VALUE;
                 lastBase = DriveSignal.zero();
                 lastOut = DriveSignal.zero();
+                self.reset();
             }
 
             @Override
@@ -348,12 +381,23 @@ public interface DriveSource extends Source<DriveSignal> {
 
         return new DriveSource() {
             private boolean lastEnabled = false;
+            private long lastCycle = Long.MIN_VALUE;
+            private DriveSignal lastOut = DriveSignal.zero();
 
             /**
              * {@inheritDoc}
              */
             @Override
             public DriveSignal get(LoopClock clock) {
+                long cycle = clock != null ? clock.cycle() : Long.MIN_VALUE;
+                if (clock != null && cycle == lastCycle) {
+                    return lastOut;
+                }
+                if (clock == null) {
+                    // Preserve legacy clockless sampling without letting it alias a real cycle.
+                    lastCycle = Long.MIN_VALUE;
+                }
+
                 DriveSignal base = self.get(clock);
 
                 boolean enabled = when.getAsBoolean(clock);
@@ -363,7 +407,7 @@ public interface DriveSource extends Source<DriveSignal> {
                         overlay.onDisable(clock);
                         lastEnabled = false;
                     }
-                    return base;
+                    return rememberSuccessfulResult(clock, cycle, base);
                 }
 
                 if (!lastEnabled) {
@@ -374,19 +418,44 @@ public interface DriveSource extends Source<DriveSignal> {
                 DriveOverlayOutput out = overlay.get(clock);
                 if (out == null) {
                     // Be defensive; treat as “no override”.
-                    return base;
+                    return rememberSuccessfulResult(clock, cycle, base);
                 }
 
                 DriveOverlayMask eff = out.mask.intersect(requestedMask);
                 if (eff.isNone()) {
-                    return base;
+                    return rememberSuccessfulResult(clock, cycle, base);
                 }
 
                 double axial = eff.axial ? out.signal.axial : base.axial;
                 double lateral = eff.lateral ? out.signal.lateral : base.lateral;
                 double omega = eff.omega ? out.signal.omega : base.omega;
 
-                return new DriveSignal(axial, lateral, omega);
+                return rememberSuccessfulResult(
+                        clock, cycle, new DriveSignal(axial, lateral, omega));
+            }
+
+            private DriveSignal rememberSuccessfulResult(LoopClock clock,
+                                                         long cycle,
+                                                         DriveSignal result) {
+                lastOut = result;
+                if (clock != null) {
+                    // Commit the cycle only after base, gate, lifecycle, and overlay all succeed.
+                    lastCycle = cycle;
+                }
+                return result;
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public void reset() {
+                // reset() has no LoopClock, so abandon activation without inventing onDisable(null).
+                lastEnabled = false;
+                lastCycle = Long.MIN_VALUE;
+                lastOut = DriveSignal.zero();
+                self.reset();
+                when.reset();
             }
 
             /**
@@ -419,7 +488,30 @@ public interface DriveSource extends Source<DriveSignal> {
      * Convenience overload: adapt a {@link DriveSource} into an overlay with the given mask.
      */
     default DriveSource overlayWhen(BooleanSource when, DriveSource override, DriveOverlayMask requestedMask) {
-        return overlayWhen(when, DriveOverlays.fromDriveSource(override, requestedMask), requestedMask);
+        Objects.requireNonNull(override, "override DriveSource must not be null");
+        DriveSource composed = overlayWhen(
+                when, DriveOverlays.fromDriveSource(override, requestedMask), requestedMask);
+
+        // Keep the source-adapter overload structurally resettable without adding a lifecycle/reset
+        // method to DriveOverlay. The generic overlay overload cannot assume ownership of an
+        // overlay's private collaborators, while this overload knows the supplied source edge.
+        return new DriveSource() {
+            @Override
+            public DriveSignal get(LoopClock clock) {
+                return composed.get(clock);
+            }
+
+            @Override
+            public void reset() {
+                composed.reset();
+                override.reset();
+            }
+
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                composed.debugDump(dbg, prefix);
+            }
+        };
     }
 
     /**
@@ -470,6 +562,18 @@ public interface DriveSource extends Source<DriveSignal> {
                 lastB = other.get(clock);
                 lastOut = lastA.lerp(lastB, alphaClamped);
                 return lastOut;
+            }
+
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public void reset() {
+                lastA = DriveSignal.zero();
+                lastB = DriveSignal.zero();
+                lastOut = DriveSignal.zero();
+                self.reset();
+                other.reset();
             }
 
             /**

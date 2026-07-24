@@ -291,6 +291,13 @@ controls should generally go through capabilities as frame-valued commands and b
 button layout itself. That keeps input semantics and drive-assist policy separate while still
 letting them collaborate cleanly.
 
+The service owns one activation path for each installed assist overlay. `ScoringTargeting` keeps its
+own guidance query and selected-tag policy, while `PhoenixDriveAssistService` asks the reusable aim
+plan for a fresh `overlay()` for its stack. The query and overlay therefore have independent
+cycle/blend state but may safely borrow the same robot-owned spatial dependencies. Resetting or
+re-enabling either runtime clears only its local evaluation state; it does not reset
+`ScoringTargeting`'s selected-tag policy, localization, vision, or frame providers.
+
 `PhoenixReadiness.teleOpPoseAssists(...)` evaluates the two checked-in Pinpoint calibration
 acknowledgements before those pose-dependent overlays are wired. If axes or pod offsets are not
 acknowledged, manual drive and all mechanism capabilities remain available, while auto-aim and

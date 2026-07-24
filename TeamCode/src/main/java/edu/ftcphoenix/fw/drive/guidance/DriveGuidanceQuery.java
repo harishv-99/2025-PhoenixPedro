@@ -13,9 +13,10 @@ import edu.ftcphoenix.fw.drive.DriveOverlayMask;
  * without necessarily applying the resulting drive command. Typical uses are telemetry, readiness
  * gates such as “only shoot when facing is within tolerance,” and tuning probes.</p>
  *
- * <p>The object is stateful. It tracks the same internal state as an overlay: latched translation
- * anchors, adaptive blending state, sticky selected-tag references, and controller state. Create one
- * query per independent consumer and reuse it across loop iterations.</p>
+ * <p>The object is stateful. It tracks the same runtime-local state as an overlay: latched
+ * translation anchors, adaptive blending state, controller state, and its per-cycle result. Create
+ * one query per independent consumer and reuse it across loop iterations. Selected-tag policies
+ * and the other spatial-spec collaborators remain owned by their suppliers.</p>
  */
 public final class DriveGuidanceQuery implements Source<DriveGuidanceStatus> {
 
@@ -40,11 +41,12 @@ public final class DriveGuidanceQuery implements Source<DriveGuidanceStatus> {
      */
     @Override
     public void reset() {
-        core.onEnable();
-        enabled = true;
+        enabled = false;
         last = null;
         lastCycle = Long.MIN_VALUE;
         lastMask = null;
+        core.onEnable();
+        enabled = true;
     }
 
     /**
@@ -66,8 +68,10 @@ public final class DriveGuidanceQuery implements Source<DriveGuidanceStatus> {
      * Samples using an explicit requested mask.
      *
      * <p>This matters when a plan is configured for both translation and facing, but a caller wants
-     * to evaluate only one degree of freedom or match the exact DOFs it intends to apply. Sampling is
-     * idempotent by loop cycle and requested mask.</p>
+     * to evaluate only one degree of freedom or match the exact DOFs it intends to apply. Sampling
+     * the same mask repeatedly is idempotent by loop cycle. A query may use only one mask in a
+     * cycle; use the plan's natural mask, one union mask, or a separate query when independent
+     * same-cycle consumers need different masks.</p>
      */
     public DriveGuidanceStatus sample(LoopClock clock, DriveOverlayMask requestedMask) {
         if (clock == null) {

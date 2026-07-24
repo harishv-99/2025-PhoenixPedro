@@ -87,6 +87,45 @@ The important separation is:
 
 The camera does not need to be centered or aligned with the shooter.
 
+## Runtime ownership and cycle safety
+
+`DriveGuidancePlan` is reusable configuration; each call to `overlay()`, `query()`, or a Task factory
+creates fresh runtime state. Give each overlay instance exactly one activation owner. In ordinary
+robot code that means calling `plan.overlay()` once for each stack layer instead of retaining one
+overlay and installing it in multiple layers or stacks:
+
+```java
+DriveSource drive = DriveOverlayStack.on(manualDrive)
+        .add("shooterFacing", aimButton, shooterAim.overlay(), DriveOverlayMask.OMEGA_ONLY)
+        .build();
+```
+
+The student-facing call is unchanged; cycle protection lives inside the framework. After a built
+stack completes one evaluation, repeated reads in that cycle return the same command without
+resampling its base, activation gates, or enabled overlays. A guidance runtime similarly advances
+adaptive blending and controllers once. Failed evaluation is not cached as success, so a retry may
+resample the graph instead of hiding the failure behind stale or null output; each stateful source
+or overlay still protects its own advancing state for that retry.
+
+An overlay-stack builder is single-use. After `build()`, do not add another layer or build another
+stack from that builder. A stack also rejects the same overlay object in two layers because two
+independent activation gates cannot truthfully own one overlay's enable/disable state. If two gates
+mean one behavior, combine the gates; if they mean independent behaviors, create a fresh
+`plan.overlay()` for each.
+
+One guidance runtime also uses one requested `DriveOverlayMask` in a cycle. Equal same-cycle reads
+return the same result. If two consumers need different masks, use the plan's natural/union mask or
+create independent runtimes; asking one runtime for a second mask in that cycle fails fast instead
+of advancing one controller state twice. `DriveGuidanceQuery.get(clock)` and `sample(clock)` use the
+plan's natural mask, so ordinary readiness code needs no mask bookkeeping.
+
+Overlay activation remains the stack's lifecycle: it calls `onEnable(clock)` and
+`onDisable(clock)` exactly once per transition. There is intentionally no `DriveOverlay.reset()`
+hook. Resetting a guidance query or re-enabling an overlay clears only that runtime's behavior and
+query memory; it does not reset frame providers, solve lanes, sensors, estimators, or selected-tag
+policies borrowed through the plan's reusable spatial spec. Those collaborators remain owned by
+the robot services that supplied them.
+
 ## Readiness / telemetry query
 
 A plan can create a runtime query for “are we ready?” checks:
@@ -101,7 +140,10 @@ telemetry.addData("shooterFacing.errorDeg", Math.toDegrees(status.omegaErrorRad)
 telemetry.addData("shooterFacing.ready", readyToShoot);
 ```
 
-`DriveGuidanceQuery` implements `Source<DriveGuidanceStatus>`, so it fits the Phoenix source graph. Create one query per independent owner because it is stateful.
+`DriveGuidanceQuery` implements `Source<DriveGuidanceStatus>`, so it fits the Phoenix source graph.
+Create one query per independent owner because each query owns its cycle cache, blend/controller
+state, and explicit reset lifecycle. The plan and its robot-owned spatial dependencies may still be
+shared safely.
 
 ## Translation + facing
 
