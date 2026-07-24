@@ -1,6 +1,6 @@
 # Framework Improvement Tracker
 
-Last updated: 2026-07-23
+Last updated: 2026-07-24
 
 This file tracks proposed Phoenix framework improvements. It is deliberately a planning document:
 an item being listed here does **not** mean its current proposed solution has been approved. Each
@@ -129,7 +129,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 42 | TIME-01 | Epoch-safe LoopClock timestamps | Done | Typed timestamps, reset-safe portable timing, monotonic cycle identity, caller migration, documentation, software verification, and Android Studio review are complete. |
 | 43 | VISION-02 | Stable AprilTag observation timestamps | Done | Stable backend-owned frame timestamps, exact propagation, fail-closed reset/replay handling, synchronized documentation, verification, and Android Studio review are complete. |
 | 44 | TARGET-03 | Periodic planner complexity | Done | Constant-time deterministic periodic selection, synchronized docs, and 21 focused regressions were reviewed and approved on 2026-07-23. |
-| 45 | CYCLE-01 | Stateful drive-source cycle safety | Proposed | Memoize stateful composition once per `clock.cycle()` and propagate reset deliberately. |
+| 45 | CYCLE-01 | Stateful drive-source cycle safety | Done | Cycle-safe drive/guidance owners, owner-safe reset boundaries, overlay lifecycle validation, synchronized documentation, and 27 focused regressions were reviewed and approved on 2026-07-24. |
 | 46 | CYCLE-02 | Localization cycle safety | Proposed | Guard predictors/estimators against duplicate same-cycle updates. |
 | 47 | SOURCE-01 | Boolean composition sampling | Proposed | Sample both operands once per cycle before combining stateful results. |
 | 48 | API-01 | Writable Plant command binding | Proposed | Keep one simple `Plant` if builder provenance can prevent silent no-op writes. |
@@ -5357,7 +5357,204 @@ writer, and explicit lifecycle ownership.
   requiring students to remember an external wrapper is too fragile.
 - **Completion:** repeated reads in one cycle are observationally identical and reset ownership is
   explicit, tested, and non-destructive to shared owners.
-- **Decision record:** _Pending._
+- **Decision gate (2026-07-24):** **Ready; major lifecycle/ownership approval required.** The
+  leading hypothesis survives the audit: the abstraction that advances behavioral state must
+  protect that state by `LoopClock.cycle()`. Robot programmers must not have to remember an
+  external memoization wrapper. Implementation has not started.
+- **Confirmed same-cycle failure:** `DriveSource.overlayWhen(...)` and
+  `DriveOverlayStack.StackedDriveSource` resample their base, gates, and active overlays on every
+  call. `DriveGuidanceOverlay.get(...)` delegates every call to `DriveGuidanceCore.step(...)`, whose
+  adaptive path applies `dtSec() / blendSec` to both blend accumulators each time. With a 20 ms loop
+  and 150 ms blend, two reads in one cycle move the blend from `0` to about `0.133` and then to about
+  `0.267`; the robot can therefore observe two commands for one physical loop. The current
+  `rateLimited(...)` source is cycle-aware, but it records the cycle before its upstream sample
+  succeeds. `DriveGuidanceQuery` caches equal cycle/mask reads, but asking the same query for a
+  second mask in that cycle recomputes the shared core and advances it again.
+- **Confirmed snapshot issue:** `GamepadDriveSource.get(...)` first reads its three supplied axes
+  for diagnostics and then reads the same three sources again through the shaping graph. A proper
+  stateful axis should already protect itself, but the command and diagnostic values should still
+  come from one captured input set. This concrete source should sample each supplied axis once per
+  call and derive both outputs from that snapshot; it does not justify memoizing every pure drive
+  transformation.
+- **Confirmed reset-ownership failure:** guidance enable/reset calls
+  `DriveGuidanceEvaluator.onEnable()`, which calls `SpatialQuery.reset()`. That public reset
+  currently clears not only the query cache but also the spec-supplied control frames, solve lanes,
+  and selected-tag sources. A `SpatialQuerySpec` is explicitly reusable for independent runtime
+  queries, so those collaborators are shared/borrowed, not owned by one query. Phoenix proves the
+  failure path: `ScoringTargeting` owns one sticky `scoringSelection`, embeds it in the shared aim
+  plan, samples it through `aimQuery`, and gives a fresh overlay from that plan to the drive-assist
+  stack. Enabling the overlay can currently reset the targeting service's selection after the
+  service sampled it in the same cycle.
+- **Public construction and caller audit:** the drive-specific extension seam is direct
+  `DriveSource` implementation. Its supported fluent family is `scaledWhen(...)`, `scaled(...)`,
+  the two- and three-rate `rateLimited(...)` overloads, three `overlayWhen(...)` overloads,
+  `overlayStack()`, and `blendedWith(...)`. `GamepadDriveSource` is the concrete beginner input
+  source. Multiple overlays use `DriveOverlayStack.on(base)`, four `Builder.add(...)` overloads,
+  and `build()`. `DriveOverlays.fromDriveSource(...)` is the source adapter and `fixed(...)` the
+  constant overlay. Guidance contributes `DriveGuidancePlan.overlay()` and the two
+  `DriveGuidance.poseLock(...)` factories; a plan deliberately creates fresh overlay/query/task
+  runtime state. `Source.memoized()` is inherited but returns `Source<DriveSignal>`, losing the
+  fluent `DriveSource` type, and has no drive caller.
+- **Current callers:** Phoenix constructs
+  `GamepadDriveSource -> scaledWhen -> rateLimited` in `PhoenixTeleOpControls`, then the only
+  production stack in `PhoenixDriveAssistService`; `PhoenixRobot` currently samples the final
+  source once before the drive sink. Modern `TeleOp_01` through `TeleOp_06` use the same manual
+  chain, and `TeleOp_05`/`TeleOp_06` add one `overlayWhen(...)`. The same calls appear in Framework
+  Principles, Framework Overview, Drive Guidance, Framework Lanes & Robot Controls, Recommended
+  Robot Design, and Loop Structure. No production, Phoenix, tool, or modern example explicitly
+  resets a drive-source graph, and the existing Phoenix assist test samples only once, so current
+  tests do not expose the defect.
+- **Distinct-capability and parallel-layer audit:** a one-off `overlayWhen(...)` and an ordered,
+  named multi-overlay stack are distinct. Symmetric versus independent translation rate limits are
+  distinct, as are default versus explicit pose-lock tuning and overlay/task/query guidance
+  consumers. `DriveOverlays.fromDriveSource(...)` lets one existing source participate in a stack,
+  while `fixed(...)` has no source owner. The no-mask/name overloads answer genuine optional
+  defaults. In contrast, `DriveSource.overlayStack()` is an unused exact spelling of
+  `DriveOverlayStack.on(this)`; the static factory is the production/documented path. Public
+  `new DriveGuidanceQuery(plan)` similarly duplicates `plan.query()`, and unused guidance mask
+  aliases were also found. Removing these unrelated public paths is deferred to the existing
+  CLEAN-01 compatibility gate; CYCLE-01 will not add siblings to or opportunistically remove them.
+- **Builder and ownership audit:** all repository callers construct an overlay stack inline, add
+  concrete source/gate/overlay/mask answers, and call `build()` once. No caller stores or rebuilds
+  the builder. Today the builder stores mutable layer runtime state, so two builds share activation
+  bookkeeping; they also necessarily share the same concrete stateful overlays. The smallest
+  truthful rule is therefore a single-use builder that fails actionably on another `build()` or an
+  addition after build. A stack must also reject the same overlay identity in more than one layer;
+  use a fresh plan overlay or combine the gates when two independent activations are intended.
+  This preserves one lifecycle owner without adding a `Supplier<DriveOverlay>` question to the
+  ordinary builder.
+- **Selected design:** cache a complete successful result by cycle inside the framework objects
+  that own drive behavior or activation state: `overlayWhen(...)`, the built overlay stack, and
+  `DriveGuidanceCore`; retain and correct the existing rate-limited cache. Equal same-cycle
+  guidance-mask reads return the identical `Step`. A second mask on the same guidance runtime in
+  that cycle fails fast with an instruction to use one natural/union mask or a separate query;
+  returning the first mask would be false and recomputing would advance shared state twice. Commit
+  cache identity only after a successful sample so an exception cannot turn a retry into stale or
+  null success. Apply that ordering to the drive rate limiter and
+  `DriveGuidanceSources.status(...)` as well. Pure `scaled`, `scaledWhen`, and `blendedWith`
+  transformations do not gain behavioral caches; their stateful dependencies remain responsible
+  for the existing `Source` contract. `GamepadDriveSource` gains one coherent per-call axis
+  snapshot, not a new public mode.
+- **Selected reset contract:** keep `DriveSource` parallel with the general `Source` graph:
+  structural decorators reset their local caches/diagnostics and propagate reset through their
+  source/gate children, including the currently missing pure-wrapper links. An owner that
+  deliberately shares a stateful source between graphs must reset it only at their common lifecycle
+  boundary. Overlay composition itself clears only its cycle cache and activation bookkeeping; it
+  does not invent a clockless `onDisable(...)` callback. The next enabled sample calls
+  `onEnable(clock)` exactly once. Do not add `DriveOverlay.reset()`: activation state already has one
+  lifecycle path, and a second hook would encourage a stack to reset dependencies owned by a robot
+  service. `SpatialQuery.reset()` becomes explicitly query-local because its reusable spec's frame
+  providers, lanes, estimators, sensors, and selected-tag policies remain owned by their supplying
+  composition roots. `LoopClock.reset(...)` creates a fresh cache cycle but still does not clear
+  controller/source state; explicit owner reset remains separate.
+- **Alternatives rejected:** documentation-only leaves the reproduced double advancement;
+  requiring `.memoized()` is easy to omit, drops the `DriveSource` type, and only protects the
+  exact boundary where it is placed. Centralizing one sample in `FtcMecanumDriveLane` mixes intent
+  ownership with the hardware sink and does not protect query, telemetry, test, or shared-service
+  consumers. Guarding only the guidance overlay misses arbitrary stateful overlays and repeated
+  activation transitions. Memoizing every pure wrapper adds hidden state and reset semantics where
+  no behavioral state exists. Adding `DriveOverlay.reset()`, recursively resetting spatial-spec
+  collaborators, or adding overlay suppliers/factories increases the public lifecycle model and
+  can damage shared robot-owned state. Silently allowing two masks on one core has no truthful
+  single-state meaning.
+- **Student-facing simplicity:** the selected design changes no ordinary robot call and adds no
+  public noun or required method:
+
+  ```java
+  DriveSource drive = DriveOverlayStack.on(manualDrive)
+          .add("autoAim", aimButton, aimPlan.overlay(), DriveOverlayMask.OMEGA_ONLY)
+          .build();
+  ```
+
+  The student still supplies exactly four conceptual answers for that layer: its diagnostic name,
+  enable signal, behavior, and allowed drive components. Cache placement, reset propagation, and
+  blend advancement remain framework responsibilities.
+- **Bounded implementation scope:** change only the affected drive-source compositions,
+  `GamepadDriveSource` snapshot/reset behavior, overlay-stack runtime/builder validation,
+  guidance core/query/status caching, query-local spatial reset semantics, focused tests, public
+  Javadocs, Framework Principles, Sources and Signals, Loop Structure, Drive Guidance, Spatial
+  Queries, and any directly stale Phoenix Architecture wording. Do not add a public memoization
+  facade or overlay reset hook; do not remove CLEAN-01 aliases; do not absorb CYCLE-02 localization
+  updates, SOURCE-01 Boolean short-circuit sampling, generic `Source.memoized()` failure semantics,
+  or unrelated drive/filter APIs.
+- **Verification plan:** add focused tests proving one base/gate/overlay sample and one lifecycle
+  transition per cycle, identical repeated results, fresh next-cycle results, reset re-arming, and
+  successful-result-only cache commits for one-off and stacked overlays. Cover one captured
+  Gamepad axis set; nested reset propagation; builder second-build/post-build-add rejection;
+  duplicate overlay identity rejection; and unchanged mask ordering/last-wins behavior. Guidance
+  tests will prove one adaptive
+  blend step per cycle, actionable different-mask failure, independent runtimes, explicit reset
+  versus clock reset, and no reset of shared tag selection, frames, lanes, estimators, or sensors.
+  Re-run the Phoenix drive-assist test with a repeated same-cycle read, all focused suites, full
+  TeamCode unit tests and Java compilation, public-caller/documentation searches, and
+  `git diff --check`. No robot hardware is needed for these deterministic lifecycle contracts.
+- **Approval gate:** implementation has not started. Because this changes public reset semantics,
+  overlay-stack builder lifecycle, and guidance mask error behavior, proceed only if the user
+  replies `Approve CYCLE-01 cycle-safe drive-state and owner-safe reset design`.
+- **Design approval (2026-07-24):** the user replied
+  `Approve CYCLE-01 cycle-safe drive-state and owner-safe reset design`. This authorizes Gate 2
+  implementation of CYCLE-01 only; it does not authorize CYCLE-02 or another tracker item.
+- **Implementation (2026-07-24):** conditional drive overlays and built overlay stacks now publish
+  one complete successful `DriveSignal` per `LoopClock.cycle()`. Repeated reads return that exact
+  result without repeating base/gate/overlay work. A failed evaluation leaves the cycle uncommitted
+  so it can be retried, while each stateful overlay remains responsible for protecting its own
+  advancing state. The existing drive rate limiter now commits its wrapper cache only after its
+  upstream sample and all three axis calculations succeed. Pure scaling/conditional-scaling/blend
+  decorators remain uncached, but their explicit resets now clear local diagnostics and propagate
+  through their structural source/gate children. The source-adapter overlay overload also resets
+  its adapted source without adding a `DriveOverlay.reset()` API.
+- **Overlay ownership and coherent input (2026-07-24):** a `DriveOverlayStack.Builder` is consumed
+  by its first `build()`, including an empty build, and rejects additions/rebuilds afterward. One
+  stack rejects the same overlay identity in two layers with an actionable fresh-overlay message.
+  Reset clears only stack cache/activation bookkeeping and structural base/gates; it does not
+  synthesize a clockless disable callback or claim ownership of overlay collaborators.
+  `GamepadDriveSource` now samples each supplied axis once per call and feeds both its established
+  `ScalarSource.shaped(...)` pipeline and diagnostics from that one coherent capture.
+- **Guidance and spatial ownership (2026-07-24):** `DriveGuidanceCore` caches one exact successful
+  `Step` for one requested mask per cycle. A second mask on that runtime/cycle fails with guidance
+  to use the natural/union mask or an independent runtime; two runtimes from one plan can use
+  different masks in parallel. Query/status caches commit only after successful evaluation and
+  clear local state before reset delegation. The built-in pose-lock overlay independently protects
+  its captured target/pose read per cycle, including stack retries after a later layer fails.
+  `SpatialQuery.reset()` now clears only its runtime result cache; reusable-spec frame providers,
+  solve lanes, sensors, estimators, and selection policies stay with their supplying owners. Its
+  cycle identity is also published last after successful result construction.
+- **Student-facing result and documentation (2026-07-24):** ordinary robot construction remains
+  unchanged—students still write `DriveOverlayStack.on(manualDrive).add(...).build()` and do not
+  add a memoization or reset concept. Framework Principles, Sources and Signals, Loop Structure,
+  Drive Guidance, Spatial Queries, public Javadocs, and Phoenix Architecture now describe the same
+  state-owner, successful-result cache, single-use builder, one-mask/runtime/cycle, and borrowed
+  spatial-dependency rules. No framework or Phoenix documentation references an external robot
+  project.
+- **Adversarial review (2026-07-24):** two independent read-only reviews checked the implementation,
+  tests, current callers, and documentation against the approved design and Framework Principles.
+  They exposed the initially omitted pose-lock cache, the independent-guidance-runtime regression,
+  stale selected-tag ownership wording, retry wording that was too broad, and final SpatialQuery
+  cycle-commit ordering. All were corrected. The final review reports no remaining CYCLE-01
+  finding, API compatibility regression, or adjacent-item scope leak; generic
+  `Source.memoized()` failure semantics remains deliberately outside this item.
+- **Automated verification (2026-07-24):** the seven focused suites report **27 tests, 0 failures,
+  0 errors, 0 skipped** across conditional/rate-limited sources, ordered overlay stacks, coherent
+  gamepad sampling, guidance and pose-lock cycle behavior, shared spatial-query reset ownership,
+  and repeated Phoenix drive-assist reads. The complete `:TeamCode:testDebugUnitTest` run reports
+  **93 suites / 867 tests / 0 failures / 0 errors / 0 skipped**, and
+  `:TeamCode:compileDebugJavaWithJavac` succeeds. Current caller searches confirm the normal Phoenix
+  stack construction is unchanged; changed/untracked trailing-whitespace checks and
+  `git diff --check` pass. Gradle emits only the existing Java 8 source/target and FTC sample
+  deprecation warnings.
+- **Hardware scope:** no robot hardware is required to validate deterministic per-cycle cache,
+  activation, reset, retry, and builder-ownership behavior. Physical localization and drive quality
+  remain adoption validation and are not claimed by this item.
+- **Android Studio audit point (2026-07-24):** inspect `DriveSource`, `DriveOverlayStack`, and
+  `GamepadDriveSource` for the successful-result caches, structural reset paths, builder guards,
+  and one-capture shaping; inspect `DriveGuidanceCore`, `PoseLockOverlay`, and `SpatialQuery` for
+  one-state-transition-per-cycle and borrowed-dependency reset ownership; then inspect the seven
+  focused suites and synchronized Framework Principles/guides. No files are staged, committed,
+  pushed, or merged. Stop without starting CYCLE-02 until the user replies `CYCLE-01 looks good`.
+- **Manual verification and approval (2026-07-24):** the user reviewed CYCLE-01 in Android Studio
+  and replied `CYCLE-01 looks good`. CYCLE-01 is **Done**, and this authorizes Gate 3 staging,
+  publication, and merge for this item only; it does not authorize starting CYCLE-02 or another
+  tracker item.
 
 ### CYCLE-02 - Localization cycle safety
 

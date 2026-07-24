@@ -62,9 +62,10 @@ public final class DriveGuidanceSources {
                 if (cyc == lastCycle) {
                     return last;
                 }
+                DriveGuidanceStatus sampled = query.sample(clock);
+                last = sampled;
                 lastCycle = cyc;
-                last = query.sample(clock);
-                return last;
+                return sampled;
             }
 
             /**
@@ -72,9 +73,9 @@ public final class DriveGuidanceSources {
              */
             @Override
             public void reset() {
-                query.reset();
                 lastCycle = Long.MIN_VALUE;
                 last = null;
+                query.reset();
             }
 
             /**

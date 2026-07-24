@@ -44,7 +44,9 @@ One important specialization: `DriveSource` is now explicitly the drive-specific
 A `Source<T>` is the minimal interface:
 
 * `T get(LoopClock clock)` — sample the value for the current loop
-* `reset()` — optional lifecycle hook for stateful sources (clear internal memory and owned child state; not a substitute for graph-level reset signals)
+* `reset()` — optional lifecycle hook for stateful sources (clear local memory and, for structural
+  source decorators, reset the source/gate children that form that graph; it does not imply
+  ownership of every collaborator an object happens to reference)
 * `debugDump(...)` — optional debug support
 
 ### `ScalarSource`
@@ -130,6 +132,33 @@ Rule of thumb:
 
 - Memoize **raw hardware reads** (distance sensor, encoders, vision measurements).
 - Memoize **shared derived signals** that are consumed in multiple places (e.g. `aimLocked`, `shooterReadyStable`).
+
+Do not treat `memoized()` as a repair step that students must add around framework behavior owners.
+A stateful owner that advances rate, activation, overlay, or guidance state protects itself by
+`clock.cycle()`. Repeated same-cycle reads therefore observe the same successful behavior result.
+Pure transforms such as drive scaling can remain stateless; they rely on each stateful dependency to
+honor its own cycle contract instead of adding another layer of hidden memory.
+
+When such an owner caches a result, it commits the cycle identity only after the complete sample
+succeeds. A failed sample is not recorded as a null or stale success; a caller may retry it in that
+cycle and receive the real failure or a newly successful result.
+
+## Reset follows ownership
+
+Calling `LoopClock.reset(...)` advances the cycle identity so old cycle caches cannot be reused. It
+does **not** call `reset()` on sources or erase controller, filter, selection, or vendor state.
+Those lifecycle changes remain explicit responsibilities of their actual owners.
+
+A structural source decorator normally resets its local memory and propagates reset through the
+source and gate children it wraps. If one stateful child is deliberately shared by multiple source
+graphs, their common owner must reset it at their common lifecycle boundary.
+
+That propagation rule does not turn reusable specifications into ownership containers. A
+`SpatialQuery` built from a reusable `SpatialQuerySpec` borrows its frame providers, solve lanes,
+sensors, estimators, and selection policies. `SpatialQuery.reset()` clears only query-local cached
+state; the composition roots that supplied those collaborators retain their reset ownership.
+Likewise, drive overlay composition owns activation transitions and cache bookkeeping but does not
+reset the overlay's robot-owned dependencies; `DriveOverlay` intentionally has no `reset()` hook.
 
 ---
 

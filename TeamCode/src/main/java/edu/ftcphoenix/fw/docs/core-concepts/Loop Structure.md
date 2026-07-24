@@ -162,8 +162,27 @@ Examples:
 * `ScalarSource.memoized()` / `BooleanSource.memoized()`
 * `BooleanSource.risingEdge()` / `fallingEdge()`
 * `BooleanSource.toggled()`
+* drive rate limiters, conditional overlays, built overlay stacks, and guidance runtimes
 
 These wrappers only advance once per cycle <em>when sampled</em>. If you never sample an edge/toggle source during a cycle, it cannot observe that transition.
+
+The state owner provides that protection. Robot code does not need to remember an outer
+`memoized()` call around a stateful drive composition. Repeated reads of a conditional overlay or
+built overlay stack in one cycle return the same successful command and do not resample the base,
+activation gates, or active overlays. Guidance advances its blend/controllers once and accepts only
+one requested mask for a runtime in that cycle; use the plan's natural/union mask or an independent
+runtime if two consumers genuinely need different masks. Pure transforms such as drive scaling own
+no advancing behavior state and need no extra cache.
+
+Cycle caches become valid only after a complete sample succeeds. If an upstream source, gate, or
+overlay throws, the owner does not publish stale or null output as that cycle's result.
+
+An explicit `clock.reset(...)` advances the cycle identity, so the next sample cannot reuse a
+pre-reset cache entry. It does not reset a source or any controller state. A structural source
+graph's explicit `reset()` clears its own local state and propagates through wrapped source/gate
+children. In contrast, `SpatialQuery.reset()` is query-local: frame providers, solve lanes, sensors,
+estimators, and selection policies supplied through its reusable spec remain owned by their
+composition roots.
 
 For buttons, the most common way to ensure sampling is to register a binding and call `Bindings.update(clock)` every loop.
 

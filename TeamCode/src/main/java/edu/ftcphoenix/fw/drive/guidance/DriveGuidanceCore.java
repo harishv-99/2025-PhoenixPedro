@@ -1,5 +1,7 @@
 package edu.ftcphoenix.fw.drive.guidance;
 
+import java.util.Objects;
+
 import edu.ftcphoenix.fw.core.math.MathUtil;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.drive.DriveOverlayMask;
@@ -25,6 +27,9 @@ final class DriveGuidanceCore {
 
     private String lastMode;
     private Step lastStep;
+    private long cachedCycle = Long.MIN_VALUE;
+    private DriveOverlayMask cachedRequestedMask;
+    private Step cachedStep;
 
     DriveGuidanceCore(DriveGuidancePlan plan) {
         this.plan = plan;
@@ -34,21 +39,38 @@ final class DriveGuidanceCore {
     }
 
     void onEnable() {
+        cachedCycle = Long.MIN_VALUE;
+        cachedRequestedMask = null;
+        cachedStep = null;
         aprilTagsInRangeForTranslation = false;
         blendTTranslate = 0.0;
         blendTOmega = 0.0;
-        evaluator.onEnable();
         lastMode = "enabled";
         lastStep = Step.noCommand("enabled");
+        evaluator.onEnable();
     }
 
     Step step(LoopClock clock, DriveOverlayMask requested) {
+        Objects.requireNonNull(clock, "clock");
+        DriveOverlayMask requestedMask = requested != null ? requested : DriveOverlayMask.NONE;
+        long cycle = clock.cycle();
+        if (cachedStep != null && cachedCycle == cycle) {
+            if (requestedMask.equals(cachedRequestedMask)) {
+                return cachedStep;
+            }
+            throw new IllegalStateException(
+                    "Drive guidance cannot be sampled with different requested masks in the same "
+                            + "LoopClock cycle. Use the plan's natural mask, one union mask for all "
+                            + "same-cycle consumers, or a separate DriveGuidanceQuery/runtime for "
+                            + "each mask. First mask=" + cachedRequestedMask
+                            + ", requested mask=" + requestedMask + "."
+            );
+        }
+
         DriveGuidanceSpec.ResolveWith rw = plan.spec.resolveWith;
 
-        if (requested == null || requested.isNone()) {
-            lastMode = "none";
-            lastStep = Step.noCommand("none");
-            return lastStep;
+        if (requestedMask.isNone()) {
+            return commitStep(cycle, requestedMask, Step.noCommand("none"));
         }
 
         CandidateSolution localization = rw.hasLocalization()
@@ -63,19 +85,20 @@ final class DriveGuidanceCore {
             CandidateSolution chosen = (rw.mode == DriveGuidanceSpec.SolveMode.APRIL_TAGS_ONLY)
                     ? aprilTags
                     : localization;
-            lastMode = (rw.mode == DriveGuidanceSpec.SolveMode.APRIL_TAGS_ONLY) ? "aprilTags" : "localization";
+            String mode = (rw.mode == DriveGuidanceSpec.SolveMode.APRIL_TAGS_ONLY)
+                    ? "aprilTags"
+                    : "localization";
 
-            Step out = applyLossPolicy(chosen, requested, rw.lossPolicy, lastMode);
-            lastStep = out;
-            return out;
+            Step out = applyLossPolicy(chosen, requestedMask, rw.lossPolicy, mode);
+            return commitStep(cycle, requestedMask, out);
         }
 
         DriveGuidanceSpec.TranslationTakeover takeover = (rw.translationTakeover != null)
                 ? rw.translationTakeover
                 : DriveGuidanceSpec.TranslationTakeover.defaults();
 
-        boolean wantTranslation = requested.overridesTranslation();
-        boolean wantOmega = requested.overridesOmega();
+        boolean wantTranslation = requestedMask.overridesTranslation();
+        boolean wantOmega = requestedMask.overridesOmega();
 
         boolean hasAprilTagsT = aprilTags.valid && aprilTags.canTranslate && aprilTags.hasRangeInches;
         boolean hasLocalizationT = localization.valid && localization.canTranslate;
@@ -193,7 +216,7 @@ final class DriveGuidanceCore {
 
         Step out;
         if (mask.isNone()) {
-            out = applyLossPolicy(CandidateSolution.invalid(), requested, rw.lossPolicy, "adaptive(loss)");
+            out = applyLossPolicy(CandidateSolution.invalid(), requestedMask, rw.lossPolicy, "adaptive(loss)");
         } else {
             out = new Step(
                     new DriveOverlayOutput(new DriveSignal(axial, lateral, omega), mask),
@@ -213,9 +236,22 @@ final class DriveGuidanceCore {
             );
         }
 
-        lastMode = out.mode;
-        lastStep = out;
-        return out;
+        return commitStep(cycle, requestedMask, out);
+    }
+
+    /**
+     * Publishes a fully computed step as this cycle's one observable guidance transition.
+     *
+     * <p>Call this only after evaluation has completed successfully. A failed evaluation therefore
+     * leaves the cycle uncached so a corrected or transient dependency may be retried.</p>
+     */
+    private Step commitStep(long cycle, DriveOverlayMask requestedMask, Step step) {
+        lastMode = step.mode;
+        lastStep = step;
+        cachedCycle = cycle;
+        cachedRequestedMask = requestedMask;
+        cachedStep = step;
+        return step;
     }
 
     String lastMode() {

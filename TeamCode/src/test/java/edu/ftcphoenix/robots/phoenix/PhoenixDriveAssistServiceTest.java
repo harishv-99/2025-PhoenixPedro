@@ -33,6 +33,7 @@ public final class PhoenixDriveAssistServiceTest {
 
         service.update(manualClock.clock(), scoringStatus(true));
         DriveSignal output = service.driveSource().get(manualClock.clock());
+        DriveSignal repeated = service.driveSource().get(manualClock.clock());
 
         PhoenixDriveAssistService.Status status = service.status();
         assertFalse(status.poseAssistsAvailable);
@@ -41,6 +42,7 @@ public final class PhoenixDriveAssistServiceTest {
         assertFalse(status.shootBraceEnabled);
         assertEquals(0, aimOverlay.getCalls);
         assertSignalEquals(new DriveSignal(0.40, -0.20, 0.30), output);
+        assertSignalEquals(output, repeated);
     }
 
     @Test
@@ -52,6 +54,7 @@ public final class PhoenixDriveAssistServiceTest {
 
         service.update(manualClock.clock(), scoringStatus(true));
         DriveSignal output = service.driveSource().get(manualClock.clock());
+        DriveSignal repeated = service.driveSource().get(manualClock.clock());
 
         PhoenixDriveAssistService.Status status = service.status();
         assertTrue(status.poseAssistsAvailable);
@@ -60,6 +63,7 @@ public final class PhoenixDriveAssistServiceTest {
         assertTrue(status.shootBraceEnabled);
         assertEquals(1, aimOverlay.getCalls);
         assertSignalEquals(new DriveSignal(0.0, 0.0, 0.90), output);
+        assertSignalEquals(output, repeated);
     }
 
     private static PhoenixDriveAssistService createService(

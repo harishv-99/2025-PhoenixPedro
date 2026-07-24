@@ -86,6 +86,12 @@ Phoenix is designed around a few core goals:
    clock-created `LoopTimestamp`, not independently passable timestamp and epoch scalars. The value
    owns clock identity, reset-epoch invalidation, freshness, and pairwise comparisons; consumers do
    not reconstruct those rules.
+   A sampled source abstraction that owns behavior or activation state also owns its same-cycle
+   protection. It must return one successful observation for one `clock.cycle()` instead of
+   requiring robot code to remember an outer `memoized()` wrapper. Pure transformations that own no
+   advancing state need not add another cache; they rely on their stateful dependencies to honor
+   their own cycle contracts. A cycle cache becomes valid only after the complete operation
+   succeeds, so an exception cannot turn a retry into a stale or null success.
    When a third-party follower's supported lifecycle requires updates beyond active route/guidance
    Tasks, it also needs one stable composition-root heartbeat every relevant OpMode loop; those
    Tasks may select behavior but must not become its only lifecycle owner. If both layers can reach
@@ -459,6 +465,24 @@ A `DriveSource` converts “intent” into a robot-centric `DriveSignal`:
 * assisted drive: `DriveGuidance` overlays (auto-aim, go-to-point, pose lock, etc.)
 * autonomous logic: any custom `DriveSource`
 
+Drive compositions preserve that one-cycle meaning at the object that owns the state. A rate
+limiter, conditional overlay, overlay stack, or guidance runtime advances its behavior and
+activation state at most once per `LoopClock.cycle()`. Repeated reads return the same successful
+result; ordinary pure transforms such as scaling and blending do not add a redundant cache.
+
+Each stateful `DriveOverlay` instance has one activation owner. Create a fresh
+`plan.overlay()` for each stack/layer instead of installing one overlay object twice. A
+`DriveOverlayStack` builder is single-use: after `build()`, neither another addition nor another
+build is valid, and one stack rejects a duplicate overlay identity. The stack owns the overlay's
+`onEnable(clock)` / `onDisable(clock)` transitions; `DriveOverlay` intentionally has no parallel
+`reset()` lifecycle.
+
+A single guidance runtime may be sampled repeatedly with one requested mask in a cycle. Asking that
+same runtime to evaluate a second mask in the same cycle is a wiring error: use the plan's natural
+or union mask, or create an independent runtime. Recomputing under another mask would advance one
+controller/blend state twice, while returning the first result would misrepresent the requested
+channels.
+
 ### 3.2 `DriveSignal` sign conventions are a contract
 
 `DriveSignal` is robot-centric and aligned with Phoenix pose conventions (+X forward, +Y left):
@@ -825,14 +849,24 @@ Why the cycle id matters:
 `cycle()` is monotonic for the lifetime of one `LoopClock`. An explicit `reset(...)` advances the
 cycle immediately even if the supplied time is unchanged; it never returns the cycle to zero. This
 ensures every cycle-memoized owner misses its old cache at a lifecycle boundary. Reset still does
-not replace explicit state resets owned by sources, Tasks, controllers, or vendor integrations.
+not call or replace explicit state resets owned by sources, Tasks, controllers, or vendor
+integrations.
 
 Several core systems are **idempotent by cycle**:
 
 * `Bindings.update(clock)`
 * `TaskRunner.update(clock)`
 * Stateful source wrappers like `memoized()`, `risingEdge()`, and `toggled()` (idempotent when sampled with the same clock/cycle)
+* Drive-source compositions that own rate, activation, overlay, or guidance state
 * Third-party adapters whose required lifecycle lets both a composition root and active Tasks call their update hook
+
+Reset follows ownership separately from cycle identity. Structural source decorators clear their
+local state and propagate `reset()` through the source/gate children that make up that source graph;
+an owner that shares a stateful child between graphs resets it only at the common lifecycle
+boundary. In contrast, runtime queries built from reusable specs borrow the spec's frame providers,
+solve lanes, sensors, estimators, and selection policies. `SpatialQuery.reset()` clears only that
+query's cache; it does not reset those collaborators. Overlay composition similarly clears its own
+cache and activation bookkeeping without inventing a `DriveOverlay.reset()` hook.
 
 Idempotency prevents subtle bugs when code is layered (menus, testers, helpers) and multiple layers try to “helpfully” update the same system.
 
