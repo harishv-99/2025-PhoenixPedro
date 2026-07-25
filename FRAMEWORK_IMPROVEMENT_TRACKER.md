@@ -131,7 +131,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 44 | TARGET-03 | Periodic planner complexity | Done | Constant-time deterministic periodic selection, synchronized docs, and 21 focused regressions were reviewed and approved on 2026-07-23. |
 | 45 | CYCLE-01 | Stateful drive-source cycle safety | Done | Cycle-safe drive/guidance owners, owner-safe reset boundaries, overlay lifecycle validation, synchronized documentation, and 27 focused regressions were reviewed and approved on 2026-07-24. |
 | 46 | CYCLE-02 | Localization cycle safety | Done | Owner-local attempt guards, timestamp-defended motion consumption, zero-time/rebase safety, synchronized documentation, and 80 focused regressions were reviewed and approved on 2026-07-24. |
-| 47 | SOURCE-01 | Boolean composition sampling | Proposed | Sample both operands once per cycle before combining stateful results. |
+| 47 | SOURCE-01 | Boolean composition sampling | Done | Eager `and()`/`or()` observation, explicit lazy selection, synchronized docs, and 12 focused regressions were reviewed and approved on 2026-07-24. |
 | 48 | API-01 | Writable Plant command binding | Proposed | Keep one simple `Plant` if builder provenance can prevent silent no-op writes. |
 | 49 | API-02 | Feedback tolerance choice | Proposed | Ask for tolerance after unit mapping; retain an explicitly named native default only if useful. |
 | 50 | API-04 | Binding execution order | Proposed | Preserve declaration order unless explicit phases are proven necessary. |
@@ -151,6 +151,8 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 64 | RANGE-01 | ScalarRange construction validity | Proposed | Define and enforce finite, half-bounded, and unbounded range construction without allowing `NaN`. |
 | 65 | FTC-02 | Device-managed controller configuration validation | Proposed | Validate FTC PIDF/P, maximum-power, and related staged answers before SDK access or mode changes. |
 | 66 | CONFIG-01 | Owner-configuration snapshot audit | Deferred | Revisit specific owners only when a traced caller shows mutation drift or invalid retained state. |
+| 67 | SOURCE-04 | Successful source-cache commit semantics | Proposed | Audit stateful source wrappers that claim a cycle before upstream sampling or state transition succeeds. |
+| 68 | INPUT-02 | Binding update failure retention | Proposed | Make same-cycle binding failure behavior explicit for an effectful traversal that may already have fired callbacks. |
 
 The completed order was intentionally front-loaded with testability, robot lifecycle, actuator
 safety, deterministic Task behavior, Pedro ownership, truthful route outcomes, and the reusable
@@ -5770,11 +5772,153 @@ writer, and explicit lifecycle ownership.
   sampled, delaying debounce/readiness chains or missing edges.
 - **Alternatives to compare:** eager sample both operands; document that stateful operands must be
   memoized/sampled separately; or expose distinct eager composition methods.
-- **Leading hypothesis:** Boolean source composition should sample each operand once per cycle because
-  that is the least surprising framework-level behavior.
-- **Completion:** stateful operands advance once per cycle regardless of the left value; truth-table
-  behavior remains unchanged.
-- **Decision record:** _Pending._
+- **Leading hypothesis:** whenever a Boolean composite is observed, evaluate the left operand once;
+  after a successful left observation, evaluate the right operand once regardless of the left
+  value. Each stateful child remains responsible for at-most-once advancement per clock cycle. This
+  is the least surprising framework-level behavior.
+- **Completion:** after every successful left observation, the right operand is observed regardless
+  of the left value; stateful children preserve their own cycle contract and truth-table behavior
+  remains unchanged.
+- **Decision record (2026-07-24):** **Ready; public behavioral approval required before
+  implementation.** The leading design remains correct, with one precision: the pure combinator
+  samples each operand occurrence once per composite evaluation, while each stateful operand owns
+  its own at-most-once advancement for `clock.cycle()`.
+  - **Confirmed behavior and failure path:** `and(...)` currently evaluates
+    `left.getAsBoolean(clock) && right.getAsBoolean(clock)`, so a false left operand suppresses the
+    right source. `or(...)` uses `||`, so a true left operand suppresses the right source. A skipped
+    debouncer cannot advance; a skipped edge or toggle cannot observe its input history; and a
+    framework-supported effectful source such as `OutputTaskRunner.activeSource()` may not advance
+    its owned queue. A later unmask can therefore add an avoidable debounce delay, retain stale
+    readiness, or report an edge in the wrong cycle. The canonical documented
+    `shootHeld.and(aimLocked).and(shooterReadyStable)` graph is vulnerable even though current
+    Phoenix mode loop ownership independently advances its targeting debouncer.
+  - **Caller audit:** the complete modern production set is `ScoringPath` (the nested
+    readiness/override graph and final aim gate), `PhoenixDriveAssistService` and `PhoenixRobot`
+    (constant readiness operands), and `UiControls` (`b.or(back)` over raw gamepad levels). No
+    current caller intentionally relies on suppressing the right operand. Framework/Javadoc
+    examples also use conjunction in `OutputTaskRunner`, `Tasks & Macros Quickstart`,
+    `Output Tasks & Queues`, `Supervisors & Pipelines`, and `Sources and Signals`. There is no
+    existing Boolean-composition unit suite.
+  - **Public construction-path and symmetry audit:** logical composition has one supported public
+    layer: the receiver methods `BooleanSource.and(BooleanSource)` and
+    `BooleanSource.or(BooleanSource)`, each with one overload and a `BooleanSource` return. There is
+    no facade, public concrete constructor, static logical factory, varargs family, or competing
+    declared return type. Clock-aware lambdas/anonymous sources, `BooleanSource.of(...)`,
+    `constant(...)`, scalar predicates, generic mappings, and FTC/Plant adapters create operands;
+    they are not alternate composition layers. `and` and `or` should remain parallel. Unary
+    `not()` already observes its only child. The three `choose(...)` overloads provide the distinct
+    capability of conditional value selection and remain intentionally branch-lazy.
+  - **Ordinary robot-code comparison:** the chosen design keeps the sole student call at two
+    concepts—the conditions and the Boolean operator:
+
+    ```java
+    BooleanSource fireAllowed = shooterReady.and(aimLocked).and(ballAtGate);
+    ```
+
+    A documentation-only workaround for cycle-guarded or explicitly memoized operands would also
+    make the student own hidden loop roots and order (and would not prevent a raw operand from being
+    sampled again by the composite):
+
+    ```java
+    shooterReady.getAsBoolean(clock);
+    aimLocked.getAsBoolean(clock);
+    ballAtGate.getAsBoolean(clock);
+    if (fireAllowed.getAsBoolean(clock)) {
+        // ...
+    }
+    ```
+
+    Adding `andEager(...)`/`orEager(...)` would instead ask a third conceptual question—whether
+    source lifecycle or Java-style short circuiting is intended—at every composition. `memoized()`
+    alone cannot repair a source that is never sampled.
+  - **Chosen design:** keep the existing names and signatures. On every composite observation,
+    capture the left result, then the right result, in local variables and apply the unchanged AND
+    or OR truth table. Do not use opaque bitwise syntax and do not add a cache to this pure
+    transformation. Chained composition consequently observes operands in declaration order; each
+    stateful child supplies its own same-cycle stable result.
+  - **Failure contract:** if left sampling throws, propagate immediately and do not attempt the
+    right source because no complete logical observation exists. If left succeeds, always attempt
+    right—even when left already determines the truth result—and propagate a right failure. The
+    combinator retains no state, so it caches neither failure nor partial success; a caller retry is
+    governed by each operand's own documented cycle/failure contract. Existing left-to-right reset
+    propagation is unchanged.
+  - **Framework Principles check:** eager logical observation makes the declarative graph truthful,
+    prevents operand order from freezing state, and removes loop ceremony from robot code. Keeping
+    one fluent API follows the one-obvious-way and parallel-API rules. Leaving the combinator
+    uncached follows the explicit rule that a pure transformation relies on its stateful children
+    rather than adding redundant hidden memory. Deliberate branch laziness remains named by
+    `choose(...)` instead of being inferred from operand position.
+  - **Rejected designs:** documentation/manual pre-sampling cannot be enforced and increases robot
+    lifecycle burden; distinct eager siblings duplicate the API and make the safe normal choice
+    optional; whole-composite memoization adds unnecessary state, freezes raw observations within a
+    cycle, and still cannot heartbeat an unobserved graph; a central source scheduler is a new
+    framework subsystem; variadic `all`/`any`, XOR, reset-failure aggregation, and changes to
+    `choose(...)` are unrelated expansion.
+  - **Bounded implementation scope:** change only `BooleanSource.and/or`, their Javadocs, focused
+    source documentation in Framework Principles, `Sources and Signals`, and `Loop Structure`, plus
+    a new focused `BooleanSourceTest`. Inspect every existing example/caller for accuracy, but do not
+    rewrite valid robot call sites or add a new public noun/method.
+  - **Verification plan:** cover all AND/OR truth-table combinations; decisive-left eager right
+    sampling; exact left-to-right order and three-operand chains; debounce and edge/toggle history
+    while masked; repeated same-cycle reads through stateful children and fresh next-cycle behavior;
+    reset propagation; right failure visibility under a decisive left; and left-failure short stop.
+    Run the focused suite, the full TeamCode unit suite/compile, caller searches, documentation
+    checks, and whitespace checks. No robot hardware is needed.
+  - **Adjacent findings, not SOURCE-01 implementation:** several generic/stateful source wrappers
+    appear to claim their cycle before an upstream sample or state transition succeeds, contrary to
+    the successful-cache rule; `Bindings.update(clock)` claims an effectful traversal before
+    callbacks but silently returns after a same-cycle failure instead of retaining that failure.
+    SOURCE-04 and INPUT-02 record those separate audits at the end of the queue. SOURCE-01 does not
+    fix, test, or make assumptions for either item.
+- **Approval gate:** implementation has not started. This changes observable public evaluation and
+  exception behavior even though robot call sites stay identical. Proceed only if the user replies
+  `Approve SOURCE-01 eager Boolean composition design`.
+- **Design approval (2026-07-24):** the user replied
+  `Approve SOURCE-01 eager Boolean composition design`. This authorizes Gate 2 implementation of
+  SOURCE-01 only; it does not authorize publication, SOURCE-04, INPUT-02, or another tracker item.
+- **Implementation (2026-07-24):** `BooleanSource.and(...)` and `or(...)` now capture the left
+  observation first and, after it succeeds, capture the right observation exactly once regardless
+  of the left Boolean value before applying the unchanged truth table. The pure composite owns no
+  cache or new lifecycle state. A left failure still stops before the right operand; a right failure
+  is now visible even when the left value is decisive. All three existing `choose(...)` overloads
+  remain branch-lazy and now document that distinct selection contract explicitly.
+- **Student-facing simplicity:** ordinary robot code is unchanged—students still write
+  `ready.and(aimLocked)` or `override.or(ready)`. They do not add a sampling phase, memoization
+  wrapper, scheduler, eager-method variant, or error-handling concept. Stateful children continue
+  owning their own same-cycle behavior, while expert conditional production remains available
+  through the already named `choose(...)` API.
+- **Documentation synchronization:** Framework Principles, `Sources and Signals`, `Loop Structure`,
+  and the public `BooleanSource` Javadocs now distinguish eager logical observation from lazy
+  branch selection and state the exact left/right exception boundary. Existing Phoenix, framework,
+  tool, and guide call sites remain valid and required no rewrite.
+- **Adversarial review (2026-07-24):** two independent read-only reviews checked the final
+  implementation, public construction layer, caller inventory, Framework Principles, documentation,
+  exception/order behavior, test validity, and SOURCE-04/INPUT-02 boundaries. Review first tightened
+  unconditional “both operands” wording for the left-failure case and identified a missing proof
+  that the pure combinator remains uncached. The wording was corrected and raw same-cycle
+  resampling/retry regressions were added. Final review reports no blocking correctness, API,
+  simplicity, documentation, test, or adjacent-scope finding.
+- **Automated verification (2026-07-24):** focused `BooleanSourceTest` reports **12 tests,
+  0 failures, 0 errors, 0 skipped**. Eight regressions fail meaningfully under the old short-circuit
+  implementation; the other four preserve truth tables, stateful-child same-cycle behavior, reset
+  order, and left-failure boundaries. The complete TeamCode run reports **97 suites / 917 tests /
+  0 failures / 0 errors / 0 skipped**, and `:TeamCode:compileDebugJavaWithJavac` succeeds. Complete
+  caller/API searches, changed-Markdown fence checks, changed/untracked trailing-whitespace checks,
+  and `git diff --check` pass. Gradle emits only the existing Java 8 source/target and FTC sample
+  deprecation warnings.
+- **Verification hardware scope:** no robot hardware is required to prove Java evaluation order,
+  truth tables, source history, cache ownership, reset propagation, or exception behavior. This
+  task makes no sensor-quality, timing-performance, or physical-robot claim.
+- **Android Studio audit point (2026-07-24):** inspect `BooleanSource.and(...)` and `or(...)` for the
+  two local observations and unchanged truth-table expression; inspect the `choose(...)` Javadocs
+  for intentionally lazy selection; inspect `BooleanSourceTest` for decisive-left, state-history,
+  no-cache, reset, and failure cases; then inspect the synchronized Framework Principles and two
+  source/loop guides. No file is staged, committed, pushed, or merged. Stop without starting
+  SOURCE-04, INPUT-02, API-01, or another item until the user replies `SOURCE-01 looks good`.
+- **Manual verification and approval (2026-07-24):** the user reviewed SOURCE-01 in Android Studio
+  and replied `SOURCE-01 looks good`. SOURCE-01 is **Done**, and this authorizes Gate 3 staging,
+  publication, and merge. The user's follow-up separately authorizes starting API-01 only after
+  SOURCE-01 has been published and merged.
 
 ### API-01 - Writable Plant command binding
 
@@ -8272,6 +8416,45 @@ writer, and explicit lifecycle ownership.
   copy, immutable reusable value, direct staged answer, and no-change design.
 - **Decision record (updated 2026-07-17):** **Deferred for concrete DriveGuidance caller evidence.**
   This is an audit note, not an implementation-ready umbrella task.
+
+### SOURCE-04 - Successful source-cache commit semantics
+
+- **Problem to confirm:** several stateful `Source`, `ScalarSource`, and `BooleanSource` decorators
+  appear to record `clock.cycle()` before upstream sampling, validation, or their state transition
+  completes. If that work throws, a repeated same-cycle read may return a stale/default value or
+  skip the real operation even though Framework Principles say a value cache becomes valid only
+  after complete success.
+- **Alternatives to compare:** commit value/cycle only after complete success; retain and rethrow a
+  same-cycle failure for wrappers whose state transition cannot be rolled back; give every wrapper
+  an explicit attempt state; or narrow the principle. Classify each wrapper by whether sampling is a
+  transactional value calculation or an effectful state transition before choosing one rule.
+- **Leading hypothesis:** value-producing decorators should publish their cycle only after a
+  complete successful observation. A wrapper that can mutate irreversibly before failure needs the
+  explicit attempt/failure-retention model instead of pretending it is a retryable value cache.
+- **Completion:** every stateful core source wrapper has documented success, failure, reentry,
+  retry, reset, and same-cycle semantics; fault-injection tests prove no exception becomes a stale
+  success and ordinary robot call sites gain no new memoization or lifecycle ceremony.
+- **Decision record:** _Pending; split from the SOURCE-01 audit on 2026-07-24 and previously noted
+  during TARGET-01/CYCLE-01 reviews._
+
+### INPUT-02 - Binding update failure retention
+
+- **Problem to confirm:** `Bindings.update(clock)` claims the cycle before activation sampling and
+  registered callbacks. A callback failure may occur after earlier user effects, but a repeated
+  same-cycle call currently returns as if the traversal succeeded. Re-running everything could
+  duplicate effects, while silently returning hides the failure.
+- **Alternatives to compare:** retain/rethrow the original same-cycle failure; disable or clear the
+  binding graph after failure; continue later bindings while aggregating failures; allow retry; or
+  leave recovery entirely to the OpMode. Trace root/context registrations, tester handoffs, and
+  lifecycle cleanup before selecting fail-stop scope.
+- **Leading hypothesis:** treat `Bindings.update(clock)` as an effectful attempt owner: claim before
+  callbacks, reject reentry, retain the first `RuntimeException`, and rethrow it on a same-cycle
+  repeat without replaying callbacks. The composition root still owns broader mode abort/cleanup.
+- **Completion:** focused tests cover failures during context activation and first/middle/last
+  callbacks, partial-effect non-replay, same-cycle failure retention, next-cycle/lifecycle policy,
+  reentry, context switching, and unchanged successful declaration order.
+- **Decision record:** _Pending; split from the SOURCE-01 audit on 2026-07-24. Do not combine this
+  with API-04's separate question of successful binding execution order._
 
 ### TIME-01 - Epoch-safe LoopClock timestamps
 

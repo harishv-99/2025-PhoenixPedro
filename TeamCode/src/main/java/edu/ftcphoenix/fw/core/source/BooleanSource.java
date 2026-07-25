@@ -120,6 +120,19 @@ public interface BooleanSource extends Source<Boolean> {
 
     /**
      * Logical AND.
+     *
+     * <p>Each observation samples this source first. If that succeeds, it samples {@code other}
+     * exactly once regardless of the left Boolean value, then applies the AND truth table. Unlike
+     * Java's {@code &&} operator, a {@code false} left value does not suppress the right
+     * observation. This keeps stateful operands such as debouncers and edge detectors current;
+     * each stateful operand remains responsible for its own same-cycle idempotency.</p>
+     *
+     * <p>If this source throws, the exception propagates and {@code other} is not sampled. If
+     * {@code other} throws, that exception propagates even when this source returned
+     * {@code false}.</p>
+     *
+     * @param other right-hand source to observe
+     * @return source containing the logical AND of both observed values
      */
     default BooleanSource and(BooleanSource other) {
         Objects.requireNonNull(other, "other");
@@ -130,7 +143,9 @@ public interface BooleanSource extends Source<Boolean> {
              */
             @Override
             public boolean getAsBoolean(LoopClock clock) {
-                return self.getAsBoolean(clock) && other.getAsBoolean(clock);
+                boolean leftValue = self.getAsBoolean(clock);
+                boolean rightValue = other.getAsBoolean(clock);
+                return leftValue && rightValue;
             }
 
             /**
@@ -158,6 +173,19 @@ public interface BooleanSource extends Source<Boolean> {
 
     /**
      * Logical OR.
+     *
+     * <p>Each observation samples this source first. If that succeeds, it samples {@code other}
+     * exactly once regardless of the left Boolean value, then applies the OR truth table. Unlike
+     * Java's {@code ||} operator, a {@code true} left value does not suppress the right observation.
+     * This keeps stateful operands such as debouncers and edge detectors current; each stateful
+     * operand remains responsible for its own same-cycle idempotency.</p>
+     *
+     * <p>If this source throws, the exception propagates and {@code other} is not sampled. If
+     * {@code other} throws, that exception propagates even when this source returned
+     * {@code true}.</p>
+     *
+     * @param other right-hand source to observe
+     * @return source containing the logical OR of both observed values
      */
     default BooleanSource or(BooleanSource other) {
         Objects.requireNonNull(other, "other");
@@ -168,7 +196,9 @@ public interface BooleanSource extends Source<Boolean> {
              */
             @Override
             public boolean getAsBoolean(LoopClock clock) {
-                return self.getAsBoolean(clock) || other.getAsBoolean(clock);
+                boolean leftValue = self.getAsBoolean(clock);
+                boolean rightValue = other.getAsBoolean(clock);
+                return leftValue || rightValue;
             }
 
             /**
@@ -406,7 +436,7 @@ public interface BooleanSource extends Source<Boolean> {
      *
      * <p>If this boolean is true, {@code whenTrue} is sampled; otherwise {@code whenFalse} is
      * sampled. This is a small but very useful building block for "manual vs auto" selection and
-     * priority rules.</p>
+     * priority rules. The unselected branch is intentionally not sampled.</p>
      */
     default <T> Source<T> choose(Source<T> whenTrue, Source<T> whenFalse) {
         Objects.requireNonNull(whenTrue, "whenTrue");
@@ -449,6 +479,9 @@ public interface BooleanSource extends Source<Boolean> {
 
     /**
      * Select between two scalars based on this boolean.
+     *
+     * <p>The condition is sampled first, then only the selected branch is sampled. The unselected
+     * branch is intentionally not sampled.</p>
      */
     default ScalarSource choose(ScalarSource whenTrue, ScalarSource whenFalse) {
         Objects.requireNonNull(whenTrue, "whenTrue");
@@ -491,6 +524,9 @@ public interface BooleanSource extends Source<Boolean> {
 
     /**
      * Select between two booleans based on this boolean.
+     *
+     * <p>The condition is sampled first, then only the selected branch is sampled. The unselected
+     * branch is intentionally not sampled.</p>
      */
     default BooleanSource choose(BooleanSource whenTrue, BooleanSource whenFalse) {
         Objects.requireNonNull(whenTrue, "whenTrue");
