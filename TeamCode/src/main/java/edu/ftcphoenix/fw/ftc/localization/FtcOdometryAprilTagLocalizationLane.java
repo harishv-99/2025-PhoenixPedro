@@ -214,6 +214,9 @@ public final class FtcOdometryAprilTagLocalizationLane {
     private final LimelightFieldPoseEstimator limelightFieldPoseEstimator;
     private final AbsolutePoseEstimator correctionEstimator;
     private final CorrectedPoseEstimator globalEstimator;
+    private long lastUpdateCycle = Long.MIN_VALUE;
+    private boolean updateInProgress;
+    private RuntimeException lastUpdateFailure;
 
     /** Validated, defensively copied constructor inputs prepared before hardware construction. */
     private static final class ConstructionInputs {
@@ -367,8 +370,45 @@ public final class FtcOdometryAprilTagLocalizationLane {
      * The lane also refreshes any non-active absolute pose views afterward so callers can compare
      * raw AprilTag pose, direct Limelight field pose, and corrected/global pose side by side in the
      * same loop without needing to know which one is currently feeding correction.</p>
+     *
+     * <p>The lane claims the cycle before traversing any child owner. A repeated successful call in
+     * that cycle is a no-op, a repeated call after failure rethrows the exact first
+     * {@link RuntimeException}, and recursive entry fails before another child update. The complete
+     * predictor, correction, global, and diagnostic-view set therefore remains one coherent
+     * snapshot until the next cycle.</p>
      */
     public void update(LoopClock clock) {
+        LoopClock requiredClock = Objects.requireNonNull(clock, "clock");
+        long cycle = requiredClock.cycle();
+        if (updateInProgress) {
+            throw new IllegalStateException(
+                    "FtcOdometryAprilTagLocalizationLane.update(clock) was reentered during cycle "
+                            + cycle + "; the localization lane may advance only once per cycle"
+            );
+        }
+        if (cycle == lastUpdateCycle) {
+            if (lastUpdateFailure != null) {
+                throw lastUpdateFailure;
+            }
+            return;
+        }
+
+        // Claim the whole traversal before any predictor or correction owner can call back in.
+        lastUpdateCycle = cycle;
+        updateInProgress = true;
+        lastUpdateFailure = null;
+        try {
+            updateCurrentCycle(requiredClock);
+        } catch (RuntimeException failure) {
+            lastUpdateFailure = failure;
+            throw failure;
+        } finally {
+            updateInProgress = false;
+        }
+    }
+
+    /** Advance the complete predictor/correction/diagnostic graph for one claimed cycle. */
+    private void updateCurrentCycle(LoopClock clock) {
         globalEstimator.update(clock);
 
         if (correctionEstimator != aprilTagPoseEstimator) {

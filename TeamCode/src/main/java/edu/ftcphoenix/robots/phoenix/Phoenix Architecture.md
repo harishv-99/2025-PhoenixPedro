@@ -244,7 +244,7 @@ the camera rig is not only for localization.
 - raw AprilTag field solver
 - optional direct Limelight field pose
 - correction-source and corrected/global estimator selection
-- localization update order
+- localization update order and one attempt-stable graph traversal per shared clock cycle
 - corrected and predictor pose outputs
 
 ### `ScoringTargeting` consumes
@@ -255,6 +255,13 @@ the camera rig is not only for localization.
 - the fixed field tag layout from `PhoenixProfile.field`
 
 That dependency structure is deliberate and matches the role vocabulary in the framework docs.
+
+The lane and every directly usable localization owner protect their own cycle lifecycle. Phoenix
+still calls only `localization.update(clock)`: a repeated call cannot poll Pinpoint, solve tags,
+write Limelight MT2 orientation, or apply predictor motion/EKF covariance twice. Predictor motion
+also carries a canonical end timestamp, so Fusion/EKF cannot consume a retained interval in a later
+cycle. Pose initialization and correction rebases mark older motion as covered instead of exposing
+cycle or timestamp bookkeeping to Phoenix strategy.
 
 The shared `AprilTagVisionLane` does not claim that every webcam processor and every Limelight
 pipeline has one universal result shape. If Phoenix later adds game-specific vision modes, a

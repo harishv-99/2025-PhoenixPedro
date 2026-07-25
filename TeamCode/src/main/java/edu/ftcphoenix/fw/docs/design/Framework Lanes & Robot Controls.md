@@ -515,6 +515,13 @@ FtcOdometryAprilTagLocalizationLane localization =
 
 Do not let both paths acquire the same odometry device.
 
+Whichever construction path owns the predictor, robot code still calls only
+`localization.update(clock)` once in the localization phase. The lane protects its complete graph,
+and each predictor/estimator protects direct or shared use with the same cycle identity. Repeating
+the call cannot poll Pinpoint, solve a camera frame, advance Fusion/EKF, or write Limelight yaw
+twice. Timestamp checks independently prevent a predictor interval retained into a later cycle from
+being consumed again.
+
 This split is intentional:
 
 - `vision` owns the camera rig

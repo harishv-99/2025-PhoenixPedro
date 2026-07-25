@@ -17,8 +17,12 @@ import java.util.List;
 import java.util.Map;
 
 import edu.ftcphoenix.fw.core.debug.DebugSink;
+import edu.ftcphoenix.fw.core.geometry.Pose3d;
 import edu.ftcphoenix.fw.core.time.LoopClock;
+import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 import edu.ftcphoenix.fw.ftc.localization.LimelightFieldPoseEstimator;
+import edu.ftcphoenix.fw.localization.MotionDelta;
+import edu.ftcphoenix.fw.localization.MotionPredictor;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
 import edu.ftcphoenix.fw.testing.ManualLoopClock;
 
@@ -459,6 +463,154 @@ public final class FtcLimelightVisionLaneTest {
     }
 
     @Test
+    public void directPoseEstimatorPublishesYawAndSamplesResultOncePerCycle() {
+        FakeDevice device = new FakeDevice();
+        FtcLimelightAprilTagVisionLane lane = new FtcLimelightAprilTagVisionLane(
+                FtcLimelightAprilTagVisionLane.Config.defaults(),
+                new RecordingFactory(device)
+        );
+        ManualLoopClock time = new ManualLoopClock(8.0);
+        RecordingMotionPredictor predictor = new RecordingMotionPredictor();
+        predictor.publish(0.4, time.clock().nowTimestamp());
+        device.result = resultWithMt2PoseAndOneFiducial(
+                101,
+                0.04,
+                900.0,
+                10.0,
+                20.0,
+                pose(1.0, 2.0, 0.1, 0.2, 0.0, 0.0)
+        );
+        LimelightFieldPoseEstimator.Config config =
+                LimelightFieldPoseEstimator.Config.defaults();
+        config.mode = LimelightFieldPoseEstimator.Config.Mode.BOTPOSE_MT2;
+        config.maxResultAgeSec = 0.5;
+        LimelightFieldPoseEstimator estimator =
+                new LimelightFieldPoseEstimator(lane, predictor, config);
+
+        estimator.update(time.clock());
+        PoseEstimate first = estimator.getEstimate();
+        assertTrue(first.hasPose);
+        assertEquals(1, device.orientationCalls);
+        assertEquals(1, device.latestReads);
+
+        device.result = resultWithMt2PoseAndOneFiducial(
+                121,
+                0.02,
+                920.0,
+                10.0,
+                20.0,
+                pose(3.0, 4.0, 0.1, -0.1, 0.0, 0.0)
+        );
+        estimator.update(time.clock());
+
+        assertEquals(1, device.orientationCalls);
+        assertEquals(1, device.latestReads);
+        assertSame(first, estimator.getEstimate());
+
+        time.nextCycle(0.02);
+        predictor.publish(0.6, time.clock().nowTimestamp());
+        estimator.update(time.clock());
+
+        assertEquals(2, device.orientationCalls);
+        assertEquals(2, device.latestReads);
+        assertFalse(first == estimator.getEstimate());
+        assertEquals(0.6, device.lastYawDegrees * Math.PI / 180.0, 1e-9);
+    }
+
+    @Test
+    public void directPoseEstimatorDefersPipelineTransitionUntilTheNextCycle() {
+        FakeDevice device = new FakeDevice();
+        FtcLimelightAprilTagVisionLane lane = new FtcLimelightAprilTagVisionLane(
+                FtcLimelightAprilTagVisionLane.Config.defaults(),
+                new RecordingFactory(device)
+        );
+        ManualLoopClock time = new ManualLoopClock();
+        device.result = resultWithPoseAndOneFiducial(
+                101,
+                0.01,
+                100.0,
+                0.0,
+                0.0,
+                pose(1.0, 2.0, 0.0, 0.1, 0.0, 0.0)
+        );
+        LimelightFieldPoseEstimator estimator = new LimelightFieldPoseEstimator(
+                lane,
+                null,
+                LimelightFieldPoseEstimator.Config.defaults()
+        );
+
+        estimator.update(time.clock());
+        PoseEstimate beforeSwitch = estimator.getEstimate();
+        assertTrue(beforeSwitch.hasPose);
+        assertTrue(lane.requestPipeline(1));
+
+        estimator.update(time.clock());
+        assertSame(beforeSwitch, estimator.getEstimate());
+
+        time.nextCycle(0.02);
+        estimator.update(time.clock());
+        assertFalse(estimator.getEstimate().hasPose);
+    }
+
+    @Test
+    public void directPoseEstimatorRetainsFailureAndRejectsReentryForTheCycle() {
+        FakeDevice device = new FakeDevice();
+        FtcLimelightAprilTagVisionLane lane = new FtcLimelightAprilTagVisionLane(
+                FtcLimelightAprilTagVisionLane.Config.defaults(),
+                new RecordingFactory(device)
+        );
+        ManualLoopClock time = new ManualLoopClock();
+        RecordingMotionPredictor predictor = new RecordingMotionPredictor();
+        predictor.publish(0.2, time.clock().nowTimestamp());
+        LimelightFieldPoseEstimator.Config config =
+                LimelightFieldPoseEstimator.Config.defaults();
+        config.mode = LimelightFieldPoseEstimator.Config.Mode.BOTPOSE_MT2;
+        LimelightFieldPoseEstimator estimator =
+                new LimelightFieldPoseEstimator(lane, predictor, config);
+        device.duringOrientation = () -> estimator.update(time.clock());
+
+        RuntimeException reentry = captureFailure(() -> estimator.update(time.clock()));
+        assertTrue(reentry instanceof IllegalStateException);
+        assertTrue(reentry.getMessage().contains("reentered"));
+        assertSame(reentry, captureFailure(() -> estimator.update(time.clock())));
+        assertEquals(1, device.orientationCalls);
+        assertEquals(0, device.latestReads);
+
+        time.nextCycle(0.02);
+        device.duringOrientation = null;
+        RuntimeException sampleFailure = new IllegalStateException("latest result failed");
+        device.latestFailure = sampleFailure;
+        assertSame(sampleFailure, captureFailure(() -> estimator.update(time.clock())));
+        assertSame(sampleFailure, captureFailure(() -> estimator.update(time.clock())));
+        assertEquals(2, device.orientationCalls);
+        assertEquals(1, device.latestReads);
+
+        time.nextCycle(0.02);
+        device.latestFailure = null;
+        estimator.update(time.clock());
+        assertEquals(3, device.orientationCalls);
+        assertEquals(2, device.latestReads);
+    }
+
+    @Test
+    public void directPoseEstimatorRequiresTheSharedLoopClock() {
+        FtcLimelightAprilTagVisionLane lane = new FtcLimelightAprilTagVisionLane(
+                FtcLimelightAprilTagVisionLane.Config.defaults(),
+                new RecordingFactory(new FakeDevice())
+        );
+        LimelightFieldPoseEstimator estimator = new LimelightFieldPoseEstimator(
+                lane,
+                null,
+                LimelightFieldPoseEstimator.Config.defaults()
+        );
+
+        RuntimeException failure = captureFailure(() -> estimator.update(null));
+
+        assertTrue(failure instanceof NullPointerException);
+        assertTrue(failure.getMessage().contains("clock"));
+    }
+
+    @Test
     public void pipelineGenerationRejectsCachedSwitchAwayAndSwitchBackResults() {
         FakeDevice device = new FakeDevice();
         FtcLimelightVisionLane lane = open(device);
@@ -748,6 +900,34 @@ public final class FtcLimelightVisionLaneTest {
         );
     }
 
+    private static FtcLimelightVisionLane.DeviceResult resultWithMt2PoseAndOneFiducial(
+            long resultReceivedAtControlHubMillis,
+            double receiptStalenessSec,
+            double limelightTimestampMillis,
+            double captureLatencyMillis,
+            double targetingLatencyMillis,
+            Pose3D botposeMt2
+    ) {
+        return new FtcLimelightVisionLane.DeviceResult(
+                resultReceivedAtControlHubMillis,
+                receiptStalenessSec,
+                limelightTimestampMillis,
+                captureLatencyMillis,
+                targetingLatencyMillis,
+                0,
+                "fiducial",
+                true,
+                null,
+                null,
+                null,
+                Collections.<LLResultTypes.FiducialResult>singletonList(
+                        testFiducialResult()),
+                null,
+                null,
+                botposeMt2
+        );
+    }
+
     private static LLResultTypes.FiducialResult testFiducialResult() {
         try {
             // FTC exposes no public constructor for this SDK value. This fixture needs only one
@@ -814,6 +994,16 @@ public final class FtcLimelightVisionLaneTest {
         }
     }
 
+    private static RuntimeException captureFailure(Runnable action) {
+        try {
+            action.run();
+            fail("Expected update failure");
+            return null;
+        } catch (RuntimeException failure) {
+            return failure;
+        }
+    }
+
     private static final class RecordingFactory implements FtcLimelightVisionLane.DeviceFactory {
         private final FakeDevice device;
         private int openCount;
@@ -844,7 +1034,9 @@ public final class FtcLimelightVisionLaneTest {
         RuntimeException startFailure;
         RuntimeException stopFailure;
         RuntimeException closeFailure;
+        RuntimeException latestFailure;
         Runnable duringStop;
+        Runnable duringOrientation;
         int switchCalls;
         int runningReads;
         int connectedReads;
@@ -899,6 +1091,7 @@ public final class FtcLimelightVisionLaneTest {
         @Override
         public FtcLimelightVisionLane.DeviceResult latestResult() {
             latestReads++;
+            if (latestFailure != null) throw latestFailure;
             return result;
         }
 
@@ -906,6 +1099,7 @@ public final class FtcLimelightVisionLaneTest {
         public boolean updateRobotOrientationDegrees(double fieldYawDegrees) {
             orientationCalls++;
             lastYawDegrees = fieldYawDegrees;
+            if (duringOrientation != null) duringOrientation.run();
             return true;
         }
 
@@ -941,6 +1135,36 @@ public final class FtcLimelightVisionLaneTest {
 
         Object value(String key) {
             return values.get(key);
+        }
+    }
+
+    private static final class RecordingMotionPredictor implements MotionPredictor {
+        private PoseEstimate estimate = PoseEstimate.noPose(LoopTimestamp.unavailable());
+        private MotionDelta delta = MotionDelta.none(LoopTimestamp.unavailable());
+
+        void publish(double yawRad, LoopTimestamp timestamp) {
+            estimate = new PoseEstimate(
+                    new Pose3d(0.0, 0.0, 0.0, yawRad, 0.0, 0.0),
+                    true,
+                    1.0,
+                    timestamp
+            );
+            delta = MotionDelta.none(timestamp);
+        }
+
+        @Override
+        public void update(LoopClock clock) {
+            // The direct Limelight estimator reads a predictor snapshot; it does not own updates.
+        }
+
+        @Override
+        public PoseEstimate getEstimate() {
+            return estimate;
+        }
+
+        @Override
+        public MotionDelta getLatestMotionDelta() {
+            return delta;
         }
     }
 }

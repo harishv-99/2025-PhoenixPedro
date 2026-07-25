@@ -163,6 +163,9 @@ public final class AprilTagPoseEstimator implements AbsolutePoseEstimator {
     private PoseEstimate lastEstimate;
     private AprilTagDetections lastDetections = AprilTagDetections.none();
     private FixedTagFieldPoseSolver.Result lastSolve = FixedTagFieldPoseSolver.Result.none();
+    private long lastUpdateCycle = Long.MIN_VALUE;
+    private boolean updateInProgress;
+    private RuntimeException lastUpdateFailure;
 
     /**
      * Creates an AprilTag-only pose estimator that may use multiple visible fixed tags from the
@@ -179,11 +182,46 @@ public final class AprilTagPoseEstimator implements AbsolutePoseEstimator {
     }
 
     /**
-     * {@inheritDoc}
+     * Samples detections and publishes at most one coherent solve snapshot per loop cycle.
+     *
+     * <p>The estimator claims the cycle before it samples or solves. A repeated successful call in
+     * that cycle is a no-op, a repeated call after failure rethrows the exact first
+     * {@link RuntimeException}, and recursive entry fails fast before another source sample. A
+     * changed processor/source state after this update is therefore observed on the next cycle.</p>
      */
     @Override
     public void update(LoopClock clock) {
-        Objects.requireNonNull(clock, "clock");
+        LoopClock requiredClock = Objects.requireNonNull(clock, "clock");
+        long cycle = requiredClock.cycle();
+        if (updateInProgress) {
+            throw new IllegalStateException(
+                    "AprilTagPoseEstimator.update(clock) was reentered during cycle "
+                            + cycle + "; one localization owner may advance only once per cycle"
+            );
+        }
+        if (cycle == lastUpdateCycle) {
+            if (lastUpdateFailure != null) {
+                throw lastUpdateFailure;
+            }
+            return;
+        }
+
+        // Claim the attempt before sampling the sensor or solving so reentry cannot repeat either.
+        lastUpdateCycle = cycle;
+        updateInProgress = true;
+        lastUpdateFailure = null;
+        try {
+            updateCurrentCycle(requiredClock);
+        } catch (RuntimeException failure) {
+            lastUpdateFailure = failure;
+            throw failure;
+        } finally {
+            updateInProgress = false;
+        }
+    }
+
+    /** Perform the one sensor sample and field solve owned by the claimed loop cycle. */
+    private void updateCurrentCycle(LoopClock clock) {
         final LoopTimestamp nowTimestamp = clock.nowTimestamp();
         lastDetections = tags.get(clock);
         lastSolve = FixedTagFieldPoseSolver.Result.none();

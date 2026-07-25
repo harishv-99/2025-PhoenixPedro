@@ -40,7 +40,8 @@ route geometry are ready for a match; keep that combined arming policy in the ro
 The runtime contains exactly one of each production owner:
 
 - one profile-configured `PinpointOdometryPredictor`, which alone acquires, configures, resets,
-  polls, and rebases Pinpoint;
+  polls, and rebases Pinpoint; its update is cycle-safe and zero-time samples cannot consume motion
+  before a positive timestamp interval exists;
 - one passive Pedro `Localizer`, which converts and consumes the predictor's immutable current-cycle
   pose/velocity/physical-heading snapshot without polling hardware;
 - one valid native Pedro mecanum drivetrain and `Follower`;
@@ -85,6 +86,12 @@ The adapter prepares the passive localizer with the shared `LoopClock` immediate
 vendor heartbeat. The localizer fails closed unless the Pinpoint snapshot belongs to that exact
 cycle. Route and guidance Tasks may call the adapter's update hook too; `LoopClock.cycle()`
 deduplication makes those later calls no-ops.
+
+Phoenix localization runs first and may call the same predictor through its corrected estimator.
+Pinpoint's owner-local guard makes that the cycle's one physical poll; Pedro consumes the immutable
+snapshot rather than updating it. Fusion/EKF separately consume each positive-duration predictor
+delta end timestamp only once, so an extra localization-layer call cannot double the corrected pose
+even though Pedro and Phoenix intentionally share the predictor.
 
 Every `follow(pathChain)` returns a backend-neutral `RouteExecution` for that exact run. During the
 owned heartbeat, the adapter retains the expected path identity and classifies the transition while

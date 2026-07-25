@@ -8,7 +8,7 @@ The short version:
 - **`TagLayout`** tells Phoenix which tag IDs are trusted as fixed field landmarks.
 - **`AprilTagVisionLane`** owns the FTC-side AprilTag rig and exposes a shared `AprilTagSensor`.
 - **`AbsolutePoseEstimator`** answers "where is the robot on the field?"
-- **`MotionPredictor`** answers both "where is the robot now?" and "how did it move since the last loop?"
+- **`MotionPredictor`** answers both "where is the robot now?" and "how did it move since the last accepted motion baseline?"
 - **`CorrectedPoseEstimator`** combines a motion predictor with one absolute correction source.
 
 That split matters because a camera can be shared by localization, alignment, and future vision jobs while the localization stack remains free to choose whether it trusts a raw AprilTag solve, a direct smart-camera pose, or some future absolute field-anchor signal.
@@ -81,11 +81,24 @@ This is the interface most consumers want:
 - targeting
 - telemetry
 
+`update(clock)` uses the one non-null shared OpMode clock and publishes one attempt-stable snapshot
+per cycle. The first attempt owns source/filter/vendor effects; a repeat does not redo them. Finish
+camera processor or pipeline transitions before the localization phase so every consumer sees one
+coherent frame for that loop.
+
 ### 2.2 `MotionPredictor`
 
 A `MotionPredictor` is the predictor side of localization.
 
-It still exposes a current absolute pose estimate, but it also exposes a timestamped `MotionDelta` describing how the robot moved since the last update. That lets corrected/global estimators replay motion through delayed measurements without reverse-engineering deltas from two unrelated absolute samples.
+It still exposes a current absolute pose estimate, but it also exposes a timestamped `MotionDelta`
+describing how the robot moved since its last accepted motion baseline. That lets corrected/global
+estimators replay motion through delayed measurements without reverse-engineering deltas from two
+unrelated absolute samples.
+
+The absolute estimate and latest delta are one coherent predictor publication. A usable delta ends
+at the latest predictor sample and spans a strictly positive current-epoch interval. If a new cycle
+has no positive elapsed time, the predictor publishes no usable delta and retains the accepted
+motion baseline; the next strictly later sample includes that movement instead of losing it.
 
 Current example:
 
@@ -410,6 +423,7 @@ DriveGuidancePlan plan = DriveGuidance.plan()
 When you combine a `MotionPredictor` with an absolute correction source, Phoenix's corrected estimators do two important reliability jobs:
 
 - deduplicate repeated absolute measurements by measurement timestamp
+- consume each predictor motion interval once by its end timestamp, independently of cycle guards
 - when history is available, apply the correction at the measurement timestamp and replay predictor motion forward to the current loop
 
 That is more trustworthy than repeatedly blending the same delayed frame against "now".
@@ -455,7 +469,13 @@ Notes:
 
 - `predictorHistorySec` should be at least `maxCorrectionAgeSec` when latency compensation is enabled.
 - corrected estimators now consume an explicit `MotionDelta` from the predictor instead of reverse-engineering motion from two unrelated pose snapshots.
-- if the corrected pose is pushed back into the predictor, the estimator also rebases its predictor baseline/history so the next predictor delta does not re-apply that jump.
+- repeated same-cycle updates cannot apply that delta or EKF process covariance twice, and a retained
+  equal/older predictor timestamp does not clear valid replay history.
+- every accepted/manual pose anchor excludes predictor motion from before that anchor. When the
+  corrected pose is pushed into the predictor, both baselines move together. With push-back
+  disabled, the estimator derives the first later motion from a predictor pose captured at or
+  after the anchor; if no such pose exists yet, the first interval that straddles the anchor is
+  consumed only as a new baseline rather than risking replay of its pre-anchor prefix.
 - `PoseEstimate` and `MotionDelta` expose `LoopTimestamp` values; derive age or duration from those
   values instead of retaining a second scalar age.
 

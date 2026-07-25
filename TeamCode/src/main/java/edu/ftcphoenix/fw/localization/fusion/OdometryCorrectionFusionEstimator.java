@@ -57,6 +57,12 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
 
     private static final double TIMESTAMP_EPS_SEC = 1e-6;
 
+    private enum PredictorMotionRebaseState {
+        NONE,
+        AWAITING_PREDICTOR_POSE,
+        ANCHORED
+    }
+
     /**
      * Configuration for the fusion behavior.
      */
@@ -229,6 +235,24 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
     private PoseEstimate lastEstimate = PoseEstimate.noPose(LoopTimestamp.unavailable());
     private final Deque<PredictorSample> predictorHistory = new ArrayDeque<PredictorSample>();
 
+    // One estimator instance owns one state transition per shared-loop cycle. The attempt is
+    // claimed before child updates because those updates and predictor rebases may have effects
+    // that cannot be rolled back safely after a failure.
+    private long lastUpdateCycle = Long.MIN_VALUE;
+    private boolean updateInProgress = false;
+    private RuntimeException lastUpdateFailure = null;
+
+    // Canonical identity of predictor motion already incorporated into fusedPose. This is
+    // independent of the loop-cycle guard because a predictor may retain one sample across loops.
+    private LoopTimestamp lastCoveredPredictorMotionEndTimestamp = LoopTimestamp.unavailable();
+
+    // A pose anchor can occur after the predictor has observed a changed pose at zero elapsed
+    // time. Its next positive MotionDelta then spans both sides of the anchor. Retain the predictor
+    // pose at the anchor so that one post-anchor interval can exclude that already-covered motion.
+    private PredictorMotionRebaseState predictorMotionRebaseState =
+            PredictorMotionRebaseState.NONE;
+    private Pose3d predictorMotionRebasePose = Pose3d.zero();
+
     // Replay base: the most recent moment at which the fused pose was explicitly anchored
     // (initialization, manual reset, or accepted correction). Between replay bases, fused
     // motion is purely predictor-driven, so reconstructing the fused pose at a measurement timestamp
@@ -389,10 +413,50 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
     /**
      * Advances the corrected/global estimator one loop by propagating the predictor and then
      * conditionally applying the latest absolute correction measurement.
+     *
+     * <p>The first call in a {@link LoopClock#cycle()} claims that owner's update attempt before
+     * any child source is advanced. A successful same-cycle repeat is an exact no-op, a reentrant
+     * call fails fast, and a same-cycle repeat after a {@link RuntimeException} rethrows that same
+     * failure without retrying effects. The next clock cycle is eligible for a new attempt.</p>
+     *
+     * <p>Cycle identity and predictor-sample identity are separate safeguards. Across cycles, a
+     * usable predictor {@link MotionDelta} is applied only when its current-epoch end timestamp is
+     * strictly newer than the predictor motion already consumed or covered by a pose rebase. If a
+     * rebase has no truthful predictor-side pose at or after its anchor time, the first later
+     * coherent predictor sample establishes that base without replaying its crossing interval.</p>
      */
     @Override
     public void update(LoopClock clock) {
-        Objects.requireNonNull(clock, "clock");
+        LoopClock currentClock = Objects.requireNonNull(clock, "clock");
+        long cycle = currentClock.cycle();
+
+        if (updateInProgress) {
+            throw new IllegalStateException(
+                    "OdometryCorrectionFusionEstimator.update(clock) cannot be called "
+                            + "reentrantly; one estimator owner may update once per loop cycle"
+            );
+        }
+        if (lastUpdateCycle == cycle) {
+            if (lastUpdateFailure != null) {
+                throw lastUpdateFailure;
+            }
+            return;
+        }
+
+        lastUpdateCycle = cycle;
+        lastUpdateFailure = null;
+        updateInProgress = true;
+        try {
+            updateOnce(currentClock);
+        } catch (RuntimeException failure) {
+            lastUpdateFailure = failure;
+            throw failure;
+        } finally {
+            updateInProgress = false;
+        }
+    }
+
+    private void updateOnce(LoopClock clock) {
         final LoopTimestamp nowTimestamp = clock.nowTimestamp();
 
         invalidateHistoryAcrossReset(nowTimestamp);
@@ -447,7 +511,12 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
                     projectedCorrectionCount++;
 
                     boolean pushedToPredictor = pushFusedPoseToPredictor();
-                    rebaseAfterPoseChange(nowTimestamp, currentPredictorPose, pushedToPredictor);
+                    rebaseAfterPoseChange(
+                            nowTimestamp,
+                            currentPredictorPose,
+                            currentPredictorTimestamp,
+                            pushedToPredictor
+                    );
                     initializedFromCorrection = true;
                 } else {
                     rejectedCorrectionCount++;
@@ -458,8 +527,10 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
                 fusedPose = currentPredictorPose;
                 initialized = true;
                 lastPredictorPose = currentPredictorPose;
-                resetPredictorHistory(nowTimestamp, currentPredictorPose);
-                setReplayBase(nowTimestamp, fusedPose, currentPredictorPose);
+                resetPredictorHistory(currentPredictorTimestamp, currentPredictorPose);
+                setReplayBase(currentPredictorTimestamp, fusedPose, currentPredictorPose);
+                markPredictorMotionCovered(currentPredictorTimestamp);
+                rememberPredictorMotionRebase(currentPredictorPose);
             } else if (!initialized && !initializedFromCorrection) {
                 // No pose from either source yet.
                 lastEstimate = PoseEstimate.noPose(nowTimestamp);
@@ -467,11 +538,19 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
             }
         } else {
             // Propagate fused pose using the predictor's explicit motion delta.
-            if (predictorDelta != null
-                    && predictorDelta.hasDelta
-                    && Double.isFinite(predictorDelta.durationSec())
-                    && predictorDelta.durationSec() >= 0.0) {
-                fusedPose = planarize(fusedPose.then(predictorDelta.deltaPose));
+            establishAwaitingPredictorMotionRebase(
+                    currentPredictorTimestamp,
+                    currentPredictorPose
+            );
+            Pose3d predictorMotion = predictorMotionForUpdate(
+                    predictorDelta,
+                    currentPredictorPose,
+                    clock
+            );
+            if (predictorMotion != null) {
+                fusedPose = planarize(fusedPose.then(predictorMotion));
+                markPredictorMotionCovered(predictorDelta.endTimestamp);
+                clearPredictorMotionRebase();
             }
             if (currentPredictorPose != null) {
                 lastPredictorPose = currentPredictorPose;
@@ -485,7 +564,12 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
             if (!isCorrectionAcceptable(correctionEst, clock)) {
                 rejectedCorrectionCount++;
             } else {
-                maybeApplyCorrection(correctionEst, currentPredictorPose, nowTimestamp);
+                maybeApplyCorrection(
+                        correctionEst,
+                        currentPredictorPose,
+                        currentPredictorTimestamp,
+                        nowTimestamp
+                );
             }
         }
 
@@ -532,13 +616,30 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
         initialized = true;
 
         Pose3d currentPredictorPose = null;
+        LoopTimestamp currentPredictorTimestamp = LoopTimestamp.unavailable();
         PoseEstimate predictorEst = predictor.getEstimate();
         if (predictorEst != null && predictorEst.hasPose) {
             currentPredictorPose = planarize(predictorEst.fieldToRobotPose);
+            if (predictorEst.timestamp != null && predictorEst.timestamp.isAvailable()) {
+                currentPredictorTimestamp = predictorEst.timestamp;
+            }
         }
 
         boolean pushedToPredictor = pushFusedPoseToPredictor();
-        rebaseAfterPoseChange(nowTimestamp, currentPredictorPose, pushedToPredictor);
+        clearRecentCorrectionState();
+        rebaseAfterPoseChange(
+                nowTimestamp,
+                currentPredictorPose,
+                currentPredictorTimestamp,
+                pushedToPredictor
+        );
+
+        double quality = (predictorEst != null
+                && predictorEst.hasPose
+                && Double.isFinite(predictorEst.quality))
+                ? MathUtil.clamp(predictorEst.quality, 0.0, 1.0)
+                : 1.0;
+        lastEstimate = new PoseEstimate(fusedPose, true, quality, nowTimestamp);
     }
 
     private boolean shouldEvaluateCorrectionMeasurement(PoseEstimate correctionEst, LoopClock clock) {
@@ -599,6 +700,7 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
 
     private void maybeApplyCorrection(PoseEstimate correctionEst,
                                       Pose3d currentPredictorPose,
+                                      LoopTimestamp currentPredictorTimestamp,
                                       LoopTimestamp nowTimestamp) {
         Pose3d correctionPoseAtMeasurement = planarize(correctionEst.fieldToRobotPose);
         Pose3d compensatedCorrectionPoseAtNow = cfg.enableLatencyCompensation
@@ -681,7 +783,12 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
         }
 
         boolean pushedToPredictor = pushFusedPoseToPredictor();
-        rebaseAfterPoseChange(nowTimestamp, currentPredictorPose, pushedToPredictor);
+        rebaseAfterPoseChange(
+                nowTimestamp,
+                currentPredictorPose,
+                currentPredictorTimestamp,
+                pushedToPredictor
+        );
     }
 
     private boolean isCorrectionJumpAcceptable(Pose3d referencePose, Pose3d targetPose) {
@@ -718,23 +825,143 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
         return false;
     }
 
-    private void rebaseAfterPoseChange(LoopTimestamp nowTimestamp,
+    private void clearRecentCorrectionState() {
+        lastCorrectionAccepted = LoopTimestamp.unavailable();
+        lastAcceptedCorrectionMeasurementTimestamp = LoopTimestamp.unavailable();
+        lastCorrectionUsedReplay = false;
+    }
+
+    private void rebaseAfterPoseChange(LoopTimestamp anchorTimestamp,
                                        Pose3d currentPredictorPose,
+                                       LoopTimestamp currentPredictorTimestamp,
                                        boolean pushedToPredictor) {
         Pose3d basePredictorPose;
+        LoopTimestamp baseTimestamp;
         if (pushedToPredictor) {
             lastPredictorPose = fusedPose;
             basePredictorPose = fusedPose;
-        } else if (currentPredictorPose != null) {
+            baseTimestamp = anchorTimestamp;
+        } else if (currentPredictorPose != null
+                && timestampAtOrAfter(currentPredictorTimestamp, anchorTimestamp)) {
             lastPredictorPose = currentPredictorPose;
             basePredictorPose = currentPredictorPose;
+            baseTimestamp = currentPredictorTimestamp;
         } else {
-            lastPredictorPose = fusedPose;
-            basePredictorPose = fusedPose;
+            lastPredictorPose = currentPredictorPose != null ? currentPredictorPose : fusedPose;
+            predictorHistory.clear();
+            setReplayBase(
+                    LoopTimestamp.unavailable(),
+                    fusedPose,
+                    Pose3d.zero()
+            );
+            markPredictorMotionCovered(anchorTimestamp);
+            awaitPredictorMotionRebase();
+            return;
         }
 
-        resetPredictorHistory(nowTimestamp, basePredictorPose);
-        setReplayBase(nowTimestamp, fusedPose, basePredictorPose);
+        resetPredictorHistory(baseTimestamp, basePredictorPose);
+        setReplayBase(baseTimestamp, fusedPose, basePredictorPose);
+        markPredictorMotionCovered(baseTimestamp);
+        rememberPredictorMotionRebase(basePredictorPose);
+    }
+
+    private static boolean timestampAtOrAfter(LoopTimestamp candidate,
+                                              LoopTimestamp reference) {
+        if (candidate == null
+                || reference == null
+                || !candidate.isAvailable()
+                || !reference.isAvailable()) {
+            return false;
+        }
+        double elapsedSec = candidate.secondsSince(reference);
+        return Double.isFinite(elapsedSec) && elapsedSec >= 0.0;
+    }
+
+    private boolean shouldApplyPredictorMotion(MotionDelta predictorDelta, LoopClock clock) {
+        if (predictorDelta == null || !predictorDelta.hasDelta) {
+            return false;
+        }
+
+        double durationSec = predictorDelta.durationSec();
+        if (!Double.isFinite(durationSec) || durationSec <= 0.0) {
+            return false;
+        }
+        if (!Double.isFinite(predictorDelta.endTimestamp.ageSec(clock))) {
+            return false;
+        }
+        if (!lastCoveredPredictorMotionEndTimestamp.isAvailable()) {
+            return true;
+        }
+
+        double elapsedSec = predictorDelta.endTimestamp.secondsSince(
+                lastCoveredPredictorMotionEndTimestamp
+        );
+        return Double.isFinite(elapsedSec) && elapsedSec > 0.0;
+    }
+
+    private Pose3d predictorMotionForUpdate(MotionDelta predictorDelta,
+                                            Pose3d currentPredictorPose,
+                                            LoopClock clock) {
+        if (!shouldApplyPredictorMotion(predictorDelta, clock)) {
+            return null;
+        }
+        if (predictorMotionRebaseState == PredictorMotionRebaseState.NONE) {
+            return predictorDelta.deltaPose;
+        }
+        if (predictorMotionRebaseState == PredictorMotionRebaseState.AWAITING_PREDICTOR_POSE
+                || currentPredictorPose == null) {
+            // A conforming MotionPredictor publishes a coherent absolute pose with the delta. If
+            // it does not, fail closed rather than risk replaying motion from before the anchor.
+            return null;
+        }
+        return predictorMotionRebasePose.inverse().then(currentPredictorPose);
+    }
+
+    private void rememberPredictorMotionRebase(Pose3d predictorPose) {
+        predictorMotionRebasePose = planarize(Objects.requireNonNull(
+                predictorPose,
+                "predictorPose"
+        ));
+        predictorMotionRebaseState = PredictorMotionRebaseState.ANCHORED;
+    }
+
+    private void awaitPredictorMotionRebase() {
+        predictorMotionRebaseState = PredictorMotionRebaseState.AWAITING_PREDICTOR_POSE;
+        predictorMotionRebasePose = Pose3d.zero();
+    }
+
+    private void establishAwaitingPredictorMotionRebase(LoopTimestamp predictorTimestamp,
+                                                         Pose3d currentPredictorPose) {
+        if (predictorMotionRebaseState
+                != PredictorMotionRebaseState.AWAITING_PREDICTOR_POSE
+                || currentPredictorPose == null) {
+            return;
+        }
+        if (lastCoveredPredictorMotionEndTimestamp.isAvailable()) {
+            double elapsedFromCoveredSec = predictorTimestamp.secondsSince(
+                    lastCoveredPredictorMotionEndTimestamp
+            );
+            if (!Double.isFinite(elapsedFromCoveredSec) || elapsedFromCoveredSec < 0.0) {
+                return;
+            }
+        }
+
+        lastPredictorPose = currentPredictorPose;
+        resetPredictorHistory(predictorTimestamp, currentPredictorPose);
+        setReplayBase(predictorTimestamp, fusedPose, currentPredictorPose);
+        markPredictorMotionCovered(predictorTimestamp);
+        rememberPredictorMotionRebase(currentPredictorPose);
+    }
+
+    private void clearPredictorMotionRebase() {
+        predictorMotionRebaseState = PredictorMotionRebaseState.NONE;
+        predictorMotionRebasePose = Pose3d.zero();
+    }
+
+    private void markPredictorMotionCovered(LoopTimestamp timestamp) {
+        lastCoveredPredictorMotionEndTimestamp = timestamp != null && timestamp.isAvailable()
+                ? timestamp
+                : LoopTimestamp.unavailable();
     }
 
     private void setReplayBase(LoopTimestamp timestamp,
@@ -787,7 +1014,7 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
         if (last != null) {
             double elapsedSec = timestamp.secondsSince(last.timestamp);
             if (!Double.isFinite(elapsedSec) || elapsedSec <= 0.0) {
-                predictorHistory.clear();
+                return;
             }
         }
 
@@ -940,6 +1167,22 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
                 && !Double.isFinite(nowTimestamp.secondsSince(lastEvaluatedCorrectionTimestamp))) {
             lastEvaluatedCorrectionTimestamp = LoopTimestamp.unavailable();
         }
+
+        if (lastCoveredPredictorMotionEndTimestamp.isAvailable()
+                && !Double.isFinite(nowTimestamp.secondsSince(
+                lastCoveredPredictorMotionEndTimestamp))) {
+            lastCoveredPredictorMotionEndTimestamp = LoopTimestamp.unavailable();
+            clearPredictorMotionRebase();
+        } else if (!lastCoveredPredictorMotionEndTimestamp.isAvailable()
+                && predictorMotionRebaseState == PredictorMotionRebaseState.ANCHORED) {
+            // An anchor without a timestamp cannot prove that its predictor pose belongs to this
+            // clock epoch. Re-establish from the first coherent predictor sample instead.
+            if (initialized) {
+                awaitPredictorMotionRebase();
+            } else {
+                clearPredictorMotionRebase();
+            }
+        }
     }
 
     /**
@@ -985,6 +1228,12 @@ public class OdometryCorrectionFusionEstimator implements CorrectedPoseEstimator
                 .addData(p + ".replayBaseFusedPose", replayBaseFusedPose)
                 .addData(p + ".replayBasePredictorPose", replayBasePredictorPose)
                 .addData(p + ".predictorHistorySize", predictorHistory.size())
+                .addData(p + ".lastUpdateCycle", lastUpdateCycle)
+                .addData(p + ".lastUpdateFailed", lastUpdateFailure != null)
+                .addData(p + ".lastCoveredPredictorMotionEndTimestamp",
+                        lastCoveredPredictorMotionEndTimestamp)
+                .addData(p + ".predictorMotionRebaseState", predictorMotionRebaseState)
+                .addData(p + ".predictorMotionRebasePose", predictorMotionRebasePose)
                 .addData(p + ".lastEstimate", lastEstimate);
 
         predictor.debugDump(dbg, p + ".predictor");

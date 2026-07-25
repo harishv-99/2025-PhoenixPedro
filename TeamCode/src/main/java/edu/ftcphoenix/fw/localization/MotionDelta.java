@@ -17,6 +17,10 @@ import edu.ftcphoenix.fw.core.time.LoopTimestamp;
  * current pose. In practice, drivetrain localizers typically use only the planar components
  * ({@code x}, {@code y}, {@code yaw}), but the value object stays 6DOF so the geometry remains
  * explicit and future predictors are not forced into a planar-only API.</p>
+ *
+ * <p>When {@link #hasDelta} is true, the two timestamps must belong to one clock/epoch and describe
+ * a strictly positive interval. Zero-time, unavailable, and reset-boundary samples use
+ * {@link #none(LoopTimestamp)} instead of claiming that motion can be timed truthfully.</p>
  */
 public final class MotionDelta {
 
@@ -26,7 +30,8 @@ public final class MotionDelta {
     public final Pose3d deltaPose;
 
     /**
-     * True when this instance represents a usable motion increment.
+     * True when this instance represents a usable motion increment over a strictly positive
+     * timestamp interval.
      */
     public final boolean hasDelta;
 
@@ -49,7 +54,7 @@ public final class MotionDelta {
      * Creates a new motion increment.
      *
      * @param deltaPose         relative transform from the previous predictor pose to the current pose
-     * @param hasDelta          whether this instance represents a usable motion increment
+     * @param hasDelta          whether this instance represents a usable, positive-duration motion increment
      * @param quality           simple trust score in [0, 1]
      * @param startTimestamp timestamp of the earlier sample
      * @param endTimestamp   timestamp of the later sample
@@ -65,6 +70,16 @@ public final class MotionDelta {
         if (startTimestamp == null || endTimestamp == null) {
             throw new IllegalArgumentException(
                     "startTimestamp and endTimestamp are required; use LoopTimestamp.unavailable() when needed");
+        }
+        if (hasDelta) {
+            double durationSec = endTimestamp.secondsSince(startTimestamp);
+            if (!Double.isFinite(durationSec) || durationSec <= 0.0) {
+                throw new IllegalArgumentException(
+                        "A usable MotionDelta requires timestamps from the same clock's current epoch "
+                                + "with endTimestamp "
+                                + "strictly later than startTimestamp; use MotionDelta.none(...) "
+                                + "when elapsed time is not positive");
+            }
         }
         this.deltaPose = deltaPose;
         this.hasDelta = hasDelta;

@@ -40,6 +40,11 @@ For odometry + AprilTag global localization specifically, the framework now make
 
 Phoenix ships both a simpler gain-based corrected estimator and an optional covariance-aware EKF-style estimator. The advanced estimator is intentionally opt-in; the simpler corrected localizer remains the default starting point.
 
+All framework localization owners use the same non-null `LoopClock` and publish at most one update
+attempt per cycle. The owning lane and each directly usable estimator protect their own lifecycle;
+students do not add a memoization wrapper. Corrected estimators also use `MotionDelta` timestamps to
+avoid consuming one retained predictor interval in two different cycles.
+
 Within `drive/`, subpackages are intentionally parallel and predictable:
 
 * `drive.source` — “where drive commands come from” (gamepad, autonomous logic).

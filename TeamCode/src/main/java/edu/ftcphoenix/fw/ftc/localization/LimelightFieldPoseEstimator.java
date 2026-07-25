@@ -189,6 +189,9 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
     private double lastBaseQuality = 0.0;
     private double lastMotionScale = 1.0;
     private String lastRejectReason = "none";
+    private long lastUpdateCycle = Long.MIN_VALUE;
+    private boolean updateInProgress;
+    private RuntimeException lastUpdateFailure;
 
     /**
      * Creates a direct Limelight field-pose estimator.
@@ -212,10 +215,46 @@ public final class LimelightFieldPoseEstimator implements AbsolutePoseEstimator 
      *
      * <p>Typical usage is to call this once per loop from a localization owner, then inspect
      * {@link #getEstimate()} for the most recent accepted direct pose.</p>
+     *
+     * <p>The estimator claims the cycle before publishing MT2 yaw or reading a vendor result. A
+     * repeated successful call in that cycle is a no-op, a repeated call after failure rethrows
+     * the exact first {@link RuntimeException}, and recursive entry fails before another vendor
+     * effect. Pipeline changes after the update become visible on the next cycle, preserving one
+     * coherent pose-and-diagnostics snapshot for the complete cycle.</p>
      */
     @Override
     public void update(LoopClock clock) {
-        Objects.requireNonNull(clock, "clock");
+        LoopClock requiredClock = Objects.requireNonNull(clock, "clock");
+        long cycle = requiredClock.cycle();
+        if (updateInProgress) {
+            throw new IllegalStateException(
+                    "LimelightFieldPoseEstimator.update(clock) was reentered during cycle "
+                            + cycle + "; one localization owner may advance only once per cycle"
+            );
+        }
+        if (cycle == lastUpdateCycle) {
+            if (lastUpdateFailure != null) {
+                throw lastUpdateFailure;
+            }
+            return;
+        }
+
+        // Claim the attempt before MT2 yaw or result access can cause vendor-side effects.
+        lastUpdateCycle = cycle;
+        updateInProgress = true;
+        lastUpdateFailure = null;
+        try {
+            updateCurrentCycle(requiredClock);
+        } catch (RuntimeException failure) {
+            lastUpdateFailure = failure;
+            throw failure;
+        } finally {
+            updateInProgress = false;
+        }
+    }
+
+    /** Perform the one yaw publication, result sample, and pose evaluation for this cycle. */
+    private void updateCurrentCycle(LoopClock clock) {
         final LoopTimestamp nowTimestamp = clock.nowTimestamp();
         lastRejectReason = "none";
         lastVisibleTagCount = 0;
