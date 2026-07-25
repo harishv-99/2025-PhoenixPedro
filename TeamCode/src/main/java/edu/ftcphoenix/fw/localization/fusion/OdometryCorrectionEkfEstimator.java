@@ -63,6 +63,12 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
     private static final double TIMESTAMP_EPS_SEC = 1e-6;
     private static final double MIN_VARIANCE = 1e-9;
 
+    private enum PredictorMotionRebaseState {
+        NONE,
+        AWAITING_PREDICTOR_POSE,
+        ANCHORED
+    }
+
     /**
      * Configuration for {@link OdometryCorrectionEkfEstimator}.
      *
@@ -369,6 +375,25 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
     private PoseEstimate lastEstimate = PoseEstimate.noPose(LoopTimestamp.unavailable());
     private final Deque<PredictorSample> predictorHistory = new ArrayDeque<PredictorSample>();
 
+    // One estimator instance owns one state transition per shared-loop cycle. Claim the attempt
+    // before child updates because source updates, covariance propagation, and predictor rebases
+    // may have effects that cannot be rolled back safely after a failure.
+    private long lastUpdateCycle = Long.MIN_VALUE;
+    private boolean updateInProgress = false;
+    private RuntimeException lastUpdateFailure = null;
+
+    // Canonical identity of predictor motion already incorporated into statePose/stateCovariance.
+    // This remains necessary in addition to the cycle guard because a predictor may retain one
+    // sample across multiple robot loops.
+    private LoopTimestamp lastCoveredPredictorMotionEndTimestamp = LoopTimestamp.unavailable();
+
+    // A pose anchor can occur after the predictor has observed a changed pose at zero elapsed
+    // time. Its next positive MotionDelta then spans both sides of the anchor. Retain the predictor
+    // pose at the anchor so that one post-anchor interval can exclude that already-covered motion.
+    private PredictorMotionRebaseState predictorMotionRebaseState =
+            PredictorMotionRebaseState.NONE;
+    private Pose3d predictorMotionRebasePose = Pose3d.zero();
+
     private boolean replayBaseValid = false;
     private LoopTimestamp replayBaseTimestamp = LoopTimestamp.unavailable();
     private Pose3d replayBasePose = Pose3d.zero();
@@ -576,10 +601,50 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
     /**
      * Advances the EKF one loop by propagating predictor motion and conditionally applying the
      * latest absolute correction measurement.
+     *
+     * <p>The first call in a {@link LoopClock#cycle()} claims that owner's update attempt before
+     * any child source is advanced. A successful same-cycle repeat is an exact no-op, a reentrant
+     * call fails fast, and a same-cycle repeat after a {@link RuntimeException} rethrows that same
+     * failure without retrying effects. The next clock cycle is eligible for a new attempt.</p>
+     *
+     * <p>Cycle identity and predictor-sample identity are separate safeguards. Across cycles, a
+     * usable predictor {@link MotionDelta} is applied only when its current-epoch end timestamp is
+     * strictly newer than the predictor motion already consumed or covered by a pose rebase. If a
+     * rebase has no truthful predictor-side pose at or after its anchor time, the first later
+     * coherent predictor sample establishes that base without replaying its crossing interval.</p>
      */
     @Override
     public void update(LoopClock clock) {
-        Objects.requireNonNull(clock, "clock");
+        LoopClock currentClock = Objects.requireNonNull(clock, "clock");
+        long cycle = currentClock.cycle();
+
+        if (updateInProgress) {
+            throw new IllegalStateException(
+                    "OdometryCorrectionEkfEstimator.update(clock) cannot be called reentrantly; "
+                            + "one estimator owner may update once per loop cycle"
+            );
+        }
+        if (lastUpdateCycle == cycle) {
+            if (lastUpdateFailure != null) {
+                throw lastUpdateFailure;
+            }
+            return;
+        }
+
+        lastUpdateCycle = cycle;
+        lastUpdateFailure = null;
+        updateInProgress = true;
+        try {
+            updateOnce(currentClock);
+        } catch (RuntimeException failure) {
+            lastUpdateFailure = failure;
+            throw failure;
+        } finally {
+            updateInProgress = false;
+        }
+    }
+
+    private void updateOnce(LoopClock clock) {
         final LoopTimestamp nowTimestamp = clock.nowTimestamp();
 
         invalidateHistoryAcrossReset(nowTimestamp);
@@ -635,25 +700,34 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
                 lastPredictorPose = currentPredictorPose;
                 resetPredictorHistory(currentPredictorTimestamp, currentPredictorPose);
                 setReplayBase(currentPredictorTimestamp, statePose, stateCovariance, currentPredictorPose);
+                markPredictorMotionCovered(currentPredictorTimestamp);
+                rememberPredictorMotionRebase(currentPredictorPose);
             } else if (!initialized && !initializedFromCorrection) {
                 lastEstimate = PoseEstimate.noPose(nowTimestamp);
                 return;
             }
         } else {
-            if (predictorDelta != null
-                    && predictorDelta.hasDelta
-                    && Double.isFinite(predictorDelta.durationSec())
-                    && predictorDelta.durationSec() >= 0.0
-                    && currentPredictorPose != null) {
+            establishAwaitingPredictorMotionRebase(
+                    currentPredictorTimestamp,
+                    currentPredictorPose
+            );
+            Pose3d predictorMotion = predictorMotionForUpdate(
+                    predictorDelta,
+                    currentPredictorPose,
+                    clock
+            );
+            if (predictorMotion != null) {
                 StateSnapshot predicted = predictStep(
                         statePose,
                         stateCovariance,
-                        predictorDelta.deltaPose,
+                        predictorMotion,
                         currentPredictorPose,
                         currentPredictorTimestamp
                 );
                 statePose = predicted.pose;
                 stateCovariance = predicted.covariance;
+                markPredictorMotionCovered(predictorDelta.endTimestamp);
+                clearPredictorMotionRebase();
             }
             if (currentPredictorPose != null) {
                 lastPredictorPose = currentPredictorPose;
@@ -722,7 +796,12 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
 
         boolean pushedToPredictor = pushFilteredPoseToPredictor();
         clearRecentCorrectionState();
-        rebaseAfterPoseChange(currentPredictorTimestamp, currentPredictorPose, pushedToPredictor);
+        rebaseAfterPoseChange(
+                nowTimestamp,
+                currentPredictorPose,
+                currentPredictorTimestamp,
+                pushedToPredictor
+        );
         lastEstimate = new PoseEstimate(
                 statePose,
                 true,
@@ -788,10 +867,12 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
         acceptedCorrectionCount++;
 
         boolean pushedToPredictor = pushFilteredPoseToPredictor();
-        LoopTimestamp rebaseTimestamp = currentPredictorTimestamp.isAvailable()
-                ? currentPredictorTimestamp
-                : nowTimestamp;
-        rebaseAfterPoseChange(rebaseTimestamp, currentPredictorPose, pushedToPredictor);
+        rebaseAfterPoseChange(
+                nowTimestamp,
+                currentPredictorPose,
+                currentPredictorTimestamp,
+                pushedToPredictor
+        );
     }
 
     private boolean shouldEvaluateCorrectionMeasurement(PoseEstimate correctionEst, LoopClock clock) {
@@ -938,10 +1019,12 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
         }
 
         boolean pushedToPredictor = pushFilteredPoseToPredictor();
-        LoopTimestamp rebaseTimestamp = currentPredictorTimestamp.isAvailable()
-                ? currentPredictorTimestamp
-                : nowTimestamp;
-        rebaseAfterPoseChange(rebaseTimestamp, currentPredictorPose, pushedToPredictor);
+        rebaseAfterPoseChange(
+                nowTimestamp,
+                currentPredictorPose,
+                currentPredictorTimestamp,
+                pushedToPredictor
+        );
     }
 
     private StateSnapshot predictFromReplayBaseTo(LoopTimestamp timestamp) {
@@ -1182,23 +1265,143 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
         lastCorrectionUsedReplay = false;
     }
 
-    private void rebaseAfterPoseChange(LoopTimestamp timestamp,
+    private void rebaseAfterPoseChange(LoopTimestamp anchorTimestamp,
                                        Pose3d currentPredictorPose,
+                                       LoopTimestamp currentPredictorTimestamp,
                                        boolean pushedToPredictor) {
         Pose3d basePredictorPose;
+        LoopTimestamp baseTimestamp;
         if (pushedToPredictor) {
             lastPredictorPose = statePose;
             basePredictorPose = statePose;
-        } else if (currentPredictorPose != null) {
+            baseTimestamp = anchorTimestamp;
+        } else if (currentPredictorPose != null
+                && timestampAtOrAfter(currentPredictorTimestamp, anchorTimestamp)) {
             lastPredictorPose = currentPredictorPose;
             basePredictorPose = currentPredictorPose;
+            baseTimestamp = currentPredictorTimestamp;
         } else {
-            lastPredictorPose = statePose;
-            basePredictorPose = statePose;
+            lastPredictorPose = currentPredictorPose != null ? currentPredictorPose : statePose;
+            predictorHistory.clear();
+            setReplayBase(
+                    LoopTimestamp.unavailable(),
+                    statePose,
+                    stateCovariance,
+                    Pose3d.zero()
+            );
+            markPredictorMotionCovered(anchorTimestamp);
+            awaitPredictorMotionRebase();
+            return;
         }
 
-        resetPredictorHistory(timestamp, basePredictorPose);
-        setReplayBase(timestamp, statePose, stateCovariance, basePredictorPose);
+        resetPredictorHistory(baseTimestamp, basePredictorPose);
+        setReplayBase(baseTimestamp, statePose, stateCovariance, basePredictorPose);
+        markPredictorMotionCovered(baseTimestamp);
+        rememberPredictorMotionRebase(basePredictorPose);
+    }
+
+    private static boolean timestampAtOrAfter(LoopTimestamp candidate,
+                                              LoopTimestamp reference) {
+        if (candidate == null
+                || reference == null
+                || !candidate.isAvailable()
+                || !reference.isAvailable()) {
+            return false;
+        }
+        double elapsedSec = candidate.secondsSince(reference);
+        return Double.isFinite(elapsedSec) && elapsedSec >= 0.0;
+    }
+
+    private boolean shouldApplyPredictorMotion(MotionDelta predictorDelta, LoopClock clock) {
+        if (predictorDelta == null || !predictorDelta.hasDelta) {
+            return false;
+        }
+
+        double durationSec = predictorDelta.durationSec();
+        if (!Double.isFinite(durationSec) || durationSec <= 0.0) {
+            return false;
+        }
+        if (!Double.isFinite(predictorDelta.endTimestamp.ageSec(clock))) {
+            return false;
+        }
+        if (!lastCoveredPredictorMotionEndTimestamp.isAvailable()) {
+            return true;
+        }
+
+        double elapsedSec = predictorDelta.endTimestamp.secondsSince(
+                lastCoveredPredictorMotionEndTimestamp
+        );
+        return Double.isFinite(elapsedSec) && elapsedSec > 0.0;
+    }
+
+    private Pose3d predictorMotionForUpdate(MotionDelta predictorDelta,
+                                            Pose3d currentPredictorPose,
+                                            LoopClock clock) {
+        if (!shouldApplyPredictorMotion(predictorDelta, clock)) {
+            return null;
+        }
+        if (predictorMotionRebaseState == PredictorMotionRebaseState.NONE) {
+            return currentPredictorPose != null ? predictorDelta.deltaPose : null;
+        }
+        if (predictorMotionRebaseState == PredictorMotionRebaseState.AWAITING_PREDICTOR_POSE
+                || currentPredictorPose == null) {
+            // A conforming MotionPredictor publishes a coherent absolute pose with the delta. If
+            // it does not, fail closed rather than risk replaying motion from before the anchor.
+            return null;
+        }
+        return predictorMotionRebasePose.inverse().then(currentPredictorPose);
+    }
+
+    private void rememberPredictorMotionRebase(Pose3d predictorPose) {
+        predictorMotionRebasePose = planarize(Objects.requireNonNull(
+                predictorPose,
+                "predictorPose"
+        ));
+        predictorMotionRebaseState = PredictorMotionRebaseState.ANCHORED;
+    }
+
+    private void awaitPredictorMotionRebase() {
+        predictorMotionRebaseState = PredictorMotionRebaseState.AWAITING_PREDICTOR_POSE;
+        predictorMotionRebasePose = Pose3d.zero();
+    }
+
+    private void establishAwaitingPredictorMotionRebase(LoopTimestamp predictorTimestamp,
+                                                         Pose3d currentPredictorPose) {
+        if (predictorMotionRebaseState
+                != PredictorMotionRebaseState.AWAITING_PREDICTOR_POSE
+                || currentPredictorPose == null) {
+            return;
+        }
+        if (lastCoveredPredictorMotionEndTimestamp.isAvailable()) {
+            double elapsedFromCoveredSec = predictorTimestamp.secondsSince(
+                    lastCoveredPredictorMotionEndTimestamp
+            );
+            if (!Double.isFinite(elapsedFromCoveredSec) || elapsedFromCoveredSec < 0.0) {
+                return;
+            }
+        }
+
+        lastPredictorPose = currentPredictorPose;
+        resetPredictorHistory(predictorTimestamp, currentPredictorPose);
+        setReplayBase(
+                predictorTimestamp,
+                statePose,
+                stateCovariance,
+                currentPredictorPose
+        );
+        markPredictorMotionCovered(predictorTimestamp);
+        rememberPredictorMotionRebase(currentPredictorPose);
+    }
+
+    private void clearPredictorMotionRebase() {
+        predictorMotionRebaseState = PredictorMotionRebaseState.NONE;
+        predictorMotionRebasePose = Pose3d.zero();
+    }
+
+    private void markPredictorMotionCovered(LoopTimestamp timestamp) {
+        lastCoveredPredictorMotionEndTimestamp = timestamp != null && timestamp.isAvailable()
+                ? timestamp
+                : LoopTimestamp.unavailable();
     }
 
     private void setReplayBase(LoopTimestamp timestamp,
@@ -1280,12 +1483,6 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
         if (last != null) {
             double elapsedSec = timestamp.secondsSince(last.timestamp);
             if (!Double.isFinite(elapsedSec) || elapsedSec <= 0.0) {
-                predictorHistory.clear();
-                predictorHistory.addLast(new PredictorSample(timestamp, planarize(predictorPose)));
-                if (initialized) {
-                    setReplayBase(timestamp, statePose, stateCovariance, planarize(predictorPose));
-                    lastPredictorPose = planarize(predictorPose);
-                }
                 return;
             }
         }
@@ -1450,6 +1647,22 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
                 && !Double.isFinite(nowTimestamp.secondsSince(lastEvaluatedCorrectionTimestamp))) {
             lastEvaluatedCorrectionTimestamp = LoopTimestamp.unavailable();
         }
+
+        if (lastCoveredPredictorMotionEndTimestamp.isAvailable()
+                && !Double.isFinite(nowTimestamp.secondsSince(
+                lastCoveredPredictorMotionEndTimestamp))) {
+            lastCoveredPredictorMotionEndTimestamp = LoopTimestamp.unavailable();
+            clearPredictorMotionRebase();
+        } else if (!lastCoveredPredictorMotionEndTimestamp.isAvailable()
+                && predictorMotionRebaseState == PredictorMotionRebaseState.ANCHORED) {
+            // An anchor without a timestamp cannot prove that its predictor pose belongs to this
+            // clock epoch. Re-establish from the first coherent predictor sample instead.
+            if (initialized) {
+                awaitPredictorMotionRebase();
+            } else {
+                clearPredictorMotionRebase();
+            }
+        }
     }
 
     private static double[][] identity() {
@@ -1604,6 +1817,12 @@ public final class OdometryCorrectionEkfEstimator implements CorrectedPoseEstima
                 .addData(p + ".replayBasePose", replayBasePose)
                 .addData(p + ".replayBasePredictorPose", replayBasePredictorPose)
                 .addData(p + ".predictorHistorySize", predictorHistory.size())
+                .addData(p + ".lastUpdateCycle", lastUpdateCycle)
+                .addData(p + ".lastUpdateFailed", lastUpdateFailure != null)
+                .addData(p + ".lastCoveredPredictorMotionEndTimestamp",
+                        lastCoveredPredictorMotionEndTimestamp)
+                .addData(p + ".predictorMotionRebaseState", predictorMotionRebaseState)
+                .addData(p + ".predictorMotionRebasePose", predictorMotionRebasePose)
                 .addData(p + ".statePose", statePose)
                 .addData(p + ".stateCovariance.xx", stateCovariance[0][0])
                 .addData(p + ".stateCovariance.yy", stateCovariance[1][1])

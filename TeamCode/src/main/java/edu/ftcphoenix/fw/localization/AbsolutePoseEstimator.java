@@ -10,7 +10,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * <ul>
  *   <li>{@link AbsolutePoseEstimator}: something that answers <em>"where is the robot on the field?"</em></li>
  *   <li>{@link MotionPredictor}: something that answers both <em>"where is the robot now?"</em> and
- *       <em>"how did it move since the last loop?"</em></li>
+ *       <em>"how did it move since the last accepted motion baseline?"</em></li>
  * </ul>
  *
  * <p>Most consumers such as drive guidance, go-to-pose tasks, targeting, and telemetry only need an
@@ -35,7 +35,21 @@ public interface AbsolutePoseEstimator {
      * internal filters or caches, and preparing the next {@link PoseEstimate} returned by
      * {@link #getEstimate()}.</p>
      *
+     * <p>This is an <b>attempt-idempotent</b> per-cycle operation. The first call claims the
+     * supplied {@link LoopClock#cycle()} before invoking owned sources, filters, hardware, or
+     * vendor side effects. After a successful attempt, repeated calls in that cycle leave the
+     * exact published snapshot and all dependencies unchanged. Reentrant updates are lifecycle
+     * errors. If the first attempt throws a {@link RuntimeException}, a same-cycle repeat must
+     * rethrow that retained failure rather than silently appearing successful or retrying effects
+     * that may already have occurred; the next cycle may make a new attempt.</p>
+     *
+     * <p>Pass the one non-null shared OpMode clock. Complete pipeline, processor, and other
+     * dependency-lifecycle transitions before this estimator's first update in a cycle; changes
+     * made afterward are reflected by its next-cycle snapshot.</p>
+     *
      * @param clock shared loop clock for the current OpMode cycle
+     * @throws NullPointerException if {@code clock} is {@code null}
+     * @throws IllegalStateException for a reentrant update
      */
     void update(LoopClock clock);
 

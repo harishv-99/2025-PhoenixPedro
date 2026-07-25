@@ -92,6 +92,12 @@ Phoenix is designed around a few core goals:
    advancing state need not add another cache; they rely on their stateful dependencies to honor
    their own cycle contracts. A cycle cache becomes valid only after the complete operation
    succeeds, so an exception cannot turn a retry into a stale or null success.
+   An effectful `update(clock)` owner is different when polling hardware, writing vendor state, or
+   advancing a filter cannot be rolled back transactionally. It claims the cycle before starting
+   those effects. A successful repeat is a no-op; a same-cycle repeat after a `RuntimeException`
+   rethrows that retained failure instead of silently appearing successful or retrying an effect
+   that may already have occurred. Reentrant update is a lifecycle error. Document which model an
+   update owner uses rather than applying successful-value-cache language to non-transactional work.
    When a third-party follower's supported lifecycle requires updates beyond active route/guidance
    Tasks, it also needs one stable composition-root heartbeat every relevant OpMode loop; those
    Tasks may select behavior but must not become its only lifecycle owner. If both layers can reach
@@ -858,6 +864,7 @@ Several core systems are **idempotent by cycle**:
 * `TaskRunner.update(clock)`
 * Stateful source wrappers like `memoized()`, `risingEdge()`, and `toggled()` (idempotent when sampled with the same clock/cycle)
 * Drive-source compositions that own rate, activation, overlay, or guidance state
+* Localization predictors, estimators, and the lane that owns their complete update graph
 * Third-party adapters whose required lifecycle lets both a composition root and active Tasks call their update hook
 
 Reset follows ownership separately from cycle identity. Structural source decorators clear their
@@ -869,6 +876,14 @@ query's cache; it does not reset those collaborators. Overlay composition simila
 cache and activation bookkeeping without inventing a `DriveOverlay.reset()` hook.
 
 Idempotency prevents subtle bugs when code is layered (menus, testers, helpers) and multiple layers try to “helpfully” update the same system.
+
+Localization also has a second identity boundary: sensor measurement time. The cycle guard prevents
+one owner from advancing twice in one loop, while a corrected estimator consumes a predictor's
+positive-duration `MotionDelta` end timestamp at most once even if a source retains it into a later
+cycle. A predictor does not claim usable motion without positive elapsed time; it retains that
+motion baseline until a strictly later timestamp. Initialization, correction, and manual pose
+rebases mark prior predictor motion as consumed, and a reset epoch makes old measurement identity
+ineligible without exposing raw epoch bookkeeping to robot code.
 
 Captured observation time uses `LoopTimestamp`. Only the owning clock creates a valid value, through
 `nowTimestamp()` or the explicit age-native boundary `timestampSecondsAgo(ageSec)`. The timestamp

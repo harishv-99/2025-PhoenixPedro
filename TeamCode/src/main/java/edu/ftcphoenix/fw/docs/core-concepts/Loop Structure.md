@@ -186,7 +186,30 @@ composition roots.
 
 For buttons, the most common way to ensure sampling is to register a binding and call `Bindings.update(clock)` every loop.
 
-### 4.2 Bindings are idempotent
+### 4.2 Localization publishes one snapshot per cycle
+
+Call the robot's localization lane once in the Sensors phase. Phoenix localization predictors,
+absolute estimators, corrected estimators, and the owning FTC lane claim their first update attempt
+for that `clock.cycle()`. A successful repeat leaves the exact snapshot unchanged and does not poll
+hardware, solve tags, write Limelight orientation, advance a filter, or traverse the lane again.
+Reentrant update is a lifecycle error. If an attempt throws, a same-cycle repeat rethrows that
+failure rather than retrying effects that may already have happened.
+
+Cycle identity and measurement identity solve different problems. Corrected estimators also retain
+the end timestamp of predictor motion already consumed, so a source that holds the same
+`MotionDelta` into another cycle cannot move the fused pose twice. A zero-time predictor sample
+publishes no usable delta and keeps its accepted motion baseline for the next positive-time sample.
+Robot code supplies neither guard: it still writes only:
+
+```java
+localization.update(clock);
+PoseEstimate pose = localization.globalEstimator().getEstimate();
+```
+
+Use the one non-null shared `LoopClock`. Complete camera processor/pipeline transitions before the
+localization phase; a change after this cycle's snapshot was published is reflected next cycle.
+
+### 4.3 Bindings are idempotent
 
 `Bindings.update(clock)` is guarded so it will not fire actions twice in a cycle.
 
@@ -196,13 +219,13 @@ activation once before dispatching any callbacks and uses that snapshot for the 
 frame. If a callback changes a mode used by a context, the new eligibility starts on the next loop.
 The root's same-cycle idempotency covers both root and contextual registrations.
 
-### 4.3 TaskRunner is idempotent
+### 4.4 TaskRunner is idempotent
 
 `TaskRunner.update(clock)` will not advance the current task twice in one loop cycle.
 
 This is critical because advancing tasks twice effectively doubles loop speed and breaks timeouts.
 
-### 4.4 Stateful external followers need a persistent owner
+### 4.5 Stateful external followers need a persistent owner
 
 A route Task is active while its per-route `RouteExecution` reports `RouteStatus.ACTIVE`. Some
 vendor followers still need updates after that execution becomes terminal—for example, Pedro

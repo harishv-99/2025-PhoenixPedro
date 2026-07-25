@@ -290,7 +290,7 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
                     LoopTimestamp.unavailable(),
                     0.0
             );
-    private long lastUpdateCycle = Long.MIN_VALUE;
+    private final UpdateState updateState = new UpdateState();
     private boolean hasPreviousPhysicalHeading;
     private double previousPhysicalHeadingRad;
     private double totalHeadingRad;
@@ -361,37 +361,51 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
     /**
      * Polls Pinpoint once for the supplied cycle and publishes pose, motion, and kinematics.
      *
-     * <p>Repeated calls with the same non-null {@link LoopClock#cycle()} are no-ops, so layered
-     * estimator/integration code cannot poll the hardware twice in one robot loop. A null clock is
-     * retained only for lower-level tools: each null-clock call polls, gives the sample an
-     * unavailable timestamp, and marks its cycle as {@link PinpointKinematicSnapshot#NO_CYCLE}, so
-     * it cannot claim normal same-cycle freshness.</p>
+     * <p>Repeated calls with the same {@link LoopClock#cycle()} are no-ops after a successful
+     * update, so layered estimator/integration code cannot poll the hardware twice in one robot
+     * loop. The cycle is claimed before touching hardware: reentrant updates fail fast, and if the
+     * first attempt throws a {@link RuntimeException}, later calls in that same cycle rethrow that
+     * exact failure instead of retrying a partially completed hardware operation. The next cycle
+     * may attempt an update normally.</p>
      *
-     * @param clock shared robot loop clock, or {@code null} only for lower-level untimed tools
+     * <p>A physical poll at the same timestamp as the accepted motion baseline still refreshes the
+     * absolute pose and kinematic snapshot, but publishes no motion delta and does not consume the
+     * changed pose. The first later positive-time sample therefore includes all motion since the
+     * accepted baseline instead of silently losing it.</p>
+     *
+     * @param clock shared robot loop clock; must not be {@code null}
+     * @throws NullPointerException if {@code clock} is {@code null}
+     * @throws IllegalStateException if this method is called reentrantly
      */
     @Override
     public void update(LoopClock clock) {
-        final long cycle;
-        final LoopTimestamp timestamp;
-        if (clock != null) {
-            cycle = clock.cycle();
-            timestamp = clock.nowTimestamp();
-            if (lastUpdateCycle == cycle) {
-                return;
-            }
-            // Record the attempt before touching hardware so a reentrant/failing call cannot poll twice.
-            lastUpdateCycle = cycle;
-        } else {
-            cycle = PinpointKinematicSnapshot.NO_CYCLE;
-            timestamp = LoopTimestamp.unavailable();
-            // Untimed tooling cannot participate in or poison the normal LoopClock cycle guard.
-            lastUpdateCycle = Long.MIN_VALUE;
+        LoopClock currentClock = Objects.requireNonNull(
+                clock,
+                "PinpointOdometryPredictor.update(clock) requires the shared LoopClock"
+        );
+        if (!updateState.beginUpdate(currentClock)) {
+            return;
         }
 
+        try {
+            updateFromHardware(currentClock.cycle(), currentClock.nowTimestamp());
+        } catch (RuntimeException failure) {
+            // A failed poll may have consumed only part of a hardware sample. Do not bridge a
+            // later motion delta across that unknown interval.
+            updateState.invalidateMotionBaseline();
+            throw updateState.recordFailure(failure);
+        } finally {
+            updateState.endUpdate();
+        }
+    }
+
+    /** Perform the one physical poll for an already-claimed loop cycle. */
+    private void updateFromHardware(long cycle, LoopTimestamp timestamp) {
         odo.update();
         Pose2D pos = odo.getPosition();
 
         if (pos == null) {
+            updateState.invalidateMotionBaseline();
             lastEstimate = PoseEstimate.noPose(timestamp);
             lastMotionDelta = MotionDelta.none(timestamp);
             lastKinematicSnapshot = PinpointKinematicSnapshot.unavailable(
@@ -407,6 +421,7 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
         double headingRad = normalizeDriverHeadingRad(pos.getHeading(AngleUnit.RADIANS));
 
         if (!isFinite(xIn, yIn, headingRad)) {
+            updateState.invalidateMotionBaseline();
             lastEstimate = PoseEstimate.noPose(timestamp);
             lastMotionDelta = MotionDelta.none(timestamp);
             lastKinematicSnapshot = PinpointKinematicSnapshot.unavailable(
@@ -439,22 +454,7 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
         );
 
         Pose3d pose = new Pose3d(xIn, yIn, 0.0, headingRad, 0.0, 0.0);
-        PoseEstimate previous = lastEstimate;
-        double elapsedSec = previous != null
-                ? timestamp.secondsSince(previous.timestamp)
-                : Double.NaN;
-        if (previous != null && previous.hasPose && Double.isFinite(elapsedSec) && elapsedSec >= 0.0) {
-            Pose3d previousPose = previous.fieldToRobotPose;
-            lastMotionDelta = new MotionDelta(
-                    previousPose.inverse().then(pose),
-                    true,
-                    cfg.quality,
-                    previous.timestamp,
-                    timestamp
-            );
-        } else {
-            lastMotionDelta = MotionDelta.none(timestamp);
-        }
+        lastMotionDelta = updateState.observeMotion(pose, timestamp, cfg.quality);
 
         lastEstimate = new PoseEstimate(pose, true, cfg.quality, timestamp);
         lastKinematicSnapshot = PinpointKinematicSnapshot.sampled(
@@ -498,10 +498,16 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
 
     /**
      * Resets the Pinpoint IMU and pose back to 0,0,0.
+     *
+     * <p>Published pose and motion are invalidated before the vendor operation. If that operation
+     * throws after acting partially, callers therefore observe unavailable state rather than a
+     * replayable pre-reset delta.</p>
      */
     public void resetPosAndIMU() {
-        odo.resetPosAndIMU();
+        // The vendor call is not transactional. Invalidate both internal and published state
+        // first so a partial reset cannot leave pre-reset motion or pose available to a caller.
         LoopTimestamp timestamp = lastTimestamp();
+        updateState.invalidateMotionBaseline();
         lastEstimate = PoseEstimate.noPose(timestamp);
         lastMotionDelta = MotionDelta.none(timestamp);
         hasPreviousPhysicalHeading = false;
@@ -512,22 +518,43 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
                 timestamp,
                 0.0
         );
+        odo.resetPosAndIMU();
     }
 
     /**
      * Recalibrates the IMU without resetting pose.
+     *
+     * <p>The last pose is restored only after the vendor operation succeeds. A failure leaves pose,
+     * velocity, and motion unavailable until a later successful physical poll.</p>
      */
     public void recalibrateIMU() {
-        odo.recalibrateIMU();
+        // Preserve the last absolute pose on success, but publish no pose/motion while the
+        // nontransactional vendor operation is in progress or if it fails partway through.
         LoopTimestamp timestamp = lastTimestamp();
+        PoseEstimate previousEstimate = lastEstimate;
+        PinpointKinematicSnapshot previousSnapshot = lastKinematicSnapshot;
+        updateState.invalidateMotionBaseline();
+        lastEstimate = PoseEstimate.noPose(timestamp);
         lastMotionDelta = MotionDelta.none(timestamp);
-        // Establish a new physical-heading baseline after calibration; a calibration jump is not motion.
         hasPreviousPhysicalHeading = false;
-        lastKinematicSnapshot = lastKinematicSnapshot.withoutVelocity();
+        lastKinematicSnapshot = PinpointKinematicSnapshot.unavailable(
+                previousSnapshot.cycle,
+                timestamp,
+                totalHeadingRad
+        );
+
+        odo.recalibrateIMU();
+
+        // Establish a new physical-heading baseline after calibration; a calibration jump is not motion.
+        lastEstimate = previousEstimate;
+        lastKinematicSnapshot = previousSnapshot.withoutVelocity();
     }
 
     /**
      * Snaps both the underlying Pinpoint device and this predictor's cached estimate to a known field pose.
+     *
+     * <p>Published pose and motion fail closed before the vendor write. The requested pose becomes
+     * visible only after that write succeeds.</p>
      */
     @Override
     public void setPose(Pose2d pose) {
@@ -544,8 +571,22 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
                 AngleUnit.RADIANS,
                 rebasedPose.headingRad
         );
-        odo.setPosition(set);
+        // The vendor call is not transactional. Fail closed before it starts so a partial pose
+        // write cannot leave either the old motion interval or old coordinate snapshot visible.
         LoopTimestamp timestamp = lastTimestamp();
+        PinpointKinematicSnapshot previousSnapshot = lastKinematicSnapshot;
+        updateState.invalidateMotionBaseline();
+        lastEstimate = PoseEstimate.noPose(timestamp);
+        lastMotionDelta = MotionDelta.none(timestamp);
+        hasPreviousPhysicalHeading = false;
+        lastKinematicSnapshot = PinpointKinematicSnapshot.unavailable(
+                previousSnapshot.cycle,
+                timestamp,
+                totalHeadingRad
+        );
+
+        odo.setPosition(set);
+
         lastEstimate = new PoseEstimate(new Pose3d(
                 rebasedPose.xInches,
                 rebasedPose.yInches,
@@ -555,10 +596,11 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
                 0.0
         ), true, cfg.quality, timestamp);
         lastMotionDelta = MotionDelta.none(timestamp);
+        updateState.rebaseMotionBaseline(lastEstimate.fieldToRobotPose, timestamp);
         // A coordinate correction is not physical motion; retain the last measured velocity/turn.
         previousPhysicalHeadingRad = rebasedPose.headingRad;
         hasPreviousPhysicalHeading = true;
-        lastKinematicSnapshot = lastKinematicSnapshot.withRebasedPose(rebasedPose);
+        lastKinematicSnapshot = previousSnapshot.withRebasedPose(rebasedPose);
     }
 
     private LoopTimestamp lastTimestamp() {
@@ -610,7 +652,116 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
                 .addData(p + ".lastEstimate", lastEstimate)
                 .addData(p + ".lastMotionDelta", lastMotionDelta)
                 .addData(p + ".lastKinematicSnapshot", lastKinematicSnapshot)
-                .addData(p + ".lastUpdateCycle", lastUpdateCycle);
+                .addData(p + ".lastUpdateCycle", updateState.lastUpdateCycle());
         cfg.debugDump(dbg, p + ".cfg");
+    }
+
+    /**
+     * Pure-Java state for cycle-attempt ownership and accepted motion baselines.
+     *
+     * <p>Package-private visibility keeps the production hardware boundary small while allowing
+     * deterministic tests to exercise the timing rules without mocking the FTC I2C driver.</p>
+     */
+    static final class UpdateState {
+        private long lastUpdateCycle = Long.MIN_VALUE;
+        private boolean updateInProgress;
+        private RuntimeException lastUpdateFailure;
+
+        private boolean hasMotionBaseline;
+        private Pose3d motionBaselinePose = Pose3d.zero();
+        private LoopTimestamp motionBaselineTimestamp = LoopTimestamp.unavailable();
+
+        /** Claim one cycle before its hardware effects, or report a completed duplicate. */
+        boolean beginUpdate(LoopClock clock) {
+            LoopClock currentClock = Objects.requireNonNull(
+                    clock,
+                    "Pinpoint update state requires the shared LoopClock"
+            );
+            long cycle = currentClock.cycle();
+            if (updateInProgress) {
+                throw new IllegalStateException(
+                        "PinpointOdometryPredictor.update(clock) reentered while cycle "
+                                + lastUpdateCycle + " was still in progress; one Pinpoint owner "
+                                + "may poll hardware once per cycle"
+                );
+            }
+            if (lastUpdateCycle == cycle) {
+                if (lastUpdateFailure != null) {
+                    throw lastUpdateFailure;
+                }
+                return false;
+            }
+
+            lastUpdateCycle = cycle;
+            lastUpdateFailure = null;
+            updateInProgress = true;
+            return true;
+        }
+
+        /** Retain the first RuntimeException produced by the claimed cycle. */
+        RuntimeException recordFailure(RuntimeException failure) {
+            RuntimeException requiredFailure = Objects.requireNonNull(failure, "failure");
+            if (lastUpdateFailure == null) {
+                lastUpdateFailure = requiredFailure;
+            }
+            return lastUpdateFailure;
+        }
+
+        /** Finish the claimed attempt without making the cycle eligible for another poll. */
+        void endUpdate() {
+            updateInProgress = false;
+        }
+
+        /**
+         * Publish one motion delta only when positive time has elapsed from the accepted baseline.
+         */
+        MotionDelta observeMotion(Pose3d pose,
+                                  LoopTimestamp timestamp,
+                                  double quality) {
+            Pose3d currentPose = Objects.requireNonNull(pose, "pose");
+            LoopTimestamp currentTimestamp = Objects.requireNonNull(timestamp, "timestamp");
+
+            if (!hasMotionBaseline) {
+                rebaseMotionBaseline(currentPose, currentTimestamp);
+                return MotionDelta.none(currentTimestamp);
+            }
+
+            double elapsedSec = currentTimestamp.secondsSince(motionBaselineTimestamp);
+            if (!Double.isFinite(elapsedSec) || elapsedSec < 0.0) {
+                rebaseMotionBaseline(currentPose, currentTimestamp);
+                return MotionDelta.none(currentTimestamp);
+            }
+            if (elapsedSec == 0.0) {
+                return MotionDelta.none(currentTimestamp);
+            }
+
+            MotionDelta result = new MotionDelta(
+                    motionBaselinePose.inverse().then(currentPose),
+                    true,
+                    quality,
+                    motionBaselineTimestamp,
+                    currentTimestamp
+            );
+            rebaseMotionBaseline(currentPose, currentTimestamp);
+            return result;
+        }
+
+        /** Anchor later motion to a deliberate coordinate rebase. */
+        void rebaseMotionBaseline(Pose3d pose, LoopTimestamp timestamp) {
+            motionBaselinePose = Objects.requireNonNull(pose, "pose");
+            motionBaselineTimestamp = Objects.requireNonNull(timestamp, "timestamp");
+            hasMotionBaseline = true;
+        }
+
+        /** Require the next valid sample to establish a fresh physical-motion baseline. */
+        void invalidateMotionBaseline() {
+            hasMotionBaseline = false;
+            motionBaselinePose = Pose3d.zero();
+            motionBaselineTimestamp = LoopTimestamp.unavailable();
+        }
+
+        long lastUpdateCycle() {
+            return lastUpdateCycle;
+        }
     }
 }

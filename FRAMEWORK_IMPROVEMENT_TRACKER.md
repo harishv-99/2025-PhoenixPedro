@@ -130,7 +130,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 43 | VISION-02 | Stable AprilTag observation timestamps | Done | Stable backend-owned frame timestamps, exact propagation, fail-closed reset/replay handling, synchronized documentation, verification, and Android Studio review are complete. |
 | 44 | TARGET-03 | Periodic planner complexity | Done | Constant-time deterministic periodic selection, synchronized docs, and 21 focused regressions were reviewed and approved on 2026-07-23. |
 | 45 | CYCLE-01 | Stateful drive-source cycle safety | Done | Cycle-safe drive/guidance owners, owner-safe reset boundaries, overlay lifecycle validation, synchronized documentation, and 27 focused regressions were reviewed and approved on 2026-07-24. |
-| 46 | CYCLE-02 | Localization cycle safety | Proposed | Guard predictors/estimators against duplicate same-cycle updates. |
+| 46 | CYCLE-02 | Localization cycle safety | Done | Owner-local attempt guards, timestamp-defended motion consumption, zero-time/rebase safety, synchronized documentation, and 80 focused regressions were reviewed and approved on 2026-07-24. |
 | 47 | SOURCE-01 | Boolean composition sampling | Proposed | Sample both operands once per cycle before combining stateful results. |
 | 48 | API-01 | Writable Plant command binding | Proposed | Keep one simple `Plant` if builder provenance can prevent silent no-op writes. |
 | 49 | API-02 | Feedback tolerance choice | Proposed | Ask for tolerance after unit mapping; retain an explicitly named native default only if useful. |
@@ -5566,7 +5566,203 @@ writer, and explicit lifecycle ownership.
   defense against duplicated sensor samples.
 - **Completion:** predictor, fusion estimator, and lane tests cover duplicate cycle and duplicate
   timestamp behavior without suppressing legitimate next-cycle updates.
-- **Decision record:** _Pending._
+- **Decision record (2026-07-24):** **Ready; major lifecycle-contract approval is required and no
+  implementation is authorized yet.** The leading cycle-guard-plus-timestamp-defense hypothesis is
+  confirmed, with one additional predictor-baseline correction needed to avoid losing motion when
+  two different cycles have the same numeric clock time.
+- **Confirmed behavior:** the defect is reproducible through this current production call path:
+
+  1. `FtcOdometryAprilTagLocalizationLane.update(clock)` calls the selected corrected estimator.
+  2. Fusion/EKF asks Pinpoint to update, obtains a positive `MotionDelta`, and applies it once.
+  3. A second lane/estimator call in the same `clock.cycle()` reaches Pinpoint's existing guard, so
+     hardware is not polled again, but Fusion/EKF reads the retained delta and applies it a second
+     time. EKF also adds process covariance again; both estimators disturb predictor replay history,
+     and the retained correction frame is counted as another duplicate evaluation.
+
+  A second timestamp defect is also confirmed. Pinpoint currently derives motion from its last
+  published absolute estimate. If the cycle advances while `clock.nowSec()` does not, a moved pose
+  produces a `hasDelta` value with zero duration and replaces that baseline. Merely rejecting the
+  zero-duration delta downstream then loses the movement from the next positive-time interval.
+  This differs from the already-established `ScalarSource.ratePerSecond()` rule, which retains its
+  last accepted baseline through a zero-time cycle.
+- **Existing test baseline:** the current correction-timestamp, lane-ownership, and AprilTag
+  timestamp suites pass (**10 tests / 0 failures / 0 errors / 0 skipped**). They cover repeated
+  correction frames, clock epochs, and construction ownership, but do not repeat a corrected
+  estimator/lane update in one cycle, retain a positive predictor delta into a later cycle, or move
+  Pinpoint during a zero-time cycle. The bug is therefore a missing lifecycle contract and missing
+  regression coverage, not a current test failure.
+- **Current callers and ownership:** Phoenix TeleOp constructs one lane-owned Pinpoint predictor;
+  Phoenix Auto injects the one predictor owned by `PedroPathingRuntime`; both use the same ordinary
+  call `localization.update(clock)`. `BasicPedroAutoRobot`, Pinpoint calibration tools, the fusion
+  tester, and the AprilTag localization tester legitimately update lower-level owners directly.
+  Fusion, EKF, AprilTag, and Limelight estimators are also public and documented for advanced direct
+  composition. Pedro remains passive on the localization side: it consumes the current-cycle
+  Pinpoint snapshot and does not perform a second physical poll.
+- **Framework Principles and simplicity test:** one OpMode cycle must advance localization once;
+  the state/effect owner must provide the protection; the one shared `LoopClock` supplies identity;
+  hardware/vendor effects stay at their boundaries; and robot code must not learn a memoization
+  wrapper, frame ID, timestamp token, reset hook, or second update API. The selected design adds
+  zero robot-side calls and zero student-facing concepts.
+- **Alternatives considered:**
+
+  1. **No change or documentation only:** shortest implementation, but leaves deterministic pose
+     and covariance corruption, so documentation cannot make the current public methods safe.
+  2. **Guard only the FTC lane:** preserves the common call but leaves the documented direct
+     Fusion/EKF/AprilTag/Limelight paths unsafe and cannot reject a retained delta in a later cycle.
+  3. **Guard only Fusion/EKF:** prevents the double propagation but repeats lane traversal, raw pose
+     work, and Limelight MT2 yaw writes; a later-cycle retained delta still remains dangerous.
+  4. **Timestamp checks only:** protects measurement identity across cycles but still repeats child
+     updates, vendor effects, diagnostics, and no-pose transitions within a cycle.
+  5. **A public decorator, wrapper, factory, cycle argument, or generic reset API:** could centralize
+     bookkeeping, but makes correctness optional and adds a concept/call that students must remember.
+     The concrete owner already has the required clock and is the correct place for the invariant.
+  6. **Owner-local guards plus canonical timestamps:** the only alternative that protects the
+     ordinary lane, supported direct owners, same-cycle effects, and later-cycle retained samples
+     without changing the robot-facing API. **Selected.**
+- **Chosen update contract:** require one non-null shared `LoopClock` for
+  `AbsolutePoseEstimator.update(clock)` and remove Pinpoint's unused null-clock tooling exception.
+  Pinpoint, `AprilTagPoseEstimator`, `LimelightFieldPoseEstimator`, both corrected estimators, and
+  `FtcOdometryAprilTagLocalizationLane` each claim the first update attempt for a cycle before
+  invoking owned sources, filters, hardware polls, or Limelight orientation writes. A successful
+  attempt publishes one stable snapshot; later calls in that cycle return without repeating work.
+  A reentrant call fails fast. If the first attempt throws a `RuntimeException`, the owner retains
+  and rethrows that failure on a same-cycle repeat rather than silently pretending success or
+  retrying non-transactional effects. A later cycle may attempt again, although production
+  composition roots normally fail-stop on the original exception.
+- **Why both lane and child guards are intentional:** the lane owns one traversal of its complete
+  graph, while each estimator/predictor owns its direct public lifecycle and remains safe when
+  shared or used outside that lane. This is layered ownership, not a second student-visible path.
+- **Predictor measurement design:** make Pinpoint's absolute pose/kinematic publication independent
+  from a small retained accepted-motion baseline. A new-cycle sample at the same numeric time still
+  publishes its current absolute snapshot, but publishes `MotionDelta.none(...)` and does not
+  consume the changed pose. The next strictly later timestamp emits the accumulated motion once.
+  Clock-epoch changes and Pinpoint pose/IMU reset or recalibration establish a fresh baseline;
+  `setPose(...)` anchors it to the corrected pose. Strengthen `MotionPredictor`/`MotionDelta`
+  documentation so a usable delta has a strictly positive current-epoch interval and its end
+  timestamp belongs to the coherent latest predictor publication.
+- **Corrected-estimator timestamp design:** Fusion and EKF retain the end timestamp of predictor
+  motion already consumed or covered by initialization/rebase. They apply only a usable interval
+  with a current-epoch end timestamp strictly newer than that watermark. Equal or older retained
+  deltas are skipped without blocking a genuinely new absolute correction. Predictor-history
+  insertion likewise ignores equal/older retained samples instead of clearing trustworthy replay
+  history. Existing correction-frame timestamp deduplication remains separate and unchanged.
+- **Reset/rebase design:** `clock.reset(...)` already advances the cycle and timestamp epoch, so the
+  next update is eligible while pre-reset motion/correction identities fail closed. A manual
+  `setPose(...)`, accepted correction, Pinpoint reset/recalibration, or predictor push does not
+  reopen an already-attempted cycle. It instead rebases/clears the owned motion identity so the
+  pre-anchor delta cannot replay. Lightweight Fusion will also publish its manually anchored
+  `PoseEstimate` immediately and clear its recent-correction confidence state, matching
+  `PoseResetter` and the already-immediate Pinpoint/EKF behavior.
+- **One-cycle dependency snapshot:** webcam processor or Limelight pipeline changes must complete
+  before that cycle's first localization update. A later transition is observed by estimator/lane
+  state on the next cycle; vendor generation numbers do not leak into the generic estimator API.
+  The acquisition owners keep their existing immediate invalidation behavior for direct sensor
+  consumers that have not yet published an estimator snapshot.
+- **Student-facing result:** ordinary code remains exactly:
+
+  ```java
+  localization.update(clock);
+  PoseEstimate pose = localization.globalEstimator().getEstimate();
+  ```
+
+  Students still advance one lane in the documented localization phase and never compare cycles,
+  timestamps, epochs, or predictor-delta identities themselves.
+- **Bounded implementation scope:** update the lifecycle/timestamp Javadocs for
+  `AbsolutePoseEstimator`, `MotionPredictor`, and `MotionDelta`; the six concrete/public update
+  owners above; a small package-private Pinpoint motion-baseline helper if that keeps the zero-time
+  algorithm independently testable; focused tests; Framework Principles, Loop Structure,
+  Framework Overview, the localization/lane guides, Pedro ownership wording, and Phoenix
+  Architecture. Do not add public APIs, change Phoenix/Basic Pedro call sites, alter fusion tuning,
+  redesign correction policy, or modify Pedro's already-correct passive-localizer heartbeat.
+- **Verification plan:** add focused Fusion and EKF tests proving exact same-object estimate,
+  source-call, correction-counter, pose, and covariance stability on a repeated cycle; one-time
+  consumption of a retained positive delta; fresh later-delta acceptance; duplicate/out-of-order
+  history preservation; current-epoch reset behavior; independent new-correction processing; and
+  immediate owner-safe `setPose`. Add Pinpoint baseline tests for duplicate-cycle suppression,
+  zero-time accumulation, epoch reset, hardware reset/recalibration, and pose rebase. Extend the FTC
+  lane test for both corrected-estimator modes; AprilTag and fake-Limelight coverage for one sensor
+  sample/solve or MT2 yaw write per cycle and next-cycle refresh; and the Pedro passive-localizer
+  regression for exact-cycle/current-epoch consumption. Test retained failure and reentry semantics.
+  Then run all focused suites, full `:TeamCode:testDebugUnitTest`,
+  `:TeamCode:compileDebugJavaWithJavac`, public-caller/documentation searches, and
+  `git diff --check`.
+- **Hardware scope:** no hardware is needed to prove cycle identity, timestamp ordering, retained
+  baseline behavior, reset epochs, or call counts. Physical odometry and vision accuracy remain
+  adopting-robot validation and are not claimed here.
+- **Approval gate:** implementation has not started. Because this tightens the public
+  `AbsolutePoseEstimator`/`MotionPredictor` lifecycle, removes Pinpoint's null-clock exception, and
+  defines failure and rebase behavior, proceed only if the user replies
+  `Approve CYCLE-02 owner-local cycle guards and timestamp-defended motion design`.
+- **Design approval (2026-07-24):** the user replied
+  `Approve CYCLE-02 owner-local cycle guards and timestamp-defended motion design`. This authorizes
+  Gate 2 implementation of CYCLE-02 only; it does not authorize CYCLE-02 publication or another
+  tracker item.
+- **Implementation (2026-07-24):** Pinpoint, raw AprilTag, direct Limelight, Fusion, EKF, and the
+  owning FTC localization lane now claim their first update attempt before any source, hardware,
+  vendor, filter, or child-owner effect. A successful same-cycle repeat is an exact no-op;
+  reentry fails fast; a same-cycle repeat after a `RuntimeException` rethrows the exact retained
+  failure; and a later cycle remains eligible. The ordinary robot call remains
+  `localization.update(clock)` with the one shared non-null `LoopClock`; no wrapper, cycle token,
+  timestamp argument, or second update API was added.
+- **Predictor publication and lifecycle safety (2026-07-24):** Pinpoint now keeps its current
+  absolute/kinematic publication separate from an accepted motion baseline. A changed pose at zero
+  elapsed time publishes `MotionDelta.none(...)` without consuming that baseline, so the first
+  strictly later sample emits the accumulated movement once. `MotionDelta` rejects a claimed usable
+  interval unless its timestamps belong to the same clock's current epoch and have strictly
+  positive duration. Clock epochs and successful pose/IMU lifecycle changes establish fresh
+  baselines. Reset, recalibration, and pose-write methods invalidate public pose/motion/kinematic
+  state before nontransactional vendor effects, then publish success state afterward, so a partial
+  vendor failure cannot expose a replayable pre-operation delta.
+- **Corrected-estimator motion ownership (2026-07-24):** Fusion and EKF consume a predictor interval
+  only when its current-epoch end timestamp is strictly newer than the last motion already applied
+  or covered. Equal/older retained deltas are ignored without clearing trustworthy replay history
+  or blocking an independent new correction; every positive interval remains eligible, including
+  sub-microsecond intervals. Initialization, accepted corrections, and manual pose anchors rebase
+  predictor history and publish manual estimates immediately. A private three-state rebase cursor
+  excludes any pre-anchor prefix when push-back is disabled: it derives motion from a truthful
+  predictor pose captured at/after the anchor, or conservatively consumes the first
+  unpartitionable crossing interval as a new base when that pose is initially missing or stale.
+  Push-enabled anchors use the corrected pose at the anchor timestamp and are still attempted only
+  once per cycle.
+- **Student-facing result and documentation (2026-07-24):** Framework Principles now distinguishes
+  successful-value caches from attempt-idempotent nontransactional update owners. The localization,
+  loop, lane, overview, Pedro, and Phoenix Architecture guides document the same cycle-versus-
+  measurement identity, strictly positive accepted-baseline interval, one-cycle dependency
+  snapshot, failure, and rebase rules. Students still advance one localization lane and read one
+  estimate; epochs, watermark state, and conservative straddling-interval handling stay inside the
+  framework.
+- **Adversarial review (2026-07-24):** two independent read-only reviews checked the implementation,
+  tests, callers, and documentation against the approved design and Framework Principles. They
+  exposed an initially stale public Pinpoint delta after a partially failed reset/recalibration/
+  pose write; end-timestamp-only rebase handling that could replay a zero-time pre-anchor prefix;
+  unsafe missing/stale predictor-base ordering; an accidental one-microsecond motion cutoff;
+  missing push-enabled regressions; and stale "since the last update" documentation. All were
+  corrected. The final reviews report no remaining CYCLE-02 finding, public-API regression, or
+  adjacent-item scope leak; a broad test-only Pinpoint vendor adapter was explicitly rejected as
+  disproportionate to the small linear boundary ordering.
+- **Automated verification (2026-07-24):** the nine focused suites report **80 tests, 0 failures,
+  0 errors, 0 skipped** across MotionDelta validity, Pinpoint cycle/baseline and kinematic snapshots,
+  AprilTag/Limelight sampling, both FTC lane modes, Fusion/EKF cycle/timestamp/rebase behavior, and
+  Pedro passive-localizer consumption. A forced complete `:TeamCode:testDebugUnitTest` run reports
+  **96 suites / 905 tests / 0 failures / 0 errors / 0 skipped**, and
+  `:TeamCode:compileDebugJavaWithJavac` succeeds in the same clean rerun. Current caller searches
+  confirm no production null-clock use or robot-call change; changed/untracked trailing-whitespace
+  checks and `git diff --check` pass. Gradle emits only the existing Java 8 source/target and FTC
+  sample deprecation warnings.
+- **Verification hardware scope:** no robot hardware is required to prove deterministic cycle,
+  timestamp, baseline, failure-retention, and rebase semantics. Physical Pinpoint/vision accuracy
+  and adopting-robot tuning remain hardware validation and are not claimed by this task.
+- **Android Studio audit point (2026-07-24):** inspect `PinpointOdometryPredictor` and
+  `MotionDelta`/`MotionPredictor` for accepted-baseline and fail-closed lifecycle rules; inspect
+  `AprilTagPoseEstimator`, `LimelightFieldPoseEstimator`, and
+  `FtcOdometryAprilTagLocalizationLane` for one attempt-stable cycle traversal; inspect both
+  corrected estimators for the motion watermark and rebase cursor; then inspect the nine focused
+  suites and synchronized Framework Principles/guides. No files are staged, committed, pushed, or
+  merged. Stop without starting SOURCE-01 until the user replies `CYCLE-02 looks good`.
+- **Manual verification and approval (2026-07-24):** the user reviewed CYCLE-02 in Android Studio
+  and replied `CYCLE-02 looks good`. CYCLE-02 is **Done**, and this authorizes Gate 3 staging,
+  publication, and merge. The user's follow-up separately authorizes starting SOURCE-01 only after
+  CYCLE-02 has been committed and merged.
 
 ### SOURCE-01 - Boolean composition sampling
 
