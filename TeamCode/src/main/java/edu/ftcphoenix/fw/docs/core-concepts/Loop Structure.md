@@ -166,6 +166,13 @@ Examples:
 
 These wrappers only advance once per cycle <em>when sampled</em>. If you never sample an edge/toggle source during a cycle, it cannot observe that transition.
 
+Sampling a `BooleanSource.and(...)` or `or(...)` composite observes the left operand first. If that
+succeeds, it observes the right operand once regardless of the left Boolean value, then combines
+their values. A decisive left value therefore does not freeze a stateful right operand. This does
+not make the source graph push-based: if the composite is not sampled, neither operand is sampled
+through that graph. Conditional producers such as `BooleanSource.choose(...)` remain intentionally
+branch-lazy.
+
 The state owner provides that protection. Robot code does not need to remember an outer
 `memoized()` call around a stateful drive composition. Repeated reads of a conditional overlay or
 built overlay stack in one cycle return the same successful command and do not resample the base,

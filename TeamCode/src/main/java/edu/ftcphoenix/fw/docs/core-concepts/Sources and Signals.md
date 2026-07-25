@@ -80,6 +80,14 @@ Common transforms:
 
 * `not()`, `and(...)`, `or(...)`
 
+`and(...)` and `or(...)` describe logical observations, not Java short-circuit control flow. A
+composite sample observes the left operand first. If that succeeds, Phoenix observes the right
+operand once regardless of the left Boolean value, then applies the ordinary truth table. This
+keeps a right-hand debouncer, edge detector, toggle, or other stateful source current even while the
+left value determines the combined result. The combinator does not add a cache: each stateful
+operand owns its own same-cycle protection, and no operand is sampled when the composite itself is
+not sampled. Use `choose(...)` when only one selected producer should be sampled.
+
 ---
 
 ## Plants as sources
@@ -280,6 +288,8 @@ Phoenix makes all three patterns explicit and composable.
 ### Selection: `choose(...)`
 
 `BooleanSource.choose(...)` selects between two other sources based on the boolean's value.
+Each observation samples the condition first and then only the selected branch. The unselected
+branch is intentionally not sampled.
 
 Example: use an auto-aim computed shooter speed only when aim is locked; otherwise use a manual
 driver-set speed.

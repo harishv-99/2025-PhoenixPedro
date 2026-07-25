@@ -90,7 +90,12 @@ Phoenix is designed around a few core goals:
    protection. It must return one successful observation for one `clock.cycle()` instead of
    requiring robot code to remember an outer `memoized()` wrapper. Pure transformations that own no
    advancing state need not add another cache; they rely on their stateful dependencies to honor
-   their own cycle contracts. A cycle cache becomes valid only after the complete operation
+   their own cycle contracts. Boolean conjunction and disjunction are logical source observations,
+   not Java control-flow guards: a composite sample observes the left operand first; if that
+   succeeds, it observes the right operand once regardless of the left Boolean value, then combines
+   the values. The combinator remains pure and uncached; its stateful operands provide their own
+   same-cycle result. Deliberate branch selection, such as `choose(...)`, remains lazy and samples
+   only the selected producer. A cycle cache becomes valid only after the complete operation
    succeeds, so an exception cannot turn a retry into a stale or null success.
    An effectful `update(clock)` owner is different when polling hardware, writing vendor state, or
    advancing a filter cannot be rolled back transactionally. It claims the cycle before starting
