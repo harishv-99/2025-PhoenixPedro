@@ -17,6 +17,14 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
  * {@link Bindings.ControlContext} applies that context's activation policy before a task factory is
  * invoked; context deactivation does not cancel work already accepted by the shared runner.</p>
  *
+ * <p>Each method immediately adds one declaration to the supplied registrar. {@code TaskBindings}
+ * creates no separate dispatch phase or priority. When the registrar is a {@link Bindings} root or
+ * {@link Bindings.ControlContext}, accepted factories are invoked in the parent's declaration
+ * order among ordinary root/context registrations, and their Tasks are enqueued in that order.
+ * The runner's FIFO execution is a separate responsibility. If several steps form one dependent
+ * behavior, compose one fresh Task graph instead of treating binding order as Task priority or
+ * cancellation policy.</p>
+ *
  * <h2>Usage</h2>
  *
  * <pre>{@code

@@ -1,6 +1,6 @@
 # Framework Improvement Tracker
 
-Last updated: 2026-07-26
+Last updated: 2026-07-27
 
 This file tracks proposed Phoenix framework improvements. It is deliberately a planning document:
 an item being listed here does **not** mean its current proposed solution has been approved. Each
@@ -134,7 +134,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 47 | SOURCE-01 | Boolean composition sampling | Done | Eager `and()`/`or()` observation, explicit lazy selection, synchronized docs, and 12 focused regressions were reviewed and approved on 2026-07-24. |
 | 48 | API-01 | Graph-owned Plant command binding | Done | Graph-owned command provenance, parallel Plant vocabulary, caller/docs migration, verification, and Android Studio review are complete. |
 | 49 | API-02 | Feedback tolerance choice | Done | Required public-unit tolerances, minimally staged FTC and mapped construction, private mapped builders, synchronized docs, verification, and Android Studio review are complete. |
-| 50 | API-04 | Binding execution order | Proposed | Preserve declaration order unless explicit phases are proven necessary. |
+| 50 | API-04 | Binding execution order | Done | Approved global declaration-ordered traversal with context snapshots first, no phase/priority API, and fail-fast structural mutation during dispatch. |
 | 51 | API-05 | One beginner drive entry point | Proposed | Teach the lane as the robot-facing path and keep the raw factory as a lower-level tool. |
 | 52 | COMMON-02 | Telemetry commit ownership | Proposed | Renderers add data; the composition root commits once. |
 | 53 | CHECK-01 | Staged whole-robot system check | Deferred | Meaningful Phoenix thresholds, hazardous-motion confirmation, and physical safe-state evidence require the assembled robot. |
@@ -6661,15 +6661,178 @@ writer, and explicit lifecycle ownership.
 
 ### API-04 - Binding execution order
 
-- **Problem to confirm:** bindings are grouped by type internally, so execution precedence differs
-  from declaration order when different binding kinds affect the same intent.
-- **Alternatives to compare:** one ordered binding list; explicit phases/priorities; or reject multiple
-  writers to one target.
-- **Leading hypothesis:** declaration order is easiest to teach, but conflicting intent ownership
-  should be checked before relying on order as policy.
-- **Completion:** precedence is deterministic, visible at the call site, and covered across binding
-  kinds without changing per-cycle edge semantics.
-- **Decision record:** _Pending._
+- **Confirmed pre-implementation behavior:** `Bindings` stores seven separate lists and always dispatches them
+  as rise, fall, mirror-on-change, level, toggle-on-rise, nudge-on-rise, then scalar-copy. Declaration
+  order is preserved only within one kind. For example, the first declaration below currently runs
+  second even though nothing at the call site names that precedence:
+
+  ```java
+  bindings.copyEachCycle(value, ignored -> calls.add("declared-first"));
+  bindings.whileHigh(BooleanSource.constant(true),
+          () -> calls.add("declared-second"));
+  ```
+
+  The pre-dispatch context-activation snapshot is different from those accidental type phases. It
+  deliberately gives the whole input frame one eligibility answer, and existing context tests and
+  documentation rely on a mode changed by a callback becoming visible on the next loop.
+- **Complete maintained-caller audit:** 31 `Bindings` construction sites, 29 control contexts, and
+  163 registration invocations were inspected across maintained main code and tests. Modern Phoenix
+  production has two roots and 14 effective registrations; examples have eight roots and 25
+  registrations. `TaskBindings.of(...)` has three test callers and no current production caller,
+  but it delegates to the same registrar and therefore inherits the hidden order for Task enqueueing.
+  The root regression test is the only explicit dependency on the type-bucket order, and it is
+  protecting implementation behavior rather than a documented public contract. No maintained
+  production caller requires those buckets.
+- **Concrete ownership evidence:** `PhoenixTeleOpControls` declares toggles, a suggested-shot-
+  velocity capture, two mirrors, and a velocity nudge. Runtime currently reorders those as capture,
+  mirrors, toggles, then nudge. Most callbacks affect independent intents, but capture and nudge both
+  update `ScoringPath`'s selected velocity; if both controls rise together, their final result is
+  order-dependent. Current bucket order only happens to match their source order. Several same-kind
+  examples and UI helpers also intentionally update one owner in declaration order. Conversely,
+  AprilTag testers contain legitimate aliases that call the same adjustment through different
+  buttons, and mutually exclusive contexts intentionally reuse controls and capability methods.
+  These callers show that shared destinations are sometimes real policy and sometimes harmless;
+  callback identity cannot distinguish them.
+- **Public API and construction-layer audit:** root `Bindings` and `ControlContext` deliberately
+  share the declaration-only `BindingRegistrar` capability. Reusable menus, pickers, tuners, and
+  `TaskBindings` accept that capability without gaining `update`, `clear`, or context ownership.
+  `TaskBindings` is a distinct adapter from input events to one `TaskRunner`, not a duplicate
+  construction path. There is no binding builder, phase type, priority type, registration handle,
+  or second ordering API. Registration callbacks and sources are retained by the binding graph, so
+  the staged-builder/inline-parameter-wrapper question does not apply. The selected change requires
+  no new public method, overload, type, or call-site spelling.
+- **Alternatives compared:**
+  - Keeping the implementation and documenting the bucket order was rejected because it turns
+    private storage categories into student policy while leaving precedence invisible at each call.
+  - Merely rearranging the seven loops was rejected because any fixed type order still disagrees
+    with some valid declaration order.
+  - Retaining typed lists plus sequence numbers and merging them at runtime was rejected because it
+    implements the same contract with more state and traversal complexity than one ordered list.
+  - Explicit phases, numeric priorities, or an `inPhase(...)` registrar were rejected because no
+    caller demonstrates a reusable phase model. They add tie-breaking, context, and helper-
+    propagation rules to every advanced case while still leaving output ownership to robot code.
+  - Automatic duplicate-writer rejection is not truthful with `Runnable`, `Consumer<Boolean>`, or
+    `DoubleConsumer`: Java lambda/method-reference identity does not expose a stable receiver,
+    field, capability, or final intent. Reliable enforcement would require a new explicit intent
+    key on every registration, reject legitimate aliases/contexts unless more policy were added,
+    and still could not inspect callback side effects.
+  - Combining dependent actions in one callback remains the clearest local expression when they
+    form one atomic behavior, but it does not fix surprising order between ordinary independent
+    declarations or helper-registered blocks.
+- **Selected internal design:** replace the seven execution lists with one private ordered
+  registration list. Every existing private binding implementation participates in one private
+  dispatch interface, and root, context, helper, and `TaskBindings` registrations append at the
+  point they are declared. `update(clock)` continues to snapshot all existing context activations
+  first, in context-creation order, then visits every registration exactly once in global
+  declaration order. Keep per-kind metadata or counters only for the existing stable debug-count
+  keys; do not preserve multiple execution collections for diagnostics.
+- **Stable-graph rule during dispatch:** registration, `contextWhen(...)`, and `clear()` will fail
+  before mutation if invoked from a binding callback while `update(...)` is traversing. Current
+  callback-time mutation is neither documented nor used in-repository and is already unsafe:
+  adding to the current/later bucket may run immediately, adding to an earlier bucket waits, a new
+  context misses the activation snapshot, and `clear()` mutates the indexed traversal and resets
+  its cycle guard. Silently deferring mutations would add a queue, next-frame lifecycle, and clear-
+  versus-add conflict policy. One private `updating` guard with an actionable error is the smallest
+  deterministic contract; a `finally` releases only that guard if sampling or a callback fails.
+- **Semantics explicitly preserved:** all existing rising/falling-edge baselines, levels,
+  mirror initialization/neutralization, toggle state, nudge state, scalar neutral/rearm behavior,
+  context activation policies, same-cycle successful-update idempotency, ordinary out-of-update
+  `clear()` rebuilding, and debug keys remain. Context activation is still sampled before every
+  ordinary binding source or callback. Declaration order sequences source samples and produced
+  effects; it is not input consumption, priority, cancellation, or arbitration. Overlapping
+  contexts still all run. A final output with competing policies remains one robot-owned composed
+  source/capability/supervisor decision, and the existing one-final-command rule for
+  `copyEachCycle(...)` remains.
+- **Student-facing comparison:**
+
+  | Design | Ordinary robot declaration | Extra decisions introduced |
+  |---|---|---|
+  | Hidden type buckets | `copyEachCycle(...); onRise(...);` | Student must know an undocumented global kind table to predict order. |
+  | Explicit phases/priorities | `inPhase(CONTINUOUS).copyEachCycle(...); inPhase(OVERRIDE).onRise(...);` | Phase names, priority/tie policy, and propagation through helpers/contexts. |
+  | Intent-key rejection | `forIntent("lift.command").copyEachCycle(...);` | Stable key ownership and alias/context exceptions, without proving callback effects. |
+  | Declaration order (selected) | Existing calls unchanged and read top-to-bottom. | No new concept; combine actions in one callback when their dependency is one behavior. |
+
+- **Framework Principles check:** the design removes hidden precedence, keeps one obvious
+  registration surface, preserves the smallest shared `BindingRegistrar` capability, and keeps
+  arbitration with the owner that understands the intent. Implementation will add the concrete
+  binding rule to `Framework Principles.md`: after the context-snapshot prepass, eligible bindings
+  execute in declaration order across kinds; this sequencing must not be presented as competing-
+  output ownership. The improvement skill already requires caller, public-surface, principles,
+  simplicity, and adversarial lifecycle audits; it needs no workflow change for this finding.
+- **Bounded scope:** API-04 will not catch, continue after, retain, or rethrow callback failures.
+  `lastUpdatedCycle` is currently claimed before effects, earlier callbacks may already have run,
+  and a same-cycle retry returns; INPUT-02 separately owns that failure-retention decision. API-04
+  also does not add Task priorities, input consumption, output-resource keys, or a generic scheduler.
+- **Verification required:**
+  - Replace the old phase-order assertion with scrambled cross-kind root declarations covering
+    rise, fall, mirror, high/low, toggle, nudge, and scalar copy, and prove global declaration order
+    after the required baselines.
+  - Interleave root and contextual registrations and prove one global order while every context is
+    still snapshotted before callbacks; retain all existing activation, rearm, neutralization,
+    overlap, same-cycle, and clear/rebuild regressions.
+  - Add mixed-kind `TaskBindings` coverage proving factory/enqueue order and retain FIFO runner
+    behavior as a separate responsibility.
+  - Prove registration, context creation, and clear during dispatch fail before graph mutation,
+    while ordinary initialization and test-time rebuilding remain valid. Preserve debug counts
+    before and after clear.
+  - Synchronize `Bindings`/`BindingRegistrar`/`TaskBindings` Javadocs, Framework Principles, Loop
+    Structure, Framework Lanes & Robot Controls, and relevant examples. Run focused binding,
+    contextual UI, tuner/menu, and Task-binding tests plus the full TeamCode unit suite and Java
+    compilation, caller/API scans, and whitespace checks. This is a software-only contract and
+    needs no robot-hardware claim.
+- **Decision record (2026-07-26):** **Ready for explicit approval.** The leading declaration-order
+  hypothesis remains the best design and does not materially differ from the tracker. The audit
+  strengthens it with one bounded fail-fast stable-graph rule but adds no student-facing API. This
+  changes observable public behavior across binding kinds and therefore requires approval before
+  implementation. Approve with `Approve API-04 declaration-order design`; implementation must not
+  start before approval.
+- **Approval checkpoint (2026-07-27):** the user approved the API-04 declaration-order design.
+  API-04 is now **In progress**. Implementation remains limited to the approved ordered traversal,
+  stable context-snapshot prepass, fail-fast structural mutation guard, synchronized principles/
+  documentation, focused regression coverage, and software verification; this approval does not
+  authorize INPUT-02 failure-retention work or another tracker item.
+- **Implementation checkpoint (2026-07-27):** the seven type-bucket execution lists are replaced
+  by one private `RegisteredBinding` list. Root, contextual, helper, and `TaskBindings`
+  registrations now occupy their declaration positions in the same traversal. Context activations
+  remain a context-creation-order prepass, ordinary sources are sampled only when their registration
+  is visited, and inactive contextual neutral outputs retain their position. Seven private counters
+  preserve the existing debug keys without creating a second execution structure. Registration,
+  context creation, and clear/rebuild attempts during activation sampling or registration traversal
+  fail before mutation; a `finally` releases only that structural guard, leaving INPUT-02's separate
+  callback-failure retention question unchanged.
+- **Documentation and maintained-caller checkpoint (2026-07-27):** `Framework Principles.md`,
+  `Bindings`, `BindingRegistrar`, `TaskBindings`, Loop Structure, and Framework Lanes & Robot
+  Controls now state one global declaration order, the activation prepass, helper placement,
+  structural setup boundaries, and the fact that sequencing is not priority or final-output
+  arbitration. Phoenix's real shared-intent case documents and tests capture-before-nudge behavior.
+  No student-facing method, overload, phase, priority, key, builder, or alternative construction path
+  was added.
+- **Adversarial review (2026-07-27):** independent semantics, caller/test, and API/documentation
+  reviews found no remaining implementation defect or public-surface inconsistency. Their concrete
+  findings were incorporated: all-registration wording replaces eligible-only wording; context-
+  creation order is explicit; `TaskBindings` qualifies its guarantee for Phoenix registrars; the
+  guide uses independent intents instead of a misleading last-writer safety example; and regressions
+  now cover source-sample/callback interleaving, guard release after an escaping callback failure,
+  and the maintained Phoenix capture/nudge declaration.
+- **Automated verification (2026-07-27):** five focused suites pass 28 tests with zero failures,
+  errors, or skips: `BindingsRootRegressionTest`, `BindingsControlContextTest`,
+  `TaskBindingsContextTest`, `ContextualUiBindingTest`, and `PhoenixTeleOpControlsTest`.
+  `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` succeeds; the full XML result has
+  102 suites and 957 tests with zero failures, errors, or skips. Scans confirm the former seven list
+  fields are gone and all append/clear sites use the single execution collection. `git diff --check`
+  and changed/untracked-file trailing-whitespace checks are clean. The build emits only the existing
+  JDK 21 versus Java 8 source/target deprecation warnings.
+- **Android Studio audit point (2026-07-27):** API-04 is **Verifying** and intentionally remains
+  unstaged and uncommitted. Inspect global root/context/helper/TaskBindings order, context snapshot
+  timing, inactive neutral-output placement, structural-mutation failures, preserved debug counts
+  and clear behavior, the Phoenix capture-before-nudge policy, synchronized documentation, and the
+  focused regressions. This is a software-only dispatch contract; source inspection and unit tests
+  are sufficient, with no robot-hardware claim. Approval authorizes finalization/publication of
+  API-04 only and does not start INPUT-02 or another tracker item.
+- **Manual verification (2026-07-27):** the user reviewed API-04 in Android Studio and approved it
+  with `API-04 looks good`. API-04 is now **Done**; this approval authorizes Gate 3 finalization,
+  publication, and merge for API-04 only. The user's separate instruction to move to the next item
+  begins API-05 only after this publication completes.
 
 ### API-05 - One beginner drive entry point
 

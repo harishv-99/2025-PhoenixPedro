@@ -669,9 +669,25 @@ a motion-relevant decision:
   useful when the new mode deliberately accepts held levels and displaced analog controls.
 
 Both policies make the activation frame effect-free. Activation does not manufacture a press or
-immediately pass a nonzero scalar. Context activation is sampled once before callbacks, so a mode
-changed by one callback takes effect on the next loop instead of changing the meaning of the rest
-of the current input frame.
+immediately pass a nonzero scalar. Context activations are sampled once in context-creation order
+before any ordinary binding source or callback, so a mode changed by one callback takes effect on
+the next loop instead of changing the meaning of the rest of the current input frame.
+
+After that activation prepass, the root visits every root and contextual registration in the
+global order in which it was declared, even when the methods differ. Ordinary binding sources are
+sampled at their own position; they are not all snapshotted in advance. This makes mixed mappings
+read top-to-bottom:
+
+```java
+bindings.copyEachCycle(operator.leftTrigger(), intent::setIntakeRequest);
+bindings.onRise(operator.a(), intent::advanceScoringPreset);
+```
+
+If both produce an effect in one loop, the intake request is recorded before the preset advances
+because that is their declaration order. These are independent intents; use one callback when
+several calls are one dependent action. Do not use last-writer order as the ownership model for a
+persistent final command; put competing policy in one robot-owned composed source, capability, or
+supervisor.
 
 Contexts do not have to be globally exclusive. Independent contexts may overlap when they command
 independent meanings and outputs. When contexts remap the same physical controls or capabilities,
@@ -688,7 +704,14 @@ while it is unarmed, or when a sample is non-finite. A non-finite sample disarms
 
 Reusable menu, picker, tuner, and Task-binding helpers accept `BindingRegistrar`, the declaration-
 only capability shared by root `Bindings` and `ControlContext`. Students normally pass the object
-they already have; the interface does not expose `update`, `clear`, or context construction.
+they already have; the interface does not expose `update`, `clear`, or context construction. The
+declarations made inside a helper join the global order at that helper's `bind(...)` call and create
+no hidden helper phase.
+
+Build or rebuild the binding graph during initialization or between updates. A registration,
+`contextWhen(...)`, or `clear()` call made while `bindings.update(clock)` is sampling activations or
+visiting registrations fails before changing the graph. Callbacks may still change ordinary robot
+intent and mode state; those are the purpose of bindings and are not structural graph mutations.
 
 A context is not a lifecycle owner. Deactivation suppresses its event/level actions, neutralizes
 its Boolean mirror, and keeps its contextual scalar copy at zero, but it does not cancel queued or

@@ -99,6 +99,8 @@ public final class PhoenixTeleOpControls {
         bindings.toggleOnRise(operator.a(), scoring::setIntakeEnabled);
         bindings.toggleOnRise(operator.rightBumper(), scoring::setFlywheelEnabled);
 
+        // Declaration order is intentional: if capture and a nudge rise in the same input frame,
+        // capture the suggested velocity first and then apply the student's selected adjustment.
         bindings.onRise(operator.leftBumper(), scoring::captureSuggestedShotVelocity);
 
         bindings.mirrorOnChange(operator.b(), scoring::setShootingEnabled);
