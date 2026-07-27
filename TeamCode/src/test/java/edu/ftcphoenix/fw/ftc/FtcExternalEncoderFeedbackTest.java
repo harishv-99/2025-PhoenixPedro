@@ -114,6 +114,7 @@ public final class FtcExternalEncoderFeedbackTest {
                 .regulator(ZERO_REGULATOR)
                 .unbounded()
                 .nativeUnits()
+                .velocityTolerance(0.0)
                 .targetedByCommand(0.0)
                 .build();
 
@@ -145,6 +146,7 @@ public final class FtcExternalEncoderFeedbackTest {
                 .regulator(ZERO_REGULATOR)
                 .unbounded()
                 .nativeUnits()
+                .velocityTolerance(0.0)
                 .targetedByCommand(0.0)
                 .build();
 
@@ -188,6 +190,7 @@ public final class FtcExternalEncoderFeedbackTest {
                 .unbounded()
                 .nativeUnits()
                 .alreadyReferenced()
+                .positionTolerance(0.0)
                 .targetedByCommand(0.0)
                 .build();
 
@@ -218,6 +221,7 @@ public final class FtcExternalEncoderFeedbackTest {
                 .unbounded()
                 .nativeUnits()
                 .alreadyReferenced()
+                .positionTolerance(0.0)
                 .targetedByCommand(0.0)
                 .build();
 
@@ -244,6 +248,7 @@ public final class FtcExternalEncoderFeedbackTest {
                 .regulator(ZERO_REGULATOR)
                 .unbounded()
                 .nativeUnits()
+                .velocityTolerance(0.0)
                 .targetedByCommand(0.0);
         assertIllegalStateContains(missingFeedbackBuild::build,
                 "Regulated motor velocity requires a feedback answer",

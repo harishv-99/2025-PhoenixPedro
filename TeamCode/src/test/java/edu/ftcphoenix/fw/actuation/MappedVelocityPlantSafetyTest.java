@@ -33,6 +33,7 @@ public final class MappedVelocityPlantSafetyTest {
         try {
             MappedVelocityPlant.velocityOutput(new RecordingVelocityOutput(), clock -> 0.0)
                     .range(ScalarRange.bounded(10.0, 20.0))
+                    .velocityTolerance(0.0)
                     .targetGuards(guards)
                     .targetedBy(ScalarTarget.held(15.0))
                     .build();
@@ -51,6 +52,7 @@ public final class MappedVelocityPlantSafetyTest {
         try {
             MappedVelocityPlant.velocityOutput(new RecordingVelocityOutput(), clock -> 0.0)
                     .range(ScalarRange.minOnly(Double.POSITIVE_INFINITY))
+                    .velocityTolerance(0.0)
                     .targetedBy(ScalarTarget.held(15.0))
                     .build();
             fail("Expected a range with no finite command to be rejected");
@@ -64,6 +66,7 @@ public final class MappedVelocityPlantSafetyTest {
         try {
             MappedVelocityPlant.velocityOutput(new RecordingVelocityOutput(), clock -> 0.0)
                     .range(ScalarRange.invalid("velocity range not configured"))
+                    .velocityTolerance(0.0)
                     .targetedBy(ScalarTarget.held(15.0))
                     .build();
             fail("Expected an invalid configured range to be rejected");
@@ -83,6 +86,7 @@ public final class MappedVelocityPlantSafetyTest {
                 .build();
         MappedVelocityPlant plant = MappedVelocityPlant.velocityOutput(output, clock -> 0.0)
                 .range(ScalarRange.bounded(10.0, 20.0))
+                .velocityTolerance(0.0)
                 .targetGuards(guards)
                 .targetedBy(target)
                 .build();
@@ -102,6 +106,7 @@ public final class MappedVelocityPlantSafetyTest {
         double request = 20.0 + 1.0e-10;
         MappedVelocityPlant plant = MappedVelocityPlant.velocityOutput(output, clock -> 0.0)
                 .range(ScalarRange.bounded(10.0, 20.0))
+                .velocityTolerance(0.0)
                 .targetedBy(ScalarTarget.held(request))
                 .build();
 
@@ -118,6 +123,7 @@ public final class MappedVelocityPlantSafetyTest {
         MappedVelocityPlant plant = MappedVelocityPlant.velocityOutput(
                 new RecordingVelocityOutput(), clock -> 0.0)
                 .range(ScalarRange.bounded(0.0, 20.0))
+                .velocityTolerance(0.0)
                 .targetedBy(ScalarTarget.held(-0.0))
                 .build();
 
@@ -137,6 +143,7 @@ public final class MappedVelocityPlantSafetyTest {
                 .build();
         MappedVelocityPlant plant = MappedVelocityPlant.velocityOutput(output, clock -> 0.0)
                 .range(ScalarRange.bounded(10.0, 20.0))
+                .velocityTolerance(0.0)
                 .targetGuards(guards)
                 .targetedBy(target)
                 .build();
@@ -165,6 +172,7 @@ public final class MappedVelocityPlantSafetyTest {
                 .maxTargetRate(Double.MAX_VALUE)
                 .build();
         MappedVelocityPlant plant = MappedVelocityPlant.velocityOutput(output, clock -> 0.0)
+                .velocityTolerance(0.0)
                 .targetGuards(guards)
                 .targetedBy(target)
                 .build();
@@ -197,6 +205,7 @@ public final class MappedVelocityPlantSafetyTest {
                 .maxTargetRate(1.0)
                 .build();
         MappedVelocityPlant plant = MappedVelocityPlant.velocityOutput(output, clock -> 0.0)
+                .velocityTolerance(0.0)
                 .targetGuards(guards)
                 .targetedBy(target)
                 .build();
@@ -238,6 +247,7 @@ public final class MappedVelocityPlantSafetyTest {
                 constrained)
                 .range(ScalarRange.bounded(0.0, 6000.0))
                 .nativePerPlantUnit(2.0)
+                .velocityTolerance(0.0)
                 .targetedBy(targetRpm)
                 .build();
 

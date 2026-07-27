@@ -218,6 +218,7 @@ public final class FtcActuatorGroupIdentityValidationTest {
 
         velocity.unbounded()
                 .nativeUnits()
+                .velocityTolerance(0.0)
                 .targetedByCommand(0.0)
                 .build();
         assertEquals(1, velocityMap.effects.velocityPidfWrites);
@@ -241,6 +242,7 @@ public final class FtcActuatorGroupIdentityValidationTest {
                 .unbounded()
                 .nativeUnits()
                 .alreadyReferenced()
+                .positionTolerance(0.0)
                 .targetedByCommand(0.0)
                 .build();
         assertEquals(1, positionMap.effects.positionPidfWrites);
@@ -340,6 +342,7 @@ public final class FtcActuatorGroupIdentityValidationTest {
                 .regulator(ZERO_REGULATOR)
                 .unbounded()
                 .nativeUnits()
+                .velocityTolerance(0.0)
                 .targetedByCommand(0.0)
                 .build();
 
@@ -366,6 +369,7 @@ public final class FtcActuatorGroupIdentityValidationTest {
                 .unbounded()
                 .nativeUnits()
                 .alreadyReferenced()
+                .positionTolerance(0.0)
                 .targetedByCommand(0.0)
                 .build();
 
@@ -393,6 +397,7 @@ public final class FtcActuatorGroupIdentityValidationTest {
                 .regulator(ZERO_REGULATOR)
                 .unbounded()
                 .nativeUnits()
+                .velocityTolerance(0.0)
                 .targetedByCommand(0.0)
                 .build();
 
@@ -422,6 +427,7 @@ public final class FtcActuatorGroupIdentityValidationTest {
                 .unbounded()
                 .nativeUnits()
                 .alreadyReferenced()
+                .positionTolerance(0.0)
                 .targetedByCommand(0.0)
                 .build();
 
@@ -628,6 +634,7 @@ public final class FtcActuatorGroupIdentityValidationTest {
                         .deviceManagedWithDefaults()
                         .unbounded()
                         .nativeUnits()
+                        .velocityTolerance(0.0)
                         .targetedByCommand(0.0)
                         .build();
             case POSITION:
@@ -637,6 +644,7 @@ public final class FtcActuatorGroupIdentityValidationTest {
                         .unbounded()
                         .nativeUnits()
                         .alreadyReferenced()
+                        .positionTolerance(0.0)
                         .targetedByCommand(0.0)
                         .build();
             default:
@@ -672,6 +680,7 @@ public final class FtcActuatorGroupIdentityValidationTest {
                 .unbounded()
                 .nativeUnits()
                 .alreadyReferenced()
+                .positionTolerance(0.0)
                 .targetedByCommand(0.0)
                 .build();
     }

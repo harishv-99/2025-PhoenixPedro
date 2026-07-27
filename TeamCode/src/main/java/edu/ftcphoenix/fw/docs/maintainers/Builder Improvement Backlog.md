@@ -19,6 +19,7 @@ This running list tracks framework builders that should be reviewed against the 
 - [x] `actuation/PlantTargets`
 - [x] `drive/guidance/DriveGuidance`
 - [x] `ftc/FtcActuators` velocity builders
+- [x] `actuation/MappedPositionPlant` / `actuation/MappedVelocityPlant`
 - [x] `spatial/TagSelections`
 - [x] `spatial/SpatialQuery` / `spatial/SpatialQuerySpec`
 - [x] `actuation/PositionCalibrationTasks`
@@ -83,13 +84,38 @@ position, but without position-only concepts like topology, reference, and homin
 1. choose velocity loop ownership (`deviceManagedWithDefaults()`, `deviceManaged()...doneDeviceManaged()`, or `regulated()` followed by one direct feedback answer and `regulator(...)`)
 2. choose legal velocity target bounds (`bounded(...)` or `unbounded()`)
 3. choose plant/native velocity mapping (`nativeUnits()` or `scaleToNative(...)`)
-4. optionally set plant-level `velocityTolerance(...)` and `targetGuards().maxTargetRate(...)`
-5. bind a target with `targetedBy(...)`, `targetedBy(ScalarSource)`, or `targetedByCommand(...)`
+4. answer the required plant-unit completion question exactly once with `velocityTolerance(...)`
+5. optionally set guards such as `targetGuards().maxTargetRate(...)`
+6. bind a target with `targetedBy(...)`, `targetedBy(ScalarSource)`, or `targetedByCommand(...)`
 
 The old `MotorVelocityControl` value-object API was removed instead of retained as a parallel path.
 Velocity uses a zero-preserving mapping only; no `rangeMapsToNative(...)` is exposed for velocity.
-As with the rest of the plant API, `bounded(...)`, tolerances, and target sources remain in plant
-units unless a method name explicitly calls out native/controller units.
+As with the rest of the plant API, `bounded(...)`, the required tolerance, and target sources remain
+in plant units unless a method name explicitly calls out native/controller units. No hidden or
+native-unit tolerance shortcut remains.
+
+### `actuation/MappedPositionPlant` / `actuation/MappedVelocityPlant`
+
+Completed with the explicit feedback-tolerance pass. These classes remain the distinct
+hardware-neutral construction layer for custom HAL adapters that need public/native mapping,
+position reference policy, target guards, or framework regulation. They do not compete with
+`FtcActuators`: FTC robot code starts from a `HardwareMap`, while this layer starts from Phoenix
+outputs, measurement sources, and regulators.
+
+The mapped public flow is deliberately smaller than the FTC facade while still being one-way and
+compiler-guided:
+
+1. configure the mapped Plant's range, mapping, reference, search output, and other applicable options
+2. for feedback position or velocity, answer the required plant-unit tolerance once
+3. optionally configure target guards
+4. bind the final target source
+5. build
+
+Command-only mapped position skips step 2 because it has no measurement-based completion. After
+the tolerance answer, mapping/reference configuration is no longer visible; after target binding,
+only build is visible in an ordinary fluent chain. The concrete assembly object stays private.
+This prevents omitted tolerances and targets without making a mutable concrete builder another
+public construction path or duplicating the FTC facade's hardware/control/topology question graph.
 
 ### `spatial/SpatialQuery` / `spatial/SpatialQuerySpec`
 

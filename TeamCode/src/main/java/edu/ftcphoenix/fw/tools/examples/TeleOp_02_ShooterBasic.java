@@ -43,9 +43,13 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
  *   <li><b>How to wire mechanisms using beginner helpers</b>:
  *     <ul>
  *       <li>{@link FtcActuators#plant} to turn hardware into {@link Plant}s.</li>
- *       <li>{@code motor(...).andMotor(...).velocity(...).build()} for the shooter.</li>
- *       <li>{@code crServo(...).andCrServo(...).power().build()} for the transfer.</li>
- *       <li>{@code servo(...).position().linear().bounded(0.0, 1.0).nativeUnits().build()} for the pusher.</li>
+ *       <li>{@code motor(...).andMotor(...).velocity().deviceManagedWithDefaults()}
+ *           {@code .bounded(...).nativeUnits().velocityTolerance(...)}
+ *           {@code .targetedByCommand(0.0).build()} for the shooter.</li>
+ *       <li>{@code crServo(...).andCrServo(...).power()}
+ *           {@code .targetedByCommand(0.0).build()} for the transfer.</li>
+ *       <li>{@code servo(...).position().linear().bounded(0.0, 1.0).nativeUnits()}
+ *           {@code .targetedByCommand(0.0).build()} for the pusher.</li>
  *     </ul>
  *   </li>
  *   <li><b>How to map buttons to simple modes</b> using

@@ -133,7 +133,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 46 | CYCLE-02 | Localization cycle safety | Done | Owner-local attempt guards, timestamp-defended motion consumption, zero-time/rebase safety, synchronized documentation, and 80 focused regressions were reviewed and approved on 2026-07-24. |
 | 47 | SOURCE-01 | Boolean composition sampling | Done | Eager `and()`/`or()` observation, explicit lazy selection, synchronized docs, and 12 focused regressions were reviewed and approved on 2026-07-24. |
 | 48 | API-01 | Graph-owned Plant command binding | Done | Graph-owned command provenance, parallel Plant vocabulary, caller/docs migration, verification, and Android Studio review are complete. |
-| 49 | API-02 | Feedback tolerance choice | Proposed | Ask for tolerance after unit mapping; retain an explicitly named native default only if useful. |
+| 49 | API-02 | Feedback tolerance choice | Done | Required public-unit tolerances, minimally staged FTC and mapped construction, private mapped builders, synchronized docs, verification, and Android Studio review are complete. |
 | 50 | API-04 | Binding execution order | Proposed | Preserve declaration order unless explicit phases are proven necessary. |
 | 51 | API-05 | One beginner drive entry point | Proposed | Teach the lane as the robot-facing path and keep the raw factory as a lower-level tool. |
 | 52 | COMMON-02 | Telemetry commit ownership | Proposed | Renderers add data; the composition root commits once. |
@@ -6210,16 +6210,185 @@ writer, and explicit lifecycle ownership.
 
 ### API-02 - Feedback tolerance choice
 
-- **Problem to confirm:** position and velocity tolerance defaults are expressed in public Plant
-  units, so mapping ticks to inches/degrees/RPM can make a magic default meaningless.
-- **Alternatives to compare:** require tolerance after mapping; derive a native tolerance then map it;
-  retain defaults only for native units; or remove tolerance from construction and require it in
-  feedback tasks.
-- **Leading hypothesis:** ask once after units are known, with an explicit native-units shortcut if it
-  demonstrably improves the beginner path without hiding a safety/completion decision.
-- **Completion:** every feedback Plant has an intentional, unit-documented tolerance and examples use
-  meaningful robot units.
-- **Decision record:** _Pending._
+- **Confirmed current behavior (2026-07-26):** all framework feedback implementations compare the
+  requested target, applied target, and converted measurement against one Plant-level completion
+  tolerance. `MappedPositionPlant` silently defaults that tolerance to `10.0` and
+  `MappedVelocityPlant` to `100.0`; the FTC staged builders repeat the same defaults. The tolerance
+  remains in public Plant units after native feedback is converted. A lift mapped from ticks to
+  inches can therefore inherit a hidden 10-inch completion band, while a flywheel mapped to RPM can
+  inherit an unrelated 100-RPM band. The defaults are dimensionally valid but cannot express what
+  physical error is acceptable for the mechanism.
+- **Completion and ownership semantics:** Plant-level tolerance defines the meaning of
+  `Plant.atTarget(...)` for the whole mechanism and is consumed outside Tasks by
+  `PlantSources.atTarget(...)`, capability/services, readiness logic, telemetry, and direct status
+  checks. It belongs to Plant construction, after the public coordinate is known. It is not a Task
+  timeout or per-move policy. FTC `devicePositionToleranceTicks(...)` remains a separate optional
+  motor-controller setting: it is native ticks applied to each selected device's
+  `setTargetPositionTolerance(...)`, while Plant tolerance controls Phoenix completion in public
+  units. Neither setting can be derived reliably from the other.
+- **FTC controller-tolerance clarification:** Phoenix does not use `DcMotor.isBusy()` to decide
+  whether a Plant is at target. `devicePositionToleranceTicks(...)` configures the FTC SDK/Hub
+  `RUN_TO_POSITION` target-tolerance facility in native encoder ticks, while Phoenix independently
+  evaluates requested target, applied target, converted measurement, and target status. The public
+  SDK contract does not establish that this tolerance is the controller's complete correction
+  deadband, so framework documentation must not claim that the motor stops correcting at its
+  boundary. Ordinary robot code should normally keep `deviceManagedWithDefaults()` and choose only
+  the required Plant tolerance; the device setting remains an explicitly advanced override.
+- **Complete maintained-caller inventory:** all **9 executable main-source feedback builder sites**
+  already supply an explicit tolerance: Phoenix `ScoringPath` has two flywheel construction paths;
+  shooter examples `TeleOp_02` through `TeleOp_06` and `TeleOp_09` have six velocity paths; and
+  `TeleOp_08` has one externally measured position path in inches. All **26 complete Javadoc and
+  Markdown feedback examples** also supply an explicit tolerance. Standard-servo examples omit it
+  correctly because they are command-only. Current Phoenix robot code, maintained tools, and
+  complete examples therefore need no new line; the silent defaults are relied on only by tests.
+  The test inventory has 48 successful feedback constructions: 15 explicit and 33 implicit, plus
+  one deliberate invalid staged-builder bypass. Those test omissions are migration work, not
+  evidence of beginner value.
+- **Documentation drift to correct:** the Beginner's Guide currently calls Plant tolerance optional,
+  describes position's default as 10 ticks even though the public coordinate may be inches or
+  degrees, and documents the 100-unit velocity default. The maintainer builder backlog likewise
+  calls velocity tolerance optional. Complete examples already demonstrate the intended explicit
+  answer; abbreviated ellipsis examples will be checked so they do not imply a hidden default.
+- **Public construction-path and distinct-capability audit:**
+  - `FtcActuators.plant(HardwareMap)` is the guided FTC/student layer. Device-managed and regulated
+    motor velocity paths converge on `VelocityMappingStep`; device-managed/regulated motor position
+    and regulated CR-servo position paths converge on the shared mapping/reference stages. These are
+    the right places for compiler-guided required tolerance answers. Standard-servo position is a
+    distinct command-only path and must continue directly to target selection without tolerance.
+  - `MappedPositionPlant.commanded(...)`, `positionOutput(...)`, and `regulated(...)`, and
+    `MappedVelocityPlant.velocityOutput(...)` and `regulated(...)`, are the hardware-neutral mapped
+    adapter boundary shared by FTC and non-FTC integrations. There are no public constructors,
+    `of(...)` aliases, overload families, or config wrappers. This layer has distinct
+    mapping/reference value and remains supported. A follow-up audit found a smaller staged design
+    than the initially rejected full FTC-style graph: keep all optional mapped configuration on one
+    configuration stage, require feedback tolerance to enter a shared target stage, and require a
+    target to enter a shared build stage. The fluent call remains unchanged while the concrete
+    builders become private.
+  - `Plants.position(...)`, `velocity(...)`, `positionFromPower(...)`, and
+    `velocityFromPower(...)` are the lower ingredient-level boundary for already-same-unit HAL
+    adapters. Every feedback form already requires a tolerance argument; commanded-position
+    overloads correctly do not. This layer has distinct low-level value and needs no API change.
+  - The current `VelocityBuildStep` and `PositionBuildStep` combine an optional tolerance method
+    with target selection, which is the exact skip path. After a required answer they would be empty
+    aliases, so they provide no distinct capability and will be removed. The empty
+    `ServoPositionBuildStep` likewise adds no operation and will be replaced by the existing
+    `PositionTargetStep` return type without changing the servo call shape.
+- **Staged-parameter reuse audit:** callers store meaningful primitive config values such as
+  flywheel RPM/ticks-per-second tolerance and lift-inch tolerance, then answer the builder step
+  directly. No caller stores, composes, shares, or independently validates a tolerance selector or
+  wrapper. A public `Tolerance`, `FeedbackTolerance`, or native-default object would add a noun only
+  to pass it immediately back to the builder and is rejected.
+- **Student-facing simplicity comparison:**
+
+  | Design | Feedback robot call | Command-only servo | Concepts and failure quality |
+  | --- | --- | --- | --- |
+  | **Selected required stage** | One explicit `.positionTolerance(0.25)` or `.velocityTolerance(50.0)` after mapping | Unchanged | One mechanism decision, guided by autocomplete; omission cannot compile on the beginner path |
+  | Keep hidden defaults and improve docs | Shorter only when the student omits the decision | Unchanged | A valid build can still use a physically meaningless completion band |
+  | Native-unit default shortcut | A second skip spelling beside the explicit answer | Unchanged | “Native” identifies units, not acceptable mechanism error; no production caller needs it |
+  | Derive and map a native default | No explicit answer | Unchanged | Dimensionally converts an arbitrary number and infers accuracy from facts the inputs cannot prove |
+  | Put tolerance on feedback Tasks | Repeats tolerance for each move/wait and leaves `Plant.atTarget()` ambiguous | Unchanged | Moves mechanism readiness into behavior and does not serve non-Task consumers |
+  | **Selected minimal mapped staging** | Same fluent call | Unchanged | Adds only configuration → tolerance → target → build gates; omission cannot compile at the hardware-neutral boundary |
+  | Fully stage every mapped choice | Explicit at every layer | Unchanged | Duplicates the FTC facade's topology/bounds/mapping/reference question graph for advanced custom adapters |
+- **Selected design:**
+  1. Add parallel one-answer `VelocityToleranceStep` and `PositionToleranceStep` interfaces.
+     `VelocityMappingStep.nativeUnits()/scaleToNative(...)` return the velocity step, whose
+     `velocityTolerance(double)` returns `PlantTargetStep`. Every completed feedback position
+     mapping/reference answer returns the position step, whose `positionTolerance(double)` returns
+     `PositionTargetStep`. Keep the domain-specific method names because they make the public units
+     and position/velocity parallelism obvious; do not add generic `tolerance(...)`.
+  2. Remove the redundant `VelocityBuildStep`, `PositionBuildStep`, and empty
+     `ServoPositionBuildStep` aliases. Standard-servo mapping returns `PositionTargetStep` directly,
+     so a command-only servo neither sees nor answers a meaningless feedback question.
+  3. Remove the FTC 10/100 defaults. Record the required answer exactly once; reject a second answer
+     through a retained tolerance-stage alias instead of silently replacing it. Retain a runtime
+     defense for deliberate stage casts/bypasses and check it before resolving, configuring, or
+     writing new hardware so type staging is not the only invariant.
+  4. Remove the mapped feedback defaults and minimally stage that public hardware-neutral boundary.
+     Add shared generic `MappedPlantTargetStep<P>` and `MappedPlantBuildStep<P>` interfaces.
+     `MappedPositionPlant` exposes separate `CommandedConfigurationStep` and
+     `FeedbackConfigurationStep` factory return types; `MappedVelocityPlant` exposes one
+     `FeedbackConfigurationStep`. Optional topology/range/mapping/reference/search configuration
+     stays on the appropriate configuration step. Feedback tolerance advances to the shared target
+     step, target selection advances to the build step, and commanded position inherits the target
+     step directly without exposing tolerance. Make both concrete builder implementations private.
+     Preserve runtime missing/repeated-tolerance and commanded-position defenses for retained aliases
+     or deliberate casts; do not duplicate the full FTC topology/bounds/reference stage graph. The
+     FTC servo adapter stops propagating its current unused default.
+  5. Leave the already-explicit `Plants` feedback factories and all `Plant.atTarget(...)` semantics
+     unchanged. Accept zero and continue rejecting negative, `NaN`, and infinite tolerances.
+  6. Add no native-unit shortcut. Existing production/examples prove that the explicit line is
+     practical, while encoder resolution, gearing, mechanism accuracy, and position-versus-velocity
+     semantics prove there is no universal native value. Test convenience is not a second public
+     construction path.
+- **Framework Principles result:** the selected design asks one required conceptual question once,
+  after its units are known; prevents omission by types on both public builder layers; keeps optional FTC
+  controller tuning in its deliberate branch; does not infer physical accuracy; preserves the
+  feedback/open-loop distinction; removes redundant stage aliases; and keeps position/velocity
+  names and flow parallel. The mapped amendment adds five narrow stage interfaces while removing two
+  public concrete builder types, for a net increase of three public types and no new call-site noun,
+  wrapper, or robot-side state machine.
+  The best design remains within the leading hypothesis because that hypothesis made a native
+  shortcut conditional on demonstrated value, and the complete caller audit found none.
+- **Bounded implementation scope:** update `FtcActuators`, both mapped Plant builders, the two shared
+  mapped target/build stages, their Javadocs,
+  Framework Principles, the FTC actuator and getting-started guides, the builder backlog, abbreviated
+  examples that could imply a default, and affected tests/callers. Do not change completion math,
+  controller/device tuning, `Plant`/`PositionPlant` interfaces, Plant Tasks, target guards, mapping
+  formulas, or unrelated builder stages.
+- **Verification plan:** add API-shape assertions for all FTC velocity mapping and position
+  mapping/reference return types; compile all device-managed/regulated velocity, motor-position,
+  CR-servo-position, and unchanged standard-servo paths; test omission and repeated-answer defenses
+  before hardware effects; test mapped velocity-output/regulated and position-output/regulated
+  missing-tolerance failures plus commanded-position exemption; assert all five mapped factory
+  return types, feedback tolerance → target → build transitions, private concrete builders, and
+  retained-alias/cast runtime defenses; preserve finite/nonnegative
+  validation; and prove exact-boundary `atTarget(...)` behavior after non-unit position and velocity
+  mappings. Separately verify that native `devicePositionToleranceTicks(...)` remains distinct.
+  Migrate all in-repository callers, search for stale default/optional wording and implicit feedback
+  construction, run focused tests, the full TeamCode unit suite and debug Java compile, Markdown
+  fence checks, whitespace checks, and `git diff --check`. No robot hardware is required to verify
+  builder shape, validation order, unit conversion, or completion math; adopting-robot tuning still
+  chooses the actual numeric tolerance.
+- **Decision record (2026-07-26):** **Approved for implementation, including staged mapped-builder
+  amendment.** The user approved the explicit feedback-tolerance design after the separate
+  Plant-versus-FTC-device tolerance audit, then explicitly approved minimal mapped staging after a
+  second public-layer audit showed it could enforce tolerance and target without duplicating the
+  full FTC question graph.
+- **Implementation record (2026-07-26):** `FtcActuators` now exposes one-operation
+  `VelocityToleranceStep` and `PositionToleranceStep` stages after feedback mapping/reference, then
+  advances directly to target binding. The redundant velocity, position, and servo build-stage
+  aliases and FTC 10/100 defaults are gone. Retained tolerance-stage aliases reject a second answer,
+  and a deliberate cast/bypass fails before device-managed command hardware is resolved or
+  configured. Standard servos proceed directly from mapping to target binding and no longer pass a
+  dead tolerance. `MappedPositionPlant` and `MappedVelocityPlant` now return narrow public
+  configuration stages; feedback tolerance advances to the shared `MappedPlantTargetStep`, target
+  binding advances to `MappedPlantBuildStep`, and both concrete assembly builders are private.
+  Command-only mapped position proceeds directly to target selection without exposing tolerance.
+  Retained aliases and deliberate casts still receive actionable runtime defenses for missing or
+  repeated tolerance, a missing target, or a commanded-position tolerance attempt. Low-level
+  `Plants` factories remain explicit and now document that tolerance shares the target/measurement
+  units. Principles, guides, backlog, and beginner example summaries are synchronized.
+- **Automated verification (2026-07-26):** the focused `MappedPlantToleranceTest`,
+  `PlantCommandTargetTest`, `FtcFeedbackToleranceStageTest`, and
+  `FtcMappedPlantConfigurationIntegrationTest` run passed **28 tests, 0 failures, 0 errors,
+  0 skipped**. The full `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` run passed
+  **948 tests across 101 XML suites, 0 failures, 0 errors, 0 skipped**. Factory return types,
+  stage-method absence, exact generic Plant typing, private builders, repeated-answer and
+  cast/bypass defenses, commanded exemption/rejection, invalid/zero values, mapped exact-boundary
+  behavior, FTC non-unit position/velocity conversion, all non-default position reference policies,
+  and standard-servo endpoint mapping are covered. Three independent adversarial reviews found no
+  production-path, public-surface, caller, or documentation-order defect; the integration review's
+  one test-coverage finding was closed by the five FTC mapped-configuration regressions. Searches
+  found zero live old-stage or public mapped-Builder references, zero hidden 10/100 tolerance
+  defaults, and no ordinary feedback construction without its explicit tolerance. Every maintained
+  FTC feedback caller compiles through the required stage, and all mapped factory call sites were
+  audited. Markdown fence parity, trailing whitespace (including untracked files), and
+  `git diff --check` pass. The build reports only the existing Java 8 source/target deprecation
+  warnings under JDK 21. Robot hardware is not required for this API, validation-order, or
+  unit-conversion change; mechanism-specific tolerance values still require adopting-robot tuning.
+- **Manual verification record (2026-07-26):** **Approved.** The user reported that API-02 looks
+  good after inspecting the guided FTC return types, minimally staged mapped construction, private
+  builders, focused regressions, and synchronized framework documentation in Android Studio.
 
 ### API-03 - PID and linear-PIDF configuration ownership
 

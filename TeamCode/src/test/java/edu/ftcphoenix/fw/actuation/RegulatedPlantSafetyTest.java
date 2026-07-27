@@ -328,6 +328,7 @@ public final class RegulatedPlantSafetyTest {
         MappedPositionPlant sharedPlant = MappedPositionPlant.regulated(
                 shared, clock -> 0.0, new FixedRegulator(0.0))
                 .searchPowerOutput(shared)
+                .positionTolerance(0.0)
                 .targetedBy(ScalarTarget.held(0.0))
                 .build();
 
@@ -341,8 +342,8 @@ public final class RegulatedPlantSafetyTest {
         RecordingPowerOutput search = new RecordingPowerOutput();
         MappedPositionPlant distinctPlant = MappedPositionPlant.regulated(
                 regulated, clock -> 5.0, new FixedRegulator(0.25))
-                .positionTolerance(0.0)
                 .searchPowerOutput(search)
+                .positionTolerance(0.0)
                 .targetedBy(ScalarTarget.held(5.0))
                 .build();
         distinctPlant.update(new ManualLoopClock().clock());
@@ -368,8 +369,8 @@ public final class RegulatedPlantSafetyTest {
         failingSearch.stopFailure = searchStopFailure;
         MappedPositionPlant searchFailurePlant = MappedPositionPlant.regulated(
                 successfulRegulated, clock -> 6.0, new FixedRegulator(0.3))
-                .positionTolerance(0.0)
                 .searchPowerOutput(failingSearch)
+                .positionTolerance(0.0)
                 .targetedBy(ScalarTarget.held(6.0))
                 .build();
         searchFailurePlant.update(new ManualLoopClock().clock());

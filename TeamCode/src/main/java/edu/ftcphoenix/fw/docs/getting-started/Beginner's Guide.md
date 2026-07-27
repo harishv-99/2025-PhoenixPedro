@@ -230,7 +230,7 @@ private void initShooterPlants() {
 
 ### 3.1 What the builder is doing
 
-The builder has three stages:
+The builder asks a short sequence of guided questions:
 
 1. **Pick hardware**:
 
@@ -257,7 +257,8 @@ The builder has three stages:
     * `.power()` – open-loop normalized power in `[-1.0, +1.0]` (motors or CR servos). The Plant
       clamps an out-of-range request before the output. `getTargetStatus()` reports that clamp
       unless a later safety guard has a more specific active status.
-    * `.velocity().deviceManagedWithDefaults().bounded(...).nativeUnits()` – motor velocity control.
+    * `.velocity().deviceManagedWithDefaults().bounded(...).nativeUnits().velocityTolerance(...)`
+      – motor velocity control with an explicit completion band in plant velocity units.
     * `.position()` – position control.
 
 3. **For position Plants, answer guided position questions**:
@@ -273,6 +274,16 @@ The builder has three stages:
       * `.nativeUnits()`, `.scaleToNative(...)`, or bounded-only `.rangeMapsToNative(...)`
       * then `.alreadyReferenced()`, `.plantPositionMapsToNative(...)`, `.assumeCurrentPositionIs(...)`, or `.needsReference(...)` when a runtime reference is required.
 
+4. **For every feedback Plant, choose what “at target” means**:
+
+    * After velocity mapping, answer exactly once with `.velocityTolerance(...)`.
+    * After position mapping and reference policy, answer exactly once with
+      `.positionTolerance(...)`.
+    * Both values use the public plant units chosen by the preceding stages. There is no hidden
+      default or native-unit shortcut.
+    * A standard-servo position Plant is command-only, so it proceeds directly to target binding
+      and does not ask a meaningless feedback-tolerance question.
+
 The builder also owns the FTC motor run mode implied by those choices. Motor `.power()` and
 framework-regulated motor paths use raw/open-loop power; device-managed position and velocity paths
 own their respective FTC modes. Raw-power mode is acquired only when an explicit command is sent,
@@ -287,7 +298,9 @@ Velocity mapping is deliberately simpler: `scaleToNative(...)` changes only scal
 plant velocity `0.0` still means stop. Power target values are always normalized `[-1.0, +1.0]`, so
 the power builder does not ask for bounds.
 
-Then you may add plant-level tuning like `.positionTolerance(...)`, optional dynamic guards through `.targetGuards()...doneTargetGuards()`, and finally bind a target source with `.targetedBy(...)` or `.targetedByCommand(...)` before `.build()`.
+After that required feedback answer, you may add optional dynamic guards through
+`.targetGuards()...doneTargetGuards()`, then bind a target source with `.targetedBy(...)` or
+`.targetedByCommand(...)` before `.build()`.
 
 ### 3.2 Position semantics: motors vs servos
 
@@ -390,25 +403,33 @@ dedicated apply, record, and production restart.
 For device-managed motor position plants there are **two different tolerance concepts**:
 
 * `positionTolerance(...)`
-    * Plant-level completion band used by `plant.atTarget()`.
-    * Default: **10 ticks** for the built-in motor-position helpers.
-    * This is the normal knob to use when you want to say “close enough for robot logic.”
+    * Required Plant-level completion band used by `plant.atTarget()` and
+      `plant.atTarget(value)`.
+    * Chosen exactly once after mapping/reference, in public plant position units: ticks with
+      `nativeUnits()`, inches after an inches mapping, degrees after a degrees mapping, and so on.
+    * This is the normal answer for “close enough for robot logic.” Phoenix does not infer one
+      from encoder resolution, gearing, or the controller configuration.
 
 * `devicePositionToleranceTicks(...)`
     * Optional override for the FTC motor controller's own target-position tolerance via
       `DcMotorEx.setTargetPositionTolerance(int)`.
     * Default in Phoenix: **unchanged unless you call it**.
-    * Use this only when you intentionally want to change the FTC motor controller's internal
-      completion threshold.
+    * Always native encoder ticks; it neither defines nor replaces the required Plant tolerance.
+    * Use this only when you intentionally need the advanced FTC controller override. Phoenix does
+      not use `DcMotor.isBusy()` for Plant completion, and the public SDK contract does not establish
+      that the motor stops correcting at this tolerance boundary.
 
-Related defaults:
+For velocity feedback, the parallel required answer is `velocityTolerance(...)`, after velocity
+mapping and in public plant velocity units. There is no framework default.
+
+Related device-managed tuning defaults:
 
 * `maxPower(...)` default: **1.0**
-* `velocityTolerance(...)` default for motor velocity plants: **100 plant velocity units**
 * `outerPositionP(...)`, `innerVelocityPidf(...)`, and `velocityPidf(...)`: **unchanged unless set**
 
-That separation keeps the common path simple: set the plant-level tolerance first, and only reach
-for device-specific overrides when you actually need them.
+That separation keeps the common path simple: ordinary motor-position code normally uses
+`deviceManagedWithDefaults()`, chooses the required Plant tolerance, and reaches for the
+device-specific tuning branch only when it actually needs an FTC controller override.
 
 ---
 
@@ -616,7 +637,9 @@ public construction path merely to give the same composition a different class n
 
 * **Position semantics differ**:
 
-    * Motors + `.position().deviceManagedWithDefaults()` or `.position().regulated()` followed by a direct feedback answer and `.regulator(...)` → feedback-capable position control.
+    * Motors + `.position().deviceManagedWithDefaults()` or `.position().regulated()` followed by
+      a direct feedback answer and `.regulator(...)`, then mapping/reference and the required
+      `.positionTolerance(...)` → feedback-capable position control.
     * Servos + `.position().linear().bounded(...).nativeUnits()` or `.rangeMapsToNative(...)` → open-loop set-and-hold.
 
 * **PlantTasks** and **Tasks** provide factory helpers that build `Task`s for you, including

@@ -130,15 +130,21 @@ public final class MappedPositionPlant implements PositionPlant {
 
     /**
      * Starts configuring a commanded-position plant such as a standard servo.
+     * Commanded plants have no feedback and therefore do not use a completion tolerance.
      */
-    public static Builder commanded(PositionOutput out) {
+    public static CommandedConfigurationStep commanded(PositionOutput out) {
         return new Builder(Objects.requireNonNull(out, "out"), null, null, null);
     }
 
     /**
      * Starts configuring a position-output plant with native feedback.
+     *
+     * <p>The staged builder requires an explicit
+     * {@link FeedbackConfigurationStep#positionTolerance(double)} in public plant position units
+     * before target selection exposes {@link MappedPlantBuildStep#build()}.</p>
      */
-    public static Builder positionOutput(PositionOutput out, ScalarSource nativeMeasurement) {
+    public static FeedbackConfigurationStep positionOutput(PositionOutput out,
+                                                           ScalarSource nativeMeasurement) {
         return new Builder(Objects.requireNonNull(out, "out"), null, null,
                 Objects.requireNonNull(nativeMeasurement, "nativeMeasurement"));
     }
@@ -146,10 +152,13 @@ public final class MappedPositionPlant implements PositionPlant {
     /**
      * Starts configuring a framework-regulated position plant that drives raw power.
      * The resulting Plant keeps mechanism target units separate from its normalized power command.
+     * The staged builder requires an explicit
+     * {@link FeedbackConfigurationStep#positionTolerance(double)} in public plant position units
+     * before target selection exposes {@link MappedPlantBuildStep#build()}.
      */
-    public static Builder regulated(PowerOutput powerOut,
-                                    ScalarSource nativeMeasurement,
-                                    ScalarRegulator regulator) {
+    public static FeedbackConfigurationStep regulated(PowerOutput powerOut,
+                                                       ScalarSource nativeMeasurement,
+                                                       ScalarRegulator regulator) {
         return new Builder(null,
                 Objects.requireNonNull(powerOut, "powerOut"),
                 Objects.requireNonNull(regulator, "regulator"),
@@ -157,9 +166,63 @@ public final class MappedPositionPlant implements PositionPlant {
     }
 
     /**
-     * Advanced builder. FTC robot code should normally use {@code FtcActuators}.
+     * Optional mapped-position configuration for a command-only output.
+     * FTC robot code should normally use {@code FtcActuators}.
      */
-    public static final class Builder {
+    public interface CommandedConfigurationStep extends MappedPlantTargetStep<MappedPositionPlant> {
+        /** Set linear or periodic position topology. */
+        CommandedConfigurationStep topology(Topology topology, double period);
+
+        /** Set the legal target range in plant position units. */
+        CommandedConfigurationStep range(ScalarRange range);
+
+        /** Set how many native position units correspond to one plant position unit. */
+        CommandedConfigurationStep nativePerPlantUnit(double nativePerPlantUnit);
+
+        /** Set one known static plant-to-native reference pair. */
+        CommandedConfigurationStep plantPositionMapsToNative(double plantPosition,
+                                                              double nativePosition);
+    }
+
+    /**
+     * Optional mapped-position configuration before the required plant-unit tolerance answer for
+     * a feedback-capable output.
+     */
+    public interface FeedbackConfigurationStep {
+        /** Set linear or periodic position topology. */
+        FeedbackConfigurationStep topology(Topology topology, double period);
+
+        /** Set the legal target range in plant position units. */
+        FeedbackConfigurationStep range(ScalarRange range);
+
+        /** Set how many native position units correspond to one plant position unit. */
+        FeedbackConfigurationStep nativePerPlantUnit(double nativePerPlantUnit);
+
+        /** Set the optional raw-power output used during calibration search. */
+        FeedbackConfigurationStep searchPowerOutput(PowerOutput searchPowerOut);
+
+        /** Set one known static plant-to-native reference pair. */
+        FeedbackConfigurationStep plantPositionMapsToNative(double plantPosition,
+                                                             double nativePosition);
+
+        /** Establish the supplied plant coordinate from the first native measurement. */
+        FeedbackConfigurationStep assumeCurrentPositionIs(double plantPosition);
+
+        /** Require an explicit runtime reference before normal position commands. */
+        FeedbackConfigurationStep needsReference(String reason);
+
+        /**
+         * Set the required completion tolerance in plant position units and continue to target
+         * selection.
+         */
+        MappedPlantTargetStep<MappedPositionPlant> positionTolerance(double tolerance);
+    }
+
+    /** Mutable implementation hidden behind the ordered public configuration stages. */
+    private static final class Builder implements CommandedConfigurationStep,
+            FeedbackConfigurationStep,
+            MappedPlantTargetStep<MappedPositionPlant>,
+            MappedPlantBuildStep<MappedPositionPlant> {
         private final PositionOutput positionOut;
         private final PowerOutput regulatedPowerOut;
         private final ScalarRegulator regulator;
@@ -171,7 +234,8 @@ public final class MappedPositionPlant implements PositionPlant {
         private double period = Double.NaN;
         private ScalarRange configuredRange = ScalarRange.unbounded();
         private double nativePerPlantUnit = 1.0;
-        private double tolerance = 10.0;
+        private double tolerance = Double.NaN;
+        private boolean toleranceConfigured;
         private ReferenceMode referenceMode = ReferenceMode.STATIC;
         private double plantReference = 0.0;
         private double nativeReference = 0.0;
@@ -218,12 +282,22 @@ public final class MappedPositionPlant implements PositionPlant {
         }
 
         /**
-         * Sets the completion tolerance in plant units.
+         * Sets the completion tolerance in plant units for a feedback-capable position plant.
+         *
+         * @throws IllegalStateException if this builder came from
+         *                               {@link MappedPositionPlant#commanded(PositionOutput)}
          */
         public Builder positionTolerance(double tolerance) {
+            if (nativeMeasurement == null)
+                throw new IllegalStateException("MappedPositionPlant.commanded(...) has no feedback "
+                        + "and does not use positionTolerance(...)");
+            if (toleranceConfigured)
+                throw new IllegalStateException("positionTolerance(...) has already been answered "
+                        + "for this MappedPositionPlant");
             if (tolerance < 0.0 || !Double.isFinite(tolerance))
                 throw new IllegalArgumentException("positionTolerance must be finite and >= 0");
             this.tolerance = tolerance;
+            this.toleranceConfigured = true;
             return this;
         }
 
@@ -308,15 +382,21 @@ public final class MappedPositionPlant implements PositionPlant {
         /**
          * Builds the mapped position plant.
          *
+         * @throws IllegalStateException if no target source was configured, or if a feedback plant
+         *                               has no explicit plant-unit position tolerance
          * @throws IllegalArgumentException if the configured range cannot contain a finite command
          *                                  or a static guard fallback lies outside that range
          */
         public MappedPositionPlant build() {
             if (targetSource == null)
                 throw new IllegalStateException("MappedPositionPlant requires targetedBy(...)");
+            if (nativeMeasurement != null && !toleranceConfigured)
+                throw new IllegalStateException("MappedPositionPlant feedback requires "
+                        + "positionTolerance(...) in plant position units before build()");
+            double builtTolerance = nativeMeasurement == null ? 0.0 : tolerance;
             return new MappedPositionPlant(positionOut, regulatedPowerOut, regulator, nativeMeasurement,
                     searchPowerOut, targetSource, targetGuards, topology, period,
-                    configuredRange, nativePerPlantUnit, tolerance, referenceMode, plantReference,
+                    configuredRange, nativePerPlantUnit, builtTolerance, referenceMode, plantReference,
                     nativeReference, assumedPlantPosition, unreferencedReason);
         }
     }

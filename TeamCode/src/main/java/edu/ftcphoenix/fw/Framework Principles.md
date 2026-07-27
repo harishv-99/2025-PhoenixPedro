@@ -238,6 +238,12 @@ Phoenix is designed around a few core goals:
      For example, if a request must choose between facing-derived and translation-derived spatial
      sources, the staged builder should make that choice explicit instead of allowing both with
      hidden precedence.
+   * Apply that compiler guidance at every supported public construction layer, but give each layer
+     only the stages its distinct job requires. The FTC facade can guide hardware and control
+     choices in detail; the hardware-neutral mapped-Plant layer needs only configuration, a
+     required feedback-tolerance answer, optional target guards, target binding, and build.
+     Command-only position skips the tolerance stage. Keep the concrete assembly object private so
+     it does not become a second public construction path beside those stages.
 
 10. **Principle-driven evolution (breaking changes are OK)**
 
@@ -460,14 +466,27 @@ The builder is staged on purpose:
 2. **Pick target domain**: `power()`, `velocity()`, `position()`
    * Power has the fixed normalized range `[-1, +1]`; out-of-range requests clamp before output.
      `CLAMPED_TO_RANGE` is the active status unless a later guard supplies a more specific status.
-   * Velocity then asks loop ownership, bounds, and plant/native units.
+   * Velocity then asks loop ownership, bounds, plant/native units, and the required plant-unit
+     completion tolerance.
 3. **For position Plants, answer guided position questions**:
    * motor position control: `deviceManagedWithDefaults()`, `deviceManaged()...doneDeviceManaged()`, or `regulated()` followed by one direct feedback answer and `regulator(...)`
    * topology: `linear()` or `periodic(period)`
    * bounds: `bounded(min, max)` or `unbounded()`
    * mapping/reference: `nativeUnits()`, `scaleToNative(...)`, bounded-only `rangeMapsToNative(...)`, then `alreadyReferenced()`, `plantPositionMapsToNative(...)`, `assumeCurrentPositionIs(...)`, or `needsReference(...)` when a runtime reference is required
-4. **Optional hardware guards**: enter `targetGuards()` for dynamic Plant-level protection such as `maxTargetRate(...)`, `holdLastTargetUnless(...)`, or `fallbackTargetUnless(...)`.
-5. **Target binding**: finish with `targetedBy(ScalarTarget)`, `targetedBy(readOnlySource)`, or `targetedByCommand(initialTarget)`, then `build()`.
+4. **For every feedback Plant, choose completion tolerance**: after public-unit mapping and, for
+   position, reference policy are complete, answer exactly once with
+   `velocityTolerance(...)` or `positionTolerance(...)`. There is no hidden or native-unit default.
+   A command-only standard-servo Plant skips this feedback-only question.
+5. **Optional hardware guards**: enter `targetGuards()` for dynamic Plant-level protection such as `maxTargetRate(...)`, `holdLastTargetUnless(...)`, or `fallbackTargetUnless(...)`.
+6. **Target binding**: finish with `targetedBy(ScalarTarget)`, `targetedBy(readOnlySource)`, or `targetedByCommand(initialTarget)`, then `build()`.
+
+Plant tolerance defines Phoenix's mechanism-level `atTarget(...)` result in public Plant units; it
+is not an FTC controller setting. For device-managed motor position, the separately named
+`devicePositionToleranceTicks(...)` is an optional advanced override in native encoder ticks.
+Ordinary robot code should normally choose `deviceManagedWithDefaults()` and answer only the
+required Plant tolerance. Phoenix does not use `DcMotor.isBusy()` for Plant completion, and the
+public FTC contract does not justify claiming that the controller stops correcting at its configured
+target-tolerance boundary.
 
 Configured hardware names keep FTC's own identity semantics: surrounding whitespace is trimmed for
 lookup and comparison, while case remains significant. Within one motor, standard-servo, or
@@ -481,7 +500,13 @@ regulated Plant from reading feedback through the same configured name. Separate
 owners may also refer to the same configured name when robot lifecycle policy makes that handoff
 intentional.
 
-Internally, Phoenix also has lower-level `Plants` factory helpers, but student code should typically prefer `FtcActuators`.
+Custom hardware adapters that need Phoenix's plant/native mapping and reference behavior use
+`MappedPositionPlant` or `MappedVelocityPlant`. This is a distinct hardware-neutral layer, not a
+second way to configure FTC hardware. Its shorter public flow is still compiler-guided:
+configuration, the required feedback tolerance, optional target guards, target binding, then
+`build()`. Command-only mapped position skips the feedback-tolerance step. Ordinary FTC robot code
+should continue to use `FtcActuators`; still-lower, already-same-unit adapters may use the `Plants`
+factories.
 
 ---
 
