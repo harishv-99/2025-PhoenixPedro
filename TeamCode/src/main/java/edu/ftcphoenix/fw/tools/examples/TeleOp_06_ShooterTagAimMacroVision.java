@@ -404,7 +404,6 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
         DriveSignal cmd = driveWithAim.get(clock).clamped();
         lastDrive = cmd;
 
-        drivebase.update(clock);
         drivebase.drive(cmd);
 
         // Plants: shooter, transfer, pusher.

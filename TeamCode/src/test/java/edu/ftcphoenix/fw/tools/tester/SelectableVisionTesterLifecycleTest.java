@@ -17,7 +17,9 @@ import java.util.Arrays;
 import java.util.Deque;
 import java.util.function.Function;
 
+import edu.ftcphoenix.fw.core.hal.PowerOutput;
 import edu.ftcphoenix.fw.core.time.LoopClock;
+import edu.ftcphoenix.fw.drive.MecanumDrivebase;
 import edu.ftcphoenix.fw.field.SimpleTagLayout;
 import edu.ftcphoenix.fw.ftc.ui.HardwareNamePicker;
 import edu.ftcphoenix.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane;
@@ -469,6 +471,43 @@ public final class SelectableVisionTesterLifecycleTest {
     }
 
     @Test
+    public void pinpointPodOffsetFinalStopPreservesDriveFailureAndStillClosesVision() {
+        PinpointPodOffsetCalibrator owner = new PinpointPodOffsetCalibrator();
+        RuntimeException driveFailure = new IllegalStateException("drive stop failed");
+        RuntimeException visionFailure = new IllegalArgumentException("vision close failed");
+        PowerProbe failingOutput = new PowerProbe(driveFailure);
+        PowerProbe unusedOutput = new PowerProbe(null);
+        MecanumDrivebase drive = new MecanumDrivebase(
+                failingOutput,
+                unusedOutput,
+                unusedOutput,
+                unusedOutput,
+                MecanumDrivebase.Config.defaults()
+        );
+        LaneProbe lane = LaneProbe.open(visionFailure);
+        setField(owner, "drive", drive);
+        setField(owner, "visionLane", lane);
+
+        try {
+            owner.stop();
+            fail("Expected drive stop failure");
+        } catch (RuntimeException actual) {
+            assertSame(driveFailure, actual);
+            assertEquals(1, actual.getSuppressed().length);
+            assertSame(visionFailure, actual.getSuppressed()[0]);
+        }
+
+        assertEquals(1, failingOutput.stopCount);
+        assertEquals(1, lane.closeCount);
+        assertSame(null, field(owner, "drive"));
+        assertSame(null, field(owner, "visionLane"));
+
+        owner.stop();
+        assertEquals(1, failingOutput.stopCount);
+        assertEquals(1, lane.closeCount);
+    }
+
+    @Test
     public void errorsAreNotCaughtAndPartiallyOpenedLaneCanStillBeStoppedOnce() {
         for (OwnerKind kind : OwnerKind.values()) {
             AssertionError error = new AssertionError(kind + " setup error");
@@ -635,6 +674,30 @@ public final class SelectableVisionTesterLifecycleTest {
             if (closeFailure != null) {
                 throw closeFailure;
             }
+        }
+    }
+
+    private static final class PowerProbe implements PowerOutput {
+        private final RuntimeException stopFailure;
+        private double commandedPower;
+        private int stopCount;
+
+        private PowerProbe(RuntimeException stopFailure) {
+            this.stopFailure = stopFailure;
+        }
+
+        @Override
+        public void setPower(double power) {
+            stopCount++;
+            if (stopFailure != null) {
+                throw stopFailure;
+            }
+            commandedPower = power;
+        }
+
+        @Override
+        public double getCommandedPower() {
+            return commandedPower;
         }
     }
 

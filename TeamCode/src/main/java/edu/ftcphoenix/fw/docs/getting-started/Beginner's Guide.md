@@ -69,7 +69,9 @@ Here’s a simplified TeleOp that:
 >
 > * This is a *skeleton* — you’ll fill in your hardware names and constants.
 > * `FtcDrives.mecanum(hardwareMap)` assumes the standard motor names:
-    >   `frontLeftMotor`, `frontRightMotor`, `backLeftMotor`, `backRightMotor`.
+>   `frontLeftMotor`, `frontRightMotor`, `backLeftMotor`, `backRightMotor`.
+> * If your wiring or tuning differs, create `FtcDrives.MecanumConfig.defaults()`, change its
+>   `wiring`, `enableZeroPowerBrake`, or `drivebase` fields, and pass it to the same factory.
 
 ```java
 import edu.ftcphoenix.fw.core.hal.Direction;
@@ -137,8 +139,7 @@ public class PhoenixTeleOp extends OpMode {
         // 3) Macros (non-blocking tasks)
         macroRunner.update(clock);
 
-        // 4) Drive (update first so rate limiting has the current dt)
-        drivebase.update(clock);
+        // 4) Drive (source shaping happens before the direct hardware write)
         DriveSignal cmd = driveSource.get(clock).clamped();
         drivebase.drive(cmd);
 
@@ -151,6 +152,12 @@ public class PhoenixTeleOp extends OpMode {
         // 6) Telemetry (optional)
         telemetry.addData("dtSec", dt);
         telemetry.update();
+    }
+
+    @Override
+    public void stop() {
+        drivebase.stop();
+        // A complete robot also stops/cancels every other owner it constructed.
     }
 
     private void initShooterPlants() {
@@ -176,8 +183,9 @@ imperative drive Task that competes with that final writer.
 When your robot grows past a tiny example, do not hide button choices inside low-level framework primitives.
 Keep the layers separated:
 
-- **framework primitives** map signals, mix drive, estimate pose, or talk to hardware
-- **framework lanes** own stable hardware/resource graphs like mecanum drive or localization
+- **framework primitives/direct owners** map signals, mix drive, estimate pose, or own one complete
+  narrow capability such as `MecanumDrivebase`
+- **framework lanes** own stable multi-object resource graphs such as vision or localization
 - **robot controls** choose sticks, buttons, slow mode, and driver/operator semantics
 - **robot capabilities** expose the shared mode-neutral API that both TeleOp and Auto should use
 - **robot policy** decides game-specific behavior like aiming, scoring, and macros

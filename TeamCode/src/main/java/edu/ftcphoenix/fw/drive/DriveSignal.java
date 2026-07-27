@@ -64,7 +64,6 @@ import edu.ftcphoenix.fw.core.math.MathUtil;
  *
  *     public void updateTeleOp(LoopClock clock) {
  *         DriveSignal signal = driveSource.get(clock).clamped();
- *         drivebase.update(clock);
  *         drivebase.drive(signal);
  *     }
  * }

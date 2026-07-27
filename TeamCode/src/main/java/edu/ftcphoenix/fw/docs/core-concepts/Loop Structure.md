@@ -56,8 +56,9 @@ Phoenix’s preferred ordering is:
 
 **Drive before Plants**
 
-* Drive is often the most time-sensitive and can benefit from being updated early.
-* More importantly: `MecanumDrivebase.update(clock)` provides loop timing to its rate limiters.
+* Drive is often the most time-sensitive and can benefit from being applied early.
+* Keeping one explicit drive phase makes the final `DriveSource` sample and hardware write easy to
+  find. Stateful source wrappers obtain timing from the shared clock when that graph is sampled.
 
 **Telemetry last**
 
@@ -92,7 +93,6 @@ public void loop() {
 
     // 5) Drive
     DriveSignal cmd = driveSource.get(clock).clamped();
-    drivebase.update(clock);   // ensure rate limiting uses current dt
     drivebase.drive(cmd);      // applies motor power immediately
 
     // 6) Plants (mechanisms)
@@ -282,7 +282,7 @@ follower heartbeat.
 Phoenix is intentionally strict about time:
 
 * `LoopClock.update(getRuntime())` defines `dtSec()`.
-* Tasks and drive rate limiters use `dtSec()`.
+* Tasks and stateful source wrappers such as drive rate limiters use `dtSec()`.
 
 Avoid these patterns:
 
@@ -363,7 +363,6 @@ public void loop() {
     macroRunner.update(clock);
     loopPhases.finishPhase("tasks");
 
-    drivebase.update(clock);
     drivebase.drive(driveSource.get(clock).clamped());
     loopPhases.finishPhase("drive");
 
@@ -393,25 +392,23 @@ already collected data when the composition root deliberately resets its `LoopCl
 
 ---
 
-## 6. Rate limiting and the drive update call
+## 6. Direct drive and vendor heartbeats
 
-`MecanumDrivebase` can rate-limit axial/lateral/omega based on the most recent `update(clock)`.
+`MecanumDrivebase.drive(signal)` sends the normalized command to its coordinated outputs
+**immediately**. It has no direct-drive heartbeat and does not own rate limiting. Put shaping in the
+source graph instead:
 
-Guideline:
+```java
+DriveSource shaped = manual.rateLimited(4.0, 4.0, 6.0);
 
-* If you use rate limiting, call:
+// Once in the explicit drive phase:
+drivebase.drive(shaped.get(clock).clamped());
+```
 
-  ```java
-  drivebase.update(clock);
-  drivebase.drive(signal);
-  ```
-
-Calling `drive(signal)` before `update(clock)` means the rate limiter uses the previous cycle’s dt.
-
-Also remember the semantics:
-
-* `drivebase.drive(...)` sends power commands to the hardware **immediately**.
-* `drivebase.update(clock)` only provides timing (`dtSec`) for optional rate limiting; it does not move motors by itself.
+The generic `DriveCommandSink.update(clock)` hook still matters for Pedro and other stateful vendor
+adapters whose supported lifecycle requires a stable composition-root heartbeat. Call it for that
+adapter every relevant loop and let the adapter deduplicate same-cycle Task/root calls. Do not copy
+that rule onto a direct `MecanumDrivebase` merely for API symmetry.
 
 ---
 

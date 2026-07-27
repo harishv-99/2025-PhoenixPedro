@@ -322,7 +322,6 @@ public final class TeleOp_03_ShooterMacro extends OpMode {
         DriveSignal driveCmd = stickDrive.get(clock).clamped();
         lastDrive = driveCmd;
 
-        drivebase.update(clock);
         drivebase.drive(driveCmd);
 
         // --- 5) Mechanism updates ---

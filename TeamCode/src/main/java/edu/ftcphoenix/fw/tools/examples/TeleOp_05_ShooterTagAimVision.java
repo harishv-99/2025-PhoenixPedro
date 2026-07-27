@@ -314,7 +314,6 @@ public final class TeleOp_05_ShooterTagAimVision extends OpMode {
         DriveSignal cmd = driveWithAim.get(clock).clamped();
         lastDrive = cmd;
 
-        drivebase.update(clock);
         drivebase.drive(cmd);
 
         // Shooter plant executes whatever target we just decided above

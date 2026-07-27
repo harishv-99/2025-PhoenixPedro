@@ -1,10 +1,14 @@
 # Phoenix Localization Follow-Ups
 
-This file tracks Phoenix-specific follow-up work now that TeleOp uses framework-owned drive and localization lanes plus a backend-neutral AprilTag vision seam, and Phoenix consumes those through a thinner robot profile.
+This file tracks Phoenix-specific follow-up work now that TeleOp uses a framework-owned direct drive
+owner, a localization lane, and a backend-neutral AprilTag vision seam, and Phoenix consumes those
+through a thinner robot profile.
 
 The current framework split is:
 
-- `FtcMecanumDriveLane` owns mecanum wiring, brake behavior, and drivebase lifecycle.
+- `FtcDrives.mecanum(hardwareMap, profile.drive)` constructs the actual `MecanumDrivebase`, which
+  owns the coordinated drive outputs, final command, diagnostics, and stop operation. Direct drive
+  has no separate lane wrapper or heartbeat.
 - `AprilTagVisionLane` is the backend-neutral AprilTag seam; Phoenix instantiates either
   `FtcWebcamAprilTagVisionLane` or `FtcLimelightAprilTagVisionLane` for backend-specific device
   identity, trustworthy acquisition, camera mount, component readiness, and cleanup. This does not
@@ -12,9 +16,10 @@ The current framework split is:
 - `FtcOdometryAprilTagLocalizationLane` owns Pinpoint, AprilTag-only field solving, raw AprilTag solving, optional direct Limelight field pose, corrected estimator selection, and per-loop pose production.
 - `PhoenixCapabilities` owns the shared mode-neutral robot vocabulary used by TeleOp and Auto.
 - `PhoenixTeleOpControls` owns all TeleOp input semantics, including the drive sticks and slow mode.
-- `PhoenixRobot` now composes framework lanes and robot policy instead of rebuilding those owners inline.
+- `PhoenixRobot` now composes framework resource owners and robot policy instead of rebuilding those owners inline.
 
-Keep those owners documented so Javadocs, markdown docs, and real code boundaries stay aligned as Phoenix evolves or as the same lane pattern is reused by future robots.
+Keep those owners documented so Javadocs, markdown docs, and real code boundaries stay aligned as
+Phoenix evolves or the same ownership pattern is reused by future robots.
 
 ---
 

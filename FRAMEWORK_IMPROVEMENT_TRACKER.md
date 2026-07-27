@@ -135,7 +135,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 48 | API-01 | Graph-owned Plant command binding | Done | Graph-owned command provenance, parallel Plant vocabulary, caller/docs migration, verification, and Android Studio review are complete. |
 | 49 | API-02 | Feedback tolerance choice | Done | Required public-unit tolerances, minimally staged FTC and mapped construction, private mapped builders, synchronized docs, verification, and Android Studio review are complete. |
 | 50 | API-04 | Binding execution order | Done | Approved global declaration-ordered traversal with context snapshots first, no phase/priority API, and fail-fast structural mutation during dispatch. |
-| 51 | API-05 | One beginner drive entry point | Proposed | Teach the lane as the robot-facing path and keep the raw factory as a lower-level tool. |
+| 51 | API-05 | One beginner drive entry point | Done | Factory-only FTC drive construction, normalized command vocabulary, caller/docs migration, verification, and Android Studio review are complete. |
 | 52 | COMMON-02 | Telemetry commit ownership | Proposed | Renderers add data; the composition root commits once. |
 | 53 | CHECK-01 | Staged whole-robot system check | Deferred | Meaningful Phoenix thresholds, hazardous-motion confirmation, and physical safe-state evidence require the assembled robot. |
 | 54 | EXAMPLE-01 | Compiling modern starter robot | Proposed | Add a small multi-file reference, not an inheritance framework. |
@@ -6838,12 +6838,251 @@ writer, and explicit lifecycle ownership.
 
 - **Problem to confirm:** guides present both a raw drivebase factory and a lane, and still teach a
   no-op `drivebase.update(clock)` as if it owns rate-limiter timing.
-- **Alternatives to compare:** make the lane the sole robot-facing entry point; restore meaningful
-  drivebase update behavior; or clearly separate beginner and low-level APIs.
-- **Leading hypothesis:** teach `FtcMecanumDriveLane` for modern robots, retain a clearly lower-level
-  factory for tools/custom owners, and remove obsolete update calls.
+- **Alternatives to compare:** make the lane the sole robot-facing entry point; return the actual
+  drivebase from one complete FTC factory family; restore meaningful drivebase update behavior;
+  retain or delete the unused nominal-velocity shortcut; or clearly separate normal FTC construction
+  from the hardware-neutral injected-output seam.
+- **Original leading hypothesis:** teach `FtcMecanumDriveLane` for modern robots, retain a clearly
+  lower-level factory for tools/custom owners, and remove obsolete update calls. The completed
+  decision gate below rejects that hypothesis because the wrapper does not own a distinct runtime
+  capability; this material change requires fresh user approval before implementation.
 - **Completion:** one complete beginner loop compiles and matches actual timing/ownership behavior.
-- **Decision record:** _Pending._
+- **Research checkpoint (2026-07-27):** the user expanded the decision gate to review what other
+  lanes are justified by the previously studied competition robot repositories and whether a
+  systematic lane pattern can simplify complete robot code. API-05 remains the only active item:
+  the audit may refine the drive recommendation and add separately gated tracker proposals, but it
+  will not implement unrelated lanes or create a generic lane framework. The review must distinguish
+  stable multi-resource/lifecycle ownership from robot-specific mechanism, strategy, policy, and
+  capability code, and compare complete adopting-robot surfaces rather than short outer calls.
+- **Decision record (2026-07-27):**
+  - **Confirmed direct-drive behavior:** `MecanumDrivebase.drive(DriveSignal)` scales, mixes,
+    normalizes, and writes all four `PowerOutput`s immediately. Its concrete `update(clock)` is an
+    explicit no-op, and `FtcMecanumDriveLane.update(clock)` only delegates to that no-op. Stateful
+    drive shaping now belongs to `DriveSource` wrappers such as `rateLimited(...)`, which consume
+    the shared clock when their source graph is sampled. The current beginner call therefore
+    teaches a lifecycle step that has no effect and gives the false impression that the sink owns
+    rate-limiter time.
+  - **Why the generic heartbeat remains:** `DriveCommandSink.update(clock)` is still a truthful
+    optional capability. `PedroPathingDriveAdapter` and another stateful vendor adapter may need one
+    stable composition-root heartbeat beyond active route/guidance Tasks; `DriveTasks` and guidance
+    Tasks also call the same hook and depend on same-cycle adapter deduplication. Phoenix Auto's
+    retained `autoDrive.update(clock)` must remain. Removing or splitting the generic hook would add
+    another sink interface or runtime type without simplifying the normal call. The correction is
+    to stop teaching/calling the inherited no-op on direct mecanum owners.
+  - **Construction and caller audit:** `FtcDrives` currently advertises itself as the beginner/main
+    entry and exposes eight public `mecanum(...)` overloads. They all converge on the same
+    coordinated four-output construction. Six maintained teaching TeleOps use only
+    `mecanum(hardwareMap)`; `FtcMecanumDriveLane` and `PinpointPodOffsetCalibrator` use the reusable
+    wiring/config shape; the other scalar name/direction overloads are test-only or unused.
+    Phoenix already constructs `FtcMecanumDriveLane` but still calls its no-op update in TeleOp.
+    The calibrator repeats the no-op before direct writes and currently closes vision without
+    stopping its independently owned drivetrain. There is no maintained caller of
+    `new MecanumDrivebase(...)`, `FtcMecanumDriveLane.drivebase()`, or either lane/drivebase
+    `drive(ChassisSpeeds)` overload.
+  - **Focused baseline:** the traced call path above is sufficient to reproduce the no-op mismatch.
+    Before the design decision, `FtcActuatorGroupIdentityValidationTest` passed 18 tests and
+    `FtcMotorPowerRunModeTest` passed 24 tests, with zero failures, errors, or skips. This protects
+    coordinated name validation and raw-power mode acquisition while the construction surface is
+    reduced. The build emitted only the existing JDK 21 versus Java 8 source/target warnings.
+  - **Competition lane audit:** Bettafish, Cuttlefish, SaMoTech, LOAD, and Bettabot repeatedly need
+    one drivetrain construction/final-writer/stop owner. The reviewed repositories also support the
+    already-completed webcam/Limelight vision owners, the odometry-plus-AprilTag localization owner,
+    and the vendor-named `PedroPathingRuntime` as a lane-shaped integration owner. These are stable
+    multi-object resource graphs rather than season mechanisms.
+  - **No additional production lane is justified:** shooters, intakes, turrets, magazines, and
+    endgame mechanisms differ in hardware and policy and remain simpler as Plants plus robot-owned
+    subsystems, supervisors, services, and capability families. Current sensing supplies a fact;
+    jam thresholds and power policy stay robot-owned. Tech Tigers' one highly specific swerve
+    topology does not justify an FTC swerve lane. PTO sharing remains evidence-gated by DRIVE-02.
+    Manual hub caching remains measurement-gated by PERF-01 because reviewed teams deliberately
+    choose both manual and SDK automatic modes. Road Runner can use the existing route/drive seams
+    until a real Phoenix adopter proves a vendor runtime. Telemetry remains presenters plus the
+    composition-root commit considered by COMMON-02, not a resource lane.
+  - **Articulated-camera recheck:** the earlier review cited one LOAD turret-mounted camera, but the
+    full evidence also includes SaMoTech and Tech Tigers pipeline-dependent Limelight pitch mounts.
+    Their mechanics and policies still differ and fit the existing ownership split: the vision lane
+    owns device/pipeline freshness, a Plant owns the mount actuator, a robot service owns semantic
+    coordination, and `TimeAwareSource<CameraMountConfig>` supplies historical geometry. More
+    examples therefore reinforce the existing boundaries rather than a camera-actuation lane.
+  - **Systematic framework-lane qualification gate:** create another framework lane only when all
+    of the following are true:
+    1. The same complete graph recurs across independent robots, or one stable SDK/vendor contract
+       mandates the graph.
+    2. Its collaborating objects share one lifetime and one primary reason to change.
+    3. Duplicate acquisition, heartbeat, final writing, recovery, or cleanup creates a concrete
+       ownership hazard.
+    4. Differences between adopters are data/configuration or narrow injected seams, not season
+       vocabulary, operator meanings, mechanism topology, or game strategy.
+    5. The owner can stop FTC/vendor details at a small truthful downstream capability such as
+       `DriveCommandSink` or `AprilTagVisionLane`.
+    6. The composition root can still show the lane's real phase and safety-significant cleanup
+       order; a lane with no heartbeat does not gain a fictional `update()` phase.
+    7. The complete adopting robot loses code, concepts, and lifecycle hazards, rather than merely
+       gaining a short outer constructor call.
+    8. Construction, same-cycle behavior where applicable, partial failure, readiness, stop/close,
+       and diagnostics are proportionately testable.
+  - **Why there is no generic `Lane` API:** the current owners have no honest common lifecycle.
+    Direct drive applies commands immediately and has no heartbeat; webcam vision is asynchronous;
+    Limelight owns pipeline/result generations; localization owns a guarded update; and Pedro uses
+    the narrower `DriveCommandSink`/`RouteFollower` seams. A `Lane` marker, base class, registry,
+    `FtcLanes` container, or `updateAll()` would add a concept, hide ordering, and imply lifecycle
+    parallelism that does not exist. `Lane` remains an architectural role. Reusable helpers depend
+    on the smallest real capability instead.
+  - **Terminology finding:** the architecture guide uses *framework lane* for a stable resource
+    owner, `Recommended Robot Design` calls five problem-solving choices *behavior lanes*, and
+    `SpatialSolveLane` names an ordered query alternative. API-05 will rename the documentation's
+    five choices to **behavior patterns** and explicitly identify spatial solve lanes as a
+    domain-specific strategy term. No public spatial type rename is needed.
+  - **Alternatives compared:**
+    1. **No change or documentation-only:** leaves six compiling examples and Phoenix itself
+       demonstrating the fictitious heartbeat, preserves eight discoverable factory spellings, and
+       does not establish one normal owner. Rejected.
+    2. **Restore rate limiting or other state inside `MecanumDrivebase.update()`:** would create two
+       behavior-shaping locations, make update order significant again, and conflict with the
+       source-owned composition/cycle-safety design. Rejected.
+    3. **Delete `DriveCommandSink.update()`:** makes direct mecanum look smaller but breaks the real
+       Pedro/vendor lifecycle seam or requires another public sink/runtime interface. Rejected.
+    4. **Teach `FtcMecanumDriveLane` and keep either one or all raw factories:** the lane owns no
+       live object beyond one `MecanumDrivebase`; its update delegates to a no-op and its drive/stop
+       methods merely forward. Static construction metadata and an unused debug view do not give it
+       an independent heartbeat, readiness, recovery, resource, final-writer guard, or cleanup
+       contract. Keeping a factory public leaves two construction layers; hiding the factory leaves
+       the same redundant runtime noun. Both variants fail the lane-qualification and second-public-
+       layer tests. Rejected; this is the material departure from the original leading hypothesis.
+    5. **Keep the raw factory plus separate brake helpers:** retains imperative post-construction
+       reconfiguration, a second hardware lookup, and several ways to describe one complete drive
+       setup. No maintained runtime brake-toggle caller justifies that split. Rejected.
+    6. **Use a staged builder, default lane constructor, static lane factory, generic `DriveLane`, or
+       lane-owned `DriveSource`:** every drive-construction answer is optional/defaulted, so a builder
+       adds stages without preventing an invalid combination; the other shapes add another spelling
+       or mix controls/behavior shaping into hardware ownership. Rejected.
+    7. **Delete `FtcDrives` construction completely:** would force normal FTC callers to assemble
+       four adapters and could lose complete-group identity validation and first-command raw-mode
+       preflight. The FTC factory and the hardware-neutral injected-output constructor have genuinely
+       different capabilities. Rejected.
+    8. **Retain `drive(ChassisSpeeds)` as a mentor shortcut:** it has no caller or focused test and
+       converts nominal physical velocity to open-loop power only by dividing by estimated maxima.
+       That looks like controlled physical velocity without providing it, is absent from the shared
+       `DriveCommandSink` vocabulary, and duplicates none of Pedro's real follower control. Rejected;
+       a future physical-velocity sink must be an end-to-end truthful capability.
+    9. **Combine direct FTC drive with Pedro:** conflates open-loop FTC motor ownership with a vendor
+       follower, passive localizer, route executions, and recurring heartbeat. Rejected.
+  - **Simplicity comparison:** before this change a student can discover eight FTC factory overloads,
+    a second lane constructor and config, a no-op update rule, and both normalized and nominal-
+    velocity command vocabularies. The selected default path is exactly
+    `MecanumDrivebase drive = FtcDrives.mecanum(hardwareMap)`, followed each loop by
+    `drive.drive(source.get(clock).clamped())` and an owner-level `drive.stop()`. A configured robot
+    uses the same factory name with one complete `profile.drive`; it does not learn a second runtime
+    wrapper. The one-argument overload materially simplifies all six maintained beginner examples
+    and delegates to the config overload, so it is the Principles' allowed optional-config overload,
+    not another construction layer.
+  - **Chosen API-05 design:**
+    1. Delete `FtcMecanumDriveLane` rather than deprecating it. `MecanumDrivebase` remains the actual
+       direct-drive runtime owner: it retains the four coordinated `PowerOutput`s, mixes and applies
+       the final `DriveSignal`, owns live command diagnostics, and stops those outputs.
+    2. Move the useful current lane construction answers into
+       `FtcDrives.MecanumConfig`: `MecanumWiringConfig wiring`, `boolean enableZeroPowerBrake`, and
+       `MecanumDrivebase.Config drivebase`, with private construction, `defaults()`, and a deep
+       `copy()`. Retain `MecanumWiringConfig` as the smaller physical-wiring value independently
+       consumed by Pedro translation and per-motor direction testing.
+    3. Make `FtcDrives.mecanum(HardwareMap)` and
+       `FtcDrives.mecanum(HardwareMap, MecanumConfig)` the complete normal FTC factory family. The
+       first delegates to `MecanumConfig.defaults()`; the second requires and snapshots the complete
+       config, validates it before hardware effects, resolves the complete motor group once, applies
+       direction and BRAKE/FLOAT configuration, and returns the actual `MecanumDrivebase`. Remove the
+       other seven current scalar/wiring overloads and the public post-construction
+       `setDriveBrake(...)`/`setZeroPowerBehavior(...)` paths.
+    4. Retain the public hardware-neutral `MecanumDrivebase(PowerOutput, PowerOutput, PowerOutput,
+       PowerOutput, Config)` constructor as the distinct custom-output/simulation injection seam, but
+       require every output and its config rather than accepting null as another defaults spelling.
+    5. Delete `MecanumDrivebase.drive(ChassisSpeeds)`, the unused `ChassisSpeeds` value, and the three
+       nominal physical-speed config fields. Keep normalized `DriveSignal` as the one direct-drive
+       command vocabulary and keep source shaping upstream.
+    6. Remove the concrete no-op `MecanumDrivebase.update(...)` override and every direct-mecanum
+       update call. Retain `DriveCommandSink.update(clock)` and all generic Task/Pedro calls because a
+       stateful vendor adapter has a real heartbeat; Phoenix Auto continues to own that heartbeat.
+    7. Migrate `PhoenixProfile.drive` to `FtcDrives.MecanumConfig`, Phoenix TeleOp to the returned
+       `MecanumDrivebase`, the pod-offset calibrator to one optional complete mecanum config, and the
+       direction tester/Pedro constants to the retained wiring fields. The six beginner examples keep
+       their existing one-line factory call, lose only the fictitious update, and retain explicit
+       stop. Make the calibrator's owner-level stop attempt both drivetrain and vision cleanup without
+       losing the first failure.
+    8. Synchronize Framework Principles, the lane/robot-design guides, Beginner's Guide, Framework
+       Overview, Loop Structure, task quickstart, drive Javadocs, all six examples, Phoenix
+       Architecture, and related Phoenix guides. Add the lane-qualification gate and terminology
+       clarification; do not add a generic lane hierarchy or another production lane.
+  - **Safety/item boundary:** construction must keep FTC-01's no power or run-mode write before the
+    first command. It validates and resolves the complete group before direction/BRAKE-FLOAT
+    configuration and preserves the coordinated raw-mode preflight on the first complete command;
+    it does not invent transactional hardware configuration or write zero merely because construction
+    failed. SAFE-04 still owns ordinary multi-output command/stop failure cleanup and seam truth.
+  - **Verification plan:** add fake-FTC factory regressions proving default and custom wiring/brake
+    configuration, config-copy isolation, complete validation before effects, one resolution per
+    motor, immediate drive without a preceding update, and immediate stop; protect the exact two-
+    overload FTC factory surface plus the distinct hardware-neutral constructor; prove the lane,
+    physical-speed shortcut, public brake helpers, and concrete direct-drive heartbeat are gone;
+    preserve and run the 42 focused group-identity/raw-mode regressions; add focused calibrator
+    cleanup coverage; compile every maintained example and Phoenix; run the full TeamCode unit suite
+    and debug Java compile; statically remove direct-mecanum update calls and stale rate-limiter
+    claims while preserving generic Task and Pedro heartbeats; run diff, whitespace, final-newline,
+    and documentation-link checks. This is a software ownership/API change: fake hardware can verify
+    commands and cleanup, but completion will not claim physical drivetrain behavior.
+  - **Approval gate:** the completed decision gate rejects API-05's original lane-first hypothesis and
+    materially changes the public construction and command surface. API-05 is **Ready**, but no
+    framework, caller, or documentation implementation begins until the user explicitly approves
+    this revised complete design. Approval authorizes API-05 only.
+  - **Approval (2026-07-27):** the user explicitly approved this revised decision with
+    `Approve revised API-05 factory-only drive design`. API-05 is **In progress**. Implementation is
+    limited to the chosen construction/command surface, required caller and documentation migration,
+    focused regression coverage, and the bounded calibrator cleanup above; later tracker items remain
+    out of scope.
+  - **Implementation record (2026-07-27):** API-05 now has one FTC construction layer:
+    `FtcDrives.mecanum(hardwareMap)` and the same factory with one defensively copied
+    `FtcDrives.MecanumConfig`. That complete config owns wiring, BRAKE/FLOAT choice, and normalized
+    drivebase scaling. The factory validates the complete configuration before SDK effects, resolves
+    every motor exactly once before direction/BRAKE-FLOAT configuration, preserves FTC-01's
+    construction-time no-power/no-mode rule and coordinated first-command raw-mode preflight, and
+    returns the actual `MecanumDrivebase`.
+  - **Removed surfaces:** `FtcMecanumDriveLane`, `ChassisSpeeds`, nominal physical-speed config,
+    seven redundant `mecanum(...)` overloads, public post-construction brake helpers, and the
+    concrete no-op direct-drive heartbeat are deleted rather than deprecated. The hardware-neutral
+    five-argument `MecanumDrivebase` constructor remains the distinct custom-output/simulation seam
+    and now requires every dependency. `MecanumDrivebase.Config` validates each `max*` scale as
+    finite and in `[0.0, 1.0]` through the copy path shared by both construction seams, preventing
+    invalid or sign-inverting configuration from reaching hardware.
+  - **Caller and documentation migration:** Phoenix TeleOp now owns the returned
+    `MecanumDrivebase`; its Pedro Auto heartbeat remains unchanged. The six maintained beginner
+    examples keep the one-line default factory and explicit stop while losing only the fictitious
+    update. The Pinpoint pod-offset calibrator accepts one optional complete config and uses
+    `CleanupActions` to attempt drive stop before vision close without replacing the first failure.
+    Framework Principles, maintained drive/loop/task/example guides, Phoenix architecture notes, and
+    Javadocs now teach the same factory-only surface, immediate direct-drive semantics, vendor-only
+    heartbeat distinction, and eight-part framework-lane qualification gate.
+  - **Adversarial review (2026-07-27):** independent API, safety, and student-facing caller/docs
+    audits challenged the completed diff. They identified incomplete numeric config validation,
+    missing default/custom-direction and late-lookup regressions, an advanced constructor presented
+    as ordinary usage, several stale lane/heartbeat labels, one missing example import, and incomplete
+    public `@throws` documentation. All findings were corrected and independently rechecked; the
+    final audits report no blocker, important, or minor finding. SAFE-04's sequential command/stop
+    partial-failure behavior remains deliberately unchanged and out of API-05 scope.
+  - **Automated verification (2026-07-27):** Android Studio's bundled JBR completed the focused
+    direct-drive/fake-FTC/calibrator lifecycle suite with **67 tests, 0 failures, 0 errors, and 0
+    skips**. The required `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` run then
+    completed successfully with **967 tests across 103 suites, 0 failures, 0 errors, and 0 skips**;
+    output contained only the existing JDK 21 versus Java 8 source/target warnings. Exact-surface and
+    stale-reference scans preserve only the intentional generic guidance and Pedro heartbeat calls;
+    `git diff --check` passed, and all **83** local links across the 13 changed Markdown files resolve.
+    No robot hardware was used or required, so this record claims API/lifecycle behavior rather than
+    physical drivetrain direction or braking performance.
+  - **Android Studio audit point (2026-07-27):** API-05 is **Verifying** and intentionally remains
+    uncommitted. Inspect `FtcDrives`/`MecanumDrivebase` for the exact two-factory surface and normalized
+    config validation; `FtcHardware` plus the focused tests for validate/resolve/configure/preflight
+    ordering; Phoenix/examples/calibrator for direct-drive and cleanup behavior; and Framework
+    Principles plus the maintained guides for factory/lane/heartbeat consistency. No staging,
+    commit, push, pull request, merge, or later tracker item begins before explicit user approval.
+  - **Manual verification and approval (2026-07-27):** the user reviewed API-05 in Android Studio and
+    replied `API-05 looks good`. This approves finalization, publication, and merge of API-05 only;
+    the next tracker item remains unstarted.
 
 ### COMMON-01 - Cleanup action aggregation
 

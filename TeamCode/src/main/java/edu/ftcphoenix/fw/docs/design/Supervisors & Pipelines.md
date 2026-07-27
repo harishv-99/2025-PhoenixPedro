@@ -16,7 +16,8 @@ If you're brand new, read these first:
 - [`Recommended Robot Design`](<Recommended Robot Design.md>)
 - [`Output Tasks & Queues`](<Output Tasks & Queues.md>)
 
-A useful companion is [`Recommended Robot Design`](<Recommended Robot Design.md>). Before adding structure, decide which lane the behavior belongs to:
+A useful companion is [`Recommended Robot Design`](<Recommended Robot Design.md>). Before adding
+structure, decide which behavior pattern fits the problem:
 
 - local target (`Plant`)
 - scalar regulation (`ScalarSource` + controller + `Plant`)

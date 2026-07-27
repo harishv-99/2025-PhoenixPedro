@@ -66,8 +66,7 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
  *       <li>Update inputs ({@link Gamepads}, {@link Bindings}).</li>
  *       <li>Compute a {@link DriveSignal} from sticks.</li>
  *       <li>Convert modes → targets for {@link Plant}s.</li>
- *       <li>Call {@link MecanumDrivebase#update(LoopClock)} then
- *           {@link MecanumDrivebase#drive(DriveSignal)}, and call
+ *       <li>Call {@link MecanumDrivebase#drive(DriveSignal)}, and call
  *           {@link Plant#update(LoopClock)}.</li>
  *       <li>Send telemetry.</li>
  *     </ol>
@@ -409,7 +408,6 @@ public final class TeleOp_02_ShooterBasic extends OpMode {
 
         // --- 5) Actuation: drivebase + plants ---
 
-        drivebase.update(clock);
         drivebase.drive(driveCmd);
 
         shooter.update(clock);

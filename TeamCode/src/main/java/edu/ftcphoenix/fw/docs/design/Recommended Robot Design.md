@@ -4,8 +4,9 @@
 
 For larger robots, use this ownership pattern:
 
+- **direct framework owners** when one object already owns the complete runtime capability
+  - example: `MecanumDrivebase`, created at the FTC boundary by `FtcDrives.mecanum(...)`
 - **framework lanes** for stable FTC-side systems that recur year to year
-  - example: `FtcMecanumDriveLane`
   - example: `FtcWebcamAprilTagVisionLane` or `FtcLimelightAprilTagVisionLane` (behind the `AprilTagVisionLane` seam)
   - example: `FtcWebcamVisionPortalLane` or `FtcLimelightVisionLane` behind a robot-owned typed
     vision interface when the season needs multiple semantic modes
@@ -47,7 +48,7 @@ The short version is:
 - **Subsystems should own their Plant target sources and update order.**
 - **Supervisors should own policy, timing, requests, and queueing.**
 - **Status snapshots should be the normal way to observe a mechanism from the outside.**
-- **Use the behavior lane that matches the problem instead of forcing everything into one pattern.**
+- **Use the behavior pattern that matches the problem instead of forcing everything into one abstraction.**
 
 If you keep those rules, a robot can stay understandable even as it grows.
 
@@ -87,7 +88,7 @@ Think of a robot as four layers:
    - subsystems own plants, sensors, and final target calculation
    - supervisors own policy, timing, state machines, and queueing
 
-4. **Framework lane internals**
+4. **Behavior-pattern internals**
    - local targets
    - scalar regulation
    - event/classification supervision
@@ -108,10 +109,14 @@ That vocabulary is usually:
 
 ---
 
-## The five behavior lanes
+## The five behavior patterns
 
-Phoenix stays simplest when you choose the lane that matches the problem instead of forcing every
+Phoenix stays simplest when you choose the pattern that matches the problem instead of forcing every
 mechanism into one abstraction.
+
+Here **pattern** means a problem-solving approach, not a framework resource owner. Spatial APIs also
+use the domain-specific term `SpatialSolveLane` for one ordered query alternative; that name does
+not imply a generic framework-lane lifecycle.
 
 Use this quick decision rule:
 
@@ -123,7 +128,7 @@ Use this quick decision rule:
 5. **Am I following an external route package?** Adapt it into Phoenix tasks and status; do not
    duplicate the planner.
 
-### Lane 1: local target
+### Pattern 1: local target
 
 Examples:
 
@@ -132,10 +137,10 @@ Examples:
 - flywheel velocity target
 - raw motor or CR servo power
 
-This is the simplest lane. The mechanism already has a meaningful local command mode. Do not add a
+This is the simplest pattern. The mechanism already has a meaningful local command mode. Do not add a
 controller loop or a queue unless you really need one.
 
-### Lane 2: scalar regulation
+### Pattern 2: scalar regulation
 
 Examples:
 
@@ -150,7 +155,7 @@ Phoenix's `ScalarControllers` helper packages the common pattern:
 ScalarSource liftPower = ScalarControllers.pid(desiredHeightIn, measuredHeightIn, pid);
 ```
 
-### Lane 3: event / classification supervision
+### Pattern 3: event / classification supervision
 
 Examples:
 
@@ -169,7 +174,7 @@ explicitly (mode change, task restart, tester clear, or a state-machine transiti
 `reset()` on the composed source and call it from the owner instead of forcing every boundary into
 a synthetic `BooleanSource`.
 
-### Lane 4: spatial relation guidance
+### Pattern 4: spatial relation guidance
 
 Examples:
 
@@ -178,12 +183,12 @@ Examples:
 - turret faces a tag
 - end effector lines up to a tag-relative point
 
-Today the mature public framework consumer for this lane is
+Today the mature public framework consumer for this pattern is
 [`Drive Guidance`](<../drive-vision/Drive Guidance.md>). The shared idea is a frame-to-target
 relation, but Phoenix only publishes the drive-shaped version until a second real consumer proves a
 cleaner general API.
 
-### Lane 5: external route integration
+### Pattern 5: external route integration
 
 Examples:
 
@@ -212,7 +217,7 @@ start from the robot's live pose or a current vision choice, use
 exactly once when that Task starts; the integration still receives only a concrete route and no
 vendor or game-strategy type enters the generic Task API.
 
-In a single-module codebase, keep that lane-5 code at the edges:
+In a single-module codebase, keep that pattern-5 code at the edges:
 
 - framework-owned bridges in `fw/integrations/<library>/`
 - robot-specific autos/examples in `.../autonomous/<library>/`
@@ -445,7 +450,7 @@ TeleOp bindings can always build toggles, hold behavior, or `copyEachCycle(...)`
 
 ---
 
-## Detailed example 1: wrist poses (lane 1: local target)
+## Detailed example 1: wrist poses (pattern 1: local target)
 
 This is the simplest pattern and the one beginners should reach for first.
 
@@ -549,7 +554,7 @@ way for Auto to invoke the same intent.
 
 ---
 
-## Detailed example 2: lift with external height sensor (lane 2: scalar regulation)
+## Detailed example 2: lift with external height sensor (pattern 2: scalar regulation)
 
 ### The problem
 
@@ -669,7 +674,7 @@ Those are subsystem internals, not robot-level vocabulary.
 
 ---
 
-## Detailed example 3: intake with beam break and feed pulses (lane 3: event / classification supervision)
+## Detailed example 3: intake with beam break and feed pulses (pattern 3: event / classification supervision)
 
 This example shows the main reason Phoenix separates subsystems from supervisors.
 
@@ -992,7 +997,7 @@ A typical split looks like:
 
 - controls owner: maps sticks/buttons into intent sources
 - drive-assist service: combines manual drive + robot-state-driven overlays
-- drive lane: owns the drivebase hardware and executes the final command
+- `MecanumDrivebase`: owns the coordinated drive outputs and executes the final command
 
 That keeps the control script out of the robot container and makes the drive path reusable and easier
 to debug.
@@ -1305,7 +1310,7 @@ Why it hurts:
 
 When adding a mechanism, ask these questions in order.
 
-### 1. Which lane is the mechanism internally?
+### 1. Which behavior pattern does the mechanism use internally?
 
 - local target?
 - scalar regulation?
@@ -1349,7 +1354,7 @@ If you are unsure how to structure a new robot, start here:
 - expose **intent methods + status snapshots**
 - keep **subsystems as the owners of target sources and Plant updates**
 - keep **supervisors as the policy layer**
-- use the **behavior lanes** to choose the internals
+- use the **behavior patterns** to choose the internals
 - let **TeleOp bindings and Auto routines call the same public mechanism vocabulary**
 
 That design keeps the number of objects small, makes reuse between TeleOp and Auto natural, and

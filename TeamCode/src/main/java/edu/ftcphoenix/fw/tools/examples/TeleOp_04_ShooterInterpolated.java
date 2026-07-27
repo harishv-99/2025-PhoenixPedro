@@ -280,7 +280,6 @@ public final class TeleOp_04_ShooterInterpolated extends OpMode {
         DriveSignal driveCmd = stickDrive.get(clock).clamped();
         lastDrive = driveCmd;
 
-        drivebase.update(clock);
         drivebase.drive(driveCmd);
 
         // --- 4) Shooter: distance → velocity via interpolation table ---

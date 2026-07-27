@@ -457,74 +457,98 @@ public final class FtcActuatorGroupIdentityValidationTest {
         TestHardwareMap wiringMap = defaultDriveMap();
         FtcDrives.MecanumWiringConfig wiring = FtcDrives.MecanumWiringConfig.defaults();
         wiring.frontRightName = " frontLeftMotor ";
+        FtcDrives.MecanumConfig wiringConfig = FtcDrives.MecanumConfig.defaults();
+        wiringConfig.wiring = wiring;
 
         Throwable wiringFailure = assertThrows(
                 IllegalArgumentException.class,
-                () -> FtcDrives.mecanum(wiringMap, wiring));
+                () -> FtcDrives.mecanum(wiringMap, wiringConfig));
         assertContainsIgnoreCase(wiringFailure, "motor", "front");
         wiringMap.effects.assertNone();
 
         TestHardwareMap customMap = defaultDriveMap();
+        FtcDrives.MecanumConfig blankConfig = FtcDrives.MecanumConfig.defaults();
+        blankConfig.wiring.frontRightName = " \t ";
         Throwable blankFailure = assertThrows(
                 IllegalArgumentException.class,
-                () -> FtcDrives.mecanum(
-                        customMap,
-                        "frontLeftMotor", Direction.FORWARD,
-                        " \t ", Direction.REVERSE,
-                        "backLeftMotor", Direction.FORWARD,
-                        "backRightMotor", Direction.REVERSE));
+                () -> FtcDrives.mecanum(customMap, blankConfig));
         assertContainsIgnoreCase(blankFailure, "motor", "blank");
         customMap.effects.assertNone();
     }
 
     @Test
-    public void mecanumZeroPowerConfigurationRejectsInvalidNamesBeforeEffects() {
-        TestHardwareMap blankMap = defaultDriveMap();
-        FtcDrives.MecanumWiringConfig blankWiring =
-                FtcDrives.MecanumWiringConfig.defaults();
-        blankWiring.frontRightName = " \t ";
+    public void mecanumConstructionRejectsMissingNestedConfigsBeforeEffects() {
+        TestHardwareMap missingWiringMap = defaultDriveMap();
+        FtcDrives.MecanumConfig missingWiring = FtcDrives.MecanumConfig.defaults();
+        missingWiring.wiring = null;
 
-        Throwable blankFailure = assertThrows(
-                IllegalArgumentException.class,
-                () -> FtcDrives.setZeroPowerBehavior(
-                        blankMap, blankWiring, DcMotor.ZeroPowerBehavior.BRAKE));
-        assertContainsIgnoreCase(blankFailure, "motor", "blank");
-        blankMap.effects.assertNone();
+        Throwable wiringFailure = assertThrows(
+                NullPointerException.class,
+                () -> FtcDrives.mecanum(missingWiringMap, missingWiring));
+        assertContainsIgnoreCase(wiringFailure, "wiring");
+        missingWiringMap.effects.assertNone();
 
-        TestHardwareMap duplicateMap = defaultDriveMap();
-        FtcDrives.MecanumWiringConfig duplicateWiring =
-                FtcDrives.MecanumWiringConfig.defaults();
-        duplicateWiring.backRightName = " backLeftMotor ";
+        TestHardwareMap missingDrivebaseMap = defaultDriveMap();
+        FtcDrives.MecanumConfig missingDrivebase = FtcDrives.MecanumConfig.defaults();
+        missingDrivebase.drivebase = null;
 
-        Throwable duplicateFailure = assertThrows(
-                IllegalArgumentException.class,
-                () -> FtcDrives.setZeroPowerBehavior(
-                        duplicateMap, duplicateWiring, DcMotor.ZeroPowerBehavior.BRAKE));
-        assertContainsIgnoreCase(duplicateFailure, "motor", "back");
-        duplicateMap.effects.assertNone();
+        Throwable drivebaseFailure = assertThrows(
+                NullPointerException.class,
+                () -> FtcDrives.mecanum(missingDrivebaseMap, missingDrivebase));
+        assertContainsIgnoreCase(drivebaseFailure, "drivebase");
+        missingDrivebaseMap.effects.assertNone();
     }
 
     @Test
-    public void validTrimmedMecanumNamesWorkForConstructionAndZeroPowerConfiguration() {
+    public void mecanumConstructionRejectsInvalidDriveScalesBeforeEffects() {
+        double[] invalidValues = {
+                Double.NaN,
+                Double.NEGATIVE_INFINITY,
+                Double.POSITIVE_INFINITY,
+                -0.01,
+                1.01
+        };
+        for (double invalidValue : invalidValues) {
+            assertInvalidMecanumScale("maxAxial", invalidValue);
+            assertInvalidMecanumScale("maxLateral", invalidValue);
+            assertInvalidMecanumScale("maxOmega", invalidValue);
+        }
+    }
+
+    @Test
+    public void mecanumConstructionResolvesCompleteGroupBeforeConfigurationEffects() {
+        TestHardwareMap hardwareMap = new TestHardwareMap();
+        hardwareMap.addMotor(FtcDrives.DEFAULT_FRONT_LEFT_MOTOR_NAME);
+        hardwareMap.addMotor(FtcDrives.DEFAULT_FRONT_RIGHT_MOTOR_NAME);
+        hardwareMap.addMotor(FtcDrives.DEFAULT_BACK_LEFT_MOTOR_NAME);
+
+        Throwable failure = assertThrows(
+                IllegalArgumentException.class,
+                () -> FtcDrives.mecanum(hardwareMap));
+
+        assertContainsIgnoreCase(failure, "backRightMotor");
+        assertEquals(4, hardwareMap.effects.lookupCalls);
+        assertEquals(0, hardwareMap.effects.directionWrites);
+        assertEquals(0, hardwareMap.effects.zeroPowerBehaviorWrites);
+        assertEquals(0, hardwareMap.effects.modeReads);
+        assertEquals(0, hardwareMap.effects.modeWrites);
+        assertEquals(0, hardwareMap.effects.powerWrites);
+    }
+
+    @Test
+    public void validTrimmedMecanumNamesResolveOnceAndConfigureDirectionAndBrake() {
         TestHardwareMap constructionMap = defaultDriveMap();
-        FtcDrives.MecanumWiringConfig construction =
-                whitespaceDriveWiring();
+        FtcDrives.MecanumConfig construction = FtcDrives.MecanumConfig.defaults();
+        construction.wiring = whitespaceDriveWiring();
 
         FtcDrives.mecanum(constructionMap, construction);
 
         assertEquals(4, constructionMap.effects.lookupCalls);
         assertEquals(4, constructionMap.effects.directionWrites);
-        assertEquals(0, constructionMap.effects.zeroPowerBehaviorWrites);
-
-        TestHardwareMap behaviorMap = defaultDriveMap();
-        FtcDrives.setZeroPowerBehavior(
-                behaviorMap,
-                whitespaceDriveWiring(),
-                DcMotor.ZeroPowerBehavior.BRAKE);
-
-        assertEquals(4, behaviorMap.effects.lookupCalls);
-        assertEquals(0, behaviorMap.effects.directionWrites);
-        assertEquals(4, behaviorMap.effects.zeroPowerBehaviorWrites);
+        assertEquals(4, constructionMap.effects.zeroPowerBehaviorWrites);
+        assertEquals(0, constructionMap.effects.modeReads);
+        assertEquals(0, constructionMap.effects.modeWrites);
+        assertEquals(0, constructionMap.effects.powerWrites);
     }
 
     private static void assertFirstMotorRejected(MotorDomain domain,
@@ -701,6 +725,27 @@ public final class FtcActuatorGroupIdentityValidationTest {
         wiring.backLeftName = "\t" + wiring.backLeftName + "\t";
         wiring.backRightName = "\r\n" + wiring.backRightName + "\r\n";
         return wiring;
+    }
+
+    private static void assertInvalidMecanumScale(String fieldName, double invalidValue) {
+        TestHardwareMap hardwareMap = defaultDriveMap();
+        FtcDrives.MecanumConfig config = FtcDrives.MecanumConfig.defaults();
+        if ("maxAxial".equals(fieldName)) {
+            config.drivebase.maxAxial = invalidValue;
+        } else if ("maxLateral".equals(fieldName)) {
+            config.drivebase.maxLateral = invalidValue;
+        } else if ("maxOmega".equals(fieldName)) {
+            config.drivebase.maxOmega = invalidValue;
+        } else {
+            throw new AssertionError("Unhandled mecanum scale " + fieldName);
+        }
+
+        Throwable failure = assertThrows(
+                IllegalArgumentException.class,
+                () -> FtcDrives.mecanum(hardwareMap, config));
+
+        assertContainsIgnoreCase(failure, fieldName, "finite", "[0.0, 1.0]");
+        hardwareMap.effects.assertNone();
     }
 
     private static Throwable assertThrows(Class<? extends Throwable> expectedType,

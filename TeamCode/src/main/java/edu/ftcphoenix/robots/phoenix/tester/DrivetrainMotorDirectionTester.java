@@ -3,7 +3,7 @@ package edu.ftcphoenix.robots.phoenix.tester;
 import edu.ftcphoenix.fw.actuation.Plant;
 import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.ftc.FtcActuators;
-import edu.ftcphoenix.fw.ftc.drive.FtcMecanumDriveLane;
+import edu.ftcphoenix.fw.ftc.FtcDrives;
 import edu.ftcphoenix.fw.input.binding.Bindings;
 import edu.ftcphoenix.fw.tools.tester.BaseTeleOpTester;
 import edu.ftcphoenix.fw.tools.tester.TesterSuite;
@@ -14,7 +14,7 @@ import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
  *
  * <p>
  * Hold a button to run one drivetrain motor forward at a fixed power. This helps confirm the
- * wiring + inversion flags in {@link FtcMecanumDriveLane.Config}.
+ * wiring + inversion flags in {@link FtcDrives.MecanumConfig}.
  * </p>
  */
 public final class DrivetrainMotorDirectionTester extends BaseTeleOpTester {
@@ -61,7 +61,7 @@ public final class DrivetrainMotorDirectionTester extends BaseTeleOpTester {
 
     @Override
     protected void onInit() {
-        FtcMecanumDriveLane.Config drive = PhoenixProfile.current().drive;
+        FtcDrives.MecanumConfig drive = PhoenixProfile.current().drive;
 
         plantFL = FtcActuators.plant(ctx.hw)
                 .motor(drive.wiring.frontLeftName, drive.wiring.frontLeftDirection)

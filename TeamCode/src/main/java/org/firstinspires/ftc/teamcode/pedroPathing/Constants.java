@@ -144,7 +144,7 @@ public final class Constants {
         FtcDrives.MecanumWiringConfig wiring = profile.drive.wiring;
         return new MecanumConstants()
                 .maxPower(1.0)
-                .useBrakeModeInTeleOp(profile.drive.zeroPowerBrake)
+                .useBrakeModeInTeleOp(profile.drive.enableZeroPowerBrake)
                 .leftFrontMotorName(wiring.frontLeftName)
                 .leftRearMotorName(wiring.backLeftName)
                 .rightFrontMotorName(wiring.frontRightName)
