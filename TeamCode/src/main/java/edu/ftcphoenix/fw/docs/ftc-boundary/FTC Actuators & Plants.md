@@ -52,8 +52,9 @@ For example, motor position wiring asks:
 5. What bounds? `bounded(min, max)` or `unbounded()`
 6. How do plant units map to native units? `nativeUnits()`, `scaleToNative(...)`, or bounded-only `rangeMapsToNative(...)`
 7. How is the reference/offset known? `alreadyReferenced()`, `plantPositionMapsToNative(...)`, `assumeCurrentPositionIs(...)`, or `needsReference(...)`
-8. Optional dynamic hardware guards: `targetGuards().maxTargetRate(...)`, `holdLastTargetUnless(...)`, `fallbackTargetUnless(...)`
-9. Target binding: `targetedBy(ScalarTarget)`, `targetedBy(readOnlySource)`, or `targetedByCommand(initialTarget)`, then `build()`
+8. What public position error counts as complete? The required `positionTolerance(...)` answer
+9. Optional dynamic hardware guards: `targetGuards().maxTargetRate(...)`, `holdLastTargetUnless(...)`, `fallbackTargetUnless(...)`
+10. Target binding: `targetedBy(ScalarTarget)`, `targetedBy(readOnlySource)`, or `targetedByCommand(initialTarget)`, then `build()`
 
 Motor velocity wiring asks a parallel but smaller set of questions:
 
@@ -62,8 +63,21 @@ Motor velocity wiring asks a parallel but smaller set of questions:
 3. Who manages the velocity loop? `deviceManagedWithDefaults()`, `deviceManaged()...doneDeviceManaged()`, or `regulated()` followed by one direct feedback answer and `regulator(...)`
 4. What target bounds are legal? `bounded(min, max)` or `unbounded()`
 5. How do plant velocity units map to native velocity units? `nativeUnits()` or `scaleToNative(...)`
-6. Optional dynamic hardware guards: `targetGuards().maxTargetRate(...)`, `holdLastTargetUnless(...)`, `fallbackTargetUnless(...)`
-7. Target binding: `targetedBy(ScalarTarget)`, `targetedBy(readOnlySource)`, or `targetedByCommand(initialTarget)`, then `build()`
+6. What public velocity error counts as complete? The required `velocityTolerance(...)` answer
+7. Optional dynamic hardware guards: `targetGuards().maxTargetRate(...)`, `holdLastTargetUnless(...)`, `fallbackTargetUnless(...)`
+8. Target binding: `targetedBy(ScalarTarget)`, `targetedBy(readOnlySource)`, or `targetedByCommand(initialTarget)`, then `build()`
+
+The tolerance question appears exactly once and only after the public coordinate is known. There is
+no inferred or native-unit default. Standard-servo position Plants are command-only, so their
+mapping stage proceeds directly to target binding without asking a feedback-only question.
+
+A custom hardware adapter can use the hardware-neutral `MappedPositionPlant` and
+`MappedVelocityPlant` entrypoints instead of `FtcActuators`. Those entrypoints keep only the stages
+that adapter construction needs: configure mapping/range/reference details, answer the required
+feedback tolerance, optionally add target guards, bind the target, and build. Command-only mapped
+position goes from configuration directly to the target-and-guards stage. Both public layers
+therefore prevent an omitted feedback tolerance or target at compile time without making ordinary
+FTC robot code learn a second hardware API.
 
 `targetedByCommand(initialTarget)` is the concise task-owned form: it creates a held
 `ScalarTarget` that is both the exact source and the Plant's command target. A named
@@ -290,8 +304,9 @@ Device-managed tuning options:
 * `innerVelocityPidf(...)` — FTC inner velocity-loop PIDF used under position mode.
 * `devicePositionToleranceTicks(...)` — FTC motor-controller target tolerance in native ticks.
 
-Notice that plant-level `positionTolerance(...)` lives after the coordinate mapping stage because it
-is in plant units. Device-level methods that use native/controller units say so in their names.
+Notice that plant-level `positionTolerance(...)` lives after coordinate mapping and reference policy
+because it is in plant units. It is a required one-time answer for this feedback Plant. Device-level
+methods that use native/controller units say so in their names.
 
 ### Framework-regulated motor position
 
@@ -783,15 +798,18 @@ context during `update(clock)`.
 
 ## 12. Position tolerances and FTC motor tuning
 
-For device-managed motor position control there are two different tolerance concepts.
+For device-managed motor position control there are two different tolerance concepts. They belong
+to different owners and neither can be derived safely from the other.
 
 ### `positionTolerance(...)`
 
 This is the **plant-level** completion band used by `Plant.atTarget()`.
 
+* required exactly once after position mapping and reference policy
 * units: plant position units
-* use this first when you want to define “close enough for robot logic”
 * examples: ticks for `nativeUnits()`, inches for `scaleToNative(TICKS_PER_INCH)`, degrees for a degree-based arm
+* defines “close enough for robot logic” for the complete mechanism; Phoenix supplies no hidden or
+  native-unit default
 
 ### `devicePositionToleranceTicks(...)`
 
@@ -799,13 +817,23 @@ This is an **optional FTC motor-controller override** for the motor's own target
 
 * default in Phoenix: unchanged unless you call it
 * units: native encoder ticks
-* use this only when you intentionally want to change the FTC motor controller's own completion threshold via `DcMotorEx.setTargetPositionTolerance(int)`
-* this does not change what `Plant.atTarget()` means unless your plant-level `positionTolerance(...)` happens to match it
+* use this only when you intentionally need the advanced
+  `DcMotorEx.setTargetPositionTolerance(int)` override
+* it does not define or replace the required plant-unit `positionTolerance(...)`
+
+Phoenix evaluates Plant completion from its requested target, applied target, converted
+measurement, target status, and required Plant tolerance. It does not use `DcMotor.isBusy()` for
+that decision. The public FTC SDK contract also does not establish that the configured device
+tolerance is the controller's complete correction deadband, so do not infer that the motor stops
+correcting at that boundary. Ordinary robot code should normally use
+`deviceManagedWithDefaults()` and choose only the required Plant tolerance; enter
+`deviceManaged()...doneDeviceManaged()` when an FTC controller override is deliberately needed.
 
 ## 13. Velocity bounds, mapping, and tuning
 
 Motor velocity uses the same guided-builder rule as position: required conceptual questions are
-explicit, and optional controller tuning appears only after entering a tuning branch.
+explicit, including one `velocityTolerance(...)` answer after public-unit mapping. Optional
+controller tuning appears only after entering a tuning branch.
 
 ```java
 Plant shooter = FtcActuators.plant(hardwareMap)

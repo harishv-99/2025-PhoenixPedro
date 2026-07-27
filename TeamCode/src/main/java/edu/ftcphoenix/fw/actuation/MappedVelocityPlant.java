@@ -71,8 +71,13 @@ public final class MappedVelocityPlant implements Plant {
 
     /**
      * Start configuring a device-managed native velocity-output plant.
+     *
+     * <p>The staged builder requires an explicit
+     * {@link FeedbackConfigurationStep#velocityTolerance(double)} in public plant velocity units
+     * before target selection exposes {@link MappedPlantBuildStep#build()}.</p>
      */
-    public static Builder velocityOutput(VelocityOutput out, ScalarSource nativeMeasurement) {
+    public static FeedbackConfigurationStep velocityOutput(VelocityOutput out,
+                                                           ScalarSource nativeMeasurement) {
         return new Builder(Objects.requireNonNull(out, "out"), null, null,
                 Objects.requireNonNull(nativeMeasurement, "nativeMeasurement"));
     }
@@ -80,10 +85,13 @@ public final class MappedVelocityPlant implements Plant {
     /**
      * Start configuring a framework-regulated velocity plant that drives raw power.
      * The resulting Plant keeps mechanism target units separate from its normalized power command.
+     * The staged builder requires an explicit
+     * {@link FeedbackConfigurationStep#velocityTolerance(double)} in public plant velocity units
+     * before target selection exposes {@link MappedPlantBuildStep#build()}.
      */
-    public static Builder regulated(PowerOutput powerOut,
-                                    ScalarSource nativeMeasurement,
-                                    ScalarRegulator regulator) {
+    public static FeedbackConfigurationStep regulated(PowerOutput powerOut,
+                                                       ScalarSource nativeMeasurement,
+                                                       ScalarRegulator regulator) {
         return new Builder(null,
                 Objects.requireNonNull(powerOut, "powerOut"),
                 Objects.requireNonNull(regulator, "regulator"),
@@ -91,16 +99,39 @@ public final class MappedVelocityPlant implements Plant {
     }
 
     /**
-     * Advanced builder. FTC robot code should normally use {@code FtcActuators}.
+     * Optional mapped-velocity configuration before the required plant-unit tolerance answer.
+     * FTC robot code should normally use {@code FtcActuators}.
      */
-    public static final class Builder {
+    public interface FeedbackConfigurationStep {
+        /**
+         * Set the legal target range in plant velocity units.
+         */
+        FeedbackConfigurationStep range(ScalarRange range);
+
+        /**
+         * Set how many native velocity units correspond to one plant velocity unit.
+         */
+        FeedbackConfigurationStep nativePerPlantUnit(double nativePerPlantUnit);
+
+        /**
+         * Set the required completion tolerance in plant velocity units and continue to target
+         * selection.
+         */
+        MappedPlantTargetStep<MappedVelocityPlant> velocityTolerance(double tolerance);
+    }
+
+    /** Mutable implementation hidden behind the ordered public configuration stages. */
+    private static final class Builder implements FeedbackConfigurationStep,
+            MappedPlantTargetStep<MappedVelocityPlant>,
+            MappedPlantBuildStep<MappedVelocityPlant> {
         private final VelocityOutput velocityOut;
         private final PowerOutput regulatedPowerOut;
         private final ScalarRegulator regulator;
         private final ScalarSource nativeMeasurement;
         private ScalarRange configuredRange = ScalarRange.unbounded();
         private double nativePerPlantUnit = 1.0;
-        private double tolerance = 100.0;
+        private double tolerance = Double.NaN;
+        private boolean toleranceConfigured;
         private PlantTargetSource targetSource;
         private PlantTargetGuards targetGuards = PlantTargetGuards.none();
 
@@ -138,9 +169,13 @@ public final class MappedVelocityPlant implements Plant {
          * Sets the plant-level completion tolerance in plant velocity units.
          */
         public Builder velocityTolerance(double tolerance) {
+            if (toleranceConfigured)
+                throw new IllegalStateException("velocityTolerance(...) has already been answered "
+                        + "for this MappedVelocityPlant");
             if (tolerance < 0.0 || !Double.isFinite(tolerance))
                 throw new IllegalArgumentException("velocityTolerance must be finite and >= 0");
             this.tolerance = tolerance;
+            this.toleranceConfigured = true;
             return this;
         }
 
@@ -189,12 +224,17 @@ public final class MappedVelocityPlant implements Plant {
         /**
          * Builds the mapped velocity plant.
          *
+         * @throws IllegalStateException if no target source or plant-unit velocity tolerance was
+         *                               configured
          * @throws IllegalArgumentException if the configured range cannot contain a finite command
          *                                  or a static guard fallback lies outside that range
          */
         public MappedVelocityPlant build() {
             if (targetSource == null)
                 throw new IllegalStateException("MappedVelocityPlant requires targetedBy(...)");
+            if (!toleranceConfigured)
+                throw new IllegalStateException("MappedVelocityPlant feedback requires "
+                        + "velocityTolerance(...) in plant velocity units before build()");
             return new MappedVelocityPlant(velocityOut, regulatedPowerOut, regulator, nativeMeasurement,
                     targetSource, targetGuards, configuredRange, nativePerPlantUnit, tolerance);
         }

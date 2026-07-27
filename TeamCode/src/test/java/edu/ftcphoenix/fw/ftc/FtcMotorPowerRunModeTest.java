@@ -421,6 +421,7 @@ public final class FtcMotorPowerRunModeTest {
                 .unbounded()
                 .nativeUnits()
                 .alreadyReferenced()
+                .positionTolerance(0.0)
                 .targetedByCommand(125.0)
                 .build();
 
@@ -466,7 +467,8 @@ public final class FtcMotorPowerRunModeTest {
                 .linear()
                 .unbounded()
                 .nativeUnits()
-                .alreadyReferenced();
+                .alreadyReferenced()
+                .positionTolerance(0.0);
         ScalarTarget abandonedCommand = ScalarTarget.held(150.0);
 
         FtcActuators.PositionPlantBuildStep retainedBuildStep =
@@ -592,6 +594,7 @@ public final class FtcMotorPowerRunModeTest {
                 .regulator(regulator)
                 .unbounded()
                 .nativeUnits()
+                .velocityTolerance(0.0)
                 .targetedByCommand(2000.0)
                 .build();
         events.clear();
@@ -644,6 +647,7 @@ public final class FtcMotorPowerRunModeTest {
                 .regulator(regulator)
                 .unbounded()
                 .nativeUnits()
+                .velocityTolerance(0.0)
                 .targetedByCommand(2000.0)
                 .build();
         events.clear();
@@ -698,6 +702,7 @@ public final class FtcMotorPowerRunModeTest {
                 .unbounded()
                 .nativeUnits()
                 .alreadyReferenced()
+                .positionTolerance(0.0)
                 .targetedByCommand(20.0)
                 .build();
         events.clear();
@@ -731,6 +736,7 @@ public final class FtcMotorPowerRunModeTest {
                 .unbounded()
                 .nativeUnits()
                 .alreadyReferenced()
+                .positionTolerance(0.0)
                 .targetedByCommand(100.0)
                 .build();
         ManualLoopClock clock = new ManualLoopClock();
@@ -797,6 +803,7 @@ public final class FtcMotorPowerRunModeTest {
                 .regulator((setpoint, measurement, clock) -> Double.NaN)
                 .unbounded()
                 .nativeUnits()
+                .velocityTolerance(0.0)
                 .targetedByCommand(1000.0)
                 .build();
         events.clear();

@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
+import edu.ftcphoenix.fw.actuation.MappedPlantBuildStep;
 import edu.ftcphoenix.fw.actuation.MappedPositionPlant;
 import edu.ftcphoenix.fw.actuation.MappedVelocityPlant;
 import edu.ftcphoenix.fw.actuation.Plant;
@@ -467,7 +468,7 @@ public final class FtcActuators {
         /**
          * Native velocity units and plant velocity units are the same.
          */
-        VelocityBuildStep nativeUnits();
+        VelocityToleranceStep nativeUnits();
 
         /**
          * Convert plant velocity units to native velocity units using a zero-preserving scale.
@@ -476,33 +477,29 @@ public final class FtcActuators {
          * native velocity {@code 0.0}, so stop semantics stay obvious. That is why velocity does
          * not expose {@code rangeMapsToNative(...)}.</p>
          */
-        VelocityBuildStep scaleToNative(double nativeUnitsPerPlantVelocityUnit);
+        VelocityToleranceStep scaleToNative(double nativeUnitsPerPlantVelocityUnit);
     }
 
     /**
-     * Final builder step for motor velocity plants.
+     * Required plant-level completion-tolerance question for motor velocity plants.
      */
-    public interface VelocityBuildStep extends PlantTargetStep {
+    public interface VelocityToleranceStep {
         /**
-         * Set plant-level completion tolerance in plant velocity units.
+         * Set plant-level completion tolerance in plant velocity units and continue to target
+         * binding.
          */
-        VelocityBuildStep velocityTolerance(double tolerance);
+        PlantTargetStep velocityTolerance(double tolerance);
     }
 
     /**
-     * Final builder step for motor/CR-servo position plants before target binding.
+     * Required plant-level completion-tolerance question for feedback position plants.
      */
-    public interface PositionBuildStep extends PositionTargetStep {
+    public interface PositionToleranceStep {
         /**
-         * Set plant-level completion tolerance in plant units.
+         * Set plant-level completion tolerance in plant position units and continue to target
+         * binding.
          */
-        PositionBuildStep positionTolerance(double tolerance);
-    }
-
-    /**
-     * Final builder step for standard-servo position plants before target binding.
-     */
-    public interface ServoPositionBuildStep extends PositionTargetStep {
+        PositionTargetStep positionTolerance(double tolerance);
     }
 
     /**
@@ -670,7 +667,7 @@ public final class FtcActuators {
         /**
          * Use raw servo positions as plant units.
          */
-        ServoPositionBuildStep nativeUnits();
+        PositionTargetStep nativeUnits();
 
         /**
          * Map the declared plant range to raw servo endpoints.
@@ -681,7 +678,7 @@ public final class FtcActuators {
          * "plant {@code min} -> native {@code nativeAtPlantMin}" and
          * "plant {@code max} -> native {@code nativeAtPlantMax}".</p>
          */
-        ServoPositionBuildStep rangeMapsToNative(double nativeAtPlantMin, double nativeAtPlantMax);
+        PositionTargetStep rangeMapsToNative(double nativeAtPlantMin, double nativeAtPlantMax);
     }
 
     /**
@@ -830,7 +827,7 @@ public final class FtcActuators {
          * method means "plant {@code min} -> native {@code nativeAtPlantMin}" and
          * "plant {@code max} -> native {@code nativeAtPlantMax}".</p>
          */
-        PositionBuildStep rangeMapsToNative(double nativeAtPlantMin, double nativeAtPlantMax);
+        PositionToleranceStep rangeMapsToNative(double nativeAtPlantMin, double nativeAtPlantMax);
     }
 
     /**
@@ -855,26 +852,26 @@ public final class FtcActuators {
         /**
          * The selected native coordinate is already aligned to plant units.
          */
-        PositionBuildStep alreadyReferenced();
+        PositionToleranceStep alreadyReferenced();
 
         /**
          * Declare a static mapping between one plant position and one native position.
          *
          * <p>The first argument is in plant units. The second argument is in native units.</p>
          */
-        PositionBuildStep plantPositionMapsToNative(double plantPosition, double nativePosition);
+        PositionToleranceStep plantPositionMapsToNative(double plantPosition, double nativePosition);
 
         /**
          * On first update, treat the current native feedback reading as this plant position.
          *
          * <p>The argument is in plant units.</p>
          */
-        PositionBuildStep assumeCurrentPositionIs(double plantPosition);
+        PositionToleranceStep assumeCurrentPositionIs(double plantPosition);
 
         /**
          * Start invalid until a homing/indexing/manual task establishes a reference.
          */
-        PositionBuildStep needsReference(String reason);
+        PositionToleranceStep needsReference(String reason);
     }
 
     private static final class StartBuilder implements StartStep {
@@ -1064,19 +1061,10 @@ public final class FtcActuators {
         }
     }
 
-    private abstract static class BaseTargetedPositionBuilder implements PositionBuildStep, ServoPositionBuildStep,
+    private abstract static class BaseTargetedPositionBuilder implements PositionTargetStep,
             PositionPlantBuildStep {
         protected PlantTargetGuards guards = PlantTargetGuards.none();
         protected PlantTargetSource source;
-        protected double positionTolerance = 10.0;
-
-        @Override
-        public PositionBuildStep positionTolerance(double tolerance) {
-            if (tolerance < 0.0 || !Double.isFinite(tolerance))
-                throw new IllegalArgumentException("positionTolerance must be finite and >= 0");
-            positionTolerance = tolerance;
-            return this;
-        }
 
         @Override
         public PositionTargetGuardStep targetGuards() {
@@ -1442,7 +1430,7 @@ public final class FtcActuators {
 
     private static final class MotorVelocityBuilder extends BaseTargetedPlantBuilder implements MotorVelocityControlStep,
             MotorDeviceManagedVelocityStep, MotorRegulatedVelocityFeedbackStep, MotorRegulatedVelocityRegulatorStep,
-            VelocityBoundsStep, VelocityMappingStep, VelocityBuildStep {
+            VelocityBoundsStep, VelocityMappingStep, VelocityToleranceStep {
         private final MotorBuilder parent;
         private final DeviceManagedVelocityConfig deviceConfig = new DeviceManagedVelocityConfig();
         private VelocityControlKind controlKind;
@@ -1450,7 +1438,8 @@ public final class FtcActuators {
         private ScalarRegulator regulator;
         private ScalarRange range;
         private double nativePerPlantUnit = 1.0;
-        private double velocityTolerance = 100.0;
+        private double velocityTolerance;
+        private boolean velocityToleranceAnswered;
 
         private MotorVelocityBuilder(MotorBuilder parent) {
             this.parent = parent;
@@ -1541,23 +1530,34 @@ public final class FtcActuators {
         }
 
         @Override
-        public VelocityBuildStep nativeUnits() {
+        public VelocityToleranceStep nativeUnits() {
             nativePerPlantUnit = 1.0;
             return this;
         }
 
         @Override
-        public VelocityBuildStep scaleToNative(double nativeUnitsPerPlantVelocityUnit) {
+        public VelocityToleranceStep scaleToNative(double nativeUnitsPerPlantVelocityUnit) {
             nativePerPlantUnit = requireFiniteNonZero(nativeUnitsPerPlantVelocityUnit, "nativeUnitsPerPlantVelocityUnit");
             return this;
         }
 
         @Override
-        public VelocityBuildStep velocityTolerance(double tolerance) {
+        public PlantTargetStep velocityTolerance(double tolerance) {
+            if (velocityToleranceAnswered)
+                throw new IllegalStateException("velocityTolerance(...) has already been answered for this motor velocity Plant");
             if (tolerance < 0.0 || !Double.isFinite(tolerance))
                 throw new IllegalArgumentException("velocityTolerance must be finite and >= 0");
             velocityTolerance = tolerance;
+            velocityToleranceAnswered = true;
             return this;
+        }
+
+        @Override
+        public Plant build() {
+            if (!velocityToleranceAnswered)
+                throw new IllegalStateException("Motor velocity builder requires velocityTolerance(...) "
+                        + "in plant velocity units after nativeUnits() or scaleToNative(...)");
+            return super.build();
         }
 
         @Override
@@ -1566,7 +1566,7 @@ public final class FtcActuators {
                 throw new IllegalStateException("Motor velocity builder requires deviceManagedWithDefaults(), deviceManaged(), or regulated()");
             if (range == null)
                 throw new IllegalStateException("Motor velocity builder requires bounded(...) or unbounded()");
-            MappedVelocityPlant.Builder b;
+            MappedVelocityPlant.FeedbackConfigurationStep b;
             if (controlKind == VelocityControlKind.DEVICE_MANAGED) {
                 b = MappedVelocityPlant.velocityOutput(parent.groupedMotorVelocity(deviceConfig), parent.groupedMotorVelocityMeasurement());
             } else {
@@ -1577,8 +1577,12 @@ public final class FtcActuators {
                             + "nativeFeedback(...)) and regulator(...)");
                 b = MappedVelocityPlant.regulated(parent.groupedMotorPower(), feedback, regulator);
             }
-            b.range(range).nativePerPlantUnit(nativePerPlantUnit).velocityTolerance(velocityTolerance).targetGuards(guards).targetedBy(source);
-            return b.build();
+            return b.range(range)
+                    .nativePerPlantUnit(nativePerPlantUnit)
+                    .velocityTolerance(velocityTolerance)
+                    .targetGuards(guards)
+                    .targetedBy(source)
+                    .build();
         }
     }
 
@@ -1592,7 +1596,8 @@ public final class FtcActuators {
     private enum PositionControlKind {DEVICE_MANAGED, REGULATED}
 
     private abstract static class BasePositionBuilder extends BaseTargetedPositionBuilder implements PositionTopologyStep, PositionBoundsStep,
-            BoundedPositionMappingStep, UnboundedPositionMappingStep, PositionReferenceStep {
+            BoundedPositionMappingStep, UnboundedPositionMappingStep, PositionReferenceStep,
+            PositionToleranceStep {
         protected PositionPlant.Topology topology;
         protected double period = Double.NaN;
         protected ScalarRange range;
@@ -1605,6 +1610,8 @@ public final class FtcActuators {
         protected double nativeReference = 0.0;
         protected double assumePlantPosition = 0.0;
         protected String referenceReason = "position reference not established";
+        protected double positionTolerance;
+        private boolean positionToleranceAnswered;
 
         @Override
         public PositionBoundsStep linear() {
@@ -1651,7 +1658,7 @@ public final class FtcActuators {
         }
 
         @Override
-        public PositionBuildStep rangeMapsToNative(double nativeAtPlantMin, double nativeAtPlantMax) {
+        public PositionToleranceStep rangeMapsToNative(double nativeAtPlantMin, double nativeAtPlantMax) {
             if (!bounded)
                 throw new IllegalStateException("rangeMapsToNative(...) is only valid after bounded(...)");
             if (Math.abs(plantMax - plantMin) < 1e-12)
@@ -1666,7 +1673,7 @@ public final class FtcActuators {
         }
 
         @Override
-        public PositionBuildStep alreadyReferenced() {
+        public PositionToleranceStep alreadyReferenced() {
             referenceMode = MappedPositionPlant.ReferenceMode.STATIC;
             plantReference = 0.0;
             nativeReference = 0.0;
@@ -1674,7 +1681,7 @@ public final class FtcActuators {
         }
 
         @Override
-        public PositionBuildStep plantPositionMapsToNative(double plantPosition, double nativePosition) {
+        public PositionToleranceStep plantPositionMapsToNative(double plantPosition, double nativePosition) {
             referenceMode = MappedPositionPlant.ReferenceMode.STATIC;
             plantReference = plantPosition;
             nativeReference = nativePosition;
@@ -1682,38 +1689,57 @@ public final class FtcActuators {
         }
 
         @Override
-        public PositionBuildStep assumeCurrentPositionIs(double plantPosition) {
+        public PositionToleranceStep assumeCurrentPositionIs(double plantPosition) {
             referenceMode = MappedPositionPlant.ReferenceMode.ASSUME_CURRENT;
             assumePlantPosition = plantPosition;
             return this;
         }
 
         @Override
-        public PositionBuildStep needsReference(String reason) {
+        public PositionToleranceStep needsReference(String reason) {
             referenceMode = MappedPositionPlant.ReferenceMode.NEEDS_REFERENCE;
             referenceReason = reason;
             return this;
         }
 
-        protected MappedPositionPlant.Builder applyCommon(MappedPositionPlant.Builder b,
-                                                          PlantTargetSource source,
-                                                          PlantTargetGuards guards) {
+        @Override
+        public PositionTargetStep positionTolerance(double tolerance) {
+            if (positionToleranceAnswered)
+                throw new IllegalStateException("positionTolerance(...) has already been answered for this feedback position Plant");
+            if (tolerance < 0.0 || !Double.isFinite(tolerance))
+                throw new IllegalArgumentException("positionTolerance must be finite and >= 0");
+            positionTolerance = tolerance;
+            positionToleranceAnswered = true;
+            return this;
+        }
+
+        @Override
+        public PositionPlant build() {
+            if (!positionToleranceAnswered)
+                throw new IllegalStateException("Feedback position builder requires positionTolerance(...) "
+                        + "in plant position units after its mapping/reference answer");
+            return super.build();
+        }
+
+        protected MappedPlantBuildStep<MappedPositionPlant> applyCommon(
+                MappedPositionPlant.FeedbackConfigurationStep b,
+                PlantTargetSource source,
+                PlantTargetGuards guards) {
             if (topology == null)
                 throw new IllegalStateException("Position builder requires linear() or periodic(period)");
             if (range == null)
                 throw new IllegalStateException("Position builder requires bounded(...) or unbounded()");
-            b.topology(topology, period)
+            MappedPositionPlant.FeedbackConfigurationStep configured = b.topology(topology, period)
                     .range(range)
-                    .nativePerPlantUnit(nativePerPlantUnit)
-                    .positionTolerance(positionTolerance)
+                    .nativePerPlantUnit(nativePerPlantUnit);
+            if (referenceMode == MappedPositionPlant.ReferenceMode.STATIC)
+                configured = configured.plantPositionMapsToNative(plantReference, nativeReference);
+            else if (referenceMode == MappedPositionPlant.ReferenceMode.ASSUME_CURRENT)
+                configured = configured.assumeCurrentPositionIs(assumePlantPosition);
+            else configured = configured.needsReference(referenceReason);
+            return configured.positionTolerance(positionTolerance)
                     .targetGuards(guards)
                     .targetedBy(source);
-            if (referenceMode == MappedPositionPlant.ReferenceMode.STATIC)
-                b.plantPositionMapsToNative(plantReference, nativeReference);
-            else if (referenceMode == MappedPositionPlant.ReferenceMode.ASSUME_CURRENT)
-                b.assumeCurrentPositionIs(assumePlantPosition);
-            else b.needsReference(referenceReason);
-            return b;
         }
     }
 
@@ -1929,7 +1955,7 @@ public final class FtcActuators {
         }
 
         @Override
-        public ServoPositionBuildStep nativeUnits() {
+        public PositionTargetStep nativeUnits() {
             nativePerPlantUnit = 1.0;
             plantReference = 0.0;
             nativeReference = 0.0;
@@ -1937,7 +1963,7 @@ public final class FtcActuators {
         }
 
         @Override
-        public ServoPositionBuildStep rangeMapsToNative(double nativeAtPlantMin, double nativeAtPlantMax) {
+        public PositionTargetStep rangeMapsToNative(double nativeAtPlantMin, double nativeAtPlantMax) {
             if (range == null)
                 throw new IllegalStateException("rangeMapsToNative(...) requires bounded(...)");
             if (Math.abs(plantMax - plantMin) < 1e-12)
@@ -1954,15 +1980,12 @@ public final class FtcActuators {
         protected PositionPlant buildPositionPlant(PlantTargetSource source, PlantTargetGuards guards) {
             if (range == null)
                 throw new IllegalStateException("Servo position builder requires bounded(...)");
-            MappedPositionPlant.Builder b = MappedPositionPlant.commanded(parent.groupedServoPosition())
+            MappedPositionPlant.CommandedConfigurationStep b = MappedPositionPlant.commanded(parent.groupedServoPosition())
                     .topology(PositionPlant.Topology.LINEAR, Double.NaN)
                     .range(range)
                     .nativePerPlantUnit(nativePerPlantUnit)
-                    .positionTolerance(positionTolerance)
-                    .plantPositionMapsToNative(plantReference, nativeReference)
-                    .targetGuards(guards)
-                    .targetedBy(source);
-            return b.build();
+                    .plantPositionMapsToNative(plantReference, nativeReference);
+            return b.targetGuards(guards).targetedBy(source).build();
         }
     }
 

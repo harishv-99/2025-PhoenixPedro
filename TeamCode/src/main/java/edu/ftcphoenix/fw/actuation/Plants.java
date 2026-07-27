@@ -81,6 +81,8 @@ public final class Plants {
 
     /**
      * Create a device-managed position plant with feedback.
+     * {@code positionTolerance} uses the same public position units as the target and
+     * measurement.
      */
     public static Plant position(PositionOutput out,
                                  PlantTargetSource target,
@@ -92,6 +94,8 @@ public final class Plants {
 
     /**
      * Create a device-managed velocity plant with feedback.
+     * {@code velocityTolerance} uses the same public velocity units as the target and
+     * measurement.
      */
     public static Plant velocity(VelocityOutput out,
                                  PlantTargetSource target,
@@ -105,6 +109,8 @@ public final class Plants {
      * Create a framework-regulated position plant that drives raw power.
      * The final regulator result is required to be finite, normalized to {@code [-1.0, +1.0]},
      * and fail-stopped before a runtime control/output failure is propagated.
+     * {@code positionTolerance} uses the same public position units as the target and
+     * measurement.
      */
     public static Plant positionFromPower(PowerOutput powerOut,
                                           PlantTargetSource target,
@@ -119,6 +125,8 @@ public final class Plants {
      * Create a framework-regulated velocity plant that drives raw power.
      * The final regulator result is required to be finite, normalized to {@code [-1.0, +1.0]},
      * and fail-stopped before a runtime control/output failure is propagated.
+     * {@code velocityTolerance} uses the same public velocity units as the target and
+     * measurement.
      */
     public static Plant velocityFromPower(PowerOutput powerOut,
                                           PlantTargetSource target,

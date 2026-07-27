@@ -302,7 +302,16 @@ The builder stays domain-first (`power()`, `position()`, `velocity()`). Position
 small guided questions about control strategy, topology, bounds, unit mapping, and reference policy.
 For example, a regulated motor position path uses `motor(...).position().regulated()` followed by
 one direct feedback answer and `.regulator(...)` instead of hiding those choices inside a large
-argument object.
+argument object. Once the public units are known, every feedback Plant requires exactly one
+plant-unit `positionTolerance(...)` or `velocityTolerance(...)` answer before target binding. A
+command-only standard-servo position Plant skips that feedback-only question.
+
+The hardware-neutral `MappedPositionPlant` and `MappedVelocityPlant` entrypoints serve custom
+adapters, not ordinary FTC wiring. They use the same compile-time rule in a smaller flow:
+configuration, required feedback tolerance, optional target guards, target binding, then build.
+Command-only mapped position omits the tolerance stage. This keeps `FtcActuators` as the one
+beginner entrypoint while still preventing incomplete construction at the lower public adapter
+boundary.
 
 A direct power Plant already knows its only legal domain: normalized `[-1.0, +1.0]`. It clamps a
 finite out-of-range request before calling `PowerOutput`, while the FTC adapter keeps its own clamp

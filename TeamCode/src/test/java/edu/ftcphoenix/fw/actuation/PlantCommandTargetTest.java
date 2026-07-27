@@ -131,13 +131,14 @@ public final class PlantCommandTargetTest {
                 .targetedBy(overlay)
                 .build();
         ScalarTarget abandonedCommand = ScalarTarget.held(0.5);
-        MappedPositionPlant.Builder retainedBuilder = MappedPositionPlant.commanded(
+        MappedPlantTargetStep<MappedPositionPlant> retainedTarget =
+                MappedPositionPlant.commanded(
                 new RecordingPositionOutput());
 
-        MappedPositionPlant.Builder retainedAlias =
-                retainedBuilder.targetedBy(abandonedCommand);
-        retainedBuilder.targetedBy(PlantTargets.exact(0.25));
-        MappedPositionPlant retargetedReadOnly = retainedAlias.build();
+        MappedPlantBuildStep<MappedPositionPlant> retainedBuild =
+                retainedTarget.targetedBy(abandonedCommand);
+        retainedTarget.targetedBy(PlantTargets.exact(0.25));
+        MappedPositionPlant retargetedReadOnly = retainedBuild.build();
 
         assertTrue(commandBacked.hasCommandTarget());
         assertSame(command, commandBacked.commandTarget());
@@ -150,16 +151,19 @@ public final class PlantCommandTargetTest {
         ScalarSource upcast = command;
         MappedVelocityPlant commandBacked = MappedVelocityPlant.velocityOutput(
                         new RecordingVelocityOutput(), clock -> 0.0)
+                .velocityTolerance(0.0)
                 .targetedBy(upcast)
                 .build();
         ScalarTarget abandonedCommand = ScalarTarget.held(0.5);
-        MappedVelocityPlant.Builder retainedBuilder = MappedVelocityPlant.velocityOutput(
-                new RecordingVelocityOutput(), clock -> 0.0);
+        MappedPlantTargetStep<MappedVelocityPlant> retainedTarget =
+                MappedVelocityPlant.velocityOutput(
+                        new RecordingVelocityOutput(), clock -> 0.0)
+                        .velocityTolerance(0.0);
 
-        MappedVelocityPlant.Builder retainedAlias =
-                retainedBuilder.targetedBy(abandonedCommand);
-        retainedBuilder.targetedBy(PlantTargets.holdLastTarget(0.0));
-        MappedVelocityPlant retargetedReadOnly = retainedAlias.build();
+        MappedPlantBuildStep<MappedVelocityPlant> retainedBuild =
+                retainedTarget.targetedBy(abandonedCommand);
+        retainedTarget.targetedBy(PlantTargets.holdLastTarget(0.0));
+        MappedVelocityPlant retargetedReadOnly = retainedBuild.build();
 
         assertTrue(commandBacked.hasCommandTarget());
         assertSame(command, commandBacked.commandTarget());
