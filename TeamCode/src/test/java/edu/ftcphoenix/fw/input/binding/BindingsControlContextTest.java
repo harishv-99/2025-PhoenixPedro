@@ -416,6 +416,81 @@ public final class BindingsControlContextTest {
     }
 
     @Test
+    public void interleavedRootAndContextRegistrationsUseOneDeclarationOrder() {
+        ManualLoopClock manualClock = new ManualLoopClock();
+        Bindings bindings = new Bindings();
+        boolean[] active = {false};
+        boolean[] button = {true};
+        List<String> calls = new ArrayList<>();
+
+        Bindings.ControlContext context = bindings.contextWhen(
+                BooleanSource.of(() -> active[0]),
+                Bindings.ActivationPolicy.ACCEPT_CURRENT);
+
+        bindings.copyEachCycle(ScalarSource.constant(1.0),
+                value -> calls.add("root-copy-" + value));
+        context.mirrorOnChange(BooleanSource.of(() -> button[0]),
+                value -> calls.add("context-mirror-" + value));
+        bindings.whileHigh(BooleanSource.constant(true), () -> calls.add("root-level"));
+        context.copyEachCycle(ScalarSource.constant(0.5),
+                value -> calls.add("context-copy-" + value));
+
+        update(bindings, manualClock); // Inactive context publishes its neutral outputs in place.
+        assertEquals(Arrays.asList(
+                "root-copy-1.0", "context-mirror-false", "root-level", "context-copy-0.0"),
+                calls);
+
+        calls.clear();
+        active[0] = true;
+        update(bindings, manualClock); // Effect-free activation; mirror is already neutral.
+        assertEquals(Arrays.asList("root-copy-1.0", "root-level", "context-copy-0.0"), calls);
+
+        calls.clear();
+        update(bindings, manualClock); // Accepted held mirror and scalar retain their positions.
+        assertEquals(Arrays.asList(
+                "root-copy-1.0", "context-mirror-true", "root-level", "context-copy-0.5"),
+                calls);
+    }
+
+    @Test
+    public void activationSourceCannotMutateTheBindingGraphBeingSnapshotted() {
+        ManualLoopClock manualClock = new ManualLoopClock();
+        Bindings bindings = new Bindings();
+        List<String> failures = new ArrayList<>();
+        int[] activationSamples = {0};
+        int[] contextualLevels = {0};
+        int[] rootLevels = {0};
+
+        BooleanSource activation = clock -> {
+            activationSamples[0]++;
+            if (activationSamples[0] == 1) {
+                failures.add(captureIllegalState(bindings::clear));
+                failures.add(captureIllegalState(() -> bindings.contextWhen(
+                        BooleanSource.constant(true), Bindings.ActivationPolicy.ACCEPT_CURRENT)));
+            }
+            return true;
+        };
+
+        Bindings.ControlContext context = bindings.contextWhen(
+                activation, Bindings.ActivationPolicy.ACCEPT_CURRENT);
+        context.whileHigh(BooleanSource.constant(true), () -> contextualLevels[0]++);
+        bindings.whileHigh(BooleanSource.constant(true), () -> rootLevels[0]++);
+
+        update(bindings, manualClock);
+        assertEquals(1, activationSamples[0]);
+        assertEquals(0, contextualLevels[0]);
+        assertEquals(1, rootLevels[0]);
+        assertEquals(2, failures.size());
+        assertTrue(failures.get(0).contains("cannot clear bindings"));
+        assertTrue(failures.get(1).contains("cannot create a control context"));
+
+        update(bindings, manualClock);
+        assertEquals(2, activationSamples[0]);
+        assertEquals("the original context must remain intact", 1, contextualLevels[0]);
+        assertEquals(2, rootLevels[0]);
+    }
+
+    @Test
     public void rootEmergencyActionRemainsEligibleWhenContextDeactivates() {
         ManualLoopClock manualClock = new ManualLoopClock();
         Bindings bindings = new Bindings();
@@ -513,5 +588,15 @@ public final class BindingsControlContextTest {
     private static void update(Bindings bindings, ManualLoopClock manualClock) {
         manualClock.nextCycle(0.02);
         bindings.update(manualClock.clock());
+    }
+
+    private static String captureIllegalState(Runnable mutation) {
+        try {
+            mutation.run();
+            fail("expected structural mutation during Bindings.update to fail");
+            return "";
+        } catch (IllegalStateException expected) {
+            return expected.getMessage();
+        }
     }
 }

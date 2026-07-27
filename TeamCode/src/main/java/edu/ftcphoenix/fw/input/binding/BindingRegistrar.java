@@ -13,6 +13,16 @@ import edu.ftcphoenix.fw.core.source.ScalarSource;
  * either an always-eligible {@link Bindings} root or a conditional
  * {@link Bindings.ControlContext}. The interface deliberately does not expose the root heartbeat,
  * clearing, or context construction.</p>
+ *
+ * <p>For Phoenix root and context registrars, each declaration joins one parent-owned global
+ * sequence at the point this method is called. After the parent snapshots all context activations,
+ * it visits registrations in declaration order across binding kinds. A reusable helper's
+ * declarations therefore join the order where its {@code bind(...)} method is invoked. This is
+ * deterministic sequencing, not priority or arbitration between competing final commands.</p>
+ *
+ * <p>Finish declarations during initialization or an explicit rebuild between updates. A Phoenix
+ * registrar rejects registration while its parent {@code Bindings.update(clock)} is running, and
+ * a context that was invalidated by {@link Bindings#clear()} also rejects registration.</p>
  */
 public interface BindingRegistrar {
 
@@ -28,6 +38,7 @@ public interface BindingRegistrar {
      * @param signal boolean source to monitor; must not be {@code null}
      * @param action action to run once per accepted rise; must not be {@code null}
      * @throws NullPointerException if either argument is {@code null}
+     * @throws IllegalStateException if the registrar cannot currently accept declarations
      */
     void onRise(BooleanSource signal, Runnable action);
 
@@ -42,6 +53,7 @@ public interface BindingRegistrar {
      * @param signal boolean source to monitor; must not be {@code null}
      * @param action action to run once per accepted fall; must not be {@code null}
      * @throws NullPointerException if either argument is {@code null}
+     * @throws IllegalStateException if the registrar cannot currently accept declarations
      */
     void onFall(BooleanSource signal, Runnable action);
 
@@ -60,6 +72,7 @@ public interface BindingRegistrar {
      * @param signal boolean source to mirror; must not be {@code null}
      * @param consumer receives effective state changes; must not be {@code null}
      * @throws NullPointerException if either argument is {@code null}
+     * @throws IllegalStateException if the registrar cannot currently accept declarations
      */
     void mirrorOnChange(BooleanSource signal, Consumer<Boolean> consumer);
 
@@ -73,6 +86,7 @@ public interface BindingRegistrar {
      * @param signal boolean source to monitor; must not be {@code null}
      * @param action action to run on each accepted high update; must not be {@code null}
      * @throws NullPointerException if either argument is {@code null}
+     * @throws IllegalStateException if the registrar cannot currently accept declarations
      */
     void whileHigh(BooleanSource signal, Runnable action);
 
@@ -86,6 +100,7 @@ public interface BindingRegistrar {
      * @param signal boolean source to monitor; must not be {@code null}
      * @param action action to run on each accepted low update; must not be {@code null}
      * @throws NullPointerException if either argument is {@code null}
+     * @throws IllegalStateException if the registrar cannot currently accept declarations
      */
     void whileLow(BooleanSource signal, Runnable action);
 
@@ -100,6 +115,7 @@ public interface BindingRegistrar {
      * @param onEnabled action run after a flip to enabled; must not be {@code null}
      * @param onDisabled action run after a flip to disabled; must not be {@code null}
      * @throws NullPointerException if any argument is {@code null}
+     * @throws IllegalStateException if the registrar cannot currently accept declarations
      */
     void toggleOnRise(BooleanSource signal, Runnable onEnabled, Runnable onDisabled);
 
@@ -113,6 +129,7 @@ public interface BindingRegistrar {
      * @param signal signal whose accepted rises flip the toggle; must not be {@code null}
      * @param consumer receives the new state after each flip; must not be {@code null}
      * @throws NullPointerException if either argument is {@code null}
+     * @throws IllegalStateException if the registrar cannot currently accept declarations
      */
     void toggleOnRise(BooleanSource signal, Consumer<Boolean> consumer);
 
@@ -130,6 +147,7 @@ public interface BindingRegistrar {
      * @param adjuster receives the nonzero combined adjustment; must not be {@code null}
      * @throws NullPointerException if a signal or {@code adjuster} is {@code null}
      * @throws IllegalArgumentException if {@code step} is non-finite
+     * @throws IllegalStateException if the registrar cannot currently accept declarations
      */
     void nudgeOnRise(BooleanSource increaseSignal,
                      BooleanSource decreaseSignal,
@@ -158,6 +176,7 @@ public interface BindingRegistrar {
      * @param consumer receives the root sample or contextual effective command; must not be
      *                 {@code null}
      * @throws NullPointerException if either argument is {@code null}
+     * @throws IllegalStateException if the registrar cannot currently accept declarations
      */
     void copyEachCycle(ScalarSource source, DoubleConsumer consumer);
 }

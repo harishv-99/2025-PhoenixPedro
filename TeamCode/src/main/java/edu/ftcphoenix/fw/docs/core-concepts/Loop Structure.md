@@ -222,9 +222,17 @@ localization phase; a change after this cycle's snapshot was published is reflec
 
 Optional `Bindings.ControlContext` objects are declaration groups, not additional heartbeat owners.
 Do not update them separately; the parent `bindings.update(clock)` samples every context's
-activation once before dispatching any callbacks and uses that snapshot for the complete input
-frame. If a callback changes a mode used by a context, the new eligibility starts on the next loop.
-The root's same-cycle idempotency covers both root and contextual registrations.
+activation once in context-creation order before sampling any binding source or dispatching any
+callback, then uses those snapshots for the complete input frame. If a callback changes a mode
+used by a context, the new eligibility starts on the next loop. The root's same-cycle idempotency
+covers both root and contextual registrations.
+
+After the activation prepass, the root visits root and contextual registrations once in their
+global declaration order across binding kinds. Any source samples, neutral outputs, or callbacks
+produced by those visits follow that order; ordinary binding sources are not pre-snapshotted.
+Declaration order is sequencing only, not priority or final-output arbitration. Register controls,
+create contexts, and clear/rebuild the graph during initialization or between updates—attempting a
+structural change while `Bindings.update(clock)` is running fails before changing the graph.
 
 ### 4.4 TaskRunner is idempotent
 

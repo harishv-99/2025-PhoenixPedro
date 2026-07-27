@@ -45,6 +45,20 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * If called twice in the same loop cycle, the second call is a no-op. This prevents nested
  * code (for example, a tester suite calling into a tester) from double-firing actions.</p>
  *
+ * <h2>Declaration order</h2>
+ * <p>Each root or contextual registration joins one declaration-ordered traversal. On every
+ * update, Phoenix first snapshots all context activations in context-creation order, then visits
+ * registrations in the order they were declared, even when their binding methods differ. Any
+ * source samples, neutral outputs, or callbacks produced by those visits therefore follow
+ * declaration order. Calls made by a reusable helper occupy the point at which that helper
+ * declares them.</p>
+ *
+ * <p>Declaration order provides deterministic sequencing, not input consumption, priority, or
+ * arbitration between competing output owners. Keep one robot-owned policy for a final command.
+ * When several calls form one dependent action, put that action in one callback. Treat the binding
+ * graph as initialization/rebuild structure: registering, creating a context, or clearing while
+ * {@code update} is running fails before changing the graph.</p>
+ *
  * <h2>When vs. what</h2>
  * <p>The simple edge and level methods name only <em>when</em> an action runs:</p>
  * <ul>
@@ -94,9 +108,13 @@ public final class Bindings implements BindingRegistrar {
      * Conditional registration surface owned and updated by one parent {@link Bindings} object.
      *
      * <p>A context has no independent heartbeat. Call only the parent {@link Bindings#update}.
-     * Every context activation predicate is sampled before any binding callback in that loop, so a
-     * callback that changes a mode affects contexts on the next loop rather than midway through
-     * the current controls frame.</p>
+     * Every context activation predicate is sampled in context-creation order before any binding
+     * source or callback in that loop, so a callback that changes a mode affects contexts on the
+     * next loop rather than midway through the current controls frame.</p>
+     *
+     * <p>Registrations made through a context join the parent's one global declaration order with
+     * root and other-context registrations. Build this structure between updates; attempting to
+     * register through a context while the parent is updating fails before changing the graph.</p>
      *
      * <p>Contexts may overlap; all eligible mappings run. The framework does not infer priority,
      * consume inputs, arbitrate duplicate setters, cancel tasks, or perform subsystem cleanup.</p>
@@ -158,6 +176,7 @@ public final class Bindings implements BindingRegistrar {
                                  Runnable onEnabled,
                                  Runnable onDisabled) {
             requireValid();
+            owner.requireStructureMutable("register a binding");
             Objects.requireNonNull(onEnabled, "onEnabled is required");
             Objects.requireNonNull(onDisabled, "onDisabled is required");
             toggleOnRise(signal, enabled -> {
@@ -261,7 +280,12 @@ public final class Bindings implements BindingRegistrar {
         }
     }
 
-    private static final class RiseBinding {
+    /** One entry in the root's global declaration-ordered traversal. */
+    private interface RegisteredBinding {
+        void dispatch(LoopClock clock);
+    }
+
+    private static final class RiseBinding implements RegisteredBinding {
         final ControlContext context;
         final BooleanSource signal;
         final Runnable action;
@@ -274,7 +298,8 @@ public final class Bindings implements BindingRegistrar {
             this.contextualState = context == null ? null : new ContextualBooleanState();
         }
 
-        void dispatch(LoopClock clock) {
+        @Override
+        public void dispatch(LoopClock clock) {
             if (context == null) {
                 if (signal.getAsBoolean(clock)) {
                     action.run();
@@ -285,7 +310,7 @@ public final class Bindings implements BindingRegistrar {
         }
     }
 
-    private static final class FallBinding {
+    private static final class FallBinding implements RegisteredBinding {
         final ControlContext context;
         final BooleanSource signal;
         final Runnable action;
@@ -298,7 +323,8 @@ public final class Bindings implements BindingRegistrar {
             this.contextualState = context == null ? null : new ContextualBooleanState();
         }
 
-        void dispatch(LoopClock clock) {
+        @Override
+        public void dispatch(LoopClock clock) {
             if (context == null) {
                 if (signal.getAsBoolean(clock)) {
                     action.run();
@@ -309,7 +335,7 @@ public final class Bindings implements BindingRegistrar {
         }
     }
 
-    private static final class MirrorOnChangeBinding {
+    private static final class MirrorOnChangeBinding implements RegisteredBinding {
         final ControlContext context;
         final BooleanSource signal;
         final Consumer<Boolean> consumer;
@@ -327,7 +353,8 @@ public final class Bindings implements BindingRegistrar {
             this.contextualState = context == null ? null : new ContextualBooleanState();
         }
 
-        void dispatch(LoopClock clock) {
+        @Override
+        public void dispatch(LoopClock clock) {
             if (context == null) {
                 publish(signal.getAsBoolean(clock));
                 return;
@@ -346,7 +373,7 @@ public final class Bindings implements BindingRegistrar {
         }
     }
 
-    private static final class LevelBinding {
+    private static final class LevelBinding implements RegisteredBinding {
         final ControlContext context;
         final BooleanSource signal;
         final boolean runWhenHigh;
@@ -364,7 +391,8 @@ public final class Bindings implements BindingRegistrar {
             this.contextualState = context == null ? null : new ContextualBooleanState();
         }
 
-        void dispatch(LoopClock clock) {
+        @Override
+        public void dispatch(LoopClock clock) {
             if (context == null) {
                 if (signal.getAsBoolean(clock) == runWhenHigh) {
                     action.run();
@@ -379,7 +407,7 @@ public final class Bindings implements BindingRegistrar {
         }
     }
 
-    private static final class ToggleOnRiseBinding {
+    private static final class ToggleOnRiseBinding implements RegisteredBinding {
         final ControlContext context;
         final BooleanSource signal;
         final Consumer<Boolean> consumer;
@@ -398,7 +426,8 @@ public final class Bindings implements BindingRegistrar {
             this.contextualState = context == null ? null : new ContextualBooleanState();
         }
 
-        void dispatch(LoopClock clock) {
+        @Override
+        public void dispatch(LoopClock clock) {
             if (context == null) {
                 boolean current = signal.getAsBoolean(clock);
                 if (!rootInitialized) {
@@ -420,7 +449,7 @@ public final class Bindings implements BindingRegistrar {
         }
     }
 
-    private static final class NudgeOnRiseBinding {
+    private static final class NudgeOnRiseBinding implements RegisteredBinding {
         final ControlContext context;
         final BooleanSource increaseSignal;
         final BooleanSource decreaseSignal;
@@ -443,7 +472,8 @@ public final class Bindings implements BindingRegistrar {
             this.decreaseState = context == null ? null : new ContextualBooleanState();
         }
 
-        void dispatch(LoopClock clock) {
+        @Override
+        public void dispatch(LoopClock clock) {
             double delta = 0.0;
             if (context == null) {
                 if (increaseSignal.getAsBoolean(clock)) {
@@ -469,7 +499,7 @@ public final class Bindings implements BindingRegistrar {
         }
     }
 
-    private static final class ScalarCopyBinding {
+    private static final class ScalarCopyBinding implements RegisteredBinding {
         final ControlContext context;
         final ScalarSource source;
         final DoubleConsumer consumer;
@@ -483,7 +513,8 @@ public final class Bindings implements BindingRegistrar {
             this.consumer = consumer;
         }
 
-        void dispatch(LoopClock clock) {
+        @Override
+        public void dispatch(LoopClock clock) {
             if (context == null) {
                 consumer.accept(source.getAsDouble(clock));
                 return;
@@ -533,15 +564,18 @@ public final class Bindings implements BindingRegistrar {
     }
 
     private final List<ControlContext> contexts = new ArrayList<>();
-    private final List<RiseBinding> riseBindings = new ArrayList<>();
-    private final List<FallBinding> fallBindings = new ArrayList<>();
-    private final List<MirrorOnChangeBinding> mirrorOnChangeBindings = new ArrayList<>();
-    private final List<LevelBinding> levelBindings = new ArrayList<>();
-    private final List<ToggleOnRiseBinding> toggleOnRiseBindings = new ArrayList<>();
-    private final List<NudgeOnRiseBinding> nudgeOnRiseBindings = new ArrayList<>();
-    private final List<ScalarCopyBinding> scalarCopyBindings = new ArrayList<>();
+    private final List<RegisteredBinding> registrations = new ArrayList<>();
+
+    private int riseBindingCount;
+    private int fallBindingCount;
+    private int mirrorOnChangeBindingCount;
+    private int levelBindingCount;
+    private int toggleOnRiseBindingCount;
+    private int nudgeOnRiseBindingCount;
+    private int scalarCopyBindingCount;
 
     private long lastUpdatedCycle = Long.MIN_VALUE;
+    private boolean updating;
 
     /**
      * Create a conditional control context owned by this root.
@@ -553,8 +587,10 @@ public final class Bindings implements BindingRegistrar {
      * @param policy required held-control activation policy
      * @return a registration-only contextual surface
      * @throws NullPointerException if {@code activation} or {@code policy} is {@code null}
+     * @throws IllegalStateException if called while {@link #update(LoopClock)} is running
      */
     public ControlContext contextWhen(BooleanSource activation, ActivationPolicy policy) {
+        requireStructureMutable("create a control context");
         ControlContext context = new ControlContext(
                 this,
                 Objects.requireNonNull(activation, "activation is required"),
@@ -570,10 +606,12 @@ public final class Bindings implements BindingRegistrar {
     }
 
     private void addRiseBinding(ControlContext context, BooleanSource signal, Runnable action) {
-        riseBindings.add(new RiseBinding(
+        requireStructureMutable("register a binding");
+        registrations.add(new RiseBinding(
                 context,
                 Objects.requireNonNull(signal, "signal is required"),
                 Objects.requireNonNull(action, "action is required")));
+        riseBindingCount++;
     }
 
     /** {@inheritDoc} */
@@ -583,10 +621,12 @@ public final class Bindings implements BindingRegistrar {
     }
 
     private void addFallBinding(ControlContext context, BooleanSource signal, Runnable action) {
-        fallBindings.add(new FallBinding(
+        requireStructureMutable("register a binding");
+        registrations.add(new FallBinding(
                 context,
                 Objects.requireNonNull(signal, "signal is required"),
                 Objects.requireNonNull(action, "action is required")));
+        fallBindingCount++;
     }
 
     /** {@inheritDoc} */
@@ -598,10 +638,12 @@ public final class Bindings implements BindingRegistrar {
     private void addMirrorOnChangeBinding(ControlContext context,
                                           BooleanSource signal,
                                           Consumer<Boolean> consumer) {
-        mirrorOnChangeBindings.add(new MirrorOnChangeBinding(
+        requireStructureMutable("register a binding");
+        registrations.add(new MirrorOnChangeBinding(
                 context,
                 Objects.requireNonNull(signal, "signal is required"),
                 Objects.requireNonNull(consumer, "consumer is required")));
+        mirrorOnChangeBindingCount++;
     }
 
     /** {@inheritDoc} */
@@ -620,16 +662,19 @@ public final class Bindings implements BindingRegistrar {
                                  BooleanSource signal,
                                  boolean runWhenHigh,
                                  Runnable action) {
-        levelBindings.add(new LevelBinding(
+        requireStructureMutable("register a binding");
+        registrations.add(new LevelBinding(
                 context,
                 Objects.requireNonNull(signal, "signal is required"),
                 runWhenHigh,
                 Objects.requireNonNull(action, "action is required")));
+        levelBindingCount++;
     }
 
     /** {@inheritDoc} */
     @Override
     public void toggleOnRise(BooleanSource signal, Runnable onEnabled, Runnable onDisabled) {
+        requireStructureMutable("register a binding");
         Objects.requireNonNull(onEnabled, "onEnabled is required");
         Objects.requireNonNull(onDisabled, "onDisabled is required");
         toggleOnRise(signal, enabled -> {
@@ -650,10 +695,12 @@ public final class Bindings implements BindingRegistrar {
     private void addToggleOnRiseBinding(ControlContext context,
                                         BooleanSource signal,
                                         Consumer<Boolean> consumer) {
-        toggleOnRiseBindings.add(new ToggleOnRiseBinding(
+        requireStructureMutable("register a binding");
+        registrations.add(new ToggleOnRiseBinding(
                 context,
                 Objects.requireNonNull(signal, "signal is required"),
                 Objects.requireNonNull(consumer, "consumer is required")));
+        toggleOnRiseBindingCount++;
     }
 
     /** {@inheritDoc} */
@@ -670,18 +717,20 @@ public final class Bindings implements BindingRegistrar {
                                        BooleanSource decreaseSignal,
                                        double step,
                                        DoubleConsumer adjuster) {
+        requireStructureMutable("register a binding");
         Objects.requireNonNull(increaseSignal, "increaseSignal is required");
         Objects.requireNonNull(decreaseSignal, "decreaseSignal is required");
         Objects.requireNonNull(adjuster, "adjuster is required");
         if (!Double.isFinite(step)) {
             throw new IllegalArgumentException("step must be finite");
         }
-        nudgeOnRiseBindings.add(new NudgeOnRiseBinding(
+        registrations.add(new NudgeOnRiseBinding(
                 context,
                 increaseSignal,
                 decreaseSignal,
                 Math.abs(step),
                 adjuster));
+        nudgeOnRiseBindingCount++;
     }
 
     /** {@inheritDoc} */
@@ -693,17 +742,22 @@ public final class Bindings implements BindingRegistrar {
     private void addScalarCopyBinding(ControlContext context,
                                       ScalarSource source,
                                       DoubleConsumer consumer) {
-        scalarCopyBindings.add(new ScalarCopyBinding(
+        requireStructureMutable("register a binding");
+        registrations.add(new ScalarCopyBinding(
                 context,
                 Objects.requireNonNull(source, "source is required"),
                 Objects.requireNonNull(consumer, "consumer is required")));
+        scalarCopyBindingCount++;
     }
 
     /**
      * Run all registered root and contextual bindings for the current loop.
      *
-     * <p>All context activation predicates are sampled once before any callbacks. This method is
-     * safe to call repeatedly in the same cycle; only the first call does work.</p>
+     * <p>All context activation predicates are sampled once in context-creation order before any
+     * binding source or callback. Root and contextual registrations are then visited once in
+     * global declaration order across binding kinds. Any source samples, neutral outputs, or
+     * callbacks they produce follow that order. This method is safe to call repeatedly in the same
+     * cycle; only the first call does work.</p>
      *
      * @param clock current shared loop clock; must not be {@code null}
      * @throws NullPointerException if {@code clock} is {@code null}
@@ -717,31 +771,20 @@ public final class Bindings implements BindingRegistrar {
         }
         lastUpdatedCycle = cycle;
 
-        int contextCount = contexts.size();
-        for (int i = 0; i < contextCount; i++) {
-            contexts.get(i).snapshotActivation(clock);
-        }
+        boolean previousUpdating = updating;
+        updating = true;
+        try {
+            int contextCount = contexts.size();
+            for (int i = 0; i < contextCount; i++) {
+                contexts.get(i).snapshotActivation(clock);
+            }
 
-        for (int i = 0; i < riseBindings.size(); i++) {
-            riseBindings.get(i).dispatch(clock);
-        }
-        for (int i = 0; i < fallBindings.size(); i++) {
-            fallBindings.get(i).dispatch(clock);
-        }
-        for (int i = 0; i < mirrorOnChangeBindings.size(); i++) {
-            mirrorOnChangeBindings.get(i).dispatch(clock);
-        }
-        for (int i = 0; i < levelBindings.size(); i++) {
-            levelBindings.get(i).dispatch(clock);
-        }
-        for (int i = 0; i < toggleOnRiseBindings.size(); i++) {
-            toggleOnRiseBindings.get(i).dispatch(clock);
-        }
-        for (int i = 0; i < nudgeOnRiseBindings.size(); i++) {
-            nudgeOnRiseBindings.get(i).dispatch(clock);
-        }
-        for (int i = 0; i < scalarCopyBindings.size(); i++) {
-            scalarCopyBindings.get(i).dispatch(clock);
+            int registrationCount = registrations.size();
+            for (int i = 0; i < registrationCount; i++) {
+                registrations.get(i).dispatch(clock);
+            }
+        } finally {
+            updating = previousUpdating;
         }
     }
 
@@ -753,33 +796,48 @@ public final class Bindings implements BindingRegistrar {
         String p = (prefix == null || prefix.isEmpty()) ? "bindings" : prefix;
         dbg.addData(p + ".class", "Bindings");
         dbg.addData(p + ".contexts", contexts.size());
-        dbg.addData(p + ".rise", riseBindings.size());
-        dbg.addData(p + ".fall", fallBindings.size());
-        dbg.addData(p + ".mirrorOnChange", mirrorOnChangeBindings.size());
-        dbg.addData(p + ".level", levelBindings.size());
-        dbg.addData(p + ".toggleOnRise", toggleOnRiseBindings.size());
-        dbg.addData(p + ".nudgeOnRise", nudgeOnRiseBindings.size());
-        dbg.addData(p + ".copyEachCycle", scalarCopyBindings.size());
+        dbg.addData(p + ".rise", riseBindingCount);
+        dbg.addData(p + ".fall", fallBindingCount);
+        dbg.addData(p + ".mirrorOnChange", mirrorOnChangeBindingCount);
+        dbg.addData(p + ".level", levelBindingCount);
+        dbg.addData(p + ".toggleOnRise", toggleOnRiseBindingCount);
+        dbg.addData(p + ".nudgeOnRise", nudgeOnRiseBindingCount);
+        dbg.addData(p + ".copyEachCycle", scalarCopyBindingCount);
     }
 
     /**
      * Clear all registered bindings and invalidate every context created by this root.
      *
      * <p>This is mainly useful in testing utilities that rebuild bindings dynamically. A caller
-     * must create new contexts after clearing; declaring through an old context fails fast.</p>
+     * must create new contexts after clearing; declaring through an old context fails fast. Finish
+     * the current {@link #update(LoopClock)} before rebuilding the graph.</p>
+     *
+     * @throws IllegalStateException if called while {@link #update(LoopClock)} is running
      */
     public void clear() {
+        requireStructureMutable("clear bindings");
         for (int i = 0; i < contexts.size(); i++) {
             contexts.get(i).invalidate();
         }
         contexts.clear();
-        riseBindings.clear();
-        fallBindings.clear();
-        mirrorOnChangeBindings.clear();
-        levelBindings.clear();
-        toggleOnRiseBindings.clear();
-        nudgeOnRiseBindings.clear();
-        scalarCopyBindings.clear();
+        registrations.clear();
+        riseBindingCount = 0;
+        fallBindingCount = 0;
+        mirrorOnChangeBindingCount = 0;
+        levelBindingCount = 0;
+        toggleOnRiseBindingCount = 0;
+        nudgeOnRiseBindingCount = 0;
+        scalarCopyBindingCount = 0;
         lastUpdatedCycle = Long.MIN_VALUE;
+    }
+
+    /** Reject structural graph changes while sources or callbacks are being traversed. */
+    private void requireStructureMutable(String operation) {
+        if (updating) {
+            throw new IllegalStateException(
+                    "Bindings cannot " + operation + " while update(clock) is running; "
+                            + "declare or rebuild the binding graph before or after update, "
+                            + "not from a source or binding callback");
+        }
     }
 }

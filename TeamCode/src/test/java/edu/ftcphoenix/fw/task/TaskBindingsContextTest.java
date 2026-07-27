@@ -2,6 +2,10 @@ package edu.ftcphoenix.fw.task;
 
 import org.junit.Test;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
 import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.input.binding.Bindings;
@@ -113,6 +117,38 @@ public final class TaskBindingsContextTest {
         button[0] = true;
         update(bindings, manualClock);
         assertEquals(1, factoryCalls[0]);
+    }
+
+    @Test
+    public void mixedKindsEnqueueTasksInBindingDeclarationOrder() {
+        ManualLoopClock manualClock = new ManualLoopClock();
+        Bindings bindings = new Bindings();
+        TaskRunner runner = new TaskRunner();
+        TaskBindings taskBindings = TaskBindings.of(bindings, runner);
+        boolean[] button = {false};
+        BooleanSource signal = BooleanSource.of(() -> button[0]);
+        List<String> starts = new ArrayList<>();
+
+        taskBindings.toggleOnRise(
+                signal,
+                () -> Tasks.runOnce(() -> starts.add("toggle-on")),
+                () -> Tasks.runOnce(() -> starts.add("toggle-off")));
+        taskBindings.mirrorOnChange(signal,
+                high -> Tasks.runOnce(() -> starts.add("mirror-" + high)));
+        taskBindings.onRise(signal, () -> Tasks.runOnce(() -> starts.add("rise")));
+        taskBindings.whileHigh(signal, () -> Tasks.runOnce(() -> starts.add("high")));
+
+        update(bindings, manualClock);
+        runner.update(manualClock.clock());
+        assertEquals(Arrays.asList("mirror-false"), starts);
+
+        starts.clear();
+        button[0] = true;
+        update(bindings, manualClock);
+        runner.update(manualClock.clock());
+
+        assertEquals(Arrays.asList("toggle-on", "mirror-true", "rise", "high"), starts);
+        assertTrue(runner.isIdle());
     }
 
     private static void update(Bindings bindings, ManualLoopClock manualClock) {

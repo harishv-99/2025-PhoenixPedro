@@ -2,10 +2,14 @@ package edu.ftcphoenix.fw.ftc.ui;
 
 import org.junit.Test;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import edu.ftcphoenix.fw.core.source.BooleanSource;
+import edu.ftcphoenix.fw.core.source.ScalarSource;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.input.binding.Bindings;
 import edu.ftcphoenix.fw.tools.tester.ui.IntTuner;
@@ -16,6 +20,33 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 public final class ContextualUiBindingTest {
+
+    @Test
+    public void helperDeclarationsOccupyTheirCallSitePositionAcrossBindingKinds() {
+        AtomicBoolean selectPressed = new AtomicBoolean();
+        BooleanSource select = BooleanSource.of(selectPressed::get);
+        List<String> calls = new ArrayList<>();
+
+        Bindings bindings = new Bindings();
+        bindings.copyEachCycle(ScalarSource.constant(1.0), ignored -> calls.add("before"));
+
+        SelectionMenu<String> picker = new SelectionMenu<String>()
+                .addItem("motor", "motor");
+        picker.bind(bindings, null, null, select, () -> true,
+                item -> calls.add("helper"));
+
+        bindings.whileHigh(BooleanSource.constant(true), () -> calls.add("after"));
+
+        LoopClock clock = new LoopClock();
+        clock.reset(0.0);
+        update(bindings, clock, 0.02); // Establish the helper's edge baseline.
+        assertEquals(Arrays.asList("before", "after"), calls);
+
+        calls.clear();
+        selectPressed.set(true);
+        update(bindings, clock, 0.04);
+        assertEquals(Arrays.asList("before", "helper", "after"), calls);
+    }
 
     @Test
     public void pickerSelectionDoesNotAlsoEnableNewlyActiveTunerControls() {

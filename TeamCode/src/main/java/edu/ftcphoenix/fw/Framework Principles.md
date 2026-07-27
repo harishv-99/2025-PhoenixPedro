@@ -103,6 +103,14 @@ Phoenix is designed around a few core goals:
    rethrows that retained failure instead of silently appearing successful or retrying an effect
    that may already have occurred. Reentrant update is a lifecycle error. Document which model an
    update owner uses rather than applying successful-value-cache language to non-transactional work.
+   A `Bindings` root first samples every existing control-context activation once in
+   context-creation order, before any binding source or callback, then visits root and contextual
+   registrations in one global
+   declaration order across binding kinds and declaration helpers. Any samples, neutral outputs,
+   or callbacks produced by those visits follow that order. This is deterministic sequencing, not
+   input consumption, priority, or ownership arbitration: one robot owner must still compose policy
+   for a competing final command. Treat the binding graph as initialization/rebuild structure;
+   registration, context creation, and clearing during an update fail before changing that graph.
    When a third-party follower's supported lifecycle requires updates beyond active route/guidance
    Tasks, it also needs one stable composition-root heartbeat every relevant OpMode loop; those
    Tasks may select behavior but must not become its only lifecycle owner. If both layers can reach
