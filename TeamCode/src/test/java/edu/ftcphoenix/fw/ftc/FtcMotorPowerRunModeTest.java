@@ -553,10 +553,7 @@ public final class FtcMotorPowerRunModeTest {
 
         MecanumDrivebase drive = FtcDrives.mecanum(
                 hardwareMap,
-                "fl", Direction.FORWARD,
-                "fr", Direction.REVERSE,
-                "bl", Direction.FORWARD,
-                "br", Direction.REVERSE);
+                mecanumConfig("fl", "fr", "bl", "br"));
         events.clear();
 
         RuntimeException observed =
@@ -818,6 +815,110 @@ public final class FtcMotorPowerRunModeTest {
     }
 
     @Test
+    public void mecanumFactorySnapshotsConfigAndConfiguresFloatAfterOneResolutionPerMotor() {
+        EventLog events = new EventLog();
+        TestHardwareMap hardwareMap = new TestHardwareMap();
+        MotorProbe fl = new MotorProbe("fl", events, DcMotor.RunMode.RUN_TO_POSITION);
+        MotorProbe fr = new MotorProbe("fr", events, DcMotor.RunMode.RUN_TO_POSITION);
+        MotorProbe bl = new MotorProbe("bl", events, DcMotor.RunMode.RUN_TO_POSITION);
+        MotorProbe br = new MotorProbe("br", events, DcMotor.RunMode.RUN_TO_POSITION);
+        hardwareMap.put("fl", fl.motor());
+        hardwareMap.put("fr", fr.motor());
+        hardwareMap.put("bl", bl.motor());
+        hardwareMap.put("br", br.motor());
+        FtcDrives.MecanumConfig config = mecanumConfig("fl", "fr", "bl", "br");
+        config.enableZeroPowerBrake = false;
+        config.drivebase.maxAxial = 0.5;
+        config.wiring.frontLeftDirection = Direction.REVERSE;
+        config.wiring.frontRightDirection = Direction.FORWARD;
+        config.wiring.backLeftDirection = Direction.REVERSE;
+        config.wiring.backRightDirection = Direction.FORWARD;
+
+        MecanumDrivebase drive = FtcDrives.mecanum(hardwareMap, config);
+
+        for (MotorProbe motor : Arrays.asList(fl, fr, bl, br)) {
+            assertEquals(motor.id, 1, hardwareMap.lookupCount(motor.id));
+            assertEquals(motor.id, DcMotor.ZeroPowerBehavior.FLOAT, motor.zeroPowerBehavior);
+            assertEquals(motor.id, DcMotor.RunMode.RUN_TO_POSITION, motor.runMode);
+            assertEquals(motor.id, 0, motor.getModeCalls);
+            assertEquals(motor.id, 0, motor.setModeCalls);
+            assertEquals(motor.id, 0, motor.setPowerCalls);
+        }
+        assertEquals(DcMotorSimple.Direction.REVERSE, fl.direction);
+        assertEquals(DcMotorSimple.Direction.FORWARD, fr.direction);
+        assertEquals(DcMotorSimple.Direction.REVERSE, bl.direction);
+        assertEquals(DcMotorSimple.Direction.FORWARD, br.direction);
+
+        // The factory and drivebase own snapshots, not the mutable robot config.
+        config.enableZeroPowerBrake = true;
+        config.wiring.frontLeftName = "replacement";
+        config.drivebase.maxAxial = 0.1;
+        events.clear();
+
+        drive.drive(new DriveSignal(1.0, 0.0, 0.0));
+
+        for (MotorProbe motor : Arrays.asList(fl, fr, bl, br)) {
+            assertEquals(motor.id, RAW_MODE, motor.runMode);
+            assertEquals(motor.id, 0.5, motor.power, EPSILON);
+        }
+
+        events.clear();
+        drive.stop();
+
+        for (MotorProbe motor : Arrays.asList(fl, fr, bl, br)) {
+            assertEquals(motor.id, 0.0, motor.power, EPSILON);
+        }
+        assertEquals(Arrays.asList(
+                "fl.setPower(0.0)",
+                "fr.setPower(0.0)",
+                "bl.setPower(0.0)",
+                "br.setPower(0.0)"
+        ), events.values);
+    }
+
+    @Test
+    public void beginnerMecanumFactoryUsesStandardNamesDirectionsAndBrakeWithoutMotion() {
+        EventLog events = new EventLog();
+        TestHardwareMap hardwareMap = new TestHardwareMap();
+        MotorProbe fl = new MotorProbe(
+                FtcDrives.DEFAULT_FRONT_LEFT_MOTOR_NAME,
+                events,
+                DcMotor.RunMode.RUN_TO_POSITION);
+        MotorProbe fr = new MotorProbe(
+                FtcDrives.DEFAULT_FRONT_RIGHT_MOTOR_NAME,
+                events,
+                DcMotor.RunMode.RUN_TO_POSITION);
+        MotorProbe bl = new MotorProbe(
+                FtcDrives.DEFAULT_BACK_LEFT_MOTOR_NAME,
+                events,
+                DcMotor.RunMode.RUN_TO_POSITION);
+        MotorProbe br = new MotorProbe(
+                FtcDrives.DEFAULT_BACK_RIGHT_MOTOR_NAME,
+                events,
+                DcMotor.RunMode.RUN_TO_POSITION);
+        hardwareMap.put(FtcDrives.DEFAULT_FRONT_LEFT_MOTOR_NAME, fl.motor());
+        hardwareMap.put(FtcDrives.DEFAULT_FRONT_RIGHT_MOTOR_NAME, fr.motor());
+        hardwareMap.put(FtcDrives.DEFAULT_BACK_LEFT_MOTOR_NAME, bl.motor());
+        hardwareMap.put(FtcDrives.DEFAULT_BACK_RIGHT_MOTOR_NAME, br.motor());
+
+        FtcDrives.mecanum(hardwareMap);
+
+        assertEquals(DcMotorSimple.Direction.FORWARD, fl.direction);
+        assertEquals(DcMotorSimple.Direction.REVERSE, fr.direction);
+        assertEquals(DcMotorSimple.Direction.FORWARD, bl.direction);
+        assertEquals(DcMotorSimple.Direction.REVERSE, br.direction);
+        for (MotorProbe motor : Arrays.asList(fl, fr, bl, br)) {
+            assertEquals(motor.id, 1, hardwareMap.lookupCount(motor.id));
+            assertEquals(motor.id, DcMotor.ZeroPowerBehavior.BRAKE, motor.zeroPowerBehavior);
+            assertEquals(motor.id, DcMotor.RunMode.RUN_TO_POSITION, motor.runMode);
+            assertEquals(motor.id, 0, motor.getModeCalls);
+            assertEquals(motor.id, 0, motor.setModeCalls);
+            assertEquals(motor.id, 0, motor.setPowerCalls);
+        }
+        assertNoModeOrPowerEvents(events);
+    }
+
+    @Test
     public void simpleMecanumDriveUsesRawModeAndLifecycleStopDoesNotStealLaterModes() {
         EventLog events = new EventLog();
         TestHardwareMap hardwareMap = new TestHardwareMap();
@@ -832,10 +933,11 @@ public final class FtcMotorPowerRunModeTest {
 
         MecanumDrivebase drive = FtcDrives.mecanum(
                 hardwareMap,
-                "fl", Direction.FORWARD,
-                "fr", Direction.REVERSE,
-                "bl", Direction.FORWARD,
-                "br", Direction.REVERSE);
+                mecanumConfig("fl", "fr", "bl", "br"));
+        for (MotorProbe motor : Arrays.asList(fl, fr, bl, br)) {
+            assertEquals(motor.id, DcMotor.ZeroPowerBehavior.BRAKE, motor.zeroPowerBehavior);
+            assertEquals(motor.id, 1, hardwareMap.lookupCount(motor.id));
+        }
         assertNoModeOrPowerEvents(events);
         events.clear();
 
@@ -882,6 +984,18 @@ public final class FtcMotorPowerRunModeTest {
         assertTrue(motor + " verification must follow mode selection", mode < verificationRead);
         assertTrue(motor + " must verify before any group motion",
                 verificationRead < firstRequestedPower);
+    }
+
+    private static FtcDrives.MecanumConfig mecanumConfig(String frontLeft,
+                                                         String frontRight,
+                                                         String backLeft,
+                                                         String backRight) {
+        FtcDrives.MecanumConfig config = FtcDrives.MecanumConfig.defaults();
+        config.wiring.frontLeftName = frontLeft;
+        config.wiring.frontRightName = frontRight;
+        config.wiring.backLeftName = backLeft;
+        config.wiring.backRightName = backRight;
+        return config;
     }
 
     private static int nthIndex(List<String> events, String value, int occurrence) {
@@ -1003,6 +1117,7 @@ public final class FtcMotorPowerRunModeTest {
     /** In-memory HardwareMap that avoids Android-only SDK discovery during local JVM tests. */
     private static final class TestHardwareMap extends HardwareMap {
         private final Map<String, HardwareDevice> devices = new HashMap<>();
+        private final Map<String, Integer> lookupCounts = new HashMap<>();
 
         private TestHardwareMap() {
             super(null, null);
@@ -1015,6 +1130,7 @@ public final class FtcMotorPowerRunModeTest {
 
         @Override
         public <T> T get(Class<? extends T> type, String name) {
+            lookupCounts.put(name, lookupCount(name) + 1);
             HardwareDevice device = devices.get(name);
             if (device == null) {
                 throw new IllegalArgumentException("No test device named " + name);
@@ -1023,6 +1139,11 @@ public final class FtcMotorPowerRunModeTest {
                 throw new IllegalArgumentException(name + " is not a " + type.getSimpleName());
             }
             return type.cast(device);
+        }
+
+        private int lookupCount(String name) {
+            Integer count = lookupCounts.get(name);
+            return count != null ? count : 0;
         }
     }
 
@@ -1046,6 +1167,8 @@ public final class FtcMotorPowerRunModeTest {
         private int targetPosition;
         private double velocityTicksPerSec;
         private double power;
+        private DcMotor.ZeroPowerBehavior zeroPowerBehavior =
+                DcMotor.ZeroPowerBehavior.FLOAT;
 
         private MotorProbe(String id, EventLog events, DcMotor.RunMode startingMode) {
             this.id = id;
@@ -1111,6 +1234,12 @@ public final class FtcMotorPowerRunModeTest {
                 return null;
             }
             if ("getDirection".equals(name)) return direction;
+            if ("setZeroPowerBehavior".equals(name)) {
+                zeroPowerBehavior = (DcMotor.ZeroPowerBehavior) args[0];
+                events.add(id + ".setZeroPowerBehavior(" + zeroPowerBehavior + ")");
+                return null;
+            }
+            if ("getZeroPowerBehavior".equals(name)) return zeroPowerBehavior;
             if ("getCurrentPosition".equals(name)) {
                 events.add(id + ".getCurrentPosition");
                 return positionTicks;

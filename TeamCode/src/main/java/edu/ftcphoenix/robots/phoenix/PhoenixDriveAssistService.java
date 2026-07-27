@@ -18,7 +18,7 @@ import edu.ftcphoenix.fw.localization.AbsolutePoseEstimator;
  * Robot-specific drive-assist service for Phoenix TeleOp.
  *
  * <p>
- * Phoenix keeps stable drive hardware ownership in {@code FtcMecanumDriveLane} and keeps operator
+ * Phoenix keeps final drive hardware ownership in its {@code MecanumDrivebase} and keeps operator
  * input semantics in {@link PhoenixTeleOpControls}. This service lives between those layers. It owns
  * robot-specific drive-assist policy that combines manual drive, scoring state, and localization to
  * produce the final TeleOp drive source.
@@ -146,7 +146,7 @@ public final class PhoenixDriveAssistService {
      *
      * <p>
      * The returned source layers Phoenix's current drive assists on top of the manual driver
-     * controls. Build the drive lane once and sample this source each loop.
+     * controls. Build the final drivebase once and sample this source each loop.
      * </p>
      *
      * @return drive source that applies shoot-brace and auto-aim overlays on top of manual drive

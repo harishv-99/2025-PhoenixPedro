@@ -24,9 +24,9 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
  * </p>
  *
  * <p>
- * The framework drive and localization lanes own stable hardware/resource behavior. This controls
- * object owns operator intent mapping. That split is intentional and is the pattern future robots
- * should follow too.
+ * The framework drive owner and localization lane own stable hardware/resource behavior. This
+ * controls object owns operator intent mapping. That split is intentional and is the pattern
+ * future robots should follow too.
  * </p>
  */
 public final class PhoenixTeleOpControls {

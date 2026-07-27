@@ -10,6 +10,7 @@ import java.util.function.Function;
 
 import edu.ftcphoenix.fw.core.geometry.Pose2d;
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
+import edu.ftcphoenix.fw.core.lifecycle.CleanupActions;
 import edu.ftcphoenix.fw.core.math.MathUtil;
 import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.drive.DriveSignal;
@@ -44,7 +45,7 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
  * <ul>
  *   <li><b>X</b>: Reset pose + clear results</li>
  *   <li><b>A</b>: Start/stop a manual sample (you rotate the robot)</li>
- *   <li><b>Y</b>: Auto sample (rotate to target angle) <i>requires mecanum wiring configured</i></li>
+ *   <li><b>Y</b>: Auto sample (rotate to target angle) <i>requires a mecanum drive config</i></li>
  *   <li><b>B</b>: Abort sample</li>
  *   <li><b>Right stick X</b>: Manual rotate (when drive is configured)</li>
  * </ul>
@@ -81,14 +82,9 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         public PinpointOdometryPredictor.Config pinpoint = PinpointOdometryPredictor.Config.defaults();
 
         /**
-         * Optional mecanum wiring. If null, the tester won't drive the robot.
+         * Optional complete mecanum construction config. If null, the tester won't drive the robot.
          */
-        public FtcDrives.MecanumWiringConfig mecanumWiring = null;
-
-        /**
-         * Optional mecanum tuning config (only used when {@link #mecanumWiring} is non-null).
-         */
-        public MecanumDrivebase.Config driveConfig = MecanumDrivebase.Config.defaults();
+        public FtcDrives.MecanumConfig mecanum = null;
 
         /**
          * Manual rotation scale when using the right stick X.
@@ -248,8 +244,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         public Config copy() {
             Config c = new Config();
             c.pinpoint = this.pinpoint;
-            c.mecanumWiring = this.mecanumWiring;
-            c.driveConfig = this.driveConfig;
+            c.mecanum = this.mecanum == null ? null : this.mecanum.copy();
 
             c.manualOmegaScale = this.manualOmegaScale;
             c.autoOmegaCmd = this.autoOmegaCmd;
@@ -400,8 +395,8 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         pinpoint = new PinpointOdometryPredictor(ctx.hw, cfg.pinpoint);
 
         // Optional drive
-        if (cfg.mecanumWiring != null) {
-            drive = FtcDrives.mecanum(ctx.hw, cfg.mecanumWiring, cfg.driveConfig);
+        if (cfg.mecanum != null) {
+            drive = FtcDrives.mecanum(ctx.hw, cfg.mecanum);
         }
 
         // Optional AprilTag assist
@@ -507,7 +502,6 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
             default:
                 // Keep the drivetrain stopped while idle.
                 if (drive != null) {
-                    drive.update(ctx.clock);
                     drive.drive(DriveSignal.zero());
                 }
                 break;
@@ -528,7 +522,6 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         }
 
         // Continue rotating while we search for any known-pose tag.
-        drive.update(ctx.clock);
         drive.drive(new DriveSignal(0.0, 0.0, cfg.tagSearchOmegaCmd));
 
         // Track how far we've rotated while searching.
@@ -579,7 +572,6 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
             omega = -gamepads.p1().rightX().getAsDouble(ctx.clock) * cfg.manualOmegaScale;
         }
 
-        drive.update(ctx.clock);
         drive.drive(new DriveSignal(0.0, 0.0, omega));
     }
 
@@ -611,7 +603,6 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         }
 
         double omega = Math.signum(cfg.targetTurnRad) * cfg.tagSearchOmegaCmd;
-        drive.update(ctx.clock);
         drive.drive(new DriveSignal(0.0, 0.0, omega));
     }
 
@@ -624,7 +615,6 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         double axial = gamepads.p1().leftY().getAsDouble(ctx.clock) * cfg.recenterTranslationScale;
         double lateral = -gamepads.p1().leftX().getAsDouble(ctx.clock) * cfg.recenterTranslationScale;
 
-        drive.update(ctx.clock);
         drive.drive(new DriveSignal(axial, lateral, 0.0));
     }
 
@@ -655,7 +645,6 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         tagSearchUnwrapper.reset(0.0);
 
         if (drive != null) {
-            drive.update(ctx.clock);
             drive.drive(DriveSignal.zero());
         }
     }
@@ -699,7 +688,6 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         autoSample = false;
         tagStableFrames = 0;
         if (drive != null) {
-            drive.update(ctx.clock);
             drive.drive(DriveSignal.zero());
         }
     }
@@ -775,7 +763,6 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         phase = Phase.ROTATING;
 
         if (drive != null) {
-            drive.update(ctx.clock);
             drive.drive(DriveSignal.zero());
         }
     }
@@ -813,7 +800,6 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
                 && startTagPose != null
                 && endTagPose != null) {
             if (drive != null) {
-                drive.update(ctx.clock);
                 drive.drive(DriveSignal.zero());
             }
             finishSampleAndCompute();
@@ -827,7 +813,6 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         }
 
         if (drive != null) {
-            drive.update(ctx.clock);
             drive.drive(DriveSignal.zero());
         }
     }
@@ -837,7 +822,6 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
 
         // Stop motors first.
         if (drive != null) {
-            drive.update(ctx.clock);
             drive.drive(DriveSignal.zero());
         }
 
@@ -1162,7 +1146,7 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         switch (phase) {
             case IDLE:
                 ctx.telemetry.addLine("Manual sample [A]: rotate in place, then press A again to compute.");
-                ctx.telemetry.addLine("Auto sample [Y]: rotate automatically to the target heading when drive wiring exists.");
+                ctx.telemetry.addLine("Auto sample [Y]: rotate automatically to the target heading when a drive config exists.");
                 if (drive == null) {
                     ctx.telemetry.addLine("(No drive configured) Manual samples are by hand only.");
                 }
@@ -1281,22 +1265,34 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
     @Override
     protected void onStop() {
         visionTerminalRequested = true;
+        MecanumDrivebase ownedDrive = drive;
         AprilTagVisionLane ownedVision = visionLane;
+        drive = null;
         visionLane = null;
         visionReadiness = VisionReadiness.notReady("Vision tester is stopping");
         tagSensor = null;
         tagEstimator = null;
         activeVisionDescription = null;
         selectedVisionDeviceName = null;
-        if (ownedVision != null) {
-            try {
-                ownedVision.close();
-            } catch (RuntimeException cleanupFailure) {
-                visionCleanupFailed = true;
-                visionFailure = cleanupFailure;
-                throw cleanupFailure;
-            }
-        }
+        CleanupActions.attemptAll(
+                () -> {
+                    if (ownedDrive != null) {
+                        ownedDrive.stop();
+                    }
+                },
+                () -> {
+                    if (ownedVision == null) {
+                        return;
+                    }
+                    try {
+                        ownedVision.close();
+                    } catch (RuntimeException cleanupFailure) {
+                        visionCleanupFailed = true;
+                        visionFailure = cleanupFailure;
+                        throw cleanupFailure;
+                    }
+                }
+        );
     }
 
     /**

@@ -119,11 +119,36 @@ public final class FtcHardware {
     static List<PowerOutput> motorPowerGroup(HardwareMap hw,
                                              List<String> names,
                                              List<Direction> directions) {
+        return motorPowerGroup(hw, names, directions, null, false);
+    }
+
+    /**
+     * Resolve one coordinated raw-power group and configure a common zero-power behavior.
+     *
+     * <p>The behavior is validated with the complete group shape before the first hardware lookup.
+     * Every motor is resolved exactly once before direction or zero-power configuration begins.</p>
+     */
+    static List<PowerOutput> motorPowerGroup(HardwareMap hw,
+                                             List<String> names,
+                                             List<Direction> directions,
+                                             DcMotor.ZeroPowerBehavior zeroPowerBehavior) {
+        return motorPowerGroup(hw, names, directions, zeroPowerBehavior, true);
+    }
+
+    private static List<PowerOutput> motorPowerGroup(
+            HardwareMap hw,
+            List<String> names,
+            List<Direction> directions,
+            DcMotor.ZeroPowerBehavior zeroPowerBehavior,
+            boolean configureZeroPowerBehavior) {
         requireHardwareMap(hw);
         if (names == null || directions == null || names.isEmpty()
                 || names.size() != directions.size()) {
             throw new IllegalArgumentException(
                     "motor names and directions must be non-empty and have matching sizes");
+        }
+        if (configureZeroPowerBehavior && zeroPowerBehavior == null) {
+            throw new IllegalArgumentException("zeroPowerBehavior is required");
         }
 
         List<String> acceptedNames = new ArrayList<>(names.size());
@@ -147,10 +172,14 @@ public final class FtcHardware {
 
         List<FtcMotorPowerOutput> rawOutputs = new ArrayList<>(motors.size());
         for (int i = 0; i < motors.size(); i++) {
-            rawOutputs.add(motorPower(
+            FtcMotorPowerOutput output = motorPower(
                     motors.get(i),
                     directions.get(i),
-                    "configured motor \"" + names.get(i) + "\""));
+                    "configured motor \"" + names.get(i) + "\"");
+            if (configureZeroPowerBehavior) {
+                motors.get(i).setZeroPowerBehavior(zeroPowerBehavior);
+            }
+            rawOutputs.add(output);
         }
         new FtcMotorPowerGroup(rawOutputs);
 

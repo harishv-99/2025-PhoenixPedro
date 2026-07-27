@@ -1,6 +1,6 @@
 # Design
 
-Use this section when choosing ownership boundaries, behavior lanes, subsystem shape, task structure,
+Use this section when choosing ownership boundaries, behavior patterns, subsystem shape, task structure,
 and output arbitration.
 
 ## Read in this order

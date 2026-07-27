@@ -5,7 +5,6 @@ import java.util.Objects;
 import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.hal.PowerOutput;
 import edu.ftcphoenix.fw.core.math.MathUtil;
-import edu.ftcphoenix.fw.core.time.LoopClock;
 
 /**
  * Simple open-loop mecanum mixer.
@@ -48,18 +47,23 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * clamping each wheel. A final clamp to [-1, +1] is applied for numerical safety.
  * </p>
  *
- * <h2>Typical usage</h2>
+ * <h2>Typical FTC usage</h2>
  *
  * <pre>{@code
- * MecanumDrivebase.Config cfg = MecanumDrivebase.Config.defaults();
- * cfg.maxOmega = 0.8;          // example: cap rotation before wheel mixing
+ * FtcDrives.MecanumConfig config = FtcDrives.MecanumConfig.defaults();
+ * config.drivebase.maxOmega = 0.8; // cap rotation before wheel mixing
  *
- * MecanumDrivebase drive = new MecanumDrivebase(fl, fr, bl, br, cfg);
+ * MecanumDrivebase drive = FtcDrives.mecanum(hardwareMap, config);
  *
  * // Shape behavior upstream, then let the drivebase mix and apply it:
  * DriveSource manual = gamepadDrive.rateLimited(4.0, 4.0, 6.0);
  * drive.drive(manual.get(clock).clamped());
  * }</pre>
+ *
+ * <p>The public constructor that accepts four {@link PowerOutput}s is the hardware-neutral seam for
+ * custom output ownership, simulation, and focused tests. Ordinary FTC robots should use the
+ * {@code FtcDrives.mecanum(...)} factory so complete-group validation and first-command mode
+ * preflight remain intact.</p>
  */
 public final class MecanumDrivebase implements DriveCommandSink {
 
@@ -72,7 +76,10 @@ public final class MecanumDrivebase implements DriveCommandSink {
      * <ul>
      *   <li>Start from {@link #defaults()}.</li>
      *   <li>Override the fields you care about during robot initialization.</li>
-     *   <li>Pass the config into {@link MecanumDrivebase} at construction time.</li>
+     *   <li>For an FTC robot, place it in {@code FtcDrives.MecanumConfig} and pass that complete
+     *       config to {@code FtcDrives.mecanum(...)}.</li>
+     *   <li>Pass it directly to {@link MecanumDrivebase} only when using the advanced
+     *       hardware-neutral output-injection seam.</li>
      * </ul>
      *
      * <p><b>Important:</b> {@link MecanumDrivebase} makes a defensive copy of the
@@ -88,52 +95,26 @@ public final class MecanumDrivebase implements DriveCommandSink {
         /**
          * Scale applied to {@link DriveSignal#axial} before mixing.
          *
-         * <p>Default: {@code 1.0} (no scaling).</p>
+         * <p>Must be finite and in [{@code 0.0}, {@code 1.0}]. Default: {@code 1.0}
+         * (no scaling).</p>
          */
         public double maxAxial = 1.0;
 
         /**
          * Scale applied to {@link DriveSignal#lateral} before mixing.
          *
-         * <p>Default: {@code 1.0} (no scaling).</p>
+         * <p>Must be finite and in [{@code 0.0}, {@code 1.0}]. Default: {@code 1.0}
+         * (no scaling).</p>
          */
         public double maxLateral = 1.0;
 
         /**
          * Scale applied to {@link DriveSignal#omega} before mixing.
          *
-         * <p>Default: {@code 1.0} (no scaling).</p>
+         * <p>Must be finite and in [{@code 0.0}, {@code 1.0}]. Default: {@code 1.0}
+         * (no scaling).</p>
          */
         public double maxOmega = 1.0;
-
-        // --------------------------------------------------------------------
-        // Physical-speed mapping (used by drive(ChassisSpeeds))
-        // --------------------------------------------------------------------
-
-        /**
-         * Approximate maximum forward speed of the robot at full command, in inches/sec.
-         *
-         * <p>Used only when converting a {@link ChassisSpeeds} command into a normalized
-         * {@link DriveSignal}. This is a <b>best-effort mapping</b>, not closed-loop velocity
-         * control.</p>
-         */
-        public double maxVxInchesPerSec = 40.0;
-
-        /**
-         * Approximate maximum leftward strafe speed of the robot at full command, in inches/sec.
-         *
-         * <p>Used only when converting a {@link ChassisSpeeds} command into a normalized
-         * {@link DriveSignal}.</p>
-         */
-        public double maxVyInchesPerSec = 40.0;
-
-        /**
-         * Approximate maximum angular speed at full command, in rad/sec.
-         *
-         * <p>Used only when converting a {@link ChassisSpeeds} command into a normalized
-         * {@link DriveSignal}.</p>
-         */
-        public double maxOmegaRadPerSec = Math.toRadians(180.0);
 
         private Config() {
             // Defaults assigned in field initializers.
@@ -147,19 +128,29 @@ public final class MecanumDrivebase implements DriveCommandSink {
         }
 
         /**
-         * Create a deep copy of this config.
+         * Creates a validated deep copy of this config.
+         *
+         * @throws IllegalArgumentException if a scale is non-finite or outside [{@code 0.0},
+         * {@code 1.0}]
          */
         public Config copy() {
+            requireNormalizedScale("maxAxial", maxAxial);
+            requireNormalizedScale("maxLateral", maxLateral);
+            requireNormalizedScale("maxOmega", maxOmega);
+
             Config c = new Config();
             c.maxAxial = this.maxAxial;
             c.maxLateral = this.maxLateral;
             c.maxOmega = this.maxOmega;
-
-            c.maxVxInchesPerSec = this.maxVxInchesPerSec;
-            c.maxVyInchesPerSec = this.maxVyInchesPerSec;
-            c.maxOmegaRadPerSec = this.maxOmegaRadPerSec;
-
             return c;
+        }
+
+        private static void requireNormalizedScale(String fieldName, double value) {
+            if (!Double.isFinite(value) || value < 0.0 || value > 1.0) {
+                throw new IllegalArgumentException(
+                        "MecanumDrivebase.Config." + fieldName
+                                + " must be finite and in [0.0, 1.0], got " + value);
+            }
         }
     }
 
@@ -188,69 +179,23 @@ public final class MecanumDrivebase implements DriveCommandSink {
      * @param frPower power output for the front-right wheel (non-null)
      * @param blPower power output for the back-left wheel (non-null)
      * @param brPower power output for the back-right wheel (non-null)
-     * @param cfg     configuration for drivebase scaling and speed mapping (may be {@code null})
+     * @param cfg     configuration for drivebase scaling (non-null)
+     * @throws NullPointerException if any output or {@code cfg} is {@code null}
+     * @throws IllegalArgumentException if a configured scale is non-finite or outside
+     * [{@code 0.0}, {@code 1.0}]
      */
     public MecanumDrivebase(PowerOutput flPower,
                             PowerOutput frPower,
                             PowerOutput blPower,
                             PowerOutput brPower,
                             Config cfg) {
-        this.fl = flPower;
-        this.fr = frPower;
-        this.bl = blPower;
-        this.br = brPower;
+        this.fl = Objects.requireNonNull(flPower, "flPower");
+        this.fr = Objects.requireNonNull(frPower, "frPower");
+        this.bl = Objects.requireNonNull(blPower, "blPower");
+        this.br = Objects.requireNonNull(brPower, "brPower");
 
         // Defensive copy so callers can't change behavior by mutating cfg later.
-        this.cfg = (cfg != null ? cfg.copy() : Config.defaults());
-    }
-
-
-    /**
-     * Command the drivebase using a {@link ChassisSpeeds} velocity intent.
-     *
-     * <p>This is a <b>best-effort</b> mapping from physical units to a normalized
-     * {@link DriveSignal}. It does <em>not</em> perform closed-loop velocity control.
-     * Battery voltage, carpet, friction, and load will change the actual achieved speeds.</p>
-     *
-     * <p>All components are robot-centric, aligned with Phoenix pose conventions
-     * (+X forward, +Y left, yaw CCW-positive).</p>
-     *
-     * <p>Saturation policy: if any component would exceed its configured maximum, all
-     * components are scaled by the same factor so the command preserves its direction
-     * in (vx, vy, omega) space.</p>
-     *
-     * <p><b>Actuation timing:</b> this method ultimately calls {@link #drive(DriveSignal)},
-     * which <b>immediately</b> sends wheel power commands to the hardware outputs.</p>
-     *
-     * <p><b>Rate limiting:</b> shape the {@link DriveSource} upstream with
-     * {@link DriveSource#rateLimited(double, double)} if you want smoother drive behavior.</p>
-     *
-     * @param speeds desired chassis speeds (robot-centric) (must not be {@code null})
-     * @throws IllegalStateException if any of the speed-mapping max values are <= 0
-     */
-    public void drive(ChassisSpeeds speeds) {
-        Objects.requireNonNull(speeds, "speeds");
-
-        double maxVx = cfg.maxVxInchesPerSec;
-        double maxVy = cfg.maxVyInchesPerSec;
-        double maxOmega = cfg.maxOmegaRadPerSec;
-
-        if (maxVx <= 0.0 || maxVy <= 0.0 || maxOmega <= 0.0) {
-            throw new IllegalStateException("Invalid speed mapping config: maxVxInchesPerSec, maxVyInchesPerSec, and maxOmegaRadPerSec must all be > 0");
-        }
-
-        // Convert physical units -> normalized command space.
-        double axial = speeds.vxRobotIps / maxVx;
-        double lateral = speeds.vyRobotIps / maxVy;
-        double omega = speeds.omegaRobotRadPerSec / maxOmega;
-
-        // Preserve-direction saturation in command space.
-        double maxMag = Math.max(1.0, Math.max(Math.abs(axial), Math.max(Math.abs(lateral), Math.abs(omega))));
-        axial /= maxMag;
-        lateral /= maxMag;
-        omega /= maxMag;
-
-        drive(new DriveSignal(axial, lateral, omega));
+        this.cfg = Objects.requireNonNull(cfg, "cfg").copy();
     }
 
     /**
@@ -322,15 +267,6 @@ public final class MecanumDrivebase implements DriveCommandSink {
         fr.setPower(lastFrPower);
         bl.setPower(lastBlPower);
         br.setPower(lastBrPower);
-    }
-
-    /**
-     * MecanumDrivebase has no per-loop behavior state to update. Drive command shaping, including
-     * rate limiting, belongs in the {@link DriveSource} graph that feeds this sink.
-     */
-    @Override
-    public void update(LoopClock clock) {
-        // no-op
     }
 
     /**

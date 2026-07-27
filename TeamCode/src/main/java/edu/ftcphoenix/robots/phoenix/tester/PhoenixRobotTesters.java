@@ -238,7 +238,7 @@ public final class PhoenixRobotTesters {
         PhoenixProfile p = profile();
         PinpointPodOffsetCalibrator.Config cfg = PinpointPodOffsetCalibrator.Config.defaults();
         cfg.pinpoint = p.localization.predictor.copy();
-        cfg.mecanumWiring = p.drive.wiring.copy();
+        cfg.mecanum = p.drive.copy();
         cfg.targetTurnRad = Math.PI;
         cfg.enableAprilTagAssist = CalibrationChecks.canUseAprilTagAssist(p.vision.activeCameraMount());
         cfg.autoComputeAfterAutoSample = true;

@@ -5,9 +5,9 @@ architecture vocabulary.
 
 The governing rule is:
 
-> Stable hardware/resource ownership lives in framework lanes. Shared public robot vocabulary lives
-> in robot-owned capability families. Operator semantics live in TeleOp controls. Game-specific
-> reasoning lives in cohesive robot services and subsystems.
+> Stable hardware/resource ownership lives in the narrowest truthful framework owner. Shared public
+> robot vocabulary lives in robot-owned capability families. Operator semantics live in TeleOp
+> controls. Game-specific reasoning lives in cohesive robot services and subsystems.
 
 That split keeps Phoenix reusable as a template without pushing one season's strategy into the
 framework.
@@ -26,7 +26,7 @@ PhoenixRobot
 
   PhoenixCapabilities capabilities
 
-  FtcMecanumDriveLane drive
+  MecanumDrivebase drive       (created by FtcDrives from PhoenixProfile.drive)
   AprilTagVisionLane vision   (selected by PhoenixVisionFactory from the active profile backend)
   FtcOdometryAprilTagLocalizationLane localization
     (constructs TeleOp predictor or retains the predictor supplied for Auto)
@@ -96,7 +96,7 @@ handoff does not prove that the Auto estimate was physically accurate.
 
 ## Role map
 
-### Framework primitives used underneath the lanes
+### Framework primitives and direct owners
 
 - `GamepadDriveSource`
 - `MecanumDrivebase`
@@ -106,7 +106,6 @@ handoff does not prove that the Auto estimate was physically accurate.
 
 ### Framework lanes
 
-- `FtcMecanumDriveLane`: owns mecanum hardware wiring, brake behavior, drivebase construction, and drive lifecycle
 - `AprilTagVisionLane` plus a concrete FTC-boundary implementation such as `FtcWebcamAprilTagVisionLane` or `FtcLimelightAprilTagVisionLane`: Phoenix consumes the backend-neutral seam while `PhoenixVisionFactory` chooses the active backend
 - `FtcWebcamVisionPortalLane` and `FtcLimelightVisionLane`: parallel advanced owners available to
   a future robot-specific semantic vision capability; Phoenix's current AprilTag-only path uses
@@ -114,6 +113,11 @@ handoff does not prove that the Auto estimate was physically accurate.
 - `FtcOdometryAprilTagLocalizationLane`: owns predictor wiring + AprilTag localization strategy,
   correction-source selection, corrected-estimator selection, and pose production; it constructs
   Pinpoint for ordinary TeleOp or consumes an explicitly supplied Auto predictor
+
+Direct mecanum drive deliberately is not another lane. `FtcDrives.mecanum(hardwareMap,
+profile.drive)` applies the complete wiring, BRAKE/FLOAT, and normalized drive config and returns the
+actual `MecanumDrivebase`. That object already owns the coordinated outputs, final command,
+diagnostics, and stop operation, so a forwarding wrapper would add no distinct capability.
 
 ### Shared field facts
 
@@ -198,7 +202,7 @@ The rule is to split by cohesive public vocabulary, not by this year's internal 
 
 ```text
 PhoenixProfile
-  ├─ drive        -> FtcMecanumDriveLane.Config
+  ├─ drive        -> FtcDrives.MecanumConfig
   ├─ vision       -> PhoenixProfile.VisionConfig
   ├─ localization -> FtcOdometryAprilTagLocalizationLane.Config
   ├─ field        -> TagLayout
@@ -209,7 +213,7 @@ PhoenixProfile
   └─ auto         -> Auto route/aim/wait timing
 
 PhoenixRobot
-  ├─ drive lane
+  ├─ MecanumDrivebase (created by FtcDrives)
   ├─ vision lane
   ├─ localization lane (retains the predictor supplied for Auto)
   ├─ capabilities aggregate
@@ -624,14 +628,13 @@ Phoenix keeps loop order explicit inside `PhoenixRobot.updateTeleOp()`:
 4. controls.update(clock)
 5. scoringPath.update(clock)
 6. driveAssists.update(clock, scoringStatus)
-7. drive.update(clock)
-8. drive.drive(...)
-9. telemetryPresenter.emitTeleOp(...snapshots...)
+7. drive.drive(...)
+8. telemetryPresenter.emitTeleOp(...snapshots...)
 ```
 
 That order reflects ownership:
 
-- lanes produce stable shared state first
+- resource owners produce stable shared state first
 - controls update operator intent
 - the scoring path translates intent and writes scoring hardware
 - services reshape drive behavior
@@ -690,7 +693,7 @@ visible in either mode.
 
 ```text
 PhoenixProfile
-  drive         -> FtcMecanumDriveLane.Config
+  drive         -> FtcDrives.MecanumConfig
   vision        -> PhoenixProfile.VisionConfig
   localization  -> FtcOdometryAprilTagLocalizationLane.Config
   field         -> fixed AprilTag layout

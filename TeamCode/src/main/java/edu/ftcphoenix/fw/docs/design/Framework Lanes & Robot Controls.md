@@ -80,13 +80,12 @@ A lane usually:
 
 - owns several collaborating primitives
 - owns stable FTC resources or lifecycle concerns
-- has a clear `update(...)` lifecycle
+- exposes only the lifecycle its resources really require
 - may have cleanup like `stop()` or `close()`
 - contains little or no game-specific strategy
 
 Examples:
 
-- `FtcMecanumDriveLane`
 - `AprilTagVisionLane` / `FtcWebcamAprilTagVisionLane` / `FtcLimelightAprilTagVisionLane`
 - `FtcWebcamVisionPortalLane` / `FtcLimelightVisionLane` for advanced multi-purpose vision
 - `FtcOdometryAprilTagLocalizationLane`
@@ -94,6 +93,30 @@ Examples:
 A lane answers:
 
 > What recurring system do we wire almost the same way every year?
+
+The name is earned by the complete runtime graph, not by a short constructor. Add a framework lane
+only when all of these are true:
+
+1. The complete graph recurs across robots, or one stable SDK/vendor contract requires it.
+2. Its collaborators share one lifetime and one primary reason to change.
+3. Duplicate acquisition, heartbeat, final writing, recovery, or cleanup creates a real hazard.
+4. Robot differences are configuration or narrow injected seams, not season policy or mechanism
+   topology.
+5. FTC/vendor details stop at a small truthful downstream capability.
+6. The composition root can still show the real phase and safety-significant cleanup order; an
+   owner without a heartbeat does not gain a fictional `update()` phase.
+7. The complete adopting robot loses code, concepts, and lifecycle hazards.
+8. Construction, same-cycle behavior where applicable, partial failure, readiness, cleanup, and
+   diagnostics can be tested in proportion to their risk.
+
+Phoenix intentionally has no generic `Lane` interface, registry, or `updateAll()`. Vision,
+localization, and vendor route owners do not share one honest lifecycle. Reusable helpers depend on
+their smallest real capability instead.
+
+Direct mecanum drive illustrates the boundary. `FtcDrives.mecanum(...)` builds and returns the
+actual `MecanumDrivebase`, which already owns the coordinated outputs, final write, diagnostics, and
+stop operation. A forwarding-only drive wrapper would add a noun without adding a capability, so
+direct drive remains a primitive owner rather than a framework lane.
 
 ### Field facts
 
@@ -259,7 +282,7 @@ A **profile** is a data-only configuration aggregate for one robot.
 
 It should contain:
 
-- lane configs
+- stable owner configs
 - field facts or field overrides
 - controls tuning
 - subsystem tuning
@@ -339,8 +362,8 @@ Good names reveal the role.
 
 Good:
 
-- `FtcMecanumDriveLane`
 - `AprilTagVisionLane` / `FtcWebcamAprilTagVisionLane` / `FtcLimelightAprilTagVisionLane`
+- `MecanumDrivebase`
 - `ShooterSupervisor`
 - `PhoenixTeleOpControls`
 - `ScoringTargeting`
@@ -365,8 +388,11 @@ Ask these in order.
 ### Is it one narrow reusable behavior with no broad lifecycle?
 Then it is probably a **primitive**.
 
-### Is it a stable reusable multi-object resource graph with update/cleanup?
+### Is it a stable reusable multi-object resource graph with a shared lifecycle concern?
 Then it is probably a **lane**.
+
+That lifecycle may involve acquisition, a required update, recovery, or cleanup. Do not invent an
+`update()` phase when the graph does not need one.
 
 ### Does it own one mechanism's target sources and Plant update order?
 Then it is probably a **subsystem**.
@@ -406,7 +432,7 @@ A strong starting pattern is:
 ```java
 public final class MyRobotProfile {
 
-    public FtcMecanumDriveLane.Config drive = FtcMecanumDriveLane.Config.defaults();
+    public FtcDrives.MecanumConfig drive = FtcDrives.MecanumConfig.defaults();
     public VisionConfig vision = new VisionConfig();
     public FtcOdometryAprilTagLocalizationLane.Config localization =
             FtcOdometryAprilTagLocalizationLane.Config.defaults();
@@ -441,22 +467,29 @@ wrapper in the profile and let the composition root hold the backend-neutral `Ap
 
 Why this order works:
 
-- lane configs stay grouped by stable ownership
+- stable owner configs stay grouped by ownership
 - field facts stay separate from sensor rigs and strategy
 - controls tuning stays with controls
 - drive-assist tuning stays with the service that owns robot-specific overlays and assist latches
 - mechanism tuning stays with the subsystem
 - strategy tuning stays with services and supervisors
 
-## Step 2: create stable framework lanes
+## Step 2: create stable framework owners
 
-Create framework lanes for systems that are wired almost the same way every year.
+Use the narrowest owner that represents the complete system. Create a framework lane only when the
+qualification gate above is satisfied.
 
-### Drive lane example
+### Direct drive example
 
 ```java
-FtcMecanumDriveLane drive = new FtcMecanumDriveLane(hardwareMap, profile.drive);
+MecanumDrivebase drive = FtcDrives.mecanum(hardwareMap, profile.drive);
 ```
+
+The same factory is the one public FTC construction layer for default and configured robots. It
+returns the runtime owner students actually command and stop. Direct drive has no loop heartbeat:
+sample the final `DriveSource` and call `drive.drive(...)` in the explicit drive phase. Pedro or
+another vendor adapter may truthfully require `update(clock)`; that heartbeat belongs to the
+adapter, not to direct mecanum drive.
 
 ### Vision lane example
 
@@ -1056,7 +1089,7 @@ public final class MyRobot {
     private final LoopClock clock = new LoopClock();
     private final MyRobotProfile profile;
 
-    private FtcMecanumDriveLane drive;
+    private MecanumDrivebase drive;
     private AprilTagVisionLane vision;
     private FtcOdometryAprilTagLocalizationLane localization;
 
@@ -1069,7 +1102,7 @@ public final class MyRobot {
     private DriveSource driveSource;
 
     public void initTeleOp() {
-        drive = new FtcMecanumDriveLane(hardwareMap, profile.drive);
+        drive = FtcDrives.mecanum(hardwareMap, profile.drive);
         vision = MyVisionFactory.create(hardwareMap, profile.vision);
         localization = new FtcOdometryAprilTagLocalizationLane(
                 hardwareMap,
@@ -1102,7 +1135,6 @@ public final class MyRobot {
         targeting.update(clock);
         controls.update(clock);
         scoring.update(clock);
-        drive.update(clock);
         drive.drive(driveSource.get(clock).clamped());
         shooter.update(clock);
         telemetry.emitTeleOp(
@@ -1123,7 +1155,7 @@ If the composition root starts containing lots of button semantics, aim threshol
 
 ```text
 MyRobotProfile
-  ├─ drive      -> FtcMecanumDriveLane.Config
+  ├─ drive      -> FtcDrives.MecanumConfig
   ├─ vision     -> FtcWebcamAprilTagVisionLane.Config (or a robot-owned backend wrapper)
   ├─ localization -> FtcOdometryAprilTagLocalizationLane.Config
   ├─ field      -> TagLayout / field facts
@@ -1132,7 +1164,7 @@ MyRobotProfile
   └─ strategy   -> MyService / MySupervisor tuning
 
 MyRobot
-  ├─ FtcMecanumDriveLane
+  ├─ MecanumDrivebase (created by FtcDrives)
   ├─ AprilTagVisionLane (commonly `FtcWebcamAprilTagVisionLane` or `FtcLimelightAprilTagVisionLane`)
   ├─ FtcOdometryAprilTagLocalizationLane
   ├─ MyCapabilities
@@ -1248,7 +1280,6 @@ Phoenix is the reference example for this split:
 - primitive: `GamepadDriveSource`
 - primitive: `MecanumDrivebase`
 - primitive: `AprilTagSensor`
-- lane: `FtcMecanumDriveLane`
 - lane: `AprilTagVisionLane` with a concrete backend such as `FtcWebcamAprilTagVisionLane` or `FtcLimelightAprilTagVisionLane`
 - lane: `FtcOdometryAprilTagLocalizationLane`
 - field facts: `PhoenixProfile.field.fixedAprilTagLayout`

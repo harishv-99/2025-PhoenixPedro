@@ -98,7 +98,6 @@ public final class TeleOp_01_MecanumBasic extends OpMode {
         lastDrive = cmd;
 
         // --- 4) Actuation: send the already-shaped command ---
-        drivebase.update(clock);
         drivebase.drive(cmd);
 
         // --- 5) Required telemetry (driver-facing) ---

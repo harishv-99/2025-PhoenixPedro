@@ -4,7 +4,7 @@ Phoenix is a small FTC framework that helps you structure robot code around a cl
 
 The big idea is: **advance a single `LoopClock` once per OpMode cycle**, then run everything else (inputs, bindings, tasks, drive, mechanisms) off that clock.
 
-Useful companions to this document are [`Framework Lanes & Robot Controls`](<../design/Framework Lanes & Robot Controls.md>), [`Robot Capabilities & Mode Clients`](<../design/Robot Capabilities & Mode Clients.md>), and [`Recommended Robot Design`](<../design/Recommended Robot Design.md>). Together they explain the ownership vocabulary, how to split framework lanes from robot code, how TeleOp and Auto should share mechanism APIs through robot-owned capability families, and how to choose the right internal behavior lane for a mechanism.
+Useful companions to this document are [`Framework Lanes & Robot Controls`](<../design/Framework Lanes & Robot Controls.md>), [`Robot Capabilities & Mode Clients`](<../design/Robot Capabilities & Mode Clients.md>), and [`Recommended Robot Design`](<../design/Recommended Robot Design.md>). Together they explain the ownership vocabulary, how to split framework lanes from robot code, how TeleOp and Auto should share mechanism APIs through robot-owned capability families, and how to choose the right internal behavior pattern for a mechanism.
 
 See the repository [`README`](<../../README.md>) for the full documentation map and suggested reading paths.
 
@@ -150,18 +150,20 @@ Two rules of thumb:
 
 ## Framework lanes vs robot controls
 
-Phoenix now distinguishes between three different kinds of ownership that often got blurred together in older FTC code:
+Phoenix distinguishes several ownership roles that older FTC code often blurred together:
 
-- **primitives**: small reusable building blocks like `GamepadDriveSource`, `MecanumDrivebase`, `AprilTagSensor`, and `PinpointOdometryPredictor`
-- **framework lanes**: stable reusable owners built from primitives, such as `FtcMecanumDriveLane`,
-  the backend-neutral `AprilTagVisionLane` seam (commonly implemented by an AprilTag-specialized
+- **primitives/direct owners**: small reusable building blocks like `GamepadDriveSource`,
+  `MecanumDrivebase`, `AprilTagSensor`, and `PinpointOdometryPredictor`; the FTC factory returns the
+  actual `MecanumDrivebase` because a forwarding drive wrapper would add no runtime capability
+- **framework lanes**: stable reusable multi-object resource owners, such as the backend-neutral
+  `AprilTagVisionLane` seam (commonly implemented by an AprilTag-specialized
   webcam or Limelight owner), the advanced `FtcWebcamVisionPortalLane` and
   `FtcLimelightVisionLane` owners, and `FtcOdometryAprilTagLocalizationLane`
 - **field facts**: shared environment data such as `TagLayout` and `FtcGameTagLayout.currentGameFieldFixed()`
 - **robot-owned capability families**: the shared mode-neutral API used by both TeleOp and Auto
 - **robot-owned controls/policy**: button semantics, scoring logic, auto-aim rules, and telemetry presentation
 
-That split is deliberate. A framework primitive should not decide that "right bumper means slow mode" any more than an estimator should decide which scoring target matters this year. Stable hardware/resource ownership belongs in reusable framework lanes. Operator semantics and game strategy belong in robot code.
+That split is deliberate. A framework primitive should not decide that "right bumper means slow mode" any more than an estimator should decide which scoring target matters this year. Stable hardware/resource ownership belongs in the narrowest truthful reusable owner; reserve a framework lane for a qualified multi-object resource graph. Operator semantics and game strategy belong in robot code.
 
 See [`Framework Lanes & Robot Controls`](<../design/Framework Lanes & Robot Controls.md>) for the full role glossary and from-scratch robot build guide, [`Robot Capabilities & Mode Clients`](<../design/Robot Capabilities & Mode Clients.md>) for the shared TeleOp/Auto API pattern, then use [`Recommended Robot Design`](<../design/Recommended Robot Design.md>) for the deeper mechanism/supervisor patterns.
 
@@ -502,6 +504,7 @@ hardware writes.
 ```java
 import edu.ftcphoenix.fw.drive.*;
 import edu.ftcphoenix.fw.drive.source.GamepadDriveSource;
+import edu.ftcphoenix.fw.ftc.FtcDrives;
 import edu.ftcphoenix.fw.input.Gamepads;
 
 Gamepads pads = Gamepads.create(gamepad1, gamepad2);
@@ -515,11 +518,26 @@ DriveSource drive = new GamepadDriveSource(
 ).scaledWhen(pads.p1().rightBumper(), 0.35, 0.20);
 ```
 
+For custom names, directions, BRAKE/FLOAT behavior, or normalized drive scaling, use the same
+factory with one complete config:
+
+```java
+FtcDrives.MecanumConfig driveConfig = FtcDrives.MecanumConfig.defaults();
+driveConfig.wiring.frontLeftName = "leftFront";
+driveConfig.enableZeroPowerBrake = true;
+driveConfig.drivebase.maxOmega = 0.75;
+
+MecanumDrivebase drivebase = FtcDrives.mecanum(hardwareMap, driveConfig);
+```
+
 Custom FTC mecanum wiring follows the same trimmed, case-sensitive group contract: all four motor
 names must be nonblank and distinct before fresh group hardware resolution or configuration. This
 is a configuration-string check, not proof of physical wiring or a global ownership claim.
 
-**Rate limiting note:** `MecanumDrivebase` can rate-limit components using the most recent `dtSec`. Call `drivebase.update(clock)` once per loop. If you want rate limiting to use the *current* loop’s `dt`, call `update(clock)` **before** `drive(...)`.
+Smooth or rate-limit drive behavior in the `DriveSource` graph. Direct
+`MecanumDrivebase.drive(...)` writes the command immediately and needs no `update(clock)` call.
+Pedro and other stateful vendor adapters may require a real composition-root heartbeat through
+`DriveCommandSink.update(clock)`; keep that adapter-specific call when its lifecycle documents it.
 
 ### Spatial reasoning layers (math → queries/predicates → controllers)
 
@@ -715,7 +733,6 @@ public void loop() {
 
     // 4) Drive
     DriveSignal cmd = driveSource.get(clock).clamped();
-    drivebase.update(clock);   // call before drive(...) if you want current-dt rate limiting
     drivebase.drive(cmd);
 
     // 5) Mechanisms

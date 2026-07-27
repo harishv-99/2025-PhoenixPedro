@@ -68,7 +68,6 @@ public class MyTeleOp extends OpMode {
 
         // 3) Apply the latest drive intent through one final writer.
         DriveSignal driveSignal = driveSource.get(clock).clamped();
-        drivebase.update(clock);
         drivebase.drive(driveSignal);
 
         // 4) Apply the latest mechanism targets.

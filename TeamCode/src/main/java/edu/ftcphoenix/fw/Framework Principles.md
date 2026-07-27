@@ -49,6 +49,7 @@ Phoenix is designed around a few core goals:
 
    Students primarily use:
 
+    * `FtcDrives.mecanum(hardwareMap)` (to create the direct FTC mecanum owner)
     * `FtcActuators.plant(hardwareMap) ... build()` (to create Plants)
     * `PlantTasks` and `Tasks` (to create ordinary Tasks)
     * `DriveTasks.driveExclusivelyForSeconds(...)` only for simple Auto/test movement where that
@@ -147,7 +148,7 @@ Phoenix is designed around a few core goals:
 
    **Rule of thumb:**
 
-   * Use **`toString()`** for small, mostly-immutable *value objects* and configs where a compact one-line representation is helpful (examples: `Pose2d`, `Pose3d`, `DriveSignal`, `ChassisSpeeds`, `CameraMountConfig`, small `Owner.Config` objects).
+   * Use **`toString()`** for small, mostly-immutable *value objects* and configs where a compact one-line representation is helpful (examples: `Pose2d`, `Pose3d`, `DriveSignal`, `CameraMountConfig`, small `Owner.Config` objects).
    * Use **`debugDump(DebugSink dbg, String prefix)`** for loop-updated and/or stateful objects (things that have `update(...)`, own hardware, or own other objects): `Plant`, `AbsolutePoseEstimator`, `DriveSource` / `DriveOverlay`, `Task`s, controllers, subsystems.
 
    **When both exist:**
@@ -275,6 +276,19 @@ Phoenix is designed around a few core goals:
      it materially simplifies a useful input or optional configuration without creating ambiguity.
      Count an immediately consumed selector or parameter wrapper as a public construction layer;
      being a parameter type does not by itself provide a distinct capability.
+   * Call an owner a **framework lane** only when the complete graph, not merely its constructor,
+     justifies that extra public noun. Require all of these facts before adding a lane:
+     1. the complete graph recurs across robots or is required by one stable SDK/vendor contract;
+     2. its collaborators share one lifetime and one primary reason to change;
+     3. duplicate acquisition, heartbeat, final writing, recovery, or cleanup is a concrete hazard;
+     4. adopter differences are configuration or narrow injected seams rather than season policy;
+     5. the owner stops FTC/vendor types at a small truthful downstream capability;
+     6. the composition root still shows the real phase and safety-significant cleanup order;
+     7. the complete adopting robot loses code, concepts, and lifecycle hazards; and
+     8. construction, same-cycle behavior where applicable, partial failure, readiness, cleanup,
+        and diagnostics are proportionately testable.
+     Do not add a generic `Lane`, lane registry, or `updateAll()`: framework lanes have different
+     truthful lifecycles, and reusable helpers should depend on their smallest real capability.
    * Do not let an API infer facts its inputs cannot prove. Configuration metadata is not physical
      hardware identity, and plausible runtime values are not proof of trustworthy acquisition. When
      correctness or safety materially depends on undocumented controller, firmware, vendor, or
@@ -587,7 +601,18 @@ updates beyond active Tasks, the composition root continues calling `update(cloc
 normal way to run a Pedro or other external route; use the route/guidance Task helpers for that
 lifecycle.
 
-Configuration is via `MecanumDrivebase.Config` for drivebase scaling and physical-speed mapping. The drivebase makes a **defensive copy** of the config at construction time, so mutating the config object later won’t change an already-created drivebase.
+Direct FTC construction uses `FtcDrives.mecanum(hardwareMap)` or the same factory with one complete
+`FtcDrives.MecanumConfig`. That config owns wiring, BRAKE/FLOAT selection, and a
+`MecanumDrivebase.Config` for normalized command scaling. The factory returns the actual
+`MecanumDrivebase`; do not wrap it in a forwarding-only drive owner. The drivebase makes a
+**defensive copy** of its config at construction time, so mutating the config object later will not
+change an already-created drivebase.
+
+Direct `MecanumDrivebase.drive(...)` writes immediately and has no required heartbeat. Do not teach
+or call an inherited no-op `update(clock)` on it. `DriveCommandSink.update(clock)` remains a
+truthful optional capability because Pedro and other stateful vendor adapters may require one stable
+composition-root heartbeat; such an adapter owns and documents that phase and deduplicates
+same-cycle Task/root calls.
 
 
 
@@ -650,7 +675,9 @@ Why this matters:
 
 Implementation rule:
 
-- `Owner.Config` (and other owner-scoped nested `*Config` classes, like `FtcDrives.MecanumWiringConfig`) constructors should be `private`, and each config should provide `public static ... defaults()`.
+- `Owner.Config` (and other owner-scoped nested `*Config` classes, like
+  `FtcDrives.MecanumConfig` and `FtcDrives.MecanumWiringConfig`) constructors should be `private`,
+  and each config should provide `public static ... defaults()`.
 
 
 #### 3.4.3 Naming config helpers: `withX(...)` / `withoutX()`
@@ -1051,7 +1078,6 @@ bindings.update(clock);
 
 macroRunner.update(clock);
 
-drivebase.update(clock);
 drivebase.drive(driveSource.get(clock).clamped());
 
 shooter.update(clock);

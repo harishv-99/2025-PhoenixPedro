@@ -31,8 +31,11 @@ It teaches:
 
 - `LoopClock` update order,
 - gamepad → drive-source flow,
-- drivebase update + drive,
-- and the basic one-loop heartbeat used across the framework.
+- source sampling followed by an immediate direct-drive write,
+- and the shared one-loop clock used across the framework.
+
+The direct `MecanumDrivebase` has no heartbeat of its own. Stateful vendor adapters such as Pedro
+may require a separate documented `DriveCommandSink.update(clock)` heartbeat.
 
 This example intentionally stays flat and does not try to introduce held/frame/pending mechanism
 inputs yet.

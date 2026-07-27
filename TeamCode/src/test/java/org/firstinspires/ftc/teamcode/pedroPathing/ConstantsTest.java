@@ -31,7 +31,7 @@ public final class ConstantsTest {
         profile.drive.wiring.frontRightDirection = Direction.FORWARD;
         profile.drive.wiring.backLeftDirection = Direction.REVERSE;
         profile.drive.wiring.backRightDirection = Direction.FORWARD;
-        profile.drive.zeroPowerBrake = true;
+        profile.drive.enableZeroPowerBrake = true;
 
         profile.localization.predictor.hardwareMapName = "profile-pinpoint";
         profile.localization.predictor.forwardPodOffsetLeftInches = 3.25;

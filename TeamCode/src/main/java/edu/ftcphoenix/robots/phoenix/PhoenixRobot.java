@@ -17,8 +17,9 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.drive.DriveCommandSink;
 import edu.ftcphoenix.fw.drive.DriveSignal;
 import edu.ftcphoenix.fw.drive.DriveSource;
+import edu.ftcphoenix.fw.drive.MecanumDrivebase;
+import edu.ftcphoenix.fw.ftc.FtcDrives;
 import edu.ftcphoenix.fw.ftc.FtcTelemetryDebugSink;
-import edu.ftcphoenix.fw.ftc.drive.FtcMecanumDriveLane;
 import edu.ftcphoenix.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane;
 import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLane;
 import edu.ftcphoenix.fw.ftc.vision.VisionReadiness;
@@ -36,7 +37,7 @@ import edu.ftcphoenix.fw.task.TaskRunner;
  * Phoenix follows the framework's principle-driven split explicitly:
  * </p>
  * <ul>
- *   <li>{@link FtcMecanumDriveLane} owns stable drive hardware/lifecycle concerns.</li>
+ *   <li>{@link MecanumDrivebase} owns the final TeleOp drivetrain writes and stop lifecycle.</li>
  *   <li>{@link PhoenixVisionFactory} selects a concrete {@link AprilTagVisionLane} backend from the active profile.</li>
  *   <li>{@link FtcOdometryAprilTagLocalizationLane} owns stable localization strategy and pose production.</li>
  *   <li>{@link PhoenixCapabilities} exposes Phoenix's shared mode-neutral capability families.</li>
@@ -66,7 +67,7 @@ public final class PhoenixRobot {
             new TeleOpPoseRestoreLifecycle();
 
     private PhoenixCapabilities capabilities;
-    private FtcMecanumDriveLane drive;
+    private MecanumDrivebase drive;
     private AprilTagVisionLane vision;
     private FtcOdometryAprilTagLocalizationLane localization;
     private ScoringPath scoringPath;
@@ -155,7 +156,7 @@ public final class PhoenixRobot {
 
     /** Build the TeleOp-owned and shared runtime after lifecycle validation. */
     private void initTeleOpRuntime() {
-        drive = new FtcMecanumDriveLane(hardwareMap, profile.drive);
+        drive = FtcDrives.mecanum(hardwareMap, profile.drive);
         teleOpControls = new PhoenixTeleOpControls(gamepads, profile.controls);
         teleOpPoseAssistReadiness = PhoenixReadiness.teleOpPoseAssists(profile);
         BooleanSource enabledAutoAim = teleOpControls.autoAimEnabledSource()
@@ -377,7 +378,7 @@ public final class PhoenixRobot {
      *
      * <p>
      * Loop order is intentionally explicit: vision component readiness, localization lane,
-     * targeting, controls, scoring path, drive-assist service, drive lane, then telemetry
+     * targeting, controls, scoring path, drive-assist service, drivebase, then telemetry
      * presentation. When the private loop-phase diagnostic is enabled, it observes those same
      * boundaries and stages the preceding completed sample before the one telemetry commit.
      * </p>
@@ -416,7 +417,6 @@ public final class PhoenixRobot {
         DriveSignal cmd = teleOpDriveSource.get(clock).clamped();
         loopPhaseProfiler.finishPhase("driveAssist");
 
-        drive.update(clock);
         drive.drive(cmd);
         loopPhaseProfiler.finishPhase("drive");
 
@@ -540,7 +540,7 @@ public final class PhoenixRobot {
         PhoenixDriveAssistService assistsToStop = driveAssists;
         ScoringPath scoringToStop = scoringPath;
         DriveCommandSink autonomousDriveToStop = autonomousDrive;
-        FtcMecanumDriveLane driveToStop = drive;
+        MecanumDrivebase driveToStop = drive;
         ScoringTargeting targetingToStop = scoringTargeting;
         AprilTagVisionLane visionToStop = vision;
 

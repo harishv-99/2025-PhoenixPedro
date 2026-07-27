@@ -12,9 +12,9 @@ import edu.ftcphoenix.fw.core.hal.Direction;
 import edu.ftcphoenix.fw.core.math.InterpolatingTable1D;
 import edu.ftcphoenix.fw.drive.source.GamepadDriveSource;
 import edu.ftcphoenix.fw.field.TagLayout;
+import edu.ftcphoenix.fw.ftc.FtcDrives;
 import edu.ftcphoenix.fw.ftc.FtcFieldRegions;
 import edu.ftcphoenix.fw.ftc.FtcGameTagLayout;
-import edu.ftcphoenix.fw.ftc.drive.FtcMecanumDriveLane;
 import edu.ftcphoenix.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane;
 import edu.ftcphoenix.fw.ftc.vision.FtcLimelightAprilTagVisionLane;
 import edu.ftcphoenix.fw.ftc.vision.FtcWebcamAprilTagVisionLane;
@@ -24,13 +24,13 @@ import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
  * Phoenix robot profile.
  *
  * <p>
- * Phoenix treats stable framework lanes and a few robot-owned lane-selection wrappers as first-class
+ * Phoenix treats stable framework owners and robot-owned backend-selection wrappers as first-class
  * config owners while keeping robot-specific strategy and operator policy in the robot layer. The
  * result is a profile whose top-level sections
  * mirror the architectural roles used in code:
  * </p>
  * <ul>
- *   <li>framework-owned lanes: drive and localization, plus a robot-owned AprilTag backend wrapper</li>
+ *   <li>framework-owned resources: direct drive construction and localization, plus a robot-owned AprilTag backend wrapper</li>
  *   <li>shared field facts: fixed AprilTag layout for the current game</li>
  *   <li>robot-owned controls: TeleOp stick shaping and slow-mode tuning</li>
  *   <li>robot-owned drive assists: scoring-related drive overlays and brace tuning</li>
@@ -42,9 +42,9 @@ public final class PhoenixProfile {
     private static final PhoenixProfile CURRENT = defaults();
 
     /**
-     * Stable drivetrain hardware/lifecycle configuration owned by the framework drive lane.
+     * Complete FTC mecanum construction configuration consumed by {@link FtcDrives}.
      */
-    public FtcMecanumDriveLane.Config drive = defaultDriveConfig();
+    public FtcDrives.MecanumConfig drive = defaultDriveConfig();
 
     /**
      * Phoenix-owned AprilTag backend-selection config.
@@ -67,7 +67,7 @@ public final class PhoenixProfile {
     public TeleOpControlsConfig controls = new TeleOpControlsConfig();
 
     /**
-     * Robot-specific drive-assist tuning layered on top of the stable framework drive lane.
+     * Robot-specific drive-assist tuning layered ahead of the final framework drivebase.
      */
     public DriveAssistConfig driveAssist = new DriveAssistConfig();
 
@@ -360,7 +360,7 @@ public final class PhoenixProfile {
 
 
     /**
-     * Robot-specific drive-assist tuning layered on top of the framework drive lane.
+     * Robot-specific drive-assist tuning layered ahead of the framework drivebase.
      *
      * <p>
      * Phoenix distinguishes between:
@@ -449,8 +449,8 @@ public final class PhoenixProfile {
     }
 
 
-    private static FtcMecanumDriveLane.Config defaultDriveConfig() {
-        FtcMecanumDriveLane.Config cfg = FtcMecanumDriveLane.Config.defaults();
+    private static FtcDrives.MecanumConfig defaultDriveConfig() {
+        FtcDrives.MecanumConfig cfg = FtcDrives.MecanumConfig.defaults();
         cfg.wiring.frontLeftName = "frontLeftMotor";
         cfg.wiring.frontLeftDirection = Direction.FORWARD;
         cfg.wiring.frontRightName = "frontRightMotor";
@@ -459,7 +459,7 @@ public final class PhoenixProfile {
         cfg.wiring.backLeftDirection = Direction.FORWARD;
         cfg.wiring.backRightName = "backRightMotor";
         cfg.wiring.backRightDirection = Direction.FORWARD;
-        cfg.zeroPowerBrake = true;
+        cfg.enableZeroPowerBrake = true;
         return cfg;
     }
 
