@@ -120,7 +120,6 @@ public final class TeleOp_09_LayeredShooterMechanism extends OpMode {
                 .andCrServo(HW_FEED_RIGHT, Direction.REVERSE)
                 .power()
                 .targetedBy(finalFeederTarget)
-                .writableTarget(feederBaseTarget)
                 .build();
 
         shooter = new LayeredShooter(clock::cycle, flywheelPlant, flywheelTarget,
@@ -488,7 +487,7 @@ public final class TeleOp_09_LayeredShooterMechanism extends OpMode {
     /**
      * Layer 3: plant realization.
      *
-     * <p>This is the only layer allowed to touch Plants. It updates the registered command targets,
+     * <p>This is the only layer allowed to touch Plants. It updates the retained command targets,
      * lets the feeder Plant consume its final overlaid target source, updates the Plants, and exports
      * a small readback snapshot for the next loop.</p>
      */

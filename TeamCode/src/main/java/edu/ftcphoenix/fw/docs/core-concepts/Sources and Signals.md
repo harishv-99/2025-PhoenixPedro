@@ -107,13 +107,15 @@ BooleanSource shooterReadyStable = shooterAtTarget.debouncedOn(0.15);
 
 ScalarSource requestedTarget = PlantSources.requestedTarget(shooterPlant);
 ScalarSource appliedTarget = PlantSources.appliedTarget(shooterPlant);
+ScalarSource requestedError = PlantSources.requestedTargetError(shooterPlant);
+ScalarSource appliedError = PlantSources.appliedTargetError(shooterPlant);
 BooleanSource feedbackCapable = PlantSources.hasFeedback(shooterPlant);
 ```
 
 Notes:
 
 - `PlantSources.atTarget(...)` reads the plant's cached status from the most recent `plant.update(clock)`.
-- `PlantSources.requestedTarget(...)` shows what behavior asked for; `appliedTarget(...)` shows the final mechanism target selected after bounds and target guards. For framework-regulated Plants, that target is distinct from the later normalized actuator command.
+- `PlantSources.requestedTarget(...)` shows what behavior asked for; `appliedTarget(...)` shows the final mechanism target selected after bounds and target guards. The parallel `requestedTargetError(...)` and `appliedTargetError(...)` methods keep those two reference points explicit. For framework-regulated Plants, the applied target is distinct from the later normalized actuator command.
 
 ---
 
@@ -241,7 +243,7 @@ The same edge/toggle tools apply to sensors (ball entering/leaving a gate sensor
 ## Neutral values and contextual controls
 
 `ScalarSource` and `BooleanSource` are general value streams, not control-only types. A distance,
-encoder position, target error, or battery voltage has no universal neutral value. Phoenix therefore
+encoder position, requested-target error, or battery voltage has no universal neutral value. Phoenix therefore
 does not attach a generic neutral range to every source.
 
 When a source is used as a control, normalize its intended inactive state before registering it. A

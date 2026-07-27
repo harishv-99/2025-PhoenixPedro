@@ -57,7 +57,7 @@ public final class MappedPositionPlant implements PositionPlant {
     private final ScalarSource nativeMeasurement;
     private final PowerOutput searchPowerOut;
     private final PlantTargetSource targetSource;
-    private final ScalarTarget writableTarget;
+    private final ScalarTarget commandTarget;
     private final PlantTargetGuards targetGuards;
     private final Topology topology;
     private final double period;
@@ -89,7 +89,6 @@ public final class MappedPositionPlant implements PositionPlant {
                                 ScalarSource nativeMeasurement,
                                 PowerOutput searchPowerOut,
                                 PlantTargetSource targetSource,
-                                ScalarTarget writableTarget,
                                 PlantTargetGuards targetGuards,
                                 Topology topology,
                                 double period,
@@ -107,7 +106,7 @@ public final class MappedPositionPlant implements PositionPlant {
         this.nativeMeasurement = nativeMeasurement != null ? nativeMeasurement.memoized() : null;
         this.searchPowerOut = searchPowerOut;
         this.targetSource = Objects.requireNonNull(targetSource, "targetSource");
-        this.writableTarget = writableTarget;
+        this.commandTarget = PlantTargets.commandTargetOf(this.targetSource);
         this.targetGuards = targetGuards == null ? PlantTargetGuards.none() : targetGuards;
         this.topology = Objects.requireNonNull(topology, "topology");
         this.period = period;
@@ -167,7 +166,6 @@ public final class MappedPositionPlant implements PositionPlant {
         private final ScalarSource nativeMeasurement;
         private PowerOutput searchPowerOut;
         private PlantTargetSource targetSource;
-        private ScalarTarget writableTarget;
         private PlantTargetGuards targetGuards = PlantTargetGuards.none();
         private Topology topology = Topology.LINEAR;
         private double period = Double.NaN;
@@ -274,19 +272,22 @@ public final class MappedPositionPlant implements PositionPlant {
         }
 
         /**
-         * Use a writable exact target source and register it for PlantTasks.
+         * Uses a command target as the exact final source.
+         *
+         * <p>The target graph designates this target as the command target used by Plant task
+         * helpers.</p>
          */
         public Builder targetedBy(ScalarTarget targetSource) {
             this.targetSource = PlantTargets.exact(Objects.requireNonNull(targetSource, "targetSource"));
-            this.writableTarget = targetSource;
             return this;
         }
 
         /**
-         * Use a read-only scalar source as an exact target.
+         * Uses a scalar source as an exact target.
          *
-         * <p>The scalar is lifted into plant-target space. Because it is read-only, no
-         * writable target is registered unless writableTarget(...) is called.</p>
+         * <p>The scalar is lifted into plant-target space. If the supplied object is a
+         * {@link ScalarTarget}, even when referenced through the {@link ScalarSource} type, the
+         * graph retains it as the command target. Other scalar sources remain read-only.</p>
          */
         public Builder targetedBy(ScalarSource targetSource) {
             this.targetSource = PlantTargets.exact(Objects.requireNonNull(targetSource, "targetSource"));
@@ -294,18 +295,13 @@ public final class MappedPositionPlant implements PositionPlant {
         }
 
         /**
-         * Use a plant-aware final target source.
+         * Uses a plant-aware final target source.
+         *
+         * <p>If the source graph designates a command target, such as the base of a command-backed
+         * overlay, this Plant exposes that same target to Plant task helpers.</p>
          */
         public Builder targetedBy(PlantTargetSource targetSource) {
             this.targetSource = Objects.requireNonNull(targetSource, "targetSource");
-            return this;
-        }
-
-        /**
-         * Register the command target that plant tasks may write when the final source is composed.
-         */
-        public Builder writableTarget(ScalarTarget writableTarget) {
-            this.writableTarget = Objects.requireNonNull(writableTarget, "writableTarget");
             return this;
         }
 
@@ -319,7 +315,7 @@ public final class MappedPositionPlant implements PositionPlant {
             if (targetSource == null)
                 throw new IllegalStateException("MappedPositionPlant requires targetedBy(...)");
             return new MappedPositionPlant(positionOut, regulatedPowerOut, regulator, nativeMeasurement,
-                    searchPowerOut, targetSource, writableTarget, targetGuards, topology, period,
+                    searchPowerOut, targetSource, targetGuards, topology, period,
                     configuredRange, nativePerPlantUnit, tolerance, referenceMode, plantReference,
                     nativeReference, assumedPlantPosition, unreferencedReason);
         }
@@ -505,14 +501,14 @@ public final class MappedPositionPlant implements PositionPlant {
     }
 
     @Override
-    public boolean hasWritableTarget() {
-        return writableTarget != null;
+    public boolean hasCommandTarget() {
+        return commandTarget != null;
     }
 
     @Override
-    public ScalarTarget writableTarget() {
-        if (writableTarget == null) return PositionPlant.super.writableTarget();
-        return writableTarget;
+    public ScalarTarget commandTarget() {
+        if (commandTarget == null) return PositionPlant.super.commandTarget();
+        return commandTarget;
     }
 
     @Override

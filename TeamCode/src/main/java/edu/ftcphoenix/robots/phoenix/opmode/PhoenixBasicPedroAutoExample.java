@@ -124,7 +124,7 @@ public final class PhoenixBasicPedroAutoExample extends OpMode {
                             profile.scoring.directionMotorIntake
                     )
                     .power()
-                    .targetedByDefaultWritable(0.0)
+                    .targetedByCommand(0.0)
                     .build();
             builtMechanism = new BasicPedroAutoMechanism(
                     builtIntakePlant,

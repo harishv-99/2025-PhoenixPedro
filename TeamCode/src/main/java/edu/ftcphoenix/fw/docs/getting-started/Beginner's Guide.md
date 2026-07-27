@@ -205,7 +205,7 @@ private void initShooterPlants() {
             .bounded(0.0, 2600.0)
             .nativeUnits()
             .velocityTolerance(100.0)
-            .targetedByDefaultWritable(0.0)
+            .targetedByCommand(0.0)
             .build();
 
     // Transfer: dual CR servos, power control.
@@ -213,7 +213,7 @@ private void initShooterPlants() {
             .crServo("transferLeftServo", Direction.FORWARD)
             .andCrServo("transferRightServo", Direction.REVERSE)
             .power()
-            .targetedByDefaultWritable(0.0)
+            .targetedByCommand(0.0)
             .build();
 
     // Pusher: positional servo, commanded-position set-and-hold.
@@ -223,7 +223,7 @@ private void initShooterPlants() {
             .linear()
                 .bounded(0.0, 1.0)
                 .nativeUnits()
-            .targetedByDefaultWritable(0.0)
+            .targetedByCommand(0.0)
             .build();
 }
 ```
@@ -287,7 +287,7 @@ Velocity mapping is deliberately simpler: `scaleToNative(...)` changes only scal
 plant velocity `0.0` still means stop. Power target values are always normalized `[-1.0, +1.0]`, so
 the power builder does not ask for bounds.
 
-Then you may add plant-level tuning like `.positionTolerance(...)`, optional dynamic guards through `.targetGuards()...doneTargetGuards()`, and finally bind a target source with `.targetedBy(...)` or `.targetedByDefaultWritable(...)` before `.build()`.
+Then you may add plant-level tuning like `.positionTolerance(...)`, optional dynamic guards through `.targetGuards()...doneTargetGuards()`, and finally bind a target source with `.targetedBy(...)` or `.targetedByCommand(...)` before `.build()`.
 
 ### 3.2 Position semantics: motors vs servos
 
@@ -333,7 +333,7 @@ PositionPlant arm = FtcActuators.plant(hardwareMap)
             .nativeUnits()
             .alreadyReferenced()
         .positionTolerance(20.0)
-        .targetedByDefaultWritable(0.0)
+        .targetedByCommand(0.0)
         .build();
 ```
 
@@ -351,7 +351,7 @@ PositionPlant arm = FtcActuators.plant(hardwareMap)
             .nativeUnits()
             .alreadyReferenced()
         .positionTolerance(20.0)
-        .targetedByDefaultWritable(0.0)
+        .targetedByCommand(0.0)
         .build();
 ```
 
@@ -417,7 +417,7 @@ for device-specific overrides when you actually need them.
 Once you have Plants, the easiest way to create behaviors is
 `edu.ftcphoenix.fw.actuation.PlantTasks`.
 
-A Plant is source-driven, so a task does not write hardware directly. It writes the Plant's registered `ScalarTarget`; the Plant samples its final target source and applies hardware guards during `plant.update(clock)`.
+A Plant is source-driven, so a task does not write hardware directly. It writes the Plant's command target; the Plant samples its final target graph and applies hardware guards during `plant.update(clock)`.
 
 ### 4.1 Time-based writes
 
@@ -486,7 +486,7 @@ Every feedback move must choose its cancellation behavior immediately after `.to
 * `.leaveTargetOnCancel()` deliberately keeps the move request, so motion may continue.
 
 `.thenTarget(...)` is separate: it applies after success or timeout, not cancellation.
-`cancelTo(...)` changes a registered target request; it does not write hardware directly or bypass
+`cancelTo(...)` changes the command target; it does not write hardware directly or bypass
 overlays and Plant guards. The robot owner still needs a coordinated cancel method that stops queues,
 disables relevant overlays, and resets every related mechanism request.
 

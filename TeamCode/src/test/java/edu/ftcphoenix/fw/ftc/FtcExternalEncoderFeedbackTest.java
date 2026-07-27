@@ -114,7 +114,7 @@ public final class FtcExternalEncoderFeedbackTest {
                 .regulator(ZERO_REGULATOR)
                 .unbounded()
                 .nativeUnits()
-                .targetedByDefaultWritable(0.0)
+                .targetedByCommand(0.0)
                 .build();
 
         ManualLoopClock clock = new ManualLoopClock();
@@ -145,7 +145,7 @@ public final class FtcExternalEncoderFeedbackTest {
                 .regulator(ZERO_REGULATOR)
                 .unbounded()
                 .nativeUnits()
-                .targetedByDefaultWritable(0.0)
+                .targetedByCommand(0.0)
                 .build();
 
         ManualLoopClock clock = new ManualLoopClock();
@@ -188,7 +188,7 @@ public final class FtcExternalEncoderFeedbackTest {
                 .unbounded()
                 .nativeUnits()
                 .alreadyReferenced()
-                .targetedByDefaultWritable(0.0)
+                .targetedByCommand(0.0)
                 .build();
 
         plant.update(new ManualLoopClock().clock());
@@ -218,7 +218,7 @@ public final class FtcExternalEncoderFeedbackTest {
                 .unbounded()
                 .nativeUnits()
                 .alreadyReferenced()
-                .targetedByDefaultWritable(0.0)
+                .targetedByCommand(0.0)
                 .build();
 
         plant.update(new ManualLoopClock().clock());
@@ -244,7 +244,7 @@ public final class FtcExternalEncoderFeedbackTest {
                 .regulator(ZERO_REGULATOR)
                 .unbounded()
                 .nativeUnits()
-                .targetedByDefaultWritable(0.0);
+                .targetedByCommand(0.0);
         assertIllegalStateContains(missingFeedbackBuild::build,
                 "Regulated motor velocity requires a feedback answer",
                 "internalEncoder()",

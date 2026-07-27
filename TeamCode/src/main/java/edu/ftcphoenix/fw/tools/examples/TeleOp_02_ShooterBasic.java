@@ -279,7 +279,7 @@ public final class TeleOp_02_ShooterBasic extends OpMode {
                 .bounded(0.0, SHOOTER_VELOCITY_NATIVE)
                 .nativeUnits()
                 .velocityTolerance(SHOOTER_VELOCITY_TOLERANCE_NATIVE)
-                .targetedByDefaultWritable(0.0)
+                .targetedByCommand(0.0)
                 .build();
 
         // Transfer: two CR servos, power-controlled pair.
@@ -287,7 +287,7 @@ public final class TeleOp_02_ShooterBasic extends OpMode {
                 .crServo(HW_TRANSFER_LEFT, Direction.FORWARD)
                 .andCrServo(HW_TRANSFER_RIGHT, Direction.REVERSE)
                 .power()
-                .targetedByDefaultWritable(0.0)
+                .targetedByCommand(0.0)
                 .build();
 
         // Pusher: single positional servo, 0..1 position plant.
@@ -297,7 +297,7 @@ public final class TeleOp_02_ShooterBasic extends OpMode {
                 .linear()
                 .bounded(0.0, 1.0)
                 .nativeUnits()
-                .targetedByDefaultWritable(0.0)
+                .targetedByCommand(0.0)
                 .build();
 
         // === 4) Bindings: map buttons to high-level modes (using lambdas) ===
@@ -373,33 +373,33 @@ public final class TeleOp_02_ShooterBasic extends OpMode {
         // --- 4) Mechanism logic: map modes to plant targets ---
 
         // Shooter
-        shooter.writableTarget().set(shooterEnabled ? SHOOTER_VELOCITY_NATIVE : 0.0);
+        shooter.commandTarget().set(shooterEnabled ? SHOOTER_VELOCITY_NATIVE : 0.0);
 
         // Transfer
         switch (transferMode) {
             case LOAD:
-                transfer.writableTarget().set(TRANSFER_POWER_LOAD);
+                transfer.commandTarget().set(TRANSFER_POWER_LOAD);
                 break;
             case SHOOT:
-                transfer.writableTarget().set(TRANSFER_POWER_SHOOT);
+                transfer.commandTarget().set(TRANSFER_POWER_SHOOT);
                 break;
             case OFF:
             default:
-                transfer.writableTarget().set(0.0);
+                transfer.commandTarget().set(0.0);
                 break;
         }
 
         // Pusher
         switch (pusherMode) {
             case LOAD:
-                pusher.writableTarget().set(PUSHER_POS_LOAD);
+                pusher.commandTarget().set(PUSHER_POS_LOAD);
                 break;
             case SHOOT:
-                pusher.writableTarget().set(PUSHER_POS_SHOOT);
+                pusher.commandTarget().set(PUSHER_POS_SHOOT);
                 break;
             case RETRACT:
             default:
-                pusher.writableTarget().set(PUSHER_POS_RETRACT);
+                pusher.commandTarget().set(PUSHER_POS_RETRACT);
                 break;
         }
 
@@ -450,9 +450,9 @@ public final class TeleOp_02_ShooterBasic extends OpMode {
     @Override
     public void stop() {
         // Safely stop mechanisms and drive.
-        shooter.writableTarget().set(0.0);
-        transfer.writableTarget().set(0.0);
-        pusher.writableTarget().set(PUSHER_POS_RETRACT);
+        shooter.commandTarget().set(0.0);
+        transfer.commandTarget().set(0.0);
+        pusher.commandTarget().set(PUSHER_POS_RETRACT);
 
         shooter.stop();
         transfer.stop();

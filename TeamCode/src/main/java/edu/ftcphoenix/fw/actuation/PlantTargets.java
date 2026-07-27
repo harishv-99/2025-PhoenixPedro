@@ -7,6 +7,7 @@ import java.util.Objects;
 import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.source.ScalarSource;
+import edu.ftcphoenix.fw.core.source.ScalarTarget;
 import edu.ftcphoenix.fw.core.source.Source;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 
@@ -124,10 +125,17 @@ public final class PlantTargets {
      * Convert a scalar source into an exact plant target source.
      *
      * <p>The scalar is sampled during plant update. If it returns NaN or infinity, the target is
-     * reported unavailable so the surrounding overlay or plant telemetry can explain the failure.</p>
+     * reported unavailable so the surrounding overlay or plant telemetry can explain the failure.
+     * When the supplied object also implements {@link ScalarTarget}, that same object becomes the
+     * graph's stable command target before sampling is memoized. A transformed or otherwise wrapped
+     * scalar source is read-only unless that wrapper itself implements {@code ScalarTarget}.</p>
      */
     public static PlantTargetSource exact(ScalarSource source) {
-        return new ExactPlantTargetSource(Objects.requireNonNull(source, "source"), "exact scalar source");
+        ScalarSource actualSource = Objects.requireNonNull(source, "source");
+        ScalarTarget commandTarget = actualSource instanceof ScalarTarget
+                ? (ScalarTarget) actualSource
+                : null;
+        return new ExactPlantTargetSource(actualSource, commandTarget, "exact scalar source");
     }
 
     /**
@@ -135,6 +143,19 @@ public final class PlantTargets {
      */
     public static PlantTargetSource fromScalar(ScalarSource source) {
         return exact(source);
+    }
+
+    /**
+     * Return the stable command target carried by a framework-created target graph, if any.
+     *
+     * <p>This package-private query deliberately exposes no public graph-inspection API. Framework
+     * Plants use it once during construction so task command ownership is derived from the final
+     * graph rather than supplied as a second, potentially disconnected answer.</p>
+     */
+    static ScalarTarget commandTargetOf(PlantTargetSource source) {
+        return source instanceof CommandTargetOwner
+                ? ((CommandTargetOwner) source).commandTarget()
+                : null;
     }
 
     /**
@@ -189,13 +210,32 @@ public final class PlantTargets {
         return new PlannerBuilder();
     }
 
-    private static final class ExactPlantTargetSource implements PlantTargetSource {
+    /** Private metadata seam implemented only by framework graphs with a stable command base. */
+    private interface CommandTargetOwner {
+        ScalarTarget commandTarget();
+    }
+
+    private static final class ExactPlantTargetSource
+            implements PlantTargetSource, CommandTargetOwner {
         private final ScalarSource source;
+        private final ScalarTarget commandTarget;
         private final String reason;
 
         ExactPlantTargetSource(ScalarSource source, String reason) {
+            this(source, null, reason);
+        }
+
+        ExactPlantTargetSource(ScalarSource source,
+                               ScalarTarget commandTarget,
+                               String reason) {
             this.source = Objects.requireNonNull(source, "source").memoized();
+            this.commandTarget = commandTarget;
             this.reason = reason;
+        }
+
+        @Override
+        public ScalarTarget commandTarget() {
+            return commandTarget;
         }
 
         @Override
@@ -298,6 +338,10 @@ public final class PlantTargets {
      * unavailable active layers report an unavailable plan instead of silently falling through.
      * Use {@link #addIfAvailable(String, BooleanSource, PlantTargetSource)} only when an
      * enabled-but-unavailable layer should explicitly continue to the next lower priority.</p>
+     *
+     * <p>If the base graph carries a command target, the completed overlay carries that same
+     * command identity. Conditional layer targets never become or redirect the command target,
+     * even when a layer itself is a {@link ScalarTarget}.</p>
      */
     public static final class OverlayBuilder {
         private final PlantTargetSource base;
@@ -439,11 +483,13 @@ public final class PlantTargets {
         }
     }
 
-    private static final class OverlayTargetSource implements PlantTargetSource {
+    private static final class OverlayTargetSource
+            implements PlantTargetSource, CommandTargetOwner {
         private static final PlantTargetPlan INCOMPLETE_PLAN =
                 PlantTargetPlan.unavailable("overlay resolution did not complete");
 
         private final PlantTargetSource base;
+        private final ScalarTarget commandTarget;
         private final Layer[] layers;
         private final LayerRuntimeState[] layerStates;
         private PlantTargetPlan lastPlan = PlantTargetPlan.unavailable("not sampled");
@@ -452,11 +498,17 @@ public final class PlantTargets {
 
         OverlayTargetSource(PlantTargetSource base, Layer[] layers) {
             this.base = base;
+            this.commandTarget = commandTargetOf(base);
             this.layers = layers;
             this.layerStates = new LayerRuntimeState[layers.length];
             for (int i = 0; i < layerStates.length; i++) {
                 layerStates[i] = new LayerRuntimeState();
             }
+        }
+
+        @Override
+        public ScalarTarget commandTarget() {
+            return commandTarget;
         }
 
         @Override

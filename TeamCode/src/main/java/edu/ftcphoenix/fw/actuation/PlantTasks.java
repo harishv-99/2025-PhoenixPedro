@@ -10,15 +10,15 @@ import edu.ftcphoenix.fw.task.TaskOutcome;
 /**
  * Task helpers for source-driven {@link Plant}s.
  *
- * <p>A plant task writes the plant's registered {@link ScalarTarget}; it never calls a plant setter.
- * Feedback-aware moves then wait for {@link Plant#atTarget(double)}, which prevents false success
- * when a behavior overlay, static bounds, target guard, or rate limiter is making the plant follow
- * a different value.</p>
+ * <p>A plant task writes the plant's graph-owned command {@link ScalarTarget}; it never calls a
+ * plant setter. Feedback-aware moves then wait for {@link Plant#atTarget(double)}, which prevents
+ * false success when a behavior overlay, static bounds, target guard, or rate limiter is making the
+ * plant follow a different value.</p>
  *
- * <p>Build a task-driven plant with {@code targetedBy(ScalarTarget)},
- * {@code targetedByDefaultWritable(...)}, or {@code targetedBy(readOnlySource).writableTarget(...)}.
- * If a plant has only a read-only composed source, these helpers throw a clear error because there
- * is no single command variable for the task to write.</p>
+ * <p>Build a task-driven plant from a {@code ScalarTarget}, from an overlay whose stable base is a
+ * {@code ScalarTarget}, or with the FTC builder's {@code targetedByCommand(...)} shortcut. If a
+ * plant has only a read-only source, these helpers throw a clear error because there is no stable
+ * command variable for the task to write.</p>
  *
  * <h2>Guided builder usage</h2>
  * <pre>{@code
@@ -41,26 +41,26 @@ public final class PlantTasks {
     }
 
     /**
-     * Start a guided builder for writing a plant's registered target.
+     * Start a guided builder for writing a plant's command target.
      *
      * <p>This is the plant-aware sibling of {@link ScalarTasks#write(ScalarTarget)}. It retrieves
-     * the writable target from the plant, so callers cannot accidentally pass a different target
+     * the command target from the plant, so callers cannot accidentally pass a different target
      * variable than the one the plant actually follows.</p>
      */
     public static ScalarTasks.WriteValueStep write(final Plant plant) {
-        return ScalarTasks.write(writableTargetOf(plant, "write"));
+        return ScalarTasks.write(commandTargetOf(plant, "write"));
     }
 
     /**
      * Start a guided builder for a feedback-aware move.
      *
-     * <p>The resulting task writes the plant's registered target, then waits for
+     * <p>The resulting task writes the plant's command target, then waits for
      * {@link Plant#atTarget(double)}. After choosing the move target, callers must explicitly
      * choose whether active cancellation writes a different Plant-unit request or deliberately
      * leaves the move request in place. Optional builder steps then add a stability requirement,
      * timeout, or final target to write after successful/timeout completion.</p>
      *
-     * @param plant feedback-capable plant with a registered writable target
+     * @param plant feedback-capable plant with a graph-owned command target
      * @return first builder step asking which target to request
      */
     public static MoveTargetStep move(final Plant plant) {
@@ -84,12 +84,12 @@ public final class PlantTasks {
     /**
      * Required feedback-move step: choose what happens if the active task is cancelled.
      *
-     * <p>Cancellation changes the Plant's registered behavior request; the Plant still owns final
+     * <p>Cancellation changes the Plant's command request; the Plant still owns final
      * target resolution, bounds, guards, and hardware application on its next update.</p>
      */
     public interface MoveCancellationStep {
         /**
-         * On active cancellation, write {@code target} once to the Plant's registered target.
+         * On active cancellation, write {@code target} once to the Plant's command target.
          *
          * @param target finite cancellation request expressed in Plant units
          * @return optional completion-modifier step
@@ -207,38 +207,38 @@ public final class PlantTasks {
     }
 
     /**
-     * Set the plant's writable target once and complete immediately.
+     * Set the plant's command target once and complete immediately.
      */
     public static Task setTarget(final Plant plant, final double target) {
-        return ScalarTasks.set(writableTargetOf(plant, "setTarget"), target);
+        return ScalarTasks.set(commandTargetOf(plant, "setTarget"), target);
     }
 
     /**
-     * Hold the plant's writable target at {@code target} for {@code seconds}, then leave it there.
-     * Active cancellation also leaves the registered request at {@code target}.
+     * Hold the plant's command target at {@code target} for {@code seconds}, then leave it there.
+     * Active cancellation also leaves the command request at {@code target}.
      */
     public static Task holdTargetFor(final Plant plant, final double target, final double seconds) {
-        return ScalarTasks.holdFor(writableTargetOf(plant, "holdTargetFor"), target, seconds);
+        return ScalarTasks.holdFor(commandTargetOf(plant, "holdTargetFor"), target, seconds);
     }
 
     /**
-     * Hold the plant's writable target at {@code target} for {@code seconds}, then set
+     * Hold the plant's command target at {@code target} for {@code seconds}, then set
      * {@code finalTarget}. Active cancellation also applies {@code finalTarget}.
      */
     public static Task holdTargetForThen(final Plant plant, final double target, final double seconds, final double finalTarget) {
-        return ScalarTasks.holdForThen(writableTargetOf(plant, "holdTargetForThen"), target, seconds, finalTarget);
+        return ScalarTasks.holdForThen(commandTargetOf(plant, "holdTargetForThen"), target, seconds, finalTarget);
     }
 
-    private static ScalarTarget writableTargetOf(Plant plant, String method) {
+    private static ScalarTarget commandTargetOf(Plant plant, String method) {
         Objects.requireNonNull(plant, "plant");
-        if (!plant.hasWritableTarget()) {
-            throw new IllegalStateException("PlantTasks." + method + " requires a plant with a registered writable target. Build it with targetedBy(ScalarTarget), targetedByDefaultWritable(...), or targetedBy(PlantTargetSource).writableTarget(commandTarget) or targetedBy(ScalarSource).writableTarget(commandTarget).");
+        if (!plant.hasCommandTarget()) {
+            throw new IllegalStateException("PlantTasks." + method + " requires a plant with a command target. Build it from a ScalarTarget, use an overlay whose stable base is a ScalarTarget, or use the FTC builder's targetedByCommand(...).");
         }
-        return plant.writableTarget();
+        return plant.commandTarget();
     }
 
     private static void ensureFeedbackPlant(Plant plant, String method) {
-        writableTargetOf(plant, method);
+        commandTargetOf(plant, method);
         if (!plant.hasFeedback()) {
             throw new IllegalStateException("PlantTasks." + method + " requires feedback so plant.atTarget(value) is meaningful.");
         }
@@ -261,7 +261,7 @@ public final class PlantTasks {
 
     private static final class MoveTask implements Task {
         private final Plant plant;
-        private final ScalarTarget writableTarget;
+        private final ScalarTarget commandTarget;
         private final double target;
         private final boolean hasCancellationTarget;
         private final double cancellationTarget;
@@ -285,7 +285,7 @@ public final class PlantTasks {
                  double timeoutSec,
                  double finalTarget) {
             this.plant = Objects.requireNonNull(plant, "plant");
-            this.writableTarget = writableTargetOf(plant, "move");
+            this.commandTarget = commandTargetOf(plant, "move");
             this.target = target;
             this.hasCancellationTarget = hasCancellationTarget;
             this.cancellationTarget = cancellationTarget;
@@ -310,7 +310,7 @@ public final class PlantTasks {
             stableSinceSec = Double.NaN;
             elapsedSec = 0.0;
             outcome = TaskOutcome.NOT_DONE;
-            writableTarget.set(target);
+            commandTarget.set(target);
         }
 
         @Override
@@ -351,7 +351,7 @@ public final class PlantTasks {
 
         private void finish(TaskOutcome result) {
             if (hasFinalTarget) {
-                writableTarget.set(finalTarget);
+                commandTarget.set(finalTarget);
                 if (complete) return;
             }
             outcome = result;
@@ -366,7 +366,7 @@ public final class PlantTasks {
             // written again by repeated cancellation or runner failure cleanup.
             outcome = TaskOutcome.CANCELLED;
             complete = true;
-            if (hasCancellationTarget) writableTarget.set(cancellationTarget);
+            if (hasCancellationTarget) commandTarget.set(cancellationTarget);
         }
 
         @Override

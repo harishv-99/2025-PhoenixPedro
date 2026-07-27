@@ -209,10 +209,10 @@ public final class PositionCalibrationTasks {
 
         @Override
         public Task build() {
-            if (holdAfter && !plant.hasWritableTarget()) {
-                throw new IllegalStateException("holdAfterReference(...) requires a PositionPlant with a registered writable target. "
-                        + "Build the plant with targetedBy(ScalarTarget), targetedByDefaultWritable(...), "
-                        + "or targetedBy(PlantTargetSource).writableTarget(commandTarget) or targetedBy(ScalarSource).writableTarget(commandTarget).");
+            if (holdAfter && !plant.hasCommandTarget()) {
+                throw new IllegalStateException("holdAfterReference(...) requires a PositionPlant with a command target. "
+                        + "Build it from a ScalarTarget, use an overlay whose stable base is a ScalarTarget, "
+                        + "or use the FTC builder's targetedByCommand(...).");
             }
             return new SearchTask(plant, power, condition, reference, holdAfter, holdTarget, timeoutSec);
         }
@@ -288,7 +288,7 @@ public final class PositionCalibrationTasks {
                 outcome = TaskOutcome.SUCCESS;
                 complete = true;
                 plant.endCalibrationSearch(true);
-                if (holdAfter) plant.writableTarget().set(holdTarget);
+                if (holdAfter) plant.commandTarget().set(holdTarget);
                 return;
             }
             if (Double.isFinite(timeoutSec) && clock != null && clock.nowSec() - startSec >= timeoutSec) {

@@ -53,11 +53,11 @@ public final class PlantSources {
     }
 
     /**
-     * Source view of requested-target error, {@link Plant#getTargetError()}.
+     * Source view of requested-target error, {@link Plant#getRequestedTargetError()}.
      */
-    public static ScalarSource targetError(Plant plant) {
+    public static ScalarSource requestedTargetError(Plant plant) {
         Objects.requireNonNull(plant, "plant");
-        return clock -> plant.getTargetError();
+        return clock -> plant.getRequestedTargetError();
     }
 
     /**

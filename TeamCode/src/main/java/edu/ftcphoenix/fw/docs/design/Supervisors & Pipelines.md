@@ -116,7 +116,7 @@ switch (pose) {
   default:     target = 0.10; break;
 }
 
-wristPlant.writableTarget().set(target);
+wristPlant.commandTarget().set(target);
 wristPlant.update(clock);
 ```
 

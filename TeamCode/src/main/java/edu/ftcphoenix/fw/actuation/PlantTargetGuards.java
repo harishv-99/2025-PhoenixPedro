@@ -39,7 +39,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *         .maxTargetRate(1200.0)
  *         .holdLastTargetUnless("wristClear", wristClear)
  *         .doneTargetGuards()
- *     .targetedByDefaultWritable(0.0)
+ *     .targetedByCommand(0.0)
  *     .build();
  * }</pre>
  */

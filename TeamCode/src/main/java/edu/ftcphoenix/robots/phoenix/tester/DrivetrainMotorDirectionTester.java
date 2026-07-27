@@ -66,25 +66,25 @@ public final class DrivetrainMotorDirectionTester extends BaseTeleOpTester {
         plantFL = FtcActuators.plant(ctx.hw)
                 .motor(drive.wiring.frontLeftName, drive.wiring.frontLeftDirection)
                 .power()
-                .targetedByDefaultWritable(0.0)
+                .targetedByCommand(0.0)
                 .build();
 
         plantFR = FtcActuators.plant(ctx.hw)
                 .motor(drive.wiring.frontRightName, drive.wiring.frontRightDirection)
                 .power()
-                .targetedByDefaultWritable(0.0)
+                .targetedByCommand(0.0)
                 .build();
 
         plantBL = FtcActuators.plant(ctx.hw)
                 .motor(drive.wiring.backLeftName, drive.wiring.backLeftDirection)
                 .power()
-                .targetedByDefaultWritable(0.0)
+                .targetedByCommand(0.0)
                 .build();
 
         plantBR = FtcActuators.plant(ctx.hw)
                 .motor(drive.wiring.backRightName, drive.wiring.backRightDirection)
                 .power()
-                .targetedByDefaultWritable(0.0)
+                .targetedByCommand(0.0)
                 .build();
 
         Bindings.ControlContext motorControls = bindings.contextWhen(
@@ -93,16 +93,16 @@ public final class DrivetrainMotorDirectionTester extends BaseTeleOpTester {
         );
 
         motorControls.mirrorOnChange(gamepads.p1().x(),
-                high -> plantFL.writableTarget().set(high ? TEST_POWER : 0.0));
+                high -> plantFL.commandTarget().set(high ? TEST_POWER : 0.0));
 
         motorControls.mirrorOnChange(gamepads.p1().y(),
-                high -> plantFR.writableTarget().set(high ? TEST_POWER : 0.0));
+                high -> plantFR.commandTarget().set(high ? TEST_POWER : 0.0));
 
         motorControls.mirrorOnChange(gamepads.p1().a(),
-                high -> plantBL.writableTarget().set(high ? TEST_POWER : 0.0));
+                high -> plantBL.commandTarget().set(high ? TEST_POWER : 0.0));
 
         motorControls.mirrorOnChange(gamepads.p1().b(),
-                high -> plantBR.writableTarget().set(high ? TEST_POWER : 0.0));
+                high -> plantBR.commandTarget().set(high ? TEST_POWER : 0.0));
 
         stopAll();
     }

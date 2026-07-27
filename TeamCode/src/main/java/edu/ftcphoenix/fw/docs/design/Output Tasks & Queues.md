@@ -2,7 +2,7 @@
 
 Phoenix has two common ways to express mechanism behavior over time:
 
-1. **Tasks that write a Plant's registered `ScalarTarget`** (`PlantTasks`)
+1. **Tasks that change a Plant's graph-owned command target** (`PlantTasks`)
 2. **Tasks that produce a temporary scalar output** (`OutputTask` + `OutputTaskRunner`)
 
 This document is about the second pattern. Use it when a short behavior should temporarily influence a Plant target without becoming a second Plant writer.
@@ -23,7 +23,7 @@ one final PlantTargetSource
 Plant.update(clock)
 ```
 
-An `OutputTask` does **not** write a Plant. It proposes a temporary scalar output. The subsystem then uses `PlantTargets.overlay(...)` to decide whether that output overrides the normal baseline target.
+An `OutputTask` does **not** write a Plant. It proposes a temporary scalar output. The subsystem then uses `PlantTargets.overlay(...)` to decide whether that output overrides the normal baseline target. A temporary conditional layer never becomes the Plant's command target; only a `ScalarTarget` carried by the overlay base does.
 
 That keeps the target-source ownership rule intact:
 
@@ -269,7 +269,7 @@ Typical abort situations:
 
 Use **PlantTasks** when:
 
-- one task should change a Plant's registered writable target
+- one task should change a Plant's command target
 - the task may wait on Plant feedback using `plant.atTarget(value)`
 - the behavior is naturally “move this mechanism target and wait”
 

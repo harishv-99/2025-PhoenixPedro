@@ -517,7 +517,7 @@ public final class Wrist {
         }
 
         lastAppliedTarget = target;
-        plant.writableTarget().set(target);
+        plant.commandTarget().set(target);
         plant.update(clock);
     }
 }
@@ -576,7 +576,7 @@ PositionPlant liftPlant = FtcActuators.plant(hardwareMap)
             .nativeUnits()
             .alreadyReferenced()
         .positionTolerance(0.50)
-        .targetedByDefaultWritable(0.0)
+        .targetedByCommand(0.0)
         .build();
 ```
 
@@ -617,7 +617,7 @@ public final class Lift {
 
     public void setTargetHeightIn(double heightIn) {
         targetHeightIn = Math.max(0.0, Math.min(heightIn, 30.0));
-        liftPlant.writableTarget().set(targetHeightIn);
+        liftPlant.commandTarget().set(targetHeightIn);
     }
 
     public Status status() {
@@ -750,12 +750,12 @@ public final class Intake {
         lastPiecePresent = piecePresent.getAsBoolean(clock);
         feedQueue.update(clock);
 
-        intakePlant.writableTarget().set(intakeEnabled ? 1.0 : 0.0);
+        intakePlant.commandTarget().set(intakeEnabled ? 1.0 : 0.0);
         intakePlant.update(clock);
 
         double feederCmd = feedQueue.activeSource().choose(feedQueue, ScalarSource.constant(0.0))
                 .getAsDouble(clock);
-        feederPlant.writableTarget().set(feederCmd);
+        feederPlant.commandTarget().set(feederCmd);
         feederPlant.update(clock);
     }
 }
@@ -1253,7 +1253,7 @@ Bad:
 
 ```java
 if (gamepad1.a) {
-    liftPlant.writableTarget().set(0.7); // still wrong place: OpMode is bypassing mechanism policy
+    liftPlant.commandTarget().set(0.7); // still wrong place: OpMode is bypassing mechanism policy
 }
 ```
 

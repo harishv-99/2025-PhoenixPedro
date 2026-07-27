@@ -23,16 +23,16 @@ public final class BasicPedroAutoMechanism {
     private boolean stopped;
 
     /**
-     * Creates the example capability around one writable normalized-power Plant.
+     * Creates the example capability around one normalized-power Plant with a command target.
      *
      * @param intakePlant source-driven Plant updated by the example composition root
      * @param collectPower finite collection request in {@code [-1, +1]}
      */
     public BasicPedroAutoMechanism(Plant intakePlant, double collectPower) {
         this.intakePlant = Objects.requireNonNull(intakePlant, "intakePlant");
-        if (!intakePlant.hasWritableTarget()) {
+        if (!intakePlant.hasCommandTarget()) {
             throw new IllegalArgumentException(
-                    "BasicPedroAutoMechanism requires a Plant with a registered writable target"
+                    "BasicPedroAutoMechanism requires a Plant with a command target"
             );
         }
         if (!Double.isFinite(collectPower) || collectPower < -1.0 || collectPower > 1.0) {
@@ -78,7 +78,7 @@ public final class BasicPedroAutoMechanism {
         stopped = true;
 
         CleanupActions.attemptAll(
-                () -> intakePlant.writableTarget().set(IDLE_POWER),
+                () -> intakePlant.commandTarget().set(IDLE_POWER),
                 intakePlant::stop
         );
     }

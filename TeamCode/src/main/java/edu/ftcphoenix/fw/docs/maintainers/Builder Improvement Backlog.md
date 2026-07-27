@@ -84,7 +84,7 @@ position, but without position-only concepts like topology, reference, and homin
 2. choose legal velocity target bounds (`bounded(...)` or `unbounded()`)
 3. choose plant/native velocity mapping (`nativeUnits()` or `scaleToNative(...)`)
 4. optionally set plant-level `velocityTolerance(...)` and `targetGuards().maxTargetRate(...)`
-5. bind a target with `targetedBy(...)`, `targetedBy(ScalarSource)`, or `targetedByDefaultWritable(...)`
+5. bind a target with `targetedBy(...)`, `targetedBy(ScalarSource)`, or `targetedByCommand(...)`
 
 The old `MotorVelocityControl` value-object API was removed instead of retained as a parallel path.
 Velocity uses a zero-preserving mapping only; no `rangeMapsToNative(...)` is exposed for velocity.

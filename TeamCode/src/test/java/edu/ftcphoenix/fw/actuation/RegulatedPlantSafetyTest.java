@@ -32,7 +32,6 @@ public final class RegulatedPlantSafetyTest {
         Plant position = Plants.positionFromPower(
                 positionOut,
                 PlantTargets.exact(positionTarget),
-                positionTarget,
                 PlantTargetGuards.none(),
                 clock -> 10.0,
                 new FixedRegulator(1.25),
@@ -56,7 +55,6 @@ public final class RegulatedPlantSafetyTest {
         Plant velocity = Plants.velocityFromPower(
                 velocityOut,
                 PlantTargets.exact(velocityTarget),
-                velocityTarget,
                 PlantTargetGuards.none(),
                 clock -> 20.0,
                 new FixedRegulator(-1.25),
@@ -122,10 +120,10 @@ public final class RegulatedPlantSafetyTest {
         };
         Plant[] plants = {
                 Plants.positionFromPower(outputs[0], PlantTargets.exact(lowerPositionTarget),
-                        lowerPositionTarget, PlantTargetGuards.none(), clock -> 10.0,
+                        PlantTargetGuards.none(), clock -> 10.0,
                         new FixedRegulator(Double.NaN), 0.0),
                 Plants.velocityFromPower(outputs[1], PlantTargets.exact(lowerVelocityTarget),
-                        lowerVelocityTarget, PlantTargetGuards.none(), clock -> 10.0,
+                        PlantTargetGuards.none(), clock -> 10.0,
                         new FixedRegulator(Double.NaN), 0.0),
                 MappedPositionPlant.regulated(outputs[2], clock -> 10.0,
                                 new FixedRegulator(Double.NaN))
