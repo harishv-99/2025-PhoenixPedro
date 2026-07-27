@@ -216,12 +216,12 @@ public final class PlantTasksTimingTest {
         }
 
         @Override
-        public boolean hasWritableTarget() {
+        public boolean hasCommandTarget() {
             return true;
         }
 
         @Override
-        public ScalarTarget writableTarget() {
+        public ScalarTarget commandTarget() {
             return command;
         }
 

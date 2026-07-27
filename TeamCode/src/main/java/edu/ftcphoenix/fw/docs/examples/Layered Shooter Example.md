@@ -177,7 +177,7 @@ In Example 09, realization owns two Plants:
 - a velocity plant for the flywheel
 - a power plant for the feeder
 
-The flywheel uses a simple writable `ScalarTarget`. Its Plant can be either FTC device-managed
+The flywheel uses a simple command `ScalarTarget`. Its Plant can be either FTC device-managed
 velocity control or a Phoenix-regulated velocity loop. If the robot uses a power-based PID/PIDF
 flywheel with battery-voltage compensation, that compensation belongs in the flywheel
 `ScalarRegulator` inside realization; requests and behavior still only talk in selected velocity
@@ -247,8 +247,9 @@ PlantTargetSource finalFeederTarget = PlantTargets.overlay(feederBaseTarget)
         .build();
 ```
 
-The feeder Plant is then built with that final target source. The baseline target is still registered
-as the writable command target so task helpers could write it if needed:
+The feeder Plant is then built with that final target source. Because the overlay base is the
+`ScalarTarget` named `feederBaseTarget`, the graph automatically carries it as the command target
+that task helpers could write if needed. Conditional layers never replace that command identity:
 
 ```java
 Plant feederPlant = FtcActuators.plant(hardwareMap)
@@ -256,14 +257,13 @@ Plant feederPlant = FtcActuators.plant(hardwareMap)
         .andCrServo("transferRightServo", Direction.REVERSE)
         .power()
         .targetedBy(finalFeederTarget)
-        .writableTarget(feederBaseTarget)
         .build();
 ```
 
 Its loop code is intentionally small:
 
 1. receive the behavior output
-2. update the writable baseline targets
+2. update the command baseline targets
 3. update the plants, letting each Plant sample its final target source
 4. export readback for the next loop
 

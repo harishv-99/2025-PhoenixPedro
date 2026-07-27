@@ -401,12 +401,12 @@ public final class ActuationTaskSingleUseTest {
         }
 
         @Override
-        public boolean hasWritableTarget() {
+        public boolean hasCommandTarget() {
             return true;
         }
 
         @Override
-        public ScalarTarget writableTarget() {
+        public ScalarTarget commandTarget() {
             return command;
         }
 
@@ -510,12 +510,12 @@ public final class ActuationTaskSingleUseTest {
         }
 
         @Override
-        public boolean hasWritableTarget() {
+        public boolean hasCommandTarget() {
             return true;
         }
 
         @Override
-        public ScalarTarget writableTarget() {
+        public ScalarTarget commandTarget() {
             return command;
         }
 

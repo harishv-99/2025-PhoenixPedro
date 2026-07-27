@@ -217,10 +217,10 @@ public final class TeleOp_04_ShooterInterpolated extends OpMode {
                 .bounded(0.0, 250.0)
                 .nativeUnits()
                 .velocityTolerance(/*toleranceNative=*/100.0)
-                .targetedByDefaultWritable(0.0)
+                .targetedByCommand(0.0)
                 .build();
 
-        shooter.writableTarget().set(0.0);
+        shooter.commandTarget().set(0.0);
 
         // 4) Bindings: shooter enable + distance adjust
 
@@ -289,10 +289,10 @@ public final class TeleOp_04_ShooterInterpolated extends OpMode {
             // Look up velocity from the table (with clamping + interpolation).
             double targetVel = SHOOTER_VELOCITY_TABLE.interpolate(distanceInches);
             lastShooterTarget = targetVel;
-            shooter.writableTarget().set(targetVel);
+            shooter.commandTarget().set(targetVel);
         } else {
             lastShooterTarget = 0.0;
-            shooter.writableTarget().set(0.0);
+            shooter.commandTarget().set(0.0);
         }
 
         // Update shooter plant once per loop.
@@ -331,7 +331,7 @@ public final class TeleOp_04_ShooterInterpolated extends OpMode {
     @Override
     public void stop() {
         shooterEnabled = false;
-        shooter.writableTarget().set(0.0);
+        shooter.commandTarget().set(0.0);
         shooter.stop();
         drivebase.stop();
     }

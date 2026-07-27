@@ -241,14 +241,14 @@ public final class TeleOp_03_ShooterMacro extends OpMode {
                 .bounded(0.0, SHOOTER_VELOCITY_NATIVE)
                 .nativeUnits()
                 .velocityTolerance(SHOOTER_VELOCITY_TOLERANCE_NATIVE)
-                .targetedByDefaultWritable(0.0)
+                .targetedByCommand(0.0)
                 .build();
 
         transfer = FtcActuators.plant(hardwareMap)
                 .crServo(HW_TRANSFER_LEFT, Direction.FORWARD)
                 .andCrServo(HW_TRANSFER_RIGHT, Direction.REVERSE)
                 .power()
-                .targetedByDefaultWritable(0.0)
+                .targetedByCommand(0.0)
                 .build();
 
         pusher = FtcActuators.plant(hardwareMap)
@@ -257,13 +257,13 @@ public final class TeleOp_03_ShooterMacro extends OpMode {
                 .linear()
                 .bounded(0.0, 1.0)
                 .nativeUnits()
-                .targetedByDefaultWritable(0.0)
+                .targetedByCommand(0.0)
                 .build();
 
         // Initialize mechanisms to a safe default.
-        shooter.writableTarget().set(0.0);
-        transfer.writableTarget().set(0.0);
-        pusher.writableTarget().set(PUSHER_POS_RETRACT);
+        shooter.commandTarget().set(0.0);
+        transfer.commandTarget().set(0.0);
+        pusher.commandTarget().set(PUSHER_POS_RETRACT);
 
         // === 4) Bindings: hook buttons to macro actions ===
 
@@ -313,9 +313,9 @@ public final class TeleOp_03_ShooterMacro extends OpMode {
 
         // When no macro is active, hold a safe default state.
         if (!macroRunner.hasActiveTask()) {
-            shooter.writableTarget().set(0.0);
-            transfer.writableTarget().set(0.0);
-            pusher.writableTarget().set(PUSHER_POS_RETRACT);
+            shooter.commandTarget().set(0.0);
+            transfer.commandTarget().set(0.0);
+            pusher.commandTarget().set(PUSHER_POS_RETRACT);
         }
 
         // --- 4) Drive: always under manual control ---
@@ -395,9 +395,9 @@ public final class TeleOp_03_ShooterMacro extends OpMode {
      */
     private void cancelShootMacros() {
         macroRunner.cancelAndClear();
-        shooter.writableTarget().set(0.0);
-        transfer.writableTarget().set(0.0);
-        pusher.writableTarget().set(PUSHER_POS_RETRACT);
+        shooter.commandTarget().set(0.0);
+        transfer.commandTarget().set(0.0);
+        pusher.commandTarget().set(PUSHER_POS_RETRACT);
     }
 
     /**

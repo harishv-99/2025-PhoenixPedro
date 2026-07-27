@@ -197,7 +197,7 @@ public final class FtcActuatorGroupIdentityValidationTest {
         assertContainsIgnoreCase(duplicate, "motor", "left");
         assertArrayEquals(beforeRejectedAdd, hardwareMap.effects.snapshot());
 
-        resolvedPower.targetedByDefaultWritable(0.0).build();
+        resolvedPower.targetedByCommand(0.0).build();
         assertArrayEquals(beforeRejectedAdd, hardwareMap.effects.snapshot());
     }
 
@@ -218,7 +218,7 @@ public final class FtcActuatorGroupIdentityValidationTest {
 
         velocity.unbounded()
                 .nativeUnits()
-                .targetedByDefaultWritable(0.0)
+                .targetedByCommand(0.0)
                 .build();
         assertEquals(1, velocityMap.effects.velocityPidfWrites);
 
@@ -241,7 +241,7 @@ public final class FtcActuatorGroupIdentityValidationTest {
                 .unbounded()
                 .nativeUnits()
                 .alreadyReferenced()
-                .targetedByDefaultWritable(0.0)
+                .targetedByCommand(0.0)
                 .build();
         assertEquals(1, positionMap.effects.positionPidfWrites);
         assertEquals(1, positionMap.effects.velocityPidfWrites);
@@ -340,7 +340,7 @@ public final class FtcActuatorGroupIdentityValidationTest {
                 .regulator(ZERO_REGULATOR)
                 .unbounded()
                 .nativeUnits()
-                .targetedByDefaultWritable(0.0)
+                .targetedByCommand(0.0)
                 .build();
 
         plant.update(new ManualLoopClock().clock());
@@ -366,7 +366,7 @@ public final class FtcActuatorGroupIdentityValidationTest {
                 .unbounded()
                 .nativeUnits()
                 .alreadyReferenced()
-                .targetedByDefaultWritable(0.0)
+                .targetedByCommand(0.0)
                 .build();
 
         plant.update(new ManualLoopClock().clock());
@@ -393,7 +393,7 @@ public final class FtcActuatorGroupIdentityValidationTest {
                 .regulator(ZERO_REGULATOR)
                 .unbounded()
                 .nativeUnits()
-                .targetedByDefaultWritable(0.0)
+                .targetedByCommand(0.0)
                 .build();
 
         plant.update(new ManualLoopClock().clock());
@@ -422,7 +422,7 @@ public final class FtcActuatorGroupIdentityValidationTest {
                 .unbounded()
                 .nativeUnits()
                 .alreadyReferenced()
-                .targetedByDefaultWritable(0.0)
+                .targetedByCommand(0.0)
                 .build();
 
         plant.update(new ManualLoopClock().clock());
@@ -621,14 +621,14 @@ public final class FtcActuatorGroupIdentityValidationTest {
         switch (domain) {
             case POWER:
                 return step.power()
-                        .targetedByDefaultWritable(0.0)
+                        .targetedByCommand(0.0)
                         .build();
             case VELOCITY:
                 return step.velocity()
                         .deviceManagedWithDefaults()
                         .unbounded()
                         .nativeUnits()
-                        .targetedByDefaultWritable(0.0)
+                        .targetedByCommand(0.0)
                         .build();
             case POSITION:
                 return step.position()
@@ -637,7 +637,7 @@ public final class FtcActuatorGroupIdentityValidationTest {
                         .unbounded()
                         .nativeUnits()
                         .alreadyReferenced()
-                        .targetedByDefaultWritable(0.0)
+                        .targetedByCommand(0.0)
                         .build();
             default:
                 throw new AssertionError("Unhandled domain " + domain);
@@ -649,7 +649,7 @@ public final class FtcActuatorGroupIdentityValidationTest {
                 .linear()
                 .bounded(0.0, 1.0)
                 .nativeUnits()
-                .targetedByDefaultWritable(0.0)
+                .targetedByCommand(0.0)
                 .build();
     }
 
@@ -658,7 +658,7 @@ public final class FtcActuatorGroupIdentityValidationTest {
                                       MotorProbe encoder) {
         if (domain == CrServoDomain.POWER) {
             return step.power()
-                    .targetedByDefaultWritable(0.0)
+                    .targetedByCommand(0.0)
                     .build();
         }
         if (encoder == null) {
@@ -672,7 +672,7 @@ public final class FtcActuatorGroupIdentityValidationTest {
                 .unbounded()
                 .nativeUnits()
                 .alreadyReferenced()
-                .targetedByDefaultWritable(0.0)
+                .targetedByCommand(0.0)
                 .build();
     }
 

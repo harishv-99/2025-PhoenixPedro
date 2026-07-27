@@ -42,7 +42,7 @@ concrete concepts, not merely the few calls in `BasicPedroAutoRoutine`:
 8. retained route execution, status, and timeout,
 9. a `TaskRunner` and single-use Task graph,
 10. explicit outcome branching,
-11. a writable, source-driven Plant target,
+11. a source-driven Plant with a command target,
 12. fresh mechanism capability Tasks,
 13. ordered mechanism realization,
 14. operator telemetry and physical-start readiness,
@@ -56,7 +56,7 @@ ownership example rather than a claim that all robot code is one line.
 ### INIT
 
 `PhoenixBasicPedroAutoExample.init()` creates one real `PedroPathingRuntime`, builds the fixed path,
-constructs one writable intake Plant and capability, and wires `BasicPedroAutoRobot`. Construction
+constructs one intake Plant with a command target and capability, and wires `BasicPedroAutoRobot`. Construction
 does not start the route or move the mechanism. `init_loop()` keeps the expected physical placement
 and test warning visible.
 

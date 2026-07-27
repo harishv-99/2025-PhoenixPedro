@@ -304,8 +304,29 @@ Key methods (see `edu.ftcphoenix.fw.actuation.Plant`):
 * `getTargetPlan()` — how the `PlantTargets` graph selected the requested target.
 * `getTargetStatus()` — why requested and applied target may differ.
 * `atTarget()` / `atTarget(value)` / `hasFeedback()` — feedback-based readiness.
-* `getMeasurement()`, `getTargetError()`, and `getAppliedTargetError()` for feedback-capable plants.
-* optional `writableTarget()`, `reset()`, and `debugDump(...)`.
+* `getMeasurement()`, `getRequestedTargetError()`, and `getAppliedTargetError()` for feedback-capable plants.
+* optional `hasCommandTarget()` / `commandTarget()`, `reset()`, and `debugDump(...)`.
+
+Keep the target vocabulary and ownership chain explicit:
+
+```text
+command target → requested target → applied target → actuator command
+```
+
+The command target is the optional stable `ScalarTarget` that robot policy and `PlantTasks` may
+change. The requested target is the result selected by the complete `PlantTargets` graph. The
+applied target is the bounded and guarded Plant-unit target. The actuator command is the final
+native position/velocity request or normalized regulated output sent to hardware. Do not collapse
+these names or use an unqualified “target error” when requested-target error is meant.
+
+Command ownership is derived from the final target graph, never registered as a second builder
+answer. An exact source carries a command target when its runtime source is a `ScalarTarget`; an
+overlay propagates only its base graph's command target. Conditional overlay layers never establish
+or replace command ownership. This makes the stable fallback request task-writable without letting
+multiple conditional targets make the command path ambiguous. Constants, planners, measured holds,
+and custom graphs without such a command base remain read-only to `PlantTasks`. Do not reintroduce
+a second command-target builder binding that can disagree with the source the Plant actually
+resolves.
 
 A Plant may be open-loop (power, commanded servo position), device-managed closed-loop (for example FTC motor velocity/position), or framework-regulated closed-loop over a raw actuator command. The public rule is the same for all of them: **behavior shapes sources; Plants protect and apply one target per loop**.
 
@@ -420,7 +441,7 @@ Plant transfer = FtcActuators.plant(hardwareMap)
         .crServo("transferLeftServo", Direction.FORWARD)
         .andCrServo("transferRightServo", Direction.REVERSE)
         .power()
-        .targetedByDefaultWritable(0.0)
+        .targetedByCommand(0.0)
         .build();
 
 Plant pusher = FtcActuators.plant(hardwareMap)
@@ -429,7 +450,7 @@ Plant pusher = FtcActuators.plant(hardwareMap)
         .linear()
             .bounded(0.0, 1.0)
             .nativeUnits()   // servo raw 0..1 plant coordinate
-        .targetedByDefaultWritable(0.0)
+        .targetedByCommand(0.0)
         .build();
 ```
 
@@ -446,7 +467,7 @@ The builder is staged on purpose:
    * bounds: `bounded(min, max)` or `unbounded()`
    * mapping/reference: `nativeUnits()`, `scaleToNative(...)`, bounded-only `rangeMapsToNative(...)`, then `alreadyReferenced()`, `plantPositionMapsToNative(...)`, `assumeCurrentPositionIs(...)`, or `needsReference(...)` when a runtime reference is required
 4. **Optional hardware guards**: enter `targetGuards()` for dynamic Plant-level protection such as `maxTargetRate(...)`, `holdLastTargetUnless(...)`, or `fallbackTargetUnless(...)`.
-5. **Target binding**: finish with `targetedBy(ScalarTarget)`, `targetedBy(readOnlySource)`, or `targetedByDefaultWritable(initialTarget)`, then `build()`.
+5. **Target binding**: finish with `targetedBy(ScalarTarget)`, `targetedBy(readOnlySource)`, or `targetedByCommand(initialTarget)`, then `build()`.
 
 Configured hardware names keep FTC's own identity semantics: surrounding whitespace is trimmed for
 lookup and comparison, while case remains significant. Within one motor, standard-servo, or
@@ -750,7 +771,7 @@ Robot code should rarely implement raw tasks directly. Prefer:
 
 * `Tasks.*` for generic Task factories and as the public construction layer for composition
   (`sequence`, `parallelAll`, `parallelDeadline`, `withTimeout`, `waitForSeconds`, `waitUntil`, ...)
-* `ScalarTasks.write(...)` for standalone `ScalarTarget`s, `PlantTasks.write(plant)` for time-based writes to a Plant's registered target, and `PlantTasks.move(plant)` for feedback-aware moves
+* `ScalarTasks.write(...)` for standalone `ScalarTarget`s, `PlantTasks.write(plant)` for time-based writes to a Plant's command target, and `PlantTasks.move(plant)` for feedback-aware moves
 * `Tasks.outputPulse(...)` + `OutputTaskRunner` for short output-producing pulses that are overlaid into a final Plant target source
 * `DriveTasks.driveExclusivelyForSeconds(...)` for simple Auto/test drive intervals only when the
   Task is the sole behavior-command writer for the sink
@@ -782,7 +803,7 @@ budgets; do not duplicate the same policy in both places. `waitUntil(condition, 
 the concise condition-wait API and deliberately samples its condition first at the exact boundary.
 Fixed-duration waits and commands are successful timed behavior, not timeouts.
 
-For a timed scalar or Plant write, `.then(value)` applies that final registered request after normal
+For a timed scalar or Plant write, `.then(value)` applies that final command-target request after normal
 completion **and active cancellation**. Omitting `.then(...)`, or selecting `.leaveThere()`, leaves
 the held request in place. Choose deliberately; neither behavior is an imperative hardware stop.
 
@@ -814,7 +835,7 @@ Phoenix distinguishes:
 Important consequence:
 
 * `PlantTasks.move(plant)` **requires** `plant.hasFeedback() == true` and will throw if used on an open-loop plant.
-* Time-based helpers such as `PlantTasks.write(plant).to(...).forSeconds(...)` and compact `holdTargetFor(...)` helpers work on any Plant with a registered writable target.
+* Time-based helpers such as `PlantTasks.write(plant).to(...).forSeconds(...)` and compact `holdTargetFor(...)` helpers work on any Plant with a command target.
 
 A feedback move must answer its cancellation question immediately after `.to(target)`:
 
@@ -825,7 +846,7 @@ After that required choice, robot code may add `.stableFor(...)`, `.timeout(...)
 `.thenTarget(...)`, and `.build()`. The completion target from `.thenTarget(...)` applies to success
 or timeout, not cancellation; use `.cancelTo(...)` when those outcomes need different requests.
 
-`cancelTo(...)` only changes the registered target request. The Plant still owns the final write,
+`cancelTo(...)` only changes the command target. The Plant still owns the final write,
 and overlays, bounds, references, and guards may mask or transform that request. Cancelling one
 Task also cannot undo persistent requests left by earlier completed macro steps. Robot-owned
 shutdown must still cancel queues, disable relevant overlays, and reset every related mechanism

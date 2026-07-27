@@ -297,14 +297,14 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
                 .bounded(0.0, 250.0)
                 .nativeUnits()
                 .velocityTolerance(SHOOTER_VELOCITY_TOLERANCE_NATIVE)
-                .targetedByDefaultWritable(0.0)
+                .targetedByCommand(0.0)
                 .build();
 
         transfer = FtcActuators.plant(hardwareMap)
                 .crServo(HW_TRANSFER_LEFT, Direction.FORWARD)
                 .andCrServo(HW_TRANSFER_RIGHT, Direction.REVERSE)
                 .power()
-                .targetedByDefaultWritable(0.0)
+                .targetedByCommand(0.0)
                 .build();
 
         pusher = FtcActuators.plant(hardwareMap)
@@ -313,13 +313,13 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
                 .linear()
                 .bounded(0.0, 1.0)
                 .nativeUnits()
-                .targetedByDefaultWritable(0.0)
+                .targetedByCommand(0.0)
                 .build();
 
         // Default safe targets when no macro is active.
-        shooter.writableTarget().set(0.0);
-        transfer.writableTarget().set(0.0);
-        pusher.writableTarget().set(PUSHER_POS_RETRACT);
+        shooter.commandTarget().set(0.0);
+        transfer.commandTarget().set(0.0);
+        pusher.commandTarget().set(PUSHER_POS_RETRACT);
 
         // 5) Bindings: macro controls.
 
@@ -392,9 +392,9 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
 
         // When no macro is active, choose safe default targets.
         if (!macroRunner.hasActiveTask()) {
-            shooter.writableTarget().set(0.0);
-            transfer.writableTarget().set(0.0);
-            pusher.writableTarget().set(PUSHER_POS_RETRACT);
+            shooter.commandTarget().set(0.0);
+            transfer.commandTarget().set(0.0);
+            pusher.commandTarget().set(PUSHER_POS_RETRACT);
         }
 
         // ------------------------------------------------------------------
@@ -464,9 +464,9 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
         lastMacroStatus = "cancelled";
         CleanupActions.attemptAll(
                 macroRunner::cancelAndClear,
-                () -> shooter.writableTarget().set(0.0),
-                () -> transfer.writableTarget().set(0.0),
-                () -> pusher.writableTarget().set(PUSHER_POS_RETRACT),
+                () -> shooter.commandTarget().set(0.0),
+                () -> transfer.commandTarget().set(0.0),
+                () -> pusher.commandTarget().set(PUSHER_POS_RETRACT),
                 drivebase::stop,
                 this::closeVisionOwner
         );
@@ -519,9 +519,9 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
      */
     private void cancelShootMacros() {
         macroRunner.cancelAndClear();
-        shooter.writableTarget().set(0.0);
-        transfer.writableTarget().set(0.0);
-        pusher.writableTarget().set(PUSHER_POS_RETRACT);
+        shooter.commandTarget().set(0.0);
+        transfer.commandTarget().set(0.0);
+        pusher.commandTarget().set(PUSHER_POS_RETRACT);
         lastShooterMacroTargetVel = 0.0;
         lastMacroStatus = "cancelled";
     }

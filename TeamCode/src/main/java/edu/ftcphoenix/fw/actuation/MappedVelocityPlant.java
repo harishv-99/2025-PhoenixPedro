@@ -29,7 +29,7 @@ public final class MappedVelocityPlant implements Plant {
     private final RegulatedPowerChannel regulatedPowerChannel;
     private final ScalarSource nativeMeasurement;
     private final PlantTargetSource targetSource;
-    private final ScalarTarget writableTarget;
+    private final ScalarTarget commandTarget;
     private final PlantTargetGuards targetGuards;
     private final ScalarRange configuredRange;
     private final double nativePerPlantUnit;
@@ -49,7 +49,6 @@ public final class MappedVelocityPlant implements Plant {
                                 ScalarRegulator regulator,
                                 ScalarSource nativeMeasurement,
                                 PlantTargetSource targetSource,
-                                ScalarTarget writableTarget,
                                 PlantTargetGuards targetGuards,
                                 ScalarRange configuredRange,
                                 double nativePerPlantUnit,
@@ -59,7 +58,7 @@ public final class MappedVelocityPlant implements Plant {
         this.regulator = regulator;
         this.nativeMeasurement = Objects.requireNonNull(nativeMeasurement, "nativeMeasurement").memoized();
         this.targetSource = Objects.requireNonNull(targetSource, "targetSource");
-        this.writableTarget = writableTarget;
+        this.commandTarget = PlantTargets.commandTargetOf(this.targetSource);
         this.targetGuards = targetGuards == null ? PlantTargetGuards.none() : targetGuards;
         this.configuredRange = Objects.requireNonNull(configuredRange, "configuredRange");
         this.nativePerPlantUnit = nativePerPlantUnit;
@@ -103,7 +102,6 @@ public final class MappedVelocityPlant implements Plant {
         private double nativePerPlantUnit = 1.0;
         private double tolerance = 100.0;
         private PlantTargetSource targetSource;
-        private ScalarTarget writableTarget;
         private PlantTargetGuards targetGuards = PlantTargetGuards.none();
 
         private Builder(VelocityOutput velocityOut,
@@ -155,19 +153,22 @@ public final class MappedVelocityPlant implements Plant {
         }
 
         /**
-         * Use a writable exact target source and register it for PlantTasks.
+         * Uses a command target as the exact final source.
+         *
+         * <p>The target graph designates this target as the command target used by Plant task
+         * helpers.</p>
          */
         public Builder targetedBy(ScalarTarget targetSource) {
             this.targetSource = PlantTargets.exact(Objects.requireNonNull(targetSource, "targetSource"));
-            this.writableTarget = targetSource;
             return this;
         }
 
         /**
-         * Use a read-only scalar source as an exact target.
+         * Uses a scalar source as an exact target.
          *
-         * <p>The scalar is lifted into plant-target space. Because it is read-only, no
-         * writable target is registered unless writableTarget(...) is called.</p>
+         * <p>The scalar is lifted into plant-target space. If the supplied object is a
+         * {@link ScalarTarget}, even when referenced through the {@link ScalarSource} type, the
+         * graph retains it as the command target. Other scalar sources remain read-only.</p>
          */
         public Builder targetedBy(ScalarSource targetSource) {
             this.targetSource = PlantTargets.exact(Objects.requireNonNull(targetSource, "targetSource"));
@@ -175,18 +176,13 @@ public final class MappedVelocityPlant implements Plant {
         }
 
         /**
-         * Use a plant-aware final target source.
+         * Uses a plant-aware final target source.
+         *
+         * <p>If the source graph designates a command target, such as the base of a command-backed
+         * overlay, this Plant exposes that same target to Plant task helpers.</p>
          */
         public Builder targetedBy(PlantTargetSource targetSource) {
             this.targetSource = Objects.requireNonNull(targetSource, "targetSource");
-            return this;
-        }
-
-        /**
-         * Register the command target that plant tasks may write when the final source is composed.
-         */
-        public Builder writableTarget(ScalarTarget writableTarget) {
-            this.writableTarget = Objects.requireNonNull(writableTarget, "writableTarget");
             return this;
         }
 
@@ -200,7 +196,7 @@ public final class MappedVelocityPlant implements Plant {
             if (targetSource == null)
                 throw new IllegalStateException("MappedVelocityPlant requires targetedBy(...)");
             return new MappedVelocityPlant(velocityOut, regulatedPowerOut, regulator, nativeMeasurement,
-                    targetSource, writableTarget, targetGuards, configuredRange, nativePerPlantUnit, tolerance);
+                    targetSource, targetGuards, configuredRange, nativePerPlantUnit, tolerance);
         }
     }
 
@@ -349,14 +345,14 @@ public final class MappedVelocityPlant implements Plant {
     }
 
     @Override
-    public boolean hasWritableTarget() {
-        return writableTarget != null;
+    public boolean hasCommandTarget() {
+        return commandTarget != null;
     }
 
     @Override
-    public ScalarTarget writableTarget() {
-        if (writableTarget == null) return Plant.super.writableTarget();
-        return writableTarget;
+    public ScalarTarget commandTarget() {
+        if (commandTarget == null) return Plant.super.commandTarget();
+        return commandTarget;
     }
 
     @Override

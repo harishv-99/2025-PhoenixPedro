@@ -277,14 +277,14 @@ Plant shooter = FtcActuators.plant(hardwareMap)
         .targetGuards()
             .maxTargetRate(500.0)    // max delta in plant units per second
             .doneTargetGuards()
-        .targetedByDefaultWritable(0.0)
+        .targetedByCommand(0.0)
         .build();
 
 // Transfer: CR servo power plant.
 Plant transfer = FtcActuators.plant(hardwareMap)
         .crServo("transferServo", Direction.FORWARD)
         .power()
-        .targetedByDefaultWritable(0.0)
+        .targetedByCommand(0.0)
         .build();
 
 // Pusher: positional servo plant (0..1).
@@ -294,7 +294,7 @@ Plant pusher = FtcActuators.plant(hardwareMap)
         .linear()
             .bounded(0.0, 1.0)
             .nativeUnits()
-        .targetedByDefaultWritable(0.0)
+        .targetedByCommand(0.0)
         .build();
 ```
 
@@ -315,7 +315,7 @@ addition has no additional hardware effects. This validation does not change the
 that differently named entries are physically different devices, or reserve names across owners.
 The actuator and its feedback may intentionally use the same configured name.
 
-**Important:** tasks write the Plant's registered `ScalarTarget`; *your loop* must still call `plant.update(clock)` each cycle so the Plant samples that source and applies hardware guards.
+**Important:** tasks write the Plant's command target; *your loop* must still call `plant.update(clock)` each cycle so the Plant samples the final target graph and applies hardware guards.
 
 ---
 
@@ -573,7 +573,7 @@ Phoenix gives you factories so your code reads like intent:
 
 * `Tasks` — generic Task factories and composition (`sequence`, `parallelAll`, `parallelDeadline`,
   `withTimeout`, `waitForSeconds`, `waitUntil`, `runOnce`, …)
-* `PlantTasks` — guided patterns that write a Plant's registered target (`write` and `move`)
+* `PlantTasks` — guided patterns that write a Plant's command target (`write` and `move`)
 * `DriveTasks` — `driveExclusivelyForSeconds(...)` for simple timed open-loop Auto/test movement when
   its Task is the sole behavior-command writer for the `DriveCommandSink`
 * `DriveGuidanceTasks` — execute a `DriveGuidancePlan` as a Task (autonomous-style guidance)
@@ -623,7 +623,7 @@ private Task buildShootOneDiscMacro(Plant shooter, Plant transfer) {
 ```
 
 A feedback move must choose `.cancelTo(value)` or `.leaveTargetOnCancel()` immediately after
-`.to(...)`. `cancelTo(...)` changes the registered request in Plant units; it does not bypass the
+`.to(...)`. `cancelTo(...)` changes the command target in Plant units; it does not bypass the
 Plant's overlays, bounds, references, or guards and therefore is not a guaranteed hardware stop.
 Robot-owned coordinated cleanup must still cancel related behavior and reset every related target.
 For timed writes, `.then(value)` runs on active cancellation as well as normal completion; omitting

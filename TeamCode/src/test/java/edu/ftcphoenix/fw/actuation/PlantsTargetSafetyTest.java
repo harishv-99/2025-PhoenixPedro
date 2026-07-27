@@ -126,7 +126,7 @@ public final class PlantsTargetSafetyTest {
                     return true;
                 })
                 .build();
-        Plant plant = Plants.power(output, PlantTargets.exact(target), target, guards);
+        Plant plant = Plants.power(output, PlantTargets.exact(target), guards);
 
         plant.update(new ManualLoopClock().clock());
 
@@ -142,7 +142,7 @@ public final class PlantsTargetSafetyTest {
         PlantTargetGuards guards = PlantTargetGuards.builder()
                 .fallbackTargetUnless("mechanismClear", clock -> false, 0.25)
                 .build();
-        Plant plant = Plants.power(output, PlantTargets.exact(target), target, guards);
+        Plant plant = Plants.power(output, PlantTargets.exact(target), guards);
 
         plant.update(new ManualLoopClock().clock());
 
@@ -159,7 +159,7 @@ public final class PlantsTargetSafetyTest {
                 .build();
 
         try {
-            Plants.power(new ClampingPowerOutput(), PlantTargets.exact(0.0), null, guards);
+            Plants.power(new ClampingPowerOutput(), PlantTargets.exact(0.0), guards);
             fail("Expected an out-of-range power fallback to be rejected");
         } catch (IllegalArgumentException expected) {
             assertTrue(expected.getMessage().contains("PowerPlant"));
@@ -177,7 +177,7 @@ public final class PlantsTargetSafetyTest {
         PlantTargetGuards guards = PlantTargetGuards.builder()
                 .maxTargetRate(0.25)
                 .build();
-        Plant plant = Plants.power(output, PlantTargets.exact(target), target, guards);
+        Plant plant = Plants.power(output, PlantTargets.exact(target), guards);
         ManualLoopClock clock = new ManualLoopClock();
         plant.update(clock.clock());
 
@@ -197,7 +197,7 @@ public final class PlantsTargetSafetyTest {
         PlantTargetGuards guards = PlantTargetGuards.builder()
                 .maxTargetRate(Double.MAX_VALUE)
                 .build();
-        Plant plant = Plants.position(output, PlantTargets.exact(target), target, guards);
+        Plant plant = Plants.position(output, PlantTargets.exact(target), guards);
         ManualLoopClock clock = new ManualLoopClock();
         plant.update(clock.clock());
         double prior = plant.getAppliedTarget();

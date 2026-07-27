@@ -21,8 +21,9 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *       checks, target guards, and rate limits. For a framework-regulated Plant, the regulator then
  *       derives a separate normalized actuator command from this target; the applied target is not
  *       that command or hardware readback.</li>
- *   <li><b>Writable target</b>: optional {@link ScalarTarget} registered with the plant so
- *       {@link PlantTasks} can write requests without being passed a separate target variable.</li>
+ *   <li><b>Command target</b>: optional stable {@link ScalarTarget} carried by the exact source or
+ *       overlay base so {@link PlantTasks} can change the persistent behavior request without
+ *       being passed a separate target variable.</li>
  * </ul>
  *
  * <h2>Typical usage</h2>
@@ -102,7 +103,7 @@ public interface Plant {
     /**
      * Requested-target error: {@code getRequestedTarget() - getMeasurement()}.
      */
-    default double getTargetError() {
+    default double getRequestedTargetError() {
         double measurement = getMeasurement();
         return Double.isFinite(measurement) ? getRequestedTarget() - measurement : Double.NaN;
     }
@@ -140,20 +141,24 @@ public interface Plant {
     }
 
     /**
-     * Whether this plant has a registered writable command target.
+     * Whether this plant's final target graph carries a stable command target.
      */
-    default boolean hasWritableTarget() {
+    default boolean hasCommandTarget() {
         return false;
     }
 
     /**
-     * Return this plant's registered writable command target.
+     * Return this plant's stable command target.
+     *
+     * <p>This target is the persistent behavior request that tasks may change. An overlay can mask
+     * that request without changing command ownership. Calling this method does not bypass the
+     * Plant's target graph, guards, or update lifecycle.</p>
      *
      * @throws IllegalStateException if the plant was built from a read-only source without a
-     *                               registered command target
+     *                               stable command target
      */
-    default ScalarTarget writableTarget() {
-        throw new IllegalStateException("This plant has no writable target. Build it with targetedBy(ScalarTarget), targetedByDefaultWritable(...), or targetedBy(PlantTargetSource).writableTarget(commandTarget) or targetedBy(ScalarSource).writableTarget(commandTarget).");
+    default ScalarTarget commandTarget() {
+        throw new IllegalStateException("This plant has no command target. Build it from a ScalarTarget, use an overlay whose stable base is a ScalarTarget, or use the FTC builder's targetedByCommand(...).");
     }
 
     /**
@@ -184,11 +189,11 @@ public interface Plant {
                 .addData(p + ".appliedTarget", getAppliedTarget())
                 .addData(p + ".targetPlan", getTargetPlan().toString())
                 .addData(p + ".targetStatus", getTargetStatus().toString())
-                .addData(p + ".hasWritableTarget", hasWritableTarget())
+                .addData(p + ".hasCommandTarget", hasCommandTarget())
                 .addData(p + ".hasFeedback", hasFeedback())
                 .addData(p + ".atTarget", atTarget())
                 .addData(p + ".measurement", getMeasurement())
-                .addData(p + ".targetError", getTargetError())
+                .addData(p + ".requestedTargetError", getRequestedTargetError())
                 .addData(p + ".appliedTargetError", getAppliedTargetError());
     }
 }

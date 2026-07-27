@@ -241,10 +241,10 @@ public final class TeleOp_05_ShooterTagAimVision extends OpMode {
                 .bounded(0.0, 4200.0)
                 .nativeUnits()
                 .velocityTolerance(/*toleranceNative=*/100.0)
-                .targetedByDefaultWritable(0.0)
+                .targetedByCommand(0.0)
                 .build();
 
-        shooter.writableTarget().set(0.0);
+        shooter.commandTarget().set(0.0);
 
         // 5) Bindings: shooter toggle.
         bindings.toggleOnRise(
@@ -302,10 +302,10 @@ public final class TeleOp_05_ShooterTagAimVision extends OpMode {
         if (shooterEnabled && obs.hasTarget) {
             double targetVel = SHOOTER_VELOCITY_TABLE.interpolate(obs.cameraRangeInches());
             lastShooterTargetVel = targetVel;
-            shooter.writableTarget().set(targetVel);
+            shooter.commandTarget().set(targetVel);
         } else {
             lastShooterTargetVel = 0.0;
-            shooter.writableTarget().set(0.0);
+            shooter.commandTarget().set(0.0);
         }
 
         // 4) Control / Actuate (subsystems)
@@ -362,7 +362,7 @@ public final class TeleOp_05_ShooterTagAimVision extends OpMode {
     public void stop() {
         shooterEnabled = false;
         CleanupActions.attemptAll(
-                () -> shooter.writableTarget().set(0.0),
+                () -> shooter.commandTarget().set(0.0),
                 shooter::stop,
                 drivebase::stop,
                 this::closeVisionOwner

@@ -251,12 +251,12 @@ public final class BasicPedroAutoRobotTest {
         }
 
         @Override
-        public boolean hasWritableTarget() {
+        public boolean hasCommandTarget() {
             return true;
         }
 
         @Override
-        public ScalarTarget writableTarget() {
+        public ScalarTarget commandTarget() {
             return target;
         }
 

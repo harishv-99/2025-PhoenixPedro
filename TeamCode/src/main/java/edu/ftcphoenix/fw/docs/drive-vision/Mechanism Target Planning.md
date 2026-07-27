@@ -1,8 +1,8 @@
 # Mechanism Target Planning
 
 `PlantTargets` is the framework's target-generation system for `Plant`s. It turns simple numbers,
-writable command targets, queued pulses, behavior overlays, and smart equivalent-target requests into
-one requested Plant target each loop.
+command targets, queued pulses, behavior overlays, and smart equivalent-target requests into one
+requested Plant target each loop.
 
 The Plant still owns low-level hardware/control work. Target planning answers:
 
@@ -20,6 +20,9 @@ can this hardware safely apply that request, and is the mechanism at that target
 controller / service / autonomous policy
     decides which behavior is active
         ↓
+command target (optional ScalarTarget)
+    the stable request that robot policy and PlantTasks may change
+        ↓
 PlantTargets graph
     exact target, overlay, queued pulse, candidate planner, fallback/hold policy
         ↓
@@ -30,7 +33,10 @@ Plant target guards
     bounds, homing/reference state, interlocks, fallback targets, target rate limits
         ↓
 applied target
-    low-level output or regulation in the Plant's public units
+    one safe target after bounds and guards, still in the Plant's public units
+        ↓
+actuator command
+    the native position/velocity command or normalized regulated power sent to hardware
 ```
 
 ## Unit rule
@@ -43,6 +49,7 @@ same public Plant units:
 - Plant measurement
 - Plant legal target range
 - Plant tolerance
+- command target, when present
 - requested target
 - applied target
 
@@ -59,7 +66,7 @@ ScalarSource
     A number stream. Useful as a primitive.
 
 ScalarTarget
-    A writable number stream. Useful for commands and tasks.
+    A writable number stream. When it is the exact source or overlay base, it is the command target.
 
 PlantTargetSource
     A Plant-aware source that resolves to the requested target for this Plant.
@@ -71,14 +78,19 @@ PlantTargets
 The Plant builder accepts friendly forms and normalizes them internally:
 
 ```java
-.targetedBy(ScalarTarget target)                 // writable exact target; auto-registered
-.targetedBy(ScalarSource source)         // read-only exact source
-.targetedBy(PlantTargetSource source)            // full plant-aware target source
-.targetedByDefaultWritable(initialTarget)        // builder-created writable exact target
+.targetedBy(ScalarTarget target)         // exact source and command target
+.targetedBy(ScalarSource source)         // exact source; command-capable if it is a ScalarTarget
+.targetedBy(PlantTargetSource source)    // full Plant-aware target graph
+.targetedByCommand(initialTarget)        // builder-created command target and exact source
 ```
 
-If a read-only or composed source still has an underlying command variable that tasks should write,
-register it explicitly:
+The final graph owns this relationship; the builder never asks robot code to register a second,
+possibly disconnected target. An exact source carries a command target when its runtime object is a
+`ScalarTarget`. An overlay carries only the command target from its base graph. `ScalarTarget`s used
+as conditional layers never become the command target, because a task writing a layer does not own
+that layer's activation and an overlay may contain several such layers.
+
+Put the stable robot request in the base when tasks should be able to command a composed Plant:
 
 ```java
 ScalarTarget armCommand = ScalarTarget.held(STOWED);
@@ -98,7 +110,6 @@ PositionPlant arm = FtcActuators.plant(hardwareMap)
             .alreadyReferenced()
         .positionTolerance(20.0)
         .targetedBy(finalArmTarget)
-            .writableTarget(armCommand)
         .build();
 ```
 
@@ -109,10 +120,22 @@ Task raiseArm = PlantTasks.move(arm)
         .build();
 ```
 
-This writes the registered `armCommand`, then waits for `arm.atTarget(HIGH)`. If `autoStow` or
+This writes the graph-owned `armCommand`, then waits for `arm.atTarget(HIGH)`. If `autoStow` or
 `manual` wins the overlay, the task does not complete early, because the Plant is not actually at
 the requested `HIGH` target. If the active move is cancelled, it changes `armCommand` to the
 explicit Plant-unit `STOWED` request once.
+
+The resulting vocabulary stays consistent across every Plant:
+
+```text
+command target → requested target → applied target → actuator command
+```
+
+The command target is optional. Constants, ordinary read-only sources, planners, measured holds,
+and custom target graphs without a command base remain read-only to `PlantTasks`. `hasCommandTarget()`
+reports that capability, while `commandTarget()` returns it for framework helpers and compact
+testers. Ordinary robot services should usually retain their named `ScalarTarget` directly rather
+than rediscovering it from the Plant.
 
 ## Exact targets
 
@@ -137,7 +160,7 @@ liftTarget.set(BASKET_TICKS);
 lift.update(clock);
 ```
 
-When a target is only controlled through tasks, the builder can create the writable target:
+When a target is controlled only through tasks, the builder can create the command target:
 
 ```java
 PositionPlant lift = FtcActuators.plant(hardwareMap)
@@ -149,7 +172,7 @@ PositionPlant lift = FtcActuators.plant(hardwareMap)
             .nativeUnits()
             .needsReference("lift not homed")
         .positionTolerance(20.0)
-        .targetedByDefaultWritable(0.0)
+        .targetedByCommand(0.0)
         .build();
 
 Task raiseLift = PlantTasks.move(lift)
@@ -160,7 +183,7 @@ Task raiseLift = PlantTasks.move(lift)
 
 Every feedback move must choose `.cancelTo(value)` or `.leaveTargetOnCancel()` immediately after
 `.to(...)`. The latter deliberately leaves the move request in place, so motion may continue.
-Neither option imperatively stops hardware: `cancelTo(...)` changes the registered request, while
+Neither option imperatively stops hardware: `cancelTo(...)` changes the command target, while
 the final target still flows through overlays, bounds, references, and guards on the next Plant
 update. An owner-level shutdown must coordinate every related request and behavior layer.
 

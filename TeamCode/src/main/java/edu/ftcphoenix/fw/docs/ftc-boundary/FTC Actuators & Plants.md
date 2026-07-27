@@ -26,7 +26,7 @@ Plant flywheel = FtcActuators.plant(hardwareMap)
         .bounded(0.0, 2600.0)
         .nativeUnits()
         .velocityTolerance(50.0)
-        .targetedByDefaultWritable(0.0)
+        .targetedByCommand(0.0)
         .build();
 
 PositionPlant pusher = FtcActuators.plant(hardwareMap)
@@ -35,7 +35,7 @@ PositionPlant pusher = FtcActuators.plant(hardwareMap)
         .linear()
             .bounded(0.0, 1.0)
             .nativeUnits()
-        .targetedByDefaultWritable(0.0)
+        .targetedByCommand(0.0)
         .build();
 ```
 
@@ -53,7 +53,7 @@ For example, motor position wiring asks:
 6. How do plant units map to native units? `nativeUnits()`, `scaleToNative(...)`, or bounded-only `rangeMapsToNative(...)`
 7. How is the reference/offset known? `alreadyReferenced()`, `plantPositionMapsToNative(...)`, `assumeCurrentPositionIs(...)`, or `needsReference(...)`
 8. Optional dynamic hardware guards: `targetGuards().maxTargetRate(...)`, `holdLastTargetUnless(...)`, `fallbackTargetUnless(...)`
-9. Target binding: `targetedBy(ScalarTarget)`, `targetedBy(readOnlySource)`, or `targetedByDefaultWritable(initialTarget)`, then `build()`
+9. Target binding: `targetedBy(ScalarTarget)`, `targetedBy(readOnlySource)`, or `targetedByCommand(initialTarget)`, then `build()`
 
 Motor velocity wiring asks a parallel but smaller set of questions:
 
@@ -63,7 +63,14 @@ Motor velocity wiring asks a parallel but smaller set of questions:
 4. What target bounds are legal? `bounded(min, max)` or `unbounded()`
 5. How do plant velocity units map to native velocity units? `nativeUnits()` or `scaleToNative(...)`
 6. Optional dynamic hardware guards: `targetGuards().maxTargetRate(...)`, `holdLastTargetUnless(...)`, `fallbackTargetUnless(...)`
-7. Target binding: `targetedBy(ScalarTarget)`, `targetedBy(readOnlySource)`, or `targetedByDefaultWritable(initialTarget)`, then `build()`
+7. Target binding: `targetedBy(ScalarTarget)`, `targetedBy(readOnlySource)`, or `targetedByCommand(initialTarget)`, then `build()`
+
+`targetedByCommand(initialTarget)` is the concise task-owned form: it creates a held
+`ScalarTarget` that is both the exact source and the Plant's command target. A named
+`ScalarTarget` passed to `targetedBy(...)` has the same command role. For a composed
+`PlantTargets.overlay(...)`, only a `ScalarTarget` carried by the base graph becomes the command
+target; conditional layers never do. The final graph supplies that identity automatically, so the
+builder cannot accept a second target that disagrees with the source the Plant actually follows.
 
 Velocity and power Plants stay simpler than position Plants because they do not have position
 geometry, periodicity, or homing/reference questions. Power is simpler still: every direct power
@@ -165,7 +172,7 @@ PositionPlant lift = FtcActuators.plant(hardwareMap)
             .maxTargetRate(1200.0)
             .holdLastTargetUnless("wristClear", wristClear)
             .doneTargetGuards()
-        .targetedByDefaultWritable(0.0)
+        .targetedByCommand(0.0)
         .build();
 ```
 
@@ -182,7 +189,7 @@ A max-rate guard uses actual elapsed loop time; it does not predict the future l
 sample initializes directly to the first guarded candidate, and `stop()`/`reset()` clear dynamic guard
 state. If loop time is temporarily non-finite, it holds the last output until a finite time baseline
 has been restored. If a mechanism needs startup limiting from a known physical position, initialize
-the writable target from that measurement or use an appropriate reference policy before requesting
+the command target from that measurement or use an appropriate reference policy before requesting
 a far-away target.
 
 ---
@@ -245,7 +252,7 @@ PositionPlant lift = FtcActuators.plant(hardwareMap)
             .nativeUnits()
             .needsReference("lift not homed")
         .positionTolerance(20.0)
-        .targetedByDefaultWritable(0.0)
+        .targetedByCommand(0.0)
         .build();
 ```
 
@@ -272,7 +279,7 @@ PositionPlant lift = FtcActuators.plant(hardwareMap)
             .nativeUnits()
             .needsReference("lift not homed")
         .positionTolerance(20.0)
-        .targetedByDefaultWritable(0.0)
+        .targetedByCommand(0.0)
         .build();
 ```
 
@@ -303,7 +310,7 @@ PositionPlant arm = FtcActuators.plant(hardwareMap)
             .nativeUnits()
             .alreadyReferenced()
         .positionTolerance(20.0)
-        .targetedByDefaultWritable(0.0)
+        .targetedByCommand(0.0)
         .build();
 ```
 
@@ -618,7 +625,7 @@ PositionPlant wrist = FtcActuators.plant(hardwareMap)
         .linear()
             .bounded(0.0, 1.0)
             .nativeUnits()
-        .targetedByDefaultWritable(0.0)
+        .targetedByCommand(0.0)
         .build();
 ```
 
@@ -631,7 +638,7 @@ PositionPlant wrist = FtcActuators.plant(hardwareMap)
         .linear()
             .bounded(-45.0, 90.0)
             .rangeMapsToNative(0.22, 0.76)
-        .targetedByDefaultWritable(0.0)
+        .targetedByCommand(0.0)
         .build();
 ```
 
@@ -656,7 +663,7 @@ PositionPlant turret = FtcActuators.plant(hardwareMap)
             .nativeUnits()
             .needsReference("turret not homed")
         .positionTolerance(8.0)
-        .targetedByDefaultWritable(0.0)
+        .targetedByCommand(0.0)
         .build();
 ```
 
@@ -763,11 +770,11 @@ plant.update(clock);
 
 telemetry.addData("target", plant.getRequestedTarget());
 telemetry.addData("measurement", plant.getMeasurement());
-telemetry.addData("error", plant.getTargetError());
+telemetry.addData("requestedError", plant.getRequestedTargetError());
 telemetry.addData("atTarget", plant.atTarget());
 ```
 
-For `PositionPlant`, `getRequestedTarget()`, `getAppliedTarget()`, `getMeasurement()`, and `getTargetError()` are all in plant units.
+For `PositionPlant`, `getRequestedTarget()`, `getAppliedTarget()`, `getMeasurement()`, and `getRequestedTargetError()` are all in plant units.
 `PositionPlant.positionSource()` is also in plant units. Smart target sources such as
 `PlantTargets.plan()` receive the Plant measurement and range automatically through the Plant target
 context during `update(clock)`.
@@ -808,7 +815,7 @@ Plant shooter = FtcActuators.plant(hardwareMap)
         .bounded(0.0, 2600.0)
         .nativeUnits()
         .velocityTolerance(50.0)
-        .targetedByDefaultWritable(0.0)
+        .targetedByCommand(0.0)
         .build();
 ```
 
@@ -825,7 +832,7 @@ Plant shooter = FtcActuators.plant(hardwareMap)
         .bounded(0.0, 2600.0)
         .nativeUnits()
         .velocityTolerance(50.0)
-        .targetedByDefaultWritable(0.0)
+        .targetedByCommand(0.0)
         .build();
 ```
 
@@ -876,7 +883,7 @@ Plant shooter = FtcActuators.plant(hardwareMap)
         .bounded(0.0, 5000.0)          // plant units: RPM
         .scaleToNative(TICKS_PER_RPM)  // native units: FTC ticks/sec
         .velocityTolerance(75.0)       // plant units: RPM
-        .targetedByDefaultWritable(0.0)
+        .targetedByCommand(0.0)
         .build();
 ```
 
@@ -944,7 +951,7 @@ Plant shooter = FtcActuators.plant(hardwareMap)
         .bounded(0.0, 5000.0)          // plant units: RPM
         .scaleToNative(TICKS_PER_RPM)  // native units: FTC ticks/sec
         .velocityTolerance(75.0)       // plant units: RPM
-        .targetedByDefaultWritable(0.0)
+        .targetedByCommand(0.0)
         .build();
 ```
 

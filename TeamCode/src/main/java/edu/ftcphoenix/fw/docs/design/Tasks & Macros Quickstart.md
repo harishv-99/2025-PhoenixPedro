@@ -292,16 +292,16 @@ For mechanism plants (motors, servos, shooters, arms, etc.), start with `edu.ftc
 The source-driven plant rule is:
 
 ```text
-Task writes the plant's registered ScalarTarget
+Task changes the Plant's command target
     ↓
-Plant samples its final PlantTargetSource each loop
+Plant samples its final PlantTargetSource to select the requested target
     ↓
-Plant target guards protect hardware
+Plant bounds and target guards select the applied target
     ↓
-Plant reports atTarget(requestedValue) when feedback confirms arrival
+Plant sends the actuator command and reports atTarget(requestedValue) when feedback confirms arrival
 ```
 
-`PlantTasks` retrieves the writable target from the `Plant` itself. That is safer than passing a separate `ScalarTarget` into every task: the task cannot accidentally write a different target variable than the one the plant actually follows.
+`PlantTasks` retrieves the command target from the `Plant` itself. That is safer than passing a separate `ScalarTarget` into every task: the task cannot accidentally write a different target variable than the one the Plant's target graph actually follows.
 
 ### 4.1 Guided writes for time-based commands
 
@@ -317,12 +317,12 @@ Task intakePulse = PlantTasks.write(intake)
 
 Behavior:
 
-* At start: write `+1.0` to the plant's registered target.
+* At start: write `+1.0` to the Plant's command target.
 * For `0.7` seconds: keep writing `+1.0`.
 * When time elapses: write `0.0` once and complete.
 
-The `.then(0.0)` also runs if this timed write is cancelled while active. That makes the registered
-request return to zero; the Plant still applies that request on its next update. If the Task is
+The `.then(0.0)` also runs if this timed write is cancelled while active. That makes the command
+target return to zero; the Plant still resolves that request on its next update. If the Task is
 still queued and never started, discarding it has no target side effects.
 
 The `0.7` seconds begin when this task starts. Even if the preceding loop was unusually long, the
@@ -371,11 +371,11 @@ Task spinUp = PlantTasks.move(shooter)
 
 Behavior:
 
-* On start: write the requested target to the plant's registered target.
+* On start: write the requested value to the Plant's command target.
 * Each loop: check `plant.atTarget(SHOOTER_VELOCITY_NATIVE)`.
 * If a behavior overlay, clamp, fallback, or target guard keeps the plant from truly following that value, the task does **not** complete early.
 * If the timeout elapses first, the task completes with `TaskOutcome.TIMEOUT`.
-* If actively cancelled, the registered shooter request changes to `0.0` once.
+* If actively cancelled, the shooter command target changes to `0.0` once.
 
 For readiness that must remain stable for a short period:
 
@@ -390,7 +390,7 @@ Task spinUpStable = PlantTasks.move(shooter)
 
 Every feedback move must choose one cancellation behavior immediately after `.to(...)`:
 
-* `.cancelTo(value)` writes that finite value, in the Plant's units, to its registered target when
+* `.cancelTo(value)` writes that finite value, in the Plant's units, to its command target when
   an active move is cancelled.
 * `.leaveTargetOnCancel()` deliberately leaves the move request unchanged, so motion may continue.
 
