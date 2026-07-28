@@ -138,7 +138,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 51 | API-05 | One beginner drive entry point | Done | Factory-only FTC drive construction, normalized command vocabulary, caller/docs migration, verification, and Android Studio review are complete. |
 | 52 | COMMON-02 | Telemetry commit ownership | Done | Phoenix frame ownership and framework documentation/Javadocs were reviewed and approved on 2026-07-27. |
 | 53 | CHECK-01 | Staged whole-robot system check | Deferred | Meaningful Phoenix thresholds, hazardous-motion confirmation, and physical safe-state evidence require the assembled robot. |
-| 54 | EXAMPLE-01 | Compiling modern starter robot | Proposed | Add a small multi-file reference, not an inheritance framework. |
+| 54 | EXAMPLE-01 | Compiling modern starter robot | Done | User approved the verified starter package; Gate 3 publication is authorized. |
 | 55 | EXAMPLE-03 | Advanced moving-target reference | Proposed | Prove progress-triggered scoring and a bounded moving turret without putting game physics in the framework. |
 | 56 | BOUNDARY-01 | FTC boundary enforcement | Proposed | Fix existing import leaks, then add a focused forbidden-import check. |
 | 57 | DOC-01 | Stale and non-compiling documentation | Proposed | Correct loop/API examples and validate links/examples where practical. |
@@ -7730,7 +7730,177 @@ writer, and explicit lifecycle ownership.
   A generator or base class is unjustified until repeated manual use proves a need.
 - **Completion:** one profile, mechanism, capability family, controls owner, composition root, thin
   TeleOp, and tiny Auto; no vision or season strategy.
-- **Decision record:** _Pending._
+- **Decision record (2026-07-27):** **Ready; canonical example-architecture approval required
+  before implementation.** COMMON-02 is merged. CHECK-01 remains deferred because the assembled
+  robot and hazardous-motion evidence are unavailable, so EXAMPLE-01 is the next actionable item.
+  Gate 1 changed only this tracker; no implementation or documentation code has been changed.
+  - **Confirmed gap and maintained-caller inventory:** all nine numbered framework examples are
+    disabled single-file TeleOps. Example 01 is a 131-line drive lesson, Example 07 is a 206-line
+    nested mechanism lesson, and Example 09 is a 536-line nested layered mechanism; none has a
+    profile, separate controls owner, composition root, shared TeleOp/Auto capability, or Auto.
+    The Beginner's Guide likewise contains one flat, non-compiled skeleton. The Pedro reference is
+    a useful but Auto-only vendor-integration example. Phoenix is the only complete modern
+    TeleOp/Auto graph, and just `PhoenixRobot`, `PhoenixProfile`, `PhoenixTeleOpControls`, and
+    `PhoenixCapabilities` total 2,152 lines before its OpModes, mechanisms, services, vision, and
+    season policy. The gap is therefore a compiling ownership bridge, not another framework
+    abstraction. Legacy `org.firstinspires.ftc.teamcode.robots`, FTC controller samples, stock SDK
+    onboarding, and tester/calibration OpModes are explicitly excluded as architecture sources.
+  - **Alternatives and simplicity comparison:** Markdown-only snippets remain useful explanation
+    but cannot compile-check lifecycle or prevent drift. Another large or nested single file repeats
+    the current OpMode/composition-root collapse. A repository template duplicates an as-yet
+    unproven source distribution path; a generator adds installation, options, and generated-code
+    maintenance before repeated adoption evidence exists. A generic base robot hides construction,
+    loop order, and cleanup behind inherited hooks. A small compiling multi-file package makes each
+    ownership boundary visible, is checked by ordinary Gradle builds, and adds no framework API.
+  - **Chosen package and nouns:** add exactly one independent robot-side package,
+    `edu.ftcphoenix.robots.examples.starter`, containing `StarterProfile` (data-only, deeply copied),
+    `StarterIntake` (the one mode-neutral capability-family interface and status vocabulary),
+    `StarterIntakeMechanism` (one normalized-power Plant and final target/update owner),
+    `StarterTeleOpControls` (bindings plus the final manual `DriveSource`), `StarterRobot` (one
+    `LoopClock`, mode initialization, loop order, telemetry-frame commit, TaskRunner, and idempotent
+    cleanup), disabled thin `StarterTeleOp`, and disabled tiny `StarterAuto`. Normal TeleOp includes
+    the existing direct mecanum entry point; Auto intentionally demonstrates one bounded fresh
+    intake Task through the same capability and adds no route, vision, localization, or season
+    strategy. The power mechanism was selected over an assumed servo pose because zero is a
+    truthful immediate output stop at this seam.
+  - **No redundant capability aggregate:** `StarterIntake` itself is the capability family. A
+    one-member `StarterCapabilities` forwarding aggregate would add a public noun and construction
+    layer without separating any caller dependencies. The guide will say to introduce an aggregate
+    only when a second cohesive family makes that grouping useful. Likewise there is no presenter,
+    supervisor, service, Auto-routine class, base OpMode, template, or generator for a behavior that
+    does not need one. Two or three required status rows remain explicit at the frame-owning root;
+    any optional `DebugSink` dump would be pull-selected there, and that root alone calls
+    `Telemetry.update()` once per active loop. The guide gives growth triggers for extracting a
+    presenter without dumping every object's diagnostics every frame.
+  - **Ordinary student-facing call sites:** TeleOp controls depend only on the shared semantic
+    family, for example
+    `bindings.onRise(driver.a(), () -> intake.setMode(StarterIntake.Mode.COLLECT))` and
+    `bindings.onRise(driver.x(), () -> intake.setMode(StarterIntake.Mode.STOPPED))`. The tiny Auto
+    uses the same object with
+    `robot.installAutoRoutine(robot.intake().collectForSeconds(0.75))`. Both OpModes otherwise only
+    construct the root, choose `initTeleOp(gamepad1)` or `initAuto()`, forward
+    `start(getRuntime())`, call the same `update(getRuntime())`, and call `stop()`. The starter does
+    not wrap or pass an unused second gamepad.
+  - **Framework API and construction-path audit:** the configured FTC drive path is the existing
+    `FtcDrives.mecanum(hardwareMap, profile.drive)`; its zero-config overload and direct
+    `MecanumDrivebase(PowerOutput...)` HAL/test seam have distinct uses. The mechanism uses the
+    existing staged `FtcActuators.plant(hardwareMap).motor(...).power()
+    .targetedByCommand(0.0).build()` path; lower `Plants`/mapped factories remain distinct
+    hardware-neutral layers. Its bounded behavior uses the provenance-safe guided
+    `PlantTasks.write(plant).to(...).forSeconds(...).then(0.0).build()` path so normal completion and
+    active cancellation restore the stopped request; compact Plant-task aliases and
+    `ScalarTasks.write(...)` remain distinct convenience/standalone-target paths. `Tasks`,
+    `TaskRunner`, `LoopClock`, `Bindings`, the one-driver `GamepadDevice`, and
+    `GamepadDriveSource` already provide every other needed factory/lifecycle. No framework
+    construction layer, declared return type, or runtime behavior changes.
+  - **Fail-closed physical-configuration boundary:** the repository will not publish guessed motor
+    names, directions, or intake powers, even behind `@Disabled`. `StarterProfile.current()` remains
+    explicitly configuration-blocked with unset/sentinel physical fields and a false hardware-review
+    acknowledgement. `StarterRobot` validates the complete copied, mode-required snapshot and
+    throws one actionable error before any `HardwareMap` lookup or output when it is incomplete.
+    Auto therefore requires only the intake facts it owns, while TeleOp additionally requires the
+    drivetrain. The guide identifies the one method/config section an adopting team fills and
+    states that flipping the acknowledgement records review but does not prove wiring, directions,
+    or power safety. It will not reuse Phoenix season values or create a second Phoenix
+    configuration authority.
+  - **Lifecycle and Framework Principles check:** the root advances exactly one clock once per
+    active cycle. TeleOp order is clock, controls/bindings, final direct-drive write, intake Plant,
+    required status, one telemetry commit. Auto order is clock, TaskRunner, intake Plant, required
+    status, one commit. Tasks are fresh and non-blocking; the timed intake target is observable by
+    the downstream Plant phase and cancellation requests zero. Total stop attempts runner
+    cancellation, a best-effort intake zero/Plant stop attempt, and drive stop exactly once through
+    `CleanupActions`, while root-owned construction, start, and active-loop failures fail-stop the
+    owned graph. Controls never see a Plant, OpModes never write targets, and the mechanism remains
+    the only final Plant source/update owner.
+  - **Documentation scope:** add `fw/docs/examples/Modern Starter Robot.md` as the canonical
+    walkthrough and file/edit map. Link it from the docs hub, examples hub, Beginner's Guide,
+    Framework Lanes guide, Robot Capabilities guide, and the examples progression. Keep Examples
+    01-09 as the concept progression, but describe Example 09 truthfully as the copyable
+    *mechanism-layering* example rather than a complete robot architecture. Do not fold unrelated
+    stale Pedro line counts or the Example 08 ownership issue into this item; they remain DOC-01
+    evidence.
+  - **Verification and evidence gate:** add focused fake/HAL tests for profile-copy isolation and
+    configuration blocking before lookup; controls-to-capability mappings; intake modes, fresh timed
+    Tasks, completion/cancellation zero, and stop; root one-shot/cross-mode lifecycle, exact phase
+    order, one clock advance and telemetry commit, failure cleanup, and repeated stop. Run those
+    tests, the full `:TeamCode:testDebugUnitTest` suite, `:TeamCode:compileDebugJavaWithJavac`,
+    forbidden-pattern/caller scans, Markdown link/fence checks, whitespace checks, and
+    `git diff --check`. Architecture, cancellation, and seam-level zero are software-verifiable, so
+    no physical evidence gate blocks implementation. An adopting robot must still validate all
+    configured names, directions, drivetrain behavior, and mechanism power on hardware before
+    enabling either OpMode.
+  - **Approval gate:** approve with `Approve EXAMPLE-01 starter package design`. This authorizes
+    Gate 2 implementation of this package, its focused tests, and synchronized documentation only;
+    it does not authorize a new framework API, template/generator/base class, Phoenix-season
+    dependency, or the next tracker item.
+  - **Design approval (2026-07-27):** the user replied
+    `Approve EXAMPLE-01 starter package design` and emphasized that robot-code simplicity is the
+    primary principle because this is a simple starter bot. EXAMPLE-01 is **In progress** on
+    `codex/example-01-modern-starter-robot`, based on refreshed `origin/master` at
+    `50adafea80d6a3889e1d25f282805d96fdd84687`. This authorizes Gate 2 implementation only; every
+    extra public noun, lifecycle branch, test seam, and documentation concept must justify itself
+    against the ordinary student call sites, and Android Studio review remains required before
+    staging or publication.
+  - **Gate 2 implementation (2026-07-27):** added exactly the approved seven-file robot package:
+    `StarterProfile`, `StarterIntake`, package-private `StarterIntakeMechanism`, package-private
+    `StarterTeleOpControls`, `StarterRobot`, disabled `StarterTeleOp`, and disabled `StarterAuto`.
+    No reusable framework source or runtime behavior changed. The root owns one clock, one
+    telemetry commit, one mode-selected loop, and best-effort cleanup; TeleOp and Auto share the
+    semantic intake capability and the tiny Auto installs one fresh 0.75-second collect Task.
+  - **Primary simplicity audit:** the final ordinary path uses only the one driver the example
+    needs (`initTeleOp(gamepad1)`) and one mode-neutral `update(runtimeSec)` after initialization.
+    `StarterIntake.Status` carries only semantic mode and cached applied target. Removed an unused
+    binding-clear branch, redundant start-attempt flag, speculative mechanism `debugDump(...)`, raw
+    requested-power status, unused second-gamepad wrapper, duplicated public mode-update methods,
+    and the boolean telemetry-mode argument. Retained only the package-private Plant constructor
+    that enables focused hardware-neutral tests. There is still no capability aggregate,
+    presenter, supervisor, service, routine class, base class, template, generator, or Phoenix
+    season dependency.
+  - **Configuration and telemetry truthfulness:** `StarterProfile.current()` contains one visible,
+    deliberately blocked edit section. The root takes a defensive raw snapshot so Auto can ignore
+    irrelevant drive facts, then performs mode-specific finite/range/name/direction/collision checks
+    before lookup. Intake action powers must be finite, nonzero, bounded, and distinct at both the
+    profile and hardware-neutral construction seams. Required telemetry is limited to
+    `intake.mode` plus `intake.appliedTargetPower`, with `auto.idle` only in Auto; the guide and
+    Javadocs identify the power value as the Plant's cached final applied target, not hardware
+    readback or physical proof.
+  - **Focused regression evidence:** added
+    `StarterIntakeAndControlsTest` and `StarterProfileAndRobotTest`; the final focused result is 2
+    suites / 12 tests / 0 failures / 0 errors / 0 skipped. Coverage includes A/B/X semantic
+    bindings, mode-to-target mapping, fresh timed Tasks, own-start-boundary timing, completion and
+    cancellation zero, cleanup continuation after a retained-target failure, invalid power seams,
+    defensive copy isolation, configuration failure before lookup, intake-only Auto validation,
+    one-shot lifecycle, one clock advance per root update, exact TeleOp and Auto phase/commit order,
+    runner cancellation before intake zero, telemetry keys/values, active-loop fail-stop, and
+    repeated stop.
+  - **Documentation synchronization:** added
+    `fw/docs/examples/Modern Starter Robot.md` and linked it from the docs hub, examples hub,
+    Beginner's Guide, Framework Lanes guide, Robot Capabilities guide, and examples progression.
+    The guide shows the exact profile edit block, one-driver/unified-loop call sites, capability
+    path, TeleOp/Auto loop order, deliberately small telemetry policy, cleanup contract, growth
+    triggers, and hardware-validation limits. Example 09 is now described as a mechanism-layering
+    example rather than a complete robot architecture.
+  - **Final automated verification (2026-07-27):** with Android Studio JBR,
+    `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` completed successfully. XML
+    evidence reports 106 suites / 989 tests / 0 failures / 0 errors / 0 skipped, including the 12
+    focused starter tests. Existing Java 21/source-8 deprecation warnings remain the only build
+    warnings. Affected Markdown reports 7 files / 0 missing local links / 0 odd fence counts;
+    affected files have 0 trailing-whitespace findings; `git diff --check` passes. Static scans find
+    exactly one `telemetry.update()` in the root and no starter-package sleep, busy loop, Phoenix
+    noun, presenter, aggregate, supervisor/service/base/generator/template, `DebugSink`, or unused
+    `Gamepads` path.
+  - **Independent review evidence:** a final Framework-Principles/lifecycle adversarial review found
+    no actionable defect; a student-facing API/simplicity review found no remaining complexity after
+    the parameterless telemetry-frame cleanup; and a source/docs/tests synchronization audit is
+    clean after removing its sole unused import finding.
+  - **Hardware evidence boundary and Android Studio gate:** software verifies construction order,
+    ownership, lifecycle, Task/Plant timing, output-seam zero attempts, and telemetry framing. It
+    cannot prove FTC configuration names, motor directions, traction, mechanism polarity/power,
+    physical stop latency, or clear-space safety. Both OpModes remain disabled.
+  - **Manual verification and final approval (2026-07-28):** after reviewing the seven starter
+    production files, two focused test files, and `Modern Starter Robot.md`, the user replied
+    `EXAMPLE-01 looks good`. EXAMPLE-01 is **Done**, and Gate 3 commit, publication, and merge are
+    authorized. This approval does not start EXAMPLE-02.
 
 ### EXAMPLE-02 - Compiling Pedro autonomous reference
 

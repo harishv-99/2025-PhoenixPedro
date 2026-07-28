@@ -3,8 +3,9 @@
 Use this section when you want concrete, runnable framework examples plus the design reasoning
 behind them.
 
-The examples folder now has four complementary docs:
+The examples folder now has five complementary docs:
 
+- a complete modern starter robot shared by TeleOp and Auto,
 - a progression guide for the full `TeleOp_01` → `TeleOp_09` sequence,
 - a dedicated walkthrough for the first explicit layered mechanism example,
 - a shooter-focused case study for the AprilTag aim-assist examples,
@@ -12,11 +13,12 @@ The examples folder now has four complementary docs:
 
 ## Read in this order
 
-1. [`Examples Progression & Layered Mechanisms.md`](<Examples Progression & Layered Mechanisms.md>)
-2. [`Layered Shooter Example.md`](<Layered Shooter Example.md>)
-3. [`Shooter Case Study & Examples Walkthrough.md`](<Shooter Case Study & Examples Walkthrough.md>)
-4. [`Pedro Autonomous Reference.md`](<Pedro Autonomous Reference.md>)
-5. [`../../tools/examples/`](<../../tools/examples/>)
+1. [`Modern Starter Robot.md`](<Modern Starter Robot.md>)
+2. [`Examples Progression & Layered Mechanisms.md`](<Examples Progression & Layered Mechanisms.md>)
+3. [`Layered Shooter Example.md`](<Layered Shooter Example.md>)
+4. [`Shooter Case Study & Examples Walkthrough.md`](<Shooter Case Study & Examples Walkthrough.md>)
+5. [`Pedro Autonomous Reference.md`](<Pedro Autonomous Reference.md>)
+6. [`../../tools/examples/`](<../../tools/examples/>)
 
 [`CustomVisionOwnershipExample.java`](../../tools/examples/CustomVisionOwnershipExample.java) in
 that source folder shows the advanced ownership pattern:
