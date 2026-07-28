@@ -2,6 +2,10 @@
 
 This guide explains how the runnable framework examples fit together as one learning sequence.
 
+These numbered files are concept lessons, not a complete robot package. After learning the loop and
+mechanism patterns here, use [`Modern Starter Robot`](<Modern Starter Robot.md>) for the compiling
+profile/capability/controls/composition-root shape shared by TeleOp and Auto.
+
 The short version is:
 
 - `TeleOp_01` through `TeleOp_04` are the beginner ramp,
@@ -193,7 +197,8 @@ details in the realization layer instead of scattering them through the OpMode.
 
 ## 5. Example 09: explicit requests, behavior, and realization
 
-`TeleOp_09_LayeredShooterMechanism` is the copyable architecture example.
+`TeleOp_09_LayeredShooterMechanism` is the copyable mechanism-layering example. It intentionally
+keeps all of its roles nested in one TeleOp; it is not the complete robot architecture reference.
 
 It deliberately combines the three common request shapes in one mechanism owner:
 
@@ -265,11 +270,15 @@ If you are new to the framework:
 2. skim `TeleOp_03` and `TeleOp_04`,
 3. read the shooter case study for `TeleOp_05` and `TeleOp_06`,
 4. then study `TeleOp_07`, `TeleOp_08`, and `TeleOp_09` as the bridge to real robot
-   architecture.
+   architecture,
+5. then read [`Modern Starter Robot`](<Modern Starter Robot.md>) to see those ideas placed in a
+   compiling TeleOp/Auto robot package.
 
 If you are already comfortable with the basics and want the architectural takeaways quickly:
 
 1. read `TeleOp_07_SupervisorPoseMechanism`,
 2. read `TeleOp_08_LiftExternalSensorControl`,
 3. then read `TeleOp_09_LayeredShooterMechanism` and
-   [`Layered Shooter Example.md`](<Layered Shooter Example.md>).
+   [`Layered Shooter Example.md`](<Layered Shooter Example.md>),
+4. then read [`Modern Starter Robot`](<Modern Starter Robot.md>) for the whole-robot ownership
+   boundary.

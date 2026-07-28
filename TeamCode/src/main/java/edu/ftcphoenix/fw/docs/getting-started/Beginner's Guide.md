@@ -11,6 +11,11 @@ This guide is a gentle introduction to the Phoenix framework. It focuses on:
 If you’re new, you don’t need to know how everything works inside.
 The goal is: **get a clean, non‑blocking TeleOp running quickly**.
 
+When you are ready to split that first loop into real robot-owned files, use the compiling
+[`Modern Starter Robot`](<../examples/Modern Starter Robot.md>). It is the smallest checked-in
+reference that gives TeleOp and Auto the same capability vocabulary without hiding lifecycle in a
+base class.
+
 ---
 
 ## Where to look in the framework
@@ -173,6 +178,12 @@ public class PhoenixTeleOp extends OpMode {
 Keep this loop shape in mind:
 
 > **Clock → Inputs → Bindings → Tasks → Drive → Plants → Telemetry**
+
+This skeleton intentionally keeps every concern in one OpMode while introducing the framework.
+Do not grow it into a competition robot by continuing to add fields. The
+[`Modern Starter Robot`](<../examples/Modern Starter Robot.md>) shows the next step as seven small,
+compiling owners: profile, capability, mechanism realization, controls, composition root, TeleOp,
+and Auto.
 
 In ordinary TeleOp, Tasks make decisions, update sources, or request Plant targets. The Drive phase
 then samples the one final composed `DriveSource` and writes the drivebase. Do not also use an
@@ -663,6 +674,8 @@ public construction path merely to give the same composition a different class n
 
 Next steps:
 
+* Read [`Modern Starter Robot`](<../examples/Modern Starter Robot.md>) for the smallest compiling
+  composition root shared by TeleOp and Auto.
 * Read [`Recommended Robot Design`](<../design/Recommended Robot Design.md>) for the shared TeleOp + Auto interaction model.
 * Read [`Tasks & Macros Quickstart`](<../design/Tasks & Macros Quickstart.md>) for deeper task patterns.
 * Read [`Examples Progression & Layered Mechanisms`](<../examples/Examples Progression & Layered Mechanisms.md>) for the full examples roadmap, especially Examples 07-09, with Example 09 as the first explicit request/behavior/realization example.

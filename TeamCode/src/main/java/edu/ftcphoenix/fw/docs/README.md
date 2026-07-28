@@ -11,9 +11,10 @@ If you are new to Phoenix, read in this order:
 1. [`getting-started/README.md`](<getting-started/README.md>)
 2. [`getting-started/Framework Overview.md`](<getting-started/Framework Overview.md>)
 3. [`getting-started/Beginner's Guide.md`](<getting-started/Beginner's Guide.md>)
-4. [`design/Framework Lanes & Robot Controls.md`](<design/Framework Lanes & Robot Controls.md>)
-5. [`core-concepts/Loop Structure.md`](<core-concepts/Loop Structure.md>)
-6. [`design/Tasks & Macros Quickstart.md`](<design/Tasks & Macros Quickstart.md>)
+4. [`examples/Modern Starter Robot.md`](<examples/Modern Starter Robot.md>)
+5. [`design/Framework Lanes & Robot Controls.md`](<design/Framework Lanes & Robot Controls.md>)
+6. [`core-concepts/Loop Structure.md`](<core-concepts/Loop Structure.md>)
+7. [`design/Tasks & Macros Quickstart.md`](<design/Tasks & Macros Quickstart.md>)
 
 ## Reading paths by goal
 
@@ -22,6 +23,7 @@ If you are new to Phoenix, read in this order:
 - [`getting-started/README.md`](<getting-started/README.md>)
 - [`getting-started/Framework Overview.md`](<getting-started/Framework Overview.md>)
 - [`getting-started/Beginner's Guide.md`](<getting-started/Beginner's Guide.md>)
+- [`examples/Modern Starter Robot.md`](<examples/Modern Starter Robot.md>)
 - [`design/Framework Lanes & Robot Controls.md`](<design/Framework Lanes & Robot Controls.md>)
 - [`design/Tasks & Macros Quickstart.md`](<design/Tasks & Macros Quickstart.md>)
 
@@ -31,6 +33,7 @@ If you are new to Phoenix, read in this order:
 - [`design/Framework Lanes & Robot Controls.md`](<design/Framework Lanes & Robot Controls.md>)
 - [`design/Robot Capabilities & Mode Clients.md`](<design/Robot Capabilities & Mode Clients.md>)
 - [`design/Recommended Robot Design.md`](<design/Recommended Robot Design.md>)
+- [`examples/Modern Starter Robot.md`](<examples/Modern Starter Robot.md>)
 - [`design/Supervisors & Pipelines.md`](<design/Supervisors & Pipelines.md>)
 - [`design/Output Tasks & Queues.md`](<design/Output Tasks & Queues.md>)
 - [`ftc-boundary/FTC Auto-to-TeleOp Handoff.md`](<ftc-boundary/FTC Auto-to-TeleOp Handoff.md>)
@@ -67,6 +70,7 @@ If you are new to Phoenix, read in this order:
 ### I want a concrete end-to-end example
 
 - [`examples/README.md`](<examples/README.md>)
+- [`examples/Modern Starter Robot.md`](<examples/Modern Starter Robot.md>)
 - [`examples/Examples Progression & Layered Mechanisms.md`](<examples/Examples Progression & Layered Mechanisms.md>)
 - [`examples/Layered Shooter Example.md`](<examples/Layered Shooter Example.md>)
 - [`examples/Shooter Case Study & Examples Walkthrough.md`](<examples/Shooter Case Study & Examples Walkthrough.md>)
