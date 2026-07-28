@@ -25,11 +25,11 @@ import java.util.Locale;
  * <ul>
  *   <li>Core packages (e.g., {@code fw.drive}, {@code fw.sensing}) only know
  *       about {@code DebugSink}.</li>
- *   <li>Adapter code (e.g., {@code fw.adapters.ftc}) wraps FTC
+ *   <li>Adapter code (e.g., {@code edu.ftcphoenix.fw.ftc}) wraps FTC
  *       {@code Telemetry} or other backends in a {@code DebugSink}
  *       implementation.</li>
- *   <li>Subsystems and robots decide when to call {@code debugDump(...)}
- *       methods that accept a {@code DebugSink}.</li>
+ *   <li>The composition root decides whether to call a selected
+ *       {@code debugDump(...)} method and supplies the sink.</li>
  * </ul>
  *
  * <p>
@@ -61,33 +61,53 @@ import java.util.Locale;
  *     }
  *
  *     @Override
- *     public DebugSink kv(String key, Object value) {
+ *     public DebugSink addData(String key, Object value) {
  *         telemetry.addData(key, value);
  *         return this;
  *     }
  *
  *     @Override
- *     public DebugSink line(String text) {
+ *     public DebugSink addLine(String text) {
  *         telemetry.addLine(text);
  *         return this;
  *     }
  * }
  * }</pre>
  *
- * <h3>3. In a TeleOp shell or PhoenixRobot</h3>
+ * <h3>3. In a composition root</h3>
  *
  * <pre>{@code
- * DebugSink dbg = new FtcTelemetryDebugSink(telemetry);
+ * DebugSink dbg = new FtcTelemetryDebugSink(telemetry); // retain this adapter
  *
- * stickDrive.debugDump(dbg, "drive.sticks");
- * drivebase.debugDump(dbg, "drive.base");
+ * requiredTelemetry.emitTeleOp(status); // additive; does not commit
+ * if (debugDrive) {
+ *     stickDrive.debugDump(dbg, "drive.sticks");
+ * }
  *
- * telemetry.update();
+ * telemetry.update(); // the complete-frame owner commits once
  * }</pre>
  *
  * <p>
  * In unit tests, you can provide a different implementation that writes to
  * logs or captures entries in memory for assertions.
+ * </p>
+ *
+ * <p>
+ * This interface is deliberately output-only. It does not select diagnostic
+ * topics, clear output, define a frame boundary, filter keys, or commit a
+ * backend. Select diagnostics at the call site so disabled output also avoids
+ * traversing and formatting an entire object graph. Driver-facing status,
+ * warnings, and other telemetry required for normal operation must use an
+ * always-on presentation path instead of depending on a debug dump.
+ * </p>
+ *
+ * <p>
+ * A debug producer should prefer cached or already-published state. Producing
+ * diagnostics must not update behavior, sample a Source, advance a filter, or
+ * perform blocking or expensive acquisition. A boundary owner may perform a
+ * documented cheap, side-effect-free status read when its backend does not
+ * publish that status separately, provided the read neither advances robot
+ * behavior nor acquires a new result.
  * </p>
  */
 public interface DebugSink {

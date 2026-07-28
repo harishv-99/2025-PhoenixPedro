@@ -146,8 +146,10 @@ use them instead of touching `ScoringPath` or `ScoringTargeting` directly.
   driver and Phoenix's one installed Auto root
 - retained installed Auto root: the single routine selected before FTC START and the source of
   active or terminal routine telemetry; Phoenix does not expose queue scheduling or runner access
-- `PhoenixTelemetryPresenter`: driver-facing presentation from snapshots
-- `PhoenixRobot`: composition root and loop owner
+- `PhoenixTelemetryPresenter`: additive driver-facing presentation from snapshots; it neither
+  clears nor commits telemetry
+- `PhoenixRobot`: composition root, loop owner, and complete-frame owner during active TeleOp and
+  Auto loops
 
 ## Why Phoenix uses capability families
 
@@ -567,8 +569,9 @@ Pedro debug telemetry is composed into the same frame as Phoenix Auto telemetry.
 `auto.readiness`, route maturity, `auto.expectedPhysicalStartPedro` in explicit Pedro field
 coordinates, actionable issues, `auto.spec`,
 `auto.paths`, Pedro pose/busy rows, and the backend-neutral `route.status` before
-`PhoenixRobot.updateAuto()` calls the Auto telemetry presenter, so the Driver Station sees one
-coherent Auto status page per loop. The installed root is retained after completion, so its dynamic
+`PhoenixRobot.updateAuto()` calls the additive Auto telemetry presenter and commits the completed
+frame once, so the Driver Station sees one coherent Auto status page per loop. The installed root
+is retained after completion, so its dynamic
 Task name and outcome continue to identify normal pre-park work, local degradation, match-time
 cutoff, suppressed park, active park, or the terminal park result even after the adapter's mutable
 latest-route row changes.
@@ -583,6 +586,28 @@ active child, clears the Auto root's transient/feed and held intake/shoot/eject/
 through `PhoenixCapabilities`, and applies immediate drive zero through the retained sink. It
 attempts every safety action and does not release the park continuation after failed cleanup. This
 is robot-owned match policy, not a callback added to generic `Tasks` or an imperative Plant write.
+
+## Telemetry frame ownership
+
+`PhoenixTelemetryPresenter` formats Phoenix-specific snapshots. It is not a framework presenter and
+does not own the FTC telemetry lifecycle: its emit methods add Phoenix's currently always-on rows to
+the current frame. During active TeleOp and Auto loops, `PhoenixRobot` is the complete-frame owner.
+It invokes the presenter after state updates, includes any rows already added by the outer Auto host,
+adds any selected optional diagnostics, and calls `telemetry.update()` exactly once.
+
+The outer OpModes remain complete-frame owners when the active robot loop cannot run. They may clear
+and commit their own INIT selector, readiness, construction-error, or start-error page. Ownership is
+therefore defined by the frame boundary rather than by declaring that one class must commit every
+FTC lifecycle page.
+
+Optional internal diagnostics use the framework's pull-based `DebugSink` seam. Phoenix selects a
+specific top-level dump at its composition-root call site and skips that call when the diagnostic is
+disabled. Individual state owners do not emit automatically, and the sink does not choose topics,
+filter keys, clear telemetry, or commit it. Required mode, safety, remediation, and high-level status
+remain on the always-on presenter or outer-OpMode path. The presenter currently also includes
+detailed mechanism, targeting, and pose rows; deciding which of those move behind optional topics is
+deferred telemetry curation. This contract changes frame ownership only and does not remove or
+reclassify any current Phoenix row.
 
 ## Loop phase diagnostics
 
@@ -630,6 +655,7 @@ Phoenix keeps loop order explicit inside `PhoenixRobot.updateTeleOp()`:
 6. driveAssists.update(clock, scoringStatus)
 7. drive.drive(...)
 8. telemetryPresenter.emitTeleOp(...snapshots...)
+9. telemetry.update()
 ```
 
 That order reflects ownership:
@@ -650,6 +676,7 @@ Phoenix keeps `updateAuto()` just as explicit:
 5. autoRoutineLifecycle.update(clock)
 6. scoringPath.update(clock)
 7. telemetryPresenter.emitAuto(...with Auto task, vision, and scoring snapshots...)
+8. telemetry.update()
 ```
 
 Auto uses the same scoring path and targeting service, but swaps TeleOp drive-assist policy for the

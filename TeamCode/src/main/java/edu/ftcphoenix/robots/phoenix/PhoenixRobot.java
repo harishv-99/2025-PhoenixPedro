@@ -47,7 +47,8 @@ import edu.ftcphoenix.fw.task.TaskRunner;
  *   <li>The Auto {@link DriveCommandSink} and {@link MotionPredictor} stay vendor-neutral while
  *       Phoenix owns loop order and drive shutdown lifecycle.</li>
  *   <li>{@link ScoringPath} owns scoring policy, final target-source composition, and scoring-path Plant update order.</li>
- *   <li>{@link PhoenixTelemetryPresenter} owns driver-facing telemetry formatting.</li>
+ *   <li>{@link PhoenixTelemetryPresenter} owns additive driver-facing telemetry formatting, while
+ *       this composition root commits each complete active-loop telemetry frame.</li>
  * </ul>
  */
 public final class PhoenixRobot {
@@ -379,8 +380,9 @@ public final class PhoenixRobot {
      * <p>
      * Loop order is intentionally explicit: vision component readiness, localization lane,
      * targeting, controls, scoring path, drive-assist service, drivebase, then telemetry
-     * presentation. When the private loop-phase diagnostic is enabled, it observes those same
-     * boundaries and stages the preceding completed sample before the one telemetry commit.
+     * presentation and one complete-frame telemetry commit. When the private loop-phase diagnostic
+     * is enabled, it observes those same boundaries and stages the preceding completed sample
+     * before that commit. Callers must not perform a second commit for the same active loop.
      * </p>
      */
     public void updateTeleOp() {
@@ -426,7 +428,9 @@ public final class PhoenixRobot {
         PoseEstimate odomPose = localization.predictor().getEstimate();
         loopPhaseProfiler.finishPhase("snapshots");
 
-        loopPhaseProfiler.debugDump(loopPhaseDebugSink, "loopProfile");
+        if (ENABLE_LOOP_PHASE_PROFILING) {
+            loopPhaseProfiler.debugDump(loopPhaseDebugSink, "loopProfile");
+        }
         telemetryPresenter.emitTeleOp(
                 scoringStatus,
                 targetingStatus,
@@ -436,6 +440,7 @@ public final class PhoenixRobot {
                 globalPose,
                 odomPose
         );
+        telemetry.update();
         loopPhaseProfiler.finishPhase("telemetry");
         loopPhaseProfiler.finishCycle(clock);
     }
@@ -445,8 +450,11 @@ public final class PhoenixRobot {
      *
      * <p>Loop order is explicit and matches Phoenix ownership boundaries: vision component
      * readiness, localization, targeting, the continuously owned external drive heartbeat, the
-     * installed autonomous root, the scoring path, and finally telemetry. Optional loop-phase
-     * diagnostics observe those same boundaries and never supply behavior timing.</p>
+     * installed autonomous root, the scoring path, and finally one complete-frame telemetry
+     * commit. The Auto OpMode may stage readiness and Pedro sidecar rows before this method; they
+     * are committed with the Phoenix rows. Optional loop-phase diagnostics observe the same
+     * boundaries and never supply behavior timing. Callers must not perform a second commit for
+     * the same active loop.</p>
      */
     public void updateAuto() {
         if (vision == null
@@ -484,7 +492,9 @@ public final class PhoenixRobot {
         PoseEstimate odomPose = localization.predictor().getEstimate();
         loopPhaseProfiler.finishPhase("snapshots");
 
-        loopPhaseProfiler.debugDump(loopPhaseDebugSink, "loopProfile");
+        if (ENABLE_LOOP_PHASE_PROFILING) {
+            loopPhaseProfiler.debugDump(loopPhaseDebugSink, "loopProfile");
+        }
         telemetryPresenter.emitAuto(
                 scoringStatus,
                 targetingStatus,
@@ -493,6 +503,7 @@ public final class PhoenixRobot {
                 globalPose,
                 odomPose
         );
+        telemetry.update();
         loopPhaseProfiler.finishPhase("telemetry");
         loopPhaseProfiler.finishCycle(clock);
     }

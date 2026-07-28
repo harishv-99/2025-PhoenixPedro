@@ -87,66 +87,79 @@ public final class PhoenixPedroAutoSelectorOpMode extends PhoenixPedroAutoOpMode
      */
     @Override
     public void init_loop() {
-        uiClock.update(getRuntime());
-        if (bindings != null) {
-            bindings.update(uiClock);
+        try {
+            uiClock.update(getRuntime());
+            if (bindings != null) {
+                bindings.update(uiClock);
+            }
+            renderInitUi();
+        } catch (RuntimeException frameFailure) {
+            // Confirmation happens inside binding dispatch. If it acquired a runtime and any later
+            // callback or rendering step fails, this lifecycle boundary must release that graph.
+            throw failPendingAutoTelemetryFrame(frameFailure);
         }
-        renderInitUi();
     }
 
     /**
-     * If the operator pressed START without confirming, build the current default/partial spec.
+     * If the operator pressed START without confirming, freeze the current default/partial spec.
+     *
+     * <p>The shared base performs any late construction, including an ordinary confirmation-failure
+     * retry, and owns the resulting one complete START boundary frame.</p>
      */
     @Override
     public void start() {
         if (!isAutoInitialized()) {
             selectedSpec = autoSpec();
-            initializeRobotForSpec(selectedSpec);
         }
         super.start();
     }
 
     private void renderInitUi() {
-        if (navigator != null) {
-            navigator.render(telemetry);
-        }
+        try {
+            if (navigator != null) {
+                navigator.render(telemetry);
+            }
 
-        PhoenixAutoSpec previewSpec = builder.build();
-        PhoenixPedroPathFactory.RouteAvailability previewAvailability =
-                PhoenixPedroPathFactory.routeAvailabilityFor(previewSpec);
-        PhoenixReadiness.Result previewReadiness = PhoenixReadiness.pedroAuto(
-                previewSpec,
-                PhoenixProfile.current(),
-                PhoenixReadiness.AutoPurpose.MATCH_AUTO
-        );
-        boolean showRetainedAttempt = cleanupFailureBlocksRetry()
-                || (selectedSpec != null && sameSpec(activeSpecOrNull(), selectedSpec));
-        PhoenixReadiness.Result displayedReadiness = showRetainedAttempt
-                && readinessOrNull() != null ? readinessOrNull() : previewReadiness;
+            PhoenixAutoSpec previewSpec = builder.build();
+            PhoenixPedroPathFactory.RouteAvailability previewAvailability =
+                    PhoenixPedroPathFactory.routeAvailabilityFor(previewSpec);
+            PhoenixReadiness.Result previewReadiness = PhoenixReadiness.pedroAuto(
+                    previewSpec,
+                    PhoenixProfile.current(),
+                    PhoenixReadiness.AutoPurpose.MATCH_AUTO
+            );
+            boolean showRetainedAttempt = cleanupFailureBlocksRetry()
+                    || (selectedSpec != null && sameSpec(activeSpecOrNull(), selectedSpec));
+            PhoenixReadiness.Result displayedReadiness = showRetainedAttempt
+                    && readinessOrNull() != null ? readinessOrNull() : previewReadiness;
 
-        telemetry.addLine("");
-        telemetry.addData("Current", previewSpec.summary());
-        if (selectedSpec != null) {
-            telemetry.addData("Confirmed", selectedSpec.summary());
-        }
-        if (isAutoInitialized()) {
-            telemetry.addLine("Status: [READY] Phoenix Auto initialized. Press START when ready.");
-        } else if (showRetainedAttempt && initErrorOrNull() != null) {
-            telemetry.addLine("Status: [ERROR] " + initErrorOrNull());
-        } else if (!displayedReadiness.isAllowed()) {
-            PhoenixReadiness.Issue blocker = displayedReadiness.firstBlockingIssueOrNull();
-            telemetry.addLine("Status: [BLOCKED] " + blocker.message());
-            telemetry.addLine("Fix: " + blocker.remediation());
-        } else {
-            telemetry.addLine("Status: Choose values, then confirm before START. START will use the current values.");
-        }
+            telemetry.addLine("");
+            telemetry.addData("Current", previewSpec.summary());
+            if (selectedSpec != null) {
+                telemetry.addData("Confirmed", selectedSpec.summary());
+            }
+            if (isAutoInitialized()) {
+                telemetry.addLine("Status: [READY] Phoenix Auto initialized. Press START when ready.");
+            } else if (showRetainedAttempt && initErrorOrNull() != null) {
+                telemetry.addLine("Status: [ERROR] " + initErrorOrNull());
+            } else if (!displayedReadiness.isAllowed()) {
+                PhoenixReadiness.Issue blocker = displayedReadiness.firstBlockingIssueOrNull();
+                telemetry.addLine("Status: [BLOCKED] " + blocker.message());
+                telemetry.addLine("Fix: " + blocker.remediation());
+            } else {
+                telemetry.addLine("Status: Choose values, then confirm before START. START will use the current values.");
+            }
 
-        if (showRetainedAttempt) {
-            emitAutoReadinessTelemetry();
-        } else {
-            emitAutoReadinessTelemetry(previewSpec, previewAvailability, previewReadiness);
+            if (showRetainedAttempt) {
+                emitAutoReadinessTelemetry();
+            } else {
+                emitAutoReadinessTelemetry(previewSpec, previewAvailability, previewReadiness);
+            }
+            emitInitializedRuntimeTelemetry();
+            commitAutoTelemetryFrame();
+        } catch (RuntimeException frameFailure) {
+            throw failPendingAutoTelemetryFrame(frameFailure);
         }
-        telemetry.update();
     }
 
     private SelectionMenu<PhoenixAutoSpec.Alliance> allianceScreen() {

@@ -370,8 +370,11 @@ public void loop() {
     loopPhases.finishPhase("plants");
 
     // During this cycle, this displays the previous completed cycle.
-    loopPhases.debugDump(debugSink, "loopPhases");
-    telemetry.update();
+    // Select the diagnostic at the call site so the disabled path does no dump work.
+    if (DEBUG_LOOP_PHASES) {
+        loopPhases.debugDump(debugSink, "loopPhases");
+    }
+    telemetry.update(); // the complete-frame owner commits once
     loopPhases.finishPhase("telemetry");
 
     loopPhases.finishCycle(clock);
@@ -435,9 +438,42 @@ Typical pattern:
 
 Telemetry should not control robot behavior.
 
-If you need structured debug output, prefer Phoenix debug sinks:
+Treat one Driver Station update as a composed frame:
+
+1. Required presenters and renderers add the mode, safety, remediation, and high-level status rows
+   drivers need during normal operation.
+2. The composition root may add one or more explicitly selected optional diagnostics.
+3. The owner of that complete frame calls `telemetry.update()` exactly once.
+
+Additive presenters and renderers do not call `clear()`, `clearAll()`, or `update()`. This lets an
+Auto host, route adapter, robot presenter, and diagnostic contributor share one frame without their
+call order accidentally hiding or prematurely committing another contributor's rows. During the
+active robot loop, the composition root normally owns that final commit. An outer OpMode still owns
+and commits frames that do not enter the active loop, such as INIT selection, construction failure,
+or start-error pages. A dedicated tester may likewise commit its exclusive screen when it is the
+complete-frame owner.
+
+If you need structured optional debug output, prefer debug sinks:
 
 * many subsystems expose `debugDump(dbg, prefix)`
+
+`DebugSink` is pull-based and output-only. It does not select topics, filter keys, clear telemetry,
+or commit a frame. Select the relevant top-level owner at the composition-root call site and skip
+the dump entirely when that diagnostic is disabled. This avoids both an unwieldy all-object dump
+and the traversal/formatting work that a no-op sink alone cannot prevent. Required telemetry stays
+on the always-on presenter path rather than depending on `debugDump(...)`.
+
+A dump should normally report cached or already-published state. It must not update behavior,
+sample a Source, advance a filter, or perform blocking or expensive acquisition just to explain the
+robot. An FTC or vendor boundary owner may make a documented cheap, side-effect-free status read
+when the backend exposes no retained equivalent, but that read must not acquire a new result or
+change robot behavior.
+
+The disabled `TeleOp_01` through `TeleOp_06` teaching examples intentionally enable several verbose
+dumps when a student explicitly launches one; they expose the related framework surfaces together
+for exploration. Treat that as tutorial instrumentation, not a match-robot default. Adopted and
+match robot code should default optional topics off and enable only the owner or owners relevant to
+the current investigation.
 
 Use a consistent prefix so logs are easy to scan, for example:
 

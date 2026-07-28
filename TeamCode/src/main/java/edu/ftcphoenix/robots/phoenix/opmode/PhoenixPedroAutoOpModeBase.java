@@ -43,6 +43,10 @@ import edu.ftcphoenix.robots.phoenix.autonomous.pedro.PhoenixPedroPathFactory;
  * Phoenix or Pedro runtime before another spec is built, which keeps selector telemetry, the
  * installed routine, and live hardware owners from drifting apart.</p>
  *
+ * <p>Telemetry render helpers in this base are additive. FTC lifecycle callbacks own INIT, error,
+ * and late-start frame commits, while {@link PhoenixRobot} commits the complete active-loop
+ * frame after the Auto sidecar rows have been staged.</p>
+ *
  * <p>This mode client asks the project factory for the team-specific runtime, then transfers its
  * adapter's recurring update/final-stop lifecycle and its one shared motion predictor to
  * {@link PhoenixRobot#initAuto(DriveCommandSink, MotionPredictor)}. Route geometry and routine
@@ -78,6 +82,8 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
     private boolean startBoundaryReached;
     private boolean autoStartedSuccessfully;
     private boolean stopBoundaryHandled;
+    private boolean firstRuntimeFramePending;
+    private boolean initializationResultFramePending;
 
     /**
      * Return the autonomous setup for static OpModes, or the current selector state.
@@ -114,14 +120,14 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
         stopBoundaryHandled = false;
         if (buildRobotInInit()) {
             initializeRobotForSpec(autoSpec());
+            renderAndCommitAutoLifecycleFrame(true);
         }
     }
 
     /** Keep the selected readiness result and expected physical placement visible during INIT. */
     @Override
     public void init_loop() {
-        emitAutoReadinessTelemetry();
-        telemetry.update();
+        renderAndCommitAutoLifecycleFrame(false);
     }
 
     /**
@@ -134,13 +140,13 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
         final double startRuntimeSec = getRuntime();
         startBoundaryReached = true;
         if (!isAutoInitialized()
-                && initFailure == null
+                && unrecoveredCleanupFailure == null
+                && (initFailure == null || !buildRobotInInit())
                 && (readiness == null || readiness.isAllowed())) {
             initializeRobotForSpec(autoSpec());
         }
         if (!isAutoInitialized()) {
-            emitAutoReadinessTelemetry();
-            telemetry.update();
+            renderAndCommitAutoLifecycleFrame(false);
             return;
         }
 
@@ -161,23 +167,26 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
             }
             initFailure = startFailure;
             PhoenixMatchHandoff.clear();
-            emitAutoReadinessTelemetry();
-            telemetry.update();
+            renderAndCommitAutoLifecycleFrame(false);
+            return;
+        }
+
+        if (initializationResultFramePending) {
+            renderAndCommitAutoLifecycleFrame(true);
         }
     }
 
     /**
      * Advance the Phoenix Auto loop and compose Pedro debug rows into the same telemetry frame.
      *
-     * <p>Phoenix's Auto telemetry presenter owns the final {@code telemetry.update()} call. Pedro
-     * path/spec rows are added first so the Driver Station sees one coherent frame instead of a
-     * Phoenix frame followed by a second Pedro-only update.</p>
+     * <p>{@link PhoenixRobot} owns the final {@code telemetry.update()} call. Readiness and Pedro
+     * path/spec rows are added first so the Driver Station sees one coherent frame instead of
+     * separate sidecar and Phoenix frames.</p>
      */
     @Override
     public void loop() {
         if (!isAutoInitialized()) {
-            emitAutoReadinessTelemetry();
-            telemetry.update();
+            renderAndCommitAutoLifecycleFrame(false);
             return;
         }
 
@@ -236,6 +245,7 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
         unrecoveredCleanupFailure = null;
         startBoundaryReached = false;
         autoStartedSuccessfully = false;
+        initializationResultFramePending = false;
 
         if (primaryFailure == null && shouldPublish) {
             try {
@@ -353,6 +363,61 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
         emitReadinessIssues(displayedReadiness);
     }
 
+    /**
+     * Add retained path/runtime rows after a successful construction without committing the frame.
+     */
+    final void emitInitializedRuntimeTelemetry() {
+        if (!isAutoInitialized()) {
+            return;
+        }
+        if (pathLabel != null) {
+            telemetry.addData("auto.paths", pathLabel);
+        }
+        telemetry.addLine("Pedro runtime: one Phoenix Pinpoint owner + passive Follower localizer");
+    }
+
+    /**
+     * Commit one complete outer-OpMode telemetry frame.
+     *
+     * <p>Package visibility lets the Phoenix selector commit its menu and inherited Auto rows at
+     * one boundary without giving a renderer ownership of that boundary.</p>
+     */
+    final void commitAutoTelemetryFrame() {
+        telemetry.update();
+        firstRuntimeFramePending = false;
+        initializationResultFramePending = false;
+    }
+
+    /**
+     * Fail-stop a newly constructed runtime when its first complete frame cannot be published.
+     */
+    final RuntimeException failPendingAutoTelemetryFrame(RuntimeException frameFailure) {
+        if (!firstRuntimeFramePending) {
+            return frameFailure;
+        }
+        RuntimeException cleanupFailure = clearAutoRuntime();
+        attachSuppressed(frameFailure, cleanupFailure);
+        if (cleanupFailure != null) {
+            unrecoveredCleanupFailure = frameFailure;
+        }
+        initFailure = frameFailure;
+        PhoenixMatchHandoff.clear();
+        return frameFailure;
+    }
+
+    /** Render and commit one complete base-owned lifecycle frame. */
+    private void renderAndCommitAutoLifecycleFrame(boolean includeInitializedRuntime) {
+        try {
+            emitAutoReadinessTelemetry();
+            if (includeInitializedRuntime) {
+                emitInitializedRuntimeTelemetry();
+            }
+            commitAutoTelemetryFrame();
+        } catch (RuntimeException frameFailure) {
+            throw failPendingAutoTelemetryFrame(frameFailure);
+        }
+    }
+
     private void emitReadinessIssues(PhoenixReadiness.Result displayedReadiness) {
         if (displayedReadiness == null) {
             return;
@@ -394,16 +459,20 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
     }
 
     /**
-     * Build Phoenix + Pedro runtime for a selected spec.
+     * Build Phoenix + Pedro runtime state for a selected spec.
      *
-     * <p>Selector OpModes may call this from {@code init_loop()} once the operator confirms a spec.
-     * Repeated calls for the same successfully initialized spec are ignored so a second press of
+     * <p>The package-owned selector may call this from {@code init_loop()} once the operator
+     * confirms a spec. Keeping this helper package-private keeps construction and the required
+     * outer lifecycle-frame protocol in one package.</p>
+     *
+     * <p>Repeated calls for the same successfully initialized spec are ignored so a second press of
      * confirm does not allocate another robot graph; a different spec is rejected. If an ordinary
      * previous attempt failed, this method clears the error, tears down any partial runtime, and
      * tries again from a clean state. A cleanup failure remains terminal for this OpMode so a retry
-     * cannot create a competing hardware owner.</p>
+     * cannot create a competing hardware owner. This method does not render or commit telemetry;
+     * its lifecycle caller owns the complete result frame.</p>
      */
-    protected final boolean initializeRobotForSpec(PhoenixAutoSpec spec) {
+    final boolean initializeRobotForSpec(PhoenixAutoSpec spec) {
         PhoenixAutoSpec requestedSpec = Objects.requireNonNull(spec, "spec");
         if (isAutoInitialized()) {
             if (sameSpec(activeSpec, requestedSpec)) {
@@ -416,10 +485,13 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
             );
         }
 
+        // Every new attempt changes retained readiness/error state and therefore needs exactly one
+        // outer lifecycle frame. The flag remains set if that frame fails, so a later callback can
+        // publish the retained result without rebuilding hardware merely for telemetry.
+        initializationResultFramePending = true;
+
         if (unrecoveredCleanupFailure != null) {
             initFailure = unrecoveredCleanupFailure;
-            emitAutoReadinessTelemetry();
-            telemetry.update();
             return false;
         }
 
@@ -429,8 +501,6 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
         if (previousStopFailure != null) {
             initFailure = previousStopFailure;
             unrecoveredCleanupFailure = previousStopFailure;
-            emitAutoReadinessTelemetry();
-            telemetry.update();
             return false;
         }
 
@@ -450,8 +520,6 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
                     autoPurpose()
             );
             if (!readiness.isAllowed()) {
-                emitAutoReadinessTelemetry();
-                telemetry.update();
                 return false;
             }
 
@@ -493,11 +561,7 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
             follower = builtFollower;
             driveAdapter = builtDriveAdapter;
             pathLabel = paths.label;
-
-            emitAutoReadinessTelemetry();
-            telemetry.addData("auto.paths", pathLabel);
-            telemetry.addLine("Pedro runtime: one Phoenix Pinpoint owner + passive Follower localizer");
-            telemetry.update();
+            firstRuntimeFramePending = true;
             return true;
         } catch (RuntimeException e) {
             // A nested constructor may have failed its own rollback before publishing an owner
@@ -511,9 +575,6 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
             }
             clearRuntimeOwnerReferences();
             initFailure = e;
-
-            emitAutoReadinessTelemetry();
-            telemetry.update();
             return false;
         }
     }
@@ -554,12 +615,14 @@ public abstract class PhoenixPedroAutoOpModeBase extends OpMode {
     }
 
     private void clearRuntimeOwnerReferences() {
+        autoStartedSuccessfully = false;
         robot = null;
         pedroRuntime = null;
         motionPredictor = null;
         follower = null;
         driveAdapter = null;
         pathLabel = null;
+        firstRuntimeFramePending = false;
     }
 
     private void clearSelectionState() {

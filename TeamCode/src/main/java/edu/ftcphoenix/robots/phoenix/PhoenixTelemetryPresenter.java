@@ -11,7 +11,11 @@ import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelectionResult;
 import edu.ftcphoenix.fw.task.Task;
 
 /**
- * Driver-facing telemetry formatting for Phoenix TeleOp and Auto.
+ * Additive driver-facing telemetry formatting for Phoenix TeleOp and Auto.
+ *
+ * <p>This presenter contributes rows to its bound FTC telemetry sink but never clears or commits
+ * a frame. The Phoenix composition root owns the complete active-loop frame and calls
+ * {@link Telemetry#update()} after every contributor has rendered.</p>
  */
 public final class PhoenixTelemetryPresenter {
 
@@ -30,7 +34,9 @@ public final class PhoenixTelemetryPresenter {
     }
 
     /**
-     * Emits the standard Phoenix TeleOp telemetry block.
+     * Adds the standard Phoenix TeleOp telemetry block to the current frame.
+     *
+     * <p>This method neither clears nor commits telemetry.</p>
      */
     public void emitTeleOp(ScoringPath.Status scoring,
                            ScoringTargeting.Status targeting,
@@ -51,14 +57,13 @@ public final class PhoenixTelemetryPresenter {
         emitVisionReadiness(visionReadiness);
         emitPoseTelemetry(globalPose, odomPose);
         emitTargetTelemetry(targeting);
-        telemetry.update();
     }
 
     /**
      * Emit the required availability status for Phoenix's localization-dependent TeleOp assists.
      *
-     * <p>This method deliberately does not call {@code telemetry.update()}. The composition root
-     * uses it both on the INIT help frame and inside the ordinary one-frame TeleOp presenter.</p>
+     * <p>This additive helper neither clears nor commits telemetry. The composition root uses it
+     * both on the INIT help frame and inside the ordinary TeleOp frame.</p>
      *
      * @param readiness immutable Phoenix readiness result for auto-aim and shoot-brace
      */
@@ -80,7 +85,9 @@ public final class PhoenixTelemetryPresenter {
     }
 
     /**
-     * Emits the standard Phoenix Auto telemetry block.
+     * Adds the standard Phoenix Auto telemetry block to the current frame.
+     *
+     * <p>This method neither clears nor commits telemetry.</p>
      */
     public void emitAuto(ScoringPath.Status scoring,
                          ScoringTargeting.Status targeting,
@@ -107,7 +114,6 @@ public final class PhoenixTelemetryPresenter {
         emitVisionReadiness(visionReadiness);
         emitPoseTelemetry(globalPose, odomPose);
         emitTargetTelemetry(targeting);
-        telemetry.update();
     }
 
     /** Emit camera-component readiness independently from target visibility. */
