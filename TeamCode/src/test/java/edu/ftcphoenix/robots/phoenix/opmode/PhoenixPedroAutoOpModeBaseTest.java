@@ -17,13 +17,16 @@ import org.junit.Test;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import edu.ftcphoenix.fw.core.geometry.Pose2d;
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
+import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 import edu.ftcphoenix.fw.drive.DriveCommandSink;
@@ -31,6 +34,7 @@ import edu.ftcphoenix.fw.drive.DriveSignal;
 import edu.ftcphoenix.fw.integrations.pedro.PedroFieldTransform;
 import edu.ftcphoenix.fw.integrations.pedro.PedroPathingDriveAdapter;
 import edu.ftcphoenix.fw.integrations.pedro.PedroPathingRuntime;
+import edu.ftcphoenix.fw.input.binding.Bindings;
 import edu.ftcphoenix.fw.localization.MotionDelta;
 import edu.ftcphoenix.fw.localization.MotionPredictor;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
@@ -52,6 +56,7 @@ import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 /** Verifies the shared Phoenix/Pedro OpMode's fail-closed match-arming boundary. */
 public final class PhoenixPedroAutoOpModeBaseTest {
@@ -75,6 +80,8 @@ public final class PhoenixPedroAutoOpModeBaseTest {
         mode.init();
 
         assertFalse(mode.initialized());
+        assertEquals(1, recordingTelemetry.updateCount());
+        assertEquals(0, recordingTelemetry.clearCount());
         assertEquals(0, mode.runtimeFactoryCalls);
         PhoenixReadiness.Result readiness = mode.readiness();
         assertNotNull(readiness);
@@ -88,6 +95,8 @@ public final class PhoenixPedroAutoOpModeBaseTest {
         mode.start();
 
         assertFalse(mode.initialized());
+        assertEquals(1, recordingTelemetry.updateCount());
+        assertEquals(0, recordingTelemetry.clearCount());
         assertEquals(0, mode.runtimeFactoryCalls);
         assertTrue(recordingTelemetry.contains("BLOCKED"));
         assertFalse(recordingTelemetry.contains("Place the robot"));
@@ -101,6 +110,8 @@ public final class PhoenixPedroAutoOpModeBaseTest {
         mode.init();
 
         assertEquals(1, mode.runtimeFactoryCalls);
+        assertEquals(1, recordingTelemetry.updateCount());
+        assertEquals(0, recordingTelemetry.clearCount());
         assertFalse(mode.initialized());
         assertTrue(mode.readiness().isAllowed());
         assertTrue(mode.error().contains("controlled Pedro construction failure 1"));
@@ -110,6 +121,8 @@ public final class PhoenixPedroAutoOpModeBaseTest {
 
         recordingTelemetry.clear();
         mode.init_loop();
+        assertEquals(1, recordingTelemetry.updateCount());
+        assertEquals(0, recordingTelemetry.clearCount());
         assertTrue(recordingTelemetry.contains("auto.purpose TEST"));
         assertTrue(recordingTelemetry.contains("TEST ONLY"));
     }
@@ -129,6 +142,28 @@ public final class PhoenixPedroAutoOpModeBaseTest {
         assertTrue(mode.error().contains("failure 2"));
         assertNotSame(firstReadiness, mode.readiness());
         assertFalse(mode.cleanupBlocked());
+    }
+
+    @Test
+    public void selectorStyleStartRetriesOrdinaryConfirmationFailureAndCommitsOnce() {
+        RecordingTelemetry recordingTelemetry = new RecordingTelemetry();
+        ControlledFailingTestAuto mode = configuredTestAuto(recordingTelemetry);
+        mode.buildRobotInInit = false;
+
+        mode.init();
+        assertFalse(mode.retry());
+        mode.init_loop();
+        assertEquals(1, mode.runtimeFactoryCalls);
+        assertTrue(mode.error().contains("failure 1"));
+
+        recordingTelemetry.clear();
+        mode.start();
+
+        assertEquals(2, mode.runtimeFactoryCalls);
+        assertTrue(mode.error().contains("failure 2"));
+        assertEquals(1, recordingTelemetry.updateCount());
+        assertEquals(1, recordingTelemetry.committedFrames().size());
+        assertTrue(recordingTelemetry.contains("controlled Pedro construction failure 2"));
     }
 
     @Test
@@ -188,6 +223,11 @@ public final class PhoenixPedroAutoOpModeBaseTest {
         assertTrue(mode.cleanupBlocked());
         assertTrue(mode.error().contains("controlled cleanup failure"));
         assertEquals(0, mode.runtimeFactoryCalls);
+        assertEquals(0, recordingTelemetry.updateCount());
+        assertFalse(recordingTelemetry.contains("controlled cleanup failure"));
+
+        mode.init_loop();
+        assertEquals(1, recordingTelemetry.updateCount());
         assertTrue(recordingTelemetry.contains("controlled cleanup failure"));
     }
 
@@ -290,6 +330,8 @@ public final class PhoenixPedroAutoOpModeBaseTest {
 
         mode.init();
         assertNull(mode.readinessOrNull());
+        assertEquals(1, recordingTelemetry.updateCount());
+        assertEquals(0, recordingTelemetry.clearCount());
 
         recordingTelemetry.clear();
         mode.start();
@@ -301,8 +343,269 @@ public final class PhoenixPedroAutoOpModeBaseTest {
         assertTrue(hasIssue(mode.readinessOrNull(), "auto.route_not_match_ready"));
         assertNull(mode.initErrorOrNull());
         assertFalse(mode.cleanupFailureBlocksRetry());
+        assertEquals(1, recordingTelemetry.updateCount());
+        assertEquals(0, recordingTelemetry.clearCount());
         assertTrue(recordingTelemetry.contains("BLOCKED"));
         assertTrue(recordingTelemetry.contains("auto.expectedPhysicalStartPedro"));
+    }
+
+    @Test
+    public void selectorBlockedConfirmationAndRenderingCommitOneCompleteFrame() throws Exception {
+        RecordingTelemetry recordingTelemetry = new RecordingTelemetry();
+        PhoenixPedroAutoSelectorOpMode mode = new PhoenixPedroAutoSelectorOpMode();
+        mode.telemetry = recordingTelemetry.proxy();
+        mode.gamepad1 = new Gamepad();
+        mode.gamepad2 = new Gamepad();
+        mode.hardwareMap = null;
+
+        mode.init();
+        recordingTelemetry.clear();
+
+        // This is the same sequence as a blocked confirmation callback followed by the selector's
+        // ordinary end-of-cycle render. Evaluation retains state but owns no telemetry frame.
+        assertFalse(mode.initializeRobotForSpec(PhoenixAutoSpec.builder().build()));
+        Method renderInitUi = PhoenixPedroAutoSelectorOpMode.class.getDeclaredMethod("renderInitUi");
+        renderInitUi.setAccessible(true);
+        renderInitUi.invoke(mode);
+
+        assertEquals(1, recordingTelemetry.updateCount());
+        assertEquals(0, recordingTelemetry.clearCount());
+        assertEquals(1, recordingTelemetry.committedFrames().size());
+        String frame = recordingTelemetry.committedFrames().get(0).toString();
+        assertTrue(frame.contains("Current"));
+        assertTrue(frame.contains("auto.readiness"));
+        assertTrue(frame.contains("BLOCKED"));
+    }
+
+    @Test
+    public void selectorPendingRuntimeRendersOneCompleteFrame() throws Exception {
+        RecordingTelemetry telemetry = new RecordingTelemetry();
+        PhoenixPedroAutoSelectorOpMode mode = new PhoenixPedroAutoSelectorOpMode();
+        mode.telemetry = telemetry.proxy();
+        mode.gamepad1 = new Gamepad();
+        mode.gamepad2 = new Gamepad();
+        mode.hardwareMap = new HardwareMap(null, null);
+        mode.init();
+
+        PhoenixAutoSpec selectedSpec = integrationTestSpec();
+        setField(PhoenixPedroAutoSelectorOpMode.class, mode, "selectedSpec", selectedSpec);
+        List<String> events = new ArrayList<String>();
+        PassiveRuntimeFixture runtimeFixture = new PassiveRuntimeFixture(events);
+        PhoenixPedroPathFactory.RouteAvailability availability =
+                PhoenixPedroPathFactory.routeAvailabilityFor(selectedSpec);
+        PhoenixReadiness.Result allowedReadiness = PhoenixReadiness.pedroAuto(
+                selectedSpec,
+                PhoenixProfile.current(),
+                PhoenixReadiness.AutoPurpose.PEDRO_INTEGRATION_TEST
+        );
+        PhoenixRobot robot = robotWithAutoLifecycle(mode);
+        injectInitializedState(mode, robot, runtimeFixture, availability, allowedReadiness);
+        // Model initializeRobotForSpec(...) returning successfully inside confirmation dispatch.
+        setField(PhoenixPedroAutoOpModeBase.class, mode, "firstRuntimeFramePending", true);
+        setField(
+                PhoenixPedroAutoOpModeBase.class,
+                mode,
+                "initializationResultFramePending",
+                true
+        );
+
+        telemetry.clear();
+        mode.init_loop();
+
+        assertEquals(1, telemetry.updateCount());
+        assertEquals(1, telemetry.committedFrames().size());
+        String frame = telemetry.committedFrames().get(0).toString();
+        assertTrue(frame.contains("Current"));
+        assertTrue(frame.contains("auto.readiness"));
+        assertTrue(frame.contains("auto.paths"));
+        assertTrue(frame.contains("injected-test-route"));
+        assertFalse((Boolean) getField(
+                PhoenixPedroAutoOpModeBase.class,
+                mode,
+                "firstRuntimeFramePending"
+        ));
+        assertFalse((Boolean) getField(
+                PhoenixPedroAutoOpModeBase.class,
+                mode,
+                "initializationResultFramePending"
+        ));
+
+        mode.stop();
+    }
+
+    @Test
+    public void selectorBindingFailureAfterConstructionStopsPendingRuntime() throws Exception {
+        RecordingTelemetry telemetry = new RecordingTelemetry();
+        PhoenixPedroAutoSelectorOpMode mode = new PhoenixPedroAutoSelectorOpMode();
+        mode.telemetry = telemetry.proxy();
+        mode.gamepad1 = new Gamepad();
+        mode.gamepad2 = new Gamepad();
+        mode.hardwareMap = new HardwareMap(null, null);
+        mode.init();
+
+        PhoenixAutoSpec selectedSpec = integrationTestSpec();
+        setField(PhoenixPedroAutoSelectorOpMode.class, mode, "selectedSpec", selectedSpec);
+        List<String> events = new ArrayList<String>();
+        PassiveRuntimeFixture runtimeFixture = new PassiveRuntimeFixture(events);
+        PhoenixPedroPathFactory.RouteAvailability availability =
+                PhoenixPedroPathFactory.routeAvailabilityFor(selectedSpec);
+        PhoenixReadiness.Result allowedReadiness = PhoenixReadiness.pedroAuto(
+                selectedSpec,
+                PhoenixProfile.current(),
+                PhoenixReadiness.AutoPurpose.PEDRO_INTEGRATION_TEST
+        );
+        PhoenixRobot robot = robotWithAutoLifecycle(mode);
+        AtomicInteger driveStops = new AtomicInteger();
+        setField(
+                PhoenixRobot.class,
+                robot,
+                "autonomousDrive",
+                new DriveCommandSink() {
+                    @Override
+                    public void drive(DriveSignal signal) {
+                        // No drive command is needed for this lifecycle regression.
+                    }
+
+                    @Override
+                    public void stop() {
+                        driveStops.incrementAndGet();
+                    }
+                }
+        );
+        injectInitializedState(mode, robot, runtimeFixture, availability, allowedReadiness);
+        setField(PhoenixPedroAutoOpModeBase.class, mode, "firstRuntimeFramePending", true);
+        setField(
+                PhoenixPedroAutoOpModeBase.class,
+                mode,
+                "initializationResultFramePending",
+                true
+        );
+
+        RuntimeException callbackFailure =
+                new IllegalStateException("controlled selector binding failure");
+        Bindings failingBindings = new Bindings();
+        failingBindings.whileHigh(new BooleanSource() {
+            @Override
+            public boolean getAsBoolean(LoopClock clock) {
+                return true;
+            }
+        }, new Runnable() {
+            @Override
+            public void run() {
+                throw callbackFailure;
+            }
+        });
+        setField(PhoenixPedroAutoSelectorOpMode.class, mode, "bindings", failingBindings);
+        telemetry.clear();
+
+        try {
+            mode.init_loop();
+            fail("expected selector binding failure");
+        } catch (RuntimeException actual) {
+            assertSame(callbackFailure, actual);
+        }
+
+        assertEquals(0, telemetry.updateCount());
+        assertEquals(1, driveStops.get());
+        assertFalse(mode.isAutoInitialized());
+        assertNull(getField(PhoenixPedroAutoOpModeBase.class, mode, "robot"));
+        assertTrue(mode.initErrorOrNull().contains("controlled selector binding failure"));
+    }
+
+    @Test
+    public void pendingFirstSelectorFrameCommitFailureStopsAndBlocksAfterCleanupFailure()
+            throws Exception {
+        RecordingTelemetry telemetry = new RecordingTelemetry();
+        PhoenixPedroAutoSelectorOpMode mode = new PhoenixPedroAutoSelectorOpMode();
+        mode.telemetry = telemetry.proxy();
+        mode.gamepad1 = new Gamepad();
+        mode.gamepad2 = new Gamepad();
+        mode.hardwareMap = new HardwareMap(null, null);
+        mode.init();
+
+        List<String> events = new ArrayList<String>();
+        PassiveRuntimeFixture runtimeFixture = new PassiveRuntimeFixture(events);
+        PhoenixPedroPathFactory.RouteAvailability availability =
+                PhoenixPedroPathFactory.routeAvailabilityFor(integrationTestSpec());
+        PhoenixReadiness.Result allowedReadiness = PhoenixReadiness.pedroAuto(
+                integrationTestSpec(),
+                PhoenixProfile.current(),
+                PhoenixReadiness.AutoPurpose.PEDRO_INTEGRATION_TEST
+        );
+        PhoenixRobot robot = robotWithAutoLifecycle(mode);
+        AtomicInteger driveStops = new AtomicInteger();
+        RuntimeException cleanupFailure = new IllegalStateException(
+                "controlled selector cleanup failure"
+        );
+        setField(
+                PhoenixRobot.class,
+                robot,
+                "autonomousDrive",
+                new DriveCommandSink() {
+                    @Override
+                    public void drive(DriveSignal signal) {
+                        // No drive command is needed for this telemetry-boundary regression.
+                    }
+
+                    @Override
+                    public void stop() {
+                        driveStops.incrementAndGet();
+                        throw cleanupFailure;
+                    }
+                }
+        );
+        injectInitializedState(mode, robot, runtimeFixture, availability, allowedReadiness);
+        // Successful initializeRobotForSpec(...) establishes this private postcondition. The
+        // existing host-side fixture injects the completed graph directly so this test can isolate
+        // first-frame failure ownership without acquiring FTC hardware.
+        setField(PhoenixPedroAutoOpModeBase.class, mode, "firstRuntimeFramePending", true);
+        setField(
+                PhoenixPedroAutoOpModeBase.class,
+                mode,
+                "initializationResultFramePending",
+                true
+        );
+        // Model the late-START path after the robot has started but before its first complete frame
+        // commits. Pending-frame cleanup must revoke this fact when it detaches the runtime.
+        setField(PhoenixPedroAutoOpModeBase.class, mode, "autoStartedSuccessfully", true);
+        setField(
+                PhoenixPedroAutoSelectorOpMode.class,
+                mode,
+                "selectedSpec",
+                integrationTestSpec()
+        );
+
+        RuntimeException commitFailure = new IllegalStateException("controlled selector commit failure");
+        telemetry.clear();
+        telemetry.failUpdateWith(commitFailure);
+        Method renderInitUi = PhoenixPedroAutoSelectorOpMode.class.getDeclaredMethod("renderInitUi");
+        renderInitUi.setAccessible(true);
+
+        try {
+            renderInitUi.invoke(mode);
+            fail("expected selector telemetry commit failure");
+        } catch (InvocationTargetException invocationFailure) {
+            assertSame(commitFailure, invocationFailure.getCause());
+        }
+
+        assertEquals(1, telemetry.updateCount());
+        assertEquals(1, driveStops.get());
+        assertFalse(mode.isAutoInitialized());
+        assertNull(getField(PhoenixPedroAutoOpModeBase.class, mode, "robot"));
+        assertTrue(mode.initErrorOrNull().contains("controlled selector commit failure"));
+        assertEquals(1, commitFailure.getSuppressed().length);
+        assertSame(cleanupFailure, commitFailure.getSuppressed()[0]);
+        assertTrue(mode.cleanupFailureBlocksRetry());
+        assertFalse((Boolean) getField(
+                PhoenixPedroAutoOpModeBase.class,
+                mode,
+                "autoStartedSuccessfully"
+        ));
+
+        // STOP must be inert after the failed first frame; it must not dereference the detached
+        // predictor or attempt the already-failed cleanup again.
+        mode.stop();
+        assertEquals(1, driveStops.get());
     }
 
     @Test
@@ -310,12 +613,16 @@ public final class PhoenixPedroAutoOpModeBaseTest {
         PhoenixMatchHandoff.publishFromAuto(new EmptyOpMode(), validEstimate(7.0, 8.0, 0.25));
 
         PhoenixPedroAutoSelectorOpMode mode = new PhoenixPedroAutoSelectorOpMode();
-        mode.telemetry = new RecordingTelemetry().proxy();
+        RecordingTelemetry telemetry = new RecordingTelemetry();
+        mode.telemetry = telemetry.proxy();
         mode.gamepad1 = new Gamepad();
         mode.gamepad2 = new Gamepad();
         mode.hardwareMap = null;
 
         mode.init();
+
+        assertEquals(1, telemetry.updateCount());
+        assertEquals(0, telemetry.clearCount());
 
         assertEquals(
                 PhoenixMatchHandoff.RestoreResult.MISSING,
@@ -812,6 +1119,15 @@ public final class PhoenixPedroAutoOpModeBaseTest {
         );
     }
 
+    private static PhoenixAutoSpec integrationTestSpec() {
+        return PhoenixAutoSpec.builder()
+                .alliance(PhoenixAutoSpec.Alliance.RED)
+                .startPosition(PhoenixAutoSpec.StartPosition.AUDIENCE)
+                .partnerPlan(PhoenixAutoSpec.PartnerPlan.NONE)
+                .strategy(PhoenixAutoStrategyId.PEDRO_INTEGRATION_TEST)
+                .build();
+    }
+
     private static void setField(Class<?> owner,
                                  Object target,
                                  String name,
@@ -865,6 +1181,12 @@ public final class PhoenixPedroAutoOpModeBaseTest {
     private static final class ControlledFailingTestAuto extends PhoenixPedroAutoOpModeBase {
         int runtimeFactoryCalls;
         RuntimeException nextSuppressedRollback;
+        boolean buildRobotInInit = true;
+
+        @Override
+        protected boolean buildRobotInInit() {
+            return buildRobotInInit;
+        }
 
         @Override
         protected PhoenixAutoSpec autoSpec() {
@@ -1329,6 +1651,11 @@ public final class PhoenixPedroAutoOpModeBaseTest {
 
     private static final class RecordingTelemetry implements InvocationHandler {
         private final List<String> entries = new ArrayList<String>();
+        private final List<String> pendingEntries = new ArrayList<String>();
+        private final List<List<String>> committedFrames = new ArrayList<List<String>>();
+        private int updateCount;
+        private int clearCount;
+        private RuntimeException updateFailure;
         private final Telemetry proxy = (Telemetry) Proxy.newProxyInstance(
                 Telemetry.class.getClassLoader(),
                 new Class<?>[]{Telemetry.class},
@@ -1348,8 +1675,29 @@ public final class PhoenixPedroAutoOpModeBaseTest {
             return false;
         }
 
+        int updateCount() {
+            return updateCount;
+        }
+
+        int clearCount() {
+            return clearCount;
+        }
+
+        List<List<String>> committedFrames() {
+            return committedFrames;
+        }
+
+        void failUpdateWith(RuntimeException failure) {
+            updateFailure = failure;
+        }
+
         void clear() {
             entries.clear();
+            pendingEntries.clear();
+            committedFrames.clear();
+            updateCount = 0;
+            clearCount = 0;
+            updateFailure = null;
         }
 
         @Override
@@ -1366,7 +1714,20 @@ public final class PhoenixPedroAutoOpModeBaseTest {
                         entry.append(' ').append(arg);
                     }
                 }
-                entries.add(entry.toString());
+                String rendered = entry.toString();
+                entries.add(rendered);
+                pendingEntries.add(rendered);
+            } else if ("update".equals(method.getName())) {
+                updateCount++;
+                if (updateFailure != null) {
+                    throw updateFailure;
+                }
+                committedFrames.add(new ArrayList<String>(pendingEntries));
+                pendingEntries.clear();
+            } else if ("clear".equals(method.getName())
+                    || "clearAll".equals(method.getName())) {
+                clearCount++;
+                pendingEntries.clear();
             }
 
             Class<?> returnType = method.getReturnType();

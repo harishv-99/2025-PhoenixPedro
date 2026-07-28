@@ -639,7 +639,10 @@ public final class PinpointOdometryPredictor implements MotionPredictor, PoseRes
     }
 
     /**
-     * Emits the current predictor pose, last motion delta, and static config for telemetry/debugging.
+     * Emits the cached predictor pose, last motion delta, and static config for telemetry/debugging.
+     *
+     * <p>The {@code driverStatus} row is one live, status-only read at this owned hardware boundary;
+     * it does not call the driver's pose update or acquire a new pose result.</p>
      */
     @Override
     public void debugDump(DebugSink dbg, String prefix) {

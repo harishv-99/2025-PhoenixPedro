@@ -6,33 +6,35 @@ package edu.ftcphoenix.fw.core.debug;
  * <h2>Purpose</h2>
  * <p>
  * {@code NullDebugSink} is a classic "null object" implementation of
- * {@link DebugSink}. It allows framework and robot code to call
- * {@code addData(...)} and {@code addLine(...)} without having to check for
- * {@code null} on every call when debugging is disabled.
+ * {@link DebugSink}. Debug producers must still accept a nullable sink and
+ * return immediately, but a composition root may retain this singleton as a
+ * stable non-null placeholder until or unless it installs a real output
+ * adapter.
  * </p>
  *
- * <p>Instead of writing:</p>
+ * <p>For example, retained root wiring can stay non-null while topic selection
+ * remains an explicit call-site decision:</p>
  *
  * <pre>{@code
- * public void debugDump(DebugSink sink, String prefix) {
- *     if (sink == null) return;
- *     sink.addData(prefix + ".axial",   lastCmd.axial);
- *     sink.addData(prefix + ".lateral", lastCmd.lateral);
- *     sink.addData(prefix + ".omega",   lastCmd.omega);
+ * private DebugSink debugSink = NullDebugSink.INSTANCE;
+ *
+ * public void init() {
+ *     if (telemetryDebugAvailable) {
+ *         debugSink = new FtcTelemetryDebugSink(telemetry);
+ *     }
+ * }
+ *
+ * public void loop() {
+ *     if (debugDrive) {
+ *         drive.debugDump(debugSink, "drive");
+ *     }
  * }
  * }</pre>
  *
- * <p>you can create a {@code NullDebugSink} and always pass a non-null sink:</p>
- *
- * <pre>{@code
- * DebugSink dbg = debugEnabled
- *         ? new FtcTelemetryDebugSink(telemetry)
- *         : NullDebugSink.INSTANCE;
- *
- * robot.debugDump(dbg);  // no null checks needed inside
- * }</pre>
- *
  * <p>
+ * This sink discards only the writes that reach it. It cannot avoid work a
+ * producer already performed to traverse an object graph or compute arguments,
+ * so optional topics should still be gated at their composition-root call site.
  * Because {@code NullDebugSink} is stateless and side-effect-free, a single
  * shared instance ({@link #INSTANCE}) is sufficient for the entire app.
  * </p>
@@ -43,9 +45,10 @@ public final class NullDebugSink implements DebugSink {
      * Shared singleton instance.
      *
      * <p>
-     * Since {@code NullDebugSink} performs no work and holds no state, there
-     * is no need to allocate more than one instance. Use this constant instead
-     * of creating new objects.
+     * Since {@code NullDebugSink} performs no output work and holds no state,
+     * there is no need to allocate more than one instance. Use this constant
+     * instead of creating new objects, while still gating disabled diagnostic
+     * producers at their call sites.
      * </p>
      */
     public static final NullDebugSink INSTANCE = new NullDebugSink();

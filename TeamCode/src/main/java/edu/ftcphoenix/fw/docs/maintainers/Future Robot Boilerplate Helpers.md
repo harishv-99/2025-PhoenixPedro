@@ -13,7 +13,7 @@ Good framework candidates:
 - INIT-time selector screens and locked summaries
 - partial-build cleanup mechanics
 - retry/error display after multiple callers prove the same policy
-- telemetry-frame composition
+- repeated telemetry-frame ownership ceremony, once multiple callers demonstrate it
 - route-library adapter seams
 - small typed helpers that prevent invalid setup states
 
@@ -104,33 +104,39 @@ would still provide the enum values, labels, filtering rules, and final spec bui
 Build this only after two robots or two substantial selectors want the same pattern. Until then, the
 current UI primitives are flexible enough.
 
-## Candidate 3: telemetry frame composition
+## Deferred: generic telemetry frame wrapper
 
 Robot code often wants several owners to contribute rows to one Driver Station frame. Today the
-presenter usually owns `telemetry.update()`, which is simple but makes sidecar debug rows order-
-dependent.
+smallest sufficient contract is direct and explicit: presenters and renderers add rows without
+clearing or committing, optional `DebugSink` dumps are selected at the composition-root call site,
+and the owner of the complete frame calls `telemetry.update()` once.
 
-A future helper could make the frame explicit:
+For example:
 
 ```java
-TelemetryFrame frame = TelemetryFrame.begin(telemetry)
-        .section("Auto")
-        .data("auto.spec", spec.summary())
-        .data("auto.paths", pathLabel);
+telemetry.addData("auto.spec", spec.summary());
+telemetry.addData("auto.paths", pathLabel);
+robotTelemetry.emitAuto(status); // additive; does not commit
 
-robot.emitAutoTelemetry(frame);
-frame.update();
+if (debugRoute) {
+    route.debugDump(debugSink, "route");
+}
+
+telemetry.update(); // the complete-frame owner commits once
 ```
 
-Possible benefits:
+This preserves visible ownership without introducing a second telemetry vocabulary. The active
+robot composition root normally owns its complete loop frame; an outer OpMode still owns an INIT,
+selector, or error frame that cannot enter that active loop.
 
-- one final update per loop by construction
-- clear sections for robot, route follower, targeting, and mechanism status
-- fewer accidental double updates
-- easier unit-style testing of what each presenter contributes
+A `TelemetryFrame` wrapper is not currently justified. It would duplicate the FTC add-data API and
+add a public noun without solving diagnostic volume: selection still belongs at the call site, and
+required telemetry must remain independent of optional debug output. Reconsider a helper only after
+multiple composition roots need the same additional frame lifecycle, sectioning, or test capability
+that direct additive rendering cannot provide.
 
-This is a framework-shaped problem, but it should be introduced carefully because it touches a lot of
-presenters and OpModes.
+Do not add a framework topic registry, prefix filter, or automatic whole-robot dump as a substitute.
+Those designs hide ownership or still traverse every diagnostic producer when output is disabled.
 
 ## Candidate 4: external route auto host
 
@@ -154,7 +160,8 @@ already-built route adapter and a robot-provided task sequence.
    in each real owner.
 5. Reconsider `InitRuntimeGuard` only after multiple complete runtime owners share the same
    construction, partial-cleanup, retry, replacement, and presentation contract.
-6. Consider `TelemetryFrame` after a few more presenters need shared-frame composition.
+6. Keep telemetry composition direct and additive; reconsider a frame helper only after repeated
+   callers demonstrate a capability beyond one explicit final commit.
 
 Do not add a generic robot superclass as the first response to boilerplate. Prefer small helpers that
 remove one repeated ceremony while leaving construction order and ownership visible in robot code.

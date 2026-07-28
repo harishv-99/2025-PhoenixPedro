@@ -16,18 +16,25 @@ import edu.ftcphoenix.fw.core.debug.DebugSink;
  * </p>
  *
  * <p>
- * Typical usage in a TeleOp shell or {@code PhoenixRobot}:
+ * Typical usage in a composition root:
  * </p>
  *
  * <pre>{@code
+ * private static final boolean DEBUG_DRIVE = false;
+ * private DebugSink debugSink;
+ *
+ * public void init() {
+ *     // Retain the adapter; do not allocate one every loop.
+ *     debugSink = new FtcTelemetryDebugSink(telemetry);
+ * }
+ *
  * public void loop() {
- *     DebugSink dbg = debugEnabled
- *             ? new FtcTelemetryDebugSink(telemetry)
- *             : NullDebugSink.INSTANCE;
+ *     requiredTelemetry.emitTeleOp(status); // additive; does not commit
+ *     if (DEBUG_DRIVE) {
+ *         drive.debugDump(debugSink, "drive");
+ *     }
  *
- *     robot.debugDump(dbg);
- *
- *     telemetry.update();
+ *     telemetry.update(); // the complete-frame owner commits once
  * }
  * }</pre>
  *
@@ -38,6 +45,10 @@ import edu.ftcphoenix.fw.core.debug.DebugSink;
  *   <li>Core code uses {@link DebugSink} only.</li>
  *   <li>FTC adapter code wraps {@link Telemetry} as a {@link DebugSink} via
  *       this class.</li>
+ *   <li>The composition root selects optional diagnostics at the call site;
+ *       this adapter does not select or filter topics.</li>
+ *   <li>This adapter only adds rows. It never clears telemetry or calls
+ *       {@link Telemetry#update()}.</li>
  *   <li>Tests can provide their own {@link DebugSink} implementations that
  *       write to logs or capture entries for assertions.</li>
  * </ul>
@@ -162,7 +173,7 @@ public final class FtcTelemetryDebugSink implements DebugSink {
      * This is useful for headings or short summaries; individual values
      * should generally use {@link #addData(String, Object)} or
      * {@link #addData(String, double)} / {@link #addData(String, String, double)}
-     * so they remain easy to group and filter.
+     * so their stable keys remain easy to group and scan.
      * </p>
      *
      * @param text debug line text

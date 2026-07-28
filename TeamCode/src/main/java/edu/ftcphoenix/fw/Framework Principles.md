@@ -160,8 +160,15 @@ Phoenix is designed around a few core goals:
 
    * Accept a nullable sink and do nothing if `dbg == null`.
    * Use stable keys: `prefix + ".fieldName"` (avoid changing key names).
-   * Keep it safe to call every loop: no exceptions, no blocking, no expensive work.
+   * Keep it safe to call every loop: no exceptions, no blocking, no expensive acquisition, and no
+     behavior-changing update, Source sampling, filter advancement, or other state transition merely
+     to produce diagnostics. Prefer cached or already-published state. A boundary owner may make a
+     documented cheap, side-effect-free status read when that is the truthful way to report its
+     backend's current health; that read must not advance robot behavior or acquire a new result.
    * Prefer delegating: call `child.debugDump(dbg, prefix + ".child")` for owned components.
+   * Keep dumps pull-based. The composition root selects a diagnostic topic and calls the relevant
+     top-level owner only when that topic is enabled. A no-op sink is a safe fallback, but call-site
+     selection also avoids traversing and formatting a disabled diagnostic graph.
 
    **`toString()` conventions:**
 
@@ -173,6 +180,15 @@ Phoenix is designed around a few core goals:
    * `debugDump(...)` is for diagnostics and understanding internal state. It should be safe to disable (for performance or to reduce telemetry noise).
    * Driver-facing / “required for normal operation” telemetry (mode, safety warnings, high-level state the drivers rely on) should **not** depend on the debug pipeline.
      In FTC OpModes, print that information via the FTC `Telemetry` API directly (or via a dedicated always-on status channel).
+   * A presenter or renderer that contributes to a shared telemetry frame is additive: it does not
+     clear telemetry and does not call `Telemetry.update()`. The owner of the complete frame invokes
+     every required presenter and selected optional diagnostic contributor, then commits exactly
+     once. That frame owner is normally the composition root during an active robot loop; an outer
+     OpMode may own and commit an INIT, selection, or error frame that does not enter the active
+     robot loop.
+   * `DebugSink` is an output seam, not a topic registry, filter, frame object, or commit API. Keep
+     diagnostic selection and frame cadence explicit at the composition root unless repeated callers
+     demonstrate a more general framework capability.
 
 8. **Fail fast with actionable errors**
 

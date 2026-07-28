@@ -58,6 +58,7 @@ public final class PhoenixBasicPedroAutoExample extends OpMode {
                     ? createProductionRobot()
                     : Objects.requireNonNull(testRobotFactory.get(), "testRobotFactory.get()");
             emitPlacementTelemetry();
+            commitTelemetryFrame();
         } catch (RuntimeException initFailure) {
             throw failStop(initFailure);
         }
@@ -68,6 +69,7 @@ public final class PhoenixBasicPedroAutoExample extends OpMode {
     public void init_loop() {
         try {
             emitPlacementTelemetry();
+            commitTelemetryFrame();
         } catch (RuntimeException telemetryFailure) {
             throw failStop(telemetryFailure);
         }
@@ -148,6 +150,7 @@ public final class PhoenixBasicPedroAutoExample extends OpMode {
         }
     }
 
+    /** Add the placement and test-warning rows without committing the current frame. */
     private void emitPlacementTelemetry() {
         if (telemetry == null) {
             return;
@@ -164,7 +167,13 @@ public final class PhoenixBasicPedroAutoExample extends OpMode {
                     Math.toDegrees(start.getHeading())
             );
         }
-        telemetry.update();
+    }
+
+    /** Commit the complete lifecycle frame after every additive contributor has rendered. */
+    private void commitTelemetryFrame() {
+        if (telemetry != null) {
+            telemetry.update();
+        }
     }
 
     private BasicPedroAutoRobot requireRobot() {

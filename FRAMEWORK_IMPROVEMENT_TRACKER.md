@@ -136,7 +136,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 49 | API-02 | Feedback tolerance choice | Done | Required public-unit tolerances, minimally staged FTC and mapped construction, private mapped builders, synchronized docs, verification, and Android Studio review are complete. |
 | 50 | API-04 | Binding execution order | Done | Approved global declaration-ordered traversal with context snapshots first, no phase/priority API, and fail-fast structural mutation during dispatch. |
 | 51 | API-05 | One beginner drive entry point | Done | Factory-only FTC drive construction, normalized command vocabulary, caller/docs migration, verification, and Android Studio review are complete. |
-| 52 | COMMON-02 | Telemetry commit ownership | Proposed | Renderers add data; the composition root commits once. |
+| 52 | COMMON-02 | Telemetry commit ownership | Done | Phoenix frame ownership and framework documentation/Javadocs were reviewed and approved on 2026-07-27. |
 | 53 | CHECK-01 | Staged whole-robot system check | Deferred | Meaningful Phoenix thresholds, hazardous-motion confirmation, and physical safe-state evidence require the assembled robot. |
 | 54 | EXAMPLE-01 | Compiling modern starter robot | Proposed | Add a small multi-file reference, not an inheritance framework. |
 | 55 | EXAMPLE-03 | Advanced moving-target reference | Proposed | Prove progress-triggered scoring and a bounded moving turret without putting game physics in the framework. |
@@ -7527,14 +7527,168 @@ writer, and explicit lifecycle ownership.
 
 ### COMMON-02 - Telemetry commit ownership
 
-- **Problem to confirm:** some presenters call `telemetry.update()` while framework renderers do not,
-  making composition and ordering inconsistent.
-- **Alternatives to compare:** presenters never commit; a `TelemetryFrame` owner; or explicitly
-  commit in every presenter with isolated telemetry instances.
-- **Leading hypothesis:** presenters render only and the composition root commits once per loop.
-- **Completion:** adding a presenter cannot erase or prematurely commit another presenter's data;
-  lifecycle is documented in the canonical loop.
-- **Decision record:** _Pending._
+- **Confirmed problem and caller trace:** `PhoenixTelemetryPresenter.emitTeleOp(...)` and
+  `emitAuto(...)` are public render-shaped methods that each call `telemetry.update()`. Their only
+  maintained construction and call owner is `PhoenixRobot`, while framework UI renderers and
+  `FtcTelemetryDebugSink` already add rows without committing. Pedro Auto also adds readiness,
+  selected-spec, follower, and route rows before Phoenix renders. A presenter-local commit therefore
+  makes the complete frame depend on call order and can publish or clear a partial frame before the
+  remaining contributors run. The selector path has a concrete same-callback double commit:
+  confirmation can call `initializeRobotForSpec(...)`, which commits, before `renderInitUi()` commits
+  the completed selector frame.
+- **Naming and layer boundary:** `PhoenixTelemetryPresenter` is not a framework type. It lives in
+  `edu.ftcphoenix.robots.phoenix` and formats `PhoenixProfile`, `ScoringPath`, `ScoringTargeting`,
+  `PhoenixDriveAssistService`, and `PhoenixReadiness` state for this robot. Its `Phoenix` name is
+  therefore intentional. Reusable code remains under `edu.ftcphoenix.fw` with robot-neutral names
+  such as `DebugSink` and `FtcTelemetryDebugSink`; COMMON-02 adds no framework class containing
+  `Phoenix` in its name.
+- **Framework production-code result:** the reusable framework already has the selected behavior.
+  `DebugSink` is output-only, `FtcTelemetryDebugSink` stages rows without committing, and the
+  composable `fw.ftc.ui` renderers explicitly leave `update()` to their caller. Actual framework-
+  package commits are in OpMode/example roots or exclusive tester-page owners, not additive
+  presenters. Under the bounded design below, COMMON-02 changes no reusable `edu.ftcphoenix.fw`
+  Java behavior or API; its framework changes are limited to correcting `DebugSink` Javadoc and
+  clarifying Framework Principles/guides. The executable ownership corrections are in the modern
+  Phoenix reference robot and its OpModes.
+- **Selected frame contract:**
+  - A presenter, renderer, or other additive **frame contributor** may call `addData(...)` and
+    `addLine(...)` only. It never calls `clear()`, `clearAll()`, or `update()` and does not claim a
+    frame boundary.
+  - The owner of one **complete frame** invokes its contributors in documented order and calls
+    `telemetry.update()` exactly once at the end. An exclusive full-screen owner may clear once at
+    the beginning of its frame. This is ownership per lifecycle frame, not one universal class:
+    `PhoenixRobot` owns active Phoenix TeleOp/Auto loop frames, while the outer OpMode owns INIT,
+    selector, construction/start-failure, and other frames where no active Phoenix loop completes.
+    Existing tester pages remain exclusive screen contexts rather than additive Phoenix presenters;
+    COMMON-02 does not replace their tester lifecycle.
+  - If a contributor throws, the owner does not commit the incomplete frame. If `update()` throws,
+    the owner does not retry or attempt a second commit in that callback; the existing lifecycle
+    failure path remains responsible for cleanup.
+- **Selected Phoenix loop order:** active TeleOp and Auto keep `PhoenixRobot` as the commit owner
+  because it is already the composition root, loop-order owner, telemetry-profiler boundary, and
+  sole owner of `PhoenixTelemetryPresenter`. Auto OpModes add their readiness and Pedro sidecar rows
+  first; `PhoenixRobot` then adds selected optional diagnostics and currently always-on Phoenix rows,
+  calls `telemetry.update()` once, and closes the profiler's telemetry phase. INIT/error clients keep
+  their separate explicit commits. `initializeRobotForSpec(...)` becomes state/construction-only so
+  its lifecycle caller can render and commit the complete result, and the basic Pedro example's
+  placement helper likewise becomes render-only.
+- **Required versus debug telemetry:** `DebugSink` is the selected seam for optional diagnostics,
+  not for required driver status. The always-on path remains responsible for mode,
+  safety/readiness blockers and remediation, and high-level robot state. The current Phoenix
+  presenter also contains detailed flywheel, pose/drift, and guidance rows; those rows are
+  **currently always-on**, not a claim that the page has already been curated or that every row is
+  driver-required. A stateful class may expose `debugDump(DebugSink, prefix)` primarily from
+  already-owned/cached state. Producing that dump must not retain FTC `Telemetry` or a sink, publish
+  automatically from `update(...)`, advance behavior, sample a Source, advance a filter, block, or
+  perform expensive acquisition merely for diagnostics. A boundary owner may make a documented
+  cheap, side-effect-free backend status read when no retained equivalent exists, provided it does
+  not acquire a new result or change robot behavior. Dumps use stable prefixed keys, never clear or
+  commit, and may delegate only to children the producer owns.
+- **Debug selection and volume control:** the composition root explicitly invokes no diagnostic dump
+  by default and, when requested, only the selected robot-owned topic/top-level owner. This call-site
+  gate prevents unselected graph traversal and formatting; merely passing `NullDebugSink.INSTANCE`
+  discards writes but cannot avoid work already performed by `debugDump(...)`. `FtcTelemetryDebugSink`
+  remains the FTC boundary adapter and stages selected debug rows into the same one root-owned frame.
+  Whole-graph investigation belongs in a dedicated tester or a separately designed logging backend,
+  not in every normal Driver Station loop.
+- **Alternatives rejected:** presenter-local commits and nominally isolated telemetry instances
+  fragment one Driver Station frame and retain order/auto-clear hazards. A public `TelemetryFrame`
+  duplicates the FTC surface without enforcing exclusivity while raw `Telemetry` remains available.
+  A global debug registry hides construction/lifetime ownership and encourages dumping everything.
+  Prefix-filtered sinks still traverse and format the complete graph, depend on magic strings, and
+  do not classify free-form lines. A throttled sink has no `LoopClock` or frame boundary, and a
+  framework `DebugView` would put robot/operator policy in the reusable layer. No new sink, registry,
+  router, filter, rate limiter, topic enum, presenter interface, or compatibility commit alias is
+  justified.
+- **Framework Principles check:** the decision keeps presenters formatting-only, makes final loop
+  order explicit at the composition root, preserves the SDK-neutral diagnostic seam and FTC boundary,
+  keeps required telemetry independent of optional debug, and adds no competing timebase or hidden
+  registration lifecycle. `DebugSink`, `FtcTelemetryDebugSink`, and `NullDebugSink` retain distinct
+  value as the core output contract, FTC adapter, and cheap no-op implementation.
+- **Bounded scope:** COMMON-02 changes commit ownership and documents the selective-debug pattern; it
+  does **not** change which Phoenix rows are currently emitted. The presenter currently contains 65
+  `addData(...)`/`addLine(...)` sites, including detailed flywheel, pose/drift, and guidance values,
+  so the user's volume concern is confirmed. Curating an exact compact match page, adding missing
+  robot-owned diagnostic surfaces, selecting one off-by-default Phoenix topic, and reviewing the
+  result on the Driver Station is a separate operator-UX decision. Combining that row migration with
+  commit changes would make intentionally removed rows difficult to distinguish from lifecycle
+  regressions. The next proposed telemetry follow-up is **Selective diagnostics and Phoenix
+  telemetry tiers**; it is not started or assigned a tracker ID by this decision.
+- **Implementation scope after approval:** remove the two presenter commits; add the one active-loop
+  commit after all contributors in `PhoenixRobot`; remove intermediate commits from construction/
+  render helpers and put them at their complete-frame lifecycle callers; keep exclusive INIT, error,
+  and tester frame owners explicit; synchronize `Framework Principles.md`, Loop Structure, Framework
+  Lanes & Robot Controls, Phoenix Architecture, relevant Javadocs, and the Pedro example. Correct the
+  stale `DebugSink` Javadoc package and its nonexistent `kv(...)`/`line(...)` sample calls while that
+  contract is being documented. Do not migrate Phoenix rows or build the follow-up topic selector.
+- **Verification required:** recording telemetry tests prove presenters stage rows without clearing
+  or updating; upstream Auto/Pedro, optional debug, and Phoenix rows survive into one root commit;
+  each affected lifecycle callback commits exactly once; a rendering failure commits zero times; an
+  update failure is attempted once and propagates; disabled diagnostics remain absent without losing
+  required rows. Add static scans for presenter/`DebugSink` commits, run focused Phoenix/Auto/example
+  tests, the full TeamCode unit suite and Java compilation, documentation-link/whitespace checks, and
+  `git diff --check`. This ownership contract is software-verifiable and makes no robot-hardware or
+  Driver Station layout claim.
+- **Decision record (2026-07-27):** **Researching after scope-classification challenge.** The audit
+  confirms the render-only contract but also confirms that reusable framework runtime code already
+  follows it. The earlier approval request is withdrawn until the user decides whether COMMON-02,
+  despite living in the framework-improvement tracker, should include conformance corrections to the
+  modern Phoenix reference robot, or should be narrowed to framework documentation/Javadocs and move
+  the executable Phoenix correction to a separately approved robot item. No implementation may start
+  under the superseded approval phrase.
+- **Approval checkpoint (2026-07-27):** the user directed, `Let us proceed with the Phoenix cleanup,
+  and the framework documentation changes you identified.` COMMON-02 is now **In progress** under
+  that narrower classification. This authorizes the recorded Phoenix presenter/root/Auto/example
+  commit-ownership corrections, focused regressions, and framework/Phoenix documentation and Javadoc
+  synchronization. It does not authorize a new framework telemetry API, Phoenix row curation, a
+  debug-topic selector, or the proposed telemetry-tiers follow-up.
+- **Implementation record (2026-07-27):** `PhoenixTelemetryPresenter` is now additive, and
+  `PhoenixRobot` performs the one active TeleOp/Auto commit after selected loop diagnostics and
+  Phoenix rows have been staged. Disabled loop profiling is gated at the composition-root call site.
+  The Pedro Auto base, selector, and basic example now keep construction/placement rendering
+  commit-free and put one commit at each complete INIT, selector, error, late-START, or example frame
+  boundary. The Auto base retains a newly constructed runtime until that first frame succeeds and
+  fail-stops it if a contributor or commit throws. Its construction helper is package-private because
+  every maintained caller is in the Phoenix OpMode package and off-package invocation could not obey
+  the package-owned first-frame protocol. No Phoenix telemetry row was removed or reclassified, and
+  no reusable framework Java behavior or API was added; framework Java edits are Javadoc-only.
+- **Adversarial review and corrections (2026-07-27):** independent lifecycle, scope/documentation,
+  and test reviews caught five issues before the verification gate. Selector START again retries an
+  ordinary failed confirmation while static Auto keeps its prior no-retry policy; selector binding
+  dispatch and rendering now share the pending-runtime failure boundary; detaching a failed
+  late-START runtime revokes its successful-start flag before STOP can inspect cleared owners; and
+  focused regressions cover the successful selector frame, TeleOp root, selected
+  `FtcTelemetryDebugSink` composition, cleanup suppression, and commit failures. Documentation now
+  permits documented cheap side-effect-free boundary status reads instead of falsely banning all
+  hardware reads, explains that `NullDebugSink` does not avoid producer work, identifies the disabled
+  teaching TeleOps as intentionally verbose, and describes Phoenix's detailed rows as currently
+  always-on while their curation remains deferred.
+- **Automated verification (2026-07-27):** Android Studio's bundled JBR passes the focused ownership
+  suites with **30 tests, 0 failures, 0 errors, and 0 skips**: `PhoenixTelemetryOwnershipTest` 5,
+  `PhoenixPedroAutoOpModeBaseTest` 20, `PhoenixBasicPedroAutoExampleTest` 3, and `PhoenixTeleOpTest`
+  2. The required `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` run passes with
+  **977 tests across 104 suites, 0 failures, 0 errors, and 0 skips**; output contains only the
+  repository's existing JDK 21 versus Java 8 source/target warnings. Static scans find no executable
+  commit/clear in the presenter or FTC debug sink, preserve all **65** Phoenix presenter row sites,
+  add no framework Java type, and confirm that the only production visibility change is the
+  caller-audited Phoenix Auto construction helper narrowing from protected to package-private.
+  `git diff --check`, trailing-whitespace checks across all **18** changed/untracked files, and all
+  **22** local Markdown links in affected documents pass; COMMON-02 adds no Markdown link target.
+  Three independent final adversarial re-reviews report no remaining lifecycle, test, scope, or
+  documentation finding.
+- **Gate 2 verification stop (2026-07-27):** COMMON-02 is **Verifying** and intentionally remains
+  uncommitted. Inspect `PhoenixTelemetryPresenter` and `PhoenixRobot` for additive rendering plus one
+  active-loop commit; the Pedro Auto base, selector, basic example, and focused tests for complete
+  INIT/error/START frames, retry, and fail-stop cleanup; and Framework Principles, `DebugSink`,
+  `NullDebugSink`, `FtcTelemetryDebugSink`, Loop Structure, Phoenix Architecture, and the related
+  design/maintainer guides for the selective-debug contract. No robot hardware is required to verify
+  commit ownership; an optional Driver Station smoke run can observe frame presentation but cannot
+  replace the software ownership tests. No staging, commit, push, pull request, merge, row curation,
+  telemetry-tier follow-up, or later tracker item begins before explicit user approval.
+- **Manual verification and approval (2026-07-27):** the user reviewed COMMON-02 and replied
+  `COMMON-02 looks good. Move to next task`. COMMON-02 is **Done**. This approves finalization,
+  publication, and merge of COMMON-02; the next actionable tracker item may enter its decision gate
+  only after that publication completes.
 
 ### CHECK-01 - Staged whole-robot system check
 

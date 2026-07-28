@@ -245,7 +245,10 @@ A service answers:
 
 A **presenter** is a read-only object that formats status for humans.
 
-It should consume snapshots and avoid hidden control logic.
+It should consume snapshots and avoid hidden control logic. A presenter that contributes to a
+shared telemetry frame is additive: it adds rows but does not clear telemetry or call
+`Telemetry.update()`. The composition root owns the complete active-loop frame and commits once
+after all required presenters and selected optional diagnostics have contributed.
 
 Example:
 
@@ -1068,16 +1071,27 @@ A service is often the right place to centralize anything that several parts of 
 ```java
 public final class MyTelemetryPresenter {
 
+    private final Telemetry telemetry;
+
+    public MyTelemetryPresenter(Telemetry telemetry) {
+        this.telemetry = telemetry;
+    }
+
     public void emitTeleOp(MechanismStatus mechanism,
                            SupervisorStatus supervisor,
                            TargetingStatus targeting,
                            PoseEstimate globalPose) {
-        // read snapshots, write telemetry
+        telemetry.addData("mechanism.mode", mechanism.mode());
+        telemetry.addData("targeting.ready", targeting.ready());
+        telemetry.addData("pose", globalPose);
+        // Additive only: do not clear or call telemetry.update().
     }
 }
 ```
 
-Do not hide robot control logic in the presenter.
+Do not hide robot control logic in the presenter. Keep required driver status on this always-on
+path. Optional internal diagnostics belong in state owners' `debugDump(DebugSink, prefix)` methods;
+the composition root selects which dump to call rather than asking every object to emit every loop.
 
 ## Step 8: make the composition root boring
 
@@ -1098,7 +1112,8 @@ public final class MyRobot {
     private ScoringTargeting targeting;
     private IntakeShooterSubsystem shooter;
     private IntakeShooterSupervisor scoring;
-    private MyTelemetryPresenter telemetry;
+    private Telemetry telemetry;
+    private MyTelemetryPresenter telemetryPresenter;
     private DriveSource driveSource;
 
     public void initTeleOp() {
@@ -1123,7 +1138,7 @@ public final class MyRobot {
                 controls.overrideSource()
         );
         scoring = new IntakeShooterSupervisor(shooter);
-        telemetry = new MyTelemetryPresenter();
+        telemetryPresenter = new MyTelemetryPresenter(telemetry);
         capabilities = new MyRobotCapabilities(shooter, scoring, targeting);
 
         controls.bind(capabilities);
@@ -1137,15 +1152,21 @@ public final class MyRobot {
         scoring.update(clock);
         drive.drive(driveSource.get(clock).clamped());
         shooter.update(clock);
-        telemetry.emitTeleOp(
+        telemetryPresenter.emitTeleOp(
                 shooter.status(clock),
                 scoring.status(),
                 targeting.status(clock),
                 localization.globalPose()
         );
+        telemetry.update(); // commit the complete active-loop frame once
     }
 }
 ```
+
+An outer OpMode may still own and commit a selection, INIT, or error frame that never enters this
+active loop. `DebugSink` remains an output seam only: choose optional diagnostics at this root's
+call site, and do not add a generic topic registry or frame wrapper without repeated callers that
+need a distinct capability.
 
 If the composition root starts containing lots of button semantics, aim thresholds, or mechanism timing rules, stop and move that behavior down into the right owner.
 
