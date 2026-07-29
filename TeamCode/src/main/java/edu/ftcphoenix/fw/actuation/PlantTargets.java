@@ -12,9 +12,9 @@ import edu.ftcphoenix.fw.core.source.Source;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 
 /**
- * Factory and builders for plant target sources.
+ * Factory and builders for Plant-aware target resolvers.
  *
- * <p>{@code PlantTargetSource} is the final graph sampled by a {@link Plant}. For an ordinary
+ * <p>{@link PlantTargetResolver} is the final graph invoked by a {@link Plant}. For an ordinary
  * writable command, robot graph construction creates a named {@link ScalarTarget} and binds it
  * directly or as the stable base of the graph; the Plant builder lifts a direct command to an
  * exact graph. A command-writing realization
@@ -23,13 +23,14 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * the Plant without requiring a command. Use {@code PlantTargets} explicitly for read-only values,
  * overlays, periodic equivalence, or advanced planning. Simple values are lifted with
  * {@link #exact(double)} or
- * {@link #exact(ScalarSource)}. Behavior arbitration uses {@link #overlay(PlantTargetSource)}:
+ * {@link #exact(ScalarSource)}. Behavior arbitration uses {@link #overlay(PlantTargetResolver)}:
  * every layer's activation gate is sampled once, then target producers are resolved lazily from
  * highest to lowest priority. Layers added with {@code add(...)} must produce a target when enabled,
  * while {@code addIfAvailable(...)} is the explicit opt-in for enabled layers that may fall through.
  * A normal periodic command uses {@link #equivalentPositionsOf(ScalarTarget)}. Advanced
- * multi-candidate planning uses {@link #plan()}; periodic work is bounded by the explicit
- * request-candidate count rather than the number of equivalent positions in a Plant's range.</p>
+ * multi-alternative planning uses {@link #plan(PlantTargetRequest)} or
+ * {@link #plan(Source)}; periodic work is bounded by the explicit request-alternative count rather
+ * than the number of equivalent positions in a Plant's range.</p>
  *
  * <h2>Typical exact target</h2>
  * <pre>{@code
@@ -38,13 +39,13 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *     .motor("lift", Direction.FORWARD)
  *     .position()
  *     ...
- *     .targetedBy(liftCommand)   // builder lifts it to a PlantTargetSource
+ *     .targetedBy(liftCommand)   // builder lifts it to a PlantTargetResolver
  *     .build();
  * }</pre>
  *
  * <h2>Typical overlay</h2>
  * <pre>{@code
- * PlantTargetSource feederTarget = PlantTargets.overlay(0.0)
+ * PlantTargetResolver feederTarget = PlantTargets.overlay(0.0)
  *     .add("feedPulse", feedPulse.activeSource(), feedPulse)
  *     .add("eject", ejectRequested, -1.0)
  *     .build();
@@ -53,7 +54,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * <h2>Typical periodic command</h2>
  * <pre>{@code
  * ScalarTarget turretCommand = ScalarTarget.create(0.0);
- * PlantTargetSource turretTarget = PlantTargets.equivalentPositionsOf(turretCommand)
+ * PlantTargetResolver turretTarget = PlantTargets.equivalentPositionsOf(turretCommand)
  *     .nearestToMeasurement()
  *     .whenUnavailable().holdMeasuredTargetOnEntry(0.0);
  * }</pre>
@@ -64,26 +65,26 @@ public final class PlantTargets {
     }
 
     /**
-     * How a planner chooses among multiple reachable candidates.
+     * How a planner chooses among multiple reachable request alternatives.
      */
-    public enum CandidatePreference {
+    private enum CandidatePreference {
         /**
-         * Choose the reachable candidate closest to the current measurement.
+         * Choose the reachable alternative closest to the current measurement.
          * Within one periodic family, an exact midpoint tie chooses the lower target.
          */
         NEAREST_TO_MEASUREMENT,
         /**
-         * Choose the closest candidate at or above the current measurement, falling back to the
-         * closest candidate below only when no increasing candidate is reachable.
+         * Choose the closest alternative at or above the current measurement, falling back to the
+         * closest alternative below only when no increasing alternative is reachable.
          */
         PREFER_INCREASING,
         /**
-         * Choose the closest candidate at or below the current measurement, falling back to the
-         * closest candidate above only when no decreasing candidate is reachable.
+         * Choose the closest alternative at or below the current measurement, falling back to the
+         * closest alternative above only when no decreasing alternative is reachable.
          */
         PREFER_DECREASING,
         /**
-         * Choose candidates closest to the center of a finite legal range, with lower periodic
+         * Choose alternatives closest to the center of a finite legal range, with lower periodic
          * targets winning exact midpoint ties. When the range has no finite center, fall back to
          * nearest-to-measurement selection.
          */
@@ -91,15 +92,15 @@ public final class PlantTargets {
     }
 
     /**
-     * How a planner handles a finite but unreachable candidate.
+     * How a planner handles a finite but unreachable request alternative.
      */
-    public enum UnreachablePolicy {
+    private enum UnreachablePolicy {
         /**
-         * Reject unreachable candidates; unavailable policy must then produce the target.
+         * Reject unreachable alternatives; unavailable policy must then produce the target.
          */
         REJECT,
         /**
-         * Clamp unreachable candidates into the plant's legal range.
+         * Clamp unreachable alternatives into the Plant's legal range.
          */
         CLAMP_TO_RANGE
     }
@@ -119,16 +120,16 @@ public final class PlantTargets {
     }
 
     /**
-     * Convert a finite constant into an exact plant target source.
+     * Convert a finite constant into an exact Plant target resolver.
      */
-    public static PlantTargetSource exact(double value) {
+    public static PlantTargetResolver exact(double value) {
         if (!Double.isFinite(value))
             throw new IllegalArgumentException("Plant target value must be finite, got " + value);
-        return new ExactPlantTargetSource(ScalarSource.constant(value), "constant " + value);
+        return new ExactPlantTargetResolver(ScalarSource.constant(value), "constant " + value);
     }
 
     /**
-     * Convert a scalar source into an exact plant target source.
+     * Convert a scalar source into an exact Plant target resolver.
      *
      * <p>The scalar is sampled during plant update. If it returns NaN or infinity, the target is
      * reported unavailable so the surrounding overlay or plant telemetry can explain the failure.
@@ -136,12 +137,12 @@ public final class PlantTargets {
      * graph's stable command target before sampling is memoized. A transformed or otherwise wrapped
      * scalar source is read-only unless that wrapper itself implements {@code ScalarTarget}.</p>
      */
-    public static PlantTargetSource exact(ScalarSource source) {
+    public static PlantTargetResolver exact(ScalarSource source) {
         ScalarSource actualSource = Objects.requireNonNull(source, "source");
         ScalarTarget commandTarget = actualSource instanceof ScalarTarget
                 ? (ScalarTarget) actualSource
                 : null;
-        return new ExactPlantTargetSource(actualSource, commandTarget, "exact scalar source");
+        return new ExactPlantTargetResolver(actualSource, commandTarget, "exact scalar source");
     }
 
     /**
@@ -151,29 +152,29 @@ public final class PlantTargets {
      * Plants use it once during construction so task command ownership is derived from the final
      * graph rather than supplied as a second, potentially disconnected answer.</p>
      */
-    static ScalarTarget commandTargetOf(PlantTargetSource source) {
-        return source instanceof CommandTargetOwner
-                ? ((CommandTargetOwner) source).commandTarget()
+    static ScalarTarget commandTargetOf(PlantTargetResolver resolver) {
+        return resolver instanceof CommandTargetOwner
+                ? ((CommandTargetOwner) resolver).commandTarget()
                 : null;
     }
 
     /**
      * Return the previous requested target when available, otherwise {@code initialTarget}.
      */
-    public static PlantTargetSource holdLastTarget(double initialTarget) {
-        return new HoldLastTargetSource(initialTarget);
+    public static PlantTargetResolver holdLastTarget(double initialTarget) {
+        return new HoldLastTargetResolver(initialTarget);
     }
 
     /**
-     * Latch the current measurement while this source is continuously resolved.
+     * Latch the current measurement while this resolver is continuously invoked.
      *
      * <p>An entry is the first resolution after construction/reset or after a loop-cycle sampling
      * gap. Repeated resolution in the same cycle and resolution in consecutive cycles retain the
      * same capture. Resolution after one or more unobserved cycles captures the current measurement
      * again.</p>
      */
-    public static PlantTargetSource holdMeasuredTargetOnEntry(double fallbackIfNoMeasurement) {
-        return new HoldMeasuredTargetSource(fallbackIfNoMeasurement);
+    public static PlantTargetResolver holdMeasuredTargetOnEntry(double fallbackIfNoMeasurement) {
+        return new HoldMeasuredTargetResolver(fallbackIfNoMeasurement);
     }
 
     /**
@@ -191,9 +192,9 @@ public final class PlantTargets {
     }
 
     /**
-     * Start a plant-target overlay with a total base source.
+     * Start a Plant-target overlay with a total base resolver.
      */
-    public static OverlayBuilder overlay(PlantTargetSource baseTarget) {
+    public static OverlayBuilder overlay(PlantTargetResolver baseTarget) {
         return new OverlayBuilder(Objects.requireNonNull(baseTarget, "baseTarget"));
     }
 
@@ -202,7 +203,7 @@ public final class PlantTargets {
      * periodic coordinate.
      *
      * <p>This is the normal periodic-mechanism path. Robot code and {@link ScalarTasks} keep writing
-     * the same logical command value; this final source chooses the legal physical representative
+     * the same logical command value; this final resolver chooses the legal physical representative
      * each loop. Omitting this transform preserves exact, unwrapped target semantics.</p>
      */
     public static EquivalentPositionPreferenceStage equivalentPositionsOf(
@@ -218,21 +219,32 @@ public final class PlantTargets {
      * command identity remains available to feedback-aware {@link ScalarTasks}.</p>
      */
     public static EquivalentPositionPreferenceStage equivalentPositionsOf(
-            PlantTargetSource finalLogicalTarget) {
-        return new EquivalentPositionBuilder(
+            PlantTargetResolver finalLogicalTarget) {
+        return new EquivalentPositionPreferenceBuilder(
                 Objects.requireNonNull(finalLogicalTarget, "finalLogicalTarget"));
     }
 
     /**
-     * Start a smart target planner.
+     * Starts an advanced target resolver for one fixed immutable request.
      *
-     * <p>The staged builder asks required questions in order: request source, candidate
-     * preference, unreachable-candidate policy, then unavailable-target policy. Optional
-     * observation-age/quality tuning is available after the required preference and unreachable
-     * answers. This shape avoids hidden defaults for choices that affect motion semantics.</p>
+     * <p>The next stage asks how reachable alternatives should be preferred. Use
+     * {@link #plan(Source)} when the request changes from cycle to cycle.</p>
      */
-    public static PlanRequestStage plan() {
-        return new PlannerBuilder();
+    public static PlanPreferenceStage plan(PlantTargetRequest request) {
+        return plan(Source.constant(Objects.requireNonNull(request, "request")));
+    }
+
+    /**
+     * Starts an advanced target resolver for requests supplied each cycle.
+     *
+     * <p>The staged builder asks required questions in order: alternative preference,
+     * unreachable-alternative policy, then unavailable-target policy. Optional observation
+     * age/quality tuning is available after the required motion-semantics answers. Each answer
+     * returns an immutable snapshot, so retaining and branching from an earlier stage cannot
+     * silently overwrite another completed branch.</p>
+     */
+    public static PlanPreferenceStage plan(Source<PlantTargetRequest> requestSource) {
+        return new PlannerPreferenceAnswer(Objects.requireNonNull(requestSource, "requestSource"));
     }
 
     /** Private metadata seam implemented only by framework graphs with a stable command base. */
@@ -240,19 +252,19 @@ public final class PlantTargets {
         ScalarTarget commandTarget();
     }
 
-    private static final class ExactPlantTargetSource
-            implements PlantTargetSource, CommandTargetOwner {
+    private static final class ExactPlantTargetResolver
+            implements PlantTargetResolver, CommandTargetOwner {
         private final ScalarSource source;
         private final ScalarTarget commandTarget;
         private final String reason;
 
-        ExactPlantTargetSource(ScalarSource source, String reason) {
+        ExactPlantTargetResolver(ScalarSource source, String reason) {
             this(source, null, reason);
         }
 
-        ExactPlantTargetSource(ScalarSource source,
-                               ScalarTarget commandTarget,
-                               String reason) {
+        ExactPlantTargetResolver(ScalarSource source,
+                                 ScalarTarget commandTarget,
+                                 String reason) {
             this.source = Objects.requireNonNull(source, "source").memoized();
             this.commandTarget = commandTarget;
             this.reason = reason;
@@ -264,16 +276,16 @@ public final class PlantTargets {
         }
 
         @Override
-        public PlantTargetPlan resolve(PlantTargetContext context, LoopClock clock) {
+        public PlantTargetResolution resolve(PlantTargetContext context, LoopClock clock) {
             double v = source.getAsDouble(clock);
-            PlantTargetPlan plan = Double.isFinite(v)
-                    ? PlantTargetPlan.exact(v, reason)
-                    : PlantTargetPlan.unavailable(
+            PlantTargetResolution resolution = Double.isFinite(v)
+                    ? PlantTargetResolution.exact(v, reason)
+                    : PlantTargetResolution.unavailable(
                             "exact scalar source returned non-finite target: " + v);
-            if (commandTarget == null) return plan;
+            if (commandTarget == null) return resolution;
             return Double.isFinite(v)
-                    ? plan.withSelectedCommand(commandTarget, v)
-                    : plan.withoutSelectedCommand(commandTarget);
+                    ? resolution.withSelectedCommand(commandTarget, v)
+                    : resolution.withoutSelectedCommand(commandTarget);
         }
 
         @Override
@@ -285,43 +297,43 @@ public final class PlantTargets {
         public void debugDump(DebugSink dbg, String prefix) {
             if (dbg == null) return;
             String p = (prefix == null || prefix.isEmpty()) ? "exactPlantTarget" : prefix;
-            dbg.addData(p + ".class", "ExactPlantTargetSource")
+            dbg.addData(p + ".class", "ExactPlantTargetResolver")
                     .addData(p + ".reason", reason);
             source.debugDump(dbg, p + ".scalar");
         }
     }
 
-    private static final class HoldLastTargetSource implements PlantTargetSource {
+    private static final class HoldLastTargetResolver implements PlantTargetResolver {
         private final double initialTarget;
 
-        HoldLastTargetSource(double initialTarget) {
+        HoldLastTargetResolver(double initialTarget) {
             if (!Double.isFinite(initialTarget))
                 throw new IllegalArgumentException("initialTarget must be finite");
             this.initialTarget = initialTarget;
         }
 
         @Override
-        public PlantTargetPlan resolve(PlantTargetContext context, LoopClock clock) {
+        public PlantTargetResolution resolve(PlantTargetContext context, LoopClock clock) {
             double target = Double.isFinite(context.previousRequestedTarget()) ? context.previousRequestedTarget() : initialTarget;
-            return PlantTargetPlan.holdLast(target, "holding previous requested target");
+            return PlantTargetResolution.holdLast(target, "holding previous requested target");
         }
 
         @Override
         public void debugDump(DebugSink dbg, String prefix) {
             if (dbg == null) return;
             String p = (prefix == null || prefix.isEmpty()) ? "holdLastPlantTarget" : prefix;
-            dbg.addData(p + ".class", "HoldLastTargetSource")
+            dbg.addData(p + ".class", "HoldLastTargetResolver")
                     .addData(p + ".initialTarget", initialTarget);
         }
     }
 
-    private static final class HoldMeasuredTargetSource implements PlantTargetSource {
+    private static final class HoldMeasuredTargetResolver implements PlantTargetResolver {
         private final double fallback;
         private boolean latched;
         private double latchedTarget;
         private long lastResolvedCycle = Long.MIN_VALUE;
 
-        HoldMeasuredTargetSource(double fallback) {
+        HoldMeasuredTargetResolver(double fallback) {
             if (!Double.isFinite(fallback))
                 throw new IllegalArgumentException("fallbackIfNoMeasurement must be finite");
             this.fallback = fallback;
@@ -329,14 +341,15 @@ public final class PlantTargets {
         }
 
         @Override
-        public PlantTargetPlan resolve(PlantTargetContext context, LoopClock clock) {
+        public PlantTargetResolution resolve(PlantTargetContext context, LoopClock clock) {
             long cycle = Objects.requireNonNull(clock, "clock").cycle();
             if (!latched || hasSamplingGap(lastResolvedCycle, cycle)) {
                 latchedTarget = context.feedbackAvailable() ? context.measurement() : fallback;
                 latched = true;
             }
             lastResolvedCycle = cycle;
-            return PlantTargetPlan.holdMeasured(latchedTarget, "holding measured target captured on entry");
+            return PlantTargetResolution.holdMeasured(
+                    latchedTarget, "holding measured target captured on entry");
         }
 
         @Override
@@ -350,7 +363,7 @@ public final class PlantTargets {
         public void debugDump(DebugSink dbg, String prefix) {
             if (dbg == null) return;
             String p = (prefix == null || prefix.isEmpty()) ? "holdMeasuredPlantTarget" : prefix;
-            dbg.addData(p + ".class", "HoldMeasuredTargetSource")
+            dbg.addData(p + ".class", "HoldMeasuredTargetResolver")
                     .addData(p + ".fallback", fallback)
                     .addData(p + ".latched", latched)
                     .addData(p + ".latchedTarget", latchedTarget)
@@ -364,9 +377,9 @@ public final class PlantTargets {
      * <p>The base target should be total. Every activation gate is sampled once in insertion order,
      * then enabled target producers are resolved lazily in reverse insertion order, so later layers
      * have higher priority. Layers added with
-     * {@link #add(String, BooleanSource, PlantTargetSource)} must produce a target when enabled;
-     * unavailable active layers report an unavailable plan instead of silently falling through.
-     * Use {@link #addIfAvailable(String, BooleanSource, PlantTargetSource)} only when an
+     * {@link #add(String, BooleanSource, PlantTargetResolver)} must produce a target when enabled;
+     * unavailable active layers report an unavailable resolution instead of silently falling
+     * through. Use {@link #addIfAvailable(String, BooleanSource, PlantTargetResolver)} only when an
      * enabled-but-unavailable layer should explicitly continue to the next lower priority.</p>
      *
      * <p>If the base graph carries a command target, the completed overlay carries that same
@@ -374,10 +387,10 @@ public final class PlantTargets {
      * even when a layer itself is a {@link ScalarTarget}.</p>
      */
     public static final class OverlayBuilder {
-        private final PlantTargetSource base;
+        private final PlantTargetResolver base;
         private final List<Layer> layers = new ArrayList<Layer>();
 
-        private OverlayBuilder(PlantTargetSource base) {
+        private OverlayBuilder(PlantTargetResolver base) {
             this.base = base;
         }
 
@@ -399,10 +412,10 @@ public final class PlantTargets {
          * Add an enabled layer that must produce a target when its Boolean is high.
          *
          * <p>This is the normal overlay behavior. The Boolean means “this behavior is requested.”
-         * If the target source cannot produce a target, the overlay reports that failure instead of
+         * If the target resolver cannot produce a target, the overlay reports that failure instead of
          * silently falling through to a lower-priority behavior.</p>
          */
-        public OverlayBuilder add(String name, BooleanSource enabled, PlantTargetSource target) {
+        public OverlayBuilder add(String name, BooleanSource enabled, PlantTargetResolver target) {
             layers.add(new Layer(cleanName(name), Objects.requireNonNull(enabled, "enabled"),
                     Objects.requireNonNull(target, "target"), LayerUnavailablePolicy.REPORT_UNAVAILABLE));
             return this;
@@ -428,32 +441,34 @@ public final class PlantTargets {
          * <p>Use this only when “requested but no valid target” should let lower-priority behavior
          * continue. Debug output still records that the layer was enabled, unavailable, and fell
          * through.
-         * For most behavior layers, prefer {@link #add(String, BooleanSource, PlantTargetSource)} so
+         * For most behavior layers, prefer
+         * {@link #add(String, BooleanSource, PlantTargetResolver)} so
          * missing targets are visible as failures.</p>
          */
-        public OverlayBuilder addIfAvailable(String name, BooleanSource enabled, PlantTargetSource target) {
+        public OverlayBuilder addIfAvailable(
+                String name, BooleanSource enabled, PlantTargetResolver target) {
             layers.add(new Layer(cleanName(name), Objects.requireNonNull(enabled, "enabled"),
                     Objects.requireNonNull(target, "target"), LayerUnavailablePolicy.FALL_THROUGH));
             return this;
         }
 
         /**
-         * Build the overlay source.
+         * Build the overlay resolver.
          */
-        public PlantTargetSource build() {
-            return new OverlayTargetSource(base, layers.toArray(new Layer[0]));
+        public PlantTargetResolver build() {
+            return new OverlayTargetResolver(base, layers.toArray(new Layer[0]));
         }
     }
 
     private static final class Layer {
         final String name;
         final BooleanSource enabled;
-        final PlantTargetSource target;
+        final PlantTargetResolver target;
         final LayerUnavailablePolicy unavailablePolicy;
 
         Layer(String name,
               BooleanSource enabled,
-              PlantTargetSource target,
+              PlantTargetResolver target,
               LayerUnavailablePolicy unavailablePolicy) {
             this.name = name;
             this.enabled = enabled.memoized();
@@ -475,33 +490,34 @@ public final class PlantTargets {
     }
 
     private static final class LayerRuntimeState {
-        private static final PlantTargetPlan NOT_SAMPLED_PLAN =
-                PlantTargetPlan.unavailable("not sampled");
-        private static final PlantTargetPlan GATE_NOT_SAMPLED_PLAN =
-                PlantTargetPlan.unavailable("activation gate not sampled");
-        private static final PlantTargetPlan DISABLED_PLAN =
-                PlantTargetPlan.unavailable("layer disabled");
-        private static final PlantTargetPlan ENABLED_NOT_REACHED_PLAN =
-                PlantTargetPlan.unavailable("enabled layer target not reached");
-        private static final PlantTargetPlan SHADOWED_PLAN =
-                PlantTargetPlan.unavailable("enabled layer target shadowed by higher-priority layer");
-        private static final PlantTargetPlan GATE_FAILED_PLAN =
-                PlantTargetPlan.unavailable("activation gate sampling failed");
-        private static final PlantTargetPlan TARGET_FAILED_PLAN =
-                PlantTargetPlan.unavailable("target resolution failed");
+        private static final PlantTargetResolution NOT_SAMPLED_RESOLUTION =
+                PlantTargetResolution.unavailable("not sampled");
+        private static final PlantTargetResolution GATE_NOT_SAMPLED_RESOLUTION =
+                PlantTargetResolution.unavailable("activation gate not sampled");
+        private static final PlantTargetResolution DISABLED_RESOLUTION =
+                PlantTargetResolution.unavailable("layer disabled");
+        private static final PlantTargetResolution ENABLED_NOT_REACHED_RESOLUTION =
+                PlantTargetResolution.unavailable("enabled layer target not reached");
+        private static final PlantTargetResolution SHADOWED_RESOLUTION =
+                PlantTargetResolution.unavailable(
+                        "enabled layer target shadowed by higher-priority layer");
+        private static final PlantTargetResolution GATE_FAILED_RESOLUTION =
+                PlantTargetResolution.unavailable("activation gate sampling failed");
+        private static final PlantTargetResolution TARGET_FAILED_RESOLUTION =
+                PlantTargetResolution.unavailable("target resolution failed");
 
         boolean enabled;
         boolean targetSampled;
         boolean fellThrough;
         LayerResolutionState resolutionState = LayerResolutionState.NOT_SAMPLED;
-        PlantTargetPlan plan = NOT_SAMPLED_PLAN;
+        PlantTargetResolution resolution = NOT_SAMPLED_RESOLUTION;
 
         void clearForGateSampling() {
             enabled = false;
             targetSampled = false;
             fellThrough = false;
             resolutionState = LayerResolutionState.NOT_SAMPLED;
-            plan = GATE_NOT_SAMPLED_PLAN;
+            resolution = GATE_NOT_SAMPLED_RESOLUTION;
         }
 
         void reset() {
@@ -509,24 +525,25 @@ public final class PlantTargets {
             targetSampled = false;
             fellThrough = false;
             resolutionState = LayerResolutionState.NOT_SAMPLED;
-            plan = NOT_SAMPLED_PLAN;
+            resolution = NOT_SAMPLED_RESOLUTION;
         }
     }
 
-    private static final class OverlayTargetSource
-            implements PlantTargetSource, CommandTargetOwner {
-        private static final PlantTargetPlan INCOMPLETE_PLAN =
-                PlantTargetPlan.unavailable("overlay resolution did not complete");
+    private static final class OverlayTargetResolver
+            implements PlantTargetResolver, CommandTargetOwner {
+        private static final PlantTargetResolution INCOMPLETE_RESOLUTION =
+                PlantTargetResolution.unavailable("overlay resolution did not complete");
 
-        private final PlantTargetSource base;
+        private final PlantTargetResolver base;
         private final ScalarTarget commandTarget;
         private final Layer[] layers;
         private final LayerRuntimeState[] layerStates;
-        private PlantTargetPlan lastPlan = PlantTargetPlan.unavailable("not sampled");
+        private PlantTargetResolution lastResolution =
+                PlantTargetResolution.unavailable("not sampled");
         private String lastWinner = "not sampled";
         private boolean lastBaseSampled;
 
-        OverlayTargetSource(PlantTargetSource base, Layer[] layers) {
+        OverlayTargetResolver(PlantTargetResolver base, Layer[] layers) {
             this.base = base;
             this.commandTarget = commandTargetOf(base);
             this.layers = layers;
@@ -542,9 +559,9 @@ public final class PlantTargets {
         }
 
         @Override
-        public PlantTargetPlan resolve(PlantTargetContext context, LoopClock clock) {
+        public PlantTargetResolution resolve(PlantTargetContext context, LoopClock clock) {
             Objects.requireNonNull(clock, "clock");
-            lastPlan = INCOMPLETE_PLAN;
+            lastResolution = INCOMPLETE_RESOLUTION;
             lastWinner = "not resolved";
             lastBaseSampled = false;
 
@@ -562,20 +579,20 @@ public final class PlantTargets {
                     state.enabled = layer.enabled.getAsBoolean(clock);
                 } catch (RuntimeException failure) {
                     state.resolutionState = LayerResolutionState.GATE_FAILED;
-                    state.plan = LayerRuntimeState.GATE_FAILED_PLAN;
+                    state.resolution = LayerRuntimeState.GATE_FAILED_RESOLUTION;
                     lastWinner = layer.name + " activation failed";
-                    lastPlan = state.plan;
+                    lastResolution = state.resolution;
                     throw failure;
                 }
                 state.resolutionState = state.enabled
                         ? LayerResolutionState.ENABLED_NOT_REACHED
                         : LayerResolutionState.DISABLED;
-                state.plan = state.enabled
-                        ? LayerRuntimeState.ENABLED_NOT_REACHED_PLAN
-                        : LayerRuntimeState.DISABLED_PLAN;
+                state.resolution = state.enabled
+                        ? LayerRuntimeState.ENABLED_NOT_REACHED_RESOLUTION
+                        : LayerRuntimeState.DISABLED_RESOLUTION;
             }
 
-            PlantTargetPlan winner = null;
+            PlantTargetResolution winner = null;
             int decisiveLayerIndex = -1;
             for (int i = layers.length - 1; i >= 0; i--) {
                 Layer layer = layers[i];
@@ -583,22 +600,23 @@ public final class PlantTargets {
                 if (!state.enabled) continue;
 
                 state.targetSampled = true;
-                PlantTargetPlan plan;
+                PlantTargetResolution resolution;
                 try {
-                    plan = layer.target.resolve(context, clock);
-                    if (plan == null) {
+                    resolution = layer.target.resolve(context, clock);
+                    if (resolution == null) {
                         throw new NullPointerException(
-                                "Plant target layer '" + layer.name + "' returned null plan");
+                                "Plant target layer '" + layer.name
+                                        + "' returned null resolution");
                     }
                 } catch (RuntimeException failure) {
                     state.resolutionState = LayerResolutionState.TARGET_FAILED;
-                    state.plan = LayerRuntimeState.TARGET_FAILED_PLAN;
+                    state.resolution = LayerRuntimeState.TARGET_FAILED_RESOLUTION;
                     lastWinner = layer.name + " target failed";
-                    lastPlan = state.plan;
+                    lastResolution = state.resolution;
                     throw failure;
                 }
-                state.plan = plan;
-                if (!plan.hasTarget()) {
+                state.resolution = resolution;
+                if (!resolution.hasTarget()) {
                     if (layer.unavailablePolicy == LayerUnavailablePolicy.FALL_THROUGH) {
                         state.fellThrough = true;
                         state.resolutionState = LayerResolutionState.FELL_THROUGH;
@@ -606,13 +624,15 @@ public final class PlantTargets {
                     }
                     state.resolutionState = LayerResolutionState.REQUIRED_UNAVAILABLE;
                     lastWinner = layer.name + " unavailable";
-                    winner = PlantTargetPlan.unavailable("enabled plant target layer '" + layer.name + "' produced no target: " + plan.reason());
+                    winner = PlantTargetResolution.unavailable(
+                            "enabled plant target layer '" + layer.name
+                                    + "' produced no target: " + resolution.reason());
                     decisiveLayerIndex = i;
                     break;
                 }
                 state.resolutionState = LayerResolutionState.SELECTED;
                 lastWinner = layer.name;
-                winner = plan;
+                winner = resolution;
                 decisiveLayerIndex = i;
                 break;
             }
@@ -623,7 +643,7 @@ public final class PlantTargets {
                     if (state.enabled
                             && state.resolutionState == LayerResolutionState.ENABLED_NOT_REACHED) {
                         state.resolutionState = LayerResolutionState.SHADOWED;
-                        state.plan = LayerRuntimeState.SHADOWED_PLAN;
+                        state.resolution = LayerRuntimeState.SHADOWED_RESOLUTION;
                     }
                 }
             } else {
@@ -635,7 +655,7 @@ public final class PlantTargets {
             if (decisiveLayerIndex >= 0 && commandTarget != null) {
                 winner = winner.withoutSelectedCommand(commandTarget);
             }
-            lastPlan = winner;
+            lastResolution = winner;
             return winner;
         }
 
@@ -649,7 +669,7 @@ public final class PlantTargets {
             for (LayerRuntimeState state : layerStates) {
                 state.reset();
             }
-            lastPlan = PlantTargetPlan.unavailable("not sampled");
+            lastResolution = PlantTargetResolution.unavailable("not sampled");
             lastWinner = "not sampled";
             lastBaseSampled = false;
         }
@@ -660,7 +680,7 @@ public final class PlantTargets {
             String p = (prefix == null || prefix.isEmpty()) ? "plantTargetOverlay" : prefix;
             dbg.addData(p + ".class", "PlantTargetOverlay")
                     .addData(p + ".winner", lastWinner)
-                    .addData(p + ".plan", lastPlan)
+                    .addData(p + ".resolution", lastResolution)
                     .addData(p + ".baseSampled", lastBaseSampled)
                     .addData(p + ".layers", layers.length);
             base.debugDump(dbg, p + ".base");
@@ -674,7 +694,7 @@ public final class PlantTargets {
                         .addData(lp + ".resolutionState", state.resolutionState)
                         .addData(lp + ".unavailablePolicy", layer.unavailablePolicy)
                         .addData(lp + ".fellThrough", state.fellThrough)
-                        .addData(lp + ".plan", state.plan);
+                        .addData(lp + ".resolution", state.resolution);
                 layer.target.debugDump(dbg, lp + ".target");
             }
         }
@@ -697,26 +717,12 @@ public final class PlantTargets {
 
     /** Equivalent-position stage after the required selection preference. */
     public interface EquivalentPositionReadyStage {
-        /** Choose what the final source should report when no legal equivalent is available. */
+        /** Choose what the final resolver should report when no legal equivalent is available. */
         UnavailableTargetBranch whenUnavailable();
     }
 
     /**
-     * First required planner question: where do target requests come from?
-     */
-    public interface PlanRequestStage {
-        /**
-         * Supply a source of plant target requests.
-         *
-         * <p>The next stage asks how reachable candidates should be preferred. There is no generic
-         * {@code select()} entry method because this is a single required choice: pick one answer,
-         * then continue to the unreachable-candidate policy question.</p>
-         */
-        PlanPreferenceStage request(Source<PlantTargetRequest> request);
-    }
-
-    /**
-     * Required planner question: how should reachable candidates be preferred?
+     * Required planner question: how should reachable request alternatives be preferred?
      *
      * <p>Each method answers the preference question and advances to the next required question. The
      * returned type intentionally hides the other preference methods so a later call cannot silently
@@ -724,26 +730,26 @@ public final class PlantTargets {
      */
     public interface PlanPreferenceStage {
         /**
-         * Choose the reachable candidate nearest to the current measurement. Within one periodic
+         * Choose the reachable alternative nearest to the current measurement. Within one periodic
          * family, an exact midpoint tie chooses the lower target. An exact tie between distinct
-         * request candidates retains their declared order.
+         * request alternatives retains their declared order.
          */
         PlanUnreachableStage nearestToMeasurement();
 
         /**
-         * Choose the closest reachable candidate at or above the current measurement. Fall back to
-         * the closest candidate below only when no increasing candidate is reachable.
+         * Choose the closest reachable alternative at or above the current measurement. Fall back
+         * to the closest alternative below only when no increasing alternative is reachable.
          */
         PlanUnreachableStage preferIncreasing();
 
         /**
-         * Choose the closest reachable candidate at or below the current measurement. Fall back to
-         * the closest candidate above only when no decreasing candidate is reachable.
+         * Choose the closest reachable alternative at or below the current measurement. Fall back
+         * to the closest alternative above only when no decreasing alternative is reachable.
          */
         PlanUnreachableStage preferDecreasing();
 
         /**
-         * Choose candidates closest to a finite legal range center, with lower periodic targets
+         * Choose alternatives closest to a finite legal range center, with lower periodic targets
          * winning exact midpoint ties. Fall back to nearest-to-measurement selection when the range
          * has no finite center.
          */
@@ -751,16 +757,16 @@ public final class PlantTargets {
     }
 
     /**
-     * Required planner question: what should happen to finite candidates outside the legal range?
+     * Required planner question: what should happen to finite alternatives outside the legal range?
      */
     public interface PlanUnreachableStage {
         /**
-         * Reject unreachable candidates and let the unavailable policy produce the target.
+         * Reject unreachable alternatives and let the unavailable policy produce the target.
          */
         PlanReadyStage rejectUnreachable();
 
         /**
-         * Clamp unreachable candidates into the legal range before scoring them.
+         * Clamp unreachable alternatives into the legal range before scoring them.
          */
         PlanReadyStage clampUnreachableToRange();
     }
@@ -781,13 +787,13 @@ public final class PlantTargets {
     }
 
     /**
-     * Observed-candidate age/quality acceptance tuning branch.
+     * Observed-alternative age/quality acceptance tuning branch.
      */
     public interface PlanAcceptBranch {
         /**
-         * Ignore observed candidates older than {@code ageSec} at planner resolution.
+         * Ignore observed alternatives older than {@code ageSec} at planner resolution.
          *
-         * <p>Timeless candidates created with the short factories are not observations and are not
+         * <p>Timeless alternatives created with the short factories are not observations and are not
          * affected by this limit.</p>
          *
          * @param ageSec finite maximum observation age in seconds, inclusive
@@ -796,9 +802,9 @@ public final class PlantTargets {
         PlanAcceptBranch maxObservationAgeSec(double ageSec);
 
         /**
-         * Ignore candidates below the supplied inclusive quality threshold.
+         * Ignore alternatives below the supplied inclusive quality threshold.
          *
-         * <p>Timeless candidates have implicit quality {@code 1.0}.</p>
+         * <p>Timeless alternatives have implicit quality {@code 1.0}.</p>
          *
          * @param quality finite minimum quality in {@code [0, 1]}
          * @throws IllegalArgumentException if {@code quality} is outside {@code [0, 1]} or
@@ -812,245 +818,316 @@ public final class PlantTargets {
         PlanReadyStage doneAccept();
     }
 
-    /** Required branch that makes a context-aware target source total. */
+    /** Required branch that makes a context-aware target resolver total. */
     public interface UnavailableTargetBranch {
         /**
          * Produce a fixed physical Plant-unit fallback when no target can be selected.
          */
-        PlantTargetSource fallbackTo(double target);
+        PlantTargetResolver fallbackTo(double target);
 
         /**
          * Hold the last successfully resolved physical target; use {@code initialTarget} first.
          */
-        PlantTargetSource holdLastTarget(double initialTarget);
+        PlantTargetResolver holdLastTarget(double initialTarget);
 
         /**
          * Latch current measurement on each continuously sampled unavailable entry.
          *
-         * <p>A sampling gap ends the current unavailable entry. If this target source is selected
+         * <p>A sampling gap ends the current unavailable entry. If this resolver is selected
          * again and remains unavailable, it captures the then-current measurement.</p>
          */
-        PlantTargetSource holdMeasuredTargetOnEntry(double fallbackIfNoMeasurement);
+        PlantTargetResolver holdMeasuredTargetOnEntry(double fallbackIfNoMeasurement);
 
         /**
          * Explicitly report unavailability when no target can be selected.
          */
-        PlantTargetSource reportUnavailable();
+        PlantTargetResolver reportUnavailable();
     }
 
     private enum UnavailableKind {FALLBACK, HOLD_LAST, HOLD_MEASURED, REJECT}
 
-    private static final class EquivalentPositionBuilder
-            implements EquivalentPositionPreferenceStage, EquivalentPositionReadyStage,
-            UnavailableTargetBranch {
-        private final PlantTargetSource logicalTarget;
-        private CandidatePreference preference;
+    private static final class EquivalentPositionPreferenceBuilder
+            implements EquivalentPositionPreferenceStage {
+        private final PlantTargetResolver logicalTarget;
 
-        EquivalentPositionBuilder(PlantTargetSource logicalTarget) {
+        EquivalentPositionPreferenceBuilder(PlantTargetResolver logicalTarget) {
             this.logicalTarget = logicalTarget;
         }
 
         @Override
         public EquivalentPositionReadyStage nearestToMeasurement() {
-            preference = CandidatePreference.NEAREST_TO_MEASUREMENT;
-            return this;
+            return new EquivalentPositionAnswer(
+                    logicalTarget, CandidatePreference.NEAREST_TO_MEASUREMENT);
         }
 
         @Override
         public EquivalentPositionReadyStage preferIncreasing() {
-            preference = CandidatePreference.PREFER_INCREASING;
-            return this;
+            return new EquivalentPositionAnswer(
+                    logicalTarget, CandidatePreference.PREFER_INCREASING);
         }
 
         @Override
         public EquivalentPositionReadyStage preferDecreasing() {
-            preference = CandidatePreference.PREFER_DECREASING;
-            return this;
+            return new EquivalentPositionAnswer(
+                    logicalTarget, CandidatePreference.PREFER_DECREASING);
         }
 
         @Override
         public EquivalentPositionReadyStage preferRangeCenter() {
-            preference = CandidatePreference.PREFER_RANGE_CENTER;
-            return this;
+            return new EquivalentPositionAnswer(
+                    logicalTarget, CandidatePreference.PREFER_RANGE_CENTER);
+        }
+    }
+
+    /** Immutable equivalent-position answer snapshot for one selected preference. */
+    private static final class EquivalentPositionAnswer
+            implements EquivalentPositionReadyStage, UnavailableTargetBranch {
+        private final PlantTargetResolver logicalTarget;
+        private final CandidatePreference preference;
+
+        EquivalentPositionAnswer(PlantTargetResolver logicalTarget,
+                                 CandidatePreference preference) {
+            this.logicalTarget = logicalTarget;
+            this.preference = preference;
         }
 
         @Override
         public UnavailableTargetBranch whenUnavailable() {
-            if (preference == null) {
-                throw new IllegalStateException("PlantTargets.equivalentPositionsOf(...) requires "
-                        + "a preference choice such as nearestToMeasurement() before "
-                        + "whenUnavailable()");
-            }
             return this;
         }
 
         @Override
-        public PlantTargetSource fallbackTo(double target) {
+        public PlantTargetResolver fallbackTo(double target) {
             return build(UnavailableKind.FALLBACK, target);
         }
 
         @Override
-        public PlantTargetSource holdLastTarget(double initialTarget) {
+        public PlantTargetResolver holdLastTarget(double initialTarget) {
             return build(UnavailableKind.HOLD_LAST, initialTarget);
         }
 
         @Override
-        public PlantTargetSource holdMeasuredTargetOnEntry(double fallbackIfNoMeasurement) {
+        public PlantTargetResolver holdMeasuredTargetOnEntry(double fallbackIfNoMeasurement) {
             return build(UnavailableKind.HOLD_MEASURED, fallbackIfNoMeasurement);
         }
 
         @Override
-        public PlantTargetSource reportUnavailable() {
+        public PlantTargetResolver reportUnavailable() {
             return build(UnavailableKind.REJECT, Double.NaN);
         }
 
-        private PlantTargetSource build(UnavailableKind unavailableKind, double unavailableValue) {
-            if (preference == null) {
-                throw new IllegalStateException("PlantTargets.equivalentPositionsOf(...) requires "
-                        + "a preference choice before unavailable policy");
-            }
-            return new EquivalentPositionsTargetSource(logicalTarget, preference,
+        private PlantTargetResolver build(UnavailableKind unavailableKind,
+                                          double unavailableValue) {
+            return new EquivalentPositionsTargetResolver(logicalTarget, preference,
                     unavailableKind, unavailableValue);
         }
     }
 
-    private static final class PlannerBuilder implements PlanRequestStage, PlanPreferenceStage,
-            PlanUnreachableStage, PlanReadyStage, PlanAcceptBranch, UnavailableTargetBranch {
-        private Source<PlantTargetRequest> request;
-        private CandidatePreference preference;
-        private UnreachablePolicy unreachablePolicy;
-        private double maxObservationAgeSec = Double.POSITIVE_INFINITY;
-        private double minQuality = 0.0;
+    /** Immutable request-source snapshot before the planner preference answer. */
+    private static final class PlannerPreferenceAnswer implements PlanPreferenceStage {
+        private final Source<PlantTargetRequest> requestSource;
 
-        @Override
-        public PlanPreferenceStage request(Source<PlantTargetRequest> request) {
-            this.request = Objects.requireNonNull(request, "request");
-            return this;
+        PlannerPreferenceAnswer(Source<PlantTargetRequest> requestSource) {
+            this.requestSource = requestSource;
         }
 
         @Override
         public PlanUnreachableStage nearestToMeasurement() {
-            preference = CandidatePreference.NEAREST_TO_MEASUREMENT;
-            return this;
+            return next(CandidatePreference.NEAREST_TO_MEASUREMENT);
         }
 
         @Override
         public PlanUnreachableStage preferIncreasing() {
-            preference = CandidatePreference.PREFER_INCREASING;
-            return this;
+            return next(CandidatePreference.PREFER_INCREASING);
         }
 
         @Override
         public PlanUnreachableStage preferDecreasing() {
-            preference = CandidatePreference.PREFER_DECREASING;
-            return this;
+            return next(CandidatePreference.PREFER_DECREASING);
         }
 
         @Override
         public PlanUnreachableStage preferRangeCenter() {
-            preference = CandidatePreference.PREFER_RANGE_CENTER;
-            return this;
+            return next(CandidatePreference.PREFER_RANGE_CENTER);
+        }
+
+        private PlanUnreachableStage next(CandidatePreference preference) {
+            return new PlannerUnreachableAnswer(requestSource, preference);
+        }
+    }
+
+    /** Immutable planner snapshot before the unreachable-alternative answer. */
+    private static final class PlannerUnreachableAnswer implements PlanUnreachableStage {
+        private final Source<PlantTargetRequest> requestSource;
+        private final CandidatePreference preference;
+
+        PlannerUnreachableAnswer(Source<PlantTargetRequest> requestSource,
+                                 CandidatePreference preference) {
+            this.requestSource = requestSource;
+            this.preference = preference;
         }
 
         @Override
         public PlanReadyStage rejectUnreachable() {
-            unreachablePolicy = UnreachablePolicy.REJECT;
-            return this;
+            return next(UnreachablePolicy.REJECT);
         }
 
         @Override
         public PlanReadyStage clampUnreachableToRange() {
-            unreachablePolicy = UnreachablePolicy.CLAMP_TO_RANGE;
-            return this;
+            return next(UnreachablePolicy.CLAMP_TO_RANGE);
+        }
+
+        private PlanReadyStage next(UnreachablePolicy unreachablePolicy) {
+            return new PlannerReadyAnswer(requestSource, preference, unreachablePolicy,
+                    Double.POSITIVE_INFINITY, 0.0);
+        }
+    }
+
+    /** Immutable planner snapshot after required motion-policy answers. */
+    private static final class PlannerReadyAnswer implements PlanReadyStage {
+        private final Source<PlantTargetRequest> requestSource;
+        private final CandidatePreference preference;
+        private final UnreachablePolicy unreachablePolicy;
+        private final double maxObservationAgeSec;
+        private final double minQuality;
+
+        PlannerReadyAnswer(Source<PlantTargetRequest> requestSource,
+                           CandidatePreference preference,
+                           UnreachablePolicy unreachablePolicy,
+                           double maxObservationAgeSec,
+                           double minQuality) {
+            this.requestSource = requestSource;
+            this.preference = preference;
+            this.unreachablePolicy = unreachablePolicy;
+            this.maxObservationAgeSec = maxObservationAgeSec;
+            this.minQuality = minQuality;
         }
 
         @Override
         public PlanAcceptBranch accept() {
-            return this;
+            return new PlannerAcceptAnswer(requestSource, preference, unreachablePolicy,
+                    maxObservationAgeSec, minQuality);
         }
 
         @Override
         public UnavailableTargetBranch whenUnavailable() {
-            return this;
+            return new PlannerUnavailableAnswer(requestSource, preference, unreachablePolicy,
+                    maxObservationAgeSec, minQuality);
+        }
+    }
+
+    /** Immutable optional acceptance-tuning branch. */
+    private static final class PlannerAcceptAnswer implements PlanAcceptBranch {
+        private final Source<PlantTargetRequest> requestSource;
+        private final CandidatePreference preference;
+        private final UnreachablePolicy unreachablePolicy;
+        private final double maxObservationAgeSec;
+        private final double minQuality;
+
+        PlannerAcceptAnswer(Source<PlantTargetRequest> requestSource,
+                            CandidatePreference preference,
+                            UnreachablePolicy unreachablePolicy,
+                            double maxObservationAgeSec,
+                            double minQuality) {
+            this.requestSource = requestSource;
+            this.preference = preference;
+            this.unreachablePolicy = unreachablePolicy;
+            this.maxObservationAgeSec = maxObservationAgeSec;
+            this.minQuality = minQuality;
         }
 
         @Override
         public PlanAcceptBranch maxObservationAgeSec(double ageSec) {
-            if (ageSec < 0.0 || !Double.isFinite(ageSec))
-                throw new IllegalArgumentException("maxObservationAgeSec must be finite and >= 0");
-            maxObservationAgeSec = ageSec;
-            return this;
+            if (ageSec < 0.0 || !Double.isFinite(ageSec)) {
+                throw new IllegalArgumentException(
+                        "maxObservationAgeSec must be finite and >= 0");
+            }
+            return new PlannerAcceptAnswer(requestSource, preference, unreachablePolicy,
+                    ageSec, minQuality);
         }
 
         @Override
         public PlanAcceptBranch minQuality(double quality) {
-            if (!Double.isFinite(quality) || quality < 0.0 || quality > 1.0)
+            if (!Double.isFinite(quality) || quality < 0.0 || quality > 1.0) {
                 throw new IllegalArgumentException("minQuality must be finite and in [0, 1]");
-            minQuality = quality;
-            return this;
+            }
+            return new PlannerAcceptAnswer(requestSource, preference, unreachablePolicy,
+                    maxObservationAgeSec, quality);
         }
 
         @Override
         public PlanReadyStage doneAccept() {
-            return this;
-        }
-
-        @Override
-        public PlantTargetSource fallbackTo(double target) {
-            validateRequest();
-            return new PlannerTargetSource(request, preference, unreachablePolicy,
-                    maxObservationAgeSec, minQuality, UnavailableKind.FALLBACK, target);
-        }
-
-        @Override
-        public PlantTargetSource holdLastTarget(double initialTarget) {
-            validateRequest();
-            return new PlannerTargetSource(request, preference, unreachablePolicy,
-                    maxObservationAgeSec, minQuality, UnavailableKind.HOLD_LAST, initialTarget);
-        }
-
-        @Override
-        public PlantTargetSource holdMeasuredTargetOnEntry(double fallbackIfNoMeasurement) {
-            validateRequest();
-            return new PlannerTargetSource(request, preference, unreachablePolicy,
-                    maxObservationAgeSec, minQuality, UnavailableKind.HOLD_MEASURED, fallbackIfNoMeasurement);
-        }
-
-        @Override
-        public PlantTargetSource reportUnavailable() {
-            validateRequest();
-            return new PlannerTargetSource(request, preference, unreachablePolicy,
-                    maxObservationAgeSec, minQuality, UnavailableKind.REJECT, Double.NaN);
-        }
-
-        private void validateRequest() {
-            if (request == null)
-                throw new IllegalStateException("PlantTargets.plan() requires request(...)");
-            if (preference == null)
-                throw new IllegalStateException("PlantTargets.plan() requires a preference choice such as nearestToMeasurement() before whenUnavailable()");
-            if (unreachablePolicy == null)
-                throw new IllegalStateException("PlantTargets.plan() requires rejectUnreachable() or clampUnreachableToRange() before whenUnavailable()");
+            return new PlannerReadyAnswer(requestSource, preference, unreachablePolicy,
+                    maxObservationAgeSec, minQuality);
         }
     }
 
-    private static final class EquivalentPositionsTargetSource
-            implements PlantTargetSource, CommandTargetOwner {
-        private final PlantTargetSource logicalTarget;
+    /** Immutable final planner snapshot that builds one selected unavailable policy. */
+    private static final class PlannerUnavailableAnswer implements UnavailableTargetBranch {
+        private final Source<PlantTargetRequest> requestSource;
+        private final CandidatePreference preference;
+        private final UnreachablePolicy unreachablePolicy;
+        private final double maxObservationAgeSec;
+        private final double minQuality;
+
+        PlannerUnavailableAnswer(Source<PlantTargetRequest> requestSource,
+                                 CandidatePreference preference,
+                                 UnreachablePolicy unreachablePolicy,
+                                 double maxObservationAgeSec,
+                                 double minQuality) {
+            this.requestSource = requestSource;
+            this.preference = preference;
+            this.unreachablePolicy = unreachablePolicy;
+            this.maxObservationAgeSec = maxObservationAgeSec;
+            this.minQuality = minQuality;
+        }
+
+        @Override
+        public PlantTargetResolver fallbackTo(double target) {
+            return build(UnavailableKind.FALLBACK, target);
+        }
+
+        @Override
+        public PlantTargetResolver holdLastTarget(double initialTarget) {
+            return build(UnavailableKind.HOLD_LAST, initialTarget);
+        }
+
+        @Override
+        public PlantTargetResolver holdMeasuredTargetOnEntry(double fallbackIfNoMeasurement) {
+            return build(UnavailableKind.HOLD_MEASURED, fallbackIfNoMeasurement);
+        }
+
+        @Override
+        public PlantTargetResolver reportUnavailable() {
+            return build(UnavailableKind.REJECT, Double.NaN);
+        }
+
+        private PlantTargetResolver build(UnavailableKind unavailableKind,
+                                          double unavailableValue) {
+            return new PlannerTargetResolver(requestSource, preference, unreachablePolicy,
+                    maxObservationAgeSec, minQuality, unavailableKind, unavailableValue);
+        }
+    }
+
+    private static final class EquivalentPositionsTargetResolver
+            implements PlantTargetResolver, CommandTargetOwner {
+        private final PlantTargetResolver logicalTarget;
         private final ScalarTarget commandTarget;
         private final CandidatePreference preference;
         private final UnavailableKind unavailableKind;
         private final double unavailableValue;
 
-        private PlantTargetPlan lastPlan = PlantTargetPlan.unavailable("not sampled");
+        private PlantTargetResolution lastResolution =
+                PlantTargetResolution.unavailable("not sampled");
         private long lastCycle = Long.MIN_VALUE;
         private double lastTarget = Double.NaN;
         private boolean unavailableActive;
         private double heldMeasuredTarget = Double.NaN;
 
-        EquivalentPositionsTargetSource(PlantTargetSource logicalTarget,
-                                        CandidatePreference preference,
-                                        UnavailableKind unavailableKind,
-                                        double unavailableValue) {
+        EquivalentPositionsTargetResolver(PlantTargetResolver logicalTarget,
+                                          CandidatePreference preference,
+                                          UnavailableKind unavailableKind,
+                                          double unavailableValue) {
             this.logicalTarget = Objects.requireNonNull(logicalTarget, "logicalTarget");
             this.commandTarget = commandTargetOf(logicalTarget);
             this.preference = Objects.requireNonNull(preference, "preference");
@@ -1071,25 +1148,26 @@ public final class PlantTargets {
         }
 
         @Override
-        public PlantTargetPlan resolve(PlantTargetContext context, LoopClock clock) {
+        public PlantTargetResolution resolve(PlantTargetContext context, LoopClock clock) {
             Objects.requireNonNull(context, "context");
             long cycle = Objects.requireNonNull(clock, "clock").cycle();
-            if (cycle == lastCycle) return lastPlan;
+            if (cycle == lastCycle) return lastResolution;
             if (unavailableKind == UnavailableKind.HOLD_MEASURED
                     && hasSamplingGap(lastCycle, cycle)) {
                 unavailableActive = false;
                 heldMeasuredTarget = Double.NaN;
             }
 
-            PlantTargetPlan logicalPlan = logicalTarget.resolve(context, clock);
-            if (logicalPlan == null) {
-                throw new NullPointerException("Equivalent-position logical target returned null plan");
+            PlantTargetResolution logicalResolution = logicalTarget.resolve(context, clock);
+            if (logicalResolution == null) {
+                throw new NullPointerException(
+                        "Equivalent-position logical target returned null resolution");
             }
 
-            PlantTargetPlan resolved;
-            if (!logicalPlan.hasTarget()) {
+            PlantTargetResolution resolved;
+            if (!logicalResolution.hasTarget()) {
                 resolved = unavailable(context,
-                        "logical target unavailable: " + logicalPlan.reason());
+                        "logical target unavailable: " + logicalResolution.reason());
             } else if (!context.periodic()) {
                 resolved = unavailable(context,
                         "equivalent positions require periodic Plant topology");
@@ -1101,7 +1179,7 @@ public final class PlantTargets {
                     resolved = unavailable(context,
                             "equivalent-position selection has no measurement or prior applied target");
                 } else {
-                    double logicalValue = logicalPlan.target();
+                    double logicalValue = logicalResolution.target();
                     double physicalTarget = PeriodicTargetSelector.select(
                             logicalValue,
                             context.period(),
@@ -1112,8 +1190,9 @@ public final class PlantTargets {
                         unavailableActive = false;
                         heldMeasuredTarget = Double.NaN;
                         lastTarget = physicalTarget;
-                        resolved = logicalPlan.withEquivalentTarget(physicalTarget,
-                                "selected equivalent position for " + logicalPlan.reason());
+                        resolved = logicalResolution.withEquivalentTarget(physicalTarget,
+                                "selected equivalent position for "
+                                        + logicalResolution.reason());
                         if (commandTarget != null
                                 && !resolved.reportsCommandResolutionFor(commandTarget)) {
                             resolved = resolved.withoutSelectedCommand(commandTarget);
@@ -1125,7 +1204,7 @@ public final class PlantTargets {
                 }
             }
 
-            lastPlan = resolved;
+            lastResolution = resolved;
             lastCycle = cycle;
             return resolved;
         }
@@ -1141,20 +1220,20 @@ public final class PlantTargets {
             return Double.NaN;
         }
 
-        private PlantTargetPlan unavailable(PlantTargetContext context, String reason) {
-            PlantTargetPlan plan;
+        private PlantTargetResolution unavailable(PlantTargetContext context, String reason) {
+            PlantTargetResolution resolution;
             if (unavailableKind == UnavailableKind.REJECT) {
                 unavailableActive = true;
-                plan = PlantTargetPlan.unavailable(reason);
+                resolution = PlantTargetResolution.unavailable(reason);
             } else if (unavailableKind == UnavailableKind.FALLBACK) {
                 unavailableActive = true;
                 lastTarget = unavailableValue;
-                plan = PlantTargetPlan.fallback(unavailableValue, reason);
+                resolution = PlantTargetResolution.fallback(unavailableValue, reason);
             } else if (unavailableKind == UnavailableKind.HOLD_LAST) {
                 unavailableActive = true;
                 double target = Double.isFinite(lastTarget) ? lastTarget : unavailableValue;
                 lastTarget = target;
-                plan = PlantTargetPlan.holdLast(target, reason);
+                resolution = PlantTargetResolution.holdLast(target, reason);
             } else {
                 if (!unavailableActive || !Double.isFinite(heldMeasuredTarget)) {
                     heldMeasuredTarget = context.feedbackAvailable()
@@ -1163,17 +1242,17 @@ public final class PlantTargets {
                 }
                 unavailableActive = true;
                 lastTarget = heldMeasuredTarget;
-                plan = PlantTargetPlan.holdMeasured(heldMeasuredTarget, reason);
+                resolution = PlantTargetResolution.holdMeasured(heldMeasuredTarget, reason);
             }
             return commandTarget != null
-                    ? plan.withoutSelectedCommand(commandTarget)
-                    : plan;
+                    ? resolution.withoutSelectedCommand(commandTarget)
+                    : resolution;
         }
 
         @Override
         public void reset() {
             logicalTarget.reset();
-            lastPlan = PlantTargetPlan.unavailable("not sampled");
+            lastResolution = PlantTargetResolution.unavailable("not sampled");
             lastCycle = Long.MIN_VALUE;
             lastTarget = Double.NaN;
             unavailableActive = false;
@@ -1186,15 +1265,15 @@ public final class PlantTargets {
             String p = (prefix == null || prefix.isEmpty())
                     ? "equivalentPositionTarget"
                     : prefix;
-            dbg.addData(p + ".class", "EquivalentPositionsTargetSource")
+            dbg.addData(p + ".class", "EquivalentPositionsTargetResolver")
                     .addData(p + ".preference", preference)
                     .addData(p + ".unavailablePolicy", unavailableKind)
-                    .addData(p + ".lastPlan", lastPlan);
+                    .addData(p + ".lastResolution", lastResolution);
             logicalTarget.debugDump(dbg, p + ".logical");
         }
     }
 
-    private static final class PlannerTargetSource implements PlantTargetSource {
+    private static final class PlannerTargetResolver implements PlantTargetResolver {
         private final Source<PlantTargetRequest> requestSource;
         private final CandidatePreference preference;
         private final UnreachablePolicy unreachablePolicy;
@@ -1203,19 +1282,20 @@ public final class PlantTargets {
         private final UnavailableKind unavailableKind;
         private final double unavailableValue;
 
-        private PlantTargetPlan lastPlan = PlantTargetPlan.unavailable("not sampled");
+        private PlantTargetResolution lastResolution =
+                PlantTargetResolution.unavailable("not sampled");
         private long lastCycle = Long.MIN_VALUE;
         private double lastTarget = Double.NaN;
         private boolean unavailableActive;
         private double heldMeasuredTarget = Double.NaN;
 
-        PlannerTargetSource(Source<PlantTargetRequest> requestSource,
-                            CandidatePreference preference,
-                            UnreachablePolicy unreachablePolicy,
-                            double maxObservationAgeSec,
-                            double minQuality,
-                            UnavailableKind unavailableKind,
-                            double unavailableValue) {
+        PlannerTargetResolver(Source<PlantTargetRequest> requestSource,
+                              CandidatePreference preference,
+                              UnreachablePolicy unreachablePolicy,
+                              double maxObservationAgeSec,
+                              double minQuality,
+                              UnavailableKind unavailableKind,
+                              double unavailableValue) {
             this.requestSource = Objects.requireNonNull(requestSource, "requestSource");
             this.preference = Objects.requireNonNull(preference, "preference");
             this.unreachablePolicy = Objects.requireNonNull(unreachablePolicy, "unreachablePolicy");
@@ -1232,9 +1312,9 @@ public final class PlantTargets {
         }
 
         @Override
-        public PlantTargetPlan resolve(PlantTargetContext context, LoopClock clock) {
+        public PlantTargetResolution resolve(PlantTargetContext context, LoopClock clock) {
             long cycle = Objects.requireNonNull(clock, "clock").cycle();
-            if (cycle == lastCycle) return lastPlan;
+            if (cycle == lastCycle) return lastResolution;
             if (unavailableKind == UnavailableKind.HOLD_MEASURED
                     && hasSamplingGap(lastCycle, cycle)) {
                 unavailableActive = false;
@@ -1243,71 +1323,74 @@ public final class PlantTargets {
             lastCycle = cycle;
 
             PlantTargetRequest request = requestSource.get(clock);
-            if (request == null || !request.hasCandidates()) {
-                lastPlan = unavailable(context, request != null ? request.reason() : "missing plant target request");
-                return lastPlan;
+            if (request == null || !request.hasAlternatives()) {
+                lastResolution = unavailable(context,
+                        request != null ? request.reason() : "missing plant target request");
+                return lastResolution;
             }
 
-            CandidateSearch search = chooseBest(request, context, clock);
-            CandidateChoice best = search.choice;
+            AlternativeSearch search = chooseBest(request, context, clock);
+            AlternativeChoice best = search.choice;
             if (best == null) {
-                lastPlan = unavailable(context, search.rejectionReason);
-                return lastPlan;
+                lastResolution = unavailable(context, search.rejectionReason);
+                return lastResolution;
             }
 
             unavailableActive = false;
             heldMeasuredTarget = Double.NaN;
             lastTarget = best.target;
-            lastPlan = PlantTargetPlan.planned(best.target, best.candidate, best.selectedAgeSec,
-                    best.clamped,
-                    best.clamped ? "candidate clamped to range" : "selected plant target candidate");
-            return lastPlan;
+            lastResolution = PlantTargetResolution.planned(
+                    best.target, best.alternative, best.selectedAgeSec, best.clamped,
+                    best.clamped
+                            ? "candidate clamped to range"
+                            : "selected plant target candidate");
+            return lastResolution;
         }
 
-        private PlantTargetPlan unavailable(PlantTargetContext context, String reason) {
+        private PlantTargetResolution unavailable(PlantTargetContext context, String reason) {
             if (unavailableKind == UnavailableKind.REJECT) {
                 unavailableActive = true;
-                return PlantTargetPlan.unavailable(reason);
+                return PlantTargetResolution.unavailable(reason);
             }
             if (unavailableKind == UnavailableKind.FALLBACK) {
                 unavailableActive = true;
                 lastTarget = unavailableValue;
-                return PlantTargetPlan.fallback(unavailableValue, reason);
+                return PlantTargetResolution.fallback(unavailableValue, reason);
             }
             if (unavailableKind == UnavailableKind.HOLD_LAST) {
                 unavailableActive = true;
                 double target = Double.isFinite(lastTarget) ? lastTarget : unavailableValue;
-                return PlantTargetPlan.holdLast(target, reason);
+                return PlantTargetResolution.holdLast(target, reason);
             }
             if (!unavailableActive || !Double.isFinite(heldMeasuredTarget)) {
                 heldMeasuredTarget = context.feedbackAvailable() ? context.measurement() : unavailableValue;
             }
             unavailableActive = true;
             lastTarget = heldMeasuredTarget;
-            return PlantTargetPlan.holdMeasured(heldMeasuredTarget, reason);
+            return PlantTargetResolution.holdMeasured(heldMeasuredTarget, reason);
         }
 
-        private CandidateSearch chooseBest(PlantTargetRequest request,
-                                           PlantTargetContext context,
-                                           LoopClock clock) {
+        private AlternativeSearch chooseBest(PlantTargetRequest request,
+                                             PlantTargetContext context,
+                                             LoopClock clock) {
             ScalarRange range = context.targetRange();
             if (!PeriodicTargetSelector.isUsableRange(range))
-                return CandidateSearch.rejected("plant target range is unavailable");
+                return AlternativeSearch.rejected("plant target range is unavailable");
             double measurement = context.feedbackAvailable() ? context.measurement() : context.previousAppliedTarget();
             if (!Double.isFinite(measurement)) measurement = 0.0;
 
-            CandidateChoice best = null;
+            AlternativeChoice best = null;
             String firstRejection = null;
-            for (PlantTargetCandidate candidate : request.candidates()) {
-                CandidateAcceptance acceptance = candidateAcceptance(candidate, clock);
+            for (PlantTargetRequest.Alternative alternative : request.alternatives()) {
+                AlternativeAcceptance acceptance = alternativeAcceptance(alternative, clock);
                 if (!acceptance.accepted) {
                     if (firstRejection == null) firstRejection = acceptance.reason;
                     continue;
                 }
-                CandidateChoice choice = chooseForCandidate(candidate, acceptance.ageSec,
+                AlternativeChoice choice = chooseForAlternative(alternative, acceptance.ageSec,
                         measurement, range, context);
                 if (choice == null && firstRejection == null) {
-                    firstRejection = "candidate '" + candidate.id
+                    firstRejection = "candidate '" + alternative.id()
                             + "' did not produce a reachable target";
                 }
                 if (choice != null && (best == null
@@ -1317,90 +1400,97 @@ public final class PlantTargets {
                 }
             }
             return best != null
-                    ? CandidateSearch.selected(best)
-                    : CandidateSearch.rejected(firstRejection != null
+                    ? AlternativeSearch.selected(best)
+                    : AlternativeSearch.rejected(firstRejection != null
                     ? firstRejection
                     : "no plant target candidate passed observation gates or range");
         }
 
-        private CandidateAcceptance candidateAcceptance(PlantTargetCandidate candidate,
-                                                        LoopClock clock) {
-            if (!candidate.isObserved()) return CandidateAcceptance.accepted(Double.NaN);
+        private AlternativeAcceptance alternativeAcceptance(
+                PlantTargetRequest.Alternative alternative,
+                LoopClock clock) {
+            if (!alternative.observed()) return AlternativeAcceptance.accepted(Double.NaN);
 
-            if (!Double.isFinite(candidate.quality)
-                    || candidate.quality < 0.0
-                    || candidate.quality > 1.0) {
-                return CandidateAcceptance.rejected("candidate '" + candidate.id
-                        + "' has invalid observed quality " + candidate.quality
+            if (!Double.isFinite(alternative.quality())
+                    || alternative.quality() < 0.0
+                    || alternative.quality() > 1.0) {
+                return AlternativeAcceptance.rejected("candidate '" + alternative.id()
+                        + "' has invalid observed quality " + alternative.quality()
                         + "; expected a finite value in [0, 1]");
             }
-            if (!candidate.timestamp.isAvailable()) {
-                return CandidateAcceptance.rejected("candidate '" + candidate.id
+            if (!alternative.timestamp().isAvailable()) {
+                return AlternativeAcceptance.rejected("candidate '" + alternative.id()
                         + "' has no available observation timestamp");
             }
 
-            double ageSec = candidate.timestamp.ageSec(clock);
+            double ageSec = alternative.timestamp().ageSec(clock);
             if (!Double.isFinite(ageSec)) {
-                return CandidateAcceptance.rejected("candidate '" + candidate.id
+                return AlternativeAcceptance.rejected("candidate '" + alternative.id()
                         + "' observation timestamp is not valid in the current LoopClock epoch "
                         + "or is materially later than the current loop time");
             }
-            if (candidate.quality < minQuality) {
-                return CandidateAcceptance.rejected("candidate '" + candidate.id
-                        + "' observed quality " + candidate.quality
+            if (alternative.quality() < minQuality) {
+                return AlternativeAcceptance.rejected("candidate '" + alternative.id()
+                        + "' observed quality " + alternative.quality()
                         + " is below minimum " + minQuality);
             }
             if (Double.isFinite(maxObservationAgeSec) && ageSec > maxObservationAgeSec) {
-                return CandidateAcceptance.rejected("candidate '" + candidate.id
+                return AlternativeAcceptance.rejected("candidate '" + alternative.id()
                         + "' observation age " + ageSec
                         + " exceeds maximum " + maxObservationAgeSec + " seconds");
             }
-            return CandidateAcceptance.accepted(ageSec);
+            return AlternativeAcceptance.accepted(ageSec);
         }
 
-        private CandidateChoice chooseForCandidate(PlantTargetCandidate c,
-                                                   double selectedAgeSec,
-                                                   double measurement,
-                                                   ScalarRange range,
-                                                   PlantTargetContext context) {
-            double base = c.relative ? measurement + c.value : c.value;
+        private AlternativeChoice chooseForAlternative(
+                PlantTargetRequest.Alternative alternative,
+                double selectedAgeSec,
+                double measurement,
+                ScalarRange range,
+                PlantTargetContext context) {
+            double base = alternative.relative()
+                    ? measurement + alternative.value()
+                    : alternative.value();
             if (!Double.isFinite(base)) return null;
-            if (!c.periodic) {
+            if (!alternative.periodic()) {
                 if (range.contains(base))
-                    return new CandidateChoice(c, base, selectedAgeSec, false);
-                return clampedChoice(c, base, selectedAgeSec, range);
+                    return new AlternativeChoice(alternative, base, selectedAgeSec, false);
+                return clampedChoice(alternative, base, selectedAgeSec, range);
             }
 
-            if (c.usesPlantPeriod && !context.periodic()) return null;
-            double period = c.usesPlantPeriod ? context.period() : c.period;
+            if (alternative.usesPlantPeriod() && !context.periodic()) return null;
+            double period = alternative.usesPlantPeriod()
+                    ? context.period()
+                    : alternative.period();
             if (!(period > 0.0) || !Double.isFinite(period)) return null;
 
             double selected = PeriodicTargetSelector.select(
                     base, period, preference, measurement, range);
             if (Double.isFinite(selected)) {
-                return new CandidateChoice(c, selected, selectedAgeSec, false);
+                return new AlternativeChoice(alternative, selected, selectedAgeSec, false);
             }
-            return clampedChoice(c, base, selectedAgeSec, range);
+            return clampedChoice(alternative, base, selectedAgeSec, range);
         }
 
-        private CandidateChoice clampedChoice(PlantTargetCandidate candidate,
-                                               double base,
-                                               double selectedAgeSec,
-                                               ScalarRange range) {
+        private AlternativeChoice clampedChoice(
+                PlantTargetRequest.Alternative alternative,
+                double base,
+                double selectedAgeSec,
+                ScalarRange range) {
             if (unreachablePolicy != UnreachablePolicy.CLAMP_TO_RANGE
                     || !Double.isFinite(base)) {
                 return null;
             }
             double clamped = range.clamp(base);
             return Double.isFinite(clamped) && range.contains(clamped)
-                    ? new CandidateChoice(candidate, clamped, selectedAgeSec, true)
+                    ? new AlternativeChoice(alternative, clamped, selectedAgeSec, true)
                     : null;
         }
 
         @Override
         public void reset() {
             requestSource.reset();
-            lastPlan = PlantTargetPlan.unavailable("not sampled");
+            lastResolution = PlantTargetResolution.unavailable("not sampled");
             lastCycle = Long.MIN_VALUE;
             lastTarget = Double.NaN;
             unavailableActive = false;
@@ -1411,13 +1501,13 @@ public final class PlantTargets {
         public void debugDump(DebugSink dbg, String prefix) {
             if (dbg == null) return;
             String p = (prefix == null || prefix.isEmpty()) ? "plantTargetPlanner" : prefix;
-            dbg.addData(p + ".class", "PlantTargetPlanner")
+            dbg.addData(p + ".class", "PlannerTargetResolver")
                     .addData(p + ".preference", preference)
                     .addData(p + ".unreachablePolicy", unreachablePolicy)
                     .addData(p + ".maxObservationAgeSec", maxObservationAgeSec)
                     .addData(p + ".minQuality", minQuality)
                     .addData(p + ".unavailablePolicy", unavailableKind)
-                    .addData(p + ".lastPlan", lastPlan);
+                    .addData(p + ".lastResolution", lastResolution);
             requestSource.debugDump(dbg, p + ".request");
         }
     }
@@ -1672,60 +1762,60 @@ public final class PlantTargets {
         }
     }
 
-    private static final class CandidateChoice {
-        final PlantTargetCandidate candidate;
+    private static final class AlternativeChoice {
+        final PlantTargetRequest.Alternative alternative;
         final double target;
         final double selectedAgeSec;
         final boolean clamped;
 
-        CandidateChoice(PlantTargetCandidate candidate,
-                        double target,
-                        double selectedAgeSec,
-                        boolean clamped) {
-            this.candidate = candidate;
+        AlternativeChoice(PlantTargetRequest.Alternative alternative,
+                          double target,
+                          double selectedAgeSec,
+                          boolean clamped) {
+            this.alternative = alternative;
             this.target = target;
             this.selectedAgeSec = selectedAgeSec;
             this.clamped = clamped;
         }
     }
 
-    /** Result of checking one candidate's live observation metadata. */
-    private static final class CandidateAcceptance {
+    /** Result of checking one request alternative's live observation metadata. */
+    private static final class AlternativeAcceptance {
         final boolean accepted;
         final double ageSec;
         final String reason;
 
-        private CandidateAcceptance(boolean accepted, double ageSec, String reason) {
+        private AlternativeAcceptance(boolean accepted, double ageSec, String reason) {
             this.accepted = accepted;
             this.ageSec = ageSec;
             this.reason = reason;
         }
 
-        static CandidateAcceptance accepted(double ageSec) {
-            return new CandidateAcceptance(true, ageSec, "");
+        static AlternativeAcceptance accepted(double ageSec) {
+            return new AlternativeAcceptance(true, ageSec, "");
         }
 
-        static CandidateAcceptance rejected(String reason) {
-            return new CandidateAcceptance(false, Double.NaN, reason);
+        static AlternativeAcceptance rejected(String reason) {
+            return new AlternativeAcceptance(false, Double.NaN, reason);
         }
     }
 
-    /** Candidate search outcome retaining an actionable first rejection when no candidate wins. */
-    private static final class CandidateSearch {
-        final CandidateChoice choice;
+    /** Alternative search outcome retaining the first actionable rejection when none wins. */
+    private static final class AlternativeSearch {
+        final AlternativeChoice choice;
         final String rejectionReason;
 
-        private CandidateSearch(CandidateChoice choice, String rejectionReason) {
+        private AlternativeSearch(AlternativeChoice choice, String rejectionReason) {
             this.choice = choice;
             this.rejectionReason = rejectionReason;
         }
 
-        static CandidateSearch selected(CandidateChoice choice) {
-            return new CandidateSearch(choice, "");
+        static AlternativeSearch selected(AlternativeChoice choice) {
+            return new AlternativeSearch(choice, "");
         }
 
-        static CandidateSearch rejected(String reason) {
-            return new CandidateSearch(null, reason);
+        static AlternativeSearch rejected(String reason) {
+            return new AlternativeSearch(null, reason);
         }
     }
 

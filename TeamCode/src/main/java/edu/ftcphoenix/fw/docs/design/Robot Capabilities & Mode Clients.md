@@ -463,7 +463,7 @@ When you start a new season, expect to name and place these kinds of objects exp
 
 - framework lanes for stable FTC-side graphs
 - shared field facts
-- subsystems as target-source owners
+- subsystems as target-resolver owners
 - supervisors for policy/orchestration
 - services for shared game-specific computation
 - presenters for human-facing output

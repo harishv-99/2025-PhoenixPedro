@@ -7,7 +7,7 @@ import edu.ftcphoenix.fw.core.source.ScalarTarget;
  *
  * <p>Optional Plant target guards are configured before choosing the one final target graph.
  * Choosing that graph advances to {@link MappedPlantBuildStep}, so ordinary fluent callers cannot
- * build before answering the target-source question.</p>
+ * build before answering the target-resolver question.</p>
  *
  * @param <P> concrete mapped Plant type produced after target selection
  */
@@ -19,12 +19,12 @@ public interface MappedPlantTargetStep<P extends Plant> {
     MappedPlantTargetStep<P> targetGuards(PlantTargetGuards targetGuards);
 
     /**
-     * Use a command target as the exact final source.
+     * Use a command target as the exact final resolver.
      *
      * @throws IllegalStateException if target selection was already answered through a retained
      *                               reference to this stage
      */
-    MappedPlantBuildStep<P> targetedBy(ScalarTarget targetSource);
+    MappedPlantBuildStep<P> targetedBy(ScalarTarget target);
 
     /**
      * Use a Plant-aware final target graph.
@@ -34,5 +34,5 @@ public interface MappedPlantTargetStep<P extends Plant> {
      * @throws IllegalStateException if target selection was already answered through a retained
      *                               reference to this stage
      */
-    MappedPlantBuildStep<P> targetedBy(PlantTargetSource targetSource);
+    MappedPlantBuildStep<P> targetedBy(PlantTargetResolver targetResolver);
 }

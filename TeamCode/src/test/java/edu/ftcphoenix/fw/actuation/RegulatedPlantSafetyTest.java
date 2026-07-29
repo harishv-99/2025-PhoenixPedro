@@ -181,7 +181,7 @@ public final class RegulatedPlantSafetyTest {
         assertEquals(0.0, output.commanded, 0.0);
         assertEquals(0.0, plant.getAppliedTarget(), 0.0);
         assertEquals(PlantTargetStatus.Kind.STOPPED, plant.getTargetStatus().kind());
-        assertFalse(plant.getTargetPlan().hasTarget());
+        assertFalse(plant.getTargetResolution().hasTarget());
         assertFalse(plant.atTarget());
         assertFalse(plant.atTarget(20.0));
     }
@@ -214,8 +214,8 @@ public final class RegulatedPlantSafetyTest {
 
         assertEquals(20.0, plant.getAppliedTarget(), 0.0);
         assertEquals(PlantTargetStatus.Kind.ACCEPTED, plant.getTargetStatus().kind());
-        assertTrue(plant.getTargetPlan().hasTarget());
-        assertEquals(20.0, plant.getTargetPlan().target(), 0.0);
+        assertTrue(plant.getTargetResolution().hasTarget());
+        assertEquals(20.0, plant.getTargetResolution().target(), 0.0);
         assertFalse(plant.atTarget());
         assertFalse(plant.atTarget(20.0));
         CapturingDebugSink debug = debug(plant, "velocity");
@@ -249,7 +249,7 @@ public final class RegulatedPlantSafetyTest {
         assertEquals(0.0, output.commanded, 0.0);
         assertEquals(0.0, plant.getAppliedTarget(), 0.0);
         assertEquals(PlantTargetStatus.Kind.STOPPED, plant.getTargetStatus().kind());
-        assertFalse(plant.getTargetPlan().hasTarget());
+        assertFalse(plant.getTargetResolution().hasTarget());
         assertFalse(plant.atTarget());
         assertFalse(plant.atTarget(20.0));
         CapturingDebugSink debug = debug(plant, "velocity");
@@ -359,7 +359,7 @@ public final class RegulatedPlantSafetyTest {
         assertEquals(1, search.stopCalls);
         assertEquals(5.0, distinctPlant.getAppliedTarget(), 0.0);
         assertEquals(PlantTargetStatus.Kind.ACCEPTED, distinctPlant.getTargetStatus().kind());
-        assertTrue(distinctPlant.getTargetPlan().hasTarget());
+        assertTrue(distinctPlant.getTargetResolution().hasTarget());
         assertFalse(distinctPlant.atTarget());
         assertFalse(distinctPlant.atTarget(5.0));
 
@@ -388,7 +388,7 @@ public final class RegulatedPlantSafetyTest {
         assertEquals(6.0, searchFailurePlant.getAppliedTarget(), 0.0);
         assertEquals(PlantTargetStatus.Kind.ACCEPTED,
                 searchFailurePlant.getTargetStatus().kind());
-        assertTrue(searchFailurePlant.getTargetPlan().hasTarget());
+        assertTrue(searchFailurePlant.getTargetResolution().hasTarget());
         assertFalse(searchFailurePlant.atTarget());
         assertFalse(searchFailurePlant.atTarget(6.0));
         CapturingDebugSink searchFailureDebug = debug(searchFailurePlant, "position");

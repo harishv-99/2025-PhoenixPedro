@@ -16,10 +16,10 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *
  * <p>Most FTC robot code should use the staged {@code FtcActuators.plant(...)} builder. These
  * factories are the lower-level boundary for custom hardware adapters and tests. All factories
- * normalize their target input into a {@link PlantTargetSource}. The concise overloads accept a
+ * normalize their target input into a {@link PlantTargetResolver}. The concise overloads accept a
  * writable {@link ScalarTarget}; read-only scalar sources cross into Plant target space explicitly
  * through {@link PlantTargets#exact(ScalarSource)}. A Plant's optional command target is derived
- * from that final graph's exact source or stable overlay base; callers never register a second,
+ * from that final graph's exact resolver or stable overlay base; callers never register a second,
  * potentially disconnected target. Their shared update path enforces a final finite target after
  * dynamic guards.</p>
  */
@@ -39,11 +39,11 @@ public final class Plants {
     }
 
     /**
-     * Create a direct normalized-power plant from a plant-aware target source.
-     * The source sees {@code [-1.0, +1.0]} as the Plant's legal target range.
+     * Create a direct normalized-power plant from a plant-aware target resolver.
+     * The resolver sees {@code [-1.0, +1.0]} as the Plant's legal target range.
      */
-    public static Plant power(PowerOutput out, PlantTargetSource target) {
-        return power(out, target, PlantTargetGuards.none());
+    public static Plant power(PowerOutput out, PlantTargetResolver targetResolver) {
+        return power(out, targetResolver, PlantTargetGuards.none());
     }
 
     /**
@@ -51,11 +51,11 @@ public final class Plants {
      * inside {@code [-1.0, +1.0]}. Any command target is derived from the final target graph.
      */
     public static Plant power(PowerOutput out,
-                              PlantTargetSource target,
+                              PlantTargetResolver targetResolver,
                               PlantTargetGuards guards) {
         PlantTargetGuards actualGuards = guards == null ? PlantTargetGuards.none() : guards;
         actualGuards.validateFallbackTargets(NORMALIZED_POWER_RANGE, "PowerPlant");
-        return new PowerPlant(out, target, actualGuards);
+        return new PowerPlant(out, targetResolver, actualGuards);
     }
 
     /**
@@ -67,19 +67,19 @@ public final class Plants {
     }
 
     /**
-     * Create a commanded-position plant with no authoritative feedback from a plant-aware target source.
+     * Create a commanded-position plant with no authoritative feedback from a plant-aware target resolver.
      */
-    public static Plant position(PositionOutput out, PlantTargetSource target) {
-        return position(out, target, PlantTargetGuards.none());
+    public static Plant position(PositionOutput out, PlantTargetResolver targetResolver) {
+        return position(out, targetResolver, PlantTargetGuards.none());
     }
 
     /**
      * Create a commanded-position plant with optional guards.
      */
     public static Plant position(PositionOutput out,
-                                 PlantTargetSource target,
+                                 PlantTargetResolver targetResolver,
                                  PlantTargetGuards guards) {
-        return new CommandedPositionPlant(out, target, guards);
+        return new CommandedPositionPlant(out, targetResolver, guards);
     }
 
     /**
@@ -88,11 +88,11 @@ public final class Plants {
      * measurement.
      */
     public static Plant position(PositionOutput out,
-                                 PlantTargetSource target,
+                                 PlantTargetResolver targetResolver,
                                  PlantTargetGuards guards,
                                  ScalarSource measurement,
                                  double positionTolerance) {
-        return new DeviceManagedPositionPlant(out, target, guards, measurement, positionTolerance);
+        return new DeviceManagedPositionPlant(out, targetResolver, guards, measurement, positionTolerance);
     }
 
     /**
@@ -101,11 +101,11 @@ public final class Plants {
      * measurement.
      */
     public static Plant velocity(VelocityOutput out,
-                                 PlantTargetSource target,
+                                 PlantTargetResolver targetResolver,
                                  PlantTargetGuards guards,
                                  ScalarSource measurement,
                                  double velocityTolerance) {
-        return new DeviceManagedVelocityPlant(out, target, guards, measurement, velocityTolerance);
+        return new DeviceManagedVelocityPlant(out, targetResolver, guards, measurement, velocityTolerance);
     }
 
     /**
@@ -116,12 +116,12 @@ public final class Plants {
      * measurement.
      */
     public static Plant positionFromPower(PowerOutput powerOut,
-                                          PlantTargetSource target,
+                                          PlantTargetResolver targetResolver,
                                           PlantTargetGuards guards,
                                           ScalarSource measurement,
                                           ScalarRegulator regulator,
                                           double positionTolerance) {
-        return new RegulatedPositionPlant(powerOut, target, guards, measurement, regulator, positionTolerance);
+        return new RegulatedPositionPlant(powerOut, targetResolver, guards, measurement, regulator, positionTolerance);
     }
 
     /**
@@ -132,27 +132,27 @@ public final class Plants {
      * measurement.
      */
     public static Plant velocityFromPower(PowerOutput powerOut,
-                                          PlantTargetSource target,
+                                          PlantTargetResolver targetResolver,
                                           PlantTargetGuards guards,
                                           ScalarSource measurement,
                                           ScalarRegulator regulator,
                                           double velocityTolerance) {
-        return new RegulatedVelocityPlant(powerOut, target, guards, measurement, regulator, velocityTolerance);
+        return new RegulatedVelocityPlant(powerOut, targetResolver, guards, measurement, regulator, velocityTolerance);
     }
 
     private abstract static class AbstractSourceDrivenPlant implements Plant {
-        private final PlantTargetSource targetSource;
+        private final PlantTargetResolver targetResolver;
         private final ScalarTarget commandTarget;
         private final PlantTargetGuards guards;
 
         private double requestedTarget = Double.NaN;
         private double appliedTarget;
         private PlantTargetStatus targetStatus = PlantTargetStatus.STOPPED;
-        private PlantTargetPlan targetPlan = PlantTargetPlan.unavailable("not sampled");
+        private PlantTargetResolution targetResolution = PlantTargetResolution.unavailable("not sampled");
 
-        AbstractSourceDrivenPlant(PlantTargetSource targetSource, PlantTargetGuards guards) {
-            this.targetSource = Objects.requireNonNull(targetSource, "targetSource");
-            this.commandTarget = PlantTargets.commandTargetOf(this.targetSource);
+        AbstractSourceDrivenPlant(PlantTargetResolver targetResolver, PlantTargetGuards guards) {
+            this.targetResolver = Objects.requireNonNull(targetResolver, "targetResolver");
+            this.commandTarget = PlantTargets.commandTargetOf(this.targetResolver);
             this.guards = guards == null ? PlantTargetGuards.none() : guards;
         }
 
@@ -160,20 +160,22 @@ public final class Plants {
         public final void update(LoopClock clock) {
             double priorAppliedTarget = appliedTarget;
             PlantTargetStatus priorTargetStatus = targetStatus;
-            PlantTargetPlan priorTargetPlan = targetPlan;
+            PlantTargetResolution priorTargetResolution = targetResolution;
             prepareTargetContext(clock);
             PlantTargetContext context = targetContext(clock);
-            targetPlan = targetSource.resolve(context, clock);
-            if (targetPlan != null && targetPlan.hasTarget()) {
-                requestedTarget = targetPlan.target();
+            targetResolution = targetResolver.resolve(context, clock);
+            if (targetResolution != null && targetResolution.hasTarget()) {
+                requestedTarget = targetResolution.target();
             } else {
                 requestedTarget = appliedTarget;
             }
 
             double candidate = sanitizeRequestedTarget(requestedTarget);
             PlantTargetStatus status;
-            if (targetPlan == null || !targetPlan.hasTarget()) {
-                status = PlantTargetStatus.targetUnavailable(targetPlan != null ? targetPlan.reason() : "missing plant target plan");
+            if (targetResolution == null || !targetResolution.hasTarget()) {
+                status = PlantTargetStatus.targetUnavailable(targetResolution != null
+                        ? targetResolution.reason()
+                        : "missing plant target resolution");
                 candidate = appliedTarget;
             } else {
                 status = candidate == requestedTarget
@@ -189,7 +191,7 @@ public final class Plants {
                 applyTarget(appliedTarget, clock);
                 updateStatus(clock);
             } catch (RuntimeException failure) {
-                onUpdateFailure(priorAppliedTarget, priorTargetStatus, priorTargetPlan, failure);
+                onUpdateFailure(priorAppliedTarget, priorTargetStatus, priorTargetResolution, failure);
                 throw failure;
             }
         }
@@ -212,7 +214,7 @@ public final class Plants {
 
         protected void onUpdateFailure(double priorAppliedTarget,
                                        PlantTargetStatus priorTargetStatus,
-                                       PlantTargetPlan priorTargetPlan,
+                                       PlantTargetResolution priorTargetResolution,
                                        RuntimeException failure) {
         }
 
@@ -227,8 +229,8 @@ public final class Plants {
         }
 
         @Override
-        public final PlantTargetPlan getTargetPlan() {
-            return targetPlan;
+        public final PlantTargetResolution getTargetResolution() {
+            return targetResolution;
         }
 
         @Override
@@ -249,12 +251,12 @@ public final class Plants {
 
         @Override
         public void reset() {
-            targetSource.reset();
+            targetResolver.reset();
             guards.reset();
             requestedTarget = Double.NaN;
             appliedTarget = 0.0;
             targetStatus = PlantTargetStatus.STOPPED;
-            targetPlan = PlantTargetPlan.unavailable("not sampled");
+            targetResolution = PlantTargetResolution.unavailable("not sampled");
         }
 
         protected final void markStopped(double appliedAfterStop) {
@@ -264,10 +266,10 @@ public final class Plants {
 
         protected final void restoreTargetState(double priorAppliedTarget,
                                                 PlantTargetStatus priorTargetStatus,
-                                                PlantTargetPlan priorTargetPlan) {
+                                                PlantTargetResolution priorTargetResolution) {
             appliedTarget = priorAppliedTarget;
             targetStatus = priorTargetStatus;
-            targetPlan = priorTargetPlan;
+            targetResolution = priorTargetResolution;
         }
 
         /**
@@ -282,7 +284,7 @@ public final class Plants {
             Plant.super.debugDump(dbg, prefix);
             if (dbg == null) return;
             String p = (prefix == null || prefix.isEmpty()) ? "plant" : prefix;
-            targetSource.debugDump(dbg, p + ".targetSource");
+            targetResolver.debugDump(dbg, p + ".targetResolver");
             guards.debugDump(dbg, p + ".targetGuards");
         }
     }
@@ -290,8 +292,8 @@ public final class Plants {
     private static final class PowerPlant extends AbstractSourceDrivenPlant {
         private final PowerOutput out;
 
-        PowerPlant(PowerOutput out, PlantTargetSource target, PlantTargetGuards guards) {
-            super(target, guards);
+        PowerPlant(PowerOutput out, PlantTargetResolver targetResolver, PlantTargetGuards guards) {
+            super(targetResolver, guards);
             this.out = Objects.requireNonNull(out, "out");
         }
 
@@ -318,9 +320,9 @@ public final class Plants {
         private final PositionOutput out;
 
         CommandedPositionPlant(PositionOutput out,
-                               PlantTargetSource target,
+                               PlantTargetResolver targetResolver,
                                PlantTargetGuards guards) {
-            super(target, guards);
+            super(targetResolver, guards);
             this.out = Objects.requireNonNull(out, "out");
         }
 
@@ -343,11 +345,11 @@ public final class Plants {
         private double lastMeasurement = Double.NaN;
         private boolean lastAtTarget;
 
-        AbstractFeedbackPlant(PlantTargetSource target,
+        AbstractFeedbackPlant(PlantTargetResolver targetResolver,
                               PlantTargetGuards guards,
                               ScalarSource measurement,
                               double tolerance) {
-            super(target, guards);
+            super(targetResolver, guards);
             this.measurement = Objects.requireNonNull(measurement, "measurement").memoized();
             if (tolerance < 0.0 || !Double.isFinite(tolerance)) {
                 throw new IllegalArgumentException("tolerance must be finite and >= 0");
@@ -419,9 +421,9 @@ public final class Plants {
     private static final class DeviceManagedPositionPlant extends AbstractFeedbackPlant {
         private final PositionOutput out;
 
-        DeviceManagedPositionPlant(PositionOutput out, PlantTargetSource target,
+        DeviceManagedPositionPlant(PositionOutput out, PlantTargetResolver targetResolver,
                                    PlantTargetGuards guards, ScalarSource measurement, double tolerance) {
-            super(target, guards, measurement, tolerance);
+            super(targetResolver, guards, measurement, tolerance);
             this.out = Objects.requireNonNull(out, "out");
         }
 
@@ -441,9 +443,9 @@ public final class Plants {
     private static final class DeviceManagedVelocityPlant extends AbstractFeedbackPlant {
         private final VelocityOutput out;
 
-        DeviceManagedVelocityPlant(VelocityOutput out, PlantTargetSource target,
+        DeviceManagedVelocityPlant(VelocityOutput out, PlantTargetResolver targetResolver,
                                    PlantTargetGuards guards, ScalarSource measurement, double tolerance) {
-            super(target, guards, measurement, tolerance);
+            super(targetResolver, guards, measurement, tolerance);
             this.out = Objects.requireNonNull(out, "out");
         }
 
@@ -464,10 +466,10 @@ public final class Plants {
         private final RegulatedPowerChannel powerChannel;
         private boolean regulatedActuationCompleted;
 
-        AbstractRegulatedPlant(PowerOutput out, PlantTargetSource target,
+        AbstractRegulatedPlant(PowerOutput out, PlantTargetResolver targetResolver,
                                PlantTargetGuards guards, ScalarSource measurement,
                                ScalarRegulator regulator, double tolerance, String controlPath) {
-            super(target, guards, measurement, tolerance);
+            super(targetResolver, guards, measurement, tolerance);
             this.powerChannel = new RegulatedPowerChannel(out, regulator, controlPath);
         }
 
@@ -492,7 +494,7 @@ public final class Plants {
         @Override
         protected final void onUpdateFailure(double priorAppliedTarget,
                                              PlantTargetStatus priorTargetStatus,
-                                             PlantTargetPlan priorTargetPlan,
+                                             PlantTargetResolution priorTargetResolution,
                                              RuntimeException failure) {
             regulatedActuationCompleted = false;
             invalidateAtTarget();
@@ -504,7 +506,7 @@ public final class Plants {
             if (powerChannel.lastStopSubmitted()) {
                 markStopped(0.0);
             } else {
-                restoreTargetState(priorAppliedTarget, priorTargetStatus, priorTargetPlan);
+                restoreTargetState(priorAppliedTarget, priorTargetStatus, priorTargetResolution);
             }
         }
 
@@ -520,7 +522,7 @@ public final class Plants {
         public void stop() {
             double priorAppliedTarget = getAppliedTarget();
             PlantTargetStatus priorTargetStatus = getTargetStatus();
-            PlantTargetPlan priorTargetPlan = getTargetPlan();
+            PlantTargetResolution priorTargetResolution = getTargetResolution();
             regulatedActuationCompleted = false;
             invalidateAtTarget();
 
@@ -539,7 +541,7 @@ public final class Plants {
             if (powerChannel.lastStopSubmitted()) {
                 markStopped(0.0);
             } else {
-                restoreTargetState(priorAppliedTarget, priorTargetStatus, priorTargetPlan);
+                restoreTargetState(priorAppliedTarget, priorTargetStatus, priorTargetResolution);
             }
             if (primary != null) throw primary;
         }
@@ -561,19 +563,19 @@ public final class Plants {
     }
 
     private static final class RegulatedPositionPlant extends AbstractRegulatedPlant {
-        RegulatedPositionPlant(PowerOutput out, PlantTargetSource target,
+        RegulatedPositionPlant(PowerOutput out, PlantTargetResolver targetResolver,
                                PlantTargetGuards guards, ScalarSource measurement,
                                ScalarRegulator regulator, double tolerance) {
-            super(out, target, guards, measurement, regulator, tolerance,
+            super(out, targetResolver, guards, measurement, regulator, tolerance,
                     "Plants.positionFromPower");
         }
     }
 
     private static final class RegulatedVelocityPlant extends AbstractRegulatedPlant {
-        RegulatedVelocityPlant(PowerOutput out, PlantTargetSource target,
+        RegulatedVelocityPlant(PowerOutput out, PlantTargetResolver targetResolver,
                                PlantTargetGuards guards, ScalarSource measurement,
                                ScalarRegulator regulator, double tolerance) {
-            super(out, target, guards, measurement, regulator, tolerance,
+            super(out, targetResolver, guards, measurement, regulator, tolerance,
                     "Plants.velocityFromPower");
         }
     }

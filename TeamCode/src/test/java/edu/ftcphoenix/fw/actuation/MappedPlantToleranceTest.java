@@ -60,7 +60,7 @@ public final class MappedPlantToleranceTest {
                         "targetedBy", ScalarTarget.class).getReturnType());
         assertSame(MappedPlantBuildStep.class,
                 MappedPlantTargetStep.class.getDeclaredMethod(
-                        "targetedBy", PlantTargetSource.class).getReturnType());
+                        "targetedBy", PlantTargetResolver.class).getReturnType());
         assertEquals(3, MappedPlantTargetStep.class.getDeclaredMethods().length);
         assertSame(Plant.class,
                 MappedPlantBuildStep.class.getDeclaredMethod("build").getReturnType());

@@ -24,7 +24,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *         .forSeconds(0.12)
  *         .build();
  *
- * PlantTargetSource finalTransferTarget = PlantTargets.overlay(baseTransferTarget)
+ * PlantTargetResolver finalTransferTarget = PlantTargets.overlay(baseTransferTarget)
  *         .add("feedPulse", feederQueue.activeSource(), feederQueue)
  *         .build();
  *

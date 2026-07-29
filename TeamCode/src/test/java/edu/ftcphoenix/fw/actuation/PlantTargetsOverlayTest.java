@@ -29,18 +29,18 @@ public final class PlantTargetsOverlayTest {
     @Test
     public void samplesEveryGateOnceBeforeResolvingTheSelectedTarget() {
         List<String> events = new ArrayList<>();
-        ProbeTargetSource base = target("base", 0.0, events);
+        ProbeTargetResolver base = target("base", 0.0, events);
         ProbeBooleanSource lowerGate = gate("lowerGate", true, events);
-        ProbeTargetSource lower = target("lowerTarget", 1.0, events);
+        ProbeTargetResolver lower = target("lowerTarget", 1.0, events);
         ProbeBooleanSource higherGate = gate("higherGate", true, events);
-        ProbeTargetSource higher = target("higherTarget", 2.0, events);
-        PlantTargetSource overlay = PlantTargets.overlay(base)
+        ProbeTargetResolver higher = target("higherTarget", 2.0, events);
+        PlantTargetResolver overlay = PlantTargets.overlay(base)
                 .add("lower", lowerGate, lower)
                 .add("higher", higherGate, higher)
                 .build();
         ManualLoopClock time = new ManualLoopClock();
 
-        PlantTargetPlan first = overlay.resolve(context(0.0), time.clock());
+        PlantTargetResolution first = overlay.resolve(context(0.0), time.clock());
 
         assertEquals(2.0, first.target(), EPSILON);
         assertEquals(Arrays.asList("lowerGate", "higherGate", "higherTarget"), events);
@@ -58,15 +58,15 @@ public final class PlantTargetsOverlayTest {
 
     @Test
     public void higherValidLayerWinsWithoutResolvingLowerRequiredUnavailableLayer() {
-        ProbeTargetSource base = target(0.0);
-        ProbeTargetSource lowerUnavailable = unavailable("lower missing");
-        ProbeTargetSource higher = target(2.0);
-        PlantTargetSource overlay = PlantTargets.overlay(base)
+        ProbeTargetResolver base = target(0.0);
+        ProbeTargetResolver lowerUnavailable = unavailable("lower missing");
+        ProbeTargetResolver higher = target(2.0);
+        PlantTargetResolver overlay = PlantTargets.overlay(base)
                 .add("lowerRequired", gate(true), lowerUnavailable)
                 .add("higher", gate(true), higher)
                 .build();
 
-        PlantTargetPlan plan = overlay.resolve(context(0.0), new ManualLoopClock().clock());
+        PlantTargetResolution plan = overlay.resolve(context(0.0), new ManualLoopClock().clock());
 
         assertTrue(plan.hasTarget());
         assertEquals(2.0, plan.target(), EPSILON);
@@ -77,15 +77,15 @@ public final class PlantTargetsOverlayTest {
 
     @Test
     public void selectedRequiredUnavailableLayerBlocksLowerLayerAndBase() {
-        ProbeTargetSource base = target(0.0);
-        ProbeTargetSource lower = target(1.0);
-        ProbeTargetSource higherUnavailable = unavailable("camera has no target");
-        PlantTargetSource overlay = PlantTargets.overlay(base)
+        ProbeTargetResolver base = target(0.0);
+        ProbeTargetResolver lower = target(1.0);
+        ProbeTargetResolver higherUnavailable = unavailable("camera has no target");
+        PlantTargetResolver overlay = PlantTargets.overlay(base)
                 .add("lower", gate(true), lower)
                 .add("visionRequired", gate(true), higherUnavailable)
                 .build();
 
-        PlantTargetPlan plan = overlay.resolve(context(0.0), new ManualLoopClock().clock());
+        PlantTargetResolution plan = overlay.resolve(context(0.0), new ManualLoopClock().clock());
 
         assertFalse(plan.hasTarget());
         assertTrue(plan.reason().contains("visionRequired"));
@@ -97,17 +97,17 @@ public final class PlantTargetsOverlayTest {
 
     @Test
     public void addIfAvailableFallsThroughUntilAValidLowerLayerWins() {
-        ProbeTargetSource base = target(0.0);
-        ProbeTargetSource lower = target(1.0);
-        ProbeTargetSource middleUnavailable = unavailable("middle missing");
-        ProbeTargetSource higherUnavailable = unavailable("higher missing");
-        PlantTargetSource overlay = PlantTargets.overlay(base)
+        ProbeTargetResolver base = target(0.0);
+        ProbeTargetResolver lower = target(1.0);
+        ProbeTargetResolver middleUnavailable = unavailable("middle missing");
+        ProbeTargetResolver higherUnavailable = unavailable("higher missing");
+        PlantTargetResolver overlay = PlantTargets.overlay(base)
                 .add("lower", gate(true), lower)
                 .addIfAvailable("middleOptional", gate(true), middleUnavailable)
                 .addIfAvailable("higherOptional", gate(true), higherUnavailable)
                 .build();
 
-        PlantTargetPlan plan = overlay.resolve(context(0.0), new ManualLoopClock().clock());
+        PlantTargetResolution plan = overlay.resolve(context(0.0), new ManualLoopClock().clock());
 
         assertTrue(plan.hasTarget());
         assertEquals(1.0, plan.target(), EPSILON);
@@ -120,18 +120,18 @@ public final class PlantTargetsOverlayTest {
     @Test
     public void availableOptionalLayerWinsAfterHigherOptionalFallsThrough() {
         List<String> events = new ArrayList<>();
-        ProbeTargetSource base = target("baseTarget", 0.0, events);
-        ProbeTargetSource lower = target("lowerTarget", 1.0, events);
-        ProbeTargetSource middle = target("middleTarget", 2.0, events);
-        ProbeTargetSource higherUnavailable = new ProbeTargetSource("higherTarget",
-                PlantTargetPlan.unavailable("higher missing"), events);
-        PlantTargetSource overlay = PlantTargets.overlay(base)
+        ProbeTargetResolver base = target("baseTarget", 0.0, events);
+        ProbeTargetResolver lower = target("lowerTarget", 1.0, events);
+        ProbeTargetResolver middle = target("middleTarget", 2.0, events);
+        ProbeTargetResolver higherUnavailable = new ProbeTargetResolver("higherTarget",
+                PlantTargetResolution.unavailable("higher missing"), events);
+        PlantTargetResolver overlay = PlantTargets.overlay(base)
                 .add("lower", gate("lowerGate", true, events), lower)
                 .addIfAvailable("middleOptional", gate("middleGate", true, events), middle)
                 .addIfAvailable("higherOptional", gate("higherGate", true, events), higherUnavailable)
                 .build();
 
-        PlantTargetPlan plan = overlay.resolve(context(0.0), new ManualLoopClock().clock());
+        PlantTargetResolution plan = overlay.resolve(context(0.0), new ManualLoopClock().clock());
 
         assertEquals(2.0, plan.target(), EPSILON);
         assertEquals(Arrays.asList("lowerGate", "middleGate", "higherGate",
@@ -145,17 +145,17 @@ public final class PlantTargetsOverlayTest {
     @Test
     public void resolvesFallThroughTargetsHighToLowBeforeBase() {
         List<String> events = new ArrayList<>();
-        ProbeTargetSource base = target("baseTarget", 0.5, events);
-        ProbeTargetSource lowerUnavailable = new ProbeTargetSource("lowerTarget",
-                PlantTargetPlan.unavailable("lower missing"), events);
-        ProbeTargetSource higherUnavailable = new ProbeTargetSource("higherTarget",
-                PlantTargetPlan.unavailable("higher missing"), events);
-        PlantTargetSource overlay = PlantTargets.overlay(base)
+        ProbeTargetResolver base = target("baseTarget", 0.5, events);
+        ProbeTargetResolver lowerUnavailable = new ProbeTargetResolver("lowerTarget",
+                PlantTargetResolution.unavailable("lower missing"), events);
+        ProbeTargetResolver higherUnavailable = new ProbeTargetResolver("higherTarget",
+                PlantTargetResolution.unavailable("higher missing"), events);
+        PlantTargetResolver overlay = PlantTargets.overlay(base)
                 .addIfAvailable("lowerOptional", gate("lowerGate", true, events), lowerUnavailable)
                 .addIfAvailable("higherOptional", gate("higherGate", true, events), higherUnavailable)
                 .build();
 
-        PlantTargetPlan plan = overlay.resolve(context(0.0), new ManualLoopClock().clock());
+        PlantTargetResolution plan = overlay.resolve(context(0.0), new ManualLoopClock().clock());
 
         assertEquals(0.5, plan.target(), EPSILON);
         assertEquals(Arrays.asList("lowerGate", "higherGate", "higherTarget",
@@ -164,15 +164,15 @@ public final class PlantTargetsOverlayTest {
 
     @Test
     public void resolvesBaseOnlyAfterEveryEnabledOptionalLayerFallsThrough() {
-        ProbeTargetSource base = target(0.5);
-        ProbeTargetSource disabled = target(1.0);
-        ProbeTargetSource optionalUnavailable = unavailable("optional missing");
-        PlantTargetSource overlay = PlantTargets.overlay(base)
+        ProbeTargetResolver base = target(0.5);
+        ProbeTargetResolver disabled = target(1.0);
+        ProbeTargetResolver optionalUnavailable = unavailable("optional missing");
+        PlantTargetResolver overlay = PlantTargets.overlay(base)
                 .add("disabled", gate(false), disabled)
                 .addIfAvailable("optional", gate(true), optionalUnavailable)
                 .build();
 
-        PlantTargetPlan plan = overlay.resolve(context(0.0), new ManualLoopClock().clock());
+        PlantTargetResolution plan = overlay.resolve(context(0.0), new ManualLoopClock().clock());
 
         assertTrue(plan.hasTarget());
         assertEquals(0.5, plan.target(), EPSILON);
@@ -183,13 +183,13 @@ public final class PlantTargetsOverlayTest {
 
     @Test
     public void returnsUnavailableBaseWhenNoLayerWinsOrBlocks() {
-        ProbeTargetSource baseUnavailable = unavailable("base missing");
-        ProbeTargetSource disabled = target(1.0);
-        PlantTargetSource overlay = PlantTargets.overlay(baseUnavailable)
+        ProbeTargetResolver baseUnavailable = unavailable("base missing");
+        ProbeTargetResolver disabled = target(1.0);
+        PlantTargetResolver overlay = PlantTargets.overlay(baseUnavailable)
                 .add("disabled", gate(false), disabled)
                 .build();
 
-        PlantTargetPlan plan = overlay.resolve(context(0.0), new ManualLoopClock().clock());
+        PlantTargetResolution plan = overlay.resolve(context(0.0), new ManualLoopClock().clock());
 
         assertFalse(plan.hasTarget());
         assertTrue(plan.reason().contains("base missing"));
@@ -200,12 +200,12 @@ public final class PlantTargetsOverlayTest {
     @Test
     public void selectedTargetFailurePropagatesWithoutFallingThrough() {
         RuntimeException failure = new RuntimeException("selected target failed");
-        ProbeTargetSource base = target(0.0);
-        ProbeTargetSource lower = target(1.0);
-        PlantTargetSource throwing = (context, clock) -> {
+        ProbeTargetResolver base = target(0.0);
+        ProbeTargetResolver lower = target(1.0);
+        PlantTargetResolver throwing = (context, clock) -> {
             throw failure;
         };
-        PlantTargetSource overlay = PlantTargets.overlay(base)
+        PlantTargetResolver overlay = PlantTargets.overlay(base)
                 .add("lower", gate(true), lower)
                 .addIfAvailable("higherOptional", gate(true), throwing)
                 .build();
@@ -230,12 +230,12 @@ public final class PlantTargetsOverlayTest {
     @Test
     public void activationGateFailurePropagatesBeforeResolvingAnyTarget() {
         RuntimeException failure = new RuntimeException("activation failed");
-        ProbeTargetSource base = target(0.0);
-        ProbeTargetSource target = target(1.0);
+        ProbeTargetResolver base = target(0.0);
+        ProbeTargetResolver target = target(1.0);
         BooleanSource throwingGate = clock -> {
             throw failure;
         };
-        PlantTargetSource overlay = PlantTargets.overlay(base)
+        PlantTargetResolver overlay = PlantTargets.overlay(base)
                 .add("throwing", throwingGate, target)
                 .build();
 
@@ -260,22 +260,22 @@ public final class PlantTargetsOverlayTest {
     public void freezesAllGateValuesBeforeTargetResolutionSideEffects() {
         ProbeBooleanSource lowerGate = gate(true);
         ProbeBooleanSource higherGate = gate(false);
-        ProbeTargetSource lower = target(1.0);
+        ProbeTargetResolver lower = target(1.0);
         lower.onResolve = () -> higherGate.value = true;
-        ProbeTargetSource higher = target(2.0);
-        PlantTargetSource overlay = PlantTargets.overlay(0.0)
+        ProbeTargetResolver higher = target(2.0);
+        PlantTargetResolver overlay = PlantTargets.overlay(0.0)
                 .add("lower", lowerGate, lower)
                 .add("higher", higherGate, higher)
                 .build();
         ManualLoopClock time = new ManualLoopClock();
 
-        PlantTargetPlan first = overlay.resolve(context(0.0), time.clock());
+        PlantTargetResolution first = overlay.resolve(context(0.0), time.clock());
 
         assertEquals(1.0, first.target(), EPSILON);
         assertEquals(1, lower.resolutions);
         assertEquals(0, higher.resolutions);
 
-        PlantTargetPlan next = overlay.resolve(context(0.0), time.nextCycle(0.02));
+        PlantTargetResolution next = overlay.resolve(context(0.0), time.nextCycle(0.02));
 
         assertEquals(2.0, next.target(), EPSILON);
         assertEquals(1, lower.resolutions);
@@ -284,12 +284,12 @@ public final class PlantTargetsOverlayTest {
 
     @Test
     public void resetPropagatesToBaseGatesAndTargets() {
-        ProbeTargetSource base = target(0.0);
+        ProbeTargetResolver base = target(0.0);
         ProbeBooleanSource firstGate = gate(true);
-        ProbeTargetSource firstTarget = target(1.0);
+        ProbeTargetResolver firstTarget = target(1.0);
         ProbeBooleanSource secondGate = gate(false);
-        ProbeTargetSource secondTarget = target(2.0);
-        PlantTargetSource overlay = PlantTargets.overlay(base)
+        ProbeTargetResolver secondTarget = target(2.0);
+        PlantTargetResolver overlay = PlantTargets.overlay(base)
                 .add("first", firstGate, firstTarget)
                 .addIfAvailable("second", secondGate, secondTarget)
                 .build();
@@ -305,10 +305,10 @@ public final class PlantTargetsOverlayTest {
 
     @Test
     public void resetClearsGateMemoizationAndOverlayDiagnostics() {
-        ProbeTargetSource base = target(0.0);
+        ProbeTargetResolver base = target(0.0);
         ProbeBooleanSource gate = gate(true);
-        ProbeTargetSource selected = target(1.0);
-        PlantTargetSource overlay = PlantTargets.overlay(base)
+        ProbeTargetResolver selected = target(1.0);
+        PlantTargetResolver overlay = PlantTargets.overlay(base)
                 .add("selected", gate, selected)
                 .build();
         ManualLoopClock time = new ManualLoopClock();
@@ -334,7 +334,7 @@ public final class PlantTargetsOverlayTest {
 
     @Test
     public void standaloneMeasuredHoldRetainsContinuousEntryAndRecapturesAfterGapOrReset() {
-        PlantTargetSource hold = PlantTargets.holdMeasuredTargetOnEntry(-1.0);
+        PlantTargetResolver hold = PlantTargets.holdMeasuredTargetOnEntry(-1.0);
         ManualLoopClock time = new ManualLoopClock();
 
         assertEquals(10.0, resolveTarget(hold, context(10.0), time.clock()), EPSILON);
@@ -350,7 +350,7 @@ public final class PlantTargetsOverlayTest {
 
     @Test
     public void standaloneMeasuredHoldUsesFallbackForAnEntryWithoutFeedback() {
-        PlantTargetSource hold = PlantTargets.holdMeasuredTargetOnEntry(-5.0);
+        PlantTargetResolver hold = PlantTargets.holdMeasuredTargetOnEntry(-5.0);
         ManualLoopClock time = new ManualLoopClock();
 
         assertEquals(-5.0, resolveTarget(hold, contextWithoutFeedback(), time.clock()), EPSILON);
@@ -362,7 +362,7 @@ public final class PlantTargetsOverlayTest {
 
     @Test
     public void measuredHoldRequiresLoopClockForEntrySemantics() {
-        PlantTargetSource hold = PlantTargets.holdMeasuredTargetOnEntry(-1.0);
+        PlantTargetResolver hold = PlantTargets.holdMeasuredTargetOnEntry(-1.0);
 
         try {
             hold.resolve(context(10.0), null);
@@ -374,9 +374,9 @@ public final class PlantTargetsOverlayTest {
 
     @Test
     public void shadowedMeasuredBaseCapturesOnlyWhenSelectedAndRecapturesOnReentry() {
-        PlantTargetSource measuredBase = PlantTargets.holdMeasuredTargetOnEntry(-1.0);
+        PlantTargetResolver measuredBase = PlantTargets.holdMeasuredTargetOnEntry(-1.0);
         ProbeBooleanSource overrideEnabled = gate(true);
-        PlantTargetSource overlay = PlantTargets.overlay(measuredBase)
+        PlantTargetResolver overlay = PlantTargets.overlay(measuredBase)
                 .add("override", overrideEnabled, 0.75)
                 .build();
         ManualLoopClock time = new ManualLoopClock();
@@ -395,8 +395,8 @@ public final class PlantTargetsOverlayTest {
 
     @Test
     public void plannerMeasuredHoldRecapturesUnavailableMeasurementAfterSamplingGap() {
-        PlantTargetSource planner = PlantTargets.plan()
-                .request(Source.constant(PlantTargetRequest.none("no request")))
+        PlantTargetResolver planner = PlantTargets.plan(
+                        Source.constant(PlantTargetRequest.none("no request")))
                 .nearestToMeasurement()
                 .rejectUnreachable()
                 .whenUnavailable().holdMeasuredTargetOnEntry(-1.0);
@@ -412,8 +412,8 @@ public final class PlantTargetsOverlayTest {
 
     @Test
     public void plannerMeasuredHoldResetStartsANewEntryWithinTheSameCycle() {
-        PlantTargetSource planner = PlantTargets.plan()
-                .request(Source.constant(PlantTargetRequest.none("no request")))
+        PlantTargetResolver planner = PlantTargets.plan(
+                        Source.constant(PlantTargetRequest.none("no request")))
                 .nearestToMeasurement()
                 .rejectUnreachable()
                 .whenUnavailable().holdMeasuredTargetOnEntry(-5.0);
@@ -429,8 +429,7 @@ public final class PlantTargetsOverlayTest {
     @Test
     public void plannerHoldLastKeepsItsCandidateAcrossSamplingGap() {
         final PlantTargetRequest[] request = {PlantTargetRequest.exact("first", 7.0)};
-        PlantTargetSource planner = PlantTargets.plan()
-                .request(clock -> request[0])
+        PlantTargetResolver planner = PlantTargets.plan(clock -> request[0])
                 .nearestToMeasurement()
                 .rejectUnreachable()
                 .whenUnavailable().holdLastTarget(-1.0);
@@ -440,21 +439,21 @@ public final class PlantTargetsOverlayTest {
         time.nextCycle(0.02); // The planner is not sampled in this cycle.
         request[0] = PlantTargetRequest.none("request ended");
 
-        PlantTargetPlan held = planner.resolve(context(0.0), time.nextCycle(0.02));
+        PlantTargetResolution held = planner.resolve(context(0.0), time.nextCycle(0.02));
 
         assertEquals(7.0, held.target(), EPSILON);
-        assertEquals(PlantTargetPlan.Kind.HOLD_LAST_TARGET, held.kind());
+        assertEquals(PlantTargetResolution.Kind.HOLD_LAST_TARGET, held.kind());
     }
 
     @Test
     public void diagnosticsDistinguishDisabledShadowedSelectedAndUnavailableOutcomes() {
         ProbeBooleanSource lowerGate = gate(false);
-        ProbeTargetSource lowerUnavailable = unavailable("lower missing");
+        ProbeTargetResolver lowerUnavailable = unavailable("lower missing");
         ProbeBooleanSource optionalGate = gate(true);
-        ProbeTargetSource optionalUnavailable = unavailable("optional missing");
+        ProbeTargetResolver optionalUnavailable = unavailable("optional missing");
         ProbeBooleanSource higherGate = gate(true);
-        ProbeTargetSource higher = target(3.0);
-        PlantTargetSource overlay = PlantTargets.overlay(target(0.0))
+        ProbeTargetResolver higher = target(3.0);
+        PlantTargetResolver overlay = PlantTargets.overlay(target(0.0))
                 .add("lower", lowerGate, lowerUnavailable)
                 .addIfAvailable("optional", optionalGate, optionalUnavailable)
                 .add("higher", higherGate, higher)
@@ -470,14 +469,17 @@ public final class PlantTargetsOverlayTest {
         assertFalse((Boolean) selectedDebug.data.get("overlay.layer0.enabled"));
         assertFalse((Boolean) selectedDebug.data.get("overlay.layer0.targetSampled"));
         assertEquals("DISABLED", String.valueOf(selectedDebug.data.get("overlay.layer0.resolutionState")));
-        assertTrue(plan(selectedDebug, "overlay.layer0.plan").reason().contains("disabled"));
+        assertTrue(resolution(selectedDebug, "overlay.layer0.resolution")
+                .reason().contains("disabled"));
         assertTrue((Boolean) selectedDebug.data.get("overlay.layer1.enabled"));
         assertFalse((Boolean) selectedDebug.data.get("overlay.layer1.targetSampled"));
         assertEquals("SHADOWED", String.valueOf(selectedDebug.data.get("overlay.layer1.resolutionState")));
-        assertTrue(plan(selectedDebug, "overlay.layer1.plan").reason().contains("shadowed"));
+        assertTrue(resolution(selectedDebug, "overlay.layer1.resolution")
+                .reason().contains("shadowed"));
         assertTrue((Boolean) selectedDebug.data.get("overlay.layer2.targetSampled"));
         assertEquals("SELECTED", String.valueOf(selectedDebug.data.get("overlay.layer2.resolutionState")));
-        assertEquals(3.0, plan(selectedDebug, "overlay.layer2.plan").target(), EPSILON);
+        assertEquals(3.0,
+                resolution(selectedDebug, "overlay.layer2.resolution").target(), EPSILON);
 
         lowerGate.value = true;
         higherGate.value = false;
@@ -490,13 +492,16 @@ public final class PlantTargetsOverlayTest {
         assertTrue((Boolean) unavailableDebug.data.get("overlay.layer1.fellThrough"));
         assertTrue((Boolean) unavailableDebug.data.get("overlay.layer1.targetSampled"));
         assertEquals("FELL_THROUGH", String.valueOf(unavailableDebug.data.get("overlay.layer1.resolutionState")));
-        assertTrue(plan(unavailableDebug, "overlay.layer1.plan").reason().contains("optional missing"));
+        assertTrue(resolution(unavailableDebug, "overlay.layer1.resolution")
+                .reason().contains("optional missing"));
         assertTrue((Boolean) unavailableDebug.data.get("overlay.layer0.targetSampled"));
         assertEquals("REQUIRED_UNAVAILABLE", String.valueOf(unavailableDebug.data.get("overlay.layer0.resolutionState")));
-        assertTrue(plan(unavailableDebug, "overlay.layer0.plan").reason().contains("lower missing"));
+        assertTrue(resolution(unavailableDebug, "overlay.layer0.resolution")
+                .reason().contains("lower missing"));
         assertFalse((Boolean) unavailableDebug.data.get("overlay.layer2.targetSampled"));
         assertEquals("DISABLED", String.valueOf(unavailableDebug.data.get("overlay.layer2.resolutionState")));
-        assertTrue(plan(unavailableDebug, "overlay.layer2.plan").reason().contains("disabled"));
+        assertTrue(resolution(unavailableDebug, "overlay.layer2.resolution")
+                .reason().contains("disabled"));
 
         lowerGate.value = false;
         overlay.resolve(context(0.0), time.nextCycle(0.02));
@@ -511,10 +516,10 @@ public final class PlantTargetsOverlayTest {
     @Test
     public void powerPlantAppliesOnlyTheSelectedOverlayTarget() {
         RecordingPowerOutput output = new RecordingPowerOutput();
-        ProbeTargetSource base = target(0.1);
-        ProbeTargetSource lower = target(0.4);
-        ProbeTargetSource higher = target(0.8);
-        PlantTargetSource overlay = PlantTargets.overlay(base)
+        ProbeTargetResolver base = target(0.1);
+        ProbeTargetResolver lower = target(0.4);
+        ProbeTargetResolver higher = target(0.8);
+        PlantTargetResolver overlay = PlantTargets.overlay(base)
                 .add("lower", gate(true), lower)
                 .add("higher", gate(true), higher)
                 .build();
@@ -540,18 +545,19 @@ public final class PlantTargetsOverlayTest {
                 Double.NaN, Double.NaN);
     }
 
-    private static double resolveTarget(PlantTargetSource source,
+    private static double resolveTarget(PlantTargetResolver resolver,
                                         PlantTargetContext context,
                                         LoopClock clock) {
-        PlantTargetPlan plan = source.resolve(context, clock);
+        PlantTargetResolution plan = resolver.resolve(context, clock);
         assertTrue(plan.hasTarget());
         return plan.target();
     }
 
-    private static PlantTargetPlan plan(CapturingDebugSink debug, String key) {
+    private static PlantTargetResolution resolution(CapturingDebugSink debug, String key) {
         Object value = debug.data.get(key);
-        assertTrue(key + " must contain a PlantTargetPlan", value instanceof PlantTargetPlan);
-        return (PlantTargetPlan) value;
+        assertTrue(key + " must contain a PlantTargetResolution",
+                value instanceof PlantTargetResolution);
+        return (PlantTargetResolution) value;
     }
 
     private static ProbeBooleanSource gate(boolean value) {
@@ -562,16 +568,17 @@ public final class PlantTargetsOverlayTest {
         return new ProbeBooleanSource(name, value, events);
     }
 
-    private static ProbeTargetSource target(double value) {
-        return new ProbeTargetSource("", PlantTargetPlan.exact(value, "test target"), null);
+    private static ProbeTargetResolver target(double value) {
+        return new ProbeTargetResolver("", PlantTargetResolution.exact(value, "test target"), null);
     }
 
-    private static ProbeTargetSource target(String name, double value, List<String> events) {
-        return new ProbeTargetSource(name, PlantTargetPlan.exact(value, "test target"), events);
+    private static ProbeTargetResolver target(String name, double value, List<String> events) {
+        return new ProbeTargetResolver(
+                name, PlantTargetResolution.exact(value, "test target"), events);
     }
 
-    private static ProbeTargetSource unavailable(String reason) {
-        return new ProbeTargetSource("", PlantTargetPlan.unavailable(reason), null);
+    private static ProbeTargetResolver unavailable(String reason) {
+        return new ProbeTargetResolver("", PlantTargetResolution.unavailable(reason), null);
     }
 
     private static final class ProbeBooleanSource implements BooleanSource {
@@ -600,26 +607,27 @@ public final class PlantTargetsOverlayTest {
         }
     }
 
-    private static final class ProbeTargetSource implements PlantTargetSource {
+    private static final class ProbeTargetResolver implements PlantTargetResolver {
         private final String name;
         private final List<String> events;
-        private PlantTargetPlan plan;
+        private PlantTargetResolution resolution;
         private Runnable onResolve;
         private int resolutions;
         private int resets;
 
-        private ProbeTargetSource(String name, PlantTargetPlan plan, List<String> events) {
+        private ProbeTargetResolver(
+                String name, PlantTargetResolution resolution, List<String> events) {
             this.name = name;
-            this.plan = plan;
+            this.resolution = resolution;
             this.events = events;
         }
 
         @Override
-        public PlantTargetPlan resolve(PlantTargetContext context, LoopClock clock) {
+        public PlantTargetResolution resolve(PlantTargetContext context, LoopClock clock) {
             resolutions++;
             if (events != null) events.add(name);
             if (onResolve != null) onResolve.run();
-            return plan;
+            return resolution;
         }
 
         @Override

@@ -8,7 +8,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * A position-target {@link Plant} whose caller-facing coordinate is explicitly modeled.
  *
  * <p>A {@code PositionPlant} is still a normal source-driven plant: callers build it with a
- * target source, update it once per loop, and read plant-level status through
+ * target resolver, update it once per loop, and read plant-level status through
  * {@link #getRequestedTarget()}, {@link #getAppliedTarget()}, {@link #getMeasurement()}, and
  * {@link #atTarget()}. The extra methods expose the position-domain facts that planners and
  * calibration tasks need:</p>

@@ -336,7 +336,7 @@ addition has no additional hardware effects. This validation does not change the
 that differently named entries are physically different devices, or reserve names across owners.
 The actuator and its feedback may intentionally use the same configured name.
 
-**Important:** tasks write the Plant's command target; *your loop* must still call `plant.update(clock)` each cycle so the Plant samples the final target graph and applies hardware guards.
+**Important:** tasks write the Plant's command target; *your loop* must still call `plant.update(clock)` each cycle so the Plant invokes the final target resolver and applies hardware guards.
 
 ---
 

@@ -13,23 +13,23 @@ For the broader robot-design context, read [`Recommended Robot Design`](<Recomme
 
 ## 1. The core idea
 
-A source-driven Plant follows one final `PlantTargetSource` target each loop:
+A source-driven Plant invokes one final `PlantTargetResolver` each loop:
 
 ```text
 behavior sources / queues / overlays
         ↓
-one final PlantTargetSource
+one final PlantTargetResolver
         ↓
 Plant.update(clock)
 ```
 
 An `OutputTask` does **not** write a Plant. It proposes a temporary scalar output. The subsystem then uses `PlantTargets.overlay(...)` to decide whether that output overrides the normal baseline target. A temporary conditional layer never becomes the Plant's command target; only a `ScalarTarget` carried by the overlay base does.
 
-That keeps the target-source ownership rule intact:
+That keeps the target-resolver ownership rule intact:
 
 ```text
 many things may propose target values
-one PlantTargetSource arbitrates
+one PlantTargetResolver arbitrates
 one Plant consumes the final target
 ```
 
@@ -94,7 +94,7 @@ OutputTaskRunner feederQueue = Tasks.outputQueue(0.0);
 
 ScalarSource baseTransferTarget = ScalarSource.of(() -> stagingEnabled ? 0.20 : 0.0);
 
-PlantTargetSource finalTransferTarget = PlantTargets.overlay(baseTransferTarget)
+PlantTargetResolver finalTransferTarget = PlantTargets.overlay(baseTransferTarget)
         .add("feedPulse", feederQueue.activeSource(), feederQueue)
         .build();
 
@@ -112,7 +112,7 @@ feederQueue.update(clock);
 transfer.update(clock);
 ```
 
-The queue proposes. `PlantTargets.overlay(...)` arbitrates. The Plant follows the final target source.
+The queue proposes. `PlantTargets.overlay(...)` arbitrates. The Plant invokes the final target resolver.
 
 ---
 

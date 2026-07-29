@@ -1,7 +1,7 @@
 # Mechanism Target Planning
 
 `PlantTargets` is the framework's target-generation system for `Plant`s. It turns simple numbers,
-command targets, queued pulses, behavior overlays, equivalent positions, and advanced candidate
+command targets, queued pulses, behavior overlays, equivalent positions, and advanced alternative
 requests into one requested Plant target each loop.
 
 The Plant still owns low-level hardware/control work. Target planning answers:
@@ -24,7 +24,7 @@ command target (optional ScalarTarget)
     the stable request that robot policy and ScalarTasks may change
         ↓
 PlantTargets graph
-    exact target, overlay, equivalent-position transform, candidate planner, fallback/hold policy
+    exact target, overlay, equivalent-position transform, request resolver, fallback/hold policy
         ↓
 requested target
     one finite target value in the Plant's public units
@@ -68,18 +68,21 @@ ScalarSource
 ScalarTarget
     A writable number stream. When it is the exact source or overlay base, it is the command target.
 
-PlantTargetSource
-    A Plant-aware source that resolves to the requested target for this Plant.
+PlantTargetResolver
+    A Plant-aware graph that uses Plant context to resolve the requested target.
+
+PlantTargetResolution
+    The immutable result of resolving that graph for one Plant update.
 
 PlantTargets
-    The factory/builder family that creates exact, overlay, equivalent, and planned sources.
+    The factory/builder family that creates exact, overlay, equivalent, and planned resolvers.
 ```
 
 The Plant builder has one ordinary binding and one advanced binding:
 
 ```java
 .targetedBy(ScalarTarget target)         // exact source and command target
-.targetedBy(PlantTargetSource source)    // full Plant-aware target graph
+.targetedBy(PlantTargetResolver resolver) // full Plant-aware target graph
 ```
 
 Create the ordinary command explicitly with `ScalarTarget.create(initialValue)` while assembling
@@ -98,7 +101,7 @@ Put the stable robot request in the base when tasks should be able to command a 
 ```java
 ScalarTarget armCommand = ScalarTarget.create(STOWED);
 
-PlantTargetSource finalArmTarget = PlantTargets.overlay(armCommand)
+PlantTargetResolver finalArmTarget = PlantTargets.overlay(armCommand)
         .add("autoStow", autoStowRequested, STOWED)
         .add("manual", manualActive, manualTarget)
         .build();
@@ -134,7 +137,7 @@ The resulting vocabulary stays consistent across every Plant:
 command target → requested target → applied target → actuator command
 ```
 
-The command target is optional. Constants, ordinary read-only sources, planners, measured holds,
+The command target is optional. Constants, ordinary read-only sources, planned resolvers, measured holds,
 and custom target graphs without a command base cannot support a feedback-aware `ScalarTasks`
 move. `hasCommandTarget()` reports that capability, while `commandTarget()` remains available for
 framework validation, calibration, compact testers, and the owner boundary described below.
@@ -185,7 +188,7 @@ ScalarTasks.set(intakeCommand, GOAL)
 ```
 
 Here the target identifies the persistent request being written, while the Plant selects the
-resolved-plan provenance and physical feedback used for completion. A target may feed more than one
+resolution provenance and physical feedback used for completion. A target may feed more than one
 Plant, so the observer cannot be inferred from the target.
 
 ## Exact targets
@@ -259,13 +262,13 @@ Task aim = ScalarTasks.set(turretCommand, GOAL_ANGLE_DEG)
 Only mechanism realization changes. An exact, unwrapped turret uses:
 
 ```java
-PlantTargetSource finalTurretTarget = PlantTargets.exact(turretCommand);
+PlantTargetResolver finalTurretTarget = PlantTargets.exact(turretCommand);
 ```
 
 A turret that may use any whole-turn equivalent wraps the same command:
 
 ```java
-PlantTargetSource finalTurretTarget =
+PlantTargetResolver finalTurretTarget =
         PlantTargets.equivalentPositionsOf(turretCommand)
                 .nearestToMeasurement()
                 .whenUnavailable().holdMeasuredTargetOnEntry(0.0);
@@ -296,12 +299,12 @@ Apply overlays before the equivalent-position transform so every final logical w
 same physical interpretation:
 
 ```java
-PlantTargetSource logicalTurretTarget = PlantTargets.overlay(turretCommand)
+PlantTargetResolver logicalTurretTarget = PlantTargets.overlay(turretCommand)
         .add("vision", visionAimEnabled, visionAngleDeg)
         .add("stow", stowRequested, STOW_ANGLE_DEG)
         .build();
 
-PlantTargetSource finalTurretTarget =
+PlantTargetResolver finalTurretTarget =
         PlantTargets.equivalentPositionsOf(logicalTurretTarget)
                 .nearestToMeasurement()
                 .whenUnavailable().holdMeasuredTargetOnEntry(0.0);
@@ -317,7 +320,7 @@ Use `PlantTargets.overlay(...)` when several behaviors can influence the same Pl
 must be total. Later enabled layers have higher priority.
 
 ```java
-PlantTargetSource feederTarget = PlantTargets.overlay(0.0)
+PlantTargetResolver feederTarget = PlantTargets.overlay(0.0)
         .add("stage", stageRequested, 0.20)
         .add("feedPulse", feedPulseQueue.activeSource(), feedPulseQueue)
         .add("eject", ejectRequested, -1.0)
@@ -344,14 +347,14 @@ disabled or explicitly falls through. Robot code does not need to notify sources
 changes or reset them when priorities change; the overlay call above is the complete declaration.
 
 Do not hide target validity inside the Boolean unless that is truly the behavior you want. It is
-usually easier to debug when the layer is enabled and its target source reports why it used a fallback,
+usually easier to debug when the layer is enabled and its target resolver reports why it used a fallback,
 hold target, or explicit unavailable result.
 
 When the desired behavior really is “try this layer, but keep the lower-priority target if it cannot
 produce a value,” say that explicitly:
 
 ```java
-PlantTargetSource turretTarget = PlantTargets.overlay(PlantTargets.holdMeasuredTargetOnEntry(0.0))
+PlantTargetResolver turretTarget = PlantTargets.overlay(PlantTargets.holdMeasuredTargetOnEntry(0.0))
         .addIfAvailable("visionAim", visionAimRequested, visionAimPlanner)
         .add("manual", manualActive, manualAngleTarget)
         .build();
@@ -362,16 +365,16 @@ meaning of an enabled-but-unavailable layer. Debug output records that the layer
 through to the next enabled lower-priority layer, or ultimately the base, so this is not a hidden
 Boolean filter. Disabled and shadowed target producers still are not resolved.
 
-## Target-plan diagnostics
+## Target-resolution diagnostics
 
 Plants now report two different target diagnostics:
 
 ```java
-plant.getTargetPlan();    // how PlantTargets selected the requested target
-plant.getTargetStatus();  // how the Plant turned requested target into applied target
+plant.getTargetResolution(); // how PlantTargets selected the requested target
+plant.getTargetStatus();     // how the Plant turned requested target into applied target
 ```
 
-For example, a turret planner may report `PLANNED_CANDIDATE` with candidate `"slot-2-purple"`,
+For example, a turret resolution may report `PLANNED_CANDIDATE` with candidate `"slot-2-purple"`,
 while the Plant status reports `RATE_LIMITED` because the applied target is still walking toward the
 requested target. This separation keeps behavior target generation separate from hardware protection
 while making telemetry easier to read.
@@ -379,21 +382,25 @@ while making telemetry easier to read.
 When the focused periodic transform successfully resolves the selected logical intent, it reports
 `EQUIVALENT_POSITION`. Its target is the selected physical representative; the logical command
 remains in the graph-owned `ScalarTarget` rather than becoming a second public target field. If the
-logical child produced a fallback or hold target, the transformed plan retains that fallback/hold
+logical child produced a fallback or hold target, the transformed resolution retains that fallback/hold
 kind so diagnostics do not mislabel it as satisfied intent.
 
 For a `PLANNED_CANDIDATE`, `selectedQuality()` reports the chosen candidate's quality. When that
 candidate came from an observation, `selectedTimestamp()` retains its epoch-safe `LoopTimestamp`
-and `selectedAgeSec()` reports the age derived when this plan was resolved. A timeless candidate
-instead reports quality `1.0`, an unavailable timestamp, and `NaN` age. These are selection facts,
+and `selectedAgeSec()` reports the age derived when the resolver produced this resolution. A
+timeless candidate instead reports quality `1.0`, an unavailable timestamp, and `NaN` age. These are selection facts,
 not a second hardware-arrival signal.
 
-## Advanced planning: candidate sets and observation metadata
+`satisfiesIntent()` says whether the selected resolution satisfies the active logical intent. Exact,
+equivalent, and accepted planned choices satisfy intent; fallback, hold, clamp, and unavailable
+results do not. It is not a physical-arrival signal.
 
-Use `PlantTargets.plan()` when one request contains several named candidates, relative targets,
-explicit periods, observation freshness/quality, or an intentional clamp policy. For one ordinary
+## Advanced planning: alternative requests and observation metadata
+
+Use `PlantTargets.plan(request)` when one request contains several named alternatives, relative
+targets, explicit periods, observation freshness/quality, or an intentional clamp policy. For one ordinary
 logical command with whole-turn equivalents, use `equivalentPositionsOf(...)` above; students do
-not need a request or candidate object for that case. The advanced planner does not receive a Plant
+not need a request object for that case. The advanced resolver does not receive a Plant
 object. During `plant.update(clock)`, the Plant supplies:
 
 - feedback availability and measurement
@@ -401,53 +408,75 @@ object. During `plant.update(clock)`, the Plant supplies:
 - linear/periodic topology and period
 - previous requested/applied targets
 
-The advanced planner builder intentionally asks one required question at a time: `request(...)`, then one
-candidate preference, then one unreachable-candidate policy, then `whenUnavailable()`. Optional
-observation-age/quality tuning lives in `accept()...doneAccept()` after the required motion-semantics
-choices have been made.
+The factory takes either one fixed `PlantTargetRequest` or a live `Source<PlantTargetRequest>`.
+The returned staged builder then asks one required question at a time: one alternative preference,
+one unreachable-alternative policy, then `whenUnavailable()`. Optional observation-age/quality
+tuning lives in `accept()...doneAccept()` after the required motion-semantics choices have been
+made.
 
-### Candidate requests
+### Fixed and dynamic alternatives
 
-A tray service can convert robot-specific inventory into Plant-unit candidates. The planner chooses
-the best reachable representative.
+When every listed target genuinely satisfies the same goal, compose fixed alternatives directly:
+
+```java
+PlantTargetRequest fixedGoals = PlantTargetRequest.oneOf(
+        PlantTargetRequest.equivalentPosition("left-goal", leftAngleDeg),
+        PlantTargetRequest.equivalentPosition("right-goal", rightAngleDeg));
+
+PlantTargetResolver goalTarget = PlantTargets.plan(fixedGoals)
+        .nearestToMeasurement()
+        .rejectUnreachable()
+        .whenUnavailable().holdLastTarget(0.0);
+```
+
+Do not put two operator-selected goals in `oneOf(...)` merely because either could be commanded.
+If the operator selected exactly one goal, publish that request alone—or use the ordinary
+`ScalarTarget`. `oneOf(...)` authorizes the resolver to choose any listed alternative.
+
+A tray service can convert robot-specific inventory into Plant-unit alternatives. The resolver
+chooses the best reachable representative.
 
 ```java
 Source<PlantTargetRequest> purpleToOutput = clock -> {
-    ArrayList<PlantTargetCandidate> candidates = new ArrayList<>();
+    List<PlantTargetRequest> alternatives = new ArrayList<>();
 
     for (int slot = 0; slot < 3; slot++) {
         if (inventory.colorAt(slot) == ArtifactColor.PURPLE) {
             double alignDeg = trayModel.alignSlotToOutputDegrees(slot);
-            candidates.add(PlantTargetCandidate.equivalentPosition(
+            alternatives.add(PlantTargetRequest.equivalentPosition(
                     "slot-" + slot + "-purple",
                     alignDeg
             ));
         }
     }
 
-    return candidates.isEmpty()
-            ? PlantTargetRequest.none("no purple artifact")
-            : PlantTargetRequest.oneOf(candidates);
+    return PlantTargetRequest.oneOf(alternatives);
 };
 
-PlantTargetSource trayTarget = PlantTargets.plan()
-        .request(purpleToOutput)
+PlantTargetResolver trayTarget = PlantTargets.plan(purpleToOutput)
         .nearestToMeasurement()
         .rejectUnreachable()
         .whenUnavailable().holdLastTarget(0.0);
 ```
 
-The planner does not know what “purple” means. It only sees Plant-unit candidates. Notice that
+The resolver does not know what “purple” means. It only sees Plant-unit alternatives. An empty list
+is an unavailable request automatically; return `PlantTargetRequest.none("no purple artifact")`
+explicitly instead when that domain-specific reason matters in diagnostics. The varargs and `List`
+forms both preserve declaration order, flatten nested requests, skip unavailable members when some
+alternative remains, and defensively retain their inputs. If none remains, composition retains the
+first specific absence reason and otherwise reports the generic empty-alternatives reason.
+
 `nearestToMeasurement()` and `rejectUnreachable()` are staged single-answer questions: after one
-choice, the returned type exposes only the next question. There is no later-replacement model. Branches that may set several independent tuning values, such as
-`accept()`, still end with an explicit `doneAccept()`.
+choice, the returned type exposes only the next question. There is no later-replacement model.
+Branches that may set several independent tuning values, such as `accept()`, still end with an
+explicit `doneAccept()`.
 
-### How periodic candidates are selected
+### How periodic alternatives are selected
 
-A periodic candidate describes an entire family of equivalent positions. The focused transform and
-advanced planner share the same fixed, bounded selector; work does not grow when a wider range or
-smaller period contains more equivalents. This is an internal guarantee, so robot code does not set
-a search window or candidate limit.
+A periodic request alternative describes an entire family of equivalent positions. The focused
+transform and advanced resolver share the same fixed, bounded selector; work does not grow when a
+wider range or smaller period contains more equivalents. This is an internal guarantee, so robot code does not set
+a search window or alternative limit.
 
 Selection follows these rules:
 
@@ -460,7 +489,7 @@ Selection follows these rules:
 - `preferRangeCenter()` uses the center when both range bounds are finite. On a one-sided or
   unbounded range, it behaves like `nearestToMeasurement()`. An exact tie within one periodic family
   goes to the lower value.
-- If distinct request candidates are otherwise exactly tied, the candidate declared first wins.
+- If distinct request alternatives are otherwise exactly tied, the alternative declared first wins.
 
 ### Current intent versus observations
 
@@ -470,8 +499,8 @@ was calculated from a camera, localization estimate, or another sampled observat
 factory takes one quality value and one stable observation timestamp in the consuming `LoopClock`
 timebase; it does not also ask robot code to supply a potentially contradictory age.
 
-`PlantTargetRequest` provides the concise one-candidate form, while `PlantTargetCandidate` provides
-the same families for `oneOf(...)` lists:
+`PlantTargetRequest` provides all leaf factories. Use one directly for one acceptable target, or
+compose several requests with `oneOf(...)`:
 
 | Target meaning | Current/timeless factory | Observation-derived factory |
 | --- | --- | --- |
@@ -491,10 +520,10 @@ fresh. This
 responsibility stays at or before the target's source boundary; ordinary mechanism code only
 forwards the snapshot's quality and timestamp.
 
-The planner derives age at resolution. `.maxObservationAgeSec(...)` applies only to observed
-candidates; timeless intent is not rejected by that gate. A non-finite or out-of-range quality, an
-invalid timestamp, or a timestamp too far in the future makes that observed candidate unavailable.
-The planner may still choose a later valid candidate, and if none remains, its existing
+The resolver derives age at resolution. `.maxObservationAgeSec(...)` applies only to observed
+alternatives; timeless intent is not rejected by that gate. A non-finite or out-of-range quality, an
+invalid timestamp, or a timestamp too far in the future makes that observed alternative unavailable.
+The resolver may still choose a later valid alternative, and if none remains, its existing
 `whenUnavailable()` policy supplies the one declared fallback, hold, or unavailable result.
 
 ## `whenUnavailable()` versus overlay
@@ -506,26 +535,24 @@ PlantTargets.overlay(...)
     Which behavior layer wins?
 
 whenUnavailable()
-    If this selected source cannot produce a valid target, what explicit target should it emit?
+    If this selected resolver cannot produce a valid target, what explicit target should it emit?
 ```
 
-For a smart planner used directly as the Plant target, choose a total unavailable policy:
+For a planned resolver used directly as the Plant target, choose a total unavailable policy:
 
 ```java
-PlantTargetSource turretTarget = PlantTargets.plan()
-        .request(autoAimRequest)
+PlantTargetResolver turretTarget = PlantTargets.plan(autoAimRequest)
         .nearestToMeasurement()
         .rejectUnreachable()
         .whenUnavailable().holdMeasuredTargetOnEntry(0.0);
 ```
 
-For a smart planner inside an overlay, you can still make the layer total:
+For a planned resolver inside an overlay, you can still make the layer total:
 
 ```java
-PlantTargetSource turretTarget = PlantTargets.overlay(PlantTargets.holdMeasuredTargetOnEntry(0.0))
+PlantTargetResolver turretTarget = PlantTargets.overlay(PlantTargets.holdMeasuredTargetOnEntry(0.0))
         .add("autoAim", autoAimRequested,
-                PlantTargets.plan()
-                        .request(autoAimRequest)
+                PlantTargets.plan(autoAimRequest)
                         .nearestToMeasurement()
                         .rejectUnreachable()
                         .whenUnavailable().holdLastTarget(0.0))
@@ -534,17 +561,17 @@ PlantTargetSource turretTarget = PlantTargets.overlay(PlantTargets.holdMeasuredT
         .build();
 ```
 
-`holdMeasuredTargetOnEntry(...)` is a total source whenever it is resolved. It latches the current
-measurement when the hold source is entered, then keeps emitting that captured value. It does not
+`holdMeasuredTargetOnEntry(...)` is a total resolver whenever it runs. It latches the current
+measurement when the hold resolver is entered, then keeps emitting that captured value. It does not
 mean “skip commanding the Plant this loop.” Inside an overlay, “entered” means consecutive
-resolution cycles in which that hold source is actually resolved. If it is disabled or shadowed for
+resolution cycles in which that hold resolver actually runs. If it is disabled or shadowed for
 a complete resolution cycle, its next resolution is a new entry and captures the then-current
 measurement. Robot code does not call a selection reset or lifecycle hook to make that happen.
 
 ## Spatial-derived requests
 
 Spatial queries can still feed a mechanism target. The spatial solve chooses geometry; robot-specific
-kinematics map that geometry into Plant units; `PlantTargets.plan()` resolves the Plant target.
+kinematics map that geometry into Plant units; `PlantTargets.plan(request)` resolves the Plant target.
 
 ```java
 Source<PlantTargetRequest> turretFacingRequest = clock -> {
@@ -562,8 +589,7 @@ Source<PlantTargetRequest> turretFacingRequest = clock -> {
     );
 };
 
-PlantTargetSource turretTarget = PlantTargets.plan()
-        .request(turretFacingRequest)
+PlantTargetResolver turretTarget = PlantTargets.plan(turretFacingRequest)
         .nearestToMeasurement()
         .rejectUnreachable()
         .accept().maxObservationAgeSec(0.20).minQuality(0.45).doneAccept()
@@ -575,8 +601,8 @@ while the source-owned snapshot keeps student code to one quality value and one 
 
 The Plant reports physical arrival with `atTarget()` and literal physical
 `atTarget(value)`. `atTarget(value)` never applies modulo arithmetic. Target planning reports
-selection status with `PlantTargetPlan`; it does not claim the mechanism has physically arrived.
-`ScalarTasks.set(command, value).untilReachedBy(plant)` combines the plan's logical-command
+selection status with `PlantTargetResolution`; it does not claim the mechanism has physically arrived.
+`ScalarTasks.set(command, value).untilReachedBy(plant)` combines the resolution's logical-command
 evidence with physical arrival at the selected requested target. It validates at construction that
 the supplied Plant has feedback and that `command` is the exact command target owned by its graph.
 
@@ -625,5 +651,5 @@ Task homeLift = PositionCalibrationTasks.search(lift)
         .build();
 ```
 
-The planner should not decide when zero is trustworthy. Homing, indexing, manual zeroing, and
+The resolver should not decide when zero is trustworthy. Homing, indexing, manual zeroing, and
 semantic presets belong in the robot mechanism/service layer.

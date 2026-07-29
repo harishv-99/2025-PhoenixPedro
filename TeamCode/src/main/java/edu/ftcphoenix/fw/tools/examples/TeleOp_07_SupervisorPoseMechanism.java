@@ -6,7 +6,7 @@ import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 
 import edu.ftcphoenix.fw.actuation.Plant;
-import edu.ftcphoenix.fw.actuation.PlantTargetSource;
+import edu.ftcphoenix.fw.actuation.PlantTargetResolver;
 import edu.ftcphoenix.fw.actuation.PlantTargets;
 import edu.ftcphoenix.fw.core.hal.Direction;
 import edu.ftcphoenix.fw.core.source.ScalarSource;
@@ -103,7 +103,7 @@ public final class TeleOp_07_SupervisorPoseMechanism extends OpMode {
     }
 
     // ----------------------------------------------------------------------
-    // Subsystem: owns hardware + final Plant target source
+    // Subsystem: owns hardware + final Plant target resolver
     // ----------------------------------------------------------------------
 
     private static final class WristSubsystem {
@@ -116,7 +116,8 @@ public final class TeleOp_07_SupervisorPoseMechanism extends OpMode {
         private final Plant plant;
 
         WristSubsystem(HardwareMap hardwareMap) {
-            PlantTargetSource finalTarget = PlantTargets.overlay(ScalarSource.of(() -> poseTarget(desiredPose.get())))
+            PlantTargetResolver finalTargetResolver = PlantTargets.overlay(
+                            ScalarSource.of(() -> poseTarget(desiredPose.get())))
                     .add("openPulse", overrides.activeSource(), overrides)
                     .build();
 
@@ -126,7 +127,7 @@ public final class TeleOp_07_SupervisorPoseMechanism extends OpMode {
                     .linear()
                     .bounded(0.0, 1.0)
                     .nativeUnits()
-                    .targetedBy(finalTarget)
+                    .targetedBy(finalTargetResolver)
                     .build();
         }
 

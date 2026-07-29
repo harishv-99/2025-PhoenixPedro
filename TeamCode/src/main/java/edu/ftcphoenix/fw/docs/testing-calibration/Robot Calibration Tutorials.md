@@ -38,7 +38,7 @@ raw/native hardware coordinate
     -> reference + unit mapping
     -> public plant coordinate
     -> PlantTargets exact/equivalent/advanced plan
-    -> PositionPlant target source
+    -> PositionPlant invokes its target resolver
 ```
 
 `Plant.reset()` should not redefine physical zero. Homing, indexing, manual zeroing, and static
@@ -104,8 +104,8 @@ small drift corrections during a match.
 - after reference, the public measurement matches the physical mechanism coordinate
 - presets, command targets, Plant target requests, and telemetry all use plant units rather than raw
   hardware surprises
-- one periodic command uses `PlantTargets.equivalentPositionsOf(...)`; multiple candidates or
-  observation metadata use the advanced `PlantTargets.plan()` path
+- one periodic command uses `PlantTargets.equivalentPositionsOf(...)`; multiple alternatives or
+  observation metadata use the advanced `PlantTargets.plan(request)` path
 
 ### Do not move on if
 

@@ -46,10 +46,10 @@ public final class PlantEquivalentPositionTaskTest {
         ScalarTarget command = ScalarTarget.create(0.0);
         final boolean[] override = {true};
         final double[] measurement = {380.0};
-        PlantTargetSource logical = PlantTargets.overlay(command)
+        PlantTargetResolver logical = PlantTargets.overlay(command)
                 .add("sameValueOverride", clock -> override[0], 20.0)
                 .build();
-        PlantTargetSource target = PlantTargets.equivalentPositionsOf(logical)
+        PlantTargetResolver target = PlantTargets.equivalentPositionsOf(logical)
                 .nearestToMeasurement()
                 .whenUnavailable().reportUnavailable();
         MappedPositionPlant plant = feedbackPlant(target, measurement,
@@ -75,7 +75,7 @@ public final class PlantEquivalentPositionTaskTest {
     public void fallbackEqualToTheLogicalMoveValueDoesNotComplete() {
         ScalarTarget command = ScalarTarget.create(0.0);
         final double[] measurement = {20.0};
-        PlantTargetSource target = PlantTargets.equivalentPositionsOf(command)
+        PlantTargetResolver target = PlantTargets.equivalentPositionsOf(command)
                 .nearestToMeasurement()
                 .whenUnavailable().fallbackTo(20.0);
         MappedPositionPlant plant = feedbackPlant(target, measurement,
@@ -86,7 +86,7 @@ public final class PlantEquivalentPositionTaskTest {
 
         move.start(time.clock());
         plant.update(time.clock());
-        assertEquals(PlantTargetPlan.Kind.FALLBACK, plant.getTargetPlan().kind());
+        assertEquals(PlantTargetResolution.Kind.FALLBACK, plant.getTargetResolution().kind());
         assertTrue(plant.atTarget(20.0));
         move.update(time.clock());
 
@@ -126,12 +126,12 @@ public final class PlantEquivalentPositionTaskTest {
         ScalarTarget command = ScalarTarget.create(0.0);
         final boolean[] plannerActive = {true};
         final double[] measurement = {100.0};
-        PlantTargetSource clampedPlan = PlantTargets.plan()
-                .request(clock -> PlantTargetRequest.exact("outsideRange", 150.0))
+        PlantTargetResolver clampedPlan = PlantTargets.plan(
+                        clock -> PlantTargetRequest.exact("outsideRange", 150.0))
                 .nearestToMeasurement()
                 .clampUnreachableToRange()
                 .whenUnavailable().reportUnavailable();
-        PlantTargetSource target = PlantTargets.overlay(command)
+        PlantTargetResolver target = PlantTargets.overlay(command)
                 .add("planner", clock -> plannerActive[0], clampedPlan)
                 .build();
         MappedPositionPlant plant = feedbackPlant(target, measurement,
@@ -146,8 +146,8 @@ public final class PlantEquivalentPositionTaskTest {
         move.start(time.clock());
         plant.update(time.clock());
 
-        assertTrue(plant.getTargetPlan().clampedByPlanner());
-        assertEquals(100.0, plant.getTargetPlan().target(), EPSILON);
+        assertTrue(plant.getTargetResolution().clampedByPlanner());
+        assertEquals(100.0, plant.getTargetResolution().target(), EPSILON);
         assertTrue("The mechanism is physically at the planner's clamped value",
                 plant.atTarget(100.0));
         move.update(time.clock());
@@ -221,10 +221,10 @@ public final class PlantEquivalentPositionTaskTest {
         ScalarTarget command = ScalarTarget.create(0.0);
         final boolean[] override = {false};
         final double[] measurement = {380.0};
-        PlantTargetSource logical = PlantTargets.overlay(command)
+        PlantTargetResolver logical = PlantTargets.overlay(command)
                 .add("sameValueOverride", clock -> override[0], 20.0)
                 .build();
-        PlantTargetSource target = PlantTargets.equivalentPositionsOf(logical)
+        PlantTargetResolver target = PlantTargets.equivalentPositionsOf(logical)
                 .nearestToMeasurement()
                 .whenUnavailable().reportUnavailable();
         MappedPositionPlant plant = feedbackPlant(target, measurement,
@@ -263,7 +263,7 @@ public final class PlantEquivalentPositionTaskTest {
         ScalarTarget command = ScalarTarget.create(0.0);
         final boolean[] unavailable = {false};
         final double[] measurement = {20.0};
-        PlantTargetSource target = PlantTargets.overlay(command)
+        PlantTargetResolver target = PlantTargets.overlay(command)
                 .add("requiredUnavailable", clock -> unavailable[0],
                         PlantTargets.exact(clock -> Double.NaN))
                 .build();
@@ -279,12 +279,12 @@ public final class PlantEquivalentPositionTaskTest {
 
         move.start(time.clock());
         plant.update(time.clock());
-        assertTrue(plant.getTargetPlan().hasTarget());
+        assertTrue(plant.getTargetResolution().hasTarget());
         move.update(time.clock());
 
         unavailable[0] = true;
         plant.update(time.nextCycle(0.06));
-        assertFalse(plant.getTargetPlan().hasTarget());
+        assertFalse(plant.getTargetResolution().hasTarget());
         assertEquals(PlantTargetStatus.Kind.TARGET_UNAVAILABLE,
                 plant.getTargetStatus().kind());
         move.update(time.clock());
@@ -329,14 +329,14 @@ public final class PlantEquivalentPositionTaskTest {
     private static MappedPositionPlant periodicPlant(ScalarTarget command,
                                                      double[] measurement,
                                                      PlantTargetGuards guards) {
-        PlantTargetSource target = PlantTargets.equivalentPositionsOf(command)
+        PlantTargetResolver target = PlantTargets.equivalentPositionsOf(command)
                 .nearestToMeasurement()
                 .whenUnavailable().reportUnavailable();
         return feedbackPlant(target, measurement, PositionPlant.Topology.PERIODIC, 360.0,
                 ScalarRange.bounded(0.0, 720.0), guards);
     }
 
-    private static MappedPositionPlant feedbackPlant(PlantTargetSource target,
+    private static MappedPositionPlant feedbackPlant(PlantTargetResolver target,
                                                      double[] measurement,
                                                      PositionPlant.Topology topology,
                                                      double period,

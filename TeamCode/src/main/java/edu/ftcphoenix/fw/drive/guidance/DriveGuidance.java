@@ -29,8 +29,8 @@ import edu.ftcphoenix.fw.spatial.TranslationTarget2d;
  *   <li>{@link DriveGuidancePlan}: spec + {@link DriveGuidancePlan.Tuning} (<b>how strongly</b>)</li>
  * </ul>
  *
- * <p>The staged builder follows the same principle as {@code PlantTargets.plan()}: answer required conceptual
- * questions in order, then expose optional tuning branches:</p>
+ * <p>The staged builder follows the same principle as {@code PlantTargets.plan(request)}: answer
+ * required conceptual questions in order, then expose optional tuning branches:</p>
  * <ol>
  *   <li>choose the first translation or facing target, then optionally add the other channel,</li>
  *   <li>optionally choose controlled robot frames,</li>

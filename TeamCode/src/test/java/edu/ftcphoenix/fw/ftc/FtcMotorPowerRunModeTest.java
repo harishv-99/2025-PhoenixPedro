@@ -19,7 +19,7 @@ import java.util.Map;
 import java.util.Set;
 
 import edu.ftcphoenix.fw.actuation.Plant;
-import edu.ftcphoenix.fw.actuation.PlantTargetSource;
+import edu.ftcphoenix.fw.actuation.PlantTargetResolver;
 import edu.ftcphoenix.fw.actuation.PlantTargets;
 import edu.ftcphoenix.fw.actuation.PositionPlant;
 import edu.ftcphoenix.fw.core.control.ScalarRegulator;
@@ -475,7 +475,7 @@ public final class FtcMotorPowerRunModeTest {
                 .alreadyReferenced()
                 .positionTolerance(0.0);
         ScalarTarget command = ScalarTarget.create(150.0);
-        PlantTargetSource firstGraph = PlantTargets.overlay(command)
+        PlantTargetResolver firstGraph = PlantTargets.overlay(command)
                 .add("inactive", clock -> false, 25.0)
                 .build();
 

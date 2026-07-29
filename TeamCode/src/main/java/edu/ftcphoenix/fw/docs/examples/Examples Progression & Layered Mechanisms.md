@@ -121,7 +121,7 @@ important case study, but the final examples are teaching robot structure more d
 - the driver requests one of a few semantic poses,
 - the subsystem remembers that pose,
 - a short temporary override can win for a moment,
-- and the subsystem owns the final target source and Plant update order.
+- and the subsystem owns the final target resolver and Plant update order.
 
 The example is intentionally small, but it shows three important ideas.
 
@@ -138,14 +138,14 @@ The “pulse open” command is modeled as a short-lived override. It temporaril
 mechanism naturally falls back to the remembered base pose.
 
 This is exactly the kind of situation where output queues or task runners help: behavior owns the
-short-lived execution, and the plant owner still owns the final target source and update order.
+short-lived execution, and the Plant owner still owns the final target resolver and update order.
 
-### 3.3 The subsystem still owns the target sources and Plant update order
+### 3.3 The subsystem still owns the target resolvers and Plant update order
 
 Even though a supervisor is involved, the supervisor does not command hardware directly. The
-subsystem still computes the final target source and updates the Plant.
+subsystem still composes the final target resolver and updates the Plant, which invokes that resolver.
 
-That matches the framework principle of keeping one Plant/source owner per mechanism.
+That matches the framework principle of keeping one Plant/resolver owner per mechanism.
 
 ---
 
@@ -210,7 +210,7 @@ Then it makes the next two layers explicit.
 
 ### 5.1 Requests only remember caller intent
 
-The request layer does not know anything about timing, pulse duration, or final target-source composition.
+The request layer does not know anything about timing, pulse duration, or final target-resolver composition.
 
 Its only job is to remember:
 
@@ -239,7 +239,7 @@ The realization layer is intentionally boring:
 - updates the plants,
 - and exports a small readback snapshot for the next loop.
 
-That simplicity is a feature. It keeps the target-source ownership rule obvious.
+That simplicity is a feature. It keeps the target-resolver ownership rule obvious.
 
 For a deeper walkthrough of Example 09, read
 [`Layered Shooter Example.md`](<Layered Shooter Example.md>).

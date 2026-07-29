@@ -12,7 +12,7 @@ import edu.ftcphoenix.fw.actuation.MappedPositionPlant;
 import edu.ftcphoenix.fw.actuation.MappedVelocityPlant;
 import edu.ftcphoenix.fw.actuation.Plant;
 import edu.ftcphoenix.fw.actuation.PlantTargetGuards;
-import edu.ftcphoenix.fw.actuation.PlantTargetSource;
+import edu.ftcphoenix.fw.actuation.PlantTargetResolver;
 import edu.ftcphoenix.fw.actuation.PlantTargets;
 import edu.ftcphoenix.fw.actuation.Plants;
 import edu.ftcphoenix.fw.actuation.PositionPlant;
@@ -166,7 +166,7 @@ public final class FtcActuators {
         PlantTargetGuardStep targetGuards();
 
         /**
-         * Use a command target as the exact final source. Scalar task helpers write this same target.
+         * Use a command target as the exact final resolver. Scalar task helpers write this same target.
          *
          * @throws IllegalStateException if target selection was already answered through a retained
          *                               reference to this stage
@@ -174,13 +174,14 @@ public final class FtcActuators {
         PlantBuildStep targetedBy(ScalarTarget target);
 
         /**
-         * Use a plant-aware final target source such as {@link PlantTargets#overlay(PlantTargetSource)}
-         * or {@link PlantTargets#plan()}.
+         * Use a plant-aware final target resolver such as
+         * {@link PlantTargets#overlay(PlantTargetResolver)} or
+         * {@link PlantTargets#plan(edu.ftcphoenix.fw.actuation.PlantTargetRequest)}.
          *
          * @throws IllegalStateException if target selection was already answered through a retained
          *                               reference to this stage
          */
-        PlantBuildStep targetedBy(PlantTargetSource source);
+        PlantBuildStep targetedBy(PlantTargetResolver resolver);
     }
 
     /**
@@ -234,7 +235,7 @@ public final class FtcActuators {
         PositionTargetGuardStep targetGuards();
 
         /**
-         * Use a command target as the exact final source. Scalar task helpers write this same target.
+         * Use a command target as the exact final resolver. Scalar task helpers write this same target.
          *
          * @throws IllegalStateException if target selection was already answered through a retained
          *                               reference to this stage
@@ -242,13 +243,14 @@ public final class FtcActuators {
         PositionPlantBuildStep targetedBy(ScalarTarget target);
 
         /**
-         * Use a plant-aware final target source such as {@link PlantTargets#overlay(PlantTargetSource)}
-         * or {@link PlantTargets#plan()}.
+         * Use a plant-aware final target resolver such as
+         * {@link PlantTargets#overlay(PlantTargetResolver)} or
+         * {@link PlantTargets#plan(edu.ftcphoenix.fw.actuation.PlantTargetRequest)}.
          *
          * @throws IllegalStateException if target selection was already answered through a retained
          *                               reference to this stage
          */
-        PositionPlantBuildStep targetedBy(PlantTargetSource source);
+        PositionPlantBuildStep targetedBy(PlantTargetResolver resolver);
     }
 
     /**
@@ -894,7 +896,7 @@ public final class FtcActuators {
     private static final class PowerTargetBuilder implements PlantTargetStep, PlantBuildStep {
         private final PowerOutput output;
         private PlantTargetGuards guards = PlantTargetGuards.none();
-        private PlantTargetSource source;
+        private PlantTargetResolver targetResolver;
 
         private PowerTargetBuilder(PowerOutput output) {
             this.output = Objects.requireNonNull(output, "output");
@@ -907,23 +909,23 @@ public final class FtcActuators {
 
         @Override
         public PlantBuildStep targetedBy(ScalarTarget target) {
-            requireTargetUnanswered(source, "power Plant");
-            source = PlantTargets.exact(Objects.requireNonNull(target, "target"));
+            requireTargetUnanswered(targetResolver, "power Plant");
+            targetResolver = PlantTargets.exact(Objects.requireNonNull(target, "target"));
             return this;
         }
 
         @Override
-        public PlantBuildStep targetedBy(PlantTargetSource source) {
-            requireTargetUnanswered(this.source, "power Plant");
-            this.source = Objects.requireNonNull(source, "source");
+        public PlantBuildStep targetedBy(PlantTargetResolver resolver) {
+            requireTargetUnanswered(this.targetResolver, "power Plant");
+            this.targetResolver = Objects.requireNonNull(resolver, "resolver");
             return this;
         }
 
         @Override
         public Plant build() {
-            if (source == null)
+            if (targetResolver == null)
                 throw new IllegalStateException("Power plant requires targetedBy(...)");
-            return Plants.power(output, source, guards);
+            return Plants.power(output, targetResolver, guards);
         }
     }
 
@@ -968,7 +970,7 @@ public final class FtcActuators {
 
     private abstract static class BaseTargetedPlantBuilder implements PlantTargetStep, PlantBuildStep {
         protected PlantTargetGuards guards = PlantTargetGuards.none();
-        protected PlantTargetSource source;
+        protected PlantTargetResolver targetResolver;
 
         @Override
         public PlantTargetGuardStep targetGuards() {
@@ -977,25 +979,25 @@ public final class FtcActuators {
 
         @Override
         public PlantBuildStep targetedBy(ScalarTarget target) {
-            requireTargetUnanswered(source, "Plant");
-            source = PlantTargets.exact(Objects.requireNonNull(target, "target"));
+            requireTargetUnanswered(targetResolver, "Plant");
+            targetResolver = PlantTargets.exact(Objects.requireNonNull(target, "target"));
             return this;
         }
 
         @Override
-        public PlantBuildStep targetedBy(PlantTargetSource source) {
-            requireTargetUnanswered(this.source, "Plant");
-            this.source = Objects.requireNonNull(source, "source");
+        public PlantBuildStep targetedBy(PlantTargetResolver resolver) {
+            requireTargetUnanswered(this.targetResolver, "Plant");
+            this.targetResolver = Objects.requireNonNull(resolver, "resolver");
             return this;
         }
 
         @Override
         public Plant build() {
-            if (source == null) throw new IllegalStateException("Plant requires targetedBy(...)");
-            return buildPlant(source, guards);
+            if (targetResolver == null) throw new IllegalStateException("Plant requires targetedBy(...)");
+            return buildPlant(targetResolver, guards);
         }
 
-        protected abstract Plant buildPlant(PlantTargetSource source, PlantTargetGuards guards);
+        protected abstract Plant buildPlant(PlantTargetResolver resolver, PlantTargetGuards guards);
     }
 
     private static final class GenericPlantGuardBuilder implements PlantTargetGuardStep {
@@ -1040,7 +1042,7 @@ public final class FtcActuators {
     private abstract static class BaseTargetedPositionBuilder implements PositionTargetStep,
             PositionPlantBuildStep {
         protected PlantTargetGuards guards = PlantTargetGuards.none();
-        protected PlantTargetSource source;
+        protected PlantTargetResolver targetResolver;
 
         @Override
         public PositionTargetGuardStep targetGuards() {
@@ -1049,26 +1051,27 @@ public final class FtcActuators {
 
         @Override
         public PositionPlantBuildStep targetedBy(ScalarTarget target) {
-            requireTargetUnanswered(source, "position Plant");
-            source = PlantTargets.exact(Objects.requireNonNull(target, "target"));
+            requireTargetUnanswered(targetResolver, "position Plant");
+            targetResolver = PlantTargets.exact(Objects.requireNonNull(target, "target"));
             return this;
         }
 
         @Override
-        public PositionPlantBuildStep targetedBy(PlantTargetSource source) {
-            requireTargetUnanswered(this.source, "position Plant");
-            this.source = Objects.requireNonNull(source, "source");
+        public PositionPlantBuildStep targetedBy(PlantTargetResolver resolver) {
+            requireTargetUnanswered(this.targetResolver, "position Plant");
+            this.targetResolver = Objects.requireNonNull(resolver, "resolver");
             return this;
         }
 
         @Override
         public PositionPlant build() {
-            if (source == null)
+            if (targetResolver == null)
                 throw new IllegalStateException("Position plant requires targetedBy(...)");
-            return buildPositionPlant(source, guards);
+            return buildPositionPlant(targetResolver, guards);
         }
 
-        protected abstract PositionPlant buildPositionPlant(PlantTargetSource source, PlantTargetGuards guards);
+        protected abstract PositionPlant buildPositionPlant(PlantTargetResolver resolver,
+                                                            PlantTargetGuards guards);
     }
 
     private static final class PositionGuardBuilder implements PositionTargetGuardStep {
@@ -1528,7 +1531,7 @@ public final class FtcActuators {
         }
 
         @Override
-        protected Plant buildPlant(PlantTargetSource source, PlantTargetGuards guards) {
+        protected Plant buildPlant(PlantTargetResolver resolver, PlantTargetGuards guards) {
             if (controlKind == null)
                 throw new IllegalStateException("Motor velocity builder requires deviceManagedWithDefaults(), deviceManaged(), or regulated()");
             if (range == null)
@@ -1548,7 +1551,7 @@ public final class FtcActuators {
                     .nativePerPlantUnit(nativePerPlantUnit)
                     .velocityTolerance(velocityTolerance)
                     .targetGuards(guards)
-                    .targetedBy(source)
+                    .targetedBy(resolver)
                     .build();
         }
     }
@@ -1690,7 +1693,7 @@ public final class FtcActuators {
 
         protected MappedPlantBuildStep<MappedPositionPlant> applyCommon(
                 MappedPositionPlant.FeedbackConfigurationStep b,
-                PlantTargetSource source,
+                PlantTargetResolver resolver,
                 PlantTargetGuards guards) {
             if (topology == null)
                 throw new IllegalStateException("Position builder requires linear() or periodic(period)");
@@ -1706,7 +1709,7 @@ public final class FtcActuators {
             else configured = configured.needsReference(referenceReason);
             return configured.positionTolerance(positionTolerance)
                     .targetGuards(guards)
-                    .targetedBy(source);
+                    .targetedBy(resolver);
         }
     }
 
@@ -1815,14 +1818,15 @@ public final class FtcActuators {
         }
 
         @Override
-        protected PositionPlant buildPositionPlant(PlantTargetSource source, PlantTargetGuards guards) {
+        protected PositionPlant buildPositionPlant(PlantTargetResolver resolver,
+                                                   PlantTargetGuards guards) {
             if (controlKind == null)
                 throw new IllegalStateException("Motor position builder requires deviceManagedWithDefaults(), deviceManaged(), or regulated()");
             if (controlKind == PositionControlKind.DEVICE_MANAGED) {
                 PositionOutput out = parent.groupedMotorPosition(deviceConfig);
                 ScalarSource nativeMeasurement = parent.groupedMotorPositionMeasurement();
                 return applyCommon(MappedPositionPlant.positionOutput(out, nativeMeasurement)
-                        .searchPowerOutput(parent.groupedMotorPower()), source, guards).build();
+                        .searchPowerOutput(parent.groupedMotorPower()), resolver, guards).build();
             }
             parent.requireDefaultGroupScalingForRegulated("position");
             if (feedback == null || regulator == null)
@@ -1831,7 +1835,7 @@ public final class FtcActuators {
                         + "nativeFeedback(...)) and regulator(...)");
             PowerOutput power = parent.groupedMotorPower();
             return applyCommon(MappedPositionPlant.regulated(power, feedback, regulator)
-                    .searchPowerOutput(power), source, guards).build();
+                    .searchPowerOutput(power), resolver, guards).build();
         }
     }
 
@@ -1944,7 +1948,8 @@ public final class FtcActuators {
         }
 
         @Override
-        protected PositionPlant buildPositionPlant(PlantTargetSource source, PlantTargetGuards guards) {
+        protected PositionPlant buildPositionPlant(PlantTargetResolver resolver,
+                                                   PlantTargetGuards guards) {
             if (range == null)
                 throw new IllegalStateException("Servo position builder requires bounded(...)");
             MappedPositionPlant.CommandedConfigurationStep b = MappedPositionPlant.commanded(parent.groupedServoPosition())
@@ -1952,7 +1957,7 @@ public final class FtcActuators {
                     .range(range)
                     .nativePerPlantUnit(nativePerPlantUnit)
                     .plantPositionMapsToNative(plantReference, nativeReference);
-            return b.targetGuards(guards).targetedBy(source).build();
+            return b.targetGuards(guards).targetedBy(resolver).build();
         }
     }
 
@@ -2077,14 +2082,15 @@ public final class FtcActuators {
         }
 
         @Override
-        protected PositionPlant buildPositionPlant(PlantTargetSource source, PlantTargetGuards guards) {
+        protected PositionPlant buildPositionPlant(PlantTargetResolver resolver,
+                                                   PlantTargetGuards guards) {
             parent.requireDefaultGroupScalingForRegulated();
             if (feedback == null || regulator == null)
                 throw new IllegalStateException("Regulated CR-servo position requires externalEncoder(...) "
                         + "or nativeFeedback(...), followed by regulator(...)");
             PowerOutput power = parent.groupedCrServoPower();
             return applyCommon(MappedPositionPlant.regulated(power, feedback, regulator)
-                    .searchPowerOutput(power), source, guards).build();
+                    .searchPowerOutput(power), resolver, guards).build();
         }
     }
 
@@ -2231,8 +2237,8 @@ public final class FtcActuators {
     // Helpers
     // ---------------------------------------------------------------------------------------------
 
-    private static void requireTargetUnanswered(PlantTargetSource currentTarget, String plantKind) {
-        if (currentTarget != null) {
+    private static void requireTargetUnanswered(PlantTargetResolver currentResolver, String plantKind) {
+        if (currentResolver != null) {
             throw new IllegalStateException("targetedBy(...) has already been answered for this "
                     + plantKind + "; create a new builder to choose a different target");
         }

@@ -22,7 +22,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * native = nativeReference + nativePerPlantUnit * (plant - plantReference)
  * }</pre>
  *
- * <p>The target source is sampled once per {@link #update(LoopClock)}. Static plant range and
+ * <p>The target resolver is invoked once per {@link #update(LoopClock)}. Static plant range and
  * reference validity are enforced first; dynamic hardware protection such as interlocks and target
  * rate limits are applied by {@link PlantTargetGuards}; the result is checked once more for the
  * final finite/range invariant; then one applied target is sent to hardware or the framework
@@ -56,7 +56,7 @@ public final class MappedPositionPlant implements PositionPlant {
     private final RegulatedPowerChannel regulatedPowerChannel;
     private final ScalarSource nativeMeasurement;
     private final PowerOutput searchPowerOut;
-    private final PlantTargetSource targetSource;
+    private final PlantTargetResolver targetResolver;
     private final ScalarTarget commandTarget;
     private final PlantTargetGuards targetGuards;
     private final Topology topology;
@@ -81,14 +81,14 @@ public final class MappedPositionPlant implements PositionPlant {
     private boolean searchActive;
     private double searchPower;
     private PlantTargetStatus targetStatus = PlantTargetStatus.STOPPED;
-    private PlantTargetPlan targetPlan = PlantTargetPlan.unavailable("not sampled");
+    private PlantTargetResolution targetResolution = PlantTargetResolution.unavailable("not sampled");
 
     private MappedPositionPlant(PositionOutput positionOut,
                                 PowerOutput regulatedPowerOut,
                                 ScalarRegulator regulator,
                                 ScalarSource nativeMeasurement,
                                 PowerOutput searchPowerOut,
-                                PlantTargetSource targetSource,
+                                PlantTargetResolver targetResolver,
                                 PlantTargetGuards targetGuards,
                                 Topology topology,
                                 double period,
@@ -105,8 +105,8 @@ public final class MappedPositionPlant implements PositionPlant {
         this.regulator = regulator;
         this.nativeMeasurement = nativeMeasurement != null ? nativeMeasurement.memoized() : null;
         this.searchPowerOut = searchPowerOut;
-        this.targetSource = Objects.requireNonNull(targetSource, "targetSource");
-        this.commandTarget = PlantTargets.commandTargetOf(this.targetSource);
+        this.targetResolver = Objects.requireNonNull(targetResolver, "targetResolver");
+        this.commandTarget = PlantTargets.commandTargetOf(this.targetResolver);
         this.targetGuards = targetGuards == null ? PlantTargetGuards.none() : targetGuards;
         this.topology = Objects.requireNonNull(topology, "topology");
         this.period = period;
@@ -228,7 +228,7 @@ public final class MappedPositionPlant implements PositionPlant {
         private final ScalarRegulator regulator;
         private final ScalarSource nativeMeasurement;
         private PowerOutput searchPowerOut;
-        private PlantTargetSource targetSource;
+        private PlantTargetResolver targetResolver;
         private PlantTargetGuards targetGuards = PlantTargetGuards.none();
         private Topology topology = Topology.LINEAR;
         private double period = Double.NaN;
@@ -346,31 +346,31 @@ public final class MappedPositionPlant implements PositionPlant {
         }
 
         /**
-         * Uses a command target as the exact final source.
+         * Uses a command target as the exact final resolver.
          *
          * <p>The target graph designates this target as the command target used by robot policy
          * and {@link ScalarTasks}.</p>
          */
-        public Builder targetedBy(ScalarTarget targetSource) {
+        public Builder targetedBy(ScalarTarget target) {
             requireTargetUnanswered();
-            this.targetSource = PlantTargets.exact(Objects.requireNonNull(targetSource, "targetSource"));
+            this.targetResolver = PlantTargets.exact(Objects.requireNonNull(target, "target"));
             return this;
         }
 
         /**
-         * Uses a plant-aware final target source.
+         * Uses a plant-aware final target resolver.
          *
-         * <p>If the source graph designates a command target, such as the base of a command-backed
+         * <p>If the resolver graph designates a command target, such as the base of a command-backed
          * overlay, this Plant exposes that same target to robot policy and {@link ScalarTasks}.</p>
          */
-        public Builder targetedBy(PlantTargetSource targetSource) {
+        public Builder targetedBy(PlantTargetResolver targetResolver) {
             requireTargetUnanswered();
-            this.targetSource = Objects.requireNonNull(targetSource, "targetSource");
+            this.targetResolver = Objects.requireNonNull(targetResolver, "targetResolver");
             return this;
         }
 
         private void requireTargetUnanswered() {
-            if (targetSource != null) {
+            if (targetResolver != null) {
                 throw new IllegalStateException("targetedBy(...) has already been answered for "
                         + "this MappedPositionPlant; create a new builder to choose a different target");
             }
@@ -379,20 +379,20 @@ public final class MappedPositionPlant implements PositionPlant {
         /**
          * Builds the mapped position plant.
          *
-         * @throws IllegalStateException if no target source was configured, or if a feedback plant
+         * @throws IllegalStateException if no target resolver was configured, or if a feedback plant
          *                               has no explicit plant-unit position tolerance
          * @throws IllegalArgumentException if the configured range cannot contain a finite command
          *                                  or a static guard fallback lies outside that range
          */
         public MappedPositionPlant build() {
-            if (targetSource == null)
+            if (targetResolver == null)
                 throw new IllegalStateException("MappedPositionPlant requires targetedBy(...)");
             if (nativeMeasurement != null && !toleranceConfigured)
                 throw new IllegalStateException("MappedPositionPlant feedback requires "
                         + "positionTolerance(...) in plant position units before build()");
             double builtTolerance = nativeMeasurement == null ? 0.0 : tolerance;
             return new MappedPositionPlant(positionOut, regulatedPowerOut, regulator, nativeMeasurement,
-                    searchPowerOut, targetSource, targetGuards, topology, period,
+                    searchPowerOut, targetResolver, targetGuards, topology, period,
                     configuredRange, nativePerPlantUnit, builtTolerance, referenceMode, plantReference,
                     nativeReference, assumedPlantPosition, unreferencedReason);
         }
@@ -429,7 +429,7 @@ public final class MappedPositionPlant implements PositionPlant {
         if (searchActive) {
             samplePlantMeasurement(clock);
             if (searchPowerOut != null) searchPowerOut.setPower(searchPower);
-            targetPlan = PlantTargetPlan.holdLast(appliedTarget, "calibration search active");
+            targetResolution = PlantTargetResolution.holdLast(appliedTarget, "calibration search active");
             lastAtTarget = false;
             targetStatus = PlantTargetStatus.holdingLast("calibration search active");
             return;
@@ -437,22 +437,24 @@ public final class MappedPositionPlant implements PositionPlant {
 
         double priorAppliedTarget = appliedTarget;
         PlantTargetStatus priorTargetStatus = targetStatus;
-        PlantTargetPlan priorTargetPlan = targetPlan;
+        PlantTargetResolution priorTargetResolution = targetResolution;
         samplePlantMeasurement(clock);
         ScalarRange range = targetRange();
         PlantTargetContext context = PlantTargetContext.position(hasFeedback(), lastMeasurement,
                 range, topology, period(), requestedTarget, appliedTarget);
-        targetPlan = targetSource.resolve(context, clock);
-        if (targetPlan != null && targetPlan.hasTarget()) {
-            requestedTarget = targetPlan.target();
+        targetResolution = targetResolver.resolve(context, clock);
+        if (targetResolution != null && targetResolution.hasTarget()) {
+            requestedTarget = targetResolution.target();
         } else {
             requestedTarget = appliedTarget;
         }
 
         double candidate = Double.isFinite(requestedTarget) ? requestedTarget : appliedTarget;
-        PlantTargetStatus status = (targetPlan != null && targetPlan.hasTarget())
+        PlantTargetStatus status = (targetResolution != null && targetResolution.hasTarget())
                 ? PlantTargetStatus.ACCEPTED
-                : PlantTargetStatus.targetUnavailable(targetPlan != null ? targetPlan.reason() : "missing plant target plan");
+                : PlantTargetStatus.targetUnavailable(targetResolution != null
+                        ? targetResolution.reason()
+                        : "missing plant target resolution");
         if (!range.valid) {
             status = PlantTargetStatus.referenceNotEstablished(range.reason);
             candidate = appliedTarget;
@@ -482,7 +484,7 @@ public final class MappedPositionPlant implements PositionPlant {
                 regulatedPowerChannel.update(appliedTarget, lastMeasurement, clock);
             } catch (RuntimeException failure) {
                 handleRegulatedUpdateFailure(
-                        priorAppliedTarget, priorTargetStatus, priorTargetPlan, failure);
+                        priorAppliedTarget, priorTargetStatus, priorTargetResolution, failure);
                 throw failure;
             }
             regulatedActuationCompleted = true;
@@ -494,14 +496,14 @@ public final class MappedPositionPlant implements PositionPlant {
     public void reset() {
         regulatedActuationCompleted = false;
         lastAtTarget = false;
-        targetSource.reset();
+        targetResolver.reset();
         targetGuards.reset();
         if (nativeMeasurement != null) nativeMeasurement.reset();
         if (regulatedPowerChannel != null) regulatedPowerChannel.reset();
         lastMeasurement = Double.NaN;
         lastNativeMeasurement = Double.NaN;
         targetStatus = PlantTargetStatus.STOPPED;
-        targetPlan = PlantTargetPlan.unavailable("not sampled");
+        targetResolution = PlantTargetResolution.unavailable("not sampled");
         if (referenceMode == ReferenceMode.ASSUME_CURRENT) {
             referenced = false;
             pendingAssume = true;
@@ -512,7 +514,7 @@ public final class MappedPositionPlant implements PositionPlant {
     public void stop() {
         double priorAppliedTarget = appliedTarget;
         PlantTargetStatus priorTargetStatus = targetStatus;
-        PlantTargetPlan priorTargetPlan = targetPlan;
+        PlantTargetResolution priorTargetResolution = targetResolution;
         regulatedActuationCompleted = false;
         lastAtTarget = false;
 
@@ -552,7 +554,7 @@ public final class MappedPositionPlant implements PositionPlant {
         if (allOutputStopsSucceeded) {
             markSuccessfullyStopped();
         } else {
-            restoreTargetState(priorAppliedTarget, priorTargetStatus, priorTargetPlan);
+            restoreTargetState(priorAppliedTarget, priorTargetStatus, priorTargetResolution);
         }
         if (primary != null) throw primary;
     }
@@ -568,8 +570,8 @@ public final class MappedPositionPlant implements PositionPlant {
     }
 
     @Override
-    public PlantTargetPlan getTargetPlan() {
-        return targetPlan;
+    public PlantTargetResolution getTargetResolution() {
+        return targetResolution;
     }
 
     @Override
@@ -725,7 +727,7 @@ public final class MappedPositionPlant implements PositionPlant {
 
     private void handleRegulatedUpdateFailure(double priorAppliedTarget,
                                               PlantTargetStatus priorTargetStatus,
-                                              PlantTargetPlan priorTargetPlan,
+                                              PlantTargetResolution priorTargetResolution,
                                               RuntimeException failure) {
         regulatedActuationCompleted = false;
         lastAtTarget = false;
@@ -737,21 +739,21 @@ public final class MappedPositionPlant implements PositionPlant {
         if (regulatedPowerChannel.lastStopSubmitted()) {
             markSuccessfullyStopped();
         } else {
-            restoreTargetState(priorAppliedTarget, priorTargetStatus, priorTargetPlan);
+            restoreTargetState(priorAppliedTarget, priorTargetStatus, priorTargetResolution);
         }
     }
 
     private void markSuccessfullyStopped() {
         targetStatus = PlantTargetStatus.STOPPED;
-        targetPlan = PlantTargetPlan.unavailable("plant stopped");
+        targetResolution = PlantTargetResolution.unavailable("plant stopped");
     }
 
     private void restoreTargetState(double priorAppliedTarget,
                                     PlantTargetStatus priorTargetStatus,
-                                    PlantTargetPlan priorTargetPlan) {
+                                    PlantTargetResolution priorTargetResolution) {
         appliedTarget = priorAppliedTarget;
         targetStatus = priorTargetStatus;
-        targetPlan = priorTargetPlan;
+        targetResolution = priorTargetResolution;
     }
 
     private static RuntimeException suppress(RuntimeException primary, RuntimeException additional) {
@@ -782,7 +784,7 @@ public final class MappedPositionPlant implements PositionPlant {
             // Preserve the existing debug key for position-output Plants.
             dbg.addData(p + ".lastRegulatorOutput", 0.0);
         }
-        targetSource.debugDump(dbg, p + ".targetSource");
+        targetResolver.debugDump(dbg, p + ".targetResolver");
         targetGuards.debugDump(dbg, p + ".targetGuards");
     }
 }

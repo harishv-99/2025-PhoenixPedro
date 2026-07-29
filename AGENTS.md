@@ -57,13 +57,13 @@ the framework API.
   - field facts remain separate from sensor ownership and game strategy;
   - robot capability families expose shared mode-neutral intent and status;
   - controls own operator meanings;
-  - subsystems/realization own final Plant target sources and Plant update order;
+  - subsystems/realization own final Plant target resolvers and Plant update order;
   - supervisors and services own robot-specific policy and coordination;
   - presenters only format snapshots for humans;
   - the composition root wires objects and makes loop order explicit.
 - Keep FTC SDK and vendor details at explicit boundaries. Core framework logic should depend on
   Phoenix abstractions, not directly on `com.qualcomm.*` or third-party route-library types.
-- Keep Plants source-driven. Each Plant has one final `PlantTargetSource`; compose behavior with
+- Keep Plants source-driven. Each Plant has one final `PlantTargetResolver`; compose behavior with
   `PlantTargets.exact(...)`, `equivalentPositionsOf(...)`, `overlay(...)`, or the advanced
   `plan(...)`, then let the Plant apply hardware
   bounds, references, and guards. Direct power Plants own the normalized `[-1, +1]` target range.

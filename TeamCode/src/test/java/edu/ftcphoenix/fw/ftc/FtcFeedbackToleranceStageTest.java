@@ -6,7 +6,7 @@ import org.junit.Test;
 
 import java.lang.reflect.Method;
 
-import edu.ftcphoenix.fw.actuation.PlantTargetSource;
+import edu.ftcphoenix.fw.actuation.PlantTargetResolver;
 import edu.ftcphoenix.fw.core.hal.Direction;
 import edu.ftcphoenix.fw.core.source.ScalarTarget;
 
@@ -52,7 +52,7 @@ public final class FtcFeedbackToleranceStageTest {
         assertReturns(FtcActuators.PlantTargetStep.class, "targetedBy",
                 FtcActuators.PlantBuildStep.class, ScalarTarget.class);
         assertReturns(FtcActuators.PlantTargetStep.class, "targetedBy",
-                FtcActuators.PlantBuildStep.class, PlantTargetSource.class);
+                FtcActuators.PlantBuildStep.class, PlantTargetResolver.class);
         assertEquals(3, FtcActuators.PlantTargetStep.class.getDeclaredMethods().length);
 
         assertReturns(FtcActuators.PositionTargetStep.class, "targetGuards",
@@ -60,7 +60,7 @@ public final class FtcFeedbackToleranceStageTest {
         assertReturns(FtcActuators.PositionTargetStep.class, "targetedBy",
                 FtcActuators.PositionPlantBuildStep.class, ScalarTarget.class);
         assertReturns(FtcActuators.PositionTargetStep.class, "targetedBy",
-                FtcActuators.PositionPlantBuildStep.class, PlantTargetSource.class);
+                FtcActuators.PositionPlantBuildStep.class, PlantTargetResolver.class);
         assertEquals(3, FtcActuators.PositionTargetStep.class.getDeclaredMethods().length);
 
         for (Class<?> nested : FtcActuators.class.getDeclaredClasses()) {

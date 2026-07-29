@@ -17,7 +17,8 @@ Use `SpatialQuery` directly when you need raw geometry:
 
 Do not use `SpatialQuery` when the target is already a plant-unit value. A lift preset such as
 `1420 ticks` should go straight to a `ScalarTarget`; a periodic mechanism can wrap that command with
-`PlantTargets.equivalentPositionsOf(...)`; advanced candidate sets use `PlantTargets.plan()`.
+`PlantTargets.equivalentPositionsOf(...)`; advanced alternative sets use
+`PlantTargets.plan(request)`.
 
 ## Main vocabulary
 
@@ -35,9 +36,12 @@ The key naming rule is:
 ```text
 Query -> Result
 Planner/Guidance -> Plan or Status
+PlantTargetResolver -> PlantTargetResolution
 ```
 
-`SpatialQuery` produces a `SpatialQueryResult`. `DriveGuidanceQuery` produces drive status, and `PlantTargets.plan()` produces a `PlantTargetPlan` because it applies policy and chooses a requested target.
+`SpatialQuery` produces a `SpatialQueryResult`. `DriveGuidanceQuery` produces drive status, and a
+resolver built with `PlantTargets.plan(request)` produces a `PlantTargetResolution` because it
+applies policy and chooses a requested target.
 
 ## Builder shape
 

@@ -23,7 +23,7 @@ Phoenix uses a few simple ownership rules.
 3. **Field facts stay separate from both sensor rigs and strategy.**
 4. **Robot capabilities expose the shared mode-neutral robot vocabulary.**
 5. **Robot controls own operator semantics.**
-6. **Subsystems own mechanism target sources and Plant update order.**
+6. **Subsystems own mechanism target resolvers and Plant update order.**
 7. **Supervisors own policy and orchestration.**
 8. **Services own shared robot-specific computation.**
 9. **Presenters own human-facing output.**
@@ -168,7 +168,7 @@ It should usually **not** own:
 
 - button semantics
 - specific autonomous route sequencing
-- final target-source composition and Plant update order
+- final target-resolver composition and Plant update order
 
 Examples:
 
@@ -185,14 +185,14 @@ philosophy, read [`Robot Capabilities & Mode Clients`](<Robot Capabilities & Mod
 
 ### Subsystem
 
-A **subsystem** is a robot-owned mechanism owner and usually the single owner of a mechanism's target sources and Plant update order.
+A **subsystem** is a robot-owned mechanism owner and usually the single owner of a mechanism's target resolvers and Plant update order.
 
 It should own:
 
 - plants
 - mechanism-local sensors or feedback sources
 - the mechanism's output queue or pipeline
-- final target-source composition and Plant update order
+- final target-resolver composition and Plant update order
 - a small status snapshot
 
 Example:
@@ -201,7 +201,7 @@ Example:
 
 A subsystem answers:
 
-> Who owns this mechanism's target sources and Plant update order?
+> Who owns this mechanism's target resolvers and Plant update order?
 
 ### Supervisor
 
@@ -227,7 +227,7 @@ A supervisor answers:
 
 A **service** is a robot-owned shared logic object that computes decisions or shared status.
 
-It usually does not own a mechanism's target sources or Plant update order, and it is usually not primarily about buttons.
+It usually does not own a mechanism's target resolvers or Plant update order, and it is usually not primarily about buttons.
 
 Examples:
 
@@ -397,7 +397,7 @@ Then it is probably a **lane**.
 That lifecycle may involve acquisition, a required update, recovery, or cleanup. Do not invent an
 `update()` phase when the graph does not need one.
 
-### Does it own one mechanism's target sources and Plant update order?
+### Does it own one mechanism's target resolvers and Plant update order?
 Then it is probably a **subsystem**.
 
 ### Does it decide what should happen without doing final writes?
@@ -955,7 +955,7 @@ and not in the composition root.
 
 ## Step 4: make each mechanism a subsystem
 
-The subsystem owns the target sources and Plant update order.
+The subsystem owns the target resolvers and Plant update order.
 
 ```java
 public final class IntakeShooterSubsystem {

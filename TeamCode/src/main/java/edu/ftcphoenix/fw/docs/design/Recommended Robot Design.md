@@ -45,7 +45,7 @@ TeleOp and Auto.
 The short version is:
 
 - **TeleOp bindings and Auto routines should talk to the robot through the same small intent API.**
-- **Subsystems should own their Plant target sources and update order.**
+- **Subsystems should own their Plant target resolvers and update order.**
 - **Supervisors should own policy, timing, requests, and queueing.**
 - **Status snapshots should be the normal way to observe a mechanism from the outside.**
 - **Use the behavior pattern that matches the problem instead of forcing everything into one abstraction.**
@@ -294,7 +294,7 @@ failed prerequisite can be unsafe.
 
 ### Subsystem
 
-A subsystem owns the target sources and Plant update order for one mechanism or one tightly-coupled hardware group.
+A subsystem owns the target resolvers and Plant update order for one mechanism or one tightly-coupled hardware group.
 
 A subsystem should usually own:
 
@@ -302,7 +302,7 @@ A subsystem should usually own:
 - the sensor sources most closely tied to that mechanism
 - the mechanism's long-lived desired state
 - output queues used as temporary overrides
-- the final target source that each Plant follows
+- the final target resolver that each Plant invokes during its update
 - a small `status()` snapshot
 
 A subsystem should usually **not** own:
@@ -327,7 +327,7 @@ A supervisor should usually own:
 - a compact status/debug snapshot for higher-level code
 
 A supervisor should usually **not** command Plants directly. It should decide what should happen,
-then let the subsystem remain the owner of the mechanism target sources and Plant update order.
+then let the subsystem remain the owner of the mechanism target resolvers and Plant update order.
 
 ### TeleOp and Auto
 
@@ -801,7 +801,7 @@ public final class Intake {
 
 The exact `status()` implementation can vary. In real code you would usually cache whatever values
 outside callers need while the subsystem is updating. The important point is the shape: small
-external status, target-source ownership inside the subsystem.
+external status, target-resolver ownership inside the subsystem.
 
 ### Recommended supervisor shape
 
@@ -871,7 +871,7 @@ public final class IntakeSupervisor {
 The important point of this example is the boundary:
 
 - supervisor owns requests and queueing policy
-- subsystem remains the single owner of the feeder target source and Plant update order
+- subsystem remains the single owner of the feeder target resolver and Plant update order
 
 ### TeleOp interaction
 
@@ -895,7 +895,7 @@ Task acquirePiece = Tasks.sequence(
 - event logic stays out of the subsystem's final target calculation
 - the queue stays encapsulated; callers request feed actions instead of manipulating plant targets
 - Auto and TeleOp both reuse the same supervisor methods and status
-- temporary overrides do not break the target-source ownership rule
+- temporary overrides do not break the target-resolver ownership rule
 
 ---
 
@@ -1368,7 +1368,7 @@ Usually that includes:
 - current measured value or readiness
 - whether the mechanism is done / ready / blocked
 
-### 4. Who owns the target sources and Plant updates?
+### 4. Who owns the target resolvers and Plant updates?
 
 Make sure exactly one place computes the final plant target.
 
@@ -1385,7 +1385,7 @@ If you can answer those five questions clearly, the mechanism will usually fit t
 If you are unsure how to structure a new robot, start here:
 
 - expose **intent methods + status snapshots**
-- keep **subsystems as the owners of target sources and Plant updates**
+- keep **subsystems as the owners of target resolvers and Plant updates**
 - keep **supervisors as the policy layer**
 - use the **behavior patterns** to choose the internals
 - let **TeleOp bindings and Auto routines call the same public mechanism vocabulary**
