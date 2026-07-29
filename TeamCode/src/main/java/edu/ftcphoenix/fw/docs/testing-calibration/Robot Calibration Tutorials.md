@@ -37,7 +37,7 @@ Phoenix keeps those ideas separate:
 raw/native hardware coordinate
     -> reference + unit mapping
     -> public plant coordinate
-    -> PlantTargets.plan()
+    -> PlantTargets exact/equivalent/advanced plan
     -> PositionPlant target source
 ```
 
@@ -102,7 +102,10 @@ small drift corrections during a match.
 - before reference, the Plant reports an invalid target range with a clear reason such as `lift not homed`
 - the homing/indexing task has timeout and cancellation behavior
 - after reference, the public measurement matches the physical mechanism coordinate
-- presets, Plant target requests, and telemetry all use plant units rather than raw hardware surprises
+- presets, command targets, Plant target requests, and telemetry all use plant units rather than raw
+  hardware surprises
+- one periodic command uses `PlantTargets.equivalentPositionsOf(...)`; multiple candidates or
+  observation metadata use the advanced `PlantTargets.plan()` path
 
 ### Do not move on if
 

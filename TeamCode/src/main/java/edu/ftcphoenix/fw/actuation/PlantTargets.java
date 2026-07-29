@@ -21,7 +21,8 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * every layer's activation gate is sampled once, then target producers are resolved lazily from
  * highest to lowest priority. Layers added with {@code add(...)} must produce a target when enabled,
  * while {@code addIfAvailable(...)} is the explicit opt-in for enabled layers that may fall through.
- * Periodic/equivalent target selection uses {@link #plan()}; its work is bounded by the explicit
+ * A normal periodic command uses {@link #equivalentPositionsOf(ScalarTarget)}. Advanced
+ * multi-candidate planning uses {@link #plan()}; periodic work is bounded by the explicit
  * request-candidate count rather than the number of equivalent positions in a Plant's range.</p>
  *
  * <h2>Typical exact target</h2>
@@ -43,12 +44,11 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *     .build();
  * }</pre>
  *
- * <h2>Typical smart planner</h2>
+ * <h2>Typical periodic command</h2>
  * <pre>{@code
- * PlantTargetSource turretTarget = PlantTargets.plan()
- *     .request(clock -> PlantTargetRequest.equivalentPosition("faceGoal", desiredAngleDeg.get()))
+ * ScalarTarget turretCommand = ScalarTarget.held(0.0);
+ * PlantTargetSource turretTarget = PlantTargets.equivalentPositionsOf(turretCommand)
  *     .nearestToMeasurement()
- *     .rejectUnreachable()
  *     .whenUnavailable().holdMeasuredTargetOnEntry(0.0);
  * }</pre>
  */
@@ -199,6 +199,32 @@ public final class PlantTargets {
     }
 
     /**
+     * Interpret one graph-owned command as an equivalent-position family in the consuming Plant's
+     * periodic coordinate.
+     *
+     * <p>This is the normal periodic-mechanism path. Robot code and {@link PlantTasks} keep writing
+     * the same logical command value; this final source chooses the legal physical representative
+     * each loop. Omitting this transform preserves exact, unwrapped target semantics.</p>
+     */
+    public static EquivalentPositionPreferenceStage equivalentPositionsOf(
+            ScalarTarget commandTarget) {
+        return equivalentPositionsOf(exact(Objects.requireNonNull(commandTarget, "commandTarget")));
+    }
+
+    /**
+     * Interpret the final winner of a logical target graph as an equivalent-position family.
+     *
+     * <p>Compose exact targets and overlays first, then apply this transform so every winning layer
+     * receives the same periodic interpretation. If the graph carries a command target, that
+     * command identity remains available to Plant task helpers.</p>
+     */
+    public static EquivalentPositionPreferenceStage equivalentPositionsOf(
+            PlantTargetSource finalLogicalTarget) {
+        return new EquivalentPositionBuilder(
+                Objects.requireNonNull(finalLogicalTarget, "finalLogicalTarget"));
+    }
+
+    /**
      * Start a smart target planner.
      *
      * <p>The staged builder asks required questions in order: request source, candidate
@@ -241,9 +267,14 @@ public final class PlantTargets {
         @Override
         public PlantTargetPlan resolve(PlantTargetContext context, LoopClock clock) {
             double v = source.getAsDouble(clock);
-            return Double.isFinite(v)
+            PlantTargetPlan plan = Double.isFinite(v)
                     ? PlantTargetPlan.exact(v, reason)
-                    : PlantTargetPlan.unavailable("exact scalar source returned non-finite target: " + v);
+                    : PlantTargetPlan.unavailable(
+                            "exact scalar source returned non-finite target: " + v);
+            if (commandTarget == null) return plan;
+            return Double.isFinite(v)
+                    ? plan.withSelectedCommand(commandTarget, v)
+                    : plan.withoutSelectedCommand(commandTarget);
         }
 
         @Override
@@ -602,6 +633,9 @@ public final class PlantTargets {
                 winner = base.resolve(context, clock);
             }
 
+            if (decisiveLayerIndex >= 0 && commandTarget != null) {
+                winner = winner.withoutSelectedCommand(commandTarget);
+            }
             lastPlan = winner;
             return winner;
         }
@@ -645,6 +679,27 @@ public final class PlantTargets {
                 layer.target.debugDump(dbg, lp + ".target");
             }
         }
+    }
+
+    /** Required choice for selecting one legal equivalent physical position. */
+    public interface EquivalentPositionPreferenceStage {
+        /** Choose the legal equivalent nearest to the current measurement. */
+        EquivalentPositionReadyStage nearestToMeasurement();
+
+        /** Prefer the closest legal equivalent at or above the current measurement. */
+        EquivalentPositionReadyStage preferIncreasing();
+
+        /** Prefer the closest legal equivalent at or below the current measurement. */
+        EquivalentPositionReadyStage preferDecreasing();
+
+        /** Prefer the legal equivalent nearest the center of a finite target range. */
+        EquivalentPositionReadyStage preferRangeCenter();
+    }
+
+    /** Equivalent-position stage after the required selection preference. */
+    public interface EquivalentPositionReadyStage {
+        /** Choose what the final source should report when no legal equivalent is available. */
+        UnavailableTargetBranch whenUnavailable();
     }
 
     /**
@@ -723,7 +778,7 @@ public final class PlantTargets {
         /**
          * Enter the required unavailable-target policy branch.
          */
-        PlanUnavailableBranch whenUnavailable();
+        UnavailableTargetBranch whenUnavailable();
     }
 
     /**
@@ -758,25 +813,23 @@ public final class PlantTargets {
         PlanReadyStage doneAccept();
     }
 
-    /**
-     * Required branch that makes a planner total.
-     */
-    public interface PlanUnavailableBranch {
+    /** Required branch that makes a context-aware target source total. */
+    public interface UnavailableTargetBranch {
         /**
-         * Produce a fixed fallback target when no candidate can be selected.
+         * Produce a fixed physical Plant-unit fallback when no target can be selected.
          */
         PlantTargetSource fallbackTo(double target);
 
         /**
-         * Hold the last planned target; use {@code initialTarget} before any successful plan.
+         * Hold the last successfully resolved physical target; use {@code initialTarget} first.
          */
         PlantTargetSource holdLastTarget(double initialTarget);
 
         /**
          * Latch current measurement on each continuously sampled unavailable entry.
          *
-         * <p>A sampling gap ends the current unavailable entry. If this planner is selected again
-         * and remains unavailable, it captures the then-current measurement.</p>
+         * <p>A sampling gap ends the current unavailable entry. If this target source is selected
+         * again and remains unavailable, it captures the then-current measurement.</p>
          */
         PlantTargetSource holdMeasuredTargetOnEntry(double fallbackIfNoMeasurement);
 
@@ -788,8 +841,82 @@ public final class PlantTargets {
 
     private enum UnavailableKind {FALLBACK, HOLD_LAST, HOLD_MEASURED, REJECT}
 
+    private static final class EquivalentPositionBuilder
+            implements EquivalentPositionPreferenceStage, EquivalentPositionReadyStage,
+            UnavailableTargetBranch {
+        private final PlantTargetSource logicalTarget;
+        private CandidatePreference preference;
+
+        EquivalentPositionBuilder(PlantTargetSource logicalTarget) {
+            this.logicalTarget = logicalTarget;
+        }
+
+        @Override
+        public EquivalentPositionReadyStage nearestToMeasurement() {
+            preference = CandidatePreference.NEAREST_TO_MEASUREMENT;
+            return this;
+        }
+
+        @Override
+        public EquivalentPositionReadyStage preferIncreasing() {
+            preference = CandidatePreference.PREFER_INCREASING;
+            return this;
+        }
+
+        @Override
+        public EquivalentPositionReadyStage preferDecreasing() {
+            preference = CandidatePreference.PREFER_DECREASING;
+            return this;
+        }
+
+        @Override
+        public EquivalentPositionReadyStage preferRangeCenter() {
+            preference = CandidatePreference.PREFER_RANGE_CENTER;
+            return this;
+        }
+
+        @Override
+        public UnavailableTargetBranch whenUnavailable() {
+            if (preference == null) {
+                throw new IllegalStateException("PlantTargets.equivalentPositionsOf(...) requires "
+                        + "a preference choice such as nearestToMeasurement() before "
+                        + "whenUnavailable()");
+            }
+            return this;
+        }
+
+        @Override
+        public PlantTargetSource fallbackTo(double target) {
+            return build(UnavailableKind.FALLBACK, target);
+        }
+
+        @Override
+        public PlantTargetSource holdLastTarget(double initialTarget) {
+            return build(UnavailableKind.HOLD_LAST, initialTarget);
+        }
+
+        @Override
+        public PlantTargetSource holdMeasuredTargetOnEntry(double fallbackIfNoMeasurement) {
+            return build(UnavailableKind.HOLD_MEASURED, fallbackIfNoMeasurement);
+        }
+
+        @Override
+        public PlantTargetSource reportUnavailable() {
+            return build(UnavailableKind.REJECT, Double.NaN);
+        }
+
+        private PlantTargetSource build(UnavailableKind unavailableKind, double unavailableValue) {
+            if (preference == null) {
+                throw new IllegalStateException("PlantTargets.equivalentPositionsOf(...) requires "
+                        + "a preference choice before unavailable policy");
+            }
+            return new EquivalentPositionsTargetSource(logicalTarget, preference,
+                    unavailableKind, unavailableValue);
+        }
+    }
+
     private static final class PlannerBuilder implements PlanRequestStage, PlanPreferenceStage,
-            PlanUnreachableStage, PlanReadyStage, PlanAcceptBranch, PlanUnavailableBranch {
+            PlanUnreachableStage, PlanReadyStage, PlanAcceptBranch, UnavailableTargetBranch {
         private Source<PlantTargetRequest> request;
         private CandidatePreference preference;
         private UnreachablePolicy unreachablePolicy;
@@ -844,7 +971,7 @@ public final class PlantTargets {
         }
 
         @Override
-        public PlanUnavailableBranch whenUnavailable() {
+        public UnavailableTargetBranch whenUnavailable() {
             return this;
         }
 
@@ -907,9 +1034,168 @@ public final class PlantTargets {
         }
     }
 
-    private static final class PlannerTargetSource implements PlantTargetSource {
-        private static final double FIRST_INDEX_WITHOUT_UNIT_NEIGHBORS = 0x1.0p53;
+    private static final class EquivalentPositionsTargetSource
+            implements PlantTargetSource, CommandTargetOwner {
+        private final PlantTargetSource logicalTarget;
+        private final ScalarTarget commandTarget;
+        private final CandidatePreference preference;
+        private final UnavailableKind unavailableKind;
+        private final double unavailableValue;
 
+        private PlantTargetPlan lastPlan = PlantTargetPlan.unavailable("not sampled");
+        private long lastCycle = Long.MIN_VALUE;
+        private double lastTarget = Double.NaN;
+        private boolean unavailableActive;
+        private double heldMeasuredTarget = Double.NaN;
+
+        EquivalentPositionsTargetSource(PlantTargetSource logicalTarget,
+                                        CandidatePreference preference,
+                                        UnavailableKind unavailableKind,
+                                        double unavailableValue) {
+            this.logicalTarget = Objects.requireNonNull(logicalTarget, "logicalTarget");
+            this.commandTarget = commandTargetOf(logicalTarget);
+            this.preference = Objects.requireNonNull(preference, "preference");
+            this.unavailableKind = Objects.requireNonNull(unavailableKind, "unavailableKind");
+            this.unavailableValue = unavailableValue;
+            if ((unavailableKind == UnavailableKind.FALLBACK
+                    || unavailableKind == UnavailableKind.HOLD_LAST
+                    || unavailableKind == UnavailableKind.HOLD_MEASURED)
+                    && !Double.isFinite(unavailableValue)) {
+                throw new IllegalArgumentException(
+                        "Unavailable policy fallback/initial value must be finite");
+            }
+        }
+
+        @Override
+        public ScalarTarget commandTarget() {
+            return commandTarget;
+        }
+
+        @Override
+        public PlantTargetPlan resolve(PlantTargetContext context, LoopClock clock) {
+            Objects.requireNonNull(context, "context");
+            long cycle = Objects.requireNonNull(clock, "clock").cycle();
+            if (cycle == lastCycle) return lastPlan;
+            if (unavailableKind == UnavailableKind.HOLD_MEASURED
+                    && hasSamplingGap(lastCycle, cycle)) {
+                unavailableActive = false;
+                heldMeasuredTarget = Double.NaN;
+            }
+
+            PlantTargetPlan logicalPlan = logicalTarget.resolve(context, clock);
+            if (logicalPlan == null) {
+                throw new NullPointerException("Equivalent-position logical target returned null plan");
+            }
+
+            PlantTargetPlan resolved;
+            if (!logicalPlan.hasTarget()) {
+                resolved = unavailable(context,
+                        "logical target unavailable: " + logicalPlan.reason());
+            } else if (!context.periodic()) {
+                resolved = unavailable(context,
+                        "equivalent positions require periodic Plant topology");
+            } else if (!PeriodicTargetSelector.isUsableRange(context.targetRange())) {
+                resolved = unavailable(context, "plant target range is unavailable");
+            } else {
+                double measurement = selectionMeasurement(context);
+                if (!Double.isFinite(measurement)) {
+                    resolved = unavailable(context,
+                            "equivalent-position selection has no measurement or prior applied target");
+                } else {
+                    double logicalValue = logicalPlan.target();
+                    double physicalTarget = PeriodicTargetSelector.select(
+                            logicalValue,
+                            context.period(),
+                            preference,
+                            measurement,
+                            context.targetRange());
+                    if (Double.isFinite(physicalTarget)) {
+                        unavailableActive = false;
+                        heldMeasuredTarget = Double.NaN;
+                        lastTarget = physicalTarget;
+                        resolved = logicalPlan.withEquivalentTarget(physicalTarget,
+                                "selected equivalent position for " + logicalPlan.reason());
+                        if (commandTarget != null
+                                && !resolved.reportsCommandResolutionFor(commandTarget)) {
+                            resolved = resolved.withoutSelectedCommand(commandTarget);
+                        }
+                    } else {
+                        resolved = unavailable(context,
+                                "logical target has no legal equivalent in the Plant range");
+                    }
+                }
+            }
+
+            lastPlan = resolved;
+            lastCycle = cycle;
+            return resolved;
+        }
+
+        private double selectionMeasurement(PlantTargetContext context) {
+            if (context.feedbackAvailable()) return context.measurement();
+            if (Double.isFinite(context.previousAppliedTarget())) {
+                return context.previousAppliedTarget();
+            }
+            if (preference == CandidatePreference.PREFER_RANGE_CENTER) {
+                return context.targetRange().center();
+            }
+            return Double.NaN;
+        }
+
+        private PlantTargetPlan unavailable(PlantTargetContext context, String reason) {
+            PlantTargetPlan plan;
+            if (unavailableKind == UnavailableKind.REJECT) {
+                unavailableActive = true;
+                plan = PlantTargetPlan.unavailable(reason);
+            } else if (unavailableKind == UnavailableKind.FALLBACK) {
+                unavailableActive = true;
+                lastTarget = unavailableValue;
+                plan = PlantTargetPlan.fallback(unavailableValue, reason);
+            } else if (unavailableKind == UnavailableKind.HOLD_LAST) {
+                unavailableActive = true;
+                double target = Double.isFinite(lastTarget) ? lastTarget : unavailableValue;
+                lastTarget = target;
+                plan = PlantTargetPlan.holdLast(target, reason);
+            } else {
+                if (!unavailableActive || !Double.isFinite(heldMeasuredTarget)) {
+                    heldMeasuredTarget = context.feedbackAvailable()
+                            ? context.measurement()
+                            : unavailableValue;
+                }
+                unavailableActive = true;
+                lastTarget = heldMeasuredTarget;
+                plan = PlantTargetPlan.holdMeasured(heldMeasuredTarget, reason);
+            }
+            return commandTarget != null
+                    ? plan.withoutSelectedCommand(commandTarget)
+                    : plan;
+        }
+
+        @Override
+        public void reset() {
+            logicalTarget.reset();
+            lastPlan = PlantTargetPlan.unavailable("not sampled");
+            lastCycle = Long.MIN_VALUE;
+            lastTarget = Double.NaN;
+            unavailableActive = false;
+            heldMeasuredTarget = Double.NaN;
+        }
+
+        @Override
+        public void debugDump(DebugSink dbg, String prefix) {
+            if (dbg == null) return;
+            String p = (prefix == null || prefix.isEmpty())
+                    ? "equivalentPositionTarget"
+                    : prefix;
+            dbg.addData(p + ".class", "EquivalentPositionsTargetSource")
+                    .addData(p + ".preference", preference)
+                    .addData(p + ".unavailablePolicy", unavailableKind)
+                    .addData(p + ".lastPlan", lastPlan);
+            logicalTarget.debugDump(dbg, p + ".logical");
+        }
+    }
+
+    private static final class PlannerTargetSource implements PlantTargetSource {
         private final Source<PlantTargetRequest> requestSource;
         private final CandidatePreference preference;
         private final UnreachablePolicy unreachablePolicy;
@@ -1006,7 +1292,7 @@ public final class PlantTargets {
                                            PlantTargetContext context,
                                            LoopClock clock) {
             ScalarRange range = context.targetRange();
-            if (!isUsablePlannerRange(range))
+            if (!PeriodicTargetSelector.isUsableRange(range))
                 return CandidateSearch.rejected("plant target range is unavailable");
             double measurement = context.feedbackAvailable() ? context.measurement() : context.previousAppliedTarget();
             if (!Double.isFinite(measurement)) measurement = 0.0;
@@ -1026,7 +1312,8 @@ public final class PlantTargets {
                             + "' did not produce a reachable target";
                 }
                 if (choice != null && (best == null
-                        || comparePreference(choice, best, measurement, range) < 0)) {
+                        || PeriodicTargetSelector.compare(preference, choice.target, best.target,
+                        measurement, range) < 0)) {
                     best = choice;
                 }
             }
@@ -1089,51 +1376,112 @@ public final class PlantTargets {
             double period = c.usesPlantPeriod ? context.period() : c.period;
             if (!(period > 0.0) || !Double.isFinite(period)) return null;
 
-            CandidateChoice best = null;
-            double reference = preferenceReference(measurement, range);
-            best = considerPeriodicAnchor(c, base, period, selectedAgeSec,
-                    reference, measurement, range, best);
-            if (Double.isFinite(range.minValue)) {
-                best = considerPeriodicAnchor(c, base, period, selectedAgeSec,
-                        range.minValue, measurement, range, best);
+            double selected = PeriodicTargetSelector.select(
+                    base, period, preference, measurement, range);
+            if (Double.isFinite(selected)) {
+                return new CandidateChoice(c, selected, selectedAgeSec, false);
             }
-            if (Double.isFinite(range.maxValue)) {
-                best = considerPeriodicAnchor(c, base, period, selectedAgeSec,
-                        range.maxValue, measurement, range, best);
-            }
-            if (best != null) return best;
             return clampedChoice(c, base, selectedAgeSec, range);
         }
 
+        private CandidateChoice clampedChoice(PlantTargetCandidate candidate,
+                                               double base,
+                                               double selectedAgeSec,
+                                               ScalarRange range) {
+            if (unreachablePolicy != UnreachablePolicy.CLAMP_TO_RANGE
+                    || !Double.isFinite(base)) {
+                return null;
+            }
+            double clamped = range.clamp(base);
+            return Double.isFinite(clamped) && range.contains(clamped)
+                    ? new CandidateChoice(candidate, clamped, selectedAgeSec, true)
+                    : null;
+        }
+
+        @Override
+        public void reset() {
+            requestSource.reset();
+            lastPlan = PlantTargetPlan.unavailable("not sampled");
+            lastCycle = Long.MIN_VALUE;
+            lastTarget = Double.NaN;
+            unavailableActive = false;
+            heldMeasuredTarget = Double.NaN;
+        }
+
+        @Override
+        public void debugDump(DebugSink dbg, String prefix) {
+            if (dbg == null) return;
+            String p = (prefix == null || prefix.isEmpty()) ? "plantTargetPlanner" : prefix;
+            dbg.addData(p + ".class", "PlantTargetPlanner")
+                    .addData(p + ".preference", preference)
+                    .addData(p + ".unreachablePolicy", unreachablePolicy)
+                    .addData(p + ".maxObservationAgeSec", maxObservationAgeSec)
+                    .addData(p + ".minQuality", minQuality)
+                    .addData(p + ".unavailablePolicy", unavailableKind)
+                    .addData(p + ".lastPlan", lastPlan);
+            requestSource.debugDump(dbg, p + ".request");
+        }
+    }
+
+    /** Shared constant-work selector for one family {@code base + k * period}. */
+    private static final class PeriodicTargetSelector {
+        private static final double FIRST_INDEX_WITHOUT_UNIT_NEIGHBORS = 0x1.0p53;
+
+        private PeriodicTargetSelector() {
+        }
+
+        static double select(double base,
+                             double period,
+                             CandidatePreference preference,
+                             double measurement,
+                             ScalarRange range) {
+            if (!Double.isFinite(base)
+                    || !(period > 0.0)
+                    || !Double.isFinite(period)
+                    || !Double.isFinite(measurement)
+                    || preference == null
+                    || !isUsableRange(range)) {
+                return Double.NaN;
+            }
+
+            double best = Double.NaN;
+            double reference = preferenceReference(preference, measurement, range);
+            best = considerAnchor(base, period, preference, reference, measurement, range, best);
+            if (Double.isFinite(range.minValue)) {
+                best = considerAnchor(base, period, preference, range.minValue,
+                        measurement, range, best);
+            }
+            if (Double.isFinite(range.maxValue)) {
+                best = considerAnchor(base, period, preference, range.maxValue,
+                        measurement, range, best);
+            }
+            return best;
+        }
+
         /**
-         * Examines the four representatives corresponding to floor-1, floor, ceil, and ceil+1
-         * around one relevant coordinate. Direct index materialization preserves ordinary exact
-         * boundary values; target-space remainder arithmetic handles indices beyond exact
-         * {@code double} or {@code long} integer precision. Three calls at most (preference
-         * reference plus two finite bounds) keep periodic work independent of the number of
-         * equivalent targets in the legal range.
+         * Examines floor-1, floor, ceil, and ceil+1 around one relevant coordinate. Three anchors
+         * at most keep work independent of the number of equivalent positions in the range.
          */
-        private CandidateChoice considerPeriodicAnchor(PlantTargetCandidate candidate,
-                                                        double base,
-                                                        double period,
-                                                        double selectedAgeSec,
-                                                        double anchor,
-                                                        double measurement,
-                                                        ScalarRange range,
-                                                        CandidateChoice best) {
+        private static double considerAnchor(double base,
+                                             double period,
+                                             CandidatePreference preference,
+                                             double anchor,
+                                             double measurement,
+                                             ScalarRange range,
+                                             double best) {
             double index = periodicIndex(anchor, base, period);
             if (Double.isFinite(index)
                     && Math.abs(index) < FIRST_INDEX_WITHOUT_UNIT_NEIGHBORS) {
                 double floor = Math.floor(index);
                 double ceil = Math.ceil(index);
-                best = considerPeriodicIndex(candidate, base, period, selectedAgeSec,
-                        floor - 1.0, measurement, range, best);
-                best = considerPeriodicIndex(candidate, base, period, selectedAgeSec,
-                        floor, measurement, range, best);
-                best = considerPeriodicIndex(candidate, base, period, selectedAgeSec,
-                        ceil, measurement, range, best);
-                return considerPeriodicIndex(candidate, base, period, selectedAgeSec,
-                        ceil + 1.0, measurement, range, best);
+                best = considerIndex(base, period, preference, floor - 1.0,
+                        measurement, range, best);
+                best = considerIndex(base, period, preference, floor,
+                        measurement, range, best);
+                best = considerIndex(base, period, preference, ceil,
+                        measurement, range, best);
+                return considerIndex(base, period, preference, ceil + 1.0,
+                        measurement, range, best);
             }
 
             double phase = periodicPhase(base, anchor, period);
@@ -1163,88 +1511,66 @@ public final class PlantTargets {
             upper = closerAtOrAbove(anchor, upper, floorTarget);
             upper = closerAtOrAbove(anchor, upper, ceilTarget);
             if (Double.isFinite(index)) {
-                // Preserve exact base + k*period boundary values without adding a fifth probe.
                 double directTarget = periodicTarget(base, Math.rint(index), period);
                 lower = closerAtOrBelow(anchor, lower, directTarget);
                 upper = closerAtOrAbove(anchor, upper, directTarget);
             }
 
-            best = considerPeriodicTarget(candidate, selectedAgeSec,
-                    belowOuter, measurement, range, best);
-            best = considerPeriodicTarget(candidate, selectedAgeSec,
-                    lower, measurement, range, best);
-            best = considerPeriodicTarget(candidate, selectedAgeSec,
-                    upper, measurement, range, best);
-            return considerPeriodicTarget(candidate, selectedAgeSec,
-                    aboveOuter, measurement, range, best);
+            best = considerTarget(preference, belowOuter, measurement, range, best);
+            best = considerTarget(preference, lower, measurement, range, best);
+            best = considerTarget(preference, upper, measurement, range, best);
+            return considerTarget(preference, aboveOuter, measurement, range, best);
         }
 
-        private CandidateChoice considerPeriodicIndex(PlantTargetCandidate candidate,
-                                                       double base,
-                                                       double period,
-                                                       double selectedAgeSec,
-                                                       double index,
-                                                       double measurement,
-                                                       ScalarRange range,
-                                                       CandidateChoice best) {
+        private static double considerIndex(double base,
+                                            double period,
+                                            CandidatePreference preference,
+                                            double index,
+                                            double measurement,
+                                            ScalarRange range,
+                                            double best) {
             if (!Double.isFinite(index)) return best;
-            return considerPeriodicTarget(candidate, selectedAgeSec,
-                    periodicTarget(base, index, period), measurement, range, best);
+            return considerTarget(preference, periodicTarget(base, index, period),
+                    measurement, range, best);
         }
 
-        private CandidateChoice considerPeriodicTarget(PlantTargetCandidate candidate,
-                                                        double selectedAgeSec,
-                                                        double target,
-                                                        double measurement,
-                                                        ScalarRange range,
-                                                        CandidateChoice best) {
+        private static double considerTarget(CandidatePreference preference,
+                                              double target,
+                                              double measurement,
+                                              ScalarRange range,
+                                              double best) {
             if (!Double.isFinite(target) || !range.contains(target)) return best;
-
-            CandidateChoice choice = new CandidateChoice(candidate, target, selectedAgeSec, false);
-            int comparison = best == null
+            int comparison = !Double.isFinite(best)
                     ? -1
-                    : comparePreference(choice, best, measurement, range);
-            if (comparison < 0 || (comparison == 0 && choice.target < best.target)) {
-                return choice;
-            }
+                    : compare(preference, target, best, measurement, range);
+            if (comparison < 0 || (comparison == 0 && target < best)) return target;
             return best;
         }
 
-        private CandidateChoice clampedChoice(PlantTargetCandidate candidate,
-                                               double base,
-                                               double selectedAgeSec,
-                                               ScalarRange range) {
-            if (unreachablePolicy != UnreachablePolicy.CLAMP_TO_RANGE
-                    || !Double.isFinite(base)) {
-                return null;
+        /** Returns a negative value when {@code left} is preferred over {@code right}. */
+        static int compare(CandidatePreference preference,
+                           double left,
+                           double right,
+                           double measurement,
+                           ScalarRange range) {
+            if (preference == CandidatePreference.PREFER_INCREASING) {
+                return compareDirectional(left, right, measurement, true);
             }
-            double clamped = range.clamp(base);
-            return Double.isFinite(clamped) && range.contains(clamped)
-                    ? new CandidateChoice(candidate, clamped, selectedAgeSec, true)
-                    : null;
+            if (preference == CandidatePreference.PREFER_DECREASING) {
+                return compareDirectional(left, right, measurement, false);
+            }
+            return compareDistance(left, right,
+                    preferenceReference(preference, measurement, range));
         }
 
-        private double preferenceReference(double measurement, ScalarRange range) {
+        private static double preferenceReference(CandidatePreference preference,
+                                                  double measurement,
+                                                  ScalarRange range) {
             if (preference == CandidatePreference.PREFER_RANGE_CENTER) {
                 double center = range.center();
                 if (Double.isFinite(center)) return center;
             }
             return measurement;
-        }
-
-        /** Returns a negative value when {@code left} is preferred over {@code right}. */
-        private int comparePreference(CandidateChoice left,
-                                      CandidateChoice right,
-                                      double measurement,
-                                      ScalarRange range) {
-            if (preference == CandidatePreference.PREFER_INCREASING) {
-                return compareDirectional(left.target, right.target, measurement, true);
-            }
-            if (preference == CandidatePreference.PREFER_DECREASING) {
-                return compareDirectional(left.target, right.target, measurement, false);
-            }
-            return compareDistance(left.target, right.target,
-                    preferenceReference(measurement, range));
         }
 
         private static int compareDirectional(double left,
@@ -1263,12 +1589,8 @@ public final class PlantTargets {
             if (left == reference) return -1;
             if (right == reference) return 1;
 
-            if (left <= reference && right <= reference) {
-                return left > right ? -1 : 1;
-            }
-            if (left >= reference && right >= reference) {
-                return left < right ? -1 : 1;
-            }
+            if (left <= reference && right <= reference) return left > right ? -1 : 1;
+            if (left >= reference && right >= reference) return left < right ? -1 : 1;
 
             double lower = Math.min(left, right);
             double upper = Math.max(left, right);
@@ -1279,9 +1601,7 @@ public final class PlantTargets {
             } else if (reference > midpoint) {
                 distanceComparison = 1;
             } else {
-                distanceComparison = Double.compare(
-                        reference - lower,
-                        upper - reference);
+                distanceComparison = Double.compare(reference - lower, upper - reference);
             }
             return left == lower ? distanceComparison : -distanceComparison;
         }
@@ -1294,7 +1614,6 @@ public final class PlantTargets {
         private static double periodicTarget(double base, double index, double period) {
             double target = base + index * period;
             if (Double.isFinite(target)) return target;
-
             double regrouped = period * (index + base / period);
             return Double.isFinite(regrouped) ? regrouped : Double.NaN;
         }
@@ -1302,7 +1621,6 @@ public final class PlantTargets {
         private static double periodicIndex(double anchor, double base, double period) {
             double index = (anchor - base) / period;
             if (Double.isFinite(index)) return index;
-
             double regrouped = anchor / period - base / period;
             return Double.isFinite(regrouped) ? regrouped : Double.NaN;
         }
@@ -1318,9 +1636,7 @@ public final class PlantTargets {
         }
 
         private static double safeMidpoint(double lower, double upper) {
-            if (lower < 0.0 && upper >= 0.0) {
-                return (lower + upper) / 2.0;
-            }
+            if (lower < 0.0 && upper >= 0.0) return (lower + upper) / 2.0;
             return lower + (upper - lower) / 2.0;
         }
 
@@ -1346,7 +1662,7 @@ public final class PlantTargets {
             return rawDifference;
         }
 
-        private static boolean isUsablePlannerRange(ScalarRange range) {
+        static boolean isUsableRange(ScalarRange range) {
             return range != null
                     && range.valid
                     && !Double.isNaN(range.minValue)
@@ -1354,30 +1670,6 @@ public final class PlantTargets {
                     && range.minValue != Double.POSITIVE_INFINITY
                     && range.maxValue != Double.NEGATIVE_INFINITY
                     && range.minValue <= range.maxValue;
-        }
-
-        @Override
-        public void reset() {
-            requestSource.reset();
-            lastPlan = PlantTargetPlan.unavailable("not sampled");
-            lastCycle = Long.MIN_VALUE;
-            lastTarget = Double.NaN;
-            unavailableActive = false;
-            heldMeasuredTarget = Double.NaN;
-        }
-
-        @Override
-        public void debugDump(DebugSink dbg, String prefix) {
-            if (dbg == null) return;
-            String p = (prefix == null || prefix.isEmpty()) ? "plantTargetPlanner" : prefix;
-            dbg.addData(p + ".class", "PlantTargetPlanner")
-                    .addData(p + ".preference", preference)
-                    .addData(p + ".unreachablePolicy", unreachablePolicy)
-                    .addData(p + ".maxObservationAgeSec", maxObservationAgeSec)
-                    .addData(p + ".minQuality", minQuality)
-                    .addData(p + ".unavailablePolicy", unavailableKind)
-                    .addData(p + ".lastPlan", lastPlan);
-            requestSource.debugDump(dbg, p + ".request");
         }
     }
 

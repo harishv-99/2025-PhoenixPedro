@@ -227,8 +227,14 @@ Meaning:
 - the turret pivot/tool frame is 7" forward and 2.5" left of robot center
 - when the turret mechanism coordinate is zero, its tool +X points 10° left of robot forward
 
-For a turret with its own Plant, do not use Drive Guidance to turn the robot. Use `SpatialQuery` plus `PlantTargets.plan()` as shown in [`Mechanism Target Planning.md`](<Mechanism Target Planning.md>).
+For a turret with its own Plant, do not use Drive Guidance to turn the robot. Use `SpatialQuery`
+plus `PlantTargets.equivalentPositionsOf(...)` for one current logical angle, or the advanced
+`PlantTargets.plan()` path when candidate/observation metadata must be retained, as shown in
+[`Mechanism Target Planning.md`](<Mechanism Target Planning.md>).
 
 ## When not to use Drive Guidance
 
-Use a direct `DriveSource` when the driver or autonomous routine already knows the desired drive command. Use a direct `Plant` target or `PlantTargets.plan()` when a mechanism should move independently of the drivetrain. Use `SpatialQuery` directly when you need geometry but want to apply your own PID or mechanism logic.
+Use a direct `DriveSource` when the driver or autonomous routine already knows the desired drive
+command. Use an exact/equivalent `PlantTargetSource` or advanced `PlantTargets.plan()` when a
+mechanism should move independently of the drivetrain. Use `SpatialQuery` directly when you need
+geometry but want to apply your own PID or mechanism logic.

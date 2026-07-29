@@ -21,7 +21,8 @@ public final class PlantSources {
     }
 
     /**
-     * Boolean source view of {@link Plant#atTarget(double)} for a specific target value.
+     * Boolean source view of {@link Plant#atTarget(double)} for one literal physical target value.
+     * This does not apply periodic-equivalence semantics.
      */
     public static BooleanSource atTarget(Plant plant, double target) {
         Objects.requireNonNull(plant, "plant");

@@ -59,8 +59,9 @@ import edu.ftcphoenix.fw.task.Tasks;
  *   </li>
  *   <li><b>How to use {@link PlantTasks}</b> to create plant-related tasks:
  *     <ul>
- *       <li>{@link PlantTasks#move(Plant)} – guided feedback moves that request a target
- *           and wait until {@code atTarget(requestedValue)}.</li>
+ *       <li>{@link PlantTasks#move(Plant)} – guided feedback moves that request a logical target,
+ *           require that command path to win, and wait for physical arrival at the selected
+ *           requested target.</li>
  *       <li>{@link PlantTasks#write(Plant)} – guided open-loop writes such as
  *           “hold this transfer power for 0.2 seconds, then stop”.</li>
  *     </ul>

@@ -499,7 +499,8 @@ Task stopShooter = PlantTasks.write(shooter)
 
 ### 4.2 Feedback moves
 
-Use `PlantTasks.move(...)` when the Plant has feedback and the task should wait for the mechanism to actually reach the requested target.
+Use `PlantTasks.move(...)` when the Plant has feedback and the task should wait for the mechanism to
+actually reach the requested behavior target.
 
 ```java
 Task spinUp = PlantTasks.move(shooter)
@@ -509,7 +510,11 @@ Task spinUp = PlantTasks.move(shooter)
         .build();
 ```
 
-A feedback move waits for `plant.atTarget(requestedValue)`, not just the current source output. That matters when behavior overlays, bounds, fallbacks, or target guards are active.
+A feedback move requires its graph-owned command path to win, then waits for physical arrival at the
+requested target selected from that command. Usually the logical and physical numbers are equal. A
+periodic `PlantTargets.equivalentPositionsOf(...)` graph may instead turn logical angle `20` into
+physical position `380`; the Task still uses `.to(20)` and waits for arrival at `380`. Same-valued
+overlays, bounds, fallbacks, holds, clamps, and target guards cannot complete it early.
 
 ```java
 Task moveAndStow = PlantTasks.move(arm)

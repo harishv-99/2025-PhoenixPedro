@@ -1,8 +1,8 @@
 # Mechanism Target Planning
 
 `PlantTargets` is the framework's target-generation system for `Plant`s. It turns simple numbers,
-command targets, queued pulses, behavior overlays, and smart equivalent-target requests into one
-requested Plant target each loop.
+command targets, queued pulses, behavior overlays, equivalent positions, and advanced candidate
+requests into one requested Plant target each loop.
 
 The Plant still owns low-level hardware/control work. Target planning answers:
 
@@ -24,7 +24,7 @@ command target (optional ScalarTarget)
     the stable request that robot policy and PlantTasks may change
         ↓
 PlantTargets graph
-    exact target, overlay, queued pulse, candidate planner, fallback/hold policy
+    exact target, overlay, equivalent-position transform, candidate planner, fallback/hold policy
         ↓
 requested target
     one finite target value in the Plant's public units
@@ -72,7 +72,7 @@ PlantTargetSource
     A Plant-aware source that resolves to the requested target for this Plant.
 
 PlantTargets
-    The factory/builder family that creates PlantTargetSource objects.
+    The factory/builder family that creates exact, overlay, equivalent, and planned sources.
 ```
 
 The Plant builder accepts friendly forms and normalizes them internally:
@@ -120,10 +120,10 @@ Task raiseArm = PlantTasks.move(arm)
         .build();
 ```
 
-This writes the graph-owned `armCommand`, then waits for `arm.atTarget(HIGH)`. If `autoStow` or
-`manual` wins the overlay, the task does not complete early, because the Plant is not actually at
-the requested `HIGH` target. If the active move is cancelled, it changes `armCommand` to the
-explicit Plant-unit `STOWED` request once.
+This writes the graph-owned `armCommand`, then waits until that command path wins and the Plant is
+physically at the target selected from it. If `autoStow` or `manual` wins the overlay—even with the
+same numeric value—the task does not complete from the wrong behavior path. If the active move is
+cancelled, it changes `armCommand` to the explicit Plant-unit `STOWED` request once.
 
 The resulting vocabulary stays consistent across every Plant:
 
@@ -186,6 +186,75 @@ Every feedback move must choose `.cancelTo(value)` or `.leaveTargetOnCancel()` i
 Neither option imperatively stops hardware: `cancelTo(...)` changes the command target, while
 the final target still flows through overlays, bounds, references, and guards on the next Plant
 update. An owner-level shutdown must coordinate every related request and behavior layer.
+
+## Same command, equivalent periodic positions
+
+Most mechanisms request one logical number. A lift position, a bounded turret angle, and a freely
+rotating turret angle should therefore use the same robot-facing capability and Task:
+
+```java
+turretCommand.set(GOAL_ANGLE_DEG);
+
+Task aim = PlantTasks.move(turret)
+        .to(GOAL_ANGLE_DEG)
+        .leaveTargetOnCancel()
+        .timeout(1.0)
+        .build();
+```
+
+Only mechanism realization changes. An exact, unwrapped turret uses:
+
+```java
+PlantTargetSource finalTurretTarget = PlantTargets.exact(turretCommand);
+```
+
+A turret that may use any whole-turn equivalent wraps the same command:
+
+```java
+PlantTargetSource finalTurretTarget =
+        PlantTargets.equivalentPositionsOf(turretCommand)
+                .nearestToMeasurement()
+                .whenUnavailable().holdMeasuredTargetOnEntry(0.0);
+```
+
+If `GOAL_ANGLE_DEG` is `20` and the turret is near `350`, a 360-degree periodic Plant may request
+physical position `380`. `PlantTasks.move(...)` still takes logical value `20`: it completes only
+when the `turretCommand` path won and the Plant reports physical arrival at `380`. A same-valued
+overlay, fallback, hold, clamp, bound, or guard cannot make the move report success.
+
+Periodicity does not silently change exact commands. A Plant may have periodic topology while some
+behavior deliberately requests an exact unwrapped turn; omit `equivalentPositionsOf(...)` for that
+behavior. The focused transform always uses the consuming Plant's declared period and rejects a
+family with no legal representative instead of clamping it to a non-equivalent answer.
+
+The preference stage asks one real motion-policy question:
+
+- `nearestToMeasurement()` minimizes travel.
+- `preferIncreasing()` chooses the nearest legal representative at or above the measurement when
+  one exists; `preferDecreasing()` is symmetric.
+- `preferRangeCenter()` favors the center of a finite range and otherwise behaves like nearest.
+
+Each path then requires `whenUnavailable()`. Its fallback and initial hold numbers are physical
+Plant-unit safety answers, not alternate logical commands.
+
+Apply overlays before the equivalent-position transform so every final logical winner receives the
+same physical interpretation:
+
+```java
+PlantTargetSource logicalTurretTarget = PlantTargets.overlay(turretCommand)
+        .add("vision", visionAimEnabled, visionAngleDeg)
+        .add("stow", stowRequested, STOW_ANGLE_DEG)
+        .build();
+
+PlantTargetSource finalTurretTarget =
+        PlantTargets.equivalentPositionsOf(logicalTurretTarget)
+                .nearestToMeasurement()
+                .whenUnavailable().holdMeasuredTargetOnEntry(0.0);
+```
+
+The overlay decides which logical behavior wins. The outer transform then chooses that winner's
+physical equivalent. The base `turretCommand` remains the graph-owned Task command; conditional
+layers do not become competing writers.
 
 ## Overlays: behavior priority in target space
 
@@ -252,16 +321,24 @@ while the Plant status reports `RATE_LIMITED` because the applied target is stil
 requested target. This separation keeps behavior target generation separate from hardware protection
 while making telemetry easier to read.
 
+When the focused periodic transform successfully resolves the selected logical intent, it reports
+`EQUIVALENT_POSITION`. Its target is the selected physical representative; the logical command
+remains in the graph-owned `ScalarTarget` rather than becoming a second public target field. If the
+logical child produced a fallback or hold target, the transformed plan retains that fallback/hold
+kind so diagnostics do not mislabel it as satisfied intent.
+
 For a `PLANNED_CANDIDATE`, `selectedQuality()` reports the chosen candidate's quality. When that
 candidate came from an observation, `selectedTimestamp()` retains its epoch-safe `LoopTimestamp`
 and `selectedAgeSec()` reports the age derived when this plan was resolved. A timeless candidate
 instead reports quality `1.0`, an unavailable timestamp, and `NaN` age. These are selection facts,
 not a second hardware-arrival signal.
 
-## Smart planning: equivalent and candidate targets
+## Advanced planning: candidate sets and observation metadata
 
-Use `PlantTargets.plan()` when a request can be satisfied by more than one scalar value, or when the
-request should be resolved using the consuming Plant's context. The planner does not receive a Plant
+Use `PlantTargets.plan()` when one request contains several named candidates, relative targets,
+explicit periods, observation freshness/quality, or an intentional clamp policy. For one ordinary
+logical command with whole-turn equivalents, use `equivalentPositionsOf(...)` above; students do
+not need a request or candidate object for that case. The advanced planner does not receive a Plant
 object. During `plant.update(clock)`, the Plant supplies:
 
 - feedback availability and measurement
@@ -269,35 +346,10 @@ object. During `plant.update(clock)`, the Plant supplies:
 - linear/periodic topology and period
 - previous requested/applied targets
 
-The planner builder intentionally asks one required question at a time: `request(...)`, then one
+The advanced planner builder intentionally asks one required question at a time: `request(...)`, then one
 candidate preference, then one unreachable-candidate policy, then `whenUnavailable()`. Optional
 observation-age/quality tuning lives in `accept()...doneAccept()` after the required motion-semantics
 choices have been made.
-
-A free spinner or tray can declare its own period in Plant units:
-
-```java
-PositionPlant tray = FtcActuators.plant(hardwareMap)
-        .motor("tray", Direction.FORWARD)
-        .position()
-        .deviceManagedWithDefaults()
-        .periodic(360.0)
-            .unbounded()
-            .scaleToNative(TRAY_TICKS_PER_DEGREE)
-            .needsReference("tray index mark not found")
-        .positionTolerance(2.0)
-        .targetedBy(
-                PlantTargets.plan()
-                        .request(clock -> PlantTargetRequest.equivalentPosition("slot-2", 240.0))
-                        .nearestToMeasurement()
-                        .rejectUnreachable()
-                        .whenUnavailable().holdMeasuredTargetOnEntry(0.0)
-        )
-        .build();
-```
-
-The request does not repeat the period. The Plant owns that topology. If the Plant were linear,
-`equivalentPosition(...)` would be unavailable unless a fallback/hold policy produces a target.
 
 ### Candidate requests
 
@@ -337,8 +389,8 @@ choice, the returned type exposes only the next question. There is no later-repl
 
 ### How periodic candidates are selected
 
-A periodic candidate describes an entire family of equivalent positions. The planner considers only
-a fixed, bounded set of positions that could win; its work does not grow when a wider range or
+A periodic candidate describes an entire family of equivalent positions. The focused transform and
+advanced planner share the same fixed, bounded selector; work does not grow when a wider range or
 smaller period contains more equivalents. This is an internal guarantee, so robot code does not set
 a search window or candidate limit.
 
@@ -466,8 +518,11 @@ PlantTargetSource turretTarget = PlantTargets.plan()
 The `observedEquivalentPosition(...)` name makes the freshness contract visible at the call site,
 while the source-owned snapshot keeps student code to one quality value and one timestamp.
 
-The Plant reports physical arrival with `atTarget()` and `atTarget(value)`. Target planning reports
+The Plant reports physical arrival with `atTarget()` and literal physical
+`atTarget(value)`. `atTarget(value)` never applies modulo arithmetic. Target planning reports
 selection status with `PlantTargetPlan`; it does not claim the mechanism has physically arrived.
+`PlantTasks.move(...)` combines the plan's logical-command evidence with physical arrival at the
+selected requested target.
 
 ## Hardware guards are separate
 

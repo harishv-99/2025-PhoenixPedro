@@ -8,7 +8,10 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *
  * <p>This is the plant-aware sibling of a scalar source. A simple implementation may ignore the
  * {@link PlantTargetContext} and return an exact number. A smarter implementation can use the
- * context's measurement, legal range, and periodic topology to choose among equivalent targets.</p>
+ * context's measurement, legal range, and periodic topology to choose among equivalent targets.
+ * Use {@link PlantTargets#equivalentPositionsOf(edu.ftcphoenix.fw.core.source.ScalarTarget)} for
+ * the common case where one logical command may use any legal periodic representative; reserve
+ * {@link PlantTargets#plan()} for advanced candidate requests.</p>
  *
  * <p>Student-facing rule: for anything intended to become a Plant target, build a
  * {@code PlantTargetSource} through {@link PlantTargets}. The final source bound to a Plant should

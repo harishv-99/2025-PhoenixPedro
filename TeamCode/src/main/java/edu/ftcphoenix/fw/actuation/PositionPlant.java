@@ -45,7 +45,12 @@ public interface PositionPlant extends Plant {
          */
         LINEAR,
         /**
-         * A coordinate where positions separated by one period are equivalent.
+         * A coordinate where positions separated by one period can be treated as equivalent.
+         *
+         * <p>Topology does not wrap targets automatically. Use
+         * {@link PlantTargets#equivalentPositionsOf(edu.ftcphoenix.fw.core.source.ScalarTarget)}
+         * when a logical command may choose any legal representative; an exact source still means
+         * one literal unwrapped position.</p>
          */
         PERIODIC
     }
