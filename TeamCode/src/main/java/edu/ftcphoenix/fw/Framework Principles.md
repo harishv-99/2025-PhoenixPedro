@@ -51,7 +51,7 @@ Phoenix is designed around a few core goals:
 
     * `FtcDrives.mecanum(hardwareMap)` (to create the direct FTC mecanum owner)
     * `FtcActuators.plant(hardwareMap) ... build()` (to create Plants)
-    * `PlantTasks` and `Tasks` (to create ordinary Tasks)
+    * `ScalarTasks` and `Tasks` (to create ordinary Tasks)
     * `DriveTasks.driveExclusivelyForSeconds(...)` only for simple Auto/test movement where that
       Task is the sole behavior-command writer for the drive sink
 
@@ -358,7 +358,7 @@ Keep the target vocabulary and ownership chain explicit:
 command target → requested target → applied target → actuator command
 ```
 
-The command target is the optional stable `ScalarTarget` that robot policy and `PlantTasks` may
+The command target is the optional stable `ScalarTarget` that robot policy and `ScalarTasks` may
 change. The requested target is the result selected by the complete `PlantTargets` graph. The
 applied target is the bounded and guarded Plant-unit target. The actuator command is the final
 native position/velocity request or normalized regulated output sent to hardware. Do not collapse
@@ -369,13 +369,26 @@ answer. An exact source carries a command target when its runtime source is a `S
 overlay propagates only its base graph's command target. Conditional overlay layers never establish
 or replace command ownership. This makes the stable fallback request task-writable without letting
 multiple conditional targets make the command path ambiguous. Constants, planners, measured holds,
-and custom graphs without such a command base remain read-only to `PlantTasks`. Do not reintroduce
+and custom graphs without such a command base cannot support a feedback-aware `ScalarTasks` move.
+Do not reintroduce
 a second command-target builder binding that can disagree with the source the Plant actually
 resolves.
 
+Keep object boundaries equally authoritative. A realization that owns a completed Plant's lifecycle
+and writes its persistent command receives the Plant alone, requires a stable graph-owned command,
+and caches `plant.commandTarget()` once. A read-only or planned realization also receives the Plant
+alone but does not require or invent a command. Do not inject a Plant and its command `ScalarTarget`
+as independent peers and then compare identities. A policy object that writes a standalone or
+deliberately shared request without owning Plant lifecycle receives only the `ScalarTarget` (or a
+robot-owned semantic capability). A named target may still be needed locally before the Plant exists
+to assemble an exact, overlay, equivalent-position, or advanced graph. Feedback-aware `ScalarTasks`
+intentionally name both objects: the target identifies the request to write and the Plant selects
+the resolved-plan provenance and physical feedback to observe. One target may feed several Plants,
+so this observer cannot be inferred safely.
+
 When a periodic mechanism may use any equivalent physical position, wrap the final logical graph
 with `PlantTargets.equivalentPositionsOf(...)`. The graph-owned `ScalarTarget` remains the one value
-written by robot policy and `PlantTasks`; the wrapper selects one legal physical representative
+written by robot policy and `ScalarTasks`; the wrapper selects one legal physical representative
 inside the Plant's declared range. Apply overlays before this transform so every final logical
 winner receives the same interpretation. Omitting the transform means exact, unwrapped movement;
 never infer equivalence merely because the Plant declares periodic topology. `Plant.atTarget(value)`
@@ -483,7 +496,9 @@ a generic scalar decorator.
 import edu.ftcphoenix.fw.core.hal.Direction;
 import edu.ftcphoenix.fw.ftc.FtcActuators;
 
-ScalarTarget shooterTarget = ScalarTarget.held(0.0);
+ScalarTarget shooterTarget = ScalarTarget.create(0.0);
+ScalarTarget transferTarget = ScalarTarget.create(0.0);
+ScalarTarget pusherTarget = ScalarTarget.create(0.0);
 
 Plant shooter = FtcActuators.plant(hardwareMap)
         .motor("shooterLeftMotor", Direction.FORWARD)
@@ -500,7 +515,7 @@ Plant transfer = FtcActuators.plant(hardwareMap)
         .crServo("transferLeftServo", Direction.FORWARD)
         .andCrServo("transferRightServo", Direction.REVERSE)
         .power()
-        .targetedByCommand(0.0)
+        .targetedBy(transferTarget)
         .build();
 
 Plant pusher = FtcActuators.plant(hardwareMap)
@@ -509,7 +524,7 @@ Plant pusher = FtcActuators.plant(hardwareMap)
         .linear()
             .bounded(0.0, 1.0)
             .nativeUnits()   // servo raw 0..1 plant coordinate
-        .targetedByCommand(0.0)
+        .targetedBy(pusherTarget)
         .build();
 ```
 
@@ -531,7 +546,13 @@ The builder is staged on purpose:
    `velocityTolerance(...)` or `positionTolerance(...)`. There is no hidden or native-unit default.
    A command-only standard-servo Plant skips this feedback-only question.
 5. **Optional hardware guards**: enter `targetGuards()` for dynamic Plant-level protection such as `maxTargetRate(...)`, `holdLastTargetUnless(...)`, or `fallbackTargetUnless(...)`.
-6. **Target binding**: finish with `targetedBy(ScalarTarget)`, `targetedBy(readOnlySource)`, or `targetedByCommand(initialTarget)`, then `build()`.
+6. **Target binding**: create a named `ScalarTarget` while assembling the graph, then finish with
+   `targetedBy(commandTarget)` and `build()`. Advanced composed behavior supplies one final
+   `PlantTargetSource` to `targetedBy(...)`; lift a read-only scalar stream explicitly with
+   `PlantTargets.exact(readOnlySource)`. A command-writing Plant owner derives and caches the
+   completed Plant's command target; a read-only/planned owner uses only its Plant, while a
+   target-only policy retains the target itself. Never pass Plant and target as independent
+   constructor answers for the same graph relationship.
 
 Plant tolerance defines Phoenix's mechanism-level `atTarget(...)` result in public Plant units; it
 is not an FTC controller setting. For device-managed motor position, the separately named
@@ -862,7 +883,8 @@ Robot code should rarely implement raw tasks directly. Prefer:
 
 * `Tasks.*` for generic Task factories and as the public construction layer for composition
   (`sequence`, `parallelAll`, `parallelDeadline`, `withTimeout`, `waitForSeconds`, `waitUntil`, ...)
-* `ScalarTasks.write(...)` for standalone `ScalarTarget`s, `PlantTasks.write(plant)` for time-based writes to a Plant's command target, and `PlantTasks.move(plant)` for feedback-aware moves
+* `ScalarTasks.set(target, value)` for write-once, timed, and feedback-aware writes to a
+  `ScalarTarget`
 * `Tasks.outputPulse(...)` + `OutputTaskRunner` for short output-producing pulses that are overlaid into a final Plant target source
 * `DriveTasks.driveExclusivelyForSeconds(...)` for simple Auto/test drive intervals only when the
   Task is the sole behavior-command writer for the sink
@@ -894,9 +916,10 @@ budgets; do not duplicate the same policy in both places. `waitUntil(condition, 
 the concise condition-wait API and deliberately samples its condition first at the exact boundary.
 Fixed-duration waits and commands are successful timed behavior, not timeouts.
 
-For a timed scalar or Plant write, `.then(value)` applies that final command-target request after normal
-completion **and active cancellation**. Omitting `.then(...)`, or selecting `.leaveThere()`, leaves
-the held request in place. Choose deliberately; neither behavior is an imperative hardware stop.
+For a timed scalar write, explicitly choose `.then(value)` or `.leaveThere()` before `build()`.
+`.then(value)` applies that final command-target request after normal completion **and active
+cancellation**. `.leaveThere()` leaves the held request in place. Choose deliberately; neither
+behavior is an imperative hardware stop.
 
 ### 4.4 Output pulses are source proposals, not Plant writers
 
@@ -925,10 +948,13 @@ Phoenix distinguishes:
 
 Important consequence:
 
-* `PlantTasks.move(plant)` **requires** `plant.hasFeedback() == true` and will throw if used on an open-loop plant.
-* Time-based helpers such as `PlantTasks.write(plant).to(...).forSeconds(...)` and compact `holdTargetFor(...)` helpers work on any Plant with a command target.
+* `ScalarTasks.set(target, value).untilReachedBy(plant)` **requires** a feedback-capable Plant whose
+  graph-owned command target is that exact `ScalarTarget`; construction fails early when either
+  condition is false.
+* `ScalarTasks.set(target, value).forSeconds(...)` works for any `ScalarTarget`, including an
+  open-loop Plant command.
 
-A feedback move must answer its cancellation question immediately after `.to(target)`:
+A feedback move must answer its cancellation question immediately after `.untilReachedBy(plant)`:
 
 * `.cancelTo(cancelTarget)` writes that finite Plant-unit request once on active cancellation.
 * `.leaveTargetOnCancel()` deliberately leaves the move request in place, so motion may continue.

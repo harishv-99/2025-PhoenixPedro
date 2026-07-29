@@ -8,6 +8,7 @@ import edu.ftcphoenix.fw.actuation.Plant;
 import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.debug.NullDebugSink;
 import edu.ftcphoenix.fw.core.hal.Direction;
+import edu.ftcphoenix.fw.core.source.ScalarTarget;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.drive.DriveSignal;
 import edu.ftcphoenix.fw.drive.DriveSource;
@@ -45,11 +46,11 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
  *       <li>{@link FtcActuators#plant} to turn hardware into {@link Plant}s.</li>
  *       <li>{@code motor(...).andMotor(...).velocity().deviceManagedWithDefaults()}
  *           {@code .bounded(...).nativeUnits().velocityTolerance(...)}
- *           {@code .targetedByCommand(0.0).build()} for the shooter.</li>
+ *           {@code .targetedBy(shooterTarget).build()} for the shooter.</li>
  *       <li>{@code crServo(...).andCrServo(...).power()}
- *           {@code .targetedByCommand(0.0).build()} for the transfer.</li>
+ *           {@code .targetedBy(transferTarget).build()} for the transfer.</li>
  *       <li>{@code servo(...).position().linear().bounded(0.0, 1.0).nativeUnits()}
- *           {@code .targetedByCommand(0.0).build()} for the pusher.</li>
+ *           {@code .targetedBy(pusherTarget).build()} for the pusher.</li>
  *     </ul>
  *   </li>
  *   <li><b>How to map buttons to simple modes</b> using
@@ -237,6 +238,9 @@ public final class TeleOp_02_ShooterBasic extends OpMode {
     private Plant shooter;   // velocity plant for shooter motors
     private Plant transfer;  // power plant for transfer CR servos
     private Plant pusher;    // position plant for pusher servo
+    private ScalarTarget shooterTarget;
+    private ScalarTarget transferTarget;
+    private ScalarTarget pusherTarget;
 
     // Requested states (controlled via bindings)
     private boolean shooterEnabled = false;
@@ -273,6 +277,10 @@ public final class TeleOp_02_ShooterBasic extends OpMode {
 
         // === 3) Mechanism wiring using FtcActuators ===
 
+        shooterTarget = ScalarTarget.create(0.0);
+        transferTarget = ScalarTarget.create(0.0);
+        pusherTarget = ScalarTarget.create(PUSHER_POS_RETRACT);
+
         // Shooter: two motors, velocity-controlled pair.
         shooter = FtcActuators.plant(hardwareMap)
                 .motor(HW_SHOOTER_LEFT, Direction.FORWARD)
@@ -282,7 +290,7 @@ public final class TeleOp_02_ShooterBasic extends OpMode {
                 .bounded(0.0, SHOOTER_VELOCITY_NATIVE)
                 .nativeUnits()
                 .velocityTolerance(SHOOTER_VELOCITY_TOLERANCE_NATIVE)
-                .targetedByCommand(0.0)
+                .targetedBy(shooterTarget)
                 .build();
 
         // Transfer: two CR servos, power-controlled pair.
@@ -290,7 +298,7 @@ public final class TeleOp_02_ShooterBasic extends OpMode {
                 .crServo(HW_TRANSFER_LEFT, Direction.FORWARD)
                 .andCrServo(HW_TRANSFER_RIGHT, Direction.REVERSE)
                 .power()
-                .targetedByCommand(0.0)
+                .targetedBy(transferTarget)
                 .build();
 
         // Pusher: single positional servo, 0..1 position plant.
@@ -300,7 +308,7 @@ public final class TeleOp_02_ShooterBasic extends OpMode {
                 .linear()
                 .bounded(0.0, 1.0)
                 .nativeUnits()
-                .targetedByCommand(0.0)
+                .targetedBy(pusherTarget)
                 .build();
 
         // === 4) Bindings: map buttons to high-level modes (using lambdas) ===
@@ -376,33 +384,33 @@ public final class TeleOp_02_ShooterBasic extends OpMode {
         // --- 4) Mechanism logic: map modes to plant targets ---
 
         // Shooter
-        shooter.commandTarget().set(shooterEnabled ? SHOOTER_VELOCITY_NATIVE : 0.0);
+        shooterTarget.set(shooterEnabled ? SHOOTER_VELOCITY_NATIVE : 0.0);
 
         // Transfer
         switch (transferMode) {
             case LOAD:
-                transfer.commandTarget().set(TRANSFER_POWER_LOAD);
+                transferTarget.set(TRANSFER_POWER_LOAD);
                 break;
             case SHOOT:
-                transfer.commandTarget().set(TRANSFER_POWER_SHOOT);
+                transferTarget.set(TRANSFER_POWER_SHOOT);
                 break;
             case OFF:
             default:
-                transfer.commandTarget().set(0.0);
+                transferTarget.set(0.0);
                 break;
         }
 
         // Pusher
         switch (pusherMode) {
             case LOAD:
-                pusher.commandTarget().set(PUSHER_POS_LOAD);
+                pusherTarget.set(PUSHER_POS_LOAD);
                 break;
             case SHOOT:
-                pusher.commandTarget().set(PUSHER_POS_SHOOT);
+                pusherTarget.set(PUSHER_POS_SHOOT);
                 break;
             case RETRACT:
             default:
-                pusher.commandTarget().set(PUSHER_POS_RETRACT);
+                pusherTarget.set(PUSHER_POS_RETRACT);
                 break;
         }
 
@@ -452,9 +460,9 @@ public final class TeleOp_02_ShooterBasic extends OpMode {
     @Override
     public void stop() {
         // Safely stop mechanisms and drive.
-        shooter.commandTarget().set(0.0);
-        transfer.commandTarget().set(0.0);
-        pusher.commandTarget().set(PUSHER_POS_RETRACT);
+        shooterTarget.set(0.0);
+        transferTarget.set(0.0);
+        pusherTarget.set(PUSHER_POS_RETRACT);
 
         shooter.stop();
         transfer.stop();

@@ -792,7 +792,8 @@ calibration/reference setup converts semantic intent or spatial geometry into th
 exposed by the mechanism. One logical turret command uses
 `PlantTargets.equivalentPositionsOf(...)`; multiple solutions or observation freshness use
 `PlantTargets.plan()`. The Plant still owns travel bounds/guards, and physical readiness remains a
-literal `Plant.atTarget(...)` fact. `PlantTasks.move(...)` correlates its logical command with any
+literal `Plant.atTarget(...)` fact. A feedback-aware
+`ScalarTasks.set(command, value).untilReachedBy(plant)` correlates its logical command with any
 selected physical equivalent.
 
 For example, a future turret with its own camera would use one spatial query with two solve lanes: a

@@ -21,7 +21,7 @@ controller / service / autonomous policy
     decides which behavior is active
         ↓
 command target (optional ScalarTarget)
-    the stable request that robot policy and PlantTasks may change
+    the stable request that robot policy and ScalarTasks may change
         ↓
 PlantTargets graph
     exact target, overlay, equivalent-position transform, candidate planner, fallback/hold policy
@@ -75,14 +75,17 @@ PlantTargets
     The factory/builder family that creates exact, overlay, equivalent, and planned sources.
 ```
 
-The Plant builder accepts friendly forms and normalizes them internally:
+The Plant builder has one ordinary binding and one advanced binding:
 
 ```java
 .targetedBy(ScalarTarget target)         // exact source and command target
-.targetedBy(ScalarSource source)         // exact source; command-capable if it is a ScalarTarget
 .targetedBy(PlantTargetSource source)    // full Plant-aware target graph
-.targetedByCommand(initialTarget)        // builder-created command target and exact source
 ```
+
+Create the ordinary command explicitly with `ScalarTarget.create(initialValue)` while assembling
+the Plant's final graph. If a Plant should follow a read-only `ScalarSource`, make that adaptation
+visible with `targetedBy(PlantTargets.exact(source))`. This keeps `targetedBy(...)` from hiding
+whether robot code has a writable command.
 
 The final graph owns this relationship; the builder never asks robot code to register a second,
 possibly disconnected target. An exact source carries a command target when its runtime object is a
@@ -93,7 +96,7 @@ that layer's activation and an overlay may contain several such layers.
 Put the stable robot request in the base when tasks should be able to command a composed Plant:
 
 ```java
-ScalarTarget armCommand = ScalarTarget.held(STOWED);
+ScalarTarget armCommand = ScalarTarget.create(STOWED);
 
 PlantTargetSource finalArmTarget = PlantTargets.overlay(armCommand)
         .add("autoStow", autoStowRequested, STOWED)
@@ -114,8 +117,8 @@ PositionPlant arm = FtcActuators.plant(hardwareMap)
 ```
 
 ```java
-Task raiseArm = PlantTasks.move(arm)
-        .to(HIGH)
+Task raiseArm = ScalarTasks.set(armCommand, HIGH)
+        .untilReachedBy(arm)
         .cancelTo(STOWED)
         .build();
 ```
@@ -132,17 +135,65 @@ command target → requested target → applied target → actuator command
 ```
 
 The command target is optional. Constants, ordinary read-only sources, planners, measured holds,
-and custom target graphs without a command base remain read-only to `PlantTasks`. `hasCommandTarget()`
-reports that capability, while `commandTarget()` returns it for framework helpers and compact
-testers. Ordinary robot services should usually retain their named `ScalarTarget` directly rather
-than rediscovering it from the Plant.
+and custom target graphs without a command base cannot support a feedback-aware `ScalarTasks`
+move. `hasCommandTarget()` reports that capability, while `commandTarget()` remains available for
+framework validation, calibration, compact testers, and the owner boundary described below.
+
+### Pass one authoritative object across an ownership boundary
+
+Graph construction needs the named `ScalarTarget` before the Plant exists. That does not mean every
+later constructor should receive both objects. When a mechanism realization owns the completed
+Plant's lifecycle and writes its persistent command, pass only the Plant. The realization validates
+that `hasCommandTarget()` is true and caches `plant.commandTarget()` once:
+
+```java
+public IntakeMechanism(Plant intake, double collectPower) {
+    this.intake = Objects.requireNonNull(intake, "intake");
+    if (!intake.hasCommandTarget()) {
+        throw new IllegalArgumentException("intake must have a command target");
+    }
+    this.intakeCommand = Objects.requireNonNull(
+            intake.commandTarget(), "intake.commandTarget()");
+    this.collectPower = collectPower;
+}
+```
+
+The composition root still assembles the graph explicitly, but it does not pass the same
+relationship twice:
+
+```java
+ScalarTarget intakeCommand = ScalarTarget.create(0.0);
+Plant intake = builder.targetedBy(intakeCommand).build();
+IntakeMechanism mechanism = new IntakeMechanism(intake, COLLECT_POWER);
+```
+
+An overlay follows the same rule: retain its named base while constructing the graph, let the final
+Plant carry that base as its command identity, then give the completed Plant to its realization. A
+read-only or planned realization also receives only its Plant but does not require or invent a
+command target. A policy object that only writes a standalone or deliberately shared request and
+does not own Plant lifecycle receives only the `ScalarTarget` or a robot-owned semantic capability.
+
+Do not replace this rule with `Plant.set(...)`, a Plant-root Task facade, a target-to-Plant backlink,
+or a public binding wrapper. Those add a second command path or another noun. The one intentional
+place both objects remain explicit is a feedback-aware Task:
+
+```java
+ScalarTasks.set(intakeCommand, GOAL)
+        .untilReachedBy(intake)
+        .cancelTo(IDLE)
+        .build();
+```
+
+Here the target identifies the persistent request being written, while the Plant selects the
+resolved-plan provenance and physical feedback used for completion. A target may feed more than one
+Plant, so the observer cannot be inferred from the target.
 
 ## Exact targets
 
 Use a `ScalarTarget` when robot code or tasks should write a persistent command target.
 
 ```java
-ScalarTarget liftTarget = ScalarTarget.held(0.0);
+ScalarTarget liftTarget = ScalarTarget.create(0.0);
 
 PositionPlant lift = FtcActuators.plant(hardwareMap)
         .motor("lift", Direction.FORWARD)
@@ -160,9 +211,11 @@ liftTarget.set(BASKET_TICKS);
 lift.update(clock);
 ```
 
-When a target is controlled only through tasks, the builder can create the command target:
+The same named target is also the Task entry point:
 
 ```java
+ScalarTarget liftTarget = ScalarTarget.create(0.0);
+
 PositionPlant lift = FtcActuators.plant(hardwareMap)
         .motor("lift", Direction.FORWARD)
         .position()
@@ -172,17 +225,18 @@ PositionPlant lift = FtcActuators.plant(hardwareMap)
             .nativeUnits()
             .needsReference("lift not homed")
         .positionTolerance(20.0)
-        .targetedByCommand(0.0)
+        .targetedBy(liftTarget)
         .build();
 
-Task raiseLift = PlantTasks.move(lift)
-        .to(BASKET_TICKS)
+Task raiseLift = ScalarTasks.set(liftTarget, BASKET_TICKS)
+        .untilReachedBy(lift)
         .cancelTo(0.0)
         .build();
 ```
 
 Every feedback move must choose `.cancelTo(value)` or `.leaveTargetOnCancel()` immediately after
-`.to(...)`. The latter deliberately leaves the move request in place, so motion may continue.
+`.untilReachedBy(plant)`. The latter deliberately leaves the move request in place, so motion may
+continue.
 Neither option imperatively stops hardware: `cancelTo(...)` changes the command target, while
 the final target still flows through overlays, bounds, references, and guards on the next Plant
 update. An owner-level shutdown must coordinate every related request and behavior layer.
@@ -195,8 +249,8 @@ rotating turret angle should therefore use the same robot-facing capability and 
 ```java
 turretCommand.set(GOAL_ANGLE_DEG);
 
-Task aim = PlantTasks.move(turret)
-        .to(GOAL_ANGLE_DEG)
+Task aim = ScalarTasks.set(turretCommand, GOAL_ANGLE_DEG)
+        .untilReachedBy(turret)
         .leaveTargetOnCancel()
         .timeout(1.0)
         .build();
@@ -218,7 +272,8 @@ PlantTargetSource finalTurretTarget =
 ```
 
 If `GOAL_ANGLE_DEG` is `20` and the turret is near `350`, a 360-degree periodic Plant may request
-physical position `380`. `PlantTasks.move(...)` still takes logical value `20`: it completes only
+physical position `380`. The same `ScalarTasks.set(turretCommand, 20)` still expresses logical
+value `20`; its feedback branch completes only
 when the `turretCommand` path won and the Plant reports physical arrival at `380`. A same-valued
 overlay, fallback, hold, clamp, bound, or guard cannot make the move report success.
 
@@ -521,8 +576,9 @@ while the source-owned snapshot keeps student code to one quality value and one 
 The Plant reports physical arrival with `atTarget()` and literal physical
 `atTarget(value)`. `atTarget(value)` never applies modulo arithmetic. Target planning reports
 selection status with `PlantTargetPlan`; it does not claim the mechanism has physically arrived.
-`PlantTasks.move(...)` combines the plan's logical-command evidence with physical arrival at the
-selected requested target.
+`ScalarTasks.set(command, value).untilReachedBy(plant)` combines the plan's logical-command
+evidence with physical arrival at the selected requested target. It validates at construction that
+the supplied Plant has feedback and that `command` is the exact command target owned by its graph.
 
 ## Hardware guards are separate
 

@@ -27,7 +27,7 @@ public final class RegulatedPlantSafetyTest {
 
     @Test
     public void lowerLevelRegulatedPlantsSubmitNormalizedPowerAndPreserveRawAliases() {
-        ScalarTarget positionTarget = ScalarTarget.held(10.0);
+        ScalarTarget positionTarget = ScalarTarget.create(10.0);
         RecordingPowerOutput positionOut = new RecordingPowerOutput();
         Plant position = Plants.positionFromPower(
                 positionOut,
@@ -50,7 +50,7 @@ public final class RegulatedPlantSafetyTest {
         assertEquals("SATURATED_AND_SUBMITTED",
                 positionDebug.data.get("position.regulatedPowerStatus"));
 
-        ScalarTarget velocityTarget = ScalarTarget.held(20.0);
+        ScalarTarget velocityTarget = ScalarTarget.create(20.0);
         RecordingPowerOutput velocityOut = new RecordingPowerOutput();
         Plant velocity = Plants.velocityFromPower(
                 velocityOut,
@@ -72,7 +72,7 @@ public final class RegulatedPlantSafetyTest {
 
     @Test
     public void mappedRegulatedPlantsSubmitNormalizedPowerAndPreserveRawAliases() {
-        ScalarTarget positionTarget = ScalarTarget.held(10.0);
+        ScalarTarget positionTarget = ScalarTarget.create(10.0);
         RecordingPowerOutput positionOut = new RecordingPowerOutput();
         MappedPositionPlant position = MappedPositionPlant.regulated(
                 positionOut, clock -> 10.0, new FixedRegulator(1.25))
@@ -89,7 +89,7 @@ public final class RegulatedPlantSafetyTest {
         assertEquals(1.25, number(positionDebug, "position.regulatorOutput"), 0.0);
         assertEquals(1.0, number(positionDebug, "position.normalizedPowerCommand"), 0.0);
 
-        ScalarTarget velocityTarget = ScalarTarget.held(20.0);
+        ScalarTarget velocityTarget = ScalarTarget.create(20.0);
         RecordingPowerOutput velocityOut = new RecordingPowerOutput();
         MappedVelocityPlant velocity = MappedVelocityPlant.regulated(
                 velocityOut, clock -> 20.0, new FixedRegulator(-1.25))
@@ -108,10 +108,10 @@ public final class RegulatedPlantSafetyTest {
 
     @Test
     public void everyRegulatedPlantPathRejectsNonFiniteOutputAndFailStops() {
-        ScalarTarget lowerPositionTarget = ScalarTarget.held(10.0);
-        ScalarTarget lowerVelocityTarget = ScalarTarget.held(10.0);
-        ScalarTarget mappedPositionTarget = ScalarTarget.held(10.0);
-        ScalarTarget mappedVelocityTarget = ScalarTarget.held(10.0);
+        ScalarTarget lowerPositionTarget = ScalarTarget.create(10.0);
+        ScalarTarget lowerVelocityTarget = ScalarTarget.create(10.0);
+        ScalarTarget mappedPositionTarget = ScalarTarget.create(10.0);
+        ScalarTarget mappedVelocityTarget = ScalarTarget.create(10.0);
         RecordingPowerOutput[] outputs = {
                 new RecordingPowerOutput(),
                 new RecordingPowerOutput(),
@@ -158,7 +158,7 @@ public final class RegulatedPlantSafetyTest {
         RuntimeException regulatorFailure = new IllegalArgumentException("regulator failed");
         SequencedRegulator regulator = new SequencedRegulator(0.25, regulatorFailure);
         RecordingPowerOutput output = new RecordingPowerOutput();
-        ScalarTarget target = ScalarTarget.held(20.0);
+        ScalarTarget target = ScalarTarget.create(20.0);
         MappedVelocityPlant plant = MappedVelocityPlant.regulated(
                 output, clock -> 20.0, regulator)
                 .velocityTolerance(0.0)
@@ -193,7 +193,7 @@ public final class RegulatedPlantSafetyTest {
         SequencedRegulator regulator = new SequencedRegulator(0.25, regulatorFailure);
         RecordingPowerOutput output = new RecordingPowerOutput();
         output.stopFailure = stopFailure;
-        ScalarTarget target = ScalarTarget.held(20.0);
+        ScalarTarget target = ScalarTarget.create(20.0);
         MappedVelocityPlant plant = MappedVelocityPlant.regulated(
                 output, clock -> 20.0, regulator)
                 .velocityTolerance(0.0)
@@ -232,7 +232,7 @@ public final class RegulatedPlantSafetyTest {
         MappedVelocityPlant plant = MappedVelocityPlant.regulated(
                 output, clock -> 20.0, regulator)
                 .velocityTolerance(0.0)
-                .targetedBy(ScalarTarget.held(20.0))
+                .targetedBy(ScalarTarget.create(20.0))
                 .build();
         plant.update(new ManualLoopClock().clock());
         assertTrue(plant.atTarget());
@@ -269,7 +269,7 @@ public final class RegulatedPlantSafetyTest {
         MappedVelocityPlant plant = MappedVelocityPlant.regulated(
                 output, clock -> 20.0, constrained)
                 .velocityTolerance(0.0)
-                .targetedBy(ScalarTarget.held(20.0))
+                .targetedBy(ScalarTarget.create(20.0))
                 .build();
         ManualLoopClock clock = new ManualLoopClock();
         plant.update(clock.clock());
@@ -299,7 +299,7 @@ public final class RegulatedPlantSafetyTest {
         MappedVelocityPlant plant = MappedVelocityPlant.regulated(
                 output, clock -> Double.NEGATIVE_INFINITY, constrained)
                 .velocityTolerance(0.0)
-                .targetedBy(ScalarTarget.held(100.0))
+                .targetedBy(ScalarTarget.create(100.0))
                 .build();
 
         try {
@@ -329,7 +329,7 @@ public final class RegulatedPlantSafetyTest {
                 shared, clock -> 0.0, new FixedRegulator(0.0))
                 .searchPowerOutput(shared)
                 .positionTolerance(0.0)
-                .targetedBy(ScalarTarget.held(0.0))
+                .targetedBy(ScalarTarget.create(0.0))
                 .build();
 
         sharedPlant.stop();
@@ -344,7 +344,7 @@ public final class RegulatedPlantSafetyTest {
                 regulated, clock -> 5.0, new FixedRegulator(0.25))
                 .searchPowerOutput(search)
                 .positionTolerance(0.0)
-                .targetedBy(ScalarTarget.held(5.0))
+                .targetedBy(ScalarTarget.create(5.0))
                 .build();
         distinctPlant.update(new ManualLoopClock().clock());
 
@@ -371,7 +371,7 @@ public final class RegulatedPlantSafetyTest {
                 successfulRegulated, clock -> 6.0, new FixedRegulator(0.3))
                 .searchPowerOutput(failingSearch)
                 .positionTolerance(0.0)
-                .targetedBy(ScalarTarget.held(6.0))
+                .targetedBy(ScalarTarget.create(6.0))
                 .build();
         searchFailurePlant.update(new ManualLoopClock().clock());
 

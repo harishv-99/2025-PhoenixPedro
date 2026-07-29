@@ -31,6 +31,8 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *
  * <h2>Common builder usage</h2>
  * <pre>{@code
+ * ScalarTarget liftTarget = ScalarTarget.create(0.0);
+ *
  * PositionPlant lift = FtcActuators.plant(hardwareMap)
  *     .motor("lift", Direction.FORWARD)
  *     .position()
@@ -39,7 +41,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *         .maxTargetRate(1200.0)
  *         .holdLastTargetUnless("wristClear", wristClear)
  *         .doneTargetGuards()
- *     .targetedByCommand(0.0)
+ *     .targetedBy(liftTarget)
  *     .build();
  * }</pre>
  */

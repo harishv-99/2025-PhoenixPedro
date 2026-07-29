@@ -4,6 +4,7 @@ import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 
+import java.util.Objects;
 import java.util.function.LongSupplier;
 
 import edu.ftcphoenix.fw.actuation.Plant;
@@ -97,8 +98,8 @@ public final class TeleOp_09_LayeredShooterMechanism extends OpMode {
     public void init() {
         gamepads = Gamepads.create(gamepad1, gamepad2);
 
-        ScalarTarget flywheelTarget = ScalarTarget.held(0.0);
-        ScalarTarget feederBaseTarget = ScalarTarget.held(0.0);
+        ScalarTarget flywheelTarget = ScalarTarget.create(0.0);
+        ScalarTarget feederBaseTarget = ScalarTarget.create(0.0);
         OutputTaskRunner feederPulseQueue = Tasks.outputQueue(0.0);
         PlantTargetSource finalFeederTarget = PlantTargets.overlay(feederBaseTarget)
                 .add("feedPulse", feederPulseQueue.activeSource(), feederPulseQueue)
@@ -122,8 +123,12 @@ public final class TeleOp_09_LayeredShooterMechanism extends OpMode {
                 .targetedBy(finalFeederTarget)
                 .build();
 
-        shooter = new LayeredShooter(clock::cycle, flywheelPlant, flywheelTarget,
-                feederPlant, feederBaseTarget, feederPulseQueue);
+        shooter = new LayeredShooter(
+                clock::cycle,
+                flywheelPlant,
+                feederPlant,
+                feederPulseQueue
+        );
 
         // Held requests.
         bindings.toggleOnRise(gamepads.p1().leftBumper(), shooter::setFlywheelHeld);
@@ -195,13 +200,11 @@ public final class TeleOp_09_LayeredShooterMechanism extends OpMode {
 
         LayeredShooter(LongSupplier cycleSource,
                        Plant flywheelPlant,
-                       ScalarTarget flywheelTarget,
                        Plant feederPlant,
-                       ScalarTarget feederBaseTarget,
                        OutputTaskRunner feederPulseQueue) {
             requests = new Requests(cycleSource);
             behavior.setFeedPulseQueue(feederPulseQueue);
-            realization = new Realization(flywheelPlant, flywheelTarget, feederPlant, feederBaseTarget);
+            realization = new Realization(flywheelPlant, feederPlant);
         }
 
         // ------------------------------------------------------------------
@@ -487,21 +490,22 @@ public final class TeleOp_09_LayeredShooterMechanism extends OpMode {
     /**
      * Layer 3: plant realization.
      *
-     * <p>This is the only layer allowed to touch Plants. It updates the retained command targets,
-     * lets the feeder Plant consume its final overlaid target source, updates the Plants, and exports
-     * a small readback snapshot for the next loop.</p>
+     * <p>This is the only layer allowed to touch Plants. Each Plant is the construction-boundary
+     * authority for its stable command target, which realization retains once. It updates those
+     * targets, lets the feeder Plant consume its final overlaid target source, updates the Plants,
+     * and exports a small readback snapshot for the next loop.</p>
      */
     private static final class Realization {
         private final Plant flywheel;
         private final ScalarTarget flywheelTarget;
         private final Plant feeder;
-        private final ScalarTarget feederTarget;
+        private final ScalarTarget feederBaseTarget;
 
-        Realization(Plant flywheel, ScalarTarget flywheelTarget, Plant feeder, ScalarTarget feederTarget) {
-            this.flywheel = flywheel;
-            this.flywheelTarget = flywheelTarget;
-            this.feeder = feeder;
-            this.feederTarget = feederTarget;
+        Realization(Plant flywheel, Plant feeder) {
+            this.flywheel = Objects.requireNonNull(flywheel, "flywheel");
+            this.flywheelTarget = requireCommandTarget(this.flywheel, "flywheel");
+            this.feeder = Objects.requireNonNull(feeder, "feeder");
+            this.feederBaseTarget = requireCommandTarget(this.feeder, "feeder");
         }
 
         Readback readback() {
@@ -514,7 +518,7 @@ public final class TeleOp_09_LayeredShooterMechanism extends OpMode {
 
         void apply(LoopClock clock, BehaviorOutput out) {
             flywheelTarget.set(out.flywheelTargetNative);
-            feederTarget.set(out.baseFeedPower);
+            feederBaseTarget.set(out.baseFeedPower);
 
             flywheel.update(clock);
             feeder.update(clock);
@@ -531,6 +535,16 @@ public final class TeleOp_09_LayeredShooterMechanism extends OpMode {
         void stop() {
             flywheel.stop();
             feeder.stop();
+        }
+
+        private static ScalarTarget requireCommandTarget(Plant plant, String role) {
+            if (!plant.hasCommandTarget()) {
+                throw new IllegalArgumentException(role + " Plant must carry a stable command "
+                        + "target. Build it with targetedBy(command), or use a ScalarTarget as "
+                        + "the stable base of its final target graph.");
+            }
+            return Objects.requireNonNull(
+                    plant.commandTarget(), role + " Plant commandTarget() returned null");
         }
     }
 }

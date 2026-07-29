@@ -25,7 +25,7 @@ public final class MappedPositionPlantSafetyTest {
             MappedPositionPlant.commanded(new RecordingPositionOutput())
                     .range(ScalarRange.bounded(10.0, 20.0))
                     .targetGuards(guards)
-                    .targetedBy(ScalarTarget.held(15.0))
+                    .targetedBy(ScalarTarget.create(15.0))
                     .build();
             fail("Expected an out-of-range fallback to be rejected");
         } catch (IllegalArgumentException expected) {
@@ -40,7 +40,7 @@ public final class MappedPositionPlantSafetyTest {
     @Test
     public void inRangeFallbackRetainsFallbackStatus() {
         RecordingPositionOutput output = new RecordingPositionOutput();
-        ScalarTarget target = ScalarTarget.held(18.0);
+        ScalarTarget target = ScalarTarget.create(18.0);
         PlantTargetGuards guards = PlantTargetGuards.builder()
                 .fallbackTargetUnless("mechanismClear", clock -> false, 12.0)
                 .build();
@@ -65,7 +65,7 @@ public final class MappedPositionPlantSafetyTest {
         double request = 20.0 + 1.0e-10;
         MappedPositionPlant plant = MappedPositionPlant.commanded(output)
                 .range(ScalarRange.bounded(10.0, 20.0))
-                .targetedBy(ScalarTarget.held(request))
+                .targetedBy(ScalarTarget.create(request))
                 .build();
 
         plant.update(new ManualLoopClock().clock());
@@ -80,7 +80,7 @@ public final class MappedPositionPlantSafetyTest {
     public void signedZeroInsideRangeRemainsAccepted() {
         MappedPositionPlant plant = MappedPositionPlant.commanded(new RecordingPositionOutput())
                 .range(ScalarRange.bounded(0.0, 20.0))
-                .targetedBy(ScalarTarget.held(-0.0))
+                .targetedBy(ScalarTarget.create(-0.0))
                 .build();
 
         plant.update(new ManualLoopClock().clock());
@@ -91,7 +91,7 @@ public final class MappedPositionPlantSafetyTest {
     @Test
     public void initialHoldIsClampedAndLimiterContinuesFromActualCommand() {
         RecordingPositionOutput output = new RecordingPositionOutput();
-        ScalarTarget target = ScalarTarget.held(20.0);
+        ScalarTarget target = ScalarTarget.create(20.0);
         final boolean[] mechanismClear = {false};
         PlantTargetGuards guards = PlantTargetGuards.builder()
                 .maxTargetRate(1.0)
@@ -122,7 +122,7 @@ public final class MappedPositionPlantSafetyTest {
     @Test
     public void unavailableNonFiniteSourceRetainsFiniteCommandAndExplainsIt() {
         RecordingPositionOutput output = new RecordingPositionOutput();
-        ScalarTarget target = ScalarTarget.held(12.0);
+        ScalarTarget target = ScalarTarget.create(12.0);
         MappedPositionPlant plant = MappedPositionPlant.commanded(output)
                 .range(ScalarRange.bounded(10.0, 20.0))
                 .targetedBy(target)

@@ -12,7 +12,7 @@ import edu.ftcphoenix.fw.core.time.LoopTimestamp;
  * requested target should be considered for this loop and why that target was chosen. Completion
  * still belongs to {@link Plant#atTarget()} and {@link Plant#atTarget(double)}, because only the
  * plant knows its feedback tolerance, hardware guards, and applied target. Framework-created plans
- * also carry private winning-command evidence so {@link PlantTasks} can distinguish a logical
+ * also carry private winning-command evidence so {@link ScalarTasks} can distinguish a logical
  * command from a same-valued overlay or fallback without adding another public status concept.</p>
  */
 public final class PlantTargetPlan {

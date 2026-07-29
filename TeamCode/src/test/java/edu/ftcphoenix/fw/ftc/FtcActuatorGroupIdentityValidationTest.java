@@ -22,6 +22,7 @@ import edu.ftcphoenix.fw.actuation.Plant;
 import edu.ftcphoenix.fw.actuation.PositionPlant;
 import edu.ftcphoenix.fw.core.control.ScalarRegulator;
 import edu.ftcphoenix.fw.core.hal.Direction;
+import edu.ftcphoenix.fw.core.source.ScalarTarget;
 import edu.ftcphoenix.fw.testing.ManualLoopClock;
 
 import static org.junit.Assert.assertArrayEquals;
@@ -197,7 +198,8 @@ public final class FtcActuatorGroupIdentityValidationTest {
         assertContainsIgnoreCase(duplicate, "motor", "left");
         assertArrayEquals(beforeRejectedAdd, hardwareMap.effects.snapshot());
 
-        resolvedPower.targetedByCommand(0.0).build();
+        ScalarTarget powerTarget = ScalarTarget.create(0.0);
+        resolvedPower.targetedBy(powerTarget).build();
         assertArrayEquals(beforeRejectedAdd, hardwareMap.effects.snapshot());
     }
 
@@ -215,11 +217,12 @@ public final class FtcActuatorGroupIdentityValidationTest {
         assertThrows(IllegalArgumentException.class,
                 () -> retainedVelocity.andMotor(" left ", Direction.REVERSE));
         velocityMap.effects.assertNone();
+        ScalarTarget velocityTarget = ScalarTarget.create(0.0);
 
         velocity.unbounded()
                 .nativeUnits()
                 .velocityTolerance(0.0)
-                .targetedByCommand(0.0)
+                .targetedBy(velocityTarget)
                 .build();
         assertEquals(1, velocityMap.effects.velocityPidfWrites);
 
@@ -237,13 +240,14 @@ public final class FtcActuatorGroupIdentityValidationTest {
         assertThrows(IllegalArgumentException.class,
                 () -> retainedPosition.andMotor("lift", Direction.REVERSE));
         positionMap.effects.assertNone();
+        ScalarTarget positionTarget = ScalarTarget.create(0.0);
 
         position.linear()
                 .unbounded()
                 .nativeUnits()
                 .alreadyReferenced()
                 .positionTolerance(0.0)
-                .targetedByCommand(0.0)
+                .targetedBy(positionTarget)
                 .build();
         assertEquals(1, positionMap.effects.positionPidfWrites);
         assertEquals(1, positionMap.effects.velocityPidfWrites);
@@ -333,6 +337,7 @@ public final class FtcActuatorGroupIdentityValidationTest {
         TestHardwareMap hardwareMap = new TestHardwareMap();
         MotorProbe flywheel = hardwareMap.addMotor("flywheel");
         flywheel.positionTicks = 100;
+        ScalarTarget target = ScalarTarget.create(0.0);
 
         Plant plant = FtcActuators.plant(hardwareMap)
                 .motor("flywheel", Direction.FORWARD)
@@ -343,7 +348,7 @@ public final class FtcActuatorGroupIdentityValidationTest {
                 .unbounded()
                 .nativeUnits()
                 .velocityTolerance(0.0)
-                .targetedByCommand(0.0)
+                .targetedBy(target)
                 .build();
 
         plant.update(new ManualLoopClock().clock());
@@ -358,6 +363,7 @@ public final class FtcActuatorGroupIdentityValidationTest {
         TestHardwareMap hardwareMap = new TestHardwareMap();
         MotorProbe lift = hardwareMap.addMotor("lift");
         lift.positionTicks = 321;
+        ScalarTarget target = ScalarTarget.create(0.0);
 
         PositionPlant plant = FtcActuators.plant(hardwareMap)
                 .motor("lift", Direction.FORWARD)
@@ -370,7 +376,7 @@ public final class FtcActuatorGroupIdentityValidationTest {
                 .nativeUnits()
                 .alreadyReferenced()
                 .positionTolerance(0.0)
-                .targetedByCommand(0.0)
+                .targetedBy(target)
                 .build();
 
         plant.update(new ManualLoopClock().clock());
@@ -387,6 +393,7 @@ public final class FtcActuatorGroupIdentityValidationTest {
         MotorProbe right = hardwareMap.addMotor("right");
         left.velocityTicksPerSec = 2468.0;
         right.velocityTicksPerSec = 999.0;
+        ScalarTarget target = ScalarTarget.create(0.0);
 
         Plant plant = FtcActuators.plant(hardwareMap)
                 .motor(" \tleft ", Direction.FORWARD)
@@ -398,7 +405,7 @@ public final class FtcActuatorGroupIdentityValidationTest {
                 .unbounded()
                 .nativeUnits()
                 .velocityTolerance(0.0)
-                .targetedByCommand(0.0)
+                .targetedBy(target)
                 .build();
 
         plant.update(new ManualLoopClock().clock());
@@ -415,6 +422,7 @@ public final class FtcActuatorGroupIdentityValidationTest {
         MotorProbe right = hardwareMap.addMotor("right");
         left.positionTicks = 135;
         right.positionTicks = 975;
+        ScalarTarget target = ScalarTarget.create(0.0);
 
         PositionPlant plant = FtcActuators.plant(hardwareMap)
                 .motor("left", Direction.FORWARD)
@@ -428,7 +436,7 @@ public final class FtcActuatorGroupIdentityValidationTest {
                 .nativeUnits()
                 .alreadyReferenced()
                 .positionTolerance(0.0)
-                .targetedByCommand(0.0)
+                .targetedBy(target)
                 .build();
 
         plant.update(new ManualLoopClock().clock());
@@ -648,10 +656,11 @@ public final class FtcActuatorGroupIdentityValidationTest {
     }
 
     private static Plant buildMotor(FtcActuators.MotorSingleStep step, MotorDomain domain) {
+        ScalarTarget target = ScalarTarget.create(0.0);
         switch (domain) {
             case POWER:
                 return step.power()
-                        .targetedByCommand(0.0)
+                        .targetedBy(target)
                         .build();
             case VELOCITY:
                 return step.velocity()
@@ -659,7 +668,7 @@ public final class FtcActuatorGroupIdentityValidationTest {
                         .unbounded()
                         .nativeUnits()
                         .velocityTolerance(0.0)
-                        .targetedByCommand(0.0)
+                        .targetedBy(target)
                         .build();
             case POSITION:
                 return step.position()
@@ -669,7 +678,7 @@ public final class FtcActuatorGroupIdentityValidationTest {
                         .nativeUnits()
                         .alreadyReferenced()
                         .positionTolerance(0.0)
-                        .targetedByCommand(0.0)
+                        .targetedBy(target)
                         .build();
             default:
                 throw new AssertionError("Unhandled domain " + domain);
@@ -677,20 +686,22 @@ public final class FtcActuatorGroupIdentityValidationTest {
     }
 
     private static PositionPlant buildServo(FtcActuators.ServoSingleStep step) {
+        ScalarTarget target = ScalarTarget.create(0.0);
         return step.position()
                 .linear()
                 .bounded(0.0, 1.0)
                 .nativeUnits()
-                .targetedByCommand(0.0)
+                .targetedBy(target)
                 .build();
     }
 
     private static Plant buildCrServo(FtcActuators.CrServoSingleStep step,
                                       CrServoDomain domain,
                                       MotorProbe encoder) {
+        ScalarTarget target = ScalarTarget.create(0.0);
         if (domain == CrServoDomain.POWER) {
             return step.power()
-                    .targetedByCommand(0.0)
+                    .targetedBy(target)
                     .build();
         }
         if (encoder == null) {
@@ -705,7 +716,7 @@ public final class FtcActuatorGroupIdentityValidationTest {
                 .nativeUnits()
                 .alreadyReferenced()
                 .positionTolerance(0.0)
-                .targetedByCommand(0.0)
+                .targetedBy(target)
                 .build();
     }
 

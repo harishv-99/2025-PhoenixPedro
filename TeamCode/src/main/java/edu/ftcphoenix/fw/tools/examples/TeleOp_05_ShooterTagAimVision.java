@@ -14,6 +14,7 @@ import edu.ftcphoenix.fw.core.debug.NullDebugSink;
 import edu.ftcphoenix.fw.core.hal.Direction;
 import edu.ftcphoenix.fw.core.lifecycle.CleanupActions;
 import edu.ftcphoenix.fw.core.math.InterpolatingTable1D;
+import edu.ftcphoenix.fw.core.source.ScalarTarget;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.drive.DriveOverlayMask;
 import edu.ftcphoenix.fw.drive.DriveSignal;
@@ -142,6 +143,7 @@ public final class TeleOp_05_ShooterTagAimVision extends OpMode {
     private CameraMountConfig cameraMount;
 
     private Plant shooter;
+    private ScalarTarget shooterTarget;
 
     private boolean shooterEnabled = false;
 
@@ -233,6 +235,7 @@ public final class TeleOp_05_ShooterTagAimVision extends OpMode {
         );
 
         // 4) Shooter wiring using FtcActuators.
+        shooterTarget = ScalarTarget.create(0.0);
         shooter = FtcActuators.plant(hardwareMap)
                 .motor(HW_SHOOTER_LEFT, Direction.FORWARD)
                 .andMotor(HW_SHOOTER_RIGHT, Direction.REVERSE)
@@ -241,10 +244,8 @@ public final class TeleOp_05_ShooterTagAimVision extends OpMode {
                 .bounded(0.0, 4200.0)
                 .nativeUnits()
                 .velocityTolerance(/*toleranceNative=*/100.0)
-                .targetedByCommand(0.0)
+                .targetedBy(shooterTarget)
                 .build();
-
-        shooter.commandTarget().set(0.0);
 
         // 5) Bindings: shooter toggle.
         bindings.toggleOnRise(
@@ -302,10 +303,10 @@ public final class TeleOp_05_ShooterTagAimVision extends OpMode {
         if (shooterEnabled && obs.hasTarget) {
             double targetVel = SHOOTER_VELOCITY_TABLE.interpolate(obs.cameraRangeInches());
             lastShooterTargetVel = targetVel;
-            shooter.commandTarget().set(targetVel);
+            shooterTarget.set(targetVel);
         } else {
             lastShooterTargetVel = 0.0;
-            shooter.commandTarget().set(0.0);
+            shooterTarget.set(0.0);
         }
 
         // 4) Control / Actuate (subsystems)
@@ -361,7 +362,7 @@ public final class TeleOp_05_ShooterTagAimVision extends OpMode {
     public void stop() {
         shooterEnabled = false;
         CleanupActions.attemptAll(
-                () -> shooter.commandTarget().set(0.0),
+                () -> shooterTarget.set(0.0),
                 shooter::stop,
                 drivebase::stop,
                 this::closeVisionOwner

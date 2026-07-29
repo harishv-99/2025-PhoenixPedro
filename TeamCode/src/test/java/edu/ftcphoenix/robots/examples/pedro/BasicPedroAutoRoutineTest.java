@@ -91,9 +91,10 @@ public final class BasicPedroAutoRoutineTest {
 
     private static final class Fixture {
         final ManualLoopClock time = new ManualLoopClock();
-        final ScalarTarget target = ScalarTarget.held(0.0);
+        final ScalarTarget target = ScalarTarget.create(0.0);
         final Plant plant = Plants.power(new RecordingPowerOutput(), target);
-        final BasicPedroAutoMechanism mechanism = new BasicPedroAutoMechanism(plant, 0.80);
+        final BasicPedroAutoMechanism mechanism =
+                new BasicPedroAutoMechanism(plant, 0.80);
         final FakeRouteExecution execution = new FakeRouteExecution();
         final FakeRouteFollower follower = new FakeRouteFollower(execution);
 

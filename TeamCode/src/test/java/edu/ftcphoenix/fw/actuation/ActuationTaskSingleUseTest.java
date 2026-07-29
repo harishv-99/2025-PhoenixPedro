@@ -22,7 +22,7 @@ public final class ActuationTaskSingleUseTest {
     public void scalarSetCancelBeforeStartIsNoOpAndUpdateBeforeStartFails() {
         ManualLoopClock manualClock = new ManualLoopClock();
         CountingScalarTarget target = new CountingScalarTarget();
-        Task set = ScalarTasks.set(target, 2.0);
+        Task set = ScalarTasks.set(target, 2.0).build();
 
         set.cancel();
         assertFalse(set.isComplete());
@@ -41,7 +41,7 @@ public final class ActuationTaskSingleUseTest {
     public void scalarSetFailedStartCanBeCancelledWithoutRetryingTheWrite() {
         ManualLoopClock manualClock = new ManualLoopClock();
         ThrowingScalarTarget target = new ThrowingScalarTarget(3.0);
-        Task set = ScalarTasks.set(target, 3.0);
+        Task set = ScalarTasks.set(target, 3.0).build();
 
         try {
             set.start(manualClock.clock());
@@ -61,7 +61,7 @@ public final class ActuationTaskSingleUseTest {
     public void scalarSetRejectsTerminalRestartWithoutRepeatingWriteAndFreshTaskWorks() {
         ManualLoopClock manualClock = new ManualLoopClock();
         CountingScalarTarget target = new CountingScalarTarget();
-        Task first = ScalarTasks.set(target, 4.0);
+        Task first = ScalarTasks.set(target, 4.0).build();
 
         first.start(manualClock.clock());
         assertEquals(1, target.setCount);
@@ -70,7 +70,7 @@ public final class ActuationTaskSingleUseTest {
         assertSingleUseFailure(() -> first.start(manualClock.clock()), "ScalarTasks.set");
         assertEquals(1, target.setCount);
 
-        Task fresh = ScalarTasks.set(target, 4.0);
+        Task fresh = ScalarTasks.set(target, 4.0).build();
         fresh.start(manualClock.clock());
         assertEquals(2, target.setCount);
         assertEquals(TaskOutcome.SUCCESS, fresh.getOutcome());
@@ -80,20 +80,24 @@ public final class ActuationTaskSingleUseTest {
     public void moveRejectsRestartWhileActiveAndAfterCancellationWithoutRepeatingWrite() {
         ManualLoopClock manualClock = new ManualLoopClock();
         CountingFeedbackPlant plant = new CountingFeedbackPlant();
-        Task move = PlantTasks.move(plant).to(8.0).cancelTo(0.0).timeout(1.0).build();
+        Task move = ScalarTasks.set(plant.command, 8.0)
+                .untilReachedBy(plant)
+                .cancelTo(0.0)
+                .timeout(1.0)
+                .build();
 
         move.start(manualClock.clock());
         assertFalse(move.isComplete());
         assertEquals(1, plant.command.setCount);
 
-        assertSingleUseFailure(() -> move.start(manualClock.clock()), "PlantTasks.move");
+        assertSingleUseFailure(() -> move.start(manualClock.clock()), "ScalarTasks.set");
         assertEquals(1, plant.command.setCount);
         assertFalse(move.isComplete());
 
         move.cancel();
         assertEquals(TaskOutcome.CANCELLED, move.getOutcome());
         move.cancel();
-        assertSingleUseFailure(() -> move.start(manualClock.clock()), "PlantTasks.move");
+        assertSingleUseFailure(() -> move.start(manualClock.clock()), "ScalarTasks.set");
         assertEquals(2, plant.command.setCount);
         assertEquals(0.0, plant.command.value, 0.0);
         assertEquals(TaskOutcome.CANCELLED, move.getOutcome());
@@ -104,11 +108,17 @@ public final class ActuationTaskSingleUseTest {
         ManualLoopClock manualClock = new ManualLoopClock();
         CountingFeedbackPlant plant = new CountingFeedbackPlant();
 
-        Task first = PlantTasks.move(plant).to(3.0).leaveTargetOnCancel().build();
+        Task first = ScalarTasks.set(plant.command, 3.0)
+                .untilReachedBy(plant)
+                .leaveTargetOnCancel()
+                .build();
         first.start(manualClock.clock());
         first.cancel();
 
-        Task fresh = PlantTasks.move(plant).to(3.0).leaveTargetOnCancel().build();
+        Task fresh = ScalarTasks.set(plant.command, 3.0)
+                .untilReachedBy(plant)
+                .leaveTargetOnCancel()
+                .build();
         fresh.start(manualClock.clock());
 
         assertEquals(2, plant.command.setCount);
@@ -120,9 +130,12 @@ public final class ActuationTaskSingleUseTest {
     public void moveCancelBeforeFirstStartIsNoOp() {
         ManualLoopClock manualClock = new ManualLoopClock();
         CountingFeedbackPlant plant = new CountingFeedbackPlant();
-        Task move = PlantTasks.move(plant).to(5.0).cancelTo(0.0).build();
+        Task move = ScalarTasks.set(plant.command, 5.0)
+                .untilReachedBy(plant)
+                .cancelTo(0.0)
+                .build();
 
-        assertUpdateBeforeStartFailure(move, manualClock.clock(), "PlantTasks.move");
+        assertUpdateBeforeStartFailure(move, manualClock.clock(), "ScalarTasks.set");
         move.cancel();
         assertFalse(move.isComplete());
         assertEquals(TaskOutcome.NOT_DONE, move.getOutcome());

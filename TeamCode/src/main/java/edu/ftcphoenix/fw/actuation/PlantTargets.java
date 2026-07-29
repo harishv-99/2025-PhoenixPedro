@@ -14,9 +14,15 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
 /**
  * Factory and builders for plant target sources.
  *
- * <p>{@code PlantTargets} is the central place to generate values for {@link Plant}s. It keeps one
- * student-facing rule: <b>anything intended to become a Plant target should be expressed as a
- * {@link PlantTargetSource}</b>. Simple values are lifted with {@link #exact(double)} or
+ * <p>{@code PlantTargetSource} is the final graph sampled by a {@link Plant}. For an ordinary
+ * writable command, robot graph construction creates a named {@link ScalarTarget} and binds it
+ * directly or as the stable base of the graph; the Plant builder lifts a direct command to an
+ * exact graph. A command-writing realization
+ * receiving the completed Plant derives that stable command through {@link Plant#commandTarget()}
+ * instead of accepting both objects as peer dependencies; a read-only/planned realization receives
+ * the Plant without requiring a command. Use {@code PlantTargets} explicitly for read-only values,
+ * overlays, periodic equivalence, or advanced planning. Simple values are lifted with
+ * {@link #exact(double)} or
  * {@link #exact(ScalarSource)}. Behavior arbitration uses {@link #overlay(PlantTargetSource)}:
  * every layer's activation gate is sampled once, then target producers are resolved lazily from
  * highest to lowest priority. Layers added with {@code add(...)} must produce a target when enabled,
@@ -27,7 +33,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *
  * <h2>Typical exact target</h2>
  * <pre>{@code
- * ScalarTarget liftCommand = ScalarTarget.held(0.0);
+ * ScalarTarget liftCommand = ScalarTarget.create(0.0);
  * PositionPlant lift = FtcActuators.plant(hardwareMap)
  *     .motor("lift", Direction.FORWARD)
  *     .position()
@@ -46,7 +52,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *
  * <h2>Typical periodic command</h2>
  * <pre>{@code
- * ScalarTarget turretCommand = ScalarTarget.held(0.0);
+ * ScalarTarget turretCommand = ScalarTarget.create(0.0);
  * PlantTargetSource turretTarget = PlantTargets.equivalentPositionsOf(turretCommand)
  *     .nearestToMeasurement()
  *     .whenUnavailable().holdMeasuredTargetOnEntry(0.0);
@@ -139,13 +145,6 @@ public final class PlantTargets {
     }
 
     /**
-     * Alias for {@link #exact(ScalarSource)} that reads naturally at builder call sites.
-     */
-    public static PlantTargetSource fromScalar(ScalarSource source) {
-        return exact(source);
-    }
-
-    /**
      * Return the stable command target carried by a framework-created target graph, if any.
      *
      * <p>This package-private query deliberately exposes no public graph-inspection API. Framework
@@ -202,7 +201,7 @@ public final class PlantTargets {
      * Interpret one graph-owned command as an equivalent-position family in the consuming Plant's
      * periodic coordinate.
      *
-     * <p>This is the normal periodic-mechanism path. Robot code and {@link PlantTasks} keep writing
+     * <p>This is the normal periodic-mechanism path. Robot code and {@link ScalarTasks} keep writing
      * the same logical command value; this final source chooses the legal physical representative
      * each loop. Omitting this transform preserves exact, unwrapped target semantics.</p>
      */
@@ -216,7 +215,7 @@ public final class PlantTargets {
      *
      * <p>Compose exact targets and overlays first, then apply this transform so every winning layer
      * receives the same periodic interpretation. If the graph carries a command target, that
-     * command identity remains available to Plant task helpers.</p>
+     * command identity remains available to feedback-aware {@link ScalarTasks}.</p>
      */
     public static EquivalentPositionPreferenceStage equivalentPositionsOf(
             PlantTargetSource finalLogicalTarget) {

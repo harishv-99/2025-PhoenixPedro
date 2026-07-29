@@ -4,6 +4,7 @@ import org.junit.Test;
 
 import edu.ftcphoenix.fw.core.hal.PositionOutput;
 import edu.ftcphoenix.fw.core.hal.PowerOutput;
+import edu.ftcphoenix.fw.core.source.ScalarSource;
 import edu.ftcphoenix.fw.core.source.ScalarTarget;
 import edu.ftcphoenix.fw.testing.ManualLoopClock;
 
@@ -18,9 +19,24 @@ public final class PlantsTargetSafetyTest {
     private static final double EPSILON = 1e-12;
 
     @Test
+    public void simpleFactoriesRequireWritableTargetsWhilePlantAwareFormsRemain() throws Exception {
+        assertEquals(Plant.class, Plants.class.getDeclaredMethod(
+                "power", PowerOutput.class, ScalarTarget.class).getReturnType());
+        assertEquals(Plant.class, Plants.class.getDeclaredMethod(
+                "power", PowerOutput.class, PlantTargetSource.class).getReturnType());
+        assertEquals(Plant.class, Plants.class.getDeclaredMethod(
+                "position", PositionOutput.class, ScalarTarget.class).getReturnType());
+        assertEquals(Plant.class, Plants.class.getDeclaredMethod(
+                "position", PositionOutput.class, PlantTargetSource.class).getReturnType());
+
+        assertNoSimpleFactory("power", PowerOutput.class, ScalarSource.class);
+        assertNoSimpleFactory("position", PositionOutput.class, ScalarSource.class);
+    }
+
+    @Test
     public void powerClampsFiniteRequestsBeforeTheOutputAndReportsIt() {
         ClampingPowerOutput output = new ClampingPowerOutput();
-        ScalarTarget target = ScalarTarget.held(2.0);
+        ScalarTarget target = ScalarTarget.create(2.0);
         Plant plant = Plants.power(output, target);
         ManualLoopClock clock = new ManualLoopClock();
 
@@ -45,7 +61,7 @@ public final class PlantsTargetSafetyTest {
     @Test
     public void normalizedPowerBoundariesAndInteriorRemainAccepted() {
         ClampingPowerOutput output = new ClampingPowerOutput();
-        ScalarTarget target = ScalarTarget.held(-1.0);
+        ScalarTarget target = ScalarTarget.create(-1.0);
         Plant plant = Plants.power(output, target);
         ManualLoopClock clock = new ManualLoopClock();
         double[] requests = {-1.0, 0.0, 0.35, 1.0};
@@ -81,7 +97,7 @@ public final class PlantsTargetSafetyTest {
     @Test
     public void unavailableNonFinitePowerSourceStartsAtNeutral() {
         ClampingPowerOutput output = new ClampingPowerOutput();
-        Plant plant = Plants.power(output, ScalarTarget.held(Double.NaN));
+        Plant plant = Plants.power(output, ScalarTarget.create(Double.NaN));
 
         plant.update(new ManualLoopClock().clock());
 
@@ -96,7 +112,7 @@ public final class PlantsTargetSafetyTest {
     @Test
     public void unavailableNonFinitePowerSourceRetainsPriorSafeCommand() {
         ClampingPowerOutput output = new ClampingPowerOutput();
-        ScalarTarget target = ScalarTarget.held(0.4);
+        ScalarTarget target = ScalarTarget.create(0.4);
         Plant plant = Plants.power(output, target);
         ManualLoopClock clock = new ManualLoopClock();
         plant.update(clock.clock());
@@ -118,7 +134,7 @@ public final class PlantsTargetSafetyTest {
     @Test
     public void powerGuardReceivesNormalizedCandidate() {
         ClampingPowerOutput output = new ClampingPowerOutput();
-        ScalarTarget target = ScalarTarget.held(2.0);
+        ScalarTarget target = ScalarTarget.create(2.0);
         final double[] guardedCandidate = {Double.NaN};
         PlantTargetGuards guards = PlantTargetGuards.builder()
                 .holdLastTargetUnless("capture", (candidate, clock) -> {
@@ -138,7 +154,7 @@ public final class PlantsTargetSafetyTest {
     @Test
     public void inRangePowerFallbackRetainsFallbackStatus() {
         ClampingPowerOutput output = new ClampingPowerOutput();
-        ScalarTarget target = ScalarTarget.held(0.8);
+        ScalarTarget target = ScalarTarget.create(0.8);
         PlantTargetGuards guards = PlantTargetGuards.builder()
                 .fallbackTargetUnless("mechanismClear", clock -> false, 0.25)
                 .build();
@@ -173,7 +189,7 @@ public final class PlantsTargetSafetyTest {
     @Test
     public void powerRateLimiterMovesTowardNormalizedBoundary() {
         ClampingPowerOutput output = new ClampingPowerOutput();
-        ScalarTarget target = ScalarTarget.held(0.0);
+        ScalarTarget target = ScalarTarget.create(0.0);
         PlantTargetGuards guards = PlantTargetGuards.builder()
                 .maxTargetRate(0.25)
                 .build();
@@ -193,7 +209,7 @@ public final class PlantsTargetSafetyTest {
     @Test
     public void nonFiniteGuardResultNeverReachesLowLevelUnboundedOutput() {
         RecordingPositionOutput output = new RecordingPositionOutput();
-        ScalarTarget target = ScalarTarget.held(Double.MAX_VALUE);
+        ScalarTarget target = ScalarTarget.create(Double.MAX_VALUE);
         PlantTargetGuards guards = PlantTargetGuards.builder()
                 .maxTargetRate(Double.MAX_VALUE)
                 .build();
@@ -215,6 +231,16 @@ public final class PlantsTargetSafetyTest {
 
         assertEquals(0.0, plant.getAppliedTarget(), EPSILON);
         assertEquals(0.0, output.getCommandedPosition(), EPSILON);
+    }
+
+    private static void assertNoSimpleFactory(String name, Class<?> outputType,
+                                              Class<?> targetType) {
+        try {
+            Plants.class.getDeclaredMethod(name, outputType, targetType);
+            fail("Plants." + name + " must not accept a read-only ScalarSource directly");
+        } catch (NoSuchMethodException expected) {
+            // Read-only scalar sources cross explicitly through PlantTargets.exact(...).
+        }
     }
 
     private static final class ClampingPowerOutput implements PowerOutput {

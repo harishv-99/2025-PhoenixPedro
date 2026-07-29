@@ -488,12 +488,18 @@ public final class Wrist {
         }
     }
 
+    private final ScalarTarget commandTarget;
     private final Plant plant;
     private Pose desiredPose = Pose.STOW;
     private double lastAppliedTarget = 0.10;
 
     public Wrist(Plant plant) {
-        this.plant = plant;
+        this.plant = Objects.requireNonNull(plant, "plant");
+        if (!plant.hasCommandTarget()) {
+            throw new IllegalArgumentException("wrist plant must have a command target");
+        }
+        this.commandTarget = Objects.requireNonNull(
+                plant.commandTarget(), "plant.commandTarget()");
     }
 
     public void setPose(Pose pose) {
@@ -522,11 +528,14 @@ public final class Wrist {
         }
 
         lastAppliedTarget = target;
-        plant.commandTarget().set(target);
+        commandTarget.set(target);
         plant.update(clock);
     }
 }
 ```
+
+The composition root gives this Plant-owning subsystem only the completed Plant. The subsystem
+derives and caches the graph-owned command rather than receiving the same relationship twice.
 
 ### TeleOp interaction
 
@@ -570,6 +579,8 @@ With the current plant design, the clean implementation is a **regulated positio
 A typical plant construction would look like this:
 
 ```java
+ScalarTarget liftTarget = ScalarTarget.create(0.0);
+
 PositionPlant liftPlant = FtcActuators.plant(hardwareMap)
         .motor("liftMotor", Direction.FORWARD)
         .position()
@@ -581,8 +592,10 @@ PositionPlant liftPlant = FtcActuators.plant(hardwareMap)
             .nativeUnits()
             .alreadyReferenced()
         .positionTolerance(0.50)
-        .targetedByCommand(0.0)
+        .targetedBy(liftTarget)
         .build();
+
+Lift lift = new Lift(liftPlant);
 ```
 
 Then the subsystem can own that plant and expose a robot-level API:
@@ -613,16 +626,22 @@ public final class Lift {
         }
     }
 
+    private final ScalarTarget liftTarget;
     private final Plant liftPlant;
     private double targetHeightIn = 0.0;
 
     public Lift(Plant liftPlant) {
-        this.liftPlant = liftPlant;
+        this.liftPlant = Objects.requireNonNull(liftPlant, "liftPlant");
+        if (!liftPlant.hasCommandTarget()) {
+            throw new IllegalArgumentException("lift plant must have a command target");
+        }
+        this.liftTarget = Objects.requireNonNull(
+                liftPlant.commandTarget(), "liftPlant.commandTarget()");
     }
 
     public void setTargetHeightIn(double heightIn) {
         targetHeightIn = Math.max(0.0, Math.min(heightIn, 30.0));
-        liftPlant.commandTarget().set(targetHeightIn);
+        liftTarget.set(targetHeightIn);
     }
 
     public Status status() {
@@ -657,7 +676,8 @@ Task liftToHigh = Tasks.sequence(
 ### Why this is the recommended design
 
 - Auto and TeleOp share the same intent method
-- the subsystem still owns the command target, source composition, and Plant update order
+- the subsystem receives one authoritative Plant, derives its graph-owned command once, and owns
+  Plant update order
 - `status()` gives Auto a clean wait condition
 - the rest of the robot never needs to know about the PID internals
 
@@ -721,7 +741,9 @@ public final class Intake {
         }
     }
 
+    private final ScalarTarget intakeTarget;
     private final Plant intakePlant;
+    private final ScalarTarget feederTarget;
     private final Plant feederPlant;
     private final BooleanSource piecePresent;
     private final OutputTaskRunner feedQueue = new OutputTaskRunner(0.0);
@@ -729,10 +751,14 @@ public final class Intake {
     private boolean intakeEnabled = false;
     private boolean lastPiecePresent = false;
 
-    public Intake(Plant intakePlant, Plant feederPlant, BooleanSource piecePresent) {
-        this.intakePlant = intakePlant;
-        this.feederPlant = feederPlant;
-        this.piecePresent = piecePresent;
+    public Intake(Plant intakePlant,
+                  Plant feederPlant,
+                  BooleanSource piecePresent) {
+        this.intakePlant = Objects.requireNonNull(intakePlant, "intakePlant");
+        this.intakeTarget = requireCommandTarget(intakePlant, "intakePlant");
+        this.feederPlant = Objects.requireNonNull(feederPlant, "feederPlant");
+        this.feederTarget = requireCommandTarget(feederPlant, "feederPlant");
+        this.piecePresent = Objects.requireNonNull(piecePresent, "piecePresent");
     }
 
     public void setIntakeEnabled(boolean enabled) {
@@ -755,13 +781,20 @@ public final class Intake {
         lastPiecePresent = piecePresent.getAsBoolean(clock);
         feedQueue.update(clock);
 
-        intakePlant.commandTarget().set(intakeEnabled ? 1.0 : 0.0);
+        intakeTarget.set(intakeEnabled ? 1.0 : 0.0);
         intakePlant.update(clock);
 
         double feederCmd = feedQueue.activeSource().choose(feedQueue, ScalarSource.constant(0.0))
                 .getAsDouble(clock);
-        feederPlant.commandTarget().set(feederCmd);
+        feederTarget.set(feederCmd);
         feederPlant.update(clock);
+    }
+
+    private static ScalarTarget requireCommandTarget(Plant plant, String name) {
+        if (!plant.hasCommandTarget()) {
+            throw new IllegalArgumentException(name + " must have a command target");
+        }
+        return Objects.requireNonNull(plant.commandTarget(), name + ".commandTarget()");
     }
 }
 ```
@@ -1258,7 +1291,7 @@ Bad:
 
 ```java
 if (gamepad1.a) {
-    liftPlant.commandTarget().set(0.7); // still wrong place: OpMode is bypassing mechanism policy
+    liftTarget.set(0.7); // still wrong place: OpMode is bypassing mechanism policy
 }
 ```
 

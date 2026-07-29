@@ -908,17 +908,6 @@ public interface ScalarSource extends Source<Double> {
     }
 
     /**
-     * Create a writable held scalar target.
-     *
-     * <p>This is a convenience for {@link ScalarTarget#held(double)}. Use it when robot behavior
-     * needs a persistent scalar request that can also be supplied anywhere a {@code ScalarSource}
-     * is expected.</p>
-     */
-    static ScalarTarget mutable(double initialValue) {
-        return ScalarTarget.held(initialValue);
-    }
-
-    /**
      * Create a constant scalar source.
      */
     static ScalarSource constant(double value) {

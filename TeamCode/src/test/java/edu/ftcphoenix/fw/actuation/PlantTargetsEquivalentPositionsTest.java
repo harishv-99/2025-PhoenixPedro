@@ -23,7 +23,7 @@ public final class PlantTargetsEquivalentPositionsTest {
 
     @Test
     public void commandTargetResolvesToNearestPhysicalEquivalentAndKeepsLogicalEvidence() {
-        ScalarTarget command = ScalarTarget.held(20.0);
+        ScalarTarget command = ScalarTarget.create(20.0);
         PlantTargetSource source = nearest(command).reportUnavailable();
         ManualLoopClock time = new ManualLoopClock();
 
@@ -42,7 +42,7 @@ public final class PlantTargetsEquivalentPositionsTest {
 
     @Test
     public void allPreferencesAndMidpointTiesRemainDeterministic() {
-        ScalarTarget command = ScalarTarget.held(20.0);
+        ScalarTarget command = ScalarTarget.create(20.0);
         PlantTargetContext context = periodicContext(
                 350.0, ScalarRange.bounded(0.0, 720.0), 360.0);
 
@@ -66,7 +66,7 @@ public final class PlantTargetsEquivalentPositionsTest {
 
     @Test(timeout = 5000L)
     public void enormousEquivalentSpacesUseTheBoundedSharedSelector() {
-        ScalarTarget command = ScalarTarget.held(0.0);
+        ScalarTarget command = ScalarTarget.create(0.0);
         PlantTargetSource source = nearest(command).reportUnavailable();
 
         PlantTargetPlan plan = source.resolve(
@@ -80,7 +80,7 @@ public final class PlantTargetsEquivalentPositionsTest {
 
     @Test
     public void finalOverlayWinnerIsTransformedAndOnlyTheBaseCommandCanSatisfyAMove() {
-        ScalarTarget command = ScalarTarget.held(20.0);
+        ScalarTarget command = ScalarTarget.create(20.0);
         final boolean[] override = {true};
         PlantTargetSource logical = PlantTargets.overlay(command)
                 .add("override", clock -> override[0], command)
@@ -134,7 +134,7 @@ public final class PlantTargetsEquivalentPositionsTest {
 
     @Test
     public void invalidTopologyAndUnreachableFamilyUseExplicitUnavailablePolicies() {
-        ScalarTarget command = ScalarTarget.held(20.0);
+        ScalarTarget command = ScalarTarget.create(20.0);
         PlantTargetContext linear = PlantTargetContext.simple(
                 true, 40.0, ScalarRange.bounded(0.0, 100.0), Double.NaN, 40.0);
 
@@ -158,7 +158,7 @@ public final class PlantTargetsEquivalentPositionsTest {
 
     @Test
     public void holdLastRetainsTheLastSelectedPhysicalEquivalent() {
-        ScalarTarget command = ScalarTarget.held(20.0);
+        ScalarTarget command = ScalarTarget.create(20.0);
         PlantTargetSource source = nearest(command).holdLastTarget(5.0);
         ManualLoopClock time = new ManualLoopClock();
 
@@ -178,7 +178,7 @@ public final class PlantTargetsEquivalentPositionsTest {
 
     @Test
     public void resetClearsEquivalentAndUnavailablePolicyHistory() {
-        ScalarTarget command = ScalarTarget.held(20.0);
+        ScalarTarget command = ScalarTarget.create(20.0);
         PlantTargetSource source = nearest(command).holdLastTarget(5.0);
         ManualLoopClock time = new ManualLoopClock();
 
@@ -197,7 +197,7 @@ public final class PlantTargetsEquivalentPositionsTest {
 
     @Test
     public void selectionUsesPriorAppliedTargetAndRangeCenterWhenFeedbackIsUnavailable() {
-        ScalarTarget command = ScalarTarget.held(20.0);
+        ScalarTarget command = ScalarTarget.create(20.0);
         ScalarRange range = ScalarRange.bounded(0.0, 720.0);
 
         PlantTargetContext priorApplied = PlantTargetContext.position(
@@ -223,7 +223,7 @@ public final class PlantTargetsEquivalentPositionsTest {
 
     @Test
     public void measuredHoldRecapturesAfterSamplingGap() {
-        ScalarTarget command = ScalarTarget.held(20.0);
+        ScalarTarget command = ScalarTarget.create(20.0);
         PlantTargetSource source = nearest(command).holdMeasuredTargetOnEntry(-1.0);
         ManualLoopClock time = new ManualLoopClock();
 

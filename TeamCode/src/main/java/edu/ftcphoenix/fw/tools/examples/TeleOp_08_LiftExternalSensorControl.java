@@ -9,6 +9,7 @@ import edu.ftcphoenix.fw.core.control.Pid;
 import edu.ftcphoenix.fw.core.control.ScalarRegulators;
 import edu.ftcphoenix.fw.core.hal.Direction;
 import edu.ftcphoenix.fw.core.source.ScalarSource;
+import edu.ftcphoenix.fw.core.source.ScalarTarget;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.ftc.FtcActuators;
 import edu.ftcphoenix.fw.ftc.FtcSensors;
@@ -53,6 +54,7 @@ public final class TeleOp_08_LiftExternalSensorControl extends OpMode {
     private Gamepads gamepads;
     private PositionPlant liftPlant;
     private ScalarSource liftHeightIn;
+    private ScalarTarget liftTarget;
 
     private final HeldValue<Double> desiredHeightIn = new HeldValue<Double>(HEIGHT_LOW_IN);
 
@@ -74,6 +76,7 @@ public final class TeleOp_08_LiftExternalSensorControl extends OpMode {
         Pid liftPid = Pid.withGains(0.12, 0.0, 0.0)
                 .setOutputLimits(-0.55, 0.55);
 
+        liftTarget = ScalarTarget.create(0.0);
         liftPlant = FtcActuators.plant(hardwareMap)
                 .motor(HW_LIFT_MOTOR, Direction.FORWARD)
                 .position()
@@ -85,7 +88,7 @@ public final class TeleOp_08_LiftExternalSensorControl extends OpMode {
                 .nativeUnits()
                 .alreadyReferenced()
                 .positionTolerance(0.50)
-                .targetedByCommand(0.0)
+                .targetedBy(liftTarget)
                 .build();
 
         bindings.onRise(gamepads.p1().a(), () -> desiredHeightIn.set(HEIGHT_LOW_IN));
@@ -99,7 +102,7 @@ public final class TeleOp_08_LiftExternalSensorControl extends OpMode {
         bindings.update(clock);
 
         // Execution is intentionally trivial here: hold the currently selected height.
-        liftPlant.commandTarget().set(desiredHeightIn.get());
+        liftTarget.set(desiredHeightIn.get());
         liftPlant.update(clock);
 
         telemetry.addData("lift.targetIn", liftPlant.getRequestedTarget());

@@ -210,9 +210,9 @@ public final class PositionCalibrationTasks {
         @Override
         public Task build() {
             if (holdAfter && !plant.hasCommandTarget()) {
-                throw new IllegalStateException("holdAfterReference(...) requires a PositionPlant with a command target. "
-                        + "Build it from a ScalarTarget, use an overlay whose stable base is a ScalarTarget, "
-                        + "or use the FTC builder's targetedByCommand(...).");
+                throw new IllegalStateException("holdAfterReference(...) requires a PositionPlant "
+                        + "with a command target. Build it with targetedBy(command), or use a "
+                        + "ScalarTarget as the stable base of its final target graph.");
             }
             return new SearchTask(plant, power, condition, reference, holdAfter, holdTarget, timeoutSec);
         }

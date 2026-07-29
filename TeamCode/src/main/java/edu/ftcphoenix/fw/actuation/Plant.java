@@ -22,13 +22,12 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *       derives a separate normalized actuator command from this target; the applied target is not
  *       that command or hardware readback.</li>
  *   <li><b>Command target</b>: optional stable {@link ScalarTarget} carried by the exact source or
- *       overlay base so {@link PlantTasks} can change the persistent behavior request without
- *       being passed a separate target variable.</li>
+ *       overlay base. Robot policy and {@link ScalarTasks} change that same persistent request.</li>
  * </ul>
  *
  * <h2>Typical usage</h2>
  * <pre>{@code
- * ScalarTarget flywheelTarget = ScalarTarget.held(0.0);
+ * ScalarTarget flywheelTarget = ScalarTarget.create(0.0);
  *
  * Plant flywheel = FtcActuators.plant(hardwareMap)
  *     .motor("flywheel", Direction.FORWARD)
@@ -136,7 +135,7 @@ public interface Plant {
      * compare modulo a periodic Plant's period: exact unwrapped movement remains distinct from an
      * equivalent-position request. Framework feedback implementations also require the requested
      * and applied targets, guards/status, measurement, and latest actuation evidence to agree.
-     * {@link PlantTasks} combines this physical query with target-plan command evidence when a
+     * {@link ScalarTasks} combines this physical query with target-plan command evidence when a
      * logical command resolves to a different equivalent physical value.</p>
      */
     default boolean atTarget(double target) {
@@ -145,6 +144,11 @@ public interface Plant {
 
     /**
      * Whether this plant's final target graph carries a stable command target.
+     *
+     * <p>When this returns {@code true}, {@link #commandTarget()} must return the same non-null
+     * object for this Plant's lifetime. A command-writing realization that owns this completed
+     * Plant may therefore derive and retain that command object once instead of accepting a second,
+     * independently supplied target.</p>
      */
     default boolean hasCommandTarget() {
         return false;
@@ -157,11 +161,20 @@ public interface Plant {
      * that request without changing command ownership. Calling this method does not bypass the
      * Plant's target graph, guards, or update lifecycle.</p>
      *
+     * <p>This is also the authoritative construction-boundary seam for an owner that receives a
+     * completed Plant, owns its lifecycle, and writes its persistent command. Such an owner should
+     * validate this capability and cache the returned target once rather than receive the same
+     * target as a separate peer dependency. A read-only or planned realization still receives only
+     * its Plant but does not require a command target. A policy object that does not own the Plant
+     * may instead receive only the {@link ScalarTarget} it writes.</p>
+     *
      * @throws IllegalStateException if the plant was built from a read-only source without a
      *                               stable command target
      */
     default ScalarTarget commandTarget() {
-        throw new IllegalStateException("This plant has no command target. Build it from a ScalarTarget, use an overlay whose stable base is a ScalarTarget, or use the FTC builder's targetedByCommand(...).");
+        throw new IllegalStateException("This plant has no command target. Build it with "
+                + "targetedBy(command), or use a ScalarTarget as the stable base of its final "
+                + "target graph.");
     }
 
     /**

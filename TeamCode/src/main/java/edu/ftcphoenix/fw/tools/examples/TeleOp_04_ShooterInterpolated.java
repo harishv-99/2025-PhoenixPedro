@@ -10,6 +10,7 @@ import edu.ftcphoenix.fw.core.debug.NullDebugSink;
 import edu.ftcphoenix.fw.core.hal.Direction;
 import edu.ftcphoenix.fw.core.math.InterpolatingTable1D;
 import edu.ftcphoenix.fw.core.math.MathUtil;
+import edu.ftcphoenix.fw.core.source.ScalarTarget;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.drive.DriveSignal;
 import edu.ftcphoenix.fw.drive.DriveSource;
@@ -175,6 +176,7 @@ public final class TeleOp_04_ShooterInterpolated extends OpMode {
     private DriveSource stickDrive;
 
     private Plant shooter;
+    private ScalarTarget shooterTarget;
 
     // Manual distance + shooter state
     private double distanceInches = 36.0; // start in the middle of the table
@@ -209,6 +211,7 @@ public final class TeleOp_04_ShooterInterpolated extends OpMode {
                 .rateLimited(4.0, 4.0, 6.0);
 
         // 3) Shooter wiring using FtcActuators
+        shooterTarget = ScalarTarget.create(0.0);
         shooter = FtcActuators.plant(hardwareMap)
                 .motor(HW_SHOOTER_LEFT, Direction.FORWARD)
                 .andMotor(HW_SHOOTER_RIGHT, Direction.REVERSE)
@@ -217,10 +220,8 @@ public final class TeleOp_04_ShooterInterpolated extends OpMode {
                 .bounded(0.0, 250.0)
                 .nativeUnits()
                 .velocityTolerance(/*toleranceNative=*/100.0)
-                .targetedByCommand(0.0)
+                .targetedBy(shooterTarget)
                 .build();
-
-        shooter.commandTarget().set(0.0);
 
         // 4) Bindings: shooter enable + distance adjust
 
@@ -288,10 +289,10 @@ public final class TeleOp_04_ShooterInterpolated extends OpMode {
             // Look up velocity from the table (with clamping + interpolation).
             double targetVel = SHOOTER_VELOCITY_TABLE.interpolate(distanceInches);
             lastShooterTarget = targetVel;
-            shooter.commandTarget().set(targetVel);
+            shooterTarget.set(targetVel);
         } else {
             lastShooterTarget = 0.0;
-            shooter.commandTarget().set(0.0);
+            shooterTarget.set(0.0);
         }
 
         // Update shooter plant once per loop.
@@ -330,7 +331,7 @@ public final class TeleOp_04_ShooterInterpolated extends OpMode {
     @Override
     public void stop() {
         shooterEnabled = false;
-        shooter.commandTarget().set(0.0);
+        shooterTarget.set(0.0);
         shooter.stop();
         drivebase.stop();
     }

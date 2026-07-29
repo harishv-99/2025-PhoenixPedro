@@ -13,7 +13,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *
  * <h2>Typical usage</h2>
  * <pre>{@code
- * ScalarTarget liftGoal = ScalarTarget.held(0.0);
+ * ScalarTarget liftGoal = ScalarTarget.create(0.0);
  *
  * PositionPlant lift = FtcActuators.plant(hardwareMap)
  *     .motor("lift", Direction.FORWARD)
@@ -53,53 +53,48 @@ public interface ScalarTarget extends ScalarSource {
     }
 
     /**
-     * Create a simple held scalar target initialized to {@code initialValue}.
+     * Create a stored scalar target initialized to {@code initialValue}.
+     *
+     * <p>The target retains its most recently set value until changed and restores
+     * {@code initialValue} when reset. This is the framework's one standard construction path;
+     * specialized integrations may still implement {@code ScalarTarget} directly.</p>
      */
-    static ScalarTarget held(double initialValue) {
-        return new HeldScalarTarget(initialValue);
+    static ScalarTarget create(double initialValue) {
+        return new DefaultScalarTarget(initialValue);
+    }
+}
+
+/** Package-private default implementation so construction has one public name: ScalarTarget.create. */
+final class DefaultScalarTarget implements ScalarTarget {
+    private final double initialValue;
+    private double value;
+
+    DefaultScalarTarget(double initialValue) {
+        this.initialValue = initialValue;
+        this.value = initialValue;
     }
 
-    /**
-     * Create a held scalar target. Alias for {@link #held(double)}.
-     */
-    static ScalarTarget of(double initialValue) {
-        return held(initialValue);
+    @Override
+    public void set(double value) {
+        this.value = value;
     }
 
-    /**
-     * Simple in-memory implementation.
-     */
-    final class HeldScalarTarget implements ScalarTarget {
-        private final double initialValue;
-        private double value;
+    @Override
+    public double get() {
+        return value;
+    }
 
-        private HeldScalarTarget(double initialValue) {
-            this.initialValue = initialValue;
-            this.value = initialValue;
-        }
+    @Override
+    public void reset() {
+        value = initialValue;
+    }
 
-        @Override
-        public void set(double value) {
-            this.value = value;
-        }
-
-        @Override
-        public double get() {
-            return value;
-        }
-
-        @Override
-        public void reset() {
-            value = initialValue;
-        }
-
-        @Override
-        public void debugDump(DebugSink dbg, String prefix) {
-            if (dbg == null) return;
-            String p = (prefix == null || prefix.isEmpty()) ? "scalarTarget" : prefix;
-            dbg.addData(p + ".class", "HeldScalarTarget")
-                    .addData(p + ".initial", initialValue)
-                    .addData(p + ".value", value);
-        }
+    @Override
+    public void debugDump(DebugSink dbg, String prefix) {
+        if (dbg == null) return;
+        String p = (prefix == null || prefix.isEmpty()) ? "scalarTarget" : prefix;
+        dbg.addData(p + ".class", "ScalarTarget")
+                .addData(p + ".initial", initialValue)
+                .addData(p + ".value", value);
     }
 }

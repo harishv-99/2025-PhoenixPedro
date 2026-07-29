@@ -60,10 +60,8 @@ public final class MappedPlantToleranceTest {
                         "targetedBy", ScalarTarget.class).getReturnType());
         assertSame(MappedPlantBuildStep.class,
                 MappedPlantTargetStep.class.getDeclaredMethod(
-                        "targetedBy", ScalarSource.class).getReturnType());
-        assertSame(MappedPlantBuildStep.class,
-                MappedPlantTargetStep.class.getDeclaredMethod(
                         "targetedBy", PlantTargetSource.class).getReturnType());
+        assertEquals(3, MappedPlantTargetStep.class.getDeclaredMethods().length);
         assertSame(Plant.class,
                 MappedPlantBuildStep.class.getDeclaredMethod("build").getReturnType());
 
@@ -91,7 +89,7 @@ public final class MappedPlantToleranceTest {
                 MappedVelocityPlant.velocityOutput(
                         new RecordingVelocityOutput(), clock -> 0.0);
         assertIllegalStateContains(() -> bypassTarget(configuration)
-                        .targetedBy(ScalarTarget.held(0.0))
+                        .targetedBy(ScalarTarget.create(0.0))
                         .build(),
                 "velocityTolerance(...)", "plant velocity units");
     }
@@ -103,7 +101,7 @@ public final class MappedPlantToleranceTest {
                         new RecordingPowerOutput(), clock -> 0.0,
                         (setpoint, measurement, clock) -> 0.0);
         assertIllegalStateContains(() -> bypassTarget(configuration)
-                        .targetedBy(ScalarTarget.held(0.0))
+                        .targetedBy(ScalarTarget.create(0.0))
                         .build(),
                 "velocityTolerance(...)", "plant velocity units");
     }
@@ -114,7 +112,7 @@ public final class MappedPlantToleranceTest {
                 MappedPositionPlant.positionOutput(
                         new RecordingPositionOutput(), clock -> 0.0);
         assertIllegalStateContains(() -> bypassTarget(configuration)
-                        .targetedBy(ScalarTarget.held(0.0))
+                        .targetedBy(ScalarTarget.create(0.0))
                         .build(),
                 "positionTolerance(...)", "plant position units");
     }
@@ -126,7 +124,7 @@ public final class MappedPlantToleranceTest {
                         new RecordingPowerOutput(), clock -> 0.0,
                         (setpoint, measurement, clock) -> 0.0);
         assertIllegalStateContains(() -> bypassTarget(configuration)
-                        .targetedBy(ScalarTarget.held(0.0))
+                        .targetedBy(ScalarTarget.create(0.0))
                         .build(),
                 "positionTolerance(...)", "plant position units");
     }
@@ -135,7 +133,7 @@ public final class MappedPlantToleranceTest {
     public void commandedPositionBuildsWithoutAndRejectsTolerance() {
         RecordingPositionOutput output = new RecordingPositionOutput();
         MappedPositionPlant plant = MappedPositionPlant.commanded(output)
-                .targetedBy(ScalarTarget.held(0.4))
+                .targetedBy(ScalarTarget.create(0.4))
                 .build();
 
         plant.update(new ManualLoopClock().clock());
@@ -200,12 +198,12 @@ public final class MappedPlantToleranceTest {
         MappedPositionPlant position = MappedPositionPlant.positionOutput(
                         new RecordingPositionOutput(), clock -> 0.0)
                 .positionTolerance(0.0)
-                .targetedBy(ScalarTarget.held(0.0))
+                .targetedBy(ScalarTarget.create(0.0))
                 .build();
         MappedVelocityPlant velocity = MappedVelocityPlant.velocityOutput(
                         new RecordingVelocityOutput(), clock -> 0.0)
                 .velocityTolerance(0.0)
-                .targetedBy(ScalarTarget.held(0.0))
+                .targetedBy(ScalarTarget.create(0.0))
                 .build();
 
         assertTrue(position.hasFeedback());
@@ -219,7 +217,7 @@ public final class MappedPlantToleranceTest {
                         new RecordingPositionOutput(), clock -> nativeMeasurement[0])
                 .nativePerPlantUnit(4.0)
                 .positionTolerance(0.25)
-                .targetedBy(ScalarTarget.held(5.0))
+                .targetedBy(ScalarTarget.create(5.0))
                 .build();
         ManualLoopClock clock = new ManualLoopClock();
 
@@ -243,7 +241,7 @@ public final class MappedPlantToleranceTest {
                         new RecordingVelocityOutput(), clock -> nativeMeasurement[0])
                 .nativePerPlantUnit(2.0)
                 .velocityTolerance(50.0)
-                .targetedBy(ScalarTarget.held(1000.0))
+                .targetedBy(ScalarTarget.create(1000.0))
                 .build();
         ManualLoopClock clock = new ManualLoopClock();
 

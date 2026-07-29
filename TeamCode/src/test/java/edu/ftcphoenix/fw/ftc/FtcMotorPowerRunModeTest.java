@@ -19,6 +19,7 @@ import java.util.Map;
 import java.util.Set;
 
 import edu.ftcphoenix.fw.actuation.Plant;
+import edu.ftcphoenix.fw.actuation.PlantTargetSource;
 import edu.ftcphoenix.fw.actuation.PlantTargets;
 import edu.ftcphoenix.fw.actuation.PositionPlant;
 import edu.ftcphoenix.fw.core.control.ScalarRegulator;
@@ -376,7 +377,7 @@ public final class FtcMotorPowerRunModeTest {
                 .motor("left", Direction.FORWARD)
                 .andMotor("right", Direction.REVERSE)
                 .power()
-                .targetedByCommand(0.65)
+                .targetedBy(ScalarTarget.create(0.65))
                 .build();
         events.clear();
 
@@ -406,12 +407,12 @@ public final class FtcMotorPowerRunModeTest {
         hardwareMap.put("power", powerMotor.motor());
         hardwareMap.put("position", positionMotor.motor());
 
-        ScalarTarget powerCommand = ScalarTarget.held(0.25);
+        ScalarTarget powerCommand = ScalarTarget.create(0.25);
         ScalarSource widenedPowerCommand = powerCommand;
         Plant power = FtcActuators.plant(hardwareMap)
                 .motor("power", Direction.FORWARD)
                 .power()
-                .targetedBy(widenedPowerCommand)
+                .targetedBy(PlantTargets.exact(widenedPowerCommand))
                 .build();
         PositionPlant position = FtcActuators.plant(hardwareMap)
                 .motor("position", Direction.FORWARD)
@@ -422,7 +423,7 @@ public final class FtcMotorPowerRunModeTest {
                 .nativeUnits()
                 .alreadyReferenced()
                 .positionTolerance(0.0)
-                .targetedByCommand(125.0)
+                .targetedBy(ScalarTarget.create(125.0))
                 .build();
 
         assertTrue(power.hasCommandTarget());
@@ -432,7 +433,7 @@ public final class FtcMotorPowerRunModeTest {
     }
 
     @Test
-    public void retainedFtcTargetStageUsesOnlyItsLastReadOnlyGraph() {
+    public void retainedFtcTargetStageRejectsASecondAnswerAndPreservesTheFirst() {
         EventLog events = new EventLog();
         TestHardwareMap hardwareMap = new TestHardwareMap();
         MotorProbe motor = new MotorProbe("motor", events, RAW_MODE);
@@ -440,21 +441,25 @@ public final class FtcMotorPowerRunModeTest {
         FtcActuators.PlantTargetStep targetStep = FtcActuators.plant(hardwareMap)
                 .motor("motor", Direction.FORWARD)
                 .power();
-        ScalarTarget abandonedCommand = ScalarTarget.held(0.8);
+        ScalarTarget command = ScalarTarget.create(0.8);
 
         FtcActuators.PlantBuildStep retainedBuildStep =
-                targetStep.targetedBy(abandonedCommand);
-        targetStep.targetedBy(PlantTargets.exact(0.2));
-        Plant retargeted = retainedBuildStep.build();
+                targetStep.targetedBy(command);
+        RuntimeException repeated = expectRuntime(
+                () -> targetStep.targetedBy(PlantTargets.exact(0.2)));
+        Plant plant = retainedBuildStep.build();
 
-        assertFalse(retargeted.hasCommandTarget());
-        retargeted.update(new ManualLoopClock().clock());
-        assertEquals(0.2, motor.power, EPSILON);
-        assertEquals(0.8, abandonedCommand.get(), EPSILON);
+        assertTrue(repeated.getMessage().contains("targetedBy(...)"));
+        assertTrue(repeated.getMessage().contains("already been answered"));
+        assertTrue(repeated.getMessage().contains("new builder"));
+        assertTrue(plant.hasCommandTarget());
+        assertSame(command, plant.commandTarget());
+        plant.update(new ManualLoopClock().clock());
+        assertEquals(0.8, motor.power, EPSILON);
     }
 
     @Test
-    public void retainedFtcPositionTargetStageUsesOnlyItsLastReadOnlyGraph() {
+    public void retainedFtcPositionTargetStageRejectsASecondAnswerAndPreservesTheFirst() {
         EventLog events = new EventLog();
         TestHardwareMap hardwareMap = new TestHardwareMap();
         MotorProbe motor = new MotorProbe(
@@ -469,17 +474,24 @@ public final class FtcMotorPowerRunModeTest {
                 .nativeUnits()
                 .alreadyReferenced()
                 .positionTolerance(0.0);
-        ScalarTarget abandonedCommand = ScalarTarget.held(150.0);
+        ScalarTarget command = ScalarTarget.create(150.0);
+        PlantTargetSource firstGraph = PlantTargets.overlay(command)
+                .add("inactive", clock -> false, 25.0)
+                .build();
 
         FtcActuators.PositionPlantBuildStep retainedBuildStep =
-                targetStep.targetedBy(abandonedCommand);
-        targetStep.targetedBy(PlantTargets.exact(20.0));
-        PositionPlant retargeted = retainedBuildStep.build();
+                targetStep.targetedBy(firstGraph);
+        RuntimeException repeated = expectRuntime(
+                () -> targetStep.targetedBy(ScalarTarget.create(20.0)));
+        PositionPlant plant = retainedBuildStep.build();
 
-        assertFalse(retargeted.hasCommandTarget());
-        retargeted.update(new ManualLoopClock().clock());
-        assertEquals(20, motor.targetPosition);
-        assertEquals(150.0, abandonedCommand.get(), EPSILON);
+        assertTrue(repeated.getMessage().contains("targetedBy(...)"));
+        assertTrue(repeated.getMessage().contains("already been answered"));
+        assertTrue(repeated.getMessage().contains("new builder"));
+        assertTrue(plant.hasCommandTarget());
+        assertSame(command, plant.commandTarget());
+        plant.update(new ManualLoopClock().clock());
+        assertEquals(150, motor.targetPosition);
     }
 
     @Test
@@ -493,7 +505,7 @@ public final class FtcMotorPowerRunModeTest {
                 .motor("first", Direction.REVERSE)
                 .andMotor("missing", Direction.FORWARD)
                 .power()
-                .targetedByCommand(0.5)
+                .targetedBy(ScalarTarget.create(0.5))
                 .build());
 
         assertTrue("no motor may be configured before every group member resolves",
@@ -520,7 +532,7 @@ public final class FtcMotorPowerRunModeTest {
                 .motor("left", Direction.FORWARD)
                 .andMotor("right", Direction.FORWARD)
                 .power()
-                .targetedByCommand(0.7)
+                .targetedBy(ScalarTarget.create(0.7))
                 .build();
         events.clear();
 
@@ -592,7 +604,7 @@ public final class FtcMotorPowerRunModeTest {
                 .unbounded()
                 .nativeUnits()
                 .velocityTolerance(0.0)
-                .targetedByCommand(2000.0)
+                .targetedBy(ScalarTarget.create(2000.0))
                 .build();
         events.clear();
 
@@ -645,7 +657,7 @@ public final class FtcMotorPowerRunModeTest {
                 .unbounded()
                 .nativeUnits()
                 .velocityTolerance(0.0)
-                .targetedByCommand(2000.0)
+                .targetedBy(ScalarTarget.create(2000.0))
                 .build();
         events.clear();
         ManualLoopClock manualClock = new ManualLoopClock();
@@ -700,7 +712,7 @@ public final class FtcMotorPowerRunModeTest {
                 .nativeUnits()
                 .alreadyReferenced()
                 .positionTolerance(0.0)
-                .targetedByCommand(20.0)
+                .targetedBy(ScalarTarget.create(20.0))
                 .build();
         events.clear();
 
@@ -734,7 +746,7 @@ public final class FtcMotorPowerRunModeTest {
                 .nativeUnits()
                 .alreadyReferenced()
                 .positionTolerance(0.0)
-                .targetedByCommand(100.0)
+                .targetedBy(ScalarTarget.create(100.0))
                 .build();
         ManualLoopClock clock = new ManualLoopClock();
         events.clear();
@@ -801,7 +813,7 @@ public final class FtcMotorPowerRunModeTest {
                 .unbounded()
                 .nativeUnits()
                 .velocityTolerance(0.0)
-                .targetedByCommand(1000.0)
+                .targetedBy(ScalarTarget.create(1000.0))
                 .build();
         events.clear();
 

@@ -9,6 +9,7 @@ import java.util.Arrays;
 import java.util.List;
 
 import edu.ftcphoenix.fw.actuation.Plant;
+import edu.ftcphoenix.fw.actuation.PlantTargets;
 import edu.ftcphoenix.fw.actuation.Plants;
 import edu.ftcphoenix.fw.core.hal.PowerOutput;
 import edu.ftcphoenix.fw.core.source.ScalarTarget;
@@ -52,10 +53,11 @@ public final class StarterIntakeAndControlsTest {
 
     @Test
     public void mechanismMapsModesThroughOneCommandTargetAndSubmitsStop() {
-        ScalarTarget target = ScalarTarget.held(0.0);
+        ScalarTarget target = ScalarTarget.create(0.0);
         RecordingPowerOutput output = new RecordingPowerOutput();
         Plant plant = Plants.power(output, target);
-        StarterIntakeMechanism intake = new StarterIntakeMechanism(plant, 0.65, -0.45);
+        StarterIntakeMechanism intake =
+                new StarterIntakeMechanism(plant, 0.65, -0.45);
         ManualLoopClock time = new ManualLoopClock();
 
         assertMode(intake, time.clock(), StarterIntake.Mode.STOPPED, 0.0, output);
@@ -117,8 +119,25 @@ public final class StarterIntakeAndControlsTest {
     }
 
     @Test
+    public void hardwareNeutralSeamRejectsPlantWithoutCommandTarget() {
+        Plant plant = Plants.power(
+                new RecordingPowerOutput(),
+                PlantTargets.exact(0.0));
+
+        try {
+            new StarterIntakeMechanism(
+                    plant,
+                    0.65,
+                    -0.45);
+            fail("Expected Plant without command target to fail");
+        } catch (IllegalArgumentException expected) {
+            assertTrue(expected.getMessage().contains("command target"));
+        }
+    }
+
+    @Test
     public void collectTasksAreFreshCompleteOnTimeAndCancelToZero() {
-        ScalarTarget target = ScalarTarget.held(0.0);
+        ScalarTarget target = ScalarTarget.create(0.0);
         RecordingPowerOutput output = new RecordingPowerOutput();
         StarterIntakeMechanism intake = new StarterIntakeMechanism(
                 Plants.power(output, target),
@@ -207,9 +226,10 @@ public final class StarterIntakeAndControlsTest {
     }
 
     private static void assertInvalidActionPowers(double collectPower, double ejectPower) {
+        ScalarTarget target = ScalarTarget.create(0.0);
         try {
             new StarterIntakeMechanism(
-                    Plants.power(new RecordingPowerOutput(), ScalarTarget.held(0.0)),
+                    Plants.power(new RecordingPowerOutput(), target),
                     collectPower,
                     ejectPower);
             fail("Expected invalid action powers to fail");
