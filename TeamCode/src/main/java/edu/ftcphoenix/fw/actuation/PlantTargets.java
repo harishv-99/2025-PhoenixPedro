@@ -14,13 +14,18 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
 /**
  * Factory and builders for Plant-aware target resolvers.
  *
- * <p>{@link PlantTargetResolver} is the final graph invoked by a {@link Plant}. For an ordinary
- * writable command, robot graph construction creates a named {@link ScalarTarget} and binds it
- * directly or as the stable base of the graph; the Plant builder lifts a direct command to an
- * exact graph. A command-writing realization
- * receiving the completed Plant derives that stable command through {@link Plant#commandTarget()}
- * instead of accepting both objects as peer dependencies; a read-only/planned realization receives
- * the Plant without requiring a command. Use {@code PlantTargets} explicitly for read-only values,
+ * <p>{@link PlantTargetResolver} is the final graph invoked by a {@link Plant}. In ordinary FTC
+ * robot code, the mechanism/subsystem constructor receives {@code HardwareMap} and a data-only
+ * config, snapshots that config, and builds this graph together with its privately owned Plant.
+ * The composition root constructs the mechanism rather than prebuilding the Plant. For an ordinary
+ * writable command with no independent owner, mechanism graph construction can bind
+ * {@code ScalarTarget.create(initialValue)} directly; the completed Plant exposes that stable
+ * request through {@link Plant#commandTarget()}. Keep a named {@link ScalarTarget} when it is
+ * shared, target-only policy owns it, or it usefully identifies the stable base of a composed
+ * graph. If an explicitly labeled hardware-neutral test, custom-adapter, portable-host, or
+ * advanced-assembly seam injects a completed Plant, it passes the Plant alone instead of both
+ * objects as peer dependencies. A read-only/planned realization requires no command. Use
+ * {@code PlantTargets} explicitly for read-only values,
  * overlays, periodic equivalence, or advanced planning. Simple values are lifted with
  * {@link #exact(double)} or
  * {@link #exact(ScalarSource)}. Behavior arbitration uses {@link #overlay(PlantTargetResolver)}:
@@ -32,15 +37,17 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * {@link #plan(Source)}; periodic work is bounded by the explicit request-alternative count rather
  * than the number of equivalent positions in a Plant's range.</p>
  *
- * <h2>Typical exact target</h2>
+ * <h2>Exact target inside a mechanism constructor</h2>
  * <pre>{@code
- * ScalarTarget liftCommand = ScalarTarget.create(0.0);
- * PositionPlant lift = FtcActuators.plant(hardwareMap)
- *     .motor("lift", Direction.FORWARD)
+ * LiftConfig cfg = config.copy();
+ * this.lift = FtcActuators.plant(hardwareMap)
+ *     .motor(cfg.motorName, cfg.direction)
  *     .position()
  *     ...
- *     .targetedBy(liftCommand)   // builder lifts it to a PlantTargetResolver
+ *     .targetedBy(ScalarTarget.create(0.0)) // lifted to an exact resolver
  *     .build();
+ * // Later, in a semantic mechanism method:
+ * lift.commandTarget().set(1200.0);
  * }</pre>
  *
  * <h2>Typical overlay</h2>

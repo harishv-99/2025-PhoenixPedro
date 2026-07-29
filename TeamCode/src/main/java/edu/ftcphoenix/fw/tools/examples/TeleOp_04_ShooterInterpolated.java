@@ -8,6 +8,7 @@ import edu.ftcphoenix.fw.actuation.Plant;
 import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.debug.NullDebugSink;
 import edu.ftcphoenix.fw.core.hal.Direction;
+import edu.ftcphoenix.fw.core.lifecycle.CleanupActions;
 import edu.ftcphoenix.fw.core.math.InterpolatingTable1D;
 import edu.ftcphoenix.fw.core.math.MathUtil;
 import edu.ftcphoenix.fw.core.source.ScalarTarget;
@@ -28,6 +29,11 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
  * <p>This example builds on the shooter examples and shows how to use
  * {@link InterpolatingTable1D} to map a "distance to target" into a
  * shooter velocity.</p>
+ *
+ * <p><b>Ownership note:</b> This disabled class is an intentional one-OpMode API lesson.
+ * Ordinary structured robot code follows the Modern Starter pattern: the composition root calls
+ * {@code new Mechanism(hardwareMap, profile.mechanism)}, and that mechanism constructs and
+ * privately owns its Plants and their update/stop lifecycle.</p>
  *
  * <p>Here, the distance is not coming from vision yet. Instead, we use a
  * simple <b>manual distance source</b> controlled by the driver:</p>
@@ -62,11 +68,11 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
  * <pre>{@code
  * // This example:
  * distanceInches = manualDistance;            // from D-pad
- * shooterTarget  = table.interpolate(distanceInches);
+ * shooter.commandTarget().set(table.interpolate(distanceInches));
  *
  * // Vision-based setup later:
  * distanceInches = vision.getDistanceInches(); // from AprilTag
- * shooterTarget  = table.interpolate(distanceInches);
+ * shooter.commandTarget().set(table.interpolate(distanceInches));
  * }</pre>
  * <p>
  * <hr/>
@@ -176,7 +182,6 @@ public final class TeleOp_04_ShooterInterpolated extends OpMode {
     private DriveSource stickDrive;
 
     private Plant shooter;
-    private ScalarTarget shooterTarget;
 
     // Manual distance + shooter state
     private double distanceInches = 36.0; // start in the middle of the table
@@ -211,7 +216,6 @@ public final class TeleOp_04_ShooterInterpolated extends OpMode {
                 .rateLimited(4.0, 4.0, 6.0);
 
         // 3) Shooter wiring using FtcActuators
-        shooterTarget = ScalarTarget.create(0.0);
         shooter = FtcActuators.plant(hardwareMap)
                 .motor(HW_SHOOTER_LEFT, Direction.FORWARD)
                 .andMotor(HW_SHOOTER_RIGHT, Direction.REVERSE)
@@ -220,7 +224,7 @@ public final class TeleOp_04_ShooterInterpolated extends OpMode {
                 .bounded(0.0, 250.0)
                 .nativeUnits()
                 .velocityTolerance(/*toleranceNative=*/100.0)
-                .targetedBy(shooterTarget)
+                .targetedBy(ScalarTarget.create(0.0))
                 .build();
 
         // 4) Bindings: shooter enable + distance adjust
@@ -289,10 +293,10 @@ public final class TeleOp_04_ShooterInterpolated extends OpMode {
             // Look up velocity from the table (with clamping + interpolation).
             double targetVel = SHOOTER_VELOCITY_TABLE.interpolate(distanceInches);
             lastShooterTarget = targetVel;
-            shooterTarget.set(targetVel);
+            shooter.commandTarget().set(targetVel);
         } else {
             lastShooterTarget = 0.0;
-            shooterTarget.set(0.0);
+            shooter.commandTarget().set(0.0);
         }
 
         // Update shooter plant once per loop.
@@ -331,8 +335,9 @@ public final class TeleOp_04_ShooterInterpolated extends OpMode {
     @Override
     public void stop() {
         shooterEnabled = false;
-        shooterTarget.set(0.0);
-        shooter.stop();
-        drivebase.stop();
+        CleanupActions.attemptAll(
+                () -> { if (shooter != null) shooter.commandTarget().set(0.0); },
+                () -> { if (shooter != null) shooter.stop(); },
+                () -> { if (drivebase != null) drivebase.stop(); });
     }
 }

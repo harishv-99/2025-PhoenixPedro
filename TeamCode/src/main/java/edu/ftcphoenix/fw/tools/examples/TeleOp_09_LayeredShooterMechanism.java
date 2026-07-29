@@ -98,7 +98,6 @@ public final class TeleOp_09_LayeredShooterMechanism extends OpMode {
     public void init() {
         gamepads = Gamepads.create(gamepad1, gamepad2);
 
-        ScalarTarget flywheelTarget = ScalarTarget.create(0.0);
         ScalarTarget feederBaseTarget = ScalarTarget.create(0.0);
         OutputTaskRunner feederPulseQueue = Tasks.outputQueue(0.0);
         PlantTargetResolver finalFeederTargetResolver = PlantTargets.overlay(feederBaseTarget)
@@ -113,7 +112,7 @@ public final class TeleOp_09_LayeredShooterMechanism extends OpMode {
                 .bounded(0.0, FLYWHEEL_MAX_VELOCITY_NATIVE)
                 .nativeUnits()
                 .velocityTolerance(FLYWHEEL_READY_TOLERANCE_NATIVE)
-                .targetedBy(flywheelTarget)
+                .targetedBy(ScalarTarget.create(0.0))
                 .build();
 
         Plant feederPlant = FtcActuators.plant(hardwareMap)
@@ -490,22 +489,24 @@ public final class TeleOp_09_LayeredShooterMechanism extends OpMode {
     /**
      * Layer 3: plant realization.
      *
-     * <p>This is the only layer allowed to touch Plants. Each Plant is the construction-boundary
-     * authority for its stable command target, which realization retains once. It updates those
-     * targets, lets the feeder Plant invoke its final overlaid target resolver, updates the Plants,
-     * and exports a small readback snapshot for the next loop.</p>
+     * <p>This is the only layer allowed to touch Plants. This one-file architecture lesson uses an
+     * explicitly advanced assembly seam: the enclosing composition code builds the target graphs
+     * and passes completed Plants here so students can see the three layers independently. An
+     * ordinary FTC mechanism instead receives {@code HardwareMap} plus its data-only config and
+     * constructs its private Plants internally. At this advanced seam, each Plant remains the
+     * authority for its stable command target, which realization validates during construction and
+     * obtains locally when writing. It lets the feeder Plant invoke its final overlaid target
+     * resolver, updates the Plants, and exports a small readback snapshot for the next loop.</p>
      */
     private static final class Realization {
         private final Plant flywheel;
-        private final ScalarTarget flywheelTarget;
         private final Plant feeder;
-        private final ScalarTarget feederBaseTarget;
 
         Realization(Plant flywheel, Plant feeder) {
             this.flywheel = Objects.requireNonNull(flywheel, "flywheel");
-            this.flywheelTarget = requireCommandTarget(this.flywheel, "flywheel");
+            requireCommandTarget(this.flywheel, "flywheel");
             this.feeder = Objects.requireNonNull(feeder, "feeder");
-            this.feederBaseTarget = requireCommandTarget(this.feeder, "feeder");
+            requireCommandTarget(this.feeder, "feeder");
         }
 
         Readback readback() {
@@ -517,8 +518,8 @@ public final class TeleOp_09_LayeredShooterMechanism extends OpMode {
         }
 
         void apply(LoopClock clock, BehaviorOutput out) {
-            flywheelTarget.set(out.flywheelTargetNative);
-            feederBaseTarget.set(out.baseFeedPower);
+            flywheel.commandTarget().set(out.flywheelTargetNative);
+            feeder.commandTarget().set(out.baseFeedPower);
 
             flywheel.update(clock);
             feeder.update(clock);
@@ -537,13 +538,13 @@ public final class TeleOp_09_LayeredShooterMechanism extends OpMode {
             feeder.stop();
         }
 
-        private static ScalarTarget requireCommandTarget(Plant plant, String role) {
+        private static void requireCommandTarget(Plant plant, String role) {
             if (!plant.hasCommandTarget()) {
                 throw new IllegalArgumentException(role + " Plant must carry a stable command "
                         + "target. Build it with targetedBy(command), or use a ScalarTarget as "
                         + "the stable base of its final target graph.");
             }
-            return Objects.requireNonNull(
+            Objects.requireNonNull(
                     plant.commandTarget(), role + " Plant commandTarget() returned null");
         }
     }

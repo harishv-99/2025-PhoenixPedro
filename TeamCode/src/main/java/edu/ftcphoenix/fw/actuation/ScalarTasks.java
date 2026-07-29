@@ -18,14 +18,14 @@ import edu.ftcphoenix.fw.task.TaskOutcome;
  *
  * <h2>Examples</h2>
  * <pre>{@code
- * Task setOnce = ScalarTasks.set(armTarget, HIGH).build();
+ * Task setOnce = ScalarTasks.set(arm.commandTarget(), HIGH).build();
  *
- * Task pulse = ScalarTasks.set(intakeTarget, COLLECT)
+ * Task pulse = ScalarTasks.set(intake.commandTarget(), COLLECT)
  *         .forSeconds(0.75)
  *         .then(STOPPED)
  *         .build();
  *
- * Task move = ScalarTasks.set(armTarget, HIGH)
+ * Task move = ScalarTasks.set(arm.commandTarget(), HIGH)
  *         .untilReachedBy(arm)
  *         .cancelTo(STOWED)
  *         .stableFor(0.10)

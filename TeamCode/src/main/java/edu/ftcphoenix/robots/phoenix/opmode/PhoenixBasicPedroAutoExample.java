@@ -121,14 +121,13 @@ public final class PhoenixBasicPedroAutoExample extends OpMode {
         BasicPedroAutoMechanism builtMechanism = null;
         try {
             BasicPedroAutoPaths builtPaths = new BasicPedroAutoPaths(builtRuntime);
-            ScalarTarget intakeCommand = ScalarTarget.create(0.0);
             builtIntakePlant = FtcActuators.plant(hardwareMap)
                     .motor(
                             profile.scoring.nameMotorIntake,
                             profile.scoring.directionMotorIntake
                     )
                     .power()
-                    .targetedBy(intakeCommand)
+                    .targetedBy(ScalarTarget.create(0.0))
                     .build();
             builtMechanism = new BasicPedroAutoMechanism(
                     builtIntakePlant,

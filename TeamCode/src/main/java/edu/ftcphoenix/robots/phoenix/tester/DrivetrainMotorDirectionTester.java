@@ -26,10 +26,6 @@ public final class DrivetrainMotorDirectionTester extends BaseTeleOpTester {
     private Plant plantFR;
     private Plant plantBL;
     private Plant plantBR;
-    private ScalarTarget targetFL;
-    private ScalarTarget targetFR;
-    private ScalarTarget targetBL;
-    private ScalarTarget targetBR;
 
     /**
      * Creates the tester instance.
@@ -68,33 +64,28 @@ public final class DrivetrainMotorDirectionTester extends BaseTeleOpTester {
     protected void onInit() {
         FtcDrives.MecanumConfig drive = PhoenixProfile.current().drive;
 
-        targetFL = ScalarTarget.create(0.0);
-        targetFR = ScalarTarget.create(0.0);
-        targetBL = ScalarTarget.create(0.0);
-        targetBR = ScalarTarget.create(0.0);
-
         plantFL = FtcActuators.plant(ctx.hw)
                 .motor(drive.wiring.frontLeftName, drive.wiring.frontLeftDirection)
                 .power()
-                .targetedBy(targetFL)
+                .targetedBy(ScalarTarget.create(0.0))
                 .build();
 
         plantFR = FtcActuators.plant(ctx.hw)
                 .motor(drive.wiring.frontRightName, drive.wiring.frontRightDirection)
                 .power()
-                .targetedBy(targetFR)
+                .targetedBy(ScalarTarget.create(0.0))
                 .build();
 
         plantBL = FtcActuators.plant(ctx.hw)
                 .motor(drive.wiring.backLeftName, drive.wiring.backLeftDirection)
                 .power()
-                .targetedBy(targetBL)
+                .targetedBy(ScalarTarget.create(0.0))
                 .build();
 
         plantBR = FtcActuators.plant(ctx.hw)
                 .motor(drive.wiring.backRightName, drive.wiring.backRightDirection)
                 .power()
-                .targetedBy(targetBR)
+                .targetedBy(ScalarTarget.create(0.0))
                 .build();
 
         Bindings.ControlContext motorControls = bindings.contextWhen(
@@ -103,16 +94,16 @@ public final class DrivetrainMotorDirectionTester extends BaseTeleOpTester {
         );
 
         motorControls.mirrorOnChange(gamepads.p1().x(),
-                high -> targetFL.set(high ? TEST_POWER : 0.0));
+                high -> plantFL.commandTarget().set(high ? TEST_POWER : 0.0));
 
         motorControls.mirrorOnChange(gamepads.p1().y(),
-                high -> targetFR.set(high ? TEST_POWER : 0.0));
+                high -> plantFR.commandTarget().set(high ? TEST_POWER : 0.0));
 
         motorControls.mirrorOnChange(gamepads.p1().a(),
-                high -> targetBL.set(high ? TEST_POWER : 0.0));
+                high -> plantBL.commandTarget().set(high ? TEST_POWER : 0.0));
 
         motorControls.mirrorOnChange(gamepads.p1().b(),
-                high -> targetBR.set(high ? TEST_POWER : 0.0));
+                high -> plantBR.commandTarget().set(high ? TEST_POWER : 0.0));
 
         stopAll();
     }

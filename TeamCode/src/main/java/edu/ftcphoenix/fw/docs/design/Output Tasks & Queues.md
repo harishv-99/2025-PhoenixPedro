@@ -2,7 +2,7 @@
 
 Phoenix has two common ways to express mechanism behavior over time:
 
-1. **Tasks that change a named scalar command target** (`ScalarTasks`)
+1. **Tasks that change a persistent scalar command target** (`ScalarTasks`)
 2. **Tasks that produce a temporary scalar output** (`OutputTask` + `OutputTaskRunner`)
 
 This document is about the second pattern. Use it when a short behavior should temporarily influence a Plant target without becoming a second Plant writer.
@@ -88,17 +88,23 @@ Call `feederQueue.update(clock)` once per loop before updating Plants that depen
 ## 4. Standard realization pattern: base target + queued override
 
 Use `PlantTargets.overlay(...)` when a queued output should temporarily override a baseline target.
+In ordinary robot code, the queue and Plant are private fields of one mechanism; the resolver and
+Plant below are constructed once inside that mechanism's `HardwareMap` + config constructor. They
+are not rebuilt in the loop and are not assembled by the composition root.
 
 ```java
-OutputTaskRunner feederQueue = Tasks.outputQueue(0.0);
+// Mechanism fields
+private final OutputTaskRunner feederQueue = Tasks.outputQueue(0.0);
+private final Plant transfer;
 
+// Mechanism constructor
 ScalarSource baseTransferTarget = ScalarSource.of(() -> stagingEnabled ? 0.20 : 0.0);
 
 PlantTargetResolver finalTransferTarget = PlantTargets.overlay(baseTransferTarget)
         .add("feedPulse", feederQueue.activeSource(), feederQueue)
         .build();
 
-Plant transfer = FtcActuators.plant(hardwareMap)
+transfer = FtcActuators.plant(hardwareMap)
         .crServo("transfer", Direction.FORWARD)
         .power()
         .targetedBy(finalTransferTarget)
@@ -138,9 +144,9 @@ How does it end?
 Does it need cooldown time?
 ```
 
-It returns an `OutputTaskFactory`, not a single task, because queued tasks are single-use. Keep the
-factory and call `feedOne.create()` or `feedOne.get()` for every enqueue; each call creates a fresh
-pulse task.
+It returns an `OutputTaskFactory`, not a single task, because queued tasks are single-use. The
+mechanism/supervisor that owns the private queue also retains this factory and calls
+`feedOne.create()` or `feedOne.get()` for every enqueue; each call creates a fresh pulse task.
 
 ### Sensor-ended pulse
 
@@ -188,11 +194,24 @@ opened never shortens the pulse.
 
 ## 6. Repeating while a request is held
 
-Use queue-level `whileHigh(...)` / `whileLow(...)` to keep a bounded backlog while a request signal has the desired level.
+Inside the mechanism or supervisor that owns the private queue, use queue-level `whileHigh(...)` /
+`whileLow(...)` to keep a bounded backlog while a semantic request signal has the desired level.
+Controls set the request through a robot-owned method; they do not receive the queue.
 
 ```java
-BooleanSource requestShoot = gamepads.p2().rightTrigger().above(0.50);
+private boolean continuousFeedRequested;
+private final BooleanSource requestShoot =
+        BooleanSource.of(() -> continuousFeedRequested);
 
+public void setContinuousFeedRequested(boolean requested) {
+    continuousFeedRequested = requested;
+}
+
+public void requestSingleFeed() {
+    feederQueue.enqueue(feedOne.create());
+}
+
+// In the owning mechanism/supervisor update:
 feederQueue.whileHigh(
         clock,
         requestShoot,
@@ -215,27 +234,30 @@ When `requestShoot` goes low, `whileHigh(...)` cancels and clears the queue. Thi
 
 ## 7. TeleOp and autonomous reuse
 
-Because readiness, sensors, and queue outputs are all Sources, TeleOp and autonomous code can reuse the same pieces.
+TeleOp and Auto reuse the same semantic capability methods and status. The mechanism/supervisor
+keeps readiness Sources, pulse factories, and its queue private.
 
-TeleOp can maintain a queue while a trigger is held:
-
-```java
-feederQueue.whileHigh(clock, requestShoot, 1, feedOne);
-```
-
-Autonomous can enqueue exactly one pulse:
+TeleOp maps a trigger to the held request:
 
 ```java
-feederQueue.enqueue(feedOne.create());
+bindings.mirrorOnChange(
+        gamepads.p2().rightTrigger().above(0.50),
+        scoring::setContinuousFeedRequested);
 ```
 
-Autonomous can also wait on the same readiness signal:
+Autonomous can request exactly one pulse through the same capability vocabulary:
 
 ```java
-Task waitForReady = Tasks.waitUntil(canShootNow, 2.0);
+Task feedOneTask = Tasks.runOnce(scoring::requestSingleFeed);
 ```
 
-No duplicate sensor logic is needed.
+Autonomous can also wait on the capability's status snapshot:
+
+```java
+Task waitForReady = Tasks.waitUntil(() -> scoring.status().canShoot(), 2.0);
+```
+
+No duplicate sensor or queue logic is needed.
 
 ---
 
@@ -244,8 +266,13 @@ No duplicate sensor logic is needed.
 When a driver lets go of a trigger, changes mode, or an autonomous step is interrupted, prefer:
 
 ```java
-feederQueue.cancelAndClear();
+public void cancelTransientActions() {
+    feederQueue.cancelAndClear();
+}
 ```
+
+That is implementation inside the queue owner. TeleOp and Auto call
+`scoring.cancelTransientActions()` rather than manipulating `feederQueue` directly.
 
 `cancelAndClear()` is the total-abort operation: it cooperatively cancels the active output Task,
 always discards every queued Task, invalidates any cached active output, and reports the queue's
@@ -269,13 +296,16 @@ Typical abort situations:
 
 Use **ScalarTasks** when:
 
-- one task should change a named `ScalarTarget`
+- one task should change a Plant's persistent command target, or an intentionally standalone/shared
+  `ScalarTarget`
 - the task may wait until its logical command path wins and Plant feedback confirms physical arrival
 - the behavior is naturally “move this mechanism target and wait”
 
-For example, `ScalarTasks.set(armTarget, SCORE).untilReachedBy(arm)...build()` writes the same
-target retained by the mechanism owner; the feedback branch validates that the Plant follows that
-exact command.
+For an ordinary exact Plant, write
+`ScalarTasks.set(arm.commandTarget(), SCORE).untilReachedBy(arm)...build()`. The Plant accessor
+returns its stable command without sampling hardware or changing state; the feedback branch validates
+that the Plant follows that exact command. Keep a separately named `ScalarTarget` when it is useful
+on its own or while assembling a shared, overlay, equivalent-position, or advanced target graph.
 
 Use **OutputTaskRunner** when:
 

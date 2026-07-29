@@ -46,6 +46,11 @@ import edu.ftcphoenix.fw.spatial.References;
  *
  * <p>This example combines three ideas:</p>
  *
+ * <p><b>Ownership note:</b> This disabled class is an intentional one-OpMode API lesson.
+ * Ordinary structured robot code follows the Modern Starter pattern: the composition root calls
+ * {@code new Mechanism(hardwareMap, profile.mechanism)}, and that mechanism constructs and
+ * privately owns its Plants and their update/stop lifecycle.</p>
+ *
  * <ol>
  *   <li><b>Mecanum drive</b> using {@link FtcDrives#mecanum} +
  *       {@link GamepadDriveSource} with explicit axis wiring and a robot-owned slow-mode wrapper (same as Example 01).</li>
@@ -143,7 +148,6 @@ public final class TeleOp_05_ShooterTagAimVision extends OpMode {
     private CameraMountConfig cameraMount;
 
     private Plant shooter;
-    private ScalarTarget shooterTarget;
 
     private boolean shooterEnabled = false;
 
@@ -235,7 +239,6 @@ public final class TeleOp_05_ShooterTagAimVision extends OpMode {
         );
 
         // 4) Shooter wiring using FtcActuators.
-        shooterTarget = ScalarTarget.create(0.0);
         shooter = FtcActuators.plant(hardwareMap)
                 .motor(HW_SHOOTER_LEFT, Direction.FORWARD)
                 .andMotor(HW_SHOOTER_RIGHT, Direction.REVERSE)
@@ -244,7 +247,7 @@ public final class TeleOp_05_ShooterTagAimVision extends OpMode {
                 .bounded(0.0, 4200.0)
                 .nativeUnits()
                 .velocityTolerance(/*toleranceNative=*/100.0)
-                .targetedBy(shooterTarget)
+                .targetedBy(ScalarTarget.create(0.0))
                 .build();
 
         // 5) Bindings: shooter toggle.
@@ -303,10 +306,10 @@ public final class TeleOp_05_ShooterTagAimVision extends OpMode {
         if (shooterEnabled && obs.hasTarget) {
             double targetVel = SHOOTER_VELOCITY_TABLE.interpolate(obs.cameraRangeInches());
             lastShooterTargetVel = targetVel;
-            shooterTarget.set(targetVel);
+            shooter.commandTarget().set(targetVel);
         } else {
             lastShooterTargetVel = 0.0;
-            shooterTarget.set(0.0);
+            shooter.commandTarget().set(0.0);
         }
 
         // 4) Control / Actuate (subsystems)
@@ -362,9 +365,9 @@ public final class TeleOp_05_ShooterTagAimVision extends OpMode {
     public void stop() {
         shooterEnabled = false;
         CleanupActions.attemptAll(
-                () -> shooterTarget.set(0.0),
-                shooter::stop,
-                drivebase::stop,
+                () -> { if (shooter != null) shooter.commandTarget().set(0.0); },
+                () -> { if (shooter != null) shooter.stop(); },
+                () -> { if (drivebase != null) drivebase.stop(); },
                 this::closeVisionOwner
         );
     }

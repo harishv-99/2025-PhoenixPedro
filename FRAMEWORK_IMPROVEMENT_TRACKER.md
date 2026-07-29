@@ -1,6 +1,6 @@
 # Framework Improvement Tracker
 
-Last updated: 2026-07-28
+Last updated: 2026-07-29
 
 This file tracks proposed Phoenix framework improvements. It is deliberately a planning document:
 an item being listed here does **not** mean its current proposed solution has been approved. Each
@@ -142,20 +142,22 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 55 | TARGET-04 | Command-preserving equivalent-position resolution | Done | The focused transform, truthful command-backed Task completion, synchronized documentation, software verification, and Android Studio review are complete. |
 | 56 | API-06 | One Plant command and Task-writing path | Done | The unified target-root API, Plant-derived command ownership, synchronized callers/docs, verification, and Android Studio review are complete. |
 | 57 | TARGET-05 | Target request/resolution vocabulary | Done | The request/resolver/resolution migration, automated verification, Android Studio review, and publication approval are complete. |
-| 58 | EXAMPLE-03 | Advanced moving-target reference | Proposed | Prove progress-triggered scoring and a bounded moving turret without putting game physics in the framework. |
-| 59 | BOUNDARY-01 | FTC boundary enforcement | Proposed | Fix existing import leaks, then add a focused forbidden-import check. |
-| 60 | DOC-01 | Stale and non-compiling documentation | Proposed | Correct loop/API examples and validate links/examples where practical. |
-| 61 | CI-01 | Framework verification in CI | Proposed | Run focused unit tests, TeamCode compilation, docs checks, and boundary checks. |
-| 62 | CLEAN-01 | Alias and risky convenience cleanup | Proposed | Remove only APIs proven redundant or unsafe by caller search. |
-| 63 | SAFE-04 | PowerOutput failure cleanup and seam truth | Deferred | Current completion requires representative actuator observation; a narrower software-seam contract needs a new approved decision gate. |
-| 64 | CAL-01 | Calibration-search power validation | Proposed | Reject invalid normalized search power before stopping normal output or changing calibration state. |
-| 65 | CAL-02 | Position-calibration reference validity | Proposed | Validate calibration reference and hold answers at the boundary that owns their units and lifecycle. |
-| 66 | MAP-01 | FTC actuator mapping-domain validation | Proposed | Validate finite child transforms and raw actuator domains before command mapping can be silently clamped. |
-| 67 | RANGE-01 | ScalarRange construction validity | Proposed | Define and enforce finite, half-bounded, and unbounded range construction without allowing `NaN`. |
-| 68 | FTC-02 | Device-managed controller configuration validation | Proposed | Validate FTC PIDF/P, maximum-power, and related staged answers before SDK access or mode changes. |
-| 69 | CONFIG-01 | Owner-configuration snapshot audit | Deferred | Revisit specific owners only when a traced caller shows mutation drift or invalid retained state. |
-| 70 | SOURCE-04 | Successful source-cache commit semantics | Proposed | Audit stateful source wrappers that claim a cycle before upstream sampling or state transition succeeds. |
-| 71 | INPUT-02 | Binding update failure retention | Proposed | Make same-cycle binding failure behavior explicit for an effectful traversal that may already have fired callbacks. |
+| 58 | PLANT-01 | One-variable simple Plant usage | Done | Ordinary mechanism ownership, one-variable exact commands, advanced seams, docs, examples, verification, and Android Studio review are complete. |
+| 59 | CAL-03 | Calibration-search Plant update ownership | Proposed | Keep the composition root as the sole Plant updater and make search triggering and post-search handoff explicit. |
+| 60 | CAL-01 | Calibration-search power validation | Proposed | Reject invalid normalized search power before stopping normal output or changing calibration state. |
+| 61 | CAL-02 | Position-calibration reference validity | Proposed | Validate calibration reference and hold answers at the boundary that owns their units and lifecycle. |
+| 62 | DOC-01 | Stale and non-compiling documentation | Proposed | Correct loop/API examples and validate links/examples where practical. |
+| 63 | CLEAN-01 | Alias and risky convenience cleanup | Proposed | Separate unsafe enqueue behavior from cosmetic aliases, then remove only paths proven redundant or unsafe. |
+| 64 | RANGE-01 | ScalarRange construction validity | Proposed | Define and enforce finite, half-bounded, and unbounded range construction without allowing `NaN`. |
+| 65 | MAP-01 | FTC actuator mapping-domain validation | Proposed | Validate finite child transforms and raw actuator domains before command mapping can be silently clamped. |
+| 66 | FTC-02 | Device-managed controller configuration validation | Proposed | Validate FTC PIDF/P, maximum-power, and related staged answers before SDK access or mode changes. |
+| 67 | SOURCE-04 | Successful source-cache commit semantics | Proposed | Audit stateful source wrappers that claim a cycle before upstream sampling or state transition succeeds. |
+| 68 | INPUT-02 | Binding update failure retention | Proposed | Make same-cycle binding failure behavior explicit for an effectful traversal that may already have fired callbacks. |
+| 69 | BOUNDARY-01 | FTC boundary enforcement | Proposed | Fix existing import leaks, then add a focused forbidden-import check. |
+| 70 | CI-01 | Framework verification in CI | Proposed | Run focused unit tests, TeamCode compilation, docs checks, and boundary checks. |
+| 71 | EXAMPLE-03 | Advanced moving-target reference | Proposed | Revisit only after common-path guidance, known software defects, docs, boundaries, and verification are clearer. |
+| 72 | SAFE-04 | PowerOutput failure cleanup and seam truth | Deferred | Current completion requires representative actuator observation; a narrower software-seam contract needs a new approved decision gate. |
+| 73 | CONFIG-01 | Owner-configuration snapshot audit | Deferred | Revisit specific owners only when a traced caller shows mutation drift or invalid retained state. |
 
 The completed order was intentionally front-loaded with testability, robot lifecycle, actuator
 safety, deterministic Task behavior, Pedro ownership, truthful route outcomes, and the reusable
@@ -188,6 +190,16 @@ completion first, simplifies the ordinary command path second, and only then con
 advanced-vocabulary consolidation. This prevents one large rewrite from mixing behavioral,
 beginner-API, and expert-planner decisions. EXAMPLE-03 and the previously ordered unrelated items
 retain their relative order after this three-item cluster.
+
+On 2026-07-29, the user explicitly deprioritized the advanced moving-target reference and asked for
+the remaining work to favor common-path clarity, framework simplicity, and confirmed software bugs.
+PLANT-01 therefore records and implements the already-approved one-variable ordinary-Plant pattern
+first. CAL-03 follows because `PositionCalibrationTasks` currently advances a Plant inside a Task
+even though the documented composition root also owns that Plant phase; CAL-01 and CAL-02 then
+address the adjacent calibration inputs. DOC-01 and a deliberately narrowed CLEAN-01 follow before
+the remaining validation, boundary, and CI work. EXAMPLE-03 is now the last actionable proposed
+item in this cluster rather than the default next item. Deferred hardware/evidence items remain
+deferred regardless of their table position.
 
 The Pedro review added two runtime-ownership gates before DRIVE-01:
 the checked-in Auto must first have one continuous follower heartbeat and one valid drivetrain/
@@ -5846,6 +5858,187 @@ writer, and explicit lifecycle ownership.
   reducing the number of public types/factories students must distinguish. All in-repository
   callers, Javadocs, guides, and examples compile under the single chosen path; focused planner and
   resolver-graph behavior remains unchanged. This item is **Done**.
+
+### PLANT-01 - One-variable simple Plant usage
+
+- **Status (2026-07-29):** **Done** on
+  `codex/plant-01-one-variable-simple-plants`, based on verified
+  `origin/master@48036138a3ab9292e6623934b34f44cdafb935c7`. The user approved the selected
+  no-new-API direction before asking to reprioritize and continue. During Android Studio review,
+  the user identified that `Mechanism Target Planning.md` still contradicted the starter's
+  mechanism-owned construction pattern and requested a maintained-example audit. That correction
+  and its verification are complete, and the user approved the final implementation on 2026-07-29.
+  CAL-03 and every other tracker item remain out of scope.
+- **Problem confirmed:** API-06 correctly made the final target graph the source of command identity,
+  but its guidance then required a Plant-owning realization to cache `plant.commandTarget()` as a
+  second long-lived field. The result is that ordinary exact mechanisms still teach students to
+  declare and retain both one `Plant` and one `ScalarTarget` even when the target has no independent
+  owner or use. The relationship is not actually two dependencies: `targetedBy(ScalarTarget)`
+  installs the target in the final graph, and the completed Plant already exposes that same stable
+  object through `commandTarget()`.
+- **Confirmed framework behavior:** a Plant built through the ordinary
+  `targetedBy(ScalarTarget)` path reports `hasCommandTarget() == true`; its `commandTarget()` contract
+  returns the same non-null object for the Plant's lifetime. The method only exposes the persistent
+  request carried by the source graph; writing it still flows through target resolution, bounds,
+  references, guards, and the Plant's later `update(clock)`. A Plant built from a resolver without a
+  command base fails actionably from `commandTarget()`. Therefore an ordinary exact Plant can be
+  assembled as `.targetedBy(ScalarTarget.create(initialValue)).build()` and remain the only retained
+  mechanism variable without adding a writer or changing actuation semantics.
+- **Current caller audit:** executable modern main source contains twenty locally created
+  `ScalarTarget`/Plant graph-assembly pairs. Nineteen are ordinary exact one-Plant commands: the
+  starter intake; four Phoenix drivetrain-tester wheels; the Phoenix basic Pedro intake; three
+  mechanisms each in tool Examples 02, 03, and 06; one each in Examples 04, 05, and 08; and the
+  Example 09 flywheel. Example 09's feeder base is the one composed-overlay case where a named local
+  target makes graph construction and its special role clearer. `BasicPedroAutoMechanism` and
+  Example 09's `Realization` also retain three command targets derived from Plants solely because the
+  prior guidance required caching. Phoenix production `ScoringPath` already demonstrates the
+  selected Plant-only realization shape. Eleven maintained Markdown documents and the Plant/FTC
+  Javadocs contain ordinary snippets or “cache once” guidance that must be classified rather than
+  mechanically rewritten; examples specifically teaching standalone/shared targets or advanced
+  graph assembly keep the named object.
+- **Public construction-layer audit:** the supported ordinary Plant binding remains exactly
+  `targetedBy(ScalarTarget)` at the FTC and mapped staged builders, with the low-level `Plants`
+  factories as the custom-adapter/test seam. Advanced graphs remain
+  `targetedBy(PlantTargetResolver)`. `ScalarTarget.create(...)` remains the sole standard target
+  factory; `Plant.commandTarget()` remains the sole graph-derived command seam; and
+  `ScalarTasks.set(target, value)` remains the sole direct/timed/feedback Task entry. No constructor,
+  facade, overload, return type, or target-resolution contract changes. These layers retain distinct
+  value and this item adds no sibling merely for symmetry.
+- **Parameter storage and sharing result:** a target used only as one exact Plant's persistent
+  command has no independent storage value after the Plant exists. A target still deserves a name
+  when target-only policy owns it, several Plants deliberately share it, it must be passed without
+  Plant lifecycle authority, or it materially clarifies construction of an overlay,
+  equivalent-position transform, or advanced graph before the Plant exists. A short local alias is
+  also harmless when it improves one method; the rejected pattern is mechanically retaining Plant
+  and target as peer fields for the same relationship.
+- **Student call-site comparison:**
+
+  | Design | Retained fields for one exact mechanism | Immediate request | Timed/feedback Task | Concepts and ownership |
+  | --- | ---: | --- | --- | --- |
+  | **Selected Plant-only usage** | 1 | `intake.commandTarget().set(COLLECT)` | `ScalarTasks.set(intake.commandTarget(), COLLECT)...` | One mechanism owner; the stable command is discovered from its final graph only where needed |
+  | Prior required cache | 2 | `intakeCommand.set(COLLECT)` | `ScalarTasks.set(intakeCommand, COLLECT)...` | Shorter individual writes, but students must retain and keep straight two fields representing one relationship |
+  | Add `Plant.set(...)` and Plant-root Tasks | 1 | `intake.set(COLLECT)` | another Plant Task entry | Short call, but creates a second command-writing API beside `ScalarTarget`/`ScalarTasks` and obscures commandless planned Plants |
+  | Add `CommandedPlant`/binding wrapper | 1 wrapper | wrapper-specific | wrapper-specific | Adds a public noun/type solely to package the two objects and complicates advanced/shared graphs |
+
+  Robot controls should normally call semantic mechanism methods such as `collect()` rather than any
+  of these lines directly, so the slightly longer internal `commandTarget()` expression removes a
+  field and an ownership question from the class without expanding the controls API.
+- **Chosen design:**
+  1. Make one retained Plant the canonical ordinary exact-mechanism shape. Inline
+     `ScalarTarget.create(initialValue)` into `targetedBy(...)` when the target has no independent
+     construction role.
+  2. Command or inspect that request through the Plant's stable `commandTarget()` at the local point
+     of use, including as the target argument to `ScalarTasks`. A Plant-only constructor may validate
+     `hasCommandTarget()` and the initial non-null result, but it does not retain a duplicate target
+     field. Framework Plants already guarantee stable identity; ordinary callers do not repeatedly
+     cross-check it.
+  3. Keep an explicitly named `ScalarTarget` for standalone/shared policy and where composed graph
+     construction genuinely benefits from the name. Keep feedback-aware
+     `ScalarTasks.set(target, value).untilReachedBy(plant)` explicit: the target is the writer and the
+     Plant is the selected provenance/feedback observer.
+  4. Migrate the starter, basic Pedro reference, Phoenix basic Pedro host and drivetrain tester, and
+     maintained framework tool examples to the selected shape wherever their target is only the
+     exact Plant command. Update Framework Principles, AGENTS guidance, Plant/FTC Javadocs, and the
+     maintained beginner, mechanism, Task, actuator, and layered-design prose so the simple and
+     composed cases are taught deliberately.
+  5. Add no public API, compatibility alias, Plant setter, Plant-root Task facade, reverse target
+     backlink, wrapper, hidden command creation, new lifecycle, or target math change.
+- **Framework Principles result:** the Plant remains source-driven and the final graph remains the
+  one command-identity authority. The realization still owns Plant update/stop order, while target-
+  only policy remains narrow. The change removes duplicate long-lived state and one mandatory
+  beginner declaration without introducing a competing writer or weakening advanced graph
+  composition. Stable command identity is a Plant contract, so repeated local access is not a new
+  sampling or heartbeat operation.
+- **Rejected designs:** documentation that continues to require the cache preserves the reported
+  two-variable problem. Updating only the starter would leave every progressive framework example
+  teaching the opposite pattern. `Plant.set(...)`, `ScalarTasks.set(Plant, ...)`, revived
+  `PlantTasks`, a target-to-Plant backlink, and a commanded-Plant wrapper all add a second path or a
+  new noun. Removing `ScalarTarget` from the public model would give up standalone/shared requests,
+  source composition, and the one Task-writing root. Forcing every overlay/equivalent graph to hide
+  its command target inline sacrifices useful readability and policy sharing merely to minimize a
+  local-variable count.
+- **Bounded implementation scope:** change only the ordinary usage pattern, its directly affected
+  modern examples/tests, and synchronized authority/Javadocs/guides. Do not change a public
+  signature, `ScalarTasks` lifecycle, target resolution, feedback completion, calibration behavior,
+  Phoenix scoring policy, or any later tracker item. Keep named targets in examples where they have
+  the distinct composed/shared/target-only role recorded above.
+- **Verification plan:** run focused starter and basic-Pedro mechanism tests plus affected Plant/
+  ScalarTasks contract tests; compile every migrated tool/Phoenix example; run the full
+  `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` check and count XML outcomes.
+  Search executable modern code for remaining exact Plant/target peer fields and classify every
+  survivor; search maintained prose for stale mandatory-cache and two-variable ordinary examples;
+  verify public signatures are unchanged; run Markdown fence/local-link checks, whitespace/final-LF
+  checks, and `git diff --check`. No robot hardware is required to verify field/API shape, stable
+  graph identity, compilation, or unchanged Task behavior. Physical motion, mechanism safety,
+  configuration, calibration, and tuning remain adopting-robot validation.
+- **Decision approval (2026-07-29):** after the user asked whether a simple Plant could avoid a
+  second declared `ScalarTarget`, the selected recommendation was the Plant-only pattern above with
+  no new public API and named targets retained only for independent/shared/composed roles. The user
+  replied `Approved. Deprioritize the moving-target reference example task ... After reprioritizing,
+  go to the next task.` This authorizes Gate 2 implementation of PLANT-01's recorded bounded design;
+  Android Studio review is still required before staging, publication, or merge.
+- **Implementation (2026-07-29):** ordinary exact Plants in the starter, basic Pedro reference and
+  host, Phoenix drivetrain tester, and maintained tool Examples 02-06, 08, and 09 now create their
+  command inline and retain only the Plant. Immediate writes, cleanup, status reads, and
+  `ScalarTasks` retrieve that Plant's stable `commandTarget()` where used. Example 09 retains its
+  named feeder base because it identifies the overlay graph's command layer. The Plant,
+  ScalarTarget, resolver/target factories, FTC facade, Framework Principles, repository authority,
+  and fifteen maintained guides now teach the same simple-versus-composed and mechanism-ownership
+  rules. Tests now cover repeated command access without sampling, identity across
+  update/reset/stop, and Plant-only starter/Pedro behavior. No public API, target math, Task
+  lifecycle, update order, calibration behavior, or framework hardware contract changed.
+- **Documentation ownership correction (2026-07-29):** the maintained documentation and example
+  audit now makes one ordinary pattern explicit: the composition root calls
+  `new Mechanism(hardwareMap, profile.mechanism)`; the mechanism snapshots its data-only config,
+  constructs and privately owns its final resolver/Plant graph, exposes semantic capability
+  methods, and owns Plant update/stop. Completed-Plant constructor injection is retained only at a
+  clearly labeled hardware-neutral test, custom-adapter, portable-host, or advanced one-file
+  assembly seam, where the Plant is passed without a redundant target. The Beginner guide's flat
+  first lesson, tool Examples 02-06 and 08, the Layered Shooter lesson, and the Pedro portable host
+  are now labeled as intentional exceptions rather than competing production templates. Target
+  graphs and queues are constructed once, raw queues remain behind semantic mechanism methods, and
+  the Recommended Robot guide's loop order, applied-target status, bounds, and config copying match
+  the executable starter. Standard positional-servo STOP guidance now truthfully says `stop()`
+  holds the last applied position; a retract must complete cooperatively before FTC STOP or use an
+  explicitly safe-stop adapter.
+- **Automated verification (2026-07-29):** the focused starter and basic-Pedro mechanism run passed
+  2 suites / 10 tests with 0 failures, 0 errors, and 0 skipped. After all implementation and test
+  hardening, the full rerun
+  `$env:JAVA_HOME='C:\Program Files\Android\Android Studio\jbr'; .\gradlew.bat --console=plain :TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac --rerun-tasks`
+  passed with 110 suites / 1,039 tests / 0 failures / 0 errors / 0 skipped and successful TeamCode
+  Java compilation on the exact final files. The only final output was the repository's existing
+  Java-8-on-JDK-21 and deprecation warnings. A public/protected declaration diff contains only two
+  new test methods and no production API signature change; the executable scan leaves only Example
+  09's intentional named overlay base. All 39 changed files pass `git diff --check`, trailing-
+  whitespace, and final-LF checks. All 18 changed Markdown files have balanced fences, all 113
+  checked local links resolve, and changed Javadoc code blocks are balanced.
+- **Adversarial reviews (2026-07-29):** independent production/API review found one contradictory
+  ordinary two-variable example in `ScalarTarget` Javadoc; it was converted to the Plant-only form,
+  and the final review found no remaining production issue. Independent correctness/test review
+  found no behavior defect and suggested exercising lifetime stability plus avoiding two manually
+  active writers in one test; both tests were hardened before the full run. Independent maintained-
+  documentation reviews found and corrected the inconsistent constructor ownership in Mechanism
+  Target Planning, graph construction inside loop examples, raw queue exposure, one profile/range
+  mismatch, requested-versus-applied status, partial-init cleanup, and unlabeled flat/advanced
+  teaching seams. Shutdown review also removed false positional-servo retracts at FTC STOP, ensured
+  physical Plant stops in Examples 02-06, and made Examples 04-05 best-effort under partial
+  initialization so drive and vision cleanup are not skipped. Final reviews find every remaining
+  named target and completed-Plant injection intentional and report no unresolved high-, medium-,
+  or low-severity finding.
+- **Hardware boundary (2026-07-29):** no robot-hardware claim is needed or made. This item changes
+  retained-object shape, examples, and documentation while preserving the same target object,
+  resolver graph, bounds/guards, normal-loop hardware writes, and loop order. The disabled flat
+  examples now best-effort invoke their existing Plant/drive physical stops during FTC cleanup and
+  no longer imply that an unapplied standard-servo request moves hardware at STOP. Physical
+  mechanism motion, configuration, safety, calibration, and tuning remain adopting-robot
+  validation.
+- **Manual verification and approval (2026-07-29):** the user completed the requested Android
+  Studio review of the one-variable mechanisms, synchronized ownership documentation, explicitly
+  labeled teaching/advanced seams, stable `Plant.commandTarget()` contract, and corrected example
+  shutdown behavior, then replied `PLANT-01 looks good`. This approves Gate 3 finalization and
+  publication. No robot-hardware claim is needed for this retained-object, API-usage, and
+  documentation change; physical configuration, motion, safety, calibration, and tuning remain
+  adopting-robot validation. PLANT-01 is **Done**.
 
 ### CYCLE-01 - Stateful drive-source cycle safety
 

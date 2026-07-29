@@ -14,6 +14,15 @@ The three layers are:
 2. <b>Behavior</b> — robot-owned execution and timing
 3. <b>Realization</b> — plant-owned final target application
 
+> **Advanced construction exception:** this one-file lesson deliberately exposes target-graph
+> assembly in its composition root and passes completed Plants into the nested `Realization` so the
+> three relationships can be studied separately. Copy the layer responsibilities, not that
+> construction seam. In ordinary robot code, follow the
+> [`Modern Starter Robot`](<Modern Starter Robot.md>): call
+> `new Mechanism(hardwareMap, profile.mechanism)`, and let that mechanism construct and privately
+> own its Plants. A completed-Plant constructor is appropriate only when it is explicitly kept as a
+> hardware-neutral test, custom-adapter, or advanced assembly seam.
+
 ---
 
 ## 1. Why this example exists
@@ -25,8 +34,9 @@ lightweight:
 - Example 08 keeps behavior almost trivial.
 
 Example 09 is the first one that says the quiet part out loud by naming the three layers directly.
-It is the example to copy when your robot mechanism starts getting “just complicated enough” to
-need structure.
+Copy its layer responsibilities when your mechanism gets “just complicated enough” to need
+structure; keep the ordinary starter construction boundary unless you intentionally need the
+advanced seam called out above.
 
 ---
 
@@ -161,9 +171,10 @@ That means:
 The code expresses that priority in two places with two different responsibilities:
 
 - `Behavior` owns the `OutputTaskRunner` and decides when to enqueue a pulse.
-- The composition root assembles the feeder Plant from the final `PlantTargetResolver` created by
-  `PlantTargets.overlay(...)`; `Realization` owns that completed Plant's lifecycle and derives its
-  graph-owned command once.
+- In this lesson's explicitly advanced one-file seam, the composition root assembles the feeder
+  Plant from the final `PlantTargetResolver` created by `PlantTargets.overlay(...)`; `Realization`
+  owns that completed Plant's lifecycle and accesses its graph-owned command through the Plant when
+  it needs to write it.
 
 That is the important source-driven lesson: behavior proposes temporary outputs; the final target
 resolver arbitrates; the Plant consumes one target.
@@ -179,13 +190,17 @@ In Example 09, realization owns two Plants:
 - a velocity plant for the flywheel
 - a power plant for the feeder
 
-The composition root passes those completed Plants into realization without also passing their
-already-bound command targets. Realization validates and caches each Plant's
-`plant.commandTarget()` once. The named targets still exist while the graphs are assembled; they
-are not repeated as peer constructor dependencies after the Plants exist.
+At the advanced construction seam identified at the top of this guide, the composition root passes
+those completed Plants into realization without also passing their already-bound command targets.
+`plant.commandTarget()` returns the same stable command identity without sampling hardware or
+changing state, so realization may retrieve it at each write site. The feeder's named base target
+still exists while its overlay graph is assembled; it is not repeated as a peer constructor
+dependency after the Plant exists.
 
-The flywheel uses a simple command `ScalarTarget`. Its Plant can be either FTC device-managed
-velocity control or a Phoenix-regulated velocity loop. If the robot uses a power-based PID/PIDF
+The flywheel's simple command can be created inline in `targetedBy(ScalarTarget.create(0.0))`, so
+realization retains only the Plant and writes through `flywheelPlant.commandTarget()`. Its Plant can
+use either FTC device-managed velocity control or a Phoenix-regulated velocity loop. If the robot
+uses a power-based PID/PIDF
 flywheel with battery-voltage compensation, that compensation belongs in the flywheel
 `ScalarRegulator` inside realization; requests and behavior still only talk in selected velocity
 targets and readiness readback.
@@ -276,7 +291,7 @@ Its loop code is intentionally small:
 4. export readback for the next loop
 
 That smallness is the whole point. The target-resolver ownership rule becomes obvious because only
-realization has the Plant references and derives their graph-owned commands, and the feeder's
+realization has the Plant references and accesses their graph-owned commands, and the feeder's
 pulse-vs-baseline priority is expressed in the resolver graph instead of as hidden Plant state.
 
 ---

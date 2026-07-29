@@ -330,6 +330,12 @@ That internal split matters more than file count. `ScoringPath` is still one pub
 but the code now makes it much harder to accidentally mix caller-owned intent with robot-owned queue
 state or plant readback.
 
+Phoenix follows the same ordinary construction ownership as the modern starter. `PhoenixRobot`
+constructs `ScoringPath` with `HardwareMap`, the data-only scoring config, and its robot-owned
+collaborators. `ScoringPath` defensively copies that config, constructs every scoring Plant and its
+final resolver internally, privately retains those Plants, and owns their update/stop order. The
+composition root does not prebuild scoring Plants and inject them as peers.
+
 The realization layer no longer imperatively chooses and writes plant targets every loop. Instead,
 each scoring Plant is built with a final `PlantTargetResolver`. Continuous baseline feed behavior is a
 source, the behavior-owned feed pulse queue is another source, and `PlantTargets.overlay(...)` expresses

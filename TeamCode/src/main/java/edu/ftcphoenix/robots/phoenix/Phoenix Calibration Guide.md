@@ -39,12 +39,16 @@ Phoenix mechanism services should use the framework position-Plant vocabulary wh
 software limits, logical units, homing, or indexing. The service owns the robot meaning of the
 positions; the framework Plant owns the public plant coordinate and the hardware-native mapping.
 
-Recommended builder flow:
+Recommended builder flow inside the owning mechanism/service constructor:
+
+`PhoenixRobot` should pass that owner `HardwareMap` plus its validated `PhoenixProfile` slice. The
+owner constructs and keeps the Plant; `PhoenixRobot` should not construct the Plant and inject it
+back into the owner. The compact fragment below omits that surrounding constructor so the
+calibration stages remain visible.
 
 ```java
-ScalarTarget liftTarget = ScalarTarget.create(0.0);
-
-PositionPlant lift = FtcActuators.plant(hardwareMap)
+// Inside the mechanism constructor; lift is a private field.
+this.lift = FtcActuators.plant(hardwareMap)
         .motor("liftMotor", Direction.FORWARD)
         .position()
         .deviceManagedWithDefaults()
@@ -53,7 +57,7 @@ PositionPlant lift = FtcActuators.plant(hardwareMap)
             .scaleToNative(TICKS_PER_INCH)   // native units: encoder ticks
             .needsReference("lift not homed")
         .positionTolerance(0.10)             // plant units
-        .targetedBy(liftTarget)
+        .targetedBy(ScalarTarget.create(0.0))
         .build();
 ```
 

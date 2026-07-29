@@ -71,12 +71,18 @@ the framework API.
   target finite and inside that range. A feedback move must explicitly choose whether active
   cancellation writes a caller-selected target or leaves its persistent request unchanged. Do not
   introduce competing imperative writers or claim that Task cancellation bypasses the source graph.
-  A realization that owns a completed Plant's lifecycle and writes its persistent command receives
-  the Plant alone and derives its stable `commandTarget()` once; a read-only/planned realization
-  still receives the Plant alone but requires no command, while a target-only policy receives only
-  its `ScalarTarget`. Do not pass Plant and target as independent peer dependencies. Feedback-aware
-  `ScalarTasks` still names both because the target is written while the explicit Plant selects
-  completion feedback and provenance.
+  In ordinary FTC robot code, a mechanism/subsystem constructor receives `HardwareMap` plus its
+  data-only configuration, defensively snapshots that configuration, constructs and privately owns
+  its final resolver/Plant graph, and owns Plant update/stop. The composition root constructs the
+  mechanism; it does not prebuild and inject that mechanism's Plants. A completed-Plant constructor
+  is reserved for an explicitly labeled hardware-neutral test, custom-adapter, portable-host, or
+  advanced-assembly seam, and it receives the Plant alone. For an ordinary exact mechanism, retain
+  only the Plant and use its stable, side-effect-free `commandTarget()` at the command or Task-
+  construction point; keep a separate target only when it has an independent shared, composed-
+  graph, or target-only policy role. A read-only/planned realization requires no command. Do not
+  pass Plant and target as independent peer dependencies. Feedback-aware `ScalarTasks` still names
+  both because the target is written while the explicit Plant selects completion feedback and
+  provenance.
 - Prefer framework task factories (`Tasks`, `ScalarTasks`, `DriveTasks`, guidance/route task helpers)
   over hand-written task state machines unless a new state machine is genuinely needed.
 - Keep drive intent and actuation separate: `DriveSource` produces robot-centric `DriveSignal`s;

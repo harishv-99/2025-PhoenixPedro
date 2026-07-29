@@ -15,14 +15,21 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * {@link PlantTargets#plan(PlantTargetRequest)} for fixed advanced requests and
  * {@link PlantTargets#plan(edu.ftcphoenix.fw.core.source.Source)} for live request sources.</p>
  *
- * <p>When behavior needs a writable command, graph construction should create one named
- * {@code ScalarTarget} and bind it directly or use it as the stable base of an overlaid or
- * periodic-equivalent final graph. Read-only and planned graphs need not carry a command. Once a
- * completed Plant crosses into a realization, pass the Plant alone. If that owner writes the
- * persistent command, derive it through {@link Plant#commandTarget()} rather than injecting the
- * same target separately; a read-only/planned owner derives no nonexistent command. Any final
- * resolver bound to a Plant should be total: it should provide a target every loop through an exact
- * value, overlay base, or explicit unavailable policy.</p>
+ * <p>In ordinary FTC robot code, a mechanism/subsystem constructor receives {@code HardwareMap}
+ * and its data-only config, snapshots that config, and constructs its final resolver and Plant
+ * graph internally. When an ordinary exact Plant needs a writable command with no independent
+ * owner, that graph construction can bind {@code ScalarTarget.create(initialValue)} inline. Name
+ * the target when it is shared, a target-only policy owns it, or it usefully identifies the stable
+ * base of an overlaid or periodic-equivalent final graph. Read-only and planned graphs need not
+ * carry a command.</p>
+ *
+ * <p>Outside that ordinary ownership boundary, a completed Plant may cross a constructor only at a
+ * clearly labeled hardware-neutral test, custom-adapter, portable-host, or advanced-assembly seam.
+ * Pass the Plant alone at that seam. If that owner writes the persistent command, retrieve it
+ * through {@link Plant#commandTarget()} rather than injecting the same target separately; a
+ * read-only/planned owner derives no nonexistent command. Any final resolver bound to a Plant
+ * should be total: it should provide a target every loop through an exact value, overlay base, or
+ * explicit unavailable policy.</p>
  */
 public interface PlantTargetResolver {
 

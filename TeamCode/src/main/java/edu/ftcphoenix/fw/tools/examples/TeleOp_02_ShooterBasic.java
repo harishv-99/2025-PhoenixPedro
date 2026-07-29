@@ -8,6 +8,7 @@ import edu.ftcphoenix.fw.actuation.Plant;
 import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.debug.NullDebugSink;
 import edu.ftcphoenix.fw.core.hal.Direction;
+import edu.ftcphoenix.fw.core.lifecycle.CleanupActions;
 import edu.ftcphoenix.fw.core.source.ScalarTarget;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.drive.DriveSignal;
@@ -26,6 +27,11 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
  * <p>This example builds directly on
  * <b>Example 01: Mecanum Basic</b> and shows how to control a simple
  * scoring mechanism:</p>
+ *
+ * <p><b>Ownership note:</b> This disabled class is an intentional one-OpMode API lesson.
+ * Ordinary structured robot code follows the Modern Starter pattern: the composition root calls
+ * {@code new Mechanism(hardwareMap, profile.mechanism)}, and that mechanism constructs and
+ * privately owns its Plants and their update/stop lifecycle.</p>
  *
  * <ul>
  *   <li>2 shooter motors (velocity-controlled pair).</li>
@@ -46,11 +52,11 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
  *       <li>{@link FtcActuators#plant} to turn hardware into {@link Plant}s.</li>
  *       <li>{@code motor(...).andMotor(...).velocity().deviceManagedWithDefaults()}
  *           {@code .bounded(...).nativeUnits().velocityTolerance(...)}
- *           {@code .targetedBy(shooterTarget).build()} for the shooter.</li>
+ *           {@code .targetedBy(ScalarTarget.create(0.0)).build()} for the shooter.</li>
  *       <li>{@code crServo(...).andCrServo(...).power()}
- *           {@code .targetedBy(transferTarget).build()} for the transfer.</li>
+ *           {@code .targetedBy(ScalarTarget.create(0.0)).build()} for the transfer.</li>
  *       <li>{@code servo(...).position().linear().bounded(0.0, 1.0).nativeUnits()}
- *           {@code .targetedBy(pusherTarget).build()} for the pusher.</li>
+ *           {@code .targetedBy(ScalarTarget.create(PUSHER_POS_RETRACT)).build()} for the pusher.</li>
  *     </ul>
  *   </li>
  *   <li><b>How to map buttons to simple modes</b> using
@@ -238,9 +244,6 @@ public final class TeleOp_02_ShooterBasic extends OpMode {
     private Plant shooter;   // velocity plant for shooter motors
     private Plant transfer;  // power plant for transfer CR servos
     private Plant pusher;    // position plant for pusher servo
-    private ScalarTarget shooterTarget;
-    private ScalarTarget transferTarget;
-    private ScalarTarget pusherTarget;
 
     // Requested states (controlled via bindings)
     private boolean shooterEnabled = false;
@@ -277,10 +280,6 @@ public final class TeleOp_02_ShooterBasic extends OpMode {
 
         // === 3) Mechanism wiring using FtcActuators ===
 
-        shooterTarget = ScalarTarget.create(0.0);
-        transferTarget = ScalarTarget.create(0.0);
-        pusherTarget = ScalarTarget.create(PUSHER_POS_RETRACT);
-
         // Shooter: two motors, velocity-controlled pair.
         shooter = FtcActuators.plant(hardwareMap)
                 .motor(HW_SHOOTER_LEFT, Direction.FORWARD)
@@ -290,7 +289,7 @@ public final class TeleOp_02_ShooterBasic extends OpMode {
                 .bounded(0.0, SHOOTER_VELOCITY_NATIVE)
                 .nativeUnits()
                 .velocityTolerance(SHOOTER_VELOCITY_TOLERANCE_NATIVE)
-                .targetedBy(shooterTarget)
+                .targetedBy(ScalarTarget.create(0.0))
                 .build();
 
         // Transfer: two CR servos, power-controlled pair.
@@ -298,7 +297,7 @@ public final class TeleOp_02_ShooterBasic extends OpMode {
                 .crServo(HW_TRANSFER_LEFT, Direction.FORWARD)
                 .andCrServo(HW_TRANSFER_RIGHT, Direction.REVERSE)
                 .power()
-                .targetedBy(transferTarget)
+                .targetedBy(ScalarTarget.create(0.0))
                 .build();
 
         // Pusher: single positional servo, 0..1 position plant.
@@ -308,7 +307,7 @@ public final class TeleOp_02_ShooterBasic extends OpMode {
                 .linear()
                 .bounded(0.0, 1.0)
                 .nativeUnits()
-                .targetedBy(pusherTarget)
+                .targetedBy(ScalarTarget.create(PUSHER_POS_RETRACT))
                 .build();
 
         // === 4) Bindings: map buttons to high-level modes (using lambdas) ===
@@ -384,33 +383,33 @@ public final class TeleOp_02_ShooterBasic extends OpMode {
         // --- 4) Mechanism logic: map modes to plant targets ---
 
         // Shooter
-        shooterTarget.set(shooterEnabled ? SHOOTER_VELOCITY_NATIVE : 0.0);
+        shooter.commandTarget().set(shooterEnabled ? SHOOTER_VELOCITY_NATIVE : 0.0);
 
         // Transfer
         switch (transferMode) {
             case LOAD:
-                transferTarget.set(TRANSFER_POWER_LOAD);
+                transfer.commandTarget().set(TRANSFER_POWER_LOAD);
                 break;
             case SHOOT:
-                transferTarget.set(TRANSFER_POWER_SHOOT);
+                transfer.commandTarget().set(TRANSFER_POWER_SHOOT);
                 break;
             case OFF:
             default:
-                transferTarget.set(0.0);
+                transfer.commandTarget().set(0.0);
                 break;
         }
 
         // Pusher
         switch (pusherMode) {
             case LOAD:
-                pusherTarget.set(PUSHER_POS_LOAD);
+                pusher.commandTarget().set(PUSHER_POS_LOAD);
                 break;
             case SHOOT:
-                pusherTarget.set(PUSHER_POS_SHOOT);
+                pusher.commandTarget().set(PUSHER_POS_SHOOT);
                 break;
             case RETRACT:
             default:
-                pusherTarget.set(PUSHER_POS_RETRACT);
+                pusher.commandTarget().set(PUSHER_POS_RETRACT);
                 break;
         }
 
@@ -459,15 +458,12 @@ public final class TeleOp_02_ShooterBasic extends OpMode {
      */
     @Override
     public void stop() {
-        // Safely stop mechanisms and drive.
-        shooterTarget.set(0.0);
-        transferTarget.set(0.0);
-        pusherTarget.set(PUSHER_POS_RETRACT);
-
-        shooter.stop();
-        transfer.stop();
-        pusher.stop();
-
-        drivebase.stop();
+        // Motor/CR-servo Plants zero output immediately. A standard positional-servo Plant holds
+        // its last applied position; retract it with bounded cooperative behavior before FTC STOP.
+        CleanupActions.attemptAll(
+                () -> { if (shooter != null) shooter.stop(); },
+                () -> { if (transfer != null) transfer.stop(); },
+                () -> { if (pusher != null) pusher.stop(); },
+                () -> { if (drivebase != null) drivebase.stop(); });
     }
 }

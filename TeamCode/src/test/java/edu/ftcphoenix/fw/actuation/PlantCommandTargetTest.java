@@ -36,6 +36,36 @@ public final class PlantCommandTargetTest {
     }
 
     @Test
+    public void ordinaryPlantCommandTargetIsStableAndRepeatedAccessDoesNotSampleIt() {
+        CountingTarget command = new CountingTarget(0.25);
+        Plant plant = Plants.power(new RecordingPowerOutput(), command);
+
+        assertTrue(plant.hasCommandTarget());
+        assertSame(command, plant.commandTarget());
+        assertSame(command, plant.commandTarget());
+        assertEquals(0, command.reads);
+
+        plant.commandTarget().set(0.75);
+
+        assertSame(command, plant.commandTarget());
+        assertEquals(0, command.reads);
+
+        ManualLoopClock time = new ManualLoopClock();
+        plant.update(time.clock());
+        int readsAfterUpdate = command.reads;
+        assertSame(command, plant.commandTarget());
+        assertEquals(readsAfterUpdate, command.reads);
+
+        plant.reset();
+        assertSame(command, plant.commandTarget());
+        assertEquals(readsAfterUpdate, command.reads);
+
+        plant.stop();
+        assertSame(command, plant.commandTarget());
+        assertEquals(readsAfterUpdate, command.reads);
+    }
+
+    @Test
     public void overlayPropagatesOnlyItsStableBaseCommandIncludingNestedBases() {
         ScalarTarget command = ScalarTarget.create(0.0);
         ScalarTarget innerLayer = ScalarTarget.create(0.4);

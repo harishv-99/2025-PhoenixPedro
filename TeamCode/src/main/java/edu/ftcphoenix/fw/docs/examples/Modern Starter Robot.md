@@ -68,6 +68,35 @@ validation.
 `StarterIntake` is the public, mode-neutral vocabulary. The Plant stays private to
 `StarterIntakeMechanism`, and neither mode client writes a target directly.
 
+The starter's construction path is also the canonical ordinary FTC mechanism pattern. The
+composition root supplies FTC resources and the mechanism's data-only config:
+
+```java
+intake = new StarterIntakeMechanism(hardwareMap, profile.intake);
+```
+
+The mechanism constructor defensively copies that config and constructs its Plant itself:
+
+```java
+StarterIntakeMechanism(HardwareMap hardwareMap, StarterProfile.IntakeConfig config) {
+    StarterProfile.IntakeConfig snapshot = Objects.requireNonNull(config, "config").copy();
+    requireActionPowers(snapshot.collectPower, snapshot.ejectPower);
+    collectPower = snapshot.collectPower;
+    ejectPower = snapshot.ejectPower;
+    plant = FtcActuators.plant(Objects.requireNonNull(hardwareMap, "hardwareMap"))
+            .motor(snapshot.motorName, snapshot.direction)
+            .power()
+            .targetedBy(ScalarTarget.create(STOPPED_POWER))
+            .build();
+}
+```
+
+That keeps hardware construction, the final resolver, the private Plant, and its update/stop
+lifecycle in one owner. `StarterIntakeMechanism` also has a package-private constructor that accepts
+a completed Plant, but it is explicitly a hardware-neutral focused-test seam. It is not a second
+ordinary composition-root pattern. A custom adapter, portable host, or advanced assembly may use a
+similarly labeled seam when it has a concrete reason.
+
 TeleOp follows this path:
 
 ```text

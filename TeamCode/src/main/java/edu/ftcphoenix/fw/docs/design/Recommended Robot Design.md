@@ -64,6 +64,17 @@ If you keep those rules, a robot can stay understandable even as it grows.
 Most examples in this document use real Phoenix types. A few route-library snippets are
 intentionally conceptual, because the exact adapter API depends on the library you choose to wrap.
 
+For ordinary FTC mechanisms, the examples follow the same construction boundary as the
+[`Modern Starter Robot`](<../examples/Modern Starter Robot.md>): the composition root validates the
+profile and calls `new Mechanism(hardwareMap, profile.mechanism)`. The mechanism defensively copies
+that data-only configuration, constructs and privately owns its Plants and local sensors, and owns
+their update and stop lifecycle. A constructor that accepts a completed `Plant` is useful as a
+hardware-neutral test or custom-adapter seam, but it is not the normal robot-code constructor.
+
+The illustrative `WristConfig`, `LiftConfig`, and `IntakeConfig` types below are data-only profile
+slices with a `copy()` method. A real profile should also validate their names, directions, finite
+ranges, and gains before the composition root constructs any hardware.
+
 All Java snippets in this document use Java 8-compatible syntax so they match the FTC project
 environment. That means examples avoid newer language features such as records and switch
 expressions.
@@ -234,8 +245,8 @@ The robot container wires everything together and advances the loop in a clear o
 
 It should usually own:
 
-- hardware construction
-- subsystem construction
+- construction of stable FTC lanes and robot-owned mechanisms
+- the `HardwareMap` and validated profile slices passed into mechanism constructors
 - supervisor construction
 - gamepad bindings
 - top-level update order
@@ -249,7 +260,7 @@ It should usually **not** own:
 - queue management details for one mechanism
 
 A robot container is the place where it should be obvious what exists on the robot. It is not the
-place where each mechanism's detailed behavior should live.
+place where each mechanism's Plant graph or detailed behavior should live.
 
 ### Coordinated cleanup remains explicit
 
@@ -280,17 +291,19 @@ primary:
 catch (RuntimeException failure) {
     throw CleanupActions.attemptAllAfterFailure(
             failure,
-            mechanism::stop,
-            drive::stop
+            () -> { if (mechanism != null) mechanism.stop(); },
+            () -> { if (drive != null) drive.stop(); }
     );
 }
 ```
 
 The second method returns the same supplied exception after attaching cleanup failures. The caller
 may rethrow it, wrap it as an actionable cause, or retain it for telemetry. `CleanupActions` does
-not choose eligibility, ownership, idempotence, rollback order, retry, or replacement policy, and
-it is not a normal command sequencer. Continuing later drive, feed, or mechanism commands after a
-failed prerequisite can be unsafe.
+not choose eligibility, ownership, idempotence, rollback order, retry, or replacement policy. The
+construction-failure form uses null-guarded lambdas because a bound `mechanism::stop` reference
+would dereference an owner before `attemptAllAfterFailure(...)` can protect the primary failure.
+This helper is not a normal command sequencer. Continuing later drive, feed, or mechanism commands
+after a failed prerequisite can be unsafe.
 
 ### Subsystem
 
@@ -488,54 +501,69 @@ public final class Wrist {
         }
     }
 
-    private final ScalarTarget commandTarget;
     private final Plant plant;
+    private final double stowTarget;
+    private final double intakeTarget;
+    private final double scoreTarget;
     private Pose desiredPose = Pose.STOW;
-    private double lastAppliedTarget = 0.10;
 
-    public Wrist(Plant plant) {
-        this.plant = Objects.requireNonNull(plant, "plant");
-        if (!plant.hasCommandTarget()) {
-            throw new IllegalArgumentException("wrist plant must have a command target");
-        }
-        this.commandTarget = Objects.requireNonNull(
-                plant.commandTarget(), "plant.commandTarget()");
+    public Wrist(HardwareMap hardwareMap, WristConfig config) {
+        WristConfig snapshot = Objects.requireNonNull(config, "config").copy();
+        stowTarget = snapshot.stowPosition;
+        intakeTarget = snapshot.intakePosition;
+        scoreTarget = snapshot.scorePosition;
+
+        plant = FtcActuators.plant(Objects.requireNonNull(hardwareMap, "hardwareMap"))
+                .servo(snapshot.servoName, snapshot.direction)
+                .position()
+                .linear()
+                    .bounded(0.0, 1.0)
+                    .nativeUnits()
+                .targetedBy(ScalarTarget.create(stowTarget))
+                .build();
     }
 
     public void setPose(Pose pose) {
-        desiredPose = pose;
+        desiredPose = Objects.requireNonNull(pose, "pose");
     }
 
     public Status status() {
-        return new Status(desiredPose, lastAppliedTarget);
+        return new Status(desiredPose, plant.getAppliedTarget());
     }
 
     public void update(LoopClock clock) {
-        double target;
-        switch (desiredPose) {
-            case STOW:
-                target = 0.10;
-                break;
-            case INTAKE:
-                target = 0.45;
-                break;
-            case SCORE:
-                target = 0.80;
-                break;
-            default:
-                target = 0.10;
-                break;
-        }
-
-        lastAppliedTarget = target;
-        commandTarget.set(target);
+        plant.commandTarget().set(targetFor(desiredPose));
         plant.update(clock);
+    }
+
+    public void stop() {
+        plant.stop();
+    }
+
+    private double targetFor(Pose pose) {
+        switch (pose) {
+            case STOW:
+                return stowTarget;
+            case INTAKE:
+                return intakeTarget;
+            case SCORE:
+                return scoreTarget;
+            default:
+                return stowTarget;
+        }
     }
 }
 ```
 
-The composition root gives this Plant-owning subsystem only the completed Plant. The subsystem
-derives and caches the graph-owned command rather than receiving the same relationship twice.
+After validating the profile, the composition root has one ordinary construction step:
+
+```java
+wrist = new Wrist(hardwareMap, profile.wrist);
+```
+
+The mechanism constructs the Plant, keeps it private, and asks the Plant for `getAppliedTarget()`
+instead of keeping a second field that merely guesses what the Plant applied. After each
+`plant.update(clock)`, that readback reflects the bounds and guards the Plant actually applied.
 
 ### TeleOp interaction
 
@@ -576,29 +604,8 @@ With the current plant design, the clean implementation is a **regulated positio
 
 ### Recommended subsystem shape
 
-A typical plant construction would look like this:
-
-```java
-ScalarTarget liftTarget = ScalarTarget.create(0.0);
-
-PositionPlant liftPlant = FtcActuators.plant(hardwareMap)
-        .motor("liftMotor", Direction.FORWARD)
-        .position()
-        .regulated()
-            .nativeFeedback(measuredHeightIn)
-            .regulator(ScalarRegulators.pid(Pid.withGains(0.12, 0.0, 0.0).setOutputLimits(-0.55, 0.55)))
-        .linear()
-            .bounded(0.0, 15.0)
-            .nativeUnits()
-            .alreadyReferenced()
-        .positionTolerance(0.50)
-        .targetedBy(liftTarget)
-        .build();
-
-Lift lift = new Lift(liftPlant);
-```
-
-Then the subsystem can own that plant and expose a robot-level API:
+The mechanism receives only FTC resources and its validated profile slice. It constructs the
+feedback source and regulated Plant together so they cannot be wired to different owners:
 
 ```java
 public final class Lift {
@@ -626,22 +633,45 @@ public final class Lift {
         }
     }
 
-    private final ScalarTarget liftTarget;
-    private final Plant liftPlant;
-    private double targetHeightIn = 0.0;
+    private final PositionPlant liftPlant;
+    private final double minimumHeightIn;
+    private final double maximumHeightIn;
+    private double targetHeightIn;
 
-    public Lift(Plant liftPlant) {
-        this.liftPlant = Objects.requireNonNull(liftPlant, "liftPlant");
-        if (!liftPlant.hasCommandTarget()) {
-            throw new IllegalArgumentException("lift plant must have a command target");
-        }
-        this.liftTarget = Objects.requireNonNull(
-                liftPlant.commandTarget(), "liftPlant.commandTarget()");
+    public Lift(HardwareMap hardwareMap, LiftConfig config) {
+        Objects.requireNonNull(hardwareMap, "hardwareMap");
+        LiftConfig snapshot = Objects.requireNonNull(config, "config").copy();
+        minimumHeightIn = snapshot.minimumHeightIn;
+        maximumHeightIn = snapshot.maximumHeightIn;
+        targetHeightIn = minimumHeightIn;
+
+        ScalarSource measuredHeightIn =
+                FtcSensors.distanceIn(hardwareMap, snapshot.heightSensorName);
+        liftPlant = FtcActuators.plant(hardwareMap)
+                .motor(snapshot.motorName, snapshot.direction)
+                .position()
+                .regulated()
+                    .nativeFeedback(measuredHeightIn)
+                    .regulator(ScalarRegulators.pid(
+                            Pid.withGains(snapshot.kP, snapshot.kI, snapshot.kD)
+                                    .setOutputLimits(
+                                            -snapshot.maximumPower,
+                                            snapshot.maximumPower)))
+                .linear()
+                    .bounded(minimumHeightIn, maximumHeightIn)
+                    .nativeUnits()
+                    .alreadyReferenced()
+                .positionTolerance(snapshot.positionToleranceIn)
+                .targetedBy(ScalarTarget.create(targetHeightIn))
+                .build();
     }
 
     public void setTargetHeightIn(double heightIn) {
-        targetHeightIn = Math.max(0.0, Math.min(heightIn, 30.0));
-        liftTarget.set(targetHeightIn);
+        if (!Double.isFinite(heightIn)) {
+            throw new IllegalArgumentException("heightIn must be finite");
+        }
+        targetHeightIn = Math.max(minimumHeightIn, Math.min(heightIn, maximumHeightIn));
+        liftPlant.commandTarget().set(targetHeightIn);
     }
 
     public Status status() {
@@ -653,7 +683,19 @@ public final class Lift {
     public void update(LoopClock clock) {
         liftPlant.update(clock);
     }
+
+    public void stop() {
+        liftPlant.stop();
+    }
 }
+```
+
+For the preset values below, this profile declares a range that includes them, such as
+`minimumHeightIn = 0.0` and `maximumHeightIn = 30.0`. The composition root constructs the owner,
+not the Plant:
+
+```java
+lift = new Lift(hardwareMap, profile.lift);
 ```
 
 ### TeleOp interaction
@@ -676,8 +718,8 @@ Task liftToHigh = Tasks.sequence(
 ### Why this is the recommended design
 
 - Auto and TeleOp share the same intent method
-- the subsystem receives one authoritative Plant, derives its graph-owned command once, and owns
-  Plant update order
+- the subsystem constructs and owns one authoritative Plant and its feedback source
+- the profile's declared bounds, the public clamp, and the shown presets describe the same range
 - `status()` gives Auto a clean wait condition
 - the rest of the robot never needs to know about the PID internals
 
@@ -726,10 +768,12 @@ public final class Intake {
     public static final class Status {
         private final boolean piecePresent;
         private final boolean feedActive;
+        private final boolean feedPending;
 
-        public Status(boolean piecePresent, boolean feedActive) {
+        public Status(boolean piecePresent, boolean feedActive, boolean feedPending) {
             this.piecePresent = piecePresent;
             this.feedActive = feedActive;
+            this.feedPending = feedPending;
         }
 
         public boolean piecePresent() {
@@ -739,69 +783,107 @@ public final class Intake {
         public boolean feedActive() {
             return feedActive;
         }
+
+        public boolean feedPending() {
+            return feedPending;
+        }
     }
 
-    private final ScalarTarget intakeTarget;
     private final Plant intakePlant;
-    private final ScalarTarget feederTarget;
     private final Plant feederPlant;
     private final BooleanSource piecePresent;
-    private final OutputTaskRunner feedQueue = new OutputTaskRunner(0.0);
+    private final OutputTaskRunner feedQueue = Tasks.outputQueue(0.0);
+    private final double collectPower;
+    private final double feedPosition;
+    private final double feedDurationSec;
 
     private boolean intakeEnabled = false;
     private boolean lastPiecePresent = false;
 
-    public Intake(Plant intakePlant,
-                  Plant feederPlant,
-                  BooleanSource piecePresent) {
-        this.intakePlant = Objects.requireNonNull(intakePlant, "intakePlant");
-        this.intakeTarget = requireCommandTarget(intakePlant, "intakePlant");
-        this.feederPlant = Objects.requireNonNull(feederPlant, "feederPlant");
-        this.feederTarget = requireCommandTarget(feederPlant, "feederPlant");
-        this.piecePresent = Objects.requireNonNull(piecePresent, "piecePresent");
+    public Intake(HardwareMap hardwareMap, IntakeConfig config) {
+        Objects.requireNonNull(hardwareMap, "hardwareMap");
+        IntakeConfig snapshot = Objects.requireNonNull(config, "config").copy();
+        collectPower = snapshot.collectPower;
+        feedPosition = snapshot.feedPosition;
+        feedDurationSec = snapshot.feedDurationSec;
+
+        piecePresent = FtcSensors.digitalLow(hardwareMap, snapshot.beamBreakName);
+
+        intakePlant = FtcActuators.plant(hardwareMap)
+                .motor(snapshot.intakeMotorName, snapshot.intakeDirection)
+                .power()
+                .targetedBy(ScalarTarget.create(0.0))
+                .build();
+
+        PlantTargetResolver finalFeederTarget =
+                PlantTargets.overlay(snapshot.feederIdlePosition)
+                        .add("feedPulse", feedQueue.activeSource(), feedQueue)
+                        .build();
+        feederPlant = FtcActuators.plant(hardwareMap)
+                .servo(snapshot.feederServoName, snapshot.feederDirection)
+                .position()
+                .linear()
+                    .bounded(0.0, 1.0)
+                    .nativeUnits()
+                .targetedBy(finalFeederTarget)
+                .build();
     }
 
     public void setIntakeEnabled(boolean enabled) {
         intakeEnabled = enabled;
     }
 
-    public BooleanSource piecePresentSource() {
-        return piecePresent;
+    public void requestFeedPulse() {
+        feedQueue.enqueue(Tasks.outputForSeconds(
+                "feedOne",
+                feedPosition,
+                feedDurationSec));
     }
 
-    public OutputTaskRunner feedQueue() {
-        return feedQueue;
+    public void cancelTransientActions() {
+        feedQueue.cancelAndClear();
     }
 
     public Status status() {
-        return new Status(lastPiecePresent, feedQueue.hasActiveTask());
+        return new Status(
+                lastPiecePresent,
+                feedQueue.hasActiveTask(),
+                feedQueue.backlogCount() > 0);
     }
 
     public void update(LoopClock clock) {
         lastPiecePresent = piecePresent.getAsBoolean(clock);
         feedQueue.update(clock);
 
-        intakeTarget.set(intakeEnabled ? 1.0 : 0.0);
+        intakePlant.commandTarget().set(intakeEnabled ? collectPower : 0.0);
         intakePlant.update(clock);
-
-        double feederCmd = feedQueue.activeSource().choose(feedQueue, ScalarSource.constant(0.0))
-                .getAsDouble(clock);
-        feederTarget.set(feederCmd);
         feederPlant.update(clock);
     }
 
-    private static ScalarTarget requireCommandTarget(Plant plant, String name) {
-        if (!plant.hasCommandTarget()) {
-            throw new IllegalArgumentException(name + " must have a command target");
-        }
-        return Objects.requireNonNull(plant.commandTarget(), name + ".commandTarget()");
+    public void stop() {
+        CleanupActions.attemptAll(
+                feedQueue::cancelAndClear,
+                () -> intakePlant.commandTarget().set(0.0),
+                intakePlant::stop,
+                feederPlant::stop);
     }
 }
 ```
 
-The exact `status()` implementation can vary. In real code you would usually cache whatever values
-outside callers need while the subsystem is updating. The important point is the shape: small
-external status, target-resolver ownership inside the subsystem.
+The final feeder overlay is constructed once, in the mechanism constructor. Each loop only advances
+the queue and then the Plants. The queue, resolver, sensor source, and Plants remain private; callers
+see semantic requests and a small status snapshot.
+
+This example deliberately treats holding either feeder-servo position at FTC STOP as mechanically
+safe. A standard-servo Plant's `stop()` re-commands its last applied position; cancelling the queue
+changes what a future update would select but does not move the servo without that update. If a real
+mechanism must retract before shutdown, make retraction a bounded cooperative Task before STOP or
+use a hardware adapter with an explicit safe stop behavior. Do not imply that merely setting an idle
+target inside `stop()` applies it.
+
+```java
+intake = new Intake(hardwareMap, profile.intake);
+```
 
 ### Recommended supervisor shape
 
@@ -810,12 +892,12 @@ public final class IntakeSupervisor {
     public static final class Status {
         private final boolean intakeEnabled;
         private final boolean piecePresent;
-        private final boolean feedQueued;
+        private final boolean feedPending;
 
-        public Status(boolean intakeEnabled, boolean piecePresent, boolean feedQueued) {
+        public Status(boolean intakeEnabled, boolean piecePresent, boolean feedPending) {
             this.intakeEnabled = intakeEnabled;
             this.piecePresent = piecePresent;
-            this.feedQueued = feedQueued;
+            this.feedPending = feedPending;
         }
 
         public boolean intakeEnabled() {
@@ -826,8 +908,8 @@ public final class IntakeSupervisor {
             return piecePresent;
         }
 
-        public boolean feedQueued() {
-            return feedQueued;
+        public boolean feedPending() {
+            return feedPending;
         }
     }
 
@@ -836,7 +918,7 @@ public final class IntakeSupervisor {
     private Status lastStatus = new Status(false, false, false);
 
     public IntakeSupervisor(Intake intake) {
-        this.intake = intake;
+        this.intake = Objects.requireNonNull(intake, "intake");
     }
 
     public void setIntakeEnabled(boolean enabled) {
@@ -845,20 +927,21 @@ public final class IntakeSupervisor {
     }
 
     public void requestFeedOne() {
-        intake.feedQueue().enqueue(
-                Tasks.outputForSeconds("feedOne", 0.90, 0.12)
-        );
+        if (!intake.status().feedPending()) {
+            intake.requestFeedPulse();
+        }
     }
 
     public void cancelTransientActions() {
-        intake.feedQueue().cancelAndClear();
+        intake.cancelTransientActions();
     }
 
     public void update(LoopClock clock) {
+        Intake.Status intakeStatus = intake.status();
         lastStatus = new Status(
                 intakeEnabled,
-                intake.status().piecePresent(),
-                intake.feedQueue().backlogCount() > 0
+                intakeStatus.piecePresent(),
+                intakeStatus.feedPending()
         );
     }
 
@@ -871,7 +954,8 @@ public final class IntakeSupervisor {
 The important point of this example is the boundary:
 
 - supervisor owns requests and queueing policy
-- subsystem remains the single owner of the feeder target resolver and Plant update order
+- subsystem exposes semantic feed/cancel operations but keeps the queue, feeder target resolver, and
+  Plant update order private
 
 ### TeleOp interaction
 
@@ -1269,14 +1353,18 @@ That keeps debugging readable without forcing the rest of the robot to know the 
 A typical loop order looks like this:
 
 1. advance `LoopClock`
-2. refresh bindings / request intents
-3. update supervisors
-4. update subsystems
-5. update drive / route tasks
-6. publish telemetry/debug
+2. refresh sensors and stable acquisition/localization lanes
+3. update input bindings
+4. update mode-owned Tasks, route execution, and supervisors so they publish this cycle's intent
+5. apply the one final drive command (or the integration's required stable heartbeat)
+6. update mechanisms/subsystems so their final target graphs realize that intent
+7. publish telemetry/debug snapshots
 
 The important thing is not the exact wording. The important thing is that the order stays consistent
-and easy to read.
+and easy to read. In particular, do not update a Plant and then write the target that you expected it
+to apply in that same cycle. A third-party follower whose supported lifecycle requires an earlier
+root heartbeat is the documented integration exception; its adapter deduplicates a same-cycle Task
+call rather than creating a second timebase.
 
 If a robot grows, use helper methods so the container still reads like a composition root instead of
 becoming a 500-line control script.
@@ -1291,7 +1379,7 @@ Bad:
 
 ```java
 if (gamepad1.a) {
-    liftTarget.set(0.7); // still wrong place: OpMode is bypassing mechanism policy
+    liftPlant.commandTarget().set(0.7); // still wrong: OpMode bypasses mechanism policy
 }
 ```
 

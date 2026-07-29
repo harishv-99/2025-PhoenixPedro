@@ -27,22 +27,28 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *       overlay base. Robot policy and {@link ScalarTasks} change that same persistent request.</li>
  * </ul>
  *
- * <h2>Typical usage</h2>
+ * <h2>Ordinary FTC mechanism ownership</h2>
+ * <p>Build and retain the Plant inside the mechanism/subsystem constructor that receives
+ * {@code HardwareMap} and a data-only mechanism config. That owner snapshots its config and owns
+ * the Plant's update and stop lifecycle; the composition root constructs the mechanism rather than
+ * constructing this Plant itself. The following is the Plant-building part of that constructor.</p>
  * <pre>{@code
- * ScalarTarget flywheelTarget = ScalarTarget.create(0.0);
- *
- * Plant flywheel = FtcActuators.plant(hardwareMap)
- *     .motor("flywheel", Direction.FORWARD)
+ * FlywheelConfig cfg = config.copy();
+ * this.flywheel = FtcActuators.plant(hardwareMap)
+ *     .motor(cfg.motorName, cfg.direction)
  *     .velocity()
  *     .deviceManagedWithDefaults()
- *     .bounded(0.0, 2600.0)
+ *     .bounded(cfg.minVelocity, cfg.maxVelocity)
  *     .nativeUnits()
- *     .velocityTolerance(50.0)
- *     .targetedBy(flywheelTarget)
+ *     .velocityTolerance(cfg.velocityTolerance)
+ *     .targetedBy(ScalarTarget.create(0.0))
  *     .build();
  *
- * flywheelTarget.set(1800.0);  // behavior changes the request
- * flywheel.update(clock);      // plant resolves the request and applies a safe target
+ * // Later, in a semantic intent method:
+ * flywheel.commandTarget().set(1800.0); // changes the graph-owned request
+ *
+ * // Once in the mechanism owner's per-loop update phase:
+ * flywheel.update(clock); // plant resolves the request and applies a safe target
  * }</pre>
  */
 public interface Plant {
@@ -148,9 +154,11 @@ public interface Plant {
      * Whether this plant's final target graph carries a stable command target.
      *
      * <p>When this returns {@code true}, {@link #commandTarget()} must return the same non-null
-     * object for this Plant's lifetime. A command-writing realization that owns this completed
-     * Plant may therefore derive and retain that command object once instead of accepting a second,
-     * independently supplied target.</p>
+     * object for this Plant's lifetime. An ordinary FTC mechanism normally constructs this Plant
+     * internally and may retrieve that command where it is used. If a clearly labeled
+     * hardware-neutral test, custom-adapter, or advanced-assembly seam instead injects a completed
+     * Plant, it passes this Plant alone rather than accepting a second, independently supplied
+     * target.</p>
      */
     default boolean hasCommandTarget() {
         return false;
@@ -160,15 +168,17 @@ public interface Plant {
      * Return this plant's stable command target.
      *
      * <p>This target is the persistent behavior request that tasks may change. An overlay can mask
-     * that request without changing command ownership. Calling this method does not bypass the
+     * that request without changing command ownership. Calling this method is side-effect-free and
+     * returns the same object for this Plant's lifetime; it does not sample the graph or bypass the
      * Plant's target graph, guards, or update lifecycle.</p>
      *
-     * <p>This is also the authoritative construction-boundary seam for an owner that receives a
-     * completed Plant, owns its lifecycle, and writes its persistent command. Such an owner should
-     * validate this capability and cache the returned target once rather than receive the same
-     * target as a separate peer dependency. A read-only or planned realization still receives only
-     * its Plant but does not require a command target. A policy object that does not own the Plant
-     * may instead receive only the {@link ScalarTarget} it writes.</p>
+     * <p>An ordinary exact mechanism builds and retains only the Plant, then retrieves this stable
+     * target at a command or Task-construction point. A separate retained target is useful only
+     * when it has an independent shared, composed-graph, or target-only policy role. Passing a
+     * completed Plant across a constructor is an explicit hardware-neutral test, custom-adapter,
+     * portable-host, or advanced-assembly seam; that seam receives only the Plant. A read-only or
+     * planned realization does not require a command target. A policy object that does not own the
+     * Plant may instead receive only the {@link ScalarTarget} it writes.</p>
      *
      * @throws IllegalStateException if the plant was built from a read-only source without a
      *                               stable command target

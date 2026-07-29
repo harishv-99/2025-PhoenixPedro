@@ -29,19 +29,21 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * Plant implementations also enforce a final finite/range postcondition after this guard chain
  * runs, because hold-last and rate-limiter state are dynamic.</p>
  *
- * <h2>Common builder usage</h2>
+ * <h2>Common mechanism-constructor usage</h2>
+ * <p>This is the Plant-building portion of the mechanism/subsystem constructor. The owner receives
+ * {@code HardwareMap} and a data-only config, snapshots that config, and privately owns the
+ * resulting Plant and its update/stop lifecycle.</p>
  * <pre>{@code
- * ScalarTarget liftTarget = ScalarTarget.create(0.0);
- *
- * PositionPlant lift = FtcActuators.plant(hardwareMap)
- *     .motor("lift", Direction.FORWARD)
+ * LiftConfig cfg = config.copy();
+ * this.lift = FtcActuators.plant(hardwareMap)
+ *     .motor(cfg.motorName, cfg.direction)
  *     .position()
  *     ...
  *     .targetGuards()
  *         .maxTargetRate(1200.0)
  *         .holdLastTargetUnless("wristClear", wristClear)
  *         .doneTargetGuards()
- *     .targetedBy(liftTarget)
+ *     .targetedBy(ScalarTarget.create(0.0))
  *     .build();
  * }</pre>
  */

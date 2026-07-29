@@ -9,21 +9,28 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * <p>Use {@code ScalarTarget} for persistent robot requests such as “arm goal”,
  * “flywheel velocity request”, or “manual feeder power”. A source-driven plant may be built
  * directly from a {@code ScalarTarget}, or a target can be used as the base layer of a richer
- * source graph.</p>
+ * source graph. Retain the target itself when it is standalone, shared, owned by target-only
+ * policy, or useful while assembling a composed graph. In ordinary FTC robot code, the
+ * mechanism/subsystem constructor receives {@code HardwareMap} and its data-only config, snapshots
+ * that config, and builds its privately owned Plant graph. An ordinary exact mechanism with no
+ * separate target role can inline {@link #create(double)} during that construction and retrieve the
+ * same stable request later through {@code plant.commandTarget()}.</p>
  *
- * <h2>Typical usage</h2>
+ * <h2>Exact command inside a mechanism constructor</h2>
  * <pre>{@code
- * ScalarTarget liftGoal = ScalarTarget.create(0.0);
- *
- * PositionPlant lift = FtcActuators.plant(hardwareMap)
- *     .motor("lift", Direction.FORWARD)
+ * LiftConfig cfg = config.copy();
+ * this.lift = FtcActuators.plant(hardwareMap)
+ *     .motor(cfg.motorName, cfg.direction)
  *     .position()
  *     ...
- *     .targetedBy(liftGoal)
+ *     .targetedBy(ScalarTarget.create(0.0))
  *     .build();
  *
- * liftGoal.set(1200.0);   // behavior changes the request
- * lift.update(clock);     // plant samples the request this loop
+ * // Later, in a semantic intent method:
+ * lift.commandTarget().set(1200.0); // changes the graph-owned request
+ *
+ * // Once in the mechanism owner's per-loop update phase:
+ * lift.update(clock); // plant samples the request this loop
  * }</pre>
  */
 public interface ScalarTarget extends ScalarSource {

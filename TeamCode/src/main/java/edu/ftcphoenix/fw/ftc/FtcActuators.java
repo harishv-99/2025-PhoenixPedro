@@ -60,15 +60,19 @@ import edu.ftcphoenix.fw.core.source.ScalarTarget;
  * global ownership registry; a separately constructed Plant or a read-only feedback choice may
  * intentionally use the same configured device name.</p>
  *
- * <h2>Typical usage</h2>
+ * <h2>Typical mechanism ownership</h2>
+ *
+ * <p>Ordinary FTC robot code uses these builders inside a mechanism/subsystem constructor. The
+ * composition root passes {@code HardwareMap} plus a data-only mechanism config; the mechanism
+ * defensively snapshots that config, constructs and privately retains its Plants, and owns their
+ * update and stop lifecycle. The abbreviated fragments below show that constructor-owned Plant
+ * construction. A completed-Plant injection constructor is reserved for a clearly labeled
+ * hardware-neutral test, custom-adapter, portable-host, or advanced-assembly seam.</p>
  *
  * <pre>{@code
- * ScalarTarget liftTarget = ScalarTarget.create(0.0);
- * ScalarTarget flywheelTarget = ScalarTarget.create(0.0);
- * ScalarTarget clawTarget = ScalarTarget.create(0.0);
- *
- * PositionPlant lift = FtcActuators.plant(hardwareMap)
- *     .motor("lift", Direction.FORWARD)
+ * MechanismConfig cfg = config.copy();
+ * this.lift = FtcActuators.plant(hardwareMap)
+ *     .motor(cfg.liftMotorName, cfg.liftDirection)
  *     .position()
  *     .deviceManaged()
  *         .maxPower(0.8)
@@ -78,27 +82,30 @@ import edu.ftcphoenix.fw.core.source.ScalarTarget;
  *         .nativeUnits()
  *         .needsReference("lift not homed")
  *     .positionTolerance(20.0)
- *     .targetedBy(liftTarget)
+ *     .targetedBy(ScalarTarget.create(0.0))
  *     .build();
  *
- * Plant flywheel = FtcActuators.plant(hardwareMap)
- *     .motor("flywheel", Direction.FORWARD)
+ * this.flywheel = FtcActuators.plant(hardwareMap)
+ *     .motor(cfg.flywheelMotorName, cfg.flywheelDirection)
  *     .velocity()
  *     .deviceManagedWithDefaults()
  *     .bounded(0.0, 2600.0)
  *     .nativeUnits()
  *     .velocityTolerance(50.0)
- *     .targetedBy(flywheelTarget)
+ *     .targetedBy(ScalarTarget.create(0.0))
  *     .build();
  *
- * PositionPlant claw = FtcActuators.plant(hardwareMap)
- *     .servo("claw", Direction.FORWARD)
+ * this.claw = FtcActuators.plant(hardwareMap)
+ *     .servo(cfg.clawServoName, cfg.clawDirection)
  *     .position()
  *     .linear()
  *         .bounded(0.0, 1.0)
  *         .rangeMapsToNative(0.30, 0.80)
- *     .targetedBy(clawTarget)
+ *     .targetedBy(ScalarTarget.create(0.0))
  *     .build();
+ *
+ * // Later, in a semantic mechanism method:
+ * lift.commandTarget().set(1200.0);
  * }</pre>
  */
 public final class FtcActuators {
