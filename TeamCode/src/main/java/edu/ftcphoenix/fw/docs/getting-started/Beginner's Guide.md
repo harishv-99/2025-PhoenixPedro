@@ -318,7 +318,7 @@ position. Student code should not add `DcMotor.setMode(...)` calls around the st
 
 Rule of thumb: builder values are in **plant units** unless the API explicitly says `Native` (or a
 native/controller-specific unit like `Ticks`). So `bounded(...)`, `periodic(...)`, tolerances, and
-later target-source values all use plant units. `rangeMapsToNative(...)` takes native endpoint values.
+later resolved target values all use plant units. `rangeMapsToNative(...)` takes native endpoint values.
 Velocity mapping is deliberately simpler: `scaleToNative(...)` changes only scale, not zero, so
 plant velocity `0.0` still means stop. Power target values are always normalized `[-1.0, +1.0]`, so
 the power builder does not ask for bounds.
@@ -326,7 +326,7 @@ the power builder does not ask for bounds.
 After that required feedback answer, you may add optional dynamic guards through
 `.targetGuards()...doneTargetGuards()`. Then bind the retained command with
 `.targetedBy(commandTarget)` before `.build()`. An advanced composed graph instead supplies one
-`PlantTargetSource`; adapt a read-only `ScalarSource` explicitly with `PlantTargets.exact(source)`.
+`PlantTargetResolver`; adapt a read-only `ScalarSource` explicitly with `PlantTargets.exact(source)`.
 
 ### 3.2 Position semantics: motors vs servos
 
@@ -470,7 +470,7 @@ set it directly for immediate TeleOp intent, or use `edu.ftcphoenix.fw.actuation
 the write must run later as a Task.
 
 A Plant is source-driven, so a task does not write hardware directly. It writes the named command
-target; the Plant samples its final target graph and applies hardware guards during
+target; the Plant invokes its final target resolver and applies hardware guards during
 `plant.update(clock)`.
 
 Creating the builder or calling `build()` does not change the target. The fresh single-use Task

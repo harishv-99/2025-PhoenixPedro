@@ -8,7 +8,7 @@ import java.util.Objects;
 import java.util.function.LongSupplier;
 
 import edu.ftcphoenix.fw.actuation.Plant;
-import edu.ftcphoenix.fw.actuation.PlantTargetSource;
+import edu.ftcphoenix.fw.actuation.PlantTargetResolver;
 import edu.ftcphoenix.fw.actuation.PlantTargets;
 import edu.ftcphoenix.fw.core.hal.Direction;
 import edu.ftcphoenix.fw.core.math.MathUtil;
@@ -101,7 +101,7 @@ public final class TeleOp_09_LayeredShooterMechanism extends OpMode {
         ScalarTarget flywheelTarget = ScalarTarget.create(0.0);
         ScalarTarget feederBaseTarget = ScalarTarget.create(0.0);
         OutputTaskRunner feederPulseQueue = Tasks.outputQueue(0.0);
-        PlantTargetSource finalFeederTarget = PlantTargets.overlay(feederBaseTarget)
+        PlantTargetResolver finalFeederTargetResolver = PlantTargets.overlay(feederBaseTarget)
                 .add("feedPulse", feederPulseQueue.activeSource(), feederPulseQueue)
                 .build();
 
@@ -120,7 +120,7 @@ public final class TeleOp_09_LayeredShooterMechanism extends OpMode {
                 .crServo(HW_FEED_LEFT, Direction.FORWARD)
                 .andCrServo(HW_FEED_RIGHT, Direction.REVERSE)
                 .power()
-                .targetedBy(finalFeederTarget)
+                .targetedBy(finalFeederTargetResolver)
                 .build();
 
         shooter = new LayeredShooter(
@@ -348,7 +348,7 @@ public final class TeleOp_09_LayeredShooterMechanism extends OpMode {
      *
      * <p>This layer decides when pending shots may start, owns the feed pulse queue, and chooses
      * the baseline feed target. Realization overlays the active queue output on top of that baseline
-     * before the feeder Plant samples its final target source.</p>
+     * before the feeder Plant invokes its final target resolver.</p>
      */
     private static final class Behavior {
 
@@ -492,7 +492,7 @@ public final class TeleOp_09_LayeredShooterMechanism extends OpMode {
      *
      * <p>This is the only layer allowed to touch Plants. Each Plant is the construction-boundary
      * authority for its stable command target, which realization retains once. It updates those
-     * targets, lets the feeder Plant consume its final overlaid target source, updates the Plants,
+     * targets, lets the feeder Plant invoke its final overlaid target resolver, updates the Plants,
      * and exports a small readback snapshot for the next loop.</p>
      */
     private static final class Realization {

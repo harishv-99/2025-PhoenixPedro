@@ -161,12 +161,12 @@ That means:
 The code expresses that priority in two places with two different responsibilities:
 
 - `Behavior` owns the `OutputTaskRunner` and decides when to enqueue a pulse.
-- The composition root assembles the feeder Plant from the final `PlantTargetSource` created by
+- The composition root assembles the feeder Plant from the final `PlantTargetResolver` created by
   `PlantTargets.overlay(...)`; `Realization` owns that completed Plant's lifecycle and derives its
   graph-owned command once.
 
-That is the important source-driven lesson: behavior proposes temporary outputs; the final target source
-arbitrates; the Plant consumes one target.
+That is the important source-driven lesson: behavior proposes temporary outputs; the final target
+resolver arbitrates; the Plant consumes one target.
 
 ---
 
@@ -246,15 +246,15 @@ ScalarRegulator customNominal = ScalarRegulators.setpointFeedforward(
 );
 ```
 
-The feeder uses a richer final target source:
+The feeder uses a richer final target resolver:
 
 ```java
-PlantTargetSource finalFeederTarget = PlantTargets.overlay(feederBaseTarget)
+PlantTargetResolver finalFeederTarget = PlantTargets.overlay(feederBaseTarget)
         .add("feedPulse", feederPulseQueue.activeSource(), feederPulseQueue)
         .build();
 ```
 
-The feeder Plant is then built with that final target source. Because the overlay base is the
+The feeder Plant is then built with that final target resolver. Because the overlay base is the
 `ScalarTarget` named `feederBaseTarget`, the graph automatically carries it as the command target
 that `ScalarTasks.set(...)` can write if needed. Conditional layers never replace that command
 identity:
@@ -272,12 +272,12 @@ Its loop code is intentionally small:
 
 1. receive the behavior output
 2. update the command baseline targets
-3. update the plants, letting each Plant sample its final target source
+3. update the plants, letting each Plant invoke its final target resolver
 4. export readback for the next loop
 
-That smallness is the whole point. The target-source ownership rule becomes obvious because only
+That smallness is the whole point. The target-resolver ownership rule becomes obvious because only
 realization has the Plant references and derives their graph-owned commands, and the feeder's
-pulse-vs-baseline priority is expressed in the source graph instead of as hidden Plant state.
+pulse-vs-baseline priority is expressed in the resolver graph instead of as hidden Plant state.
 
 ---
 

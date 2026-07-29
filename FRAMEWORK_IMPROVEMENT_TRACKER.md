@@ -141,7 +141,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 54 | EXAMPLE-01 | Compiling modern starter robot | Done | User approved the verified starter package; Gate 3 publication is authorized. |
 | 55 | TARGET-04 | Command-preserving equivalent-position resolution | Done | The focused transform, truthful command-backed Task completion, synchronized documentation, software verification, and Android Studio review are complete. |
 | 56 | API-06 | One Plant command and Task-writing path | Done | The unified target-root API, Plant-derived command ownership, synchronized callers/docs, verification, and Android Studio review are complete. |
-| 57 | TARGET-05 | Target request/resolution vocabulary | Proposed | Consolidate the advanced planner's request, resolver, and resolution concepts without removing useful multi-candidate planning. |
+| 57 | TARGET-05 | Target request/resolution vocabulary | Done | The request/resolver/resolution migration, automated verification, Android Studio review, and publication approval are complete. |
 | 58 | EXAMPLE-03 | Advanced moving-target reference | Proposed | Prove progress-triggered scoring and a bounded moving turret without putting game physics in the framework. |
 | 59 | BOUNDARY-01 | FTC boundary enforcement | Proposed | Fix existing import leaks, then add a focused forbidden-import check. |
 | 60 | DOC-01 | Stale and non-compiling documentation | Proposed | Correct loop/API examples and validate links/examples where practical. |
@@ -5538,11 +5538,314 @@ writer, and explicit lifecycle ownership.
   behavior can be reviewed independently. API-06 owns ordinary command/task construction cleanup;
   CLEAN-01 retains unrelated aliases. TARGET-05 must repeat the full public-caller, documentation,
   subclassing, binary/source migration, and example audit before proposing exact signatures.
+- **Research started (2026-07-28):** work is isolated on
+  `codex/target-05-target-vocabulary` from verified `origin/master` after API-06. This Gate 1 audit
+  may update the tracker only; framework implementation remains blocked on explicit design
+  approval.
+- **Decision gate (2026-07-28):** **Ready; major public API approval required.** The advanced
+  capability remains useful, but its current names and duplicated leaf/request construction do not.
+  Use one `request -> resolver -> resolution` vocabulary, keep the Plant context as the explicit
+  custom-extension input, and preserve `plan(...)` for future games. No implementation has started.
+- **Design reopened (2026-07-28):** the user asked whether fixed alternatives can be passed directly
+  to `oneOf(...)`, whether dynamically discovered alternatives need less collection boilerplate,
+  and which sibling APIs establish the right parallel. TARGET-05 is **Researching** again while
+  those construction paths are compared; the earlier implementation approval request is withdrawn.
+- **Reopened decision (2026-07-28):** **Ready again; revised public API approval required.** Use
+  `oneOf(PlantTargetRequest...)` for a fixed declaration and
+  `oneOf(List<PlantTargetRequest>)` for an ordered set discovered in a loop. The varargs form is the
+  requested unknown-argument-count API and delegates to the same flatten/validate/defensive-copy
+  implementation as the List form. Arrays already pass to varargs, so no array overload is needed.
+  Keep `List`, rather than `Collection` or `Iterable`, because request order is the deterministic
+  tie-breaker and the type should not invite unordered Sets, one-shot iterables, or unbounded input.
+  Add `plan(PlantTargetRequest)` alongside `plan(Source<PlantTargetRequest>)` so a fixed immutable
+  request does not require `Source.constant(...)`; both enter the same preference stage. Do not add
+  `plan(request1, request2, ...)`: `oneOf(...)` remains the sole request-composition operation.
+- **Confirmed current model and naming failure:**
+  - `PlantTargetRequest` is an immutable per-cycle set of acceptable Plant-unit candidates and is
+    correctly supplied by an ordinary `Source<PlantTargetRequest>`. `PlantTargetCandidate` is its
+    public leaf representation. Both classes expose the same six timeless and six observed factory
+    families; every single-candidate Request factory only delegates to Candidate and wraps it.
+  - `PlantTargetSource` is not a Phoenix `Source<T>`. Its abstract operation consumes a
+    Plant-created `PlantTargetContext` plus `LoopClock`, then returns a structured result. It is a
+    context-aware resolver and may retain cycle, fallback, measured-hold, and reset state.
+  - `PlantTargetPlan` is not a future plan or builder. Exact values, overlays, measured/last holds,
+    equivalent positions, and the advanced planner all create this immutable result for the current
+    Plant update. The Plant retains it for diagnostics and `ScalarTasks` reads its private
+    command-path provenance. `PlantTargets.plan()` instead returns a staged builder, so `plan` now
+    names both construction and the completed result.
+  - `PlantTargetPlan.satisfiesRequest()` also applies when no `PlantTargetRequest` existed: exact and
+    equivalent command paths set it true, while fallback, hold, and planner-clamp outputs set it
+    false. Its actual meaning is whether the resolution satisfies the active logical intent.
+  - There is no `PlantTarget` value type. Plant targets remain finite `double`s in one declared
+    Plant coordinate; adding a wrapper for every number would add a noun without ownership or
+    behavior.
+- **Complete public construction and caller audit:**
+  - `PlantTargets` has `exact(double|ScalarSource)`, `holdLastTarget(...)`,
+    `holdMeasuredTargetOnEntry(...)`, `overlay(double|ScalarSource|PlantTargetSource)`,
+    `equivalentPositionsOf(ScalarTarget|PlantTargetSource)`, and the zero-argument `plan()` followed
+    by `request(Source<PlantTargetRequest>)`. Overlay has the three `add(...)`, three
+    `addIfAvailable(...)`, and `build()` answers. Equivalent-position and planner builders use public
+    staged interfaces for preference, unreachable, observation-acceptance, and unavailable-policy
+    questions. There are no public constructors or `of(...)` aliases in this family.
+  - `PlantTargetRequest` has `none`, twelve single-candidate factories, `oneOf` varargs/list,
+    candidate inspection, reason, and string output. `PlantTargetCandidate` has the same twelve
+    leaf factories plus eight public representation fields. `PlantTargets.CandidatePreference` and
+    `UnreachablePolicy` are public even though no public method accepts or returns them; every
+    supported caller selects those answers through staged methods.
+  - No production, Phoenix, tool, or modern-example Java code constructs the advanced planner,
+    Request, or Candidate. That does not justify deletion: the maintained guide and Phoenix design
+    retain future turret, tray, moving-observation, relative, and explicit-period cases. Phoenix
+    `ScoringPath` stores four final target graphs, and tool examples `TeleOp_07` and `TeleOp_09`
+    store final overlay graphs; they use `PlantTargetSource` only as the completed graph type.
+  - The executable advanced callers are the focused tests `PlantCommandTargetTest`,
+    `PlantEquivalentPositionTaskTest`, `PlantTargetsEquivalentPositionsTest`,
+    `PlantTargetsOverlayTest`, `PlantTargetsPeriodicPlannerTest`, and
+    `PlantTargetsPlannerFreshnessTest`. Custom source/result seams also appear in
+    `PlantsTargetSafetyTest`; builder signatures are inspected by `MappedPlantToleranceTest`,
+    `FtcFeedbackToleranceStageTest`, and `FtcMotorPowerRunModeTest`.
+  - Core retention/binding callers are `Plant`, `Plants`, `MappedPlantTargetStep`,
+    `MappedPositionPlant`, `MappedVelocityPlant`, `FtcActuators`, and `ScalarTasks`. The affected
+    maintained prose is Framework Principles; Mechanism Target Planning; FTC Actuators & Plants;
+    Drive Guidance; Spatial Queries; Builder Improvement Backlog; Robot Calibration Tutorials;
+    Beginner's Guide; Output Tasks & Queues; Supervisors & Pipelines; Tasks & Macros Quickstart;
+    Layered Shooter Example; Phoenix Architecture; and Phoenix Calibration Guide, plus Javadoc links
+    in `DriveGuidance` and `OutputTaskRunner`. No legacy robot or generated source uses the family.
+- **Parameter storage, reuse, composition, and extension audit:**
+  - A `Source<PlantTargetRequest>` is a genuine reusable input. The planner retains that source,
+    samples it through the resolver's cycle boundary, and propagates reset. Requests are immutable
+    and defensively copy their ordered alternatives, so robot services may cache, share, collect,
+    and compose them independently of one planner call.
+  - Preference and unreachable policy are not reusable value objects: callers answer them directly
+    on stages. The only stored stages are test helpers that choose one preference dynamically,
+    return a ready stage, or retain the unavailable branch; this proves the stage interfaces have
+    useful compiler-guidance value, not that the internal policy enums need to be public.
+  - The current planner and equivalent-position builders return `this` from every staged answer.
+    A caller retaining an earlier stage can therefore answer a later preference through another
+    alias and silently change what the earlier stage builds. Completed resolvers already snapshot
+    their scalar configuration, but pre-terminal stage aliases contradict the documented
+    no-later-replacement rule. The selected implementation will use immutable next-stage snapshots
+    for these two staged families. `OverlayBuilder` is a conventional mutable layer collector that
+    copies its layer array at `build()`; redesigning it is not part of this vocabulary item.
+  - Request, Candidate, and Plan are final and have no subclass seam. The real custom extension seam
+    is `PlantTargetSource`, with public `PlantTargetContext` input and public Plan factories/output.
+    Preserve that capability under the truthful Resolver/Resolution names. A custom resolver need
+    not consume the built-in Request type; it may close over robot-owned data and use Context facts.
+- **Distinct-capability disposition:**
+
+  | Public layer | Decision | Distinct value |
+  | --- | --- | --- |
+  | `ScalarTarget` | Keep unchanged | Persistent writable scalar command and `ScalarTasks` entry point; not a candidate set or resolution policy. |
+  | `PlantTargetRequest` | Keep and make composable | Immutable per-cycle advanced input with zero, one, or several acceptable alternatives and optional observation metadata. |
+  | `PlantTargetCandidate` | Remove | Its complete factory surface duplicates a one-alternative Request; dynamic lists work equally with composable Requests. |
+  | `PlantTargetSource` | Rename to `PlantTargetResolver` | Stateful context-aware final graph; it cannot be `Source<T>` because the Plant must supply range, topology, measurement, and prior targets. |
+  | `PlantTargetPlan` | Rename to `PlantTargetResolution` | Immutable per-update target-selection/provenance result; collapsing it to a scalar loses unavailability, fallback/clamp truth, metadata, and Task evidence. |
+  | `PlantTargetContext` | Keep | Mentor/custom-resolver seam that exposes read-only Plant facts without passing the mutable Plant or creating a lifecycle cycle. |
+  | Planner preference/unreachable stage types | Keep | Each represents one required mutually exclusive question and prevents later questions from appearing early. |
+  | `PlanAcceptBranch` | Keep | Optional multi-setting observation branch for independent age and quality answers; ordinary planners never enter it. |
+  | `PlanRequestStage` | Remove | It exposes exactly one possible answer, `request(...)`; a required factory argument is shorter and cannot be omitted. |
+  | Public preference/unreachable enums | Make private | They are implementation storage only; staged answer methods are the sole supported construction path. |
+
+- **Student call-site comparison:**
+
+  | Case | Current | Selected | Concepts supplied by robot code |
+  | --- | --- | --- | --- |
+  | Ordinary linear mechanism | `.targetedBy(command)` | unchanged | One writable `ScalarTarget`. |
+  | One periodic logical command | `PlantTargetSource r = equivalentPositionsOf(command)...` | `PlantTargetResolver r = equivalentPositionsOf(command)...` | Command, one motion preference, one unavailable answer. No Request/Resolution. |
+  | One observed advanced target | `plan().request(source).<preference>...` | `plan(source).<preference>...` | Request source, motion preference, reachability answer, optional observation acceptance, unavailable answer. |
+  | Fixed acceptable targets | collect/pass `PlantTargetCandidate`, then wrap them in a Request | `plan(PlantTargetRequest.oneOf(leftRequest, rightRequest))...` | One Request factory vocabulary plus Java varargs; no List or Source ceremony. |
+  | Dynamically discovered targets | collect `PlantTargetCandidate`, then `PlantTargetRequest.oneOf(list)` | collect `PlantTargetRequest` alternatives, then `oneOf(list)` | The loop remains visible because robot policy decides which alternatives exist; empty lists become unavailable automatically. |
+  | Diagnostics/custom extension | `PlantTargetPlan` / `PlantTargetSource` | `PlantTargetResolution` / `PlantTargetResolver` | Result versus reusable logic is explicit. |
+
+  The selected advanced shape is:
+
+  ```java
+  PlantTargetRequest fixedGoals = PlantTargetRequest.oneOf(
+          PlantTargetRequest.equivalentPosition("left-goal", leftAngleDeg),
+          PlantTargetRequest.equivalentPosition("right-goal", rightAngleDeg));
+
+  PlantTargetResolver goalTarget = PlantTargets.plan(fixedGoals)
+          .nearestToMeasurement()
+          .rejectUnreachable()
+          .whenUnavailable().holdLastTarget(0.0);
+  ```
+
+  A genuinely dynamic inventory remains ordinary ordered collection code, with no second builder:
+
+  ```java
+  Source<PlantTargetRequest> purpleTargets = clock -> {
+      List<PlantTargetRequest> alternatives = new ArrayList<>();
+      // Add currently acceptable exact, equivalent, periodic, relative, or observed requests.
+      return PlantTargetRequest.oneOf(alternatives);
+  };
+
+  PlantTargetResolver trayTarget = PlantTargets.plan(purpleTargets)
+          .nearestToMeasurement()
+          .rejectUnreachable()
+          .whenUnavailable().holdLastTarget(0.0);
+  ```
+
+- **Selected public design:**
+  1. Rename `PlantTargetSource` to `PlantTargetResolver` and keep its
+     `resolve(PlantTargetContext, LoopClock)`, `reset()`, and `debugDump(...)` contract. Every
+     `PlantTargets` final graph and advanced `targetedBy(...)` overload uses Resolver.
+  2. Rename `PlantTargetPlan` to `PlantTargetResolution`, rename
+     `Plant.getTargetPlan()` to `getTargetResolution()`, and rename `satisfiesRequest()` to
+     `satisfiesIntent()`. Keep the result kinds, selected-candidate diagnostics, observation facts,
+     public exact/fallback/hold/unavailable factories, and private command provenance.
+  3. Remove public `PlantTargetCandidate`. Keep all twelve factories on `PlantTargetRequest`, but
+     have each create a one-alternative Request directly. Provide exactly
+     `oneOf(PlantTargetRequest...)` for fixed declarations/arrays and
+     `oneOf(List<PlantTargetRequest>)` for dynamically collected ordered alternatives. Both flatten
+     nested Requests through one internal implementation, preserve left-to-right declaration order
+     for deterministic ties, and defensively copy. An unavailable Request contributes no
+     alternatives; if all are unavailable, return an unavailable Request with the first actionable
+     reason or a clear generic reason. Null arrays, lists, and elements fail actionably. An empty
+     varargs/list becomes unavailable, so the common dynamic caller does not need an empty-list
+     ternary; a caller that wants a domain-specific reason may still explicitly return
+     `none("no visible goals")`.
+  4. Replace `PlantTargets.plan().request(...)` and `PlanRequestStage` with exactly two lifting
+     overloads returning the same `PlanPreferenceStage`: `plan(PlantTargetRequest)` for a fixed
+     immutable request and `plan(Source<PlantTargetRequest>)` for live per-cycle requests. Do not add
+     List, varargs, candidate-kind, or convenience composition overloads to `plan`; every multi-
+     alternative input is first expressed through the one `PlantTargetRequest.oneOf(...)` family.
+     This is parallel with useful constant/source lifting in `exact(...)` and `overlay(...)`.
+     `DriveGuidance.plan()` legitimately remains zero-argument because its first stage offers real
+     translation-versus-facing choices.
+  5. Retain the four preference methods, two unreachable methods, optional `accept()...doneAccept()`
+     branch, and four unavailable outcomes. Make their storage enums private and make the planner
+     and equivalent-position stage implementations immutable so retained branches cannot overwrite
+     one another.
+  6. Add no compatibility aliases. This is one atomic source- and binary-breaking migration: custom
+     implementations rename their interface/result and recompile; multi-alternative callers collect
+     Requests instead of Candidates. The list `oneOf(List<...>)` has the same erased JVM descriptor
+     but is not safely binary-compatible because Candidate construction disappears, so a clean
+     rebuild is required regardless.
+- **Future-game pressure test:**
+  - A bounded turret becoming freely periodic still changes only its final realization to
+    `equivalentPositionsOf(command)`; capability methods, button bindings, direct `set`, and
+    feedback-aware `ScalarTasks` remain identical.
+  - A driver selecting one of two goals still writes one scalar command. Only when either goal is
+    genuinely acceptable does robot policy emit `PlantTargetRequest.oneOf(leftRequest,
+    rightRequest)` so the resolver may choose the best legal motion.
+  - Tray/carousel slots retain dynamic ordered lists; relative camera errors retain relative
+    factories; repeated indexing features retain explicit periods; moving vision targets retain
+    quality plus stable `LoopTimestamp`; and unavailable data retains fixed, last-target,
+    measured-entry, or explicit-unavailable policy.
+  - Lift/wrist or shoulder/wrist atomic coordination does not become a generic scalar optimizer. A
+    robot-owned service chooses the semantic pose and publishes the related scalar requests;
+    supervisors/Plant guards retain collision policy. A single Plant request lists alternatives
+    only when each alternative truly satisfies that Plant's same goal.
+- **Fixed-versus-dynamic composition rule:** if either goal is acceptable, fixed robot code uses
+  `oneOf(leftRequest, rightRequest)`; if an inventory/vision loop discovers zero or more acceptable
+  answers, it fills `List<PlantTargetRequest>` and calls `oneOf(list)`. If the operator has selected
+  exactly one goal, robot policy returns that one Request or writes the ordinary `ScalarTarget`; it
+  must not pass both goals to `oneOf(...)`, because that would authorize motion policy to choose a
+  different semantic goal.
+- **Framework parallels and boundary:** `Tasks.sequence(Task...)`, `parallelAll(Task...)`,
+  `parallelDeadline(deadline, companions...)`, and `CleanupActions.attemptAll(Runnable...)` establish
+  the concise fixed-varargs pattern and defensively retain their inputs. Request planning also has a
+  documented dynamic-list use case, so its ordered List overload has distinct value. Dynamic
+  `List<Task>` overloads for autonomous task composition may merit a separate task-family audit,
+  including single-use and duplicate-identity rules, but do not belong in TARGET-05. Overlay remains
+  a builder because each layer has a name, gate, target, availability policy, and priority;
+  `equivalentPositionsOf(...)` intentionally transforms one logical family. Neither should acquire
+  a `oneOf`-style overload merely for symmetry.
+- **Alternatives rejected:** documentation-only leaves the false Source/Plan meanings and duplicate
+  construction; rename-only keeps Candidate versus Request and the ceremonial request stage;
+  retaining Candidate as a nested type still leaves two factory families; `Source<List<...>>` loses
+  immutable absence/reason semantics; a callback/collector planner makes requests harder to cache,
+  test, and compose; `Source<PlantTargetResolution>` cannot receive Plant context; passing the Plant
+  into a resolver exposes mutable hardware/lifecycle ownership; merging Request with Resolver mixes
+  immutable intent and stateful fallback/reset policy; returning `double`/`OptionalDouble` loses
+  provenance and diagnostics; renaming Request to Intent adds churn without removing a layer; flat
+  acceptance settings discard the useful optional multi-setting branch; `Collection`/`Iterable`
+  weakens ordered tie semantics; Streams, callback collectors, and a mutable one-of builder add a
+  third construction/lifecycle paradigm; `oneOf(double...)` loses identifiers and target-family or
+  observation meaning; `plan(request1, request2, ...)` duplicates Request composition; and aliases
+  would preserve the exact vocabulary this item removes.
+- **Framework Principles result:** ordinary robot code still knows only `ScalarTarget`, `ScalarTasks`,
+  and its Plant. Advanced code opts into one immutable fixed/live Request input and one final
+  Resolver. The
+  Plant remains the sole context and hardware owner, resolves one graph per loop, applies bounds and
+  guards afterward, and exposes Resolution separately from physical arrival and target status. The
+  design keeps non-blocking fixed-candidate work, one command path, source-cycle semantics, explicit
+  unavailable policy, truthful names, staged required decisions, and one supported construction
+  route.
+- **Bounded implementation scope:** rename the two public contracts/getter and all in-repository
+  imports, fields, parameters, return types, debug keys, Javadocs, guides, examples, tests, AGENTS
+  authority wording, and Phoenix documentation; internalize Candidate storage and the two policy
+  enums; replace the request stage with fixed-Request/live-Source `plan(...)` overloads; implement
+  immutable stage snapshots
+  for the planner and equivalent-position builders; and add focused Request-composition/stage-branch
+  tests. Do not change selection mathematics, preference meanings, freshness/quality rules,
+  unavailable policies, overlay arbitration, command provenance, Plant guards, Task completion,
+  robot capabilities, or begin EXAMPLE-03/CLEAN-01.
+- **Verification plan:** prove all twelve Request factory families through the unified path;
+  fixed-varargs/List equivalence, direct arrays, nested, empty/all-unavailable, retained absence
+  reason, null, defensive-copy, and declaration-order composition; fixed-Request and live-Source
+  `plan(...)` equivalence;
+  safe stored-stage branching; custom Resolver/Resolution construction; all four preferences, both
+  unreachable policies, both acceptance gates, four unavailable outcomes, exact/relative/Plant-
+  period/explicit-period choices, reset and same-cycle behavior; overlay/equivalent command
+  provenance and feedback-aware Task truth. Run the affected focused suites, full TeamCode unit
+  tests and Java compilation, count XML results, compare public signatures, scan away every old
+  type/getter/zero-argument-plan spelling, check maintained docs/links/fences, and run
+  `git diff --check` plus whitespace/final-newline checks. No robot hardware is needed or claimed:
+  this is a source/API and deterministic construction/selection change.
+- **Approval stop:** implementation may begin only if the user approves the **revised TARGET-05
+  request -> resolver -> resolution design**, including Request varargs/List `oneOf(...)`, fixed/live
+  `plan(...)`, truthful renames, removal of Candidate/public policy enums, and immutable staged
+  answers.
+- **Design approval (2026-07-28):** the user replied `Approve revised TARGET-05 design`. This
+  authorizes Gate 2 implementation of the recorded revised design only. The item is **In progress**
+  on `codex/target-05-target-vocabulary` at verified `origin/master@046f924`; EXAMPLE-03 and other
+  tracker items remain out of scope.
+- **Implementation (2026-07-28):** removed the public `PlantTargetCandidate`, `PlantTargetSource`,
+  and `PlantTargetPlan` types and added the truthful `PlantTargetResolver` and
+  `PlantTargetResolution` contracts. `PlantTargetRequest` now owns immutable package-internal
+  alternatives, exposes all twelve leaf factories plus exactly the varargs and ordered-List
+  `oneOf(...)` composition forms, skips unavailable members, preserves order, retains the first
+  actionable absence reason, rejects nulls, and defensively retains inputs. `PlantTargets` now has
+  exactly fixed-Request and live-Source `plan(...)` overloads; the zero-argument request stage is
+  gone, the two policy enums are private, and planner/equivalent-position stages use immutable
+  snapshots. All production callers, tests, debug keys, examples, Framework Principles, AGENTS
+  authority wording, and maintained guides use Resolver/Resolution terminology.
+- **Automated verification (2026-07-28):** the focused TARGET-05 command ran 12 suites / 159 tests
+  with 0 failures, 0 errors, and 0 skipped. The full rerun `$env:JAVA_HOME='C:\Program Files\Android\Android Studio\jbr'; .\gradlew.bat --console=plain :TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac --rerun-tasks` completed
+  successfully with 110 suites / 1,038 tests / 0 failures / 0 errors / 0 skipped; a final
+  `:TeamCode:compileDebugJavaWithJavac` also passed after the Javadoc-only terminology sweep. The
+  only output was the repository's existing Java-8-on-JDK-21 and deprecation warnings. `javap`
+  confirmed the exact Request/Resolver/Resolution/PlantTargets public signatures, source and
+  compiled-output scans found none of the three deleted classes or old getter/stage spellings, and
+  the policy enums are private. Twenty-two changed Markdown files had even fence counts and 124/124
+  checked local links resolved. `git diff --check`, untracked trailing-whitespace checks, and final-LF
+  checks across all 56 present changed/untracked files passed.
+- **Adversarial reviews (2026-07-28):** independent correctness/lifecycle review found selection
+  mathematics, holds/resets, overlay command provenance, `ScalarTasks` completion, request
+  composition, fixed/live planning, and staged snapshots preserved; the pre-existing planner
+  pre-sample cycle claim remains assigned to SOURCE-04 rather than changed here. Independent API and
+  Framework Principles review confirmed exactly one composition path, no compatibility aliases or
+  redundant public layers, ordinary `ScalarTarget` simplicity, and retained future-game
+  functionality. Independent documentation/test review found only Source-like wording slips; all
+  were corrected, and the final stale-vocabulary, example, fence, and link scans are clean.
+- **Hardware boundary (2026-07-28):** no robot-hardware claim is needed or made. TARGET-05 changes
+  source/API vocabulary and deterministic request selection; hardware actuation, guards, feedback,
+  and target-selection mathematics are unchanged.
+- **Android Studio review point (2026-07-28):** **Verifying.** Inspect the new Request/Resolver/
+  Resolution contracts, code completion for the two `oneOf(...)` and two `plan(...)` overloads,
+  retained-stage immutability tests, migrated Plant/debug call sites, and the fixed-versus-dynamic
+  examples in `Mechanism Target Planning.md`. Confirm the deleted types/getter are unresolved and
+  that the project sync/index shows no errors. No files are staged, committed, pushed, or merged;
+  Gate 3 remains blocked on the user's implementation approval.
+- **Manual verification and publication authorization (2026-07-29):** after the Android Studio
+  review stop and follow-up API-usage discussion, the user replied `Approved` and directed the work
+  to reprioritize the tracker and continue to the next item. This authorizes TARGET-05 Gate 3
+  finalization and publication. The separately discussed one-variable simple-Plant usage guidance
+  did not change the reviewed TARGET-05 implementation and remains follow-up work.
 - **Completion:** one approved advanced vocabulary preserves useful future-game parallelism while
   reducing the number of public types/factories students must distinguish. All in-repository
   callers, Javadocs, guides, and examples compile under the single chosen path; focused planner and
-  source-graph behavior remains unchanged. This item remains **Proposed** and requires its own
-  recorded Gate 1 decision before implementation.
+  resolver-graph behavior remains unchanged. This item is **Done**.
 
 ### CYCLE-01 - Stateful drive-source cycle safety
 

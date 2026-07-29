@@ -23,11 +23,11 @@ public final class PlantsTargetSafetyTest {
         assertEquals(Plant.class, Plants.class.getDeclaredMethod(
                 "power", PowerOutput.class, ScalarTarget.class).getReturnType());
         assertEquals(Plant.class, Plants.class.getDeclaredMethod(
-                "power", PowerOutput.class, PlantTargetSource.class).getReturnType());
+                "power", PowerOutput.class, PlantTargetResolver.class).getReturnType());
         assertEquals(Plant.class, Plants.class.getDeclaredMethod(
                 "position", PositionOutput.class, ScalarTarget.class).getReturnType());
         assertEquals(Plant.class, Plants.class.getDeclaredMethod(
-                "position", PositionOutput.class, PlantTargetSource.class).getReturnType());
+                "position", PositionOutput.class, PlantTargetResolver.class).getReturnType());
 
         assertNoSimpleFactory("power", PowerOutput.class, ScalarSource.class);
         assertNoSimpleFactory("position", PositionOutput.class, ScalarSource.class);
@@ -79,13 +79,13 @@ public final class PlantsTargetSafetyTest {
     }
 
     @Test
-    public void powerTargetSourceSeesNormalizedRange() {
+    public void powerTargetResolverSeesNormalizedRange() {
         final ScalarRange[] seenRange = {null};
-        PlantTargetSource source = (context, clock) -> {
+        PlantTargetResolver resolver = (context, clock) -> {
             seenRange[0] = context.targetRange();
-            return PlantTargetPlan.exact(0.0, "capture power range");
+            return PlantTargetResolution.exact(0.0, "capture power range");
         };
-        Plant plant = Plants.power(new ClampingPowerOutput(), source);
+        Plant plant = Plants.power(new ClampingPowerOutput(), resolver);
 
         plant.update(new ManualLoopClock().clock());
 
@@ -106,7 +106,7 @@ public final class PlantsTargetSafetyTest {
         assertEquals(0.0, output.received, EPSILON);
         assertEquals(0.0, output.getCommandedPower(), EPSILON);
         assertEquals(PlantTargetStatus.Kind.TARGET_UNAVAILABLE, plant.getTargetStatus().kind());
-        assertFalse(plant.getTargetPlan().hasTarget());
+        assertFalse(plant.getTargetResolution().hasTarget());
     }
 
     @Test
@@ -126,8 +126,8 @@ public final class PlantsTargetSafetyTest {
             assertEquals(0.4, plant.getAppliedTarget(), EPSILON);
             assertEquals(0.4, output.received, EPSILON);
             assertEquals(PlantTargetStatus.Kind.TARGET_UNAVAILABLE, plant.getTargetStatus().kind());
-            assertFalse(plant.getTargetPlan().hasTarget());
-            assertTrue(plant.getTargetPlan().reason().contains("non-finite"));
+            assertFalse(plant.getTargetResolution().hasTarget());
+            assertTrue(plant.getTargetResolution().reason().contains("non-finite"));
         }
     }
 

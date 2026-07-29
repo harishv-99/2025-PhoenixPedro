@@ -302,7 +302,7 @@ The source-driven plant rule is:
 ```text
 Task changes the named ScalarTarget
     ↓
-Plant samples its final PlantTargetSource to select the requested target
+Plant invokes its final PlantTargetResolver to select the requested target
     ↓
 Plant bounds and target guards select the applied target
     ↓
@@ -572,7 +572,7 @@ Sometimes you want **continuous logic** (e.g. staging balls, holding a gate, kee
 
 If both pieces of code try to own the same target variable, they will fight.
 
-Phoenix provides a clean target-source ownership pattern:
+Phoenix provides a clean target-resolver ownership pattern:
 
 - **`OutputTask`** — a `Task` that produces a scalar output (`getOutput()`).
 - **`OutputTaskRunner`** — runs `OutputTask`s sequentially and exposes the active output as a `ScalarSource`. Use `cancelAndClear()` when you need to abort the active output task cleanly. This is the right default for feed queues, pulse queues, and “repeat while held” helpers because it lets the current task stop cooperatively, always clears the queue, and returns the source to its configured idle output even when task lifecycle cleanup fails.
@@ -604,7 +604,7 @@ feederQueue.whileHigh(
         )
 );
 ScalarSource base = ScalarSource.constant(0.0);
-PlantTargetSource finalTarget = PlantTargets.overlay(base)
+PlantTargetResolver finalTarget = PlantTargets.overlay(base)
         .add("feedPulse", feederQueue.activeSource(), feederQueue)
         .build();
 

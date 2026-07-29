@@ -10,18 +10,20 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * <p>A {@code Plant} owns the hardware/control details for one scalar mechanism output: motor
  * power, servo position, motor velocity, lift position, flywheel velocity, and similar targets.
  * Robot behavior does <b>not</b> imperatively set a plant every loop. Instead, each plant is built
- * with one PlantTargetSource. During {@link #update(LoopClock)}, the plant samples that source once,
+ * with one {@link PlantTargetResolver}. During {@link #update(LoopClock)}, the plant asks that
+ * resolver for one target,
  * applies plant-level hardware guards, applies one final mechanism target through its selected
  * control path, and refreshes feedback/status.</p>
  *
  * <h2>Target vocabulary</h2>
  * <ul>
- *   <li><b>Requested target</b>: raw value sampled from the behavior PlantTargetSource this loop.</li>
+ *   <li><b>Requested target</b>: raw value selected by the behavior
+ *       {@link PlantTargetResolver} this loop.</li>
  *   <li><b>Applied target</b>: final mechanism target selected after static bounds, reference
  *       checks, target guards, and rate limits. For a framework-regulated Plant, the regulator then
  *       derives a separate normalized actuator command from this target; the applied target is not
  *       that command or hardware readback.</li>
- *   <li><b>Command target</b>: optional stable {@link ScalarTarget} carried by the exact source or
+ *   <li><b>Command target</b>: optional stable {@link ScalarTarget} carried by the exact resolver or
  *       overlay base. Robot policy and {@link ScalarTasks} change that same persistent request.</li>
  * </ul>
  *
@@ -40,7 +42,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *     .build();
  *
  * flywheelTarget.set(1800.0);  // behavior changes the request
- * flywheel.update(clock);      // plant samples the request and applies a safe target
+ * flywheel.update(clock);      // plant resolves the request and applies a safe target
  * }</pre>
  */
 public interface Plant {
@@ -48,14 +50,14 @@ public interface Plant {
     /**
      * Update this plant once for the current loop.
      *
-     * <p>Implementations should sample their configured PlantTargetSource, compute their applied
+     * <p>Implementations should invoke their configured {@link PlantTargetResolver}, compute their applied
      * mechanism target, command hardware/control, and refresh measurement/status caches. Robot code
      * should call this once per loop after updating the shared {@link LoopClock}.</p>
      */
     void update(LoopClock clock);
 
     /**
-     * Raw target sampled from this plant's source on the most recent update.
+     * Raw target selected by this plant's resolver on the most recent update.
      */
     double getRequestedTarget();
 
@@ -70,15 +72,15 @@ public interface Plant {
     double getAppliedTarget();
 
     /**
-     * Diagnostic explanation of how this plant's target source selected the requested target.
+     * Diagnostic explanation of how this plant's target resolver selected the requested target.
      *
-     * <p>The plan is about target selection only: exact target, equivalent position, planned
+     * <p>The resolution is about target selection only: exact target, equivalent position, planned
      * candidate, fallback, hold, or unavailable. Physical arrival still belongs to
      * {@link #atTarget()} and
      * {@link #atTarget(double)}.</p>
      */
-    default PlantTargetPlan getTargetPlan() {
-        return PlantTargetPlan.unavailable("plant has not reported a target plan");
+    default PlantTargetResolution getTargetResolution() {
+        return PlantTargetResolution.unavailable("plant has not reported a target resolution");
     }
 
     /**
@@ -135,7 +137,7 @@ public interface Plant {
      * compare modulo a periodic Plant's period: exact unwrapped movement remains distinct from an
      * equivalent-position request. Framework feedback implementations also require the requested
      * and applied targets, guards/status, measurement, and latest actuation evidence to agree.
-     * {@link ScalarTasks} combines this physical query with target-plan command evidence when a
+     * {@link ScalarTasks} combines this physical query with target-resolution command evidence when a
      * logical command resolves to a different equivalent physical value.</p>
      */
     default boolean atTarget(double target) {
@@ -203,7 +205,7 @@ public interface Plant {
         String p = (prefix == null || prefix.isEmpty()) ? "plant" : prefix;
         dbg.addData(p + ".requestedTarget", getRequestedTarget())
                 .addData(p + ".appliedTarget", getAppliedTarget())
-                .addData(p + ".targetPlan", getTargetPlan().toString())
+                .addData(p + ".targetResolution", getTargetResolution().toString())
                 .addData(p + ".targetStatus", getTargetStatus().toString())
                 .addData(p + ".hasCommandTarget", hasCommandTarget())
                 .addData(p + ".hasFeedback", hasFeedback())

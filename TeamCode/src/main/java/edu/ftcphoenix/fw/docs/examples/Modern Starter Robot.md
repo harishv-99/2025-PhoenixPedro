@@ -18,7 +18,7 @@ Read them in this order:
 |---|---|---|
 | [`StarterProfile.java`](<../../../robots/examples/starter/StarterProfile.java>) | Data-only, defensively copied hardware and tuning configuration | Fill the deliberately blocked physical configuration in `current()` only after checking the adopting robot. |
 | [`StarterIntake.java`](<../../../robots/examples/starter/StarterIntake.java>) | The one mode-neutral capability family and its small status vocabulary | Rename the capability and modes when the robot's mechanism meaning differs. |
-| [`StarterIntakeMechanism.java`](<../../../robots/examples/starter/StarterIntakeMechanism.java>) | Owns the intake Plant, final target source, update order, bounded intake Task, and stop command | Change the Plant realization when the mechanism hardware or safe behavior changes. |
+| [`StarterIntakeMechanism.java`](<../../../robots/examples/starter/StarterIntakeMechanism.java>) | Owns the intake Plant, final target resolver, update order, bounded intake Task, and stop command | Change the Plant realization when the mechanism hardware or safe behavior changes. |
 | [`StarterTeleOpControls.java`](<../../../robots/examples/starter/StarterTeleOpControls.java>) | Owns button meanings, bindings, slow mode, and the final manual `DriveSource` | Change driver/operator meanings here, not in framework primitives or the robot root. |
 | [`StarterRobot.java`](<../../../robots/examples/starter/StarterRobot.java>) | Composition root for validation, construction, one clock, mode lifecycle, loop order, telemetry commit, Task runner, and cleanup | Add a new owner only when the robot gains a real new capability or lifecycle need. |
 | [`StarterTeleOp.java`](<../../../robots/examples/starter/StarterTeleOp.java>) | Disabled thin FTC TeleOp client | Normally change only the Driver Station name and selected profile. |
@@ -182,7 +182,7 @@ For an ordinary new robot:
 
 1. complete and physically review `StarterProfile.current()`;
 2. rename `StarterIntake` and its modes to the robot's real capability vocabulary;
-3. keep final target sources, Plant construction, and Plant update order in the mechanism owner;
+3. keep final target resolvers, Plant construction, and Plant update order in the mechanism owner;
 4. map gamepads only in `StarterTeleOpControls`;
 5. let both TeleOp and Auto call the same capability;
 6. keep new policy in a supervisor/service only when that policy actually exists; and

@@ -444,12 +444,12 @@ public final class ScalarTasks {
 
             double nowSec = nowSec(clock, startSec);
             double elapsedSec = elapsedSince(startSec, nowSec);
-            PlantTargetPlan plan = plant.getTargetPlan();
+            PlantTargetResolution resolution = plant.getTargetResolution();
             boolean reached;
-            if (plan != null && plan.reportsCommandResolutionFor(target)) {
-                reached = plan.satisfiesCommand(target, requestedValue)
+            if (resolution != null && resolution.reportsCommandResolutionFor(target)) {
+                reached = resolution.satisfiesCommand(target, requestedValue)
                         && target.get() == requestedValue
-                        && plant.atTarget(plan.target());
+                        && plant.atTarget(resolution.target());
             } else {
                 // Custom Plants that do not publish framework command provenance retain their
                 // exact requested-value completion contract. The live command must still be this

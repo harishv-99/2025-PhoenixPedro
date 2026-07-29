@@ -46,7 +46,7 @@ import edu.ftcphoenix.fw.task.TaskRunner;
  *   <li>{@link PhoenixDriveAssistService} owns robot-specific drive-assist policy layered on top of manual drive.</li>
  *   <li>The Auto {@link DriveCommandSink} and {@link MotionPredictor} stay vendor-neutral while
  *       Phoenix owns loop order and drive shutdown lifecycle.</li>
- *   <li>{@link ScoringPath} owns scoring policy, final target-source composition, and scoring-path Plant update order.</li>
+ *   <li>{@link ScoringPath} owns scoring policy, final target-resolver composition, and scoring-path Plant update order.</li>
  *   <li>{@link PhoenixTelemetryPresenter} owns additive driver-facing telemetry formatting, while
  *       this composition root commits each complete active-loop telemetry frame.</li>
  * </ul>

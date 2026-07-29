@@ -14,7 +14,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * Source-driven velocity {@link Plant} that maps plant velocity units to native hardware units.
  *
  * <p>Robot code normally builds these through {@code FtcActuators}. This class is the advanced
- * boundary adapter for custom hardware integrations. The plant samples one target source every
+ * boundary adapter for custom hardware integrations. The plant invokes one target resolver every
  * update, clamps it to the configured velocity range, applies dynamic plant target guards, and then
  * rechecks the final guarded target for finiteness and range before commanding either a native
  * velocity output or a framework-owned regulator over raw power. The regulated path evaluates its
@@ -28,7 +28,7 @@ public final class MappedVelocityPlant implements Plant {
     private final ScalarRegulator regulator;
     private final RegulatedPowerChannel regulatedPowerChannel;
     private final ScalarSource nativeMeasurement;
-    private final PlantTargetSource targetSource;
+    private final PlantTargetResolver targetResolver;
     private final ScalarTarget commandTarget;
     private final PlantTargetGuards targetGuards;
     private final ScalarRange configuredRange;
@@ -42,13 +42,13 @@ public final class MappedVelocityPlant implements Plant {
     private boolean lastAtTarget;
     private boolean regulatedActuationCompleted;
     private PlantTargetStatus targetStatus = PlantTargetStatus.STOPPED;
-    private PlantTargetPlan targetPlan = PlantTargetPlan.unavailable("not sampled");
+    private PlantTargetResolution targetResolution = PlantTargetResolution.unavailable("not sampled");
 
     private MappedVelocityPlant(VelocityOutput velocityOut,
                                 PowerOutput regulatedPowerOut,
                                 ScalarRegulator regulator,
                                 ScalarSource nativeMeasurement,
-                                PlantTargetSource targetSource,
+                                PlantTargetResolver targetResolver,
                                 PlantTargetGuards targetGuards,
                                 ScalarRange configuredRange,
                                 double nativePerPlantUnit,
@@ -57,8 +57,8 @@ public final class MappedVelocityPlant implements Plant {
         this.regulatedPowerOut = regulatedPowerOut;
         this.regulator = regulator;
         this.nativeMeasurement = Objects.requireNonNull(nativeMeasurement, "nativeMeasurement").memoized();
-        this.targetSource = Objects.requireNonNull(targetSource, "targetSource");
-        this.commandTarget = PlantTargets.commandTargetOf(this.targetSource);
+        this.targetResolver = Objects.requireNonNull(targetResolver, "targetResolver");
+        this.commandTarget = PlantTargets.commandTargetOf(this.targetResolver);
         this.targetGuards = targetGuards == null ? PlantTargetGuards.none() : targetGuards;
         this.configuredRange = Objects.requireNonNull(configuredRange, "configuredRange");
         this.nativePerPlantUnit = nativePerPlantUnit;
@@ -132,7 +132,7 @@ public final class MappedVelocityPlant implements Plant {
         private double nativePerPlantUnit = 1.0;
         private double tolerance = Double.NaN;
         private boolean toleranceConfigured;
-        private PlantTargetSource targetSource;
+        private PlantTargetResolver targetResolver;
         private PlantTargetGuards targetGuards = PlantTargetGuards.none();
 
         private Builder(VelocityOutput velocityOut,
@@ -188,31 +188,31 @@ public final class MappedVelocityPlant implements Plant {
         }
 
         /**
-         * Uses a command target as the exact final source.
+         * Uses a command target as the exact final resolver.
          *
          * <p>The target graph designates this target as the command target used by robot policy
          * and {@link ScalarTasks}.</p>
          */
-        public Builder targetedBy(ScalarTarget targetSource) {
+        public Builder targetedBy(ScalarTarget target) {
             requireTargetUnanswered();
-            this.targetSource = PlantTargets.exact(Objects.requireNonNull(targetSource, "targetSource"));
+            this.targetResolver = PlantTargets.exact(Objects.requireNonNull(target, "target"));
             return this;
         }
 
         /**
-         * Uses a plant-aware final target source.
+         * Uses a plant-aware final target resolver.
          *
-         * <p>If the source graph designates a command target, such as the base of a command-backed
+         * <p>If the resolver graph designates a command target, such as the base of a command-backed
          * overlay, this Plant exposes that same target to robot policy and {@link ScalarTasks}.</p>
          */
-        public Builder targetedBy(PlantTargetSource targetSource) {
+        public Builder targetedBy(PlantTargetResolver targetResolver) {
             requireTargetUnanswered();
-            this.targetSource = Objects.requireNonNull(targetSource, "targetSource");
+            this.targetResolver = Objects.requireNonNull(targetResolver, "targetResolver");
             return this;
         }
 
         private void requireTargetUnanswered() {
-            if (targetSource != null) {
+            if (targetResolver != null) {
                 throw new IllegalStateException("targetedBy(...) has already been answered for "
                         + "this MappedVelocityPlant; create a new builder to choose a different target");
             }
@@ -221,19 +221,19 @@ public final class MappedVelocityPlant implements Plant {
         /**
          * Builds the mapped velocity plant.
          *
-         * @throws IllegalStateException if no target source or plant-unit velocity tolerance was
+         * @throws IllegalStateException if no target resolver or plant-unit velocity tolerance was
          *                               configured
          * @throws IllegalArgumentException if the configured range cannot contain a finite command
          *                                  or a static guard fallback lies outside that range
          */
         public MappedVelocityPlant build() {
-            if (targetSource == null)
+            if (targetResolver == null)
                 throw new IllegalStateException("MappedVelocityPlant requires targetedBy(...)");
             if (!toleranceConfigured)
                 throw new IllegalStateException("MappedVelocityPlant feedback requires "
                         + "velocityTolerance(...) in plant velocity units before build()");
             return new MappedVelocityPlant(velocityOut, regulatedPowerOut, regulator, nativeMeasurement,
-                    targetSource, targetGuards, configuredRange, nativePerPlantUnit, tolerance);
+                    targetResolver, targetGuards, configuredRange, nativePerPlantUnit, tolerance);
         }
     }
 
@@ -263,20 +263,22 @@ public final class MappedVelocityPlant implements Plant {
     public void update(LoopClock clock) {
         double priorAppliedTarget = appliedTarget;
         PlantTargetStatus priorTargetStatus = targetStatus;
-        PlantTargetPlan priorTargetPlan = targetPlan;
+        PlantTargetResolution priorTargetResolution = targetResolution;
         samplePlantMeasurement(clock);
         PlantTargetContext context = PlantTargetContext.simple(true, lastMeasurement, targetRange(), requestedTarget, appliedTarget);
-        targetPlan = targetSource.resolve(context, clock);
-        if (targetPlan != null && targetPlan.hasTarget()) {
-            requestedTarget = targetPlan.target();
+        targetResolution = targetResolver.resolve(context, clock);
+        if (targetResolution != null && targetResolution.hasTarget()) {
+            requestedTarget = targetResolution.target();
         } else {
             requestedTarget = appliedTarget;
         }
 
         double candidate = Double.isFinite(requestedTarget) ? requestedTarget : appliedTarget;
-        PlantTargetStatus status = (targetPlan != null && targetPlan.hasTarget())
+        PlantTargetStatus status = (targetResolution != null && targetResolution.hasTarget())
                 ? PlantTargetStatus.ACCEPTED
-                : PlantTargetStatus.targetUnavailable(targetPlan != null ? targetPlan.reason() : "missing plant target plan");
+                : PlantTargetStatus.targetUnavailable(targetResolution != null
+                        ? targetResolution.reason()
+                        : "missing plant target resolution");
         ScalarRange range = targetRange();
         if (!range.valid) {
             candidate = appliedTarget;
@@ -300,7 +302,7 @@ public final class MappedVelocityPlant implements Plant {
                 regulatedPowerChannel.update(appliedTarget, lastMeasurement, clock);
             } catch (RuntimeException failure) {
                 handleRegulatedUpdateFailure(
-                        priorAppliedTarget, priorTargetStatus, priorTargetPlan, failure);
+                    priorAppliedTarget, priorTargetStatus, priorTargetResolution, failure);
                 throw failure;
             }
             regulatedActuationCompleted = true;
@@ -312,7 +314,7 @@ public final class MappedVelocityPlant implements Plant {
     public void reset() {
         regulatedActuationCompleted = false;
         lastAtTarget = false;
-        targetSource.reset();
+        targetResolver.reset();
         nativeMeasurement.reset();
         targetGuards.reset();
         if (regulatedPowerChannel != null) regulatedPowerChannel.reset();
@@ -321,7 +323,7 @@ public final class MappedVelocityPlant implements Plant {
         lastMeasurement = Double.NaN;
         lastNativeMeasurement = Double.NaN;
         targetStatus = PlantTargetStatus.STOPPED;
-        targetPlan = PlantTargetPlan.unavailable("not sampled");
+        targetResolution = PlantTargetResolution.unavailable("not sampled");
     }
 
     @Override
@@ -331,13 +333,13 @@ public final class MappedVelocityPlant implements Plant {
             targetGuards.reset();
             appliedTarget = 0.0;
             targetStatus = PlantTargetStatus.STOPPED;
-            targetPlan = PlantTargetPlan.unavailable("plant stopped");
+            targetResolution = PlantTargetResolution.unavailable("plant stopped");
             return;
         }
 
         double priorAppliedTarget = appliedTarget;
         PlantTargetStatus priorTargetStatus = targetStatus;
-        PlantTargetPlan priorTargetPlan = targetPlan;
+        PlantTargetResolution priorTargetResolution = targetResolution;
         regulatedActuationCompleted = false;
         lastAtTarget = false;
 
@@ -356,7 +358,7 @@ public final class MappedVelocityPlant implements Plant {
         if (regulatedPowerChannel.lastStopSubmitted()) {
             markSuccessfullyStopped();
         } else {
-            restoreTargetState(priorAppliedTarget, priorTargetStatus, priorTargetPlan);
+            restoreTargetState(priorAppliedTarget, priorTargetStatus, priorTargetResolution);
         }
         if (primary != null) throw primary;
     }
@@ -372,8 +374,8 @@ public final class MappedVelocityPlant implements Plant {
     }
 
     @Override
-    public PlantTargetPlan getTargetPlan() {
-        return targetPlan;
+    public PlantTargetResolution getTargetResolution() {
+        return targetResolution;
     }
 
     @Override
@@ -433,7 +435,7 @@ public final class MappedVelocityPlant implements Plant {
 
     private void handleRegulatedUpdateFailure(double priorAppliedTarget,
                                               PlantTargetStatus priorTargetStatus,
-                                              PlantTargetPlan priorTargetPlan,
+                                              PlantTargetResolution priorTargetResolution,
                                               RuntimeException failure) {
         regulatedActuationCompleted = false;
         lastAtTarget = false;
@@ -445,22 +447,22 @@ public final class MappedVelocityPlant implements Plant {
         if (regulatedPowerChannel.lastStopSubmitted()) {
             markSuccessfullyStopped();
         } else {
-            restoreTargetState(priorAppliedTarget, priorTargetStatus, priorTargetPlan);
+            restoreTargetState(priorAppliedTarget, priorTargetStatus, priorTargetResolution);
         }
     }
 
     private void markSuccessfullyStopped() {
         appliedTarget = 0.0;
         targetStatus = PlantTargetStatus.STOPPED;
-        targetPlan = PlantTargetPlan.unavailable("plant stopped");
+        targetResolution = PlantTargetResolution.unavailable("plant stopped");
     }
 
     private void restoreTargetState(double priorAppliedTarget,
                                     PlantTargetStatus priorTargetStatus,
-                                    PlantTargetPlan priorTargetPlan) {
+                                    PlantTargetResolution priorTargetResolution) {
         appliedTarget = priorAppliedTarget;
         targetStatus = priorTargetStatus;
-        targetPlan = priorTargetPlan;
+        targetResolution = priorTargetResolution;
     }
 
     private static RuntimeException suppress(RuntimeException primary, RuntimeException additional) {
@@ -477,7 +479,7 @@ public final class MappedVelocityPlant implements Plant {
         dbg.addData(p + ".nativePerPlantUnit", nativePerPlantUnit)
                 .addData(p + ".nativeMeasurement", lastNativeMeasurement)
                 .addData(p + ".targetRange", targetRange());
-        targetSource.debugDump(dbg, p + ".targetSource");
+        targetResolver.debugDump(dbg, p + ".targetResolver");
         targetGuards.debugDump(dbg, p + ".targetGuards");
         if (regulatedPowerChannel != null) {
             regulatedPowerChannel.debugDump(dbg, p);

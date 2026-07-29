@@ -333,20 +333,20 @@ Most robot code should **not** use these directly.
 
 A **Plant** is a source-driven scalar target follower. Robot behavior does not call
 `plant.setTarget(...)` every loop. Instead, every robot-facing Plant is constructed with one
-`PlantTargetSource`. Simple scalar values are lifted with `PlantTargets.exact(...)`; one logical
+`PlantTargetResolver`. Simple scalar values are lifted with `PlantTargets.exact(...)`; one logical
 periodic command uses `PlantTargets.equivalentPositionsOf(...)`; richer behavior targets use
 `PlantTargets.overlay(...)` or the advanced `PlantTargets.plan(...)`. During
-`plant.update(clock)`, the Plant resolves that target source once, applies static bounds and
+`plant.update(clock)`, the Plant invokes that target resolver once, applies static bounds and
 plant-level hardware guards, verifies the final target is finite and still inside the declared
 plant-unit range, applies that one safe mechanism target through its selected hardware/control
 path, and refreshes status.
 
 Key methods (see `edu.ftcphoenix.fw.actuation.Plant`):
 
-* `update(LoopClock clock)` — sample the configured target source and command hardware/control.
+* `update(LoopClock clock)` — invoke the configured target resolver and command hardware/control.
 * `getRequestedTarget()` — what behavior asked for this loop.
 * `getAppliedTarget()` — the final mechanism target selected after bounds and target guards.
-* `getTargetPlan()` — how the `PlantTargets` graph selected the requested target.
+* `getTargetResolution()` — how the `PlantTargets` graph selected the requested target.
 * `getTargetStatus()` — why requested and applied target may differ.
 * `atTarget()` / `atTarget(value)` / `hasFeedback()` — feedback-based readiness.
 * `getMeasurement()`, `getRequestedTargetError()`, and `getAppliedTargetError()` for feedback-capable plants.
@@ -365,14 +365,14 @@ native position/velocity request or normalized regulated output sent to hardware
 these names or use an unqualified “target error” when requested-target error is meant.
 
 Command ownership is derived from the final target graph, never registered as a second builder
-answer. An exact source carries a command target when its runtime source is a `ScalarTarget`; an
+answer. An exact resolver carries a command target when its scalar input is a `ScalarTarget`; an
 overlay propagates only its base graph's command target. Conditional overlay layers never establish
 or replace command ownership. This makes the stable fallback request task-writable without letting
-multiple conditional targets make the command path ambiguous. Constants, planners, measured holds,
+multiple conditional targets make the command path ambiguous. Constants, planned resolvers, measured holds,
 and custom graphs without such a command base cannot support a feedback-aware `ScalarTasks` move.
 Do not reintroduce
-a second command-target builder binding that can disagree with the source the Plant actually
-resolves.
+a second command-target builder binding that can disagree with the resolver the Plant actually
+invokes.
 
 Keep object boundaries equally authoritative. A realization that owns a completed Plant's lifecycle
 and writes its persistent command receives the Plant alone, requires a stable graph-owned command,
@@ -383,7 +383,7 @@ deliberately shared request without owning Plant lifecycle receives only the `Sc
 robot-owned semantic capability). A named target may still be needed locally before the Plant exists
 to assemble an exact, overlay, equivalent-position, or advanced graph. Feedback-aware `ScalarTasks`
 intentionally name both objects: the target identifies the request to write and the Plant selects
-the resolved-plan provenance and physical feedback to observe. One target may feed several Plants,
+the target-resolution provenance and physical feedback to observe. One target may feed several Plants,
 so this observer cannot be inferred safely.
 
 When a periodic mechanism may use any equivalent physical position, wrap the final logical graph
@@ -393,11 +393,11 @@ inside the Plant's declared range. Apply overlays before this transform so every
 winner receives the same interpretation. Omitting the transform means exact, unwrapped movement;
 never infer equivalence merely because the Plant declares periodic topology. `Plant.atTarget(value)`
 therefore remains a literal physical-target query. A feedback move may complete at a different
-physical equivalent only when the framework plan proves that its exact logical command path won and
+physical equivalent only when the framework resolution proves that its exact logical command path won and
 the Plant proves arrival at the resolved physical target. Same-valued overlays, fallbacks, holds,
 planner clamps, bounds, and guards must not satisfy that move accidentally.
 
-A Plant may be open-loop (power, commanded servo position), device-managed closed-loop (for example FTC motor velocity/position), or framework-regulated closed-loop over a raw actuator command. The public rule is the same for all of them: **behavior shapes sources; Plants protect and apply one target per loop**.
+A Plant may be open-loop (power, commanded servo position), device-managed closed-loop (for example FTC motor velocity/position), or framework-regulated closed-loop over a raw actuator command. The public rule is the same for all of them: **behavior shapes one resolver graph; Plants protect and apply one target per loop**.
 
 Priority overlays keep activation and target production separate. In every Plant loop, an overlay
 samples every layer's activation gate exactly once, then resolves enabled target producers lazily
@@ -406,7 +406,7 @@ layers; only the explicitly named `addIfAvailable(...)` form falls through. The 
 only after every layer is disabled or explicitly falls through. Shadowed target producers are not
 sampled merely to maintain hidden state. A measured hold therefore stays entered only across
 consecutive resolution cycles in which it is actually resolved; after a resolution-cycle gap, its
-next resolution captures a fresh measurement. Keep this behavior inside the source graph rather
+next resolution captures a fresh measurement. Keep this behavior inside the resolver graph rather
 than adding selection-reset calls or lifecycle hooks to robot code.
 
 Behavior guards and Plant guards are intentionally parallel, but they attach at different layers:
@@ -414,14 +414,26 @@ Behavior guards and Plant guards are intentionally parallel, but they attach at 
 * **Behavior target generation** happens before the Plant protects hardware. Use `PlantTargets.exact(...)`, `PlantTargets.equivalentPositionsOf(...)`, `PlantTargets.overlay(...)`, the advanced `PlantTargets.plan(...)`, `ScalarTarget`, and output queues to answer “what target does the robot want?” Plain `ScalarSource`s are still useful number streams, but anything that will become a Plant target should be lifted into `PlantTargets`.
 * **Plant target guards** live in the builder's `targetGuards()` branch and protect hardware after the requested target is resolved: max target rate, hold-last interlocks, and fallback targets. These answer “what may this hardware safely apply?” A Plant with a fixed declared range rejects a static fallback outside that range when built, and every Plant rechecks the dynamic guard result before it becomes the applied target.
 
-Candidate freshness has one owner and one timebase. Ordinary `PlantTargetCandidate` and
-`PlantTargetRequest` factories describe timeless/current robot intent. A value derived from a
+Request-alternative freshness has one owner and one timebase. Ordinary `PlantTargetRequest`
+factories describe timeless/current robot intent. A value derived from a
 sensor observation uses the parallel `observed...` factory and supplies quality plus one stable
-`LoopTimestamp` created by the consuming `LoopClock`. The planner derives observation age
+`LoopTimestamp` created by the consuming `LoopClock`. The resolver derives observation age
 when it resolves the request; an optional `maxObservationAgeSec(...)` gate applies only to observed
-candidates. Invalid observation metadata rejects that candidate; if no valid candidate remains, the
-planner follows its explicit unavailable policy. Invalid metadata must never be silently
+alternatives. Invalid observation metadata rejects that alternative; if no valid alternative remains,
+the resolver follows its explicit unavailable policy. Invalid metadata must never be silently
 reclassified as timeless intent.
+
+Advanced request composition has one operation. Use
+`PlantTargetRequest.oneOf(request1, request2, ...)` for fixed alternatives and
+`PlantTargetRequest.oneOf(orderedList)` when robot policy discovers alternatives dynamically.
+Both forms preserve declaration order, flatten nested requests, and become unavailable when no
+usable alternative remains. Unavailable members are skipped while another alternative exists; if
+all are unavailable, retain the first specific reason and otherwise report a clear generic reason.
+Pass the resulting fixed request to `PlantTargets.plan(request)`, or
+pass a normal `Source<PlantTargetRequest>` when the complete request changes each cycle. Do not add
+parallel composition overloads to `plan(...)`. List several targets only when every one genuinely
+satisfies the same semantic goal; an operator-selected goal remains one request or one ordinary
+`ScalarTarget` command.
 
 Equivalent-position resolution and advanced periodic planning must do a fixed, bounded amount of
 work independent of how many equivalent positions fit between the Plant's inclusive range bounds.
@@ -431,10 +443,10 @@ answer. `nearestToMeasurement()` and
 `preferRangeCenter()` choose the lower-valued equivalent position on an exact tie within one
 periodic family. Increasing/decreasing preferences are direction-first across the complete request:
 choose the closest legal target on the requested side of the measurement, and consider the opposite
-side only when no requested candidate has a legal target on the preferred side. Range-center
+side only when no requested alternative has a legal target on the preferred side. Range-center
 preference uses the center only when both range bounds are finite; a one-sided or unbounded range
-falls back to nearest-to-measurement behavior. Exact ties between distinct request candidates retain
-their declaration order. Keep the fixed candidate mathematics private; robot code supplies motion
+falls back to nearest-to-measurement behavior. Exact ties between distinct request alternatives retain
+their declaration order. Keep the fixed alternative-selection mathematics private; robot code supplies motion
 policy, not search windows or iteration limits.
 
 When an observation-derived target producer receives age rather than capture time, its reusable
@@ -548,7 +560,7 @@ The builder is staged on purpose:
 5. **Optional hardware guards**: enter `targetGuards()` for dynamic Plant-level protection such as `maxTargetRate(...)`, `holdLastTargetUnless(...)`, or `fallbackTargetUnless(...)`.
 6. **Target binding**: create a named `ScalarTarget` while assembling the graph, then finish with
    `targetedBy(commandTarget)` and `build()`. Advanced composed behavior supplies one final
-   `PlantTargetSource` to `targetedBy(...)`; lift a read-only scalar stream explicitly with
+   `PlantTargetResolver` to `targetedBy(...)`; lift a read-only scalar stream explicitly with
    `PlantTargets.exact(readOnlySource)`. A command-writing Plant owner derives and caches the
    completed Plant's command target; a read-only/planned owner uses only its Plant, while a
    target-only policy retains the target itself. Never pass Plant and target as independent
@@ -885,7 +897,7 @@ Robot code should rarely implement raw tasks directly. Prefer:
   (`sequence`, `parallelAll`, `parallelDeadline`, `withTimeout`, `waitForSeconds`, `waitUntil`, ...)
 * `ScalarTasks.set(target, value)` for write-once, timed, and feedback-aware writes to a
   `ScalarTarget`
-* `Tasks.outputPulse(...)` + `OutputTaskRunner` for short output-producing pulses that are overlaid into a final Plant target source
+* `Tasks.outputPulse(...)` + `OutputTaskRunner` for short output-producing pulses that are overlaid into a final Plant target resolver
 * `DriveTasks.driveExclusivelyForSeconds(...)` for simple Auto/test drive intervals only when the
   Task is the sole behavior-command writer for the sink
 
@@ -926,13 +938,13 @@ behavior is an imperative hardware stop.
 Output queues follow the same source-driven philosophy as Plants. A queue owns timing and returns a scalar output, but it does not own the Plant. The usual pattern is:
 
 ```text
-base PlantTargetSource
+base PlantTargetResolver
     + OutputTaskRunner layer while active
     + other behavior overrides
     ↓
-PlantTargets.overlay(...) final target source
+PlantTargets.overlay(...) final target resolver
     ↓
-Plant targetedBy(final target source)
+Plant targetedBy(final target resolver)
 ```
 
 This keeps repeated robot behaviors such as feeder pulses systematic without reintroducing multiple writers to the same mechanism.

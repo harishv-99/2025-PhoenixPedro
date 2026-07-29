@@ -24,17 +24,17 @@ public final class PlantTargetsEquivalentPositionsTest {
     @Test
     public void commandTargetResolvesToNearestPhysicalEquivalentAndKeepsLogicalEvidence() {
         ScalarTarget command = ScalarTarget.create(20.0);
-        PlantTargetSource source = nearest(command).reportUnavailable();
+        PlantTargetResolver resolver = nearest(command).reportUnavailable();
         ManualLoopClock time = new ManualLoopClock();
 
-        PlantTargetPlan plan = source.resolve(
+        PlantTargetResolution plan = resolver.resolve(
                 periodicContext(350.0, ScalarRange.bounded(0.0, 720.0), 360.0),
                 time.clock());
 
-        assertSame(command, PlantTargets.commandTargetOf(source));
+        assertSame(command, PlantTargets.commandTargetOf(resolver));
         assertEquals(380.0, plan.target(), EPSILON);
-        assertEquals(PlantTargetPlan.Kind.EQUIVALENT_POSITION, plan.kind());
-        assertTrue(plan.satisfiesRequest());
+        assertEquals(PlantTargetResolution.Kind.EQUIVALENT_POSITION, plan.kind());
+        assertTrue(plan.satisfiesIntent());
         assertTrue(plan.reportsCommandResolutionFor(command));
         assertTrue(plan.satisfiesCommand(command, 20.0));
         assertFalse(plan.satisfiesCommand(command, 380.0));
@@ -67,9 +67,9 @@ public final class PlantTargetsEquivalentPositionsTest {
     @Test(timeout = 5000L)
     public void enormousEquivalentSpacesUseTheBoundedSharedSelector() {
         ScalarTarget command = ScalarTarget.create(0.0);
-        PlantTargetSource source = nearest(command).reportUnavailable();
+        PlantTargetResolver resolver = nearest(command).reportUnavailable();
 
-        PlantTargetPlan plan = source.resolve(
+        PlantTargetResolution plan = resolver.resolve(
                 periodicContext(123.456789,
                         ScalarRange.bounded(-1.0e9, 1.0e9), 1.0e-12),
                 new ManualLoopClock().clock());
@@ -82,54 +82,55 @@ public final class PlantTargetsEquivalentPositionsTest {
     public void finalOverlayWinnerIsTransformedAndOnlyTheBaseCommandCanSatisfyAMove() {
         ScalarTarget command = ScalarTarget.create(20.0);
         final boolean[] override = {true};
-        PlantTargetSource logical = PlantTargets.overlay(command)
+        PlantTargetResolver logical = PlantTargets.overlay(command)
                 .add("override", clock -> override[0], command)
                 .build();
-        PlantTargetSource source = PlantTargets.equivalentPositionsOf(logical)
+        PlantTargetResolver resolver = PlantTargets.equivalentPositionsOf(logical)
                 .nearestToMeasurement()
                 .whenUnavailable().reportUnavailable();
         ManualLoopClock time = new ManualLoopClock();
         PlantTargetContext context = periodicContext(
                 350.0, ScalarRange.bounded(0.0, 720.0), 360.0);
 
-        PlantTargetPlan masked = source.resolve(context, time.clock());
+        PlantTargetResolution masked = resolver.resolve(context, time.clock());
         assertEquals(380.0, masked.target(), EPSILON);
         assertTrue(masked.reportsCommandResolutionFor(command));
         assertFalse(masked.satisfiesCommand(command, 20.0));
 
         override[0] = false;
-        PlantTargetPlan base = source.resolve(context, time.nextCycle(0.02));
+        PlantTargetResolution base = resolver.resolve(context, time.nextCycle(0.02));
         assertEquals(380.0, base.target(), EPSILON);
         assertTrue(base.satisfiesCommand(command, 20.0));
     }
 
     @Test
     public void readOnlyLogicalGraphStaysReadOnly() {
-        PlantTargetSource source = PlantTargets.equivalentPositionsOf(PlantTargets.exact(20.0))
+        PlantTargetResolver resolver =
+                PlantTargets.equivalentPositionsOf(PlantTargets.exact(20.0))
                 .nearestToMeasurement()
                 .whenUnavailable().reportUnavailable();
 
-        assertNull(PlantTargets.commandTargetOf(source));
-        assertEquals(380.0, source.resolve(
+        assertNull(PlantTargets.commandTargetOf(resolver));
+        assertEquals(380.0, resolver.resolve(
                 periodicContext(350.0, ScalarRange.bounded(0.0, 720.0), 360.0),
                 new ManualLoopClock().clock()).target(), EPSILON);
     }
 
     @Test
     public void transformedLogicalFallbackRetainsFallbackDiagnostics() {
-        PlantTargetSource source = PlantTargets.equivalentPositionsOf(
+        PlantTargetResolver resolver = PlantTargets.equivalentPositionsOf(
                         PlantTargets.holdLastTarget(20.0))
                 .nearestToMeasurement()
                 .whenUnavailable().reportUnavailable();
 
-        PlantTargetPlan plan = source.resolve(
+        PlantTargetResolution plan = resolver.resolve(
                 periodicContext(350.0, ScalarRange.bounded(0.0, 720.0), 360.0),
                 new ManualLoopClock().clock());
 
         assertEquals(380.0, plan.target(), EPSILON);
-        assertEquals(PlantTargetPlan.Kind.HOLD_LAST_TARGET, plan.kind());
+        assertEquals(PlantTargetResolution.Kind.HOLD_LAST_TARGET, plan.kind());
         assertTrue(plan.usedFallback());
-        assertFalse(plan.satisfiesRequest());
+        assertFalse(plan.satisfiesIntent());
     }
 
     @Test
@@ -138,18 +139,18 @@ public final class PlantTargetsEquivalentPositionsTest {
         PlantTargetContext linear = PlantTargetContext.simple(
                 true, 40.0, ScalarRange.bounded(0.0, 100.0), Double.NaN, 40.0);
 
-        PlantTargetPlan rejected = nearest(command).reportUnavailable()
+        PlantTargetResolution rejected = nearest(command).reportUnavailable()
                 .resolve(linear, new ManualLoopClock().clock());
-        PlantTargetPlan fallback = nearest(command).fallbackTo(7.0)
+        PlantTargetResolution fallback = nearest(command).fallbackTo(7.0)
                 .resolve(linear, new ManualLoopClock().clock());
-        PlantTargetPlan unreachable = nearest(command).reportUnavailable()
+        PlantTargetResolution unreachable = nearest(command).reportUnavailable()
                 .resolve(periodicContext(150.0, ScalarRange.bounded(100.0, 200.0), 360.0),
                         new ManualLoopClock().clock());
 
         assertFalse(rejected.hasTarget());
         assertTrue(rejected.reason().contains("periodic Plant topology"));
         assertEquals(7.0, fallback.target(), EPSILON);
-        assertEquals(PlantTargetPlan.Kind.FALLBACK, fallback.kind());
+        assertEquals(PlantTargetResolution.Kind.FALLBACK, fallback.kind());
         assertTrue(fallback.reportsCommandResolutionFor(command));
         assertFalse(fallback.satisfiesCommand(command, 20.0));
         assertFalse(unreachable.hasTarget());
@@ -159,40 +160,40 @@ public final class PlantTargetsEquivalentPositionsTest {
     @Test
     public void holdLastRetainsTheLastSelectedPhysicalEquivalent() {
         ScalarTarget command = ScalarTarget.create(20.0);
-        PlantTargetSource source = nearest(command).holdLastTarget(5.0);
+        PlantTargetResolver resolver = nearest(command).holdLastTarget(5.0);
         ManualLoopClock time = new ManualLoopClock();
 
-        PlantTargetPlan selected = source.resolve(
+        PlantTargetResolution selected = resolver.resolve(
                 periodicContext(350.0, ScalarRange.bounded(0.0, 720.0), 360.0),
                 time.clock());
-        PlantTargetPlan held = source.resolve(
+        PlantTargetResolution held = resolver.resolve(
                 PlantTargetContext.simple(
                         true, 200.0, ScalarRange.bounded(0.0, 720.0), 380.0, 380.0),
                 time.nextCycle(0.02));
 
         assertEquals(380.0, selected.target(), EPSILON);
         assertEquals(380.0, held.target(), EPSILON);
-        assertEquals(PlantTargetPlan.Kind.HOLD_LAST_TARGET, held.kind());
+        assertEquals(PlantTargetResolution.Kind.HOLD_LAST_TARGET, held.kind());
         assertFalse(held.satisfiesCommand(command, 20.0));
     }
 
     @Test
     public void resetClearsEquivalentAndUnavailablePolicyHistory() {
         ScalarTarget command = ScalarTarget.create(20.0);
-        PlantTargetSource source = nearest(command).holdLastTarget(5.0);
+        PlantTargetResolver resolver = nearest(command).holdLastTarget(5.0);
         ManualLoopClock time = new ManualLoopClock();
 
-        PlantTargetPlan selected = source.resolve(
+        PlantTargetResolution selected = resolver.resolve(
                 periodicContext(350.0, ScalarRange.bounded(0.0, 720.0), 360.0),
                 time.clock());
         assertEquals(380.0, selected.target(), EPSILON);
 
-        source.reset();
-        PlantTargetPlan afterReset = source.resolve(
+        resolver.reset();
+        PlantTargetResolution afterReset = resolver.resolve(
                 linearContext(30.0), time.nextCycle(0.02));
 
         assertEquals(5.0, afterReset.target(), EPSILON);
-        assertEquals(PlantTargetPlan.Kind.HOLD_LAST_TARGET, afterReset.kind());
+        assertEquals(PlantTargetResolution.Kind.HOLD_LAST_TARGET, afterReset.kind());
     }
 
     @Test
@@ -203,18 +204,18 @@ public final class PlantTargetsEquivalentPositionsTest {
         PlantTargetContext priorApplied = PlantTargetContext.position(
                 false, Double.NaN, range, PositionPlant.Topology.PERIODIC, 360.0,
                 Double.NaN, 350.0);
-        PlantTargetPlan nearestPrior = nearest(command).reportUnavailable()
+        PlantTargetResolution nearestPrior = nearest(command).reportUnavailable()
                 .resolve(priorApplied, new ManualLoopClock().clock());
         assertEquals(380.0, nearestPrior.target(), EPSILON);
 
         PlantTargetContext noReference = PlantTargetContext.position(
                 false, Double.NaN, range, PositionPlant.Topology.PERIODIC, 360.0,
                 Double.NaN, Double.NaN);
-        PlantTargetPlan nearestUnavailable = nearest(command).reportUnavailable()
+        PlantTargetResolution nearestUnavailable = nearest(command).reportUnavailable()
                 .resolve(noReference, new ManualLoopClock().clock());
         assertFalse(nearestUnavailable.hasTarget());
 
-        PlantTargetPlan centered = PlantTargets.equivalentPositionsOf(command)
+        PlantTargetResolution centered = PlantTargets.equivalentPositionsOf(command)
                 .preferRangeCenter()
                 .whenUnavailable().reportUnavailable()
                 .resolve(noReference, new ManualLoopClock().clock());
@@ -224,13 +225,15 @@ public final class PlantTargetsEquivalentPositionsTest {
     @Test
     public void measuredHoldRecapturesAfterSamplingGap() {
         ScalarTarget command = ScalarTarget.create(20.0);
-        PlantTargetSource source = nearest(command).holdMeasuredTargetOnEntry(-1.0);
+        PlantTargetResolver resolver = nearest(command).holdMeasuredTargetOnEntry(-1.0);
         ManualLoopClock time = new ManualLoopClock();
 
-        PlantTargetPlan first = source.resolve(linearContext(10.0), time.clock());
-        PlantTargetPlan consecutive = source.resolve(linearContext(20.0), time.nextCycle(0.02));
+        PlantTargetResolution first = resolver.resolve(linearContext(10.0), time.clock());
+        PlantTargetResolution consecutive =
+                resolver.resolve(linearContext(20.0), time.nextCycle(0.02));
         time.nextCycle(0.02);
-        PlantTargetPlan afterGap = source.resolve(linearContext(30.0), time.nextCycle(0.02));
+        PlantTargetResolution afterGap =
+                resolver.resolve(linearContext(30.0), time.nextCycle(0.02));
 
         assertEquals(10.0, first.target(), EPSILON);
         assertEquals(10.0, consecutive.target(), EPSILON);
@@ -239,21 +242,21 @@ public final class PlantTargetsEquivalentPositionsTest {
 
     @Test
     public void sameCycleResolutionIsIdenticalAndResetResamplesTheChild() {
-        CountingTargetSource child = new CountingTargetSource(20.0);
-        PlantTargetSource source = PlantTargets.equivalentPositionsOf(child)
+        CountingTargetResolver child = new CountingTargetResolver(20.0);
+        PlantTargetResolver resolver = PlantTargets.equivalentPositionsOf(child)
                 .nearestToMeasurement()
                 .whenUnavailable().reportUnavailable();
         ManualLoopClock time = new ManualLoopClock();
         PlantTargetContext context = periodicContext(
                 350.0, ScalarRange.bounded(0.0, 720.0), 360.0);
 
-        PlantTargetPlan first = source.resolve(context, time.clock());
-        PlantTargetPlan repeated = source.resolve(context, time.clock());
+        PlantTargetResolution first = resolver.resolve(context, time.clock());
+        PlantTargetResolution repeated = resolver.resolve(context, time.clock());
         assertSame(first, repeated);
         assertEquals(1, child.resolutions);
 
-        source.reset();
-        PlantTargetPlan afterReset = source.resolve(context, time.clock());
+        resolver.reset();
+        PlantTargetResolution afterReset = resolver.resolve(context, time.clock());
         assertNotSame(first, afterReset);
         assertEquals(2, child.resolutions);
         assertEquals(1, child.resets);
@@ -261,9 +264,9 @@ public final class PlantTargetsEquivalentPositionsTest {
 
     @Test
     public void failedChildResolutionCanRetryInTheSameCycle() {
-        CountingTargetSource child = new CountingTargetSource(20.0);
+        CountingTargetResolver child = new CountingTargetResolver(20.0);
         child.failNext = true;
-        PlantTargetSource source = PlantTargets.equivalentPositionsOf(child)
+        PlantTargetResolver resolver = PlantTargets.equivalentPositionsOf(child)
                 .nearestToMeasurement()
                 .whenUnavailable().reportUnavailable();
         ManualLoopClock time = new ManualLoopClock();
@@ -271,13 +274,13 @@ public final class PlantTargetsEquivalentPositionsTest {
                 350.0, ScalarRange.bounded(0.0, 720.0), 360.0);
 
         try {
-            source.resolve(context, time.clock());
+            resolver.resolve(context, time.clock());
             fail("Expected the child failure");
         } catch (IllegalStateException expected) {
             assertEquals("probe failure", expected.getMessage());
         }
 
-        PlantTargetPlan retried = source.resolve(context, time.clock());
+        PlantTargetResolution retried = resolver.resolve(context, time.clock());
         assertEquals(380.0, retried.target(), EPSILON);
         assertEquals(2, child.resolutions);
     }
@@ -286,21 +289,21 @@ public final class PlantTargetsEquivalentPositionsTest {
     public void transformedAdvancedPlanRetainsCandidateObservationMetadata() {
         ManualLoopClock time = new ManualLoopClock();
         LoopTimestamp timestamp = time.clock().nowTimestamp();
-        PlantTargetSource logical = PlantTargets.plan()
-                .request(Source.constant(PlantTargetRequest.observedExact(
-                        "vision", 20.0, 0.75, timestamp)))
+        PlantTargetResolver logical = PlantTargets.plan(Source.constant(
+                        PlantTargetRequest.observedExact(
+                                "vision", 20.0, 0.75, timestamp)))
                 .nearestToMeasurement()
                 .rejectUnreachable()
                 .whenUnavailable().reportUnavailable();
-        PlantTargetSource source = PlantTargets.equivalentPositionsOf(logical)
+        PlantTargetResolver resolver = PlantTargets.equivalentPositionsOf(logical)
                 .nearestToMeasurement()
                 .whenUnavailable().reportUnavailable();
 
-        PlantTargetPlan plan = source.resolve(
+        PlantTargetResolution plan = resolver.resolve(
                 periodicContext(350.0, ScalarRange.bounded(0.0, 720.0), 360.0),
                 time.clock());
 
-        assertEquals(PlantTargetPlan.Kind.EQUIVALENT_POSITION, plan.kind());
+        assertEquals(PlantTargetResolution.Kind.EQUIVALENT_POSITION, plan.kind());
         assertEquals("vision", plan.selectedCandidateId());
         assertEquals(0.75, plan.selectedQuality(), EPSILON);
         assertEquals(0.0, plan.selectedAgeSec(), EPSILON);
@@ -325,24 +328,24 @@ public final class PlantTargetsEquivalentPositionsTest {
                 ScalarRange.bounded(0.0, 100.0), Double.NaN, measurement);
     }
 
-    private static final class CountingTargetSource implements PlantTargetSource {
+    private static final class CountingTargetResolver implements PlantTargetResolver {
         private final double target;
         private int resolutions;
         private int resets;
         private boolean failNext;
 
-        CountingTargetSource(double target) {
+        CountingTargetResolver(double target) {
             this.target = target;
         }
 
         @Override
-        public PlantTargetPlan resolve(PlantTargetContext context, LoopClock clock) {
+        public PlantTargetResolution resolve(PlantTargetContext context, LoopClock clock) {
             resolutions++;
             if (failNext) {
                 failNext = false;
                 throw new IllegalStateException("probe failure");
             }
-            return PlantTargetPlan.exact(target, "probe");
+            return PlantTargetResolution.exact(target, "probe");
         }
 
         @Override

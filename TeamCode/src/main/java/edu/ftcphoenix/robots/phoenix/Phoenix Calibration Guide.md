@@ -429,13 +429,13 @@ Examples of future additions that would fit this model naturally:
 Phoenix's current checked-in robot does not include an independently rotating turret or tray, but the framework now supports the pattern we would use for them.
 
 A mechanism service should establish a calibrated native coordinate before resolving
-`PlantTargets.equivalentPositionsOf(...)` commands or advanced `PlantTargets.plan()` requests:
+`PlantTargets.equivalentPositionsOf(...)` commands or advanced `PlantTargets.plan(request)` requests:
 
 - **measurement source**: the value the `Plant` understands, such as encoder ticks
 - **zero/reference**: the raw encoder value corresponding to the mechanism's meaningful zero
 - **period**: for repeated orientations, such as ticks per turret revolution or tray revolution
 - **range**: `ScalarRange.unbounded()` for free spinners, or a homed bounded range for cable-limited mechanisms
-- **validity**: before homing completes, publish `ScalarRange.invalid("not homed")` so the target planner uses its explicit `whenUnavailable()` policy instead of producing unsafe requested targets
+- **validity**: before homing completes, publish `ScalarRange.invalid("not homed")` so the target resolver uses its explicit `whenUnavailable()` policy instead of producing unsafe requested targets
 
 For a turret with a camera, the camera mount may be timestamp-aware. A moving camera should be represented by a history-backed source so delayed AprilTag frames are interpreted using the camera pose from the frame timestamp, not the current turret pose after the mechanism has moved.
 

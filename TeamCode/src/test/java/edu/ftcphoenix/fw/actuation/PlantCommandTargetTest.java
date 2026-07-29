@@ -8,7 +8,6 @@ import edu.ftcphoenix.fw.core.hal.VelocityOutput;
 import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.source.ScalarSource;
 import edu.ftcphoenix.fw.core.source.ScalarTarget;
-import edu.ftcphoenix.fw.core.source.Source;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.task.Task;
 import edu.ftcphoenix.fw.testing.ManualLoopClock;
@@ -30,7 +29,7 @@ public final class PlantCommandTargetTest {
         CountingTarget command = new CountingTarget(0.25);
         ScalarSource upcast = command;
 
-        PlantTargetSource exact = PlantTargets.exact(upcast);
+        PlantTargetResolver exact = PlantTargets.exact(upcast);
 
         assertSame(command, PlantTargets.commandTargetOf(exact));
         assertEquals(0, command.reads);
@@ -42,10 +41,10 @@ public final class PlantCommandTargetTest {
         ScalarTarget innerLayer = ScalarTarget.create(0.4);
         ScalarTarget outerLayer = ScalarTarget.create(0.8);
 
-        PlantTargetSource inner = PlantTargets.overlay(command)
+        PlantTargetResolver inner = PlantTargets.overlay(command)
                 .add("inner", BooleanSource.constant(true), innerLayer)
                 .build();
-        PlantTargetSource outer = PlantTargets.overlay(inner)
+        PlantTargetResolver outer = PlantTargets.overlay(inner)
                 .add("outer", BooleanSource.constant(true), outerLayer)
                 .build();
 
@@ -57,9 +56,9 @@ public final class PlantCommandTargetTest {
     public void mutableLayersNeverCreateOrRedirectCommandOwnership() {
         ScalarTarget firstLayer = ScalarTarget.create(0.3);
         ScalarTarget secondLayer = ScalarTarget.create(0.7);
-        PlantTargetSource readOnlyBase = PlantTargets.exact(0.0);
+        PlantTargetResolver readOnlyBase = PlantTargets.exact(0.0);
 
-        PlantTargetSource overlay = PlantTargets.overlay(readOnlyBase)
+        PlantTargetResolver overlay = PlantTargets.overlay(readOnlyBase)
                 .add("first", BooleanSource.constant(true), firstLayer)
                 .add("second", BooleanSource.constant(false), secondLayer)
                 .build();
@@ -71,10 +70,9 @@ public final class PlantCommandTargetTest {
     public void constantsHoldsPlannersWrappedAndOpaqueSourcesRemainReadOnly() {
         ScalarTarget command = ScalarTarget.create(1.0);
         ScalarSource wrappedCommand = command.scaled(1.0);
-        PlantTargetSource exactCommand = PlantTargets.exact(command);
-        PlantTargetSource opaqueWrapper = (context, clock) -> exactCommand.resolve(context, clock);
-        PlantTargetSource planner = PlantTargets.plan()
-                .request(Source.constant(PlantTargetRequest.exact("preset", 2.0)))
+        PlantTargetResolver exactCommand = PlantTargets.exact(command);
+        PlantTargetResolver opaqueWrapper = (context, clock) -> exactCommand.resolve(context, clock);
+        PlantTargetResolver planner = PlantTargets.plan(PlantTargetRequest.exact("preset", 2.0))
                 .nearestToMeasurement()
                 .rejectUnreachable()
                 .whenUnavailable().holdLastTarget(0.0);
@@ -92,7 +90,7 @@ public final class PlantCommandTargetTest {
     public void scalarTaskWritesGraphBaseWhileActiveOverlayStillOwnsRequestedTarget() {
         ScalarTarget command = ScalarTarget.create(0.0);
         final boolean[] overrideEnabled = {false};
-        PlantTargetSource finalTarget = PlantTargets.overlay(command)
+        PlantTargetResolver finalTarget = PlantTargets.overlay(command)
                 .add("override", clock -> overrideEnabled[0], 0.8)
                 .build();
         RecordingPowerOutput output = new RecordingPowerOutput();
@@ -123,7 +121,7 @@ public final class PlantCommandTargetTest {
     @Test
     public void mappedPositionDerivesOverlayBaseAndRejectsRetargetingWithoutChangingIt() {
         ScalarTarget command = ScalarTarget.create(0.0);
-        PlantTargetSource overlay = PlantTargets.overlay(command)
+        PlantTargetResolver overlay = PlantTargets.overlay(command)
                 .add("override", BooleanSource.constant(false), 0.75)
                 .build();
         MappedPositionPlant commandBacked = MappedPositionPlant.commanded(

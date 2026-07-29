@@ -35,13 +35,14 @@ place to generate values intended for a Plant target:
 1. use `PlantTargets.exact(...)` for simple constants or scalar sources
 2. use `PlantTargets.overlay(...)` for base + behavior-layer arbitration
 3. use `PlantTargets.equivalentPositionsOf(...)` for one periodic command and
-   `PlantTargets.plan()` for advanced candidate requests that need Plant context
+   `PlantTargets.plan(request)` for advanced alternative requests that need Plant context
 4. choose an explicit `whenUnavailable()` policy for smart planners
 5. use `addIfAvailable(...)` only when an enabled overlay layer should explicitly fall through
 
-The planner builder now applies the stricter staged-choice rule: after `request(...)`, the user
-must answer exactly one preference question (`nearestToMeasurement()`, `preferIncreasing()`,
-`preferDecreasing()`, or `preferRangeCenter()`), then exactly one unreachable-candidate question
+The planner factory requires either a fixed `PlantTargetRequest` or a live
+`Source<PlantTargetRequest>`, then applies the stricter staged-choice rule. The user must answer
+exactly one preference question (`nearestToMeasurement()`, `preferIncreasing()`,
+`preferDecreasing()`, or `preferRangeCenter()`), then exactly one unreachable-alternative question
 (`rejectUnreachable()` or `clampUnreachableToRange()`). Each answer returns a type that exposes
 only the next question, so a later call cannot silently replace an earlier choice. `doneAccept()`
 remains because `accept()` is a multi-setting optional tuning branch (`maxObservationAgeSec(...)`,
@@ -55,9 +56,11 @@ fall-through layers so target availability does not become a hidden Boolean filt
 
 ### `drive/guidance/DriveGuidance`
 
-Completed in the second builder cleanup pass. `DriveGuidance.plan()` now stays parallel with
-`PlantTargets.plan()` in spirit: answer required behavior questions in order, then enter optional tuning
-branches only when needed.
+Completed in the second builder cleanup pass. `DriveGuidance.plan()` and
+`PlantTargets.plan(request)` both answer required behavior questions in order, then enter optional
+tuning branches only when needed. Drive Guidance legitimately starts with no argument because its
+first stage presents a real translation-versus-facing choice; Plant target planning requires its
+fixed or live request at the factory boundary.
 
 1. choose the first requested drive target (`translateTo()` or `faceTo()`), then optionally add the other with `andFaceTo()` / `andTranslateTo()`; target choice methods such as `fieldPointInches(...)`, `point(...)`, and `frameHeading(...)` return directly to the parent stage
 2. optionally choose `controlFrames(...)`
@@ -88,12 +91,12 @@ position, but without position-only concepts like topology, reference, and homin
 4. answer the required plant-unit completion question exactly once with `velocityTolerance(...)`
 5. optionally set guards such as `targetGuards().maxTargetRate(...)`
 6. bind a named command with `targetedBy(ScalarTarget)`, or bind an advanced composed graph with
-   `targetedBy(PlantTargetSource)`; adapt a read-only scalar explicitly with
+   `targetedBy(PlantTargetResolver)`; adapt a read-only scalar explicitly with
    `PlantTargets.exact(source)`
 
 The old `MotorVelocityControl` value-object API was removed instead of retained as a parallel path.
 Velocity uses a zero-preserving mapping only; no `rangeMapsToNative(...)` is exposed for velocity.
-As with the rest of the plant API, `bounded(...)`, the required tolerance, and target sources remain
+As with the rest of the plant API, `bounded(...)`, the required tolerance, and resolved target values remain
 in plant units unless a method name explicitly calls out native/controller units. No hidden or
 native-unit tolerance shortcut remains.
 
@@ -111,7 +114,7 @@ compiler-guided:
 1. configure the mapped Plant's range, mapping, reference, search output, and other applicable options
 2. for feedback position or velocity, answer the required plant-unit tolerance once
 3. optionally configure target guards
-4. bind the final target source
+4. bind the final target resolver
 5. build
 
 Command-only mapped position skips step 2 because it has no measurement-based completion. After

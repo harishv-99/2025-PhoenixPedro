@@ -783,7 +783,7 @@ public interface ScalarSource extends Source<Double> {
     /**
      * Return this source while {@code allowed} is high; otherwise return {@code fallback}.
      *
-     * <p>This is a behavior-level guard for target-source construction. Plant-level hardware
+     * <p>This is a behavior-level guard for scalar target-value construction. Plant-level hardware
      * protection should use plant target guards instead.</p>
      */
     default ScalarSource fallbackUnless(BooleanSource allowed, double fallback) {

@@ -7,7 +7,7 @@ This document explains the implementation-side architecture for:
 
 - **Subsystems** (hardware + one place that writes plant targets)
 - **Supervisors** (policy + orchestration, usually built from signals and tasks)
-- **Pipelines** (how to combine base targets and temporary overrides without violating the target-source ownership rule)
+- **Pipelines** (how to combine base targets and temporary overrides without violating the target-resolver ownership rule)
 
 If you're brand new, read these first:
 
@@ -34,7 +34,7 @@ That decision keeps subsystems smaller and stops drive-specific abstractions fro
 A **Plant** is a mechanism sink: it accepts a scalar target (power / position / velocity)
 and drives hardware toward it.
 
-> **Target-source ownership rule:** Each plant's final target source should be owned in one place.
+> **Target-resolver ownership rule:** Each Plant's final target resolver should be owned in one place.
 > That place is typically the subsystem.
 
 Why this matters:
@@ -58,14 +58,14 @@ A robot container is a class that:
 
 Many Phoenix robots start with a single `Robot` class used by TeleOp and Auto OpModes.
 
-### 2) Subsystem (target-source owner)
+### 2) Subsystem (target-resolver owner)
 
 A subsystem is responsible for:
 
 - owning hardware objects for a mechanism (plants + sensor Sources)
 - exposing **signals** (`BooleanSource`, `ScalarSource`, `PlantSources`) to the rest of the robot
 - owning **output queues** (`OutputTaskRunner`) when needed
-- computing the **final plant target sources** (base + overrides) and updating the Plants each loop
+- computing the **final Plant target resolvers** (base + overrides) and updating the Plants each loop
 
 A subsystem should not contain “match strategy” or cross-subsystem policy.
 
@@ -200,25 +200,25 @@ This keeps layer-1 input memory small and obvious before the supervisor starts d
 
 ## What a subsystem does going forward
 
-Subsystems still own their target sources and Plant update order.
+Subsystems still own their target resolvers and Plant update order.
 
 A typical subsystem update looks like:
 
 1. update output queues
 2. compute base target (from state)
 3. apply pipeline/priority rules (base vs overrides)
-4. update the Plant after its target source is ready
+4. update the Plant after its resolver inputs are ready; the Plant invokes the resolver during that update
 
 ### Base + behavior overrides
 
-For Plant targets, use `PlantTargets.overlay(...)`. It keeps simple scalar baselines, queued pulse outputs, and smarter plant-aware target sources in the same target-generation lane.
+For Plant targets, use `PlantTargets.overlay(...)`. It keeps simple scalar baselines, queued pulse outputs, and smarter Plant-aware target resolvers in the same target-generation lane.
 
 ```java
 // In the subsystem
 overrideQueue.update(clock);
 
 ScalarSource base = ScalarSource.constant(baseTarget);
-PlantTargetSource finalTarget = PlantTargets.overlay(PlantTargets.exact(base))
+PlantTargetResolver finalTarget = PlantTargets.overlay(PlantTargets.exact(base))
     .add("queue", overrideQueue.activeSource(), overrideQueue)
     .add("eject", ejectRequested, -1.0)
     .build();
@@ -292,7 +292,7 @@ intake.update(clock);
 Best practices:
 
 - apply shaping/clamping in the source graph (`deadband`, `scaled`, `clamped`)
-- keep the subsystem as the owner of target sources and Plant updates
+- keep the subsystem as the owner of target resolvers and Plant updates
 
 ### 2) Hold-to-run
 
@@ -422,7 +422,7 @@ Phoenix provides `EnumStateMachine<S extends Enum<S>>`:
 - stores the current enum state
 - records entry time (so you can write time-based transitions)
 
-Best practice: keep transition logic in a supervisor and keep the subsystem as the owner of target sources and Plant updates.
+Best practice: keep transition logic in a supervisor and keep the subsystem as the owner of target resolvers and Plant updates.
 
 ---
 
@@ -454,4 +454,4 @@ The architecture remains:
 
 - **robot container** wires and binds
 - **supervisors** translate intent + signals into actions
-- **subsystems** own final Plant target sources and update order
+- **subsystems** own final Plant target resolvers and update order

@@ -5,7 +5,7 @@ import com.qualcomm.robotcore.hardware.HardwareMap;
 import java.util.Objects;
 
 import edu.ftcphoenix.fw.actuation.Plant;
-import edu.ftcphoenix.fw.actuation.PlantTargetSource;
+import edu.ftcphoenix.fw.actuation.PlantTargetResolver;
 import edu.ftcphoenix.fw.actuation.PlantTargets;
 import edu.ftcphoenix.fw.core.control.DebounceBoolean;
 import edu.ftcphoenix.fw.core.debug.DebugSink;
@@ -23,12 +23,12 @@ import edu.ftcphoenix.fw.task.Tasks;
 /**
  * Phoenix scoring path: intake, transfer, flywheel, and scoring policy in one owner.
  *
- * <p>This class is still the single owner of the scoring-path source graph and plants, but it now keeps its mutable
+ * <p>This class is still the single owner of the scoring-path target-resolver graph and plants, but it now keeps its mutable
  * state in three internal roles that mirror Phoenix's recommended mechanism layering:</p>
  * <ul>
  *   <li><b>Inputs</b>: caller-owned held and pending values written through the shared capability surface.</li>
  *   <li><b>Execution</b>: robot-owned priority, queueing, gates, and transient behavior state.</li>
- *   <li><b>Realization</b>: plant ownership, final target sources, and flywheel readback.</li>
+ *   <li><b>Realization</b>: plant ownership, final target resolvers, and flywheel readback.</li>
  * </ul>
  *
  * <p>Keeping those roles explicit makes it easier for TeleOp and Auto to share the same public API
@@ -441,10 +441,10 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
         private final Plant plantShooterTransfer;
         private final Plant plantFlywheel;
 
-        private final PlantTargetSource intakeMotorTargetSource;
-        private final PlantTargetSource intakeTransferTargetSource;
-        private final PlantTargetSource shooterTransferTargetSource;
-        private final PlantTargetSource flywheelTargetSource;
+        private final PlantTargetResolver intakeMotorTargetResolver;
+        private final PlantTargetResolver intakeTransferTargetResolver;
+        private final PlantTargetResolver shooterTransferTargetResolver;
+        private final PlantTargetResolver flywheelTargetResolver;
 
         private final DebounceBoolean readyLatch = DebounceBoolean.onAfterOffImmediately(cfg.readyStableSec);
         private final BooleanSource flywheelReadySource;
@@ -457,20 +457,20 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
         private double prevFlywheelMeasuredAbs = 0.0;
 
         Realization(HardwareMap hardwareMap) {
-            flywheelTargetSource = PlantTargets.exact(ScalarSource.of(() ->
+            flywheelTargetResolver = PlantTargets.exact(ScalarSource.of(() ->
                     execution.isFlywheelEnabled() ? inputs.selectedVelocityNative.get() : 0.0));
 
-            intakeMotorTargetSource = PlantTargets.overlay(ScalarSource.of(execution::baseIntakeMotorPower))
+            intakeMotorTargetResolver = PlantTargets.overlay(ScalarSource.of(execution::baseIntakeMotorPower))
                     .add("feedPulse", execution.feedPulseActiveSource(),
                             execution.feedPulseOutputSource().scaled(cfg.feedScaleIntakeMotor))
                     .build();
 
-            intakeTransferTargetSource = PlantTargets.overlay(ScalarSource.of(execution::baseIntakeTransferPower))
+            intakeTransferTargetResolver = PlantTargets.overlay(ScalarSource.of(execution::baseIntakeTransferPower))
                     .add("feedPulse", execution.feedPulseActiveSource(),
                             execution.feedPulseOutputSource().scaled(cfg.feedScaleIntakeTransfer))
                     .build();
 
-            shooterTransferTargetSource = PlantTargets.overlay(ScalarSource.of(execution::baseShooterTransferPower))
+            shooterTransferTargetResolver = PlantTargets.overlay(ScalarSource.of(execution::baseShooterTransferPower))
                     .add("feedPulse", execution.feedPulseActiveSource(),
                             execution.feedPulseOutputSource().scaled(cfg.feedScaleShooterTransfer))
                     .build();
@@ -478,13 +478,13 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
             plantIntakeMotor = FtcActuators.plant(hardwareMap)
                     .motor(cfg.nameMotorIntake, cfg.directionMotorIntake)
                     .power()
-                    .targetedBy(intakeMotorTargetSource)
+                    .targetedBy(intakeMotorTargetResolver)
                     .build();
 
             plantIntakeTransfer = FtcActuators.plant(hardwareMap)
                     .crServo(cfg.nameCrServoIntakeTransfer, cfg.directionCrServoIntakeTransfer)
                     .power()
-                    .targetedBy(intakeTransferTargetSource)
+                    .targetedBy(intakeTransferTargetResolver)
                     .build();
 
             plantShooterTransfer = FtcActuators.plant(hardwareMap)
@@ -493,7 +493,7 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
                     .scale(cfg.shooterTransferLeftScale)
                     .bias(cfg.shooterTransferLeftBias)
                     .power()
-                    .targetedBy(shooterTransferTargetSource)
+                    .targetedBy(shooterTransferTargetResolver)
                     .build();
 
             if (cfg.applyFlywheelVelocityPIDF) {
@@ -510,7 +510,7 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
                         .bounded(0.0, cfg.velocityMax)
                         .nativeUnits()
                         .velocityTolerance(cfg.velocityToleranceNative)
-                        .targetedBy(flywheelTargetSource)
+                        .targetedBy(flywheelTargetResolver)
                         .build();
             } else {
                 plantFlywheel = FtcActuators.plant(hardwareMap)
@@ -520,7 +520,7 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
                         .bounded(0.0, cfg.velocityMax)
                         .nativeUnits()
                         .velocityTolerance(cfg.velocityToleranceNative)
-                        .targetedBy(flywheelTargetSource)
+                        .targetedBy(flywheelTargetResolver)
                         .build();
             }
 

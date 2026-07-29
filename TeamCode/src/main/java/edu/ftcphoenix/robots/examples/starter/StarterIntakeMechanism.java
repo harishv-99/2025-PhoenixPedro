@@ -12,7 +12,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.ftc.FtcActuators;
 import edu.ftcphoenix.fw.task.Task;
 
-/** Owns the starter intake's one final target source, Plant, update, and stop command. */
+/** Owns the starter intake's one final target resolver, Plant, update, and stop command. */
 final class StarterIntakeMechanism implements StarterIntake {
 
     private static final double STOPPED_POWER = 0.0;

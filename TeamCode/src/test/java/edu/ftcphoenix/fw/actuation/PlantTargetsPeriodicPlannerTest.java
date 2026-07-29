@@ -2,7 +2,6 @@ package edu.ftcphoenix.fw.actuation;
 
 import org.junit.Test;
 
-import edu.ftcphoenix.fw.core.source.Source;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.testing.ManualLoopClock;
 
@@ -24,7 +23,7 @@ public final class PlantTargetsPeriodicPlannerTest {
 
     @Test(timeout = 5000L)
     public void enormousCandidateSpacesAndIndexesBeyondLongResolveWithBoundedWork() {
-        PlantTargetPlan enormousSpace = resolve(
+        PlantTargetResolution enormousSpace = resolve(
                 Preference.NEAREST,
                 PlantTargetRequest.periodic("tiny-period", 0.0, 1.0e-12),
                 context(123.456789, ScalarRange.bounded(-1.0e9, 1.0e9)));
@@ -34,7 +33,7 @@ public final class PlantTargetsPeriodicPlannerTest {
 
         // The ideal periodic index is approximately 1e20, well beyond the long range. The
         // selected target is nevertheless an ordinary, finite value in the Plant coordinate.
-        PlantTargetPlan beyondLong = resolve(
+        PlantTargetResolution beyondLong = resolve(
                 Preference.NEAREST,
                 PlantTargetRequest.periodic("beyond-long", 0.0, 1.0e-10),
                 context(1.0e10, ScalarRange.bounded(1.0e10 - 1.0, 1.0e10 + 1.0)));
@@ -45,7 +44,7 @@ public final class PlantTargetsPeriodicPlannerTest {
 
     @Test
     public void targetSpaceSelectionPreservesRepresentativeBeyondExactDoubleIndexRange() {
-        PlantTargetPlan plan = resolve(
+        PlantTargetResolution plan = resolve(
                 Preference.NEAREST,
                 PlantTargetRequest.periodic(
                         "beyond-exact-index", -9007199254740992.0, 1.0),
@@ -53,13 +52,13 @@ public final class PlantTargetsPeriodicPlannerTest {
 
         assertTrue(plan.hasTarget());
         assertEquals(1.0, plan.target(), 0.0);
-        assertTrue(plan.satisfiesRequest());
+        assertTrue(plan.satisfiesIntent());
         assertFalse(plan.clampedByPlanner());
     }
 
     @Test
     public void targetSpaceSelectionPreservesSignedSubnormalPhase() {
-        PlantTargetPlan plan = resolve(
+        PlantTargetResolution plan = resolve(
                 Preference.NEAREST,
                 PlantTargetRequest.periodic(
                         "signed-subnormal-phase", -Double.MIN_VALUE, Double.MAX_VALUE),
@@ -67,13 +66,13 @@ public final class PlantTargetsPeriodicPlannerTest {
 
         assertTrue(plan.hasTarget());
         assertEquals(-Double.MIN_VALUE, plan.target(), 0.0);
-        assertTrue(plan.satisfiesRequest());
+        assertTrue(plan.satisfiesIntent());
         assertFalse(plan.clampedByPlanner());
     }
 
     @Test
     public void reducedPhaseDoesNotFabricateMeasurementAtLargeBaseMidpoint() {
-        PlantTargetPlan plan = resolve(
+        PlantTargetResolution plan = resolve(
                 Preference.NEAREST,
                 PlantTargetRequest.periodic(
                         "large-base-midpoint", 10000000000000000.0, 2.0),
@@ -81,14 +80,14 @@ public final class PlantTargetsPeriodicPlannerTest {
 
         assertTrue(plan.hasTarget());
         assertEquals(-2.0, plan.target(), 0.0);
-        assertTrue(plan.satisfiesRequest());
+        assertTrue(plan.satisfiesIntent());
         assertFalse(plan.clampedByPlanner());
     }
 
     @Test
     public void reducedPhaseWrapDoesNotFabricateAdjacentMeasurement() {
         double measurement = Math.nextUp(-1.0);
-        PlantTargetPlan plan = resolve(
+        PlantTargetResolution plan = resolve(
                 Preference.NEAREST,
                 PlantTargetRequest.periodic("remainder-wrap", 1.0, 2.0),
                 context(measurement, ScalarRange.unbounded()));
@@ -97,7 +96,7 @@ public final class PlantTargetsPeriodicPlannerTest {
         assertEquals(-1.0, plan.target(), 0.0);
         assertFalse(Double.doubleToLongBits(measurement)
                 == Double.doubleToLongBits(plan.target()));
-        assertTrue(plan.satisfiesRequest());
+        assertTrue(plan.satisfiesIntent());
         assertFalse(plan.clampedByPlanner());
     }
 
@@ -118,7 +117,7 @@ public final class PlantTargetsPeriodicPlannerTest {
 
         for (int rangeIndex = 0; rangeIndex < ranges.length; rangeIndex++) {
             for (Preference preference : Preference.values()) {
-                PlantTargetPlan plan = resolve(
+                PlantTargetResolution plan = resolve(
                         preference,
                         PlantTargetRequest.periodic("family", 0.0, 10.0),
                         context(3.0, ranges[rangeIndex]));
@@ -149,7 +148,7 @@ public final class PlantTargetsPeriodicPlannerTest {
                         for (Preference preference : Preference.values()) {
                             double expected = bruteForce(
                                     preference, base, period, measurement, range);
-                            PlantTargetPlan plan = resolve(
+                            PlantTargetResolution plan = resolve(
                                     preference,
                                     PlantTargetRequest.periodic("oracle", base, period),
                                     context(measurement, range));
@@ -201,14 +200,14 @@ public final class PlantTargetsPeriodicPlannerTest {
         double base = 372.70038574934006;
         double period = 29.157182029099207;
         double boundary = base + (-1131.0 * period);
-        PlantTargetPlan plan = resolve(
+        PlantTargetResolution plan = resolve(
                 Preference.NEAREST,
                 PlantTargetRequest.periodic("exact-boundary", base, period),
                 context(boundary, ScalarRange.bounded(boundary, boundary)));
 
         assertTrue(plan.hasTarget());
         assertEquals(boundary, plan.target(), 0.0);
-        assertTrue(plan.satisfiesRequest());
+        assertTrue(plan.satisfiesIntent());
         assertFalse(plan.clampedByPlanner());
     }
 
@@ -218,7 +217,7 @@ public final class PlantTargetsPeriodicPlannerTest {
         double period = 8.65816902795636E93;
         double index = -6108515264063315d;
         double boundary = base + index * period;
-        PlantTargetPlan plan = resolve(
+        PlantTargetResolution plan = resolve(
                 Preference.NEAREST,
                 PlantTargetRequest.periodic("exact-high-index-boundary", base, period),
                 context(boundary, ScalarRange.bounded(boundary, boundary)));
@@ -226,17 +225,17 @@ public final class PlantTargetsPeriodicPlannerTest {
         assertTrue(plan.hasTarget());
         assertEquals(Double.doubleToRawLongBits(boundary),
                 Double.doubleToRawLongBits(plan.target()));
-        assertTrue(plan.satisfiesRequest());
+        assertTrue(plan.satisfiesIntent());
         assertFalse(plan.clampedByPlanner());
     }
 
     @Test
     public void exactCrossCandidateTieRetainsRequestOrder() {
         PlantTargetRequest request = PlantTargetRequest.oneOf(
-                PlantTargetCandidate.periodic("declared-first", 10.0, 100.0),
-                PlantTargetCandidate.periodic("declared-second", -10.0, 100.0));
+                PlantTargetRequest.periodic("declared-first", 10.0, 100.0),
+                PlantTargetRequest.periodic("declared-second", -10.0, 100.0));
 
-        PlantTargetPlan plan = resolve(
+        PlantTargetResolution plan = resolve(
                 Preference.NEAREST,
                 request,
                 context(0.0, ScalarRange.bounded(-20.0, 20.0)));
@@ -249,9 +248,9 @@ public final class PlantTargetsPeriodicPlannerTest {
     @Test
     public void nearestComparatorDistinguishesExtremeAndSubnormalDistances() {
         PlantTargetRequest oppositeExtremes = PlantTargetRequest.oneOf(
-                PlantTargetCandidate.exact("negative-maximum", -Double.MAX_VALUE),
-                PlantTargetCandidate.exact("positive-maximum", Double.MAX_VALUE));
-        PlantTargetPlan extremePlan = resolve(
+                PlantTargetRequest.exact("negative-maximum", -Double.MAX_VALUE),
+                PlantTargetRequest.exact("positive-maximum", Double.MAX_VALUE));
+        PlantTargetResolution extremePlan = resolve(
                 Preference.NEAREST,
                 oppositeExtremes,
                 context(Double.MIN_VALUE, ScalarRange.unbounded()));
@@ -261,9 +260,9 @@ public final class PlantTargetsPeriodicPlannerTest {
         assertEquals("positive-maximum", extremePlan.selectedCandidateId());
 
         PlantTargetRequest subnormalDistances = PlantTargetRequest.oneOf(
-                PlantTargetCandidate.exact("zero", 0.0),
-                PlantTargetCandidate.exact("three-minimums", 3.0 * Double.MIN_VALUE));
-        PlantTargetPlan subnormalPlan = resolve(
+                PlantTargetRequest.exact("zero", 0.0),
+                PlantTargetRequest.exact("three-minimums", 3.0 * Double.MIN_VALUE));
+        PlantTargetResolution subnormalPlan = resolve(
                 Preference.NEAREST,
                 subnormalDistances,
                 context(2.0 * Double.MIN_VALUE, ScalarRange.unbounded()));
@@ -276,9 +275,9 @@ public final class PlantTargetsPeriodicPlannerTest {
     @Test
     public void directionalPreferencesAreDirectionFirstAndIndependentOfPlantScale() {
         PlantTargetRequest increasing = PlantTargetRequest.oneOf(
-                PlantTargetCandidate.periodic("near-below", -1.0, 4.0e9),
-                PlantTargetCandidate.periodic("far-above", 1.5e9, 4.0e9));
-        PlantTargetPlan increasingPlan = resolve(
+                PlantTargetRequest.periodic("near-below", -1.0, 4.0e9),
+                PlantTargetRequest.periodic("far-above", 1.5e9, 4.0e9));
+        PlantTargetResolution increasingPlan = resolve(
                 Preference.INCREASING,
                 increasing,
                 context(0.0, ScalarRange.bounded(-1.0, 2.0e9)));
@@ -288,9 +287,9 @@ public final class PlantTargetsPeriodicPlannerTest {
         assertEquals(1.5e9, increasingPlan.target(), EPSILON);
 
         PlantTargetRequest decreasing = PlantTargetRequest.oneOf(
-                PlantTargetCandidate.periodic("near-above", 1.0, 4.0e9),
-                PlantTargetCandidate.periodic("far-below", -1.5e9, 4.0e9));
-        PlantTargetPlan decreasingPlan = resolve(
+                PlantTargetRequest.periodic("near-above", 1.0, 4.0e9),
+                PlantTargetRequest.periodic("far-below", -1.5e9, 4.0e9));
+        PlantTargetResolution decreasingPlan = resolve(
                 Preference.DECREASING,
                 decreasing,
                 context(0.0, ScalarRange.bounded(-2.0e9, 1.0)));
@@ -311,7 +310,7 @@ public final class PlantTargetsPeriodicPlannerTest {
         assertTrue(Double.isFinite(range.center()));
         assertEquals(expectedCenter, range.center(), Math.ulp(expectedCenter));
 
-        PlantTargetPlan plan = resolve(
+        PlantTargetResolution plan = resolve(
                 Preference.RANGE_CENTER,
                 PlantTargetRequest.periodic("large-center", min, period),
                 context(min, range));
@@ -328,7 +327,7 @@ public final class PlantTargetsPeriodicPlannerTest {
         assertEquals(expectedNegativeCenter, negativeRange.center(),
                 Math.ulp(expectedNegativeCenter));
 
-        PlantTargetPlan negativePlan = resolve(
+        PlantTargetResolution negativePlan = resolve(
                 Preference.RANGE_CENTER,
                 PlantTargetRequest.periodic("large-negative-center", negativeMin, period),
                 context(negativeMax, negativeRange));
@@ -349,11 +348,11 @@ public final class PlantTargetsPeriodicPlannerTest {
 
     @Test
     public void oneSidedRangesFindTheNearestRepresentativeFarFromMeasurement() {
-        PlantTargetPlan lowerBounded = resolve(
+        PlantTargetResolution lowerBounded = resolve(
                 Preference.NEAREST,
                 PlantTargetRequest.periodic("minimum", 0.0, 7.0),
                 context(0.0, ScalarRange.minOnly(1000.0)));
-        PlantTargetPlan upperBounded = resolve(
+        PlantTargetResolution upperBounded = resolve(
                 Preference.NEAREST,
                 PlantTargetRequest.periodic("maximum", 0.0, 7.0),
                 context(0.0, ScalarRange.maxOnly(-1000.0)));
@@ -369,14 +368,14 @@ public final class PlantTargetsPeriodicPlannerTest {
         PlantTargetRequest request = PlantTargetRequest.periodic("outside", 15.0, 100.0);
         PlantTargetContext context = context(5.0, ScalarRange.bounded(0.0, 10.0));
 
-        PlantTargetPlan rejected = resolve(Preference.NEAREST, request, context);
-        PlantTargetPlan clamped = resolve(Preference.NEAREST, request, context, true);
+        PlantTargetResolution rejected = resolve(Preference.NEAREST, request, context);
+        PlantTargetResolution clamped = resolve(Preference.NEAREST, request, context, true);
 
         assertFalse(rejected.hasTarget());
         assertTrue(clamped.hasTarget());
         assertEquals(10.0, clamped.target(), EPSILON);
         assertTrue(clamped.clampedByPlanner());
-        assertFalse(clamped.satisfiesRequest());
+        assertFalse(clamped.satisfiesIntent());
         assertEquals("outside", clamped.selectedCandidateId());
     }
 
@@ -413,11 +412,11 @@ public final class PlantTargetsPeriodicPlannerTest {
                 Double.NaN,
                 Double.NaN);
 
-        PlantTargetPlan plantPeriod = resolve(
+        PlantTargetResolution plantPeriod = resolve(
                 Preference.NEAREST,
                 PlantTargetRequest.equivalentPosition("requires-periodic-plant", 10.0),
                 linearWithNumericPeriod);
-        PlantTargetPlan explicitPeriod = resolve(
+        PlantTargetResolution explicitPeriod = resolve(
                 Preference.NEAREST,
                 PlantTargetRequest.periodic("explicit-period", 10.0, 360.0),
                 linearWithNumericPeriod);
@@ -429,7 +428,7 @@ public final class PlantTargetsPeriodicPlannerTest {
 
     @Test
     public void extremeArithmeticRecoversFiniteRepresentativesButInvalidRelativeBaseFailsClosed() {
-        PlantTargetPlan relativeBaseOverflow = resolve(
+        PlantTargetResolution relativeBaseOverflow = resolve(
                 Preference.NEAREST,
                 PlantTargetRequest.relativePeriodic(
                         "relative-overflow", Double.MAX_VALUE, 1.0),
@@ -437,7 +436,7 @@ public final class PlantTargetsPeriodicPlannerTest {
                         ScalarRange.bounded(-Double.MAX_VALUE, Double.MAX_VALUE)),
                 true);
 
-        PlantTargetPlan quotientOverflow = resolve(
+        PlantTargetResolution quotientOverflow = resolve(
                 Preference.NEAREST,
                 PlantTargetRequest.periodic("quotient-overflow", 0.0, Double.MIN_VALUE),
                 context(Double.MAX_VALUE, ScalarRange.unbounded()),
@@ -450,7 +449,7 @@ public final class PlantTargetsPeriodicPlannerTest {
 
     @Test
     public void targetSpaceSelectionRecoversRepresentativeAcrossProductOverflow() {
-        PlantTargetPlan plan = resolve(
+        PlantTargetResolution plan = resolve(
                 Preference.NEAREST,
                 PlantTargetRequest.periodic(
                         "product-overflow", Double.MAX_VALUE, Double.MAX_VALUE),
@@ -458,22 +457,21 @@ public final class PlantTargetsPeriodicPlannerTest {
 
         assertTrue(plan.hasTarget());
         assertEquals(-Double.MAX_VALUE, plan.target(), 0.0);
-        assertTrue(plan.satisfiesRequest());
+        assertTrue(plan.satisfiesIntent());
         assertFalse(plan.clampedByPlanner());
     }
 
-    private static PlantTargetPlan resolve(Preference preference,
+    private static PlantTargetResolution resolve(Preference preference,
                                            PlantTargetRequest request,
                                            PlantTargetContext context) {
         return resolve(preference, request, context, false);
     }
 
-    private static PlantTargetPlan resolve(Preference preference,
+    private static PlantTargetResolution resolve(Preference preference,
                                            PlantTargetRequest request,
                                            PlantTargetContext context,
                                            boolean clampUnreachable) {
-        PlantTargets.PlanPreferenceStage preferenceStage = PlantTargets.plan()
-                .request(Source.constant(request));
+        PlantTargets.PlanPreferenceStage preferenceStage = PlantTargets.plan(request);
         PlantTargets.PlanUnreachableStage unreachableStage;
         switch (preference) {
             case INCREASING:
@@ -493,7 +491,7 @@ public final class PlantTargetsPeriodicPlannerTest {
         PlantTargets.PlanReadyStage readyStage = clampUnreachable
                 ? unreachableStage.clampUnreachableToRange()
                 : unreachableStage.rejectUnreachable();
-        PlantTargetSource planner = readyStage.whenUnavailable().reportUnavailable();
+        PlantTargetResolver planner = readyStage.whenUnavailable().reportUnavailable();
         LoopClock clock = new ManualLoopClock().clock();
         return planner.resolve(context, clock);
     }

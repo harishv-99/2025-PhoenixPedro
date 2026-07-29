@@ -100,7 +100,7 @@ public final class PlantTargetStatus {
      */
     public static PlantTargetStatus targetUnavailable(String reason) {
         return new PlantTargetStatus(Kind.TARGET_UNAVAILABLE,
-                clean(reason, "plant target source unavailable"));
+                clean(reason, "plant target resolution unavailable"));
     }
 
     /**

@@ -22,7 +22,9 @@ Drive overlay, task, or telemetry gate
 
 ## Guided builder shape
 
-`DriveGuidance.plan()` intentionally parallels `PlantTargets.plan()`: answer required questions in order, then enter optional tuning branches only when you need them.
+`DriveGuidance.plan()` and `PlantTargets.plan(request)` both answer required questions in order,
+then enter optional tuning branches only when needed. Drive Guidance starts with a target-choice
+stage; mechanism planning instead requires its fixed or live request at the factory boundary.
 
 ```text
 DriveGuidance.plan()
@@ -229,12 +231,12 @@ Meaning:
 
 For a turret with its own Plant, do not use Drive Guidance to turn the robot. Use `SpatialQuery`
 plus `PlantTargets.equivalentPositionsOf(...)` for one current logical angle, or the advanced
-`PlantTargets.plan()` path when candidate/observation metadata must be retained, as shown in
+`PlantTargets.plan(request)` path when alternative/observation metadata must be retained, as shown in
 [`Mechanism Target Planning.md`](<Mechanism Target Planning.md>).
 
 ## When not to use Drive Guidance
 
 Use a direct `DriveSource` when the driver or autonomous routine already knows the desired drive
-command. Use an exact/equivalent `PlantTargetSource` or advanced `PlantTargets.plan()` when a
+command. Use an exact/equivalent `PlantTargetResolver` or advanced `PlantTargets.plan(request)` when a
 mechanism should move independently of the drivetrain. Use `SpatialQuery` directly when you need
 geometry but want to apply your own PID or mechanism logic.

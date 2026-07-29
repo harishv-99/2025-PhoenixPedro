@@ -331,22 +331,22 @@ but the code now makes it much harder to accidentally mix caller-owned intent wi
 state or plant readback.
 
 The realization layer no longer imperatively chooses and writes plant targets every loop. Instead,
-each scoring Plant is built with a final `PlantTargetSource`. Continuous baseline feed behavior is a
+each scoring Plant is built with a final `PlantTargetResolver`. Continuous baseline feed behavior is a
 source, the behavior-owned feed pulse queue is another source, and `PlantTargets.overlay(...)` expresses
-the priority rule. The Plant samples the final target source during `update(clock)` and then applies
-its own hardware guards. Telemetry/debug output can now separate `getTargetPlan()` (“which behavior
+the priority rule. The Plant invokes the final target resolver during `update(clock)` and then applies
+its own hardware guards. Telemetry/debug output can now separate `getTargetResolution()` (“which behavior
 target won?”) from `getTargetStatus()` (“how did hardware guards apply it?”).
 
 That distinction is important:
 
 ```text
 behavior guard: source shaping and overlay priority
-Plant guard: hardware protection after the final target source is sampled
+Plant guard: hardware protection after the final target resolver runs
 ```
 
 `ScoringPath` uses the feed pulse queue as a behavior pattern, not as a Plant wrapper. One logical
 shot pulse can therefore fan out into the intake motor, intake transfer, and shooter transfer through
-separate scaled overlay layers while still preserving one final target source per Plant.
+separate scaled overlay layers while still preserving one final target resolver per Plant.
 
 ## Autonomous structure
 
@@ -782,23 +782,23 @@ Phoenix currently uses the framework's Drive Guidance path for drivetrain-facing
 
 1. **`SpatialQuery`** solves field/robot geometry: target points, facing errors, translation errors, and alternate solve lanes such as live AprilTags vs global localization.
 2. **`DriveGuidancePlan` / `DriveGuidanceQuery`** consume spatial results and produce drivetrain omega/translation commands.
-3. **`PlantTargets.equivalentPositionsOf(...)` / `plan()`** turn plant-unit intent into feasible
+3. **`PlantTargets.equivalentPositionsOf(...)` / `plan(request)`** turn plant-unit intent into feasible
    requested targets for `Plant`s. The first is the ordinary one-command periodic path; the second
-   is the advanced multi-candidate/observation path.
+   is the advanced multi-alternative/observation path.
 
 Phoenix scoring aim follows the drive path because the drivetrain turns the whole robot. A future
 turret, tray, arm, or extension should generally follow the Plant target path: robot-owned
 calibration/reference setup converts semantic intent or spatial geometry into the plant units
 exposed by the mechanism. One logical turret command uses
 `PlantTargets.equivalentPositionsOf(...)`; multiple solutions or observation freshness use
-`PlantTargets.plan()`. The Plant still owns travel bounds/guards, and physical readiness remains a
+`PlantTargets.plan(request)`. The Plant still owns travel bounds/guards, and physical readiness remains a
 literal `Plant.atTarget(...)` fact. A feedback-aware
 `ScalarTasks.set(command, value).untilReachedBy(plant)` correlates its logical command with any
 selected physical equivalent.
 
 For example, a future turret with its own camera would use one spatial query with two solve lanes: a
 direct turret-camera AprilTag lane and a global-pose fallback lane. If the service publishes one
-current logical angle, the final source can apply `equivalentPositionsOf(...)`. If it must preserve
+current logical angle, the final resolver can apply `equivalentPositionsOf(...)`. If it must preserve
 observation timestamps/quality or choose among several solutions, it maps those facts into a
 `PlantTargetRequest` and uses the advanced planner. In both cases the capability still says “aim at
 this angle”; periodic realization does not rewrite TeleOp or Auto into a different paradigm.

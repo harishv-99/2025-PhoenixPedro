@@ -3,12 +3,12 @@ package edu.ftcphoenix.fw.actuation;
 import java.util.Objects;
 
 /**
- * Per-loop facts a {@link PlantTargetSource} may use to choose a requested plant target.
+ * Per-loop facts a {@link PlantTargetResolver} may use to choose a requested plant target.
  *
  * <p>The plant creates this context during {@link Plant#update(edu.ftcphoenix.fw.core.time.LoopClock)}
- * after refreshing any feedback that target planning may need. Smart target sources use the context
- * to resolve equivalent positions, hold the current measured position, or choose candidates inside
- * the plant's legal range. Plain scalar targets can ignore the context.</p>
+ * after refreshing any feedback that target resolution may need. Context-aware resolvers use these
+ * facts to select equivalent positions, hold the current measured position, or choose alternatives
+ * inside the plant's legal range. A simple exact resolver can ignore the context.</p>
  *
  * <p>All scalar values are in the plant's public units: the same units used by
  * {@link Plant#getRequestedTarget()}, {@link Plant#getAppliedTarget()}, and

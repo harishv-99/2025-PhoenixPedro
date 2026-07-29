@@ -58,7 +58,7 @@ For example, motor position wiring asks:
 8. What public position error counts as complete? The required `positionTolerance(...)` answer
 9. Optional dynamic hardware guards: `targetGuards().maxTargetRate(...)`, `holdLastTargetUnless(...)`, `fallbackTargetUnless(...)`
 10. Target binding: `targetedBy(ScalarTarget)` for the ordinary command or
-    `targetedBy(PlantTargetSource)` for an advanced graph, then `build()`
+    `targetedBy(PlantTargetResolver)` for an advanced graph, then `build()`
 
 Motor velocity wiring asks a parallel but smaller set of questions:
 
@@ -70,7 +70,7 @@ Motor velocity wiring asks a parallel but smaller set of questions:
 6. What public velocity error counts as complete? The required `velocityTolerance(...)` answer
 7. Optional dynamic hardware guards: `targetGuards().maxTargetRate(...)`, `holdLastTargetUnless(...)`, `fallbackTargetUnless(...)`
 8. Target binding: `targetedBy(ScalarTarget)` for the ordinary command or
-   `targetedBy(PlantTargetSource)` for an advanced graph, then `build()`
+   `targetedBy(PlantTargetResolver)` for an advanced graph, then `build()`
 
 The tolerance question appears exactly once and only after the public coordinate is known. There is
 no inferred or native-unit default. Standard-servo position Plants are command-only, so their
@@ -147,9 +147,9 @@ an orderly handoff; it does not make simultaneous writers safe.
 Every robot-facing Plant is source-driven:
 
 ```text
-behavior PlantTargetSource
+behavior PlantTargetResolver
     ↓
-requested target + PlantTargetPlan
+requested target + PlantTargetResolution
     ↓
 Plant static range / reference policy
     ↓
@@ -162,13 +162,13 @@ applied target + PlantTargetStatus
 hardware/control
 ```
 
-`getTargetPlan()` explains how behavior selected the requested target. `getTargetStatus()` explains
+`getTargetResolution()` explains how behavior selected the requested target. `getTargetStatus()` explains
 how the Plant protected and applied that request.
 
 Use behavior sources for robot policy:
 
 ```java
-PlantTargetSource finalFeeder = PlantTargets.overlay(baseFeeder)
+PlantTargetResolver finalFeeder = PlantTargets.overlay(baseFeeder)
         .add("feedPulse", feedQueue.activeSource(), feedQueue)
         .add("eject", ejectRequested, -1.0)
         .build();
@@ -219,8 +219,8 @@ a far-away target.
 
 For position and velocity Plants, Phoenix distinguishes two coordinate systems:
 
-* **Plant units** are the public units used by robot code, `ScalarTarget` requests, Plant target
-  sources, scalar planner requests, target ranges, position periods, reference values, and plant-level tolerances.
+* **Plant units** are the public units used by robot code, `ScalarTarget` requests, resolved Plant
+  targets, scalar planner requests, target ranges, position periods, reference values, and plant-level tolerances.
 * **Native units** are the units used by the selected hardware/control path: servo raw fraction,
   motor encoder ticks, motor ticks/sec, external encoder units, or a caller-supplied feedback source.
 
@@ -461,11 +461,12 @@ Common choices:
     .unbounded()
 ```
 
-`PositionPlant.period()` is in plant units. For one normal logical command, wrap its final source
+`PositionPlant.period()` is in plant units. For one normal logical command, wrap its final resolver
 with `PlantTargets.equivalentPositionsOf(commandTarget)` and choose a preference plus explicit
 unavailable answer. The wrapper uses the consuming Plant's declared period during
-`plant.update(clock)`; robot code does not repeat it. `PlantTargets.plan()` remains the advanced path
-for multiple candidates, relative/explicit-period requests, observation metadata, or clamp policy.
+`plant.update(clock)`; robot code does not repeat it. `PlantTargets.plan(request)` remains the
+advanced path for multiple alternatives, relative/explicit-period requests, observation metadata,
+or clamp policy.
 Periodic topology alone never wraps an exact target automatically.
 
 ---
@@ -538,7 +539,7 @@ PositionPlant claw = FtcActuators.plant(hardwareMap)
         .build();
 ```
 
-Robot code now writes the logical claw target source:
+Robot code now writes the logical claw command target:
 
 ```java
 clawTarget.set(0.0); // raw servo 0.30
@@ -614,7 +615,7 @@ Use this when the mechanism must be homed/indexed before position targets are me
 ```
 
 Before the reference is established, `PositionPlant.targetRange(...)` returns an invalid range with
-that reason. `PlantTargets.equivalentPositionsOf(...)` and `PlantTargets.plan()` sources see that
+that reason. `PlantTargets.equivalentPositionsOf(...)` and `PlantTargets.plan(request)` resolvers see that
 invalid range during `plant.update(clock)` and use their explicit `whenUnavailable()` policy instead
 of producing unsafe requested targets.
 
@@ -813,8 +814,8 @@ telemetry.addData("atTarget", plant.atTarget());
 ```
 
 For `PositionPlant`, `getRequestedTarget()`, `getAppliedTarget()`, `getMeasurement()`, and `getRequestedTargetError()` are all in plant units.
-`PositionPlant.positionSource()` is also in plant units. Context-aware target sources such as
-`PlantTargets.equivalentPositionsOf(...)` and `PlantTargets.plan()` receive the Plant measurement,
+`PositionPlant.positionSource()` is also in plant units. Context-aware target resolvers such as
+`PlantTargets.equivalentPositionsOf(...)` and `PlantTargets.plan(request)` receive the Plant measurement,
 range, and topology automatically through the Plant target context during `update(clock)`.
 
 ---
@@ -1030,7 +1031,7 @@ mapping, plant `0.0` means stationary.
 
 Velocity bounds should represent hardware-safe target bounds, not scoring semantics. For example,
 if a shooter has a minimum useful scoring speed of 700 ticks/sec, the Plant range should usually
-still start at `0.0` so setting the flywheel target source to `0.0` stops the flywheel. Keep the 700 value in shooter selection
+still start at `0.0` so setting the flywheel command target to `0.0` stops the flywheel. Keep the 700 value in shooter selection
 logic, not in the Plant's legal target range.
 
 ---
