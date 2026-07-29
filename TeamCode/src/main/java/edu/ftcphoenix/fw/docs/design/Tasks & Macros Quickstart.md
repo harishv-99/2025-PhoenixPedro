@@ -297,7 +297,7 @@ Plant samples its final PlantTargetSource to select the requested target
     ↓
 Plant bounds and target guards select the applied target
     ↓
-Plant sends the actuator command and reports atTarget(requestedValue) when feedback confirms arrival
+Plant sends the actuator command and reports physical arrival at the selected requested target
 ```
 
 `PlantTasks` retrieves the command target from the `Plant` itself. That is safer than passing a separate `ScalarTarget` into every task: the task cannot accidentally write a different target variable than the one the Plant's target graph actually follows.
@@ -371,8 +371,14 @@ Task spinUp = PlantTasks.move(shooter)
 Behavior:
 
 * On start: write the requested value to the Plant's command target.
-* Each loop: check `plant.atTarget(SHOOTER_VELOCITY_NATIVE)`.
-* If a behavior overlay, clamp, fallback, or target guard keeps the plant from truly following that value, the task does **not** complete early.
+* Each loop: require the move's logical command path to be selected and check physical arrival at
+  the target resolved from it.
+* For an ordinary exact source, that is equivalent to
+  `plant.atTarget(SHOOTER_VELOCITY_NATIVE)`.
+* For `PlantTargets.equivalentPositionsOf(...)`, a logical value such as `20` may resolve to a
+  physical target such as `380`; the same Task waits for `380` without changing its `.to(20)` call.
+* If a behavior overlay, clamp, fallback, hold, or target guard wins, the task does **not** complete
+  early—even when that path has the same numeric logical value.
 * If the timeout elapses first, the task completes with `TaskOutcome.TIMEOUT`.
 * If actively cancelled, the shooter command target changes to `0.0` once.
 

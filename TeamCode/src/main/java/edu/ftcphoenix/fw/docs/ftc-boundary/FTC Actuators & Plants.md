@@ -448,9 +448,12 @@ Common choices:
     .unbounded()
 ```
 
-`PositionPlant.period()` is in plant units. A target request such as
-`PlantTargetRequest.equivalentPosition("slot-2", 240.0)` uses the consuming plant's declared period when
-it is resolved by `PlantTargets.plan()` during `plant.update(clock)`.
+`PositionPlant.period()` is in plant units. For one normal logical command, wrap its final source
+with `PlantTargets.equivalentPositionsOf(commandTarget)` and choose a preference plus explicit
+unavailable answer. The wrapper uses the consuming Plant's declared period during
+`plant.update(clock)`; robot code does not repeat it. `PlantTargets.plan()` remains the advanced path
+for multiple candidates, relative/explicit-period requests, observation metadata, or clamp policy.
+Periodic topology alone never wraps an exact target automatically.
 
 ---
 
@@ -598,8 +601,9 @@ Use this when the mechanism must be homed/indexed before position targets are me
 ```
 
 Before the reference is established, `PositionPlant.targetRange(...)` returns an invalid range with
-that reason. `PlantTargets.plan()` sources see that invalid range during `plant.update(clock)` and use
-their explicit `whenUnavailable()` policy instead of producing unsafe requested targets.
+that reason. `PlantTargets.equivalentPositionsOf(...)` and `PlantTargets.plan()` sources see that
+invalid range during `plant.update(clock)` and use their explicit `whenUnavailable()` policy instead
+of producing unsafe requested targets.
 
 Use `PositionCalibrationTasks` to establish the reference:
 
@@ -790,9 +794,9 @@ telemetry.addData("atTarget", plant.atTarget());
 ```
 
 For `PositionPlant`, `getRequestedTarget()`, `getAppliedTarget()`, `getMeasurement()`, and `getRequestedTargetError()` are all in plant units.
-`PositionPlant.positionSource()` is also in plant units. Smart target sources such as
-`PlantTargets.plan()` receive the Plant measurement and range automatically through the Plant target
-context during `update(clock)`.
+`PositionPlant.positionSource()` is also in plant units. Context-aware target sources such as
+`PlantTargets.equivalentPositionsOf(...)` and `PlantTargets.plan()` receive the Plant measurement,
+range, and topology automatically through the Plant target context during `update(clock)`.
 
 ---
 
@@ -803,7 +807,9 @@ to different owners and neither can be derived safely from the other.
 
 ### `positionTolerance(...)`
 
-This is the **plant-level** completion band used by `Plant.atTarget()`.
+This is the **plant-level** completion band used by `Plant.atTarget()` and literal physical
+`Plant.atTarget(value)`. `PlantTasks.move(...)` may correlate a logical periodic command with a
+different selected physical equivalent, but the Plant query itself never compares modulo a period.
 
 * required exactly once after position mapping and reference policy
 * units: plant position units

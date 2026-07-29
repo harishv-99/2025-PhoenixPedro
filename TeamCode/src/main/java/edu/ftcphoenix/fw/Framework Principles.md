@@ -333,8 +333,9 @@ Most robot code should **not** use these directly.
 
 A **Plant** is a source-driven scalar target follower. Robot behavior does not call
 `plant.setTarget(...)` every loop. Instead, every robot-facing Plant is constructed with one
-`PlantTargetSource`. Simple scalar values are lifted with `PlantTargets.exact(...)`, and richer
-behavior targets use `PlantTargets.overlay(...)` or `PlantTargets.plan(...)`. During
+`PlantTargetSource`. Simple scalar values are lifted with `PlantTargets.exact(...)`; one logical
+periodic command uses `PlantTargets.equivalentPositionsOf(...)`; richer behavior targets use
+`PlantTargets.overlay(...)` or the advanced `PlantTargets.plan(...)`. During
 `plant.update(clock)`, the Plant resolves that target source once, applies static bounds and
 plant-level hardware guards, verifies the final target is finite and still inside the declared
 plant-unit range, applies that one safe mechanism target through its selected hardware/control
@@ -372,6 +373,17 @@ and custom graphs without such a command base remain read-only to `PlantTasks`. 
 a second command-target builder binding that can disagree with the source the Plant actually
 resolves.
 
+When a periodic mechanism may use any equivalent physical position, wrap the final logical graph
+with `PlantTargets.equivalentPositionsOf(...)`. The graph-owned `ScalarTarget` remains the one value
+written by robot policy and `PlantTasks`; the wrapper selects one legal physical representative
+inside the Plant's declared range. Apply overlays before this transform so every final logical
+winner receives the same interpretation. Omitting the transform means exact, unwrapped movement;
+never infer equivalence merely because the Plant declares periodic topology. `Plant.atTarget(value)`
+therefore remains a literal physical-target query. A feedback move may complete at a different
+physical equivalent only when the framework plan proves that its exact logical command path won and
+the Plant proves arrival at the resolved physical target. Same-valued overlays, fallbacks, holds,
+planner clamps, bounds, and guards must not satisfy that move accidentally.
+
 A Plant may be open-loop (power, commanded servo position), device-managed closed-loop (for example FTC motor velocity/position), or framework-regulated closed-loop over a raw actuator command. The public rule is the same for all of them: **behavior shapes sources; Plants protect and apply one target per loop**.
 
 Priority overlays keep activation and target production separate. In every Plant loop, an overlay
@@ -386,7 +398,7 @@ than adding selection-reset calls or lifecycle hooks to robot code.
 
 Behavior guards and Plant guards are intentionally parallel, but they attach at different layers:
 
-* **Behavior target generation** happens before the Plant protects hardware. Use `PlantTargets.exact(...)`, `PlantTargets.overlay(...)`, `PlantTargets.plan(...)`, `ScalarTarget`, and output queues to answer “what target does the robot want?” Plain `ScalarSource`s are still useful number streams, but anything that will become a Plant target should be lifted into `PlantTargets`.
+* **Behavior target generation** happens before the Plant protects hardware. Use `PlantTargets.exact(...)`, `PlantTargets.equivalentPositionsOf(...)`, `PlantTargets.overlay(...)`, the advanced `PlantTargets.plan(...)`, `ScalarTarget`, and output queues to answer “what target does the robot want?” Plain `ScalarSource`s are still useful number streams, but anything that will become a Plant target should be lifted into `PlantTargets`.
 * **Plant target guards** live in the builder's `targetGuards()` branch and protect hardware after the requested target is resolved: max target rate, hold-last interlocks, and fallback targets. These answer “what may this hardware safely apply?” A Plant with a fixed declared range rejects a static fallback outside that range when built, and every Plant rechecks the dynamic guard result before it becomes the applied target.
 
 Candidate freshness has one owner and one timebase. Ordinary `PlantTargetCandidate` and
@@ -398,8 +410,11 @@ candidates. Invalid observation metadata rejects that candidate; if no valid can
 planner follows its explicit unavailable policy. Invalid metadata must never be silently
 reclassified as timeless intent.
 
-Periodic planning must do a fixed, bounded amount of work independent of how many equivalent
-positions fit between the Plant's inclusive range bounds. `nearestToMeasurement()` and
+Equivalent-position resolution and advanced periodic planning must do a fixed, bounded amount of
+work independent of how many equivalent positions fit between the Plant's inclusive range bounds.
+The focused equivalent-position transform always uses the consuming Plant's declared period and
+rejects unreachable representatives; it never clamps a logical request into a non-equivalent
+answer. `nearestToMeasurement()` and
 `preferRangeCenter()` choose the lower-valued equivalent position on an exact tie within one
 periodic family. Increasing/decreasing preferences are direction-first across the complete request:
 choose the closest legal target on the requested side of the measurement, and consider the opposite

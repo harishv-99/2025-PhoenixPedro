@@ -1,6 +1,6 @@
 # Framework Improvement Tracker
 
-Last updated: 2026-07-27
+Last updated: 2026-07-28
 
 This file tracks proposed Phoenix framework improvements. It is deliberately a planning document:
 an item being listed here does **not** mean its current proposed solution has been approved. Each
@@ -139,20 +139,23 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 52 | COMMON-02 | Telemetry commit ownership | Done | Phoenix frame ownership and framework documentation/Javadocs were reviewed and approved on 2026-07-27. |
 | 53 | CHECK-01 | Staged whole-robot system check | Deferred | Meaningful Phoenix thresholds, hazardous-motion confirmation, and physical safe-state evidence require the assembled robot. |
 | 54 | EXAMPLE-01 | Compiling modern starter robot | Done | User approved the verified starter package; Gate 3 publication is authorized. |
-| 55 | EXAMPLE-03 | Advanced moving-target reference | Proposed | Prove progress-triggered scoring and a bounded moving turret without putting game physics in the framework. |
-| 56 | BOUNDARY-01 | FTC boundary enforcement | Proposed | Fix existing import leaks, then add a focused forbidden-import check. |
-| 57 | DOC-01 | Stale and non-compiling documentation | Proposed | Correct loop/API examples and validate links/examples where practical. |
-| 58 | CI-01 | Framework verification in CI | Proposed | Run focused unit tests, TeamCode compilation, docs checks, and boundary checks. |
-| 59 | CLEAN-01 | Alias and risky convenience cleanup | Proposed | Remove only APIs proven redundant or unsafe by caller search. |
-| 60 | SAFE-04 | PowerOutput failure cleanup and seam truth | Deferred | Current completion requires representative actuator observation; a narrower software-seam contract needs a new approved decision gate. |
-| 61 | CAL-01 | Calibration-search power validation | Proposed | Reject invalid normalized search power before stopping normal output or changing calibration state. |
-| 62 | CAL-02 | Position-calibration reference validity | Proposed | Validate calibration reference and hold answers at the boundary that owns their units and lifecycle. |
-| 63 | MAP-01 | FTC actuator mapping-domain validation | Proposed | Validate finite child transforms and raw actuator domains before command mapping can be silently clamped. |
-| 64 | RANGE-01 | ScalarRange construction validity | Proposed | Define and enforce finite, half-bounded, and unbounded range construction without allowing `NaN`. |
-| 65 | FTC-02 | Device-managed controller configuration validation | Proposed | Validate FTC PIDF/P, maximum-power, and related staged answers before SDK access or mode changes. |
-| 66 | CONFIG-01 | Owner-configuration snapshot audit | Deferred | Revisit specific owners only when a traced caller shows mutation drift or invalid retained state. |
-| 67 | SOURCE-04 | Successful source-cache commit semantics | Proposed | Audit stateful source wrappers that claim a cycle before upstream sampling or state transition succeeds. |
-| 68 | INPUT-02 | Binding update failure retention | Proposed | Make same-cycle binding failure behavior explicit for an effectful traversal that may already have fired callbacks. |
+| 55 | TARGET-04 | Command-preserving equivalent-position resolution | Done | The focused transform, truthful command-backed Task completion, synchronized documentation, software verification, and Android Studio review are complete. |
+| 56 | API-06 | One Plant command and Task-writing path | Proposed | Keep one ordinary graph-owned command target and make persistent commands and Plant Tasks write through that same path. |
+| 57 | TARGET-05 | Target request/resolution vocabulary | Proposed | Consolidate the advanced planner's request, resolver, and resolution concepts without removing useful multi-candidate planning. |
+| 58 | EXAMPLE-03 | Advanced moving-target reference | Proposed | Prove progress-triggered scoring and a bounded moving turret without putting game physics in the framework. |
+| 59 | BOUNDARY-01 | FTC boundary enforcement | Proposed | Fix existing import leaks, then add a focused forbidden-import check. |
+| 60 | DOC-01 | Stale and non-compiling documentation | Proposed | Correct loop/API examples and validate links/examples where practical. |
+| 61 | CI-01 | Framework verification in CI | Proposed | Run focused unit tests, TeamCode compilation, docs checks, and boundary checks. |
+| 62 | CLEAN-01 | Alias and risky convenience cleanup | Proposed | Remove only APIs proven redundant or unsafe by caller search. |
+| 63 | SAFE-04 | PowerOutput failure cleanup and seam truth | Deferred | Current completion requires representative actuator observation; a narrower software-seam contract needs a new approved decision gate. |
+| 64 | CAL-01 | Calibration-search power validation | Proposed | Reject invalid normalized search power before stopping normal output or changing calibration state. |
+| 65 | CAL-02 | Position-calibration reference validity | Proposed | Validate calibration reference and hold answers at the boundary that owns their units and lifecycle. |
+| 66 | MAP-01 | FTC actuator mapping-domain validation | Proposed | Validate finite child transforms and raw actuator domains before command mapping can be silently clamped. |
+| 67 | RANGE-01 | ScalarRange construction validity | Proposed | Define and enforce finite, half-bounded, and unbounded range construction without allowing `NaN`. |
+| 68 | FTC-02 | Device-managed controller configuration validation | Proposed | Validate FTC PIDF/P, maximum-power, and related staged answers before SDK access or mode changes. |
+| 69 | CONFIG-01 | Owner-configuration snapshot audit | Deferred | Revisit specific owners only when a traced caller shows mutation drift or invalid retained state. |
+| 70 | SOURCE-04 | Successful source-cache commit semantics | Proposed | Audit stateful source wrappers that claim a cycle before upstream sampling or state transition succeeds. |
+| 71 | INPUT-02 | Binding update failure retention | Proposed | Make same-cycle binding failure behavior explicit for an effectful traversal that may already have fired callbacks. |
 
 The completed order was intentionally front-loaded with testability, robot lifecycle, actuator
 safety, deterministic Task behavior, Pedro ownership, truthful route outcomes, and the reusable
@@ -178,6 +181,13 @@ continuation abstraction. SOURCE-03 now has a second real flywheel caller in Cut
 needs representative traces before selecting a filter whose delay could help or harm PIDF control.
 They follow the actionable research cluster instead of pretending missing physical/routine evidence
 is implementation-ready. The remaining unrelated items retain their prior relative order.
+
+On 2026-07-28, the mechanism-target API review promoted TARGET-04, API-06, and TARGET-05 directly
+after EXAMPLE-01. The order deliberately proves equivalent-position behavior and truthful Task
+completion first, simplifies the ordinary command path second, and only then considers a breaking
+advanced-vocabulary consolidation. This prevents one large rewrite from mixing behavioral,
+beginner-API, and expert-planner decisions. EXAMPLE-03 and the previously ordered unrelated items
+retain their relative order after this three-item cluster.
 
 The Pedro review added two runtime-ownership gates before DRIVE-01:
 the checked-in Auto must first have one continuous follower heartbeat and one valid drivetrain/
@@ -5349,6 +5359,191 @@ writer, and explicit lifecycle ownership.
     and replied `TARGET-03 looks good`. This authorizes finalization, publication, and merge of
     TARGET-03 only; it does not authorize starting CYCLE-01 or another tracker item.
 
+### TARGET-04 - Command-preserving equivalent-position resolution
+
+- **Status (2026-07-28):** **Verifying** on
+  `codex/target-04-equivalent-position-resolution`, based on `origin/master@1157ef6`. This is the
+  first of three deliberately separate follow-ups from the mechanism-target API review. API-06 and
+  TARGET-05 remain proposed and must not be implemented in this item.
+- **Confirmed behavior and failure:** a bounded mechanism and a freely rotating version express the
+  same logical request very differently today. The bounded mechanism can bind one `ScalarTarget`
+  through `PlantTargets.exact(...)`; the periodic mechanism must replace that normal path with a
+  `PlantTargetRequest`, request source, staged planner, candidate kind, preference, unreachable
+  policy, and unavailable policy. Worse, `PlantTasks.move(plant).to(logicalTarget)` writes the
+  graph-owned command but checks `plant.atTarget(logicalTarget)`. If a planner turns logical angle
+  `20` into the reachable physical equivalent `380`, the Task cannot recognize successful arrival
+  and may time out. Changing `Plant.atTarget(value)` to compare modulo a period would be equally
+  untruthful for callers that intentionally command the exact unwrapped position.
+- **Current callers and public paths:** repository production code does not yet construct the
+  advanced Plant planner; tests and `Mechanism Target Planning.md` exercise it, while framework
+  examples and tools use `PlantTasks.move(...)`. This absence is not a reason to remove planning:
+  future turrets, continuous elevators, cable-managed mechanisms, alternate scoring solutions, and
+  moving spatial targets still need useful multi-candidate selection. The audited public target
+  construction families are `exact(...)`, ordered `overlay(...)`, and staged `plan()`. API-01
+  already gives exact/overlay graphs one discoverable `ScalarTarget` identity, but a resolved plan
+  does not yet say whether that command was the winning logical input in this cycle.
+- **Student-facing common path:** robot capabilities continue to expose semantic methods and Tasks.
+  Mechanism realization owns one logical `ScalarTarget`; ordinary code writes a number or starts a
+  Task against that target. Making the mechanism periodic changes only the final target-source
+  construction, not the capability vocabulary, button binding, named goal, or Task call.
+- **Alternatives considered:** (1) no change or documentation-only leaves the paradigm rewrite and
+  false Task timeout; (2) require `PlantTargets.plan()` for every periodic command preserves all
+  current types at the common call site; (3) make every periodic Plant interpret `atTarget(value)`
+  modulo its period destroys exact-unwrapped intent; (4) infer wrapping automatically from Plant
+  topology prevents an otherwise periodic mechanism from requesting an exact turn; (5) put a
+  modulo-aware completion Task in each robot duplicates framework lifecycle and cancellation logic;
+  (6) add periodic overloads to `PlantTasks` creates a second command path; (7) add a focused final
+  target transform preserves one command path while keeping exact and planned behavior distinct.
+- **Simplicity comparison:** a normal linear mechanism remains
+  `PlantTargets.exact(commandTarget)`. Its periodic counterpart adds one readable sentence around
+  that same command: `equivalentPositionsOf(commandTarget).nearestToMeasurement()` followed by an
+  explicit unavailable answer. Students do not construct candidates, requests, periods, search
+  windows, or alternate Task types for the common case. Four named preference choices remain
+  available because nearest, one-direction cable management, and range-center wear management are
+  materially different robot behaviors; they are staged alternatives rather than overloads.
+- **Chosen public design:** add exactly two entry points:
+
+  ```java
+  PlantTargets.equivalentPositionsOf(ScalarTarget commandTarget)
+  PlantTargets.equivalentPositionsOf(PlantTargetSource finalLogicalTarget)
+  ```
+
+  Both return a staged preference choice with `nearestToMeasurement()`, `preferIncreasing()`,
+  `preferDecreasing()`, and `preferRangeCenter()`, followed by `whenUnavailable()` and the existing
+  four terminal answers: `fallbackTo(...)`, `holdLastTarget(...)`,
+  `holdMeasuredTargetOnEntry(...)`, or `reportUnavailable()`. The first overload is the ordinary
+  command-preserving path. The second is the advanced composition path: build exact/overlay logic
+  first, then interpret the final logical winner as an equivalent-position family. Reuse one
+  unavailable-stage type with `plan()` because its answers and units are identical; add no
+  `double`, `ScalarSource`, request, explicit-period, clamp, or Task overload.
+- **Resolution semantics:** the wrapper samples its child once per cycle and chooses a legal value
+  `logical + k * context.period()` inside the Plant range with the constant-time deterministic
+  TARGET-03 selector. Plant topology supplies the period; a non-periodic context, non-finite child,
+  invalid period/range, or family with no legal representative follows the explicit unavailable
+  policy. Bounds are inclusive and nearest/range-center midpoint ties choose the lower target.
+  Increasing/decreasing preferences use a strict preferred-direction bucket before distance. The
+  wrapper never clamps because a clamped value is not an equivalent position. A child fallback or
+  hold target may be transformed for physical safety but remains fallback intent. `fallbackTo(...)`
+  and hold initial values at the wrapper boundary are physical Plant-unit answers. Measured hold is
+  captured once per continuous unavailable episode and recaptured after recovery or a sampling gap.
+- **Command and completion truth:** retain private command identity and the sampled logical command
+  value as internal `PlantTargetPlan` provenance. Exact sources originate that provenance; overlays
+  naturally preserve only the winning child's plan; the equivalent-position transform changes the
+  physical target while preserving the winning logical provenance. `PlantTasks.move(...)` compares
+  that private evidence with the Plant's graph-derived command identity and live command value, then
+  completes only when that exact command/value won and the Plant reports physical
+  `atTarget(selectedPhysicalTarget)`. A same-valued overlay, fallback, hold, clamp, a different
+  command object, or an externally changed command cannot complete the Task. The private metadata is
+  originated and propagated only by framework target-graph implementations; no Plant implementation
+  API changes are needed. Custom Plant implementations that do not publish the evidence retain the
+  existing `atTarget(value)` fallback behavior. Add no public `atCommandTarget`, command-status
+  interface, or competing writer.
+- **Ownership and parallelism:** the transform is part of the final source graph owned by mechanism
+  realization. A base overlay and every active overlay are resolved before equivalence selection,
+  so layers may still use their own button/sensor inputs while one final Plant source and one
+  command target remain authoritative. Exact unwrapped movement remains available by omitting the
+  transform. The general `plan()` remains the advanced path for multiple named candidates,
+  relative choices, explicit periods, freshness/quality metadata, and clamp policy.
+- **Rejected designs:** do not infer equivalence from periodic topology, change the meaning of
+  `Plant.atTarget(value)`, expose planner internals through the focused helper, manufacture a
+  request object every loop, add a second Task factory, make an overlay bypass the transform, or
+  perform API-06/TARGET-05 alias and vocabulary cleanup in this item.
+- **Verification plan:** add focused equivalent-position tests for all four preferences, inclusive
+  range boundaries/ties, huge spaces, periodic/non-periodic topology, unreachable and each
+  unavailable answer, same-cycle identity, reset, measured-hold re-entry, final-overlay ordering,
+  and command-target discovery. Add Task integration coverage for a logical command resolving to a
+  different physical equivalent; same-valued and different overrides; fallback/hold/clamp;
+  rate-limited/guarded physical arrival; external command changes; exact-unwrapped behavior; and a
+  custom Plant's compatibility fallback. Re-run the existing periodic planner, overlay, Plant
+  command, Plant Task/lifecycle, mapped position/velocity, and complete TeamCode test suites plus
+  Java compilation, caller/public-signature/doc checks, and `git diff --check`. Synchronize
+  Framework Principles, Plant/target/Task Javadocs, and `Mechanism Target Planning.md`; use no
+  Phoenix-specific vocabulary in reusable framework documentation. No robot hardware is required
+  to verify deterministic target math or software completion provenance.
+- **Approval (2026-07-28):** after reviewing the request/resolver/resolution roles and the common
+  mechanism examples, the user replied `Let us proceed with this design for now` and authorized
+  splitting and prioritizing the work. This approves TARGET-04's bounded design above. It does not
+  authorize implementing API-06 or TARGET-05 in the same change, nor staging, committing, or
+  publishing before the required Android Studio review.
+- **Implementation record (2026-07-28):**
+  - Added the two approved `PlantTargets.equivalentPositionsOf(...)` entry points and one staged
+    preference/unavailable-policy path. The transform reads the consuming Plant's topology, period,
+    range, measurement, and previous applied target; reuses the constant-time TARGET-03 selector;
+    preserves inclusive bounds and deterministic ties; never silently clamps; and does not make
+    periodic topology imply equivalent-position intent.
+  - Added private command-resolution evidence to framework-created `PlantTargetPlan`s. Exact sources
+    originate it, overlays retain it only when the command-backed child actually wins, and the
+    equivalent-position transform preserves it only for a successful equivalent of that winning
+    logical command. Fallback, hold, clamp, guard, same-valued override, and stale-command paths do
+    not masquerade as command success. The successful transformed plan is identified as
+    `EQUIVALENT_POSITION`; transformed fallback and hold answers retain their existing diagnostic
+    kinds and flags.
+  - Updated `PlantTasks.move(...)` to use that internal evidence when a framework target graph
+    provides it, so logical `20` may complete truthfully at physical `380`. Literal
+    `Plant.atTarget(value)` remains an unwrapped physical query, exact behavior remains available by
+    omitting the transform, and custom Plant implementations without this private provenance retain
+    their existing completion contract. No second Task factory, imperative writer, public command
+    status, or planner-vocabulary alias was added.
+  - Kept final overlay ordering explicit, made same-cycle resolution attempt-stable without caching
+    child failures, propagated structural reset, recaptured measured hold after an unavailable gap,
+    and retained advanced `plan()` for multi-candidate, relative, explicit-period, observation, and
+    clamp use cases. Framework Principles, AGENTS guidance, Plant/target/Task Javadocs, maintained
+    guides, examples, and Phoenix architecture/calibration documentation now describe the same
+    linear-versus-periodic realization boundary.
+- **Automated verification (2026-07-28):** the final focused equivalent-position, Task-integration,
+  and periodic-planner run passed **42 tests**. The complete `TeamCode` unit suite and Java
+  compilation passed **108 suites / 1,010 tests** with zero failures, errors, or skips. Coverage
+  includes all four preferences, ties and enormous spaces, invalid/unreachable topology, every
+  unavailable policy, reset and same-cycle retry/identity, no-feedback reference choices,
+  measured-hold re-entry, overlay ordering and provenance, metadata preservation, logical-to-
+  physical Task completion, override/fallback/guard/stale-command rejection, stable-time reset, and
+  exact-unwrapped behavior. The build emitted only the repository's existing Java-8-on-JDK-21 and
+  FTC sample deprecation warnings.
+- **Review and static verification (2026-07-28):** three independent reviews covered numerical and
+  lifecycle correctness, API/principle fit, documentation, and regression validity. Their findings
+  led to explicit custom-Plant qualification, fallback-kind wording, reset/no-feedback cases, and
+  same-identity overlay coverage; the reviewers report no remaining blocker or important gap.
+  Changed-Markdown fence/link checks, stale-name/scope scans, and `git diff --check` pass.
+- **Hardware scope:** no robot hardware is required to prove deterministic equivalent selection,
+  source-graph provenance, or Task completion. An adopting robot still owns ordinary validation of
+  configured period/range, wiring direction, feedback quality, mechanism clearance, and preferred
+  route under load; none of those physical results is claimed here.
+- **Android Studio audit point (2026-07-28):** TARGET-04 is intentionally **Verifying** and remains
+  unstaged and uncommitted. Inspect `PlantTargets.equivalentPositionsOf(...)` and its staged choices;
+  `PlantTargetPlan` private command evidence; exact/overlay propagation; `PlantTasks.MoveTask`
+  completion; both focused test classes; and the linear/periodic examples in
+  `Mechanism Target Planning.md`. Confirm that robot capability and Task calls stay identical while
+  only mechanism realization gains the transform, literal exact turns remain available, and the
+  advanced planner remains intact. No file is staged, committed, pushed, or merged. Stop without
+  starting API-06 until the user replies `TARGET-04 looks good`.
+- **Manual verification and approval (2026-07-28):** the user reviewed TARGET-04 and replied
+  `TARGET-04 looks good`. This approves finalization, publication, and merge of TARGET-04 only;
+  API-06 remains unstarted.
+
+### TARGET-05 - Target request/resolution vocabulary
+
+- **Problem to confirm:** the advanced planner currently exposes `PlantTargetRequest`,
+  `PlantTargetCandidate`, `PlantTargetSource`, and `PlantTargetPlan`. Their roles are individually
+  defensible, but `Source<PlantTargetRequest>` plus `PlantTargetSource.resolve(...)` is hard to read,
+  and `PlantTargetSource` sounds like a per-cycle `Source<PlantTarget>` rather than the context-aware
+  resolver it actually is. Candidate and request factories also duplicate much of their surface.
+- **Leading direction (2026-07-28):** preserve advanced multi-candidate, relative, explicit-period,
+  freshness/quality, preference, and fallback capabilities, but pressure-test a vocabulary centered
+  on request -> resolver -> resolution. Audit whether a request can directly own its candidates,
+  whether `PlantTargetSource` should become `PlantTargetResolver`, whether `PlantTargetPlan` should
+  become `PlantTargetResolution`, and whether `satisfiesRequest` is more truthfully named
+  `satisfiesIntent`. Prefer one construction path and avoid compatibility aliases when a coherent
+  breaking migration is smaller.
+- **Boundary:** TARGET-04 intentionally uses the current public nouns so equivalent-position
+  behavior can be reviewed independently. API-06 owns ordinary command/task construction cleanup;
+  CLEAN-01 retains unrelated aliases. TARGET-05 must repeat the full public-caller, documentation,
+  subclassing, binary/source migration, and example audit before proposing exact signatures.
+- **Completion:** one approved advanced vocabulary preserves useful future-game parallelism while
+  reducing the number of public types/factories students must distinguish. All in-repository
+  callers, Javadocs, guides, and examples compile under the single chosen path; focused planner and
+  source-graph behavior remains unchanged. This item remains **Proposed** and requires its own
+  recorded Gate 1 decision before implementation.
+
 ### CYCLE-01 - Stateful drive-source cycle safety
 
 - **Problem to confirm:** repeated same-cycle reads of stateful overlays/guidance may advance blend or
@@ -7083,6 +7278,34 @@ writer, and explicit lifecycle ownership.
   - **Manual verification and approval (2026-07-27):** the user reviewed API-05 in Android Studio and
     replied `API-05 looks good`. This approves finalization, publication, and merge of API-05 only;
     the next tracker item remains unstarted.
+
+### API-06 - One Plant command and Task-writing path
+
+- **Problem to confirm:** API-01 established graph-owned command identity, but ordinary Plant
+  construction still exposes overlapping `targetedBy(...)`, `targetedByCommand(...)`,
+  `PlantTargets.exact(...)`, `fromScalar(...)`, and task-helper shapes. Students can reasonably ask
+  whether `commandedBy` and `targetedBy` are different control layers, and a Task's write path is
+  not visibly the same persistent command used by normal robot methods.
+- **Leading direction (2026-07-28):** a mechanism owns one `ScalarTarget` command input. Its final
+  source graph consumes that input; persistent semantic methods set it; Task factories set the same
+  object and wait through the same resolved graph. Keep `targetedBy(...)` for installing the final
+  source if that remains the clearest Plant-builder verb, but expose one ordinary overload rather
+  than parallel names/data shapes. Prefer deleting redundant aliases and migrating repository
+  callers together over retaining deprecated parallel paths.
+- **Parallelism requirement:** linear, bounded periodic, overlay-driven, and advanced planned
+  mechanisms must present the same capability/Task vocabulary to TeleOp and Auto. A physical change
+  should normally alter only mechanism realization, not button bindings, named goals, or autonomous
+  routine structure. Do not create imperative Plant writers, a second Task target, or a second
+  completion paradigm.
+- **Boundary:** TARGET-04 supplies equivalent-position resolution and private truthful completion
+  provenance. API-06 later audits and simplifies only the ordinary construction/write surface.
+  TARGET-05 owns advanced planner nouns and request/candidate factories. CLEAN-01 retains unrelated
+  convenience APIs. No API-06 deletion or rename is part of TARGET-04 merely to keep its diff small.
+- **Completion:** after a fresh public-signature/current-caller/Javadoc/example audit and explicit
+  Gate 1 approval, ordinary robot code has one documented way to construct and command a Plant.
+  Persistent and Task calls demonstrably share the graph-derived command target; exact, overlay,
+  equivalent-position, and planned realization retain their useful behavior; all repository callers
+  and docs compile without compatibility aliases. This item remains **Proposed**.
 
 ### COMMON-01 - Cleanup action aggregation
 

@@ -73,8 +73,9 @@ public interface Plant {
     /**
      * Diagnostic explanation of how this plant's target source selected the requested target.
      *
-     * <p>The plan is about target selection only: exact target, planned candidate, fallback, hold,
-     * or unavailable. Physical arrival still belongs to {@link #atTarget()} and
+     * <p>The plan is about target selection only: exact target, equivalent position, planned
+     * candidate, fallback, hold, or unavailable. Physical arrival still belongs to
+     * {@link #atTarget()} and
      * {@link #atTarget(double)}.</p>
      */
     default PlantTargetPlan getTargetPlan() {
@@ -131,10 +132,12 @@ public interface Plant {
     /**
      * Whether the plant is truly at a specific target value.
      *
-     * <p>Feedback tasks use this overload so a behavior overlay, clamp, fallback, or rate limiter
-     * cannot make a task complete early while the plant is following a different target.
-     * Framework-regulated feedback Plants also require current successful actuation evidence, just
-     * as {@link #atTarget()} does.</p>
+     * <p>The supplied value is one literal physical target in Plant units. This method does not
+     * compare modulo a periodic Plant's period: exact unwrapped movement remains distinct from an
+     * equivalent-position request. Framework feedback implementations also require the requested
+     * and applied targets, guards/status, measurement, and latest actuation evidence to agree.
+     * {@link PlantTasks} combines this physical query with target-plan command evidence when a
+     * logical command resolves to a different equivalent physical value.</p>
      */
     default boolean atTarget(double target) {
         return false;

@@ -34,7 +34,8 @@ place to generate values intended for a Plant target:
 
 1. use `PlantTargets.exact(...)` for simple constants or scalar sources
 2. use `PlantTargets.overlay(...)` for base + behavior-layer arbitration
-3. use `PlantTargets.plan()` for equivalent/candidate target requests that need Plant context
+3. use `PlantTargets.equivalentPositionsOf(...)` for one periodic command and
+   `PlantTargets.plan()` for advanced candidate requests that need Plant context
 4. choose an explicit `whenUnavailable()` policy for smart planners
 5. use `addIfAvailable(...)` only when an enabled overlay layer should explicitly fall through
 

@@ -270,7 +270,7 @@ Typical abort situations:
 Use **PlantTasks** when:
 
 - one task should change a Plant's command target
-- the task may wait on Plant feedback using `plant.atTarget(value)`
+- the task may wait until its logical command path wins and Plant feedback confirms physical arrival
 - the behavior is naturally “move this mechanism target and wait”
 
 Use **OutputTaskRunner** when:

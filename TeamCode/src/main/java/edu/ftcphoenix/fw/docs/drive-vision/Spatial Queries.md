@@ -15,7 +15,9 @@ Use `SpatialQuery` directly when you need raw geometry:
 - inspect translation/facing solutions for telemetry
 - build a robot-specific mechanism planner that needs field-relative context
 
-Do not use `SpatialQuery` when the target is already a plant-unit value. A lift preset such as `1420 ticks` should go straight to a `ScalarTarget`, `PlantTargets.plan()`, or directly to a Plant target builder.
+Do not use `SpatialQuery` when the target is already a plant-unit value. A lift preset such as
+`1420 ticks` should go straight to a `ScalarTarget`; a periodic mechanism can wrap that command with
+`PlantTargets.equivalentPositionsOf(...)`; advanced candidate sets use `PlantTargets.plan()`.
 
 ## Main vocabulary
 

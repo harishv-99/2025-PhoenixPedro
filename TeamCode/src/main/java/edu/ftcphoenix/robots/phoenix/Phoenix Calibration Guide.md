@@ -426,7 +426,8 @@ Examples of future additions that would fit this model naturally:
 
 Phoenix's current checked-in robot does not include an independently rotating turret or tray, but the framework now supports the pattern we would use for them.
 
-A mechanism service should establish a calibrated native coordinate before feeding `PlantTargets.plan()` target requests:
+A mechanism service should establish a calibrated native coordinate before resolving
+`PlantTargets.equivalentPositionsOf(...)` commands or advanced `PlantTargets.plan()` requests:
 
 - **measurement source**: the value the `Plant` understands, such as encoder ticks
 - **zero/reference**: the raw encoder value corresponding to the mechanism's meaningful zero

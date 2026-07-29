@@ -782,10 +782,24 @@ Phoenix currently uses the framework's Drive Guidance path for drivetrain-facing
 
 1. **`SpatialQuery`** solves field/robot geometry: target points, facing errors, translation errors, and alternate solve lanes such as live AprilTags vs global localization.
 2. **`DriveGuidancePlan` / `DriveGuidanceQuery`** consume spatial results and produce drivetrain omega/translation commands.
-3. **`PlantTargets.plan()`** consumes plant-unit target requests and produces feasible requested targets for `Plant`s.
+3. **`PlantTargets.equivalentPositionsOf(...)` / `plan()`** turn plant-unit intent into feasible
+   requested targets for `Plant`s. The first is the ordinary one-command periodic path; the second
+   is the advanced multi-candidate/observation path.
 
-Phoenix scoring aim follows the drive path because the drivetrain turns the whole robot. A future turret, tray, arm, or extension should generally follow the Plant target path: robot-owned calibration/reference setup converts semantic intent or spatial geometry into the plant units exposed by the mechanism, then `PlantTargets.plan()` handles candidates, periodic equivalents, travel range, and fallback/hold policy. Physical readiness remains `Plant.atTarget(...)`.
+Phoenix scoring aim follows the drive path because the drivetrain turns the whole robot. A future
+turret, tray, arm, or extension should generally follow the Plant target path: robot-owned
+calibration/reference setup converts semantic intent or spatial geometry into the plant units
+exposed by the mechanism. One logical turret command uses
+`PlantTargets.equivalentPositionsOf(...)`; multiple solutions or observation freshness use
+`PlantTargets.plan()`. The Plant still owns travel bounds/guards, and physical readiness remains a
+literal `Plant.atTarget(...)` fact. `PlantTasks.move(...)` correlates its logical command with any
+selected physical equivalent.
 
-For example, a future turret with its own camera would use one spatial query with two solve lanes: a direct turret-camera AprilTag lane and a global-pose fallback lane. The turret service would map the selected facing solution into a `PlantTargetRequest`, and `PlantTargets.plan()` would choose a reachable requested target under cable limits as part of the turret Plant's target source.
+For example, a future turret with its own camera would use one spatial query with two solve lanes: a
+direct turret-camera AprilTag lane and a global-pose fallback lane. If the service publishes one
+current logical angle, the final source can apply `equivalentPositionsOf(...)`. If it must preserve
+observation timestamps/quality or choose among several solutions, it maps those facts into a
+`PlantTargetRequest` and uses the advanced planner. In both cases the capability still says “aim at
+this angle”; periodic realization does not rewrite TeleOp or Auto into a different paradigm.
 
 Calibration remains robot-owned. Homing switches, encoder zero offsets, ticks-per-turn constants, and cable-limit ranges should be established by the mechanism service and exposed through `PositionPlant`/Plant target context measurements and `ScalarRange`s.

@@ -11,9 +11,12 @@ import edu.ftcphoenix.fw.task.TaskOutcome;
  * Task helpers for source-driven {@link Plant}s.
  *
  * <p>A plant task writes the plant's graph-owned command {@link ScalarTarget}; it never calls a
- * plant setter. Feedback-aware moves then wait for {@link Plant#atTarget(double)}, which prevents
- * false success when a behavior overlay, static bounds, target guard, or rate limiter is making the
- * plant follow a different value.</p>
+ * plant setter. For framework {@link PlantTargets} graphs, feedback-aware moves require that
+ * logical command to be the winning target-graph path and then wait for physical arrival at the
+ * selected requested target. This supports periodic equivalent positions while preventing false
+ * success from a same-valued overlay, fallback, planner clamp, static bound, target guard, or rate
+ * limiter. A custom Plant that does not publish framework-private plan evidence retains its own
+ * {@link Plant#atTarget(double)} completion contract.</p>
  *
  * <p>Build a task-driven plant from a {@code ScalarTarget}, from an overlay whose stable base is a
  * {@code ScalarTarget}, or with the FTC builder's {@code targetedByCommand(...)} shortcut. If a
@@ -54,11 +57,14 @@ public final class PlantTasks {
     /**
      * Start a guided builder for a feedback-aware move.
      *
-     * <p>The resulting task writes the plant's command target, then waits for
-     * {@link Plant#atTarget(double)}. After choosing the move target, callers must explicitly
-     * choose whether active cancellation writes a different Plant-unit request or deliberately
-     * leaves the move request in place. Optional builder steps then add a stability requirement,
-     * timeout, or final target to write after successful/timeout completion.</p>
+     * <p>The resulting task writes the plant's logical command target. A framework target graph may
+     * resolve that value to a different physical equivalent; completion then requires both
+     * winning-path command evidence and {@link Plant#atTarget(double)} for that resolved physical
+     * target. Custom Plants without that framework evidence use their existing
+     * {@code atTarget(requestedLogicalValue)} contract. After choosing the move target, callers must
+     * explicitly choose whether active cancellation writes a different Plant-unit request or
+     * deliberately leaves the move request in place. Optional builder steps then add a stability
+     * requirement, timeout, or final target.</p>
      *
      * @param plant feedback-capable plant with a graph-owned command target
      * @return first builder step asking which target to request
@@ -113,8 +119,8 @@ public final class PlantTasks {
      */
     public interface MoveReadyStep {
         /**
-         * Require {@link Plant#atTarget(double)} to stay true for {@code stableSec}, measured from
-         * the first loop that observes the plant at the requested target.
+         * Require the move's matching logical-command path and physical arrival to remain true for
+         * {@code stableSec}, measured from the first loop that observes both conditions.
          */
         MoveReadyStep stableFor(double stableSec);
 
@@ -323,7 +329,17 @@ public final class PlantTasks {
             if (complete) return;
             double nowSec = nowSec(clock, startSec);
             elapsedSec = elapsedSince(startSec, nowSec);
-            boolean reached = plant.atTarget(target);
+            PlantTargetPlan plan = plant.getTargetPlan();
+            boolean reached;
+            if (plan != null && plan.reportsCommandResolutionFor(commandTarget)) {
+                reached = plan.satisfiesCommand(commandTarget, target)
+                        && commandTarget.get() == target
+                        && plant.atTarget(plan.target());
+            } else {
+                // Custom Plants that do not publish framework command provenance keep the
+                // original exact-target completion contract.
+                reached = plant.atTarget(target);
+            }
             if (complete) return;
             boolean done;
             if (stableSec <= 0.0) {

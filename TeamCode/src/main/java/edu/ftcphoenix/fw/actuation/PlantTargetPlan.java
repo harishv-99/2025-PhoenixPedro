@@ -2,6 +2,7 @@ package edu.ftcphoenix.fw.actuation;
 
 import java.util.Objects;
 
+import edu.ftcphoenix.fw.core.source.ScalarTarget;
 import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 
 /**
@@ -10,7 +11,9 @@ import edu.ftcphoenix.fw.core.time.LoopTimestamp;
  * <p>A plan describes target <em>selection</em>, not physical arrival. It tells the plant which
  * requested target should be considered for this loop and why that target was chosen. Completion
  * still belongs to {@link Plant#atTarget()} and {@link Plant#atTarget(double)}, because only the
- * plant knows its feedback tolerance, hardware guards, and applied target.</p>
+ * plant knows its feedback tolerance, hardware guards, and applied target. Framework-created plans
+ * also carry private winning-command evidence so {@link PlantTasks} can distinguish a logical
+ * command from a same-valued overlay or fallback without adding another public status concept.</p>
  */
 public final class PlantTargetPlan {
 
@@ -23,9 +26,13 @@ public final class PlantTargetPlan {
          */
         EXACT,
         /**
-         * A candidate/equivalent target was selected from a request.
+         * A candidate was selected from an advanced request.
          */
         PLANNED_CANDIDATE,
+        /**
+         * A legal physical representative of an equivalent-position family was selected.
+         */
+        EQUIVALENT_POSITION,
         /**
          * The target came from a fallback value.
          */
@@ -55,6 +62,9 @@ public final class PlantTargetPlan {
     private final double selectedAgeSec;
     private final LoopTimestamp selectedTimestamp;
     private final String reason;
+    private final ScalarTarget resolutionCommandTarget;
+    private final boolean commandPathSelected;
+    private final double logicalCommandValue;
 
     private PlantTargetPlan(boolean hasTarget,
                             double target,
@@ -66,7 +76,10 @@ public final class PlantTargetPlan {
                             double selectedQuality,
                             double selectedAgeSec,
                             LoopTimestamp selectedTimestamp,
-                            String reason) {
+                            String reason,
+                            ScalarTarget resolutionCommandTarget,
+                            boolean commandPathSelected,
+                            double logicalCommandValue) {
         this.hasTarget = hasTarget;
         this.target = target;
         this.kind = Objects.requireNonNull(kind, "kind");
@@ -78,6 +91,9 @@ public final class PlantTargetPlan {
         this.selectedAgeSec = selectedAgeSec;
         this.selectedTimestamp = Objects.requireNonNull(selectedTimestamp, "selectedTimestamp");
         this.reason = reason != null ? reason : "";
+        this.resolutionCommandTarget = resolutionCommandTarget;
+        this.commandPathSelected = commandPathSelected;
+        this.logicalCommandValue = logicalCommandValue;
     }
 
     /**
@@ -87,7 +103,7 @@ public final class PlantTargetPlan {
         requireFinite(target, "target");
         return new PlantTargetPlan(true, target, Kind.EXACT, true, false, false,
                 "exact", 1.0, Double.NaN, LoopTimestamp.unavailable(),
-                clean(reason, "exact target"));
+                clean(reason, "exact target"), null, false, Double.NaN);
     }
 
     /** Create a planned candidate after the framework planner has validated its metadata. */
@@ -112,7 +128,7 @@ public final class PlantTargetPlan {
                 candidate.quality,
                 candidate.isObserved() ? selectedAgeSec : Double.NaN,
                 candidate.isObserved() ? candidate.timestamp : LoopTimestamp.unavailable(),
-                clean(reason, "planned target"));
+                clean(reason, "planned target"), null, false, Double.NaN);
     }
 
     /**
@@ -122,7 +138,7 @@ public final class PlantTargetPlan {
         requireFinite(target, "target");
         return new PlantTargetPlan(true, target, Kind.FALLBACK, false, true, false,
                 "fallback", 1.0, Double.NaN, LoopTimestamp.unavailable(),
-                clean(reason, "fallback target"));
+                clean(reason, "fallback target"), null, false, Double.NaN);
     }
 
     /**
@@ -132,7 +148,7 @@ public final class PlantTargetPlan {
         requireFinite(target, "target");
         return new PlantTargetPlan(true, target, Kind.HOLD_LAST_TARGET, false, true, false,
                 "hold-last", 1.0, Double.NaN, LoopTimestamp.unavailable(),
-                clean(reason, "holding last target"));
+                clean(reason, "holding last target"), null, false, Double.NaN);
     }
 
     /**
@@ -142,7 +158,7 @@ public final class PlantTargetPlan {
         requireFinite(target, "target");
         return new PlantTargetPlan(true, target, Kind.HOLD_MEASURED_TARGET, false, true, false,
                 "hold-measured", 1.0, Double.NaN, LoopTimestamp.unavailable(),
-                clean(reason, "holding measured target"));
+                clean(reason, "holding measured target"), null, false, Double.NaN);
     }
 
     /**
@@ -151,7 +167,67 @@ public final class PlantTargetPlan {
     public static PlantTargetPlan unavailable(String reason) {
         return new PlantTargetPlan(false, Double.NaN, Kind.UNAVAILABLE, false, false, false,
                 "", Double.NaN, Double.NaN, LoopTimestamp.unavailable(),
-                clean(reason, "target unavailable"));
+                clean(reason, "target unavailable"), null, false, Double.NaN);
+    }
+
+    /** Attach internal evidence that this plan selected one graph-owned command value. */
+    PlantTargetPlan withSelectedCommand(ScalarTarget commandTarget, double logicalValue) {
+        Objects.requireNonNull(commandTarget, "commandTarget");
+        requireFinite(logicalValue, "logicalValue");
+        if (!hasTarget) {
+            throw new IllegalStateException("Cannot select a command path without a target");
+        }
+        return copy(target, kind, reason, commandTarget, true, logicalValue);
+    }
+
+    /** Attach internal evidence that this graph's command path did not produce the final target. */
+    PlantTargetPlan withoutSelectedCommand(ScalarTarget commandTarget) {
+        return copy(target, kind, reason, Objects.requireNonNull(commandTarget, "commandTarget"),
+                false, Double.NaN);
+    }
+
+    /**
+     * Return this plan with a selected physical equivalent while retaining selection metadata.
+     */
+    PlantTargetPlan withEquivalentTarget(double equivalentTarget, String equivalentReason) {
+        requireFinite(equivalentTarget, "equivalentTarget");
+        if (!hasTarget) {
+            throw new IllegalStateException("Cannot select an equivalent position without a target");
+        }
+        Kind resolvedKind = satisfiesRequest && !usedFallback && !clampedByPlanner
+                ? Kind.EQUIVALENT_POSITION
+                : kind;
+        return copy(equivalentTarget, resolvedKind,
+                clean(equivalentReason, "selected equivalent position"),
+                resolutionCommandTarget, commandPathSelected, logicalCommandValue);
+    }
+
+    /** True when this plan reports the winning-path relation for {@code commandTarget}. */
+    boolean reportsCommandResolutionFor(ScalarTarget commandTarget) {
+        return resolutionCommandTarget == commandTarget;
+    }
+
+    /** True when this plan represents the supplied logical value from the supplied command path. */
+    boolean satisfiesCommand(ScalarTarget commandTarget, double logicalValue) {
+        return reportsCommandResolutionFor(commandTarget)
+                && commandPathSelected
+                && logicalCommandValue == logicalValue
+                && hasTarget
+                && satisfiesRequest
+                && !usedFallback
+                && !clampedByPlanner;
+    }
+
+    private PlantTargetPlan copy(double copiedTarget,
+                                 Kind copiedKind,
+                                 String copiedReason,
+                                 ScalarTarget copiedCommandTarget,
+                                 boolean copiedCommandPathSelected,
+                                 double copiedLogicalCommandValue) {
+        return new PlantTargetPlan(hasTarget, copiedTarget, copiedKind, satisfiesRequest,
+                usedFallback, clampedByPlanner, selectedCandidateId, selectedQuality,
+                selectedAgeSec, selectedTimestamp, copiedReason, copiedCommandTarget,
+                copiedCommandPathSelected, copiedLogicalCommandValue);
     }
 
     /**
