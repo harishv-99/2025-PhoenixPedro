@@ -140,7 +140,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 53 | CHECK-01 | Staged whole-robot system check | Deferred | Meaningful Phoenix thresholds, hazardous-motion confirmation, and physical safe-state evidence require the assembled robot. |
 | 54 | EXAMPLE-01 | Compiling modern starter robot | Done | User approved the verified starter package; Gate 3 publication is authorized. |
 | 55 | TARGET-04 | Command-preserving equivalent-position resolution | Done | The focused transform, truthful command-backed Task completion, synchronized documentation, software verification, and Android Studio review are complete. |
-| 56 | API-06 | One Plant command and Task-writing path | Proposed | Keep one ordinary graph-owned command target and make persistent commands and Plant Tasks write through that same path. |
+| 56 | API-06 | One Plant command and Task-writing path | Done | The unified target-root API, Plant-derived command ownership, synchronized callers/docs, verification, and Android Studio review are complete. |
 | 57 | TARGET-05 | Target request/resolution vocabulary | Proposed | Consolidate the advanced planner's request, resolver, and resolution concepts without removing useful multi-candidate planning. |
 | 58 | EXAMPLE-03 | Advanced moving-target reference | Proposed | Prove progress-triggered scoring and a bounded moving turret without putting game physics in the framework. |
 | 59 | BOUNDARY-01 | FTC boundary enforcement | Proposed | Fix existing import leaks, then add a focused forbidden-import check. |
@@ -7281,6 +7281,10 @@ writer, and explicit lifecycle ownership.
 
 ### API-06 - One Plant command and Task-writing path
 
+- **Status (2026-07-28):** **Done** on `codex/api-06-one-plant-command-path`, based on freshly
+  fetched `origin/master@0d16a2c`. The initially approved target-root implementation and the
+  supplemental Plant-derived ownership design are implemented, synchronized, independently
+  reviewed, verified, and manually approved for publication.
 - **Problem to confirm:** API-01 established graph-owned command identity, but ordinary Plant
   construction still exposes overlapping `targetedBy(...)`, `targetedByCommand(...)`,
   `PlantTargets.exact(...)`, `fromScalar(...)`, and task-helper shapes. Students can reasonably ask
@@ -7305,7 +7309,394 @@ writer, and explicit lifecycle ownership.
   Gate 1 approval, ordinary robot code has one documented way to construct and command a Plant.
   Persistent and Task calls demonstrably share the graph-derived command target; exact, overlay,
   equivalent-position, and planned realization retain their useful behavior; all repository callers
-  and docs compile without compatibility aliases. This item remains **Proposed**.
+  and docs compile without compatibility aliases. This item is **Ready** at its required design stop.
+- **Confirmed current behavior and simplicity problem (2026-07-28):**
+  - A persistent robot method writes `ScalarTarget.set(value)`. A Task can currently express the
+    same write through `ScalarTasks.write(target).to(value)`, compact `ScalarTasks.set/holdFor/
+    holdForThen`, `PlantTasks.write(plant).to(value)`, compact `PlantTasks.setTarget/holdTargetFor/
+    holdTargetForThen`, or feedback-only `PlantTasks.move(plant).to(value)`. The two helper classes
+    expose nine public entry names, seven public stage types, and a cross-family return from
+    `PlantTasks.write(...)` to `ScalarTasks.WriteValueStep` for only three lifetimes: write once,
+    reassert for time, or write once and wait for feedback.
+  - `targetedByCommand(initial)` is implemented by creating a held `ScalarTarget` and passing it to
+    `targetedBy(...)`. It hides the object that ordinary methods and a target-root Task API need,
+    so many callers immediately rediscover it through `plant.commandTarget()`. In contrast,
+    `targetedBy(ScalarSource)` silently decides at runtime whether the source is also a command
+    target. Both forms obscure the one stable command-object rule.
+  - Feedback `move(...)` is not merely another spelling of `set(...)`: it writes once, correlates
+    the logical command with the winning `PlantTargetPlan`, waits for physical Plant feedback,
+    handles equivalent periodic positions, stability, timeout and outcome, and owns explicit
+    cancellation/final-target behavior. That capability must migrate intact rather than disappear.
+  - FTC and mapped target builders retain their mutable target-selection stage. A caller holding
+    that stage can currently answer `targetedBy(...)` twice and silently replace the first graph.
+    Four focused tests exercise this last-answer-wins behavior. A required staged answer should
+    instead reject repetition before mutating builder state.
+- **Complete public construction-surface audit:**
+  - `ScalarTarget` is an extension interface with direct `set`, `adjust`, `get`, and inherited
+    source/reset behavior. Framework construction is duplicated by `held(double)`, its exact
+    `of(double)` alias, and `ScalarSource.mutable(double)`. The publicly nameable nested
+    `HeldScalarTarget` has a private constructor and no distinct construction capability.
+  - `ScalarTasks` currently exposes `write`, `set`, `holdFor`, and `holdForThen` plus four public
+    write-stage types. `PlantTasks` exposes `write`, `move`, `setTarget`, `holdTargetFor`, and
+    `holdTargetForThen` plus three public feedback-stage types. All return ordinary single-use
+    `Task`s; there is no distinct runner or ownership layer behind either facade.
+  - Both FTC target stages expose `targetedBy(ScalarTarget)`,
+    `targetedBy(ScalarSource)`, `targetedBy(PlantTargetSource)`, and
+    `targetedByCommand(double)`, returning `PlantBuildStep` or `PositionPlantBuildStep`. The shared
+    mapped target stage exposes the same three `targetedBy(...)` overloads and returns
+    `MappedPlantBuildStep<P>`. Mapped position's `commanded`, `positionOutput`, and `regulated`
+    factories and mapped velocity's `velocityOutput` and `regulated` factories remain distinct
+    hardware-neutral mapping/configuration entry points.
+  - Lower-level `Plants` has two-argument `power/position` overloads for `ScalarSource` and
+    `PlantTargetSource`, guarded `PlantTargetSource` forms, and feedback/regulation factories that
+    require a `PlantTargetSource`. This ingredient-level layer is a real custom-adapter/test seam,
+    not an FTC-facade alias.
+  - `PlantTargets` exposes `exact(double|ScalarSource)`, exact alias `fromScalar(ScalarSource)`,
+    `overlay(double|ScalarSource|PlantTargetSource)` with parallel `add/addIfAvailable` inputs,
+    `equivalentPositionsOf(ScalarTarget|PlantTargetSource)`, holds, and advanced `plan()`. These
+    factories build `PlantTargetSource`; their implementations are private.
+  - `Plant.hasCommandTarget()` and `commandTarget()` expose optional graph-derived command identity.
+    They are introspection/extension and calibration seams, not imperative Plant setters.
+- **Caller and future-capability audit:**
+  - `targetedByCommand(...)` has 18 executable main-source calls: 12 framework-tool examples, four
+    Phoenix drivetrain-tester Plants, one Phoenix Pedro example, and the starter intake. It also has
+    33 test calls and 29 maintained Markdown occurrences. Tool examples then make 40 direct
+    `plant.commandTarget().set(...)` calls; the Phoenix tester makes four, while the starter and
+    basic Pedro example also check or rediscover the hidden target.
+  - Executable main callers of explicit `targetedBy(...)` already demonstrate the desired split:
+    one ordinary `ScalarTarget` and seven composed `PlantTargetSource` graphs, plus three internal
+    FTC-to-mapped graph calls. Only two tests call a builder through the `ScalarSource` overload,
+    and both deliberately upcast a `ScalarTarget`; no executable main caller uses that overload.
+  - `ScalarTarget.held(...)` has two executable tool calls, 87 test calls across 15 files, and three
+    maintained guide snippets, plus Javadocs/internal references. `ScalarTarget.of(...)`,
+    `ScalarSource.mutable(...)`, and `PlantTargets.fromScalar(...)` have no repository caller. Their
+    removal is nevertheless based on identical capability, not merely caller absence.
+  - Executable `PlantTasks` users are 11 timed writes and two feedback moves in TeleOp tools, two
+    timed writes and one immediate write in the starter/Pedro examples, and no Phoenix production
+    caller. Tests contain two timed writes, 21 feedback moves, and three immediate writes; maintained
+    guides extensively teach the split. `ScalarTasks` has no executable main caller, but standalone
+    writable behavior variables are a useful non-Plant capability and must not be deleted solely
+    because present production code does not exercise it.
+  - Equivalent-position sources and advanced planning have focused tests and substantial guide
+    coverage even though Phoenix production does not currently use them. `plan()` retains distinct
+    value for multiple candidates, relative requests, explicit periods, observation quality/age,
+    and explicit unavailable policy. TARGET-05, not API-06, owns later simplification of those
+    advanced request/resolution nouns.
+  - The two-argument low-level `Plants.power(..., ScalarSource)` path has ten test callers and every
+    one supplies an actual `ScalarTarget`; `position(..., ScalarSource)` has none. Four other simple
+    calls deliberately pass a full `PlantTargetSource`. Narrowing the scalar conveniences to
+    `ScalarTarget` preserves useful custom-adapter brevity while making their command capability
+    explicit.
+- **Staged-parameter storage and reuse result:** `ScalarTarget` is a retained, named, shared command
+  object; `PlantTargetSource` is retained and composed as the final graph; and a general
+  `ScalarSource` is a reusable read-only number stream. Keep the first two as direct target-binding
+  answers and require the third to cross the domain visibly through `PlantTargets.exact(source)`.
+  A public binding wrapper would only package two objects for immediate consumption and adds no
+  reusable capability. New Task stages will hold immutable/copying configuration, reject a repeated
+  optional answer rather than silently overwrite it, and let each `build()` produce a fresh
+  single-use Task. Retained Plant target stages will reject a second `targetedBy(...)` answer before
+  changing their first answer.
+- **Student call-site and concept comparison:**
+
+  | Design | Immediate command | Timed Task | Feedback-aware Task | Student concepts / result |
+  | --- | --- | --- | --- | --- |
+  | **Selected target-root path** | `command.set(GOAL)` | `ScalarTasks.set(command, GOAL).forSeconds(t).then(IDLE).build()` | `ScalarTasks.set(command, GOAL).untilReachedBy(plant).cancelTo(IDLE).build()` | One named command and one Task facade; only lifetime/feedback policy changes |
+  | Plant-root unified helper | `command.set(GOAL)` | `PlantTasks.command(plant, GOAL).forSeconds(t)...` | `PlantTasks.command(plant, GOAL).untilReached()...` | Still requires `ScalarTasks` for standalone targets and keeps two Task paradigms |
+  | Target linked to one Plant | `command.set(GOAL)` | `command.task(GOAL)...` | inferred observer | Adds hidden reverse ownership; one target may legitimately feed zero, one, or several Plants |
+  | Keep current split / docs only | `command.set(GOAL)` | `PlantTasks.write(plant).to(GOAL)...` | `PlantTasks.move(plant).to(GOAL)...` | Different nouns and entry shapes for small lifetime changes; hidden target remains |
+
+  The selected direct Task terminator is `.build()`, not the earlier sketched `.once()`: `build` is
+  already required by every staged framework builder, makes deferred construction visible, and
+  avoids adding a terminal verb used only by the immediate branch.
+- **Selected public design:**
+  1. Make `ScalarTarget.create(initialValue)` the sole framework factory. Remove `held`, `of`,
+     `ScalarSource.mutable`, and the publicly exposed `HeldScalarTarget` implementation noun;
+     preserve stored-value, reset-to-initial, debug, custom-implementation, `set/get`, and useful
+     relative `adjust` behavior.
+  2. Keep direct persistent behavior as `command.set(value)`. Replace both public Task facades and
+     every compact alias with one side-effect-free staged entry:
+
+     ```java
+     ScalarTasks.set(command, value).build();
+
+     ScalarTasks.set(command, value)
+             .forSeconds(seconds)
+             .then(finalValue)        // or leaveThere()
+             .build();
+
+     ScalarTasks.set(command, value)
+             .untilReachedBy(plant)
+             .cancelTo(cancelValue)   // or leaveTargetOnCancel()
+             .stableFor(stableSec)
+             .timeout(timeoutSec)
+             .thenTarget(finalValue)
+             .build();
+     ```
+
+     `set(ScalarTarget,double)` returns `SetReadyStep`; that stage exposes `build()`,
+     `forSeconds(...)`, and `untilReachedBy(Plant)`. The timed branch returns `TimedEndStep` and
+     requires `then(...)` or `leaveThere()` before `TimedBuildStep.build()`. The feedback branch
+     returns `ReachedCancellationStep` and requires `cancelTo(...)` or
+     `leaveTargetOnCancel()` before `ReachedReadyStep` exposes `stableFor`, `timeout`,
+     `thenTarget`, and `build`. Keep `thenTarget` distinct because it applies after success or
+     timeout but never cancellation, whereas timed `then` also owns active-cancellation cleanup.
+     Delete `PlantTasks` rather than retain a compatibility facade.
+  3. `untilReachedBy(plant)` validates immediately, without sampling or writing: non-null Plant,
+     `hasCommandTarget()`, command-target object identity equal to this `ScalarTarget`, and
+     `hasFeedback()`. The explicit Plant is necessary because a target may feed multiple Plants and
+     chooses which feedback/provenance facts this Task observes. Do not add a target-to-Plant
+     backlink, `Plant.set(...)`, a binding endpoint, or a narrower feedback interface that would
+     need to duplicate Plant target-plan provenance.
+  4. Preserve the exact TARGET-04 completion rule: when a framework plan reports provenance for
+     this command, require the requested logical value still to match, its command path to satisfy
+     the request, and physical arrival at the resolved target; otherwise retain the custom-Plant
+     `atTarget(requestedValue)` seam. Same-valued overlays, fallbacks, planner clamps, bounds, guards,
+     rate limits, and later external command changes must not produce false success.
+  5. Keep `targetedBy(ScalarTarget)` as the one ordinary command binding and
+     `targetedBy(PlantTargetSource)` as the distinct advanced final-graph binding on both FTC and
+     mapped stages. Remove `targetedByCommand` and `targetedBy(ScalarSource)`. Read-only scalar
+     behavior remains explicit as `.targetedBy(PlantTargets.exact(source))`. Repeated target-binding
+     answers fail fast rather than replace earlier builder state.
+  6. Narrow the two simple low-level `Plants.power/position(..., ScalarSource)` conveniences to
+     `ScalarTarget`, and retain their `PlantTargetSource` siblings plus all guarded/feedback/
+     regulated graph factories. Do not add `ScalarTarget` overloads to every full factory merely
+     for symmetry; advanced callers can use `PlantTargets.exact(command)`.
+  7. Keep `PlantTargets.exact(double|ScalarSource)`, all useful overlay `double`/number-stream/graph
+     conveniences, holds, `equivalentPositionsOf(...)`, and `plan()`. Those overloads compose one
+     graph and do not introduce another writer. Remove only the exact `fromScalar(...)` alias.
+     Keep `Plant.hasCommandTarget()/commandTarget()` for calibration, custom Plant implementations,
+     framework validation, and graph-owned command derivation. A target-only policy owner retains
+     its named target. A realization injected with a completed Plant derives and caches that Plant's
+     command target once under the supplemental boundary rule below rather than accepting the same
+     target as an independent peer dependency.
+- **Lifecycle contract preserved by the unified Task builder:** factories and `build()` never read
+  or write the target. A direct built Task writes once at `start(clock)` and completes successfully.
+  A timed Task anchors its own start timestamp, writes at start, reasserts while active, keeps every
+  positive duration observable by the downstream Plant phase, and applies `then(...)` on natural
+  expiry and active cancellation while `leaveThere()` performs no ending write. A feedback Task
+  writes once without reassertion, tests success before timeout, resets its stability interval when
+  command-correlated arrival is lost, applies `thenTarget` after success/timeout only, and follows
+  the required cancellation answer. Preserve the existing timed versus feedback reentrant-final-
+  write distinction rather than silently reopening TASK-03. Every built Task remains single-use;
+  pre-start cancellation is inert, active cancellation is terminal/idempotent, and update before
+  start fails clearly.
+- **Framework Principles result:** the Plant remains source-driven with one final graph and sole
+  hardware writer. Robot services and capabilities own one persistent command; Tasks mutate that
+  same request and never bypass overlays, equivalent-position resolution, bounds, references,
+  guards, or Plant loop order. Direct, timed, and feedback commands now differ only in lifetime and
+  observation policy. A linear mechanism becoming periodic changes only the final graph; adding an
+  overlay changes only composition; adding feedback changes a Task's lifetime branch rather than
+  its command paradigm. Advanced plan-only mechanisms remain policy/source-owned unless their
+  robot capability deliberately supplies a stable command base. The design adds no competing
+  writer, hidden backlink, Plant subtype, or new timebase.
+- **Rejected designs:** documentation-only guidance leaves nine competing Task entries, hidden
+  command creation, and ambiguous scalar binding. Renaming only `move` or adding `Plant.set` creates
+  another imperative-looking path. A Plant-root command builder cannot cover standalone targets
+  without retaining two families. A ScalarTarget-to-Plant backlink or public binding object adds
+  ownership/type ceremony and fails for shared targets. Removing feedback-aware behavior gives up
+  truthful provenance, timeout, stability, outcome, and cancellation functionality. Removing
+  `plan()` or equivalent-position resolution because production has no current caller sacrifices
+  tested future-game capability. Removing every overlay convenience broadens this item and makes
+  ordinary constants/output-stream layers noisier without eliminating a competing command path.
+- **Bounded implementation scope:** update `ScalarTarget`, `ScalarSource`, `ScalarTasks`, remove
+  public `PlantTasks`, and migrate `Plant`/calibration wording and framework internals. Narrow FTC,
+  mapped, and low-level Plant target-binding surfaces and migrate every modern robot, Phoenix,
+  tool, starter/Pedro example, test, Javadoc, and maintained guide together. Synchronize Framework
+  Principles, Tasks & Macros, Beginner/Overview, FTC Plants/Sensors, Mechanism Target Planning,
+  output/supervisor/recommended-design guides, Phoenix architecture/calibration notes, and example
+  explanations. Do not change Plant target math, overlay priority/laziness, planner vocabulary,
+  guards, feedback tolerance, output safety, hardware configuration, or robot loop order; TARGET-05
+  remains the separate next item.
+- **Verification plan:** add exact public-surface tests/scans for the sole target factory, sole Task
+  factory, selected stage return types, and removed aliases/facade. Cover factory/build no-side-
+  effects, finite/timing validation, retained-stage branching and repeated-answer errors, fresh
+  builds, single-use/reentrant/failure/cancellation behavior, timed start boundaries and positive-
+  duration observability, final/leave policies, feedback identity/no-command/no-feedback errors,
+  stability, timeout ties, final targets, and both cancellation policies. Repeat TARGET-04's exact,
+  periodic-equivalent, same-valued overlay, fallback, clamp, guard/rate-limit, external-command,
+  plan-loss, and custom-Plant completion cases. Exercise FTC position/non-position, mapped
+  position/velocity, and low-level ordinary/advanced target paths, including duplicate target
+  answers. Compile every migrated robot/example/doc snippet, run focused suites, then the full
+  `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` check, XML result counts, removed-
+  symbol searches, Markdown-fence/link checks, whitespace checks, and `git diff --check`. Software
+  can prove API, graph identity, lifecycle, and completion contracts; physical motion, direction,
+  tuning, and mechanism safety still require adopting-robot hardware validation.
+- **Decision gate (2026-07-28):** **Ready; approval required.** The recommended design removes the
+  entire public `PlantTasks` facade, replaces the previously sketched `.once()` terminator with the
+  existing builder vocabulary `.build()`, narrows Plant target overloads, and changes retained-stage
+  duplicate-answer behavior. These are intentional breaking public API/lifecycle decisions, so no
+  implementation begins until the user explicitly approves API-06.
+- **Design approval (2026-07-28):** the user replied `Approve API-06 target-root design`. This
+  authorizes Gate 2 implementation of the recorded design only; Android Studio review is still
+  required before staging, publication, or merge.
+- **Implementation record (2026-07-28):**
+  - `ScalarTarget.create(initialValue)` is now the sole framework construction name. The stored
+    implementation is package-private, while custom implementations, `set/get/adjust`, reset-to-
+    initial behavior, and debug output remain available. The redundant `held`, `of`, and
+    `ScalarSource.mutable` paths are removed.
+  - `ScalarTasks.set(target, value)` is now the sole public Task entry for a writable scalar. Its
+    staged branches cover write-once, explicitly ended timed writes, and feedback-aware Plant
+    arrival with required cancellation policy plus optional stability, timeout, and completion
+    target. Builders remain side-effect-free and reusable; every build returns a fresh single-use
+    Task. Existing start-boundary, positive-duration observability, active-only/idempotent
+    cancellation, reentrant-final-write, success-before-timeout, and TARGET-04 command-provenance
+    behavior are preserved. The parallel `PlantTasks` facade and compact Task aliases are removed.
+  - FTC and mapped Plant builders now accept only `targetedBy(ScalarTarget)` for the ordinary path
+    or `targetedBy(PlantTargetSource)` for an intentional final graph. Read-only scalar streams
+    cross explicitly through `PlantTargets.exact(source)`. Retained target stages reject a second
+    answer before mutation. The simple low-level `Plants.power/position` conveniences are narrowed
+    to `ScalarTarget`, while all graph, guarded, feedback, regulation, overlay, equivalent-position,
+    hold, and advanced `plan()` capabilities remain intact. Only the redundant
+    `PlantTargets.fromScalar` alias is removed.
+  - Modern framework tools, the starter robot, the independent Pedro example, Phoenix tester/host
+    wiring, focused tests, Javadocs, Framework Principles, AGENTS guidance, and maintained guides
+    now retain and write the same explicit command object. Ordinary documentation teaches the
+    named `ScalarTarget`; `PlantTargetSource` is introduced for read-only, overlaid, periodic-
+    equivalent, or planned realization rather than as a second ordinary command paradigm.
+- **Automated verification (2026-07-28):** the final focused target-root/lifecycle/provenance run
+  passed **29 tests** with zero failures, errors, or skips. Separate binding and caller slices also
+  passed their focused suites before integration. The complete `TeamCode` unit suite and Java
+  compilation passed **109 suites / 1,026 tests** with zero failures, errors, or skips. Coverage
+  includes exact public signatures, pure/reusable builders, finite and repeated-answer validation,
+  fresh/single-use Tasks, start/update/cancellation and throwing/reentrant behavior, timed ending
+  policies, stability and timeout ties, identity/no-command/no-feedback errors, exact and periodic
+  targets, same-valued overlays, fallback, planner clamp, guards, rate limits, live-command changes,
+  plan loss, custom Plants, FTC/mapped target bindings, and migrated starter/Pedro behavior. The
+  build emitted only the repository's existing Java-8-on-JDK-21 and FTC sample deprecation warnings.
+- **Adversarial review and static verification (2026-07-28):** three independent reviews covered
+  Task lifecycle/provenance, Plant API/caller compatibility, and documentation/simplicity. Their
+  findings led to exact signature assertions, missing clamp/rate-limit/plan-loss and reentrancy
+  regressions, removal of stale “Plant task helper” wording, and clearer beginner treatment of
+  `ScalarTarget` versus advanced target graphs. Reviewers found no remaining production-code defect
+  or material API gap. Removed-symbol/public-surface scans, all **17** changed-Markdown fence/local-
+  link checks, untracked-test trailing-whitespace checks, and `git diff --check` pass. No file is
+  staged.
+- **Hardware scope:** software verification proves API shape, graph-derived command identity,
+  deterministic Task lifecycle, and completion provenance. It does not prove physical motor/servo
+  direction, feedback quality, tuning, range/calibration correctness, mechanism clearance, or safe
+  motion on an adopting robot; those remain normal robot-hardware validation responsibilities.
+- **Initial Android Studio audit point (2026-07-28; reopened):** the first API-06 implementation was
+  presented as **Verifying**, unstaged, and uncommitted. The user then identified that some robot
+  constructors carry both a completed Plant and the same `ScalarTarget` already bound into its
+  graph. That observation withdraws the audit stop and reopens Gate 1; the automated evidence above
+  remains useful historical evidence but does not approve or finalize the revised item.
+- **Supplemental ownership-boundary audit (2026-07-28):** the redundancy is real but localized. The
+  only completed Plant/target pairs crossing robot/example constructor boundaries are the
+  `StarterIntakeMechanism` test seam, `BasicPedroAutoMechanism` plus its Phoenix Pedro host, and the
+  `TeleOp_09_LayeredShooterMechanism` `LayeredShooter`/`Realization` handoff. Other examples create
+  and retain both roles inside the same lifecycle owner rather than injecting duplicate peer
+  dependencies. `ScalarTasks` deliberately retains both only for feedback-aware Tasks: the
+  `ScalarTarget` identifies the persistent request to write, while the explicit Plant selects the
+  resolved-plan provenance and physical feedback to observe. A target may feed more than one Plant,
+  so that observer cannot be inferred from the target.
+- **Selected supplemental boundary rule:**
+  1. A command-writing mechanism realization that owns a Plant's update, feedback, stop, or status
+     receives the `Plant` alone. At construction it requires `hasCommandTarget()`, obtains
+     `plant.commandTarget()`, validates it non-null, and caches that stable object once. It does not
+     repeatedly query the Plant and does not accept a separately supplied target whose identity must
+     be cross-checked. A read-only/planned realization also receives only its Plant but does not
+     require or invent a command target.
+  2. A policy component that only writes a standalone or deliberately shared request and does not
+     own Plant lifecycle receives the `ScalarTarget` alone (or a robot-owned semantic capability),
+     not the broader Plant.
+  3. Keep a named target while assembling a final graph because the target must exist before the
+     Plant and may be the base of an overlay/equivalent/advanced source. Once the completed Plant
+     crosses into its lifecycle owner, the Plant is the authoritative injection boundary. When that
+     owner writes the persistent command, internal storage of both roles is not duplicate ownership
+     because the command reference was derived from that Plant.
+  4. Keep `ScalarTasks.set(target, value).untilReachedBy(plant)` explicit. The target is the writer
+     and the Plant is the chosen observer; shared targets, equivalent-position provenance, guards,
+     rate limits, and custom Plants make those irreducible facts rather than redundant parameters.
+  5. Do not add `Plant.set(...)`, `ScalarTasks.set(Plant, ...)`, a target-to-Plant backlink,
+     `PlantTasks`, or a public `CommandedPlant`/binding wrapper. Each would add a second command root,
+     hidden reverse ownership, ambiguity for shared targets, or another student-facing noun without
+     removing a capability.
+- **Supplemental call-site comparison:**
+
+  ```java
+  ScalarTarget intakeCommand = ScalarTarget.create(0.0);
+  Plant intake = builder.targetedBy(intakeCommand).build();
+
+  // Before: two peer dependencies plus an identity check in the recipient.
+  BasicPedroAutoMechanism mechanism =
+          new BasicPedroAutoMechanism(intake, intakeCommand, collectPower);
+
+  // Selected: the Plant-owning mechanism derives and caches intake.commandTarget().
+  BasicPedroAutoMechanism mechanism =
+          new BasicPedroAutoMechanism(intake, collectPower);
+  ```
+
+  An overlay follows the same rule: graph construction retains its named base command, the final
+  Plant records that base command identity, and the realization derives it from the Plant. A
+  read-only/advanced Plant with no command target fails fast when supplied to a command-owning
+  realization; accepting an unrelated target beside it would falsely imply that the target belongs
+  to the final graph.
+- **Supplemental implementation and verification scope:** if approved, simplify only the three
+  audited pair boundaries and their callers/tests; strengthen the `Plant.commandTarget()` Javadoc
+  as the authoritative construction-boundary derivation seam; and synchronize Framework Principles
+  plus `Mechanism Target Planning.md` so Plant-owning realization, target-only policy, graph
+  construction, and feedback-Task roles are distinct. Replace impossible mismatched-peer tests with
+  rejection of a Plant lacking a command target, retain overlay/equivalent/shared/custom-Plant
+  coverage, then rerun the focused API-06 suites, full TeamCode tests/compilation, static docs/API
+  scans, and diff checks. This changes no selected public framework signature.
+- **Supplemental decision gate (2026-07-28):** **Ready; approval required.** Do not revise the
+  implementation, stage, commit, publish, mark API-06 Done, or start TARGET-05 until the user
+  explicitly approves this Plant-derived command-ownership refinement. After implementation and
+  renewed verification, API-06 returns to a fresh Android Studio audit stop.
+- **Supplemental design approval (2026-07-28):** the user replied
+  `Approve API-06 Plant-derived command ownership`. This authorizes the bounded refinement above,
+  its synchronized documentation/tests, and renewed Gate 2 verification. It does not authorize
+  staging, publication, finalization, or starting TARGET-05 before the fresh Android Studio review.
+- **Supplemental implementation record (2026-07-28):**
+  - `BasicPedroAutoMechanism`, the `StarterIntakeMechanism` hardware-neutral seam, and Example 09's
+    `LayeredShooter`/`Realization` handoff now receive only their completed Plant dependencies. Each
+    command-writing owner validates `hasCommandTarget()`, obtains a non-null `commandTarget()`, and
+    caches that stable object exactly once. The Phoenix Pedro host and every focused test caller no
+    longer pass the same graph relationship twice. Graph assembly still creates explicit named
+    commands, including the feeder overlay base; conditional layers preserve that base identity.
+  - `Plant` Javadocs now make stable non-null command identity and the derivation seam explicit.
+    Framework Principles, AGENTS guidance, Mechanism Target Planning, Recommended Robot Design,
+    Framework Overview, and the Layered Shooter guide distinguish command-writing Plant owners,
+    read-only/planned Plant owners, target-only policy, graph construction, and the intentional
+    target-plus-observer roles of feedback-aware `ScalarTasks`.
+  - Focused tests replace impossible mismatched-peer setup with no-command rejection, verify a
+    contract-violating null command fails, and prove later behavior uses one cached command lookup.
+    Adversarial review also found that the custom-Plant feedback fallback could report success after
+    another owner changed a shared command. It now requires the live command still to equal the
+    Task's request, with a dedicated shared-target drift regression; framework-plan completion
+    behavior is unchanged.
+- **Supplemental verification (2026-07-28):** the first focused boundary slice passed **4 suites**
+  and **15 tests**. After adversarial findings, the `ScalarTasksApiTest` and Pedro mechanism slice
+  passed **2 suites / 12 tests**. The complete `:TeamCode:testDebugUnitTest` plus
+  `:TeamCode:compileDebugJavaWithJavac` run passed **109 suites / 1,029 tests**, with zero failures,
+  errors, or skips; output contained only the repository's existing Java 21/source-target 8 and FTC
+  app-shell deprecation warnings. `git diff --check`, changed/untracked trailing-whitespace checks,
+  all **17** changed-Markdown fence/local-link checks, removed-API searches, and the Plant/target
+  constructor-boundary scan pass. The only maintained target/Plant pair is the deliberate feedback
+  path: private `ScalarTasks` implementation state plus the documented feedback macro. Three
+  independent correctness, public-API/student-simplicity, and documentation/test-validity reviews
+  report no remaining API-06 finding.
+- **Out-of-scope review observation:** the disabled Example 09 layered shooter already
+  short-circuited independent cleanup if behavior cancellation, flywheel stop, or feeder stop throws.
+  API-06 did not introduce or change that cleanup behavior, and the approved ownership refinement
+  does not absorb it. A separately approved cleanup follow-up should use best-effort aggregation;
+  no claim is made that this item fixes that pre-existing example failure path.
+- **Renewed Android Studio audit point (2026-07-28):** API-06 is intentionally **Verifying**,
+  unstaged, and uncommitted. Inspect `Plant.commandTarget()` plus `ScalarTasks` custom-Plant
+  completion; the Plant-only constructors and cached targets in `BasicPedroAutoMechanism`,
+  `StarterIntakeMechanism`, and Example 09 `Realization`; the Phoenix Pedro graph assembly; the
+  no-command/null/cached-lookup/shared-drift regressions; and the synchronized ownership guidance.
+  Confirm that command-writing Plant owners receive one authoritative Plant, read-only/planned
+  owners need not invent a command, target-only policy receives only the target, and feedback Tasks
+  still explicitly select their Plant observer. No robot hardware is required to verify this API and
+  ownership refinement; physical motion, direction, tuning, clearance, and feedback quality remain
+  adopting-robot validation. Do not stage, commit, publish, mark Done, or start TARGET-05 until the
+  user replies `API-06 looks good`.
+- **Manual verification and publication authorization (2026-07-28):** the user reviewed the
+  renewed API-06 audit point and replied `API-06 looks good; move to next`. API-06 is **Done** and
+  authorized for staging, publication, and merge. This approval starts TARGET-05 only after the
+  API-06 merge is verified; TARGET-05 must still complete its own decision gate before any
+  implementation.
 
 ### COMMON-01 - Cleanup action aggregation
 

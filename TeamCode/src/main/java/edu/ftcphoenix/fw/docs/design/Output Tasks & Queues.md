@@ -2,7 +2,7 @@
 
 Phoenix has two common ways to express mechanism behavior over time:
 
-1. **Tasks that change a Plant's graph-owned command target** (`PlantTasks`)
+1. **Tasks that change a named scalar command target** (`ScalarTasks`)
 2. **Tasks that produce a temporary scalar output** (`OutputTask` + `OutputTaskRunner`)
 
 This document is about the second pattern. Use it when a short behavior should temporarily influence a Plant target without becoming a second Plant writer.
@@ -265,13 +265,17 @@ Typical abort situations:
 
 ---
 
-## 9. When to use PlantTasks vs Output tasks
+## 9. When to use ScalarTasks vs Output tasks
 
-Use **PlantTasks** when:
+Use **ScalarTasks** when:
 
-- one task should change a Plant's command target
+- one task should change a named `ScalarTarget`
 - the task may wait until its logical command path wins and Plant feedback confirms physical arrival
 - the behavior is naturally “move this mechanism target and wait”
+
+For example, `ScalarTasks.set(armTarget, SCORE).untilReachedBy(arm)...build()` writes the same
+target retained by the mechanism owner; the feedback branch validates that the Plant follows that
+exact command.
 
 Use **OutputTaskRunner** when:
 
@@ -282,7 +286,7 @@ Use **OutputTaskRunner** when:
 Rule of thumb:
 
 ```text
-PlantTasks change a command target.
+ScalarTasks.set(...) changes a command target.
 OutputTaskRunner proposes a temporary output.
 PlantTargets.overlay(...) decides the final Plant target.
 ```

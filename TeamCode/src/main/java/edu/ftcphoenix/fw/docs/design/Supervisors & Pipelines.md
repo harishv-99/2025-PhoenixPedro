@@ -91,7 +91,7 @@ Students should start with as few concepts as possible.
 
 This is the simplest possible pattern:
 
-- one `Plant`
+- one named `ScalarTarget` and one `Plant`
 - one state variable (an enum or boolean)
 - bindings set that state
 - the loop converts state → plant target
@@ -101,6 +101,7 @@ Example: a servo with a few valid positions.
 ```java
 public enum WristPose { STOW, INTAKE, SCORE }
 
+private final ScalarTarget wristTarget = ScalarTarget.create(0.10);
 private WristPose pose = WristPose.STOW;
 
 // Bindings
@@ -117,7 +118,7 @@ switch (pose) {
   default:     target = 0.10; break;
 }
 
-wristPlant.commandTarget().set(target);
+wristTarget.set(target);
 wristPlant.update(clock);
 ```
 
@@ -217,7 +218,7 @@ For Plant targets, use `PlantTargets.overlay(...)`. It keeps simple scalar basel
 overrideQueue.update(clock);
 
 ScalarSource base = ScalarSource.constant(baseTarget);
-PlantTargetSource finalTarget = PlantTargets.overlay(base)
+PlantTargetSource finalTarget = PlantTargets.overlay(PlantTargets.exact(base))
     .add("queue", overrideQueue.activeSource(), overrideQueue)
     .add("eject", ejectRequested, -1.0)
     .build();
@@ -283,7 +284,7 @@ ScalarSource intakePower = pads.p1().rightTrigger().scaled(1.0);
 Plant intake = FtcActuators.plant(hardwareMap)
         .motor("intake", Direction.FORWARD)
         .power()
-        .targetedBy(intakePower)
+        .targetedBy(PlantTargets.exact(intakePower))
         .build();
 intake.update(clock);
 ```

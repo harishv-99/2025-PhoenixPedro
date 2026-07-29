@@ -42,7 +42,7 @@ public final class FtcMappedPlantConfigurationIntegrationTest {
                 .bounded(0.0, 100.0)
                 .scaleToNative(4.0)
                 .velocityTolerance(0.0)
-                .targetedByCommand(12.5)
+                .targetedBy(ScalarTarget.create(12.5))
                 .build();
 
         plant.update(new ManualLoopClock().clock());
@@ -68,7 +68,7 @@ public final class FtcMappedPlantConfigurationIntegrationTest {
                 .scaleToNative(4.0)
                 .plantPositionMapsToNative(2.0, 100.0)
                 .positionTolerance(0.0)
-                .targetedByCommand(5.0)
+                .targetedBy(ScalarTarget.create(5.0))
                 .build();
 
         plant.update(new ManualLoopClock().clock());
@@ -95,7 +95,7 @@ public final class FtcMappedPlantConfigurationIntegrationTest {
                 .scaleToNative(5.0)
                 .assumeCurrentPositionIs(7.0)
                 .positionTolerance(0.0)
-                .targetedByCommand(8.0)
+                .targetedBy(ScalarTarget.create(8.0))
                 .build();
 
         plant.update(new ManualLoopClock().clock());
@@ -121,7 +121,7 @@ public final class FtcMappedPlantConfigurationIntegrationTest {
                 .scaleToNative(10.0)
                 .needsReference("lift not homed")
                 .positionTolerance(0.0)
-                .targetedByCommand(4.0)
+                .targetedBy(ScalarTarget.create(4.0))
                 .build();
 
         assertFalse(plant.isReferenced());
@@ -147,7 +147,7 @@ public final class FtcMappedPlantConfigurationIntegrationTest {
     public void standardServoEndpointMappingUsesDeclaredPlantRange() {
         TestHardwareMap hardwareMap = new TestHardwareMap();
         ServoProbe servo = hardwareMap.addServo("claw");
-        ScalarTarget target = ScalarTarget.held(-1.0);
+        ScalarTarget target = ScalarTarget.create(-1.0);
         ManualLoopClock clock = new ManualLoopClock();
 
         PositionPlant plant = FtcActuators.plant(hardwareMap)

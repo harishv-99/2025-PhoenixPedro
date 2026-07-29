@@ -22,7 +22,10 @@ Most robot code should only need imports from these packages:
 * `edu.ftcphoenix.fw.input.binding` — `Bindings`: map boolean signal events and levels to actions.
 * `edu.ftcphoenix.fw.haptic` — the device-neutral `HapticSink` used by robot controls for short controller feedback cues.
 * `edu.ftcphoenix.fw.task` — `Task`, `TaskRunner`, `Tasks`: non-blocking macros over time.
-* `edu.ftcphoenix.fw.actuation` — `Plant`, `Plants`, `PlantTasks`: mechanism/runtime abstractions you command with numeric targets.
+* `edu.ftcphoenix.fw.actuation` — `Plant`, `Plants`, `ScalarTasks`: mechanism/runtime abstractions
+  and deferred numeric commands.
+* `edu.ftcphoenix.fw.core.source` — the small signal vocabulary shared by controls and mechanisms,
+  including the persistent `ScalarTarget` command.
 * `edu.ftcphoenix.fw.drive` — `DriveSignal`, `DriveSource`, `DriveCommandSink`, `MecanumDrivebase` (FTC-independent drive logic).
 * `edu.ftcphoenix.fw.ftc` — FTC entrypoints/adapters (for example, `FtcDrives` for drivetrain wiring and `FtcHaptics` for controller feedback).
 * `edu.ftcphoenix.fw.ftc.ui` — telemetry UI helpers such as `SelectionMenu`, `MenuNavigator`, and `HardwareNamePicker`.
@@ -54,7 +57,8 @@ Within `drive/`, subpackages are intentionally parallel and predictable:
 
 These exist so the student-facing packages stay small and consistent:
 
-* `edu.ftcphoenix.fw.core.*` — shared plumbing: time, math, geometry, control, debug, and the HAL.
+* The remaining `edu.ftcphoenix.fw.core.*` packages — shared plumbing: time, math, geometry,
+  control, debug, and the HAL.
 * `edu.ftcphoenix.fw.ftc.*` — the **FTC SDK boundary** (hardware adapters, frame conversions, FTC vision plumbing). Most teams only touch a couple entrypoints like `FtcDrives`.
 * `edu.ftcphoenix.fw.ftc.ui` — FTC telemetry UI helpers for menus, breadcrumbs, hardware-name pickers, and pre-start selectors.
 * `edu.ftcphoenix.fw.tools.*` — testers and examples you can copy.
@@ -184,7 +188,8 @@ Think of Phoenix as a few thin layers you stack:
     * `Bindings` turns boolean signal edges, changes, levels, toggles, and nudges into actions.
 4. **Tasks / Macros** (`fw.task`, plus helpers in other packages)
 
-    * `Task`, `TaskRunner`, `Tasks`, `PlantTasks`, and the exclusive Auto/test helper in `DriveTasks`.
+    * `Task`, `TaskRunner`, `Tasks`, `ScalarTasks`, and the exclusive Auto/test helper in
+      `DriveTasks`.
 5. **Drive behavior** (`fw.drive` + `fw.drive.source` + `fw.drive.guidance`)
 
     * `DriveSource` (a specialized `Source<DriveSignal>`) produces a `DriveSignal` each loop (stick drive, driver assist overlays, etc.).
@@ -264,8 +269,13 @@ Most teams should **not** call `FtcHardware` directly. Use the staged builder in
 
 ```java
 import edu.ftcphoenix.fw.core.hal.Direction;
+import edu.ftcphoenix.fw.core.source.ScalarTarget;
 import edu.ftcphoenix.fw.ftc.FtcActuators;
 import edu.ftcphoenix.fw.actuation.Plant;
+
+ScalarTarget shooterTarget = ScalarTarget.create(0.0);
+ScalarTarget transferTarget = ScalarTarget.create(0.0);
+ScalarTarget pusherTarget = ScalarTarget.create(0.0);
 
 // Shooter: dual-motor velocity plant with a rate limit.
 Plant shooter = FtcActuators.plant(hardwareMap)
@@ -279,14 +289,14 @@ Plant shooter = FtcActuators.plant(hardwareMap)
         .targetGuards()
             .maxTargetRate(500.0)    // max delta in plant units per second
             .doneTargetGuards()
-        .targetedByCommand(0.0)
+        .targetedBy(shooterTarget)
         .build();
 
 // Transfer: CR servo power plant.
 Plant transfer = FtcActuators.plant(hardwareMap)
         .crServo("transferServo", Direction.FORWARD)
         .power()
-        .targetedByCommand(0.0)
+        .targetedBy(transferTarget)
         .build();
 
 // Pusher: positional servo plant (0..1).
@@ -296,7 +306,7 @@ Plant pusher = FtcActuators.plant(hardwareMap)
         .linear()
             .bounded(0.0, 1.0)
             .nativeUnits()
-        .targetedByCommand(0.0)
+        .targetedBy(pusherTarget)
         .build();
 ```
 
@@ -594,13 +604,14 @@ If task start, update, completion checking, or cancellation throws a `RuntimeExc
 fails closed: it best-effort cancels active or partially started work, clears its queue and state,
 and rethrows the original failure with any cleanup failure suppressed.
 
-### Factories: `Tasks`, `PlantTasks`, `DriveTasks`
+### Factories: `Tasks`, `ScalarTasks`, `DriveTasks`
 
 Phoenix gives you factories so your code reads like intent:
 
 * `Tasks` — generic Task factories and composition (`sequence`, `parallelAll`, `parallelDeadline`,
   `withTimeout`, `waitForSeconds`, `waitUntil`, `runOnce`, …)
-* `PlantTasks` — guided patterns that write a Plant's command target (`write` and `move`)
+* `ScalarTasks` — one staged `set(target, value)` path for write-once, timed, and feedback-aware
+  writes
 * `DriveTasks` — `driveExclusivelyForSeconds(...)` for simple timed open-loop Auto/test movement when
   its Task is the sole behavior-command writer for the `DriveCommandSink`
 * `DriveGuidanceTasks` — execute a `DriveGuidancePlan` as a Task (autonomous-style guidance)
@@ -629,19 +640,21 @@ Example macro (shoot one disc):
 
 ```java
 import edu.ftcphoenix.fw.actuation.Plant;
-import edu.ftcphoenix.fw.actuation.PlantTasks;
+import edu.ftcphoenix.fw.actuation.ScalarTasks;
+import edu.ftcphoenix.fw.core.source.ScalarTarget;
 import edu.ftcphoenix.fw.task.Task;
 import edu.ftcphoenix.fw.task.Tasks;
 
-private Task buildShootOneDiscMacro(Plant shooter, Plant transfer) {
+private Task buildShootOneDiscMacro(ScalarTarget shooterTarget,
+                                    Plant shooter,
+                                    ScalarTarget transferTarget) {
     return Tasks.sequence(
-            PlantTasks.move(shooter)
-                    .to(3200.0)
+            ScalarTasks.set(shooterTarget, 3200.0)
+                    .untilReachedBy(shooter)
                     .cancelTo(0.0)
                     .timeout(1.0)
                     .build(),
-            PlantTasks.write(transfer)
-                    .to(1.0)
+            ScalarTasks.set(transferTarget, 1.0)
                     .forSeconds(0.20)
                     .then(0.0)
                     .build()
@@ -649,12 +662,20 @@ private Task buildShootOneDiscMacro(Plant shooter, Plant transfer) {
 }
 ```
 
+The feedback branch names both `shooterTarget` and `shooter` deliberately: the target is the
+request being written, while the Plant is the feedback/provenance observer. The timed transfer
+branch needs only its target. A Plant-owning realization would receive the completed Plant once and
+cache its graph-owned command internally rather than accept the pair as independent constructor
+dependencies.
+
 A feedback move must choose `.cancelTo(value)` or `.leaveTargetOnCancel()` immediately after
-`.to(...)`. `cancelTo(...)` changes the command target in Plant units; it does not bypass the
-Plant's overlays, bounds, references, or guards and therefore is not a guaranteed hardware stop.
+`.untilReachedBy(plant)`. `cancelTo(...)` changes the command target in Plant units; it does not
+bypass the Plant's overlays, bounds, references, or guards and therefore is not a guaranteed
+hardware stop.
 Robot-owned coordinated cleanup must still cancel related behavior and reset every related target.
-For timed writes, `.then(value)` runs on active cancellation as well as normal completion; omitting
-it or selecting `.leaveThere()` leaves the current request in place.
+For timed writes, `.then(value)` runs on active cancellation as well as normal completion;
+selecting `.leaveThere()` instead leaves the current request in place. This ending choice is
+required before `build()`.
 
 ---
 
@@ -688,7 +709,7 @@ Bindings bindings = new Bindings();
 TaskRunner macros = new TaskRunner();
 
 bindings.onRise(gamepads.p1().y(), () ->
-        macros.enqueue(buildShootOneDiscMacro(shooter, transfer))
+        macros.enqueue(buildShootOneDiscMacro(shooterTarget, shooter, transferTarget))
 );
 ```
 

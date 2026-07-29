@@ -284,14 +284,23 @@ they protect different scopes, but do not configure two copies of the same polic
 
 ---
 
-## 4. Mechanisms: `PlantTasks` and `ScalarTasks` for common patterns
+## 4. Mechanisms: `ScalarTasks` for common patterns
 
-For mechanism plants (motors, servos, shooters, arms, etc.), start with `edu.ftcphoenix.fw.actuation.PlantTasks`.
+For mechanism commands and other writable numbers, start with
+`edu.ftcphoenix.fw.actuation.ScalarTasks`. Create and retain a named command when building the Plant:
+
+```java
+ScalarTarget intakeTarget = ScalarTarget.create(0.0);
+Plant intake = FtcActuators.plant(hardwareMap)
+        // hardware and control configuration...
+        .targetedBy(intakeTarget)
+        .build();
+```
 
 The source-driven plant rule is:
 
 ```text
-Task changes the Plant's command target
+Task changes the named ScalarTarget
     ↓
 Plant samples its final PlantTargetSource to select the requested target
     ↓
@@ -300,15 +309,22 @@ Plant bounds and target guards select the applied target
 Plant sends the actuator command and reports physical arrival at the selected requested target
 ```
 
-`PlantTasks` retrieves the command target from the `Plant` itself. That is safer than passing a separate `ScalarTarget` into every task: the task cannot accidentally write a different target variable than the one the Plant's target graph actually follows.
+The same named target supports immediate robot behavior (`intakeTarget.set(...)`) and deferred Task
+behavior (`ScalarTasks.set(...)`). A feedback branch validates that the supplied Plant follows that
+exact target, so a mismatched variable fails when the Task is constructed rather than silently
+waiting on the wrong mechanism.
+
+Calling `ScalarTasks.set(...)` or `build()` does not change the target. The built Task writes when
+it starts. Each `build()` creates a fresh single-use Task, so retain the command target and rebuild
+the Task or macro for every later run.
 
 ### 4.1 Guided writes for time-based commands
 
-Use `PlantTasks.write(plant)` for open-loop pulses and simple target writes. These work with feedback and non-feedback plants.
+Use `ScalarTasks.set(target, value).forSeconds(...)` for open-loop pulses and timed target writes.
+These work whether or not a Plant has feedback.
 
 ```java
-Task intakePulse = PlantTasks.write(intake)
-        .to(+1.0)
+Task intakePulse = ScalarTasks.set(intakeTarget, +1.0)
         .forSeconds(0.7)
         .then(0.0)
         .build();
@@ -331,38 +347,29 @@ duration may finish.
 To hold and leave the target there:
 
 ```java
-Task ensureSpinUp = PlantTasks.write(shooter)
-        .to(SHOOTER_VELOCITY_NATIVE)
+Task ensureSpinUp = ScalarTasks.set(shooterTarget, SHOOTER_VELOCITY_NATIVE)
         .forSeconds(0.5)
         .leaveThere()
         .build();
 ```
 
-Calling `build()` directly after `forSeconds(...)` has the same leave-there behavior. In either
-form, normal completion and active cancellation keep the held request.
+The ending choice is required: `.leaveThere()` keeps the held request after normal completion and
+active cancellation, while `.then(...)` writes the selected final request in both cases.
 
 To set once and finish immediately:
 
 ```java
-Task stopShooter = PlantTasks.write(shooter)
-        .to(0.0)
-        .build();
-```
-
-The compact helpers still exist for short code:
-
-```java
-PlantTasks.holdTargetForThen(intake, +1.0, 0.7, 0.0);
-PlantTasks.setTarget(shooter, 0.0);
+Task stopShooter = ScalarTasks.set(shooterTarget, 0.0).build();
 ```
 
 ### 4.2 Guided feedback moves
 
-Use `PlantTasks.move(plant)` when the plant has feedback and the task should wait for physical arrival.
+Continue the same `ScalarTasks.set(...)` path with `.untilReachedBy(plant)` when a Task should wait
+for physical arrival.
 
 ```java
-Task spinUp = PlantTasks.move(shooter)
-        .to(SHOOTER_VELOCITY_NATIVE)
+Task spinUp = ScalarTasks.set(shooterTarget, SHOOTER_VELOCITY_NATIVE)
+        .untilReachedBy(shooter)
         .cancelTo(0.0)
         .timeout(1.5)
         .build();
@@ -376,7 +383,8 @@ Behavior:
 * For an ordinary exact source, that is equivalent to
   `plant.atTarget(SHOOTER_VELOCITY_NATIVE)`.
 * For `PlantTargets.equivalentPositionsOf(...)`, a logical value such as `20` may resolve to a
-  physical target such as `380`; the same Task waits for `380` without changing its `.to(20)` call.
+  physical target such as `380`; the same Task waits for `380` without changing its logical
+  `set(turretTarget, 20)` call.
 * If a behavior overlay, clamp, fallback, hold, or target guard wins, the task does **not** complete
   early—even when that path has the same numeric logical value.
 * If the timeout elapses first, the task completes with `TaskOutcome.TIMEOUT`.
@@ -385,15 +393,16 @@ Behavior:
 For readiness that must remain stable for a short period:
 
 ```java
-Task spinUpStable = PlantTasks.move(shooter)
-        .to(SHOOTER_VELOCITY_NATIVE)
+Task spinUpStable = ScalarTasks.set(shooterTarget, SHOOTER_VELOCITY_NATIVE)
+        .untilReachedBy(shooter)
         .leaveTargetOnCancel()
         .stableFor(0.15)
         .timeout(1.5)
         .build();
 ```
 
-Every feedback move must choose one cancellation behavior immediately after `.to(...)`:
+Every feedback move must choose one cancellation behavior immediately after
+`.untilReachedBy(plant)`:
 
 * `.cancelTo(value)` writes that finite value, in the Plant's units, to its command target when
   an active move is cancelled.
@@ -406,8 +415,8 @@ overlays, and reset every mechanism request needed for coordinated shutdown.
 To request a final target after success or timeout:
 
 ```java
-Task moveAndStow = PlantTasks.move(arm)
-        .to(ARM_SCORE_POS)
+Task moveAndStow = ScalarTasks.set(armTarget, ARM_SCORE_POS)
+        .untilReachedBy(arm)
         .cancelTo(ARM_STOW_POS)
         .timeout(1.0)
         .thenTarget(ARM_STOW_POS)
@@ -417,16 +426,18 @@ Task moveAndStow = PlantTasks.move(arm)
 Here `.thenTarget(...)` handles success or timeout, while `.cancelTo(...)` independently handles
 active cancellation.
 
-> If you accidentally call a feedback move on an open-loop plant, `PlantTasks` throws an exception at runtime. Use `PlantTasks.write(...)` for timed open-loop behavior.
+> If `untilReachedBy(...)` receives an open-loop Plant or a Plant commanded by a different
+> `ScalarTarget`, construction throws an actionable exception. Use the timed branch for open-loop
+> behavior.
 
-### 4.3 Standalone scalar targets
+### 4.3 The same path for standalone scalar targets
 
-Use `ScalarTasks` when the writable value is not attached to a plant, such as a behavior variable or a command target that feeds a larger source graph.
+Because the API is target-rooted, the same `ScalarTasks` entry also works when the writable value is
+not attached to a Plant, such as a behavior variable or a command target that feeds a larger source
+graph.
 
 ```java
-Task setShotVelocity = ScalarTasks.write(selectedVelocity)
-        .to(3200.0)
-        .build();
+Task setShotVelocity = ScalarTasks.set(selectedVelocity, 3200.0).build();
 ```
 
 ---
@@ -443,35 +454,32 @@ A typical TeleOp macro flows like this:
 
 ### 5.1 Wiring a simple shooter macro
 
-Imagine you have these `Plant`s:
+Imagine you retain the named command target beside each `Plant`:
 
-* `shooter` – a velocity plant for the flywheel (has feedback).
-* `transfer` – a power plant that feeds discs.
+* `shooterTarget` / `shooter` – a velocity command and feedback Plant for the flywheel.
+* `transferTarget` / `transfer` – a power command and Plant that feeds discs.
 
 A simple “shoot one disc” macro could look like:
 
 ```java
 private Task createShootOneDiscMacro() {
-    Task spinUp = PlantTasks.move(shooter)
-            .to(SHOOTER_VELOCITY_NATIVE)
+    Task spinUp = ScalarTasks.set(shooterTarget, SHOOTER_VELOCITY_NATIVE)
+            .untilReachedBy(shooter)
             .cancelTo(0.0)
             .timeout(SHOOTER_SPINUP_TIMEOUT_SEC)
             .build();
 
-    Task feed = PlantTasks.write(transfer)
-            .to(TRANSFER_POWER_SHOOT)
+    Task feed = ScalarTasks.set(transferTarget, TRANSFER_POWER_SHOOT)
             .forSeconds(TRANSFER_PULSE_SEC)
             .then(0.0)
             .build();
 
-    Task holdBeforeSpinDown = PlantTasks.write(shooter)
-            .to(SHOOTER_VELOCITY_NATIVE)
+    Task holdBeforeSpinDown = ScalarTasks.set(shooterTarget, SHOOTER_VELOCITY_NATIVE)
             .forSeconds(SHOOTER_SPINDOWN_HOLD_SEC)
+            .leaveThere()
             .build();
 
-    Task spinDown = PlantTasks.write(shooter)
-            .to(0.0)
-            .build();
+    Task spinDown = ScalarTasks.set(shooterTarget, 0.0).build();
 
     return Tasks.sequence(
         spinUp,
@@ -533,7 +541,7 @@ Because everything is non‑blocking, your loop can also update telemetry, visio
 For **most** robots, you only need:
 
 * `Tasks.*` factory methods.
-* `PlantTasks.*` helpers.
+* `ScalarTasks.set(...)` for write-once, timed, and feedback-aware scalar commands.
 * `DriveTasks.driveExclusivelyForSeconds(...)` only for simple Auto/test movement with exclusive
   drive-sink ownership.
 
@@ -553,7 +561,7 @@ spelling of existing composition.
 
 A good rule of thumb:
 
-> Try the factories (`Tasks`, `PlantTasks`, and the narrowly scoped `DriveTasks` helper) first. If you find yourself rewriting the same pattern many times using raw `Task` classes, wrap it in a new helper method so the next student can just call the helper.
+> Try the factories (`Tasks`, `ScalarTasks`, and the narrowly scoped `DriveTasks` helper) first. If you find yourself rewriting the same pattern many times using raw `Task` classes, wrap it in a new helper method so the next student can just call the helper.
 
 ---
 
@@ -625,18 +633,20 @@ For the full design rationale and more examples, see [`Output Tasks & Queues`](<
 
     * If you forget this, tasks will never progress.
 
-* **Use feedback‑based helpers only on feedback plants.**
+* **Use the feedback branch only with the Plant that follows that target.**
 
-    * `PlantTasks.move(...)` requires `plant.hasFeedback() == true`.
-    * For servos and other open-loop outputs, use `PlantTasks.write(plant)` or compact helpers such as `holdTargetFor(...)`, `holdTargetForThen(...)`, and `setTarget(...)`.
+    * `ScalarTasks.set(target, value).untilReachedBy(plant)` requires feedback and validates that
+      `plant.commandTarget() == target`.
+    * For servos and other open-loop outputs, use `.build()` for one write or
+      `.forSeconds(...)` with an explicit `.then(...)`/`.leaveThere()` ending.
 
 * **Be intentional about completion and cancellation targets.**
 
-    * `PlantTasks.write(plant).to(...).forSeconds(...).build()` keeps the same target after the timer.
-    * `.then(...)` or compact `holdTargetForThen(...)` sets a different final target after time
-      elapses and on active cancellation.
+    * `.forSeconds(...).leaveThere().build()` keeps the same target after the timer.
+    * `.forSeconds(...).then(...)` sets a different final target after time elapses and on active
+      cancellation.
     * Every feedback move requires `.cancelTo(...)` or `.leaveTargetOnCancel()` immediately after
-      `.to(...)`; `.thenTarget(...)` remains the success/timeout choice.
+      `.untilReachedBy(...)`; `.thenTarget(...)` remains the success/timeout choice.
 
 ---
 
@@ -649,7 +659,8 @@ For the full design rationale and more examples, see [`Output Tasks & Queues`](<
 * **`Tasks` factories** (`runOnce`, `waitForSeconds`, `waitUntil`, `sequence`, `parallelAll`,
   `parallelDeadline`, `withTimeout`, `noop`, ...) are the main building blocks you should reach for
   first.
-* **`PlantTasks`** provide common mechanism patterns: `write(plant)` for time-based writes and `move(plant)` for feedback-based moves.
+* **`ScalarTasks.set(target, value)`** is the one deferred-write path: build it directly, add a
+  timed branch, or add a feedback-aware branch.
 * **`DriveTasks.driveExclusivelyForSeconds(...)`** provides simple timed open-loop Auto/test movement
   when its Task is the sole behavior-command writer for the drive sink.
 * Public lower-level leaf Tasks remain available, but prefer their `Tasks` helper unless the

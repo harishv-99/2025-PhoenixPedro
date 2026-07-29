@@ -6,7 +6,9 @@ import org.junit.Test;
 
 import java.lang.reflect.Method;
 
+import edu.ftcphoenix.fw.actuation.PlantTargetSource;
 import edu.ftcphoenix.fw.core.hal.Direction;
+import edu.ftcphoenix.fw.core.source.ScalarTarget;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
@@ -44,6 +46,22 @@ public final class FtcFeedbackToleranceStageTest {
                 FtcActuators.PositionTargetStep.class);
         assertReturns(FtcActuators.ServoBoundedPositionMappingStep.class, "rangeMapsToNative",
                 FtcActuators.PositionTargetStep.class, double.class, double.class);
+
+        assertReturns(FtcActuators.PlantTargetStep.class, "targetGuards",
+                FtcActuators.PlantTargetGuardStep.class);
+        assertReturns(FtcActuators.PlantTargetStep.class, "targetedBy",
+                FtcActuators.PlantBuildStep.class, ScalarTarget.class);
+        assertReturns(FtcActuators.PlantTargetStep.class, "targetedBy",
+                FtcActuators.PlantBuildStep.class, PlantTargetSource.class);
+        assertEquals(3, FtcActuators.PlantTargetStep.class.getDeclaredMethods().length);
+
+        assertReturns(FtcActuators.PositionTargetStep.class, "targetGuards",
+                FtcActuators.PositionTargetGuardStep.class);
+        assertReturns(FtcActuators.PositionTargetStep.class, "targetedBy",
+                FtcActuators.PositionPlantBuildStep.class, ScalarTarget.class);
+        assertReturns(FtcActuators.PositionTargetStep.class, "targetedBy",
+                FtcActuators.PositionPlantBuildStep.class, PlantTargetSource.class);
+        assertEquals(3, FtcActuators.PositionTargetStep.class.getDeclaredMethods().length);
 
         for (Class<?> nested : FtcActuators.class.getDeclaredClasses()) {
             assertNotEquals("VelocityBuildStep", nested.getSimpleName());
@@ -89,6 +107,7 @@ public final class FtcFeedbackToleranceStageTest {
     @Test
     public void runtimeStageBypassFailsBeforeHardwareResolutionOrConfiguration() {
         HardwareMap hardwareMap = new HardwareMap(null, null);
+        ScalarTarget velocityTarget = ScalarTarget.create(0.0);
         FtcActuators.VelocityToleranceStep velocity = FtcActuators.plant(hardwareMap)
                 .motor("flywheel", Direction.FORWARD)
                 .velocity()
@@ -96,11 +115,12 @@ public final class FtcFeedbackToleranceStageTest {
                 .unbounded()
                 .nativeUnits();
         FtcActuators.PlantBuildStep velocityBuild =
-                ((FtcActuators.PlantTargetStep) velocity).targetedByCommand(0.0);
+                ((FtcActuators.PlantTargetStep) velocity).targetedBy(velocityTarget);
 
         assertIllegalState(velocityBuild::build,
                 "requires velocityTolerance(...)", "plant velocity units");
 
+        ScalarTarget positionTarget = ScalarTarget.create(0.0);
         FtcActuators.PositionToleranceStep position = FtcActuators.plant(hardwareMap)
                 .motor("lift", Direction.FORWARD)
                 .position()
@@ -110,7 +130,7 @@ public final class FtcFeedbackToleranceStageTest {
                 .nativeUnits()
                 .alreadyReferenced();
         FtcActuators.PositionPlantBuildStep positionBuild =
-                ((FtcActuators.PositionTargetStep) position).targetedByCommand(0.0);
+                ((FtcActuators.PositionTargetStep) position).targetedBy(positionTarget);
 
         assertIllegalState(positionBuild::build,
                 "requires positionTolerance(...)", "plant position units");

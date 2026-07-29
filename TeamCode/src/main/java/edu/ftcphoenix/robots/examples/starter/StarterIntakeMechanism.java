@@ -5,7 +5,7 @@ import com.qualcomm.robotcore.hardware.HardwareMap;
 import java.util.Objects;
 
 import edu.ftcphoenix.fw.actuation.Plant;
-import edu.ftcphoenix.fw.actuation.PlantTasks;
+import edu.ftcphoenix.fw.actuation.ScalarTasks;
 import edu.ftcphoenix.fw.core.lifecycle.CleanupActions;
 import edu.ftcphoenix.fw.core.source.ScalarTarget;
 import edu.ftcphoenix.fw.core.time.LoopClock;
@@ -27,22 +27,28 @@ final class StarterIntakeMechanism implements StarterIntake {
         requireActionPowers(snapshot.collectPower, snapshot.ejectPower);
         collectPower = snapshot.collectPower;
         ejectPower = snapshot.ejectPower;
+        commandTarget = ScalarTarget.create(STOPPED_POWER);
         plant = FtcActuators.plant(Objects.requireNonNull(hardwareMap, "hardwareMap"))
                 .motor(snapshot.motorName, snapshot.direction)
                 .power()
-                .targetedByCommand(STOPPED_POWER)
+                .targetedBy(commandTarget)
                 .build();
-        commandTarget = plant.commandTarget();
     }
 
     /** Package-private hardware-neutral seam for focused tests. */
-    StarterIntakeMechanism(Plant plant, double collectPower, double ejectPower) {
+    StarterIntakeMechanism(
+            Plant plant,
+            double collectPower,
+            double ejectPower) {
         this.plant = Objects.requireNonNull(plant, "plant");
         if (!plant.hasCommandTarget()) {
-            throw new IllegalArgumentException("starter intake Plant requires a command target");
+            throw new IllegalArgumentException(
+                    "starter intake plant must have a command target");
         }
+        this.commandTarget = Objects.requireNonNull(
+                plant.commandTarget(),
+                "plant.commandTarget()");
         requireActionPowers(collectPower, ejectPower);
-        this.commandTarget = plant.commandTarget();
         this.collectPower = collectPower;
         this.ejectPower = ejectPower;
     }
@@ -58,8 +64,7 @@ final class StarterIntakeMechanism implements StarterIntake {
             throw new IllegalArgumentException(
                     "durationSec must be finite and > 0, got " + durationSec);
         }
-        return PlantTasks.write(plant)
-                .to(collectPower)
+        return ScalarTasks.set(commandTarget, collectPower)
                 .forSeconds(durationSec)
                 .then(STOPPED_POWER)
                 .build();

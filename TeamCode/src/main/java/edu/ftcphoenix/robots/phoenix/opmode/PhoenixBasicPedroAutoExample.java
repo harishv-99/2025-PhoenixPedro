@@ -12,6 +12,7 @@ import java.util.function.Supplier;
 
 import edu.ftcphoenix.fw.actuation.Plant;
 import edu.ftcphoenix.fw.core.lifecycle.CleanupActions;
+import edu.ftcphoenix.fw.core.source.ScalarTarget;
 import edu.ftcphoenix.fw.ftc.FtcActuators;
 import edu.ftcphoenix.fw.integrations.pedro.PedroPathingRuntime;
 import edu.ftcphoenix.robots.examples.pedro.BasicPedroAutoMechanism;
@@ -120,13 +121,14 @@ public final class PhoenixBasicPedroAutoExample extends OpMode {
         BasicPedroAutoMechanism builtMechanism = null;
         try {
             BasicPedroAutoPaths builtPaths = new BasicPedroAutoPaths(builtRuntime);
+            ScalarTarget intakeCommand = ScalarTarget.create(0.0);
             builtIntakePlant = FtcActuators.plant(hardwareMap)
                     .motor(
                             profile.scoring.nameMotorIntake,
                             profile.scoring.directionMotorIntake
                     )
                     .power()
-                    .targetedByCommand(0.0)
+                    .targetedBy(intakeCommand)
                     .build();
             builtMechanism = new BasicPedroAutoMechanism(
                     builtIntakePlant,

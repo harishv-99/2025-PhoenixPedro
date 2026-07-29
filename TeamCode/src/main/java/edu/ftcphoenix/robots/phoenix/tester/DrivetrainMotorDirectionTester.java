@@ -2,6 +2,7 @@ package edu.ftcphoenix.robots.phoenix.tester;
 
 import edu.ftcphoenix.fw.actuation.Plant;
 import edu.ftcphoenix.fw.core.source.BooleanSource;
+import edu.ftcphoenix.fw.core.source.ScalarTarget;
 import edu.ftcphoenix.fw.ftc.FtcActuators;
 import edu.ftcphoenix.fw.ftc.FtcDrives;
 import edu.ftcphoenix.fw.input.binding.Bindings;
@@ -25,6 +26,10 @@ public final class DrivetrainMotorDirectionTester extends BaseTeleOpTester {
     private Plant plantFR;
     private Plant plantBL;
     private Plant plantBR;
+    private ScalarTarget targetFL;
+    private ScalarTarget targetFR;
+    private ScalarTarget targetBL;
+    private ScalarTarget targetBR;
 
     /**
      * Creates the tester instance.
@@ -63,28 +68,33 @@ public final class DrivetrainMotorDirectionTester extends BaseTeleOpTester {
     protected void onInit() {
         FtcDrives.MecanumConfig drive = PhoenixProfile.current().drive;
 
+        targetFL = ScalarTarget.create(0.0);
+        targetFR = ScalarTarget.create(0.0);
+        targetBL = ScalarTarget.create(0.0);
+        targetBR = ScalarTarget.create(0.0);
+
         plantFL = FtcActuators.plant(ctx.hw)
                 .motor(drive.wiring.frontLeftName, drive.wiring.frontLeftDirection)
                 .power()
-                .targetedByCommand(0.0)
+                .targetedBy(targetFL)
                 .build();
 
         plantFR = FtcActuators.plant(ctx.hw)
                 .motor(drive.wiring.frontRightName, drive.wiring.frontRightDirection)
                 .power()
-                .targetedByCommand(0.0)
+                .targetedBy(targetFR)
                 .build();
 
         plantBL = FtcActuators.plant(ctx.hw)
                 .motor(drive.wiring.backLeftName, drive.wiring.backLeftDirection)
                 .power()
-                .targetedByCommand(0.0)
+                .targetedBy(targetBL)
                 .build();
 
         plantBR = FtcActuators.plant(ctx.hw)
                 .motor(drive.wiring.backRightName, drive.wiring.backRightDirection)
                 .power()
-                .targetedByCommand(0.0)
+                .targetedBy(targetBR)
                 .build();
 
         Bindings.ControlContext motorControls = bindings.contextWhen(
@@ -93,16 +103,16 @@ public final class DrivetrainMotorDirectionTester extends BaseTeleOpTester {
         );
 
         motorControls.mirrorOnChange(gamepads.p1().x(),
-                high -> plantFL.commandTarget().set(high ? TEST_POWER : 0.0));
+                high -> targetFL.set(high ? TEST_POWER : 0.0));
 
         motorControls.mirrorOnChange(gamepads.p1().y(),
-                high -> plantFR.commandTarget().set(high ? TEST_POWER : 0.0));
+                high -> targetFR.set(high ? TEST_POWER : 0.0));
 
         motorControls.mirrorOnChange(gamepads.p1().a(),
-                high -> plantBL.commandTarget().set(high ? TEST_POWER : 0.0));
+                high -> targetBL.set(high ? TEST_POWER : 0.0));
 
         motorControls.mirrorOnChange(gamepads.p1().b(),
-                high -> plantBR.commandTarget().set(high ? TEST_POWER : 0.0));
+                high -> targetBR.set(high ? TEST_POWER : 0.0));
 
         stopAll();
     }

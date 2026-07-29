@@ -42,6 +42,8 @@ positions; the framework Plant owns the public plant coordinate and the hardware
 Recommended builder flow:
 
 ```java
+ScalarTarget liftTarget = ScalarTarget.create(0.0);
+
 PositionPlant lift = FtcActuators.plant(hardwareMap)
         .motor("liftMotor", Direction.FORWARD)
         .position()
@@ -51,7 +53,7 @@ PositionPlant lift = FtcActuators.plant(hardwareMap)
             .scaleToNative(TICKS_PER_INCH)   // native units: encoder ticks
             .needsReference("lift not homed")
         .positionTolerance(0.10)             // plant units
-        .targetedByCommand(0.0)
+        .targetedBy(liftTarget)
         .build();
 ```
 

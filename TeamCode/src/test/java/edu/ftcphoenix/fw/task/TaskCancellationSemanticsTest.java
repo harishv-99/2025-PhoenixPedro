@@ -445,7 +445,7 @@ public final class TaskCancellationSemanticsTest {
 
         TaskRunner scalarRunner = new TaskRunner();
         CancellingScalarTarget target = new CancellingScalarTarget(scalarRunner);
-        Task scalarSet = ScalarTasks.set(target, 1.0);
+        Task scalarSet = ScalarTasks.set(target, 1.0).build();
         scalarRunner.enqueue(scalarSet);
         scalarRunner.update(manualClock.clock());
         assertTrue(scalarRunner.isIdle());

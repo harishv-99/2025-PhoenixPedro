@@ -1,6 +1,5 @@
 package edu.ftcphoenix.fw.actuation;
 
-import edu.ftcphoenix.fw.core.source.ScalarSource;
 import edu.ftcphoenix.fw.core.source.ScalarTarget;
 
 /**
@@ -21,16 +20,19 @@ public interface MappedPlantTargetStep<P extends Plant> {
 
     /**
      * Use a command target as the exact final source.
+     *
+     * @throws IllegalStateException if target selection was already answered through a retained
+     *                               reference to this stage
      */
     MappedPlantBuildStep<P> targetedBy(ScalarTarget targetSource);
 
     /**
-     * Use a scalar source as an exact final target source.
-     */
-    MappedPlantBuildStep<P> targetedBy(ScalarSource targetSource);
-
-    /**
      * Use a Plant-aware final target graph.
+     * Read-only scalar sources can be lifted explicitly with
+     * {@link PlantTargets#exact(edu.ftcphoenix.fw.core.source.ScalarSource)}.
+     *
+     * @throws IllegalStateException if target selection was already answered through a retained
+     *                               reference to this stage
      */
     MappedPlantBuildStep<P> targetedBy(PlantTargetSource targetSource);
 }

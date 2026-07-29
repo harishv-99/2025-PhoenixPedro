@@ -5,7 +5,7 @@ This guide is a gentle introduction to the Phoenix framework. It focuses on:
 1. The **big ideas** (loop timing, inputs, tasks, plants, drive).
 2. A minimal **TeleOp skeleton** that you can copy.
 3. How to wire **hardware into Plants** using `FtcActuators.plant(...)`.
-4. How to use **factory helpers** (`Tasks`, `PlantTasks`, and the exclusive Auto/test helper in
+4. How to use **factory helpers** (`Tasks`, `ScalarTasks`, and the exclusive Auto/test helper in
    `DriveTasks`) for common patterns.
 
 If you’re new, you don’t need to know how everything works inside.
@@ -22,7 +22,9 @@ base class.
 
 If you’re writing robot code, you’ll spend almost all your time in a small set of packages:
 
-* `edu.ftcphoenix.fw.actuation` — mechanisms as `Plant`s (`Plant`, `Plants`, `PlantTasks`).
+* `edu.ftcphoenix.fw.actuation` — mechanisms and commands (`Plant`, `Plants`, `ScalarTasks`).
+* `edu.ftcphoenix.fw.core.source` — the small signal vocabulary shared by controls and mechanisms,
+  especially the persistent `ScalarTarget` command.
 * `edu.ftcphoenix.fw.drive` — driving (`DriveSource`, `DriveSignal`, `MecanumDrivebase`).
 * `edu.ftcphoenix.fw.input` — gamepads/buttons + `Bindings`.
 * `edu.ftcphoenix.fw.task` — macros (`Task`, `TaskRunner`, `Tasks`).
@@ -35,7 +37,8 @@ As you add sensors and pose estimation, you’ll also use:
 
 Everything else exists to keep those packages clean:
 
-* `edu.ftcphoenix.fw.core.*` is framework plumbing (math/geometry/control/time/HAL).
+* The remaining `edu.ftcphoenix.fw.core.*` packages are framework plumbing
+  (math/geometry/control/time/HAL).
 * `edu.ftcphoenix.fw.ftc.*` is the FTC SDK boundary (hardware + vision adapters).
 * `edu.ftcphoenix.fw.tools.*` contains testers and copyable examples. If you just want to open the framework tester tree without writing any robot-specific glue first, run the ready-made `FW: Testers` OpMode.
 
@@ -96,6 +99,9 @@ public class PhoenixTeleOp extends OpMode {
     private DriveSource driveSource;
 
     // 4) Mechanisms (Plants)
+    private final ScalarTarget shooterTarget = ScalarTarget.create(0.0);
+    private final ScalarTarget transferTarget = ScalarTarget.create(0.0);
+    private final ScalarTarget pusherTarget = ScalarTarget.create(0.0);
     private Plant shooter;
     private Plant transfer;
     private Plant pusher;
@@ -224,7 +230,7 @@ private void initShooterPlants() {
             .bounded(0.0, 2600.0)
             .nativeUnits()
             .velocityTolerance(100.0)
-            .targetedByCommand(0.0)
+            .targetedBy(shooterTarget)
             .build();
 
     // Transfer: dual CR servos, power control.
@@ -232,7 +238,7 @@ private void initShooterPlants() {
             .crServo("transferLeftServo", Direction.FORWARD)
             .andCrServo("transferRightServo", Direction.REVERSE)
             .power()
-            .targetedByCommand(0.0)
+            .targetedBy(transferTarget)
             .build();
 
     // Pusher: positional servo, commanded-position set-and-hold.
@@ -242,7 +248,7 @@ private void initShooterPlants() {
             .linear()
                 .bounded(0.0, 1.0)
                 .nativeUnits()
-            .targetedByCommand(0.0)
+            .targetedBy(pusherTarget)
             .build();
 }
 ```
@@ -318,8 +324,9 @@ plant velocity `0.0` still means stop. Power target values are always normalized
 the power builder does not ask for bounds.
 
 After that required feedback answer, you may add optional dynamic guards through
-`.targetGuards()...doneTargetGuards()`, then bind a target source with `.targetedBy(...)` or
-`.targetedByCommand(...)` before `.build()`.
+`.targetGuards()...doneTargetGuards()`. Then bind the retained command with
+`.targetedBy(commandTarget)` before `.build()`. An advanced composed graph instead supplies one
+`PlantTargetSource`; adapt a read-only `ScalarSource` explicitly with `PlantTargets.exact(source)`.
 
 ### 3.2 Position semantics: motors vs servos
 
@@ -356,6 +363,8 @@ Why this matters:
 Use `deviceManagedWithDefaults()` for the common FTC motor-position path:
 
 ```java
+ScalarTarget armTarget = ScalarTarget.create(0.0);
+
 PositionPlant arm = FtcActuators.plant(hardwareMap)
         .motor("armMotor", Direction.FORWARD)
         .position()
@@ -365,13 +374,15 @@ PositionPlant arm = FtcActuators.plant(hardwareMap)
             .nativeUnits()
             .alreadyReferenced()
         .positionTolerance(20.0)
-        .targetedByCommand(0.0)
+        .targetedBy(armTarget)
         .build();
 ```
 
 Switch to a regulated path when you need an explicit feedback source or a custom regulator:
 
 ```java
+ScalarTarget armTarget = ScalarTarget.create(0.0);
+
 PositionPlant arm = FtcActuators.plant(hardwareMap)
         .motor("armMotor", Direction.FORWARD)
         .position()
@@ -383,7 +394,7 @@ PositionPlant arm = FtcActuators.plant(hardwareMap)
             .nativeUnits()
             .alreadyReferenced()
         .positionTolerance(20.0)
-        .targetedByCommand(0.0)
+        .targetedBy(armTarget)
         .build();
 ```
 
@@ -452,12 +463,18 @@ device-specific tuning branch only when it actually needs an FTC controller over
 
 ---
 
-## 4. Using `PlantTasks` for mechanism behavior
+## 4. Using `ScalarTasks` for mechanism behavior
 
-Once you have Plants, the easiest way to create behaviors is
-`edu.ftcphoenix.fw.actuation.PlantTasks`.
+The same named `ScalarTarget` used to build a Plant is the easiest way to create behavior:
+set it directly for immediate TeleOp intent, or use `edu.ftcphoenix.fw.actuation.ScalarTasks` when
+the write must run later as a Task.
 
-A Plant is source-driven, so a task does not write hardware directly. It writes the Plant's command target; the Plant samples its final target graph and applies hardware guards during `plant.update(clock)`.
+A Plant is source-driven, so a task does not write hardware directly. It writes the named command
+target; the Plant samples its final target graph and applies hardware guards during
+`plant.update(clock)`.
+
+Creating the builder or calling `build()` does not change the target. The fresh single-use Task
+writes it only when that Task starts.
 
 ### 4.1 Time-based writes
 
@@ -469,42 +486,41 @@ an unusually long loop; a zero-duration write remains immediate.
 
 ```java
 // Intake: run at +1.0 for 0.7 seconds, then stop.
-Task intakePulse = PlantTasks.write(intake)
-        .to(+1.0)
+Task intakePulse = ScalarTasks.set(intakeTarget, +1.0)
         .forSeconds(0.7)
         .then(0.0)
         .build();
 ```
 
-The `.then(0.0)` runs when the timer finishes and when this write is cancelled while active. If you
-omit `.then(...)`, or call `.leaveThere()`, completion and active cancellation leave the held request
-in place. A queued write that never starts has no target side effects.
+The `.then(0.0)` runs when the timer finishes and when this write is cancelled while active. Choose
+`.leaveThere()` instead when completion and active cancellation should leave the held request in
+place. The ending choice is required, and a queued write that never starts has no target side
+effects.
 
 To run for a fixed time and leave the target there:
 
 ```java
-Task ensureSpinUp = PlantTasks.write(shooter)
-        .to(SHOOTER_VELOCITY_NATIVE)
+Task ensureSpinUp = ScalarTasks.set(shooterTarget, SHOOTER_VELOCITY_NATIVE)
         .forSeconds(0.5)
+        .leaveThere()
         .build();
 ```
 
 To set once and finish immediately:
 
 ```java
-Task stopShooter = PlantTasks.write(shooter)
-        .to(0.0)
-        .build();
+Task stopShooter = ScalarTasks.set(shooterTarget, 0.0).build();
 ```
 
 ### 4.2 Feedback moves
 
-Use `PlantTasks.move(...)` when the Plant has feedback and the task should wait for the mechanism to
-actually reach the requested behavior target.
+Continue the same `ScalarTasks.set(...)` path with `.untilReachedBy(plant)` when the Plant has
+feedback and the task should wait for the mechanism to actually reach the requested behavior
+target.
 
 ```java
-Task spinUp = PlantTasks.move(shooter)
-        .to(SHOOTER_VELOCITY_NATIVE)
+Task spinUp = ScalarTasks.set(shooterTarget, SHOOTER_VELOCITY_NATIVE)
+        .untilReachedBy(shooter)
         .cancelTo(0.0)
         .timeout(1.2)
         .build();
@@ -513,19 +529,20 @@ Task spinUp = PlantTasks.move(shooter)
 A feedback move requires its graph-owned command path to win, then waits for physical arrival at the
 requested target selected from that command. Usually the logical and physical numbers are equal. A
 periodic `PlantTargets.equivalentPositionsOf(...)` graph may instead turn logical angle `20` into
-physical position `380`; the Task still uses `.to(20)` and waits for arrival at `380`. Same-valued
-overlays, bounds, fallbacks, holds, clamps, and target guards cannot complete it early.
+physical position `380`; the Task still uses `set(turretTarget, 20)` and waits for arrival at `380`.
+Same-valued overlays, bounds, fallbacks, holds, clamps, and target guards cannot complete it early.
 
 ```java
-Task moveAndStow = PlantTasks.move(arm)
-        .to(ARM_SCORE_POS)
+Task moveAndStow = ScalarTasks.set(armTarget, ARM_SCORE_POS)
+        .untilReachedBy(arm)
         .cancelTo(ARM_STOW_POS)
         .timeout(1.0)
         .thenTarget(ARM_STOW_POS)
         .build();
 ```
 
-Every feedback move must choose its cancellation behavior immediately after `.to(...)`:
+Every feedback move must choose its cancellation behavior immediately after
+`.untilReachedBy(plant)`:
 
 * `.cancelTo(value)` writes that finite Plant-unit request once when an active move is cancelled.
 * `.leaveTargetOnCancel()` deliberately keeps the move request, so motion may continue.
@@ -535,7 +552,8 @@ Every feedback move must choose its cancellation behavior immediately after `.to
 overlays and Plant guards. The robot owner still needs a coordinated cancel method that stops queues,
 disables relevant overlays, and resets every related mechanism request.
 
-If you accidentally call a feedback move on an open-loop plant, `PlantTasks` throws an exception at runtime so the mistake is obvious.
+If `untilReachedBy(...)` receives an open-loop Plant or a Plant commanded by a different
+`ScalarTarget`, construction throws an actionable exception so the mistake is obvious.
 
 ---
 
@@ -566,7 +584,7 @@ That cancellation call is only safe when the companion owns its cleanup. A seque
 Keep persistent mechanism requests as robot capability/service state, or provide a bounded macro
 whose active cancellation restores the desired state.
 
-In student code, prefer the factories (`Tasks.*`, `PlantTasks.*`, and the narrowly scoped
+In student code, prefer the factories (`Tasks.*`, `ScalarTasks.set(...)`, and the narrowly scoped
 `DriveTasks.driveExclusivelyForSeconds(...)`) over constructing task classes directly. The drive
 helper is only for simple open-loop Auto/test movement where its Task is the sole behavior-command
 writer for the sink. It refreshes the sink each active cycle and stops on completion or active
@@ -584,31 +602,28 @@ Tasks report accidental reuse immediately instead of silently skipping part of a
 
 ## 6. Example: a simple shooter macro
 
-Assume you already created `shooter`, `transfer`, and a `TaskRunner` named
-`macroRunner`.
+Assume you already created `shooterTarget`/`shooter`, `transferTarget`/`transfer`, and a
+`TaskRunner` named `macroRunner`.
 
 ```java
 private Task buildShootOneDiscMacro() {
-    Task spinUp = PlantTasks.move(shooter)
-            .to(SHOOTER_VELOCITY_NATIVE)
+    Task spinUp = ScalarTasks.set(shooterTarget, SHOOTER_VELOCITY_NATIVE)
+            .untilReachedBy(shooter)
             .cancelTo(0.0)
             .timeout(SHOOTER_SPINUP_TIMEOUT_SEC)
             .build();
 
-    Task feedTransfer = PlantTasks.write(transfer)
-            .to(TRANSFER_POWER_SHOOT)
+    Task feedTransfer = ScalarTasks.set(transferTarget, TRANSFER_POWER_SHOOT)
             .forSeconds(TRANSFER_PULSE_SEC)
             .then(0.0)
             .build();
 
-    Task holdBeforeSpinDown = PlantTasks.write(shooter)
-            .to(SHOOTER_VELOCITY_NATIVE)
+    Task holdBeforeSpinDown = ScalarTasks.set(shooterTarget, SHOOTER_VELOCITY_NATIVE)
             .forSeconds(SHOOTER_SPINDOWN_HOLD_SEC)
+            .leaveThere()
             .build();
 
-    Task spinDown = PlantTasks.write(shooter)
-            .to(0.0)
-            .build();
+    Task spinDown = ScalarTasks.set(shooterTarget, 0.0).build();
 
     return Tasks.sequence(spinUp, feedTransfer, holdBeforeSpinDown, spinDown);
 }
@@ -631,7 +646,7 @@ without blocking TeleOp.
 For most student code, you only need:
 
 * `FtcActuators.plant(...)` to build Plants from FTC hardware.
-* `PlantTasks.*` for mechanism behavior.
+* `ScalarTasks.set(...)` for write-once, timed, and feedback-aware target behavior.
 * `Tasks.*` for generic timing and composition.
 * `DriveTasks.driveExclusivelyForSeconds(...)` only for simple Auto/test movement with exclusive
   drive-sink ownership.
@@ -666,7 +681,7 @@ public construction path merely to give the same composition a different class n
       `.positionTolerance(...)` → feedback-capable position control.
     * Servos + `.position().linear().bounded(...).nativeUnits()` or `.rangeMapsToNative(...)` → open-loop set-and-hold.
 
-* **PlantTasks** and **Tasks** provide factory helpers that build `Task`s for you, including
+* **ScalarTasks** and **Tasks** provide factory helpers that build `Task`s for you, including
   all-children and deadline-owned parallel composition.
 
 * **DriveTasks** has one exclusive timed open-loop Auto/test helper; ordinary TeleOp drive still has

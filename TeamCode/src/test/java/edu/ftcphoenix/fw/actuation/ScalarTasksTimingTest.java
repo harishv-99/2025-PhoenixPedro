@@ -14,15 +14,14 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 /** Verifies that feedback-move timing begins at the event each interval describes. */
-public final class PlantTasksTimingTest {
+public final class ScalarTasksTimingTest {
 
     @Test
     public void timedWriteRemainsRequestedForItsSubLoopStartCycle() {
         ManualLoopClock manualClock = new ManualLoopClock();
         manualClock.nextCycle(1.0);
         FakeFeedbackPlant plant = new FakeFeedbackPlant();
-        Task write = PlantTasks.write(plant)
-                .to(5.0)
+        Task write = ScalarTasks.set(plant.command, 5.0)
                 .forSeconds(0.02)
                 .then(-1.0)
                 .build();
@@ -45,8 +44,8 @@ public final class PlantTasksTimingTest {
     public void timeoutStartsWhenMoveStartsNotAtBeginningOfLoopInterval() {
         ManualLoopClock manualClock = new ManualLoopClock();
         FakeFeedbackPlant plant = new FakeFeedbackPlant();
-        Task move = PlantTasks.move(plant)
-                .to(8.0)
+        Task move = ScalarTasks.set(plant.command, 8.0)
+                .untilReachedBy(plant)
                 .leaveTargetOnCancel()
                 .timeout(0.10)
                 .thenTarget(-2.0)
@@ -74,8 +73,8 @@ public final class PlantTasksTimingTest {
     public void stablePeriodStartsWhenTargetIsFirstObservedReached() {
         ManualLoopClock manualClock = new ManualLoopClock();
         FakeFeedbackPlant plant = new FakeFeedbackPlant();
-        Task move = PlantTasks.move(plant)
-                .to(12.0)
+        Task move = ScalarTasks.set(plant.command, 12.0)
+                .untilReachedBy(plant)
                 .leaveTargetOnCancel()
                 .stableFor(0.10)
                 .timeout(1.0)
@@ -107,8 +106,8 @@ public final class PlantTasksTimingTest {
         ManualLoopClock manualClock = new ManualLoopClock();
         FakeFeedbackPlant plant = new FakeFeedbackPlant();
         plant.reached = true;
-        Task move = PlantTasks.move(plant)
-                .to(4.0)
+        Task move = ScalarTasks.set(plant.command, 4.0)
+                .untilReachedBy(plant)
                 .leaveTargetOnCancel()
                 .stableFor(0.10)
                 .build();
@@ -144,8 +143,8 @@ public final class PlantTasksTimingTest {
         ManualLoopClock manualClock = new ManualLoopClock();
         FakeFeedbackPlant plant = new FakeFeedbackPlant();
         plant.reached = true;
-        Task move = PlantTasks.move(plant)
-                .to(6.0)
+        Task move = ScalarTasks.set(plant.command, 6.0)
+                .untilReachedBy(plant)
                 .leaveTargetOnCancel()
                 .stableFor(0.10)
                 .timeout(0.10)
@@ -166,8 +165,8 @@ public final class PlantTasksTimingTest {
     public void cancellationKeepsRequestedTargetAndDoesNotApplyCompletionTarget() {
         ManualLoopClock manualClock = new ManualLoopClock();
         FakeFeedbackPlant plant = new FakeFeedbackPlant();
-        Task move = PlantTasks.move(plant)
-                .to(5.0)
+        Task move = ScalarTasks.set(plant.command, 5.0)
+                .untilReachedBy(plant)
                 .leaveTargetOnCancel()
                 .timeout(1.0)
                 .thenTarget(-1.0)
@@ -183,7 +182,7 @@ public final class PlantTasksTimingTest {
     }
 
     private static final class FakeFeedbackPlant implements Plant {
-        private final ScalarTarget command = ScalarTarget.held(0.0);
+        private final ScalarTarget command = ScalarTarget.create(0.0);
         private boolean reached;
 
         @Override

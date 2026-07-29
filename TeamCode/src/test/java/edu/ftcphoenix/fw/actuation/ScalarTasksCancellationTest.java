@@ -15,14 +15,14 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 /** Verifies the explicit cancellation policy required by feedback-aware Plant moves. */
-public final class PlantTasksCancellationTest {
+public final class ScalarTasksCancellationTest {
 
     @Test
     public void cancelToWritesOnceOnlyForActiveCancellation() {
         ManualLoopClock manualClock = new ManualLoopClock();
         CountingFeedbackPlant plant = new CountingFeedbackPlant();
-        Task move = PlantTasks.move(plant)
-                .to(5.0)
+        Task move = ScalarTasks.set(plant.command, 5.0)
+                .untilReachedBy(plant)
                 .cancelTo(-1.0)
                 .build();
 
@@ -50,8 +50,8 @@ public final class PlantTasksCancellationTest {
     public void leaveTargetOnCancelPerformsNoCancellationWrite() {
         ManualLoopClock manualClock = new ManualLoopClock();
         CountingFeedbackPlant plant = new CountingFeedbackPlant();
-        Task move = PlantTasks.move(plant)
-                .to(6.0)
+        Task move = ScalarTasks.set(plant.command, 6.0)
+                .untilReachedBy(plant)
                 .leaveTargetOnCancel()
                 .build();
 
@@ -69,9 +69,12 @@ public final class PlantTasksCancellationTest {
     public void cancelToRequiresAFinitePlantUnitTarget() {
         CountingFeedbackPlant plant = new CountingFeedbackPlant();
 
-        assertFiniteFailure(() -> PlantTasks.move(plant).to(1.0).cancelTo(Double.NaN));
-        assertFiniteFailure(() -> PlantTasks.move(plant).to(1.0).cancelTo(Double.POSITIVE_INFINITY));
-        assertFiniteFailure(() -> PlantTasks.move(plant).to(1.0).cancelTo(Double.NEGATIVE_INFINITY));
+        assertFiniteFailure(() -> ScalarTasks.set(plant.command, 1.0)
+                .untilReachedBy(plant).cancelTo(Double.NaN));
+        assertFiniteFailure(() -> ScalarTasks.set(plant.command, 1.0)
+                .untilReachedBy(plant).cancelTo(Double.POSITIVE_INFINITY));
+        assertFiniteFailure(() -> ScalarTasks.set(plant.command, 1.0)
+                .untilReachedBy(plant).cancelTo(Double.NEGATIVE_INFINITY));
     }
 
     @Test
@@ -79,8 +82,8 @@ public final class PlantTasksCancellationTest {
         ManualLoopClock manualClock = new ManualLoopClock();
         ThrowingScalarTarget target = new ThrowingScalarTarget(-2.0);
         CountingFeedbackPlant plant = new CountingFeedbackPlant(target);
-        Task move = PlantTasks.move(plant)
-                .to(7.0)
+        Task move = ScalarTasks.set(target, 7.0)
+                .untilReachedBy(plant)
                 .cancelTo(-2.0)
                 .build();
 
@@ -106,8 +109,8 @@ public final class PlantTasksCancellationTest {
         ManualLoopClock manualClock = new ManualLoopClock();
         ThrowingScalarTarget target = new ThrowingScalarTarget(7.0);
         CountingFeedbackPlant plant = new CountingFeedbackPlant(target);
-        Task move = PlantTasks.move(plant)
-                .to(7.0)
+        Task move = ScalarTasks.set(target, 7.0)
+                .untilReachedBy(plant)
                 .cancelTo(-2.0)
                 .build();
 
@@ -127,12 +130,33 @@ public final class PlantTasksCancellationTest {
     }
 
     @Test
+    public void reentrantCancellationFromFeedbackInitialWritePreservesCancellationOutcome() {
+        ManualLoopClock manualClock = new ManualLoopClock();
+        TaskRunner runner = new TaskRunner();
+        ReentrantCancelScalarTarget target = new ReentrantCancelScalarTarget(runner, 8.0);
+        CountingFeedbackPlant plant = new CountingFeedbackPlant(target);
+        Task move = ScalarTasks.set(target, 8.0)
+                .untilReachedBy(plant)
+                .cancelTo(-1.0)
+                .build();
+        runner.enqueue(move);
+
+        runner.update(manualClock.clock());
+
+        assertTrue(runner.isIdle());
+        assertTrue(move.isComplete());
+        assertEquals(TaskOutcome.CANCELLED, move.getOutcome());
+        assertEquals(2, target.setCount());
+        assertEquals(-1.0, target.get(), 0.0);
+    }
+
+    @Test
     public void successfulMoveUsesThenTargetAndNeverCancellationTarget() {
         ManualLoopClock manualClock = new ManualLoopClock();
         CountingFeedbackPlant plant = new CountingFeedbackPlant();
         plant.reached = true;
-        Task move = PlantTasks.move(plant)
-                .to(8.0)
+        Task move = ScalarTasks.set(plant.command, 8.0)
+                .untilReachedBy(plant)
                 .cancelTo(-1.0)
                 .thenTarget(2.0)
                 .build();
@@ -150,8 +174,8 @@ public final class PlantTasksCancellationTest {
     public void timedOutMoveUsesThenTargetAndNeverCancellationTarget() {
         ManualLoopClock manualClock = new ManualLoopClock();
         CountingFeedbackPlant plant = new CountingFeedbackPlant();
-        Task move = PlantTasks.move(plant)
-                .to(9.0)
+        Task move = ScalarTasks.set(plant.command, 9.0)
+                .untilReachedBy(plant)
                 .cancelTo(-1.0)
                 .timeout(0.1)
                 .thenTarget(3.0)
@@ -168,11 +192,44 @@ public final class PlantTasksCancellationTest {
     }
 
     @Test
+    public void throwingThenTargetFailsRunnerClosedAndAppliesCancellationTargetOnce() {
+        ManualLoopClock manualClock = new ManualLoopClock();
+        TaskRunner runner = new TaskRunner();
+        ThrowingScalarTarget target = new ThrowingScalarTarget(2.0);
+        CountingFeedbackPlant plant = new CountingFeedbackPlant(target);
+        plant.reached = true;
+        CountingScalarTarget followUpTarget = new CountingScalarTarget();
+        Task move = ScalarTasks.set(target, 8.0)
+                .untilReachedBy(plant)
+                .cancelTo(-1.0)
+                .thenTarget(2.0)
+                .build();
+        runner.enqueue(move);
+        runner.enqueue(ScalarTasks.set(followUpTarget, 4.0).build());
+
+        try {
+            runner.update(manualClock.clock());
+            fail("expected the final target write to fail");
+        } catch (IllegalStateException expected) {
+            assertTrue(expected.getMessage().contains("test target"));
+        }
+
+        assertTrue(runner.isIdle());
+        assertTrue(move.isComplete());
+        assertEquals(TaskOutcome.CANCELLED, move.getOutcome());
+        assertEquals(3, target.setCount());
+        assertEquals(-1.0, target.get(), 0.0);
+        assertEquals(0, followUpTarget.setCount());
+
+        move.cancel();
+        assertEquals(3, target.setCount());
+    }
+
+    @Test
     public void timedWriteAppliesThenValueOnceWhenActivelyCancelled() {
         ManualLoopClock manualClock = new ManualLoopClock();
         CountingFeedbackPlant plant = new CountingFeedbackPlant();
-        Task write = PlantTasks.write(plant)
-                .to(4.0)
+        Task write = ScalarTasks.set(plant.command, 4.0)
                 .forSeconds(1.0)
                 .then(0.0)
                 .build();
@@ -190,14 +247,38 @@ public final class PlantTasksCancellationTest {
     }
 
     @Test
+    public void timedNaturalThenReentrantCancellationPreservesSuccessOutcome() {
+        ManualLoopClock manualClock = new ManualLoopClock();
+        TaskRunner runner = new TaskRunner();
+        ReentrantCancelScalarTarget target = new ReentrantCancelScalarTarget(runner, 0.0);
+        Task write = ScalarTasks.set(target, 4.0)
+                .forSeconds(0.1)
+                .then(0.0)
+                .build();
+        runner.enqueue(write);
+
+        runner.update(manualClock.clock());
+        assertFalse(write.isComplete());
+
+        manualClock.nextCycle(0.11);
+        runner.update(manualClock.clock());
+
+        assertTrue(runner.isIdle());
+        assertTrue(write.isComplete());
+        assertEquals(TaskOutcome.SUCCESS, write.getOutcome());
+        assertEquals(4, target.setCount());
+        assertEquals(0.0, target.get(), 0.0);
+    }
+
+    @Test
     public void reentrantCancellationFromThenTargetPreservesCancellationOutcome() {
         ManualLoopClock manualClock = new ManualLoopClock();
         TaskRunner runner = new TaskRunner();
         ReentrantCancelScalarTarget target = new ReentrantCancelScalarTarget(runner, 2.0);
         CountingFeedbackPlant plant = new CountingFeedbackPlant(target);
         plant.reached = true;
-        Task move = PlantTasks.move(plant)
-                .to(8.0)
+        Task move = ScalarTasks.set(target, 8.0)
+                .untilReachedBy(plant)
                 .cancelTo(-1.0)
                 .thenTarget(2.0)
                 .build();

@@ -219,7 +219,7 @@ public final class BasicPedroAutoRobotTest {
 
     private static final class RecordingPlant implements Plant {
         private final List<String> events;
-        final ScalarTarget target = ScalarTarget.held(0.0);
+        final ScalarTarget target = ScalarTarget.create(0.0);
         RuntimeException updateFailure;
         RuntimeException stopFailure;
 

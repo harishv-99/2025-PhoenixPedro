@@ -63,6 +63,10 @@ import edu.ftcphoenix.fw.core.source.ScalarTarget;
  * <h2>Typical usage</h2>
  *
  * <pre>{@code
+ * ScalarTarget liftTarget = ScalarTarget.create(0.0);
+ * ScalarTarget flywheelTarget = ScalarTarget.create(0.0);
+ * ScalarTarget clawTarget = ScalarTarget.create(0.0);
+ *
  * PositionPlant lift = FtcActuators.plant(hardwareMap)
  *     .motor("lift", Direction.FORWARD)
  *     .position()
@@ -74,7 +78,7 @@ import edu.ftcphoenix.fw.core.source.ScalarTarget;
  *         .nativeUnits()
  *         .needsReference("lift not homed")
  *     .positionTolerance(20.0)
- *     .targetedByCommand(0.0)
+ *     .targetedBy(liftTarget)
  *     .build();
  *
  * Plant flywheel = FtcActuators.plant(hardwareMap)
@@ -84,7 +88,7 @@ import edu.ftcphoenix.fw.core.source.ScalarTarget;
  *     .bounded(0.0, 2600.0)
  *     .nativeUnits()
  *     .velocityTolerance(50.0)
- *     .targetedByCommand(0.0)
+ *     .targetedBy(flywheelTarget)
  *     .build();
  *
  * PositionPlant claw = FtcActuators.plant(hardwareMap)
@@ -93,7 +97,7 @@ import edu.ftcphoenix.fw.core.source.ScalarTarget;
  *     .linear()
  *         .bounded(0.0, 1.0)
  *         .rangeMapsToNative(0.30, 0.80)
- *     .targetedByCommand(0.0)
+ *     .targetedBy(clawTarget)
  *     .build();
  * }</pre>
  */
@@ -151,9 +155,9 @@ public final class FtcActuators {
      *
      * <p>The staged builder deliberately asks: “where does this plant's target come from?” A
      * command {@link ScalarTarget}, or a composed target graph with a command-backed base, exposes
-     * that graph-owned command target to {@link edu.ftcphoenix.fw.actuation.PlantTasks}. A read-only
-     * graph remains read-only. A {@code ScalarTarget} retains its command capability even when the
-     * caller holds it through the {@link ScalarSource} type.</p>
+     * that graph-owned command target to robot policy and
+     * {@link edu.ftcphoenix.fw.actuation.ScalarTasks}. A read-only scalar source crosses into Plant
+     * target space explicitly through {@link PlantTargets#exact(ScalarSource)}.</p>
      */
     public interface PlantTargetStep {
         /**
@@ -162,26 +166,21 @@ public final class FtcActuators {
         PlantTargetGuardStep targetGuards();
 
         /**
-         * Use a command target as the exact final source. Plant task helpers write this same target.
+         * Use a command target as the exact final source. Scalar task helpers write this same target.
+         *
+         * @throws IllegalStateException if target selection was already answered through a retained
+         *                               reference to this stage
          */
         PlantBuildStep targetedBy(ScalarTarget target);
 
         /**
          * Use a plant-aware final target source such as {@link PlantTargets#overlay(PlantTargetSource)}
          * or {@link PlantTargets#plan()}.
+         *
+         * @throws IllegalStateException if target selection was already answered through a retained
+         *                               reference to this stage
          */
         PlantBuildStep targetedBy(PlantTargetSource source);
-
-        /**
-         * Use a scalar source as an exact plant target. A {@link ScalarTarget} supplied through
-         * this type still becomes the graph-owned command target; other sources remain read-only.
-         */
-        PlantBuildStep targetedBy(ScalarSource source);
-
-        /**
-         * Create an internal held command target initialized to {@code initialTarget}.
-         */
-        PlantBuildStep targetedByCommand(double initialTarget);
     }
 
     /**
@@ -235,26 +234,21 @@ public final class FtcActuators {
         PositionTargetGuardStep targetGuards();
 
         /**
-         * Use a command target as the exact final source. Plant task helpers write this same target.
+         * Use a command target as the exact final source. Scalar task helpers write this same target.
+         *
+         * @throws IllegalStateException if target selection was already answered through a retained
+         *                               reference to this stage
          */
         PositionPlantBuildStep targetedBy(ScalarTarget target);
 
         /**
          * Use a plant-aware final target source such as {@link PlantTargets#overlay(PlantTargetSource)}
          * or {@link PlantTargets#plan()}.
+         *
+         * @throws IllegalStateException if target selection was already answered through a retained
+         *                               reference to this stage
          */
         PositionPlantBuildStep targetedBy(PlantTargetSource source);
-
-        /**
-         * Use a scalar source as an exact plant target. A {@link ScalarTarget} supplied through
-         * this type still becomes the graph-owned command target; other sources remain read-only.
-         */
-        PositionPlantBuildStep targetedBy(ScalarSource source);
-
-        /**
-         * Create an internal held command target initialized to {@code initialTarget}.
-         */
-        PositionPlantBuildStep targetedByCommand(double initialTarget);
     }
 
     /**
@@ -913,25 +907,16 @@ public final class FtcActuators {
 
         @Override
         public PlantBuildStep targetedBy(ScalarTarget target) {
+            requireTargetUnanswered(source, "power Plant");
             source = PlantTargets.exact(Objects.requireNonNull(target, "target"));
             return this;
         }
 
         @Override
         public PlantBuildStep targetedBy(PlantTargetSource source) {
+            requireTargetUnanswered(this.source, "power Plant");
             this.source = Objects.requireNonNull(source, "source");
             return this;
-        }
-
-        @Override
-        public PlantBuildStep targetedBy(ScalarSource source) {
-            this.source = PlantTargets.exact(Objects.requireNonNull(source, "source"));
-            return this;
-        }
-
-        @Override
-        public PlantBuildStep targetedByCommand(double initialTarget) {
-            return targetedBy(ScalarTarget.held(initialTarget));
         }
 
         @Override
@@ -992,25 +977,16 @@ public final class FtcActuators {
 
         @Override
         public PlantBuildStep targetedBy(ScalarTarget target) {
+            requireTargetUnanswered(source, "Plant");
             source = PlantTargets.exact(Objects.requireNonNull(target, "target"));
             return this;
         }
 
         @Override
         public PlantBuildStep targetedBy(PlantTargetSource source) {
+            requireTargetUnanswered(this.source, "Plant");
             this.source = Objects.requireNonNull(source, "source");
             return this;
-        }
-
-        @Override
-        public PlantBuildStep targetedBy(ScalarSource source) {
-            this.source = PlantTargets.exact(Objects.requireNonNull(source, "source"));
-            return this;
-        }
-
-        @Override
-        public PlantBuildStep targetedByCommand(double initialTarget) {
-            return targetedBy(ScalarTarget.held(initialTarget));
         }
 
         @Override
@@ -1073,25 +1049,16 @@ public final class FtcActuators {
 
         @Override
         public PositionPlantBuildStep targetedBy(ScalarTarget target) {
+            requireTargetUnanswered(source, "position Plant");
             source = PlantTargets.exact(Objects.requireNonNull(target, "target"));
             return this;
         }
 
         @Override
         public PositionPlantBuildStep targetedBy(PlantTargetSource source) {
+            requireTargetUnanswered(this.source, "position Plant");
             this.source = Objects.requireNonNull(source, "source");
             return this;
-        }
-
-        @Override
-        public PositionPlantBuildStep targetedBy(ScalarSource source) {
-            this.source = PlantTargets.exact(Objects.requireNonNull(source, "source"));
-            return this;
-        }
-
-        @Override
-        public PositionPlantBuildStep targetedByCommand(double initialTarget) {
-            return targetedBy(ScalarTarget.held(initialTarget));
         }
 
         @Override
@@ -2263,6 +2230,13 @@ public final class FtcActuators {
     // ---------------------------------------------------------------------------------------------
     // Helpers
     // ---------------------------------------------------------------------------------------------
+
+    private static void requireTargetUnanswered(PlantTargetSource currentTarget, String plantKind) {
+        if (currentTarget != null) {
+            throw new IllegalStateException("targetedBy(...) has already been answered for this "
+                    + plantKind + "; create a new builder to choose a different target");
+        }
+    }
 
     private static void ensureMotorFeedbackAvailable(List<MotorBuilder.Spec> motorSpecs, String domain) {
         if (motorSpecs == null || motorSpecs.isEmpty()) {

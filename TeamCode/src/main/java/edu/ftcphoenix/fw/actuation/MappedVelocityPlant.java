@@ -190,22 +190,11 @@ public final class MappedVelocityPlant implements Plant {
         /**
          * Uses a command target as the exact final source.
          *
-         * <p>The target graph designates this target as the command target used by Plant task
-         * helpers.</p>
+         * <p>The target graph designates this target as the command target used by robot policy
+         * and {@link ScalarTasks}.</p>
          */
         public Builder targetedBy(ScalarTarget targetSource) {
-            this.targetSource = PlantTargets.exact(Objects.requireNonNull(targetSource, "targetSource"));
-            return this;
-        }
-
-        /**
-         * Uses a scalar source as an exact target.
-         *
-         * <p>The scalar is lifted into plant-target space. If the supplied object is a
-         * {@link ScalarTarget}, even when referenced through the {@link ScalarSource} type, the
-         * graph retains it as the command target. Other scalar sources remain read-only.</p>
-         */
-        public Builder targetedBy(ScalarSource targetSource) {
+            requireTargetUnanswered();
             this.targetSource = PlantTargets.exact(Objects.requireNonNull(targetSource, "targetSource"));
             return this;
         }
@@ -214,11 +203,19 @@ public final class MappedVelocityPlant implements Plant {
          * Uses a plant-aware final target source.
          *
          * <p>If the source graph designates a command target, such as the base of a command-backed
-         * overlay, this Plant exposes that same target to Plant task helpers.</p>
+         * overlay, this Plant exposes that same target to robot policy and {@link ScalarTasks}.</p>
          */
         public Builder targetedBy(PlantTargetSource targetSource) {
+            requireTargetUnanswered();
             this.targetSource = Objects.requireNonNull(targetSource, "targetSource");
             return this;
+        }
+
+        private void requireTargetUnanswered() {
+            if (targetSource != null) {
+                throw new IllegalStateException("targetedBy(...) has already been answered for "
+                        + "this MappedVelocityPlant; create a new builder to choose a different target");
+            }
         }
 
         /**

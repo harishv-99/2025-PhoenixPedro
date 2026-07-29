@@ -69,6 +69,8 @@ position at the FTC boundary, then uses the generic `ScalarSource.ratePerSecond(
 produce native ticks/second:
 
 ```java
+ScalarTarget flywheelTarget = ScalarTarget.create(0.0);
+
 Plant flywheel = FtcActuators.plant(hardwareMap)
         .motor("flywheel", Direction.FORWARD)
         .velocity()
@@ -78,7 +80,7 @@ Plant flywheel = FtcActuators.plant(hardwareMap)
         .bounded(0.0, MAX_FLYWHEEL_RPM)
         .scaleToNative(TICKS_PER_REV / 60.0)
         .velocityTolerance(75.0)
-        .targetedByCommand(0.0)
+        .targetedBy(flywheelTarget)
         .build();
 ```
 

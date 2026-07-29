@@ -16,10 +16,12 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *
  * <p>Most FTC robot code should use the staged {@code FtcActuators.plant(...)} builder. These
  * factories are the lower-level boundary for custom hardware adapters and tests. All factories
- * normalize their target input into a {@link PlantTargetSource}; plain scalar sources are treated as
- * exact targets. A Plant's optional command target is derived from that final graph's exact source
- * or stable overlay base; callers never register a second, potentially disconnected target. Their
- * shared update path enforces a final finite target after dynamic guards.</p>
+ * normalize their target input into a {@link PlantTargetSource}. The concise overloads accept a
+ * writable {@link ScalarTarget}; read-only scalar sources cross into Plant target space explicitly
+ * through {@link PlantTargets#exact(ScalarSource)}. A Plant's optional command target is derived
+ * from that final graph's exact source or stable overlay base; callers never register a second,
+ * potentially disconnected target. Their shared update path enforces a final finite target after
+ * dynamic guards.</p>
  */
 public final class Plants {
 
@@ -29,10 +31,10 @@ public final class Plants {
     }
 
     /**
-     * Create a direct normalized-power plant from a plain exact scalar source.
+     * Create a direct normalized-power plant from a writable command target.
      * Requests are constrained to {@code [-1.0, +1.0]} before reaching the output.
      */
-    public static Plant power(PowerOutput out, ScalarSource target) {
+    public static Plant power(PowerOutput out, ScalarTarget target) {
         return power(out, PlantTargets.exact(target), PlantTargetGuards.none());
     }
 
@@ -57,9 +59,10 @@ public final class Plants {
     }
 
     /**
-     * Create a commanded-position plant with no authoritative feedback from a plain exact scalar source.
+     * Create a commanded-position plant with no authoritative feedback from a writable command
+     * target.
      */
-    public static Plant position(PositionOutput out, ScalarSource target) {
+    public static Plant position(PositionOutput out, ScalarTarget target) {
         return position(out, PlantTargets.exact(target), PlantTargetGuards.none());
     }
 

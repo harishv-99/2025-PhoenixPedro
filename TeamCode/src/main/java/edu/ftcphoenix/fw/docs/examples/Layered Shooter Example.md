@@ -161,7 +161,9 @@ That means:
 The code expresses that priority in two places with two different responsibilities:
 
 - `Behavior` owns the `OutputTaskRunner` and decides when to enqueue a pulse.
-- `Realization` builds the feeder Plant from a final `PlantTargetSource` created by `PlantTargets.overlay(...)`.
+- The composition root assembles the feeder Plant from the final `PlantTargetSource` created by
+  `PlantTargets.overlay(...)`; `Realization` owns that completed Plant's lifecycle and derives its
+  graph-owned command once.
 
 That is the important source-driven lesson: behavior proposes temporary outputs; the final target source
 arbitrates; the Plant consumes one target.
@@ -176,6 +178,11 @@ In Example 09, realization owns two Plants:
 
 - a velocity plant for the flywheel
 - a power plant for the feeder
+
+The composition root passes those completed Plants into realization without also passing their
+already-bound command targets. Realization validates and caches each Plant's
+`plant.commandTarget()` once. The named targets still exist while the graphs are assembled; they
+are not repeated as peer constructor dependencies after the Plants exist.
 
 The flywheel uses a simple command `ScalarTarget`. Its Plant can be either FTC device-managed
 velocity control or a Phoenix-regulated velocity loop. If the robot uses a power-based PID/PIDF
@@ -249,7 +256,8 @@ PlantTargetSource finalFeederTarget = PlantTargets.overlay(feederBaseTarget)
 
 The feeder Plant is then built with that final target source. Because the overlay base is the
 `ScalarTarget` named `feederBaseTarget`, the graph automatically carries it as the command target
-that task helpers could write if needed. Conditional layers never replace that command identity:
+that `ScalarTasks.set(...)` can write if needed. Conditional layers never replace that command
+identity:
 
 ```java
 Plant feederPlant = FtcActuators.plant(hardwareMap)
@@ -267,9 +275,9 @@ Its loop code is intentionally small:
 3. update the plants, letting each Plant sample its final target source
 4. export readback for the next loop
 
-That smallness is the whole point. The target-source ownership rule becomes obvious because only realization owns the final target sources and
-has the plant references, and the feeder's pulse-vs-baseline priority is expressed in the source
-graph instead of as hidden plant state.
+That smallness is the whole point. The target-source ownership rule becomes obvious because only
+realization has the Plant references and derives their graph-owned commands, and the feeder's
+pulse-vs-baseline priority is expressed in the source graph instead of as hidden Plant state.
 
 ---
 

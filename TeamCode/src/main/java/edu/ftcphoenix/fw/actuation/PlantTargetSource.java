@@ -13,10 +13,14 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * the common case where one logical command may use any legal periodic representative; reserve
  * {@link PlantTargets#plan()} for advanced candidate requests.</p>
  *
- * <p>Student-facing rule: for anything intended to become a Plant target, build a
- * {@code PlantTargetSource} through {@link PlantTargets}. The final source bound to a Plant should
- * be total: it should provide a target every loop through an exact value, overlay base, or explicit
- * unavailable policy.</p>
+ * <p>When behavior needs a writable command, graph construction should create one named
+ * {@code ScalarTarget} and bind it directly or use it as the stable base of an overlaid or
+ * periodic-equivalent final graph. Read-only and planned graphs need not carry a command. Once a
+ * completed Plant crosses into a realization, pass the Plant alone. If that owner writes the
+ * persistent command, derive it through {@link Plant#commandTarget()} rather than injecting the
+ * same target separately; a read-only/planned owner derives no nonexistent command. Any final
+ * {@code PlantTargetSource} bound to a Plant should be total: it should provide a target every loop
+ * through an exact value, overlay base, or explicit unavailable policy.</p>
  */
 public interface PlantTargetSource {
 

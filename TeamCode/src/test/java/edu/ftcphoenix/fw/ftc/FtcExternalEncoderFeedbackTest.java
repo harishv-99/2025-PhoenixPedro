@@ -22,6 +22,7 @@ import edu.ftcphoenix.fw.actuation.PositionPlant;
 import edu.ftcphoenix.fw.core.control.ScalarRegulator;
 import edu.ftcphoenix.fw.core.hal.Direction;
 import edu.ftcphoenix.fw.core.source.ScalarSource;
+import edu.ftcphoenix.fw.core.source.ScalarTarget;
 import edu.ftcphoenix.fw.testing.ManualLoopClock;
 
 import static org.junit.Assert.assertEquals;
@@ -105,6 +106,7 @@ public final class FtcExternalEncoderFeedbackTest {
         HardwareMap hardwareMap = new TestHardwareMap();
         MotorProbe flywheel = new MotorProbe(125, 2468.5);
         hardwareMap.put("flywheel", flywheel.motor());
+        ScalarTarget target = ScalarTarget.create(0.0);
 
         Plant plant = FtcActuators.plant(hardwareMap)
                 .motor("flywheel", Direction.FORWARD)
@@ -115,7 +117,7 @@ public final class FtcExternalEncoderFeedbackTest {
                 .unbounded()
                 .nativeUnits()
                 .velocityTolerance(0.0)
-                .targetedByCommand(0.0)
+                .targetedBy(target)
                 .build();
 
         ManualLoopClock clock = new ManualLoopClock();
@@ -137,6 +139,7 @@ public final class FtcExternalEncoderFeedbackTest {
         MotorProbe boreEncoder = new MotorProbe(100, 9999.0);
         hardwareMap.put("flywheel", flywheel.motor());
         hardwareMap.put("bore", boreEncoder.motor());
+        ScalarTarget target = ScalarTarget.create(0.0);
 
         Plant plant = FtcActuators.plant(hardwareMap)
                 .motor("flywheel", Direction.FORWARD)
@@ -147,7 +150,7 @@ public final class FtcExternalEncoderFeedbackTest {
                 .unbounded()
                 .nativeUnits()
                 .velocityTolerance(0.0)
-                .targetedByCommand(0.0)
+                .targetedBy(target)
                 .build();
 
         ManualLoopClock clock = new ManualLoopClock();
@@ -179,6 +182,7 @@ public final class FtcExternalEncoderFeedbackTest {
         MotorProbe liftEncoder = new MotorProbe(321, 9876.0);
         hardwareMap.put("lift", liftMotor.motor());
         hardwareMap.put("liftEncoder", liftEncoder.motor());
+        ScalarTarget target = ScalarTarget.create(0.0);
 
         PositionPlant plant = FtcActuators.plant(hardwareMap)
                 .motor("lift", Direction.FORWARD)
@@ -191,7 +195,7 @@ public final class FtcExternalEncoderFeedbackTest {
                 .nativeUnits()
                 .alreadyReferenced()
                 .positionTolerance(0.0)
-                .targetedByCommand(0.0)
+                .targetedBy(target)
                 .build();
 
         plant.update(new ManualLoopClock().clock());
@@ -210,6 +214,7 @@ public final class FtcExternalEncoderFeedbackTest {
         MotorProbe turretEncoder = new MotorProbe(-42, 4321.0);
         hardwareMap.put("turret", turret.servo());
         hardwareMap.put("turretEncoder", turretEncoder.motor());
+        ScalarTarget target = ScalarTarget.create(0.0);
 
         PositionPlant plant = FtcActuators.plant(hardwareMap)
                 .crServo("turret", Direction.FORWARD)
@@ -222,7 +227,7 @@ public final class FtcExternalEncoderFeedbackTest {
                 .nativeUnits()
                 .alreadyReferenced()
                 .positionTolerance(0.0)
-                .targetedByCommand(0.0)
+                .targetedBy(target)
                 .build();
 
         plant.update(new ManualLoopClock().clock());
@@ -236,6 +241,7 @@ public final class FtcExternalEncoderFeedbackTest {
     @Test
     public void regulatedVelocityDefensivelyRejectsMissingOrNullFeedbackAnswers() {
         HardwareMap hardwareMap = new HardwareMap(null, null);
+        ScalarTarget target = ScalarTarget.create(0.0);
         FtcActuators.MotorRegulatedVelocityFeedbackStep feedbackStep =
                 FtcActuators.plant(hardwareMap)
                         .motor("flywheel", Direction.FORWARD)
@@ -249,7 +255,7 @@ public final class FtcExternalEncoderFeedbackTest {
                 .unbounded()
                 .nativeUnits()
                 .velocityTolerance(0.0)
-                .targetedByCommand(0.0);
+                .targetedBy(target);
         assertIllegalStateContains(missingFeedbackBuild::build,
                 "Regulated motor velocity requires a feedback answer",
                 "internalEncoder()",
