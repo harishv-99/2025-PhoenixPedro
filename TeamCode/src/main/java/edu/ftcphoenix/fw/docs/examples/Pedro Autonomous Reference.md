@@ -19,16 +19,24 @@ Read them in this order:
 
 | File | Source lines | Job | What a new robot normally changes |
 |---|---:|---|---|
-| [`BasicPedroAutoMechanism.java`](<../../../robots/examples/pedro/BasicPedroAutoMechanism.java>) | 85 | Plant-backed intake capability that creates fresh, cancellation-safe Tasks | Replace it with an existing robot capability when one already owns the mechanism; otherwise change the Plant and action names/targets here. |
+| [`BasicPedroAutoMechanism.java`](<../../../robots/examples/pedro/BasicPedroAutoMechanism.java>) | 97 | Plant-backed intake capability that creates fresh, cancellation-safe Tasks | Replace it with an existing robot capability when one already owns the mechanism; otherwise change the Plant and action names/targets here. |
 | [`BasicPedroAutoPaths.java`](<../../../robots/examples/pedro/BasicPedroAutoPaths.java>) | 52 | Declared physical start pose and one eagerly built fixed Pedro route | Change the start/end coordinates and path geometry here. Keep all coordinates explicitly in Pedro field inches and radians. |
 | [`BasicPedroAutoRoutine.java`](<../../../robots/examples/pedro/BasicPedroAutoRoutine.java>) | 50 | Route, success action, and timeout fallback composed with framework Task factories | Change semantic order, route timeout, capability actions, and the policy for each route result here. |
 | [`BasicPedroAutoRobot.java`](<../../../robots/examples/pedro/BasicPedroAutoRobot.java>) | 171 | Composition root for the shared clock, localization, recurring Pedro heartbeat, Task runner, Plant realization, and shutdown | Usually retain this shape. Add robot-owned sensor/service/capability updates only when the robot actually has them, preserving one explicit loop order. |
-| [`PhoenixBasicPedroAutoExample.java`](<../../../robots/phoenix/opmode/PhoenixBasicPedroAutoExample.java>) | 208 | Disabled FTC lifecycle host and this repository's physical hardware/runtime wiring | Replace this entire host boundary with the new robot's verified Pedro runtime and mechanism construction. Do not copy Phoenix hardware values into another robot. |
+| [`PhoenixBasicPedroAutoExample.java`](<../../../robots/phoenix/opmode/PhoenixBasicPedroAutoExample.java>) | 221 | Disabled FTC lifecycle host and this repository's physical hardware/runtime wiring | Replace this entire host boundary with the new robot's verified Pedro runtime and mechanism construction. Do not copy Phoenix hardware values into another robot. |
 
-The five files total **566 source lines**, including comments, Javadocs, imports, and blank lines.
-The four independent reference classes total 358 lines; the Phoenix-specific host is another 208.
-Framework cleanup-action aggregation removed 60 lines from the former 626-line reference (about
-9.6%) without moving ownership or loop policy into the framework.
+> **Portable-host exception:** `BasicPedroAutoMechanism` deliberately has no FTC or Phoenix profile
+> dependency, so the Phoenix-specific host supplies one completed Plant through an explicitly
+> hardware-neutral adapter seam. This makes the four reference classes portable; it is not the
+> ordinary starter construction pattern. A normal robot mechanism should receive `HardwareMap` and
+> its validated profile slice, build and privately own its Plant, and leave the composition root
+> with one `new Mechanism(hardwareMap, profile.mechanism)` call. If a completed Plant does cross an
+> intentional custom seam, pass the Plant alone rather than also passing its command target.
+
+The five files total **591 source lines**, including comments, Javadocs, imports, and blank lines.
+The four independent reference classes total 370 lines; the Phoenix-specific host is another 221.
+These counts describe the current checked-in reference and should be updated when its documented
+ownership or safety seams change.
 That full count matters. A student maintaining or adapting the reference encounters about 15
 concrete concepts, not merely the few calls in `BasicPedroAutoRoutine`:
 
@@ -56,9 +64,9 @@ ownership example rather than a claim that all robot code is one line.
 ### INIT
 
 `PhoenixBasicPedroAutoExample.init()` creates one real `PedroPathingRuntime`, builds the fixed path,
-constructs one intake Plant with a command target and capability, and wires `BasicPedroAutoRobot`. Construction
-does not start the route or move the mechanism. `init_loop()` keeps the expected physical placement
-and test warning visible.
+uses the portable-host exception above to construct one intake Plant and capability, and wires
+`BasicPedroAutoRobot`. Construction does not start the route or move the mechanism. `init_loop()`
+keeps the expected physical placement and test warning visible.
 
 Only the host file imports `edu.ftcphoenix.robots.phoenix.PhoenixProfile`. It reuses this
 repository's already-owned hardware names and directions rather than publishing plausible-looking

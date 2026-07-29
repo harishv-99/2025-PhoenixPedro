@@ -374,17 +374,25 @@ Do not reintroduce
 a second command-target builder binding that can disagree with the resolver the Plant actually
 invokes.
 
-Keep object boundaries equally authoritative. A realization that owns a completed Plant's lifecycle
-and writes its persistent command receives the Plant alone, requires a stable graph-owned command,
-and caches `plant.commandTarget()` once. A read-only or planned realization also receives the Plant
-alone but does not require or invent a command. Do not inject a Plant and its command `ScalarTarget`
-as independent peers and then compare identities. A policy object that writes a standalone or
+Keep construction and object boundaries equally authoritative. In ordinary FTC robot code, the
+composition root passes `HardwareMap` and a data-only mechanism configuration to the mechanism or
+subsystem owner. That owner defensively snapshots its configuration, constructs its final resolver
+and Plant graph with `FtcActuators`, privately retains the Plants, and owns their update and stop
+order. The composition root should not prebuild those Plants as peer objects merely to inject them.
+
+A clearly labeled hardware-neutral test, custom-adapter, portable-host, or deliberately advanced
+assembly seam may instead receive a completed Plant. At that seam, pass the Plant alone rather than
+injecting it beside its command `ScalarTarget`. A command-writing owner requires a stable graph-owned
+command; a read-only or planned owner does not invent one. For an ordinary exact mechanism, retain
+only the Plant and retrieve its stable, side-effect-free `commandTarget()` where a command or Task is
+constructed. A short local alias is fine; retain a separate target only when it has an independent
+shared, composed-graph, or target-only policy role. A policy object that writes a standalone or
 deliberately shared request without owning Plant lifecycle receives only the `ScalarTarget` (or a
-robot-owned semantic capability). A named target may still be needed locally before the Plant exists
-to assemble an exact, overlay, equivalent-position, or advanced graph. Feedback-aware `ScalarTasks`
+robot-owned semantic capability). A named target may still be useful locally before the Plant exists
+to assemble an overlay, equivalent-position, or advanced graph. Feedback-aware `ScalarTasks`
 intentionally name both objects: the target identifies the request to write and the Plant selects
-the target-resolution provenance and physical feedback to observe. One target may feed several Plants,
-so this observer cannot be inferred safely.
+the target-resolution provenance and physical feedback to observe. One target may feed several
+Plants, so this observer cannot be inferred safely.
 
 When a periodic mechanism may use any equivalent physical position, wrap the final logical graph
 with `PlantTargets.equivalentPositionsOf(...)`. The graph-owned `ScalarTarget` remains the one value
@@ -502,17 +510,19 @@ a generic scalar decorator.
 
 ### 2.3 The beginner entrypoint: `FtcActuators.plant(...)`
 
-`edu.ftcphoenix.fw.ftc.FtcActuators` is the recommended way to create Plants from FTC hardware. It lives in the FTC boundary because it depends directly on `HardwareMap`, FTC device classes, and FTC-specific motor tuning APIs.
+`edu.ftcphoenix.fw.ftc.FtcActuators` is the recommended way to create Plants from FTC hardware. It
+lives in the FTC boundary because it depends directly on `HardwareMap`, FTC device classes, and
+FTC-specific motor tuning APIs. In ordinary robot code, the following construction belongs inside
+the mechanism/subsystem constructor after that owner defensively snapshots its data-only config.
+The composition root passes `HardwareMap` and the config to the mechanism; it does not construct
+these Plants itself.
 
 ```java
 import edu.ftcphoenix.fw.core.hal.Direction;
 import edu.ftcphoenix.fw.ftc.FtcActuators;
 
-ScalarTarget shooterTarget = ScalarTarget.create(0.0);
-ScalarTarget transferTarget = ScalarTarget.create(0.0);
-ScalarTarget pusherTarget = ScalarTarget.create(0.0);
-
-Plant shooter = FtcActuators.plant(hardwareMap)
+// Mechanism/subsystem constructor excerpt.
+this.shooter = FtcActuators.plant(hardwareMap)
         .motor("shooterLeftMotor", Direction.FORWARD)
         .andMotor("shooterRightMotor", Direction.REVERSE)
         .velocity()
@@ -520,24 +530,27 @@ Plant shooter = FtcActuators.plant(hardwareMap)
         .bounded(0.0, 2600.0)
         .nativeUnits()
         .velocityTolerance(100.0)
-        .targetedBy(shooterTarget)
+        .targetedBy(ScalarTarget.create(0.0))
         .build();
 
-Plant transfer = FtcActuators.plant(hardwareMap)
+this.transfer = FtcActuators.plant(hardwareMap)
         .crServo("transferLeftServo", Direction.FORWARD)
         .andCrServo("transferRightServo", Direction.REVERSE)
         .power()
-        .targetedBy(transferTarget)
+        .targetedBy(ScalarTarget.create(0.0))
         .build();
 
-Plant pusher = FtcActuators.plant(hardwareMap)
+this.pusher = FtcActuators.plant(hardwareMap)
         .servo("pusherServo", Direction.FORWARD)
         .position()
         .linear()
             .bounded(0.0, 1.0)
             .nativeUnits()   // servo raw 0..1 plant coordinate
-        .targetedBy(pusherTarget)
+        .targetedBy(ScalarTarget.create(0.0))
         .build();
+
+// Later, in a semantic mechanism method:
+shooter.commandTarget().set(1800.0);
 ```
 
 The builder is staged on purpose:
@@ -558,13 +571,14 @@ The builder is staged on purpose:
    `velocityTolerance(...)` or `positionTolerance(...)`. There is no hidden or native-unit default.
    A command-only standard-servo Plant skips this feedback-only question.
 5. **Optional hardware guards**: enter `targetGuards()` for dynamic Plant-level protection such as `maxTargetRate(...)`, `holdLastTargetUnless(...)`, or `fallbackTargetUnless(...)`.
-6. **Target binding**: create a named `ScalarTarget` while assembling the graph, then finish with
-   `targetedBy(commandTarget)` and `build()`. Advanced composed behavior supplies one final
-   `PlantTargetResolver` to `targetedBy(...)`; lift a read-only scalar stream explicitly with
-   `PlantTargets.exact(readOnlySource)`. A command-writing Plant owner derives and caches the
-   completed Plant's command target; a read-only/planned owner uses only its Plant, while a
-   target-only policy retains the target itself. Never pass Plant and target as independent
-   constructor answers for the same graph relationship.
+6. **Target binding**: for an ordinary exact mechanism, finish with
+   `targetedBy(ScalarTarget.create(initialValue))` and `build()`, retain only the Plant, and use its
+   stable `commandTarget()` at command or Task-construction points. Advanced composed behavior
+   supplies one final `PlantTargetResolver` to `targetedBy(...)`; lift a read-only scalar stream
+   explicitly with `PlantTargets.exact(readOnlySource)`. Keep a named `ScalarTarget` when shared or
+   target-only policy owns it, or when it usefully identifies the base of an overlay,
+   equivalent-position, or advanced graph. Never pass Plant and target as independent constructor
+   answers for the same graph relationship.
 
 Plant tolerance defines Phoenix's mechanism-level `atTarget(...)` result in public Plant units; it
 is not an FTC controller setting. For device-managed motor position, the separately named
@@ -1149,8 +1163,8 @@ macroRunner.update(clock);
 
 drivebase.drive(driveSource.get(clock).clamped());
 
-shooter.update(clock);
-transfer.update(clock);
+scoringMechanism.update(clock); // updates its private Plants in owned order
+intakeMechanism.update(clock);
 ```
 
 The [`Loop Structure`](<docs/core-concepts/Loop Structure.md>) guide dives deeper into why this order matters.

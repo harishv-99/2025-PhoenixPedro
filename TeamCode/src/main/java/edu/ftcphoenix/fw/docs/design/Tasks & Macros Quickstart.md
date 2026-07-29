@@ -7,7 +7,8 @@ This guide explains how to use **Tasks** in the Phoenix framework to build non�
 * TeleOp **macros** (e.g., shooting sequences).
 * **Autonomous routines** built out of reusable pieces.
 
-We assume you already have a `PhoenixRobot` wired as in the Beginner’s Guide:
+We assume you already have an ordinary robot owner wired like the
+[`Modern Starter Robot`](<../examples/Modern Starter Robot.md>):
 
 * A `LoopClock` for timing.
 * `Gamepads` and `Bindings` for input.
@@ -70,10 +71,9 @@ public class MyTeleOp extends OpMode {
         DriveSignal driveSignal = driveSource.get(clock).clamped();
         drivebase.drive(driveSignal);
 
-        // 4) Apply the latest mechanism targets.
-        double dtSec = clock.dtSec();
-        shooter.update(clock);
-        // ... etc.
+        // 4) Let each mechanism apply its latest targets to its private Plants.
+        scoring.update(clock);
+        // ... other mechanism owners.
     }
 }
 ```
@@ -287,20 +287,28 @@ they protect different scopes, but do not configure two copies of the same polic
 ## 4. Mechanisms: `ScalarTasks` for common patterns
 
 For mechanism commands and other writable numbers, start with
-`edu.ftcphoenix.fw.actuation.ScalarTasks`. Create and retain a named command when building the Plant:
+`edu.ftcphoenix.fw.actuation.ScalarTasks`. A simple exact mechanism retains one Plant variable and
+creates its command inline:
+
+The builder below is a construction-time excerpt from the mechanism owner. In ordinary FTC robot
+code, that constructor receives `HardwareMap` and its data-only config, copies the config, and uses
+the copied hardware name/direction instead of literals. The composition root constructs the
+mechanism, not this raw Plant.
 
 ```java
-ScalarTarget intakeTarget = ScalarTarget.create(0.0);
-Plant intake = FtcActuators.plant(hardwareMap)
+private final Plant intake;
+
+// In the IntakeMechanism constructor:
+this.intake = FtcActuators.plant(hardwareMap)
         // hardware and control configuration...
-        .targetedBy(intakeTarget)
+        .targetedBy(ScalarTarget.create(0.0))
         .build();
 ```
 
 The source-driven plant rule is:
 
 ```text
-Task changes the named ScalarTarget
+Task changes the Plant's stable ScalarTarget
     ↓
 Plant invokes its final PlantTargetResolver to select the requested target
     ↓
@@ -309,14 +317,16 @@ Plant bounds and target guards select the applied target
 Plant sends the actuator command and reports physical arrival at the selected requested target
 ```
 
-The same named target supports immediate robot behavior (`intakeTarget.set(...)`) and deferred Task
-behavior (`ScalarTasks.set(...)`). A feedback branch validates that the supplied Plant follows that
-exact target, so a mismatched variable fails when the Task is constructed rather than silently
-waiting on the wrong mechanism.
+`intake.commandTarget()` returns that same stable target without sampling or touching hardware. Use
+it directly for immediate robot behavior (`intake.commandTarget().set(...)`) and deferred Task
+behavior (`ScalarTasks.set(intake.commandTarget(), ...)`). A feedback branch validates that the
+supplied Plant follows that exact target, so a mismatched standalone or graph-owned target fails
+when the Task is constructed rather than silently waiting on the wrong mechanism.
 
 Calling `ScalarTasks.set(...)` or `build()` does not change the target. The built Task writes when
-it starts. Each `build()` creates a fresh single-use Task, so retain the command target and rebuild
-the Task or macro for every later run.
+it starts. Each `build()` creates a fresh single-use Task, so retain the Plant and rebuild the Task
+or macro for every later run. Keep a separately named `ScalarTarget` only when it is standalone,
+shared, owned by target-only policy, or useful while assembling a composed target graph.
 
 ### 4.1 Guided writes for time-based commands
 
@@ -324,7 +334,7 @@ Use `ScalarTasks.set(target, value).forSeconds(...)` for open-loop pulses and ti
 These work whether or not a Plant has feedback.
 
 ```java
-Task intakePulse = ScalarTasks.set(intakeTarget, +1.0)
+Task intakePulse = ScalarTasks.set(intake.commandTarget(), +1.0)
         .forSeconds(0.7)
         .then(0.0)
         .build();
@@ -347,7 +357,7 @@ duration may finish.
 To hold and leave the target there:
 
 ```java
-Task ensureSpinUp = ScalarTasks.set(shooterTarget, SHOOTER_VELOCITY_NATIVE)
+Task ensureSpinUp = ScalarTasks.set(shooter.commandTarget(), SHOOTER_VELOCITY_NATIVE)
         .forSeconds(0.5)
         .leaveThere()
         .build();
@@ -359,7 +369,7 @@ active cancellation, while `.then(...)` writes the selected final request in bot
 To set once and finish immediately:
 
 ```java
-Task stopShooter = ScalarTasks.set(shooterTarget, 0.0).build();
+Task stopShooter = ScalarTasks.set(shooter.commandTarget(), 0.0).build();
 ```
 
 ### 4.2 Guided feedback moves
@@ -368,7 +378,7 @@ Continue the same `ScalarTasks.set(...)` path with `.untilReachedBy(plant)` when
 for physical arrival.
 
 ```java
-Task spinUp = ScalarTasks.set(shooterTarget, SHOOTER_VELOCITY_NATIVE)
+Task spinUp = ScalarTasks.set(shooter.commandTarget(), SHOOTER_VELOCITY_NATIVE)
         .untilReachedBy(shooter)
         .cancelTo(0.0)
         .timeout(1.5)
@@ -393,7 +403,7 @@ Behavior:
 For readiness that must remain stable for a short period:
 
 ```java
-Task spinUpStable = ScalarTasks.set(shooterTarget, SHOOTER_VELOCITY_NATIVE)
+Task spinUpStable = ScalarTasks.set(shooter.commandTarget(), SHOOTER_VELOCITY_NATIVE)
         .untilReachedBy(shooter)
         .leaveTargetOnCancel()
         .stableFor(0.15)
@@ -415,7 +425,7 @@ overlays, and reset every mechanism request needed for coordinated shutdown.
 To request a final target after success or timeout:
 
 ```java
-Task moveAndStow = ScalarTasks.set(armTarget, ARM_SCORE_POS)
+Task moveAndStow = ScalarTasks.set(arm.commandTarget(), ARM_SCORE_POS)
         .untilReachedBy(arm)
         .cancelTo(ARM_STOW_POS)
         .timeout(1.0)
@@ -454,32 +464,35 @@ A typical TeleOp macro flows like this:
 
 ### 5.1 Wiring a simple shooter macro
 
-Imagine you retain the named command target beside each `Plant`:
+Inside the shooter mechanism, retain the two simple Plants as private fields:
 
-* `shooterTarget` / `shooter` – a velocity command and feedback Plant for the flywheel.
-* `transferTarget` / `transfer` – a power command and Plant that feeds discs.
+* `shooter` – a velocity command and feedback Plant for the flywheel.
+* `transfer` – a power command and Plant that feeds discs.
 
-A simple “shoot one disc” macro could look like:
+A semantic Task factory on that owner could look like:
 
 ```java
-private Task createShootOneDiscMacro() {
-    Task spinUp = ScalarTasks.set(shooterTarget, SHOOTER_VELOCITY_NATIVE)
+private final Plant shooter;
+private final Plant transfer;
+
+public Task createShootOneDiscTask() {
+    Task spinUp = ScalarTasks.set(shooter.commandTarget(), SHOOTER_VELOCITY_NATIVE)
             .untilReachedBy(shooter)
             .cancelTo(0.0)
             .timeout(SHOOTER_SPINUP_TIMEOUT_SEC)
             .build();
 
-    Task feed = ScalarTasks.set(transferTarget, TRANSFER_POWER_SHOOT)
+    Task feed = ScalarTasks.set(transfer.commandTarget(), TRANSFER_POWER_SHOOT)
             .forSeconds(TRANSFER_PULSE_SEC)
             .then(0.0)
             .build();
 
-    Task holdBeforeSpinDown = ScalarTasks.set(shooterTarget, SHOOTER_VELOCITY_NATIVE)
+    Task holdBeforeSpinDown = ScalarTasks.set(shooter.commandTarget(), SHOOTER_VELOCITY_NATIVE)
             .forSeconds(SHOOTER_SPINDOWN_HOLD_SEC)
             .leaveThere()
             .build();
 
-    Task spinDown = ScalarTasks.set(shooterTarget, 0.0).build();
+    Task spinDown = ScalarTasks.set(shooter.commandTarget(), 0.0).build();
 
     return Tasks.sequence(
         spinUp,
@@ -493,12 +506,13 @@ private Task createShootOneDiscMacro() {
 Bind a button to enqueue this macro:
 
 ```java
-bindings.onRise(shootButton, () -> {
-    runner.enqueue(createShootOneDiscMacro());
-});
+bindings.onRise(shootButton,
+        () -> runner.enqueue(scoring.createShootOneDiscTask()));
 ```
 
-The rest of your TeleOp loop just calls `bindings.update(clock)` and `runner.update(clock)`.
+`scoring` is the semantic mechanism/capability visible to controls; its raw Plants stay private.
+The rest of your TeleOp loop calls `bindings.update(clock)`, `runner.update(clock)`, and then
+`scoring.update(clock)` in the mechanism phase.
 
 ---
 
@@ -519,7 +533,7 @@ Task auto = Tasks.sequence(
     Tasks.waitUntil(() -> shooterReady()),
 
     // 3. Shoot three discs with a macro.
-    createShootThreeDiscMacro()
+    scoring.createShootThreeDiscTask()
 );
 
 runner.enqueue(auto);
@@ -577,17 +591,28 @@ Phoenix provides a clean target-resolver ownership pattern:
 - **`OutputTask`** — a `Task` that produces a scalar output (`getOutput()`).
 - **`OutputTaskRunner`** — runs `OutputTask`s sequentially and exposes the active output as a `ScalarSource`. Use `cancelAndClear()` when you need to abort the active output task cleanly. This is the right default for feed queues, pulse queues, and “repeat while held” helpers because it lets the current task stop cooperatively, always clears the queue, and returns the source to its configured idle output even when task lifecycle cleanup fails.
 
-That lets your subsystem loop decide the final plant target in one place:
+That lets your mechanism decide the final Plant target in one place. The queue, resolver, and Plant
+are long-lived fields. Build the resolver and Plant once in the mechanism constructor; never build
+the graph in the loop:
 
 ```java
-OutputTaskRunner feederQueue = new OutputTaskRunner(0.0);
+// Mechanism fields
+private final OutputTaskRunner feederQueue = new OutputTaskRunner(0.0);
+private final Plant transferShooterPlant;
 
-// In init: define sensor gates as BooleanSource / ScalarSource.
-BooleanSource fireAllowed = shooterReady.and(aimLocked).and(ballAtGate);
-BooleanSource requestShoot = gamepads.p2().rightTrigger().above(0.50);
-BooleanSource ballLeftGate = ballAtGate.fallingEdge();
+// In the mechanism constructor, after copying config and creating sensor/behavior inputs:
+FeederConfig snapshot = Objects.requireNonNull(config, "config").copy();
+PlantTargetResolver finalTarget = PlantTargets.overlay(0.0)
+        .add("feedPulse", feederQueue.activeSource(), feederQueue)
+        .build();
 
-// In your loop:
+this.transferShooterPlant = FtcActuators.plant(hardwareMap)
+        .crServo(snapshot.transferServoName, snapshot.transferDirection)
+        .power()
+        .targetedBy(finalTarget)
+        .build();
+
+// In the mechanism update:
 // Keep one "feedOne" buffered while the driver requests shooting.
 // The task waits in WAIT until fireAllowed is true.
 feederQueue.whileHigh(
@@ -603,14 +628,14 @@ feederQueue.whileHigh(
                 0.30
         )
 );
-ScalarSource base = ScalarSource.constant(0.0);
-PlantTargetResolver finalTarget = PlantTargets.overlay(base)
-        .add("feedPulse", feederQueue.activeSource(), feederQueue)
-        .build();
-
-// Build the Plant with finalTarget during init, then the loop only updates it.
+feederQueue.update(clock);
 transferShooterPlant.update(clock);
 ```
+
+Here `FeederConfig` is illustrative robot code, not a framework type; `snapshot` is the mechanism's
+defensive copy of that data-only config.
+`fireAllowed`, `requestShoot`, and `ballLeftGate` are long-lived mechanism/supervisor inputs created
+during construction; only their sampling, queue advancement, and Plant update happen each cycle.
 
 For the full design rationale and more examples, see [`Output Tasks & Queues`](<Output Tasks & Queues.md>) and [`Recommended Robot Design`](<Recommended Robot Design.md>).
 

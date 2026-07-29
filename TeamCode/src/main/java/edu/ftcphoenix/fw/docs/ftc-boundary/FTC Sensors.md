@@ -68,10 +68,13 @@ encoder, use `.externalEncoder(name[, direction])`; that path maintains continuo
 position at the FTC boundary, then uses the generic `ScalarSource.ratePerSecond()` transform to
 produce native ticks/second:
 
-```java
-ScalarTarget flywheelTarget = ScalarTarget.create(0.0);
+The following Plant builder is an excerpt from the owning mechanism constructor. In a structured
+robot, the composition root passes that constructor `HardwareMap` plus its validated config rather
+than constructing this Plant itself.
 
-Plant flywheel = FtcActuators.plant(hardwareMap)
+```java
+// Inside the mechanism constructor; flywheel is a private field.
+this.flywheel = FtcActuators.plant(hardwareMap)
         .motor("flywheel", Direction.FORWARD)
         .velocity()
         .regulated()
@@ -80,7 +83,7 @@ Plant flywheel = FtcActuators.plant(hardwareMap)
         .bounded(0.0, MAX_FLYWHEEL_RPM)
         .scaleToNative(TICKS_PER_REV / 60.0)
         .velocityTolerance(75.0)
-        .targetedBy(flywheelTarget)
+        .targetedBy(ScalarTarget.create(0.0))
         .build();
 ```
 

@@ -18,7 +18,6 @@ final class StarterIntakeMechanism implements StarterIntake {
     private static final double STOPPED_POWER = 0.0;
 
     private final Plant plant;
-    private final ScalarTarget commandTarget;
     private final double collectPower;
     private final double ejectPower;
 
@@ -27,11 +26,10 @@ final class StarterIntakeMechanism implements StarterIntake {
         requireActionPowers(snapshot.collectPower, snapshot.ejectPower);
         collectPower = snapshot.collectPower;
         ejectPower = snapshot.ejectPower;
-        commandTarget = ScalarTarget.create(STOPPED_POWER);
         plant = FtcActuators.plant(Objects.requireNonNull(hardwareMap, "hardwareMap"))
                 .motor(snapshot.motorName, snapshot.direction)
                 .power()
-                .targetedBy(commandTarget)
+                .targetedBy(ScalarTarget.create(STOPPED_POWER))
                 .build();
     }
 
@@ -45,7 +43,7 @@ final class StarterIntakeMechanism implements StarterIntake {
             throw new IllegalArgumentException(
                     "starter intake plant must have a command target");
         }
-        this.commandTarget = Objects.requireNonNull(
+        Objects.requireNonNull(
                 plant.commandTarget(),
                 "plant.commandTarget()");
         requireActionPowers(collectPower, ejectPower);
@@ -55,7 +53,7 @@ final class StarterIntakeMechanism implements StarterIntake {
 
     @Override
     public void setMode(Mode mode) {
-        commandTarget.set(powerFor(Objects.requireNonNull(mode, "mode")));
+        plant.commandTarget().set(powerFor(Objects.requireNonNull(mode, "mode")));
     }
 
     @Override
@@ -64,7 +62,7 @@ final class StarterIntakeMechanism implements StarterIntake {
             throw new IllegalArgumentException(
                     "durationSec must be finite and > 0, got " + durationSec);
         }
-        return ScalarTasks.set(commandTarget, collectPower)
+        return ScalarTasks.set(plant.commandTarget(), collectPower)
                 .forSeconds(durationSec)
                 .then(STOPPED_POWER)
                 .build();
@@ -72,7 +70,7 @@ final class StarterIntakeMechanism implements StarterIntake {
 
     @Override
     public Status status() {
-        double requestedPower = commandTarget.get();
+        double requestedPower = plant.commandTarget().get();
         return new Status(
                 modeFor(requestedPower),
                 plant.getAppliedTarget());
@@ -84,7 +82,7 @@ final class StarterIntakeMechanism implements StarterIntake {
 
     void stop() {
         CleanupActions.attemptAll(
-                () -> commandTarget.set(STOPPED_POWER),
+                () -> plant.commandTarget().set(STOPPED_POWER),
                 plant::stop);
     }
 

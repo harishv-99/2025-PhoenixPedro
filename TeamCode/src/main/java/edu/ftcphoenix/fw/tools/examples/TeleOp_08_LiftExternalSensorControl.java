@@ -21,6 +21,11 @@ import edu.ftcphoenix.fw.supervisor.HeldValue;
  * <h1>Example 08: Lift with Held Height Selection + External Sensor Feedback</h1>
  *
  * <p>This example shows a simple layered mechanism without a lot of ceremony:</p>
+ *
+ * <p><b>Ownership note:</b> This disabled class is an intentional one-OpMode API lesson.
+ * Ordinary structured robot code follows the Modern Starter pattern: the composition root calls
+ * {@code new Mechanism(hardwareMap, profile.mechanism)}, and that mechanism constructs and
+ * privately owns its Plants and their update/stop lifecycle.</p>
  * <ul>
  *   <li><b>Held selection</b>: A/B/Y choose a desired lift height that stays active until replaced.</li>
  *   <li><b>Trivial execution</b>: the example simply says “hold the selected height.”</li>
@@ -54,7 +59,6 @@ public final class TeleOp_08_LiftExternalSensorControl extends OpMode {
     private Gamepads gamepads;
     private PositionPlant liftPlant;
     private ScalarSource liftHeightIn;
-    private ScalarTarget liftTarget;
 
     private final HeldValue<Double> desiredHeightIn = new HeldValue<Double>(HEIGHT_LOW_IN);
 
@@ -76,7 +80,6 @@ public final class TeleOp_08_LiftExternalSensorControl extends OpMode {
         Pid liftPid = Pid.withGains(0.12, 0.0, 0.0)
                 .setOutputLimits(-0.55, 0.55);
 
-        liftTarget = ScalarTarget.create(0.0);
         liftPlant = FtcActuators.plant(hardwareMap)
                 .motor(HW_LIFT_MOTOR, Direction.FORWARD)
                 .position()
@@ -88,7 +91,7 @@ public final class TeleOp_08_LiftExternalSensorControl extends OpMode {
                 .nativeUnits()
                 .alreadyReferenced()
                 .positionTolerance(0.50)
-                .targetedBy(liftTarget)
+                .targetedBy(ScalarTarget.create(0.0))
                 .build();
 
         bindings.onRise(gamepads.p1().a(), () -> desiredHeightIn.set(HEIGHT_LOW_IN));
@@ -102,7 +105,7 @@ public final class TeleOp_08_LiftExternalSensorControl extends OpMode {
         bindings.update(clock);
 
         // Execution is intentionally trivial here: hold the currently selected height.
-        liftTarget.set(desiredHeightIn.get());
+        liftPlant.commandTarget().set(desiredHeightIn.get());
         liftPlant.update(clock);
 
         telemetry.addData("lift.targetIn", liftPlant.getRequestedTarget());

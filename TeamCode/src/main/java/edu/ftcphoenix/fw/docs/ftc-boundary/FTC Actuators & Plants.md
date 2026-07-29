@@ -9,8 +9,17 @@ This page covers the FTC boundary for Phoenix mechanism wiring:
 * position plant geometry, plant/native unit mapping, and reference policy
 * how tolerances and FTC motor tuning interact
 
-The FTC boundary is where FTC SDK hardware names become Phoenix `Plant` objects. Robot services,
-Tasks, and scalar planners should use the built Plants instead of touching raw SDK devices directly.
+The FTC boundary is where FTC SDK hardware names become Phoenix `Plant` objects. In ordinary robot
+code, the composition root passes `HardwareMap` and a validated, data-only profile slice to a
+mechanism constructor. That mechanism uses the builders on this page, keeps the resulting Plants
+private, and owns their update and stop lifecycle. Robot services, Tasks, and scalar planners use
+the mechanism's semantic API instead of touching either raw SDK devices or raw Plants directly.
+
+The compact builder snippets below are therefore **mechanism-constructor excerpts** unless a
+section explicitly labels a custom hardware adapter or other advanced boundary. Sections that
+compare low-level builder alternatives may declare a short local solely to keep the API difference
+visible; production mechanism code assigns the selected build to a private field, as the complete
+examples do.
 
 ---
 
@@ -19,26 +28,24 @@ Tasks, and scalar planners should use the built Plants instead of touching raw S
 Use `edu.ftcphoenix.fw.ftc.FtcActuators` when you want to create a `Plant` from FTC hardware.
 
 ```java
-ScalarTarget flywheelTarget = ScalarTarget.create(0.0);
-ScalarTarget pusherTarget = ScalarTarget.create(0.0);
-
-Plant flywheel = FtcActuators.plant(hardwareMap)
+// Inside the mechanism constructor; flywheel and pusher are private fields.
+this.flywheel = FtcActuators.plant(hardwareMap)
         .motor("flywheel", Direction.FORWARD)
         .velocity()
         .deviceManagedWithDefaults()
         .bounded(0.0, 2600.0)
         .nativeUnits()
         .velocityTolerance(50.0)
-        .targetedBy(flywheelTarget)
+        .targetedBy(ScalarTarget.create(0.0))
         .build();
 
-PositionPlant pusher = FtcActuators.plant(hardwareMap)
+this.pusher = FtcActuators.plant(hardwareMap)
         .servo("pusher", Direction.FORWARD)
         .position()
         .linear()
             .bounded(0.0, 1.0)
             .nativeUnits()
-        .targetedBy(pusherTarget)
+        .targetedBy(ScalarTarget.create(0.0))
         .build();
 ```
 
@@ -57,7 +64,7 @@ For example, motor position wiring asks:
 7. How is the reference/offset known? `alreadyReferenced()`, `plantPositionMapsToNative(...)`, `assumeCurrentPositionIs(...)`, or `needsReference(...)`
 8. What public position error counts as complete? The required `positionTolerance(...)` answer
 9. Optional dynamic hardware guards: `targetGuards().maxTargetRate(...)`, `holdLastTargetUnless(...)`, `fallbackTargetUnless(...)`
-10. Target binding: `targetedBy(ScalarTarget)` for the ordinary command or
+10. Target binding: `targetedBy(ScalarTarget.create(initialValue))` for the ordinary command or
     `targetedBy(PlantTargetResolver)` for an advanced graph, then `build()`
 
 Motor velocity wiring asks a parallel but smaller set of questions:
@@ -69,7 +76,7 @@ Motor velocity wiring asks a parallel but smaller set of questions:
 5. How do plant velocity units map to native velocity units? `nativeUnits()` or `scaleToNative(...)`
 6. What public velocity error counts as complete? The required `velocityTolerance(...)` answer
 7. Optional dynamic hardware guards: `targetGuards().maxTargetRate(...)`, `holdLastTargetUnless(...)`, `fallbackTargetUnless(...)`
-8. Target binding: `targetedBy(ScalarTarget)` for the ordinary command or
+8. Target binding: `targetedBy(ScalarTarget.create(initialValue))` for the ordinary command or
    `targetedBy(PlantTargetResolver)` for an advanced graph, then `build()`
 
 The tolerance question appears exactly once and only after the public coordinate is known. There is
@@ -84,8 +91,11 @@ position goes from configuration directly to the target-and-guards stage. Both p
 therefore prevent an omitted feedback tolerance or target at compile time without making ordinary
 FTC robot code learn a second hardware API.
 
-Create the ordinary command explicitly with `ScalarTarget.create(initialValue)`, retain it in the
-mechanism owner, and pass it to `targetedBy(...)`. A read-only `ScalarSource` is adapted visibly
+For an ordinary exact Plant, keep one mechanism variable: create the command inline with
+`targetedBy(ScalarTarget.create(initialValue))`, then write it through the Plant's stable,
+side-effect-free `commandTarget()` accessor. A named `ScalarTarget` is still useful when the target
+stands alone, is shared with target-only policy, or is needed while assembling an overlay,
+equivalent-position, or advanced resolver graph. A read-only `ScalarSource` is adapted visibly
 with `PlantTargets.exact(source)`. For a composed
 `PlantTargets.overlay(...)`, only a `ScalarTarget` carried by the base graph becomes the command
 target; conditional layers never do. The final graph supplies that identity automatically, so the
@@ -178,9 +188,7 @@ Use `targetGuards()` only for Plant-level protection that should apply no matter
 requested the target:
 
 ```java
-ScalarTarget liftTarget = ScalarTarget.create(0.0);
-
-PositionPlant lift = FtcActuators.plant(hardwareMap)
+this.lift = FtcActuators.plant(hardwareMap)
         .motor("lift", Direction.FORWARD)
         .position()
         .deviceManagedWithDefaults()
@@ -193,7 +201,7 @@ PositionPlant lift = FtcActuators.plant(hardwareMap)
             .maxTargetRate(1200.0)
             .holdLastTargetUnless("wristClear", wristClear)
             .doneTargetGuards()
-        .targetedBy(liftTarget)
+        .targetedBy(ScalarTarget.create(0.0))
         .build();
 ```
 
@@ -264,9 +272,7 @@ After `motor(...).position()`, Phoenix asks who manages the position loop.
 Use this when FTC `RUN_TO_POSITION` is good enough and you do not need controller-specific tuning:
 
 ```java
-ScalarTarget liftTarget = ScalarTarget.create(0.0);
-
-PositionPlant lift = FtcActuators.plant(hardwareMap)
+this.lift = FtcActuators.plant(hardwareMap)
         .motor("liftMotor", Direction.FORWARD)
         .position()
         .deviceManagedWithDefaults()
@@ -275,7 +281,7 @@ PositionPlant lift = FtcActuators.plant(hardwareMap)
             .nativeUnits()
             .needsReference("lift not homed")
         .positionTolerance(20.0)
-        .targetedBy(liftTarget)
+        .targetedBy(ScalarTarget.create(0.0))
         .build();
 ```
 
@@ -289,9 +295,7 @@ branch, autocomplete shows only device-managed tuning knobs. `doneDeviceManaged(
 main position questions.
 
 ```java
-ScalarTarget liftTarget = ScalarTarget.create(0.0);
-
-PositionPlant lift = FtcActuators.plant(hardwareMap)
+this.lift = FtcActuators.plant(hardwareMap)
         .motor("liftMotor", Direction.FORWARD)
         .position()
         .deviceManaged()
@@ -304,7 +308,7 @@ PositionPlant lift = FtcActuators.plant(hardwareMap)
             .nativeUnits()
             .needsReference("lift not homed")
         .positionTolerance(20.0)
-        .targetedBy(liftTarget)
+        .targetedBy(ScalarTarget.create(0.0))
         .build();
 ```
 
@@ -325,9 +329,7 @@ Use `regulated()` when Phoenix should drive raw motor power from an explicit fee
 regulator:
 
 ```java
-ScalarTarget armTarget = ScalarTarget.create(0.0);
-
-PositionPlant arm = FtcActuators.plant(hardwareMap)
+this.arm = FtcActuators.plant(hardwareMap)
         .motor("armMotor", Direction.FORWARD)
         .position()
         .regulated()
@@ -338,7 +340,7 @@ PositionPlant arm = FtcActuators.plant(hardwareMap)
             .nativeUnits()
             .alreadyReferenced()
         .positionTolerance(20.0)
-        .targetedBy(armTarget)
+        .targetedBy(ScalarTarget.create(0.0))
         .build();
 ```
 
@@ -527,24 +529,33 @@ So for a servo declared as `bounded(-45.0, 90.0)`, calling `rangeMapsToNative(0.
 Example:
 
 ```java
-ScalarTarget clawTarget = ScalarTarget.create(0.0);
+private final PositionPlant claw;
 
-PositionPlant claw = FtcActuators.plant(hardwareMap)
+// In the claw mechanism constructor; production values come from its copied config.
+this.claw = FtcActuators.plant(hardwareMap)
         .servo("clawServo", Direction.FORWARD)
         .position()
         .linear()
             .bounded(0.0, 1.0)
             .rangeMapsToNative(0.30, 0.80)
-        .targetedBy(clawTarget)
+        .targetedBy(ScalarTarget.create(0.0))
         .build();
 ```
 
-Robot code now writes the logical claw command target:
+The mechanism exposes logical intent and owns the Plant update:
 
 ```java
-clawTarget.set(0.0); // raw servo 0.30
-clawTarget.set(1.0); // raw servo 0.80
-claw.update(clock);
+public void close() {
+    claw.commandTarget().set(0.0); // raw servo 0.30
+}
+
+public void open() {
+    claw.commandTarget().set(1.0); // raw servo 0.80
+}
+
+void update(LoopClock clock) {
+    claw.update(clock);
+}
 ```
 
 `rangeMapsToNative(...)` is intentionally not available after `unbounded()` because there is no
@@ -652,30 +663,26 @@ open-loop calibration search, or unbounded travel.
 Raw servo units:
 
 ```java
-ScalarTarget wristTarget = ScalarTarget.create(0.0);
-
-PositionPlant wrist = FtcActuators.plant(hardwareMap)
+this.wrist = FtcActuators.plant(hardwareMap)
         .servo("wrist", Direction.FORWARD)
         .position()
         .linear()
             .bounded(0.0, 1.0)
             .nativeUnits()
-        .targetedBy(wristTarget)
+        .targetedBy(ScalarTarget.create(0.0))
         .build();
 ```
 
 Logical units mapped to raw endpoints:
 
 ```java
-ScalarTarget wristTarget = ScalarTarget.create(0.0);
-
-PositionPlant wrist = FtcActuators.plant(hardwareMap)
+this.wrist = FtcActuators.plant(hardwareMap)
         .servo("wrist", Direction.FORWARD)
         .position()
         .linear()
             .bounded(-45.0, 90.0)
             .rangeMapsToNative(0.22, 0.76)
-        .targetedBy(wristTarget)
+        .targetedBy(ScalarTarget.create(0.0))
         .build();
 ```
 
@@ -689,9 +696,7 @@ CR servos do not have a device-managed position mode. Position control requires 
 a regulator:
 
 ```java
-ScalarTarget turretTarget = ScalarTarget.create(0.0);
-
-PositionPlant turret = FtcActuators.plant(hardwareMap)
+this.turret = FtcActuators.plant(hardwareMap)
         .crServo("turretServo", Direction.FORWARD)
         .position()
         .regulated()
@@ -702,7 +707,7 @@ PositionPlant turret = FtcActuators.plant(hardwareMap)
             .nativeUnits()
             .needsReference("turret not homed")
         .positionTolerance(8.0)
-        .targetedBy(turretTarget)
+        .targetedBy(ScalarTarget.create(0.0))
         .build();
 ```
 
@@ -864,16 +869,14 @@ explicit, including one `velocityTolerance(...)` answer after public-unit mappin
 controller tuning appears only after entering a tuning branch.
 
 ```java
-ScalarTarget shooterTarget = ScalarTarget.create(0.0);
-
-Plant shooter = FtcActuators.plant(hardwareMap)
+this.shooter = FtcActuators.plant(hardwareMap)
         .motor("flywheel", Direction.FORWARD)
         .velocity()
         .deviceManagedWithDefaults()
         .bounded(0.0, 2600.0)
         .nativeUnits()
         .velocityTolerance(50.0)
-        .targetedBy(shooterTarget)
+        .targetedBy(ScalarTarget.create(0.0))
         .build();
 ```
 
@@ -881,9 +884,7 @@ If you need FTC motor velocity PIDF coefficients, deliberately enter the device-
 branch:
 
 ```java
-ScalarTarget shooterTarget = ScalarTarget.create(0.0);
-
-Plant shooter = FtcActuators.plant(hardwareMap)
+this.shooter = FtcActuators.plant(hardwareMap)
         .motor("flywheel", Direction.FORWARD)
         .velocity()
         .deviceManaged()
@@ -892,7 +893,7 @@ Plant shooter = FtcActuators.plant(hardwareMap)
         .bounded(0.0, 2600.0)
         .nativeUnits()
         .velocityTolerance(50.0)
-        .targetedBy(shooterTarget)
+        .targetedBy(ScalarTarget.create(0.0))
         .build();
 ```
 
@@ -919,7 +920,6 @@ static final double TICKS_PER_FLYWHEEL_REV = 28.0;
 static final double TICKS_PER_RPM = TICKS_PER_FLYWHEEL_REV / 60.0;
 
 ScalarSource batteryVoltage = FtcSensors.batteryVoltage(hardwareMap);
-ScalarTarget shooterTarget = ScalarTarget.create(0.0);
 
 PidfRegulator nominalFlywheel = ScalarRegulators.pidf(kP, kI, kD, kF)
         .setIntegralLimits(-0.15, 0.15)
@@ -936,7 +936,7 @@ ScalarRegulator flywheelRegulator = ScalarRegulators.outputLimited(
         maximumFlywheelPower
 );
 
-Plant shooter = FtcActuators.plant(hardwareMap)
+this.shooter = FtcActuators.plant(hardwareMap)
         .motor("flywheel", Direction.FORWARD)
         .velocity()
         .regulated()
@@ -945,7 +945,7 @@ Plant shooter = FtcActuators.plant(hardwareMap)
         .bounded(0.0, 5000.0)          // plant units: RPM
         .scaleToNative(TICKS_PER_RPM)  // native units: FTC ticks/sec
         .velocityTolerance(75.0)       // plant units: RPM
-        .targetedBy(shooterTarget)
+        .targetedBy(ScalarTarget.create(0.0))
         .build();
 ```
 
@@ -1006,16 +1006,14 @@ into a second custom-feedforward API.
 If robot code wants nicer plant velocity units, keep the controller native units explicit:
 
 ```java
-ScalarTarget shooterTarget = ScalarTarget.create(0.0);
-
-Plant shooter = FtcActuators.plant(hardwareMap)
+this.shooter = FtcActuators.plant(hardwareMap)
         .motor("flywheel", Direction.FORWARD)
         .velocity()
         .deviceManagedWithDefaults()
         .bounded(0.0, 5000.0)          // plant units: RPM
         .scaleToNative(TICKS_PER_RPM)  // native units: FTC ticks/sec
         .velocityTolerance(75.0)       // plant units: RPM
-        .targetedBy(shooterTarget)
+        .targetedBy(ScalarTarget.create(0.0))
         .build();
 ```
 

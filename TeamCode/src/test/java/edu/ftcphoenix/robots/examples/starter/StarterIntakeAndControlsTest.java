@@ -53,9 +53,8 @@ public final class StarterIntakeAndControlsTest {
 
     @Test
     public void mechanismMapsModesThroughOneCommandTargetAndSubmitsStop() {
-        ScalarTarget target = ScalarTarget.create(0.0);
         RecordingPowerOutput output = new RecordingPowerOutput();
-        Plant plant = Plants.power(output, target);
+        Plant plant = Plants.power(output, ScalarTarget.create(0.0));
         StarterIntakeMechanism intake =
                 new StarterIntakeMechanism(plant, 0.65, -0.45);
         ManualLoopClock time = new ManualLoopClock();
@@ -137,10 +136,9 @@ public final class StarterIntakeAndControlsTest {
 
     @Test
     public void collectTasksAreFreshCompleteOnTimeAndCancelToZero() {
-        ScalarTarget target = ScalarTarget.create(0.0);
         RecordingPowerOutput output = new RecordingPowerOutput();
         StarterIntakeMechanism intake = new StarterIntakeMechanism(
-                Plants.power(output, target),
+                Plants.power(output, ScalarTarget.create(0.0)),
                 0.70,
                 -0.50);
         ManualLoopClock time = new ManualLoopClock();
@@ -226,10 +224,9 @@ public final class StarterIntakeAndControlsTest {
     }
 
     private static void assertInvalidActionPowers(double collectPower, double ejectPower) {
-        ScalarTarget target = ScalarTarget.create(0.0);
         try {
             new StarterIntakeMechanism(
-                    Plants.power(new RecordingPowerOutput(), target),
+                    Plants.power(new RecordingPowerOutput(), ScalarTarget.create(0.0)),
                     collectPower,
                     ejectPower);
             fail("Expected invalid action powers to fail");

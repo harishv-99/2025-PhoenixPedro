@@ -51,8 +51,8 @@ Why this matters:
 
 A robot container is a class that:
 
-- wires hardware once (plants, sensors)
-- creates subsystems and supervisors
+- retains FTC resources and a defensive robot-profile snapshot
+- constructs subsystems with `HardwareMap` plus their data-only config, and creates supervisors
 - defines gamepad bindings
 - calls `update(...)` each loop in a clear order
 
@@ -62,7 +62,8 @@ Many Phoenix robots start with a single `Robot` class used by TeleOp and Auto Op
 
 A subsystem is responsible for:
 
-- owning hardware objects for a mechanism (plants + sensor Sources)
+- receiving `HardwareMap` plus its data-only config, defensively copying the config, and constructing
+  and owning the mechanism hardware (Plants + sensor Sources)
 - exposing **signals** (`BooleanSource`, `ScalarSource`, `PlantSources`) to the rest of the robot
 - owning **output queues** (`OutputTaskRunner`) when needed
 - computing the **final Plant target resolvers** (base + overrides) and updating the Plants each loop
@@ -91,18 +92,33 @@ Students should start with as few concepts as possible.
 
 This is the simplest possible pattern:
 
-- one named `ScalarTarget` and one `Plant`
+- one command-backed `Plant`
 - one state variable (an enum or boolean)
 - bindings set that state
 - the loop converts state → plant target
 
-Example: a servo with a few valid positions.
+This flat OpMode is an intentional first-lesson exception. It teaches one Plant before a student has
+a robot owner or mechanism class; do not keep the composition root constructing raw Plants after the
+mechanism is extracted. The ordinary structured pattern is Level 1 below and the
+[`Modern Starter Robot`](<../examples/Modern Starter Robot.md>).
+
+Example: a servo with a few valid positions in that one-file lesson.
 
 ```java
 public enum WristPose { STOW, INTAKE, SCORE }
 
-private final ScalarTarget wristTarget = ScalarTarget.create(0.10);
+private Plant wristPlant;
 private WristPose pose = WristPose.STOW;
+
+// init()
+wristPlant = FtcActuators.plant(hardwareMap)
+        .servo("wrist", Direction.FORWARD)
+        .position()
+        .linear()
+            .bounded(0.0, 1.0)
+            .nativeUnits()
+        .targetedBy(ScalarTarget.create(0.10))
+        .build();
 
 // Bindings
 bindings.onRise(gamepads.p1().a(), () -> pose = WristPose.INTAKE);
@@ -118,7 +134,7 @@ switch (pose) {
   default:     target = 0.10; break;
 }
 
-wristTarget.set(target);
+wristPlant.commandTarget().set(target);
 wristPlant.update(clock);
 ```
 
@@ -135,11 +151,71 @@ When the mechanism grows (more sensors, more signals, more modes), extract a sub
 
 The subsystem:
 
-- owns the plant
+- receives `HardwareMap` and a robot-owned data-only config, copies the config, and constructs its
+  private Plant
 - owns the state (`desiredPose`)
-- applies the target each loop
+- exposes semantic commands and applies the target each loop
 
 The OpMode/RobotContainer becomes cleaner: it just binds inputs and calls `subsystem.update(clock)`.
+It constructs the owner, not the raw Plant:
+
+```java
+// Composition root
+wrist = new WristSubsystem(hardwareMap, profile.wrist);
+```
+
+The corresponding mechanism constructor owns the low-level builder (the illustrative `WristConfig`
+is robot code, not a framework type):
+
+```java
+final class WristSubsystem {
+    private final Plant wrist;
+    private final double stowedPosition;
+    private final double intakePosition;
+    private final double scorePosition;
+
+    WristSubsystem(HardwareMap hardwareMap, WristConfig config) {
+        WristConfig snapshot = Objects.requireNonNull(config, "config").copy();
+        this.stowedPosition = snapshot.stowedPosition;
+        this.intakePosition = snapshot.intakePosition;
+        this.scorePosition = snapshot.scorePosition;
+        this.wrist = FtcActuators.plant(
+                        Objects.requireNonNull(hardwareMap, "hardwareMap"))
+                .servo(snapshot.servoName, snapshot.direction)
+                .position()
+                .linear()
+                    .bounded(0.0, 1.0)
+                    .nativeUnits()
+                .targetedBy(ScalarTarget.create(snapshot.stowedPosition))
+                .build();
+    }
+
+    void selectPose(WristPose pose) {
+        wrist.commandTarget().set(targetFor(pose));
+    }
+
+    void update(LoopClock clock) {
+        wrist.update(clock);
+    }
+
+    void stop() {
+        wrist.stop();
+    }
+
+    private double targetFor(WristPose pose) {
+        switch (Objects.requireNonNull(pose, "pose")) {
+            case STOW:
+                return stowedPosition;
+            case INTAKE:
+                return intakePosition;
+            case SCORE:
+                return scorePosition;
+            default:
+                throw new AssertionError("Unhandled wrist pose: " + pose);
+        }
+    }
+}
+```
 
 ---
 
@@ -214,19 +290,31 @@ A typical subsystem update looks like:
 For Plant targets, use `PlantTargets.overlay(...)`. It keeps simple scalar baselines, queued pulse outputs, and smarter Plant-aware target resolvers in the same target-generation lane.
 
 ```java
-// In the subsystem
+// Long-lived subsystem fields
+private final ScalarTarget baseTarget = ScalarTarget.create(0.0);
+private final OutputTaskRunner overrideQueue = new OutputTaskRunner(0.0);
+private final Plant plant;
+
+// In the subsystem constructor: copy config, then build the graph and Plant once.
+MechanismConfig snapshot = Objects.requireNonNull(config, "config").copy();
+PlantTargetResolver finalTarget = PlantTargets.overlay(baseTarget)
+        .add("queue", overrideQueue.activeSource(), overrideQueue)
+        .add("eject", ejectRequested, -1.0)
+        .build();
+
+this.plant = FtcActuators.plant(hardwareMap)
+        .motor(snapshot.motorName, snapshot.direction)
+        .power()
+        .targetedBy(finalTarget)
+        .build();
+
+// In update(clock): advance changing inputs, then apply the already-built graph.
 overrideQueue.update(clock);
-
-ScalarSource base = ScalarSource.constant(baseTarget);
-PlantTargetResolver finalTarget = PlantTargets.overlay(PlantTargets.exact(base))
-    .add("queue", overrideQueue.activeSource(), overrideQueue)
-    .add("eject", ejectRequested, -1.0)
-    .build();
-
-// Prefer building the Plant with finalTarget:
-// FtcActuators.plant(...).power().targetedBy(finalTarget).build();
 plant.update(clock);
 ```
+
+`MechanismConfig` is illustrative robot-owned data, not a framework type. `ejectRequested` is a
+long-lived mechanism/supervisor input; the constructor does not sample it or rebuild the overlay.
 
 Semantics: every layer's activation gate is sampled exactly once each loop, then enabled target
 producers are resolved lazily from the last-added, highest-priority layer downward. The first
@@ -275,23 +363,31 @@ This section is the practical “what should we do” guide.
 
 ### 1) Direct continuous control (sticks/triggers)
 
-**Use:** `ScalarSource` directly.
+**Use:** shape one `ScalarSource` in controls, then copy it each cycle through a semantic mechanism
+command. The mechanism retains the command-backed Plant and owns its update.
 
 Example: motor power from a trigger.
 
 ```java
 ScalarSource intakePower = pads.p1().rightTrigger().scaled(1.0);
-Plant intake = FtcActuators.plant(hardwareMap)
-        .motor("intake", Direction.FORWARD)
-        .power()
-        .targetedBy(PlantTargets.exact(intakePower))
-        .build();
-intake.update(clock);
+bindings.copyEachCycle(intakePower, intake::commandPower);
+```
+
+```java
+// Inside the intake mechanism; its constructor built this private Plant from HardwareMap + config.
+void commandPower(double power) {
+    plant.commandTarget().set(power);
+}
+
+void update(LoopClock clock) {
+    plant.update(clock);
+}
 ```
 
 Best practices:
 
 - apply shaping/clamping in the source graph (`deadband`, `scaled`, `clamped`)
+- let controls call semantic capability methods instead of exposing the Plant
 - keep the subsystem as the owner of target resolvers and Plant updates
 
 ### 2) Hold-to-run
@@ -304,6 +400,10 @@ Simple on/off:
 BooleanSource request = pads.p1().rightBumper();
 ScalarSource out = request.choose(ScalarSource.constant(1.0), ScalarSource.constant(0.0));
 ```
+
+If this source belongs to controls, copy it through a semantic mechanism command as in recipe 1.
+If it belongs to mechanism behavior, compose it into that mechanism's target graph during
+construction. In either case, raw Plants remain private.
 
 If you need a repeated action, use `OutputTaskRunner.whileHigh(...)` (see recipe #5).
 

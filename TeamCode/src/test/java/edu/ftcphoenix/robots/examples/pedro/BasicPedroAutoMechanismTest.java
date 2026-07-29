@@ -23,9 +23,8 @@ public final class BasicPedroAutoMechanismTest {
 
     @Test
     public void collectTasksAreFreshAndActiveCancellationRestoresIdle() {
-        ScalarTarget target = ScalarTarget.create(0.0);
         RecordingPowerOutput output = new RecordingPowerOutput();
-        Plant plant = Plants.power(output, target);
+        Plant plant = Plants.power(output, ScalarTarget.create(0.0));
         BasicPedroAutoMechanism mechanism = new BasicPedroAutoMechanism(plant, 0.75);
         Task first = mechanism.collectTask(0.50);
         Task second = mechanism.collectTask(0.50);
@@ -33,7 +32,7 @@ public final class BasicPedroAutoMechanismTest {
 
         assertNotSame(first, second);
         first.start(time.clock());
-        assertEquals(0.75, target.get(), 0.0);
+        assertEquals(0.75, plant.commandTarget().get(), 0.0);
 
         mechanism.update(time.clock());
         assertEquals(0.75, output.commandedPower, 0.0);
@@ -42,7 +41,7 @@ public final class BasicPedroAutoMechanismTest {
         first.cancel();
         assertTrue(first.isComplete());
         assertEquals(TaskOutcome.CANCELLED, first.getOutcome());
-        assertEquals(0.0, target.get(), 0.0);
+        assertEquals(0.0, plant.commandTarget().get(), 0.0);
 
         mechanism.update(time.nextCycle(0.02));
         assertEquals(0.0, output.commandedPower, 0.0);
@@ -64,15 +63,27 @@ public final class BasicPedroAutoMechanismTest {
     }
 
     @Test
-    public void constructorDerivesCommandOnceAndLaterBehaviorUsesCachedTarget() {
+    public void constructorValidatesCommandAndLaterBehaviorUsesStablePlantAccessor() {
         CountingCommandPlant plant = new CountingCommandPlant();
         BasicPedroAutoMechanism mechanism = new BasicPedroAutoMechanism(plant, 0.75);
 
-        mechanism.collectTask(0.50);
-        mechanism.idleTask();
+        assertEquals(1, plant.commandTargetCalls);
+
+        Task collect = mechanism.collectTask(0.50);
+        assertEquals(2, plant.commandTargetCalls);
+        Task idle = mechanism.idleTask();
+        assertEquals(3, plant.commandTargetCalls);
+
+        ManualLoopClock time = new ManualLoopClock();
+        collect.start(time.clock());
+        assertEquals(0.75, plant.target.get(), 0.0);
+        collect.cancel();
+        idle.start(time.clock());
+        assertEquals(0.0, plant.target.get(), 0.0);
+
         mechanism.stop();
 
-        assertEquals(1, plant.commandTargetCalls);
+        assertEquals(4, plant.commandTargetCalls);
         assertEquals(0.0, plant.target.get(), 0.0);
     }
 

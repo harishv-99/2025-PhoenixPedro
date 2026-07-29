@@ -6,6 +6,7 @@ import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 
 import edu.ftcphoenix.fw.actuation.Plant;
 import edu.ftcphoenix.fw.actuation.ScalarTasks;
+import edu.ftcphoenix.fw.core.lifecycle.CleanupActions;
 import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.debug.NullDebugSink;
 import edu.ftcphoenix.fw.core.hal.Direction;
@@ -30,6 +31,11 @@ import edu.ftcphoenix.fw.task.Tasks;
  * <p>This example builds on <b>Example 02: Shooter Basic</b> and shows how
  * to use the {@code fw.task} and {@code ScalarTasks} utilities to create a
  * <b>one-button "shoot one ball" macro</b>.</p>
+ *
+ * <p><b>Ownership note:</b> This disabled class is an intentional one-OpMode API lesson.
+ * Ordinary structured robot code follows the Modern Starter pattern: the composition root calls
+ * {@code new Mechanism(hardwareMap, profile.mechanism)}, and that mechanism constructs and
+ * privately owns its Plants and their update/stop lifecycle.</p>
  *
  * <p>High-level behavior of the macro:</p>
  *
@@ -60,16 +66,16 @@ import edu.ftcphoenix.fw.task.Tasks;
  *   </li>
  *   <li><b>How to use {@link ScalarTasks}</b> to create target-writing tasks:
  *     <ul>
- *       <li>{@code ScalarTasks.set(shooterTarget, value).untilReachedBy(shooter)} – guided
+ *       <li>{@code ScalarTasks.set(shooter.commandTarget(), value).untilReachedBy(shooter)} – guided
  *           feedback moves that require the command path to win and wait for physical arrival.</li>
- *       <li>{@code ScalarTasks.set(transferTarget, value).forSeconds(...)} – guided writes such as
+ *       <li>{@code ScalarTasks.set(transfer.commandTarget(), value).forSeconds(...)} – guided writes such as
  *           “hold this transfer power for 0.2 seconds, then stop”.</li>
  *     </ul>
  *   </li>
  *   <li><b>How macros interact with the main loop</b>:
  *     <ul>
- *       <li>Macros write retained {@link ScalarTarget}s through {@link ScalarTasks}; they do not
- *           write hardware directly.</li>
+ *       <li>Macros write each Plant's retained {@link ScalarTarget} through {@link ScalarTasks};
+ *           they do not write hardware directly.</li>
  *       <li>The main loop is still responsible for calling
  *           {@link Plant#update(LoopClock)} once per loop.</li>
  *       <li>When no macro is active, we apply a simple “safe default” for
@@ -201,9 +207,6 @@ public final class TeleOp_03_ShooterMacro extends OpMode {
     private Plant shooter;
     private Plant transfer;
     private Plant pusher;
-    private ScalarTarget shooterTarget;
-    private ScalarTarget transferTarget;
-    private ScalarTarget pusherTarget;
 
     // Macro runner for shooting
     private final TaskRunner macroRunner = new TaskRunner();
@@ -238,10 +241,6 @@ public final class TeleOp_03_ShooterMacro extends OpMode {
 
         // === 3) Mechanism wiring using FtcActuators ===
 
-        shooterTarget = ScalarTarget.create(0.0);
-        transferTarget = ScalarTarget.create(0.0);
-        pusherTarget = ScalarTarget.create(PUSHER_POS_RETRACT);
-
         shooter = FtcActuators.plant(hardwareMap)
                 .motor(HW_SHOOTER_LEFT, Direction.FORWARD)
                 .andMotor(HW_SHOOTER_RIGHT, Direction.REVERSE)
@@ -250,14 +249,14 @@ public final class TeleOp_03_ShooterMacro extends OpMode {
                 .bounded(0.0, SHOOTER_VELOCITY_NATIVE)
                 .nativeUnits()
                 .velocityTolerance(SHOOTER_VELOCITY_TOLERANCE_NATIVE)
-                .targetedBy(shooterTarget)
+                .targetedBy(ScalarTarget.create(0.0))
                 .build();
 
         transfer = FtcActuators.plant(hardwareMap)
                 .crServo(HW_TRANSFER_LEFT, Direction.FORWARD)
                 .andCrServo(HW_TRANSFER_RIGHT, Direction.REVERSE)
                 .power()
-                .targetedBy(transferTarget)
+                .targetedBy(ScalarTarget.create(0.0))
                 .build();
 
         pusher = FtcActuators.plant(hardwareMap)
@@ -266,7 +265,7 @@ public final class TeleOp_03_ShooterMacro extends OpMode {
                 .linear()
                 .bounded(0.0, 1.0)
                 .nativeUnits()
-                .targetedBy(pusherTarget)
+                .targetedBy(ScalarTarget.create(PUSHER_POS_RETRACT))
                 .build();
 
         // === 4) Bindings: hook buttons to macro actions ===
@@ -317,9 +316,9 @@ public final class TeleOp_03_ShooterMacro extends OpMode {
 
         // When no macro is active, hold a safe default state.
         if (!macroRunner.hasActiveTask()) {
-            shooterTarget.set(0.0);
-            transferTarget.set(0.0);
-            pusherTarget.set(PUSHER_POS_RETRACT);
+            shooter.commandTarget().set(0.0);
+            transfer.commandTarget().set(0.0);
+            pusher.commandTarget().set(PUSHER_POS_RETRACT);
         }
 
         // --- 4) Drive: always under manual control ---
@@ -371,8 +370,14 @@ public final class TeleOp_03_ShooterMacro extends OpMode {
      */
     @Override
     public void stop() {
-        cancelShootMacros();
-        drivebase.stop();
+        CleanupActions.attemptAll(
+                macroRunner::cancelAndClear,
+                () -> { if (shooter != null) shooter.commandTarget().set(0.0); },
+                () -> { if (transfer != null) transfer.commandTarget().set(0.0); },
+                () -> { if (shooter != null) shooter.stop(); },
+                () -> { if (transfer != null) transfer.stop(); },
+                () -> { if (pusher != null) pusher.stop(); },
+                () -> { if (drivebase != null) drivebase.stop(); });
     }
 
     // ----------------------------------------------------------------------
@@ -398,9 +403,9 @@ public final class TeleOp_03_ShooterMacro extends OpMode {
      */
     private void cancelShootMacros() {
         macroRunner.cancelAndClear();
-        shooterTarget.set(0.0);
-        transferTarget.set(0.0);
-        pusherTarget.set(PUSHER_POS_RETRACT);
+        shooter.commandTarget().set(0.0);
+        transfer.commandTarget().set(0.0);
+        pusher.commandTarget().set(PUSHER_POS_RETRACT);
     }
 
     /**
@@ -414,7 +419,7 @@ public final class TeleOp_03_ShooterMacro extends OpMode {
      */
     private Task buildShootOneBallMacro() {
         // Step 1: set shooter target and wait for atTarget() or timeout.
-        Task spinUp = ScalarTasks.set(shooterTarget, SHOOTER_VELOCITY_NATIVE)
+        Task spinUp = ScalarTasks.set(shooter.commandTarget(), SHOOTER_VELOCITY_NATIVE)
                 .untilReachedBy(shooter)
                 .cancelTo(0.0)
                 .timeout(SHOOTER_SPINUP_TIMEOUT_SEC)
@@ -424,17 +429,17 @@ public final class TeleOp_03_ShooterMacro extends OpMode {
         //
         //  - Transfer runs at shoot power for TRANSFER_PULSE_SEC, then stops.
         //  - Pusher steps through LOAD → SHOOT → RETRACT positions.
-        Task feedTransfer = ScalarTasks.set(transferTarget, TRANSFER_POWER_SHOOT)
+        Task feedTransfer = ScalarTasks.set(transfer.commandTarget(), TRANSFER_POWER_SHOOT)
                 .forSeconds(TRANSFER_PULSE_SEC)
                 .then(0.0)
                 .build();
 
-        Task pusherLoad = ScalarTasks.set(pusherTarget, PUSHER_POS_LOAD)
+        Task pusherLoad = ScalarTasks.set(pusher.commandTarget(), PUSHER_POS_LOAD)
                 .forSeconds(PUSHER_STAGE_SEC)
                 .leaveThere()
                 .build();
 
-        Task pusherShoot = ScalarTasks.set(pusherTarget, PUSHER_POS_SHOOT)
+        Task pusherShoot = ScalarTasks.set(pusher.commandTarget(), PUSHER_POS_SHOOT)
                 .forSeconds(PUSHER_STAGE_SEC)
                 .then(PUSHER_POS_RETRACT)
                 .build();
@@ -450,12 +455,12 @@ public final class TeleOp_03_ShooterMacro extends OpMode {
         );
 
         // Step 3: optionally hold shooter briefly, then spin down to 0.
-        Task holdBeforeSpinDown = ScalarTasks.set(shooterTarget, SHOOTER_VELOCITY_NATIVE)
+        Task holdBeforeSpinDown = ScalarTasks.set(shooter.commandTarget(), SHOOTER_VELOCITY_NATIVE)
                 .forSeconds(SHOOTER_SPINDOWN_HOLD_SEC)
                 .leaveThere()
                 .build();
 
-        Task spinDown = ScalarTasks.set(shooterTarget, 0.0).build();
+        Task spinDown = ScalarTasks.set(shooter.commandTarget(), 0.0).build();
 
         return Tasks.sequence(
                 spinUp,

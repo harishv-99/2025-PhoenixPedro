@@ -16,6 +16,19 @@ The Plant answers:
 can this hardware safely apply that request, and is the mechanism at that target?
 ```
 
+## How to read the construction examples
+
+In an ordinary FTC robot, a mechanism constructor receives `HardwareMap` plus its robot-owned,
+data-only config, defensively copies that config, and constructs its private final target graph and
+Plant there. The composition root constructs the mechanism; it does not normally construct a Plant
+and pass that raw Plant across the boundary. The mechanism also owns Plant update order, stop, and
+semantic methods such as `collect()` or `aimAt(...)`.
+
+The short resolver and `FtcActuators` fragments in this guide are therefore construction-time
+excerpts from that owner unless a section explicitly labels a lower-level custom-adapter or test
+seam. Resolver graphs are built once, not rebuilt in `update(...)`. The complete beginner reference
+is [`Modern Starter Robot`](<../examples/Modern Starter Robot.md>).
+
 ```text
 controller / service / autonomous policy
     decides which behavior is active
@@ -85,10 +98,16 @@ The Plant builder has one ordinary binding and one advanced binding:
 .targetedBy(PlantTargetResolver resolver) // full Plant-aware target graph
 ```
 
-Create the ordinary command explicitly with `ScalarTarget.create(initialValue)` while assembling
-the Plant's final graph. If a Plant should follow a read-only `ScalarSource`, make that adaptation
-visible with `targetedBy(PlantTargets.exact(source))`. This keeps `targetedBy(...)` from hiding
-whether robot code has a writable command.
+For a simple exact Plant, keep one Plant variable and create its command inline with
+`targetedBy(ScalarTarget.create(initialValue))`. Immediate methods and Tasks retrieve that same
+stable command with `plant.commandTarget()`. Retrieval is side-effect-free, so ordinary robot code
+may do that at the point of use instead of retaining a second field beside the Plant.
+
+Keep a named `ScalarTarget` when it is useful before the Plant exists: for a standalone or shared
+request, a target-only policy object, or the base of an overlay, equivalent-position transform, or
+advanced graph. If a Plant should follow a read-only `ScalarSource`, make that adaptation visible
+with `targetedBy(PlantTargets.exact(source))`. This keeps `targetedBy(...)` from hiding whether robot
+code has a writable command.
 
 The final graph owns this relationship; the builder never asks robot code to register a second,
 possibly disconnected target. An exact source carries a command target when its runtime object is a
@@ -96,17 +115,20 @@ possibly disconnected target. An exact source carries a command target when its 
 as conditional layers never become the command target, because a task writing a layer does not own
 that layer's activation and an overlay may contain several such layers.
 
-Put the stable robot request in the base when tasks should be able to command a composed Plant:
+Put the stable robot request in the base when tasks should be able to command a composed Plant. This
+is a construction-time excerpt from the mechanism that owns `arm`:
 
 ```java
-ScalarTarget armCommand = ScalarTarget.create(STOWED);
+private final ScalarTarget armCommand = ScalarTarget.create(STOWED);
+private final PositionPlant arm;
 
+// In the ArmMechanism constructor:
 PlantTargetResolver finalArmTarget = PlantTargets.overlay(armCommand)
         .add("autoStow", autoStowRequested, STOWED)
         .add("manual", manualActive, manualTarget)
         .build();
 
-PositionPlant arm = FtcActuators.plant(hardwareMap)
+this.arm = FtcActuators.plant(hardwareMap)
         .motor("arm", Direction.FORWARD)
         .position()
         .deviceManagedWithDefaults()
@@ -140,48 +162,75 @@ command target → requested target → applied target → actuator command
 The command target is optional. Constants, ordinary read-only sources, planned resolvers, measured holds,
 and custom target graphs without a command base cannot support a feedback-aware `ScalarTasks`
 move. `hasCommandTarget()` reports that capability, while `commandTarget()` remains available for
-framework validation, calibration, compact testers, and the owner boundary described below.
+framework validation, calibration, compact testers, and the mechanism-owner pattern described
+below.
 
-### Pass one authoritative object across an ownership boundary
+### Keep one Plant variable for a simple exact mechanism
 
-Graph construction needs the named `ScalarTarget` before the Plant exists. That does not mean every
-later constructor should receive both objects. When a mechanism realization owns the completed
-Plant's lifecycle and writes its persistent command, pass only the Plant. The realization validates
-that `hasCommandTarget()` is true and caches `plant.commandTarget()` once:
+A simple exact Plant creates its command inline, and the mechanism owner retains only the completed
+Plant. `commandTarget()` returns the same stable `ScalarTarget` for the Plant's lifetime and has no
+sampling or hardware side effects, so commands can retrieve it where they write it. Following the
+starter pattern, the ordinary ownership shape is (`IntakeConfig` is illustrative robot-owned data,
+not a framework type):
 
 ```java
-public IntakeMechanism(Plant intake, double collectPower) {
-    this.intake = Objects.requireNonNull(intake, "intake");
-    if (!intake.hasCommandTarget()) {
-        throw new IllegalArgumentException("intake must have a command target");
+final class IntakeMechanism {
+    private static final double STOPPED_POWER = 0.0;
+
+    private final Plant intake;
+    private final double collectPower;
+
+    IntakeMechanism(HardwareMap hardwareMap, IntakeConfig config) {
+        IntakeConfig snapshot = Objects.requireNonNull(config, "config").copy();
+        this.collectPower = snapshot.collectPower;
+        this.intake = FtcActuators.plant(
+                        Objects.requireNonNull(hardwareMap, "hardwareMap"))
+                .motor(snapshot.motorName, snapshot.direction)
+                .power()
+                .targetedBy(ScalarTarget.create(STOPPED_POWER))
+                .build();
     }
-    this.intakeCommand = Objects.requireNonNull(
-            intake.commandTarget(), "intake.commandTarget()");
-    this.collectPower = collectPower;
+
+    public void collect() {
+        intake.commandTarget().set(collectPower);
+    }
+
+    void update(LoopClock clock) {
+        intake.update(clock);
+    }
+
+    void stop() {
+        CleanupActions.attemptAll(
+                () -> intake.commandTarget().set(STOPPED_POWER),
+                intake::stop);
+    }
 }
 ```
 
-The composition root still assembles the graph explicitly, but it does not pass the same
-relationship twice:
+The composition root passes FTC resources and checked-in configuration to that owner:
 
 ```java
-ScalarTarget intakeCommand = ScalarTarget.create(0.0);
-Plant intake = builder.targetedBy(intakeCommand).build();
-IntakeMechanism mechanism = new IntakeMechanism(intake, COLLECT_POWER);
+intake = new IntakeMechanism(hardwareMap, profile.intake);
 ```
 
-An overlay follows the same rule: retain its named base while constructing the graph, let the final
-Plant carry that base as its command identity, then give the completed Plant to its realization. A
-read-only or planned realization also receives only its Plant but does not require or invent a
-command target. A policy object that only writes a standalone or deliberately shared request and
-does not own Plant lifecycle receives only the `ScalarTarget` or a robot-owned semantic capability.
+An overlay follows the related composed-graph rule inside the same owner: retain its named base while
+constructing the graph, let the final Plant carry that base as its command identity, then retain the
+completed Plant. A read-only or planned mechanism also constructs and retains only its Plant but
+does not require or invent a command target. A policy object that only writes a standalone or
+deliberately shared request and does not own Plant lifecycle receives only the `ScalarTarget` or a
+robot-owned semantic capability.
+
+Injecting a completed Plant is an explicit exception for a package-private hardware-neutral test
+seam, a custom hardware adapter, or another deliberately portable host. Label that constructor as
+such. At that seam, pass the Plant alone—never a Plant and its target as peer dependencies—and
+validate `hasCommandTarget()` only when the injected owner needs a writable command.
 
 Do not replace this rule with `Plant.set(...)`, a Plant-root Task facade, a target-to-Plant backlink,
 or a public binding wrapper. Those add a second command path or another noun. The one intentional
 place both objects remain explicit is a feedback-aware Task:
 
 ```java
-ScalarTasks.set(intakeCommand, GOAL)
+ScalarTasks.set(intake.commandTarget(), GOAL)
         .untilReachedBy(intake)
         .cancelTo(IDLE)
         .build();
@@ -193,12 +242,14 @@ Plant, so the observer cannot be inferred from the target.
 
 ## Exact targets
 
-Use a `ScalarTarget` when robot code or tasks should write a persistent command target.
+For an ordinary exact Plant, create the command inline in the owning mechanism constructor and
+retrieve it from the Plant when a semantic method or Task writes it:
 
 ```java
-ScalarTarget liftTarget = ScalarTarget.create(0.0);
+private final PositionPlant lift;
 
-PositionPlant lift = FtcActuators.plant(hardwareMap)
+// In the LiftMechanism constructor:
+this.lift = FtcActuators.plant(hardwareMap)
         .motor("lift", Direction.FORWARD)
         .position()
         .deviceManagedWithDefaults()
@@ -207,31 +258,23 @@ PositionPlant lift = FtcActuators.plant(hardwareMap)
             .nativeUnits()
             .needsReference("lift not homed")
         .positionTolerance(20.0)
-        .targetedBy(liftTarget)
+        .targetedBy(ScalarTarget.create(0.0))
         .build();
 
-liftTarget.set(BASKET_TICKS);
-lift.update(clock);
+// In semantic command/update methods on LiftMechanism:
+void selectBasket() {
+    lift.commandTarget().set(BASKET_TICKS);
+}
+
+void update(LoopClock clock) {
+    lift.update(clock);
+}
 ```
 
-The same named target is also the Task entry point:
+The same Plant-owned target is also the Task entry point:
 
 ```java
-ScalarTarget liftTarget = ScalarTarget.create(0.0);
-
-PositionPlant lift = FtcActuators.plant(hardwareMap)
-        .motor("lift", Direction.FORWARD)
-        .position()
-        .deviceManagedWithDefaults()
-        .linear()
-            .bounded(0.0, 4200.0)
-            .nativeUnits()
-            .needsReference("lift not homed")
-        .positionTolerance(20.0)
-        .targetedBy(liftTarget)
-        .build();
-
-Task raiseLift = ScalarTasks.set(liftTarget, BASKET_TICKS)
+Task raiseLift = ScalarTasks.set(lift.commandTarget(), BASKET_TICKS)
         .untilReachedBy(lift)
         .cancelTo(0.0)
         .build();
@@ -317,16 +360,20 @@ layers do not become competing writers.
 ## Overlays: behavior priority in target space
 
 Use `PlantTargets.overlay(...)` when several behaviors can influence the same Plant. The base target
-must be total. Later enabled layers have higher priority.
+must be total. Later enabled layers have higher priority. Build this graph and its Plant once in the
+mechanism constructor; `update(...)` advances queue/task inputs and then updates the Plant.
 
 ```java
+private final Plant feeder;
+
+// In the FeederMechanism constructor:
 PlantTargetResolver feederTarget = PlantTargets.overlay(0.0)
         .add("stage", stageRequested, 0.20)
         .add("feedPulse", feedPulseQueue.activeSource(), feedPulseQueue)
         .add("eject", ejectRequested, -1.0)
         .build();
 
-Plant feeder = FtcActuators.plant(hardwareMap)
+this.feeder = FtcActuators.plant(hardwareMap)
         .motor("feeder", Direction.FORWARD)
         .power()
         .targetedBy(feederTarget)
@@ -610,8 +657,14 @@ the supplied Plant has feedback and that `command` is the exact command target o
 
 Plant target generation is behavior policy. Plant target guards are hardware protection.
 
+The builder below is an excerpt from the lift mechanism constructor; the mechanism's loop later
+calls only `lift.update(clock)` after its resolver inputs are ready.
+
 ```java
-PositionPlant lift = FtcActuators.plant(hardwareMap)
+private final PositionPlant lift;
+
+// In the LiftMechanism constructor:
+this.lift = FtcActuators.plant(hardwareMap)
         .motor("lift", Direction.FORWARD)
         .position()
         .deviceManagedWithDefaults()
@@ -624,7 +677,7 @@ PositionPlant lift = FtcActuators.plant(hardwareMap)
             .maxTargetRate(1200.0)
             .holdLastTargetUnless("wrist clear", wristClear)
             .doneTargetGuards()
-        .targetedBy(liftTarget)
+        .targetedBy(ScalarTarget.create(0.0))
         .build();
 ```
 

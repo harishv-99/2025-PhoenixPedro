@@ -267,18 +267,26 @@ reference as a side effect of reading it. Student code using the standard `FtcAc
 
 Most teams should **not** call `FtcHardware` directly. Use the staged builder in `FtcActuators`:
 
+In a structured robot, use this builder inside the mechanism constructor. The composition root
+passes `HardwareMap` and the mechanism's data-only profile config; the mechanism defensively copies
+that config, constructs and retains its private Plants, and owns their update and stop order. The
+fragments below focus only on the low-level builder choices, so their literal names and values stand
+in for fields from that copied config. See [`Modern Starter Robot`](<../examples/Modern Starter Robot.md>)
+for the complete ordinary ownership shape.
+
 ```java
 import edu.ftcphoenix.fw.core.hal.Direction;
 import edu.ftcphoenix.fw.core.source.ScalarTarget;
 import edu.ftcphoenix.fw.ftc.FtcActuators;
 import edu.ftcphoenix.fw.actuation.Plant;
 
-ScalarTarget shooterTarget = ScalarTarget.create(0.0);
-ScalarTarget transferTarget = ScalarTarget.create(0.0);
-ScalarTarget pusherTarget = ScalarTarget.create(0.0);
+private final Plant shooter;
+private final Plant transfer;
+private final Plant pusher;
 
+// In the owning mechanism constructor:
 // Shooter: dual-motor velocity plant with a rate limit.
-Plant shooter = FtcActuators.plant(hardwareMap)
+this.shooter = FtcActuators.plant(hardwareMap)
         .motor("shooterLeftMotor", Direction.FORWARD)
         .andMotor("shooterRightMotor", Direction.REVERSE)
         .velocity()
@@ -289,26 +297,31 @@ Plant shooter = FtcActuators.plant(hardwareMap)
         .targetGuards()
             .maxTargetRate(500.0)    // max delta in plant units per second
             .doneTargetGuards()
-        .targetedBy(shooterTarget)
+        .targetedBy(ScalarTarget.create(0.0))
         .build();
 
 // Transfer: CR servo power plant.
-Plant transfer = FtcActuators.plant(hardwareMap)
+this.transfer = FtcActuators.plant(hardwareMap)
         .crServo("transferServo", Direction.FORWARD)
         .power()
-        .targetedBy(transferTarget)
+        .targetedBy(ScalarTarget.create(0.0))
         .build();
 
 // Pusher: positional servo plant (0..1).
-Plant pusher = FtcActuators.plant(hardwareMap)
+this.pusher = FtcActuators.plant(hardwareMap)
         .servo("pusherServo", Direction.FORWARD)
         .position()
         .linear()
             .bounded(0.0, 1.0)
             .nativeUnits()
-        .targetedBy(pusherTarget)
+        .targetedBy(ScalarTarget.create(0.0))
         .build();
 ```
+
+Each simple exact mechanism retains only its Plant. `plant.commandTarget()` returns its same stable
+`ScalarTarget` without sampling or writing hardware, so immediate methods and `ScalarTasks` may use
+it directly. Keep a separate named target when it is standalone, deliberately shared, owned by a
+target-only policy object, or needed while assembling a composed target graph.
 
 The builder stays domain-first (`power()`, `position()`, `velocity()`). Position Plants then ask
 small guided questions about control strategy, topology, bounds, unit mapping, and reference policy.
@@ -336,7 +349,9 @@ addition has no additional hardware effects. This validation does not change the
 that differently named entries are physically different devices, or reserve names across owners.
 The actuator and its feedback may intentionally use the same configured name.
 
-**Important:** tasks write the Plant's command target; *your loop* must still call `plant.update(clock)` each cycle so the Plant invokes the final target resolver and applies hardware guards.
+**Important:** tasks write the Plant's command target; the owning mechanism's `update(clock)` must
+still call its private `plant.update(clock)` each cycle so the Plant invokes the final target
+resolver and applies hardware guards.
 
 ---
 
@@ -636,25 +651,25 @@ must not start the continuation. Keep an operation's own timeout when it has pha
 operation-specific safe cleanup, or a richer result such as `RouteStatus.TASK_TIMEOUT`; the outer
 wrapper may report `TIMEOUT` while its cancelled child reports `CANCELLED`.
 
-Example macro (shoot one disc):
+Example macro (shoot one disc) inside the mechanism that owns the private Plants:
 
 ```java
 import edu.ftcphoenix.fw.actuation.Plant;
 import edu.ftcphoenix.fw.actuation.ScalarTasks;
-import edu.ftcphoenix.fw.core.source.ScalarTarget;
 import edu.ftcphoenix.fw.task.Task;
 import edu.ftcphoenix.fw.task.Tasks;
 
-private Task buildShootOneDiscMacro(ScalarTarget shooterTarget,
-                                    Plant shooter,
-                                    ScalarTarget transferTarget) {
+private final Plant shooter;
+private final Plant transfer;
+
+public Task createShootOneDiscTask() {
     return Tasks.sequence(
-            ScalarTasks.set(shooterTarget, 3200.0)
+            ScalarTasks.set(shooter.commandTarget(), 3200.0)
                     .untilReachedBy(shooter)
                     .cancelTo(0.0)
                     .timeout(1.0)
                     .build(),
-            ScalarTasks.set(transferTarget, 1.0)
+            ScalarTasks.set(transfer.commandTarget(), 1.0)
                     .forSeconds(0.20)
                     .then(0.0)
                     .build()
@@ -662,11 +677,11 @@ private Task buildShootOneDiscMacro(ScalarTarget shooterTarget,
 }
 ```
 
-The feedback branch names both `shooterTarget` and `shooter` deliberately: the target is the
-request being written, while the Plant is the feedback/provenance observer. The timed transfer
-branch needs only its target. A Plant-owning realization would receive the completed Plant once and
-cache its graph-owned command internally rather than accept the pair as independent constructor
-dependencies.
+The feedback branch retrieves the shooter's command target and also names `shooter` as the
+feedback/provenance observer. The timed transfer branch retrieves only the transfer Plant's stable
+command. The mechanism therefore keeps one variable per simple Plant and exposes a semantic Task
+factory instead of accepting raw Plants at the call site or retaining duplicate targets beside
+them. Each call creates a fresh, single-use Task graph.
 
 A feedback move must choose `.cancelTo(value)` or `.leaveTargetOnCancel()` immediately after
 `.untilReachedBy(plant)`. `cancelTo(...)` changes the command target in Plant units; it does not
@@ -709,9 +724,12 @@ Bindings bindings = new Bindings();
 TaskRunner macros = new TaskRunner();
 
 bindings.onRise(gamepads.p1().y(), () ->
-        macros.enqueue(buildShootOneDiscMacro(shooterTarget, shooter, transferTarget))
+        macros.enqueue(scoring.createShootOneDiscTask())
 );
 ```
+
+Here `scoring` is the robot-owned mechanism/capability visible to controls; raw Plants remain private
+to its realization.
 
 For a continuous non-drive mechanism command, bind the scalar each loop instead of writing directly to a plant:
 
@@ -756,11 +774,10 @@ public void loop() {
     DriveSignal cmd = driveSource.get(clock).clamped();
     drivebase.drive(cmd);
 
-    // 5) Mechanisms
-    shooter.update(clock);
-    transfer.update(clock);
+    // 5) Mechanisms (each owner updates its private Plants)
+    scoring.update(clock);
 
-    // 7) Telemetry
+    // 6) Telemetry
     telemetry.update();
 }
 ```

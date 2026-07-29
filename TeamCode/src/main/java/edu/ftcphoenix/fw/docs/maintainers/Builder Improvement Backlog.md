@@ -90,9 +90,9 @@ position, but without position-only concepts like topology, reference, and homin
 3. choose plant/native velocity mapping (`nativeUnits()` or `scaleToNative(...)`)
 4. answer the required plant-unit completion question exactly once with `velocityTolerance(...)`
 5. optionally set guards such as `targetGuards().maxTargetRate(...)`
-6. bind a named command with `targetedBy(ScalarTarget)`, or bind an advanced composed graph with
-   `targetedBy(PlantTargetResolver)`; adapt a read-only scalar explicitly with
-   `PlantTargets.exact(source)`
+6. bind an ordinary command inline with `targetedBy(ScalarTarget.create(initialValue))`, or bind an
+   advanced composed graph with `targetedBy(PlantTargetResolver)`; adapt a read-only scalar
+   explicitly with `PlantTargets.exact(source)`
 
 The old `MotorVelocityControl` value-object API was removed instead of retained as a parallel path.
 Velocity uses a zero-preserving mapping only; no `rangeMapsToNative(...)` is exposed for velocity.
