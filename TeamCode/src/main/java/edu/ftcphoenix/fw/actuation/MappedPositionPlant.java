@@ -18,9 +18,9 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * implementation.</p>
  *
  * <h2>Coordinate model</h2>
- * <pre>{@code
- * native = nativeReference + nativePerPlantUnit * (plant - plantReference)
- * }</pre>
+ * <pre>
+ * nativePosition = nativeReference + nativePerPlantUnit * (plantPosition - plantReference)
+ * </pre>
  *
  * <p>Every configured or runtime reference value must be finite in its documented plant/native
  * units. A reference pair is a coordinate anchor rather than a command and need not lie inside the

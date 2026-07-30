@@ -365,10 +365,10 @@ public interface DriveSource extends Source<DriveSignal> {
      *         driver.rightX(),
      *         GamepadDriveSource.Config.defaults()
      * );
-     * DriveOverlay aim = DriveGuidance.plan()...build().overlay();
+     * // aimPlan is a complete DriveGuidancePlan owned by the robot's targeting service.
      * DriveSource assisted = manual.overlayWhen(
      *         driver.x(),
-     *         aim,
+     *         aimPlan.overlay(),
      *         DriveOverlayMask.OMEGA_ONLY);
      * }</pre>
      */

@@ -19,7 +19,11 @@ The compact builder snippets below are therefore **mechanism-constructor excerpt
 section explicitly labels a custom hardware adapter or other advanced boundary. Sections that
 compare low-level builder alternatives may declare a short local solely to keep the API difference
 visible; production mechanism code assigns the selected build to a private field, as the complete
-examples do.
+examples do. The compiling
+[`StarterIntakeMechanism`](<../../../robots/examples/starter/StarterIntakeMechanism.java>) shows the
+ordinary private-Plant owner; the flat
+[`TeleOp_03_ShooterMacro`](<../../tools/examples/TeleOp_03_ShooterMacro.java>) shows the same
+ownership inside a complete teaching OpMode.
 
 ---
 

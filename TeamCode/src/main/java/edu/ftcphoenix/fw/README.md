@@ -1,16 +1,18 @@
 # Phoenix Documentation Guide
 
-Phoenix now uses a layered documentation map so the repo stays navigable whether you start from the
-repo root, browse inside `docs/`, or click directly into a section folder on GitHub.
+Phoenix uses a layered documentation map so the project stays navigable whether you start from the
+repository root, enter at the framework documentation root, browse inside `docs/`, or click
+directly into a section folder on GitHub.
 
-There are three main landing points:
+There are four landing points:
 
-1. `README.md` at the repo root for quick orientation
-2. [`docs/README.md`](<docs/README.md>) for the full documentation hub and reading paths
-3. a short `README.md` inside each major `docs/...` section for local navigation
+1. the repository [`README.md`](<../../../../../../../README.md>) for project and FTC SDK orientation
+2. this `README.md` at the framework documentation root for Phoenix orientation
+3. [`docs/README.md`](<docs/README.md>) for the full documentation hub and reading paths
+4. a short `README.md` inside each major `docs/...` section for local navigation
 
-[`Framework Principles.md`](<Framework Principles.md>) intentionally remains at the repo root. It is
-Phoenix's long-lived design reference.
+[`Framework Principles.md`](<Framework Principles.md>) intentionally remains beside this framework
+guide. It is Phoenix's long-lived design reference.
 
 ## Start here
 

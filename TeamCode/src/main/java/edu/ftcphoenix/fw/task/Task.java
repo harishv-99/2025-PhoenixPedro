@@ -42,11 +42,16 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * <pre>{@code
  * Task task = Tasks.sequence(
  *         Tasks.waitUntil(driverReady),
- *         Tasks.runForSeconds(0.4, shooter::startFeed, shooter::stopFeed)
+ *         new RunForSecondsTask(
+ *                 0.4,
+ *                 shooter::startFeed,
+ *                 null,
+ *                 shooter::stopFeed)
  * );
  *
  * runner.enqueue(task);
  * // later in the loop...
+ * clock.update(getRuntime());
  * runner.update(clock);
  * }</pre>
  */
@@ -114,11 +119,11 @@ public interface Task {
     /**
      * Returns the outcome of this task, if it exposes one.
      *
-     * <p>The default implementation returns {@link TaskOutcome#UNKNOWN}, which is appropriate for
-     * simple tasks that do not distinguish between different terminal states.</p>
+     * <p>Every Task implementation supplies this method. A simple task that does not distinguish
+     * between terminal states may return {@link TaskOutcome#UNKNOWN}.</p>
      *
-     * <p>Tasks that care about outcomes (for example, that may finish with success vs timeout vs
-     * cancellation) should override this method and follow this convention:</p>
+     * <p>Tasks that track outcomes (for example, that may finish with success vs timeout vs
+     * cancellation) should follow this convention:</p>
      * <ul>
      *   <li>While the task is still running (before {@link #isComplete()} becomes {@code true}),
      *       return {@link TaskOutcome#NOT_DONE}.</li>

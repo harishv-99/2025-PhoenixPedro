@@ -38,7 +38,12 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * this.lift = FtcActuators.plant(hardwareMap)
  *     .motor(cfg.motorName, cfg.direction)
  *     .position()
- *     ...
+ *     .deviceManagedWithDefaults()
+ *     .linear()
+ *         .bounded(0.0, 4200.0)
+ *         .nativeUnits()
+ *         .alreadyReferenced()
+ *     .positionTolerance(20.0)
  *     .targetGuards()
  *         .maxTargetRate(1200.0)
  *         .holdLastTargetUnless("wristClear", wristClear)

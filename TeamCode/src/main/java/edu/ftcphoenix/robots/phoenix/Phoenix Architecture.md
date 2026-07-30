@@ -650,19 +650,24 @@ profiler performs no stopwatch reads, allocations, or telemetry output.
 
 ## Loop order
 
-Phoenix keeps loop order explicit inside `PhoenixRobot.updateTeleOp()`:
+`PhoenixTeleOp.loop()` first advances the shared clock through `updateAny(...)`, then enters the
+mode-specific phases in `PhoenixRobot.updateTeleOp()`:
 
 ```text
-1. sample vision component readiness
-2. localization.update(clock)
-3. targeting.update(clock)
-4. controls.update(clock)
-5. scoringPath.update(clock)
-6. driveAssists.update(clock, scoringStatus)
-7. drive.drive(...)
-8. telemetryPresenter.emitTeleOp(...snapshots...)
-9. telemetry.update()
+1. outer OpMode: robot.updateAny(getRuntime()) -> clock.update(runtime)
+2. sample vision component readiness
+3. localization.update(clock)
+4. targeting.update(clock)
+5. controls.update(clock)
+6. scoringPath.update(clock)
+7. driveAssists.update(clock, scoringStatus)
+8. drive.drive(...)
+9. telemetryPresenter.emitTeleOp(...snapshots...)
+10. telemetry.update()
 ```
+
+The optional loop-phase profiler starts inside `updateTeleOp()`, after step 1 has established the
+cycle identity used by every measured phase.
 
 That order reflects ownership:
 
@@ -672,17 +677,20 @@ That order reflects ownership:
 - services reshape drive behavior
 - presenters explain the result
 
-Phoenix keeps `updateAuto()` just as explicit:
+`PhoenixPedroAutoOpModeBase.loop()` uses the same outer clock step, stages its additive readiness
+and Pedro debug rows, and then enters `updateAuto()`:
 
 ```text
-1. sample vision component readiness
-2. localization.update(clock)
-3. targeting.update(clock)
-4. autoDrive.update(clock)
-5. autoRoutineLifecycle.update(clock)
-6. scoringPath.update(clock)
-7. telemetryPresenter.emitAuto(...with Auto task, vision, and scoring snapshots...)
-8. telemetry.update()
+1. outer OpMode: robot.updateAny(getRuntime()) -> clock.update(runtime)
+2. outer OpMode: add readiness and Pedro debug rows to the pending telemetry frame
+3. sample vision component readiness
+4. localization.update(clock)
+5. targeting.update(clock)
+6. autoDrive.update(clock)
+7. autoRoutineLifecycle.update(clock)
+8. scoringPath.update(clock)
+9. telemetryPresenter.emitAuto(...with Auto task, vision, and scoring snapshots...)
+10. telemetry.update()
 ```
 
 Auto uses the same scoring path and targeting service, but swaps TeleOp drive-assist policy for the

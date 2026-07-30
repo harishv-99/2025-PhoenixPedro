@@ -22,7 +22,12 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * this.lift = FtcActuators.plant(hardwareMap)
  *     .motor(cfg.motorName, cfg.direction)
  *     .position()
- *     ...
+ *     .deviceManagedWithDefaults()
+ *     .linear()
+ *         .bounded(0.0, 4200.0)
+ *         .nativeUnits()
+ *         .alreadyReferenced()
+ *     .positionTolerance(20.0)
  *     .targetedBy(ScalarTarget.create(0.0))
  *     .build();
  *

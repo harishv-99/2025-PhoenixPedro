@@ -38,9 +38,10 @@ Phoenix’s preferred ordering is:
 **Sensors before Bindings**
 
 * If bindings depend on sensor signals (distance thresholds, vision targets, etc.), update those sensors first.
-* Gamepad axes/buttons are exposed as {@code ScalarSource}/{@code BooleanSource} and are sampled when you call {@code get(...)}.
-* Edge/toggle trackers (e.g., {@code risingEdge()}, {@code toggled()}) must be sampled each loop to avoid missing transitions.
-  {@code Bindings.update(clock)} does that sampling for the bindings you register.
+* Gamepad axes/buttons are exposed as `ScalarSource`/`BooleanSource` and are sampled when you call
+  `get(...)`.
+* Edge/toggle trackers (e.g., `risingEdge()`, `toggled()`) must be sampled each loop to avoid
+  missing transitions. `Bindings.update(clock)` does that sampling for the bindings you register.
 
 **Bindings before Tasks**
 
@@ -72,7 +73,12 @@ Phoenix’s preferred ordering is:
 
 ## 3. A canonical loop template
 
-Below is a typical Phoenix loop (TeleOp or Auto). This is intended as a reference pattern.
+Below is the active-cycle portion of a typical Phoenix loop. The compiling
+[`StarterTeleOp`](<../../../robots/examples/starter/StarterTeleOp.java>) and
+[`StarterRobot`](<../../../robots/examples/starter/StarterRobot.java>) show the structured host and
+composition-root form. For flat teaching OpModes, compare the complete
+[`TeleOp_03_ShooterMacro`](<../../tools/examples/TeleOp_03_ShooterMacro.java>) and the smaller
+drive-only [`TeleOp_01_MecanumBasic`](<../../tools/examples/TeleOp_01_MecanumBasic.java>).
 
 ```java
 @Override
@@ -111,6 +117,13 @@ public void loop() {
 }
 ```
 
+This excerpt intentionally omits construction and FTC STOP. In structured robot code, the thin
+OpMode calls its composition root's idempotent `stop()` once; that root cancels its runners and
+stops every mechanism, drive, haptic, vision, and vendor resource whose lifecycle it owns. In a
+flat teaching OpMode, the OpMode itself must cancel its active runner and stop every Plant, drive
+sink, and other resource it constructed. The linked compiling examples show both complete cleanup
+shapes; do not copy only the active-loop excerpt as a complete owner.
+
 That is the normal TeleOp ownership model: Tasks finish their decision/source/Plant-target work,
 then the one final Drive phase samples the composed `DriveSource` and writes the sink, and each
 mechanism performs the sole downstream update of its private Plants. A calibration-search Task can
@@ -135,7 +148,10 @@ the robot intentionally repeats one reminder while a condition stays true, make 
 visible with a dedicated `Cooldown` for that event rather than calling `pulse(...)`
 unconditionally every loop.
 
-During OpMode cleanup, the composition root calls `stop()` on each haptic sink it constructed.
+During OpMode cleanup, the owner that constructed each haptic sink calls `stop()`. A composition
+root may retain and stop the sink directly, or it may invoke cleanup on a robot-owned feedback
+owner that privately retains the sink; either way, the complete robot root owns reaching that
+cleanup path.
 For the `FtcHaptics` adapter, both pulse and stop are queued, best-effort SDK commands. The queue
 retains only the latest undelivered request, and a delivered request displaces the current effect;
 neither call reports physical delivery, and controller support varies.
@@ -161,7 +177,8 @@ That means:
 
 ### 4.1 Sources, edges, and memoization are cycle-idempotent
 
-Phoenix uses {@link edu.ftcphoenix.fw.core.time.LoopClock#cycle()} to make many source wrappers safe to read multiple times in the same loop.
+Phoenix uses `LoopClock.cycle()` to make many source wrappers safe to read multiple times in the
+same loop.
 
 Examples:
 

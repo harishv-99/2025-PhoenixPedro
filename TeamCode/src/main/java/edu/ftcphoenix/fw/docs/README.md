@@ -99,7 +99,9 @@ If you are new to Phoenix, read in this order:
 
 ## Notes on structure
 
-- The repo root [`../README.md`](<../README.md>) is the quick orientation page.
+- The repository root [`README.md`](<../../../../../../../../README.md>) introduces the project and
+  links into Phoenix documentation.
+- The framework documentation root [`../README.md`](<../README.md>) is the Phoenix orientation page.
 - This file is the full docs hub.
 - Each major docs folder has its own `README.md` so folder-level browsing still has an obvious entrypoint.
 - Some docs intentionally live next to code instead of under `docs/` (for example optional integrations); when that happens, link them from here so they stay discoverable.

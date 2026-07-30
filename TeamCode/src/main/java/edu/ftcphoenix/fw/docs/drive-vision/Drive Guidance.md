@@ -40,6 +40,10 @@ DriveGuidance.plan()
 ## Common TeleOp pattern: button-held omega override
 
 This example keeps driver translation from the sticks, but overrides omega while the button is held so a shooter frame faces a scoring point offset from an AprilTag.
+The compiling
+[`TeleOp_05_ShooterTagAimVision`](<../../tools/examples/TeleOp_05_ShooterTagAimVision.java>) shows
+the complete imports, guidance-plan construction, source composition, loop, and cleanup around this
+pattern.
 
 ```java
 Pose2d robotToShooterFrame = new Pose2d(
