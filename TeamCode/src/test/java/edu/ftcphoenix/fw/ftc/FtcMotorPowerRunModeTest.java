@@ -730,7 +730,7 @@ public final class FtcMotorPowerRunModeTest {
     }
 
     @Test
-    public void deviceManagedPositionCalibrationUsesRawModeThenHandsBackToPositionMode() {
+    public void deviceManagedPositionCalibrationStagesRawModeThenHandsBackToPositionMode() {
         EventLog events = new EventLog();
         TestHardwareMap hardwareMap = new TestHardwareMap();
         MotorProbe motor = new MotorProbe("lift", events, DcMotor.RunMode.RUN_USING_ENCODER);
@@ -760,7 +760,17 @@ public final class FtcMotorPowerRunModeTest {
 
         assertEquals(Arrays.asList(
                 "lift.setPower(0.0)",
-                "lift.setMode(RUN_USING_ENCODER)",
+                "lift.setMode(RUN_USING_ENCODER)"
+        ), events.values);
+        assertEquals(DcMotor.RunMode.RUN_USING_ENCODER, motor.runMode);
+        assertEquals(0.0, motor.power, EPSILON);
+
+        events.clear();
+        clock.nextCycle(0.02);
+        plant.update(clock.clock());
+
+        assertEquals(Arrays.asList(
+                "lift.getCurrentPosition",
                 "lift.getMode",
                 "lift.setPower(0.0)",
                 "lift.setMode(RUN_WITHOUT_ENCODER)",
@@ -771,18 +781,20 @@ public final class FtcMotorPowerRunModeTest {
         assertEquals(0.25, motor.power, EPSILON);
 
         events.clear();
-        plant.endCalibrationSearch(true);
-
-        assertEquals(Arrays.asList("lift.setPower(0.0)"), events.values);
-        assertEquals(RAW_MODE, motor.runMode);
-
-        events.clear();
         clock.nextCycle(0.02);
+        plant.endCalibrationSearch();
         plant.update(clock.clock());
 
-        assertTrue(events.values.indexOf("lift.setMode(RUN_TO_POSITION)") >= 0);
+        assertEquals(Arrays.asList(
+                "lift.setPower(0.0)",
+                "lift.getCurrentPosition",
+                "lift.setTargetPosition(100)",
+                "lift.setMode(RUN_TO_POSITION)",
+                "lift.setPower(1.0)"
+        ), events.values);
         assertEquals(DcMotor.RunMode.RUN_TO_POSITION, motor.runMode);
         assertEquals(1.0, motor.power, EPSILON);
+        assertNoEncoderResetModeWrite(events);
 
         events.clear();
         plant.stop();

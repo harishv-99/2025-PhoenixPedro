@@ -88,11 +88,23 @@ Task homeLift = PositionCalibrationTasks.search(lift)
 Create a fresh search Task for each homing attempt. Search Task objects follow the framework's
 single-use lifecycle and are not restarted after they have begun.
 
+For a future Phoenix mechanism, `PhoenixRobot` advances the Task runner before calling the owning
+mechanism's update. The search Task owns its cue, reference, timeout, and handoff recipe but never
+calls `lift.update(clock)`; the mechanism remains the sole Plant heartbeat owner. If the search is
+still active, that one downstream update submits its staged power. If the Task releases the search
+first, the same phase evaluates the normal final resolver.
+
+`holdAfterReference(0.0)` changes the Plant's graph-owned command before that handoff; the complete
+resolver can still mask or transform it. Use `resumeTargeting()` when success should preserve the
+existing persistent command and unchanged resolver. That option does not leave the continuously
+updated Plant disabled. Timeout and active cancellation also request a temporary-output stop and
+release the search without changing the persistent command.
+
 The timeout policy is explicit: use `failAfterSec(...)` for a bounded search or `neverTimeout()` only when another safety path is guaranteed to cancel the task.
 
 For periodic mechanisms such as trays or turrets, `establishReferenceAt(...)` establishes the
-reference modulo the Plant period and preserves the nearest equivalent unwrapped position when the
-Plant was already referenced.
+reference modulo the Plant period and preserves the nearest equivalent unwrapped position from the
+cue cycle's current native sample when the Plant was already referenced.
 
 ## 2. Where to start in the tester menu
 

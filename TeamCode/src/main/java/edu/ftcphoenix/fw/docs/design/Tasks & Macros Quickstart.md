@@ -78,9 +78,10 @@ public class MyTeleOp extends OpMode {
 }
 ```
 
-In ordinary TeleOp, Tasks do decision work, update sources, or request Plant targets. They run before
-the one final `DriveSource` writer shown above; they do not also write imperatively to the same drive
-sink.
+In ordinary TeleOp, Tasks do decision work, update sources, request Plant targets, or manage a
+temporary calibration-search recipe. They run before the one final `DriveSource` writer and the
+mechanism-owned Plant phase shown above; they do not write imperatively to the drive sink or call a
+Plant's `update(clock)` themselves.
 
 The rest of this guide is about how to create those `Task` objects in a friendly way.
 
@@ -327,6 +328,21 @@ Calling `ScalarTasks.set(...)` or `build()` does not change the target. The buil
 it starts. Each `build()` creates a fresh single-use Task, so retain the Plant and rebuild the Task
 or macro for every later run. Keep a separately named `ScalarTarget` only when it is standalone,
 shared, owned by target-only policy, or useful while assembling a composed target graph.
+
+#### Calibration-search handoff
+
+`PositionCalibrationTasks.search(positionPlant)` is a narrow Task recipe for homing or indexing.
+It acquires and releases the temporary search mode, samples the cue, establishes the reference, and
+selects the success handoff; it never updates the Plant. Keep the normal loop order:
+`runner.update(clock)` first, then one `mechanism.update(clock)` that advances the mechanism's
+private Plants.
+
+After `establishReferenceAt(...)`, choose `resumeTargeting()` to preserve the Plant's existing
+persistent command and final resolver, or `holdAfterReference(value)` to write a new graph-owned
+command before the downstream Plant phase. Neither choice bypasses overlays, bounds, references, or
+guards, and `resumeTargeting()` does not leave a continuously updated Plant disabled. Timeout and
+active cancellation also request a temporary-output stop and release the search while preserving
+the persistent command.
 
 ### 4.1 Guided writes for time-based commands
 

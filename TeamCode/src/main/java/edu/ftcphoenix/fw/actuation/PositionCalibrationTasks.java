@@ -4,6 +4,7 @@ import java.util.Objects;
 
 import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.source.BooleanSource;
+import edu.ftcphoenix.fw.core.source.ScalarTarget;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.task.Task;
 import edu.ftcphoenix.fw.task.TaskOutcome;
@@ -34,14 +35,19 @@ import edu.ftcphoenix.fw.task.TaskOutcome;
  *     .withPower(0.12)
  *     .until(paintedMarkSeen)
  *     .establishReferenceAt(0.0)
- *     .stopAfterReference()
+ *     .resumeTargeting()
  *     .failAfterSec(5.0)
  *     .build();
  * }</pre>
  *
+ * <p>The task owns the temporary search lifecycle, cue, reference, timeout, and success handoff.
+ * It never calls {@link Plant#update(LoopClock)}. The mechanism or subsystem remains the sole Plant
+ * heartbeat owner and must update the Plant once in the normal downstream Plant phase after its
+ * {@code TaskRunner} advances this task.</p>
+ *
  * <p>For periodic plants, {@code establishReferenceAt(x)} establishes reference {@code x} modulo
  * the plant period and preserves the nearest equivalent unwrapped position when the plant is already
- * referenced.</p>
+ * referenced, using the current loop's native sample.</p>
  */
 public final class PositionCalibrationTasks {
     private PositionCalibrationTasks() {
@@ -59,7 +65,8 @@ public final class PositionCalibrationTasks {
      */
     public interface SearchPowerStep {
         /**
-         * Applies this normalized power while the task waits for the reference condition.
+         * Stages this normalized power for the Plant owner's downstream updates while the task
+         * waits for the reference condition.
          */
         SearchUntilStep withPower(double power);
     }
@@ -87,24 +94,37 @@ public final class PositionCalibrationTasks {
     /**
      * Fourth search-task question: what should happen after a reference is successfully established?
      *
-     * <p>The search drive is always stopped on success, timeout, and cancel. This step only chooses
-     * whether a successful reference should leave the plant stopped or immediately holding a
-     * plant-unit target.</p>
+     * <p>The task always releases temporary search ownership and attempts an immediate output stop
+     * on success, timeout, and active cancellation. A normal return means that stop request
+     * completed; if an adapter stop throws, the terminal task propagates that failure and a later
+     * owner update must not refresh search power. This step chooses whether success preserves the
+     * Plant's persistent target graph or changes its graph-owned command before the normal
+     * downstream Plant update.</p>
      */
     public interface SearchAfterStep {
         /**
-         * Stop after a successful reference without commanding a follow-up position target.
+         * Resume normal target resolution after a successful reference without changing its
+         * persistent command or final target resolver.
          *
-         * <p>Timeout and cancel paths also stop the search drive; this method describes the
-         * success path after {@link SearchReferenceStep#establishReferenceAt(double)} succeeds.</p>
+         * <p>This releases temporary search ownership and requests an immediate raw-output stop; it
+         * does not leave a continuously updated Plant disabled or stopped. After a normal handoff,
+         * the mechanism owner's downstream Plant phase immediately evaluates the unchanged final
+         * target graph. If the stop request throws, that failure propagates and any later owner
+         * update returns to the normal graph rather than refreshing search power. Timeout and
+         * active-cancellation paths make the same preserve-command handoff.</p>
          */
-        SearchTimeoutStep stopAfterReference();
+        SearchTimeoutStep resumeTargeting();
 
         /**
-         * Hold {@code plantTarget} after a successful reference.
+         * Change the Plant's graph-owned command to {@code plantTarget} after a successful reference.
          *
-         * <p>The target is expressed in plant units. Timeout and cancel paths still stop safely and
-         * do not command this hold target.</p>
+         * <p>The target is expressed in plant units and is written before the temporary search is
+         * released. The normal downstream Plant phase still resolves the complete target graph, so
+         * an enabled advanced overlay may select another final target. Timeout and active
+         * cancellation preserve the existing command and do not retain this target. If cancellation
+         * re-enters from the target's own write callback, the task restores the command value it
+         * observed before that write. A throwing hold write also gets one best-effort restoration
+         * before its original failure propagates.</p>
          */
         SearchTimeoutStep holdAfterReference(double plantTarget);
     }
@@ -138,7 +158,8 @@ public final class PositionCalibrationTasks {
         /**
          * Build a new single-use non-blocking calibration task.
          *
-         * <p>Build a fresh search task if calibration must be scheduled again.</p>
+         * <p>Build a fresh search task if calibration must be scheduled again. Advance it in the
+         * Task phase, then let the owning mechanism update the Plant exactly once downstream.</p>
          */
         Task build();
     }
@@ -181,7 +202,7 @@ public final class PositionCalibrationTasks {
         }
 
         @Override
-        public SearchTimeoutStep stopAfterReference() {
+        public SearchTimeoutStep resumeTargeting() {
             this.holdAfter = false;
             return this;
         }
@@ -228,7 +249,7 @@ public final class PositionCalibrationTasks {
         private final double timeoutSec;
         private boolean startAttempted;
         private boolean started;
-        private boolean searchAttempted;
+        private boolean searchAcquired;
         private boolean complete;
         private double startSec;
         private TaskOutcome outcome = TaskOutcome.NOT_DONE;
@@ -258,16 +279,19 @@ public final class PositionCalibrationTasks {
             }
             startAttempted = true;
             started = true;
-            searchAttempted = false;
+            searchAcquired = false;
             complete = false;
             startSec = clock != null ? clock.nowSec() : 0.0;
             outcome = TaskOutcome.NOT_DONE;
             condition.reset();
             if (complete) return;
-            // Mark immediately before acquisition so a failed begin still gets one cleanup
-            // attempt, while a condition-reset failure cannot release an unacquired search.
-            searchAttempted = true;
             plant.beginCalibrationSearch(power);
+            // A normally returning begin transfers this search to the Task. A throwing begin must
+            // leave no newly acquired search, so ownership is recorded only after return.
+            searchAcquired = true;
+            // Cancellation may have re-entered while the Plant was acquiring the search. In that
+            // case the terminal Task must release the newly returned acquisition exactly once.
+            if (complete) releaseSearch();
         }
 
         @Override
@@ -278,23 +302,24 @@ public final class PositionCalibrationTasks {
                         + "in a TaskRunner.");
             }
             if (complete) return;
-            plant.update(clock);
-            if (complete) return;
             boolean referenceFound = condition.getAsBoolean(clock);
             if (complete) return;
             if (referenceFound) {
                 plant.establishReferenceAt(reference, clock);
                 if (complete) return;
+                if (holdAfter) {
+                    writeHoldPreservingCancelledCommand();
+                    if (complete) return;
+                }
                 outcome = TaskOutcome.SUCCESS;
                 complete = true;
-                plant.endCalibrationSearch(true);
-                if (holdAfter) plant.commandTarget().set(holdTarget);
+                releaseSearch();
                 return;
             }
             if (Double.isFinite(timeoutSec) && clock != null && clock.nowSec() - startSec >= timeoutSec) {
                 outcome = TaskOutcome.TIMEOUT;
                 complete = true;
-                plant.endCalibrationSearch(true);
+                releaseSearch();
             }
         }
 
@@ -305,7 +330,40 @@ public final class PositionCalibrationTasks {
             // Mark terminal before external cleanup so a throwing Plant cleanup is not repeated.
             outcome = TaskOutcome.CANCELLED;
             complete = true;
-            if (searchAttempted) plant.endCalibrationSearch(true);
+            releaseSearch();
+        }
+
+        /** Release an acquired search once, clearing Task ownership before external cleanup. */
+        private void releaseSearch() {
+            if (!searchAcquired) return;
+            searchAcquired = false;
+            plant.endCalibrationSearch();
+        }
+
+        /** Write a success hold without letting reentrant cancellation retain that new command. */
+        private void writeHoldPreservingCancelledCommand() {
+            ScalarTarget command = plant.commandTarget();
+            double priorCommand = command.get();
+            if (complete) return;
+
+            try {
+                command.set(holdTarget);
+            } catch (RuntimeException failure) {
+                restoreCommand(command, priorCommand, failure);
+                throw failure;
+            }
+            if (complete) command.set(priorCommand);
+        }
+
+        /** Best-effort rollback while retaining the failure that interrupted the original write. */
+        private static void restoreCommand(ScalarTarget command,
+                                           double priorCommand,
+                                           RuntimeException primary) {
+            try {
+                command.set(priorCommand);
+            } catch (RuntimeException restoreFailure) {
+                if (restoreFailure != primary) primary.addSuppressed(restoreFailure);
+            }
         }
 
         @Override
@@ -333,6 +391,7 @@ public final class PositionCalibrationTasks {
                     .addData(p + ".holdTarget", holdTarget)
                     .addData(p + ".timeoutSec", timeoutSec)
                     .addData(p + ".started", started)
+                    .addData(p + ".searchAcquired", searchAcquired)
                     .addData(p + ".complete", complete)
                     .addData(p + ".outcome", getOutcome())
                     .addData(p + ".plantReferenced", plant.isReferenced())

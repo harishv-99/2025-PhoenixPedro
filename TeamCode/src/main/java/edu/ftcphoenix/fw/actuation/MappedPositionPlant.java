@@ -22,15 +22,24 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * native = nativeReference + nativePerPlantUnit * (plant - plantReference)
  * }</pre>
  *
- * <p>The target resolver is invoked once per {@link #update(LoopClock)}. Static plant range and
- * reference validity are enforced first; dynamic hardware protection such as interlocks and target
- * rate limits are applied by {@link PlantTargetGuards}; the result is checked once more for the
- * final finite/range invariant; then one applied target is sent to hardware or the framework
- * regulator. The regulated path evaluates that regulator once, normalizes the finite result to
+ * <p>During normal targeting, the target resolver is invoked once per
+ * {@link #update(LoopClock)}. Static plant range and reference validity are enforced first; dynamic
+ * hardware protection such as interlocks and target rate limits are applied by
+ * {@link PlantTargetGuards}; the result is checked once more for the final finite/range invariant;
+ * then one applied target is sent to hardware or the framework regulator. During a calibration
+ * search, that same sole owner update instead submits the staged temporary search power. The
+ * regulated normal path evaluates its regulator once, normalizes the finite result to
  * {@code [-1.0, +1.0]}, and performs best-effort fail-stop cleanup before propagating a runtime
  * control/output failure.</p>
  */
 public final class MappedPositionPlant implements PositionPlant {
+
+    /** Internal acquisition phase keeps reentrant callers from creating a second search owner. */
+    private enum SearchState {
+        IDLE,
+        ACQUIRING,
+        ACTIVE
+    }
 
     /**
      * Reference initialization policy for the native/plant coordinate map.
@@ -78,7 +87,7 @@ public final class MappedPositionPlant implements PositionPlant {
     private double lastNativeMeasurement = Double.NaN;
     private boolean lastAtTarget;
     private boolean regulatedActuationCompleted;
-    private boolean searchActive;
+    private SearchState searchState = SearchState.IDLE;
     private double searchPower;
     private PlantTargetStatus targetStatus = PlantTargetStatus.STOPPED;
     private PlantTargetResolution targetResolution = PlantTargetResolution.unavailable("not sampled");
@@ -198,7 +207,11 @@ public final class MappedPositionPlant implements PositionPlant {
         /** Set how many native position units correspond to one plant position unit. */
         FeedbackConfigurationStep nativePerPlantUnit(double nativePerPlantUnit);
 
-        /** Set the optional raw-power output used during calibration search. */
+        /**
+         * Set the optional raw-power output used by owner-updated calibration searches.
+         * A search stages power, while the Plant's normal
+         * {@link MappedPositionPlant#update(LoopClock)} submits it.
+         */
         FeedbackConfigurationStep searchPowerOutput(PowerOutput searchPowerOut);
 
         /** Set one known static plant-to-native reference pair. */
@@ -302,7 +315,8 @@ public final class MappedPositionPlant implements PositionPlant {
         }
 
         /**
-         * Allows calibration-search tasks to temporarily drive the mechanism using open-loop power.
+         * Allows calibration-search tasks to stage temporary open-loop power for the Plant owner's
+         * normal downstream update phase.
          */
         public Builder searchPowerOutput(PowerOutput searchPowerOut) {
             this.searchPowerOut = searchPowerOut;
@@ -426,7 +440,17 @@ public final class MappedPositionPlant implements PositionPlant {
                 establishReferenceFromNative(assumedPlantPosition, nativeNow);
         }
 
-        if (searchActive) {
+        if (searchState != SearchState.IDLE) {
+            // A reentrant update during acquisition must neither resume normal targeting nor submit
+            // unstaged search power. The normally returning begin makes the next owner update active.
+            if (searchState == SearchState.ACQUIRING) {
+                targetResolution = PlantTargetResolution.holdLast(
+                        appliedTarget, "calibration search acquisition in progress");
+                lastAtTarget = false;
+                targetStatus = PlantTargetStatus.holdingLast(
+                        "calibration search acquisition in progress");
+                return;
+            }
             samplePlantMeasurement(clock);
             if (searchPowerOut != null) searchPowerOut.setPower(searchPower);
             targetResolution = PlantTargetResolution.holdLast(appliedTarget, "calibration search active");
@@ -517,6 +541,9 @@ public final class MappedPositionPlant implements PositionPlant {
         PlantTargetResolution priorTargetResolution = targetResolution;
         regulatedActuationCompleted = false;
         lastAtTarget = false;
+        // Relinquish temporary search ownership before any external stop callback. Even when a
+        // stop throws, a later update must not refresh search power.
+        searchState = SearchState.IDLE;
 
         RuntimeException primary = null;
         boolean allOutputStopsSucceeded = true;
@@ -549,8 +576,6 @@ public final class MappedPositionPlant implements PositionPlant {
         } catch (RuntimeException failure) {
             primary = suppress(primary, failure);
         }
-        searchActive = false;
-
         if (allOutputStopsSucceeded) {
             markSuccessfullyStopped();
         } else {
@@ -669,17 +694,35 @@ public final class MappedPositionPlant implements PositionPlant {
     public void beginCalibrationSearch(double power) {
         if (searchPowerOut == null)
             throw new IllegalStateException("This PositionPlant does not support calibration search drive");
-        stopNormalPositionOutput();
-        searchActive = true;
-        searchPower = power;
-        searchPowerOut.setPower(power);
-        targetStatus = PlantTargetStatus.holdingLast("calibration search active");
+        if (searchState != SearchState.IDLE)
+            throw new IllegalStateException("This PositionPlant already has an active calibration "
+                    + "search; cancel or finish that search before starting another one");
+
+        // Reserve before calling an external output so a reentrant or overlapping begin fails
+        // before it can stop or replace this search. A throwing begin releases this reservation.
+        searchState = SearchState.ACQUIRING;
+        try {
+            stopNormalPositionOutput();
+            if (searchState != SearchState.ACQUIRING) {
+                throw new IllegalStateException("Calibration search acquisition was released "
+                        + "reentrantly before beginCalibrationSearch(...) completed");
+            }
+            searchPower = power;
+            targetStatus = PlantTargetStatus.holdingLast("calibration search active");
+            searchState = SearchState.ACTIVE;
+        } catch (RuntimeException failure) {
+            searchState = SearchState.IDLE;
+            throw failure;
+        }
     }
 
     @Override
-    public void endCalibrationSearch(boolean stopOutput) {
-        if (stopOutput && searchPowerOut != null) searchPowerOut.stop();
-        searchActive = false;
+    public void endCalibrationSearch() {
+        if (searchState == SearchState.IDLE) return;
+        // Clear ownership first. If the external stop throws, later updates return to the normal
+        // target graph instead of silently refreshing raw search power.
+        searchState = SearchState.IDLE;
+        if (searchPowerOut != null) searchPowerOut.stop();
     }
 
     private void stopNormalPositionOutput() {
@@ -705,9 +748,14 @@ public final class MappedPositionPlant implements PositionPlant {
 
     private void establishReferenceFromNative(double requestedPlantReference, double nativeAtReference) {
         double resolvedPlantReference = requestedPlantReference;
-        if (topology == Topology.PERIODIC && referenced && Double.isFinite(lastMeasurement)) {
-            double k = Math.rint((lastMeasurement - requestedPlantReference) / period);
-            resolvedPlantReference = requestedPlantReference + k * period;
+        if (topology == Topology.PERIODIC && referenced) {
+            // Resolve from the native sample supplied for this reference operation, not a cached
+            // Plant measurement from an earlier owner update.
+            double plantAtReference = toPlant(nativeAtReference);
+            if (Double.isFinite(plantAtReference)) {
+                double k = Math.rint((plantAtReference - requestedPlantReference) / period);
+                resolvedPlantReference = requestedPlantReference + k * period;
+            }
         }
         plantReference = resolvedPlantReference;
         nativeReference = nativeAtReference;
@@ -776,7 +824,8 @@ public final class MappedPositionPlant implements PositionPlant {
                 .addData(p + ".plantReference", plantReference)
                 .addData(p + ".nativeReference", nativeReference)
                 .addData(p + ".lastNativeMeasurement", lastNativeMeasurement)
-                .addData(p + ".searchActive", searchActive);
+                .addData(p + ".searchActive", searchState != SearchState.IDLE)
+                .addData(p + ".searchState", searchState);
         if (regulatedPowerChannel != null) {
             dbg.addData(p + ".lastRegulatorOutput", regulatedPowerChannel.regulatorOutput());
             regulatedPowerChannel.debugDump(dbg, p);

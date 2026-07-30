@@ -704,5 +704,14 @@ Task homeLift = PositionCalibrationTasks.search(lift)
         .build();
 ```
 
+The Task runner advances this recipe before the mechanism's downstream update. The search Task
+owns the cue, reference, timeout, and handoff decisions, but it never calls `lift.update(clock)`;
+the lift mechanism remains the sole Plant heartbeat owner. `holdAfterReference(0.0)` changes the
+Plant's graph-owned command before that same downstream Plant phase, which still evaluates the
+complete resolver and may select an enabled overlay instead. Use `resumeTargeting()` when success
+should preserve the existing persistent command and resume the unchanged resolver. Timeout and
+active cancellation also preserve that command while requesting a temporary-output stop and
+releasing the search.
+
 The resolver should not decide when zero is trustworthy. Homing, indexing, manual zeroing, and
 semantic presets belong in the robot mechanism/service layer.
