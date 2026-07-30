@@ -337,6 +337,11 @@ selects the success handoff; it never updates the Plant. Keep the normal loop or
 `runner.update(clock)` first, then one `mechanism.update(clock)` that advances the mechanism's
 private Plants.
 
+`.withPower(...)` requires a finite normalized command in the inclusive `[-1.0, +1.0]` range and
+rejects `NaN`, infinities, and overshoot at that builder step. It does not clamp a bad recipe into a
+different command. This validates the number's shape only; robot code must still choose a safe
+magnitude and direction and verify the cue and mechanism setup.
+
 After `establishReferenceAt(...)`, choose `resumeTargeting()` to preserve the Plant's existing
 persistent command and final resolver, or `holdAfterReference(value)` to write a new graph-owned
 command before the downstream Plant phase. Neither choice bypasses overlays, bounds, references, or

@@ -810,6 +810,44 @@ public final class FtcMotorPowerRunModeTest {
     }
 
     @Test
+    public void deviceManagedPositionCalibrationRejectsInvalidPowerWithoutSdkEffects() {
+        EventLog events = new EventLog();
+        TestHardwareMap hardwareMap = new TestHardwareMap();
+        MotorProbe motor = new MotorProbe("lift", events, DcMotor.RunMode.RUN_TO_POSITION);
+        motor.positionTicks = 40;
+        hardwareMap.put("lift", motor.motor());
+
+        PositionPlant plant = FtcActuators.plant(hardwareMap)
+                .motor("lift", Direction.FORWARD)
+                .position()
+                .deviceManagedWithDefaults()
+                .linear()
+                .unbounded()
+                .nativeUnits()
+                .alreadyReferenced()
+                .positionTolerance(0.0)
+                .targetedBy(ScalarTarget.create(100.0))
+                .build();
+        plant.update(new ManualLoopClock().clock());
+        assertEquals(DcMotor.RunMode.RUN_TO_POSITION, motor.runMode);
+        assertEquals(100, motor.targetPosition);
+        assertEquals(1.0, motor.power, EPSILON);
+        events.clear();
+
+        for (double invalidPower : invalidCalibrationSearchPowers()) {
+            RuntimeException failure = expectRuntime(
+                    () -> plant.beginCalibrationSearch(invalidPower));
+
+            assertInvalidCalibrationSearchPower(failure, invalidPower);
+            assertTrue("invalid begin must produce no SDK event: " + events.values,
+                    events.values.isEmpty());
+            assertEquals(DcMotor.RunMode.RUN_TO_POSITION, motor.runMode);
+            assertEquals(100, motor.targetPosition);
+            assertEquals(1.0, motor.power, EPSILON);
+        }
+    }
+
+    @Test
     public void regulatedFailStopUsesLifecycleStopWithoutStealingMode() {
         EventLog events = new EventLog();
         TestHardwareMap hardwareMap = new TestHardwareMap();
@@ -1075,6 +1113,31 @@ public final class FtcMotorPowerRunModeTest {
                             || event.contains(".setMode(")
                             || event.contains(".setPower("));
         }
+    }
+
+    private static double[] invalidCalibrationSearchPowers() {
+        return new double[]{
+                Double.NaN,
+                Double.NEGATIVE_INFINITY,
+                Double.POSITIVE_INFINITY,
+                Math.nextDown(-1.0),
+                Math.nextUp(1.0)
+        };
+    }
+
+    private static void assertInvalidCalibrationSearchPower(RuntimeException failure,
+                                                            double receivedPower) {
+        assertTrue("expected IllegalArgumentException, got " + failure,
+                failure instanceof IllegalArgumentException);
+        String message = String.valueOf(failure.getMessage());
+        assertTrue("failure should name the direct mapped entry point: " + message,
+                message.contains("MappedPositionPlant.beginCalibrationSearch(...)"));
+        assertTrue("failure should require finite normalized search power: " + message,
+                message.contains("finite normalized search power"));
+        assertTrue("failure should name the inclusive normalized range: " + message,
+                message.contains("inclusive [-1.0, +1.0] range"));
+        assertTrue("failure should include the received value: " + message,
+                message.contains("got " + Double.toString(receivedPower)));
     }
 
     private static RuntimeException expectRuntime(Runnable action) {

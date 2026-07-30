@@ -75,6 +75,11 @@ Task homeLift = PositionCalibrationTasks.search(lift)
         .build();
 ```
 
+`.withPower(...)` requires a finite normalized command in the inclusive `[-1.0, +1.0]` range. It
+rejects `NaN`, infinities, and overshoot immediately instead of clamping them into a different
+search. Passing that check does not make the recipe mechanically safe: verify the magnitude,
+direction, cue polarity/behavior, hard stops, and clearance on the actual robot.
+
 Build a fresh search Task for every homing attempt. A search Task that has begun is not restarted;
 the same builder recipe can create the next attempt.
 

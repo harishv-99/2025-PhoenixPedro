@@ -515,7 +515,9 @@ public final class FtcActuators {
      * prior normal output and stages the search request; it does not submit that search power.
      * The mechanism or subsystem remains the sole Plant heartbeat owner, and its normal downstream
      * {@link Plant#update(edu.ftcphoenix.fw.core.time.LoopClock)} call is the sole search-command
-     * writer.</p>
+     * writer. Search power must be finite in the inclusive normalized {@code [-1.0, +1.0]} range
+     * and is rejected before acquisition rather than clamped; the mechanism owner still chooses
+     * and physically validates a safe magnitude and direction.</p>
      */
     public interface MotorPositionControlStep {
         /**
@@ -753,7 +755,9 @@ public final class FtcActuators {
      * and stages the search request; it does not submit that search power. The mechanism or
      * subsystem remains the sole Plant heartbeat owner, and its normal downstream
      * {@link Plant#update(edu.ftcphoenix.fw.core.time.LoopClock)} call is the sole search-command
-     * writer.</p>
+     * writer. Search power must be finite in the inclusive normalized {@code [-1.0, +1.0]} range
+     * and is rejected before acquisition rather than clamped; the mechanism owner still chooses
+     * and physically validates a safe magnitude and direction.</p>
      */
     public interface CrServoPositionControlStep {
         /**

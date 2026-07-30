@@ -704,6 +704,11 @@ Task homeLift = PositionCalibrationTasks.search(lift)
         .build();
 ```
 
+Search power must be finite and inside the inclusive normalized range `[-1.0, +1.0]`; the recipe
+rejects `NaN`, infinities, and overshoot at `.withPower(...)` instead of clamping them. That
+structural check does not select a safe magnitude, direction, cue, or mechanical setup—the lift
+service still owns those robot-specific decisions.
+
 The Task runner advances this recipe before the mechanism's downstream update. The search Task
 owns the cue, reference, timeout, and handoff decisions, but it never calls `lift.update(clock)`;
 the lift mechanism remains the sole Plant heartbeat owner. `holdAfterReference(0.0)` changes the

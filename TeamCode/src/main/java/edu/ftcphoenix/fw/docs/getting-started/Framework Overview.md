@@ -355,6 +355,11 @@ calls `plant.update(clock)`. The owning mechanism's downstream `update(clock)` r
 heartbeat and must call each private Plant exactly once per cycle so it either submits active search
 power or invokes the final target resolver and applies hardware guards.
 
+Calibration-search power must be finite and inside the inclusive normalized range `[-1.0, +1.0]`.
+The Task recipe and direct mapped-Plant seam reject invalid values immediately instead of relying on
+adapter clamping. The robot's mechanism owner still chooses and validates the safe magnitude,
+direction, cue, and mechanical setup.
+
 ---
 
 ## Drive: `DriveSignal`, `DriveSource`, and `MecanumDrivebase`
