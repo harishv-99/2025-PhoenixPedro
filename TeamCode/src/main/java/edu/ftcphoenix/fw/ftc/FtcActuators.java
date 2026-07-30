@@ -332,7 +332,9 @@ public final class FtcActuators {
          * Begin the guided motor-position builder.
          *
          * <p>The next required question is who manages the position loop: FTC device-managed control
-         * or a Phoenix-regulated loop driven by native feedback.</p>
+         * or a Phoenix-regulated loop driven by native feedback. Every completed choice builds a
+         * feedback position Plant with the temporary calibration-search lifecycle described by
+         * {@link MotorPositionControlStep}.</p>
          */
         MotorPositionControlStep position();
     }
@@ -507,6 +509,13 @@ public final class FtcActuators {
 
     /**
      * First motor-position question: who manages the position loop?
+     *
+     * <p>Every choice below builds a feedback {@link PositionPlant} that supports temporary
+     * raw-power calibration search. {@link PositionPlant#beginCalibrationSearch(double)} stops the
+     * prior normal output and stages the search request; it does not submit that search power.
+     * The mechanism or subsystem remains the sole Plant heartbeat owner, and its normal downstream
+     * {@link Plant#update(edu.ftcphoenix.fw.core.time.LoopClock)} call is the sole search-command
+     * writer.</p>
      */
     public interface MotorPositionControlStep {
         /**
@@ -617,6 +626,9 @@ public final class FtcActuators {
 
         /**
          * Begin the guided standard-servo position builder.
+         *
+         * <p>Standard-servo position Plants are command-only and do not expose temporary
+         * open-loop calibration search.</p>
          */
         ServoPositionTopologyStep position();
     }
@@ -704,7 +716,9 @@ public final class FtcActuators {
         PlantTargetStep power();
 
         /**
-         * Begin the guided regulated CR-servo position builder.
+         * Begin the guided regulated CR-servo position builder. The completed feedback position
+         * Plant supports the temporary calibration-search lifecycle described by
+         * {@link CrServoPositionControlStep}.
          */
         CrServoPositionControlStep position();
     }
@@ -733,6 +747,13 @@ public final class FtcActuators {
 
     /**
      * First CR-servo position question: CR servos require regulated position control.
+     *
+     * <p>The resulting feedback {@link PositionPlant} supports temporary open-loop calibration
+     * search. {@link PositionPlant#beginCalibrationSearch(double)} stops the prior regulated output
+     * and stages the search request; it does not submit that search power. The mechanism or
+     * subsystem remains the sole Plant heartbeat owner, and its normal downstream
+     * {@link Plant#update(edu.ftcphoenix.fw.core.time.LoopClock)} call is the sole search-command
+     * writer.</p>
      */
     public interface CrServoPositionControlStep {
         /**

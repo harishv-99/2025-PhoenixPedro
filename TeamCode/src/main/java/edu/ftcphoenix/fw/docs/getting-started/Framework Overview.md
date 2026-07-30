@@ -349,9 +349,11 @@ addition has no additional hardware effects. This validation does not change the
 that differently named entries are physically different devices, or reserve names across owners.
 The actuator and its feedback may intentionally use the same configured name.
 
-**Important:** tasks write the Plant's command target; the owning mechanism's `update(clock)` must
-still call its private `plant.update(clock)` each cycle so the Plant invokes the final target
-resolver and applies hardware guards.
+**Important:** ordinary target-writing Tasks change the Plant's graph-owned command; a calibration
+search Task may instead acquire, stage, and release a temporary search mode. Neither kind of Task
+calls `plant.update(clock)`. The owning mechanism's downstream `update(clock)` remains the sole
+heartbeat and must call each private Plant exactly once per cycle so it either submits active search
+power or invokes the final target resolver and applies hardware guards.
 
 ---
 

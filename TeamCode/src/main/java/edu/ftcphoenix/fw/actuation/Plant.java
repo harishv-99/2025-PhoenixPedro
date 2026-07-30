@@ -10,10 +10,15 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * <p>A {@code Plant} owns the hardware/control details for one scalar mechanism output: motor
  * power, servo position, motor velocity, lift position, flywheel velocity, and similar targets.
  * Robot behavior does <b>not</b> imperatively set a plant every loop. Instead, each plant is built
- * with one {@link PlantTargetResolver}. During {@link #update(LoopClock)}, the plant asks that
- * resolver for one target,
+ * with one {@link PlantTargetResolver}. During a normal-targeting
+ * {@link #update(LoopClock)}, the plant asks that resolver for one target,
  * applies plant-level hardware guards, applies one final mechanism target through its selected
  * control path, and refreshes feedback/status.</p>
+ *
+ * <p>A searchable {@link PositionPlant} has one narrow temporary exception: a calibration task may
+ * acquire and release its search mode, while the mechanism's same downstream {@code update} remains
+ * the sole heartbeat that submits search power or resumes the normal target graph. A Task must not
+ * call {@code plant.update(clock)} itself.</p>
  *
  * <h2>Target vocabulary</h2>
  * <ul>
@@ -54,11 +59,14 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
 public interface Plant {
 
     /**
-     * Update this plant once for the current loop.
+     * Update this plant exactly once for the current loop from its owning mechanism or subsystem.
      *
-     * <p>Implementations should invoke their configured {@link PlantTargetResolver}, compute their applied
-     * mechanism target, command hardware/control, and refresh measurement/status caches. Robot code
-     * should call this once per loop after updating the shared {@link LoopClock}.</p>
+     * <p>During normal targeting, implementations should invoke their configured
+     * {@link PlantTargetResolver}, compute their applied mechanism target, command hardware/control,
+     * and refresh measurement/status caches. A searchable position Plant may instead submit its
+     * active temporary search command. Robot code calls this once per loop after updating the shared
+     * {@link LoopClock} and advancing behavior Tasks; Tasks request behavior but do not become
+     * competing Plant heartbeat owners.</p>
      */
     void update(LoopClock clock);
 

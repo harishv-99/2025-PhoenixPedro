@@ -809,4 +809,12 @@ observation timestamps/quality or choose among several solutions, it maps those 
 `PlantTargetRequest` and uses the advanced planner. In both cases the capability still says “aim at
 this angle”; periodic realization does not rewrite TeleOp or Auto into a different paradigm.
 
-Calibration remains robot-owned. Homing switches, encoder zero offsets, ticks-per-turn constants, and cable-limit ranges should be established by the mechanism service and exposed through `PositionPlant`/Plant target context measurements and `ScalarRange`s.
+Calibration remains robot-owned. Homing switches, encoder zero offsets, ticks-per-turn constants,
+and cable-limit ranges should be established by the mechanism service and exposed through
+`PositionPlant`/Plant target context measurements and `ScalarRange`s. For a future homing or
+indexing mechanism, a `PositionCalibrationTasks` search owns only the single-use cue, reference,
+timeout, and handoff recipe. The Task runner advances it before the mechanism phase; it never
+updates the Plant. The mechanism remains the sole owner of Plant update and stop order, so its one
+downstream update submits staged search power while active or resumes the final target graph after
+the Task releases the search. A command-backed hold changes that graph's persistent request;
+`resumeTargeting()`, timeout, and active cancellation preserve it.

@@ -78,6 +78,12 @@ Task homeLift = PositionCalibrationTasks.search(lift)
 Build a fresh search Task for every homing attempt. A search Task that has begun is not restarted;
 the same builder recipe can create the next attempt.
 
+Advance that Task from the runner before the mechanism's normal update. The Task owns the temporary
+search lifecycle, cue, reference, timeout, and handoff, but it never calls `plant.update(clock)`.
+The mechanism remains the sole Plant heartbeat owner, so its one downstream update either submits
+the staged search command or returns through the normal target resolver after the Task releases the
+search.
+
 For an indexer or tray, the condition can be a color detector, magnet sensor, beam break, or custom
 BooleanSource:
 
@@ -86,21 +92,31 @@ Task indexTray = PositionCalibrationTasks.search(tray)
         .withPower(0.12)
         .until(paintedMarkSeen)
         .establishReferenceAt(0.0)
-        .stopAfterReference()
+        .resumeTargeting()
         .failAfterSec(5.0)
         .build();
 ```
 
+`resumeTargeting()` preserves the Plant's persistent command and final target resolver. It requests
+a stop of the temporary raw output and releases the search, but it does not leave a continuously
+updated Plant disabled or stopped; the downstream Plant phase immediately evaluates the unchanged
+graph. By contrast, `holdAfterReference(value)` writes that graph-owned command before releasing
+the search. The full resolver still runs afterward, so an enabled overlay may select another
+target. Timeout and active cancellation request the same stop and release the search without
+changing the persistent command.
+
 Every reference search must explicitly choose timeout behavior. Prefer `failAfterSec(...)`; use `neverTimeout()` only when a driver button, scheduler, or other safety interlock is guaranteed to cancel the task.
 
-For periodic Plants, `establishReferenceAt(...)` treats the supplied value as a reference within the
-period and preserves the nearest unwrapped equivalent. That makes repeated index marks useful for
-small drift corrections during a match.
+For periodic Plants, the Task's clocked `establishReferenceAt(...)` uses the cue cycle's current
+native sample, treats the supplied value as a reference within the period, and preserves the nearest
+unwrapped equivalent from that sample. That makes repeated index marks useful for small drift
+corrections during a match.
 
 ### What “good” looks like
 
 - before reference, the Plant reports an invalid target range with a clear reason such as `lift not homed`
 - the homing/indexing task has timeout and cancellation behavior
+- the mechanism, not the calibration Task, remains the only owner of the Plant update heartbeat
 - after reference, the public measurement matches the physical mechanism coordinate
 - presets, command targets, Plant target requests, and telemetry all use plant units rather than raw
   hardware surprises

@@ -143,7 +143,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 56 | API-06 | One Plant command and Task-writing path | Done | The unified target-root API, Plant-derived command ownership, synchronized callers/docs, verification, and Android Studio review are complete. |
 | 57 | TARGET-05 | Target request/resolution vocabulary | Done | The request/resolver/resolution migration, automated verification, Android Studio review, and publication approval are complete. |
 | 58 | PLANT-01 | One-variable simple Plant usage | Done | Ordinary mechanism ownership, one-variable exact commands, advanced seams, docs, examples, verification, and Android Studio review are complete. |
-| 59 | CAL-03 | Calibration-search Plant update ownership | Proposed | Keep the composition root as the sole Plant updater and make search triggering and post-search handoff explicit. |
+| 59 | CAL-03 | Calibration-search Plant update ownership | Done | Single-owner calibration heartbeat, explicit handoff, synchronized docs, verification, and Android Studio approval are complete. |
 | 60 | CAL-01 | Calibration-search power validation | Proposed | Reject invalid normalized search power before stopping normal output or changing calibration state. |
 | 61 | CAL-02 | Position-calibration reference validity | Proposed | Validate calibration reference and hold answers at the boundary that owns their units and lifecycle. |
 | 62 | DOC-01 | Stale and non-compiling documentation | Proposed | Correct loop/API examples and validate links/examples where practical. |
@@ -10574,6 +10574,205 @@ writer, and explicit lifecycle ownership.
   - **Manual verification (2026-07-17):** user reviewed the ACT-01 implementation in Android Studio
     and confirmed that it looks good. Gate 3 finalization and publication are authorized for this
     item only.
+
+### CAL-03 - Calibration-search Plant update ownership
+
+- **Gate 2 approval (2026-07-29):** The user's instruction to continue executing the previous
+  framework-improvement task authorizes exactly the recorded CAL-03 design. CAL-03 is now **In
+  progress** on `codex/cal-03-calibration-update-ownership`; CAL-01, CAL-02, SAFE-04, and every other
+  tracker item remain out of scope.
+- **Decision gate (2026-07-29):** **Ready; major lifecycle/public-API approval required.** Research
+  was performed on `codex/cal-03-calibration-update-ownership`, based on merged
+  `origin/master@15d0708ef19825c28f44cf95683d23b6f4e087be`. No production implementation has
+  started. The leading ownership hypothesis survives, but the audit also confirms that the public
+  `stopAfterReference()` name and optional-stop direct exit do not truthfully describe a
+  source-driven Plant's handoff.
+- **Confirmed duplicate-owner trace:** `TaskRunner.update(clock)` starts a newly dequeued search and
+  calls its `update(clock)` in the same cycle. `PositionCalibrationTasks.SearchTask.update(...)`
+  then calls `plant.update(clock)` before sampling its cue. The documented root order is
+  `Clock -> Sensors -> Bindings -> Tasks -> Drive -> Plants -> Telemetry`, so the mechanism owner
+  calls the same Plant again in its later Plant phase. `MappedPositionPlant` has no cycle
+  deduplication. On the start cycle, the current implementation writes search power from
+  `beginCalibrationSearch(...)`, the Task-owned Plant update, and the mechanism-owned Plant update;
+  continuing cycles write it twice. On a cue or timeout cycle, the Task writes search power once
+  more before ending the search, after which the root's Plant phase resumes normal targeting.
+- **Confirmed handoff defect:** `stopAfterReference()` calls `endCalibrationSearch(true)` but does
+  not establish a persistent stopped mode. In the supported loop, the downstream Plant phase
+  immediately evaluates the unchanged final target resolver. An unreferenced Plant remains safely
+  unable to apply a position target because its range is invalid; a previously referenced Plant,
+  including a periodic mechanism being re-indexed, resumes its prior target graph. Claiming that
+  the success path “leaves the plant stopped” is therefore false. A continuously updated,
+  source-driven Plant cannot remain stopped through one temporary output stop without adding a new
+  disabled/resume policy to its normal resolver or supervisor.
+- **Current caller and construction-path audit:** there is no executable production, Phoenix,
+  starter, tool, or modern example caller of calibration-search Tasks. Maintained Javadocs and
+  Markdown contain the ordinary-looking examples; tests exercise the lifecycle and FTC run-mode
+  boundary. The capability remains useful for future lifts, arms, turrets, and periodic indexers,
+  so absence of a production caller is not a reason to remove it.
+  - `PositionCalibrationTasks.search(PositionPlant)` is the sole high-level factory. It returns
+    `SearchPowerStep`; the staged answers select power, cue, reference, success handoff, timeout,
+    and finally `build()` a `Task`. There is no public constructor, `of(...)`, overload family, or
+    second Task facade.
+  - Callers retain/share the `PositionPlant` as their mechanism capability and may retain/share the
+    `BooleanSource` cue. The staged interface values are not stored or composed; each is only the
+    compile-time result of answering one required question. Inline `double` answers have distinct
+    units and meanings. Replacing these stages with public recipe/configuration nouns would add
+    concepts without removing a decision.
+  - `PositionPlant.supportsCalibrationSearch()`, `beginCalibrationSearch(power)`,
+    `endCalibrationSearch(boolean)`, and the clocked/unclocked `establishReferenceAt(...)`
+    overloads are the direct custom-Plant/adapter seam. The clocked reference overload has distinct
+    value because it samples current native feedback; the unclocked overload supports a previously
+    sampled/custom implementation. Direct lifecycle remains useful but is not a second recommended
+    robot-behavior loop.
+  - `MappedPositionPlant.positionOutput(...)` and `.regulated(...)` can install one optional
+    `searchPowerOutput(...)`. FTC device-managed motor-position, regulated motor-position, and
+    regulated CR-servo-position builders provide this capability; standard positional servos do
+    not. The lower-level `Plants` position implementations do not silently acquire search drive.
+    These layers represent distinct hardware/control capabilities and remain supported.
+- **Ordinary robot-code comparison:**
+
+  | Design | Representative success choice | Student decisions/concepts | Result |
+  | --- | --- | --- | --- |
+  | **Selected explicit handoff** | `.establishReferenceAt(0.0).resumeTargeting()` or `.holdAfterReference(0.0)` | search power, cue, physical reference, unchanged-versus-new command, timeout | Every safety-relevant answer stays visible; no new public noun |
+  | Current API | `.establishReferenceAt(0.0).stopAfterReference()` | same answers, but “stop” contradicts the next Plant phase | Short but materially misleading |
+  | Implicit default after reference | omit the handoff stage | fewer lines, but students cannot see whether the old request resumes or changes | Hides a motion-relevant decision |
+  | Truly suspend the Plant | `.stopAfterReference()` plus a later resume API/mode | adds stopped-state ownership, resume timing, resolver interaction, and cancellation policy | Competing mode rather than a calibration handoff |
+  | Direct imperative search loop | call begin/update/cue/reference/end from robot code | exposes adapter lifecycle and duplicates the Plant heartbeat | Recreates the confirmed bug at each caller |
+
+  The ordinary mechanism continues to expose a fresh macro, for example
+  `Task createHomeTask()`, and builds the same fluent recipe internally. Controls enqueue that fresh
+  Task; the root calls `runner.update(clock)` and then the mechanism's one `update(clock)`. Robot
+  controls do not receive the raw Plant or manage its search mode.
+- **Chosen design:**
+  1. Remove `plant.update(clock)` from `SearchTask`. A calibration Task may acquire/release the
+     temporary search mode, sample its cue, establish a reference from a same-loop sensor sample,
+     and select a post-success command; it never becomes a Plant heartbeat owner.
+  2. Make `beginCalibrationSearch(power)` select/reserve search mode and stage its power after
+     immediately stopping the prior normal output. The sole downstream Plant phase submits the
+     positive search command. A cue that is already true can therefore complete without a transient
+     nonzero search pulse; any positive-duration search is still observable once in that same
+     downstream Plant phase.
+  3. Rename `stopAfterReference()` to `resumeTargeting()`, with no compatibility alias. It means
+     “leave the persistent command/final resolver unchanged, stop the temporary raw search output,
+     and let the normal Plant phase evaluate that graph.” Keep `holdAfterReference(value)` as the
+     common command-backed success choice, documenting that it updates the Plant's command target
+     before normal resolution and that an advanced overlay may still select another final target.
+  4. Replace `endCalibrationSearch(boolean stopOutput)` with one always-stopping
+     `endCalibrationSearch()`. Every in-repository caller passes `true`; the `false` branch has no
+     separate safe role because it can relinquish search mode while leaving raw power asserted. Do
+     not retain a deprecated alias or add an exit-policy enum for an unsafe unused choice.
+  5. Success with `resumeTargeting()`, timeout, and active cancellation all leave the persistent
+     command/resolver unchanged. Success with `holdAfterReference(value)` changes only the stable
+     command target. All paths stop/release temporary search; robot-specific retry, disabled state,
+     fallback, or recovery remains in the mechanism/supervisor and normal target graph.
+  6. Keep cue precedence over timeout at the same boundary. Establish reference with the clocked
+     overload's current native sample. For an already referenced periodic Plant, choose the nearest
+     unwrapped equivalence from that current sample rather than the prior loop's cached measurement.
+  7. Make acquisition single-owner and failure-safe without a public lease/token type. A second
+     search on one Plant fails before stopping or changing the active search. A normally returning
+     `beginCalibrationSearch(...)` means acquisition succeeded; a throwing implementation must
+     leave no newly acquired search for the Task to release. The Task records acquisition only
+     after return and releases it if cancellation reentered during begin.
+  8. Clear mapped search ownership before invoking the external stop during end. If that stop
+     throws, a later Plant update must not refresh search power. The exception remains truthful:
+     CAL-03 does not claim the output physically stopped when an adapter threw.
+- **Lifecycle/failure order:** condition reset occurs before acquisition. A begin failure cannot
+  release another active search. Cue/reference/hold failures occur while the Task still owns the
+  search, so `TaskRunner` fail-stop cancellation releases it once. On success, a requested hold is
+  written before terminal success is selected; terminal state is selected before end cleanup so a
+  throwing cleanup cannot restart or release a sequence continuation. Timeout/cancel similarly
+  become terminal before their one end attempt. Reentrant cancellation during reset or acquisition
+  cannot leave an orphaned search, and terminal/repeated cancellation remains a no-op.
+- **Framework Principles result:** the mechanism/subsystem remains the only owner of Plant update
+  order; the Task owns only its single-use cooperative recipe. The one shared clock and documented
+  Tasks-before-Plants phase make a staged positive search observable without a private heartbeat.
+  Post-search behavior returns through the one final target graph instead of adding an imperative
+  writer or pretending cancellation bypasses that graph. The direct PositionPlant seam remains a
+  narrow adapter capability, while ordinary robot code learns only the Task recipe and semantic
+  mechanism macro.
+- **Rejected designs:** documentation-only leaves duplicate writes; global same-cycle Plant
+  memoization hides the ownership error, cannot protect custom Plants uniformly, and could suppress
+  the required same-cycle handoff to normal control. Making the root skip a Plant while a Task is
+  active leaks Task state into mechanism update order. Keeping the immediate begin power write
+  preserves a needless extra write and can pulse against an already-active cue. A public search
+  lease/session/config object solves no ordinary caller problem and adds a noun. A boolean/enum exit
+  policy preserves the unsafe no-stop branch. A persistent “calibration stopped” mode and resume
+  method duplicates normal resolver/supervisor policy. Removing the fluent Task would give up useful
+  timeout, cancellation, outcome, and retry behavior for future robots.
+- **Bounded implementation scope:** update only calibration search ownership/lifecycle,
+  `MappedPositionPlant`'s current-sample periodic handoff, direct API signatures, affected tests,
+  and synchronized Javadocs/guides. Add one focused calibration lifecycle suite and migrate the
+  existing lifecycle/FTC boundary tests. Synchronize Framework Principles, Plant/PositionPlant and
+  FTC builder Javadocs, Loop Structure, Tasks & Macros Quickstart, Mechanism Target Planning, FTC
+  Actuators & Plants, Robot Calibration Tutorials, and the Phoenix calibration/architecture prose
+  where they teach future mechanism ownership. Do not change Phoenix production behavior, target
+  resolution math beyond current-sample periodic re-reference, ordinary Plant commands, reference
+  or hold-value validity (CAL-02), search-power validity (CAL-01), or partial/throwing raw/grouped
+  physical-output truth (SAFE-04).
+- **Verification plan:** add ordered-event tests for Task phase followed by exactly one owner Plant
+  phase on start, continuing, cue, exact-timeout, and cancel cycles; prove cue wins at a shared
+  boundary; prove no search write occurs for an initially true cue or after cue/timeout; prove hold
+  is visible to the same-loop normal Plant phase while resume/timeout/cancel preserve the command
+  graph; prove fresh retry and retained outcomes. Cover begin/condition/reference/hold/end failures,
+  reentrant cancellation, overlapping acquisition, no accidental release of the first search, and
+  no search refresh after failed end. Cover current-sample periodic re-reference and update the FTC
+  raw-mode handoff test. Run focused suites, full TeamCode unit tests and debug Java compilation,
+  API/caller/stale-name searches, Markdown fence/link checks, whitespace/final-LF checks, and
+  `git diff --check`. No hardware fact is needed for this ownership/API correction; physical cue
+  polarity, safe search power, mechanism motion, and successful reference remain adopting-robot
+  validation.
+- **Gate 1 approval request (satisfied 2026-07-29):** authorize exactly this CAL-03 design before
+  Gate 2 implementation. CAL-01, CAL-02, SAFE-04, and every other tracker item remain out of scope.
+- **Gate 2 implementation (2026-07-29):** CAL-03 is **Verifying** on
+  `codex/cal-03-calibration-update-ownership`, still based exactly on
+  `origin/master@15d0708ef19825c28f44cf95683d23b6f4e087be`.
+  - `PositionCalibrationTasks` no longer updates a Plant. It owns only acquisition, cue sampling,
+    current-sample reference establishment, timeout, cancellation, and release; the mechanism's
+    downstream Plant phase is the sole search/normal hardware heartbeat. An initially true cue
+    produces no nonzero search write, and the cue retains precedence at the exact timeout boundary.
+  - `resumeTargeting()` replaces the misleading `stopAfterReference()` with no alias, and the
+    unsafe optional-stop branch is removed in favor of always-requesting-stop
+    `endCalibrationSearch()`.
+    Resume, timeout, and active cancellation preserve the persistent command; a success hold is
+    written before normal resolution. The hold path snapshots its prior command and restores it
+    after reentrant cancellation or a throwing write, retaining the original failure if rollback is
+    only best-effort.
+  - `MappedPositionPlant` now reserves acquisition before external callbacks, rejects overlap
+    before disturbing the first owner, stages search power until the owner update, clears ownership
+    before a throwing end/stop callback, and uses the clocked reference operation's current native
+    sample for periodic equivalence. A later update cannot refresh search power after failed end.
+  - Plant, PositionPlant, mapped/FTC builder Javadocs, Framework Principles, the core/task/FTC and
+    calibration guides, and future Phoenix architecture/calibration prose now teach the same
+    Tasks-before-Plants ownership and truthful normal-versus-throwing handoff contract. Phoenix
+    production behavior is unchanged.
+- **Adversarial review and corrections (2026-07-29):** three independent reviews covered lifecycle
+  correctness/test validity, Framework Principles/API/construction paths, and documentation/student
+  usability. They found that an effectful command target could first retain a success-only hold
+  after reentrant cancellation, then that a mutate-before-throw target needed the same rollback;
+  both paths now restore the snapshot and have ordered-event regressions. The documentation review
+  also found categorical physical-stop and same-cycle-resume wording on a throwing adapter stop;
+  it now says ownership is released, an immediate stop is requested, the failure propagates, and
+  only a later owner update is guaranteed not to refresh search power. Final re-reviews found no
+  remaining material correctness, principle, API-scope, construction-path, test, or documentation
+  issue.
+- **Automated verification (2026-07-29):** the final focused
+  `PositionCalibrationTasksTest` run passed **18 tests** with zero failures, errors, or skips. The
+  final forced complete command `.\gradlew.bat --console=plain --rerun-tasks
+  :TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` passed **111 suites / 1,057
+  tests** with zero failures, errors, or skips and successful debug Java compilation. It emitted
+  only the repository's existing Java-8-on-JDK-21 and FTC sample deprecation warnings.
+- **Static and caller verification (2026-07-29):** `git diff --check`, a scan of all 18 changed or
+  untracked files, trailing-whitespace checks, and final-LF checks passed. No maintained
+  `stopAfterReference()` or argument-taking `endCalibrationSearch(...)` remains outside this
+  historical tracker record. The public/caller audit again found no production calibration-search
+  caller and exactly the three intended searchable FTC construction paths: device-managed motor
+  position, regulated motor position, and regulated CR-servo position. All nine changed maintained
+  Markdown files have balanced fences and resolving local links.
+- **Manual verification (2026-07-29):** the user provided the required Android Studio approval and
+  confirmed **`CAL-03 looks good`**. Gate 3 finalization, publication, and merge are authorized for
+  this item only. No physical robot fact is required for this software ownership/API correction;
+  adopting robots must still validate cue polarity, safe search power, actual mechanism
+  motion/reference accuracy, and physical output state after adapter failure.
 
 ### CAL-01 - Calibration-search power validation
 

@@ -335,15 +335,25 @@ A **Plant** is a source-driven scalar target follower. Robot behavior does not c
 `plant.setTarget(...)` every loop. Instead, every robot-facing Plant is constructed with one
 `PlantTargetResolver`. Simple scalar values are lifted with `PlantTargets.exact(...)`; one logical
 periodic command uses `PlantTargets.equivalentPositionsOf(...)`; richer behavior targets use
-`PlantTargets.overlay(...)` or the advanced `PlantTargets.plan(...)`. During
-`plant.update(clock)`, the Plant invokes that target resolver once, applies static bounds and
-plant-level hardware guards, verifies the final target is finite and still inside the declared
-plant-unit range, applies that one safe mechanism target through its selected hardware/control
-path, and refreshes status.
+`PlantTargets.overlay(...)` or the advanced `PlantTargets.plan(...)`. During normal targeting,
+`plant.update(clock)` invokes that target resolver once, applies static bounds and plant-level
+hardware guards, verifies the final target is finite and still inside the declared plant-unit
+range, applies that one safe mechanism target through its selected hardware/control path, and
+refreshes status.
+
+The mechanism or subsystem is the sole Plant heartbeat owner, including during a temporary
+position-calibration search. A `PositionCalibrationTasks` search may acquire and release that
+temporary mode, stage its power, sample its cue, establish a reference, and select the success
+handoff, but it never calls `plant.update(clock)`. If the search is still active, the one downstream
+owner update submits its staged raw search command instead of resolving the normal target graph. If
+the Task finds the cue, times out, or is actively cancelled first, it releases the search before
+that phase, and the same downstream owner update returns through the final resolver. Do not hide a
+second Plant heartbeat behind same-cycle deduplication.
 
 Key methods (see `edu.ftcphoenix.fw.actuation.Plant`):
 
-* `update(LoopClock clock)` — invoke the configured target resolver and command hardware/control.
+* `update(LoopClock clock)` — submit an active staged calibration-search command or, during normal
+  targeting, invoke the configured target resolver and command hardware/control.
 * `getRequestedTarget()` — what behavior asked for this loop.
 * `getAppliedTarget()` — the final mechanism target selected after bounds and target guards.
 * `getTargetResolution()` — how the `PlantTargets` graph selected the requested target.
@@ -377,8 +387,10 @@ invokes.
 Keep construction and object boundaries equally authoritative. In ordinary FTC robot code, the
 composition root passes `HardwareMap` and a data-only mechanism configuration to the mechanism or
 subsystem owner. That owner defensively snapshots its configuration, constructs its final resolver
-and Plant graph with `FtcActuators`, privately retains the Plants, and owns their update and stop
-order. The composition root should not prebuild those Plants as peer objects merely to inject them.
+and Plant graph with `FtcActuators`, privately retains the Plants, and owns their sole update and
+stop order. Tasks may change graph-owned requests or manage a temporary calibration-search recipe,
+but do not advance those Plants. The composition root should not prebuild those Plants as peer
+objects merely to inject them.
 
 A clearly labeled hardware-neutral test, custom-adapter, portable-host, or deliberately advanced
 assembly seam may instead receive a completed Plant. At that seam, pass the Plant alone rather than
@@ -1159,11 +1171,11 @@ clock.update(getRuntime());
 // Gamepad axes/buttons are Sources; they are sampled when you call get(...).
 bindings.update(clock);
 
-macroRunner.update(clock);
+macroRunner.update(clock); // may change requests/search state; never updates Plants
 
 drivebase.drive(driveSource.get(clock).clamped());
 
-scoringMechanism.update(clock); // updates its private Plants in owned order
+scoringMechanism.update(clock); // sole update of its private Plants in owned order
 intakeMechanism.update(clock);
 ```
 

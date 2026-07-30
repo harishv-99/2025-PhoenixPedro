@@ -625,7 +625,7 @@ Use this when the mechanism must be homed/indexed before position targets are me
     .needsReference("lift not homed")
 ```
 
-Before the reference is established, `PositionPlant.targetRange(...)` returns an invalid range with
+Before the reference is established, `PositionPlant.targetRange()` returns an invalid range with
 that reason. `PlantTargets.equivalentPositionsOf(...)` and `PlantTargets.plan(request)` resolvers see that
 invalid range during `plant.update(clock)` and use their explicit `whenUnavailable()` policy instead
 of producing unsafe requested targets.
@@ -642,16 +642,29 @@ Task homeLift = PositionCalibrationTasks.search(lift)
         .build();
 ```
 
-The search power temporarily asserts raw/open-loop mode through the motor-power adapter. Ending the
-search writes zero without restoring the previous mode; the next device-managed position command
-reasserts `RUN_TO_POSITION`. Calibration establishes the Plant reference and never resets the
-encoder as a hidden side effect.
+Starting this Task acquires a temporary search after requesting an immediate stop of the prior
+normal position output, but it only stages the configured search power. The Task never calls
+`plant.update(clock)` or writes that power itself. In the documented Tasks-before-Plants loop, the
+owning mechanism's one downstream Plant update submits the staged raw/open-loop command while the
+search remains active. If the cue is already true, the Task establishes the reference and releases
+the search before that Plant phase, so no search-power command is submitted.
+
+On success, `holdAfterReference(value)` changes the graph-owned command before releasing the search;
+the same downstream Plant phase then evaluates the complete normal resolver. Use
+`resumeTargeting()` to preserve the existing persistent command and resume that unchanged resolver.
+Timeout and active cancellation make the same preserve-command handoff. Every release clears search
+ownership and requests an immediate output stop, so a later update cannot refresh search power even
+if that stop throws. For a normally returning FTC motor-power stop, zero remains in raw/open-loop
+mode; the next device-managed position command reasserts `RUN_TO_POSITION`. Calibration establishes
+the Plant reference and never resets the encoder as a hidden side effect.
 
 The timeout policy is explicit: use `failAfterSec(...)` for a bounded search or `neverTimeout()` only when another safety path is guaranteed to cancel the task.
 
-For periodic mechanisms, `establishReferenceAt(...)` preserves the nearest equivalent unwrapped
-position. If a tray has period `360.0` degrees and the current estimate is `1081.5`, an index mark
-for reference `0.0` corrects the estimate to `1080.0`, not all the way back to zero.
+For periodic mechanisms, the Task's clocked `establishReferenceAt(...)` samples native feedback on
+the cue cycle and preserves the nearest equivalent unwrapped position from that current sample, not
+from the prior Plant update's cached measurement. If a tray has period `360.0` degrees and the
+current estimate is `1081.5`, an index mark for reference `0.0` corrects the estimate to `1080.0`,
+not all the way back to zero.
 
 ---
 
@@ -711,8 +724,9 @@ this.turret = FtcActuators.plant(hardwareMap)
         .build();
 ```
 
-A CR-servo position Plant can participate in `PositionCalibrationTasks.search(...)` because it can
-be driven with temporary open-loop power while looking for a reference.
+A CR-servo position Plant can participate in `PositionCalibrationTasks.search(...)` because its one
+mechanism-owned Plant update can submit temporary open-loop power while looking for a reference.
+The Task manages the search lifecycle without becoming another Plant writer.
 
 ---
 

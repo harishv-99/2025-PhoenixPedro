@@ -122,14 +122,19 @@ public interface PositionPlant extends Plant {
      * the base reference.</p>
      *
      * <p>Callers should prefer {@link #establishReferenceAt(double, LoopClock)} when they have a
-     * loop clock available so the implementation can sample the same-loop native measurement.</p>
+     * loop clock available so the implementation can sample the current loop's native measurement.
+     * A periodic implementation selects its nearest unwrapped equivalence from that sample rather
+     * than a cached measurement from an earlier loop.</p>
      *
      * @param plantPosition reference value in plant units
      */
     void establishReferenceAt(double plantPosition);
 
     /**
-     * Establish a reference after sampling native feedback for the supplied loop.
+     * Establish a reference from native feedback sampled for the supplied loop.
+     *
+     * <p>For an already referenced periodic Plant, choose the nearest unwrapped equivalence from
+     * this same-loop sample.</p>
      *
      * @param plantPosition reference value in plant units
      * @param clock         current loop clock used to sample native feedback consistently
@@ -149,10 +154,18 @@ public interface PositionPlant extends Plant {
     }
 
     /**
-     * Begin a calibration search by temporarily applying open-loop power.
+     * Acquire a calibration search, immediately stop the previous normal output, and stage
+     * temporary open-loop power for the next owner update.
      *
      * <p>This method is intended for {@link PositionCalibrationTasks}; normal robot code should
-     * usually command a search through a task rather than calling this directly.</p>
+     * usually command a search through a task rather than calling this directly. It does not make
+     * the Task a Plant heartbeat owner: the mechanism or subsystem must continue calling
+     * {@link #update(LoopClock)} once in its normal downstream Plant phase.</p>
+     *
+     * <p>No nonzero search command is submitted until that owner update. A normal return means this
+     * caller exclusively acquired the temporary search. A second search must fail before stopping,
+     * replacing, or otherwise disturbing the first. If acquisition throws, the implementation must
+     * leave no newly acquired search for the caller to release.</p>
      *
      * @param power normalized search power, usually in {@code [-1,+1]}
      */
@@ -161,11 +174,16 @@ public interface PositionPlant extends Plant {
     }
 
     /**
-     * End a calibration search and optionally stop the search output.
+     * Release an acquired calibration search and request an immediate stop of its temporary output.
      *
-     * @param stopOutput if true, stop the temporary search output before returning to normal control
+     * <p>Normal target resolution resumes on the next owner {@link #update(LoopClock)}. This
+     * active-only operation is safe to repeat after release; it does not disable the Plant or
+     * change its persistent command/target graph. Search ownership must be cleared before an
+     * external stop callback, so a later owner update cannot refresh search power if that callback
+     * throws. A throwing stop leaves the physical output state unknown and propagates that failure;
+     * it must not be described as a confirmed physical stop.</p>
      */
-    default void endCalibrationSearch(boolean stopOutput) {
+    default void endCalibrationSearch() {
         // default: no search mode to exit
     }
 }

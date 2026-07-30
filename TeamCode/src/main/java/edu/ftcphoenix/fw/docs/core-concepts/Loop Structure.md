@@ -50,7 +50,11 @@ Phoenix’s preferred ordering is:
 **Tasks before Drive and Plants**
 
 * Ordinary Tasks are the “decision layer”: they update behavior sources or request Plant targets.
+  A position-calibration Task may also manage a temporary search lifecycle, but it never calls
+  `plant.update(clock)`.
 * The Drive/Plants phases are the “actuation layer” that consumes those decisions.
+* Each mechanism or subsystem remains the sole heartbeat owner for its private Plants, including
+  while one of those Plants is in calibration-search mode.
 * In TeleOp, the Drive phase is the one final behavior-command writer. Tasks must not also write
   imperatively to the same drive sink.
 
@@ -108,7 +112,9 @@ public void loop() {
 ```
 
 That is the normal TeleOp ownership model: Tasks finish their decision/source/Plant-target work,
-then the one final Drive phase samples the composed `DriveSource` and writes the sink.
+then the one final Drive phase samples the composed `DriveSource` and writes the sink, and each
+mechanism performs the sole downstream update of its private Plants. A calibration-search Task can
+stage or release temporary search mode during the Task phase; it does not add another Plant update.
 
 For a simple open-loop Auto routine or drive tester with no competing final writer,
 `DriveTasks.driveExclusivelyForSeconds(...)` can own the sink for an interval. It calls the sink's
@@ -417,20 +423,33 @@ that rule onto a direct `MecanumDrivebase` merely for API symmetry.
 
 ## 7. Plants: update is mandatory
 
-Plants are stateful actuators. Tasks typically set targets on plants, but targets do not apply “by magic.”
+Plants are stateful actuators. Tasks typically request targets or manage a temporary calibration
+recipe, but those decisions do not apply “by magic.”
 
-Your loop must call:
+Each mechanism or subsystem must call each of its private Plants exactly once in its downstream
+Plant phase:
 
 ```java
 plant.update(clock);
 ```
 
-for each plant you care about.
+The Task, control, or composition layer must not call that Plant a second time.
 
 Typical pattern:
 
-* store plants as fields
-* update them every loop
+* construct and store Plants privately in the mechanism owner
+* advance Tasks before the mechanism phase
+* update each private Plant exactly once from that owner
+
+For a position-calibration search, this order is observable and intentional. The Task phase acquires
+the temporary search, samples the cue, establishes the reference when found, and releases the
+search on success, timeout, or active cancellation. If the search remains active, the later Plant
+phase submits its staged power exactly once. If the cue is already true, the Task releases the
+search before that phase, so no search-power command is submitted. The cue is sampled before the
+timeout check, so it also wins when both become true at the same boundary. A successful
+`holdAfterReference(value)` writes the graph-owned command before the same downstream Plant update;
+`resumeTargeting()`, timeout, and cancellation preserve the existing command. In every case the
+Plant phase still evaluates the appropriate owner-held state once.
 
 ---
 

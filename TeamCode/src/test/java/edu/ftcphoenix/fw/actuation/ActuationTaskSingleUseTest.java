@@ -213,7 +213,7 @@ public final class ActuationTaskSingleUseTest {
     }
 
     @Test
-    public void calibrationFailedStartStillAllowsOneCleanupAttempt() {
+    public void calibrationFailedBeginDoesNotReleaseAnUnacquiredSearch() {
         ManualLoopClock manualClock = new ManualLoopClock();
         CountingPositionPlant plant = new CountingPositionPlant();
         plant.throwOnBeginSearch = true;
@@ -232,7 +232,7 @@ public final class ActuationTaskSingleUseTest {
         assertTrue(search.isComplete());
         assertEquals(TaskOutcome.CANCELLED, search.getOutcome());
         assertEquals(1, plant.beginSearchCount);
-        assertEquals(1, plant.endSearchCount);
+        assertEquals(0, plant.endSearchCount);
     }
 
     @Test
@@ -313,7 +313,7 @@ public final class ActuationTaskSingleUseTest {
                 .withPower(-0.2)
                 .until(condition)
                 .establishReferenceAt(0.0)
-                .stopAfterReference()
+                .resumeTargeting()
                 .neverTimeout()
                 .build();
     }
@@ -515,7 +515,7 @@ public final class ActuationTaskSingleUseTest {
         }
 
         @Override
-        public void endCalibrationSearch(boolean stopOutput) {
+        public void endCalibrationSearch() {
             endSearchCount++;
             if (throwOnEndSearch) {
                 throw new IllegalStateException("test calibration cleanup failure");
