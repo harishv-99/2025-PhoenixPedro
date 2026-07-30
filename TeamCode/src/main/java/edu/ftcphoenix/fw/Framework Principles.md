@@ -357,6 +357,24 @@ plausible search commands. Low-level adapter clamping remains defense in depth, 
 Passing this structural check does not prove that a magnitude, direction, cue, or mechanical setup
 is safe for a particular robot; the mechanism owner must validate those physical choices.
 
+A position reference is a coordinate anchor, not a target command. Every explicitly supplied
+plant/native reference component must be finite. The Task recipe, mapped construction/runtime
+seams, and FTC guided reference answers reject `NaN` and infinities without clamping, before
+retaining an invalid answer or producing the effects that boundary owns. A finite reference need
+not lie inside the Plant's target range: that range bounds legal commands, not where the affine
+plant/native coordinate map may be anchored. `assumeCurrentPositionIs(...)` establishes its
+reference from the first finite native sample. When an already referenced periodic Plant has a
+finite current plant estimate, it resolves the nearest unwrapped equivalent locally and fails
+without committing a new reference if that final result is non-finite. General plant/native affine
+overflow remains a separate mapping-domain concern.
+
+`holdAfterReference(...)` instead supplies a plant-unit logical command. It rejects `NaN` and
+infinities at the recipe step without changing the prior command, but a finite value still flows
+through the complete resolver, range, and target guards. It may therefore be overlaid, transformed,
+or clamped like any other command request. Choose a deliberately safe in-range hold when the
+intention is predictable exact holding. Finite software values do not prove the physical reference,
+pose, scale, cue, travel, or hold is correct for an adopting robot.
+
 Key methods (see `edu.ftcphoenix.fw.actuation.Plant`):
 
 * `update(LoopClock clock)` — submit an active staged calibration-search command or, during normal

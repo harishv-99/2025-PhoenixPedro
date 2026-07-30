@@ -885,14 +885,23 @@ public final class FtcActuators {
         /**
          * Declare a static mapping between one plant position and one native position.
          *
-         * <p>The first argument is in plant units. The second argument is in native units.</p>
+         * <p>The first argument must be finite in plant units. The second argument must be finite
+         * in native units. The plant position is a coordinate anchor rather than a command target,
+         * so it need not lie inside the declared target range.</p>
+         *
+         * @throws IllegalArgumentException if either argument is not finite
          */
         PositionToleranceStep plantPositionMapsToNative(double plantPosition, double nativePosition);
 
         /**
-         * On first update, treat the current native feedback reading as this plant position.
+         * Treat the first finite native feedback reading as this plant position.
          *
-         * <p>The argument is in plant units.</p>
+         * <p>The argument must be finite in plant units. It is a coordinate anchor rather than a
+         * command target, so it need not lie inside the declared target range. If initial feedback
+         * samples are unavailable, reference establishment remains pending until a finite sample
+         * arrives.</p>
+         *
+         * @throws IllegalArgumentException if {@code plantPosition} is not finite
          */
         PositionToleranceStep assumeCurrentPositionIs(double plantPosition);
 
@@ -1684,16 +1693,31 @@ public final class FtcActuators {
 
         @Override
         public PositionToleranceStep plantPositionMapsToNative(double plantPosition, double nativePosition) {
+            double validatedPlantPosition = requireFinitePosition(
+                    plantPosition,
+                    "FtcActuators.plantPositionMapsToNative(...)",
+                    "plantPosition",
+                    "plant units");
+            double validatedNativePosition = requireFinitePosition(
+                    nativePosition,
+                    "FtcActuators.plantPositionMapsToNative(...)",
+                    "nativePosition",
+                    "native units");
             referenceMode = MappedPositionPlant.ReferenceMode.STATIC;
-            plantReference = plantPosition;
-            nativeReference = nativePosition;
+            plantReference = validatedPlantPosition;
+            nativeReference = validatedNativePosition;
             return this;
         }
 
         @Override
         public PositionToleranceStep assumeCurrentPositionIs(double plantPosition) {
+            double validatedPlantPosition = requireFinitePosition(
+                    plantPosition,
+                    "FtcActuators.assumeCurrentPositionIs(...)",
+                    "plantPosition",
+                    "plant units");
             referenceMode = MappedPositionPlant.ReferenceMode.ASSUME_CURRENT;
-            assumePlantPosition = plantPosition;
+            assumePlantPosition = validatedPlantPosition;
             return this;
         }
 
@@ -2335,6 +2359,26 @@ public final class FtcActuators {
     private static double requireFiniteNonZero(double value, String name) {
         if (!Double.isFinite(value) || Math.abs(value) < 1e-12)
             throw new IllegalArgumentException(name + " must be finite and non-zero");
+        return value;
+    }
+
+    /**
+     * Return an unchanged finite FTC position-reference value or fail before builder mutation.
+     *
+     * @param value candidate primitive value
+     * @param operation student-facing entry point used in the diagnostic
+     * @param argument student-facing argument name used in the diagnostic
+     * @param units plant or native units used in the diagnostic
+     * @return the unchanged finite value, including its signed-zero representation
+     * @throws IllegalArgumentException if {@code value} is not finite
+     */
+    private static double requireFinitePosition(double value,
+                                                String operation,
+                                                String argument,
+                                                String units) {
+        if (!Double.isFinite(value))
+            throw new IllegalArgumentException(operation + ": " + argument
+                    + " must be finite in " + units + ", got " + value);
         return value;
     }
 

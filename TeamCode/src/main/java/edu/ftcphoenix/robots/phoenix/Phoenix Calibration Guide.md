@@ -71,6 +71,10 @@ Use these rules when adding future Phoenix mechanisms:
 - Use `alreadyReferenced()` only when the selected native coordinate is already meaningful at robot
   init. For a relative motor encoder on a lift, prefer `needsReference(...)` plus a calibration task,
   or `assumeCurrentPositionIs(...)` when the robot is physically placed at a known pose before init.
+  The latter uses the first finite native sample; a non-finite sample leaves the reference pending.
+- Every explicit plant/native reference value must be finite and is rejected rather than clamped.
+  A reference is a coordinate anchor, not a target command, so its plant value need not lie inside
+  the Plant's target range.
 - Runtime homing/indexing should be modeled as a `Task`, not as a `Plant.reset()` side effect.
 
 Example homing task:
@@ -89,6 +93,13 @@ Task homeLift = PositionCalibrationTasks.search(lift)
 and rejects `NaN`, infinities, and overshoot immediately rather than clamping them. Phoenix's
 mechanism service must still choose and validate the safe magnitude, direction, cue behavior, and
 mechanical setup for its hardware.
+
+The plant-unit reference supplied to `establishReferenceAt(...)` and the separate post-success
+command supplied to `holdAfterReference(...)` must also be finite. Each rejects `NaN` or infinity
+at its builder step without clamping or overwriting an earlier accepted answer. The reference is not
+range-limited; the finite hold remains a normal logical command that the complete resolver, range,
+overlays, and target guards may transform or clamp. Choose a deliberately safe in-range hold when
+the mechanism should predictably hold that exact position.
 
 Create a fresh search Task for each homing attempt. Search Task objects follow the framework's
 single-use lifecycle and are not restarted after they have begun.
@@ -109,7 +120,12 @@ The timeout policy is explicit: use `failAfterSec(...)` for a bounded search or 
 
 For periodic mechanisms such as trays or turrets, `establishReferenceAt(...)` establishes the
 reference modulo the Plant period and preserves the nearest equivalent unwrapped position from the
-cue cycle's current native sample when the Plant was already referenced.
+cue cycle's current native sample when the Plant was already referenced. When the current plant
+estimate is finite, the Plant rejects a non-finite final nearest-equivalence result before committing
+the new reference. General plant/native affine overflow remains a separate mapping-domain concern.
+
+These finite-value checks do not prove the physical pose, mapping scale/sign, cue, travel, or hold
+is correct or safe. The future Phoenix mechanism owner must validate those facts on its robot.
 
 ## 2. Where to start in the tester menu
 

@@ -121,12 +121,18 @@ public interface PositionPlant extends Plant {
      * nearest equivalent unwrapped position instead of snapping the coordinate all the way back to
      * the base reference.</p>
      *
+     * <p>The reference is a finite coordinate anchor, not a target command, so it need not lie
+     * inside {@link #targetRange()}. An implementation must reject a non-finite value before
+     * sampling feedback, invoking a callback, or changing reference, target, controller, search,
+     * or output state. It must not clamp the supplied reference.</p>
+     *
      * <p>Callers should prefer {@link #establishReferenceAt(double, LoopClock)} when they have a
      * loop clock available so the implementation can sample the current loop's native measurement.
      * A periodic implementation selects its nearest unwrapped equivalence from that sample rather
      * than a cached measurement from an earlier loop.</p>
      *
-     * @param plantPosition reference value in plant units
+     * @param plantPosition finite reference value in plant units
+     * @throws IllegalArgumentException if {@code plantPosition} is non-finite
      */
     void establishReferenceAt(double plantPosition);
 
@@ -134,10 +140,12 @@ public interface PositionPlant extends Plant {
      * Establish a reference from native feedback sampled for the supplied loop.
      *
      * <p>For an already referenced periodic Plant, choose the nearest unwrapped equivalence from
-     * this same-loop sample.</p>
+     * this same-loop sample. The finite-input, no-clamp, and pre-effect rejection contract of
+     * {@link #establishReferenceAt(double)} also applies to this overload.</p>
      *
-     * @param plantPosition reference value in plant units
+     * @param plantPosition finite reference value in plant units
      * @param clock         current loop clock used to sample native feedback consistently
+     * @throws IllegalArgumentException if {@code plantPosition} is non-finite
      */
     default void establishReferenceAt(double plantPosition, LoopClock clock) {
         establishReferenceAt(plantPosition);

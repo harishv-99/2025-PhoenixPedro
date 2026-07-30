@@ -54,9 +54,14 @@ degrees, or a simulator source already in plant units.
 Use `plantPositionMapsToNative(plantPosition, nativePosition)` when the scale and one offset point are known in
 code. Example: arm degrees mapped to encoder ticks with a measured zero tick.
 
+Both values must be finite. Phoenix rejects `NaN` and infinity immediately rather than clamping
+either coordinate. The plant position is a coordinate-map anchor, not a target request, so it need
+not lie inside the Plant's legal target range.
+
 Use `assumeCurrentPositionIs(value)` only when the robot is physically placed at a known pose before
-init. Example: the lift is manually collapsed before the match, so the first encoder sample becomes
-plant position `0.0`.
+init. Its plant-unit answer must be finite. Example: the lift is manually collapsed before the
+match, so the first finite encoder sample becomes plant position `0.0`; a non-finite sample leaves
+the reference pending.
 
 Use `needsReference(reason)` when the mechanism must find a switch, index mark, hard stop, or custom
 sensor condition before position targets are safe.
@@ -79,6 +84,13 @@ Task homeLift = PositionCalibrationTasks.search(lift)
 rejects `NaN`, infinities, and overshoot immediately instead of clamping them into a different
 search. Passing that check does not make the recipe mechanically safe: verify the magnitude,
 direction, cue polarity/behavior, hard stops, and clearance on the actual robot.
+
+`establishReferenceAt(...)` also requires a finite plant-unit coordinate and rejects `NaN` or
+infinity at the recipe step, before search lifecycle effects. It is a reference anchor rather than
+a target, so it is not clamped to `targetRange()`. `holdAfterReference(...)` requires a separate
+finite plant-unit command. A finite hold still goes through the complete target resolver, range,
+overlays, and guards; choose a deliberately safe in-range value when the mechanism should hold that
+exact position predictably.
 
 Build a fresh search Task for every homing attempt. A search Task that has begun is not restarted;
 the same builder recipe can create the next attempt.
@@ -115,7 +127,9 @@ Every reference search must explicitly choose timeout behavior. Prefer `failAfte
 For periodic Plants, the Task's clocked `establishReferenceAt(...)` uses the cue cycle's current
 native sample, treats the supplied value as a reference within the period, and preserves the nearest
 unwrapped equivalent from that sample. That makes repeated index marks useful for small drift
-corrections during a match.
+corrections during a match. When the current plant estimate is finite, the Plant rejects a
+non-finite final nearest-equivalent result without committing that reference. General plant/native
+affine overflow remains a separate mapping-domain concern.
 
 ### What “good” looks like
 
@@ -123,6 +137,8 @@ corrections during a match.
 - the homing/indexing task has timeout and cancellation behavior
 - the mechanism, not the calibration Task, remains the only owner of the Plant update heartbeat
 - after reference, the public measurement matches the physical mechanism coordinate
+- the finite software reference has been checked against an independent physical pose or cue; a
+  numeric validation result alone does not prove that correspondence
 - presets, command targets, Plant target requests, and telemetry all use plant units rather than raw
   hardware surprises
 - one periodic command uses `PlantTargets.equivalentPositionsOf(...)`; multiple alternatives or

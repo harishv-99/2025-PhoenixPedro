@@ -22,6 +22,10 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * native = nativeReference + nativePerPlantUnit * (plant - plantReference)
  * }</pre>
  *
+ * <p>Every configured or runtime reference value must be finite in its documented plant/native
+ * units. A reference pair is a coordinate anchor rather than a command and need not lie inside the
+ * legal target range. Invalid reference answers are rejected rather than clamped.</p>
+ *
  * <p>During normal targeting, the target resolver is invoked once per
  * {@link #update(LoopClock)}. Static plant range and reference validity are enforced first; dynamic
  * hardware protection such as interlocks and target rate limits are applied by
@@ -52,7 +56,7 @@ public final class MappedPositionPlant implements PositionPlant {
          */
         STATIC,
         /**
-         * On first update, sample native feedback and treat it as the configured plant position.
+         * On the first finite native sample, treat that reading as the configured plant position.
          */
         ASSUME_CURRENT,
         /**
@@ -190,7 +194,14 @@ public final class MappedPositionPlant implements PositionPlant {
         /** Set how many native position units correspond to one plant position unit. */
         CommandedConfigurationStep nativePerPlantUnit(double nativePerPlantUnit);
 
-        /** Set one known static plant-to-native reference pair. */
+        /**
+         * Set one known finite static plant-to-native reference pair.
+         *
+         * <p>The plant value is in plant units and the native value is in native output units. The
+         * pair is a coordinate anchor and need not lie inside the legal target range.</p>
+         *
+         * @throws IllegalArgumentException if either value is non-finite
+         */
         CommandedConfigurationStep plantPositionMapsToNative(double plantPosition,
                                                               double nativePosition);
     }
@@ -218,11 +229,22 @@ public final class MappedPositionPlant implements PositionPlant {
          */
         FeedbackConfigurationStep searchPowerOutput(PowerOutput searchPowerOut);
 
-        /** Set one known static plant-to-native reference pair. */
+        /**
+         * Set one known finite static plant-to-native reference pair.
+         *
+         * <p>The plant value is in plant units and the native value is in native feedback/output
+         * units. The pair is a coordinate anchor and need not lie inside the legal target range.</p>
+         *
+         * @throws IllegalArgumentException if either value is non-finite
+         */
         FeedbackConfigurationStep plantPositionMapsToNative(double plantPosition,
                                                              double nativePosition);
 
-        /** Establish the supplied plant coordinate from the first native measurement. */
+        /**
+         * Establish the supplied finite plant coordinate from the first finite native sample.
+         *
+         * @throws IllegalArgumentException if {@code plantPosition} is non-finite
+         */
         FeedbackConfigurationStep assumeCurrentPositionIs(double plantPosition);
 
         /** Require an explicit runtime reference before normal position commands. */
@@ -331,18 +353,33 @@ public final class MappedPositionPlant implements PositionPlant {
          * Uses a static reference: {@code plantPosition} maps to {@code nativePosition}.
          */
         public Builder plantPositionMapsToNative(double plantPosition, double nativePosition) {
+            double validatedPlantPosition =
+                    PositionCalibrationValueValidation.requireFinitePlantValue(
+                            plantPosition,
+                            "MappedPositionPlant.plantPositionMapsToNative(...)",
+                            "plantPosition");
+            double validatedNativePosition =
+                    PositionCalibrationValueValidation.requireFiniteNativeValue(
+                            nativePosition,
+                            "MappedPositionPlant.plantPositionMapsToNative(...)",
+                            "nativePosition");
             this.referenceMode = ReferenceMode.STATIC;
-            this.plantReference = plantPosition;
-            this.nativeReference = nativePosition;
+            this.plantReference = validatedPlantPosition;
+            this.nativeReference = validatedNativePosition;
             return this;
         }
 
         /**
-         * Assumes the current native measurement corresponds to {@code plantPosition} on first update.
+         * Assumes the first finite native measurement corresponds to {@code plantPosition}.
          */
         public Builder assumeCurrentPositionIs(double plantPosition) {
+            double validatedPlantPosition =
+                    PositionCalibrationValueValidation.requireFinitePlantValue(
+                            plantPosition,
+                            "MappedPositionPlant.assumeCurrentPositionIs(...)",
+                            "plantPosition");
             this.referenceMode = ReferenceMode.ASSUME_CURRENT;
-            this.assumedPlantPosition = plantPosition;
+            this.assumedPlantPosition = validatedPlantPosition;
             return this;
         }
 
@@ -670,23 +707,53 @@ public final class MappedPositionPlant implements PositionPlant {
     @Override
     public String referenceStatus() {
         if (referenced) return "referenced";
-        if (pendingAssume) return "reference pending first update";
+        if (pendingAssume) return "reference pending first finite native sample";
         return unreferencedReason;
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>If an already referenced periodic mapping has a finite current plant estimate but its
+     * final nearest-equivalent result is non-finite, this implementation fails before committing
+     * the new reference.</p>
+     *
+     * @throws IllegalStateException if no finite native measurement has been cached or the
+     *                               periodic result described above is non-finite
+     */
     @Override
     public void establishReferenceAt(double plantPosition) {
+        double validatedPlantPosition =
+                PositionCalibrationValueValidation.requireFinitePlantValue(
+                        plantPosition,
+                        "MappedPositionPlant.establishReferenceAt(...)",
+                        "plantPosition");
         if (!Double.isFinite(lastNativeMeasurement))
             throw new IllegalStateException("Cannot establish position reference before a finite native measurement has been sampled");
-        establishReferenceFromNative(plantPosition, lastNativeMeasurement);
+        establishReferenceFromNative(validatedPlantPosition, lastNativeMeasurement);
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>If an already referenced periodic mapping has a finite current plant estimate but its
+     * final nearest-equivalent result is non-finite, this implementation fails before committing
+     * the new reference.</p>
+     *
+     * @throws IllegalStateException if the current native sample is non-finite or the periodic
+     *                               result described above is non-finite
+     */
     @Override
     public void establishReferenceAt(double plantPosition, LoopClock clock) {
+        double validatedPlantPosition =
+                PositionCalibrationValueValidation.requireFinitePlantValue(
+                        plantPosition,
+                        "MappedPositionPlant.establishReferenceAt(...)",
+                        "plantPosition");
         double nativeNow = sampleNative(clock);
         if (!Double.isFinite(nativeNow))
             throw new IllegalStateException("Cannot establish position reference from non-finite native measurement");
-        establishReferenceFromNative(plantPosition, nativeNow);
+        establishReferenceFromNative(validatedPlantPosition, nativeNow);
     }
 
     @Override
@@ -768,6 +835,13 @@ public final class MappedPositionPlant implements PositionPlant {
             if (Double.isFinite(plantAtReference)) {
                 double k = Math.rint((plantAtReference - requestedPlantReference) / period);
                 resolvedPlantReference = requestedPlantReference + k * period;
+                if (!Double.isFinite(resolvedPlantReference)) {
+                    throw new IllegalStateException("MappedPositionPlant.establishReferenceAt(...) "
+                            + "could not resolve a finite periodic reference from requested plant "
+                            + "position " + requestedPlantReference + ", current plant position "
+                            + plantAtReference + ", and period " + period
+                            + ". Check coordinate magnitudes and the plant/native map.");
+                }
             }
         }
         plantReference = resolvedPlantReference;
