@@ -259,6 +259,12 @@ Examples:
 .devicePositionToleranceTicks(12)     // explicitly native/controller ticks
 ```
 
+Every explicitly supplied position-reference component must be finite. These values define a
+coordinate anchor rather than a target request, so the plant-unit reference need not lie inside the
+Plant's declared target range. Reference answers are rejected rather than clamped. A post-reference
+hold is different: it is a finite plant-unit logical command that still passes through the complete
+resolver, range, overlays, and target guards.
+
 This convention keeps common robot code readable while making boundary-crossing methods obvious.
 
 ---
@@ -598,7 +604,12 @@ Use this when both scale and one offset point are known in code:
     .plantPositionMapsToNative(0.0, ARM_ZERO_TICKS)
 ```
 
-This means plant position `0.0` maps to native encoder tick `ARM_ZERO_TICKS`.
+This means plant position `0.0` maps to native encoder tick `ARM_ZERO_TICKS`. Both the plant and
+native reference values must be finite. The builder rejects `NaN` or infinity before retaining this
+answer, performs no SDK call or hardware effect for that rejection, and does not clamp either
+coordinate. It therefore prevents a later build from realizing command hardware with the invalid
+pair. An earlier valid feedback-selection stage may already have resolved its own sensor. The plant
+reference is an affine-map anchor and need not be a legal target inside the declared Plant range.
 
 ### `assumeCurrentPositionIs(...)`
 
@@ -611,8 +622,10 @@ Use this when the robot is physically placed at a known pose before init:
     .assumeCurrentPositionIs(0.0)
 ```
 
-On the first update, Phoenix samples the native reading and treats that reading as plant position
-`0.0`. This is convenient, but it is only correct if the mechanism really starts there.
+The supplied plant position must be finite and is rejected immediately rather than clamped. While
+the reference is pending, Phoenix samples native feedback and uses the first finite reading as plant
+position `0.0`; a non-finite reading leaves the Plant unreferenced. This is convenient, but it is
+only correct if the mechanism really starts there.
 
 ### `needsReference(...)`
 
@@ -648,6 +661,17 @@ It rejects `NaN`, infinities, and finite overshoot at the builder step. The dire
 search state or stopping the normal position output. Neither path clamps an invalid search command;
 low-level FTC adapter clamping remains boundary defense only.
 
+The reference supplied to `establishReferenceAt(...)` must also be finite in plant units. The Task
+recipe rejects `NaN` or infinity at that answer before starting or changing its search lifecycle;
+the direct mapped-Plant seam repeats the check before sampling feedback or changing reference state.
+This coordinate anchor is not required to lie inside `targetRange()` and is never clamped into it.
+
+`holdAfterReference(value)` separately requires a finite plant-unit logical command. It rejects a
+non-finite answer immediately without overwriting an earlier accepted answer or command. A finite
+hold remains a normal command request: the complete resolver can overlay or transform it, and the
+Plant range and target guards can clamp or otherwise protect it. Select a deliberately safe,
+in-range hold value when exact predictable holding is intended.
+
 This numeric contract is structural, not robot-specific safety approval. The mechanism owner must
 still select a safe magnitude and direction, verify the cue and timeout/cancellation paths, provide
 any required external interlock or physical safeguard, and confirm that the mechanism is free to
@@ -676,7 +700,13 @@ For periodic mechanisms, the Task's clocked `establishReferenceAt(...)` samples 
 the cue cycle and preserves the nearest equivalent unwrapped position from that current sample, not
 from the prior Plant update's cached measurement. If a tray has period `360.0` degrees and the
 current estimate is `1081.5`, an index mark for reference `0.0` corrects the estimate to `1080.0`,
-not all the way back to zero.
+not all the way back to zero. When the current plant estimate is finite, a non-finite final
+nearest-equivalent result fails without committing the new reference. General plant/native affine
+overflow remains a separate mapping-domain concern.
+
+These checks establish a software numeric contract only. They do not prove the mechanism is at the
+declared physical pose, that plant/native scale and sign are correct, that the cue is repeatable, or
+that the selected reference and hold are safe under load. Those remain adopting-robot checks.
 
 ---
 

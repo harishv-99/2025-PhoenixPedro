@@ -1,6 +1,6 @@
 # Framework Improvement Tracker
 
-Last updated: 2026-07-29
+Last updated: 2026-07-30
 
 This file tracks proposed Phoenix framework improvements. It is deliberately a planning document:
 an item being listed here does **not** mean its current proposed solution has been approved. Each
@@ -145,7 +145,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 58 | PLANT-01 | One-variable simple Plant usage | Done | Ordinary mechanism ownership, one-variable exact commands, advanced seams, docs, examples, verification, and Android Studio review are complete. |
 | 59 | CAL-03 | Calibration-search Plant update ownership | Done | Single-owner calibration heartbeat, explicit handoff, synchronized docs, verification, and Android Studio approval are complete. |
 | 60 | CAL-01 | Calibration-search power validation | Done | Dual pre-effect validation, synchronized contracts/guides, automated verification, and Android Studio review are complete. |
-| 61 | CAL-02 | Position-calibration reference validity | Proposed | Validate calibration reference and hold answers at the boundary that owns their units and lifecycle. |
+| 61 | CAL-02 | Position-calibration reference validity | Done | Layered finite validation, atomic periodic commit, synchronized docs, automated verification, and Android Studio review are complete. |
 | 62 | DOC-01 | Stale and non-compiling documentation | Proposed | Correct loop/API examples and validate links/examples where practical. |
 | 63 | CLEAN-01 | Alias and risky convenience cleanup | Proposed | Separate unsafe enqueue behavior from cosmetic aliases, then remove only paths proven redundant or unsafe. |
 | 64 | RANGE-01 | ScalarRange construction validity | Proposed | Define and enforce finite, half-bounded, and unbounded range construction without allowing `NaN`. |
@@ -10988,21 +10988,268 @@ writer, and explicit lifecycle ownership.
 
 ### CAL-02 - Position-calibration reference validity
 
-- **Problem to confirm:** position reference and hold answers such as
-  `plantPositionMapsToNative(...)`, `assumeCurrentPositionIs(...)`, and the post-search hold target
-  have multiple public entry paths and may accept non-finite values before calibration state changes.
-  Unlike normalized search power, their units and valid range depend on the configured Plant map.
-- **Alternatives to compare:** validate each staged answer immediately; validate only when the full
-  Plant range/map is known; add a reusable calibration-reference value; rely on final target guards;
-  or keep direct advanced-Plant and beginner-facade paths with parallel checks. Inventory every path
-  and determine which boundary first knows the value's declared units and legal range.
-- **Leading hypothesis:** preserve direct answer methods and validate at the earliest fully informed
-  owner, before mutating calibration state. Add no wrapper if callers use the answer inline, and
-  keep runtime target guards as separate defense.
-- **Completion:** every public calibration-reference/hold path has parallel finite/range semantics,
-  actionable plant-unit diagnostics, and tests proving rejection before lifecycle or hardware side
-  effects.
-- **Decision record:** _Pending; split from CAL-01 during API-03 review on 2026-07-16._
+- **Gate 2 approval (2026-07-30):** The user explicitly replied
+  **`Approve CAL-02 layered finite-validation design`**. This authorizes only the bounded
+  implementation, documentation, tests, and verification recorded below. `origin/master` was
+  fetched and remains `5ce68b0220ea64ad473e61e5ce76926470c0f350`; the existing
+  `codex/cal-02-calibration-reference-validity` branch is based exactly on that merge. MAP-01,
+  RANGE-01, SAFE-04, and every other tracker item remain out of scope.
+- **Decision gate (2026-07-29):** **Ready; public behavioral approval required before
+  implementation.** CAL-02 is the sole active item on
+  `codex/cal-02-calibration-reference-validity`, based exactly on merged
+  `origin/master@5ce68b0220ea64ad473e61e5ce76926470c0f350`. Research changed only this tracker;
+  no Java, test, Javadoc, guide, example, or Phoenix production implementation has started. The
+  design changes public invalid-input timing, exception precedence, and the custom
+  `PositionPlant` contract, so Gate 2 requires explicit approval. MAP-01, RANGE-01, SAFE-04, and
+  every other tracker item remain out of scope.
+- **Confirmed Task failure trace:**
+  1. `PositionCalibrationTasks.SearchReferenceStep.establishReferenceAt(double)` and
+     `SearchAfterStep.holdAfterReference(double)` currently store any primitive without validation.
+  2. Starting the built Task first changes its single-use state, resets the cue, acquires calibration
+     search, and requests an immediate stop of the prior normal output. With a later cue, owner Plant
+     phases may already have submitted raw search power.
+  3. When the cue succeeds, the Task forwards the unchecked reference through the clocked direct
+     Plant seam. The built-in mapped Plant samples native feedback, then can commit `NaN` or infinity
+     as its reference, mark itself referenced, and publish a non-finite measurement.
+  4. An unchecked hold is written only after that reference mutation. The default command target
+     accepts it, so the Task can report `SUCCESS` while the exact resolver later reports the command
+     unavailable and retains an earlier applied target. A custom command that throws discovers the
+     error only after the search and reference effects; ordinary fail-stop cancellation can release
+     the search but cannot undo the reference.
+- **Confirmed construction/runtime failure trace:**
+  1. `MappedPositionPlant` stores unchecked static plant/native pairs and unchecked
+     `assumeCurrentPositionIs(...)` answers. A static invalid pair builds as referenced; an invalid
+     assumed coordinate is committed on the first finite native sample. Position-output paths can
+     then submit a non-finite native command, while regulated paths can invoke a controller with a
+     non-finite measurement and either stop on invalid control math or write power from a permissive
+     custom regulator.
+  2. Both direct runtime `MappedPositionPlant.establishReferenceAt(...)` overloads check native
+     sample state but not the caller's plant-unit value. The clocked overload samples an external
+     source before discovering anything; both can poison an otherwise valid reference.
+  3. `FtcActuators.BasePositionBuilder` stores the same unchecked reference answers. Validating only
+     when it later delegates to `MappedPositionPlant` is too late for device-managed construction,
+     which first resolves/configures FTC motors. Regulated feedback selection may itself have
+     resolved a sensor at an earlier valid stage, but immediate reference-stage rejection can still
+     add no new lookup/configuration/output effect and prevents later command-hardware realization.
+     A poisoned device-managed map can otherwise narrow a non-finite double into a plausible integer
+     tick target, select `RUN_TO_POSITION`, and reapply motor power.
+  4. For an already referenced periodic Plant, the nearest-equivalent calculation
+     `requested + rint((current - requested) / period) * period` can overflow and commit a non-finite
+     resolved reference even when the requested reference, current estimate, and period are each
+     finite. This calculation is calibration-reference lifecycle policy and belongs to CAL-02; the
+     general plant/native affine arithmetic remains MAP-01.
+- **Complete public-path and construction audit:**
+  - The high-level path is the one staged `PositionCalibrationTasks.search(PositionPlant)` recipe:
+    search power, cue, reference coordinate, unchanged-command versus new-command handoff, timeout,
+    then a fresh single-use Task. There is no parallel constructor, recipe object, or overload
+    family.
+  - `PositionPlant.establishReferenceAt(double)` and its clocked overload are a distinct direct
+    custom-adapter/coordinator capability. The unclocked method can use a cached/custom sample; the
+    clocked method supplies the current-loop sample required for truthful periodic re-reference.
+  - Hardware-neutral `MappedPositionPlant.commanded(...)`, `positionOutput(...)`, and
+    `regulated(...)` are the supported test, portable-host, and custom-adapter construction seams.
+    Command-only position exposes a static pair; feedback paths expose the static pair,
+    assume-current, or needs-reference choice.
+  - `FtcActuators.plant(HardwareMap)` is the distinct beginner FTC ownership boundary. Device-managed
+    motor position, every regulated motor feedback spelling, and regulated CR-servo position all
+    converge through the same base reference stage. Standard servo has bounded endpoint mapping and
+    no runtime-reference/search question. Lower `Plants.position(...)` factories return an ordinary
+    same-unit `Plant`, not a `PositionPlant`, and correctly expose no reference sibling.
+  - None of these layers is redundant: the Task owns cooperative behavior, `PositionPlant` names the
+    direct capability, the mapped layer owns hardware-neutral coordinate realization, and the FTC
+    facade owns SDK construction. `alreadyReferenced()` remains a meaningful no-value conceptual
+    answer rather than a numeric alias.
+- **Caller and parameter-value audit:** no executable framework, Phoenix robot, modern starter, or
+  calibration tool currently runs a reference-search Task. Executable callers are tests; maintained
+  examples and guides use inline finite `0.0` values, with one illustrative named
+  `ARM_ZERO_TICKS` constant. No caller stores a reference stage, shares/composes a reference value,
+  or independently validates a reference/hold configuration object. The two common zero arguments
+  answer different questions--the physical coordinate at the cue and the logical command after
+  success--and must remain separate. A public `CalibrationReference`, hold wrapper, or combined
+  config object therefore adds nouns without caller evidence.
+- **Units and range conclusion:**
+  - A reference plant position and an assume-current answer must be finite in **plant units**. A
+    static native reference must be finite in **native units**. A post-reference hold must be a
+    finite **plant-unit command request**. Preserve every accepted primitive exactly, including both
+    signed zeros; never clamp a configuration answer.
+  - Do **not** require a reference coordinate to be inside `targetRange()`. That range is legal
+    commanded travel, while a reference is an affine coordinate anchor. A hard stop or index can
+    legitimately lie outside command travel, `alreadyReferenced()` uses the finite `0 -> 0` anchor
+    without requiring zero in the range, and a periodic reference may resolve to an unwrapped
+    equivalent outside bounded endpoints. A `needsReference(...)` Plant also intentionally exposes
+    an invalid `targetRange()` while the Task recipe is being constructed.
+  - Do **not** pre-range-check a finite `holdAfterReference(...)` answer. It writes the same
+    graph-owned logical command used by ordinary robot behavior; an exact bounded Plant may clamp it,
+    while an equivalent-position transform or overlay may select another legal physical target.
+    Guidance should recommend a deliberately safe/in-range hold when predictable exact holding is
+    intended, without changing the final resolver/range/guard contract.
+  - Standard-servo native `[0, 1]`, motor tick narrowing, `rangeMapsToNative(...)`, group scale/bias,
+    and general affine input/output overflow remain MAP-01. Malformed or `NaN` `ScalarRange`
+    construction remains RANGE-01. CAL-02 adds only the finite reference/hold invariant and the
+    calibration-specific periodic resolved-reference commit check.
+- **Alternatives compared:**
+
+  | Design | Added public concepts | Result |
+  | --- | ---: | --- |
+  | **Selected layered finite validation** | 0 | Unchanged ordinary calls; earliest actionable rejection at every distinct seam plus an atomic mapped runtime commit |
+  | Documentation or downstream guards only | 0 | Leaves Task/search/reference effects and persistent invalid commands; guards do not validate recipes or coordinate anchors |
+  | Task-stage checks only | 0 | Leaves direct mapped construction/runtime and FTC facade callers open |
+  | Mapped/build-time checks only | 0 | Rejects Task answers after search effects on custom Plants and FTC answers after possible SDK construction effects |
+  | Target-range-aware reference/hold checks | 1+ configured-range concepts | Conflates anchors with command travel, breaks periodic logical requests, and cannot query a usable range before reference |
+  | New reference and hold value types | 2-3 nouns | No storage, reuse, composition, or independent-validation caller justifies wrapper-heavy one-step answers |
+
+- **Chosen design:**
+  1. Keep every public method name, stage, primitive parameter, reference mode, and ordinary valid
+     call shape. Add one package-private actuation finite-value helper shared by the Task and mapped
+     Plant. Use a private FTC-facade helper rather than exposing a public utility solely to cross a
+     Java package boundary.
+  2. Validate the Task reference and hold at their answer methods, before assigning `reference`,
+     `holdAfter`, or `holdTarget`. Reject `NaN` and both infinities with `IllegalArgumentException`
+     diagnostics naming the entry point, argument, plant units, and received value. An invalid
+     retained-stage attempt cannot overwrite an earlier valid answer or begin any Task, cue, Plant,
+     command, or output lifecycle.
+  3. Validate both arguments to each mapped static reference answer--plant value first, native value
+     second--before changing the reference mode or either field. Validate assume-current before its
+     mode/field mutation. Apply the same ordering at the FTC facade so a retained invalid answer adds
+     no SDK effect and cannot poison a later build.
+  4. Strengthen the `PositionPlant` contract: an implementation must reject a non-finite requested
+     plant reference before feedback sampling, reference/status/controller/search/output mutation,
+     or another callback. Enforce that contract in both mapped runtime overloads before cached-sample
+     eligibility or current-loop source sampling. An invalid direct attempt during an active search
+     leaves that owner and its staged power unchanged.
+  5. For a finite runtime request, retain the existing native-sample errors. On an already referenced
+     periodic Plant, compute the nearest-equivalent result in locals and reject a non-finite result
+     with actionable `IllegalStateException` before changing `plantReference`, `nativeReference`,
+     `referenced`, `pendingAssume`, or public `lastMeasurement`. The required raw sample may remain
+     truthfully cached in `lastNativeMeasurement`; do not roll it back. A direct failure leaves
+     search ownership unchanged. Through `TaskRunner`, normal fail-stop cancellation releases/stops
+     the acquired search once, writes no hold, and preserves the prior reference.
+  6. Preserve all finite reference and hold values and existing normal target semantics. A finite
+     hold on a Plant without a graph-owned command retains the existing build-time capability error;
+     a non-finite hold fails numerically at its earlier answer step. Do not globally change
+     `ScalarTarget`, add a configured-range accessor, or move command validation into calibration.
+  7. Preserve the current fail-closed assume-current behavior and correct its wording: the Plant
+     establishes the supplied coordinate from the **first finite native sample**, not necessarily
+     the first update.
+- **Error precedence and recovery:** unsupported calibration-search capability is still rejected by
+  `PositionCalibrationTasks.search(...)` before its numeric stages. Within a reached answer stage,
+  numeric validity is immediate. For a two-value pair, the plant argument wins when both are invalid.
+  Direct mapped reference validity precedes cached/source availability; after a finite argument,
+  missing or non-finite native feedback retains its current state error. Rejection changes no staged
+  field or public reference/target/status/output state and allows a valid retry. The periodic
+  derived-result failure occurs only after its required sample and therefore may update the raw
+  sample cache, but its reference commit is atomic and recoverable.
+- **Framework Principles result:** the design fails configuration at the first owner that knows the
+  value and units, keeps the guided questions and unit boundary explicit, and retains one final
+  target resolver/range/guard graph for finite holds. It adds no public wrapper without caller reuse,
+  leaks no FTC type into core actuation, adds no imperative writer or competing Plant heartbeat, and
+  preserves the Task's single-use/fail-stop lifecycle and composition-root update order.
+- **Rejected scope/designs:** do not add Task-start/build-only validation, rely on final FTC adapter
+  narrowing/clamping, alter every `ScalarTarget`, validate reason strings, add reference-range
+  accessors, merge the reference and hold answers, or redesign periodic modulo arithmetic beyond the
+  finite pre-commit guard. Do not change CAL-01 power rules, CAL-03 ownership/handoff, standard-servo
+  endpoints, child mappings, native domains, generic ranges, FTC tuning, partial/throwing physical
+  output truth, Phoenix production behavior, or unrelated documentation.
+- **Bounded implementation and documentation scope:** add only the internal actuation validator,
+  private FTC helper, staged checks, direct mapped checks, and periodic atomic-commit guard. Update
+  the affected Javadocs in `PositionPlant`, `PositionCalibrationTasks`, `MappedPositionPlant`, and
+  `FtcActuators`; synchronize Framework Principles, FTC Actuators & Plants, Robot Calibration
+  Tutorials, Tasks & Macros Quickstart, Mechanism Target Planning, Beginner's Guide, and Phoenix
+  Calibration Guide. Framework Overview, Loop Structure, Phoenix Architecture, lower `Plants`, and
+  Phoenix production code describe unchanged facts and remain untouched unless a targeted stale
+  cross-reference is discovered during implementation.
+- **Verification plan:**
+  - Reject `NaN`, negative infinity, and positive infinity in every Task, mapped-builder, mapped
+    runtime, and FTC numeric slot. Assert the entry point, argument, unit, and value diagnostic.
+    Accept and bit-preserve `-0.0`, `+0.0`, representative finite values, and finite extremes in a
+    map that does not overflow.
+  - In the Task suite, prove invalid reference/hold answers cause no cue reset/sample, Task start,
+    Plant begin/end/update/stop/reference, command get/set, feedback sample, or output effect. Prove
+    invalid-first/valid-retry and valid-then-invalid retained aliases preserve the valid recipe.
+    Explicitly preserve a finite out-of-range exact hold's ordinary clamp/status behavior and a
+    periodic logical hold's equivalent-position resolution.
+  - Cover mapped commanded position, feedback position output, and regulated power construction.
+    Validate each static-pair argument independently and assume-current across retained aliases;
+    prove no resolver/guard/controller/output effect and a valid retry/build.
+  - Cover both direct runtime reference overloads on unreferenced linear and already referenced
+    periodic Plants. Invalid input must precede source sampling and leave reference, range,
+    measurement, requested/applied target, status/resolution, controller/output, and active search
+    ownership unchanged. Preserve the existing current-sample `1081.5 -> 1080.0` periodic regression.
+  - Force periodic derived-reference overflow from finite values; assert one required native sample,
+    actionable `IllegalStateException`, unchanged prior reference/public measurement, no hold or
+    normal output, truthful raw-sample caching, TaskRunner fail-stop release, and a later valid retry.
+  - At the FTC boundary, spot-check device-managed motor position before any hardware resolution,
+    then regulated motor and regulated CR-servo snapshots after their required feedback selection.
+    Prove the invalid answer adds no lookup, direction, PID/tolerance, encoder, mode, target, power,
+    regulator, or output effect and that a valid retry maps correctly. The common base invariant need
+    not be duplicated for every group/feedback spelling.
+  - Retain CAL-03 Task ownership, cue/timeout/cancellation/reentrancy/current-sample tests; CAL-01
+    search-power ordering; device-managed raw-search-to-position handoff/no-encoder-reset; feedback
+    tolerance stages; regulated fail-stop; and Task single-use regressions. Run focused suites, then
+    force `:TeamCode:testDebugUnitTest` and `:TeamCode:compileDebugJavaWithJavac`. Re-scan callers and
+    public construction paths; run Javadoc/compile, Markdown fence/link, trailing-whitespace/final-LF,
+    and `git diff --check` checks. Present the completed diff for Android Studio review before
+    finalization/publication.
+- **Software/hardware claim boundary:** no robot run is needed to prove finite-input rejection,
+  error ordering, retained-builder recovery, atomic reference commit, or lack of new SDK/output
+  effects. Adopting robot code must still validate the physical pose represented by a reference,
+  scale/sign/native offset, cue polarity/repeatability, safe search travel/loading, whether the final
+  resolver actually selects a safe hold, native actuator domains, and physical stop behavior after
+  adapter failure.
+- **Decision record (2026-07-29):** **Ready for explicit approval.** The layered finite-only design
+  survives the complete caller, construction, value-type, range-semantics, lifecycle, principles,
+  and verification audit. Approving **`Approve CAL-02 layered finite-validation design`** authorizes
+  only the bounded implementation, documentation, tests, and verification above; it does not
+  authorize MAP-01, RANGE-01, SAFE-04, or any other tracker item.
+- **Gate 2 implementation (2026-07-30):** CAL-02 is **Verifying** on
+  `codex/cal-02-calibration-reference-validity`, still based exactly on
+  `origin/master@5ce68b0220ea64ad473e61e5ce76926470c0f350`.
+  - One package-private actuation validator now rejects non-finite plant/native calibration values
+    with entry-point, argument, units, and received-value diagnostics while preserving every finite
+    primitive unchanged. `PositionCalibrationTasks` validates reference and hold answers before
+    retained recipe mutation. `MappedPositionPlant` validates both static-pair slots, assume-current,
+    and both direct runtime reference overloads at their owning seams. The private FTC facade helper
+    repeats plant-first validation before any new builder/SDK effect.
+  - References remain coordinate anchors independent of command range, while finite holds retain
+    ordinary resolver/range/overlay/guard semantics. Assume-current now truthfully documents and
+    reports that it waits for the first finite native sample. For a finite current plant estimate,
+    periodic nearest-equivalence arithmetic rejects a non-finite final result before committing
+    reference/public-measurement state; its required raw sample remains truthfully cached.
+  - `PositionPlant`, the mapped/Task/FTC Javadocs, Framework Principles, five framework guides, and
+    the Phoenix calibration guide now state the same units, finite/no-clamp rule, command-range
+    distinction, atomic periodic boundary, and software-versus-physical claim boundary. General
+    plant/native affine overflow remains explicitly deferred to MAP-01.
+  - Two focused suites add **20** CAL-02 tests across Task recipes, all three mapped factory shapes,
+    direct cached/current-sample runtime seams, assume-current availability, active-search retention,
+    periodic overflow/retry/fail-stop behavior, device-managed FTC construction, regulated motor and
+    CR-servo paths, signed zero, finite extremes, error precedence, and retained-alias recovery.
+    The final forced `:TeamCode:testDebugUnitTest` plus `:TeamCode:compileDebugJavaWithJavac` run
+    executed all tasks successfully: **1,085 tests, 0 failures, 0 errors, 0 skipped**. Only the
+    existing Java 8 source/target-on-JDK-21 and deprecation warnings remain.
+  - Caller and construction-path scans confirm one Task recipe, the two intentional PositionPlant
+    runtime capabilities, one private mapped constructor reached by the three distinct mapped
+    factories, and the shared FTC base stage. All **15** changed/untracked files have no trailing
+    whitespace and end in LF; all **8** changed Markdown files have balanced fences and no missing
+    local links; stale first-update/overbroad overflow wording scans and `git diff --check` pass.
+  - Three independent adversarial reviews covered correctness, Framework Principles, student-facing
+    simplicity/API scope, documentation accuracy, test validity, construction paths, and distinct
+    capabilities. They identified an overbroad MAP-01 documentation claim, missing mapped exception
+    Javadocs/stale tracker date, and several regression-proofing gaps. Each was corrected and the
+    relevant reviewer rechecked the resolution; no production defect or remaining concrete finding
+    remains.
+- **Android Studio audit point (2026-07-30):** CAL-02 intentionally remains unstaged and
+  uncommitted. Inspect the shared core/private FTC validators; Task and mapped pre-assignment checks;
+  direct-reference pre-sample ordering; periodic local computation/atomic commit; first-finite
+  assume-current status; FTC pre-construction ordering; focused tests; and synchronized guidance.
+  No robot run is required for this deterministic numeric/pre-effect contract. Adopting robots still
+  own physical pose/cue/scale/sign/travel/loading/hold safety, native domains, and adapter-failure
+  stop truth. Approval authorizes finalization/publication of CAL-02 only and does not start MAP-01,
+  RANGE-01, SAFE-04, or another item.
+- **Manual verification (2026-07-30):** the user reviewed the CAL-02 implementation in Android
+  Studio and approved it with **`CAL-02 looks good`**. CAL-02 is now **Done**; Gate 3 finalization,
+  publication, and merge are authorized for this item only. The deterministic numeric/pre-effect
+  contract requires no physical robot result; adopting robots still own the physical checks listed
+  above.
 
 ### MAP-01 - FTC actuator mapping-domain validation
 

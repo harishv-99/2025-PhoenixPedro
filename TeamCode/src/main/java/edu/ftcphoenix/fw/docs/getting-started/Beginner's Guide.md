@@ -314,6 +314,11 @@ The builder asks a short sequence of guided questions:
       * `.nativeUnits()`, `.scaleToNative(...)`, or bounded-only `.rangeMapsToNative(...)`
       * then `.alreadyReferenced()`, `.plantPositionMapsToNative(...)`, `.assumeCurrentPositionIs(...)`, or `.needsReference(...)` when a runtime reference is required.
 
+    Explicit plant/native reference values must be finite and are rejected rather than clamped. A
+    reference is a coordinate anchor, not a target request, so it need not lie inside the Plant's
+    target range. `assumeCurrentPositionIs(...)` waits for the first finite native sample; its finite
+    numeric contract does not prove the robot was physically placed at the declared pose.
+
 4. **For every feedback Plant, choose what “at target” means**:
 
     * After velocity mapping, answer exactly once with `.velocityTolerance(...)`.

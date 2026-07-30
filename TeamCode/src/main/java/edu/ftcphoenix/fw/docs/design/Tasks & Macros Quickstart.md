@@ -342,12 +342,20 @@ rejects `NaN`, infinities, and overshoot at that builder step. It does not clamp
 different command. This validates the number's shape only; robot code must still choose a safe
 magnitude and direction and verify the cue and mechanism setup.
 
+The plant-unit answer to `establishReferenceAt(...)` and the separate command supplied to
+`holdAfterReference(...)` must also be finite. Each rejects `NaN` or infinity at its builder step
+without clamping or overwriting an earlier accepted answer. A reference defines the coordinate map
+and need not lie inside the Plant's target range; it is not a target command.
+
 After `establishReferenceAt(...)`, choose `resumeTargeting()` to preserve the Plant's existing
 persistent command and final resolver, or `holdAfterReference(value)` to write a new graph-owned
 command before the downstream Plant phase. Neither choice bypasses overlays, bounds, references, or
 guards, and `resumeTargeting()` does not leave a continuously updated Plant disabled. Timeout and
 active cancellation also request a temporary-output stop and release the search while preserving
-the persistent command.
+the persistent command. A finite hold can still be transformed or clamped by that normal graph;
+choose a deliberately safe in-range value when exact predictable holding is intended. These
+numeric checks do not prove the robot is physically at the declared reference or that the hold is
+safe.
 
 ### 4.1 Guided writes for time-based commands
 

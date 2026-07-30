@@ -20,6 +20,11 @@ import edu.ftcphoenix.fw.task.TaskOutcome;
  * {@code [-1.0, +1.0]} range. That structural check does not choose a mechanically safe magnitude
  * or direction for a particular mechanism; the robot owner must validate those physical facts.</p>
  *
+ * <p>The reference and optional post-success hold are finite plant-unit answers. A reference is a
+ * coordinate anchor and need not lie inside the Plant's legal target range. A finite hold remains
+ * a normal graph-owned command: the final resolver, range, overlays, and guards may transform or
+ * clamp it. These structural checks do not prove that either value matches a safe physical pose.</p>
+ *
  * <h2>Typical lift homing</h2>
  *
  * <pre>{@code
@@ -99,6 +104,14 @@ public final class PositionCalibrationTasks {
     public interface SearchReferenceStep {
         /**
          * Establishes that the current mechanism position corresponds to {@code plantPosition}.
+         *
+         * <p>The value must be finite in plant units and is rejected immediately before the
+         * builder stores it or any Task, Plant, cue, feedback, or output lifecycle begins. It is a
+         * coordinate anchor rather than a target request and therefore need not lie inside the
+         * Plant's legal target range.</p>
+         *
+         * @param plantPosition finite reference coordinate in plant units
+         * @throws IllegalArgumentException if {@code plantPosition} is non-finite
          */
         SearchAfterStep establishReferenceAt(double plantPosition);
     }
@@ -137,6 +150,14 @@ public final class PositionCalibrationTasks {
          * re-enters from the target's own write callback, the task restores the command value it
          * observed before that write. A throwing hold write also gets one best-effort restoration
          * before its original failure propagates.</p>
+         *
+         * <p>The value must be finite and is rejected at this builder step before any hold flag or
+         * target is stored. It is not pre-checked against the Plant range: like every finite
+         * graph-owned command, the downstream resolver, bounds, and guards own its final physical
+         * realization.</p>
+         *
+         * @param plantTarget finite post-success command in plant units
+         * @throws IllegalArgumentException if {@code plantTarget} is non-finite
          */
         SearchTimeoutStep holdAfterReference(double plantTarget);
     }
@@ -210,7 +231,10 @@ public final class PositionCalibrationTasks {
 
         @Override
         public SearchAfterStep establishReferenceAt(double plantPosition) {
-            this.reference = plantPosition;
+            this.reference = PositionCalibrationValueValidation.requireFinitePlantValue(
+                    plantPosition,
+                    "PositionCalibrationTasks.establishReferenceAt(...)",
+                    "plantPosition");
             return this;
         }
 
@@ -222,8 +246,12 @@ public final class PositionCalibrationTasks {
 
         @Override
         public SearchTimeoutStep holdAfterReference(double plantTarget) {
+            double validatedTarget = PositionCalibrationValueValidation.requireFinitePlantValue(
+                    plantTarget,
+                    "PositionCalibrationTasks.holdAfterReference(...)",
+                    "plantTarget");
             this.holdAfter = true;
-            this.holdTarget = plantTarget;
+            this.holdTarget = validatedTarget;
             return this;
         }
 

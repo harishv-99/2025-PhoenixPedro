@@ -709,6 +709,12 @@ rejects `NaN`, infinities, and overshoot at `.withPower(...)` instead of clampin
 structural check does not select a safe magnitude, direction, cue, or mechanical setup—the lift
 service still owns those robot-specific decisions.
 
+The reference and post-success hold are separate plant-unit answers and must also be finite. The
+recipe rejects `NaN` or infinity at each answer without clamping. A reference is a coordinate anchor
+and need not lie inside the Plant's target range. A finite hold is a logical command, so the normal
+resolver, range, overlays, and target guards may still transform or clamp it; choose a deliberately
+safe in-range hold when exact predictable holding is intended.
+
 The Task runner advances this recipe before the mechanism's downstream update. The search Task
 owns the cue, reference, timeout, and handoff decisions, but it never calls `lift.update(clock)`;
 the lift mechanism remains the sole Plant heartbeat owner. `holdAfterReference(0.0)` changes the
@@ -719,4 +725,8 @@ active cancellation also preserve that command while requesting a temporary-outp
 releasing the search.
 
 The resolver should not decide when zero is trustworthy. Homing, indexing, manual zeroing, and
-semantic presets belong in the robot mechanism/service layer.
+semantic presets belong in the robot mechanism/service layer. Finite software values cannot prove
+the physical cue, pose, scale, reference, or hold is correct; the adopting mechanism must verify
+those facts. When a periodic re-reference has a finite current plant estimate, the Plant rejects a
+non-finite final nearest-equivalent result before commit. General plant/native affine overflow
+remains a separate mapping-domain concern.
