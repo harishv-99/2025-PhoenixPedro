@@ -3,10 +3,9 @@ package edu.ftcphoenix.fw.task;
 /**
  * Describes the completion status of a {@link Task}.
  *
- * <p>All tasks support outcomes via {@link Task#getOutcome()}, but many simple tasks will just use
- * the default {@link #UNKNOWN} value and never override it. Tasks that care about distinguishing
- * different terminal states, for example success vs timeout vs cancellation, should override
- * {@code getOutcome()} and return one of the more specific values.</p>
+ * <p>Every task implementation supplies {@link Task#getOutcome()}. A simple task that does not
+ * distinguish terminal states may return {@link #UNKNOWN}; a task that tracks success, timeout,
+ * cancellation, or another meaningful state should return the corresponding specific value.</p>
  *
  * <p>Most tasks report {@link #NOT_DONE} while running and switch to one of the terminal values
  * once they finish.</p>
@@ -15,7 +14,7 @@ public enum TaskOutcome {
 
     /**
      * This task does not expose a meaningful outcome, or the outcome is not being tracked. This is
-     * the default for generic tasks that do not care about distinguishing success vs timeout.
+     * appropriate for generic tasks that do not distinguish success from other terminal states.
      */
     UNKNOWN,
 

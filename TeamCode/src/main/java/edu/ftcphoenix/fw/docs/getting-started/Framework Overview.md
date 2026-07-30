@@ -6,7 +6,8 @@ The big idea is: **advance a single `LoopClock` once per OpMode cycle**, then ru
 
 Useful companions to this document are [`Framework Lanes & Robot Controls`](<../design/Framework Lanes & Robot Controls.md>), [`Robot Capabilities & Mode Clients`](<../design/Robot Capabilities & Mode Clients.md>), and [`Recommended Robot Design`](<../design/Recommended Robot Design.md>). Together they explain the ownership vocabulary, how to split framework lanes from robot code, how TeleOp and Auto should share mechanism APIs through robot-owned capability families, and how to choose the right internal behavior pattern for a mechanism.
 
-See the repository [`README`](<../../README.md>) for the full documentation map and suggested reading paths.
+See the framework documentation [`README`](<../../README.md>) for the full map and suggested
+reading paths.
 
 ---
 
@@ -377,7 +378,7 @@ A `DriveSignal` is **robot-centric** and follows Phoenix pose conventions:
 A `DriveSource` is the drive-specific specialization of `Source<DriveSignal>` and produces a `DriveSignal` each loop:
 
 * Manual TeleOp: `GamepadDriveSource`
-* Assisted aiming / guidance: `DriveGuidance` (build a plan) + {@code DriveSource.overlayWhen(...) }
+* Assisted aiming / guidance: `DriveGuidance` (build a plan) + `DriveSource.overlayWhen(...)`
 * Autonomous logic: anything implementing `DriveSource`
 
 `DriveSource` also supports composition helpers (like scaling and blending) via default methods.

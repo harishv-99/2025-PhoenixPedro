@@ -146,7 +146,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 59 | CAL-03 | Calibration-search Plant update ownership | Done | Single-owner calibration heartbeat, explicit handoff, synchronized docs, verification, and Android Studio approval are complete. |
 | 60 | CAL-01 | Calibration-search power validation | Done | Dual pre-effect validation, synchronized contracts/guides, automated verification, and Android Studio review are complete. |
 | 61 | CAL-02 | Position-calibration reference validity | Done | Layered finite validation, atomic periodic commit, synchronized docs, automated verification, and Android Studio review are complete. |
-| 62 | DOC-01 | Stale and non-compiling documentation | Proposed | Correct loop/API examples and validate links/examples where practical. |
+| 62 | DOC-01 | Stale and non-compiling documentation | Done | Factual docs, compiled-example authority links, navigation, focused Markdown validation, and Android Studio approval are complete. |
 | 63 | CLEAN-01 | Alias and risky convenience cleanup | Proposed | Separate unsafe enqueue behavior from cosmetic aliases, then remove only paths proven redundant or unsafe. |
 | 64 | RANGE-01 | ScalarRange construction validity | Proposed | Define and enforce finite, half-bounded, and unbounded range construction without allowing `NaN`. |
 | 65 | MAP-01 | FTC actuator mapping-domain validation | Proposed | Validate finite child transforms and raw actuator domains before command mapping can be silently clamped. |
@@ -9289,6 +9289,11 @@ writer, and explicit lifecycle ownership.
 
 ### DOC-01 - Stale and non-compiling documentation
 
+- **Research start (2026-07-30):** DOC-01 is the sole active item on
+  `codex/doc-01-documentation-validation`, based exactly on merged
+  `origin/master@8bbbf0ee181c01d473569e1c9a63b92eb6d5bf4b`. Gate 1 may change only this
+  tracker while auditing maintained documentation, real APIs/callers, and practical validation
+  paths. CLEAN-01, CI-01, BOUNDARY-01, and every other tracker item remain out of scope.
 - **Problem to confirm:** some guides/Javadocs reference no-op or nonexistent APIs, omit required
   clock updates, or contain broken links.
 - **Decision question:** which examples can be compiled directly, and which need lightweight link or
@@ -9297,7 +9302,125 @@ writer, and explicit lifecycle ownership.
   examples rather than building a complex documentation system.
 - **Completion:** canonical loop, task, Plant, and drive examples match real APIs; repository Markdown
   links pass a focused checker.
-- **Decision record:** _Pending._
+- **Decision record (2026-07-30):**
+  - **Confirmed behavior and failure paths:** the baseline
+    `:TeamCode:compileDebugJavaWithJavac` succeeds, so the checked-in Java examples remain valid
+    compile authorities, but documentation around them has drifted. `Task` and `TaskRunner`
+    Javadocs name nonexistent `Tasks.runForSeconds(...)`, `Tasks.waitSeconds(...)`, and
+    `Tasks.instant(...)`; the runner example also omits the one required
+    `clock.update(getRuntime())`, so its same-cycle guard would make repeated loop calls inert.
+    `Tasks` describes a pure wait as running the intake. The Task guide skips required staged
+    `FtcActuators` builder answers, overstates physical arrival for open-loop Plants, and describes
+    abstract `Task.getOutcome()` as a default method. A PID example invents `drive.turn(...)`, some
+    Markdown leaks Javadoc tags, and Phoenix's architecture phase lists omit the caller-owned
+    `updateAny(getRuntime())` clock step. The repository link audit found 335 valid local targets
+    and four broken root-README targets: two malformed FTC issue URLs and two sample paths missing
+    `externalhardware/`. The actual root README also lacks the Phoenix orientation required by
+    Framework Principles section 10.4, while several nested docs incorrectly call `fw/README.md`
+    the repository root.
+  - **Caller and example inventory:** the seven-file
+    `edu.ftcphoenix.robots.examples.starter` robot is the compiled modern TeleOp/Auto authority and
+    has focused tests. `TeleOp_01_MecanumBasic` is the compiled direct-drive authority;
+    `TeleOp_03_ShooterMacro` is the compiled one-clock, binding, Task-runner, drive, and Plant
+    authority; and `TeleOp_05_ShooterTagAimVision` supplies a complete guidance-plan example.
+    `StarterIntakeMechanism` supplies the shortest complete `FtcActuators` power-Plant and timed
+    `ScalarTasks` paths. Production `PhoenixTeleOp` and `PhoenixPedroAutoOpModeBase` both call
+    `PhoenixRobot.updateAny(...)` before their mode-specific update. Searches of every qualified
+    `Tasks`, `ScalarTasks`, `DriveTasks`, `PlantTargets`, `FtcActuators`, `FtcDrives`,
+    `FtcSensors`, `ScalarRegulators`, and `RouteTasks` documentation call found no other missing
+    facade method names; the stale three `Tasks` names above are the complete set.
+  - **Construction-layer and redundancy disposition:** DOC-01 adds no production construction
+    layer, overload, public noun, or runtime behavior. The real factory and leaf paths retain
+    distinct value: `Tasks.waitForSeconds(...)` is a generic wait, `Tasks.runOnce(...)` is a
+    one-shot action, `RunForSecondsTask` is the callback-capable timed leaf, `ScalarTasks` owns
+    target-writing recipes, and the staged FTC builder owns hardware/control answers. The tempting
+    alternatives of adding alias factories merely to make stale examples compile, or making
+    `Task.getOutcome()` default to `UNKNOWN`, are rejected here: the former duplicates existing
+    paths, while the latter changes the public Task extension contract and can silently weaken
+    outcome reporting without a confirmed runtime need. Documentation will instead state the
+    current contract truthfully: every implementation supplies `getOutcome()`, and `UNKNOWN` is
+    the valid result when it does not track richer semantics. Any future API simplification belongs
+    in a separately approved API item.
+  - **Scale and alternatives:** the Phoenix-maintained tree contains 342 Markdown fences, including
+    287 Java fences, plus 86 Javadoc code blocks. Most are excerpts: only 29 Markdown Java blocks
+    declare a type, 18 include imports, and 13 literally contain `...`. Fix-only documentation
+    would provide no drift protection. Extracting every Markdown/Javadoc block into wrappers would
+    create a brittle second representation with substantial false-positive and maintenance cost.
+    A static API-token scanner cannot validate overloads, staged types, or lifecycle order. A
+    custom Gradle/Groovy task or PowerShell/Node/external-link tool adds a second invocation or
+    toolchain without improving the local-path contract. The selected design reuses compiled source
+    examples for Java truth and the existing Java 8/JUnit 4 test toolchain for deterministic local
+    Markdown validation.
+  - **Chosen bounded implementation:** correct only the confirmed factual Javadocs/Markdown and
+    four root links; add a short Phoenix section to the root README; repair the documentation-root
+    vocabulary; link loop/task/Plant/drive guidance to existing compiled examples; and add one
+    test-only Markdown checker. The checker covers the root README plus maintained Phoenix
+    Markdown, excludes generated/build trees and four copied FTC SDK/sample documents, ignores
+    remote reachability, verifies balanced fences, parses the repository's inline links/images,
+    decodes local paths, rejects repository escapes, enforces canonical path case even on Windows,
+    and validates local GitHub-style heading fragments with actionable file/line errors. Synthetic
+    tests cover spaces, missing and wrong-case paths, valid/missing cross-file anchors, absolute
+    paths, escapes, unclosed fences, and code-block masking. CI workflow/setup and external-network
+    policy remain CI-01; import boundaries remain BOUNDARY-01; aliases and no-op lifecycle cleanup
+    remain CLEAN-01.
+  - **Framework Principles and approval gate:** the design keeps one explicit loop clock, truthful
+    Task/Plant ownership, one obvious API path, documentation synchronized with real callers, and
+    no SDK/vendor dependency in framework logic. It matches DOC-01's leading hypothesis and makes
+    no public API, production behavior, or major lifecycle/ownership change, so Gate 1 does not
+    require a separate implementation approval.
+  - **Verification plan:** run focused checker tests, then
+    `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac`; count JUnit XML outcomes;
+    rerun qualified API-name, local-link, canonical-case, fragment, fence, affected-caller, and
+    whitespace checks; and complete independent correctness, principles, simplicity, scope,
+    documentation, and test-validity reviews. No robot-hardware claim or validation is involved.
+- **Implementation start (2026-07-30):** after the completed Gate 1 decision, `origin/master` was
+  fetched and remained `8bbbf0ee181c01d473569e1c9a63b92eb6d5bf4b`; the item branch still points
+  exactly at that remote base. DOC-01 is now in progress with the bounded design above.
+- **Gate 2 implementation (2026-07-30):** DOC-01 is **Verifying** on
+  `codex/doc-01-documentation-validation`, still based exactly on
+  `origin/master@8bbbf0ee181c01d473569e1c9a63b92eb6d5bf4b`.
+  - Root/framework hubs now distinguish project orientation, Phoenix orientation, and the full docs
+    hub. The root README has the required Phoenix entrypoint, valid FTC issue links, and corrected
+    external-hardware sample paths. Loop, Task, Plant, drive-guidance, and Phoenix architecture
+    guidance links directly to the appropriate compiled starter/teaching source and states the same
+    clock, cleanup, feedback, and ownership contract as those callers.
+  - Task/runner/outcome, PID, Plant/target, drive-source, and Phoenix Javadocs now use real factory
+    names and fully staged examples, show the required clock advance, distinguish the required
+    `getOutcome()` method from optional richer semantics, avoid fictitious sink APIs, and state the
+    caller-owned `updateAny(...)` precondition. Every production Java change is Javadoc-only; no
+    executable line, signature, public construction path, dependency, or runtime behavior changed.
+  - `DocumentationLinksTest` is one test-only Java 8/JUnit 4 checker with no new build/plugin/script
+    surface. It scans the 53 maintained Markdown sources, excludes generated/build trees, symlinks,
+    and four copied FTC documents, ignores remote reachability, and validates balanced fences,
+    inline links/images, decoded local paths, repository containment, exact case, and ATX/Setext
+    fragments with duplicate-slug handling. Five synthetic tests cover literal/encoded spaces,
+    missing/wrong-case/absolute/escaping paths, cross-file and colliding fragments, code masking,
+    escaped/nested labels, unclosed fences, and actionable aggregate diagnostics.
+  - The final forced
+    `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` run re-executed all 32 Gradle
+    tasks successfully: **1,090 tests across 114 suites, 0 failures, 0 errors, 0 skipped**. The
+    focused checker reports **5 tests, 0 failures, 0 errors, 0 skipped**. Only the existing Java 8
+    source/target-on-JDK-21 and deprecated FTC SDK warnings remain.
+  - All **24** changed/untracked files end in LF; `git diff --check` and the untracked-test trailing
+    whitespace scan pass. Qualified stale-name/default-outcome, malformed root-link, canonical
+    caller, and production-Java-diff scans pass; the production diff is comments only. The focused
+    repository checker proves maintained local targets, canonical case, fragments, and fences.
+  - Three independent adversarial reviews covered documentation/API truth, loop/Task/Plant/drive
+    ownership, student simplicity, one-item/API scope, tracker integrity, and checker validity. They
+    found and resolved a misplaced tracker record, one remaining Framework Principles outcome
+    claim, missing dedicated Plant/drive authority links, and parser cases for Windows/escaped paths,
+    duplicate/Setext anchors, inline-code delimiters, symlinks, escaped/nested labels, and diagnostic
+    assertions. Each reviewer rechecked its fixes; no concrete finding remains.
+- **Android Studio audit point (2026-07-30):** DOC-01 remains unstaged and uncommitted. Inspect the
+  root/framework documentation entrypoints; Task/Plant/drive/Phoenix Javadocs and guides; compiled
+  authority links; the Phoenix outer-clock ordering; and `DocumentationLinksTest` corpus scope,
+  exclusions, fixtures, and error messages. No robot run is useful for this documentation/test-only
+  item. Approval authorizes finalization/publication of DOC-01 only and does not start CLEAN-01,
+  CI-01, BOUNDARY-01, or another tracker item.
+- **Manual verification (2026-07-30):** the user reviewed DOC-01 in Android Studio and approved it
+  with **`DOC-01 looks good`**. DOC-01 is now **Done**; Gate 3 finalization, publication, and merge
+  are authorized for this item only. No robot run is required for the documentation/test-only
+  contract, and CLEAN-01, CI-01, BOUNDARY-01, and every other tracker item remain unstarted.
 
 ### CI-01 - Framework verification in CI
 

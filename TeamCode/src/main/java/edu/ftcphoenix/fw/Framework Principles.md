@@ -900,7 +900,8 @@ A `Task` is a cooperative unit of work driven by the main loop:
 * `start(LoopClock clock)` – called once
 * `update(LoopClock clock)` – called each cycle while running
 * `isComplete()` – true when finished
-* `getOutcome()` – optional richer completion info (`TaskOutcome`)
+* `getOutcome()` – required status method; return `TaskOutcome.UNKNOWN` when no richer completion
+  reason is tracked
 
 Each `Task` **instance is single-use**: it may enter `start(clock)` once. A framework Task records
 that attempt before starting children, controllers, or hardware effects and throws an actionable
@@ -1274,7 +1275,8 @@ Phoenix frequently teaches through its exceptions.
 
 ### 10.4 Keep the docs navigable
 
-- Keep the repo root [`README.md`](<README.md>) as the quick orientation page.
+- Keep the repository root [`README.md`](<../../../../../../../README.md>) as project orientation
+  and this framework [`README.md`](<README.md>) as Phoenix orientation.
 - Keep [`docs/README.md`](<docs/README.md>) as the full docs hub.
 - Keep a short `README.md` in each major docs folder with reading order and related links.
 - If a doc intentionally lives next to code instead of under `docs/` (for example an optional

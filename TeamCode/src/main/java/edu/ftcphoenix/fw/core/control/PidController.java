@@ -33,8 +33,8 @@ package edu.ftcphoenix.fw.core.control;
  * double currentAngle = imu.getHeading(); // radians
  * double error = targetAngle - currentAngle;
  *
- * double output = pid.update(error, dtSec);
- * drive.turn(output); // interpret output as turn command
+ * double omegaCommand = pid.update(error, dtSec);
+ * // The drive owner bounds and includes omegaCommand in its one final drive-signal write.
  * }</pre>
  *
  * <p>For advanced controllers, callers may choose to:</p>

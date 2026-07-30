@@ -70,9 +70,10 @@ This keeps the student-facing building blocks (`actuation/drive/input/task/...`)
 
 ### 1.5 Documentation topology
 
-Keep the docs easy to navigate from three places:
+Keep the docs easy to navigate from four places:
 
-- the repo root [`README.md`](<../../README.md>)
+- the repository root [`README.md`](<../../../../../../../../../README.md>)
+- the framework documentation root [`README.md`](<../../README.md>)
 - the full hub [`../README.md`](<../README.md>)
 - the local section `README.md` in whatever docs folder you are editing
 
@@ -98,3 +99,17 @@ Android stub default-return settings to conceal an accidental FTC/Android depend
 supposed to remain pure Java.
 
 Local unit tests complement rather than replace the on-robot testers and calibration walkthroughs.
+
+### 1.7 Documentation integrity check
+
+Run the focused Markdown link and fence check from the repository root with:
+
+```powershell
+.\gradlew.bat --console=plain :TeamCode:testDebugUnitTest --tests edu.ftcphoenix.fw.docs.DocumentationLinksTest
+```
+
+The check validates inline links/images, exact-case local targets, heading fragments, and balanced
+fences in maintained Markdown without depending on network access. It skips generated/build trees
+and the four copied FTC SDK/sample Markdown files. It does not claim that an external website is
+reachable or that prose and code are semantically identical; those still require review alongside
+the compiled canonical examples.

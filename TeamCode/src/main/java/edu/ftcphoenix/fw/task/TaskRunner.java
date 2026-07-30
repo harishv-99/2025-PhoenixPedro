@@ -48,10 +48,11 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * <h2>Typical usage</h2>
  * <pre>{@code
  * TaskRunner runner = new TaskRunner();
- * runner.enqueue(Tasks.waitSeconds(0.2));
- * runner.enqueue(Tasks.instant(intake::start));
+ * runner.enqueue(Tasks.waitForSeconds(0.2));
+ * runner.enqueue(Tasks.runOnce(intake::start));
  *
  * // In the loop:
+ * clock.update(getRuntime());
  * runner.update(clock);
  *
  * // If driver input or safety logic needs to abort automation:

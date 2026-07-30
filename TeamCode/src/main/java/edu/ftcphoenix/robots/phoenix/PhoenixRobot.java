@@ -377,6 +377,9 @@ public final class PhoenixRobot {
     /**
      * Advances one TeleOp loop.
      *
+     * <p>The OpMode must call {@link #updateAny(double)} exactly once earlier in the same loop so
+     * this method and every owned component observe the current shared-clock cycle.</p>
+     *
      * <p>
      * Loop order is intentionally explicit: vision component readiness, localization lane,
      * targeting, controls, scoring path, drive-assist service, drivebase, then telemetry
@@ -447,6 +450,9 @@ public final class PhoenixRobot {
 
     /**
      * Advances one autonomous loop.
+     *
+     * <p>The OpMode must call {@link #updateAny(double)} exactly once earlier in the same loop so
+     * this method and every owned component observe the current shared-clock cycle.</p>
      *
      * <p>Loop order is explicit and matches Phoenix ownership boundaries: vision component
      * readiness, localization, targeting, the continuously owned external drive heartbeat, the

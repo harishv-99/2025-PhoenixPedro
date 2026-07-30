@@ -43,7 +43,7 @@ Phoenix code is built around three ideas:
 
 You describe *what* should happen as a graph of tasks, and the framework figures out *when* each piece runs.
 
-Typical flow in an OpMode:
+Typical active-cycle flow in an OpMode:
 
 ```java
 public class MyTeleOp extends OpMode {
@@ -78,6 +78,13 @@ public class MyTeleOp extends OpMode {
 }
 ```
 
+This is an active-cycle excerpt, not a complete OpMode owner. The compiling
+[`StarterTeleOp`](<../../../robots/examples/starter/StarterTeleOp.java>) delegates FTC STOP to the
+idempotent [`StarterRobot`](<../../../robots/examples/starter/StarterRobot.java>) composition root.
+The flat teaching [`TeleOp_03_ShooterMacro`](<../../tools/examples/TeleOp_03_ShooterMacro.java>)
+instead cancels its runner and stops every Plant and drive object it constructed. Use one of those
+complete cleanup shapes rather than growing this short excerpt into an owner without `stop()`.
+
 In ordinary TeleOp, Tasks do decision work, update sources, request Plant targets, or manage a
 temporary calibration-search recipe. They run before the one final `DriveSource` writer and the
 mechanism-owned Plant phase shown above; they do not write imperatively to the drive sink or call a
@@ -100,7 +107,7 @@ public interface Task {
     default void cancel() { }
     boolean isComplete();
 
-    default TaskOutcome getOutcome() { ... }
+    TaskOutcome getOutcome();
 }
 ```
 
@@ -119,7 +126,9 @@ Rules:
 * Calling `update(...)` directly before `start(...)` is a lifecycle error. Framework Tasks report
   it with an actionable exception instead of silently starting or mutating state. `Tasks.noop()`
   is the intentional exception because it is already successfully complete when created.
-* `getOutcome()` lets tasks report *why* they finished (success, timeout, cancelled, etc.).
+* `getOutcome()` is part of every Task implementation. A simple Task that deliberately does not
+  track a richer result may return `TaskOutcome.UNKNOWN`. Outcome-aware Tasks normally return
+  `NOT_DONE` while active, then a terminal value such as `SUCCESS`, `TIMEOUT`, or `CANCELLED`.
 * If a custom task owns a duration or timeout, capture `clock.nowSec()` when that interval starts.
   On a first `update(...)` that shares the start cycle, the current `dtSec()` began before
   `start(...)` and must not be counted as task runtime. The advanced `RunForSecondsTask.onUpdate`
@@ -293,15 +302,18 @@ creates its command inline:
 
 The builder below is a construction-time excerpt from the mechanism owner. In ordinary FTC robot
 code, that constructor receives `HardwareMap` and its data-only config, copies the config, and uses
-the copied hardware name/direction instead of literals. The composition root constructs the
-mechanism, not this raw Plant.
+the copied hardware name and direction. The composition root constructs the mechanism, not this
+raw Plant. See the compiling
+[`StarterIntakeMechanism`](<../../../robots/examples/starter/StarterIntakeMechanism.java>) for the
+complete owner.
 
 ```java
 private final Plant intake;
 
 // In the IntakeMechanism constructor:
 this.intake = FtcActuators.plant(hardwareMap)
-        // hardware and control configuration...
+        .motor(snapshot.motorName, snapshot.direction)
+        .power()
         .targetedBy(ScalarTarget.create(0.0))
         .build();
 ```
@@ -315,7 +327,7 @@ Plant invokes its final PlantTargetResolver to select the requested target
     ↓
 Plant bounds and target guards select the applied target
     ↓
-Plant sends the actuator command and reports physical arrival at the selected requested target
+Plant sends the actuator command; a feedback-capable Plant can also report physical arrival
 ```
 
 `intake.commandTarget()` returns that same stable target without sampling or touching hardware. Use
