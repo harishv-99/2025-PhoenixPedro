@@ -16,6 +16,10 @@ import edu.ftcphoenix.fw.task.TaskOutcome;
  * robot mechanism. The cue can be any {@link BooleanSource}: a limit switch, color mark detector,
  * beam break, stall detector, vision predicate, or manual operator button.</p>
  *
+ * <p>Search power is a required finite normalized answer in the inclusive
+ * {@code [-1.0, +1.0]} range. That structural check does not choose a mechanically safe magnitude
+ * or direction for a particular mechanism; the robot owner must validate those physical facts.</p>
+ *
  * <h2>Typical lift homing</h2>
  *
  * <pre>{@code
@@ -67,6 +71,14 @@ public final class PositionCalibrationTasks {
         /**
          * Stages this normalized power for the Plant owner's downstream updates while the task
          * waits for the reference condition.
+         *
+         * <p>The value must be finite and inside the inclusive {@code [-1.0, +1.0]} range. Invalid
+         * values are rejected immediately rather than clamped, before this builder stores the
+         * answer or any task, Plant, or output lifecycle begins.</p>
+         *
+         * @param power finite normalized open-loop search power
+         * @throws IllegalArgumentException if {@code power} is non-finite or outside
+         *                                  {@code [-1.0, +1.0]}
          */
         SearchUntilStep withPower(double power);
     }
@@ -185,7 +197,8 @@ public final class PositionCalibrationTasks {
 
         @Override
         public SearchUntilStep withPower(double power) {
-            this.power = power;
+            this.power = CalibrationSearchPowerValidation.requireValid(
+                    power, "PositionCalibrationTasks.withPower(...)");
             return this;
         }
 

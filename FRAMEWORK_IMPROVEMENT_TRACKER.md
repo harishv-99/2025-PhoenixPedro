@@ -144,7 +144,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 57 | TARGET-05 | Target request/resolution vocabulary | Done | The request/resolver/resolution migration, automated verification, Android Studio review, and publication approval are complete. |
 | 58 | PLANT-01 | One-variable simple Plant usage | Done | Ordinary mechanism ownership, one-variable exact commands, advanced seams, docs, examples, verification, and Android Studio review are complete. |
 | 59 | CAL-03 | Calibration-search Plant update ownership | Done | Single-owner calibration heartbeat, explicit handoff, synchronized docs, verification, and Android Studio approval are complete. |
-| 60 | CAL-01 | Calibration-search power validation | Proposed | Reject invalid normalized search power before stopping normal output or changing calibration state. |
+| 60 | CAL-01 | Calibration-search power validation | Done | Dual pre-effect validation, synchronized contracts/guides, automated verification, and Android Studio review are complete. |
 | 61 | CAL-02 | Position-calibration reference validity | Proposed | Validate calibration reference and hold answers at the boundary that owns their units and lifecycle. |
 | 62 | DOC-01 | Stale and non-compiling documentation | Proposed | Correct loop/API examples and validate links/examples where practical. |
 | 63 | CLEAN-01 | Alias and risky convenience cleanup | Proposed | Separate unsafe enqueue behavior from cosmetic aliases, then remove only paths proven redundant or unsafe. |
@@ -10776,22 +10776,215 @@ writer, and explicit lifecycle ownership.
 
 ### CAL-01 - Calibration-search power validation
 
-- **Problem to confirm:** `PositionCalibrationTasks.withPower(...)` accepts non-finite or
-  out-of-range normalized power, while `MappedPositionPlant.beginCalibrationSearch(...)` can stop
-  normal output and change calibration state before a bad value reaches the hardware adapter.
-  `NaN` can pass through the current clamp.
-- **Alternatives to compare:** documentation only; task-factory validation only; direct Plant
-  validation only; both earliest staged validation and defensive direct-boundary validation; a new
-  normalized-power value type; or an additional builder stage.
-- **Leading hypothesis:** keep `.withPower(double)` and the existing calibration lifecycle API.
-  Require finite inclusive `[-1, +1]` power immediately at the task stage and defensively at the
-  direct Plant boundary before any stop, state change, or write. Do not invent a wrapper for one
-  inline answer or impose a robot-specific gentle/nonzero/direction policy.
-- **Completion:** tests cover every boundary value and failure before side effects, direct and
-  task-driven entry, active cancellation/return behavior, and actionable normalized-power
-  diagnostics. Documentation distinguishes framework validity from the robot's safe homing power.
-- **Decision record:** _Pending; split from API-03 and SAFE-03's open-loop calibration boundary on
-  2026-07-16._
+- **Gate 2 approval (2026-07-29):** The user explicitly replied
+  **`Approve CAL-01 dual-validation design`**. This authorizes only the bounded implementation,
+  documentation, tests, and verification recorded below. `origin/master` was fetched and remains
+  `8c53d6d9565e5d9efef0a82b56fa8386e79cacda`; the existing
+  `codex/cal-01-calibration-search-power-validation` branch is based exactly on that merge. CAL-02,
+  MAP-01, SAFE-04, and every other tracker item remain out of scope.
+- **Decision gate (2026-07-29):** **Ready; public behavioral approval required before
+  implementation.** CAL-01 is the sole active item on
+  `codex/cal-01-calibration-search-power-validation`, based exactly on merged
+  `origin/master@8c53d6d9565e5d9efef0a82b56fa8386e79cacda`. Research changed only this tracker;
+  no Java, test, or framework-guide implementation has started. CAL-02, MAP-01, SAFE-04, and every
+  other tracker item remain out of scope.
+- **Confirmed failure trace:**
+  1. `PositionCalibrationTasks.SearchPowerStep.withPower(double)` currently stores any primitive
+     unchanged. `build()` copies it into a single-use `SearchTask` without validation.
+  2. Task start mutates its lifecycle state and calls `condition.reset()` before forwarding that
+     value to `plant.beginCalibrationSearch(power)`.
+  3. An idle searchable `MappedPositionPlant` reserves `ACQUIRING`, stops its normal output, stores
+     the unchecked value, changes target/search state, and becomes `ACTIVE`. Device-managed motor
+     stop can write zero and select `RUN_USING_ENCODER`; regulated stop can stop output and reset its
+     regulator. These are real effects even if the cue is already true and no search command is
+     eventually submitted.
+  4. If the search remains active, the mechanism owner's downstream update samples feedback and
+     forwards the unchecked value to `searchPowerOut.setPower(...)`. FTC motor and CR-servo adapters
+     use `MathUtil.clampAbs(...)`: finite excursions and infinities can silently become full
+     `-1.0`/`+1.0` power, while `NaN` deliberately survives `MathUtil.clamp(...)` and reaches the SDK
+     call. Custom outputs receive the unchecked value according to their own implementation.
+  Therefore adapter saturation is too late to validate a safety-sensitive recipe answer and cannot
+  undo the preceding Task, Plant, controller, run-mode, or output-stop effects.
+- **Current callers and public construction layers:**
+  - The common recipe has one factory:
+    `PositionCalibrationTasks.search(PositionPlant) -> SearchPowerStep.withPower(double)`. Its later
+    stages answer cue, plant-unit reference, success handoff, and timeout before `build()`. There is
+    no constructor, overload family, recipe object, or second Task facade.
+  - The direct `PositionPlant` search lifecycle is a distinct custom-Plant/adapter capability used
+    by that Task: `supportsCalibrationSearch()`, `beginCalibrationSearch(double)`, and
+    `endCalibrationSearch()`. It remains useful to a custom coordinator without becoming the
+    recommended robot-behavior loop.
+  - Hardware-neutral custom adapters can add the capability through
+    `MappedPositionPlant.positionOutput(...).searchPowerOutput(...)` or
+    `MappedPositionPlant.regulated(...).searchPowerOutput(...)`. The optional output answer installs
+    a capability; it is not a stored runtime search-power policy.
+  - All searchable FTC facade paths converge on that mapped implementation: device-managed motor
+    position, regulated motor position with every supported feedback choice, and regulated
+    CR-servo position. Commanded mapped position, standard-servo position, and lower `Plants`
+    position factories do not support search. These construction layers have distinct jobs and are
+    retained.
+  - There is no executable Phoenix, other robot, tool, starter, or modern example caller. Maintained
+    Javadocs/guides use inline `-0.20` or `+0.12`; Task tests use `-0.2`, and the two direct test calls
+    use `0.25` and `0.4`. No caller stores, reuses, composes, shares, or independently validates a
+    search-power value object. `PowerOutput` itself is meaningfully retained/shared, but that is
+    evidence for the existing output-capability stage, not a runtime-power wrapper.
+- **Ordinary robot-code comparison:**
+
+  | Design | Representative recipe answer | Added public concepts | Result |
+  | --- | --- | ---: | --- |
+  | **Selected dual validation** | `.withPower(-0.20)` | 0 | Immediate common-path error plus defensive direct-boundary enforcement; valid code is unchanged |
+  | Documentation only | `.withPower(-0.20)` | 0 | Leaves the reproduced state/output effects and `NaN` path intact |
+  | Task validation only | `.withPower(-0.20)` | 0 | Protects ordinary recipes but leaves the distinct direct mapped-adapter seam unsafe |
+  | Direct validation only | `.withPower(-0.20)` | 0 | Rejects before Plant effects, but only after an invalid Task was built, enqueued, started, and reset its cue |
+  | Public normalized-power value | `.withPower(NormalizedPower.of(-0.20))` | +1 noun/factory | Wraps an inline answer that callers do not store or compose |
+  | Extra direction/magnitude or range stage | multiple answers before `.until(...)` | +1 or more policy questions | Restates the known normalized domain or moves robot-specific search policy into framework construction |
+
+  The complete recipe still asks the same six concepts: Plant, search power, cue, reference,
+  success handoff, and timeout. Validation adds no caller-visible type, stage, or line.
+- **Chosen contract and validation order:**
+  1. Keep `.withPower(double)` and `beginCalibrationSearch(double)` unchanged. Accept every finite
+     value in the inclusive normalized `[-1.0, +1.0]` range, including both endpoints, zero, and
+     signed zero. Reject `NaN`, both infinities, and every finite overshoot with
+     `IllegalArgumentException`; never clamp a calibration-search answer.
+  2. Validate in `withPower(...)` before assigning the private builder field. A failed answer cannot
+     create/start a Task, reset its cue, invoke its Plant, or overwrite a previously accepted answer
+     reached through a retained stage alias. Do not add a one-off `powerAnswered` lifecycle flag:
+     ordinary stage typing already advances after the answer, and changing the alias behavior of
+     only one of this private builder's several required stages is not needed for CAL-01.
+  3. Validate again in `MappedPositionPlant.beginCalibrationSearch(...)`. Preserve the existing
+     read-only error precedence—unsupported capability, then already-active ownership, then numeric
+     validity—and perform numeric validation before `ACQUIRING`, normal-output stop, power/status
+     mutation, feedback sampling, or hardware write. Thus an eligible idle invalid call gets the
+     power diagnostic, while an invalid overlapping call still reports the more immediate CAL-03
+     ownership conflict and cannot disturb the first search.
+  4. Use one small package-private calibration-search validation helper shared by the Task and
+     mapped Plant so their finite/range rule and diagnostic format cannot drift. This is an internal
+     precondition helper, not a public value, builder layer, or parameter wrapper. Diagnostics name
+     the entry point, say that finite normalized power in the inclusive `[-1.0, +1.0]` range is
+     required, and include the received value.
+  5. Strengthen `PositionPlant`'s contract: a search-capable custom implementation must enforce the
+     same pre-effect rule. Java cannot force an arbitrary override to use the internal helper, so
+     Task-driven custom Plants also receive the earlier factory protection; direct custom callers
+     remain responsible for selecting a conforming implementation.
+- **Failure and recovery semantics:** rejection invokes no callback and acquires nothing. An invalid
+  retained-stage answer leaves the prior builder value unchanged; a later valid answer remains
+  usable. An invalid idle direct attempt leaves normal targeting/reference/status and output state
+  unchanged and permits a later valid acquisition. During a valid active or acquiring search, a
+  second begin still fails on ownership before power validation and cannot stop, replace, release,
+  or rewrite the first search. CAL-03's valid begin, owner-update, cue, timeout, cancellation,
+  reentrancy, and always-stopping release order otherwise remains unchanged.
+- **Why rejection, not saturation:** ordinary direct-power Plant targets are dynamic requests and
+  retain their documented finite range clamp. Regulator results may also saturate finite excursions
+  before final output defense. Calibration search power is instead a required configuration/recipe
+  answer that temporarily bypasses the normal target graph and guards. Turning `1.01`, `2.0`, or
+  infinity into full power would hide a likely mechanism-configuration mistake. FTC adapter clamps
+  remain defense in depth for raw callers and are not changed by this item.
+- **Framework Principles result:** the existing staged question remains the earliest fully informed
+  common boundary and fails fast without another student concept. The mapped Plant remains the
+  lifecycle/output owner and defensively protects its distinct direct seam before effects. The
+  Task remains single-use and non-blocking, the mechanism remains the sole Plant heartbeat owner,
+  and valid search commands still flow through the existing temporary source/lifecycle path. No
+  FTC type enters core actuation, no target/resolver ownership changes, and no robot-specific
+  homing direction, magnitude, cue, timeout, or mechanical policy is inferred.
+- **Rejected designs:** do not rely on documentation, Task-only validation, direct-only validation,
+  Task-start/build validation, final FTC/HAL validation, or downstream clamping; each leaves an
+  earlier invalid state/effect or another supported path open. Do not add a public
+  `NormalizedPower`, calibration config, fixed Plant search-power answer, extra staged question, or
+  direction/magnitude split because callers consume one primitive inline and the robot must choose
+  its own search policy. Do not route open-loop search through `RegulatedPowerChannel`, move this
+  check into target-only `PlantTargetSafety`, add calibration factories to lower `Plants`, or alter
+  every raw `PowerOutput`; those are different capabilities or broader SAFE-04 work.
+- **Bounded implementation and documentation scope:** add only the shared internal validator and the
+  two checks; update `PositionCalibrationTasks`, `PositionPlant`, and `MappedPositionPlant`
+  Javadocs plus the motor/CR-servo search notes in `FtcActuators`. Synchronize the normalized-power
+  distinction and robot-owned physical-safety guidance in Framework Principles, Framework Overview,
+  Tasks & Macros Quickstart, Mechanism Target Planning, FTC Actuators & Plants, Robot Calibration
+  Tutorials, and Phoenix Calibration Guide. `PowerOutput`, `FtcHardware`, `Plants`,
+  `RegulatedPowerChannel`, Plant target/range/reference math, Phoenix production code, and the
+  lifecycle-only Loop Structure/Phoenix Architecture prose remain unchanged.
+- **Verification plan:**
+  - In the focused calibration suite, reject `NaN`, both infinities, `Math.nextDown(-1.0)`, and
+    `Math.nextUp(1.0)` at `withPower(...)` with the value/range diagnostic before builder mutation,
+    cue reset, Plant begin/end/update/stop, or output activity. Prove an invalid retained-alias
+    answer neither poisons a later valid answer nor overwrites an earlier accepted value.
+  - Accept and forward exact `-1.0`, `-0.0`, `+0.0`, and `+1.0` values through Task-driven and direct
+    mapped entry. Keep the existing start/update/cue/timeout/cancel lifecycle regressions passing.
+  - At the direct mapped boundary, run the invalid matrix against an idle supported position-output
+    Plant and a regulated Plant; prove no acquisition/status/reference/measurement/controller or
+    output-stop/write effect, then prove a valid retry succeeds. Cover unsupported and active-search
+    precedence and prove the first active power remains intact.
+  - Add an FTC device-managed motor-position spot check proving an invalid direct begin performs no
+    SDK power, mode, target, or sensor event and leaves the prior `RUN_TO_POSITION` command intact;
+    retain the existing valid raw-mode handoff test. The common mapped invariant need not be
+    duplicated for every FTC feedback/group spelling.
+  - Run the focused calibration and FTC motor-mode tests, then force the complete
+    `:TeamCode:testDebugUnitTest` and `:TeamCode:compileDebugJavaWithJavac` tasks. Re-scan all task and
+    direct search callers/construction paths; run `git diff --check`, trailing-whitespace/final-LF,
+    Markdown-fence/link, and Javadoc/compile checks. Present the completed diff and results for the
+    required Android Studio review before finalization/publication.
+- **Software/hardware claim boundary:** these tests can prove the framework's numeric contract and
+  pre-effect rejection; no robot run is needed for that software-owned fact. An adopting mechanism
+  must still validate a gentle magnitude, correct sign/direction, cue polarity, timeout, travel,
+  current/torque/stall behavior, grouped-child realization, and physical stop after adapter failure.
+  Zero and full power remain structurally valid even when they are a poor choice for a particular
+  robot. Reference/hold validity belongs to CAL-02, child mapping/domain issues to MAP-01, and
+  throwing/partial output cleanup and seam truth to SAFE-04.
+- **Decision record (2026-07-29):** **Ready for explicit approval.** The leading dual-boundary
+  hypothesis survives the complete caller/construction/parameter audit. Approving
+  **`Approve CAL-01 dual-validation design`** authorizes only the bounded implementation,
+  documentation, tests, and verification above; it does not authorize CAL-02, MAP-01, SAFE-04, or
+  any other tracker item.
+- **Gate 2 implementation (2026-07-29):** CAL-01 is **Verifying** on
+  `codex/cal-01-calibration-search-power-validation`, still based exactly on
+  `origin/master@8c53d6d9565e5d9efef0a82b56fa8386e79cacda`.
+  - One package-private `CalibrationSearchPowerValidation` helper now rejects non-finite or
+    out-of-range power with one actionable diagnostic and returns every valid finite value in the
+    inclusive `[-1.0, +1.0]` range unchanged, including both signed zeros.
+  - `PositionCalibrationTasks.withPower(...)` validates before assigning its retained builder
+    answer, so rejection cannot reset the cue, invoke/stop the Plant, or overwrite an earlier valid
+    answer. `MappedPositionPlant.beginCalibrationSearch(...)` validates the distinct direct seam
+    after unsupported/active-owner precedence but before acquisition, callback, controller,
+    feedback, target/status, normal-stop, or output effects.
+  - `PositionPlant`, both mapped construction paths, and the searchable motor/CR-servo
+    `FtcActuators` facades now document the same finite normalized contract, rejection timing, and
+    no-clamp rule. Framework Principles and all six maintained calibration/Plant guides distinguish
+    structural normalization from robot-owned magnitude, direction, cue, timeout, travel, and
+    physical protection. No public API, production Phoenix behavior, target math, adapter clamp, or
+    unrelated tracker item changed.
+- **Automated verification (2026-07-29):** the focused
+  `PositionCalibrationTasksTest` and `FtcMotorPowerRunModeTest` suites pass all 52 tests (25 + 27),
+  covering the invalid matrix, raw-bit-preserving boundaries, retained-stage recovery, idle direct
+  retry, unsupported/active precedence, measurement/completion/status preservation, controller and
+  output non-effects, and the device-managed FTC run-mode/target/power boundary. A forced
+  `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` run then succeeded with 111 XML
+  suites, 1,065 tests, zero failures, zero errors, and zero skips. Only the repository's existing
+  Java 8-on-JDK-21 and deprecated FTC sample warnings remain.
+- **Static and caller verification (2026-07-29):** a fresh search of every
+  `PositionCalibrationTasks.search(...)`, `beginCalibrationSearch(...)`, and
+  `searchPowerOutput(...)` occurrence confirms the unchanged single Task facade, distinct direct
+  custom-Plant seam, both mapped construction paths, and all three searchable FTC realization
+  families. `git diff --check` passes; all 15 changed/untracked source files have no trailing
+  whitespace and end in LF; all eight changed Markdown files have balanced fences and resolving
+  local links. Java compilation supplies the Javadoc/signature check.
+- **Independent review (2026-07-29):** separate production/API, documentation/principles, and
+  adversarial-test reviews confirm the dual boundaries, ordered error precedence, exact valid-value
+  forwarding, public construction coverage, and CAL-01-only scope. Review findings strengthened the
+  custom-Plant side-effect contract, clarified that raw search bypasses the target resolver/guards,
+  documented mapped precedence precisely, and expanded tests to preserve at-target measurement and
+  completion evidence and instrument Plant stop. Re-review reports no remaining concrete finding.
+- **Android Studio audit point (2026-07-29):** CAL-01 intentionally remains unstaged and
+  uncommitted. Inspect the internal validator, the pre-assignment Task check, the mapped Plant's
+  unsupported → active-owner → numeric ordering, the custom/FTC Javadocs, the invalid/boundary and
+  no-effect tests, and the synchronized calibration guidance. No robot run is required to prove
+  this deterministic numeric/pre-effect contract. Adopting robots must still validate safe physical
+  magnitude and direction, cue polarity, timeout/travel, mechanism loading, and failure-stop
+  behavior. Approval authorizes finalization/publication of CAL-01 only and does not start CAL-02 or
+  another item.
+- **Manual verification (2026-07-29):** the user reviewed the CAL-01 implementation in Android
+  Studio and approved it with **`CAL-01 looks good`**. CAL-01 is now **Done**; Gate 3 finalization,
+  publication, and merge are authorized for this item only. The deterministic numeric/pre-effect
+  contract requires no physical robot result; adopting robots still own the physical checks listed
+  above.
 
 ### CAL-02 - Position-calibration reference validity
 

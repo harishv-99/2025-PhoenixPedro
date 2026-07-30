@@ -7,6 +7,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import edu.ftcphoenix.fw.core.control.ScalarRegulator;
 import edu.ftcphoenix.fw.core.hal.PositionOutput;
 import edu.ftcphoenix.fw.core.hal.PowerOutput;
 import edu.ftcphoenix.fw.core.source.BooleanSource;
@@ -29,6 +30,271 @@ import static org.junit.Assert.fail;
 public final class PositionCalibrationTasksTest {
 
     private static final double EPSILON = 1.0e-12;
+
+    @Test
+    public void taskSearchRejectsInvalidPowerImmediatelyWithoutEffectsAndAllowsRetry() {
+        for (double invalidPower : invalidSearchPowers()) {
+            List<String> events = new ArrayList<>();
+            LifecyclePlant plant = new LifecyclePlant(events, 3.0);
+            ScriptedCondition cue = new ScriptedCondition(events, false);
+            PositionCalibrationTasks.SearchPowerStep powerStep =
+                    PositionCalibrationTasks.search(plant);
+
+            RuntimeException failure = expectRuntime(() -> powerStep.withPower(invalidPower));
+
+            assertInvalidSearchPower(failure,
+                    "PositionCalibrationTasks.withPower(...)", invalidPower);
+            assertTrue(events.isEmpty());
+            assertEquals(0, plant.beginCount);
+            assertEquals(0, plant.endCount);
+            assertEquals(0, plant.stopCount);
+            assertEquals(0, plant.updateCount);
+
+            Task retry = powerStep.withPower(0.25)
+                    .until(cue)
+                    .establishReferenceAt(0.0)
+                    .resumeTargeting()
+                    .failAfterSec(1.0)
+                    .build();
+            assertTrue("building a retry must not reset its cue or touch its Plant",
+                    events.isEmpty());
+            assertEquals(0, plant.stopCount);
+
+            retry.start(new ManualLoopClock().clock());
+
+            assertEquals(Arrays.asList(
+                    "cue.reset",
+                    "plant.begin.enter(0.25)",
+                    "plant.begin.exit"
+            ), events);
+            assertEquals(Double.doubleToRawLongBits(0.25),
+                    Double.doubleToRawLongBits(plant.searchPower));
+            retry.cancel();
+        }
+    }
+
+    @Test
+    public void invalidRetainedPowerAliasDoesNotOverwriteAcceptedAnswer() {
+        List<String> events = new ArrayList<>();
+        LifecyclePlant plant = new LifecyclePlant(events, 2.0);
+        PositionCalibrationTasks.SearchPowerStep retainedPowerStep =
+                PositionCalibrationTasks.search(plant);
+        PositionCalibrationTasks.SearchUntilStep accepted = retainedPowerStep.withPower(-0.375);
+
+        for (double invalidPower : invalidSearchPowers()) {
+            RuntimeException failure = expectRuntime(
+                    () -> retainedPowerStep.withPower(invalidPower));
+            assertInvalidSearchPower(failure,
+                    "PositionCalibrationTasks.withPower(...)", invalidPower);
+        }
+
+        assertTrue(events.isEmpty());
+        Task task = accepted
+                .until(new ScriptedCondition(events, false))
+                .establishReferenceAt(0.0)
+                .resumeTargeting()
+                .failAfterSec(1.0)
+                .build();
+        task.start(new ManualLoopClock().clock());
+
+        assertEquals(Double.doubleToRawLongBits(-0.375),
+                Double.doubleToRawLongBits(plant.searchPower));
+        assertEquals(Arrays.asList(
+                "cue.reset",
+                "plant.begin.enter(-0.375)",
+                "plant.begin.exit"
+        ), events);
+        task.cancel();
+    }
+
+    @Test
+    public void taskSearchAcceptsAndForwardsExactNormalizedBoundaries() {
+        for (double power : validSearchPowerBoundaries()) {
+            List<String> events = new ArrayList<>();
+            LifecyclePlant plant = new LifecyclePlant(events, 0.0);
+            Task task = PositionCalibrationTasks.search(plant)
+                    .withPower(power)
+                    .until(BooleanSource.constant(false))
+                    .establishReferenceAt(0.0)
+                    .resumeTargeting()
+                    .failAfterSec(1.0)
+                    .build();
+
+            task.start(new ManualLoopClock().clock());
+
+            assertEquals("task search power " + power,
+                    Double.doubleToRawLongBits(power),
+                    Double.doubleToRawLongBits(plant.searchPower));
+            assertEquals(1, plant.beginCount);
+            assertTrue(plant.searchActive);
+            task.cancel();
+            assertEquals(1, plant.endCount);
+        }
+    }
+
+    @Test
+    public void mappedPositionSearchRejectsInvalidPowerBeforeEffectsAndAllowsValidRetry() {
+        RecordingPositionOutput position = new RecordingPositionOutput();
+        RecordingPowerOutput searchOutput = new RecordingPowerOutput();
+        MutableScalarSource measurement = new MutableScalarSource(5.0);
+        MappedPositionPlant plant = mappedLinearPlant(
+                position, searchOutput, measurement, ScalarTarget.create(5.0));
+        ManualLoopClock clock = new ManualLoopClock();
+        plant.update(clock.clock());
+        PlantTargetStatus initialStatus = plant.getTargetStatus();
+        PlantTargetResolution initialResolution = plant.getTargetResolution();
+        assertEquals(5.0, plant.getMeasurement(), 0.0);
+        assertTrue(plant.atTarget());
+        assertTrue(plant.atTarget(5.0));
+
+        for (double invalidPower : invalidSearchPowers()) {
+            RuntimeException failure = expectRuntime(
+                    () -> plant.beginCalibrationSearch(invalidPower));
+
+            assertInvalidSearchPower(failure,
+                    "MappedPositionPlant.beginCalibrationSearch(...)", invalidPower);
+            assertEquals(1, position.setCalls);
+            assertEquals(0, position.stopCalls);
+            assertEquals(0, searchOutput.setCalls);
+            assertEquals(0, searchOutput.stopCalls);
+            assertEquals(1, measurement.sampleCount);
+            assertTargetStateUnchanged(plant, initialStatus, initialResolution);
+            assertTrue(plant.isReferenced());
+            assertEquals(5.0, plant.getRequestedTarget(), 0.0);
+            assertEquals(5.0, plant.getAppliedTarget(), 0.0);
+            assertEquals(5.0, plant.getMeasurement(), 0.0);
+            assertTrue(plant.atTarget());
+            assertTrue(plant.atTarget(5.0));
+        }
+
+        plant.beginCalibrationSearch(1.0);
+        assertEquals(1, position.stopCalls);
+        assertEquals(0, searchOutput.setCalls);
+        plant.update(clock.nextCycle(0.10));
+        assertEquals(1, searchOutput.setCalls);
+        assertEquals(1.0, searchOutput.commanded, 0.0);
+        plant.endCalibrationSearch();
+    }
+
+    @Test
+    public void mappedRegulatedSearchRejectsInvalidPowerBeforeEffectsAndAllowsValidRetry() {
+        RecordingPowerOutput normalOutput = new RecordingPowerOutput();
+        RecordingPowerOutput searchOutput = new RecordingPowerOutput();
+        MutableScalarSource measurement = new MutableScalarSource(5.0);
+        RecordingRegulator regulator = new RecordingRegulator(0.3);
+        MappedPositionPlant plant = MappedPositionPlant.regulated(
+                        normalOutput, measurement, regulator)
+                .searchPowerOutput(searchOutput)
+                .positionTolerance(0.0)
+                .targetedBy(ScalarTarget.create(5.0))
+                .build();
+        ManualLoopClock clock = new ManualLoopClock();
+        plant.update(clock.clock());
+        PlantTargetStatus initialStatus = plant.getTargetStatus();
+        PlantTargetResolution initialResolution = plant.getTargetResolution();
+        assertEquals(5.0, plant.getMeasurement(), 0.0);
+        assertTrue(plant.atTarget());
+        assertTrue(plant.atTarget(5.0));
+
+        for (double invalidPower : invalidSearchPowers()) {
+            RuntimeException failure = expectRuntime(
+                    () -> plant.beginCalibrationSearch(invalidPower));
+
+            assertInvalidSearchPower(failure,
+                    "MappedPositionPlant.beginCalibrationSearch(...)", invalidPower);
+            assertEquals(1, normalOutput.setCalls);
+            assertEquals(0, normalOutput.stopCalls);
+            assertEquals(0, searchOutput.setCalls);
+            assertEquals(0, searchOutput.stopCalls);
+            assertEquals(1, measurement.sampleCount);
+            assertEquals(1, regulator.updateCalls);
+            assertEquals(0, regulator.resetCalls);
+            assertTargetStateUnchanged(plant, initialStatus, initialResolution);
+            assertTrue(plant.isReferenced());
+            assertEquals(5.0, plant.getRequestedTarget(), 0.0);
+            assertEquals(5.0, plant.getAppliedTarget(), 0.0);
+            assertEquals(5.0, plant.getMeasurement(), 0.0);
+            assertTrue(plant.atTarget());
+            assertTrue(plant.atTarget(5.0));
+        }
+
+        plant.beginCalibrationSearch(-1.0);
+        assertEquals(1, normalOutput.stopCalls);
+        assertEquals(1, regulator.resetCalls);
+        assertEquals(0, searchOutput.setCalls);
+        plant.update(clock.nextCycle(0.10));
+        assertEquals(1, searchOutput.setCalls);
+        assertEquals(-1.0, searchOutput.commanded, 0.0);
+        assertEquals(1, regulator.updateCalls);
+        plant.endCalibrationSearch();
+    }
+
+    @Test
+    public void mappedSearchAcceptsAndForwardsExactNormalizedBoundaries() {
+        for (double power : validSearchPowerBoundaries()) {
+            RecordingPositionOutput position = new RecordingPositionOutput();
+            RecordingPowerOutput searchOutput = new RecordingPowerOutput();
+            MappedPositionPlant plant = mappedLinearPlant(
+                    position, searchOutput, clock -> 0.0, ScalarTarget.create(0.0));
+
+            plant.beginCalibrationSearch(power);
+            plant.update(new ManualLoopClock().clock());
+
+            assertEquals("mapped search power " + power,
+                    Double.doubleToRawLongBits(power),
+                    Double.doubleToRawLongBits(searchOutput.commanded));
+            assertEquals(1, position.stopCalls);
+            assertEquals(1, searchOutput.setCalls);
+            plant.endCalibrationSearch();
+            assertEquals(1, searchOutput.stopCalls);
+        }
+    }
+
+    @Test
+    public void mappedSearchPreservesUnsupportedAndActiveErrorPrecedence() {
+        RecordingPositionOutput unsupportedPosition = new RecordingPositionOutput();
+        MutableScalarSource unsupportedMeasurement = new MutableScalarSource(0.0);
+        MappedPositionPlant unsupported = MappedPositionPlant.positionOutput(
+                        unsupportedPosition, unsupportedMeasurement)
+                .positionTolerance(0.0)
+                .targetedBy(ScalarTarget.create(0.0))
+                .build();
+        PlantTargetStatus unsupportedStatus = unsupported.getTargetStatus();
+        PlantTargetResolution unsupportedResolution = unsupported.getTargetResolution();
+
+        RuntimeException unsupportedFailure = expectRuntime(
+                () -> unsupported.beginCalibrationSearch(Double.NaN));
+
+        assertTrue(unsupportedFailure instanceof IllegalStateException);
+        assertTrue(unsupportedFailure.getMessage().contains("does not support calibration search"));
+        assertEquals(0, unsupportedPosition.setCalls);
+        assertEquals(0, unsupportedPosition.stopCalls);
+        assertEquals(0, unsupportedMeasurement.sampleCount);
+        assertTargetStateUnchanged(unsupported, unsupportedStatus, unsupportedResolution);
+
+        RecordingPositionOutput activePosition = new RecordingPositionOutput();
+        RecordingPowerOutput activeSearchOutput = new RecordingPowerOutput();
+        MappedPositionPlant active = mappedLinearPlant(
+                activePosition, activeSearchOutput, clock -> 0.0, ScalarTarget.create(0.0));
+        active.beginCalibrationSearch(0.25);
+        PlantTargetStatus activeStatus = active.getTargetStatus();
+        PlantTargetResolution activeResolution = active.getTargetResolution();
+
+        RuntimeException activeFailure = expectRuntime(
+                () -> active.beginCalibrationSearch(Double.NaN));
+
+        assertTrue(activeFailure instanceof IllegalStateException);
+        assertTrue(activeFailure.getMessage().contains("active calibration search"));
+        assertEquals(1, activePosition.stopCalls);
+        assertEquals(0, activeSearchOutput.setCalls);
+        assertEquals(0, activeSearchOutput.stopCalls);
+        assertTargetStateUnchanged(active, activeStatus, activeResolution);
+
+        active.update(new ManualLoopClock().clock());
+        assertEquals(1, activeSearchOutput.setCalls);
+        assertEquals(0.25, activeSearchOutput.commanded, 0.0);
+        active.endCalibrationSearch();
+    }
 
     @Test
     public void ownerPlantPhaseRunsExactlyOnceAcrossStartContinueAndCue() {
@@ -630,6 +896,64 @@ public final class PositionCalibrationTasksTest {
                 .build();
     }
 
+    private static double[] invalidSearchPowers() {
+        return new double[]{
+                Double.NaN,
+                Double.NEGATIVE_INFINITY,
+                Double.POSITIVE_INFINITY,
+                Math.nextDown(-1.0),
+                Math.nextUp(1.0)
+        };
+    }
+
+    private static double[] validSearchPowerBoundaries() {
+        return new double[]{-1.0, -0.0, 0.0, 1.0};
+    }
+
+    private static void assertTargetStateUnchanged(MappedPositionPlant plant,
+                                                   PlantTargetStatus expectedStatus,
+                                                   PlantTargetResolution expectedResolution) {
+        PlantTargetStatus actualStatus = plant.getTargetStatus();
+        assertEquals(expectedStatus.kind(), actualStatus.kind());
+        assertEquals(expectedStatus.message(), actualStatus.message());
+        assertEquals(expectedStatus.accepted(), actualStatus.accepted());
+
+        PlantTargetResolution actualResolution = plant.getTargetResolution();
+        assertEquals(expectedResolution.hasTarget(), actualResolution.hasTarget());
+        if (expectedResolution.hasTarget()) {
+            assertEquals(Double.doubleToRawLongBits(expectedResolution.target()),
+                    Double.doubleToRawLongBits(actualResolution.target()));
+        }
+        assertEquals(expectedResolution.kind(), actualResolution.kind());
+        assertEquals(expectedResolution.satisfiesIntent(), actualResolution.satisfiesIntent());
+        assertEquals(expectedResolution.usedFallback(), actualResolution.usedFallback());
+        assertEquals(expectedResolution.clampedByPlanner(),
+                actualResolution.clampedByPlanner());
+        assertEquals(expectedResolution.selectedCandidateId(),
+                actualResolution.selectedCandidateId());
+        assertEquals(Double.doubleToRawLongBits(expectedResolution.selectedQuality()),
+                Double.doubleToRawLongBits(actualResolution.selectedQuality()));
+        assertEquals(Double.doubleToRawLongBits(expectedResolution.selectedAgeSec()),
+                Double.doubleToRawLongBits(actualResolution.selectedAgeSec()));
+        assertEquals(expectedResolution.reason(), actualResolution.reason());
+    }
+
+    private static void assertInvalidSearchPower(RuntimeException failure,
+                                                 String operation,
+                                                 double receivedPower) {
+        assertTrue("expected IllegalArgumentException, got " + failure,
+                failure instanceof IllegalArgumentException);
+        String message = String.valueOf(failure.getMessage());
+        assertTrue("failure should name its entry point: " + message,
+                message.contains(operation));
+        assertTrue("failure should require finite normalized search power: " + message,
+                message.contains("finite normalized search power"));
+        assertTrue("failure should name the inclusive normalized range: " + message,
+                message.contains("inclusive [-1.0, +1.0] range"));
+        assertTrue("failure should include the received value: " + message,
+                message.contains("got " + Double.toString(receivedPower)));
+    }
+
     private static RuntimeException expectRuntime(Runnable action) {
         try {
             action.run();
@@ -637,6 +961,27 @@ public final class PositionCalibrationTasksTest {
             return null;
         } catch (RuntimeException expected) {
             return expected;
+        }
+    }
+
+    private static final class RecordingRegulator implements ScalarRegulator {
+        private final double output;
+        private int updateCalls;
+        private int resetCalls;
+
+        private RecordingRegulator(double output) {
+            this.output = output;
+        }
+
+        @Override
+        public double update(double setpoint, double measurement, LoopClock clock) {
+            updateCalls++;
+            return output;
+        }
+
+        @Override
+        public void reset() {
+            resetCalls++;
         }
     }
 
@@ -686,6 +1031,7 @@ public final class PositionCalibrationTasksTest {
         private int normalWriteCount;
         private int beginCount;
         private int endCount;
+        private int stopCount;
         private RuntimeException beginFailure;
         private RuntimeException referenceFailure;
         private RuntimeException endFailure;
@@ -804,6 +1150,7 @@ public final class PositionCalibrationTasksTest {
 
         @Override
         public void stop() {
+            stopCount++;
             searchActive = false;
         }
     }

@@ -167,7 +167,18 @@ public interface PositionPlant extends Plant {
      * replacing, or otherwise disturbing the first. If acquisition throws, the implementation must
      * leave no newly acquired search for the caller to release.</p>
      *
-     * @param power normalized search power, usually in {@code [-1,+1]}
+     * <p>When search is supported and idle, an implementation must reject non-finite power or a
+     * value outside the inclusive normalized {@code [-1.0, +1.0]} range before stopping normal
+     * output, invoking an external callback, sampling feedback, resetting a controller, acquiring
+     * or changing search/target status, or writing hardware. It must not silently clamp this recipe
+     * answer. Unsupported capability and an existing active owner may be reported first because no
+     * power value can make those calls eligible. The framework-valid range does not choose a
+     * mechanically safe magnitude or direction for a particular robot.</p>
+     *
+     * @param power finite normalized search power in {@code [-1.0, +1.0]}
+     * @throws IllegalArgumentException if an otherwise eligible search receives non-finite or
+     *                                  out-of-range power
+     * @throws IllegalStateException if calibration search is unsupported or already active
      */
     default void beginCalibrationSearch(double power) {
         throw new IllegalStateException("This PositionPlant does not support calibration search drive");

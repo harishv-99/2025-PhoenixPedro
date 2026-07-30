@@ -642,6 +642,18 @@ Task homeLift = PositionCalibrationTasks.search(lift)
         .build();
 ```
 
+`.withPower(...)` accepts only a finite normalized command in the inclusive `[-1.0, +1.0]` range.
+It rejects `NaN`, infinities, and finite overshoot at the builder step. The direct
+`MappedPositionPlant.beginCalibrationSearch(...)` seam enforces the same contract before changing
+search state or stopping the normal position output. Neither path clamps an invalid search command;
+low-level FTC adapter clamping remains boundary defense only.
+
+This numeric contract is structural, not robot-specific safety approval. The mechanism owner must
+still select a safe magnitude and direction, verify the cue and timeout/cancellation paths, provide
+any required external interlock or physical safeguard, and confirm that the mechanism is free to
+move. An active raw-power search bypasses the normal target resolver and `PlantTargetGuards`; those
+normal-target protections do not make the temporary search safe.
+
 Starting this Task acquires a temporary search after requesting an immediate stop of the prior
 normal position output, but it only stages the configured search power. The Task never calls
 `plant.update(clock)` or writes that power itself. In the documented Tasks-before-Plants loop, the

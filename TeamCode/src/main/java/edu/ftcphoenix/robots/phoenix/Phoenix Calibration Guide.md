@@ -85,6 +85,11 @@ Task homeLift = PositionCalibrationTasks.search(lift)
         .build();
 ```
 
+`.withPower(...)` accepts only a finite normalized command in the inclusive `[-1.0, +1.0]` range
+and rejects `NaN`, infinities, and overshoot immediately rather than clamping them. Phoenix's
+mechanism service must still choose and validate the safe magnitude, direction, cue behavior, and
+mechanical setup for its hardware.
+
 Create a fresh search Task for each homing attempt. Search Task objects follow the framework's
 single-use lifecycle and are not restarted after they have begun.
 

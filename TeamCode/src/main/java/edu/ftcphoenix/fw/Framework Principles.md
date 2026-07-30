@@ -350,6 +350,13 @@ the Task finds the cue, times out, or is actively cancelled first, it releases t
 that phase, and the same downstream owner update returns through the final resolver. Do not hide a
 second Plant heartbeat behind same-cycle deduplication.
 
+Calibration-search power is a normalized command in the inclusive `[-1.0, +1.0]` range. The Task
+recipe and the built-in mapped-Plant direct seam reject `NaN`, infinities, and finite overshoot
+before changing search state or touching an output; they do not clamp configuration mistakes into
+plausible search commands. Low-level adapter clamping remains defense in depth, not search policy.
+Passing this structural check does not prove that a magnitude, direction, cue, or mechanical setup
+is safe for a particular robot; the mechanism owner must validate those physical choices.
+
 Key methods (see `edu.ftcphoenix.fw.actuation.Plant`):
 
 * `update(LoopClock clock)` — submit an active staged calibration-search command or, during normal

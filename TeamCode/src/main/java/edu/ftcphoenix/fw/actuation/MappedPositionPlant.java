@@ -27,8 +27,10 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * hardware protection such as interlocks and target rate limits are applied by
  * {@link PlantTargetGuards}; the result is checked once more for the final finite/range invariant;
  * then one applied target is sent to hardware or the framework regulator. During a calibration
- * search, that same sole owner update instead submits the staged temporary search power. The
- * regulated normal path evaluates its regulator once, normalizes the finite result to
+ * search, that same sole owner update instead submits staged temporary search power. Search
+ * acquisition rejects non-finite or out-of-range normalized power before changing state or
+ * stopping an output; it never clamps that recipe answer. The regulated normal path evaluates its
+ * regulator once, normalizes the finite result to
  * {@code [-1.0, +1.0]}, and performs best-effort fail-stop cleanup before propagating a runtime
  * control/output failure.</p>
  */
@@ -210,7 +212,9 @@ public final class MappedPositionPlant implements PositionPlant {
         /**
          * Set the optional raw-power output used by owner-updated calibration searches.
          * A search stages power, while the Plant's normal
-         * {@link MappedPositionPlant#update(LoopClock)} submits it.
+         * {@link MappedPositionPlant#update(LoopClock)} submits it. Runtime search power must be
+         * finite in the inclusive normalized {@code [-1.0, +1.0]} range and is rejected before
+         * acquisition rather than clamped.
          */
         FeedbackConfigurationStep searchPowerOutput(PowerOutput searchPowerOut);
 
@@ -690,6 +694,13 @@ public final class MappedPositionPlant implements PositionPlant {
         return searchPowerOut != null;
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>This implementation reports unsupported capability first, an existing active owner
+     * second, and invalid normalized power third. Any rejection occurs before acquisition,
+     * callback, controller, status, feedback, or output effects.</p>
+     */
     @Override
     public void beginCalibrationSearch(double power) {
         if (searchPowerOut == null)
@@ -697,6 +708,8 @@ public final class MappedPositionPlant implements PositionPlant {
         if (searchState != SearchState.IDLE)
             throw new IllegalStateException("This PositionPlant already has an active calibration "
                     + "search; cancel or finish that search before starting another one");
+        CalibrationSearchPowerValidation.requireValid(
+                power, "MappedPositionPlant.beginCalibrationSearch(...)");
 
         // Reserve before calling an external output so a reentrant or overlapping begin fails
         // before it can stop or replace this search. A throwing begin releases this reservation.
