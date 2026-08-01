@@ -478,13 +478,13 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
             plantIntakeMotor = FtcActuators.plant(hardwareMap)
                     .motor(cfg.nameMotorIntake, cfg.directionMotorIntake)
                     .power()
-                    .targetedBy(intakeMotorTargetResolver)
+                    .targetFromResolver(intakeMotorTargetResolver)
                     .build();
 
             plantIntakeTransfer = FtcActuators.plant(hardwareMap)
                     .crServo(cfg.nameCrServoIntakeTransfer, cfg.directionCrServoIntakeTransfer)
                     .power()
-                    .targetedBy(intakeTransferTargetResolver)
+                    .targetFromResolver(intakeTransferTargetResolver)
                     .build();
 
             plantShooterTransfer = FtcActuators.plant(hardwareMap)
@@ -493,7 +493,7 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
                     .scale(cfg.shooterTransferLeftScale)
                     .bias(cfg.shooterTransferLeftBias)
                     .power()
-                    .targetedBy(shooterTransferTargetResolver)
+                    .targetFromResolver(shooterTransferTargetResolver)
                     .build();
 
             if (cfg.applyFlywheelVelocityPIDF) {
@@ -510,7 +510,7 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
                         .bounded(0.0, cfg.velocityMax)
                         .nativeUnits()
                         .velocityTolerance(cfg.velocityToleranceNative)
-                        .targetedBy(flywheelTargetResolver)
+                        .targetFromResolver(flywheelTargetResolver)
                         .build();
             } else {
                 plantFlywheel = FtcActuators.plant(hardwareMap)
@@ -520,7 +520,7 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
                         .bounded(0.0, cfg.velocityMax)
                         .nativeUnits()
                         .velocityTolerance(cfg.velocityToleranceNative)
-                        .targetedBy(flywheelTargetResolver)
+                        .targetFromResolver(flywheelTargetResolver)
                         .build();
             }
 

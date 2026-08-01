@@ -473,8 +473,8 @@ public final class ActuationTaskSingleUseTest {
         }
 
         @Override
-        public Topology topology() {
-            return Topology.LINEAR;
+        public Periodicity periodicity() {
+            return Periodicity.NON_PERIODIC;
         }
 
         @Override

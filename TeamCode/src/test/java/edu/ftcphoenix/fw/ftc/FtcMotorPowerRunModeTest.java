@@ -21,6 +21,7 @@ import java.util.Set;
 import edu.ftcphoenix.fw.actuation.Plant;
 import edu.ftcphoenix.fw.actuation.PlantTargetResolver;
 import edu.ftcphoenix.fw.actuation.PlantTargets;
+import edu.ftcphoenix.fw.actuation.Plants;
 import edu.ftcphoenix.fw.actuation.PositionPlant;
 import edu.ftcphoenix.fw.core.control.ScalarRegulator;
 import edu.ftcphoenix.fw.core.hal.Direction;
@@ -377,7 +378,7 @@ public final class FtcMotorPowerRunModeTest {
                 .motor("left", Direction.FORWARD)
                 .andMotor("right", Direction.REVERSE)
                 .power()
-                .targetedBy(ScalarTarget.create(0.65))
+                .targetFromNewCommand(0.65)
                 .build();
         events.clear();
 
@@ -412,18 +413,18 @@ public final class FtcMotorPowerRunModeTest {
         Plant power = FtcActuators.plant(hardwareMap)
                 .motor("power", Direction.FORWARD)
                 .power()
-                .targetedBy(PlantTargets.exact(widenedPowerCommand))
+                .targetFromResolver(PlantTargets.exact(widenedPowerCommand))
                 .build();
         PositionPlant position = FtcActuators.plant(hardwareMap)
                 .motor("position", Direction.FORWARD)
                 .position()
                 .deviceManagedWithDefaults()
-                .linear()
+                .nonPeriodic()
                 .unbounded()
                 .nativeUnits()
                 .alreadyReferenced()
                 .positionTolerance(0.0)
-                .targetedBy(ScalarTarget.create(125.0))
+                .targetFromNewCommand(125.0)
                 .build();
 
         assertTrue(power.hasCommandTarget());
@@ -438,18 +439,18 @@ public final class FtcMotorPowerRunModeTest {
         TestHardwareMap hardwareMap = new TestHardwareMap();
         MotorProbe motor = new MotorProbe("motor", events, RAW_MODE);
         hardwareMap.put("motor", motor.motor());
-        FtcActuators.PlantTargetStep targetStep = FtcActuators.plant(hardwareMap)
+        Plants.TargetStep<Plant> targetStep = FtcActuators.plant(hardwareMap)
                 .motor("motor", Direction.FORWARD)
                 .power();
         ScalarTarget command = ScalarTarget.create(0.8);
 
-        FtcActuators.PlantBuildStep retainedBuildStep =
-                targetStep.targetedBy(command);
+        Plants.BuildStep<Plant> retainedBuildStep =
+                targetStep.targetFromResolver(PlantTargets.exact(command));
         RuntimeException repeated = expectRuntime(
-                () -> targetStep.targetedBy(PlantTargets.exact(0.2)));
+                () -> targetStep.targetFromResolver(PlantTargets.exact(0.2)));
         Plant plant = retainedBuildStep.build();
 
-        assertTrue(repeated.getMessage().contains("targetedBy(...)"));
+        assertTrue(repeated.getMessage().contains("targetFromResolver(...)"));
         assertTrue(repeated.getMessage().contains("already been answered"));
         assertTrue(repeated.getMessage().contains("new builder"));
         assertTrue(plant.hasCommandTarget());
@@ -465,11 +466,11 @@ public final class FtcMotorPowerRunModeTest {
         MotorProbe motor = new MotorProbe(
                 "position", events, DcMotor.RunMode.RUN_USING_ENCODER);
         hardwareMap.put("position", motor.motor());
-        FtcActuators.PositionTargetStep targetStep = FtcActuators.plant(hardwareMap)
+        Plants.TargetStep<PositionPlant> targetStep = FtcActuators.plant(hardwareMap)
                 .motor("position", Direction.FORWARD)
                 .position()
                 .deviceManagedWithDefaults()
-                .linear()
+                .nonPeriodic()
                 .unbounded()
                 .nativeUnits()
                 .alreadyReferenced()
@@ -479,19 +480,96 @@ public final class FtcMotorPowerRunModeTest {
                 .add("inactive", clock -> false, 25.0)
                 .build();
 
-        FtcActuators.PositionPlantBuildStep retainedBuildStep =
-                targetStep.targetedBy(firstGraph);
+        Plants.BuildStep<PositionPlant> retainedBuildStep =
+                targetStep.targetFromResolver(firstGraph);
         RuntimeException repeated = expectRuntime(
-                () -> targetStep.targetedBy(ScalarTarget.create(20.0)));
+                () -> targetStep.targetFromNewCommand(20.0));
         PositionPlant plant = retainedBuildStep.build();
 
-        assertTrue(repeated.getMessage().contains("targetedBy(...)"));
+        assertTrue(repeated.getMessage().contains("targetFromResolver(...)"));
         assertTrue(repeated.getMessage().contains("already been answered"));
         assertTrue(repeated.getMessage().contains("new builder"));
         assertTrue(plant.hasCommandTarget());
         assertSame(command, plant.commandTarget());
         plant.update(new ManualLoopClock().clock());
         assertEquals(150, motor.targetPosition);
+    }
+
+    @Test
+    public void invalidTargetFromNewCommandDoesNotResolveHardwareOrPoisonTheRecipe() {
+        EventLog events = new EventLog();
+        TestHardwareMap hardwareMap = new TestHardwareMap();
+        MotorProbe motor = new MotorProbe("motor", events, RAW_MODE);
+        hardwareMap.put("motor", motor.motor());
+        FtcActuators.MotorSingleStep motorStep = FtcActuators.plant(hardwareMap)
+                .motor("motor", Direction.REVERSE);
+        Plants.TargetStep<Plant> targetStep = motorStep.power();
+
+        RuntimeException nonFinite = expectRuntime(
+                () -> targetStep.targetFromNewCommand(Double.NaN));
+        RuntimeException outOfRange = expectRuntime(
+                () -> targetStep.targetFromNewCommand(1.01));
+
+        assertTrue(nonFinite instanceof IllegalArgumentException);
+        assertTrue(nonFinite.getMessage().contains("finite"));
+        assertTrue(outOfRange instanceof IllegalArgumentException);
+        assertTrue(outOfRange.getMessage().contains("outside"));
+        assertEquals(0, hardwareMap.lookupCount("motor"));
+        assertTrue("invalid target answers must not configure hardware", events.values.isEmpty());
+
+        Plants.BuildStep<Plant> build = targetStep.targetFromNewCommand(0.5);
+        RuntimeException repeatedTarget = expectRuntime(
+                () -> targetStep.targetFromResolver(PlantTargets.exact(0.0)));
+        RuntimeException frozen = expectRuntime(
+                () -> motorStep.andMotor("other", Direction.FORWARD));
+        assertTrue(repeatedTarget.getMessage().contains("targetFromNewCommand(...)"));
+        assertTrue(repeatedTarget.getMessage().contains("already been answered"));
+        assertTrue(frozen instanceof IllegalStateException);
+        assertTrue(frozen.getMessage().contains("cannot change"));
+        assertEquals(0, hardwareMap.lookupCount("motor"));
+        assertTrue("a valid target answer still defers hardware", events.values.isEmpty());
+
+        Plant plant = build.build();
+        assertEquals(1, hardwareMap.lookupCount("motor"));
+        assertEquals(Arrays.asList("motor.setDirection(REVERSE)"), events.values);
+        assertEquals(0.5, plant.commandTarget().get(), EPSILON);
+
+        RuntimeException repeatedBuild = expectRuntime(build::build);
+        assertTrue(repeatedBuild instanceof IllegalStateException);
+        assertTrue(repeatedBuild.getMessage().contains("already been attempted"));
+        assertEquals(1, hardwareMap.lookupCount("motor"));
+        assertEquals(Arrays.asList("motor.setDirection(REVERSE)"), events.values);
+    }
+
+    @Test
+    public void invalidNamedFallbackDoesNotResolveHardwareOrPoisonTheGuardBranch() {
+        EventLog events = new EventLog();
+        TestHardwareMap hardwareMap = new TestHardwareMap();
+        MotorProbe motor = new MotorProbe("motor", events, RAW_MODE);
+        hardwareMap.put("motor", motor.motor());
+        Plants.TargetGuardStep<Plant> guards = FtcActuators.plant(hardwareMap)
+                .motor("motor", Direction.FORWARD)
+                .power()
+                .targetGuards();
+
+        RuntimeException invalid = expectRuntime(() ->
+                guards.fallbackTargetUnless("armClear", clock -> true, 1.01));
+
+        assertTrue(invalid instanceof IllegalArgumentException);
+        assertTrue(invalid.getMessage().contains("armClear"));
+        assertTrue(invalid.getMessage().contains("outside"));
+        assertEquals(0, hardwareMap.lookupCount("motor"));
+        assertTrue("invalid guard answers must not configure hardware", events.values.isEmpty());
+
+        Plant plant = guards
+                .fallbackTargetUnless("armClear", clock -> true, 0.0)
+                .doneTargetGuards()
+                .targetFromNewCommand(0.5)
+                .build();
+
+        assertEquals(1, hardwareMap.lookupCount("motor"));
+        assertEquals(Arrays.asList("motor.setDirection(FORWARD)"), events.values);
+        assertEquals(0.5, plant.commandTarget().get(), EPSILON);
     }
 
     @Test
@@ -505,7 +583,7 @@ public final class FtcMotorPowerRunModeTest {
                 .motor("first", Direction.REVERSE)
                 .andMotor("missing", Direction.FORWARD)
                 .power()
-                .targetedBy(ScalarTarget.create(0.5))
+                .targetFromNewCommand(0.5)
                 .build());
 
         assertTrue("no motor may be configured before every group member resolves",
@@ -532,7 +610,7 @@ public final class FtcMotorPowerRunModeTest {
                 .motor("left", Direction.FORWARD)
                 .andMotor("right", Direction.FORWARD)
                 .power()
-                .targetedBy(ScalarTarget.create(0.7))
+                .targetFromNewCommand(0.7)
                 .build();
         events.clear();
 
@@ -604,7 +682,7 @@ public final class FtcMotorPowerRunModeTest {
                 .unbounded()
                 .nativeUnits()
                 .velocityTolerance(0.0)
-                .targetedBy(ScalarTarget.create(2000.0))
+                .targetFromNewCommand(2000.0)
                 .build();
         events.clear();
 
@@ -657,7 +735,7 @@ public final class FtcMotorPowerRunModeTest {
                 .unbounded()
                 .nativeUnits()
                 .velocityTolerance(0.0)
-                .targetedBy(ScalarTarget.create(2000.0))
+                .targetFromNewCommand(2000.0)
                 .build();
         events.clear();
         ManualLoopClock manualClock = new ManualLoopClock();
@@ -707,12 +785,12 @@ public final class FtcMotorPowerRunModeTest {
                 .regulated()
                 .nativeFeedback(clock -> 10.0)
                 .regulator((setpoint, measurement, clock) -> -0.3)
-                .linear()
+                .nonPeriodic()
                 .unbounded()
                 .nativeUnits()
                 .alreadyReferenced()
                 .positionTolerance(0.0)
-                .targetedBy(ScalarTarget.create(20.0))
+                .targetFromNewCommand(20.0)
                 .build();
         events.clear();
 
@@ -741,12 +819,12 @@ public final class FtcMotorPowerRunModeTest {
                 .motor("lift", Direction.FORWARD)
                 .position()
                 .deviceManagedWithDefaults()
-                .linear()
+                .nonPeriodic()
                 .unbounded()
                 .nativeUnits()
                 .alreadyReferenced()
                 .positionTolerance(0.0)
-                .targetedBy(ScalarTarget.create(100.0))
+                .targetFromNewCommand(100.0)
                 .build();
         ManualLoopClock clock = new ManualLoopClock();
         events.clear();
@@ -821,12 +899,12 @@ public final class FtcMotorPowerRunModeTest {
                 .motor("lift", Direction.FORWARD)
                 .position()
                 .deviceManagedWithDefaults()
-                .linear()
+                .nonPeriodic()
                 .unbounded()
                 .nativeUnits()
                 .alreadyReferenced()
                 .positionTolerance(0.0)
-                .targetedBy(ScalarTarget.create(100.0))
+                .targetFromNewCommand(100.0)
                 .build();
         plant.update(new ManualLoopClock().clock());
         assertEquals(DcMotor.RunMode.RUN_TO_POSITION, motor.runMode);
@@ -863,7 +941,7 @@ public final class FtcMotorPowerRunModeTest {
                 .unbounded()
                 .nativeUnits()
                 .velocityTolerance(0.0)
-                .targetedBy(ScalarTarget.create(1000.0))
+                .targetFromNewCommand(1000.0)
                 .build();
         events.clear();
 
@@ -1130,8 +1208,8 @@ public final class FtcMotorPowerRunModeTest {
         assertTrue("expected IllegalArgumentException, got " + failure,
                 failure instanceof IllegalArgumentException);
         String message = String.valueOf(failure.getMessage());
-        assertTrue("failure should name the direct mapped entry point: " + message,
-                message.contains("MappedPositionPlant.beginCalibrationSearch(...)"));
+        assertTrue("failure should name the PositionPlant entry point: " + message,
+                message.contains("PositionPlant.beginCalibrationSearch(...)"));
         assertTrue("failure should require finite normalized search power: " + message,
                 message.contains("finite normalized search power"));
         assertTrue("failure should name the inclusive normalized range: " + message,

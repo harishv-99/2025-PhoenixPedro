@@ -148,16 +148,17 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 61 | CAL-02 | Position-calibration reference validity | Done | Layered finite validation, atomic periodic commit, synchronized docs, automated verification, and Android Studio review are complete. |
 | 62 | DOC-01 | Stale and non-compiling documentation | Done | Factual docs, compiled-example authority links, navigation, focused Markdown validation, and Android Studio approval are complete. |
 | 63 | CLEAN-01 | Alias and risky convenience cleanup | Proposed | Separate unsafe enqueue behavior from cosmetic aliases, then remove only paths proven redundant or unsafe. |
-| 64 | RANGE-01 | ScalarRange construction validity | Proposed | Define and enforce finite, half-bounded, and unbounded range construction without allowing `NaN`. |
-| 65 | MAP-01 | FTC actuator mapping-domain validation | Proposed | Validate finite child transforms and raw actuator domains before command mapping can be silently clamped. |
-| 66 | FTC-02 | Device-managed controller configuration validation | Proposed | Validate FTC PIDF/P, maximum-power, and related staged answers before SDK access or mode changes. |
-| 67 | SOURCE-04 | Successful source-cache commit semantics | Proposed | Audit stateful source wrappers that claim a cycle before upstream sampling or state transition succeeds. |
-| 68 | INPUT-02 | Binding update failure retention | Proposed | Make same-cycle binding failure behavior explicit for an effectful traversal that may already have fired callbacks. |
-| 69 | BOUNDARY-01 | FTC boundary enforcement | Proposed | Fix existing import leaks, then add a focused forbidden-import check. |
-| 70 | CI-01 | Framework verification in CI | Proposed | Run focused unit tests, TeamCode compilation, docs checks, and boundary checks. |
-| 71 | EXAMPLE-03 | Advanced moving-target reference | Proposed | Revisit only after common-path guidance, known software defects, docs, boundaries, and verification are clearer. |
-| 72 | SAFE-04 | PowerOutput failure cleanup and seam truth | Deferred | Current completion requires representative actuator observation; a narrower software-seam contract needs a new approved decision gate. |
-| 73 | CONFIG-01 | Owner-configuration snapshot audit | Deferred | Revisit specific owners only when a traced caller shows mutation drift or invalid retained state. |
+| 64 | PLANT-02 | One public Plant construction grammar | Done | One shared Plant grammar, parallel target provenance, caller/docs migration, automated verification, independent review, and Android Studio approval are complete. |
+| 65 | RANGE-01 | ScalarRange construction validity | Proposed | Define and enforce finite, half-bounded, and unbounded range construction without allowing `NaN`. |
+| 66 | MAP-01 | FTC actuator mapping-domain validation | Proposed | Validate finite child transforms and raw actuator domains before command mapping can be silently clamped. |
+| 67 | FTC-02 | Device-managed controller configuration validation | Proposed | Validate FTC PIDF/P, maximum-power, and related staged answers before SDK access or mode changes. |
+| 68 | SOURCE-04 | Successful source-cache commit semantics | Proposed | Audit stateful source wrappers that claim a cycle before upstream sampling or state transition succeeds. |
+| 69 | INPUT-02 | Binding update failure retention | Proposed | Make same-cycle binding failure behavior explicit for an effectful traversal that may already have fired callbacks. |
+| 70 | BOUNDARY-01 | FTC boundary enforcement | Proposed | Fix existing import leaks, then add a focused forbidden-import check. |
+| 71 | CI-01 | Framework verification in CI | Proposed | Run focused unit tests, TeamCode compilation, docs checks, and boundary checks. |
+| 72 | EXAMPLE-03 | Advanced moving-target reference | Proposed | Revisit only after common-path guidance, known software defects, docs, boundaries, and verification are clearer. |
+| 73 | SAFE-04 | PowerOutput failure cleanup and seam truth | Deferred | Current completion requires representative actuator observation; a narrower software-seam contract needs a new approved decision gate. |
+| 74 | CONFIG-01 | Owner-configuration snapshot audit | Deferred | Revisit specific owners only when a traced caller shows mutation drift or invalid retained state. |
 
 The completed order was intentionally front-loaded with testability, robot lifecycle, actuator
 safety, deterministic Task behavior, Pedro ownership, truthful route outcomes, and the reusable
@@ -9446,6 +9447,535 @@ writer, and explicit lifecycle ownership.
   path moved to focused ROUTE-03 so a Pedro simplification is not bundled with unrelated aliases or
   binding behavior.
 - **Decision record:** _Pending._
+
+### PLANT-02 - One public Plant construction grammar
+
+- **Gate 2 approval (2026-07-31):** the user explicitly replied
+  **`Approve PLANT-02 one-grammar breaking design`**. This authorizes only the bounded
+  implementation, documentation, tests, and verification recorded below. `origin/master` was
+  fetched and remains `1ca486cbd100d24220c22c32e53db4de21730923`; the new
+  `codex/plant-02-one-public-plant-grammar` branch is based exactly on that merge. CLEAN-01, MAP-01,
+  FTC-02, RANGE-01, and every other tracker item remain out of scope.
+- **Naming-amendment approval (2026-08-01):** after reviewing the target/resolver relationship,
+  command-provenance examples, exact signature migration, affected API surface, and unchanged
+  runtime semantics, the user explicitly directed **`Proceed with these changes`**. This authorizes
+  only the recorded rename from `commandedAt(...)` / `targetedBy(...)` to
+  `targetFromNewCommand(...)` / `targetFromResolver(...)`, synchronized callers/docs/tests, and
+  reverification. It does not authorize publication or another tracker item.
+- **Status and ordering:** **Done** after the approved narrow public target-tail naming amendment
+  was applied, reverified, independently reviewed, and approved in Android Studio on the existing
+  PLANT-02 branch. Gate 3 publication is authorized; no next tracker item is started. The servo periodicity,
+  native-domain, scaling, public-path, caller, parameter, guard, result-type, hidden-runtime,
+  documentation, and verification questions remain resolved. CLEAN-01 remains Proposed
+  and unimplemented; it performs no preparatory Plant deletion or caller migration while PLANT-02
+  is active.
+- **Problem confirmed:** Plant construction currently exposes sixteen public starts: one
+  `FtcActuators.plant(HardwareMap)` entry, ten direct `Plants` overloads, and five static starts on
+  `MappedPositionPlant`/`MappedVelocityPlant`, plus mapped-named public target/build stages. These
+  are implementation layers, but presenting all of them as peer construction choices makes the
+  ordinary path harder to explain and preserves direct-return versus staged-builder grammars.
+- **Caller and parameter audit:** all twenty-six real production, Phoenix, compiled tool, and modern
+  example constructions use `FtcActuators.plant(...)`: seven motor-power, six CR-servo-power, eight
+  motor-velocity, four standard-servo-position, and one regulated motor-position call. Nineteen
+  inline-create `ScalarTarget` solely for the target step and migrate to `commandedAt(value)`; seven
+  pass a named/composed resolver and retain `targetedBy(resolver)`. No production caller uses a
+  direct `Plants` factory or public `Mapped*` start. Tests contain twenty-six direct-`Plants`,
+  thirty-three mapped-position, twenty-six mapped-velocity, and sixty-one FTC starts, so those
+  suites migrate to the selected supported gateways rather than count as independent production
+  construction layers. No production caller passes, stores, shares, or reuses a prebuilt
+  `PlantTargetGuards`; tests build it only to hand it immediately to an old lower-layer stage.
+  `PlantTargetResolver`, feedback sources, regulators, output ports, and data-only FTC configuration
+  remain real reusable/composed collaborators and are not replaced with one-use wrappers.
+- **Boundary constraint:** core actuation must not depend on `HardwareMap`, while FTC discovery,
+  direction, grouping, run modes, and SDK controller configuration belong in `fw.ftc`. Conversely,
+  portable-host and custom-adapter callers that already own `PowerOutput`, `PositionOutput`,
+  `VelocityOutput`, measurements, and regulators must not depend on an FTC-named facade. One literal
+  Java entrypoint would therefore either violate the boundary or add a provider abstraction and
+  wrapper ceremony to the student path.
+- **Selected design:** keep `FtcActuators.plant(hardwareMap)` as the only ordinary/student entry. Give
+  `Plants` one explicitly advanced staged gateway, `Plants.fromOutputs()`, with exactly six
+  control-path branches: `power(PowerOutput)`, `commandedPosition(PositionOutput)`,
+  `deviceManagedPosition(PositionOutput, ScalarSource)`,
+  `deviceManagedVelocity(VelocityOutput, ScalarSource)`,
+  `regulatedPosition(PowerOutput, ScalarSource, ScalarRegulator)`, and
+  `regulatedVelocity(PowerOutput, ScalarSource, ScalarRegulator)`. `deviceManaged` names who applies
+  the typed mechanism setpoint; the separate scalar source supplies Phoenix completion feedback.
+  This is mutually exclusive with Phoenix applying raw power through the `regulated` branch, unlike
+  the rejected `measuredPosition`/`measuredVelocity` names because regulated Plants are measured too.
+  Reject `positionOutput`/`velocityOutput`, which merely repeat parameter types, overload-only
+  `position(...)`, and the implementation-shaped `positionFromPower(...)`. Both gateways converge
+  on the same target/build vocabulary and hidden
+  runtime implementations. Remove the ten direct `Plants` overloads and the five public `Mapped*`
+  static starts; make mapped concrete builders and mapped-named stages implementation details.
+  Return the smallest capability each caller needs: `Plant` for power and velocity, and
+  `PositionPlant` for every position branch. The concrete-only
+  `MappedVelocityPlant.targetRange()` has no repository caller and is removed without inventing a
+  `VelocityPlant`, `RangedPlant`, or base-`Plant` method solely for compatibility.
+- **Two boundary gateways, one builder grammar and engine:** `Plants.fromOutputs()` is the only
+  future public builder gateway in the hardware-neutral `Plants` facade, but it is not the only
+  Plant entry overall.
+  `FtcActuators.plant(hardwareMap)` remains the only FTC gateway for callers that own a
+  `HardwareMap`, device names, and data-only configuration; `Plants.fromOutputs()` is the only
+  advanced gateway for callers that already own Phoenix output ports, feedback sources, and any
+  regulator. Those inputs prove different capabilities, so the gateways are not peer spellings and
+  `FtcActuators` must retain the FTC-only prefix for device family/name/group, direction, controller
+  ownership, run mode, and controller configuration. It must not retain a second Plant-construction
+  engine. Its remaining stages use the `Plants` grammar and, wherever their capabilities match,
+  `Plants`-declared staged types; shared actuation code owns the hardware-neutral validation and
+  hidden runtime assembly. Thus an ordinary mechanism mentions only `FtcActuators`, while a custom
+  adapter, hardware-neutral test, or portable host mentions only `Plants`. Do not make ordinary FTC
+  code unwrap devices merely to
+  call `fromOutputs()`, put `HardwareMap` on core `Plants`, put the neutral gateway on an FTC-named
+  facade, or introduce an immediately consumed provider wrapper merely to manufacture one literal
+  entry class.
+- **Shared-stage limit and selected handoff:** centralization means one implementation, name, and
+  invariant for each question both gateways actually share; it does not mean forcing byte-for-byte
+  stage parity where their starting evidence differs. Generic `PositionOutput` declares neither a
+  native range nor an FTC child-transform domain, while the Servo prefix knows the raw `[0.0, 1.0]`
+  interval and owns grouped Servo scale/bias. Retain that extra mapping/domain check in
+  `FtcActuators` rather than
+  widening generic `PositionOutput` with an FTC-motivated native-domain capability. The FTC facade
+  records the same named coordinate, mapping, and target answers, preflights its FTC-only recipe,
+  then at `build()` resolves/configures hardware and delegates the neutral recipe and Phoenix ports
+  to the `Plants.fromOutputs()` engine. Core performs the general range, affine-map, reference,
+  tolerance, guard, target, and runtime construction checks; MAP-01 will add the FTC proof that every
+  standard-Servo endpoint and grouped child transform is finite and remains inside `[0.0, 1.0]`.
+  This deliberately permits a thin FTC stage adapter without permitting a second runtime builder.
+  Do not expose an internal callback, nullable mega-builder field set, native-domain metadata noun,
+  or new student-facing provider concept to make the implementations appear more centralized than
+  the dependency facts allow.
+- **One shared target tail:** `Plants` declares generic `TargetStep<P extends Plant>`,
+  `TargetGuardStep<P>`, and `BuildStep<P>` stages. Both gateways finish through the same optional
+  `targetGuards()...doneTargetGuards()` branch, then exactly one of `commandedAt(initialValue)` or
+  `targetedBy(finalResolver)`, then `build()`. The generic result parameter preserves `Plant` versus
+  `PositionPlant` without duplicating FTC position/non-position target, guard, and build nouns.
+  `commandedAt(...)` creates one fresh exact `ScalarTarget`; a deliberately shared named target uses
+  `targetedBy(PlantTargets.exact(target))`. There is no `targetedBy(ScalarTarget)` overload.
+- **Builder lifecycle and pre-effect validation:** each root recipe and its shared build tail are
+  single-use. A valid target answer freezes the configuration; retained references to earlier stages
+  cannot mutate it, and a second `build()` fails before repeating hardware lookup, configuration, or
+  runtime construction. `commandedAt(...)` rejects a non-finite or out-of-range initial value before
+  any hardware effect, and `build()` defensively revalidates the complete snapshot. An invalid
+  answer that has caused no effect does not poison an otherwise reusable pre-target recipe. The FTC
+  adapter delays hardware resolution and controller configuration until `build()`, after the whole
+  hardware-neutral and FTC-only recipe has passed preflight.
+- **Selected branch flows:** direct power advances immediately to the common target tail because its
+  range is fixed at normalized `[-1.0, +1.0]`. Device-managed and regulated velocity both require
+  `bounded(min,max)` or `unbounded()`, then `nativeUnits()` or zero-preserving
+  `scaleToNative(scale)`, then `velocityTolerance(tolerance)`, then the common tail. Feedback
+  position requires `nonPeriodic()` or `periodic(period)`, bounds, mapping/reference,
+  `positionTolerance(tolerance)`, and the common tail. After finite bounds,
+  `rangeMapsToNative(nativeAtPlantMin,nativeAtPlantMax)` supplies scale plus static alignment and
+  therefore advances directly to tolerance; `nativeUnits()` and `scaleToNative(scale)` instead
+  advance to `alreadyReferenced()`, `plantPositionMapsToNative(...)`,
+  `assumeCurrentPositionIs(...)`, or `needsReference(...)`. Unbounded feedback position has no
+  endpoint map and uses the same native/scale then reference flow.
+- **Command-only position flow:** generic `commandedPosition(...)` asks periodicity, bounded or
+  unbounded range, and mapping before the common tail, but never exposes tolerance, feedback-driven
+  reference, or calibration search. `nativeUnits()` is the full identity answer. Bounded
+  `rangeMapsToNative(...)` is the endpoint-map answer. To preserve the current advanced negative
+  nonzero scale and finite static-alignment capability, `scaleToNative(scale)` advances to the sole
+  `plantPositionMapsToNative(plantPosition,nativePosition)` anchor answer; a zero-aligned custom
+  adapter states `(0.0, 0.0)` rather than receiving another shortcut. The standard-Servo prefix is
+  narrower because its native domain requires finite Plant bounds: after periodicity it exposes only
+  `bounded(...)`, then `nativeUnits()` or `rangeMapsToNative(...)`, then the common target tail. It
+  does not expose `unbounded`, tolerance, runtime reference, calibration search, or a duplicate
+  Servo `scaleToNative` spelling.
+- **Calibration-search capability:** `regulatedPosition(powerOut, feedback, regulator)` automatically
+  uses that same already-owned `PowerOutput` for normal regulation and calibration search; requiring
+  `searchPowerOutput(powerOut)` would repeat an identical answer. Neutral
+  `deviceManagedPosition(positionOut, feedback)` may optionally call
+  `searchPowerOutput(distinctRawPowerOut)` before periodicity; the method returns the narrower
+  periodicity stage so the answer cannot normally be repeated or replaced, and omission means the
+  capability is unsupported. FTC device-managed motor position supplies its distinct raw-power path
+  internally, regulated motor/CR-servo position reuses its selected power output, and standard Servo
+  position cannot search. A different search output for an already regulated Plant is removed: no
+  caller uses it, and silently owning an unrelated second command output is not a coherent seam.
+- **One guard grammar:** remove prebuilt `PlantTargetGuards` injection and its public stateful
+  construction surface. Both gateways use only the inline target-guard stage. Preserve
+  `maxTargetRate` versus `maxTargetRates` because symmetric and asymmetric inputs are distinct, and
+  preserve simple `BooleanSource` plus candidate-aware `PlantTargetGate` overloads because they
+  expose distinct capabilities. The mutable limiter/rule chain becomes an internal per-Plant object,
+  so callers cannot accidentally share its runtime state across Plants.
+- **Servo periodicity audit (2026-07-31):** the earlier statement that the standard-servo actuator
+  family proves a linear mechanism was wrong. `PositionPlant.Topology.LINEAR` means a non-wrapping
+  caller-facing coordinate; it does not promise linear physical response, and rotation by itself
+  does not imply periodic equivalence. A limited servo arm is non-wrapping even though it rotates;
+  a cable-limited CR-servo winch can require unwrapped turn count; and a plate or indexer is periodic
+  only when positions separated by a full turn are actually interchangeable. Geometry, legal
+  range, and unit mapping remain separate mechanism facts.
+- **Parallel periodicity vocabulary:** reject both `linear()` and the interim `nonWrapping()` name.
+  `linear()` is confused with physical response and affine mapping; `nonWrapping()` is not parallel
+  with `periodic(...)` and is technically misleading because a periodic Plant still preserves exact
+  unwrapped commands. The one question is whether the caller-facing coordinate declares a fixed
+  equivalence period, so its direct answers are `nonPeriodic()` and `periodic(period)`. Only the
+  periodic answer needs the positive finite period argument. Use the same narrower noun throughout:
+  `PositionPeriodicityStep`, `PositionPlant.Periodicity`, enum values `NON_PERIODIC`/`PERIODIC`, and
+  `periodicity()`. Do not retain `Topology`, `LINEAR`, `linear()`, or `nonWrapping()` aliases. Exact
+  commands still never wrap automatically. This is a repository-wide public vocabulary migration,
+  not a local method alias. Keep one query grammar too: remove the derived
+  `PositionPlant.isPeriodic()`, replace `PlantTargetContext.topology()` with `periodicity()`, and
+  remove its duplicate `periodic()` boolean. `period()` remains distinct data needed only when the
+  selected value is `PERIODIC`. The target-request alternative's separate `periodic()` flag describes
+  that request rather than Plant coordinate metadata and remains unchanged.
+- **FTC hardware facts:** a standard FTC `Servo` proves only a command-only native position channel
+  with the raw interval `[0.0, 1.0]`. An FTC `CRServo` instead proves a normalized power channel in
+  `[-1.0, +1.0]`; it becomes a position Plant only when the caller supplies position feedback and a
+  regulator. That regulated branch must continue to ask the explicit non-periodic or periodic
+  question.
+  Periodicity neither unwraps a wrapping sensor nor makes exact targets wrap automatically;
+  equivalent-position selection remains an explicit final-target policy.
+- **One position-coordinate grammar:** every position branch answers periodicity, legal Plant range,
+  and Plant-to-native mapping in that order. `bounded(min, max)` always uses the public Plant
+  coordinate; its meaning never depends on the mapping chosen next. `nativeUnits()` answers only
+  that Plant and native units are identical. `scaleToNative(...)` and
+  `rangeMapsToNative(nativeAtPlantMin, nativeAtPlantMax)` instead establish the conversion after the
+  Plant range is known. On a standard Servo, MAP-01 will additionally prove that every final raw
+  endpoint stays inside the hardware `[0.0, 1.0]` domain. The selected calls are:
+
+  ```java
+  PositionPlant pusher = FtcActuators.plant(hardwareMap)
+          .servo("pusher", Direction.FORWARD)
+          .position()
+          .nonPeriodic()
+          .bounded(0.0, 1.0)
+          .nativeUnits()
+          .commandedAt(0.0)
+          .build();
+
+  PositionPlant wrist = FtcActuators.plant(hardwareMap)
+          .servo("wrist", Direction.FORWARD)
+          .position()
+          .nonPeriodic()
+          .bounded(-45.0, 90.0)
+          .rangeMapsToNative(0.22, 0.76)
+          .commandedAt(0.0)
+          .build();
+  ```
+
+  `.nonPeriodic().bounded(0.20, 0.80).nativeUnits()` expresses software-limited travel in raw servo
+  fractions. `.bounded(-45.0, 90.0).rangeMapsToNative(0.22, 0.76)` instead says the Plant range is
+  degrees and only the two mapping arguments are raw servo fractions. Reject both an early
+  `nativeUnits()` that silently supplies bounds and a Servo-only `fullNativeRange()` shortcut: each
+  would create a second spelling for `.bounded(0.0, 1.0).nativeUnits()` and make the same method mean
+  different things by branch. The explicit line is simpler as a system because each answer has one
+  invariant meaning across FTC and neutral builders.
+- **Range-input boundary:** the construction grammar accepts only a finite closed
+  `bounded(min,max)` range or the explicit `unbounded()` answer. The current mapped
+  `range(ScalarRange)` parameter technically admits half-bounded ranges, but there is no valid
+  repository caller; its only half-bounded use is an intentionally invalid test input. Do not carry
+  a `ScalarRange` wrapper into the new stages or add `minOnly`/`maxOnly` answers without evidence.
+  RANGE-01 retains ownership of whether half-bounded construction should become a supported direct
+  grammar and of the general `ScalarRange` finite/`NaN` contract.
+- **Scaling audit:** preserve the existing whole-Plant affine mapping from caller-facing mechanism
+  units to raw servo endpoints, including deliberate reversed endpoint order, and preserve distinct
+  per-child group scale/bias after that shared mapping. SDK direction, whole-Plant mapping, and
+  grouped-child transforms are three different operations and must not all be called "servo
+  linearity." Neither the periodicity choice nor the affine command map promises a linear physical
+  linkage. Arbitrary nonlinear linkage compensation is not a current staged FTC capability and
+  remains an advanced adapter concern unless a real caller justifies a new transform abstraction.
+- **Small construction aliases removed:** remove the unused motor, standard-Servo, and CR-servo
+  `scaleBias(scale,bias)` defaults; they add no capability beyond the one canonical
+  `.scale(scale).bias(bias)` sequence. Retain the default-versus-tuning device-managed branches,
+  symmetric/asymmetric target-rate inputs, named/default encoder choices, native/scale/endpoint map
+  inputs, and command-versus-resolver target answers because each accepts a materially different
+  input or exposes a distinct capability.
+- **MAP-01 boundary:** the audit reconfirmed that current raw endpoint and group transforms can be
+  non-finite or leave `[0.0, 1.0]`: finite out-of-domain values and infinities may be silently
+  saturated, while `NaN` can cross the adapter boundary. MAP-01 retains ownership of finite affine
+  parameters, raw-domain validation, child-transform validation, and applied-command truth.
+  PLANT-02 preserves a distinct mapping stage so those later validations remain enforceable;
+  PLANT-02 does not claim the runtime defect is fixed.
+- **Feedbackless proof corrected:** normalized `PowerOutput` supplies its own fixed command range,
+  so neutral direct power really can be output, initial command, and build. Generic
+  `PositionOutput`, however, declares native units but no range or periodicity and can represent servo
+  fractions, motor ticks, or another adapter. The advanced gateway therefore must require the
+  caller to state the position coordinate facts rather than silently borrow the FTC servo's
+  `[0.0, 1.0]` contract. The selected calls are:
+
+  ```java
+  Plant roller = Plants.fromOutputs()
+          .power(powerOut)
+          .commandedAt(0.0)
+          .build();
+
+  PositionPlant pusher = Plants.fromOutputs()
+          .commandedPosition(positionOut)
+          .nonPeriodic()
+          .bounded(0.0, 1.0)
+          .nativeUnits()
+          .commandedAt(0.0)
+          .build();
+
+  PositionPlant wrist = Plants.fromOutputs()
+          .commandedPosition(positionOut)
+          .nonPeriodic()
+          .bounded(-45.0, 90.0)
+          .rangeMapsToNative(0.22, 0.76)
+          .commandedAt(0.0)
+          .build();
+  ```
+
+  The generic path may be longer precisely because it is the advanced custom-adapter seam and the
+  framework cannot prove FTC-specific facts there. Feedback, reference, tolerance, guards, and
+  regulation remain staged only on branches that actually need those capabilities. The neutral
+  commanded-position branch must also preserve bounded or unbounded ranges, negative nonzero scale,
+  finite static plant/native alignment, and affine endpoint mapping; it must not become a
+  servo-shaped API. Command-only position cannot offer measurement-dependent reference answers.
+- **Before/after simplicity proof:** the ordinary path keeps its FTC hardware facts but removes an
+  object the caller did not need to own and replaces the misleading coordinate word:
+
+  ```java
+  // Before
+  PositionPlant pusher = FtcActuators.plant(hardwareMap)
+          .servo("pusher", Direction.FORWARD)
+          .position()
+          .linear()
+          .bounded(0.0, 1.0)
+          .nativeUnits()
+          .targetedBy(ScalarTarget.create(0.0))
+          .build();
+
+  // Selected
+  PositionPlant pusher = FtcActuators.plant(hardwareMap)
+          .servo("pusher", Direction.FORWARD)
+          .position()
+          .nonPeriodic()
+          .bounded(0.0, 1.0)
+          .nativeUnits()
+          .commandedAt(0.0)
+          .build();
+  ```
+
+  The advanced path trades an implementation-class start and hidden defaults for one named gateway
+  and explicit coordinate facts:
+
+  ```java
+  // Before
+  PositionPlant custom = MappedPositionPlant.commanded(positionOut)
+          .range(ScalarRange.bounded(0.0, 1.0))
+          .targetedBy(ScalarTarget.create(0.0))
+          .build();
+
+  // Selected
+  PositionPlant custom = Plants.fromOutputs()
+          .commandedPosition(positionOut)
+          .nonPeriodic()
+          .bounded(0.0, 1.0)
+          .nativeUnits()
+          .commandedAt(0.0)
+          .build();
+  ```
+- **Periodic CR-servo proof:** a rotating plate is supported through the regulated-position branch,
+  not by pretending CR-servo power is a `[0.0, 1.0]` position. The selected neutral construction is:
+
+  ```java
+  PositionPlant plate = Plants.fromOutputs()
+          .regulatedPosition(crServoPowerOut, unwrappedAngle, regulator)
+          .periodic(2.0 * Math.PI)
+          .bounded(-4.0 * Math.PI, 4.0 * Math.PI)
+          .nativeUnits()
+          .needsReference("plate not indexed")
+          .positionTolerance(Math.toRadians(2.0))
+          .targetedBy(plateFinalTarget)
+          .build();
+  ```
+
+  Here the measurement is explicitly continuous/unwrapped, the operational bounds are mechanism
+  policy, and `plateFinalTarget` may use `PlantTargets.equivalentPositionsOf(...)` when full-turn
+  equivalents are valid. The regulated branch reuses `crServoPowerOut` for optional calibration
+  search rather than asking the caller to repeat it; another owner could instead establish the
+  reference explicitly.
+- **Ordinary target simplification:** replace the common
+  `targetedBy(ScalarTarget.create(initialValue))` construction ceremony with
+  `commandedAt(initialValue)`. It is behaviorally the ordinary spelling of that current call: the
+  builder creates one fresh `ScalarTarget`, wraps it with `PlantTargets.exact(...)`, and the built
+  Plant exposes that same stable identity through `plant.commandTarget()`. The difference is
+  ownership and validation: the caller does not construct an object only to hand it away, and the
+  builder can reject a non-finite or out-of-Plant-range initial command before build. Delete
+  `targetedBy(ScalarTarget)` rather than keep two ordinary spellings. Keep only
+  `targetedBy(PlantTargetResolver)` for a genuinely shared, overlaid, equivalent-position, or
+  planned graph. A separately owned `ScalarTarget` enters that explicit advanced path through
+  `targetedBy(PlantTargets.exact(target))`. The same two target-source answers appear on every FTC
+  and neutral branch. The real-construction census supports the split: nineteen of twenty-six
+  current calls construct an inline `ScalarTarget`, while seven pass named or composed resolver
+  graphs.
+- **Complexity deliberately retained:** feedback motor position/velocity still asks who owns the
+  loop, legal target range, unit mapping, position periodicity/reference where applicable, completion
+  tolerance, feedback source for Phoenix regulation, regulator, and optional calibration-search
+  output. Those are independent facts needed for truthful completion and safe ownership, not
+  builder ceremony. The simplification is one path and progressive disclosure, not silent defaults
+  for facts the framework cannot know.
+- **Selected hidden runtimes and compatibility trade:** direct power keeps the existing hidden
+  `Plants.PowerPlant` behavior. Every commanded, device-managed, and regulated position branch uses
+  the current mapped-position runtime behind `PositionPlant`; both velocity branches use the current
+  mapped-velocity runtime behind `Plant`. Ordinary FTC behavior is preserved because that facade
+  already delegates to those runtimes. Advanced callers of the removed direct `Plants` position and
+  velocity factories intentionally acquire the mapped runtime contract: explicit range, mapping,
+  and reference answers where applicable, `PositionPlant` capability for position, and mapped
+  reset/stop/status behavior. PLANT-02 does not opportunistically change that runtime behavior.
+  `MappedVelocityPlant.targetRange()` is accepted as a concrete-type compatibility loss because no
+  repository caller uses it and no truthful cross-Plant capability justifies a new interface.
+- **Explicit breaking migration:** source and binary compatibility are intentionally broken for the
+  ten direct `Plants` factories, five public mapped starts and their mapped-named stages, FTC return
+  descriptor types that become shared `Plants` stages, `PositionPlant.Topology` and its
+  `LINEAR`/`linear()`/`nonWrapping()` vocabulary, `PlantTargetContext.topology()` and its duplicate
+  periodic boolean, `targetedBy(ScalarTarget)`, public `PlantTargetGuards` construction/injection,
+  three `scaleBias(...)` aliases, `MappedVelocityPlant.targetRange()`, and half-bounded mapped
+  construction. Debug labels and exception messages migrate from topology/mapped implementation
+  language to periodicity and public-grammar language. No deprecated aliases are retained because
+  no production repository caller or external evidence justifies a second way to express these
+  answers.
+- **Alternatives rejected:** putting `HardwareMap` in core; making neutral callers import
+  `FtcActuators`; introducing a public hardware-provider abstraction solely to obtain one literal
+  method; unwrapping FTC devices in ordinary mechanisms; keeping public `Plants`,
+  `MappedPositionPlant`, and `MappedVelocityPlant` construction namespaces and explaining their
+  overlap; deleting only feedback factories and forcing a second migration; widening `Plant` with a
+  range accessor; making every position output Servo-shaped; retaining both prebuilt and inline
+  stateful guards; or preserving aliases that make periodicity, mapping, target ownership, and
+  hardware boundaries ambiguous.
+- **Bounded implementation scope:** migrate the framework implementation, every repository caller,
+  all affected tests, public signatures, Javadocs, Markdown guides, and examples as one coherent
+  breaking change. The substantive documentation set is Framework Principles, FTC Actuators &
+  Plants, Framework Overview, Beginner's Guide, Builder Improvement Backlog, and Phoenix Calibration
+  Guide; mechanically update every remaining compiled example and guide reference. Make
+  `MappedPositionPlant`, `MappedVelocityPlant`, their starts/stages, and the mutable guard-chain
+  implementation non-public rather than creating replacement public runtime types. MAP-01 retains
+  endpoint/child-transform validation, FTC-02 retains controller-tuning validation, RANGE-01 retains
+  general `ScalarRange`/half-bound policy, and CLEAN-01 and all other tracker items remain out of
+  scope.
+- **Verification design:** migrate the twenty-five affected existing test files and add focused
+  coverage for the sole public neutral gateway, removed construction surface, shared stages through
+  both boundaries, all six neutral branches and every FTC actuator branch, Servo periodic and
+  non-periodic coordinates, regulated CR-servo position, calibration-search capability, finite and
+  in-range `commandedAt(...)` validation before effects, stable `commandTarget()` identity, named
+  exact targets, builder freeze/single-use/revalidation, negative scales, reversed endpoint maps,
+  bounded/unbounded coordinates, reference/tolerance/guards, and preserved reset/stop/fail-stop
+  behavior. Run `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` with Android
+  Studio's JBR; count test XML results; run `DocumentationLinksTest`, public-signature and stale-name
+  searches, Markdown fence/link checks, whitespace/final-LF checks, and `git diff --check`.
+- **Hardware evidence boundary:** no robot run is required to prove a construction-grammar and
+  ownership consolidation. An adopting-robot smoke test remains useful but cannot replace the
+  deterministic tests. Physical mapping endpoints and grouped child transforms remain MAP-01
+  evidence; controller ownership/tuning remains FTC-02 evidence; mechanism-specific calibration
+  power, direction, travel, and reference success remain robot validation.
+- **Direction approval record (2026-07-31):** the user's **`Proceed with this design`** approves the
+  two-boundary-gateway/one-engine direction. The complete audit subsequently fixed material public
+  details that were not in that shorter direction proposal: the six branch names, shared generic
+  tail, command-only static-anchor flow, implicit regulated search output, guard-surface removal,
+  hidden runtime selection, builder lifecycle, and complete compatibility break. Under the required
+  public-API gate, that direction approval is recorded but does not silently authorize Gate 2.
+- **Decision record (2026-07-31):** **Ready for explicit approval.** The selected one-grammar design
+  survives the complete boundary, public-path, caller, parameter, Servo, periodicity, mapping,
+  guard, result-type, runtime, lifecycle, documentation, and verification audit. Approving
+  **`Approve PLANT-02 one-grammar breaking design`** authorizes only the bounded implementation,
+  documentation, tests, and verification above; it does not authorize CLEAN-01, MAP-01, FTC-02,
+  RANGE-01, or any other tracker item.
+- **Implementation record (2026-07-31):** implemented on
+  `codex/plant-02-one-public-plant-grammar`, based on
+  `1ca486cbd100d24220c22c32e53db4de21730923`. `Plants.fromOutputs()` is now the sole public neutral
+  gateway with the six approved roots and one generic guard/target/build tail. `FtcActuators` keeps
+  only its FTC hardware-selection prefix and delegates validated recipes to the same neutral
+  engine; named lookup and controller configuration wait until validated `build()`. The migration
+  also installs `nonPeriodic()`/`periodic(period)` and `PositionPlant.Periodicity`,
+  `commandedAt(...)` versus explicit `targetedBy(PlantTargets.exact(target))`, inline-only guards,
+  package-private mapped runtimes/builders, the public candidate-aware `PlantTargetGate`, and
+  single-use/frozen recipes with pre-effect, non-poisoning validation. All production callers,
+  examples, Javadocs, Framework Principles, guides, calibration code, and affected tests were
+  migrated together. No compatibility aliases or second public construction grammar remain.
+- **Verification record (2026-07-31):** the first clean full run usefully exposed three migrated
+  test-expectation defects: one same-cycle cache assertion and two assertions against old fallback
+  diagnostic wording. Those tests were corrected without changing runtime behavior, their focused
+  rerun passed, and the final authoritative
+  `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` run completed successfully with
+  **114 suites / 1090 tests / 0 failures / 0 errors / 0 skipped**. The focused
+  `DocumentationLinksTest` also passed. Public-signature/reflection coverage proves one public
+  neutral start, all six roots, shared stages, and hidden mapped/guard internals. Removed-name and
+  stale-call scans, changed-Markdown fence balance, final-newline checks, and `git diff --check`
+  passed; only the repository's existing JDK 21 source/target 8 deprecation and Windows line-ending
+  advisories were emitted.
+- **Independent review (2026-07-31):** a separate correctness/principles/simplicity/scope/docs/test
+  review found no behavioral blocker. It identified missing method-level mouse-over documentation,
+  one stale target-construction explanation, and one sentence that incorrectly implied early FTC
+  lookup. The public staged API now documents units, ordering, validation, lifecycle, and output
+  effects; the target prose teaches the one exact-command grammar; and the FTC guide accurately
+  states deferred lookup. The final compile, full suite, documentation-link check, and static checks
+  include those corrections.
+- **Android Studio review gate (2026-07-31, reopened 2026-08-01):** the initial review exposed the
+  target-tail nomenclature question below. Review is paused until that public naming amendment is
+  approved or rejected, implemented if approved, and reverified. No robot-hardware run is required
+  for this API/ownership consolidation, and no commit, push, or merge is authorized.
+- **Target/resolver relationship confirmed (2026-08-01):** every Plant owns exactly one final
+  `PlantTargetResolver`. Each update asks that resolver for a `PlantTargetResolution`; when the
+  resolution is available, its numeric `target()` becomes the Plant's requested target before bounds
+  and guards select the applied target. A `ScalarTarget` is instead an optional writable scalar
+  request feeding that graph. `PlantTargets.exact(ScalarTarget)` carries the same command identity;
+  overlays propagate only their base graph's command identity, and equivalent-position wrappers
+  propagate their logical graph's command identity. Plant construction derives
+  `commandTarget()` from the final resolver graph regardless of which builder method installed it.
+  Constants, read-only sources, planners, and arbitrary custom resolvers may carry no recognized
+  command. Therefore a resolver supplied through the advanced branch may still build a commandable
+  Plant; commandability is graph provenance, not the distinction between the two target-step answers.
+- **Naming defect and selected amendment (2026-08-01):** `commandedAt(initialValue)` is a convenience
+  that creates a fresh `ScalarTarget`, wraps it in an exact resolver, and guarantees that command
+  identity. `targetedBy(finalResolver)` installs the caller's complete resolver directly, and that
+  resolver may or may not carry a command. Although the current names are individually defensible,
+  their contrast invites the false reading that the first result is commandable while the second is
+  necessarily resolver-only. Rename the pair to
+  `targetFromNewCommand(double initialValue)` and
+  `targetFromResolver(PlantTargetResolver finalResolver)`. The shared `targetFrom` stem states the
+  one relationship; `NewCommand` records builder-created identity and the guaranteed command seam;
+  `Resolver` records caller-supplied graph ownership without making any claim about commandability.
+  `targetFromSuppliedResolver(...)` is rejected because passing the argument already proves it is
+  supplied. `resolverCommandedTo(...)` / `resolverGuidedBy(...)` is rejected because the resolver is
+  neither the object being commanded nor advisory guidance, and it would leak an advanced noun into
+  the ordinary method. The existing `commandedAt(...)` / `targetedBy(...)` pair and
+  `withInitialCommandTarget(...)` / `withFinalTargetResolver(...)` remain credible alternatives but
+  are rejected respectively for the observed false dichotomy and avoidable ceremony.
+- **Bounded naming-amendment scope and verification:** after approval, change only the two shared
+  target-step method names, their implementation/FTC forwarding, validation diagnostics, production
+  callers, tests, Javadocs, guides, examples, Framework Principles, and this decision record. Do not
+  change resolver behavior, command-target propagation, Plant lifecycle, or any adjacent tracker
+  item. Repeat the focused public-signature/command-provenance tests, full TeamCode unit suite and
+  compile, documentation-link and stale-name scans, static checks, independent review, and Android
+  Studio inspection. No old-name aliases will remain.
+- **Naming-amendment approval gate (2026-08-01):** **Approved.** The user's explicit
+  **`Proceed with these changes`** direction authorizes the bounded rename and reverification
+  described above. Android Studio approval and Gate 3 publication authorization remain pending.
+- **Naming-amendment implementation (2026-08-01):** the shared target tail now exposes only
+  `targetFromNewCommand(double)` and
+  `targetFromResolver(PlantTargetResolver)`. The neutral implementation, FTC forwarding recipe,
+  diagnostics, production callers, tests, Javadocs, Framework Principles, guides, and examples use
+  the same names; no compatibility aliases remain. Resolver sampling and optional command-target
+  provenance are unchanged: the first answer creates an exact writable command, while the second
+  binds a caller-supplied resolver that may carry a recognized command target or none. Review also
+  found and corrected one staged-lifecycle defect in the assembled FTC facade: both target answers
+  now validate the complete data-only recipe before retention and freeze, so a cast-stage bypass
+  fails without hardware lookup or poisoning the retained recipe. `build()` keeps its defensive
+  revalidation.
+- **Naming-amendment verification (2026-08-01):** the focused public-surface, provenance,
+  diagnostics, FTC forwarding, and staged-bypass suites passed after the final corrections. The
+  focused `DocumentationLinksTest` passed. The authoritative
+  `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` run completed successfully with
+  **114 suites / 1090 tests / 0 failures / 0 errors / 0 skipped**. Repository scans found no old
+  target-tail names or rejected alternatives under `TeamCode`; reflection tests lock the exact
+  three-method `Plants.TargetStep` surface. `git diff --check`, changed-Markdown fence balance, and
+  final-LF checks passed. Independent code, public-API, provenance, documentation, and
+  student-simplicity reviews found no remaining issue after the staged-validation and one Javadoc
+  precision correction. Only the existing JDK 21/source-8 deprecation and Windows line-ending
+  advisories remain.
+- **Renewed Android Studio review gate (2026-08-01):** while PLANT-02 was uncommitted and unpublished
+  at **Verifying**, the requested review was to confirm that target-step completion offers exactly
+  `targetFromNewCommand(double)` and `targetFromResolver(PlantTargetResolver)` after optional
+  `targetGuards()`, that the old names are absent, and that mouse-over documentation explains the
+  generated-command versus supplied-resolver provenance without promising that every supplied
+  resolver is read-only. Inspect one ordinary `FtcActuators.plant(...)` call and one advanced
+  `Plants.fromOutputs()` call to confirm both converge on that same tail. No robot-hardware run is
+  required for this construction/API consolidation.
+- **Manual verification (2026-08-01):** the user completed the renewed Android Studio review and
+  explicitly replied **`PLANT-02 looks good`**. This approves the reviewed implementation and
+  authorizes Gate 3 commit, pull-request publication, and merge. No robot-hardware result is claimed
+  or required for this construction-grammar and ownership consolidation.
 
 ### CTRL-01 - Final scalar-regulator output constraints
 

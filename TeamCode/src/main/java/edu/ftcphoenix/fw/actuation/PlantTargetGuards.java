@@ -39,37 +39,27 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *     .motor(cfg.motorName, cfg.direction)
  *     .position()
  *     .deviceManagedWithDefaults()
- *     .linear()
- *         .bounded(0.0, 4200.0)
- *         .nativeUnits()
- *         .alreadyReferenced()
+ *     .nonPeriodic()
+ *     .bounded(0.0, 4200.0)
+ *     .nativeUnits()
+ *     .alreadyReferenced()
  *     .positionTolerance(20.0)
  *     .targetGuards()
  *         .maxTargetRate(1200.0)
  *         .holdLastTargetUnless("wristClear", wristClear)
  *         .doneTargetGuards()
- *     .targetedBy(ScalarTarget.create(0.0))
+ *     .targetFromNewCommand(0.0)
  *     .build();
  * }</pre>
  */
-public final class PlantTargetGuards {
-
-    /**
-     * Target-aware safety gate.
-     */
-    public interface TargetGate {
-        /**
-         * Return whether {@code candidateTarget} may be applied this loop.
-         */
-        boolean allowsTarget(double candidateTarget, LoopClock clock);
-    }
+final class PlantTargetGuards {
 
     /**
      * Result of applying target guards.
      */
-    public static final class Result {
-        public final double target;
-        public final PlantTargetStatus status;
+    static final class Result {
+        final double target;
+        final PlantTargetStatus status;
 
         Result(double target, PlantTargetStatus status) {
             this.target = target;
@@ -80,7 +70,7 @@ public final class PlantTargetGuards {
     /**
      * Builder for a guard chain.
      */
-    public static final class Builder {
+    static final class Builder {
         private final List<GuardRule> rules = new ArrayList<>();
         private Double maxUpPerSec;
         private Double maxDownPerSec;
@@ -88,14 +78,14 @@ public final class PlantTargetGuards {
         /**
          * Limit applied target change symmetrically in units/sec; the rate must be finite and > 0.
          */
-        public Builder maxTargetRate(double maxDeltaPerSec) {
+        Builder maxTargetRate(double maxDeltaPerSec) {
             return maxTargetRates(maxDeltaPerSec, maxDeltaPerSec);
         }
 
         /**
          * Limit applied target change with separate up/down rates in units/sec; each rate must be finite and > 0.
          */
-        public Builder maxTargetRates(double maxUpPerSec, double maxDownPerSec) {
+        Builder maxTargetRates(double maxUpPerSec, double maxDownPerSec) {
             requireRate(maxUpPerSec, "maxUpPerSec");
             requireRate(maxDownPerSec, "maxDownPerSec");
             this.maxUpPerSec = maxUpPerSec;
@@ -106,7 +96,7 @@ public final class PlantTargetGuards {
         /**
          * Hold the previous applied target while {@code allowed} is low.
          */
-        public Builder holdLastTargetUnless(String name, BooleanSource allowed) {
+        Builder holdLastTargetUnless(String name, BooleanSource allowed) {
             Objects.requireNonNull(allowed, "allowed");
             return holdLastTargetUnless(name, (candidate, clock) -> allowed.getAsBoolean(clock));
         }
@@ -114,7 +104,7 @@ public final class PlantTargetGuards {
         /**
          * Hold the previous applied target while the target-aware gate rejects the candidate.
          */
-        public Builder holdLastTargetUnless(String name, TargetGate gate) {
+        Builder holdLastTargetUnless(String name, PlantTargetGate gate) {
             rules.add(GuardRule.holdLast(cleanName(name), Objects.requireNonNull(gate, "gate")));
             return this;
         }
@@ -124,7 +114,7 @@ public final class PlantTargetGuards {
          * A Plant with a fixed range rejects this guard at build time if the fallback is outside its
          * declared target range.
          */
-        public Builder fallbackTargetUnless(String name, BooleanSource allowed, double fallbackTarget) {
+        Builder fallbackTargetUnless(String name, BooleanSource allowed, double fallbackTarget) {
             Objects.requireNonNull(allowed, "allowed");
             return fallbackTargetUnless(name, (candidate, clock) -> allowed.getAsBoolean(clock), fallbackTarget);
         }
@@ -134,7 +124,7 @@ public final class PlantTargetGuards {
          * A Plant with a fixed range rejects this guard at build time if the fallback is outside its
          * declared target range.
          */
-        public Builder fallbackTargetUnless(String name, TargetGate gate, double fallbackTarget) {
+        Builder fallbackTargetUnless(String name, PlantTargetGate gate, double fallbackTarget) {
             if (!Double.isFinite(fallbackTarget)) {
                 throw new IllegalArgumentException("fallbackTarget must be finite, got " + fallbackTarget);
             }
@@ -145,7 +135,7 @@ public final class PlantTargetGuards {
         /**
          * Build an immutable guard chain.
          */
-        public PlantTargetGuards build() {
+        PlantTargetGuards build() {
             SlewRateLimiter limiter = null;
             if (maxUpPerSec != null) limiter = new SlewRateLimiter(maxUpPerSec, maxDownPerSec);
             return new PlantTargetGuards(rules.toArray(new GuardRule[0]), limiter);
@@ -163,22 +153,22 @@ public final class PlantTargetGuards {
     private static final class GuardRule {
         final RuleKind kind;
         final String name;
-        final TargetGate gate;
+        final PlantTargetGate gate;
         final double fallbackTarget;
         boolean lastAllowed = true;
 
-        private GuardRule(RuleKind kind, String name, TargetGate gate, double fallbackTarget) {
+        private GuardRule(RuleKind kind, String name, PlantTargetGate gate, double fallbackTarget) {
             this.kind = kind;
             this.name = name;
             this.gate = gate;
             this.fallbackTarget = fallbackTarget;
         }
 
-        static GuardRule holdLast(String name, TargetGate gate) {
+        static GuardRule holdLast(String name, PlantTargetGate gate) {
             return new GuardRule(RuleKind.HOLD_LAST, name, gate, 0.0);
         }
 
-        static GuardRule fallback(String name, TargetGate gate, double fallbackTarget) {
+        static GuardRule fallback(String name, PlantTargetGate gate, double fallbackTarget) {
             return new GuardRule(RuleKind.FALLBACK, name, gate, fallbackTarget);
         }
     }
@@ -197,14 +187,14 @@ public final class PlantTargetGuards {
     /**
      * Empty guard chain.
      */
-    public static PlantTargetGuards none() {
+    static PlantTargetGuards none() {
         return new PlantTargetGuards(new GuardRule[0], null);
     }
 
     /**
      * Start a new guard-chain builder.
      */
-    public static Builder builder() {
+    static Builder builder() {
         return new Builder();
     }
 
@@ -219,10 +209,10 @@ public final class PlantTargetGuards {
      * @param previousApplied previous applied plant target
      * @param clock           current loop clock
      */
-    public Result apply(double candidate,
-                        PlantTargetStatus currentStatus,
-                        double previousApplied,
-                        LoopClock clock) {
+    Result apply(double candidate,
+                 PlantTargetStatus currentStatus,
+                 double previousApplied,
+                 LoopClock clock) {
         PlantTargetStatus status = Objects.requireNonNull(currentStatus, "currentStatus");
         double out = candidate;
 
@@ -287,7 +277,7 @@ public final class PlantTargetGuards {
     /**
      * Reset dynamic state such as rate limiters and remembered guard output.
      */
-    public void reset() {
+    void reset() {
         if (limiter != null) limiter.reset();
         hasApplied = false;
         lastOut = 0.0;
@@ -298,14 +288,14 @@ public final class PlantTargetGuards {
     /**
      * True when no dynamic guard rules or rate limiter are configured.
      */
-    public boolean isEmpty() {
+    boolean isEmpty() {
         return rules.length == 0 && limiter == null;
     }
 
     /**
      * Emit guard state for debug telemetry.
      */
-    public void debugDump(DebugSink dbg, String prefix) {
+    void debugDump(DebugSink dbg, String prefix) {
         if (dbg == null) return;
         String p = (prefix == null || prefix.isEmpty()) ? "targetGuards" : prefix;
         dbg.addData(p + ".class", "PlantTargetGuards")

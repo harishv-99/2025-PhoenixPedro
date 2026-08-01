@@ -22,7 +22,6 @@ import edu.ftcphoenix.fw.actuation.PositionPlant;
 import edu.ftcphoenix.fw.core.control.ScalarRegulator;
 import edu.ftcphoenix.fw.core.hal.Direction;
 import edu.ftcphoenix.fw.core.source.ScalarSource;
-import edu.ftcphoenix.fw.core.source.ScalarTarget;
 import edu.ftcphoenix.fw.testing.ManualLoopClock;
 
 import static org.junit.Assert.assertEquals;
@@ -106,8 +105,6 @@ public final class FtcExternalEncoderFeedbackTest {
         HardwareMap hardwareMap = new TestHardwareMap();
         MotorProbe flywheel = new MotorProbe(125, 2468.5);
         hardwareMap.put("flywheel", flywheel.motor());
-        ScalarTarget target = ScalarTarget.create(0.0);
-
         Plant plant = FtcActuators.plant(hardwareMap)
                 .motor("flywheel", Direction.FORWARD)
                 .velocity()
@@ -117,7 +114,7 @@ public final class FtcExternalEncoderFeedbackTest {
                 .unbounded()
                 .nativeUnits()
                 .velocityTolerance(0.0)
-                .targetedBy(target)
+                .targetFromNewCommand(0.0)
                 .build();
 
         ManualLoopClock clock = new ManualLoopClock();
@@ -139,8 +136,6 @@ public final class FtcExternalEncoderFeedbackTest {
         MotorProbe boreEncoder = new MotorProbe(100, 9999.0);
         hardwareMap.put("flywheel", flywheel.motor());
         hardwareMap.put("bore", boreEncoder.motor());
-        ScalarTarget target = ScalarTarget.create(0.0);
-
         Plant plant = FtcActuators.plant(hardwareMap)
                 .motor("flywheel", Direction.FORWARD)
                 .velocity()
@@ -150,7 +145,7 @@ public final class FtcExternalEncoderFeedbackTest {
                 .unbounded()
                 .nativeUnits()
                 .velocityTolerance(0.0)
-                .targetedBy(target)
+                .targetFromNewCommand(0.0)
                 .build();
 
         ManualLoopClock clock = new ManualLoopClock();
@@ -182,20 +177,18 @@ public final class FtcExternalEncoderFeedbackTest {
         MotorProbe liftEncoder = new MotorProbe(321, 9876.0);
         hardwareMap.put("lift", liftMotor.motor());
         hardwareMap.put("liftEncoder", liftEncoder.motor());
-        ScalarTarget target = ScalarTarget.create(0.0);
-
         PositionPlant plant = FtcActuators.plant(hardwareMap)
                 .motor("lift", Direction.FORWARD)
                 .position()
                 .regulated()
                 .externalEncoder("liftEncoder")
                 .regulator(ZERO_REGULATOR)
-                .linear()
+                .nonPeriodic()
                 .unbounded()
                 .nativeUnits()
                 .alreadyReferenced()
                 .positionTolerance(0.0)
-                .targetedBy(target)
+                .targetFromNewCommand(0.0)
                 .build();
 
         plant.update(new ManualLoopClock().clock());
@@ -208,30 +201,30 @@ public final class FtcExternalEncoderFeedbackTest {
     }
 
     @Test
-    public void regulatedCrServoPositionExternalEncoderReadsRawPositionOnly() {
+    public void regulatedCrServoPeriodicPositionReadsExternalRawPositionOnly() {
         HardwareMap hardwareMap = new TestHardwareMap();
         CrServoProbe turret = new CrServoProbe();
         MotorProbe turretEncoder = new MotorProbe(-42, 4321.0);
         hardwareMap.put("turret", turret.servo());
         hardwareMap.put("turretEncoder", turretEncoder.motor());
-        ScalarTarget target = ScalarTarget.create(0.0);
-
         PositionPlant plant = FtcActuators.plant(hardwareMap)
                 .crServo("turret", Direction.FORWARD)
                 .position()
                 .regulated()
                 .externalEncoder("turretEncoder")
                 .regulator(ZERO_REGULATOR)
-                .linear()
+                .periodic(2.0 * Math.PI)
                 .unbounded()
                 .nativeUnits()
                 .alreadyReferenced()
                 .positionTolerance(0.0)
-                .targetedBy(target)
+                .targetFromNewCommand(0.0)
                 .build();
 
         plant.update(new ManualLoopClock().clock());
 
+        assertEquals(PositionPlant.Periodicity.PERIODIC, plant.periodicity());
+        assertEquals(2.0 * Math.PI, plant.period(), EPSILON);
         assertEquals(-42.0, plant.getMeasurement(), EPSILON);
         assertEquals(1, turretEncoder.positionReadCount);
         assertEquals(0, turretEncoder.velocityReadCount);
@@ -241,7 +234,6 @@ public final class FtcExternalEncoderFeedbackTest {
     @Test
     public void regulatedVelocityDefensivelyRejectsMissingOrNullFeedbackAnswers() {
         HardwareMap hardwareMap = new HardwareMap(null, null);
-        ScalarTarget target = ScalarTarget.create(0.0);
         FtcActuators.MotorRegulatedVelocityFeedbackStep feedbackStep =
                 FtcActuators.plant(hardwareMap)
                         .motor("flywheel", Direction.FORWARD)
@@ -250,17 +242,8 @@ public final class FtcExternalEncoderFeedbackTest {
 
         FtcActuators.MotorRegulatedVelocityRegulatorStep bypassedFeedback =
                 (FtcActuators.MotorRegulatedVelocityRegulatorStep) feedbackStep;
-        FtcActuators.PlantBuildStep missingFeedbackBuild = bypassedFeedback
-                .regulator(ZERO_REGULATOR)
-                .unbounded()
-                .nativeUnits()
-                .velocityTolerance(0.0)
-                .targetedBy(target);
-        assertIllegalStateContains(missingFeedbackBuild::build,
-                "Regulated motor velocity requires a feedback answer",
-                "internalEncoder()",
-                "externalEncoder(...)",
-                "nativeFeedback(...)");
+        assertIllegalStateContains(() -> bypassedFeedback.regulator(ZERO_REGULATOR),
+                "Choose regulated velocity feedback before regulator(...)");
 
         assertThrowsContains(NullPointerException.class,
                 () -> feedbackStep.nativeFeedback(null),

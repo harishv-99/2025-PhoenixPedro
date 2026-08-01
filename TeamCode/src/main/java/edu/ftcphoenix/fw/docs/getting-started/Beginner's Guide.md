@@ -234,6 +234,10 @@ root and pass the Plant back into the mechanism.
 The recommended way is to use the staged builder in
 `edu.ftcphoenix.fw.ftc.FtcActuators`:
 
+This is the only Plant gateway ordinary FTC mechanisms need. `Plants.fromOutputs()` is the
+advanced counterpart for a custom adapter or hardware-neutral test that already owns Phoenix
+output ports; both gateways feed the same Plant grammar and hidden runtime engine.
+
 ```java
 private void initShooterPlants() {
     // Shooter: dual DC motors, device-managed velocity control with feedback.
@@ -245,7 +249,7 @@ private void initShooterPlants() {
             .bounded(0.0, 2600.0)
             .nativeUnits()
             .velocityTolerance(100.0)
-            .targetedBy(ScalarTarget.create(0.0))
+            .targetFromNewCommand(0.0)
             .build();
 
     // Transfer: dual CR servos, power control.
@@ -253,17 +257,17 @@ private void initShooterPlants() {
             .crServo("transferLeftServo", Direction.FORWARD)
             .andCrServo("transferRightServo", Direction.REVERSE)
             .power()
-            .targetedBy(ScalarTarget.create(0.0))
+            .targetFromNewCommand(0.0)
             .build();
 
     // Pusher: positional servo, commanded-position set-and-hold.
     pusher = FtcActuators.plant(hardwareMap)
             .servo("pusherServo", Direction.FORWARD)
             .position()
-            .linear()
+            .nonPeriodic()
                 .bounded(0.0, 1.0)
                 .nativeUnits()
-            .targetedBy(ScalarTarget.create(0.0))
+            .targetFromNewCommand(0.0)
             .build();
 }
 ```
@@ -307,8 +311,8 @@ The builder asks a short sequence of guided questions:
       * `.deviceManagedWithDefaults()` for FTC `RUN_TO_POSITION` defaults.
       * `.deviceManaged() ... .doneDeviceManaged()` when you want FTC motor tuning knobs.
       * `.regulated() ... .regulator(...)` when Phoenix should drive raw power from explicit feedback.
-    * Position geometry asks topology and bounds:
-      * `.linear()` or `.periodic(period)`
+    * Position coordinates ask periodicity and bounds:
+      * `.nonPeriodic()` or `.periodic(period)`
       * `.bounded(min, max)` or `.unbounded()`
     * Unit mapping/reference asks how plant units relate to native units:
       * `.nativeUnits()`, `.scaleToNative(...)`, or bounded-only `.rangeMapsToNative(...)`
@@ -344,11 +348,15 @@ plant velocity `0.0` still means stop. Power target values are always normalized
 the power builder does not ask for bounds.
 
 After that required feedback answer, you may add optional dynamic guards through
-`.targetGuards()...doneTargetGuards()`. For a simple exact Plant, create its command inline with
-`.targetedBy(ScalarTarget.create(initialValue))` before `.build()`, retain the Plant, and retrieve
-the same stable command through `plant.commandTarget()` when needed. An advanced composed graph
-instead supplies one `PlantTargetResolver`; adapt a read-only `ScalarSource` explicitly with
-`PlantTargets.exact(source)`.
+`.targetGuards()...doneTargetGuards()`. For a simple exact Plant, choose
+`.targetFromNewCommand(initialValue)` before `.build()`, retain the Plant, and retrieve the generated
+stable command through `plant.commandTarget()` when needed. Creating that command configures the
+source graph; it does not write hardware during construction. The advanced
+`.targetFromResolver(finalResolver)` route binds one caller-supplied final graph. That resolver may
+carry a recognized stable command target, or it may carry none; the method name promises only where
+resolution comes from. A separately owned `ScalarTarget` can be carried through
+`.targetFromResolver(PlantTargets.exact(sharedTarget))`. A read-only `ScalarSource` instead uses
+`.targetFromResolver(PlantTargets.exact(source))` and provides no command target.
 
 ### 3.2 Position semantics: motors vs servos
 
@@ -369,8 +377,13 @@ sense for it:
 
 * **Servo position**:
 
-    * Standard servos are command-only position outputs. Their builder exposes linear bounded position mapping only.
-    * Use `.nativeUnits()` for raw servo units or `.rangeMapsToNative(...)` for logical units mapped to tuned raw endpoints.
+    * A standard FTC servo proves a command-only native position channel in `[0.0, 1.0]`; it does
+      not determine whether the mechanism's public coordinate is periodic.
+    * Choose `.nonPeriodic()` for a limited arm, wrist, or claw, or `.periodic(period)` only when
+      positions separated by that period are physically interchangeable. Exact commands never wrap
+      automatically.
+    * Bounds always use public Plant units. Use `.bounded(0.0, 1.0).nativeUnits()` for raw fractions,
+      or declare logical bounds first and use `.rangeMapsToNative(...)` for tuned raw endpoints.
     * `plant.hasFeedback() == false` and `plant.getMeasurement()` returns `NaN`, because the framework does not pretend a standard FTC servo has a true measured position.
 
 Why this matters:
@@ -389,12 +402,12 @@ PositionPlant arm = FtcActuators.plant(hardwareMap)
         .motor("armMotor", Direction.FORWARD)
         .position()
         .deviceManagedWithDefaults()
-        .linear()
+        .nonPeriodic()
             .bounded(-300.0, 1200.0)
             .nativeUnits()
             .alreadyReferenced()
         .positionTolerance(20.0)
-        .targetedBy(ScalarTarget.create(0.0))
+        .targetFromNewCommand(0.0)
         .build();
 ```
 
@@ -407,12 +420,12 @@ PositionPlant arm = FtcActuators.plant(hardwareMap)
         .regulated()
             .externalEncoder("armEncoder")
             .regulator(ScalarRegulators.pid(Pid.withGains(0.006, 0.0, 0.0002)))
-        .linear()
+        .nonPeriodic()
             .bounded(-300.0, 1200.0)
             .nativeUnits()
             .alreadyReferenced()
         .positionTolerance(20.0)
-        .targetedBy(ScalarTarget.create(0.0))
+        .targetFromNewCommand(0.0)
         .build();
 ```
 
@@ -698,7 +711,8 @@ public construction path merely to give the same composition a different class n
     * Motors + `.position().deviceManagedWithDefaults()` or `.position().regulated()` followed by
       a direct feedback answer and `.regulator(...)`, then mapping/reference and the required
       `.positionTolerance(...)` → feedback-capable position control.
-    * Servos + `.position().linear().bounded(...).nativeUnits()` or `.rangeMapsToNative(...)` → open-loop set-and-hold.
+    * Servos + `.position().nonPeriodic()` or `.periodic(period)`, then explicit bounds and
+      `.nativeUnits()` or `.rangeMapsToNative(...)` → open-loop set-and-hold.
 
 * **ScalarTasks** and **Tasks** provide factory helpers that build `Task`s for you, including
   all-children and deadline-owned parallel composition.

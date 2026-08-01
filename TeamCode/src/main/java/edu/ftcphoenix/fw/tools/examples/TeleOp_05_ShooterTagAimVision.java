@@ -14,7 +14,6 @@ import edu.ftcphoenix.fw.core.debug.NullDebugSink;
 import edu.ftcphoenix.fw.core.hal.Direction;
 import edu.ftcphoenix.fw.core.lifecycle.CleanupActions;
 import edu.ftcphoenix.fw.core.math.InterpolatingTable1D;
-import edu.ftcphoenix.fw.core.source.ScalarTarget;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.drive.DriveOverlayMask;
 import edu.ftcphoenix.fw.drive.DriveSignal;
@@ -247,7 +246,7 @@ public final class TeleOp_05_ShooterTagAimVision extends OpMode {
                 .bounded(0.0, 4200.0)
                 .nativeUnits()
                 .velocityTolerance(/*toleranceNative=*/100.0)
-                .targetedBy(ScalarTarget.create(0.0))
+                .targetFromNewCommand(0.0)
                 .build();
 
         // 5) Bindings: shooter toggle.

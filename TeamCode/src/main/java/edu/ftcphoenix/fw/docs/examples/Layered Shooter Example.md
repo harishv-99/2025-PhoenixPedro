@@ -197,7 +197,7 @@ changing state, so realization may retrieve it at each write site. The feeder's 
 still exists while its overlay graph is assembled; it is not repeated as a peer constructor
 dependency after the Plant exists.
 
-The flywheel's simple command can be created inline in `targetedBy(ScalarTarget.create(0.0))`, so
+The flywheel's simple command can be created inline with `targetFromNewCommand(0.0)`, so
 realization retains only the Plant and writes through `flywheelPlant.commandTarget()`. Its Plant can
 use either FTC device-managed velocity control or a Phoenix-regulated velocity loop. If the robot
 uses a power-based PID/PIDF
@@ -279,7 +279,7 @@ Plant feederPlant = FtcActuators.plant(hardwareMap)
         .crServo("transferLeftServo", Direction.FORWARD)
         .andCrServo("transferRightServo", Direction.REVERSE)
         .power()
-        .targetedBy(finalFeederTarget)
+        .targetFromResolver(finalFeederTarget)
         .build();
 ```
 

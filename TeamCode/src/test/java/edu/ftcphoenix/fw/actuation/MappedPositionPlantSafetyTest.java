@@ -16,16 +16,17 @@ public final class MappedPositionPlantSafetyTest {
     private static final double EPSILON = 1e-12;
 
     @Test
-    public void buildRejectsFallbackOutsideDeclaredRange() {
-        PlantTargetGuards guards = PlantTargetGuards.builder()
-                .fallbackTargetUnless("mechanismClear", clock -> false, 5.0)
-                .build();
-
+    public void targetGuardRejectsFallbackOutsideDeclaredRange() {
         try {
-            MappedPositionPlant.commanded(new RecordingPositionOutput())
-                    .range(ScalarRange.bounded(10.0, 20.0))
-                    .targetGuards(guards)
-                    .targetedBy(ScalarTarget.create(15.0))
+            Plants.fromOutputs()
+                    .commandedPosition(new RecordingPositionOutput())
+                    .nonPeriodic()
+                    .bounded(10.0, 20.0)
+                    .nativeUnits()
+                    .targetGuards()
+                    .fallbackTargetUnless("mechanismClear", clock -> false, 5.0)
+                    .doneTargetGuards()
+                    .targetFromNewCommand(15.0)
                     .build();
             fail("Expected an out-of-range fallback to be rejected");
         } catch (IllegalArgumentException expected) {
@@ -33,7 +34,7 @@ public final class MappedPositionPlantSafetyTest {
             assertTrue(expected.getMessage().contains("5.0"));
             assertTrue(expected.getMessage().contains("10.0"));
             assertTrue(expected.getMessage().contains("20.0"));
-            assertTrue(expected.getMessage().contains("Choose a fallback inside"));
+            assertTrue(expected.getMessage().contains("declared Plant range"));
         }
     }
 
@@ -41,13 +42,15 @@ public final class MappedPositionPlantSafetyTest {
     public void inRangeFallbackRetainsFallbackStatus() {
         RecordingPositionOutput output = new RecordingPositionOutput();
         ScalarTarget target = ScalarTarget.create(18.0);
-        PlantTargetGuards guards = PlantTargetGuards.builder()
+        PositionPlant plant = Plants.fromOutputs()
+                .commandedPosition(output)
+                .nonPeriodic()
+                .bounded(10.0, 20.0)
+                .nativeUnits()
+                .targetGuards()
                 .fallbackTargetUnless("mechanismClear", clock -> false, 12.0)
-                .build();
-        MappedPositionPlant plant = MappedPositionPlant.commanded(output)
-                .range(ScalarRange.bounded(10.0, 20.0))
-                .targetGuards(guards)
-                .targetedBy(target)
+                .doneTargetGuards()
+                .targetFromResolver(PlantTargets.exact(target))
                 .build();
 
         plant.update(new ManualLoopClock().clock());
@@ -63,9 +66,12 @@ public final class MappedPositionPlantSafetyTest {
     public void tinyBoundaryClampIsNeverReportedAccepted() {
         RecordingPositionOutput output = new RecordingPositionOutput();
         double request = 20.0 + 1.0e-10;
-        MappedPositionPlant plant = MappedPositionPlant.commanded(output)
-                .range(ScalarRange.bounded(10.0, 20.0))
-                .targetedBy(ScalarTarget.create(request))
+        PositionPlant plant = Plants.fromOutputs()
+                .commandedPosition(output)
+                .nonPeriodic()
+                .bounded(10.0, 20.0)
+                .nativeUnits()
+                .targetFromResolver(PlantTargets.exact(request))
                 .build();
 
         plant.update(new ManualLoopClock().clock());
@@ -78,9 +84,12 @@ public final class MappedPositionPlantSafetyTest {
 
     @Test
     public void signedZeroInsideRangeRemainsAccepted() {
-        MappedPositionPlant plant = MappedPositionPlant.commanded(new RecordingPositionOutput())
-                .range(ScalarRange.bounded(0.0, 20.0))
-                .targetedBy(ScalarTarget.create(-0.0))
+        PositionPlant plant = Plants.fromOutputs()
+                .commandedPosition(new RecordingPositionOutput())
+                .nonPeriodic()
+                .bounded(0.0, 20.0)
+                .nativeUnits()
+                .targetFromNewCommand(-0.0)
                 .build();
 
         plant.update(new ManualLoopClock().clock());
@@ -93,14 +102,16 @@ public final class MappedPositionPlantSafetyTest {
         RecordingPositionOutput output = new RecordingPositionOutput();
         ScalarTarget target = ScalarTarget.create(20.0);
         final boolean[] mechanismClear = {false};
-        PlantTargetGuards guards = PlantTargetGuards.builder()
+        PositionPlant plant = Plants.fromOutputs()
+                .commandedPosition(output)
+                .nonPeriodic()
+                .bounded(10.0, 20.0)
+                .nativeUnits()
+                .targetGuards()
                 .maxTargetRate(1.0)
                 .holdLastTargetUnless("mechanismClear", clock -> mechanismClear[0])
-                .build();
-        MappedPositionPlant plant = MappedPositionPlant.commanded(output)
-                .range(ScalarRange.bounded(10.0, 20.0))
-                .targetGuards(guards)
-                .targetedBy(target)
+                .doneTargetGuards()
+                .targetFromResolver(PlantTargets.exact(target))
                 .build();
         ManualLoopClock clock = new ManualLoopClock();
 
@@ -123,9 +134,12 @@ public final class MappedPositionPlantSafetyTest {
     public void unavailableNonFiniteSourceRetainsFiniteCommandAndExplainsIt() {
         RecordingPositionOutput output = new RecordingPositionOutput();
         ScalarTarget target = ScalarTarget.create(12.0);
-        MappedPositionPlant plant = MappedPositionPlant.commanded(output)
-                .range(ScalarRange.bounded(10.0, 20.0))
-                .targetedBy(target)
+        PositionPlant plant = Plants.fromOutputs()
+                .commandedPosition(output)
+                .nonPeriodic()
+                .bounded(10.0, 20.0)
+                .nativeUnits()
+                .targetFromResolver(PlantTargets.exact(target))
                 .build();
         ManualLoopClock clock = new ManualLoopClock();
         plant.update(clock.clock());

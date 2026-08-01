@@ -402,12 +402,12 @@ public final class PlantTargetsPeriodicPlannerTest {
     }
 
     @Test
-    public void plantPeriodCandidateRequiresPeriodicPlantTopology() {
-        PlantTargetContext linearWithNumericPeriod = PlantTargetContext.position(
+    public void plantPeriodCandidateRequiresPeriodicPlantCoordinate() {
+        PlantTargetContext nonPeriodicWithNumericPeriod = PlantTargetContext.position(
                 true,
                 0.0,
                 ScalarRange.bounded(-1000.0, 1000.0),
-                PositionPlant.Topology.LINEAR,
+                PositionPlant.Periodicity.NON_PERIODIC,
                 360.0,
                 Double.NaN,
                 Double.NaN);
@@ -415,11 +415,11 @@ public final class PlantTargetsPeriodicPlannerTest {
         PlantTargetResolution plantPeriod = resolve(
                 Preference.NEAREST,
                 PlantTargetRequest.equivalentPosition("requires-periodic-plant", 10.0),
-                linearWithNumericPeriod);
+                nonPeriodicWithNumericPeriod);
         PlantTargetResolution explicitPeriod = resolve(
                 Preference.NEAREST,
                 PlantTargetRequest.periodic("explicit-period", 10.0, 360.0),
-                linearWithNumericPeriod);
+                nonPeriodicWithNumericPeriod);
 
         assertFalse(plantPeriod.hasTarget());
         assertTrue(explicitPeriod.hasTarget());
@@ -512,7 +512,7 @@ public final class PlantTargetsPeriodicPlannerTest {
                 true,
                 measurement,
                 range,
-                PositionPlant.Topology.PERIODIC,
+                PositionPlant.Periodicity.PERIODIC,
                 period,
                 Double.NaN,
                 Double.NaN);

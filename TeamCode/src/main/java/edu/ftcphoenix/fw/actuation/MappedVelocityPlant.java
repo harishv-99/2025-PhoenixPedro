@@ -13,15 +13,15 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
 /**
  * Source-driven velocity {@link Plant} that maps plant velocity units to native hardware units.
  *
- * <p>Robot code normally builds these through {@code FtcActuators}. This class is the advanced
- * boundary adapter for custom hardware integrations. The plant invokes one target resolver every
- * update, clamps it to the configured velocity range, applies dynamic plant target guards, and then
+ * <p>This package-private runtime is shared by the public FTC and output-port construction
+ * gateways. The plant invokes one target resolver every update, clamps it to the configured
+ * velocity range, applies dynamic plant target guards, and then
  * rechecks the final guarded target for finiteness and range before commanding either a native
  * velocity output or a framework-owned regulator over raw power. The regulated path evaluates its
  * regulator once, normalizes the finite result to {@code [-1.0, +1.0]}, and performs best-effort
  * fail-stop cleanup before propagating a runtime control/output failure.</p>
  */
-public final class MappedVelocityPlant implements Plant {
+final class MappedVelocityPlant implements Plant {
 
     private final VelocityOutput velocityOut;
     private final PowerOutput regulatedPowerOut;
@@ -66,7 +66,7 @@ public final class MappedVelocityPlant implements Plant {
         validate();
         this.regulatedPowerChannel = regulatedPowerOut == null
                 ? null
-                : new RegulatedPowerChannel(regulatedPowerOut, regulator, "MappedVelocityPlant");
+                : new RegulatedPowerChannel(regulatedPowerOut, regulator, "VelocityPlant");
     }
 
     /**
@@ -76,8 +76,8 @@ public final class MappedVelocityPlant implements Plant {
      * {@link FeedbackConfigurationStep#velocityTolerance(double)} in public plant velocity units
      * before target selection exposes {@link MappedPlantBuildStep#build()}.</p>
      */
-    public static FeedbackConfigurationStep velocityOutput(VelocityOutput out,
-                                                           ScalarSource nativeMeasurement) {
+    static FeedbackConfigurationStep velocityOutput(VelocityOutput out,
+                                                    ScalarSource nativeMeasurement) {
         return new Builder(Objects.requireNonNull(out, "out"), null, null,
                 Objects.requireNonNull(nativeMeasurement, "nativeMeasurement"));
     }
@@ -89,9 +89,9 @@ public final class MappedVelocityPlant implements Plant {
      * {@link FeedbackConfigurationStep#velocityTolerance(double)} in public plant velocity units
      * before target selection exposes {@link MappedPlantBuildStep#build()}.
      */
-    public static FeedbackConfigurationStep regulated(PowerOutput powerOut,
-                                                       ScalarSource nativeMeasurement,
-                                                       ScalarRegulator regulator) {
+    static FeedbackConfigurationStep regulated(PowerOutput powerOut,
+                                                ScalarSource nativeMeasurement,
+                                                ScalarRegulator regulator) {
         return new Builder(null,
                 Objects.requireNonNull(powerOut, "powerOut"),
                 Objects.requireNonNull(regulator, "regulator"),
@@ -102,7 +102,7 @@ public final class MappedVelocityPlant implements Plant {
      * Optional mapped-velocity configuration before the required plant-unit tolerance answer.
      * FTC robot code should normally use {@code FtcActuators}.
      */
-    public interface FeedbackConfigurationStep {
+    interface FeedbackConfigurationStep {
         /**
          * Set the legal target range in plant velocity units.
          */
@@ -171,7 +171,7 @@ public final class MappedVelocityPlant implements Plant {
         public Builder velocityTolerance(double tolerance) {
             if (toleranceConfigured)
                 throw new IllegalStateException("velocityTolerance(...) has already been answered "
-                        + "for this MappedVelocityPlant");
+                        + "for this VelocityPlant recipe");
             if (tolerance < 0.0 || !Double.isFinite(tolerance))
                 throw new IllegalArgumentException("velocityTolerance must be finite and >= 0");
             this.tolerance = tolerance;
@@ -188,24 +188,12 @@ public final class MappedVelocityPlant implements Plant {
         }
 
         /**
-         * Uses a command target as the exact final resolver.
-         *
-         * <p>The target graph designates this target as the command target used by robot policy
-         * and {@link ScalarTasks}.</p>
-         */
-        public Builder targetedBy(ScalarTarget target) {
-            requireTargetUnanswered();
-            this.targetResolver = PlantTargets.exact(Objects.requireNonNull(target, "target"));
-            return this;
-        }
-
-        /**
          * Uses a plant-aware final target resolver.
          *
          * <p>If the resolver graph designates a command target, such as the base of a command-backed
          * overlay, this Plant exposes that same target to robot policy and {@link ScalarTasks}.</p>
          */
-        public Builder targetedBy(PlantTargetResolver targetResolver) {
+        public Builder targetFromResolver(PlantTargetResolver targetResolver) {
             requireTargetUnanswered();
             this.targetResolver = Objects.requireNonNull(targetResolver, "targetResolver");
             return this;
@@ -213,8 +201,8 @@ public final class MappedVelocityPlant implements Plant {
 
         private void requireTargetUnanswered() {
             if (targetResolver != null) {
-                throw new IllegalStateException("targetedBy(...) has already been answered for "
-                        + "this MappedVelocityPlant; create a new builder to choose a different target");
+                throw new IllegalStateException("targetFromResolver(...) has already been answered for "
+                        + "this VelocityPlant recipe; create a new recipe to choose a different target");
             }
         }
 
@@ -228,9 +216,9 @@ public final class MappedVelocityPlant implements Plant {
          */
         public MappedVelocityPlant build() {
             if (targetResolver == null)
-                throw new IllegalStateException("MappedVelocityPlant requires targetedBy(...)");
+                throw new IllegalStateException("VelocityPlant requires targetFromResolver(...)");
             if (!toleranceConfigured)
-                throw new IllegalStateException("MappedVelocityPlant feedback requires "
+                throw new IllegalStateException("VelocityPlant feedback requires "
                         + "velocityTolerance(...) in plant velocity units before build()");
             return new MappedVelocityPlant(velocityOut, regulatedPowerOut, regulator, nativeMeasurement,
                     targetResolver, targetGuards, configuredRange, nativePerPlantUnit, tolerance);
@@ -239,24 +227,17 @@ public final class MappedVelocityPlant implements Plant {
 
     private void validate() {
         if (velocityOut == null && regulatedPowerOut == null)
-            throw new IllegalStateException("MappedVelocityPlant requires either a velocity output or regulated power output");
+            throw new IllegalStateException("VelocityPlant requires either a velocity output or regulated power output");
         if (velocityOut != null && regulatedPowerOut != null)
-            throw new IllegalStateException("MappedVelocityPlant cannot use both velocity output and regulated power output");
+            throw new IllegalStateException("VelocityPlant cannot use both velocity output and regulated power output");
         if (regulatedPowerOut != null && regulator == null)
             throw new IllegalStateException("Regulated velocity plants require a regulator");
         if (!Double.isFinite(nativePerPlantUnit) || Math.abs(nativePerPlantUnit) < 1.0e-12)
             throw new IllegalArgumentException("nativePerPlantUnit must be finite and non-zero");
         if (tolerance < 0.0 || !Double.isFinite(tolerance))
             throw new IllegalArgumentException("velocityTolerance must be finite and >= 0");
-        PlantTargetSafety.requireUsableConfiguredRange(configuredRange, "MappedVelocityPlant");
-        targetGuards.validateFallbackTargets(configuredRange, "MappedVelocityPlant");
-    }
-
-    /**
-     * Legal velocity target range in plant units.
-     */
-    public ScalarRange targetRange() {
-        return configuredRange;
+        PlantTargetSafety.requireUsableConfiguredRange(configuredRange, "VelocityPlant");
+        targetGuards.validateFallbackTargets(configuredRange, "VelocityPlant");
     }
 
     @Override
@@ -265,7 +246,8 @@ public final class MappedVelocityPlant implements Plant {
         PlantTargetStatus priorTargetStatus = targetStatus;
         PlantTargetResolution priorTargetResolution = targetResolution;
         samplePlantMeasurement(clock);
-        PlantTargetContext context = PlantTargetContext.simple(true, lastMeasurement, targetRange(), requestedTarget, appliedTarget);
+        PlantTargetContext context = PlantTargetContext.simple(
+                true, lastMeasurement, configuredRange, requestedTarget, appliedTarget);
         targetResolution = targetResolver.resolve(context, clock);
         if (targetResolution != null && targetResolution.hasTarget()) {
             requestedTarget = targetResolution.target();
@@ -279,7 +261,7 @@ public final class MappedVelocityPlant implements Plant {
                 : PlantTargetStatus.targetUnavailable(targetResolution != null
                         ? targetResolution.reason()
                         : "missing plant target resolution");
-        ScalarRange range = targetRange();
+        ScalarRange range = configuredRange;
         if (!range.valid) {
             candidate = appliedTarget;
             status = PlantTargetStatus.referenceNotEstablished(range.reason);
@@ -478,7 +460,7 @@ public final class MappedVelocityPlant implements Plant {
         String p = (prefix == null || prefix.isEmpty()) ? "velocityPlant" : prefix;
         dbg.addData(p + ".nativePerPlantUnit", nativePerPlantUnit)
                 .addData(p + ".nativeMeasurement", lastNativeMeasurement)
-                .addData(p + ".targetRange", targetRange());
+                .addData(p + ".targetRange", configuredRange);
         targetResolver.debugDump(dbg, p + ".targetResolver");
         targetGuards.debugDump(dbg, p + ".targetGuards");
         if (regulatedPowerChannel != null) {

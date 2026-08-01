@@ -19,7 +19,7 @@ public final class PlantTargetContext {
     private final boolean feedbackAvailable;
     private final double measurement;
     private final ScalarRange targetRange;
-    private final PositionPlant.Topology topology;
+    private final PositionPlant.Periodicity periodicity;
     private final double period;
     private final double previousRequestedTarget;
     private final double previousAppliedTarget;
@@ -27,14 +27,14 @@ public final class PlantTargetContext {
     private PlantTargetContext(boolean feedbackAvailable,
                                double measurement,
                                ScalarRange targetRange,
-                               PositionPlant.Topology topology,
+                               PositionPlant.Periodicity periodicity,
                                double period,
                                double previousRequestedTarget,
                                double previousAppliedTarget) {
         this.feedbackAvailable = feedbackAvailable;
         this.measurement = measurement;
         this.targetRange = Objects.requireNonNull(targetRange, "targetRange");
-        this.topology = Objects.requireNonNull(topology, "topology");
+        this.periodicity = Objects.requireNonNull(periodicity, "periodicity");
         this.period = period;
         this.previousRequestedTarget = previousRequestedTarget;
         this.previousAppliedTarget = previousAppliedTarget;
@@ -51,7 +51,7 @@ public final class PlantTargetContext {
         return new PlantTargetContext(feedbackAvailable,
                 measurement,
                 targetRange != null ? targetRange : ScalarRange.unbounded(),
-                PositionPlant.Topology.LINEAR,
+                PositionPlant.Periodicity.NON_PERIODIC,
                 Double.NaN,
                 previousRequestedTarget,
                 previousAppliedTarget);
@@ -63,14 +63,14 @@ public final class PlantTargetContext {
     public static PlantTargetContext position(boolean feedbackAvailable,
                                               double measurement,
                                               ScalarRange targetRange,
-                                              PositionPlant.Topology topology,
+                                              PositionPlant.Periodicity periodicity,
                                               double period,
                                               double previousRequestedTarget,
                                               double previousAppliedTarget) {
         return new PlantTargetContext(feedbackAvailable,
                 measurement,
                 targetRange != null ? targetRange : ScalarRange.unbounded(),
-                topology != null ? topology : PositionPlant.Topology.LINEAR,
+                periodicity != null ? periodicity : PositionPlant.Periodicity.NON_PERIODIC,
                 period,
                 previousRequestedTarget,
                 previousAppliedTarget);
@@ -98,24 +98,18 @@ public final class PlantTargetContext {
     }
 
     /**
-     * Position topology. Non-position plants report {@link PositionPlant.Topology#LINEAR}.
+     * Position periodicity. Non-position plants report
+     * {@link PositionPlant.Periodicity#NON_PERIODIC}.
      */
-    public PositionPlant.Topology topology() {
-        return topology;
+    public PositionPlant.Periodicity periodicity() {
+        return periodicity;
     }
 
     /**
-     * Period for periodic position plants, or {@link Double#NaN} for linear/non-position plants.
+     * Period for periodic position plants, or {@link Double#NaN} for non-periodic/non-position plants.
      */
     public double period() {
         return period;
-    }
-
-    /**
-     * True when this context represents a periodic position coordinate.
-     */
-    public boolean periodic() {
-        return topology == PositionPlant.Topology.PERIODIC && period > 0.0 && Double.isFinite(period);
     }
 
     /**
@@ -138,7 +132,7 @@ public final class PlantTargetContext {
                 + "feedbackAvailable=" + feedbackAvailable()
                 + ", measurement=" + measurement
                 + ", targetRange=" + targetRange
-                + ", topology=" + topology
+                + ", periodicity=" + periodicity
                 + ", period=" + period
                 + ", previousRequestedTarget=" + previousRequestedTarget
                 + ", previousAppliedTarget=" + previousAppliedTarget

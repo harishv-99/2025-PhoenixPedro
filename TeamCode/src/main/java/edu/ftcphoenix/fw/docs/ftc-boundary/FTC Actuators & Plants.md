@@ -2,7 +2,7 @@
 
 This page covers the FTC boundary for Phoenix mechanism wiring:
 
-* `FtcActuators.plant(...)` — the staged beginner builder
+* `FtcActuators.plant(...)` and `Plants.fromOutputs()` — two gateways into one staged grammar
 * `FtcHardware` — low-level command channels
 * `FtcSensors` — low-level measurement sources
 * device-managed vs regulated control
@@ -27,9 +27,10 @@ ownership inside a complete teaching OpMode.
 
 ---
 
-## 1. The staged entrypoint: `FtcActuators.plant(...)`
+## 1. Two boundary gateways, one Plant grammar
 
-Use `edu.ftcphoenix.fw.ftc.FtcActuators` when you want to create a `Plant` from FTC hardware.
+Use `edu.ftcphoenix.fw.ftc.FtcActuators` when a mechanism starts from FTC `HardwareMap`, configured
+device names, and FTC controller choices:
 
 ```java
 // Inside the mechanism constructor; flywheel and pusher are private fields.
@@ -40,18 +41,42 @@ this.flywheel = FtcActuators.plant(hardwareMap)
         .bounded(0.0, 2600.0)
         .nativeUnits()
         .velocityTolerance(50.0)
-        .targetedBy(ScalarTarget.create(0.0))
+        .targetFromNewCommand(0.0)
         .build();
 
 this.pusher = FtcActuators.plant(hardwareMap)
         .servo("pusher", Direction.FORWARD)
         .position()
-        .linear()
-            .bounded(0.0, 1.0)
-            .nativeUnits()
-        .targetedBy(ScalarTarget.create(0.0))
+        .nonPeriodic()
+        .bounded(0.0, 1.0)
+        .nativeUnits()
+        .targetFromNewCommand(0.0)
         .build();
 ```
+
+Use `Plants.fromOutputs()` only when a custom adapter, hardware-neutral test, or portable host
+already owns Phoenix output ports, feedback sources, and any regulator:
+
+```java
+Plant roller = Plants.fromOutputs()
+        .power(powerOut)
+        .targetFromNewCommand(0.0)
+        .build();
+
+PositionPlant wrist = Plants.fromOutputs()
+        .commandedPosition(positionOut)
+        .nonPeriodic()
+        .bounded(-45.0, 90.0)          // public Plant units
+        .rangeMapsToNative(0.22, 0.76) // native output units
+        .targetFromNewCommand(0.0)
+        .build();
+```
+
+These are two boundary gateways into one staged grammar and hidden runtime engine, not two builder
+implementations. `FtcActuators` alone owns SDK lookup, direction, grouping, run modes, and FTC
+controller configuration. `Plants` remains hardware-neutral. Ordinary FTC code should not unwrap
+devices merely to call the advanced gateway, and neutral code should not depend on an FTC-named
+facade.
 
 The builder is staged on purpose. Each required conceptual question is answered explicitly, while
 optional tuning appears only after the user enters a tuning branch. This keeps autocomplete focused
@@ -62,55 +87,52 @@ For example, motor position wiring asks:
 1. Which hardware? `motor(...)`
 2. Which target domain? `position()`
 3. Who manages the position loop? `deviceManagedWithDefaults()`, `deviceManaged()...doneDeviceManaged()`, or `regulated()` followed by one direct feedback answer and `regulator(...)`
-4. What topology? `linear()` or `periodic(period)`
-5. What bounds? `bounded(min, max)` or `unbounded()`
-6. How do plant units map to native units? `nativeUnits()`, `scaleToNative(...)`, or bounded-only `rangeMapsToNative(...)`
+4. Is the public coordinate `nonPeriodic()` or `periodic(period)`?
+5. What bounds in public Plant units are legal? `bounded(min, max)` or `unbounded()`
+6. How do Plant units map to native units? `nativeUnits()`, `scaleToNative(...)`, or bounded-only `rangeMapsToNative(...)`
 7. How is the reference/offset known? `alreadyReferenced()`, `plantPositionMapsToNative(...)`, `assumeCurrentPositionIs(...)`, or `needsReference(...)`
 8. What public position error counts as complete? The required `positionTolerance(...)` answer
 9. Optional dynamic hardware guards: `targetGuards().maxTargetRate(...)`, `holdLastTargetUnless(...)`, `fallbackTargetUnless(...)`
-10. Target binding: `targetedBy(ScalarTarget.create(initialValue))` for the ordinary command or
-    `targetedBy(PlantTargetResolver)` for an advanced graph, then `build()`
+10. Target binding: `targetFromNewCommand(initialValue)` for an ordinary exact command or
+    `targetFromResolver(finalResolver)` for a caller-supplied final resolver, then `build()`
 
 Motor velocity wiring asks a parallel but smaller set of questions:
 
 1. Which hardware? `motor(...)`
 2. Which target domain? `velocity()`
 3. Who manages the velocity loop? `deviceManagedWithDefaults()`, `deviceManaged()...doneDeviceManaged()`, or `regulated()` followed by one direct feedback answer and `regulator(...)`
-4. What target bounds are legal? `bounded(min, max)` or `unbounded()`
-5. How do plant velocity units map to native velocity units? `nativeUnits()` or `scaleToNative(...)`
+4. What target bounds in Plant units are legal? `bounded(min, max)` or `unbounded()`
+5. How do Plant velocity units map to native velocity units? `nativeUnits()` or `scaleToNative(...)`
 6. What public velocity error counts as complete? The required `velocityTolerance(...)` answer
 7. Optional dynamic hardware guards: `targetGuards().maxTargetRate(...)`, `holdLastTargetUnless(...)`, `fallbackTargetUnless(...)`
-8. Target binding: `targetedBy(ScalarTarget.create(initialValue))` for the ordinary command or
-   `targetedBy(PlantTargetResolver)` for an advanced graph, then `build()`
+8. Target binding: `targetFromNewCommand(initialValue)` or `targetFromResolver(finalResolver)`, then `build()`
 
-The tolerance question appears exactly once and only after the public coordinate is known. There is
-no inferred or native-unit default. Standard-servo position Plants are command-only, so their
-mapping stage proceeds directly to target binding without asking a feedback-only question.
+The neutral gateway exposes the same control choices without FTC acquisition: `power(...)`,
+`commandedPosition(...)`, `deviceManagedPosition(...)`, `deviceManagedVelocity(...)`,
+`regulatedPosition(...)`, and `regulatedVelocity(...)`. Each branch asks only the later facts its
+inputs cannot prove. The tolerance question appears exactly once and only after the public
+coordinate is known. Command-only position skips feedback-only reference, calibration-search, and
+tolerance questions.
 
-A custom hardware adapter can use the hardware-neutral `MappedPositionPlant` and
-`MappedVelocityPlant` entrypoints instead of `FtcActuators`. Those entrypoints keep only the stages
-that adapter construction needs: configure mapping/range/reference details, answer the required
-feedback tolerance, optionally add target guards, bind the target, and build. Command-only mapped
-position goes from configuration directly to the target-and-guards stage. Both public layers
-therefore prevent an omitted feedback tolerance or target at compile time without making ordinary
-FTC robot code learn a second hardware API.
-
-For an ordinary exact Plant, keep one mechanism variable: create the command inline with
-`targetedBy(ScalarTarget.create(initialValue))`, then write it through the Plant's stable,
-side-effect-free `commandTarget()` accessor. A named `ScalarTarget` is still useful when the target
-stands alone, is shared with target-only policy, or is needed while assembling an overlay,
-equivalent-position, or advanced resolver graph. A read-only `ScalarSource` is adapted visibly
-with `PlantTargets.exact(source)`. For a composed
+For an ordinary exact Plant, keep one mechanism variable. `targetFromNewCommand(initialValue)` is the concise
+spelling of creating one fresh `ScalarTarget` and binding `PlantTargets.exact(...)`; the Plant's
+stable, side-effect-free `commandTarget()` returns that same target identity. It rejects a
+non-finite or out-of-Plant-range initial value before build instead of treating configuration as a
+runtime request to clamp. This configures the source graph but does not command hardware during
+construction. A named `ScalarTarget` remains useful when it stands alone, is shared with
+target-only policy, or is needed while assembling an overlay, equivalent-position, or advanced
+resolver graph; bind it explicitly with `targetFromResolver(PlantTargets.exact(target))`.
+`targetFromResolver(...)` binds the supplied resolver without promising that the built Plant has a
+command target. A recognized exact `ScalarTarget` or command-bearing framework graph carries one; a
+read-only, planned, or arbitrary custom resolver carries none. A read-only `ScalarSource` crosses
+the same boundary through `PlantTargets.exact(source)`. For
 `PlantTargets.overlay(...)`, only a `ScalarTarget` carried by the base graph becomes the command
-target; conditional layers never do. The final graph supplies that identity automatically, so the
-builder cannot accept a second target that disagrees with the source the Plant actually follows.
+target; conditional layers never do.
 
 Velocity and power Plants stay simpler than position Plants because they do not have position
-geometry, periodicity, or homing/reference questions. Power is simpler still: every direct power
-Plant has the fixed normalized range `[-1.0, +1.0]`, so there is no redundant bounds step in the
-builder. A finite request outside that range clamps before the output. The Plant reports
-`CLAMPED_TO_RANGE` when that clamp remains the active final transform; a later rate limit,
-interlock, or fallback may report its more specific status instead.
+periodicity or homing/reference questions. Power is simpler still: every direct power Plant has the
+fixed normalized range `[-1.0, +1.0]`, so there is no redundant bounds step. A finite request outside
+that range clamps during normal targeting.
 
 ### Grouped hardware-name identity
 
@@ -196,16 +218,16 @@ this.lift = FtcActuators.plant(hardwareMap)
         .motor("lift", Direction.FORWARD)
         .position()
         .deviceManagedWithDefaults()
-        .linear()
-            .bounded(0.0, 4200.0)
-            .nativeUnits()
-            .needsReference("lift not homed")
+        .nonPeriodic()
+        .bounded(0.0, 4200.0)
+        .nativeUnits()
+        .needsReference("lift not homed")
         .positionTolerance(20.0)
         .targetGuards()
             .maxTargetRate(1200.0)
             .holdLastTargetUnless("wristClear", wristClear)
             .doneTargetGuards()
-        .targetedBy(ScalarTarget.create(0.0))
+        .targetFromNewCommand(0.0)
         .build();
 ```
 
@@ -241,7 +263,7 @@ Public position and velocity APIs use **plant units** unless the method name exp
 
 As a rule of thumb:
 
-* `bounded(...)`, `unbounded()`, `periodic(...)`, `targetedBy(...)`, `getRequestedTarget()`,
+* `bounded(...)`, `unbounded()`, `periodic(...)`, `targetFromNewCommand(...)`, `targetFromResolver(...)`, `getRequestedTarget()`,
   `getAppliedTarget()`, `getMeasurement()`, `positionTolerance(...)`, and `velocityTolerance(...)` all speak in
   **plant units**.
 * Methods that cross the plant/native boundary say so explicitly in the name or docs, for example
@@ -251,7 +273,7 @@ As a rule of thumb:
 Examples:
 
 ```java
-.linear().bounded(0.0, 18.0)          // inches if the mechanism is declared in inches
+.nonPeriodic().bounded(0.0, 18.0)     // inches if the mechanism is declared in inches
 .periodic(360.0)                      // degrees if the mechanism is declared in degrees
 .positionTolerance(0.10)              // plant units
 .assumeCurrentPositionIs(0.0)         // plant units
@@ -286,12 +308,12 @@ this.lift = FtcActuators.plant(hardwareMap)
         .motor("liftMotor", Direction.FORWARD)
         .position()
         .deviceManagedWithDefaults()
-        .linear()
-            .bounded(0.0, 4200.0)
-            .nativeUnits()
-            .needsReference("lift not homed")
+        .nonPeriodic()
+        .bounded(0.0, 4200.0)
+        .nativeUnits()
+        .needsReference("lift not homed")
         .positionTolerance(20.0)
-        .targetedBy(ScalarTarget.create(0.0))
+        .targetFromNewCommand(0.0)
         .build();
 ```
 
@@ -313,12 +335,12 @@ this.lift = FtcActuators.plant(hardwareMap)
             .outerPositionP(5.0)
             .devicePositionToleranceTicks(12)
             .doneDeviceManaged()
-        .linear()
-            .bounded(0.0, 4200.0)
-            .nativeUnits()
-            .needsReference("lift not homed")
+        .nonPeriodic()
+        .bounded(0.0, 4200.0)
+        .nativeUnits()
+        .needsReference("lift not homed")
         .positionTolerance(20.0)
-        .targetedBy(ScalarTarget.create(0.0))
+        .targetFromNewCommand(0.0)
         .build();
 ```
 
@@ -345,12 +367,12 @@ this.arm = FtcActuators.plant(hardwareMap)
         .regulated()
             .externalEncoder("armEncoder")
             .regulator(ScalarRegulators.pid(Pid.withGains(0.006, 0.0, 0.0002)))
-        .linear()
-            .bounded(-300.0, 1200.0)
-            .nativeUnits()
-            .alreadyReferenced()
+        .nonPeriodic()
+        .bounded(-300.0, 1200.0)
+        .nativeUnits()
+        .alreadyReferenced()
         .positionTolerance(20.0)
-        .targetedBy(ScalarTarget.create(0.0))
+        .targetFromNewCommand(0.0)
         .build();
 ```
 
@@ -415,7 +437,7 @@ later regulated actuation returns normally.
 The debug fields deliberately keep different kinds of truth separate:
 
 * `.regulatorOutput` is the raw regulator result. Existing `.output` on lower-level regulated
-  Plants and `.lastRegulatorOutput` on mapped position Plants remain raw aliases.
+  Plants and `.lastRegulatorOutput` on regulated position Plants remain raw aliases.
 * `.normalizedPowerCommand` is the last known value submitted by a normally returning top-level
   `PowerOutput` operation performed by the regulated-command boundary. It becomes unknown when a
   throwing output operation prevents truthful command bookkeeping. An open-loop position-
@@ -441,15 +463,15 @@ history.
 
 ---
 
-## 5. Position topology and bounds
+## 5. Position periodicity and bounds
 
 Every declared position Plant answers two separate questions:
 
 ```java
-.linear()              // non-wrapping coordinate
-.periodic(period)      // equivalent positions separated by period, in plant units
+.nonPeriodic()         // no declared fixed equivalence period
+.periodic(period)      // equivalent positions separated by period, in Plant units
 
-.bounded(min, max)     // legal target range in plant units
+.bounded(min, max)     // legal target range in public Plant units
 .unbounded()           // no software target range
 ```
 
@@ -457,11 +479,11 @@ Common choices:
 
 ```java
 // Lift or slide.
-.linear()
+.nonPeriodic()
     .bounded(0.0, 4200.0)
 
 // Raw tuning motor where software travel limits are intentionally not declared yet.
-.linear()
+.nonPeriodic()
     .unbounded()
 
 // Cable-limited turret: facing repeats every rotation, but legal travel is finite.
@@ -473,19 +495,25 @@ Common choices:
     .unbounded()
 ```
 
-`PositionPlant.period()` is in plant units. For one normal logical command, wrap its final resolver
+`PositionPlant.periodicity()` returns `NON_PERIODIC` or `PERIODIC`; `period()` is separate data in
+Plant units and is meaningful only for a periodic coordinate. A mechanism is periodic only when
+positions separated by its period are actually interchangeable. A limited servo arm can rotate and
+still be non-periodic, while a rotating plate can be periodic. Physical rotation, affine command
+mapping, and periodic equivalence are separate facts.
+
+For one normal logical command, wrap its final resolver
 with `PlantTargets.equivalentPositionsOf(commandTarget)` and choose a preference plus explicit
 unavailable answer. The wrapper uses the consuming Plant's declared period during
 `plant.update(clock)`; robot code does not repeat it. `PlantTargets.plan(request)` remains the
 advanced path for multiple alternatives, relative/explicit-period requests, observation metadata,
 or clamp policy.
-Periodic topology alone never wraps an exact target automatically.
+Periodic equivalence alone never wraps an exact target automatically.
 
 ---
 
 ## 6. Mapping plant units to native units
 
-After topology and bounds, the builder asks how the public plant coordinate maps to the selected
+After periodicity and bounds, the builder asks how the public Plant coordinate maps to the selected
 native coordinate.
 
 ### `nativeUnits()`
@@ -493,7 +521,7 @@ native coordinate.
 Use this when plant units are native units:
 
 ```java
-.linear()
+.nonPeriodic()
     .bounded(0.0, 4200.0)
     .nativeUnits()
     .needsReference("lift not homed")
@@ -506,7 +534,7 @@ Here the lift target is in encoder ticks.
 Use this when the scale is known but the reference/offset is a separate question:
 
 ```java
-.linear()
+.nonPeriodic()
     .bounded(0.0, 18.0)
     .scaleToNative(TICKS_PER_INCH)
     .needsReference("lift not homed")
@@ -545,10 +573,10 @@ private final PositionPlant claw;
 this.claw = FtcActuators.plant(hardwareMap)
         .servo("clawServo", Direction.FORWARD)
         .position()
-        .linear()
-            .bounded(0.0, 1.0)
-            .rangeMapsToNative(0.30, 0.80)
-        .targetedBy(ScalarTarget.create(0.0))
+        .nonPeriodic()
+        .bounded(0.0, 1.0)
+        .rangeMapsToNative(0.30, 0.80)
+        .targetFromNewCommand(0.0)
         .build();
 ```
 
@@ -591,7 +619,7 @@ Good examples:
 * a motor encoder that robot code intentionally reset before building/using the Plant.
 
 ```java
-.linear()
+.nonPeriodic()
     .bounded(-35.0, 125.0)
     .nativeUnits()
     .alreadyReferenced()
@@ -602,7 +630,7 @@ Good examples:
 Use this when both scale and one offset point are known in code:
 
 ```java
-.linear()
+.nonPeriodic()
     .bounded(-35.0, 125.0)
     .scaleToNative(TICKS_PER_DEGREE)
     .plantPositionMapsToNative(0.0, ARM_ZERO_TICKS)
@@ -612,15 +640,17 @@ This means plant position `0.0` maps to native encoder tick `ARM_ZERO_TICKS`. Bo
 native reference values must be finite. The builder rejects `NaN` or infinity before retaining this
 answer, performs no SDK call or hardware effect for that rejection, and does not clamp either
 coordinate. It therefore prevents a later build from realizing command hardware with the invalid
-pair. An earlier valid feedback-selection stage may already have resolved its own sensor. The plant
-reference is an affine-map anchor and need not be a legal target inside the declared Plant range.
+pair. Feedback-selection stages retain only validated recipe data (or a caller-supplied neutral
+source); named FTC sensor lookup and actuator lookup/configuration wait until the complete recipe
+passes validation at `build()`. The plant reference is an affine-map anchor and need not be a legal
+target inside the declared Plant range.
 
 ### `assumeCurrentPositionIs(...)`
 
 Use this when the robot is physically placed at a known pose before init:
 
 ```java
-.linear()
+.nonPeriodic()
     .bounded(0.0, 4200.0)
     .nativeUnits()
     .assumeCurrentPositionIs(0.0)
@@ -636,7 +666,7 @@ only correct if the mechanism really starts there.
 Use this when the mechanism must be homed/indexed before position targets are meaningful:
 
 ```java
-.linear()
+.nonPeriodic()
     .bounded(0.0, 4200.0)
     .nativeUnits()
     .needsReference("lift not homed")
@@ -661,13 +691,13 @@ Task homeLift = PositionCalibrationTasks.search(lift)
 
 `.withPower(...)` accepts only a finite normalized command in the inclusive `[-1.0, +1.0]` range.
 It rejects `NaN`, infinities, and finite overshoot at the builder step. The direct
-`MappedPositionPlant.beginCalibrationSearch(...)` seam enforces the same contract before changing
+`PositionPlant.beginCalibrationSearch(...)` seam enforces the same contract before changing
 search state or stopping the normal position output. Neither path clamps an invalid search command;
 low-level FTC adapter clamping remains boundary defense only.
 
 The reference supplied to `establishReferenceAt(...)` must also be finite in plant units. The Task
 recipe rejects `NaN` or infinity at that answer before starting or changing its search lifecycle;
-the direct mapped-Plant seam repeats the check before sampling feedback or changing reference state.
+the direct `PositionPlant` seam repeats the check before sampling feedback or changing reference state.
 This coordinate anchor is not required to lie inside `targetRange()` and is never clamped into it.
 
 `holdAfterReference(value)` separately requires a finite plant-unit logical command. It rejects a
@@ -679,8 +709,8 @@ in-range hold value when exact predictable holding is intended.
 This numeric contract is structural, not robot-specific safety approval. The mechanism owner must
 still select a safe magnitude and direction, verify the cue and timeout/cancellation paths, provide
 any required external interlock or physical safeguard, and confirm that the mechanism is free to
-move. An active raw-power search bypasses the normal target resolver and `PlantTargetGuards`; those
-normal-target protections do not make the temporary search safe.
+move. An active raw-power search bypasses the normal target resolver and inline `targetGuards()`
+chain; those normal-target protections do not make the temporary search safe.
 
 Starting this Task acquires a temporary search after requesting an immediate stop of the prior
 normal position output, but it only stages the configured search power. The Task never calls
@@ -716,8 +746,12 @@ that the selected reference and hold are safe under load. Those remain adopting-
 
 ## 8. Standard servo position Plants
 
-Standard servos are command-only position outputs. They do not expose motor control strategy,
-open-loop calibration search, or unbounded travel.
+An FTC standard `Servo` proves only a command-only native position channel with raw range
+`[0.0, 1.0]`. It does not prove whether the mechanism coordinate is periodic: a limited wrist is
+normally non-periodic, while a plate or indexer may be periodic when positions one full turn apart
+are interchangeable. The mechanism therefore answers periodicity explicitly just like every other
+position branch. Standard Servo construction does not expose motor control strategy, feedback
+tolerance, reference policy, open-loop calibration search, or unbounded travel.
 
 Raw servo units:
 
@@ -725,10 +759,10 @@ Raw servo units:
 this.wrist = FtcActuators.plant(hardwareMap)
         .servo("wrist", Direction.FORWARD)
         .position()
-        .linear()
-            .bounded(0.0, 1.0)
-            .nativeUnits()
-        .targetedBy(ScalarTarget.create(0.0))
+        .nonPeriodic()
+        .bounded(0.0, 1.0)
+        .nativeUnits()
+        .targetFromNewCommand(0.0)
         .build();
 ```
 
@@ -738,14 +772,20 @@ Logical units mapped to raw endpoints:
 this.wrist = FtcActuators.plant(hardwareMap)
         .servo("wrist", Direction.FORWARD)
         .position()
-        .linear()
-            .bounded(-45.0, 90.0)
-            .rangeMapsToNative(0.22, 0.76)
-        .targetedBy(ScalarTarget.create(0.0))
+        .nonPeriodic()
+        .bounded(-45.0, 90.0)
+        .rangeMapsToNative(0.22, 0.76)
+        .targetFromNewCommand(0.0)
         .build();
 ```
 
-Robot code can now command degrees, while the servo receives raw fractions.
+Robot code can now command degrees, while the servo receives raw fractions. In both examples,
+`bounded(...)` is stated first and always names the public Plant coordinate. `nativeUnits()` makes
+those public units raw servo fractions; `rangeMapsToNative(...)` instead maps the public range's
+two endpoints to raw servo fractions. Neither mapping choice decides periodicity or promises a
+linear physical linkage. For example,
+`.nonPeriodic().bounded(0.20, 0.80).nativeUnits()` expresses software-limited travel directly in raw
+servo fractions; no Servo-only shortcut changes what any of those three answers means.
 
 ---
 
@@ -766,13 +806,33 @@ this.turret = FtcActuators.plant(hardwareMap)
             .nativeUnits()
             .needsReference("turret not homed")
         .positionTolerance(8.0)
-        .targetedBy(ScalarTarget.create(0.0))
+        .targetFromNewCommand(0.0)
         .build();
 ```
 
 A CR-servo position Plant can participate in `PositionCalibrationTasks.search(...)` because its one
 mechanism-owned Plant update can submit temporary open-loop power while looking for a reference.
 The Task manages the search lifecycle without becoming another Plant writer.
+
+The hardware-neutral gateway expresses the same rotating-plate design when a custom adapter already
+owns the CR-servo power channel, continuous position feedback, and regulator:
+
+```java
+PositionPlant plate = Plants.fromOutputs()
+        .regulatedPosition(crServoPowerOut, unwrappedAngle, regulator)
+        .periodic(2.0 * Math.PI)
+        .bounded(-4.0 * Math.PI, 4.0 * Math.PI)
+        .nativeUnits()
+        .needsReference("plate not indexed")
+        .positionTolerance(Math.toRadians(2.0))
+        .targetFromResolver(plateFinalTarget)
+        .build();
+```
+
+Here periodicity belongs to the mechanism coordinate, not to the `CRServo` hardware. The supplied
+measurement is explicitly continuous/unwrapped, and `plateFinalTarget` opts into full-turn
+equivalents only if it composes `PlantTargets.equivalentPositionsOf(...)`; an exact target still
+means one literal unwrapped position.
 
 ---
 
@@ -881,7 +941,7 @@ telemetry.addData("atTarget", plant.atTarget());
 For `PositionPlant`, `getRequestedTarget()`, `getAppliedTarget()`, `getMeasurement()`, and `getRequestedTargetError()` are all in plant units.
 `PositionPlant.positionSource()` is also in plant units. Context-aware target resolvers such as
 `PlantTargets.equivalentPositionsOf(...)` and `PlantTargets.plan(request)` receive the Plant measurement,
-range, and topology automatically through the Plant target context during `update(clock)`.
+range, and periodicity automatically through the Plant target context during `update(clock)`.
 
 ---
 
@@ -936,7 +996,7 @@ this.shooter = FtcActuators.plant(hardwareMap)
         .bounded(0.0, 2600.0)
         .nativeUnits()
         .velocityTolerance(50.0)
-        .targetedBy(ScalarTarget.create(0.0))
+        .targetFromNewCommand(0.0)
         .build();
 ```
 
@@ -953,7 +1013,7 @@ this.shooter = FtcActuators.plant(hardwareMap)
         .bounded(0.0, 2600.0)
         .nativeUnits()
         .velocityTolerance(50.0)
-        .targetedBy(ScalarTarget.create(0.0))
+        .targetFromNewCommand(0.0)
         .build();
 ```
 
@@ -972,7 +1032,6 @@ import edu.ftcphoenix.fw.core.control.ScalarRegulator;
 import edu.ftcphoenix.fw.core.control.ScalarRegulators;
 import edu.ftcphoenix.fw.core.hal.Direction;
 import edu.ftcphoenix.fw.core.source.ScalarSource;
-import edu.ftcphoenix.fw.core.source.ScalarTarget;
 import edu.ftcphoenix.fw.ftc.FtcActuators;
 import edu.ftcphoenix.fw.ftc.FtcSensors;
 
@@ -1005,7 +1064,7 @@ this.shooter = FtcActuators.plant(hardwareMap)
         .bounded(0.0, 5000.0)          // plant units: RPM
         .scaleToNative(TICKS_PER_RPM)  // native units: FTC ticks/sec
         .velocityTolerance(75.0)       // plant units: RPM
-        .targetedBy(ScalarTarget.create(0.0))
+        .targetFromNewCommand(0.0)
         .build();
 ```
 
@@ -1073,7 +1132,7 @@ this.shooter = FtcActuators.plant(hardwareMap)
         .bounded(0.0, 5000.0)          // plant units: RPM
         .scaleToNative(TICKS_PER_RPM)  // native units: FTC ticks/sec
         .velocityTolerance(75.0)       // plant units: RPM
-        .targetedBy(ScalarTarget.create(0.0))
+        .targetFromNewCommand(0.0)
         .build();
 ```
 
@@ -1101,11 +1160,12 @@ one aggregate measurement in group units.
 
 For grouped **regulated** Plants, the staged builder intentionally requires default per-child scaling
 and bias. If you need a more advanced grouped regulated mechanism, build one deliberate custom
-group-output adapter and compose it with `Plants.positionFromPower(...)` or
-`Plants.velocityFromPower(...)`. That advanced adapter owns its complete group lifecycle and failure
-contract. Independently combining public `FtcHardware.motorPower(...)` outputs does not receive the
-standard builder's all-child mode preflight, so do not treat sequential child writes as an equivalent
-safe construction path.
+group-output adapter, then enter the same neutral grammar with
+`Plants.fromOutputs().regulatedPosition(groupOutput, feedback, regulator)` or
+`Plants.fromOutputs().regulatedVelocity(groupOutput, feedback, regulator)`. That advanced adapter
+owns its complete group lifecycle and failure contract. Independently combining public
+`FtcHardware.motorPower(...)` outputs does not receive the standard builder's all-child mode
+preflight, so do not treat sequential child writes as an equivalent safe construction path.
 
 That restriction keeps the common builder path simple and makes ambiguous regulated group semantics
 fail fast with an actionable error.

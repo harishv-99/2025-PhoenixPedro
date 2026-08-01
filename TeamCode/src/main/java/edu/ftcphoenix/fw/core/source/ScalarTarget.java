@@ -7,14 +7,14 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * Writable scalar request that can also be read as a {@link ScalarSource}.
  *
  * <p>Use {@code ScalarTarget} for persistent robot requests such as “arm goal”,
- * “flywheel velocity request”, or “manual feeder power”. A source-driven plant may be built
- * directly from a {@code ScalarTarget}, or a target can be used as the base layer of a richer
+ * “flywheel velocity request”, or “manual feeder power”. Bind a named target to a source-driven
+ * Plant with {@code targetFromResolver(PlantTargets.exact(target))}, or use it as the base layer of a richer
  * source graph. Retain the target itself when it is standalone, shared, owned by target-only
  * policy, or useful while assembling a composed graph. In ordinary FTC robot code, the
  * mechanism/subsystem constructor receives {@code HardwareMap} and its data-only config, snapshots
  * that config, and builds its privately owned Plant graph. An ordinary exact mechanism with no
- * separate target role can inline {@link #create(double)} during that construction and retrieve the
- * same stable request later through {@code plant.commandTarget()}.</p>
+ * separate target role uses {@code targetFromNewCommand(initialValue)} and retrieves the generated stable
+ * request later through {@code plant.commandTarget()}.</p>
  *
  * <h2>Exact command inside a mechanism constructor</h2>
  * <pre>{@code
@@ -23,12 +23,12 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *     .motor(cfg.motorName, cfg.direction)
  *     .position()
  *     .deviceManagedWithDefaults()
- *     .linear()
+ *     .nonPeriodic()
  *         .bounded(0.0, 4200.0)
  *         .nativeUnits()
  *         .alreadyReferenced()
  *     .positionTolerance(20.0)
- *     .targetedBy(ScalarTarget.create(0.0))
+ *     .targetFromNewCommand(0.0)
  *     .build();
  *
  * // Later, in a semantic intent method:

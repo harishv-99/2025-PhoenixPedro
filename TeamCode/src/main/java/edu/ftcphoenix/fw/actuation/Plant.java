@@ -46,7 +46,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *     .bounded(cfg.minVelocity, cfg.maxVelocity)
  *     .nativeUnits()
  *     .velocityTolerance(cfg.velocityTolerance)
- *     .targetedBy(ScalarTarget.create(0.0))
+ *     .targetFromNewCommand(0.0)
  *     .build();
  *
  * // Later, in a semantic intent method:
@@ -188,13 +188,13 @@ public interface Plant {
      * planned realization does not require a command target. A policy object that does not own the
      * Plant may instead receive only the {@link ScalarTarget} it writes.</p>
      *
-     * @throws IllegalStateException if the plant was built from a read-only source without a
+     * @throws IllegalStateException if the Plant's final resolver graph carries no recognized
      *                               stable command target
      */
     default ScalarTarget commandTarget() {
-        throw new IllegalStateException("This plant has no command target. Build it with "
-                + "targetedBy(command), or use a ScalarTarget as the stable base of its final "
-                + "target graph.");
+        throw new IllegalStateException("This plant has no command target. Use targetFromNewCommand(...) "
+                + "for an ordinary exact command, or bind a named ScalarTarget through "
+                + "targetFromResolver(PlantTargets.exact(target)).");
     }
 
     /**

@@ -95,7 +95,7 @@ public final class RegulatedPowerChannelTest {
         };
 
         for (double invalidResult : invalidResults) {
-            Fixture fixture = new Fixture("MappedVelocityPlant regulated-power path");
+            Fixture fixture = new Fixture("VelocityPlant regulated-power path");
             fixture.regulator.result = invalidResult;
 
             RuntimeException failure = expectRuntime(() -> fixture.channel.update(
@@ -105,7 +105,7 @@ public final class RegulatedPowerChannelTest {
 
             assertTrue(failure instanceof IllegalStateException);
             assertContains(failure.getMessage(),
-                    "MappedVelocityPlant regulated-power path",
+                    "VelocityPlant regulated-power path",
                     "setpoint=4200.0",
                     "measurement=2000.0",
                     String.valueOf(invalidResult),

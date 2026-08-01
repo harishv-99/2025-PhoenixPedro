@@ -134,21 +134,21 @@ public final class PlantTargetsEquivalentPositionsTest {
     }
 
     @Test
-    public void invalidTopologyAndUnreachableFamilyUseExplicitUnavailablePolicies() {
+    public void nonPeriodicCoordinateAndUnreachableFamilyUseExplicitUnavailablePolicies() {
         ScalarTarget command = ScalarTarget.create(20.0);
-        PlantTargetContext linear = PlantTargetContext.simple(
+        PlantTargetContext nonPeriodic = PlantTargetContext.simple(
                 true, 40.0, ScalarRange.bounded(0.0, 100.0), Double.NaN, 40.0);
 
         PlantTargetResolution rejected = nearest(command).reportUnavailable()
-                .resolve(linear, new ManualLoopClock().clock());
+                .resolve(nonPeriodic, new ManualLoopClock().clock());
         PlantTargetResolution fallback = nearest(command).fallbackTo(7.0)
-                .resolve(linear, new ManualLoopClock().clock());
+                .resolve(nonPeriodic, new ManualLoopClock().clock());
         PlantTargetResolution unreachable = nearest(command).reportUnavailable()
                 .resolve(periodicContext(150.0, ScalarRange.bounded(100.0, 200.0), 360.0),
                         new ManualLoopClock().clock());
 
         assertFalse(rejected.hasTarget());
-        assertTrue(rejected.reason().contains("periodic Plant topology"));
+        assertTrue(rejected.reason().contains("periodic Plant coordinate"));
         assertEquals(7.0, fallback.target(), EPSILON);
         assertEquals(PlantTargetResolution.Kind.FALLBACK, fallback.kind());
         assertTrue(fallback.reportsCommandResolutionFor(command));
@@ -190,7 +190,7 @@ public final class PlantTargetsEquivalentPositionsTest {
 
         resolver.reset();
         PlantTargetResolution afterReset = resolver.resolve(
-                linearContext(30.0), time.nextCycle(0.02));
+                nonPeriodicContext(30.0), time.nextCycle(0.02));
 
         assertEquals(5.0, afterReset.target(), EPSILON);
         assertEquals(PlantTargetResolution.Kind.HOLD_LAST_TARGET, afterReset.kind());
@@ -202,14 +202,14 @@ public final class PlantTargetsEquivalentPositionsTest {
         ScalarRange range = ScalarRange.bounded(0.0, 720.0);
 
         PlantTargetContext priorApplied = PlantTargetContext.position(
-                false, Double.NaN, range, PositionPlant.Topology.PERIODIC, 360.0,
+                false, Double.NaN, range, PositionPlant.Periodicity.PERIODIC, 360.0,
                 Double.NaN, 350.0);
         PlantTargetResolution nearestPrior = nearest(command).reportUnavailable()
                 .resolve(priorApplied, new ManualLoopClock().clock());
         assertEquals(380.0, nearestPrior.target(), EPSILON);
 
         PlantTargetContext noReference = PlantTargetContext.position(
-                false, Double.NaN, range, PositionPlant.Topology.PERIODIC, 360.0,
+                false, Double.NaN, range, PositionPlant.Periodicity.PERIODIC, 360.0,
                 Double.NaN, Double.NaN);
         PlantTargetResolution nearestUnavailable = nearest(command).reportUnavailable()
                 .resolve(noReference, new ManualLoopClock().clock());
@@ -228,12 +228,12 @@ public final class PlantTargetsEquivalentPositionsTest {
         PlantTargetResolver resolver = nearest(command).holdMeasuredTargetOnEntry(-1.0);
         ManualLoopClock time = new ManualLoopClock();
 
-        PlantTargetResolution first = resolver.resolve(linearContext(10.0), time.clock());
+        PlantTargetResolution first = resolver.resolve(nonPeriodicContext(10.0), time.clock());
         PlantTargetResolution consecutive =
-                resolver.resolve(linearContext(20.0), time.nextCycle(0.02));
+                resolver.resolve(nonPeriodicContext(20.0), time.nextCycle(0.02));
         time.nextCycle(0.02);
         PlantTargetResolution afterGap =
-                resolver.resolve(linearContext(30.0), time.nextCycle(0.02));
+                resolver.resolve(nonPeriodicContext(30.0), time.nextCycle(0.02));
 
         assertEquals(10.0, first.target(), EPSILON);
         assertEquals(10.0, consecutive.target(), EPSILON);
@@ -320,10 +320,10 @@ public final class PlantTargetsEquivalentPositionsTest {
                                                       ScalarRange range,
                                                       double period) {
         return PlantTargetContext.position(true, measurement, range,
-                PositionPlant.Topology.PERIODIC, period, Double.NaN, measurement);
+                PositionPlant.Periodicity.PERIODIC, period, Double.NaN, measurement);
     }
 
-    private static PlantTargetContext linearContext(double measurement) {
+    private static PlantTargetContext nonPeriodicContext(double measurement) {
         return PlantTargetContext.simple(true, measurement,
                 ScalarRange.bounded(0.0, 100.0), Double.NaN, measurement);
     }

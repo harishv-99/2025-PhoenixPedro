@@ -2,7 +2,6 @@ package edu.ftcphoenix.robots.phoenix.tester;
 
 import edu.ftcphoenix.fw.actuation.Plant;
 import edu.ftcphoenix.fw.core.source.BooleanSource;
-import edu.ftcphoenix.fw.core.source.ScalarTarget;
 import edu.ftcphoenix.fw.ftc.FtcActuators;
 import edu.ftcphoenix.fw.ftc.FtcDrives;
 import edu.ftcphoenix.fw.input.binding.Bindings;
@@ -67,25 +66,25 @@ public final class DrivetrainMotorDirectionTester extends BaseTeleOpTester {
         plantFL = FtcActuators.plant(ctx.hw)
                 .motor(drive.wiring.frontLeftName, drive.wiring.frontLeftDirection)
                 .power()
-                .targetedBy(ScalarTarget.create(0.0))
+                .targetFromNewCommand(0.0)
                 .build();
 
         plantFR = FtcActuators.plant(ctx.hw)
                 .motor(drive.wiring.frontRightName, drive.wiring.frontRightDirection)
                 .power()
-                .targetedBy(ScalarTarget.create(0.0))
+                .targetFromNewCommand(0.0)
                 .build();
 
         plantBL = FtcActuators.plant(ctx.hw)
                 .motor(drive.wiring.backLeftName, drive.wiring.backLeftDirection)
                 .power()
-                .targetedBy(ScalarTarget.create(0.0))
+                .targetFromNewCommand(0.0)
                 .build();
 
         plantBR = FtcActuators.plant(ctx.hw)
                 .motor(drive.wiring.backRightName, drive.wiring.backRightDirection)
                 .power()
-                .targetedBy(ScalarTarget.create(0.0))
+                .targetFromNewCommand(0.0)
                 .build();
 
         Bindings.ControlContext motorControls = bindings.contextWhen(

@@ -5,7 +5,7 @@ package edu.ftcphoenix.fw.actuation;
  *
  * @param <P> concrete mapped Plant type returned by {@link #build()}
  */
-public interface MappedPlantBuildStep<P extends Plant> {
+interface MappedPlantBuildStep<P extends Plant> {
 
     /**
      * Build the fully configured mapped Plant.

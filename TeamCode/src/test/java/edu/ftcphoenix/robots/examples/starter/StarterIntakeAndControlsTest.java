@@ -54,7 +54,10 @@ public final class StarterIntakeAndControlsTest {
     @Test
     public void mechanismMapsModesThroughOneCommandTargetAndSubmitsStop() {
         RecordingPowerOutput output = new RecordingPowerOutput();
-        Plant plant = Plants.power(output, ScalarTarget.create(0.0));
+        Plant plant = Plants.fromOutputs()
+                .power(output)
+                .targetFromNewCommand(0.0)
+                .build();
         StarterIntakeMechanism intake =
                 new StarterIntakeMechanism(plant, 0.65, -0.45);
         ManualLoopClock time = new ManualLoopClock();
@@ -94,7 +97,10 @@ public final class StarterIntakeAndControlsTest {
         };
         RecordingPowerOutput output = new RecordingPowerOutput();
         StarterIntakeMechanism intake = new StarterIntakeMechanism(
-                Plants.power(output, failingTarget),
+                Plants.fromOutputs()
+                        .power(output)
+                        .targetFromResolver(PlantTargets.exact(failingTarget))
+                        .build(),
                 0.65,
                 -0.45);
 
@@ -119,9 +125,10 @@ public final class StarterIntakeAndControlsTest {
 
     @Test
     public void hardwareNeutralSeamRejectsPlantWithoutCommandTarget() {
-        Plant plant = Plants.power(
-                new RecordingPowerOutput(),
-                PlantTargets.exact(0.0));
+        Plant plant = Plants.fromOutputs()
+                .power(new RecordingPowerOutput())
+                .targetFromResolver(PlantTargets.exact(0.0))
+                .build();
 
         try {
             new StarterIntakeMechanism(
@@ -138,7 +145,10 @@ public final class StarterIntakeAndControlsTest {
     public void collectTasksAreFreshCompleteOnTimeAndCancelToZero() {
         RecordingPowerOutput output = new RecordingPowerOutput();
         StarterIntakeMechanism intake = new StarterIntakeMechanism(
-                Plants.power(output, ScalarTarget.create(0.0)),
+                Plants.fromOutputs()
+                        .power(output)
+                        .targetFromNewCommand(0.0)
+                        .build(),
                 0.70,
                 -0.50);
         ManualLoopClock time = new ManualLoopClock();
@@ -226,7 +236,10 @@ public final class StarterIntakeAndControlsTest {
     private static void assertInvalidActionPowers(double collectPower, double ejectPower) {
         try {
             new StarterIntakeMechanism(
-                    Plants.power(new RecordingPowerOutput(), ScalarTarget.create(0.0)),
+                    Plants.fromOutputs()
+                            .power(new RecordingPowerOutput())
+                            .targetFromNewCommand(0.0)
+                            .build(),
                     collectPower,
                     ejectPower);
             fail("Expected invalid action powers to fail");

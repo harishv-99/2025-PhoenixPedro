@@ -13,9 +13,8 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
 /**
  * Source-driven {@link PositionPlant} that maps caller-facing plant units to native hardware units.
  *
- * <p>Most robot code should create this through the guided {@code FtcActuators.plant(...)} builder.
- * This class is public so FTC and non-FTC boundary builders can share the same plant-domain mapping
- * implementation.</p>
+ * <p>This package-private runtime is shared by the public FTC and output-port construction
+ * gateways. Callers use the {@link Plants} grammar and depend on {@link PositionPlant}.</p>
  *
  * <h2>Coordinate model</h2>
  * <pre>
@@ -38,7 +37,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * {@code [-1.0, +1.0]}, and performs best-effort fail-stop cleanup before propagating a runtime
  * control/output failure.</p>
  */
-public final class MappedPositionPlant implements PositionPlant {
+final class MappedPositionPlant implements PositionPlant {
 
     /** Internal acquisition phase keeps reentrant callers from creating a second search owner. */
     private enum SearchState {
@@ -50,7 +49,7 @@ public final class MappedPositionPlant implements PositionPlant {
     /**
      * Reference initialization policy for the native/plant coordinate map.
      */
-    public enum ReferenceMode {
+    enum ReferenceMode {
         /**
          * The static {@code plantReference -> nativeReference} mapping is known at build time.
          */
@@ -74,7 +73,7 @@ public final class MappedPositionPlant implements PositionPlant {
     private final PlantTargetResolver targetResolver;
     private final ScalarTarget commandTarget;
     private final PlantTargetGuards targetGuards;
-    private final Topology topology;
+    private final Periodicity periodicity;
     private final double period;
     private final ScalarRange configuredRange;
     private final double nativePerPlantUnit;
@@ -105,7 +104,7 @@ public final class MappedPositionPlant implements PositionPlant {
                                 PowerOutput searchPowerOut,
                                 PlantTargetResolver targetResolver,
                                 PlantTargetGuards targetGuards,
-                                Topology topology,
+                                Periodicity periodicity,
                                 double period,
                                 ScalarRange configuredRange,
                                 double nativePerPlantUnit,
@@ -123,7 +122,7 @@ public final class MappedPositionPlant implements PositionPlant {
         this.targetResolver = Objects.requireNonNull(targetResolver, "targetResolver");
         this.commandTarget = PlantTargets.commandTargetOf(this.targetResolver);
         this.targetGuards = targetGuards == null ? PlantTargetGuards.none() : targetGuards;
-        this.topology = Objects.requireNonNull(topology, "topology");
+        this.periodicity = Objects.requireNonNull(periodicity, "periodicity");
         this.period = period;
         this.configuredRange = Objects.requireNonNull(configuredRange, "configuredRange");
         this.nativePerPlantUnit = nativePerPlantUnit;
@@ -140,14 +139,14 @@ public final class MappedPositionPlant implements PositionPlant {
         validate();
         this.regulatedPowerChannel = regulatedPowerOut == null
                 ? null
-                : new RegulatedPowerChannel(regulatedPowerOut, regulator, "MappedPositionPlant");
+                : new RegulatedPowerChannel(regulatedPowerOut, regulator, "PositionPlant");
     }
 
     /**
      * Starts configuring a commanded-position plant such as a standard servo.
      * Commanded plants have no feedback and therefore do not use a completion tolerance.
      */
-    public static CommandedConfigurationStep commanded(PositionOutput out) {
+    static CommandedConfigurationStep commanded(PositionOutput out) {
         return new Builder(Objects.requireNonNull(out, "out"), null, null, null);
     }
 
@@ -158,8 +157,8 @@ public final class MappedPositionPlant implements PositionPlant {
      * {@link FeedbackConfigurationStep#positionTolerance(double)} in public plant position units
      * before target selection exposes {@link MappedPlantBuildStep#build()}.</p>
      */
-    public static FeedbackConfigurationStep positionOutput(PositionOutput out,
-                                                           ScalarSource nativeMeasurement) {
+    static FeedbackConfigurationStep positionOutput(PositionOutput out,
+                                                    ScalarSource nativeMeasurement) {
         return new Builder(Objects.requireNonNull(out, "out"), null, null,
                 Objects.requireNonNull(nativeMeasurement, "nativeMeasurement"));
     }
@@ -171,9 +170,9 @@ public final class MappedPositionPlant implements PositionPlant {
      * {@link FeedbackConfigurationStep#positionTolerance(double)} in public plant position units
      * before target selection exposes {@link MappedPlantBuildStep#build()}.
      */
-    public static FeedbackConfigurationStep regulated(PowerOutput powerOut,
-                                                       ScalarSource nativeMeasurement,
-                                                       ScalarRegulator regulator) {
+    static FeedbackConfigurationStep regulated(PowerOutput powerOut,
+                                                ScalarSource nativeMeasurement,
+                                                ScalarRegulator regulator) {
         return new Builder(null,
                 Objects.requireNonNull(powerOut, "powerOut"),
                 Objects.requireNonNull(regulator, "regulator"),
@@ -184,9 +183,9 @@ public final class MappedPositionPlant implements PositionPlant {
      * Optional mapped-position configuration for a command-only output.
      * FTC robot code should normally use {@code FtcActuators}.
      */
-    public interface CommandedConfigurationStep extends MappedPlantTargetStep<MappedPositionPlant> {
-        /** Set linear or periodic position topology. */
-        CommandedConfigurationStep topology(Topology topology, double period);
+    interface CommandedConfigurationStep extends MappedPlantTargetStep<MappedPositionPlant> {
+        /** Set non-periodic or periodic position behavior. */
+        CommandedConfigurationStep periodicity(Periodicity periodicity, double period);
 
         /** Set the legal target range in plant position units. */
         CommandedConfigurationStep range(ScalarRange range);
@@ -210,9 +209,9 @@ public final class MappedPositionPlant implements PositionPlant {
      * Optional mapped-position configuration before the required plant-unit tolerance answer for
      * a feedback-capable output.
      */
-    public interface FeedbackConfigurationStep {
-        /** Set linear or periodic position topology. */
-        FeedbackConfigurationStep topology(Topology topology, double period);
+    interface FeedbackConfigurationStep {
+        /** Set non-periodic or periodic position behavior. */
+        FeedbackConfigurationStep periodicity(Periodicity periodicity, double period);
 
         /** Set the legal target range in plant position units. */
         FeedbackConfigurationStep range(ScalarRange range);
@@ -269,7 +268,7 @@ public final class MappedPositionPlant implements PositionPlant {
         private PowerOutput searchPowerOut;
         private PlantTargetResolver targetResolver;
         private PlantTargetGuards targetGuards = PlantTargetGuards.none();
-        private Topology topology = Topology.LINEAR;
+        private Periodicity periodicity = Periodicity.NON_PERIODIC;
         private double period = Double.NaN;
         private ScalarRange configuredRange = ScalarRange.unbounded();
         private double nativePerPlantUnit = 1.0;
@@ -292,11 +291,11 @@ public final class MappedPositionPlant implements PositionPlant {
         }
 
         /**
-         * Sets linear/periodic topology. Period must be finite and positive for periodic plants.
+         * Sets non-periodic/periodic behavior. Period must be finite and positive for periodic plants.
          */
-        public Builder topology(Topology topology, double period) {
-            this.topology = Objects.requireNonNull(topology, "topology");
-            this.period = topology == Topology.PERIODIC ? period : Double.NaN;
+        public Builder periodicity(Periodicity periodicity, double period) {
+            this.periodicity = Objects.requireNonNull(periodicity, "periodicity");
+            this.period = periodicity == Periodicity.PERIODIC ? period : Double.NaN;
             return this;
         }
 
@@ -328,11 +327,11 @@ public final class MappedPositionPlant implements PositionPlant {
          */
         public Builder positionTolerance(double tolerance) {
             if (nativeMeasurement == null)
-                throw new IllegalStateException("MappedPositionPlant.commanded(...) has no feedback "
+                throw new IllegalStateException("Commanded PositionPlant has no feedback "
                         + "and does not use positionTolerance(...)");
             if (toleranceConfigured)
                 throw new IllegalStateException("positionTolerance(...) has already been answered "
-                        + "for this MappedPositionPlant");
+                        + "for this PositionPlant recipe");
             if (tolerance < 0.0 || !Double.isFinite(tolerance))
                 throw new IllegalArgumentException("positionTolerance must be finite and >= 0");
             this.tolerance = tolerance;
@@ -356,12 +355,12 @@ public final class MappedPositionPlant implements PositionPlant {
             double validatedPlantPosition =
                     PositionCalibrationValueValidation.requireFinitePlantValue(
                             plantPosition,
-                            "MappedPositionPlant.plantPositionMapsToNative(...)",
+                            "PositionPlant.plantPositionMapsToNative(...)",
                             "plantPosition");
             double validatedNativePosition =
                     PositionCalibrationValueValidation.requireFiniteNativeValue(
                             nativePosition,
-                            "MappedPositionPlant.plantPositionMapsToNative(...)",
+                            "PositionPlant.plantPositionMapsToNative(...)",
                             "nativePosition");
             this.referenceMode = ReferenceMode.STATIC;
             this.plantReference = validatedPlantPosition;
@@ -376,7 +375,7 @@ public final class MappedPositionPlant implements PositionPlant {
             double validatedPlantPosition =
                     PositionCalibrationValueValidation.requireFinitePlantValue(
                             plantPosition,
-                            "MappedPositionPlant.assumeCurrentPositionIs(...)",
+                            "PositionPlant.assumeCurrentPositionIs(...)",
                             "plantPosition");
             this.referenceMode = ReferenceMode.ASSUME_CURRENT;
             this.assumedPlantPosition = validatedPlantPosition;
@@ -401,24 +400,12 @@ public final class MappedPositionPlant implements PositionPlant {
         }
 
         /**
-         * Uses a command target as the exact final resolver.
-         *
-         * <p>The target graph designates this target as the command target used by robot policy
-         * and {@link ScalarTasks}.</p>
-         */
-        public Builder targetedBy(ScalarTarget target) {
-            requireTargetUnanswered();
-            this.targetResolver = PlantTargets.exact(Objects.requireNonNull(target, "target"));
-            return this;
-        }
-
-        /**
          * Uses a plant-aware final target resolver.
          *
          * <p>If the resolver graph designates a command target, such as the base of a command-backed
          * overlay, this Plant exposes that same target to robot policy and {@link ScalarTasks}.</p>
          */
-        public Builder targetedBy(PlantTargetResolver targetResolver) {
+        public Builder targetFromResolver(PlantTargetResolver targetResolver) {
             requireTargetUnanswered();
             this.targetResolver = Objects.requireNonNull(targetResolver, "targetResolver");
             return this;
@@ -426,8 +413,8 @@ public final class MappedPositionPlant implements PositionPlant {
 
         private void requireTargetUnanswered() {
             if (targetResolver != null) {
-                throw new IllegalStateException("targetedBy(...) has already been answered for "
-                        + "this MappedPositionPlant; create a new builder to choose a different target");
+                throw new IllegalStateException("targetFromResolver(...) has already been answered for "
+                        + "this PositionPlant recipe; create a new recipe to choose a different target");
             }
         }
 
@@ -441,13 +428,13 @@ public final class MappedPositionPlant implements PositionPlant {
          */
         public MappedPositionPlant build() {
             if (targetResolver == null)
-                throw new IllegalStateException("MappedPositionPlant requires targetedBy(...)");
+                throw new IllegalStateException("PositionPlant requires targetFromResolver(...)");
             if (nativeMeasurement != null && !toleranceConfigured)
-                throw new IllegalStateException("MappedPositionPlant feedback requires "
+                throw new IllegalStateException("PositionPlant feedback requires "
                         + "positionTolerance(...) in plant position units before build()");
             double builtTolerance = nativeMeasurement == null ? 0.0 : tolerance;
             return new MappedPositionPlant(positionOut, regulatedPowerOut, regulator, nativeMeasurement,
-                    searchPowerOut, targetResolver, targetGuards, topology, period,
+                    searchPowerOut, targetResolver, targetGuards, periodicity, period,
                     configuredRange, nativePerPlantUnit, builtTolerance, referenceMode, plantReference,
                     nativeReference, assumedPlantPosition, unreferencedReason);
         }
@@ -455,19 +442,19 @@ public final class MappedPositionPlant implements PositionPlant {
 
     private void validate() {
         if (positionOut == null && regulatedPowerOut == null)
-            throw new IllegalStateException("MappedPositionPlant requires either a position output or regulated power output");
+            throw new IllegalStateException("PositionPlant requires either a position output or regulated power output");
         if (positionOut != null && regulatedPowerOut != null)
-            throw new IllegalStateException("MappedPositionPlant cannot use both a position output and regulated power output");
+            throw new IllegalStateException("PositionPlant cannot use both a position output and regulated power output");
         if (regulatedPowerOut != null && regulator == null)
             throw new IllegalStateException("Regulated position plants require a regulator");
-        if (topology == Topology.PERIODIC && (!(period > 0.0) || !Double.isFinite(period)))
+        if (periodicity == Periodicity.PERIODIC && (!(period > 0.0) || !Double.isFinite(period)))
             throw new IllegalArgumentException("Periodic position plants require finite period > 0");
         if (!Double.isFinite(nativePerPlantUnit) || Math.abs(nativePerPlantUnit) < 1.0e-12)
             throw new IllegalArgumentException("nativePerPlantUnit must be finite and non-zero");
         if (tolerance < 0.0 || !Double.isFinite(tolerance))
             throw new IllegalArgumentException("positionTolerance must be finite and >= 0");
-        PlantTargetSafety.requireUsableConfiguredRange(configuredRange, "MappedPositionPlant");
-        targetGuards.validateFallbackTargets(configuredRange, "MappedPositionPlant");
+        PlantTargetSafety.requireUsableConfiguredRange(configuredRange, "PositionPlant");
+        targetGuards.validateFallbackTargets(configuredRange, "PositionPlant");
         if ((referenceMode == ReferenceMode.ASSUME_CURRENT || referenceMode == ReferenceMode.NEEDS_REFERENCE) && nativeMeasurement == null) {
             throw new IllegalStateException(referenceMode + " requires native feedback so a reference can be established");
         }
@@ -506,7 +493,7 @@ public final class MappedPositionPlant implements PositionPlant {
         samplePlantMeasurement(clock);
         ScalarRange range = targetRange();
         PlantTargetContext context = PlantTargetContext.position(hasFeedback(), lastMeasurement,
-                range, topology, period(), requestedTarget, appliedTarget);
+                range, periodicity, period(), requestedTarget, appliedTarget);
         targetResolution = targetResolver.resolve(context, clock);
         if (targetResolution != null && targetResolution.hasTarget()) {
             requestedTarget = targetResolution.target();
@@ -684,13 +671,13 @@ public final class MappedPositionPlant implements PositionPlant {
     }
 
     @Override
-    public Topology topology() {
-        return topology;
+    public Periodicity periodicity() {
+        return periodicity;
     }
 
     @Override
     public double period() {
-        return topology == Topology.PERIODIC ? period : Double.NaN;
+        return periodicity == Periodicity.PERIODIC ? period : Double.NaN;
     }
 
     @Override
@@ -726,7 +713,7 @@ public final class MappedPositionPlant implements PositionPlant {
         double validatedPlantPosition =
                 PositionCalibrationValueValidation.requireFinitePlantValue(
                         plantPosition,
-                        "MappedPositionPlant.establishReferenceAt(...)",
+                        "PositionPlant.establishReferenceAt(...)",
                         "plantPosition");
         if (!Double.isFinite(lastNativeMeasurement))
             throw new IllegalStateException("Cannot establish position reference before a finite native measurement has been sampled");
@@ -748,7 +735,7 @@ public final class MappedPositionPlant implements PositionPlant {
         double validatedPlantPosition =
                 PositionCalibrationValueValidation.requireFinitePlantValue(
                         plantPosition,
-                        "MappedPositionPlant.establishReferenceAt(...)",
+                        "PositionPlant.establishReferenceAt(...)",
                         "plantPosition");
         double nativeNow = sampleNative(clock);
         if (!Double.isFinite(nativeNow))
@@ -776,7 +763,7 @@ public final class MappedPositionPlant implements PositionPlant {
             throw new IllegalStateException("This PositionPlant already has an active calibration "
                     + "search; cancel or finish that search before starting another one");
         CalibrationSearchPowerValidation.requireValid(
-                power, "MappedPositionPlant.beginCalibrationSearch(...)");
+                power, "PositionPlant.beginCalibrationSearch(...)");
 
         // Reserve before calling an external output so a reentrant or overlapping begin fails
         // before it can stop or replace this search. A throwing begin releases this reservation.
@@ -828,7 +815,7 @@ public final class MappedPositionPlant implements PositionPlant {
 
     private void establishReferenceFromNative(double requestedPlantReference, double nativeAtReference) {
         double resolvedPlantReference = requestedPlantReference;
-        if (topology == Topology.PERIODIC && referenced) {
+        if (periodicity == Periodicity.PERIODIC && referenced) {
             // Resolve from the native sample supplied for this reference operation, not a cached
             // Plant measurement from an earlier owner update.
             double plantAtReference = toPlant(nativeAtReference);
@@ -836,7 +823,7 @@ public final class MappedPositionPlant implements PositionPlant {
                 double k = Math.rint((plantAtReference - requestedPlantReference) / period);
                 resolvedPlantReference = requestedPlantReference + k * period;
                 if (!Double.isFinite(resolvedPlantReference)) {
-                    throw new IllegalStateException("MappedPositionPlant.establishReferenceAt(...) "
+                    throw new IllegalStateException("PositionPlant.establishReferenceAt(...) "
                             + "could not resolve a finite periodic reference from requested plant "
                             + "position " + requestedPlantReference + ", current plant position "
                             + plantAtReference + ", and period " + period
@@ -902,7 +889,7 @@ public final class MappedPositionPlant implements PositionPlant {
         if (dbg == null) return;
         PositionPlant.super.debugDump(dbg, prefix);
         String p = (prefix == null || prefix.isEmpty()) ? "positionPlant" : prefix;
-        dbg.addData(p + ".topology", topology)
+        dbg.addData(p + ".periodicity", periodicity)
                 .addData(p + ".period", period())
                 .addData(p + ".range", targetRange())
                 .addData(p + ".referenced", referenced)

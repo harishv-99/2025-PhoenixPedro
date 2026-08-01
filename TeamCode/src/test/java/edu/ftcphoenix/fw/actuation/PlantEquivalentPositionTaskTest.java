@@ -2,6 +2,8 @@ package edu.ftcphoenix.fw.actuation;
 
 import org.junit.Test;
 
+import java.util.function.UnaryOperator;
+
 import edu.ftcphoenix.fw.core.hal.PositionOutput;
 import edu.ftcphoenix.fw.core.source.ScalarTarget;
 import edu.ftcphoenix.fw.task.Task;
@@ -15,13 +17,15 @@ import static org.junit.Assert.assertTrue;
 /** Verifies ScalarTasks feedback completion against physically selected equivalent positions. */
 public final class PlantEquivalentPositionTaskTest {
 
+    private static final UnaryOperator<Plants.TargetStep<PositionPlant>> NO_GUARDS = step -> step;
+
     private static final double EPSILON = 1e-9;
 
     @Test
     public void logicalMoveCompletesAtTheSelectedPhysicalEquivalent() {
         ScalarTarget command = ScalarTarget.create(0.0);
         final double[] measurement = {350.0};
-        MappedPositionPlant plant = periodicPlant(command, measurement, PlantTargetGuards.none());
+        PositionPlant plant = periodicPlant(command, measurement, NO_GUARDS);
         ManualLoopClock time = new ManualLoopClock();
         Task move = moveTo20(plant);
 
@@ -52,9 +56,9 @@ public final class PlantEquivalentPositionTaskTest {
         PlantTargetResolver target = PlantTargets.equivalentPositionsOf(logical)
                 .nearestToMeasurement()
                 .whenUnavailable().reportUnavailable();
-        MappedPositionPlant plant = feedbackPlant(target, measurement,
-                PositionPlant.Topology.PERIODIC, 360.0,
-                ScalarRange.bounded(0.0, 720.0), PlantTargetGuards.none());
+        PositionPlant plant = feedbackPlant(target, measurement,
+                PositionPlant.Periodicity.PERIODIC, 360.0,
+                ScalarRange.bounded(0.0, 720.0), NO_GUARDS);
         ManualLoopClock time = new ManualLoopClock();
         Task move = moveTo20(plant);
 
@@ -78,9 +82,9 @@ public final class PlantEquivalentPositionTaskTest {
         PlantTargetResolver target = PlantTargets.equivalentPositionsOf(command)
                 .nearestToMeasurement()
                 .whenUnavailable().fallbackTo(20.0);
-        MappedPositionPlant plant = feedbackPlant(target, measurement,
-                PositionPlant.Topology.LINEAR, Double.NaN,
-                ScalarRange.bounded(0.0, 100.0), PlantTargetGuards.none());
+        PositionPlant plant = feedbackPlant(target, measurement,
+                PositionPlant.Periodicity.NON_PERIODIC, Double.NaN,
+                ScalarRange.bounded(0.0, 100.0), NO_GUARDS);
         ManualLoopClock time = new ManualLoopClock();
         Task move = moveTo20(plant);
 
@@ -98,10 +102,10 @@ public final class PlantEquivalentPositionTaskTest {
         ScalarTarget command = ScalarTarget.create(0.0);
         final boolean[] clear = {false};
         final double[] measurement = {300.0};
-        PlantTargetGuards guards = PlantTargetGuards.builder()
-                .fallbackTargetUnless("turretClear", clock -> clear[0], 300.0)
-                .build();
-        MappedPositionPlant plant = periodicPlant(command, measurement, guards);
+        PositionPlant plant = periodicPlant(command, measurement,
+                step -> step.targetGuards()
+                        .fallbackTargetUnless("turretClear", clock -> clear[0], 300.0)
+                        .doneTargetGuards());
         ManualLoopClock time = new ManualLoopClock();
         Task move = moveTo20(plant);
 
@@ -134,9 +138,9 @@ public final class PlantEquivalentPositionTaskTest {
         PlantTargetResolver target = PlantTargets.overlay(command)
                 .add("planner", clock -> plannerActive[0], clampedPlan)
                 .build();
-        MappedPositionPlant plant = feedbackPlant(target, measurement,
-                PositionPlant.Topology.LINEAR, Double.NaN,
-                ScalarRange.bounded(0.0, 100.0), PlantTargetGuards.none());
+        PositionPlant plant = feedbackPlant(target, measurement,
+                PositionPlant.Periodicity.NON_PERIODIC, Double.NaN,
+                ScalarRange.bounded(0.0, 100.0), NO_GUARDS);
         ManualLoopClock time = new ManualLoopClock();
         Task move = ScalarTasks.set(command, 100.0)
                 .untilReachedBy(plant)
@@ -165,12 +169,12 @@ public final class PlantEquivalentPositionTaskTest {
     public void rateLimitedAppliedTargetBlocksCompletionUntilTheCommandIsPhysicallyAccepted() {
         ScalarTarget command = ScalarTarget.create(0.0);
         final double[] measurement = {0.0};
-        PlantTargetGuards guards = PlantTargetGuards.builder()
-                .maxTargetRate(10.0)
-                .build();
-        MappedPositionPlant plant = feedbackPlant(PlantTargets.exact(command), measurement,
-                PositionPlant.Topology.LINEAR, Double.NaN,
-                ScalarRange.bounded(0.0, 100.0), guards);
+        PositionPlant plant = feedbackPlant(PlantTargets.exact(command), measurement,
+                PositionPlant.Periodicity.NON_PERIODIC, Double.NaN,
+                ScalarRange.bounded(0.0, 100.0),
+                step -> step.targetGuards()
+                        .maxTargetRate(10.0)
+                        .doneTargetGuards());
         ManualLoopClock time = new ManualLoopClock();
         Task move = ScalarTasks.set(command, 20.0)
                 .untilReachedBy(plant)
@@ -202,7 +206,7 @@ public final class PlantEquivalentPositionTaskTest {
     public void changingTheLiveCommandInvalidatesAPreviouslyResolvedPlan() {
         ScalarTarget command = ScalarTarget.create(0.0);
         final double[] measurement = {380.0};
-        MappedPositionPlant plant = periodicPlant(command, measurement, PlantTargetGuards.none());
+        PositionPlant plant = periodicPlant(command, measurement, NO_GUARDS);
         ManualLoopClock time = new ManualLoopClock();
         Task move = moveTo20(plant);
 
@@ -227,9 +231,9 @@ public final class PlantEquivalentPositionTaskTest {
         PlantTargetResolver target = PlantTargets.equivalentPositionsOf(logical)
                 .nearestToMeasurement()
                 .whenUnavailable().reportUnavailable();
-        MappedPositionPlant plant = feedbackPlant(target, measurement,
-                PositionPlant.Topology.PERIODIC, 360.0,
-                ScalarRange.bounded(0.0, 720.0), PlantTargetGuards.none());
+        PositionPlant plant = feedbackPlant(target, measurement,
+                PositionPlant.Periodicity.PERIODIC, 360.0,
+                ScalarRange.bounded(0.0, 720.0), NO_GUARDS);
         ManualLoopClock time = new ManualLoopClock();
         Task move = ScalarTasks.set(command, 20.0)
                 .untilReachedBy(plant)
@@ -267,9 +271,9 @@ public final class PlantEquivalentPositionTaskTest {
                 .add("requiredUnavailable", clock -> unavailable[0],
                         PlantTargets.exact(clock -> Double.NaN))
                 .build();
-        MappedPositionPlant plant = feedbackPlant(target, measurement,
-                PositionPlant.Topology.LINEAR, Double.NaN,
-                ScalarRange.bounded(0.0, 100.0), PlantTargetGuards.none());
+        PositionPlant plant = feedbackPlant(target, measurement,
+                PositionPlant.Periodicity.NON_PERIODIC, Double.NaN,
+                ScalarRange.bounded(0.0, 100.0), NO_GUARDS);
         ManualLoopClock time = new ManualLoopClock();
         Task move = ScalarTasks.set(command, 20.0)
                 .untilReachedBy(plant)
@@ -304,12 +308,12 @@ public final class PlantEquivalentPositionTaskTest {
     }
 
     @Test
-    public void periodicTopologyDoesNotAutomaticallyWrapAnExactCommand() {
+    public void periodicityDoesNotAutomaticallyWrapAnExactCommand() {
         ScalarTarget command = ScalarTarget.create(0.0);
         final double[] measurement = {380.0};
-        MappedPositionPlant plant = feedbackPlant(PlantTargets.exact(command), measurement,
-                PositionPlant.Topology.PERIODIC, 360.0,
-                ScalarRange.bounded(0.0, 720.0), PlantTargetGuards.none());
+        PositionPlant plant = feedbackPlant(PlantTargets.exact(command), measurement,
+                PositionPlant.Periodicity.PERIODIC, 360.0,
+                ScalarRange.bounded(0.0, 720.0), NO_GUARDS);
         ManualLoopClock time = new ManualLoopClock();
         Task move = moveTo20(plant);
 
@@ -326,29 +330,44 @@ public final class PlantEquivalentPositionTaskTest {
         assertTrue(move.isComplete());
     }
 
-    private static MappedPositionPlant periodicPlant(ScalarTarget command,
-                                                     double[] measurement,
-                                                     PlantTargetGuards guards) {
+    private static PositionPlant periodicPlant(
+            ScalarTarget command,
+            double[] measurement,
+            UnaryOperator<Plants.TargetStep<PositionPlant>> guardConfiguration) {
         PlantTargetResolver target = PlantTargets.equivalentPositionsOf(command)
                 .nearestToMeasurement()
                 .whenUnavailable().reportUnavailable();
-        return feedbackPlant(target, measurement, PositionPlant.Topology.PERIODIC, 360.0,
-                ScalarRange.bounded(0.0, 720.0), guards);
+        return feedbackPlant(target, measurement, PositionPlant.Periodicity.PERIODIC, 360.0,
+                ScalarRange.bounded(0.0, 720.0), guardConfiguration);
     }
 
-    private static MappedPositionPlant feedbackPlant(PlantTargetResolver target,
-                                                     double[] measurement,
-                                                     PositionPlant.Topology topology,
-                                                     double period,
-                                                     ScalarRange range,
-                                                     PlantTargetGuards guards) {
-        return MappedPositionPlant.positionOutput(
-                        new RecordingPositionOutput(), clock -> measurement[0])
-                .topology(topology, period)
-                .range(range)
-                .positionTolerance(0.5)
-                .targetGuards(guards)
-                .targetedBy(target)
+    private static PositionPlant feedbackPlant(
+            PlantTargetResolver target,
+            double[] measurement,
+            PositionPlant.Periodicity periodicity,
+            double period,
+            ScalarRange range,
+            UnaryOperator<Plants.TargetStep<PositionPlant>> guardConfiguration) {
+        Plants.TargetStep<PositionPlant> targetStep;
+        if (periodicity == PositionPlant.Periodicity.PERIODIC) {
+            targetStep = Plants.fromOutputs()
+                    .deviceManagedPosition(new RecordingPositionOutput(), clock -> measurement[0])
+                    .periodic(period)
+                    .bounded(range.minValue, range.maxValue)
+                    .nativeUnits()
+                    .alreadyReferenced()
+                    .positionTolerance(0.5);
+        } else {
+            targetStep = Plants.fromOutputs()
+                    .deviceManagedPosition(new RecordingPositionOutput(), clock -> measurement[0])
+                    .nonPeriodic()
+                    .bounded(range.minValue, range.maxValue)
+                    .nativeUnits()
+                    .alreadyReferenced()
+                    .positionTolerance(0.5);
+        }
+        return guardConfiguration.apply(targetStep)
+                .targetFromResolver(target)
                 .build();
     }
 

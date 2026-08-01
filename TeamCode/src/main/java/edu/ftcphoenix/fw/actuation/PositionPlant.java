@@ -15,7 +15,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *
  * <ul>
  *   <li>the legal target range in <b>plant units</b>,</li>
- *   <li>whether the coordinate is linear or periodic,</li>
+ *   <li>whether the coordinate is non-periodic or periodic,</li>
  *   <li>whether a physical reference has been established, and</li>
  *   <li>how a homing/indexing task can establish that reference.</li>
  * </ul>
@@ -37,17 +37,18 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
 public interface PositionPlant extends Plant {
 
     /**
-     * Shape of the caller-facing position coordinate.
+     * Periodicity of the caller-facing position coordinate.
      */
-    enum Topology {
+    enum Periodicity {
         /**
-         * A non-wrapping position coordinate such as lift height, slide extension, or arm angle.
+         * A position coordinate with no declared fixed equivalence period, such as a limited-travel
+         * lift, slide, or arm.
          */
-        LINEAR,
+        NON_PERIODIC,
         /**
          * A coordinate where positions separated by one period can be treated as equivalent.
          *
-         * <p>Topology does not wrap targets automatically. Use
+         * <p>Periodicity does not wrap targets automatically. Use
          * {@link PlantTargets#equivalentPositionsOf(edu.ftcphoenix.fw.core.source.ScalarTarget)}
          * when a logical command may choose any legal representative; an exact source still means
          * one literal unwrapped position.</p>
@@ -56,21 +57,14 @@ public interface PositionPlant extends Plant {
     }
 
     /**
-     * Returns the coordinate topology for this position plant.
+     * Returns the periodicity for this position plant.
      */
-    Topology topology();
-
-    /**
-     * Returns {@code true} when {@link #topology()} is {@link Topology#PERIODIC}.
-     */
-    default boolean isPeriodic() {
-        return topology() == Topology.PERIODIC;
-    }
+    Periodicity periodicity();
 
     /**
      * Returns the period in plant units for periodic position plants.
      *
-     * <p>Linear plants return {@link Double#NaN}. For a tray expressed in degrees, this might be
+     * <p>Non-periodic plants return {@link Double#NaN}. For a tray expressed in degrees, this might be
      * {@code 360.0}. For a tray expressed in encoder ticks, this might be ticks per revolution.</p>
      */
     double period();
@@ -114,7 +108,7 @@ public interface PositionPlant extends Plant {
     /**
      * Establish a reference using the latest sampled native position.
      *
-     * <p>The supplied value is in plant units. For a linear lift, {@code establishReferenceAt(0.0)}
+     * <p>The supplied value is in plant units. For a non-periodic lift, {@code establishReferenceAt(0.0)}
      * means "the current hardware reading is the lift's zero point." For a periodic tray, it means
      * "the current hardware reading is equivalent to reference {@code 0.0} modulo the plant's
      * period." If a periodic plant is already referenced, implementations should preserve the

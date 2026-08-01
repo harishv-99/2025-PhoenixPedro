@@ -25,17 +25,17 @@ public final class MappedVelocityPlantSafetyTest {
     private static final double EPSILON = 1e-12;
 
     @Test
-    public void buildRejectsFallbackOutsideDeclaredRange() {
-        PlantTargetGuards guards = PlantTargetGuards.builder()
-                .fallbackTargetUnless("mechanismClear", clock -> false, 5.0)
-                .build();
-
+    public void targetGuardRejectsFallbackOutsideDeclaredRange() {
         try {
-            MappedVelocityPlant.velocityOutput(new RecordingVelocityOutput(), clock -> 0.0)
-                    .range(ScalarRange.bounded(10.0, 20.0))
+            Plants.fromOutputs()
+                    .deviceManagedVelocity(new RecordingVelocityOutput(), clock -> 0.0)
+                    .bounded(10.0, 20.0)
+                    .nativeUnits()
                     .velocityTolerance(0.0)
-                    .targetGuards(guards)
-                    .targetedBy(ScalarTarget.create(15.0))
+                    .targetGuards()
+                    .fallbackTargetUnless("mechanismClear", clock -> false, 5.0)
+                    .doneTargetGuards()
+                    .targetFromNewCommand(15.0)
                     .build();
             fail("Expected an out-of-range fallback to be rejected");
         } catch (IllegalArgumentException expected) {
@@ -43,37 +43,32 @@ public final class MappedVelocityPlantSafetyTest {
             assertTrue(expected.getMessage().contains("5.0"));
             assertTrue(expected.getMessage().contains("10.0"));
             assertTrue(expected.getMessage().contains("20.0"));
-            assertTrue(expected.getMessage().contains("Choose a fallback inside"));
+            assertTrue(expected.getMessage().contains("declared Plant range"));
         }
     }
 
     @Test
-    public void buildRejectsRangeWithoutFiniteCommand() {
+    public void boundedRejectsNonFiniteEndpoints() {
         try {
-            MappedVelocityPlant.velocityOutput(new RecordingVelocityOutput(), clock -> 0.0)
-                    .range(ScalarRange.minOnly(Double.POSITIVE_INFINITY))
-                    .velocityTolerance(0.0)
-                    .targetedBy(ScalarTarget.create(15.0))
-                    .build();
-            fail("Expected a range with no finite command to be rejected");
+            Plants.fromOutputs()
+                    .deviceManagedVelocity(new RecordingVelocityOutput(), clock -> 0.0)
+                    .bounded(Double.POSITIVE_INFINITY, 20.0);
+            fail("Expected non-finite velocity bounds to be rejected");
         } catch (IllegalArgumentException expected) {
-            assertTrue(expected.getMessage().contains("finite plant-unit command"));
+            assertTrue(expected.getMessage().contains("finite"));
         }
     }
 
     @Test
-    public void invalidVelocityRangeHasApplicableBuildGuidance() {
+    public void boundedRejectsInvertedRange() {
         try {
-            MappedVelocityPlant.velocityOutput(new RecordingVelocityOutput(), clock -> 0.0)
-                    .range(ScalarRange.invalid("velocity range not configured"))
-                    .velocityTolerance(0.0)
-                    .targetedBy(ScalarTarget.create(15.0))
-                    .build();
-            fail("Expected an invalid configured range to be rejected");
+            Plants.fromOutputs()
+                    .deviceManagedVelocity(new RecordingVelocityOutput(), clock -> 0.0)
+                    .bounded(20.0, 10.0);
+            fail("Expected inverted velocity bounds to be rejected");
         } catch (IllegalArgumentException expected) {
-            assertTrue(expected.getMessage().contains("valid configured target range"));
-            assertTrue(expected.getMessage().contains("velocity range not configured"));
-            assertFalse(expected.getMessage().contains("needsReference"));
+            assertTrue(expected.getMessage().contains("min"));
+            assertTrue(expected.getMessage().contains("max"));
         }
     }
 
@@ -81,14 +76,15 @@ public final class MappedVelocityPlantSafetyTest {
     public void inRangeFallbackRetainsFallbackStatus() {
         RecordingVelocityOutput output = new RecordingVelocityOutput();
         ScalarTarget target = ScalarTarget.create(18.0);
-        PlantTargetGuards guards = PlantTargetGuards.builder()
-                .fallbackTargetUnless("mechanismClear", clock -> false, 12.0)
-                .build();
-        MappedVelocityPlant plant = MappedVelocityPlant.velocityOutput(output, clock -> 0.0)
-                .range(ScalarRange.bounded(10.0, 20.0))
+        Plant plant = Plants.fromOutputs()
+                .deviceManagedVelocity(output, clock -> 0.0)
+                .bounded(10.0, 20.0)
+                .nativeUnits()
                 .velocityTolerance(0.0)
-                .targetGuards(guards)
-                .targetedBy(target)
+                .targetGuards()
+                .fallbackTargetUnless("mechanismClear", clock -> false, 12.0)
+                .doneTargetGuards()
+                .targetFromResolver(PlantTargets.exact(target))
                 .build();
 
         plant.update(new ManualLoopClock().clock());
@@ -104,10 +100,12 @@ public final class MappedVelocityPlantSafetyTest {
     public void tinyBoundaryClampIsNeverReportedAccepted() {
         RecordingVelocityOutput output = new RecordingVelocityOutput();
         double request = 20.0 + 1.0e-10;
-        MappedVelocityPlant plant = MappedVelocityPlant.velocityOutput(output, clock -> 0.0)
-                .range(ScalarRange.bounded(10.0, 20.0))
+        Plant plant = Plants.fromOutputs()
+                .deviceManagedVelocity(output, clock -> 0.0)
+                .bounded(10.0, 20.0)
+                .nativeUnits()
                 .velocityTolerance(0.0)
-                .targetedBy(ScalarTarget.create(request))
+                .targetFromResolver(PlantTargets.exact(request))
                 .build();
 
         plant.update(new ManualLoopClock().clock());
@@ -120,11 +118,12 @@ public final class MappedVelocityPlantSafetyTest {
 
     @Test
     public void signedZeroInsideRangeRemainsAccepted() {
-        MappedVelocityPlant plant = MappedVelocityPlant.velocityOutput(
-                new RecordingVelocityOutput(), clock -> 0.0)
-                .range(ScalarRange.bounded(0.0, 20.0))
+        Plant plant = Plants.fromOutputs()
+                .deviceManagedVelocity(new RecordingVelocityOutput(), clock -> 0.0)
+                .bounded(0.0, 20.0)
+                .nativeUnits()
                 .velocityTolerance(0.0)
-                .targetedBy(ScalarTarget.create(-0.0))
+                .targetFromNewCommand(-0.0)
                 .build();
 
         plant.update(new ManualLoopClock().clock());
@@ -137,15 +136,16 @@ public final class MappedVelocityPlantSafetyTest {
         RecordingVelocityOutput output = new RecordingVelocityOutput();
         ScalarTarget target = ScalarTarget.create(20.0);
         final boolean[] mechanismClear = {false};
-        PlantTargetGuards guards = PlantTargetGuards.builder()
+        Plant plant = Plants.fromOutputs()
+                .deviceManagedVelocity(output, clock -> 0.0)
+                .bounded(10.0, 20.0)
+                .nativeUnits()
+                .velocityTolerance(0.0)
+                .targetGuards()
                 .maxTargetRate(1.0)
                 .holdLastTargetUnless("mechanismClear", clock -> mechanismClear[0])
-                .build();
-        MappedVelocityPlant plant = MappedVelocityPlant.velocityOutput(output, clock -> 0.0)
-                .range(ScalarRange.bounded(10.0, 20.0))
-                .velocityTolerance(0.0)
-                .targetGuards(guards)
-                .targetedBy(target)
+                .doneTargetGuards()
+                .targetFromResolver(PlantTargets.exact(target))
                 .build();
         ManualLoopClock clock = new ManualLoopClock();
 
@@ -168,13 +168,15 @@ public final class MappedVelocityPlantSafetyTest {
     public void nonFiniteLimiterResultRetainsPriorCommandAndRecovers() {
         RecordingVelocityOutput output = new RecordingVelocityOutput();
         ScalarTarget target = ScalarTarget.create(Double.MAX_VALUE);
-        PlantTargetGuards guards = PlantTargetGuards.builder()
-                .maxTargetRate(Double.MAX_VALUE)
-                .build();
-        MappedVelocityPlant plant = MappedVelocityPlant.velocityOutput(output, clock -> 0.0)
+        Plant plant = Plants.fromOutputs()
+                .deviceManagedVelocity(output, clock -> 0.0)
+                .unbounded()
+                .nativeUnits()
                 .velocityTolerance(0.0)
-                .targetGuards(guards)
-                .targetedBy(target)
+                .targetGuards()
+                .maxTargetRate(Double.MAX_VALUE)
+                .doneTargetGuards()
+                .targetFromResolver(PlantTargets.exact(target))
                 .build();
         ManualLoopClock clock = new ManualLoopClock();
         plant.update(clock.clock());
@@ -201,13 +203,15 @@ public final class MappedVelocityPlantSafetyTest {
     public void nonFiniteClockCannotBypassRateLimitDuringRecovery() {
         RecordingVelocityOutput output = new RecordingVelocityOutput();
         ScalarTarget target = ScalarTarget.create(10.0);
-        PlantTargetGuards guards = PlantTargetGuards.builder()
-                .maxTargetRate(1.0)
-                .build();
-        MappedVelocityPlant plant = MappedVelocityPlant.velocityOutput(output, clock -> 0.0)
+        Plant plant = Plants.fromOutputs()
+                .deviceManagedVelocity(output, clock -> 0.0)
+                .unbounded()
+                .nativeUnits()
                 .velocityTolerance(0.0)
-                .targetGuards(guards)
-                .targetedBy(target)
+                .targetGuards()
+                .maxTargetRate(1.0)
+                .doneTargetGuards()
+                .targetFromResolver(PlantTargets.exact(target))
                 .build();
         LoopClock clock = new LoopClock();
         clock.reset(0.0);
@@ -241,14 +245,12 @@ public final class MappedVelocityPlantSafetyTest {
                 (setpoint, measurement, clock) -> 0.85,
                 0.0,
                 0.65);
-        MappedVelocityPlant plant = MappedVelocityPlant.regulated(
-                output,
-                clock -> 2000.0,
-                constrained)
-                .range(ScalarRange.bounded(0.0, 6000.0))
-                .nativePerPlantUnit(2.0)
+        Plant plant = Plants.fromOutputs()
+                .regulatedVelocity(output, clock -> 2000.0, constrained)
+                .bounded(0.0, 6000.0)
+                .scaleToNative(2.0)
                 .velocityTolerance(0.0)
-                .targetedBy(targetRpm)
+                .targetFromResolver(PlantTargets.exact(targetRpm))
                 .build();
 
         plant.update(new ManualLoopClock().clock());

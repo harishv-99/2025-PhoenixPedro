@@ -516,10 +516,10 @@ public final class Wrist {
         plant = FtcActuators.plant(Objects.requireNonNull(hardwareMap, "hardwareMap"))
                 .servo(snapshot.servoName, snapshot.direction)
                 .position()
-                .linear()
+                .nonPeriodic()
                     .bounded(0.0, 1.0)
                     .nativeUnits()
-                .targetedBy(ScalarTarget.create(stowTarget))
+                .targetFromNewCommand(stowTarget)
                 .build();
     }
 
@@ -657,12 +657,12 @@ public final class Lift {
                                     .setOutputLimits(
                                             -snapshot.maximumPower,
                                             snapshot.maximumPower)))
-                .linear()
+                .nonPeriodic()
                     .bounded(minimumHeightIn, maximumHeightIn)
                     .nativeUnits()
                     .alreadyReferenced()
                 .positionTolerance(snapshot.positionToleranceIn)
-                .targetedBy(ScalarTarget.create(targetHeightIn))
+                .targetFromNewCommand(targetHeightIn)
                 .build();
     }
 
@@ -812,7 +812,7 @@ public final class Intake {
         intakePlant = FtcActuators.plant(hardwareMap)
                 .motor(snapshot.intakeMotorName, snapshot.intakeDirection)
                 .power()
-                .targetedBy(ScalarTarget.create(0.0))
+                .targetFromNewCommand(0.0)
                 .build();
 
         PlantTargetResolver finalFeederTarget =
@@ -822,10 +822,10 @@ public final class Intake {
         feederPlant = FtcActuators.plant(hardwareMap)
                 .servo(snapshot.feederServoName, snapshot.feederDirection)
                 .position()
-                .linear()
+                .nonPeriodic()
                     .bounded(0.0, 1.0)
                     .nativeUnits()
-                .targetedBy(finalFeederTarget)
+                .targetFromResolver(finalFeederTarget)
                 .build();
     }
 

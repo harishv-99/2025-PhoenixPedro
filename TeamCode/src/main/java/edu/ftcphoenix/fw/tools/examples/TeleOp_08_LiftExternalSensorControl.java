@@ -9,7 +9,6 @@ import edu.ftcphoenix.fw.core.control.Pid;
 import edu.ftcphoenix.fw.core.control.ScalarRegulators;
 import edu.ftcphoenix.fw.core.hal.Direction;
 import edu.ftcphoenix.fw.core.source.ScalarSource;
-import edu.ftcphoenix.fw.core.source.ScalarTarget;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.ftc.FtcActuators;
 import edu.ftcphoenix.fw.ftc.FtcSensors;
@@ -86,12 +85,12 @@ public final class TeleOp_08_LiftExternalSensorControl extends OpMode {
                 .regulated()
                 .nativeFeedback(liftHeightIn)
                 .regulator(ScalarRegulators.pid(liftPid))
-                .linear()
+                .nonPeriodic()
                 .bounded(HEIGHT_MIN_IN, HEIGHT_MAX_IN)
                 .nativeUnits()
                 .alreadyReferenced()
                 .positionTolerance(0.50)
-                .targetedBy(ScalarTarget.create(0.0))
+                .targetFromNewCommand(0.0)
                 .build();
 
         bindings.onRise(gamepads.p1().a(), () -> desiredHeightIn.set(HEIGHT_LOW_IN));

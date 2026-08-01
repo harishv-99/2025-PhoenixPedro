@@ -249,23 +249,23 @@ public final class TeleOp_03_ShooterMacro extends OpMode {
                 .bounded(0.0, SHOOTER_VELOCITY_NATIVE)
                 .nativeUnits()
                 .velocityTolerance(SHOOTER_VELOCITY_TOLERANCE_NATIVE)
-                .targetedBy(ScalarTarget.create(0.0))
+                .targetFromNewCommand(0.0)
                 .build();
 
         transfer = FtcActuators.plant(hardwareMap)
                 .crServo(HW_TRANSFER_LEFT, Direction.FORWARD)
                 .andCrServo(HW_TRANSFER_RIGHT, Direction.REVERSE)
                 .power()
-                .targetedBy(ScalarTarget.create(0.0))
+                .targetFromNewCommand(0.0)
                 .build();
 
         pusher = FtcActuators.plant(hardwareMap)
                 .servo(HW_PUSHER, Direction.FORWARD)
                 .position()
-                .linear()
+                .nonPeriodic()
                 .bounded(0.0, 1.0)
                 .nativeUnits()
-                .targetedBy(ScalarTarget.create(PUSHER_POS_RETRACT))
+                .targetFromNewCommand(PUSHER_POS_RETRACT)
                 .build();
 
         // === 4) Bindings: hook buttons to macro actions ===

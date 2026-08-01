@@ -277,7 +277,6 @@ for the complete ordinary ownership shape.
 
 ```java
 import edu.ftcphoenix.fw.core.hal.Direction;
-import edu.ftcphoenix.fw.core.source.ScalarTarget;
 import edu.ftcphoenix.fw.ftc.FtcActuators;
 import edu.ftcphoenix.fw.actuation.Plant;
 
@@ -298,46 +297,67 @@ this.shooter = FtcActuators.plant(hardwareMap)
         .targetGuards()
             .maxTargetRate(500.0)    // max delta in plant units per second
             .doneTargetGuards()
-        .targetedBy(ScalarTarget.create(0.0))
+        .targetFromNewCommand(0.0)
         .build();
 
 // Transfer: CR servo power plant.
 this.transfer = FtcActuators.plant(hardwareMap)
         .crServo("transferServo", Direction.FORWARD)
         .power()
-        .targetedBy(ScalarTarget.create(0.0))
+        .targetFromNewCommand(0.0)
         .build();
 
 // Pusher: positional servo plant (0..1).
 this.pusher = FtcActuators.plant(hardwareMap)
         .servo("pusherServo", Direction.FORWARD)
         .position()
-        .linear()
+        .nonPeriodic()
             .bounded(0.0, 1.0)
             .nativeUnits()
-        .targetedBy(ScalarTarget.create(0.0))
+        .targetFromNewCommand(0.0)
         .build();
 ```
 
-Each simple exact mechanism retains only its Plant. `plant.commandTarget()` returns its same stable
-`ScalarTarget` without sampling or writing hardware, so immediate methods and `ScalarTasks` may use
-it directly. Keep a separate named target when it is standalone, deliberately shared, owned by a
-target-only policy object, or needed while assembling a composed target graph.
+Each simple exact mechanism retains only its Plant. `targetFromNewCommand(...)` creates its one stable
+`ScalarTarget`; `plant.commandTarget()` returns that same object without sampling or writing
+hardware, so immediate methods and `ScalarTasks` may use it directly. Keep a separate named target
+when it is standalone, deliberately shared, owned by a target-only policy object, or needed while
+assembling a composed target graph; bind a standalone target with
+`targetFromResolver(PlantTargets.exact(target))` or bind the resulting composed resolver with
+`targetFromResolver(...)`. The latter method binds whatever final resolver the caller supplies; it
+does not assert whether that resolver carries a command target. A recognized graph based on a
+`ScalarTarget` can carry that stable command identity, while a read-only or planned graph can carry
+none.
 
 The builder stays domain-first (`power()`, `position()`, `velocity()`). Position Plants then ask
-small guided questions about control strategy, topology, bounds, unit mapping, and reference policy.
+small guided questions about control strategy, periodicity, bounds, unit mapping, and reference policy.
 For example, a regulated motor position path uses `motor(...).position().regulated()` followed by
 one direct feedback answer and `.regulator(...)` instead of hiding those choices inside a large
 argument object. Once the public units are known, every feedback Plant requires exactly one
 plant-unit `positionTolerance(...)` or `velocityTolerance(...)` answer before target binding. A
 command-only standard-servo position Plant skips that feedback-only question.
 
-The hardware-neutral `MappedPositionPlant` and `MappedVelocityPlant` entrypoints serve custom
-adapters, not ordinary FTC wiring. They use the same compile-time rule in a smaller flow:
-configuration, required feedback tolerance, optional target guards, target binding, then build.
-Command-only mapped position omits the tolerance stage. This keeps `FtcActuators` as the one
-beginner entrypoint while still preventing incomplete construction at the lower public adapter
-boundary.
+There are two boundary gateways into one Plant-construction engine. Ordinary FTC mechanisms use
+only `FtcActuators.plant(hardwareMap)` because it owns SDK lookup, direction, grouping, run modes,
+and controller configuration. A custom adapter, hardware-neutral test, or portable host that
+already owns Phoenix output ports uses only `Plants.fromOutputs()`:
+
+```java
+import edu.ftcphoenix.fw.actuation.Plants;
+import edu.ftcphoenix.fw.actuation.PositionPlant;
+
+PositionPlant custom = Plants.fromOutputs()
+        .commandedPosition(positionOut)
+        .nonPeriodic()
+        .bounded(-45.0, 90.0)          // public Plant units
+        .rangeMapsToNative(0.22, 0.76) // native output units
+        .targetFromNewCommand(0.0)
+        .build();
+```
+
+The two gateways have different starting evidence, not competing builder implementations. They
+share the same periodicity, range, mapping, guard, target, validation, and hidden runtime grammar.
+Command-only position omits feedback-only reference and tolerance questions.
 
 A direct power Plant already knows its only legal domain: normalized `[-1.0, +1.0]`. It clamps a
 finite out-of-range request before calling `PowerOutput`, while the FTC adapter keeps its own clamp
@@ -357,7 +377,7 @@ heartbeat and must call each private Plant exactly once per cycle so it either s
 power or invokes the final target resolver and applies hardware guards.
 
 Calibration-search power must be finite and inside the inclusive normalized range `[-1.0, +1.0]`.
-The Task recipe and direct mapped-Plant seam reject invalid values immediately instead of relying on
+The Task recipe and direct `PositionPlant` seam reject invalid values immediately instead of relying on
 adapter clamping. The robot's mechanism owner still chooses and validates the safe magnitude,
 direction, cue, and mechanical setup.
 
