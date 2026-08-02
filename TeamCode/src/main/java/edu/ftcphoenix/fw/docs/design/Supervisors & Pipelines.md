@@ -114,10 +114,10 @@ private WristPose pose = WristPose.STOW;
 wristPlant = FtcActuators.plant(hardwareMap)
         .servo("wrist", Direction.FORWARD)
         .position()
-        .linear()
+        .nonPeriodic()
             .bounded(0.0, 1.0)
             .nativeUnits()
-        .targetedBy(ScalarTarget.create(0.10))
+        .targetFromNewCommand(0.10)
         .build();
 
 // Bindings
@@ -183,10 +183,10 @@ final class WristSubsystem {
                         Objects.requireNonNull(hardwareMap, "hardwareMap"))
                 .servo(snapshot.servoName, snapshot.direction)
                 .position()
-                .linear()
+                .nonPeriodic()
                     .bounded(0.0, 1.0)
                     .nativeUnits()
-                .targetedBy(ScalarTarget.create(snapshot.stowedPosition))
+                .targetFromNewCommand(snapshot.stowedPosition)
                 .build();
     }
 
@@ -305,7 +305,7 @@ PlantTargetResolver finalTarget = PlantTargets.overlay(baseTarget)
 this.plant = FtcActuators.plant(hardwareMap)
         .motor(snapshot.motorName, snapshot.direction)
         .power()
-        .targetedBy(finalTarget)
+        .targetFromResolver(finalTarget)
         .build();
 
 // In update(clock): advance changing inputs, then apply the already-built graph.

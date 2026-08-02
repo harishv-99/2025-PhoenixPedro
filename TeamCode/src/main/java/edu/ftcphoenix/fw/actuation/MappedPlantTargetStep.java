@@ -1,7 +1,5 @@
 package edu.ftcphoenix.fw.actuation;
 
-import edu.ftcphoenix.fw.core.source.ScalarTarget;
-
 /**
  * Final target-selection stage shared by hardware-neutral mapped Plant builders.
  *
@@ -11,20 +9,12 @@ import edu.ftcphoenix.fw.core.source.ScalarTarget;
  *
  * @param <P> concrete mapped Plant type produced after target selection
  */
-public interface MappedPlantTargetStep<P extends Plant> {
+interface MappedPlantTargetStep<P extends Plant> {
 
     /**
      * Set dynamic Plant-level target guards and remain at target selection.
      */
     MappedPlantTargetStep<P> targetGuards(PlantTargetGuards targetGuards);
-
-    /**
-     * Use a command target as the exact final resolver.
-     *
-     * @throws IllegalStateException if target selection was already answered through a retained
-     *                               reference to this stage
-     */
-    MappedPlantBuildStep<P> targetedBy(ScalarTarget target);
 
     /**
      * Use a Plant-aware final target graph.
@@ -34,5 +24,5 @@ public interface MappedPlantTargetStep<P extends Plant> {
      * @throws IllegalStateException if target selection was already answered through a retained
      *                               reference to this stage
      */
-    MappedPlantBuildStep<P> targetedBy(PlantTargetResolver targetResolver);
+    MappedPlantBuildStep<P> targetFromResolver(PlantTargetResolver targetResolver);
 }

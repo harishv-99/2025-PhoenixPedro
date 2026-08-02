@@ -18,9 +18,9 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * robot code, the mechanism/subsystem constructor receives {@code HardwareMap} and a data-only
  * config, snapshots that config, and builds this graph together with its privately owned Plant.
  * The composition root constructs the mechanism rather than prebuilding the Plant. For an ordinary
- * writable command with no independent owner, mechanism graph construction can bind
- * {@code ScalarTarget.create(initialValue)} directly; the completed Plant exposes that stable
- * request through {@link Plant#commandTarget()}. Keep a named {@link ScalarTarget} when it is
+ * writable command with no independent owner, Plant construction uses
+ * {@code targetFromNewCommand(initialValue)}; the completed Plant exposes that stable request through
+ * {@link Plant#commandTarget()}. Keep a named {@link ScalarTarget} when it is
  * shared, target-only policy owns it, or it usefully identifies the stable base of a composed
  * graph. If an explicitly labeled hardware-neutral test, custom-adapter, portable-host, or
  * advanced-assembly seam injects a completed Plant, it passes the Plant alone instead of both
@@ -44,12 +44,12 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *     .motor(cfg.motorName, cfg.direction)
  *     .position()
  *     .deviceManagedWithDefaults()
- *     .linear()
- *         .bounded(0.0, 4200.0)
- *         .nativeUnits()
- *         .alreadyReferenced()
+ *     .nonPeriodic()
+ *     .bounded(0.0, 4200.0)
+ *     .nativeUnits()
+ *     .alreadyReferenced()
  *     .positionTolerance(20.0)
- *     .targetedBy(ScalarTarget.create(0.0)) // lifted to an exact resolver
+ *     .targetFromNewCommand(0.0)
  *     .build();
  * // Later, in a semantic mechanism method:
  * lift.commandTarget().set(1200.0);
@@ -1180,9 +1180,9 @@ public final class PlantTargets {
             if (!logicalResolution.hasTarget()) {
                 resolved = unavailable(context,
                         "logical target unavailable: " + logicalResolution.reason());
-            } else if (!context.periodic()) {
+            } else if (context.periodicity() != PositionPlant.Periodicity.PERIODIC) {
                 resolved = unavailable(context,
-                        "equivalent positions require periodic Plant topology");
+                        "equivalent positions require a periodic Plant coordinate");
             } else if (!PeriodicTargetSelector.isUsableRange(context.targetRange())) {
                 resolved = unavailable(context, "plant target range is unavailable");
             } else {
@@ -1470,7 +1470,8 @@ public final class PlantTargets {
                 return clampedChoice(alternative, base, selectedAgeSec, range);
             }
 
-            if (alternative.usesPlantPeriod() && !context.periodic()) return null;
+            if (alternative.usesPlantPeriod()
+                    && context.periodicity() != PositionPlant.Periodicity.PERIODIC) return null;
             double period = alternative.usesPlantPeriod()
                     ? context.period()
                     : alternative.period();

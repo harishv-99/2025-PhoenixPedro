@@ -342,7 +342,7 @@ public final class PlantTargetsPlannerFreshnessTest {
                 true,
                 10.0,
                 ScalarRange.bounded(-1000.0, 1000.0),
-                PositionPlant.Topology.PERIODIC,
+                PositionPlant.Periodicity.PERIODIC,
                 360.0,
                 Double.NaN,
                 Double.NaN);
@@ -369,7 +369,7 @@ public final class PlantTargetsPlannerFreshnessTest {
                 true,
                 10.0,
                 ScalarRange.bounded(-1000.0, 1000.0),
-                PositionPlant.Topology.PERIODIC,
+                PositionPlant.Periodicity.PERIODIC,
                 360.0,
                 Double.NaN,
                 Double.NaN);

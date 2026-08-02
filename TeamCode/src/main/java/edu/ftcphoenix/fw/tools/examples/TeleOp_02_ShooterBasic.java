@@ -9,7 +9,6 @@ import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.debug.NullDebugSink;
 import edu.ftcphoenix.fw.core.hal.Direction;
 import edu.ftcphoenix.fw.core.lifecycle.CleanupActions;
-import edu.ftcphoenix.fw.core.source.ScalarTarget;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.drive.DriveSignal;
 import edu.ftcphoenix.fw.drive.DriveSource;
@@ -52,11 +51,11 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
  *       <li>{@link FtcActuators#plant} to turn hardware into {@link Plant}s.</li>
  *       <li>{@code motor(...).andMotor(...).velocity().deviceManagedWithDefaults()}
  *           {@code .bounded(...).nativeUnits().velocityTolerance(...)}
- *           {@code .targetedBy(ScalarTarget.create(0.0)).build()} for the shooter.</li>
+ *           {@code .targetFromNewCommand(0.0).build()} for the shooter.</li>
  *       <li>{@code crServo(...).andCrServo(...).power()}
- *           {@code .targetedBy(ScalarTarget.create(0.0)).build()} for the transfer.</li>
- *       <li>{@code servo(...).position().linear().bounded(0.0, 1.0).nativeUnits()}
- *           {@code .targetedBy(ScalarTarget.create(PUSHER_POS_RETRACT)).build()} for the pusher.</li>
+ *           {@code .targetFromNewCommand(0.0).build()} for the transfer.</li>
+ *       <li>{@code servo(...).position().nonPeriodic().bounded(0.0, 1.0).nativeUnits()}
+ *           {@code .targetFromNewCommand(PUSHER_POS_RETRACT).build()} for the pusher.</li>
  *     </ul>
  *   </li>
  *   <li><b>How to map buttons to simple modes</b> using
@@ -289,7 +288,7 @@ public final class TeleOp_02_ShooterBasic extends OpMode {
                 .bounded(0.0, SHOOTER_VELOCITY_NATIVE)
                 .nativeUnits()
                 .velocityTolerance(SHOOTER_VELOCITY_TOLERANCE_NATIVE)
-                .targetedBy(ScalarTarget.create(0.0))
+                .targetFromNewCommand(0.0)
                 .build();
 
         // Transfer: two CR servos, power-controlled pair.
@@ -297,17 +296,17 @@ public final class TeleOp_02_ShooterBasic extends OpMode {
                 .crServo(HW_TRANSFER_LEFT, Direction.FORWARD)
                 .andCrServo(HW_TRANSFER_RIGHT, Direction.REVERSE)
                 .power()
-                .targetedBy(ScalarTarget.create(0.0))
+                .targetFromNewCommand(0.0)
                 .build();
 
         // Pusher: single positional servo, 0..1 position plant.
         pusher = FtcActuators.plant(hardwareMap)
                 .servo(HW_PUSHER, Direction.FORWARD)
                 .position()
-                .linear()
+                .nonPeriodic()
                 .bounded(0.0, 1.0)
                 .nativeUnits()
-                .targetedBy(ScalarTarget.create(PUSHER_POS_RETRACT))
+                .targetFromNewCommand(PUSHER_POS_RETRACT)
                 .build();
 
         // === 4) Bindings: map buttons to high-level modes (using lambdas) ===

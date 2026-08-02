@@ -518,8 +518,8 @@ public final class ScalarTasks {
         if (!plant.hasCommandTarget()) {
             throw new IllegalStateException("ScalarTasks.set(...).untilReachedBy(plant) requires "
                     + "a Plant whose final target graph carries this ScalarTarget command. Build "
-                    + "the Plant with targetedBy(command), or use the command as the stable base "
-                    + "of its final target graph.");
+                    + "the Plant with targetFromResolver(PlantTargets.exact(command)), or use the command "
+                    + "as the stable base of its final target graph.");
         }
         ScalarTarget plantTarget = Objects.requireNonNull(
                 plant.commandTarget(), "plant.commandTarget() returned null");

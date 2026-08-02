@@ -7,7 +7,6 @@ import java.util.Objects;
 import edu.ftcphoenix.fw.actuation.Plant;
 import edu.ftcphoenix.fw.actuation.ScalarTasks;
 import edu.ftcphoenix.fw.core.lifecycle.CleanupActions;
-import edu.ftcphoenix.fw.core.source.ScalarTarget;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.ftc.FtcActuators;
 import edu.ftcphoenix.fw.task.Task;
@@ -29,7 +28,7 @@ final class StarterIntakeMechanism implements StarterIntake {
         plant = FtcActuators.plant(Objects.requireNonNull(hardwareMap, "hardwareMap"))
                 .motor(snapshot.motorName, snapshot.direction)
                 .power()
-                .targetedBy(ScalarTarget.create(STOPPED_POWER))
+                .targetFromNewCommand(STOPPED_POWER)
                 .build();
     }
 

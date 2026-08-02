@@ -94,20 +94,24 @@ PlantTargets
 The Plant builder has one ordinary binding and one advanced binding:
 
 ```java
-.targetedBy(ScalarTarget target)         // exact source and command target
-.targetedBy(PlantTargetResolver resolver) // full Plant-aware target graph
+.targetFromNewCommand(double initialValue)         // create the ordinary exact command
+.targetFromResolver(PlantTargetResolver resolver)  // bind the supplied final resolver
 ```
 
 For a simple exact Plant, keep one Plant variable and create its command inline with
-`targetedBy(ScalarTarget.create(initialValue))`. Immediate methods and Tasks retrieve that same
-stable command with `plant.commandTarget()`. Retrieval is side-effect-free, so ordinary robot code
+`targetFromNewCommand(initialValue)`. Immediate methods and Tasks retrieve that generated, stable
+command with `plant.commandTarget()`. Retrieval is side-effect-free, so ordinary robot code
 may do that at the point of use instead of retaining a second field beside the Plant.
 
 Keep a named `ScalarTarget` when it is useful before the Plant exists: for a standalone or shared
 request, a target-only policy object, or the base of an overlay, equivalent-position transform, or
-advanced graph. If a Plant should follow a read-only `ScalarSource`, make that adaptation visible
-with `targetedBy(PlantTargets.exact(source))`. This keeps `targetedBy(...)` from hiding whether robot
-code has a writable command.
+advanced graph. Bind a named target with `targetFromResolver(PlantTargets.exact(target))`. If a Plant
+should follow a read-only `ScalarSource`, use
+`targetFromResolver(PlantTargets.exact(source))`. `targetFromResolver(...)` describes the source of
+resolution, not whether the Plant is commandable: a supplied resolver may carry a recognized stable
+command target, or it may carry none. An arbitrary custom resolver has no way to claim framework
+command-target provenance; compose it through the recognized `PlantTargets` graph when that
+provenance matters.
 
 The final graph owns this relationship; the builder never asks robot code to register a second,
 possibly disconnected target. An exact source carries a command target when its runtime object is a
@@ -132,12 +136,12 @@ this.arm = FtcActuators.plant(hardwareMap)
         .motor("arm", Direction.FORWARD)
         .position()
         .deviceManagedWithDefaults()
-        .linear()
+        .nonPeriodic()
             .bounded(0.0, 4200.0)
             .nativeUnits()
             .alreadyReferenced()
         .positionTolerance(20.0)
-        .targetedBy(finalArmTarget)
+        .targetFromResolver(finalArmTarget)
         .build();
 ```
 
@@ -187,7 +191,7 @@ final class IntakeMechanism {
                         Objects.requireNonNull(hardwareMap, "hardwareMap"))
                 .motor(snapshot.motorName, snapshot.direction)
                 .power()
-                .targetedBy(ScalarTarget.create(STOPPED_POWER))
+                .targetFromNewCommand(STOPPED_POWER)
                 .build();
     }
 
@@ -253,12 +257,12 @@ this.lift = FtcActuators.plant(hardwareMap)
         .motor("lift", Direction.FORWARD)
         .position()
         .deviceManagedWithDefaults()
-        .linear()
+        .nonPeriodic()
             .bounded(0.0, 4200.0)
             .nativeUnits()
             .needsReference("lift not homed")
         .positionTolerance(20.0)
-        .targetedBy(ScalarTarget.create(0.0))
+        .targetFromNewCommand(0.0)
         .build();
 
 // In semantic command/update methods on LiftMechanism:
@@ -323,7 +327,7 @@ value `20`; its feedback branch completes only
 when the `turretCommand` path won and the Plant reports physical arrival at `380`. A same-valued
 overlay, fallback, hold, clamp, bound, or guard cannot make the move report success.
 
-Periodicity does not silently change exact commands. A Plant may have periodic topology while some
+Periodicity does not silently change exact commands. A Plant may have periodic equivalence while some
 behavior deliberately requests an exact unwrapped turn; omit `equivalentPositionsOf(...)` for that
 behavior. The focused transform always uses the consuming Plant's declared period and rejects a
 family with no legal representative instead of clamping it to a non-equivalent answer.
@@ -376,7 +380,7 @@ PlantTargetResolver feederTarget = PlantTargets.overlay(0.0)
 this.feeder = FtcActuators.plant(hardwareMap)
         .motor("feeder", Direction.FORWARD)
         .power()
-        .targetedBy(feederTarget)
+        .targetFromResolver(feederTarget)
         .build();
 ```
 
@@ -452,7 +456,7 @@ object. During `plant.update(clock)`, the Plant supplies:
 
 - feedback availability and measurement
 - legal target range
-- linear/periodic topology and period
+- non-periodic/periodic equivalence and period
 - previous requested/applied targets
 
 The factory takes either one fixed `PlantTargetRequest` or a live `Source<PlantTargetRequest>`.
@@ -668,7 +672,7 @@ this.lift = FtcActuators.plant(hardwareMap)
         .motor("lift", Direction.FORWARD)
         .position()
         .deviceManagedWithDefaults()
-        .linear()
+        .nonPeriodic()
             .bounded(0.0, 4200.0)
             .nativeUnits()
             .needsReference("lift not homed")
@@ -677,7 +681,7 @@ this.lift = FtcActuators.plant(hardwareMap)
             .maxTargetRate(1200.0)
             .holdLastTargetUnless("wrist clear", wristClear)
             .doneTargetGuards()
-        .targetedBy(ScalarTarget.create(0.0))
+        .targetFromNewCommand(0.0)
         .build();
 ```
 

@@ -7,7 +7,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * Plant-aware logic that resolves one requested target for each {@link Plant} update.
  *
  * <p>This is not a Phoenix {@code Source<T>}: the consuming Plant must supply the
- * {@link PlantTargetContext} containing its measurement, legal range, periodic topology, and prior
+ * {@link PlantTargetContext} containing its measurement, legal range, periodicity, and prior
  * targets. A simple resolver may ignore that context and return an exact number. A smarter resolver
  * can select among equivalent or requested alternatives. Use
  * {@link PlantTargets#equivalentPositionsOf(edu.ftcphoenix.fw.core.source.ScalarTarget)} for the
@@ -18,10 +18,10 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * <p>In ordinary FTC robot code, a mechanism/subsystem constructor receives {@code HardwareMap}
  * and its data-only config, snapshots that config, and constructs its final resolver and Plant
  * graph internally. When an ordinary exact Plant needs a writable command with no independent
- * owner, that graph construction can bind {@code ScalarTarget.create(initialValue)} inline. Name
- * the target when it is shared, a target-only policy owns it, or it usefully identifies the stable
- * base of an overlaid or periodic-equivalent final graph. Read-only and planned graphs need not
- * carry a command.</p>
+ * owner, that Plant construction uses {@code targetFromNewCommand(initialValue)}. Name the target
+ * and pass {@code PlantTargets.exact(target)} to {@code targetFromResolver(...)} when it is shared,
+ * a target-only policy owns it, or it usefully identifies the stable base of an overlaid or
+ * periodic-equivalent final graph. Read-only and planned graphs need not carry a command.</p>
  *
  * <p>Outside that ordinary ownership boundary, a completed Plant may cross a constructor only at a
  * clearly labeled hardware-neutral test, custom-adapter, portable-host, or advanced-assembly seam.

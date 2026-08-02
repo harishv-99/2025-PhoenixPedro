@@ -31,7 +31,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * Plant transfer = FtcActuators.plant(hardwareMap)
  *         .crServo("transfer", Direction.FORWARD)
  *         .power()
- *         .targetedBy(finalTransferTarget)
+ *         .targetFromResolver(finalTransferTarget)
  *         .build();
  *
  * // In your loop: manage requests, advance the queue, then update the Plant.

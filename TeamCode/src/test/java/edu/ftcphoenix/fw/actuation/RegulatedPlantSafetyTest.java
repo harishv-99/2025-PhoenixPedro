@@ -26,16 +26,18 @@ public final class RegulatedPlantSafetyTest {
     private static final double EPSILON = 1e-12;
 
     @Test
-    public void lowerLevelRegulatedPlantsSubmitNormalizedPowerAndPreserveRawAliases() {
+    public void regulatedBranchesSubmitNormalizedPowerAndPreserveRawDiagnostics() {
         ScalarTarget positionTarget = ScalarTarget.create(10.0);
         RecordingPowerOutput positionOut = new RecordingPowerOutput();
-        Plant position = Plants.positionFromPower(
-                positionOut,
-                PlantTargets.exact(positionTarget),
-                PlantTargetGuards.none(),
-                clock -> 10.0,
-                new FixedRegulator(1.25),
-                0.0);
+        PositionPlant position = Plants.fromOutputs()
+                .regulatedPosition(positionOut, clock -> 10.0, new FixedRegulator(1.25))
+                .nonPeriodic()
+                .unbounded()
+                .nativeUnits()
+                .alreadyReferenced()
+                .positionTolerance(0.0)
+                .targetFromResolver(PlantTargets.exact(positionTarget))
+                .build();
 
         position.update(new ManualLoopClock().clock());
 
@@ -44,7 +46,7 @@ public final class RegulatedPlantSafetyTest {
         assertTrue(position.atTarget());
         assertTrue(position.atTarget(10.0));
         CapturingDebugSink positionDebug = debug(position, "position");
-        assertEquals(1.25, number(positionDebug, "position.output"), 0.0);
+        assertEquals(1.25, number(positionDebug, "position.lastRegulatorOutput"), 0.0);
         assertEquals(1.25, number(positionDebug, "position.regulatorOutput"), 0.0);
         assertEquals(1.0, number(positionDebug, "position.normalizedPowerCommand"), 0.0);
         assertEquals("SATURATED_AND_SUBMITTED",
@@ -52,49 +54,12 @@ public final class RegulatedPlantSafetyTest {
 
         ScalarTarget velocityTarget = ScalarTarget.create(20.0);
         RecordingPowerOutput velocityOut = new RecordingPowerOutput();
-        Plant velocity = Plants.velocityFromPower(
-                velocityOut,
-                PlantTargets.exact(velocityTarget),
-                PlantTargetGuards.none(),
-                clock -> 20.0,
-                new FixedRegulator(-1.25),
-                0.0);
-
-        velocity.update(new ManualLoopClock().clock());
-
-        assertEquals(-1.0, velocityOut.commanded, 0.0);
-        assertTrue(velocity.atTarget());
-        CapturingDebugSink velocityDebug = debug(velocity, "velocity");
-        assertEquals(-1.25, number(velocityDebug, "velocity.output"), 0.0);
-        assertEquals(-1.25, number(velocityDebug, "velocity.regulatorOutput"), 0.0);
-        assertEquals(-1.0, number(velocityDebug, "velocity.normalizedPowerCommand"), 0.0);
-    }
-
-    @Test
-    public void mappedRegulatedPlantsSubmitNormalizedPowerAndPreserveRawAliases() {
-        ScalarTarget positionTarget = ScalarTarget.create(10.0);
-        RecordingPowerOutput positionOut = new RecordingPowerOutput();
-        MappedPositionPlant position = MappedPositionPlant.regulated(
-                positionOut, clock -> 10.0, new FixedRegulator(1.25))
-                .positionTolerance(0.0)
-                .targetedBy(positionTarget)
-                .build();
-
-        position.update(new ManualLoopClock().clock());
-
-        assertEquals(1.0, positionOut.commanded, 0.0);
-        assertTrue(position.atTarget());
-        CapturingDebugSink positionDebug = debug(position, "position");
-        assertEquals(1.25, number(positionDebug, "position.lastRegulatorOutput"), 0.0);
-        assertEquals(1.25, number(positionDebug, "position.regulatorOutput"), 0.0);
-        assertEquals(1.0, number(positionDebug, "position.normalizedPowerCommand"), 0.0);
-
-        ScalarTarget velocityTarget = ScalarTarget.create(20.0);
-        RecordingPowerOutput velocityOut = new RecordingPowerOutput();
-        MappedVelocityPlant velocity = MappedVelocityPlant.regulated(
-                velocityOut, clock -> 20.0, new FixedRegulator(-1.25))
+        Plant velocity = Plants.fromOutputs()
+                .regulatedVelocity(velocityOut, clock -> 20.0, new FixedRegulator(-1.25))
+                .unbounded()
+                .nativeUnits()
                 .velocityTolerance(0.0)
-                .targetedBy(velocityTarget)
+                .targetFromResolver(PlantTargets.exact(velocityTarget))
                 .build();
 
         velocity.update(new ManualLoopClock().clock());
@@ -108,32 +73,28 @@ public final class RegulatedPlantSafetyTest {
 
     @Test
     public void everyRegulatedPlantPathRejectsNonFiniteOutputAndFailStops() {
-        ScalarTarget lowerPositionTarget = ScalarTarget.create(10.0);
-        ScalarTarget lowerVelocityTarget = ScalarTarget.create(10.0);
-        ScalarTarget mappedPositionTarget = ScalarTarget.create(10.0);
-        ScalarTarget mappedVelocityTarget = ScalarTarget.create(10.0);
         RecordingPowerOutput[] outputs = {
-                new RecordingPowerOutput(),
-                new RecordingPowerOutput(),
                 new RecordingPowerOutput(),
                 new RecordingPowerOutput()
         };
         Plant[] plants = {
-                Plants.positionFromPower(outputs[0], PlantTargets.exact(lowerPositionTarget),
-                        PlantTargetGuards.none(), clock -> 10.0,
-                        new FixedRegulator(Double.NaN), 0.0),
-                Plants.velocityFromPower(outputs[1], PlantTargets.exact(lowerVelocityTarget),
-                        PlantTargetGuards.none(), clock -> 10.0,
-                        new FixedRegulator(Double.NaN), 0.0),
-                MappedPositionPlant.regulated(outputs[2], clock -> 10.0,
+                Plants.fromOutputs()
+                        .regulatedPosition(outputs[0], clock -> 10.0,
                                 new FixedRegulator(Double.NaN))
+                        .nonPeriodic()
+                        .unbounded()
+                        .nativeUnits()
+                        .alreadyReferenced()
                         .positionTolerance(0.0)
-                        .targetedBy(mappedPositionTarget)
+                        .targetFromNewCommand(10.0)
                         .build(),
-                MappedVelocityPlant.regulated(outputs[3], clock -> 10.0,
+                Plants.fromOutputs()
+                        .regulatedVelocity(outputs[1], clock -> 10.0,
                                 new FixedRegulator(Double.NaN))
+                        .unbounded()
+                        .nativeUnits()
                         .velocityTolerance(0.0)
-                        .targetedBy(mappedVelocityTarget)
+                        .targetFromNewCommand(10.0)
                         .build()
         };
 
@@ -159,10 +120,12 @@ public final class RegulatedPlantSafetyTest {
         SequencedRegulator regulator = new SequencedRegulator(0.25, regulatorFailure);
         RecordingPowerOutput output = new RecordingPowerOutput();
         ScalarTarget target = ScalarTarget.create(20.0);
-        MappedVelocityPlant plant = MappedVelocityPlant.regulated(
-                output, clock -> 20.0, regulator)
+        Plant plant = Plants.fromOutputs()
+                .regulatedVelocity(output, clock -> 20.0, regulator)
+                .unbounded()
+                .nativeUnits()
                 .velocityTolerance(0.0)
-                .targetedBy(target)
+                .targetFromResolver(PlantTargets.exact(target))
                 .build();
         ManualLoopClock clock = new ManualLoopClock();
         plant.update(clock.clock());
@@ -194,10 +157,12 @@ public final class RegulatedPlantSafetyTest {
         RecordingPowerOutput output = new RecordingPowerOutput();
         output.stopFailure = stopFailure;
         ScalarTarget target = ScalarTarget.create(20.0);
-        MappedVelocityPlant plant = MappedVelocityPlant.regulated(
-                output, clock -> 20.0, regulator)
+        Plant plant = Plants.fromOutputs()
+                .regulatedVelocity(output, clock -> 20.0, regulator)
+                .unbounded()
+                .nativeUnits()
                 .velocityTolerance(0.0)
-                .targetedBy(target)
+                .targetFromResolver(PlantTargets.exact(target))
                 .build();
         ManualLoopClock clock = new ManualLoopClock();
         plant.update(clock.clock());
@@ -229,10 +194,12 @@ public final class RegulatedPlantSafetyTest {
         RuntimeException resetFailure = new IllegalStateException("reset failed");
         FixedRegulator regulator = new FixedRegulator(0.25);
         RecordingPowerOutput output = new RecordingPowerOutput();
-        MappedVelocityPlant plant = MappedVelocityPlant.regulated(
-                output, clock -> 20.0, regulator)
+        Plant plant = Plants.fromOutputs()
+                .regulatedVelocity(output, clock -> 20.0, regulator)
+                .unbounded()
+                .nativeUnits()
                 .velocityTolerance(0.0)
-                .targetedBy(ScalarTarget.create(20.0))
+                .targetFromNewCommand(20.0)
                 .build();
         plant.update(new ManualLoopClock().clock());
         assertTrue(plant.atTarget());
@@ -266,10 +233,12 @@ public final class RegulatedPlantSafetyTest {
                 0.0,
                 0.65);
         RecordingPowerOutput output = new RecordingPowerOutput();
-        MappedVelocityPlant plant = MappedVelocityPlant.regulated(
-                output, clock -> 20.0, constrained)
+        Plant plant = Plants.fromOutputs()
+                .regulatedVelocity(output, clock -> 20.0, constrained)
+                .unbounded()
+                .nativeUnits()
                 .velocityTolerance(0.0)
-                .targetedBy(ScalarTarget.create(20.0))
+                .targetFromNewCommand(20.0)
                 .build();
         ManualLoopClock clock = new ManualLoopClock();
         plant.update(clock.clock());
@@ -296,10 +265,12 @@ public final class RegulatedPlantSafetyTest {
                 .setPidOutputLimits(-1.0, 1.0);
         ScalarRegulator constrained = ScalarRegulators.outputLimited(pidf, 0.0, 0.65);
         RecordingPowerOutput output = new RecordingPowerOutput();
-        MappedVelocityPlant plant = MappedVelocityPlant.regulated(
-                output, clock -> Double.NEGATIVE_INFINITY, constrained)
+        Plant plant = Plants.fromOutputs()
+                .regulatedVelocity(output, clock -> Double.NEGATIVE_INFINITY, constrained)
+                .unbounded()
+                .nativeUnits()
                 .velocityTolerance(0.0)
-                .targetedBy(ScalarTarget.create(100.0))
+                .targetFromNewCommand(100.0)
                 .build();
 
         try {
@@ -323,79 +294,21 @@ public final class RegulatedPlantSafetyTest {
     }
 
     @Test
-    public void mappedPositionStopDeduplicatesSharedOutputAndStillAttemptsDistinctOutput() {
+    public void regulatedPositionStopUsesItsOwnedPowerOutputOnce() {
         RecordingPowerOutput shared = new RecordingPowerOutput();
-        MappedPositionPlant sharedPlant = MappedPositionPlant.regulated(
-                shared, clock -> 0.0, new FixedRegulator(0.0))
-                .searchPowerOutput(shared)
+        PositionPlant sharedPlant = Plants.fromOutputs()
+                .regulatedPosition(shared, clock -> 0.0, new FixedRegulator(0.0))
+                .nonPeriodic()
+                .unbounded()
+                .nativeUnits()
+                .alreadyReferenced()
                 .positionTolerance(0.0)
-                .targetedBy(ScalarTarget.create(0.0))
+                .targetFromNewCommand(0.0)
                 .build();
 
         sharedPlant.stop();
 
         assertEquals(1, shared.stopCalls);
-
-        RuntimeException regulatedStopFailure = new IllegalStateException("regulated stop failed");
-        RecordingPowerOutput regulated = new RecordingPowerOutput();
-        regulated.stopFailure = regulatedStopFailure;
-        RecordingPowerOutput search = new RecordingPowerOutput();
-        MappedPositionPlant distinctPlant = MappedPositionPlant.regulated(
-                regulated, clock -> 5.0, new FixedRegulator(0.25))
-                .searchPowerOutput(search)
-                .positionTolerance(0.0)
-                .targetedBy(ScalarTarget.create(5.0))
-                .build();
-        distinctPlant.update(new ManualLoopClock().clock());
-
-        try {
-            distinctPlant.stop();
-            fail("Expected regulated output stop failure");
-        } catch (RuntimeException actual) {
-            assertSame(regulatedStopFailure, actual);
-        }
-
-        assertEquals(1, regulated.stopCalls);
-        assertEquals(1, search.stopCalls);
-        assertEquals(5.0, distinctPlant.getAppliedTarget(), 0.0);
-        assertEquals(PlantTargetStatus.Kind.ACCEPTED, distinctPlant.getTargetStatus().kind());
-        assertTrue(distinctPlant.getTargetResolution().hasTarget());
-        assertFalse(distinctPlant.atTarget());
-        assertFalse(distinctPlant.atTarget(5.0));
-
-        RecordingPowerOutput successfulRegulated = new RecordingPowerOutput();
-        RecordingPowerOutput failingSearch = new RecordingPowerOutput();
-        RuntimeException searchStopFailure = new IllegalStateException("search stop failed");
-        failingSearch.stopFailure = searchStopFailure;
-        MappedPositionPlant searchFailurePlant = MappedPositionPlant.regulated(
-                successfulRegulated, clock -> 6.0, new FixedRegulator(0.3))
-                .searchPowerOutput(failingSearch)
-                .positionTolerance(0.0)
-                .targetedBy(ScalarTarget.create(6.0))
-                .build();
-        searchFailurePlant.update(new ManualLoopClock().clock());
-
-        try {
-            searchFailurePlant.stop();
-            fail("Expected search output stop failure");
-        } catch (RuntimeException actual) {
-            assertSame(searchStopFailure, actual);
-            assertEquals(0, actual.getSuppressed().length);
-        }
-
-        assertEquals(1, successfulRegulated.stopCalls);
-        assertEquals(1, failingSearch.stopCalls);
-        assertEquals(6.0, searchFailurePlant.getAppliedTarget(), 0.0);
-        assertEquals(PlantTargetStatus.Kind.ACCEPTED,
-                searchFailurePlant.getTargetStatus().kind());
-        assertTrue(searchFailurePlant.getTargetResolution().hasTarget());
-        assertFalse(searchFailurePlant.atTarget());
-        assertFalse(searchFailurePlant.atTarget(6.0));
-        CapturingDebugSink searchFailureDebug = debug(searchFailurePlant, "position");
-        assertTrue(Double.isNaN(number(
-                searchFailureDebug, "position.normalizedPowerCommand")));
-        assertEquals("STOP_FAILED_RESET_SUCCEEDED",
-                searchFailureDebug.data.get("position.regulatedPowerStatus"));
     }
 
     private static CapturingDebugSink debug(Plant plant, String prefix) {

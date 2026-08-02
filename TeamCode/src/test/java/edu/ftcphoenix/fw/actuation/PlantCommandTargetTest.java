@@ -38,7 +38,10 @@ public final class PlantCommandTargetTest {
     @Test
     public void ordinaryPlantCommandTargetIsStableAndRepeatedAccessDoesNotSampleIt() {
         CountingTarget command = new CountingTarget(0.25);
-        Plant plant = Plants.power(new RecordingPowerOutput(), command);
+        Plant plant = Plants.fromOutputs()
+                .power(new RecordingPowerOutput())
+                .targetFromResolver(PlantTargets.exact(command))
+                .build();
 
         assertTrue(plant.hasCommandTarget());
         assertSame(command, plant.commandTarget());
@@ -124,7 +127,10 @@ public final class PlantCommandTargetTest {
                 .add("override", clock -> overrideEnabled[0], 0.8)
                 .build();
         RecordingPowerOutput output = new RecordingPowerOutput();
-        Plant plant = Plants.power(output, finalTarget);
+        Plant plant = Plants.fromOutputs()
+                .power(output)
+                .targetFromResolver(finalTarget)
+                .build();
         ManualLoopClock time = new ManualLoopClock();
 
         assertTrue(plant.hasCommandTarget());
@@ -149,64 +155,75 @@ public final class PlantCommandTargetTest {
     }
 
     @Test
-    public void mappedPositionDerivesOverlayBaseAndRejectsRetargetingWithoutChangingIt() {
+    public void positionBranchDerivesOverlayBaseAndRejectsRetargetingWithoutChangingIt() {
         ScalarTarget command = ScalarTarget.create(0.0);
         PlantTargetResolver overlay = PlantTargets.overlay(command)
                 .add("override", BooleanSource.constant(false), 0.75)
                 .build();
-        MappedPositionPlant commandBacked = MappedPositionPlant.commanded(
-                        new RecordingPositionOutput())
-                .targetedBy(overlay)
+        PositionPlant commandBacked = Plants.fromOutputs()
+                .commandedPosition(new RecordingPositionOutput())
+                .nonPeriodic()
+                .unbounded()
+                .nativeUnits()
+                .targetFromResolver(overlay)
                 .build();
         ScalarTarget retainedCommand = ScalarTarget.create(0.5);
-        MappedPlantTargetStep<MappedPositionPlant> retainedTarget =
-                MappedPositionPlant.commanded(
-                new RecordingPositionOutput());
+        Plants.TargetStep<PositionPlant> retainedTarget = Plants.fromOutputs()
+                .commandedPosition(new RecordingPositionOutput())
+                .nonPeriodic()
+                .unbounded()
+                .nativeUnits();
 
-        MappedPlantBuildStep<MappedPositionPlant> retainedBuild =
-                retainedTarget.targetedBy(retainedCommand);
+        Plants.BuildStep<PositionPlant> retainedBuild =
+                retainedTarget.targetFromResolver(PlantTargets.exact(retainedCommand));
         IllegalStateException repeated = expectRepeatedTargetAnswer(
-                () -> retainedTarget.targetedBy(PlantTargets.exact(0.25)));
-        MappedPositionPlant preserved = retainedBuild.build();
+                () -> retainedTarget.targetFromResolver(PlantTargets.exact(0.25)));
+        PositionPlant preserved = retainedBuild.build();
 
         assertTrue(commandBacked.hasCommandTarget());
         assertSame(command, commandBacked.commandTarget());
-        assertTrue(repeated.getMessage().contains("MappedPositionPlant"));
+        assertTrue(repeated.getMessage().contains("after its target has been selected"));
         assertTrue(preserved.hasCommandTarget());
         assertSame(retainedCommand, preserved.commandTarget());
     }
 
     @Test
-    public void mappedVelocityRecognizesExplicitlyLiftedUpcastAndRejectsRetargeting() {
+    public void velocityBranchRecognizesExplicitlyLiftedUpcastAndRejectsRetargeting() {
         ScalarTarget command = ScalarTarget.create(0.0);
         ScalarSource upcast = command;
-        MappedVelocityPlant commandBacked = MappedVelocityPlant.velocityOutput(
-                        new RecordingVelocityOutput(), clock -> 0.0)
+        Plant commandBacked = Plants.fromOutputs()
+                .deviceManagedVelocity(new RecordingVelocityOutput(), clock -> 0.0)
+                .unbounded()
+                .nativeUnits()
                 .velocityTolerance(0.0)
-                .targetedBy(PlantTargets.exact(upcast))
+                .targetFromResolver(PlantTargets.exact(upcast))
                 .build();
         ScalarTarget retainedCommand = ScalarTarget.create(0.5);
-        MappedPlantTargetStep<MappedVelocityPlant> retainedTarget =
-                MappedVelocityPlant.velocityOutput(
-                        new RecordingVelocityOutput(), clock -> 0.0)
-                        .velocityTolerance(0.0);
+        Plants.TargetStep<Plant> retainedTarget = Plants.fromOutputs()
+                .deviceManagedVelocity(new RecordingVelocityOutput(), clock -> 0.0)
+                .unbounded()
+                .nativeUnits()
+                .velocityTolerance(0.0);
 
-        MappedPlantBuildStep<MappedVelocityPlant> retainedBuild =
-                retainedTarget.targetedBy(retainedCommand);
+        Plants.BuildStep<Plant> retainedBuild =
+                retainedTarget.targetFromResolver(PlantTargets.exact(retainedCommand));
         IllegalStateException repeated = expectRepeatedTargetAnswer(
-                () -> retainedTarget.targetedBy(PlantTargets.holdLastTarget(0.0)));
-        MappedVelocityPlant preserved = retainedBuild.build();
+                () -> retainedTarget.targetFromResolver(PlantTargets.holdLastTarget(0.0)));
+        Plant preserved = retainedBuild.build();
 
         assertTrue(commandBacked.hasCommandTarget());
         assertSame(command, commandBacked.commandTarget());
-        assertTrue(repeated.getMessage().contains("MappedVelocityPlant"));
+        assertTrue(repeated.getMessage().contains("after its target has been selected"));
         assertTrue(preserved.hasCommandTarget());
         assertSame(retainedCommand, preserved.commandTarget());
     }
 
     @Test
     public void readOnlyGraphExposesNoCommandTarget() {
-        Plant plant = Plants.power(new RecordingPowerOutput(), PlantTargets.exact(0.0));
+        Plant plant = Plants.fromOutputs()
+                .power(new RecordingPowerOutput())
+                .targetFromResolver(PlantTargets.exact(0.0))
+                .build();
 
         assertFalse(plant.hasCommandTarget());
         try {
@@ -258,12 +275,11 @@ public final class PlantCommandTargetTest {
     private static IllegalStateException expectRepeatedTargetAnswer(Runnable action) {
         try {
             action.run();
-            fail("Expected a repeated targetedBy(...) answer to fail");
+            fail("Expected a repeated targetFromResolver(...) answer to fail");
             return null;
         } catch (IllegalStateException expected) {
-            assertTrue(expected.getMessage().contains("targetedBy(...)"));
-            assertTrue(expected.getMessage().contains("already been answered"));
-            assertTrue(expected.getMessage().contains("new builder"));
+            assertTrue(expected.getMessage().contains("targetFromResolver(...)"));
+            assertTrue(expected.getMessage().contains("after its target has been selected"));
             return expected;
         }
     }

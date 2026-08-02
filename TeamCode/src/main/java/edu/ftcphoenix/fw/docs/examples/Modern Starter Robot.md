@@ -86,7 +86,7 @@ StarterIntakeMechanism(HardwareMap hardwareMap, StarterProfile.IntakeConfig conf
     plant = FtcActuators.plant(Objects.requireNonNull(hardwareMap, "hardwareMap"))
             .motor(snapshot.motorName, snapshot.direction)
             .power()
-            .targetedBy(ScalarTarget.create(STOPPED_POWER))
+            .targetFromNewCommand(STOPPED_POWER)
             .build();
 }
 ```

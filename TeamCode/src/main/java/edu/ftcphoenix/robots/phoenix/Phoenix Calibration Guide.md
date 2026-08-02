@@ -52,12 +52,12 @@ this.lift = FtcActuators.plant(hardwareMap)
         .motor("liftMotor", Direction.FORWARD)
         .position()
         .deviceManagedWithDefaults()
-        .linear()
+        .nonPeriodic()
             .bounded(0.0, 18.0)              // plant units: inches
             .scaleToNative(TICKS_PER_INCH)   // native units: encoder ticks
             .needsReference("lift not homed")
         .positionTolerance(0.10)             // plant units
-        .targetedBy(ScalarTarget.create(0.0))
+        .targetFromNewCommand(0.0)
         .build();
 ```
 

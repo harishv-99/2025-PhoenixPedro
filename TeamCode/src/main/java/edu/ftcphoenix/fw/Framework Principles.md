@@ -263,12 +263,12 @@ Phoenix is designed around a few core goals:
      For example, if a request must choose between facing-derived and translation-derived spatial
      sources, the staged builder should make that choice explicit instead of allowing both with
      hidden precedence.
-   * Apply that compiler guidance at every supported public construction layer, but give each layer
-     only the stages its distinct job requires. The FTC facade can guide hardware and control
-     choices in detail; the hardware-neutral mapped-Plant layer needs only configuration, a
-     required feedback-tolerance answer, optional target guards, target binding, and build.
-     Command-only position skips the tolerance stage. Keep the concrete assembly object private so
-     it does not become a second public construction path beside those stages.
+   * Apply that compiler guidance at every supported public boundary, but give each gateway only the
+     stages its distinct starting evidence requires. `FtcActuators.plant(hardwareMap)` owns FTC
+     discovery and controller choices; `Plants.fromOutputs()` starts from Phoenix output ports,
+     feedback sources, and regulators. Both converge on one hardware-neutral grammar and hidden
+     runtime engine. Command-only position skips feedback-only reference and tolerance stages. Keep
+     concrete assembly objects private so they do not become additional construction paths.
 
 10. **Principle-driven evolution (breaking changes are OK)**
 
@@ -351,14 +351,14 @@ that phase, and the same downstream owner update returns through the final resol
 second Plant heartbeat behind same-cycle deduplication.
 
 Calibration-search power is a normalized command in the inclusive `[-1.0, +1.0]` range. The Task
-recipe and the built-in mapped-Plant direct seam reject `NaN`, infinities, and finite overshoot
+recipe and the built-in `PositionPlant` direct seam reject `NaN`, infinities, and finite overshoot
 before changing search state or touching an output; they do not clamp configuration mistakes into
 plausible search commands. Low-level adapter clamping remains defense in depth, not search policy.
 Passing this structural check does not prove that a magnitude, direction, cue, or mechanical setup
 is safe for a particular robot; the mechanism owner must validate those physical choices.
 
 A position reference is a coordinate anchor, not a target command. Every explicitly supplied
-plant/native reference component must be finite. The Task recipe, mapped construction/runtime
+plant/native reference component must be finite. The Task recipe, Plant construction/runtime
 seams, and FTC guided reference answers reject `NaN` and infinities without clamping, before
 retaining an invalid answer or producing the effects that boundary owns. A finite reference need
 not lie inside the Plant's target range: that range bounds legal commands, not where the affine
@@ -426,7 +426,8 @@ constructed. A short local alias is fine; retain a separate target only when it 
 shared, composed-graph, or target-only policy role. A policy object that writes a standalone or
 deliberately shared request without owning Plant lifecycle receives only the `ScalarTarget` (or a
 robot-owned semantic capability). A named target may still be useful locally before the Plant exists
-to assemble an overlay, equivalent-position, or advanced graph. Feedback-aware `ScalarTasks`
+to assemble an overlay, equivalent-position, or advanced graph; when it is the complete exact graph,
+adapt it explicitly with `PlantTargets.exact(target)` before `targetFromResolver(...)`. Feedback-aware `ScalarTasks`
 intentionally name both objects: the target identifies the request to write and the Plant selects
 the target-resolution provenance and physical feedback to observe. One target may feed several
 Plants, so this observer cannot be inferred safely.
@@ -436,7 +437,7 @@ with `PlantTargets.equivalentPositionsOf(...)`. The graph-owned `ScalarTarget` r
 written by robot policy and `ScalarTasks`; the wrapper selects one legal physical representative
 inside the Plant's declared range. Apply overlays before this transform so every final logical
 winner receives the same interpretation. Omitting the transform means exact, unwrapped movement;
-never infer equivalence merely because the Plant declares periodic topology. `Plant.atTarget(value)`
+never infer equivalence merely because the Plant declares periodic equivalence. `Plant.atTarget(value)`
 therefore remains a literal physical-target query. A feedback move may complete at a different
 physical equivalent only when the framework resolution proves that its exact logical command path won and
 the Plant proves arrival at the resolved physical target. Same-valued overlays, fallbacks, holds,
@@ -506,7 +507,7 @@ list and attach that same value to every selected observation. A trustworthy pro
 usable targets is distinct from no trustworthy frame; do not represent either state with a
 timestamped `noTarget()` observation. Mixed frame identities fail closed at the camera boundary.
 
-Keep static range declarations such as `bounded(min, max)` close to the Plant topology because they define the legal plant coordinate system. Direct power Plants are the simpler fixed-domain case: their normalized range is always `[-1, +1]`, so the builder does not ask students to declare it. Keep dynamic protection such as rate limits and interlocks in `targetGuards()`.
+Keep static range declarations such as `bounded(min, max)` close to the Plant periodicity answer because they define the legal plant coordinate system. Direct power Plants are the simpler fixed-domain case: their normalized range is always `[-1, +1]`, so the builder does not ask students to declare it. Keep dynamic protection such as rate limits and interlocks in `targetGuards()`.
 
 For framework-regulated Plants, keep three different bounds at their proper layers:
 
@@ -567,23 +568,23 @@ this.shooter = FtcActuators.plant(hardwareMap)
         .bounded(0.0, 2600.0)
         .nativeUnits()
         .velocityTolerance(100.0)
-        .targetedBy(ScalarTarget.create(0.0))
+        .targetFromNewCommand(0.0)
         .build();
 
 this.transfer = FtcActuators.plant(hardwareMap)
         .crServo("transferLeftServo", Direction.FORWARD)
         .andCrServo("transferRightServo", Direction.REVERSE)
         .power()
-        .targetedBy(ScalarTarget.create(0.0))
+        .targetFromNewCommand(0.0)
         .build();
 
 this.pusher = FtcActuators.plant(hardwareMap)
         .servo("pusherServo", Direction.FORWARD)
         .position()
-        .linear()
+        .nonPeriodic()
             .bounded(0.0, 1.0)
             .nativeUnits()   // servo raw 0..1 plant coordinate
-        .targetedBy(ScalarTarget.create(0.0))
+        .targetFromNewCommand(0.0)
         .build();
 
 // Later, in a semantic mechanism method:
@@ -600,7 +601,7 @@ The builder is staged on purpose:
      completion tolerance.
 3. **For position Plants, answer guided position questions**:
    * motor position control: `deviceManagedWithDefaults()`, `deviceManaged()...doneDeviceManaged()`, or `regulated()` followed by one direct feedback answer and `regulator(...)`
-   * topology: `linear()` or `periodic(period)`
+   * periodicity: `nonPeriodic()` or `periodic(period)`
    * bounds: `bounded(min, max)` or `unbounded()`
    * mapping/reference: `nativeUnits()`, `scaleToNative(...)`, bounded-only `rangeMapsToNative(...)`, then `alreadyReferenced()`, `plantPositionMapsToNative(...)`, `assumeCurrentPositionIs(...)`, or `needsReference(...)` when a runtime reference is required
 4. **For every feedback Plant, choose completion tolerance**: after public-unit mapping and, for
@@ -609,13 +610,17 @@ The builder is staged on purpose:
    A command-only standard-servo Plant skips this feedback-only question.
 5. **Optional hardware guards**: enter `targetGuards()` for dynamic Plant-level protection such as `maxTargetRate(...)`, `holdLastTargetUnless(...)`, or `fallbackTargetUnless(...)`.
 6. **Target binding**: for an ordinary exact mechanism, finish with
-   `targetedBy(ScalarTarget.create(initialValue))` and `build()`, retain only the Plant, and use its
-   stable `commandTarget()` at command or Task-construction points. Advanced composed behavior
-   supplies one final `PlantTargetResolver` to `targetedBy(...)`; lift a read-only scalar stream
-   explicitly with `PlantTargets.exact(readOnlySource)`. Keep a named `ScalarTarget` when shared or
-   target-only policy owns it, or when it usefully identifies the base of an overlay,
-   equivalent-position, or advanced graph. Never pass Plant and target as independent constructor
-   answers for the same graph relationship.
+   `targetFromNewCommand(initialValue)` and `build()`, retain only the Plant, and use its stable
+   generated `commandTarget()` at command or Task-construction points. To supply an already
+   assembled final graph, use `targetFromResolver(finalResolver)`. That binding makes no separate
+   commandability promise: the supplied resolver may carry a recognized stable command target, as
+   an exact `ScalarTarget` or the command-bearing base of a framework-composed graph does, or it may
+   carry none, as a read-only or planned graph does. Lift a read-only scalar stream explicitly with
+   `PlantTargets.exact(readOnlySource)`. Keep a named `ScalarTarget` when shared or target-only policy
+   owns it, or when it usefully identifies the base of an overlay, equivalent-position, or advanced
+   graph; bind a standalone named target through
+   `targetFromResolver(PlantTargets.exact(target))`. Never pass Plant and target as independent
+   constructor answers for the same graph relationship.
 
 Plant tolerance defines Phoenix's mechanism-level `atTarget(...)` result in public Plant units; it
 is not an FTC controller setting. For device-managed motor position, the separately named
@@ -637,13 +642,14 @@ regulated Plant from reading feedback through the same configured name. Separate
 owners may also refer to the same configured name when robot lifecycle policy makes that handoff
 intentional.
 
-Custom hardware adapters that need Phoenix's plant/native mapping and reference behavior use
-`MappedPositionPlant` or `MappedVelocityPlant`. This is a distinct hardware-neutral layer, not a
-second way to configure FTC hardware. Its shorter public flow is still compiler-guided:
-configuration, the required feedback tolerance, optional target guards, target binding, then
-`build()`. Command-only mapped position skips the feedback-tolerance step. Ordinary FTC robot code
-should continue to use `FtcActuators`; still-lower, already-same-unit adapters may use the `Plants`
-factories.
+Custom hardware adapters, hardware-neutral tests, and portable hosts use the one advanced gateway,
+`Plants.fromOutputs()`. It offers six truthful control-path starts: direct power, commanded
+position, device-managed position and velocity with explicit feedback, and Phoenix-regulated
+position and velocity over raw power. It asks for periodicity, bounds, mapping, reference, and
+tolerance only on branches that need those facts, then converges with `FtcActuators` on the same
+guard, target, and build stages. Ordinary FTC robot code continues to use only `FtcActuators`;
+neutral callers use only `Plants`. The two gateways reflect different boundary inputs and share one
+construction engine rather than exposing implementation-class builders or direct factory overloads.
 
 ---
 
@@ -996,7 +1002,7 @@ base PlantTargetResolver
     ↓
 PlantTargets.overlay(...) final target resolver
     ↓
-Plant targetedBy(final target resolver)
+Plant constructed with targetFromResolver(final target resolver)
 ```
 
 This keeps repeated robot behaviors such as feeder pulses systematic without reintroducing multiple writers to the same mechanism.

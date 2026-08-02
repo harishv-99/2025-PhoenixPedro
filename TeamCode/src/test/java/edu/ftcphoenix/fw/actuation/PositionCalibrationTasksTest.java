@@ -133,11 +133,11 @@ public final class PositionCalibrationTasksTest {
     }
 
     @Test
-    public void mappedPositionSearchRejectsInvalidPowerBeforeEffectsAndAllowsValidRetry() {
+    public void outputPositionSearchRejectsInvalidPowerBeforeEffectsAndAllowsValidRetry() {
         RecordingPositionOutput position = new RecordingPositionOutput();
         RecordingPowerOutput searchOutput = new RecordingPowerOutput();
         MutableScalarSource measurement = new MutableScalarSource(5.0);
-        MappedPositionPlant plant = mappedLinearPlant(
+        PositionPlant plant = outputPositionPlant(
                 position, searchOutput, measurement, ScalarTarget.create(5.0));
         ManualLoopClock clock = new ManualLoopClock();
         plant.update(clock.clock());
@@ -152,7 +152,7 @@ public final class PositionCalibrationTasksTest {
                     () -> plant.beginCalibrationSearch(invalidPower));
 
             assertInvalidSearchPower(failure,
-                    "MappedPositionPlant.beginCalibrationSearch(...)", invalidPower);
+                    "PositionPlant.beginCalibrationSearch(...)", invalidPower);
             assertEquals(1, position.setCalls);
             assertEquals(0, position.stopCalls);
             assertEquals(0, searchOutput.setCalls);
@@ -177,16 +177,18 @@ public final class PositionCalibrationTasksTest {
     }
 
     @Test
-    public void mappedRegulatedSearchRejectsInvalidPowerBeforeEffectsAndAllowsValidRetry() {
+    public void outputRegulatedSearchRejectsInvalidPowerBeforeEffectsAndAllowsValidRetry() {
         RecordingPowerOutput normalOutput = new RecordingPowerOutput();
-        RecordingPowerOutput searchOutput = new RecordingPowerOutput();
         MutableScalarSource measurement = new MutableScalarSource(5.0);
         RecordingRegulator regulator = new RecordingRegulator(0.3);
-        MappedPositionPlant plant = MappedPositionPlant.regulated(
-                        normalOutput, measurement, regulator)
-                .searchPowerOutput(searchOutput)
+        PositionPlant plant = Plants.fromOutputs()
+                .regulatedPosition(normalOutput, measurement, regulator)
+                .nonPeriodic()
+                .unbounded()
+                .nativeUnits()
+                .alreadyReferenced()
                 .positionTolerance(0.0)
-                .targetedBy(ScalarTarget.create(5.0))
+                .targetFromNewCommand(5.0)
                 .build();
         ManualLoopClock clock = new ManualLoopClock();
         plant.update(clock.clock());
@@ -201,11 +203,9 @@ public final class PositionCalibrationTasksTest {
                     () -> plant.beginCalibrationSearch(invalidPower));
 
             assertInvalidSearchPower(failure,
-                    "MappedPositionPlant.beginCalibrationSearch(...)", invalidPower);
+                    "PositionPlant.beginCalibrationSearch(...)", invalidPower);
             assertEquals(1, normalOutput.setCalls);
             assertEquals(0, normalOutput.stopCalls);
-            assertEquals(0, searchOutput.setCalls);
-            assertEquals(0, searchOutput.stopCalls);
             assertEquals(1, measurement.sampleCount);
             assertEquals(1, regulator.updateCalls);
             assertEquals(0, regulator.resetCalls);
@@ -221,26 +221,25 @@ public final class PositionCalibrationTasksTest {
         plant.beginCalibrationSearch(-1.0);
         assertEquals(1, normalOutput.stopCalls);
         assertEquals(1, regulator.resetCalls);
-        assertEquals(0, searchOutput.setCalls);
         plant.update(clock.nextCycle(0.10));
-        assertEquals(1, searchOutput.setCalls);
-        assertEquals(-1.0, searchOutput.commanded, 0.0);
+        assertEquals(2, normalOutput.setCalls);
+        assertEquals(-1.0, normalOutput.commanded, 0.0);
         assertEquals(1, regulator.updateCalls);
         plant.endCalibrationSearch();
     }
 
     @Test
-    public void mappedSearchAcceptsAndForwardsExactNormalizedBoundaries() {
+    public void outputSearchAcceptsAndForwardsExactNormalizedBoundaries() {
         for (double power : validSearchPowerBoundaries()) {
             RecordingPositionOutput position = new RecordingPositionOutput();
             RecordingPowerOutput searchOutput = new RecordingPowerOutput();
-            MappedPositionPlant plant = mappedLinearPlant(
+            PositionPlant plant = outputPositionPlant(
                     position, searchOutput, clock -> 0.0, ScalarTarget.create(0.0));
 
             plant.beginCalibrationSearch(power);
             plant.update(new ManualLoopClock().clock());
 
-            assertEquals("mapped search power " + power,
+            assertEquals("output search power " + power,
                     Double.doubleToRawLongBits(power),
                     Double.doubleToRawLongBits(searchOutput.commanded));
             assertEquals(1, position.stopCalls);
@@ -251,13 +250,17 @@ public final class PositionCalibrationTasksTest {
     }
 
     @Test
-    public void mappedSearchPreservesUnsupportedAndActiveErrorPrecedence() {
+    public void outputSearchPreservesUnsupportedAndActiveErrorPrecedence() {
         RecordingPositionOutput unsupportedPosition = new RecordingPositionOutput();
         MutableScalarSource unsupportedMeasurement = new MutableScalarSource(0.0);
-        MappedPositionPlant unsupported = MappedPositionPlant.positionOutput(
-                        unsupportedPosition, unsupportedMeasurement)
+        PositionPlant unsupported = Plants.fromOutputs()
+                .deviceManagedPosition(unsupportedPosition, unsupportedMeasurement)
+                .nonPeriodic()
+                .unbounded()
+                .nativeUnits()
+                .alreadyReferenced()
                 .positionTolerance(0.0)
-                .targetedBy(ScalarTarget.create(0.0))
+                .targetFromNewCommand(0.0)
                 .build();
         PlantTargetStatus unsupportedStatus = unsupported.getTargetStatus();
         PlantTargetResolution unsupportedResolution = unsupported.getTargetResolution();
@@ -274,7 +277,7 @@ public final class PositionCalibrationTasksTest {
 
         RecordingPositionOutput activePosition = new RecordingPositionOutput();
         RecordingPowerOutput activeSearchOutput = new RecordingPowerOutput();
-        MappedPositionPlant active = mappedLinearPlant(
+        PositionPlant active = outputPositionPlant(
                 activePosition, activeSearchOutput, clock -> 0.0, ScalarTarget.create(0.0));
         active.beginCalibrationSearch(0.25);
         PlantTargetStatus activeStatus = active.getTargetStatus();
@@ -739,11 +742,11 @@ public final class PositionCalibrationTasksTest {
     }
 
     @Test
-    public void overlappingMappedSearchCannotDisturbOrReleaseFirstOwner() {
+    public void overlappingOutputSearchCannotDisturbOrReleaseFirstOwner() {
         RecordingPositionOutput position = new RecordingPositionOutput();
         RecordingPowerOutput searchOutput = new RecordingPowerOutput();
         ScalarTarget command = ScalarTarget.create(5.0);
-        MappedPositionPlant plant = mappedLinearPlant(
+        PositionPlant plant = outputPositionPlant(
                 position, searchOutput, clock -> 0.0, command);
         Task first = resumeSearch(plant, BooleanSource.constant(false), 5.0);
         Task second = resumeSearch(plant, BooleanSource.constant(false), 5.0);
@@ -782,12 +785,12 @@ public final class PositionCalibrationTasksTest {
     }
 
     @Test
-    public void failedMappedEndClearsOwnershipAndLaterUpdateCannotRefreshSearch() {
+    public void failedOutputEndClearsOwnershipAndLaterUpdateCannotRefreshSearch() {
         RecordingPositionOutput position = new RecordingPositionOutput();
         RecordingPowerOutput searchOutput = new RecordingPowerOutput();
         RuntimeException stopFailure = new IllegalStateException("search stop failed");
         searchOutput.stopFailure = stopFailure;
-        MappedPositionPlant plant = mappedLinearPlant(
+        PositionPlant plant = outputPositionPlant(
                 position, searchOutput, clock -> 0.0, ScalarTarget.create(6.0));
         Task search = resumeSearch(plant, BooleanSource.constant(false), 5.0);
         TaskRunner runner = new TaskRunner();
@@ -824,13 +827,15 @@ public final class PositionCalibrationTasksTest {
         RecordingPowerOutput searchOutput = new RecordingPowerOutput();
         MutableScalarSource nativeMeasurement = new MutableScalarSource(721.5);
         ScalarTarget command = ScalarTarget.create(1080.0);
-        MappedPositionPlant plant = MappedPositionPlant.positionOutput(position, nativeMeasurement)
+        PositionPlant plant = Plants.fromOutputs()
+                .deviceManagedPosition(position, nativeMeasurement)
                 .searchPowerOutput(searchOutput)
-                .topology(PositionPlant.Topology.PERIODIC, 360.0)
-                .range(ScalarRange.unbounded())
+                .periodic(360.0)
+                .unbounded()
+                .nativeUnits()
                 .plantPositionMapsToNative(0.0, 0.0)
                 .positionTolerance(0.0)
-                .targetedBy(command)
+                .targetFromResolver(PlantTargets.exact(command))
                 .build();
         ManualLoopClock clock = new ManualLoopClock();
 
@@ -885,14 +890,19 @@ public final class PositionCalibrationTasksTest {
                 .build();
     }
 
-    private static MappedPositionPlant mappedLinearPlant(RecordingPositionOutput position,
-                                                         RecordingPowerOutput searchOutput,
-                                                         ScalarSource measurement,
-                                                         ScalarTarget command) {
-        return MappedPositionPlant.positionOutput(position, measurement)
+    private static PositionPlant outputPositionPlant(RecordingPositionOutput position,
+                                                     RecordingPowerOutput searchOutput,
+                                                     ScalarSource measurement,
+                                                     ScalarTarget command) {
+        return Plants.fromOutputs()
+                .deviceManagedPosition(position, measurement)
                 .searchPowerOutput(searchOutput)
+                .nonPeriodic()
+                .unbounded()
+                .nativeUnits()
+                .alreadyReferenced()
                 .positionTolerance(0.0)
-                .targetedBy(command)
+                .targetFromResolver(PlantTargets.exact(command))
                 .build();
     }
 
@@ -910,7 +920,7 @@ public final class PositionCalibrationTasksTest {
         return new double[]{-1.0, -0.0, 0.0, 1.0};
     }
 
-    private static void assertTargetStateUnchanged(MappedPositionPlant plant,
+    private static void assertTargetStateUnchanged(PositionPlant plant,
                                                    PlantTargetStatus expectedStatus,
                                                    PlantTargetResolution expectedResolution) {
         PlantTargetStatus actualStatus = plant.getTargetStatus();
@@ -1085,8 +1095,8 @@ public final class PositionCalibrationTasksTest {
         }
 
         @Override
-        public Topology topology() {
-            return Topology.LINEAR;
+        public Periodicity periodicity() {
+            return Periodicity.NON_PERIODIC;
         }
 
         @Override

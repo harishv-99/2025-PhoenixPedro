@@ -112,14 +112,14 @@ public final class TeleOp_09_LayeredShooterMechanism extends OpMode {
                 .bounded(0.0, FLYWHEEL_MAX_VELOCITY_NATIVE)
                 .nativeUnits()
                 .velocityTolerance(FLYWHEEL_READY_TOLERANCE_NATIVE)
-                .targetedBy(ScalarTarget.create(0.0))
+                .targetFromNewCommand(0.0)
                 .build();
 
         Plant feederPlant = FtcActuators.plant(hardwareMap)
                 .crServo(HW_FEED_LEFT, Direction.FORWARD)
                 .andCrServo(HW_FEED_RIGHT, Direction.REVERSE)
                 .power()
-                .targetedBy(finalFeederTargetResolver)
+                .targetFromResolver(finalFeederTargetResolver)
                 .build();
 
         shooter = new LayeredShooter(
@@ -541,8 +541,8 @@ public final class TeleOp_09_LayeredShooterMechanism extends OpMode {
         private static void requireCommandTarget(Plant plant, String role) {
             if (!plant.hasCommandTarget()) {
                 throw new IllegalArgumentException(role + " Plant must carry a stable command "
-                        + "target. Build it with targetedBy(command), or use a ScalarTarget as "
-                        + "the stable base of its final target graph.");
+                        + "target. Use targetFromNewCommand(...) for an ordinary exact command, or bind a "
+                        + "named ScalarTarget through targetFromResolver(PlantTargets.exact(target)).");
             }
             Objects.requireNonNull(
                     plant.commandTarget(), role + " Plant commandTarget() returned null");

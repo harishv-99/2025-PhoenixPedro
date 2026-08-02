@@ -523,7 +523,10 @@ public final class PlantTargetsOverlayTest {
                 .add("lower", gate(true), lower)
                 .add("higher", gate(true), higher)
                 .build();
-        Plant plant = Plants.power(output, overlay);
+        Plant plant = Plants.fromOutputs()
+                .power(output)
+                .targetFromResolver(overlay)
+                .build();
 
         plant.update(new ManualLoopClock().clock());
 

@@ -107,9 +107,14 @@ PlantTargetResolver finalTransferTarget = PlantTargets.overlay(baseTransferTarge
 transfer = FtcActuators.plant(hardwareMap)
         .crServo("transfer", Direction.FORWARD)
         .power()
-        .targetedBy(finalTransferTarget)
+        .targetFromResolver(finalTransferTarget)
         .build();
 ```
+
+Here the supplied resolver has no command target: its base is a read-only `ScalarSource`, and the
+queue supplies an enabled overlay layer. `targetFromResolver(...)` also accepts framework graphs
+whose base carries a `ScalarTarget`; those Plants expose that recognized command identity through
+`commandTarget()`.
 
 Then the loop remains simple:
 

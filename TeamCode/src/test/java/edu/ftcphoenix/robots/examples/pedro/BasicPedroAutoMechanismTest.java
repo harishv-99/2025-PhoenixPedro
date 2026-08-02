@@ -24,7 +24,10 @@ public final class BasicPedroAutoMechanismTest {
     @Test
     public void collectTasksAreFreshAndActiveCancellationRestoresIdle() {
         RecordingPowerOutput output = new RecordingPowerOutput();
-        Plant plant = Plants.power(output, ScalarTarget.create(0.0));
+        Plant plant = Plants.fromOutputs()
+                .power(output)
+                .targetFromNewCommand(0.0)
+                .build();
         BasicPedroAutoMechanism mechanism = new BasicPedroAutoMechanism(plant, 0.75);
         Task first = mechanism.collectTask(0.50);
         Task second = mechanism.collectTask(0.50);
@@ -49,10 +52,10 @@ public final class BasicPedroAutoMechanismTest {
 
     @Test
     public void constructorRejectsPlantWithoutCommandTarget() {
-        Plant plant = Plants.power(
-                new RecordingPowerOutput(),
-                PlantTargets.exact(0.0)
-        );
+        Plant plant = Plants.fromOutputs()
+                .power(new RecordingPowerOutput())
+                .targetFromResolver(PlantTargets.exact(0.0))
+                .build();
 
         try {
             new BasicPedroAutoMechanism(plant, 0.75);

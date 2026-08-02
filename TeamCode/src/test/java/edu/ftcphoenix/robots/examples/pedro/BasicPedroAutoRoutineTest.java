@@ -5,6 +5,7 @@ import com.pedropathing.paths.PathChain;
 import org.junit.Test;
 
 import edu.ftcphoenix.fw.actuation.Plant;
+import edu.ftcphoenix.fw.actuation.PlantTargets;
 import edu.ftcphoenix.fw.actuation.Plants;
 import edu.ftcphoenix.fw.core.hal.PowerOutput;
 import edu.ftcphoenix.fw.core.source.ScalarTarget;
@@ -92,7 +93,10 @@ public final class BasicPedroAutoRoutineTest {
     private static final class Fixture {
         final ManualLoopClock time = new ManualLoopClock();
         final ScalarTarget target = ScalarTarget.create(0.0);
-        final Plant plant = Plants.power(new RecordingPowerOutput(), target);
+        final Plant plant = Plants.fromOutputs()
+                .power(new RecordingPowerOutput())
+                .targetFromResolver(PlantTargets.exact(target))
+                .build();
         final BasicPedroAutoMechanism mechanism =
                 new BasicPedroAutoMechanism(plant, 0.80);
         final FakeRouteExecution execution = new FakeRouteExecution();

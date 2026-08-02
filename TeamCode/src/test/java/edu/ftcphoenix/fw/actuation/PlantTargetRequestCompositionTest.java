@@ -70,7 +70,7 @@ public final class PlantTargetRequestCompositionTest {
         assertAlternativeIds(combined, "first", "second", "third", "fourth");
 
         PlantTargetResolution resolution = plannerFor(combined).resolve(
-                linearContext(0.0, ScalarRange.bounded(-100.0, 100.0)),
+                nonPeriodicContext(0.0, ScalarRange.bounded(-100.0, 100.0)),
                 new ManualLoopClock().clock());
 
         assertEquals("first", resolution.selectedCandidateId());
@@ -172,7 +172,7 @@ public final class PlantTargetRequestCompositionTest {
                 PlantTargetRequest.exact("near", 3.0));
         PlantTargetResolver fixed = plannerFor(PlantTargets.plan(request));
         PlantTargetResolver live = plannerFor(PlantTargets.plan(Source.constant(request)));
-        PlantTargetContext context = linearContext(
+        PlantTargetContext context = nonPeriodicContext(
                 0.0, ScalarRange.bounded(-100.0, 100.0));
 
         PlantTargetResolution fixedResolution =
@@ -199,7 +199,7 @@ public final class PlantTargetRequestCompositionTest {
                 .whenUnavailable().reportUnavailable();
         PlantTargetResolver increasingResolver = increasing.rejectUnreachable()
                 .whenUnavailable().reportUnavailable();
-        PlantTargetContext context = linearContext(
+        PlantTargetContext context = nonPeriodicContext(
                 0.0, ScalarRange.bounded(-20.0, 20.0));
 
         assertEquals(-1.0, nearestResolver.resolve(
@@ -214,7 +214,7 @@ public final class PlantTargetRequestCompositionTest {
         PlantTargets.PlanReadyStage clamp = reachability.clampUnreachableToRange();
         assertNotSame(reject, clamp);
 
-        PlantTargetContext bounded = linearContext(
+        PlantTargetContext bounded = nonPeriodicContext(
                 5.0, ScalarRange.bounded(0.0, 10.0));
         assertFalse(reject.whenUnavailable().reportUnavailable()
                 .resolve(bounded, new ManualLoopClock().clock()).hasTarget());
@@ -252,7 +252,7 @@ public final class PlantTargetRequestCompositionTest {
                 permissive.whenUnavailable().reportUnavailable();
         PlantTargetResolver strictResolver =
                 strict.whenUnavailable().reportUnavailable();
-        PlantTargetContext context = linearContext(
+        PlantTargetContext context = nonPeriodicContext(
                 0.0, ScalarRange.bounded(-10.0, 10.0));
 
         assertEquals(6.0, defaultResolver.resolve(
@@ -279,7 +279,7 @@ public final class PlantTargetRequestCompositionTest {
                 true,
                 350.0,
                 ScalarRange.bounded(0.0, 720.0),
-                PositionPlant.Topology.PERIODIC,
+                PositionPlant.Periodicity.PERIODIC,
                 360.0,
                 Double.NaN,
                 Double.NaN);
@@ -300,7 +300,7 @@ public final class PlantTargetRequestCompositionTest {
                 .whenUnavailable().reportUnavailable();
     }
 
-    private static PlantTargetContext linearContext(double measurement, ScalarRange range) {
+    private static PlantTargetContext nonPeriodicContext(double measurement, ScalarRange range) {
         return PlantTargetContext.simple(
                 true, measurement, range, Double.NaN, Double.NaN);
     }

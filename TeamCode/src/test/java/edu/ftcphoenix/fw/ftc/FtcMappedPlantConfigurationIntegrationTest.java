@@ -15,6 +15,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import edu.ftcphoenix.fw.actuation.Plant;
+import edu.ftcphoenix.fw.actuation.PlantTargets;
 import edu.ftcphoenix.fw.actuation.PositionPlant;
 import edu.ftcphoenix.fw.core.hal.Direction;
 import edu.ftcphoenix.fw.core.source.ScalarTarget;
@@ -42,7 +43,7 @@ public final class FtcMappedPlantConfigurationIntegrationTest {
                 .bounded(0.0, 100.0)
                 .scaleToNative(4.0)
                 .velocityTolerance(0.0)
-                .targetedBy(ScalarTarget.create(12.5))
+                .targetFromNewCommand(12.5)
                 .build();
 
         plant.update(new ManualLoopClock().clock());
@@ -63,12 +64,12 @@ public final class FtcMappedPlantConfigurationIntegrationTest {
                 .motor("arm", Direction.FORWARD)
                 .position()
                 .deviceManagedWithDefaults()
-                .linear()
+                .nonPeriodic()
                 .bounded(-10.0, 10.0)
                 .scaleToNative(4.0)
                 .plantPositionMapsToNative(2.0, 100.0)
                 .positionTolerance(0.0)
-                .targetedBy(ScalarTarget.create(5.0))
+                .targetFromNewCommand(5.0)
                 .build();
 
         plant.update(new ManualLoopClock().clock());
@@ -90,12 +91,12 @@ public final class FtcMappedPlantConfigurationIntegrationTest {
                 .motor("wrist", Direction.FORWARD)
                 .position()
                 .deviceManagedWithDefaults()
-                .linear()
+                .nonPeriodic()
                 .unbounded()
                 .scaleToNative(5.0)
                 .assumeCurrentPositionIs(7.0)
                 .positionTolerance(0.0)
-                .targetedBy(ScalarTarget.create(8.0))
+                .targetFromNewCommand(8.0)
                 .build();
 
         plant.update(new ManualLoopClock().clock());
@@ -116,12 +117,12 @@ public final class FtcMappedPlantConfigurationIntegrationTest {
                 .motor("lift", Direction.FORWARD)
                 .position()
                 .deviceManagedWithDefaults()
-                .linear()
+                .nonPeriodic()
                 .unbounded()
                 .scaleToNative(10.0)
                 .needsReference("lift not homed")
                 .positionTolerance(0.0)
-                .targetedBy(ScalarTarget.create(4.0))
+                .targetFromNewCommand(4.0)
                 .build();
 
         assertFalse(plant.isReferenced());
@@ -153,13 +154,14 @@ public final class FtcMappedPlantConfigurationIntegrationTest {
         PositionPlant plant = FtcActuators.plant(hardwareMap)
                 .servo("claw", Direction.FORWARD)
                 .position()
-                .linear()
+                .nonPeriodic()
                 .bounded(-1.0, 1.0)
                 .rangeMapsToNative(0.2, 0.8)
-                .targetedBy(target)
+                .targetFromResolver(PlantTargets.exact(target))
                 .build();
 
         plant.update(clock.clock());
+        assertEquals(PositionPlant.Periodicity.NON_PERIODIC, plant.periodicity());
         assertEquals(-1.0, plant.getAppliedTarget(), EPSILON);
         assertEquals(0.2, servo.commandedPosition, EPSILON);
 
@@ -167,6 +169,29 @@ public final class FtcMappedPlantConfigurationIntegrationTest {
         plant.update(clock.nextCycle(0.02));
         assertEquals(1.0, plant.getAppliedTarget(), EPSILON);
         assertEquals(0.8, servo.commandedPosition, EPSILON);
+        assertFalse(plant.hasFeedback());
+    }
+
+    @Test
+    public void standardServoPeriodicCoordinateUsesTheSameBoundedMappingGrammar() {
+        TestHardwareMap hardwareMap = new TestHardwareMap();
+        ServoProbe servo = hardwareMap.addServo("plate");
+
+        PositionPlant plant = FtcActuators.plant(hardwareMap)
+                .servo("plate", Direction.FORWARD)
+                .position()
+                .periodic(360.0)
+                .bounded(0.0, 360.0)
+                .rangeMapsToNative(0.0, 1.0)
+                .targetFromNewCommand(180.0)
+                .build();
+
+        plant.update(new ManualLoopClock().clock());
+
+        assertEquals(PositionPlant.Periodicity.PERIODIC, plant.periodicity());
+        assertEquals(360.0, plant.period(), EPSILON);
+        assertEquals(180.0, plant.getAppliedTarget(), EPSILON);
+        assertEquals(0.5, servo.commandedPosition, EPSILON);
         assertFalse(plant.hasFeedback());
     }
 

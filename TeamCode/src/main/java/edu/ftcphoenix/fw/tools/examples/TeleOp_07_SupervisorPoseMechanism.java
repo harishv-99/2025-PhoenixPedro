@@ -124,10 +124,10 @@ public final class TeleOp_07_SupervisorPoseMechanism extends OpMode {
             this.plant = FtcActuators.plant(hardwareMap)
                     .servo(HW_WRIST, Direction.FORWARD)
                     .position()
-                    .linear()
+                    .nonPeriodic()
                     .bounded(0.0, 1.0)
                     .nativeUnits()
-                    .targetedBy(finalTargetResolver)
+                    .targetFromResolver(finalTargetResolver)
                     .build();
         }
 

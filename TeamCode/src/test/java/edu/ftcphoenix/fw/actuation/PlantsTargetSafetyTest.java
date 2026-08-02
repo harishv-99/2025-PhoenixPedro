@@ -19,25 +19,37 @@ public final class PlantsTargetSafetyTest {
     private static final double EPSILON = 1e-12;
 
     @Test
-    public void simpleFactoriesRequireWritableTargetsWhilePlantAwareFormsRemain() throws Exception {
-        assertEquals(Plant.class, Plants.class.getDeclaredMethod(
-                "power", PowerOutput.class, ScalarTarget.class).getReturnType());
-        assertEquals(Plant.class, Plants.class.getDeclaredMethod(
-                "power", PowerOutput.class, PlantTargetResolver.class).getReturnType());
-        assertEquals(Plant.class, Plants.class.getDeclaredMethod(
-                "position", PositionOutput.class, ScalarTarget.class).getReturnType());
-        assertEquals(Plant.class, Plants.class.getDeclaredMethod(
-                "position", PositionOutput.class, PlantTargetResolver.class).getReturnType());
+    public void targetFromNewCommandRejectsInvalidPowerBeforeOutputEffects() {
+        ClampingPowerOutput output = new ClampingPowerOutput();
+        Plants.TargetStep<Plant> target = Plants.fromOutputs().power(output);
 
-        assertNoSimpleFactory("power", PowerOutput.class, ScalarSource.class);
-        assertNoSimpleFactory("position", PositionOutput.class, ScalarSource.class);
+        double[] invalid = {Double.NaN, Double.NEGATIVE_INFINITY,
+                Double.POSITIVE_INFINITY, -1.01, 1.01};
+        for (double value : invalid) {
+            try {
+                target.targetFromNewCommand(value);
+                fail("Expected invalid initial power " + value + " to fail");
+            } catch (IllegalArgumentException expected) {
+                assertTrue(expected.getMessage().contains(
+                        Double.isFinite(value) ? "outside" : "finite"));
+            }
+            assertTrue(Double.isNaN(output.received));
+        }
+
+        Plant plant = target.targetFromNewCommand(0.0).build();
+        assertTrue(Double.isNaN(output.received));
+        plant.update(new ManualLoopClock().clock());
+        assertEquals(0.0, output.received, EPSILON);
     }
 
     @Test
     public void powerClampsFiniteRequestsBeforeTheOutputAndReportsIt() {
         ClampingPowerOutput output = new ClampingPowerOutput();
         ScalarTarget target = ScalarTarget.create(2.0);
-        Plant plant = Plants.power(output, target);
+        Plant plant = Plants.fromOutputs()
+                .power(output)
+                .targetFromResolver(PlantTargets.exact(target))
+                .build();
         ManualLoopClock clock = new ManualLoopClock();
 
         plant.update(clock.clock());
@@ -62,7 +74,10 @@ public final class PlantsTargetSafetyTest {
     public void normalizedPowerBoundariesAndInteriorRemainAccepted() {
         ClampingPowerOutput output = new ClampingPowerOutput();
         ScalarTarget target = ScalarTarget.create(-1.0);
-        Plant plant = Plants.power(output, target);
+        Plant plant = Plants.fromOutputs()
+                .power(output)
+                .targetFromResolver(PlantTargets.exact(target))
+                .build();
         ManualLoopClock clock = new ManualLoopClock();
         double[] requests = {-1.0, 0.0, 0.35, 1.0};
 
@@ -85,7 +100,10 @@ public final class PlantsTargetSafetyTest {
             seenRange[0] = context.targetRange();
             return PlantTargetResolution.exact(0.0, "capture power range");
         };
-        Plant plant = Plants.power(new ClampingPowerOutput(), resolver);
+        Plant plant = Plants.fromOutputs()
+                .power(new ClampingPowerOutput())
+                .targetFromResolver(resolver)
+                .build();
 
         plant.update(new ManualLoopClock().clock());
 
@@ -97,7 +115,11 @@ public final class PlantsTargetSafetyTest {
     @Test
     public void unavailableNonFinitePowerSourceStartsAtNeutral() {
         ClampingPowerOutput output = new ClampingPowerOutput();
-        Plant plant = Plants.power(output, ScalarTarget.create(Double.NaN));
+        ScalarTarget target = ScalarTarget.create(Double.NaN);
+        Plant plant = Plants.fromOutputs()
+                .power(output)
+                .targetFromResolver(PlantTargets.exact(target))
+                .build();
 
         plant.update(new ManualLoopClock().clock());
 
@@ -113,7 +135,10 @@ public final class PlantsTargetSafetyTest {
     public void unavailableNonFinitePowerSourceRetainsPriorSafeCommand() {
         ClampingPowerOutput output = new ClampingPowerOutput();
         ScalarTarget target = ScalarTarget.create(0.4);
-        Plant plant = Plants.power(output, target);
+        Plant plant = Plants.fromOutputs()
+                .power(output)
+                .targetFromResolver(PlantTargets.exact(target))
+                .build();
         ManualLoopClock clock = new ManualLoopClock();
         plant.update(clock.clock());
 
@@ -136,13 +161,16 @@ public final class PlantsTargetSafetyTest {
         ClampingPowerOutput output = new ClampingPowerOutput();
         ScalarTarget target = ScalarTarget.create(2.0);
         final double[] guardedCandidate = {Double.NaN};
-        PlantTargetGuards guards = PlantTargetGuards.builder()
+        Plant plant = Plants.fromOutputs()
+                .power(output)
+                .targetGuards()
                 .holdLastTargetUnless("capture", (candidate, clock) -> {
                     guardedCandidate[0] = candidate;
                     return true;
                 })
+                .doneTargetGuards()
+                .targetFromResolver(PlantTargets.exact(target))
                 .build();
-        Plant plant = Plants.power(output, PlantTargets.exact(target), guards);
 
         plant.update(new ManualLoopClock().clock());
 
@@ -155,10 +183,13 @@ public final class PlantsTargetSafetyTest {
     public void inRangePowerFallbackRetainsFallbackStatus() {
         ClampingPowerOutput output = new ClampingPowerOutput();
         ScalarTarget target = ScalarTarget.create(0.8);
-        PlantTargetGuards guards = PlantTargetGuards.builder()
+        Plant plant = Plants.fromOutputs()
+                .power(output)
+                .targetGuards()
                 .fallbackTargetUnless("mechanismClear", clock -> false, 0.25)
+                .doneTargetGuards()
+                .targetFromResolver(PlantTargets.exact(target))
                 .build();
-        Plant plant = Plants.power(output, PlantTargets.exact(target), guards);
 
         plant.update(new ManualLoopClock().clock());
 
@@ -169,31 +200,40 @@ public final class PlantsTargetSafetyTest {
     }
 
     @Test
-    public void powerRejectsStaticFallbackOutsideNormalizedRange() {
-        PlantTargetGuards guards = PlantTargetGuards.builder()
-                .fallbackTargetUnless("mechanismClear", clock -> false, 2.0)
-                .build();
-
+    public void invalidPowerFallbackIsActionableAndDoesNotPoisonGuardRecipe() {
+        Plants.TargetGuardStep<Plant> guards = Plants.fromOutputs()
+                .power(new ClampingPowerOutput())
+                .targetGuards();
         try {
-            Plants.power(new ClampingPowerOutput(), PlantTargets.exact(0.0), guards);
+            guards.fallbackTargetUnless("mechanismClear", clock -> false, 2.0);
             fail("Expected an out-of-range power fallback to be rejected");
         } catch (IllegalArgumentException expected) {
-            assertTrue(expected.getMessage().contains("PowerPlant"));
+            assertTrue(expected.getMessage().contains("Plant range"));
             assertTrue(expected.getMessage().contains("mechanismClear"));
             assertTrue(expected.getMessage().contains("2.0"));
             assertTrue(expected.getMessage().contains("-1.0"));
             assertTrue(expected.getMessage().contains("1.0"));
         }
+
+        Plant plant = guards
+                .fallbackTargetUnless("mechanismClear", clock -> true, 0.25)
+                .doneTargetGuards()
+                .targetFromNewCommand(0.0)
+                .build();
+        assertEquals(0.0, plant.commandTarget().get(), EPSILON);
     }
 
     @Test
     public void powerRateLimiterMovesTowardNormalizedBoundary() {
         ClampingPowerOutput output = new ClampingPowerOutput();
         ScalarTarget target = ScalarTarget.create(0.0);
-        PlantTargetGuards guards = PlantTargetGuards.builder()
+        Plant plant = Plants.fromOutputs()
+                .power(output)
+                .targetGuards()
                 .maxTargetRate(0.25)
+                .doneTargetGuards()
+                .targetFromResolver(PlantTargets.exact(target))
                 .build();
-        Plant plant = Plants.power(output, PlantTargets.exact(target), guards);
         ManualLoopClock clock = new ManualLoopClock();
         plant.update(clock.clock());
 
@@ -210,10 +250,16 @@ public final class PlantsTargetSafetyTest {
     public void nonFiniteGuardResultNeverReachesLowLevelUnboundedOutput() {
         RecordingPositionOutput output = new RecordingPositionOutput();
         ScalarTarget target = ScalarTarget.create(Double.MAX_VALUE);
-        PlantTargetGuards guards = PlantTargetGuards.builder()
+        Plant plant = Plants.fromOutputs()
+                .commandedPosition(output)
+                .nonPeriodic()
+                .unbounded()
+                .nativeUnits()
+                .targetGuards()
                 .maxTargetRate(Double.MAX_VALUE)
+                .doneTargetGuards()
+                .targetFromResolver(PlantTargets.exact(target))
                 .build();
-        Plant plant = Plants.position(output, PlantTargets.exact(target), guards);
         ManualLoopClock clock = new ManualLoopClock();
         plant.update(clock.clock());
         double prior = plant.getAppliedTarget();
@@ -231,16 +277,6 @@ public final class PlantsTargetSafetyTest {
 
         assertEquals(0.0, plant.getAppliedTarget(), EPSILON);
         assertEquals(0.0, output.getCommandedPosition(), EPSILON);
-    }
-
-    private static void assertNoSimpleFactory(String name, Class<?> outputType,
-                                              Class<?> targetType) {
-        try {
-            Plants.class.getDeclaredMethod(name, outputType, targetType);
-            fail("Plants." + name + " must not accept a read-only ScalarSource directly");
-        } catch (NoSuchMethodException expected) {
-            // Read-only scalar sources cross explicitly through PlantTargets.exact(...).
-        }
     }
 
     private static final class ClampingPowerOutput implements PowerOutput {

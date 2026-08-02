@@ -6,9 +6,12 @@ import org.junit.Test;
 
 import java.lang.reflect.Method;
 
+import edu.ftcphoenix.fw.actuation.Plant;
 import edu.ftcphoenix.fw.actuation.PlantTargetResolver;
+import edu.ftcphoenix.fw.actuation.PlantTargets;
+import edu.ftcphoenix.fw.actuation.Plants;
+import edu.ftcphoenix.fw.actuation.PositionPlant;
 import edu.ftcphoenix.fw.core.hal.Direction;
-import edu.ftcphoenix.fw.core.source.ScalarTarget;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
@@ -20,60 +23,55 @@ public final class FtcFeedbackToleranceStageTest {
 
     @Test
     public void feedbackMappingStagesRequireParallelToleranceAnswers() throws Exception {
-        assertReturns(FtcActuators.VelocityMappingStep.class, "nativeUnits",
-                FtcActuators.VelocityToleranceStep.class);
-        assertReturns(FtcActuators.VelocityMappingStep.class, "scaleToNative",
-                FtcActuators.VelocityToleranceStep.class, double.class);
-        assertReturns(FtcActuators.VelocityToleranceStep.class, "velocityTolerance",
-                FtcActuators.PlantTargetStep.class, double.class);
-        assertEquals(1, FtcActuators.VelocityToleranceStep.class.getDeclaredMethods().length);
+        assertReturns(Plants.VelocityMappingStep.class, "nativeUnits",
+                Plants.VelocityToleranceStep.class);
+        assertReturns(Plants.VelocityMappingStep.class, "scaleToNative",
+                Plants.VelocityToleranceStep.class, double.class);
+        assertReturns(Plants.VelocityToleranceStep.class, "velocityTolerance",
+                Plants.TargetStep.class, double.class);
+        assertEquals(1, Plants.VelocityToleranceStep.class.getDeclaredMethods().length);
 
-        assertReturns(FtcActuators.BoundedPositionMappingStep.class, "rangeMapsToNative",
-                FtcActuators.PositionToleranceStep.class, double.class, double.class);
-        assertReturns(FtcActuators.PositionReferenceStep.class, "alreadyReferenced",
-                FtcActuators.PositionToleranceStep.class);
-        assertReturns(FtcActuators.PositionReferenceStep.class, "plantPositionMapsToNative",
-                FtcActuators.PositionToleranceStep.class, double.class, double.class);
-        assertReturns(FtcActuators.PositionReferenceStep.class, "assumeCurrentPositionIs",
-                FtcActuators.PositionToleranceStep.class, double.class);
-        assertReturns(FtcActuators.PositionReferenceStep.class, "needsReference",
-                FtcActuators.PositionToleranceStep.class, String.class);
-        assertReturns(FtcActuators.PositionToleranceStep.class, "positionTolerance",
-                FtcActuators.PositionTargetStep.class, double.class);
-        assertEquals(1, FtcActuators.PositionToleranceStep.class.getDeclaredMethods().length);
+        assertReturns(Plants.FeedbackBoundedPositionMappingStep.class, "rangeMapsToNative",
+                Plants.PositionToleranceStep.class, double.class, double.class);
+        assertReturns(Plants.PositionReferenceStep.class, "alreadyReferenced",
+                Plants.PositionToleranceStep.class);
+        assertReturns(Plants.PositionReferenceStep.class, "plantPositionMapsToNative",
+                Plants.PositionToleranceStep.class, double.class, double.class);
+        assertReturns(Plants.PositionReferenceStep.class, "assumeCurrentPositionIs",
+                Plants.PositionToleranceStep.class, double.class);
+        assertReturns(Plants.PositionReferenceStep.class, "needsReference",
+                Plants.PositionToleranceStep.class, String.class);
+        assertReturns(Plants.PositionToleranceStep.class, "positionTolerance",
+                Plants.TargetStep.class, double.class);
+        assertEquals(1, Plants.PositionToleranceStep.class.getDeclaredMethods().length);
 
         assertReturns(FtcActuators.ServoBoundedPositionMappingStep.class, "nativeUnits",
-                FtcActuators.PositionTargetStep.class);
+                Plants.TargetStep.class);
         assertReturns(FtcActuators.ServoBoundedPositionMappingStep.class, "rangeMapsToNative",
-                FtcActuators.PositionTargetStep.class, double.class, double.class);
+                Plants.TargetStep.class, double.class, double.class);
 
-        assertReturns(FtcActuators.PlantTargetStep.class, "targetGuards",
-                FtcActuators.PlantTargetGuardStep.class);
-        assertReturns(FtcActuators.PlantTargetStep.class, "targetedBy",
-                FtcActuators.PlantBuildStep.class, ScalarTarget.class);
-        assertReturns(FtcActuators.PlantTargetStep.class, "targetedBy",
-                FtcActuators.PlantBuildStep.class, PlantTargetResolver.class);
-        assertEquals(3, FtcActuators.PlantTargetStep.class.getDeclaredMethods().length);
-
-        assertReturns(FtcActuators.PositionTargetStep.class, "targetGuards",
-                FtcActuators.PositionTargetGuardStep.class);
-        assertReturns(FtcActuators.PositionTargetStep.class, "targetedBy",
-                FtcActuators.PositionPlantBuildStep.class, ScalarTarget.class);
-        assertReturns(FtcActuators.PositionTargetStep.class, "targetedBy",
-                FtcActuators.PositionPlantBuildStep.class, PlantTargetResolver.class);
-        assertEquals(3, FtcActuators.PositionTargetStep.class.getDeclaredMethods().length);
+        assertReturns(Plants.TargetStep.class, "targetGuards", Plants.TargetGuardStep.class);
+        assertReturns(Plants.TargetStep.class, "targetFromNewCommand",
+                Plants.BuildStep.class, double.class);
+        assertReturns(Plants.TargetStep.class, "targetFromResolver",
+                Plants.BuildStep.class, PlantTargetResolver.class);
+        assertEquals(3, Plants.TargetStep.class.getDeclaredMethods().length);
 
         for (Class<?> nested : FtcActuators.class.getDeclaredClasses()) {
             assertNotEquals("VelocityBuildStep", nested.getSimpleName());
             assertNotEquals("PositionBuildStep", nested.getSimpleName());
             assertNotEquals("ServoPositionBuildStep", nested.getSimpleName());
+            assertNotEquals("PlantTargetStep", nested.getSimpleName());
+            assertNotEquals("PositionTargetStep", nested.getSimpleName());
+            assertNotEquals("PlantTargetGuardStep", nested.getSimpleName());
+            assertNotEquals("PositionTargetGuardStep", nested.getSimpleName());
         }
     }
 
     @Test
     public void toleranceAnswerIsValidatedAndCannotBeReplacedThroughRetainedStage() {
         HardwareMap hardwareMap = new HardwareMap(null, null);
-        FtcActuators.VelocityToleranceStep velocity = FtcActuators.plant(hardwareMap)
+        Plants.VelocityToleranceStep velocity = FtcActuators.plant(hardwareMap)
                 .motor("flywheel", Direction.FORWARD)
                 .velocity()
                 .deviceManagedWithDefaults()
@@ -82,58 +80,62 @@ public final class FtcFeedbackToleranceStageTest {
 
         assertIllegalArgument(() -> velocity.velocityTolerance(Double.NaN),
                 "velocityTolerance", "finite", ">= 0");
-        FtcActuators.PlantTargetStep velocityTarget = velocity.velocityTolerance(0.0);
+        Plants.TargetStep<Plant> velocityTarget = velocity.velocityTolerance(0.0);
         assertTrue(velocityTarget != null);
         assertIllegalState(() -> velocity.velocityTolerance(1.0),
                 "velocityTolerance(...) has already been answered");
 
-        FtcActuators.PositionToleranceStep position = FtcActuators.plant(hardwareMap)
+        Plants.PositionToleranceStep position = FtcActuators.plant(hardwareMap)
                 .motor("lift", Direction.FORWARD)
                 .position()
                 .deviceManagedWithDefaults()
-                .linear()
+                .nonPeriodic()
                 .unbounded()
                 .nativeUnits()
                 .alreadyReferenced();
 
         assertIllegalArgument(() -> position.positionTolerance(Double.POSITIVE_INFINITY),
                 "positionTolerance", "finite", ">= 0");
-        FtcActuators.PositionTargetStep positionTarget = position.positionTolerance(0.0);
+        Plants.TargetStep<PositionPlant> positionTarget = position.positionTolerance(0.0);
         assertTrue(positionTarget != null);
         assertIllegalState(() -> position.positionTolerance(1.0),
                 "positionTolerance(...) has already been answered");
     }
 
     @Test
-    public void runtimeStageBypassFailsBeforeHardwareResolutionOrConfiguration() {
+    public void runtimeStageBypassFailsAtTargetAnswerWithoutPoisoningRecipe() {
         HardwareMap hardwareMap = new HardwareMap(null, null);
-        ScalarTarget velocityTarget = ScalarTarget.create(0.0);
-        FtcActuators.VelocityToleranceStep velocity = FtcActuators.plant(hardwareMap)
+        Plants.VelocityToleranceStep velocity = FtcActuators.plant(hardwareMap)
                 .motor("flywheel", Direction.FORWARD)
                 .velocity()
                 .deviceManagedWithDefaults()
                 .unbounded()
                 .nativeUnits();
-        FtcActuators.PlantBuildStep velocityBuild =
-                ((FtcActuators.PlantTargetStep) velocity).targetedBy(velocityTarget);
+        @SuppressWarnings("unchecked")
+        Plants.TargetStep<Plant> velocityBypass =
+                (Plants.TargetStep<Plant>) (Object) velocity;
 
-        assertIllegalState(velocityBuild::build,
+        assertIllegalState(() -> velocityBypass.targetFromNewCommand(0.0),
                 "requires velocityTolerance(...)", "plant velocity units");
+        assertTrue(velocity.velocityTolerance(0.0).targetFromNewCommand(0.0) != null);
 
-        ScalarTarget positionTarget = ScalarTarget.create(0.0);
-        FtcActuators.PositionToleranceStep position = FtcActuators.plant(hardwareMap)
+        Plants.PositionToleranceStep position = FtcActuators.plant(hardwareMap)
                 .motor("lift", Direction.FORWARD)
                 .position()
                 .deviceManagedWithDefaults()
-                .linear()
+                .nonPeriodic()
                 .unbounded()
                 .nativeUnits()
                 .alreadyReferenced();
-        FtcActuators.PositionPlantBuildStep positionBuild =
-                ((FtcActuators.PositionTargetStep) position).targetedBy(positionTarget);
+        @SuppressWarnings("unchecked")
+        Plants.TargetStep<PositionPlant> positionBypass =
+                (Plants.TargetStep<PositionPlant>) (Object) position;
 
-        assertIllegalState(positionBuild::build,
+        assertIllegalState(
+                () -> positionBypass.targetFromResolver(PlantTargets.exact(0.0)),
                 "requires positionTolerance(...)", "plant position units");
+        assertTrue(position.positionTolerance(0.0)
+                .targetFromResolver(PlantTargets.exact(0.0)) != null);
     }
 
     private static void assertReturns(Class<?> owner, String methodName, Class<?> returnType,

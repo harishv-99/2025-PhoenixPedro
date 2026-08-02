@@ -273,8 +273,9 @@ public final class PositionCalibrationTasks {
         public Task build() {
             if (holdAfter && !plant.hasCommandTarget()) {
                 throw new IllegalStateException("holdAfterReference(...) requires a PositionPlant "
-                        + "with a command target. Build it with targetedBy(command), or use a "
-                        + "ScalarTarget as the stable base of its final target graph.");
+                        + "with a command target. Use targetFromNewCommand(...) for an ordinary exact "
+                        + "command, or bind a named ScalarTarget through "
+                        + "targetFromResolver(PlantTargets.exact(target)).");
             }
             return new SearchTask(plant, power, condition, reference, holdAfter, holdTarget, timeoutSec);
         }

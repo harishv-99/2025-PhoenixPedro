@@ -19,7 +19,7 @@ This running list tracks framework builders that should be reviewed against the 
 - [x] `actuation/PlantTargets`
 - [x] `drive/guidance/DriveGuidance`
 - [x] `ftc/FtcActuators` velocity builders
-- [x] `actuation/MappedPositionPlant` / `actuation/MappedVelocityPlant`
+- [x] `actuation/Plants.fromOutputs()` shared Plant grammar
 - [x] `spatial/TagSelections`
 - [x] `spatial/SpatialQuery` / `spatial/SpatialQuerySpec`
 - [x] `actuation/PositionCalibrationTasks`
@@ -83,16 +83,17 @@ independent optional tuning values before returning.
 ### `ftc/FtcActuators` velocity builders
 
 Completed in the third builder cleanup pass. Motor velocity now follows the same guided shape as
-position, but without position-only concepts like topology, reference, and homing:
+position, but without position-only concepts like periodicity, reference, and homing:
 
 1. choose velocity loop ownership (`deviceManagedWithDefaults()`, `deviceManaged()...doneDeviceManaged()`, or `regulated()` followed by one direct feedback answer and `regulator(...)`)
 2. choose legal velocity target bounds (`bounded(...)` or `unbounded()`)
 3. choose plant/native velocity mapping (`nativeUnits()` or `scaleToNative(...)`)
 4. answer the required plant-unit completion question exactly once with `velocityTolerance(...)`
 5. optionally set guards such as `targetGuards().maxTargetRate(...)`
-6. bind an ordinary command inline with `targetedBy(ScalarTarget.create(initialValue))`, or bind an
-   advanced composed graph with `targetedBy(PlantTargetResolver)`; adapt a read-only scalar
-   explicitly with `PlantTargets.exact(source)`
+6. bind an ordinary command with `targetFromNewCommand(initialValue)`, or bind a supplied final
+   resolver with `targetFromResolver(finalResolver)`; the resolver may carry a recognized command
+   target or none, and separately owned targets or read-only scalars cross this boundary explicitly
+   through `PlantTargets.exact(...)`
 
 The old `MotorVelocityControl` value-object API was removed instead of retained as a parallel path.
 Velocity uses a zero-preserving mapping only; no `rangeMapsToNative(...)` is exposed for velocity.
@@ -100,28 +101,26 @@ As with the rest of the plant API, `bounded(...)`, the required tolerance, and r
 in plant units unless a method name explicitly calls out native/controller units. No hidden or
 native-unit tolerance shortcut remains.
 
-### `actuation/MappedPositionPlant` / `actuation/MappedVelocityPlant`
+### `actuation/Plants.fromOutputs()` shared Plant grammar
 
-Completed with the explicit feedback-tolerance pass. These classes remain the distinct
-hardware-neutral construction layer for custom HAL adapters that need public/native mapping,
-position reference policy, target guards, or framework regulation. They do not compete with
-`FtcActuators`: FTC robot code starts from a `HardwareMap`, while this layer starts from Phoenix
-outputs, measurement sources, and regulators.
+The one-grammar pass replaced public `MappedPositionPlant`/`MappedVelocityPlant` starts and direct
+`Plants` factory overloads with one hardware-neutral gateway. Custom HAL adapters, portable hosts,
+and hardware-neutral tests start with `Plants.fromOutputs()`; ordinary FTC mechanisms continue to
+start with `FtcActuators.plant(hardwareMap)`. These gateways prove different boundary inputs but
+converge on the same periodicity, range, mapping, guard, target, validation, and hidden runtime
+engine.
 
-The mapped public flow is deliberately smaller than the FTC facade while still being one-way and
-compiler-guided:
+The neutral gateway has six control-path branches: direct power, commanded position,
+device-managed position and velocity with explicit feedback, and Phoenix-regulated position and
+velocity over raw power. Each branch exposes only the facts it needs. Position answers periodicity
+before bounds and mapping; feedback branches require one plant-unit tolerance; command-only
+position omits feedback-only reference, calibration, and tolerance stages. Both gateways finish
+through the same inline guard branch and either `targetFromNewCommand(initialValue)` or
+`targetFromResolver(finalResolver)`, then `build()`.
 
-1. configure the mapped Plant's range, mapping, reference, search output, and other applicable options
-2. for feedback position or velocity, answer the required plant-unit tolerance once
-3. optionally configure target guards
-4. bind the final target resolver
-5. build
-
-Command-only mapped position skips step 2 because it has no measurement-based completion. After
-the tolerance answer, mapping/reference configuration is no longer visible; after target binding,
-only build is visible in an ordinary fluent chain. The concrete assembly object stays private.
-This prevents omitted tolerances and targets without making a mutable concrete builder another
-public construction path or duplicating the FTC facade's hardware/control/topology question graph.
+Concrete mapped runtimes and their mutable assembly objects stay private. This prevents omitted
+answers without making implementation classes, direct overloads, reusable stateful guard chains,
+or FTC hardware-provider wrappers into competing public construction paths.
 
 ### `spatial/SpatialQuery` / `spatial/SpatialQuerySpec`
 

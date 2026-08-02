@@ -314,7 +314,7 @@ private final Plant intake;
 this.intake = FtcActuators.plant(hardwareMap)
         .motor(snapshot.motorName, snapshot.direction)
         .power()
-        .targetedBy(ScalarTarget.create(0.0))
+        .targetFromNewCommand(0.0)
         .build();
 ```
 
@@ -339,7 +339,9 @@ when the Task is constructed rather than silently waiting on the wrong mechanism
 Calling `ScalarTasks.set(...)` or `build()` does not change the target. The built Task writes when
 it starts. Each `build()` creates a fresh single-use Task, so retain the Plant and rebuild the Task
 or macro for every later run. Keep a separately named `ScalarTarget` only when it is standalone,
-shared, owned by target-only policy, or useful while assembling a composed target graph.
+shared, owned by target-only policy, or useful while assembling a composed target graph. If that
+target is the Plant's complete exact graph, bind it through
+`targetFromResolver(PlantTargets.exact(target))`.
 
 #### Calibration-search handoff
 
@@ -650,7 +652,7 @@ PlantTargetResolver finalTarget = PlantTargets.overlay(0.0)
 this.transferShooterPlant = FtcActuators.plant(hardwareMap)
         .crServo(snapshot.transferServoName, snapshot.transferDirection)
         .power()
-        .targetedBy(finalTarget)
+        .targetFromResolver(finalTarget)
         .build();
 
 // In the mechanism update:
