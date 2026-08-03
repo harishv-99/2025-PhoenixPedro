@@ -101,12 +101,12 @@ public final class DriveGuidancePlan {
          * @param minOmegaCmd     minimum omega magnitude outside the deadband
          * @param aimDeadbandRad  aim deadband in radians
          */
-        public Tuning(double kPTranslate,
-                      double maxTranslateCmd,
-                      double kPAim,
-                      double maxOmegaCmd,
-                      double minOmegaCmd,
-                      double aimDeadbandRad) {
+        Tuning(double kPTranslate,
+               double maxTranslateCmd,
+               double kPAim,
+               double maxOmegaCmd,
+               double minOmegaCmd,
+               double aimDeadbandRad) {
             this.kPTranslate = kPTranslate;
             this.maxTranslateCmd = maxTranslateCmd;
             this.kPAim = kPAim;
@@ -204,13 +204,6 @@ public final class DriveGuidancePlan {
      */
     public DriveOverlayMask requestedMask() {
         return spec.requestedMask();
-    }
-
-    /**
-     * Alias for {@link #requestedMask()}.
-     */
-    public DriveOverlayMask suggestedMask() {
-        return spec.suggestedMask();
     }
 
     /**

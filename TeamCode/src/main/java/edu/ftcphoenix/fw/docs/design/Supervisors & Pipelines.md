@@ -292,7 +292,7 @@ For Plant targets, use `PlantTargets.overlay(...)`. It keeps simple scalar basel
 ```java
 // Long-lived subsystem fields
 private final ScalarTarget baseTarget = ScalarTarget.create(0.0);
-private final OutputTaskRunner overrideQueue = new OutputTaskRunner(0.0);
+private final OutputTaskRunner overrideQueue = Tasks.outputQueue(0.0);
 private final Plant plant;
 
 // In the subsystem constructor: copy config, then build the graph and Plant once.
@@ -460,7 +460,7 @@ Supervisors typically:
 Typical pattern:
 
 - the request signal is driver intent (held trigger)
-- the task itself contains readiness gates (`gatedOutputUntil`)
+- the staged `Tasks.outputPulse(...)` recipe contains its readiness gate
 - backlog is usually 1 (keep one action buffered)
 
 When request becomes false, the active Task is cancelled and the queue is cleared automatically.

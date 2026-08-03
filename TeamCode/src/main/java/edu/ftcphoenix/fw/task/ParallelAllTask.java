@@ -26,8 +26,8 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * <pre>{@code
  * TaskRunner runner = new TaskRunner();
  * runner.enqueue(Tasks.parallelAll(
- *     new WaitUntilTask(sensorReady, 1.5),
- *     new OutputForSecondsTask("intakePulse", 1.0, 0.20)
+ *     Tasks.waitUntil(sensorReady, 1.5),
+ *     Tasks.outputForSeconds("intakePulse", 1.0, 0.20)
  * ));
  * }</pre>
  *

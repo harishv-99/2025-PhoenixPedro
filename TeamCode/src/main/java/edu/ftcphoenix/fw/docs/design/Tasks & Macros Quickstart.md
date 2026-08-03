@@ -104,7 +104,7 @@ At its core, a task looks like this:
 public interface Task {
     void start(LoopClock clock);
     void update(LoopClock clock);
-    default void cancel() { }
+    void cancel();
     boolean isComplete();
 
     TaskOutcome getOutcome();
@@ -122,7 +122,8 @@ Rules:
 * `isComplete()` becomes `true` when the task is done.
 * `cancel()` is the cooperative early-stop hook. Before `start(...)` it is a side-effect-free
   no-op; while active it makes the Task terminal; after completion and on repeated calls it is a
-  no-op.
+  no-op. Every custom Task must implement this method so cancellation policy is explicit at
+  compile time, including an intentional no-op for a Task that cannot remain active.
 * Calling `update(...)` directly before `start(...)` is a lifecycle error. Framework Tasks report
   it with an actionable exception instead of silently starting or mutating state. `Tasks.noop()`
   is the intentional exception because it is already successfully complete when created.
@@ -224,12 +225,11 @@ Common factories (high‑level view):
     * `Tasks.withTimeout(Task task, double timeoutSec)` – impose one hard outer time budget on a
       complete Task or Task graph.
 
-> `Tasks.*` is the one public construction layer for generic composition, including `sequence(...)`,
-> `parallelAll(...)`, `parallelDeadline(...)`, `withTimeout(...)`, and
-> `branchOnOutcome(...)`. Public lower-level leaf
-> Tasks such as `InstantTask`, `RunForSecondsTask`, and `WaitUntilTask` remain available. Prefer the
-> corresponding `Tasks` helper when it covers the call; use a concrete leaf only for distinct
-> callback, configuration, or status access.
+> `Tasks.*` is the one public construction layer for generic composition and ordinary leaf Tasks,
+> including `runOnce(...)`, `waitUntil(...)`, `sequence(...)`, `parallelAll(...)`,
+> `parallelDeadline(...)`, `withTimeout(...)`, and `branchOnOutcome(...)`.
+> `RunForSecondsTask` remains directly constructible because its start/update/finish callback
+> capability is distinct from a fixed wait.
 
 ### 3.1 Choose the parallel owner explicitly
 
@@ -602,13 +602,10 @@ For **most** robots, you only need:
 * `DriveTasks.driveExclusivelyForSeconds(...)` only for simple Auto/test movement with exclusive
   drive-sink ownership.
 
-Some public leaf Task classes remain available when you need extra control. Prefer the matching
-`Tasks` helper when it already expresses the behavior; for example, use `Tasks.runOnce(...)` rather
-than constructing `InstantTask` merely for a different spelling. Concrete leaf classes are useful
-when they expose a distinct capability:
+Use the matching `Tasks` helper for ordinary leaf behavior rather than directly constructing its
+implementation class. One public generic leaf remains because it exposes a distinct capability:
 
 * `RunForSecondsTask` – when you want full control over what happens during the time window (custom callbacks each loop).
-* `WaitUntilTask` – when you need its concrete timeout/status inspection beyond the facade.
 
 Even inside a team-specific helper factory, compose child Tasks through `Tasks.*`, such as
 `sequence(...)`, `parallelAll(...)`, `parallelDeadline(...)`, `withTimeout(...)`, or
@@ -640,11 +637,19 @@ the graph in the loop:
 
 ```java
 // Mechanism fields
-private final OutputTaskRunner feederQueue = new OutputTaskRunner(0.0);
+private final OutputTaskRunner feederQueue = Tasks.outputQueue(0.0);
+private final OutputTaskFactory feedOne;
 private final Plant transferShooterPlant;
 
 // In the mechanism constructor, after copying config and creating sensor/behavior inputs:
 FeederConfig snapshot = Objects.requireNonNull(config, "config").copy();
+this.feedOne = Tasks.outputPulse("feedOne")
+        .startWhen(fireAllowed)
+        .runOutput(0.90)
+        .until(ballLeftGate)
+        .minRunSec(0.05)
+        .maxRunSec(0.30)
+        .build();
 PlantTargetResolver finalTarget = PlantTargets.overlay(0.0)
         .add("feedPulse", feederQueue.activeSource(), feederQueue)
         .build();
@@ -662,14 +667,7 @@ feederQueue.whileHigh(
         clock,
         requestShoot,
         1,
-        () -> Tasks.gatedOutputUntil(
-                "feedOne",
-                fireAllowed,
-                ballLeftGate,
-                0.90,
-                0.05,
-                0.30
-        )
+        feedOne
 );
 feederQueue.update(clock);
 transferShooterPlant.update(clock);
@@ -731,9 +729,8 @@ For the full design rationale and more examples, see [`Output Tasks & Queues`](<
   timed branch, or add a feedback-aware branch.
 * **`DriveTasks.driveExclusivelyForSeconds(...)`** provides simple timed open-loop Auto/test movement
   when its Task is the sole behavior-command writer for the drive sink.
-* Public lower-level leaf Tasks remain available, but prefer their `Tasks` helper unless the
-  concrete type exposes distinct callback, configuration, or status control; generic composition
-  still goes through `Tasks.*`.
+* Ordinary leaf Tasks and generic composition use `Tasks.*`; `RunForSecondsTask` remains public for
+  its distinct start/update/finish callback capability.
 * TeleOp macros and Autonomous routines both use the same task patterns; only the triggers change (buttons vs. init/start).
 
 Once you are comfortable with these patterns, you can layer in more advanced pieces like vision, DriveGuidance (auto-aim / go-to), and interpolated shooter speeds – they all compose naturally on top of the same Task/Plant/Drive structure.

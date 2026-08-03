@@ -5,7 +5,7 @@ import java.util.function.Supplier;
 /**
  * Convenience factory methods for external route-following tasks.
  *
- * <p>This is the route-library sibling of {@code DriveTasks} and {@code DriveGuidanceTasks}.
+ * <p>This is the route-library sibling of {@code DriveTasks} and plan-owned guidance Tasks.
  * Robot code can sequence external route followers using the Phoenix task system without exposing
  * any one library's API beyond the project-specific adapter. Every route Task has an explicit
  * diagnostic name and explicitly selects either a finite Task-level timeout or no Task-level

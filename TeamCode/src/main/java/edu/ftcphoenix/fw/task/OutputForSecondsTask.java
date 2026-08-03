@@ -10,6 +10,8 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * pulses such as "run feeder for 120ms" and for sensorless fallback behavior when no real
  * completion sensor exists.</p>
  *
+ * <p>Create this leaf Task through {@link Tasks#outputForSeconds(String, double, double)}.</p>
+ *
  * <p>Active cancellation ends the pulse immediately and reports
  * {@link TaskOutcome#CANCELLED}; pre-start and terminal cancellation are no-ops.</p>
  *
@@ -38,7 +40,7 @@ public final class OutputForSecondsTask implements OutputTask {
      * @param output      output value while the task runs
      * @param durationSec duration in seconds; must be {@code >= 0}
      */
-    public OutputForSecondsTask(String name, double output, double durationSec) {
+    OutputForSecondsTask(String name, double output, double durationSec) {
         if (durationSec < 0.0) {
             throw new IllegalArgumentException("durationSec must be >= 0, got " + durationSec);
         }

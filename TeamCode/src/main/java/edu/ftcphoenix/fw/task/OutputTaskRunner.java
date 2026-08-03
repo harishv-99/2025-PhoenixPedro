@@ -16,7 +16,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *
  * <h2>Usage</h2>
  * <pre>{@code
- * OutputTaskRunner feederQueue = new OutputTaskRunner(0.0);
+ * OutputTaskRunner feederQueue = Tasks.outputQueue(0.0);
  *
  * OutputTaskFactory feedOne = Tasks.outputPulse("feed")
  *         .startWhen(shooterReady.and(aimLocked))
@@ -75,7 +75,7 @@ public final class OutputTaskRunner implements ScalarSource {
      *
      * @param idleOutput output returned when no task is active
      */
-    public OutputTaskRunner(double idleOutput) {
+    OutputTaskRunner(double idleOutput) {
         this.idleOutput = idleOutput;
         this.lastOutput = idleOutput;
     }

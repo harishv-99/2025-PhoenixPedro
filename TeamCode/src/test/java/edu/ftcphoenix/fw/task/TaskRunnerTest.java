@@ -33,10 +33,13 @@ public final class TaskRunnerTest {
     private static final class CountingTask implements Task {
         private int startCount;
         private int updateCount;
+        private boolean started;
+        private boolean cancelled;
 
         @Override
         public void start(LoopClock clock) {
             startCount++;
+            started = true;
         }
 
         @Override
@@ -45,13 +48,21 @@ public final class TaskRunnerTest {
         }
 
         @Override
+        public void cancel() {
+            if (!started || cancelled) {
+                return;
+            }
+            cancelled = true;
+        }
+
+        @Override
         public boolean isComplete() {
-            return false;
+            return cancelled;
         }
 
         @Override
         public TaskOutcome getOutcome() {
-            return TaskOutcome.NOT_DONE;
+            return cancelled ? TaskOutcome.CANCELLED : TaskOutcome.NOT_DONE;
         }
     }
 }

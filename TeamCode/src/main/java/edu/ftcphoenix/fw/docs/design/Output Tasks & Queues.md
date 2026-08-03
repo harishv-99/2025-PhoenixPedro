@@ -203,6 +203,11 @@ Inside the mechanism or supervisor that owns the private queue, use queue-level 
 `whileLow(...)` to keep a bounded backlog while a semantic request signal has the desired level.
 Controls set the request through a robot-owned method; they do not receive the queue.
 
+Do not bind a held signal to a shared `TaskRunner` enqueue on every loop. That creates stale queued
+macros whenever one Task lasts longer than a cycle. Use ordinary `Bindings.whileHigh/whileLow` for
+direct idempotent level actions, edge-triggered `TaskBindings` for one macro per event, and this
+queue-level helper for bounded repeated output work.
+
 ```java
 private boolean continuousFeedRequested;
 private final BooleanSource requestShoot =

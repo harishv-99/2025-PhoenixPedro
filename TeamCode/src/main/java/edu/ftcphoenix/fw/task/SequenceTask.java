@@ -25,9 +25,9 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * TaskRunner runner = new TaskRunner();
  *
  * runner.enqueue(Tasks.sequence(
- *     new InstantTask(() -> log("start")),
- *     new WaitUntilTask(readySensor),
- *     new InstantTask(() -> log("done"))
+ *     Tasks.runOnce(() -> log("start")),
+ *     Tasks.waitUntil(readySensor),
+ *     Tasks.runOnce(() -> log("done"))
  * ));
  * }</pre>
  *

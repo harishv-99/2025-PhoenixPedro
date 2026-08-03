@@ -86,21 +86,15 @@ public interface Task {
     void update(LoopClock clock);
 
     /**
-     * Optional early-stop hook.
+     * Apply this Task's explicit early-stop policy.
      *
-     * <p>The default implementation is a no-op, which is appropriate for tasks that complete in
-     * {@link #start(LoopClock)} and own no temporary external state. Any custom Task that can remain
-     * active after start must override this method so active cancellation makes its own lifecycle
-     * terminal, even when runner detachment would otherwise stop later updates.</p>
-     *
-     * <p>Tasks that command hardware, own child tasks, or need to report a cancellation outcome
-     * should override this method. Cancellation before start must not acquire, release, or mutate
-     * task-owned resources. Active cancellation must make the task terminal before cleanup that may
-     * throw. Cancellation after completion and repeated cancellation must be no-ops.</p>
+     * <p>Every implementation must state this policy, including an intentional no-op for a Task
+     * that is already terminal and owns no temporary state. Cancellation before start must not
+     * acquire, release, or mutate task-owned resources. Active cancellation must make the task
+     * terminal before cleanup that may throw. Cancellation after completion and repeated
+     * cancellation must be no-ops.</p>
      */
-    default void cancel() {
-        // default no-op
-    }
+    void cancel();
 
     /**
      * @return {@code true} once the task has finished and no longer needs to receive

@@ -113,13 +113,6 @@ public final class AprilTagPoseEstimator implements AbsolutePoseEstimator {
         }
 
         /**
-         * Backward-friendly alias for {@link #toSolverConfig()}.
-         */
-        public FixedTagFieldPoseSolver.Config solverConfig() {
-            return toSolverConfig();
-        }
-
-        /**
          * {@inheritDoc}
          */
         @Override

@@ -11,7 +11,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * <p>Typical usage:</p>
  * <pre>{@code
  * TaskRunner runner = new TaskRunner();
- * runner.enqueue(new InstantTask(() -> telemetry.addLine("Auto start")));
+ * runner.enqueue(Tasks.runOnce(() -> telemetry.addLine("Auto start")));
  * }</pre>
  *
  * <p>Semantics:</p>
@@ -40,7 +40,7 @@ public final class InstantTask implements Task {
      *
      * @param action action to run once; must not be {@code null}
      */
-    public InstantTask(Runnable action) {
+    InstantTask(Runnable action) {
         this.action = Objects.requireNonNull(action, "action must not be null");
     }
 
