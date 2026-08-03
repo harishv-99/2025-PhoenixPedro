@@ -70,6 +70,29 @@ For a ticks-based turret, values may be ticks. For an inches-based extension, va
 For a servo claw built with `rangeMapsToNative(0.30, 0.80)`, robot code and target planning can use
 logical `0.0..1.0` while the Plant maps those values to raw servo fractions internally.
 
+## Advanced target-range protocol
+
+`ScalarRange` is the advanced value exchanged by a `PositionPlant`, `PlantTargetContext`, and the
+planner. It describes which finite target values are legal; it is not another ordinary Plant
+builder. A valid range has exactly one explicit shape:
+
+- `ScalarRange.bounded(finiteMin, finiteMax)` — both inclusive bounds with
+  `finiteMin <= finiteMax` (equality is a valid singleton);
+- `ScalarRange.boundedFrom(finiteMin)` — an inclusive lower bound and no upper bound;
+- `ScalarRange.boundedTo(finiteMax)` — no lower bound and an inclusive upper bound; or
+- `ScalarRange.unbounded()` — no software target bound.
+
+Every supplied endpoint must be finite. Do not pass `NaN` or an infinity to a bounded factory as a
+sentinel for an absent side. A non-finite value is never a legal target, including for an unbounded
+range. `ScalarRange.invalid(reason)` is separate: it publishes temporary runtime unavailability,
+such as a position coordinate that has not been referenced, so the resolver can follow its explicit
+`whenUnavailable()` policy.
+
+Ordinary `Plants.fromOutputs()` and `FtcActuators` construction stays narrower: its range question
+offers only `bounded(min, max)` with two finite endpoints or `unbounded()`, and a standard-servo
+position path is bounded-only. The one-sided shapes above are for advanced custom Plant/context
+producers; they are not hidden builder answers.
+
 ## The one target rule
 
 For anything intended to become a Plant target, use `PlantTargets`.
@@ -685,9 +708,10 @@ this.lift = FtcActuators.plant(hardwareMap)
         .build();
 ```
 
-`bounded(...)` defines the static legal target range. `targetGuards()` handles dynamic protection
-such as interlocks, fallback targets, and maximum target rate. If behavior asks for an impossible
-or temporarily unsafe target, telemetry can show both the requested target and the applied target.
+The ordinary finite `bounded(...)` answer defines the static legal target range. `targetGuards()`
+handles dynamic protection such as interlocks, fallback targets, and maximum target rate. If
+behavior asks for an impossible or temporarily unsafe target, telemetry can show both the requested
+target and the applied target.
 A Plant with a fixed range rejects a configured fallback outside that range at build time and
 rechecks the final dynamic-guard result before sending it to hardware. Direct power Plants use the
 fixed normalized range `[-1.0, +1.0]` without adding a builder question.

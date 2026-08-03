@@ -104,8 +104,8 @@ public final class PlantTargetsPeriodicPlannerTest {
     public void allPreferencesWorkAcrossBoundedHalfBoundedAndUnboundedRanges() {
         ScalarRange[] ranges = {
                 ScalarRange.bounded(-12.0, 26.0),
-                ScalarRange.minOnly(4.0),
-                ScalarRange.maxOnly(-4.0),
+                ScalarRange.boundedFrom(4.0),
+                ScalarRange.boundedTo(-4.0),
                 ScalarRange.unbounded()
         };
         double[][] expectedByRangeAndPreference = {
@@ -351,11 +351,11 @@ public final class PlantTargetsPeriodicPlannerTest {
         PlantTargetResolution lowerBounded = resolve(
                 Preference.NEAREST,
                 PlantTargetRequest.periodic("minimum", 0.0, 7.0),
-                context(0.0, ScalarRange.minOnly(1000.0)));
+                context(0.0, ScalarRange.boundedFrom(1000.0)));
         PlantTargetResolution upperBounded = resolve(
                 Preference.NEAREST,
                 PlantTargetRequest.periodic("maximum", 0.0, 7.0),
-                context(0.0, ScalarRange.maxOnly(-1000.0)));
+                context(0.0, ScalarRange.boundedTo(-1000.0)));
 
         assertTrue(lowerBounded.hasTarget());
         assertEquals(1001.0, lowerBounded.target(), EPSILON);

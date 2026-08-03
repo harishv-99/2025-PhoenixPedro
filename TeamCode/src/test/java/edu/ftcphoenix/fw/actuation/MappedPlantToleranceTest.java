@@ -211,6 +211,40 @@ public final class MappedPlantToleranceTest {
     }
 
     @Test
+    public void invalidNeutralBoundsDoNotCommandOutputOrPoisonRetainedRangeStage() {
+        RecordingPositionOutput output = new RecordingPositionOutput();
+        Plants.CommandedPositionBoundsStep retained = Plants.fromOutputs()
+                .commandedPosition(output)
+                .nonPeriodic();
+
+        assertIllegalArgumentContains(
+                () -> retained.bounded(Double.NaN, 1.0),
+                "ScalarRange.bounded", "finite", "minValue", "NaN");
+        assertTrue(Double.isNaN(output.commandedPosition));
+
+        assertIllegalArgumentContains(
+                () -> retained.bounded(-1.0, Double.POSITIVE_INFINITY),
+                "ScalarRange.bounded", "finite", "maxValue", "Infinity");
+        assertTrue(Double.isNaN(output.commandedPosition));
+
+        assertIllegalArgumentContains(
+                () -> retained.bounded(1.0, -1.0),
+                "ScalarRange.bounded", "minValue", "1.0", "maxValue", "-1.0");
+        assertTrue(Double.isNaN(output.commandedPosition));
+
+        PositionPlant plant = retained
+                .bounded(-1.0, 1.0)
+                .nativeUnits()
+                .targetFromNewCommand(0.5)
+                .build();
+        assertTrue("Configuration and build must not command the output",
+                Double.isNaN(output.commandedPosition));
+
+        plant.update(new ManualLoopClock().clock());
+        assertEquals(0.5, output.commandedPosition, EPSILON);
+    }
+
+    @Test
     public void incompleteRetainedStageCanRecoverButTargetFreezeAndBuildAreSingleUse() {
         Plants.FromOutputsStep root = Plants.fromOutputs();
         Plants.VelocityBoundsStep velocityBounds = root.deviceManagedVelocity(

@@ -957,7 +957,7 @@ public final class Plants {
         public VelocityMappingStep bounded(double min, double max) {
             requireConfigurationMutable("bounded(...)");
             requireRangeUnanswered();
-            range = finiteClosedRange(min, max);
+            range = ScalarRange.bounded(min, max);
             rangeAnswered = true;
             return this;
         }
@@ -1077,7 +1077,7 @@ public final class Plants {
             requireConfigurationMutable("bounded(...)");
             requirePeriodicityAnswered();
             requireRangeUnanswered();
-            range = finiteClosedRange(min, max);
+            range = ScalarRange.bounded(min, max);
             bounded = true;
             rangeAnswered = true;
         }
@@ -1522,18 +1522,6 @@ public final class Plants {
                 throw new IllegalStateException("Position reference has already been answered");
             }
         }
-    }
-
-    private static ScalarRange finiteClosedRange(double min, double max) {
-        if (!Double.isFinite(min) || !Double.isFinite(max)) {
-            throw new IllegalArgumentException("bounded(...) values must be finite, got ["
-                    + min + ", " + max + "]");
-        }
-        if (min > max) {
-            throw new IllegalArgumentException("bounded(...) requires min <= max, got ["
-                    + min + ", " + max + "]");
-        }
-        return ScalarRange.bounded(min, max);
     }
 
     private static void requireScale(double scale) {

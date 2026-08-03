@@ -1,7 +1,6 @@
 package edu.ftcphoenix.fw.actuation;
 
 import edu.ftcphoenix.fw.core.source.ScalarSource;
-import edu.ftcphoenix.fw.core.source.Source;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 
 /**
@@ -77,13 +76,6 @@ public interface PositionPlant extends Plant {
      * invalid range as a hard block.</p>
      */
     ScalarRange targetRange();
-
-    /**
-     * Returns a source view of {@link #targetRange()} for planners.
-     */
-    default Source<ScalarRange> targetRangeSource() {
-        return clock -> targetRange();
-    }
 
     /**
      * Returns a source view of the plant measurement in plant units.

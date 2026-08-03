@@ -88,7 +88,8 @@ For example, motor position wiring asks:
 2. Which target domain? `position()`
 3. Who manages the position loop? `deviceManagedWithDefaults()`, `deviceManaged()...doneDeviceManaged()`, or `regulated()` followed by one direct feedback answer and `regulator(...)`
 4. Is the public coordinate `nonPeriodic()` or `periodic(period)`?
-5. What bounds in public Plant units are legal? `bounded(min, max)` or `unbounded()`
+5. What bounds in public Plant units are legal? `bounded(min, max)` with two finite endpoints, or
+   `unbounded()`
 6. How do Plant units map to native units? `nativeUnits()`, `scaleToNative(...)`, or bounded-only `rangeMapsToNative(...)`
 7. How is the reference/offset known? `alreadyReferenced()`, `plantPositionMapsToNative(...)`, `assumeCurrentPositionIs(...)`, or `needsReference(...)`
 8. What public position error counts as complete? The required `positionTolerance(...)` answer
@@ -101,7 +102,8 @@ Motor velocity wiring asks a parallel but smaller set of questions:
 1. Which hardware? `motor(...)`
 2. Which target domain? `velocity()`
 3. Who manages the velocity loop? `deviceManagedWithDefaults()`, `deviceManaged()...doneDeviceManaged()`, or `regulated()` followed by one direct feedback answer and `regulator(...)`
-4. What target bounds in Plant units are legal? `bounded(min, max)` or `unbounded()`
+4. What target bounds in Plant units are legal? `bounded(min, max)` with two finite endpoints, or
+   `unbounded()`
 5. How do Plant velocity units map to native velocity units? `nativeUnits()` or `scaleToNative(...)`
 6. What public velocity error counts as complete? The required `velocityTolerance(...)` answer
 7. Optional dynamic hardware guards: `targetGuards().maxTargetRate(...)`, `holdLastTargetUnless(...)`, `fallbackTargetUnless(...)`
@@ -465,7 +467,7 @@ history.
 
 ## 5. Position periodicity and bounds
 
-Every declared position Plant answers two separate questions:
+Every declared position Plant answers periodicity and bounds. The general position grammar offers:
 
 ```java
 .nonPeriodic()         // no declared fixed equivalence period
@@ -474,6 +476,15 @@ Every declared position Plant answers two separate questions:
 .bounded(min, max)     // legal target range in public Plant units
 .unbounded()           // no software target range
 ```
+
+These are the complete ordinary builder choices. `bounded(min, max)` requires two finite endpoints
+with `min <= max`; do not use `NaN` or infinity to imply a missing bound. `unbounded()` is the
+explicit no-software-bound answer, but its targets must still be finite. A standard-servo position
+path is bounded-only because the FTC device proves a finite native `[0.0, 1.0]` command domain. The
+advanced `ScalarRange` value used by custom Plant/planner protocols can represent one-sided ranges,
+but those shapes are deliberately not additional `Plants.fromOutputs()` or `FtcActuators` stage
+answers. See
+[`Mechanism Target Planning`](<../drive-vision/Mechanism Target Planning.md#advanced-target-range-protocol>).
 
 Common choices:
 

@@ -1,6 +1,6 @@
 # Framework Improvement Tracker
 
-Last updated: 2026-07-30
+Last updated: 2026-08-02
 
 This file tracks proposed Phoenix framework improvements. It is deliberately a planning document:
 an item being listed here does **not** mean its current proposed solution has been approved. Each
@@ -149,7 +149,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 62 | DOC-01 | Stale and non-compiling documentation | Done | Factual docs, compiled-example authority links, navigation, focused Markdown validation, and Android Studio approval are complete. |
 | 63 | CLEAN-01 | Alias and risky convenience cleanup | Done | The bounded non-Plant cleanup, migrations, synchronized guidance, automated verification, independent review, and Android Studio approval are complete. |
 | 64 | PLANT-02 | One public Plant construction grammar | Done | One shared Plant grammar, parallel target provenance, caller/docs migration, automated verification, independent review, and Android Studio approval are complete. |
-| 65 | RANGE-01 | ScalarRange construction validity | Proposed | Define and enforce finite, half-bounded, and unbounded range construction without allowing `NaN`. |
+| 65 | RANGE-01 | ScalarRange construction validity | Done | Define and enforce finite, half-bounded, and unbounded range construction without allowing `NaN`. |
 | 66 | MAP-01 | FTC actuator mapping-domain validation | Proposed | Validate finite child transforms and raw actuator domains before command mapping can be silently clamped. |
 | 67 | FTC-02 | Device-managed controller configuration validation | Proposed | Validate FTC PIDF/P, maximum-power, and related staged answers before SDK access or mode changes. |
 | 68 | SOURCE-04 | Successful source-cache commit semantics | Proposed | Audit stateful source wrappers that claim a cycle before upstream sampling or state transition succeeds. |
@@ -12131,20 +12131,230 @@ writer, and explicit lifecycle ownership.
 
 ### RANGE-01 - ScalarRange construction validity
 
-- **Problem to confirm:** `ScalarRange.bounded(min, max)` checks ordering but can admit `NaN` because
-  comparisons with `NaN` are false. Other framework code intentionally uses unbounded ranges, so a
-  blanket finite-only rule could remove a useful capability or create multiple spellings for the
-  same range.
-- **Alternatives to compare:** require finite `bounded(...)` endpoints and keep one explicit
-  `unbounded()` factory; permit intentional half-bounded infinities; add named lower/upper-bounded
-  factories; validate only when a Plant consumes the range; or introduce constrained endpoint
-  values. Audit all range factories, constructors, and callers before deciding.
-- **Leading hypothesis:** reject `NaN` at construction and expose each supported bounded/unbounded
-  shape through one obvious factory. Do not use FTC servo `[0, 1]` policy in this core value.
-- **Completion:** the accepted finite, half-bounded, and unbounded contracts are explicit, every
-  caller has one construction path, and tests cover `NaN`, infinities, equal/reversed endpoints,
-  containment, and Plant-target safety integration.
-- **Decision record:** _Pending; split from MAP-01 during API-03 review on 2026-07-16._
+- **Gate 1 approval (2026-08-02):** the user approved the breaking design with
+  **`Approve RANGE-01 canonical range-shape breaking design`**. RANGE-01 is now **In progress**;
+  the fetched `origin/master` remains
+  `043c8100fb5f02147c0ffe297b0c50db71313c7d`, so the existing isolated item branch remains the
+  approved implementation branch. This approval does not authorize MAP-01, FTC-02, SOURCE-04, or
+  another tracker item.
+- **Decision gate (2026-08-02):** **Approved; implementation authorized.**
+  RANGE-01 is the sole active item on `codex/range-01-scalar-range-validity`, based exactly on
+  merged `origin/master@043c8100fb5f02147c0ffe297b0c50db71313c7d`. Research changed only this
+  tracker; no Java implementation, test, Javadoc, guide, example, or Phoenix production code has
+  started. The leading explicit-shape hypothesis survives, and the complete audit found two
+  additional no-value range conveniences that should not remain as parallel spellings.
+- **Confirmed construction defect:** `ScalarRange` has one private constructor and five public
+  value factories: `bounded(min,max)`, `minOnly(min)`, `maxOnly(max)`, `unbounded()`, and the
+  deliberately unavailable `invalid(reason)` state. It has no public constructor, `of(...)`,
+  overload family, or builder.
+  - `bounded(...)` checks only `min > max`. Because every comparison with `NaN` is false,
+    `bounded(NaN,x)` and `bounded(x,NaN)` return `valid=true` ranges whose containment always fails
+    and whose clamp is `NaN`.
+  - Infinite `bounded(...)` arguments create duplicate spellings for every open shape:
+    `bounded(-Infinity,+Infinity)` duplicates `unbounded()`, while one finite endpoint duplicates
+    `minOnly(...)` or `maxOnly(...)`. Same-signed infinite endpoints can create a supposedly valid
+    range with no finite command.
+  - `minOnly(...)` and `maxOnly(...)` perform no validation. `NaN` or the wrong-signed infinity
+    creates no finite command, while the other infinity duplicates `unbounded()`. The current
+    `isUnbounded()` then misclassifies several malformed ranges because it treats any two
+    non-finite endpoints as unbounded.
+  - `contains(...)` currently accepts positive/negative infinity for an unbounded range and accepts
+    the open-side infinity for a half-bounded range. A finite closed range can clamp infinity to a
+    plausible finite endpoint. Both conflict with the framework rule that infinity is never a
+    legal mechanism target and non-finite arithmetic must not be hidden as a plausible command.
+  - Built-in Plants still fail closed: ordinary builders already pre-reject non-finite
+    `bounded(...)` answers, mapped Plant construction later rejects a range without a finite
+    command, planner defenses reject malformed context ranges, and final target safety requires a
+    finite in-range command. No maintained caller was found sending a malformed range to hardware.
+    The defect is early invariant/API truth: direct callers can create a malformed `valid` value,
+    and a planner can report it as temporary range unavailability instead of a configuration error.
+- **Complete caller and public-layer audit:** direct `ScalarRange.bounded(...)` has 58 repository
+  calls and `unbounded()` has 25; all valid. The only half-bounded calls are two `minOnly(...)` and
+  two `maxOnly(...)` uses in `PlantTargetsPeriodicPlannerTest`. `invalid(...)` has one production
+  use for an unreferenced mapped position Plant and one Phoenix calibration-guide example.
+  `unboundedSource()` has no caller or documentation.
+  `valid`, `minValue`, `maxValue`, and `reason` are public final fields, and `toString()` exposes all
+  four; no repository caller branches on a valid range's shape-reason string, but renaming a factory
+  must still disposition that observable value explicitly.
+  - Phoenix production has two ordinary staged finite-bound calls in `ScoringPath`; framework tools
+    have eleven. No production, Phoenix, tool, or modern-example caller directly constructs a
+    half-bounded `ScalarRange` or asks a Plant builder for one.
+  - `Plants.fromOutputs()` and `FtcActuators` form the one approved Plant grammar. Their position
+    and velocity range stages directly ask for finite closed `bounded(min,max)` or explicit
+    `unbounded()`; standard Servo is intentionally bounded-only because its native domain is finite.
+    These guided primitive answers are constructed inline and provide a distinct common-path
+    capability from the advanced returned/stored `ScalarRange` value. Their two private
+    `finiteClosedRange(...)` helpers currently duplicate the value invariant.
+  - PLANT-02 already found no valid half-bounded Plant-builder caller and explicitly deferred any
+    such stage to RANGE-01. No new evidence justifies exposing two more safety choices or the extra
+    bounded/unbounded mapping stages to ordinary students. Half-bounded ranges do have distinct
+    advanced value: TARGET-03's fixed-work planner supports one-sided range selection for custom
+    `PositionPlant` and `PlantTargetContext` producers.
+  - `PlantTargetContext.simple(...)` and `position(...)` silently translate a null range to
+    `unbounded()` despite no nullable contract and no null caller. That is an undocumented second
+    spelling which can erase missing configuration.
+  - `ScalarRange.unboundedSource()` is an unused constant-source shortcut; generic
+    `Source.constant(ScalarRange.unbounded())` already owns that conversion. The also-unused
+    `PositionPlant.targetRangeSource()` is a forwarding-only view with no `Source<ScalarRange>`
+    consumer; direct `targetRange()` is the one truthful runtime fact. Neither source convenience
+    provides a distinct supported capability. `PositionPlant.positionSource()` remains separate:
+    it feeds the established scalar-source ecosystem with a real measurement capability.
+- **Call-site and simplicity comparison:** ordinary robot construction remains deliberately
+  unchanged in every credible design:
+
+  ```java
+  .nonPeriodic().bounded(0.0, 4200.0).nativeUnits()
+  // or, when deliberately appropriate:
+  .nonPeriodic().unbounded().nativeUnits()
+  ```
+
+  | Advanced range design | Representative calls | Student/mentor concepts | Result |
+  | --- | --- | --- | --- |
+  | **Selected canonical shapes** | `bounded(-10,10)`, `boundedFrom(0)`, `boundedTo(90)`, `unbounded()` | one value type; one named factory per valid shape; finite supplied endpoints | Bounds group under one discoverable prefix; no IEEE sentinels or duplicate spellings |
+  | Current API | `bounded(...)`, `minOnly(...)`, `maxOnly(...)`, `unbounded()` plus infinity arguments | same type plus hidden sentinel rules and overlapping paths | Short, but admits malformed `valid` objects and `minOnly` can read as a singleton |
+  | One permissive `bounded(...)` | `bounded(0,+Infinity)` and `bounded(-Infinity,90)` | one method but callers must learn IEEE signs and special pairs | Fewer names, worse discoverability/errors, and duplicates `unbounded()` |
+  | Add half-bound builder answers | ordinary builders also expose `boundedFrom/To` | two extra student answers plus extra mapping-stage branches | No real mechanism caller; symmetry alone does not justify a larger safety API |
+  | Endpoint/shape wrapper | construct endpoint or range-shape values first | at least one extra public noun and validation layer | Adds ceremony to four primitive answers without reuse value |
+  | Validate only at consumption | calls unchanged | callers learn late Plant/planner failures | Leaves a lying value object and misclassifies configuration as availability |
+  | Documentation only | calls unchanged | no new concept | Leaves every malformed/duplicate construction path intact |
+
+  `boundedFrom(min)` and `boundedTo(max)` were selected over retaining `minOnly/maxOnly`: all three
+  bounded shapes share the `bounded...` autocomplete prefix and the direction reads as an inclusive
+  interval from a minimum or to a maximum. `lowerBounded/upperBounded` is easier to invert;
+  `atLeast/atMost` loses the common prefix; and renaming the established common call to
+  `boundedBetween(...)` adds widespread churn without new meaning.
+- **Chosen design:**
+  1. Define the complete valid-shape grammar as `bounded(finiteMin,finiteMax)`,
+     `boundedFrom(finiteMin)`, `boundedTo(finiteMax)`, and `unbounded()`. Bounds are inclusive;
+     equal finite closed endpoints, including either signed-zero ordering, remain a valid singleton.
+     Preserve supplied finite endpoint bits/values rather than normalizing signed zero. Check each
+     supplied endpoint before ordering and include the invoked factory plus the bad argument/value
+     in actionable, boundary-neutral diagnostics.
+  2. Remove `minOnly(...)` and `maxOnly(...)` without deprecated aliases, migrating their four test
+     calls. Reject every `NaN` and infinity supplied to a bounded factory rather than canonicalizing
+     it. `boundedFrom(...)` and `boundedTo(...)` internally represent their absent side with one
+     canonical infinity; `unbounded()` is the only fully unbounded shape. Store canonical public
+     reason values matching the selected factories: `"bounded"`, `"boundedFrom"`, `"boundedTo"`,
+     and `"unbounded"`; do not retain stale `"minOnly"`/`"maxOnly"` diagnostics.
+  3. Preserve `invalid(reason)` as the distinct runtime-unavailability state. Its `valid=false` and
+     internal `NaN` endpoint sentinels are intentional and are never a valid range construction.
+     Invalid-reason normalization is not part of RANGE-01.
+  4. Make `contains(value)` false for every non-finite value. Make `clamp(value)` return `NaN` for an
+     invalid range or non-finite input and clamp only finite values. Make `isUnbounded()` recognize
+     exactly the canonical negative-infinity/positive-infinity representation. Preserve the
+     overflow-safe finite `center()` contract.
+  5. Require an explicit non-null range in both `PlantTargetContext` factories; callers use
+     `ScalarRange.unbounded()` deliberately. Remove `ScalarRange.unboundedSource()` and
+     `PositionPlant.targetRangeSource()` without aliases. Keep direct `targetRange()` and all
+     defensive consumer checks.
+  6. Route both Plant gateways' finite closed answers through `ScalarRange.bounded(...)` and delete
+     their duplicated validators. Keep the ordinary staged API at only `bounded(...)` and
+     `unbounded()` and keep standard Servo bounded-only. Do not add a range wrapper or half-bound
+     stage. When a staged gateway adds its context, its diagnostic names only choices that gateway
+     actually exposes: finite bounded endpoints or unbounded. Teach the complete four-shape roster
+     only in the advanced ScalarRange and target-planning documentation.
+- **Framework Principles result:** the common robot path gains no method or concept. Advanced code
+  gets one explicit factory per supported shape, parallel names, immediate actionable errors, and
+  a value whose `valid` flag is truthful. The immutable core value owns its invariant once; guided
+  builders retain only their distinct compile-time question; final Plant/planner checks remain
+  defense in depth. No FTC `[0,1]`, mapping-domain, controller-tuning, or robot-specific travel
+  policy leaks into core.
+- **Rejected scope/designs:** do not add half-bound Plant stages without a caller; do not accept or
+  canonicalize infinity sentinels; do not keep legacy aliases; do not add endpoint values, enums,
+  or another builder; do not validate only in Plants; and do not remove unbounded/half-bounded
+  planner behavior. Standard-servo native-domain and affine mapping checks remain MAP-01;
+  device-managed tuning remains FTC-02; source retry semantics remain SOURCE-04; invalid-reason
+  policy and hardware-limit selection remain outside this item.
+- **Bounded implementation scope:** update `ScalarRange`, `PlantTargetContext`, `PositionPlant`, the
+  two shared Plant-gateway validator call sites, the four half-bound planner-test calls, one focused
+  new range suite, and focused neutral/FTC builder integration coverage. Synchronize ScalarRange,
+  PositionPlant, and context Javadocs; Framework Principles; Mechanism Target Planning; FTC
+  Actuators & Plants; Beginner's Guide; and the future-mechanism range paragraph in Phoenix
+  Calibration Guide. Keep all valid ordinary examples and Phoenix production code unchanged.
+- **Verification plan:** add a focused `ScalarRangeTest` covering the exact public factory surface;
+  every `NaN`/infinity endpoint position; finite extremes, signed zero, equal and reversed bounds;
+  canonical fields, reason strings, `toString()`, and classification; inclusive finite containment;
+  non-finite containment/clamp;
+  invalid state; finite clamp and overflow-safe center behavior; removed aliases/source shortcuts;
+  and explicit non-null context ranges. Extend neutral and FTC construction tests to prove a bad
+  bounded answer is rejected before output commands, does not poison a retained stage, and a valid
+  retry builds. Retain the periodic-planner half/unbounded oracle and final Plant-target safety
+  suites. Run focused suites, full `:TeamCode:testDebugUnitTest` and
+  `:TeamCode:compileDebugJavaWithJavac`, public-surface/caller/stale-name searches, Markdown
+  fence/link validation, trailing-whitespace/final-LF checks, and `git diff --check`. Baseline
+  `PlantTargetsPeriodicPlannerTest` (21) plus `MappedVelocityPlantSafetyTest` (10) passed 31/31 with
+  zero failures, errors, or skips. This deterministic value/API contract requires no robot hardware;
+  adopting mechanisms still own physical travel limits and MAP-01's native-domain validation.
+- **Gate 1 approval request:** approving **`Approve RANGE-01 canonical range-shape breaking
+  design`** authorizes only the bounded implementation, migrations, documentation, tests, and
+  verification above. It does not authorize MAP-01, FTC-02, SOURCE-04, or another tracker item.
+- **Gate 2 implementation (2026-08-02):** RANGE-01 is **Verifying** on
+  `codex/range-01-scalar-range-validity`, still based exactly on fetched
+  `origin/master@043c8100fb5f02147c0ffe297b0c50db71313c7d`.
+  - `ScalarRange` now owns the complete canonical valid-shape invariant through finite
+    `bounded(...)`, `boundedFrom(...)`, `boundedTo(...)`, and explicit `unbounded()` factories.
+    It rejects every caller-supplied non-finite endpoint before ordering, preserves inclusive
+    equality and supplied signed-zero bits, gives each shape its matching public reason, rejects
+    non-finite containment/clamp inputs, and recognizes only the canonical fully unbounded shape.
+    `invalid(reason)` remains the distinct runtime-unavailability state.
+  - Breaking cleanup removed `minOnly(...)`, `maxOnly(...)`, `unboundedSource()`, and
+    `PositionPlant.targetRangeSource()` without aliases. Both `PlantTargetContext` factories now
+    require an explicit non-null range. All four maintained half-bound planner calls use the
+    parallel replacement names; no production, tool, example, or ordinary robot caller required a
+    source-shortcut migration.
+  - The two neutral and three FTC bounded-stage implementations now delegate to
+    `ScalarRange.bounded(...)` before mutating their retained stage. Their duplicated numeric
+    validators are gone. Ordinary `Plants.fromOutputs()` and `FtcActuators` APIs remain only finite
+    `bounded(min,max)` or `unbounded()` where supported; standard Servo remains bounded-only. No
+    half-bound builder stage, wrapper, FTC mapping rule, controller-tuning rule, or Phoenix
+    production change was added.
+  - Javadocs, Framework Principles, Mechanism Target Planning, FTC Actuators & Plants, Beginner's
+    Guide, and the future-mechanism Phoenix calibration guidance now state the same Plant-unit,
+    finite-target, ordinary-versus-advanced contract.
+- **Automated verification (2026-08-02):** Android Studio JBR ran the focused and complete checks.
+  - `ScalarRangeTest` (11), `MappedPlantToleranceTest` (9),
+    `FtcActuatorsRangeValidationTest` (1), and `PlantTargetsPeriodicPlannerTest` (21) passed 42/42
+    with zero failures, errors, or skips. The two gateway tests prove rejected range answers do not
+    command output or hardware, do not consume the retained builder stage, and permit a valid retry.
+  - `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` succeeded: 1,115 tests across
+    120 suites, zero failures, errors, or skips. `DocumentationLinksTest` passed 5/5. The only build
+    output was the existing JDK 21/source-8 and deprecated FTC sample warning set.
+  - Exact public-surface, production/tool/example caller, removed-name, and advanced-factory
+    placement searches are clean. All 15 changed/untracked files have no trailing whitespace and a
+    final LF; Markdown fences and the new relative link/anchor are valid; `git diff --check` passes.
+- **Adversarial review (2026-08-02):** independent API, numeric/safety, and
+  documentation/student-simplicity reviews found no remaining blocker. Review confirmed the exact
+  public construction surface, the distinct external custom-`PositionPlant` capability, all five
+  pre-mutation gateway delegations, runtime-invalid/configured-range separation, final Plant safety,
+  progressive disclosure, and contract-driven tests. Review findings were closed by documenting
+  invalid `center()` behavior and the standard-Servo finite bounded-only method contract. Repeating
+  the same retry test for every FTC motor branch was judged unnecessary because all five inspected
+  implementations call the same core factory before their first mutation and the complete suite is
+  green.
+- **Hardware verification:** not required for this deterministic value/API contract. The tests prove
+  software rejection timing and simulated no-write behavior, not a robot's physical travel limits,
+  servo linkage, native mapping, or safe operating envelope. Adopting mechanisms still require
+  robot-specific physical validation; MAP-01 remains responsible for mapping-domain validation.
+- **Android Studio audit point (2026-08-02):** inspect `ScalarRange` factories and finite numeric
+  behavior; the removed shortcuts and explicit context range; direct delegation in `Plants` and
+  `FtcActuators`; retained-stage/no-write recovery tests; migrated one-sided planner tests; and the
+  ordinary-builder versus advanced-protocol wording in the synchronized Javadocs/guides. Confirm
+  ordinary mechanism construction gained no method or concept and standard Servo remains
+  bounded-only. The review coordinates are branch `codex/range-01-scalar-range-validity`, push URL
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, and target `master`. No file is staged,
+  committed, pushed, or merged, and no later tracker item has started.
+- **Combined review/publication authorization:** after completing the Android Studio review, use
+  **`RANGE-01 looks good. Authorize committing the reviewed RANGE-01 diff on
+  codex/range-01-scalar-range-validity, pushing that branch to
+  https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging it into
+  master.`**
+- **Manual verification and publication authorization (2026-08-02):** the user completed the
+  Android Studio review and sent the exact combined authorization above. RANGE-01 is now **Done**;
+  Gate 3 may stage only this reviewed diff, create its single item commit, push
+  `codex/range-01-scalar-range-validity` to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, open its pull request, and merge that pull
+  request into `master`. This approval does not start or authorize MAP-01, FTC-02, SOURCE-04, or
+  another tracker item.
 
 ### FTC-02 - Device-managed controller configuration validation
 
