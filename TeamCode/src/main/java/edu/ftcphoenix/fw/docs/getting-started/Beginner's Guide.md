@@ -314,6 +314,9 @@ The builder asks a short sequence of guided questions:
     * Position coordinates ask periodicity and bounds:
       * `.nonPeriodic()` or `.periodic(period)`
       * `.bounded(min, max)` or `.unbounded()`
+
+      Both `bounded(...)` endpoints must be finite with `min <= max`; do not use `NaN` or infinity
+      as a shortcut for a missing bound. A standard-servo position path requires `bounded(...)`.
     * Unit mapping/reference asks how plant units relate to native units:
       * `.nativeUnits()`, `.scaleToNative(...)`, or bounded-only `.rangeMapsToNative(...)`
       * then `.alreadyReferenced()`, `.plantPositionMapsToNative(...)`, `.assumeCurrentPositionIs(...)`, or `.needsReference(...)` when a runtime reference is required.
@@ -343,6 +346,9 @@ position. Student code should not add `DcMotor.setMode(...)` calls around the st
 Rule of thumb: builder values are in **plant units** unless the API explicitly says `Native` (or a
 native/controller-specific unit like `Ticks`). So `bounded(...)`, `periodic(...)`, tolerances, and
 later resolved target values all use plant units. `rangeMapsToNative(...)` takes native endpoint values.
+The ordinary range question stays simple: choose two finite bounds or explicitly choose
+`unbounded()` where that path offers it. Unbounded removes a software travel bound; target values
+still must be finite.
 Velocity mapping is deliberately simpler: `scaleToNative(...)` changes only scale, not zero, so
 plant velocity `0.0` still means stop. Power target values are always normalized `[-1.0, +1.0]`, so
 the power builder does not ask for bounds.

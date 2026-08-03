@@ -341,6 +341,14 @@ hardware guards, verifies the final target is finite and still inside the declar
 range, applies that one safe mechanism target through its selected hardware/control path, and
 refreshes status.
 
+`ScalarRange` is the advanced Plant/planner protocol value for that legal target range, not a
+second ordinary Plant-construction grammar. Its valid shapes are
+`bounded(finiteMin, finiteMax)`, `boundedFrom(finiteMin)`, `boundedTo(finiteMax)`, and
+`unbounded()`. Every explicitly supplied endpoint is finite and inclusive; callers never use
+`NaN` or infinity as an endpoint sentinel. `invalid(reason)` instead reports temporary runtime
+unavailability, such as a position coordinate that is not referenced yet. It is not a valid
+configured range, and no valid or invalid range makes a non-finite value a legal target.
+
 The mechanism or subsystem is the sole Plant heartbeat owner, including during a temporary
 position-calibration search. A `PositionCalibrationTasks` search may acquire and release that
 temporary mode, stage its power, sample its cue, establish a reference, and select the success
@@ -507,7 +515,14 @@ list and attach that same value to every selected observation. A trustworthy pro
 usable targets is distinct from no trustworthy frame; do not represent either state with a
 timestamped `noTarget()` observation. Mixed frame identities fail closed at the camera boundary.
 
-Keep static range declarations such as `bounded(min, max)` close to the Plant periodicity answer because they define the legal plant coordinate system. Direct power Plants are the simpler fixed-domain case: their normalized range is always `[-1, +1]`, so the builder does not ask students to declare it. Keep dynamic protection such as rate limits and interlocks in `targetGuards()`.
+Keep static range declarations such as `bounded(min, max)` close to the Plant periodicity answer
+because they define the legal plant coordinate system. The ordinary `Plants.fromOutputs()` and
+`FtcActuators` stages expose only a finite closed `bounded(min, max)` answer or explicit
+`unbounded()`; a standard-servo position path is bounded-only. One-sided `ScalarRange` shapes
+remain an advanced protocol capability for custom Plant/context producers, not extra ordinary
+builder answers. Direct power Plants are the simpler fixed-domain case: their normalized range is
+always `[-1, +1]`, so the builder does not ask students to declare it. Keep dynamic protection such
+as rate limits and interlocks in `targetGuards()`.
 
 For framework-regulated Plants, keep three different bounds at their proper layers:
 
@@ -602,7 +617,8 @@ The builder is staged on purpose:
 3. **For position Plants, answer guided position questions**:
    * motor position control: `deviceManagedWithDefaults()`, `deviceManaged()...doneDeviceManaged()`, or `regulated()` followed by one direct feedback answer and `regulator(...)`
    * periodicity: `nonPeriodic()` or `periodic(period)`
-   * bounds: `bounded(min, max)` or `unbounded()`
+   * bounds: `bounded(min, max)` with two finite endpoints, or `unbounded()`; standard-servo
+     position is bounded-only
    * mapping/reference: `nativeUnits()`, `scaleToNative(...)`, bounded-only `rangeMapsToNative(...)`, then `alreadyReferenced()`, `plantPositionMapsToNative(...)`, `assumeCurrentPositionIs(...)`, or `needsReference(...)` when a runtime reference is required
 4. **For every feedback Plant, choose completion tolerance**: after public-unit mapping and, for
    position, reference policy are complete, answer exactly once with

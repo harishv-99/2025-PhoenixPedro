@@ -471,8 +471,14 @@ A mechanism service should establish a calibrated native coordinate before resol
 - **measurement source**: the value the `Plant` understands, such as encoder ticks
 - **zero/reference**: the raw encoder value corresponding to the mechanism's meaningful zero
 - **period**: for repeated orientations, such as ticks per turret revolution or tray revolution
-- **range**: `ScalarRange.unbounded()` for free spinners, or a homed bounded range for cable-limited mechanisms
-- **validity**: before homing completes, publish `ScalarRange.invalid("not homed")` so the target resolver uses its explicit `whenUnavailable()` policy instead of producing unsafe requested targets
+- **range**: the advanced Plant/planner protocol uses `ScalarRange.bounded(finiteMin, finiteMax)`
+  for a finite travel window, `ScalarRange.boundedFrom(finiteMin)` or
+  `ScalarRange.boundedTo(finiteMax)` for a genuine one-sided limit, and
+  `ScalarRange.unbounded()` for a free spinner; every supplied endpoint is finite, never an infinity
+  sentinel
+- **validity**: before homing completes, publish `ScalarRange.invalid("not homed")` as runtime
+  unavailability so the target resolver uses its explicit `whenUnavailable()` policy instead of
+  producing an unsafe request; no range shape ever makes `NaN` or infinity a legal target
 
 For a turret with a camera, the camera mount may be timestamp-aware. A moving camera should be represented by a history-backed source so delayed AprilTag frames are interpreted using the camera pose from the frame timestamp, not the current turret pose after the mechanism has moved.
 

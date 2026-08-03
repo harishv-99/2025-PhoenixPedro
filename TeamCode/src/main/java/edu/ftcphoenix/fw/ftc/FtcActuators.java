@@ -458,7 +458,15 @@ public final class FtcActuators {
      */
     public interface ServoPositionBoundsStep {
         /**
-         * Declare the valid caller-facing servo plant range in plant units.
+         * Declare the inclusive caller-facing servo Plant range in Plant units.
+         * Both endpoints must be finite and {@code min <= max}; standard-servo construction has
+         * no unbounded range answer.
+         *
+         * @param min inclusive finite Plant-unit minimum
+         * @param max inclusive finite Plant-unit maximum
+         * @return the standard-servo bounded mapping step
+         * @throws IllegalArgumentException if either endpoint is non-finite or {@code min > max}
+         * @throws IllegalStateException if bounds were already answered or configuration froze
          */
         ServoBoundedPositionMappingStep bounded(double min, double max);
     }
@@ -1409,7 +1417,7 @@ public final class FtcActuators {
             requireMutable("bounded(...)");
             requireControlAnswered("bounded(...)");
             requireRangeUnanswered();
-            range = finiteClosedRange(min, max);
+            range = ScalarRange.bounded(min, max);
             rangeAnswered = true;
             return this;
         }
@@ -1620,7 +1628,7 @@ public final class FtcActuators {
             requireMutable("bounded(...)");
             requirePeriodicityAnswered("bounded(...)");
             requireRangeUnanswered();
-            range = finiteClosedRange(min, max);
+            range = ScalarRange.bounded(min, max);
             plantMin = min;
             plantMax = max;
             bounded = true;
@@ -2186,7 +2194,7 @@ public final class FtcActuators {
             if (boundsAnswered) {
                 throw new IllegalStateException("Standard-servo position bounds have already been answered");
             }
-            range = finiteClosedRange(min, max);
+            range = ScalarRange.bounded(min, max);
             plantMin = min;
             plantMax = max;
             boundsAnswered = true;
@@ -2709,18 +2717,6 @@ public final class FtcActuators {
         if (!Double.isFinite(value) || value < 0.0) {
             throw new IllegalArgumentException(name + " must be finite and >= 0, got " + value);
         }
-    }
-
-    private static ScalarRange finiteClosedRange(double min, double max) {
-        if (!Double.isFinite(min) || !Double.isFinite(max)) {
-            throw new IllegalArgumentException("bounded(...) values must be finite, got ["
-                    + min + ", " + max + "]");
-        }
-        if (min > max) {
-            throw new IllegalArgumentException("bounded(...) requires min <= max, got ["
-                    + min + ", " + max + "]");
-        }
-        return ScalarRange.bounded(min, max);
     }
 
     /**

@@ -42,6 +42,9 @@ public final class PlantTargetContext {
 
     /**
      * Build a context for non-position plants or simple scalar outputs.
+     *
+     * @param targetRange explicit non-null legal target range in plant units
+     * @throws NullPointerException if {@code targetRange} is null
      */
     public static PlantTargetContext simple(boolean feedbackAvailable,
                                             double measurement,
@@ -50,7 +53,7 @@ public final class PlantTargetContext {
                                             double previousAppliedTarget) {
         return new PlantTargetContext(feedbackAvailable,
                 measurement,
-                targetRange != null ? targetRange : ScalarRange.unbounded(),
+                targetRange,
                 PositionPlant.Periodicity.NON_PERIODIC,
                 Double.NaN,
                 previousRequestedTarget,
@@ -59,6 +62,9 @@ public final class PlantTargetContext {
 
     /**
      * Build a context for a position plant.
+     *
+     * @param targetRange explicit non-null legal target range in plant units
+     * @throws NullPointerException if {@code targetRange} is null
      */
     public static PlantTargetContext position(boolean feedbackAvailable,
                                               double measurement,
@@ -69,7 +75,7 @@ public final class PlantTargetContext {
                                               double previousAppliedTarget) {
         return new PlantTargetContext(feedbackAvailable,
                 measurement,
-                targetRange != null ? targetRange : ScalarRange.unbounded(),
+                targetRange,
                 periodicity != null ? periodicity : PositionPlant.Periodicity.NON_PERIODIC,
                 period,
                 previousRequestedTarget,
