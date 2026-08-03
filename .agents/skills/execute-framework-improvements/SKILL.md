@@ -100,32 +100,45 @@ performance fact needed by the production design.
    Resolve findings and rerun affected checks.
 7. When implementation is complete, mark the item `Verifying`, record exact automated evidence,
    and request Android Studio inspection. Tell the user which files and behaviors to inspect and
-   whether robot-hardware validation is useful.
-8. Stop without staging, committing, pushing, merging, or starting another item until the user
-   approves the implementation.
+   whether robot-hardware validation is useful. Resolve and record the exact publication
+   coordinates: the item branch, `git remote get-url --push origin` destination, and target branch.
+8. End the review handoff with one copy-paste authorization prompt using those resolved values:
+
+   `<ITEM-ID> looks good. Authorize committing the reviewed <ITEM-ID> diff on <ITEM-BRANCH>,
+   pushing that branch to <EXACT-ORIGIN-PUSH-URL>, opening a pull request, and merging it into
+   <TARGET-BRANCH>.`
+
+   Do not present bare `<ITEM-ID> looks good` as the requested reply. Stop without staging,
+   committing, pushing, merging, or starting another item until the user sends the combined
+   review-and-publication authorization.
 
 ## Gate 3: Finalize an approved implementation
 
-Only when the item is `Verifying` after Gate 2, treat `<ITEM-ID> looks good` as approval to finalize,
-publish, and merge that item. During an evidence gate, the same wording approves only the explicitly
-presented diagnostic audit point and physical run. Do not treat either approval as permission to
-start the next item.
+Only when the item is `Verifying` after Gate 2, treat the exact combined authorization presented at
+the implementation stop as approval to stage, commit, push to the named remote, open a pull request,
+and merge into the named target branch. The one reply is both manual-review approval and
+destination-specific publication authorization. A bare `<ITEM-ID> looks good` records manual review
+but does not authorize code egress; repeat the resolved combined prompt and remain unstaged. During
+an evidence gate, approval remains limited to the explicitly presented diagnostic audit point and
+physical run; never use the production-publication prompt for unfinished evidence work. Do not
+treat either approval as permission to start the next item.
 
 1. Mark the tracker item `Done` and record the user's manual verification.
 2. Confirm the working tree contains only the reviewed item and rerun `git diff --check` plus any
    check affected by the final tracker edit.
 3. Stage only the reviewed files and create one meaningful commit, such as
    `fix(tasks): enforce single-use task instances`.
-4. Push the item branch and open a pull request whose body explains what changed, why, robot-code
-   impact, deferred scope, and validation.
-5. Make the approved pull request ready, merge it into remote `master`, fetch the result, and verify
-   the expected head and merge tree. Do not rewrite a divergent local `master` merely to make it
-   match the remote.
+4. Push the item branch to the exact authorized origin destination and open a pull request whose
+   body explains what changed, why, robot-code impact, deferred scope, and validation.
+5. Make the approved pull request ready, merge it into the exact authorized target branch, fetch
+   the result, and verify the expected head and merge tree. Do not rewrite a divergent local target
+   branch merely to make it match the remote.
 6. Report branch, commit, pull request, merge SHA, validation, tracker status, and any preserved local
    divergence. Stop before the next tracker item.
 
-If the user says `looks good; move to next`, finish these publication steps first and then begin only
-the next item's decision gate. Honor every major-design approval stop again.
+If the user appends `Then move to next` to the combined authorization, finish these publication
+steps first and then begin only the next item's decision gate. Honor every major-design approval
+stop again.
 
 ## Verification standard
 
@@ -150,6 +163,7 @@ Also:
 - Explain any skill-driven pause or approval requirement.
 - At a design stop, present the recommended design, alternatives, simplicity comparison, and exact
   approval requested.
-- At an implementation stop, provide concise Android Studio review instructions and the exact reply
-  that will authorize finalization.
+- At an implementation stop, provide concise Android Studio review instructions followed by the
+  fully resolved combined authorization prompt. Include the real item ID, item branch, origin push
+  URL, and target branch; never leave placeholders or ask for a shorter review-only reply.
 - Never imply that the skill remembers live item state; the tracker and repository do.
