@@ -920,7 +920,9 @@ side-effect-free no-op; cancelling an active Task makes it terminal; and cancell
 or cancelling repeatedly is a no-op. Calling `update(clock)` directly before `start(clock)` is a
 lifecycle error and framework Tasks fail with an actionable message rather than guessing whether
 to start themselves. `Tasks.noop()` is the intentional exception: it is already successfully
-complete when created, so direct update and cancellation are harmless no-ops.
+complete when created, so direct update and cancellation are harmless no-ops. `Task.cancel()` has
+no default implementation: every custom Task must state its cancellation policy explicitly, even
+when that policy is an intentional no-op for an already-terminal Task with no temporary state.
 
 ### 4.2 The `TaskRunner`
 

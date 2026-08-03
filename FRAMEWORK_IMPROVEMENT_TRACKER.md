@@ -147,7 +147,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 60 | CAL-01 | Calibration-search power validation | Done | Dual pre-effect validation, synchronized contracts/guides, automated verification, and Android Studio review are complete. |
 | 61 | CAL-02 | Position-calibration reference validity | Done | Layered finite validation, atomic periodic commit, synchronized docs, automated verification, and Android Studio review are complete. |
 | 62 | DOC-01 | Stale and non-compiling documentation | Done | Factual docs, compiled-example authority links, navigation, focused Markdown validation, and Android Studio approval are complete. |
-| 63 | CLEAN-01 | Alias and risky convenience cleanup | Proposed | Separate unsafe enqueue behavior from cosmetic aliases, then remove only paths proven redundant or unsafe. |
+| 63 | CLEAN-01 | Alias and risky convenience cleanup | Done | The bounded non-Plant cleanup, migrations, synchronized guidance, automated verification, independent review, and Android Studio approval are complete. |
 | 64 | PLANT-02 | One public Plant construction grammar | Done | One shared Plant grammar, parallel target provenance, caller/docs migration, automated verification, independent review, and Android Studio approval are complete. |
 | 65 | RANGE-01 | ScalarRange construction validity | Proposed | Define and enforce finite, half-bounded, and unbounded range construction without allowing `NaN`. |
 | 66 | MAP-01 | FTC actuator mapping-domain validation | Proposed | Validate finite child transforms and raw actuator domains before command mapping can be silently clamped. |
@@ -9435,6 +9435,67 @@ writer, and explicit lifecycle ownership.
 
 ### CLEAN-01 - Alias and risky convenience cleanup
 
+- **Gate 2 approval (2026-08-01):** the user explicitly replied
+  **`Approve CLEAN-01 non-Plant bounded breaking cleanup design`**. This authorizes only the
+  enumerated non-Plant removals, visibility changes, caller/documentation migrations, tests, and
+  verification recorded below. `origin/master` was fetched at
+  `d76988143880626dd993f36cc98b0d4de8eacf9a`, and
+  `codex/clean-01-bounded-api-cleanup` was created from that exact merged PLANT-02 tree. CLEAN-01 is
+  now **In progress**; PLANT-02, RANGE-01, MAP-01, INPUT-02, and every other tracker item remain out
+  of scope.
+- **Gate 2 implementation (2026-08-01):** CLEAN-01 is **Verifying** on
+  `codex/clean-01-bounded-api-cleanup`, still based exactly on
+  `origin/master@d76988143880626dd993f36cc98b0d4de8eacf9a`.
+  - `Task.cancel()` is now required so every implementation states its cancellation policy. The
+    obsolete level-triggered `TaskBindings.whileHigh/whileLow` enqueue paths are gone; maintained
+    guidance now distinguishes synchronous `Bindings`, edge/change `TaskBindings`, bounded
+    `OutputTaskRunner`, and private-runner ownership of a complete held interval.
+  - Generic Task/output construction now has one ordinary `Tasks` entry per affected concept.
+    Ordinary leaf and output-queue constructors are package-private, `RunForSecondsTask` remains
+    public for its distinct callback lifecycle, and the ambiguous output-until overloads and
+    adjacent-`double` `runWindow(...)` shortcut are removed in favor of staged
+    `Tasks.outputPulse(...)`.
+  - Input/localization now retain only `Gamepads.create(...)`, full gamepad button names, and
+    `toSolverConfig()`. The camera-mount calibrator uses `rightStickButton()`, while the public
+    completed-`GamepadDevice` constructor remains the labeled advanced/test seam.
+  - Drive Guidance now uses `DriveOverlayStack.on(base)`, `requestedMask()`, and plan-owned
+    `overlay()`, `query()`, and `task(...)` runtime factories. Parallel aliases, the task facade,
+    public runtime constructors, and public positional spec/tuning bypasses are gone; the staged
+    builder, public read/result types, and capability-distinct helpers remain.
+  - Framework Principles, Javadocs, and seven affected guides use the same canonical vocabulary.
+    Four focused API suites pass **12 tests, 0 failures, 0 errors, 0 skipped**. The final unfiltered
+    test results contain **1,102 tests across 118 suites, 0 failures, 0 errors, 0 skipped**, and the
+    explicit `:TeamCode:compileDebugJavaWithJavac` confirmation is successful. Only the existing
+    JDK 21/source-8 and FTC deprecation warnings remain.
+  - Exhaustive removed-name and external-construction scans are clean. `DocumentationLinksTest`
+    passes; all eight changed maintained Markdown files have balanced fences; all 37 extant
+    changed/untracked files have a final newline and no trailing whitespace; and
+    `git diff --check` passes. The complete scope is 38 paths, including deletion of the obsolete
+    `DriveGuidanceTasks` facade and four new focused API-contract suites.
+  - Three independent adversarial reviews covered Task lifecycle/cancellation, bounded held
+    behavior, public-surface simplicity, retained capability distinctions, Framework Principles,
+    one-item scope, documentation truth, tracker integrity, and test validity. They found five
+    low-severity regression-test gaps and no production defect. The assertions were strengthened
+    and rechecked; the focused suites pass with no remaining concrete finding.
+- **Android Studio audit point (2026-08-01):** CLEAN-01 intentionally remains unstaged and
+  uncommitted. Inspect the explicit `Task.cancel()` contract; the event/level/repeat ownership
+  guidance; the `Tasks` leaf/output surface and `TasksApiTest`; the canonical gamepad/localization
+  names; the plan-owned Drive Guidance construction surface and `DriveGuidanceApiTest`; and the
+  synchronized guides. No robot run is useful for this compile-time/API cleanup because retained
+  implementations and physical behavior are unchanged. Approval with **`CLEAN-01 looks good`**
+  authorizes Gate 3 finalization/publication of CLEAN-01 only; it does not start RANGE-01, MAP-01,
+  INPUT-02, or another tracker item.
+- **Manual verification (2026-08-02):** the user completed the Android Studio review and replied
+  **`CLEAN-01 looks good`**. CLEAN-01 is now **Done**; Gate 3 commit, publication, and merge are
+  authorized for this item only. No robot run is required for this compile-time/API cleanup, and
+  RANGE-01, MAP-01, INPUT-02, CI-01, and every other tracker item remain unstarted.
+- **Research start (2026-07-30):** CLEAN-01 is the sole active item. The read-only Gate 1 audit is
+  using the tree merged at `origin/master@1ca486cbd100d24220c22c32e53db4de21730923`;
+  the still-checked-out DOC-01 topic head has that exact tree, and no implementation, test,
+  Javadoc, or guide change has started. The audit will first separate current level-triggered Task
+  enqueue behavior from exact public aliases, then remove historical candidates already resolved by
+  ROUTE-03, API-03, API-06, TARGET-05, and other completed items. RANGE-01, MAP-01, INPUT-02, and
+  every other tracker item remain out of scope.
 - **Problem to confirm:** aliases and adjacent-`double` overloads create parallel learning paths;
   level-triggered task bindings may enqueue unbounded work.
 - **Decision question:** which APIs have no callers or demonstrably unsafe semantics, and which names
@@ -9446,7 +9507,151 @@ writer, and explicit lifecycle ownership.
 - **Scope split (2026-07-17):** public `RouteTask` construction and its one-field/null configuration
   path moved to focused ROUTE-03 so a Pedro simplification is not bundled with unrelated aliases or
   binding behavior.
-- **Decision record:** _Pending._
+- **Plant-design reopen (2026-07-31):** the user challenged the revised two-tier public choice
+  between minimal `Plants` factories and staged FTC/mapped builders. CLEAN-01 is back in
+  **Researching** while ordinary feedbackless and feedback-capable call sites are compared against
+  a genuinely single construction path. No implementation, test, Javadoc, or guide change has
+  started; the existing decision below remains historical input, not implementation approval.
+- **Plant-scope result (2026-07-31, corrected after servo audit):** feedbackless construction is not
+  inherently difficult through a builder. Direct normalized power needs only output, initial
+  command, and `build()`; generic commanded position must additionally state topology, legal range,
+  and unit mapping because `PositionOutput` does not declare them. The confusing part is the public
+  choice among ten direct `Plants` overloads, five `MappedPositionPlant`/`MappedVelocityPlant`
+  starts, and the FTC builder. A literal common method cannot accept both `HardwareMap` and neutral
+  output adapters without either leaking FTC SDK types into core or adding a provider abstraction
+  to every ordinary call. The principle-consistent endpoint is therefore one ordinary FTC entry,
+  one explicitly advanced neutral gateway, shared target/build vocabulary, and hidden mapped
+  implementations. That consolidation also removes the inline
+  `targetedBy(ScalarTarget.create(initialValue))` ceremony and lets the FTC facade collapse only
+  facts its hardware adapter can actually prove, such as a standard servo's raw `[0.0, 1.0]`
+  command interval. It does not infer mechanism topology or discard custom servo mapping. This is a
+  coherent Plant API redesign, not a bounded alias deletion. It is now proposed as PLANT-02;
+  CLEAN-01 makes no Plant construction change, avoiding an intermediate migration from `Plants` to
+  public `Mapped*` and then back behind a neutral facade.
+- **Ordering update (2026-07-31):** CLEAN-01's non-Plant Gate 1 record is complete and the item is
+  **Ready**, but it remains unapproved and unimplemented. At the user's request, PLANT-02 is now the
+  sole active read-only research item so its servo periodicity, native-domain, and scaling assumptions
+  can be audited before either breaking implementation begins.
+- **Decision record (2026-07-30, revised 2026-07-31):**
+  - **Confirmed level-enqueue defect:** `TaskBindings.whileHigh(...)` and `whileLow(...)` invoke a
+    fresh-task supplier and call `TaskRunner.enqueue(...)` on every accepted matching loop. The
+    runner owns an uncapped queue and does not consume queued work while its current Task remains
+    active, so a held signal grows stale backlog at approximately loop rate whenever a Task lasts
+    longer than one cycle. A correct fresh-task supplier avoids identity rejection and therefore
+    does not bound the queue. Releasing the signal stops new admissions but neither cancels the
+    current Task nor clears work already accepted. Remove exactly these two helpers; do not add an
+    idle-only, backlog, cancellation, or ownership overload.
+  - **Selected event/level/repeat paths:** retain `Bindings.whileHigh/whileLow` for direct,
+    synchronous, idempotent level actions. Retain edge/change-based `TaskBindings` methods for one
+    fresh macro per accepted event. Use `OutputTaskRunner.whileHigh/whileLow` for hold-to-repeat
+    output work because it has an explicit bounded backlog and cancels/clears on the opposite
+    level. Current Phoenix controls already mirror held intent into capability state and Phoenix
+    scoring realizes that intent through a one-item output backlog; no robot behavior needs a
+    migration.
+  - **One Task for one held interval:** ordinary held behavior should mirror the signal into a
+    capability/service-owned request. If one Task genuinely owns the interval, that owner keeps a
+    private `TaskRunner`, enqueues one fresh Task on the false-to-true request change, and
+    `cancelAndClear()`s it on the true-to-false change; release then cannot cancel unrelated work
+    in a shared macro runner. The narrower existing composition
+    `parallelDeadline(waitUntil(held.not()), companion)` makes release own the whole group's
+    lifetime, but intentionally remains active until release even if the companion finishes. There
+    is no current caller proving a need for a generic "whichever comes first: child completion or
+    release" combinator. Adding per-binding ownership, targeted cancellation, stale-event rules,
+    or restart policy is a separate scheduler/composition design, not CLEAN-01.
+  - **Confirmed cancellation hole:** `Task.cancel()` currently has a default no-op even though the
+    framework contract requires every active Task to become terminal and own its cleanup. A custom
+    Task can therefore compile while silently violating runner abort, timeout, and deadline-parent
+    semantics. Make `cancel()` a required interface method. `Tasks.noop()` will supply the sole
+    intentional explicit no-op implementation; all production framework and Phoenix Task
+    implementations already override cancellation, and affected test fixtures will state their
+    policy explicitly. This does not change pre-start, terminal, or repeated cancellation
+    semantics.
+  - **Generic Task/output construction audit:** make the constructors of `InstantTask`,
+    `WaitUntilTask`, `OutputForSecondsTask`, `GatedOutputUntilTask`, and `OutputTaskRunner`
+    package-private. Repository production code already uses `Tasks.runOnce(...)`,
+    `waitUntil(...)`, `outputForSeconds(...)`, `outputPulse(...)`, and `outputQueue(...)`; direct
+    construction is confined to same-package tests and stale Javadocs/guides. Retain public
+    `RunForSecondsTask` because its start/update/finish callback capability is not exposed by the
+    simple wait factory. Retain `Tasks.outputForSeconds(...)` as the concise, used one-shot pulse.
+  - **Ambiguous output conveniences:** remove both positional `Tasks.gatedOutputUntil(...)`
+    overloads, `Tasks.outputUntil(...)`, and the staged builder's adjacent-double
+    `runWindow(minRunSec, maxRunSec)`. They have no Java caller; one maintained guide uses the
+    constant-output overload. The canonical `Tasks.outputPulse(...)` path names the start gate,
+    run output, completion condition, minimum, maximum, cooldown, and fresh-task factory in order.
+    Its separate `minRunSec(...).maxRunSec(...)` stages remain. Do not add a replacement overload.
+  - **Exact input/localization aliases:** remove unused `Gamepads.of(...)` in favor of the
+    production/documented `Gamepads.create(...)`; remove `GamepadDevice.lb/rb/ls/rs` in favor of
+    `leftBumper/rightBumper/leftStickButton/rightStickButton`; and remove the unused
+    `AprilTagPoseEstimator.Config.solverConfig()` alias in favor of documented
+    `toSolverConfig()`. Only `CameraMountCalibrator` calls one abbreviated gamepad spelling
+    (`rs()`), so it migrates to `rightStickButton()`. Retain the completed-device `Gamepads`
+    constructor as the explicitly documented test/advanced-composition seam.
+  - **Drive/guidance aliases and construction:** remove unused `DriveSource.overlayStack()` and
+    keep the production/documented `DriveOverlayStack.on(base)` factory. Remove both unused
+    `suggestedMask()` aliases and keep `requestedMask()`. Make `DriveGuidanceQuery(plan)`
+    package-private and keep `plan.query()` as the per-consumer runtime factory. Delete unused
+    `DriveGuidanceTasks`, make both `DriveGuidanceTask` constructors package-private, and keep
+    `plan.task(drivebase, config)` as the public plan-owned factory.
+  - **Drive/guidance positional bypasses:** make the unused six-`double`
+    `DriveGuidancePlan.Tuning` constructor package-private while retaining `Tuning.defaults()`, all
+    named immutable withers, and staged `.driveTuning().use(...)`. Make the public constructors of
+    `DriveGuidanceSpec.RobotRelativePoint`, `AprilTags`, `Localization`, and
+    `TranslationTakeover`, plus `ResolveWith.create(...)`, package-private. Only the staged
+    `DriveGuidance` builder and same-package white-box tests call them; the top-level spec
+    constructor is already package-private. The public read-only spec/result types and fields stay
+    available to consumers.
+  - **Drive APIs deliberately retained:** keep `DriveOverlayStack`'s optional name/mask `add(...)`
+    overloads, one-off `overlayWhen(...)`, both meaningful rate-limit shapes,
+    `blendedWith(...)`, `plan.overlay()`, pose-lock factories, query `get/sample` forms, and the
+    `DriveOverlayMask` constructor/composition helpers. Keep staged
+    `translationTakeover(enter, exit, blend)` because it is the sole custom takeover capability,
+    and keep `GoToPoseTasks` because it encodes useful geometry/macros rather than an exact alias.
+  - **Plant construction excluded:** CLEAN-01 does not change `Plants`, `FtcActuators`,
+    `MappedPositionPlant`, `MappedVelocityPlant`, their staged interfaces, or any Plant construction
+    caller or guide. PLANT-02 owns the complete facade, builder-tail, ordinary initial-command, and
+    feedbackless-servo simplification audit. A partial deletion here would create exactly the
+    consecutive breaking migrations that the one-clear-API principle is meant to avoid.
+  - **Other no-op/default methods retained:** `DriveCommandSink.update(...)` and
+    `RouteFollower.update(...)` are truthful optional heartbeat capabilities, not Task lifecycle
+    cleanup, so they stay. `Tasks.noop()` remains the intentional terminal-at-construction Task.
+    No broad default-method, zero-caller, constructor, overload, or naming purge is authorized.
+  - **Alternatives rejected:** documentation or deprecation leaves unsafe methods callable and
+    preserves parallel learning paths. Silently admitting a Task only while a shared runner is
+    idle creates hidden cross-binding interference; cancelling on release would destroy unrelated
+    shared-runner work; adding backlog/ownership policy duplicates `OutputTaskRunner` or becomes a
+    scheduler redesign. Keeping default `Task.cancel()` relies on every custom author remembering a
+    contract that runner safety requires. Conversely, removing every unused overload would delete
+    distinct extension capabilities without evidence, so the implementation is limited to the
+    audited list above.
+  - **Framework Principles and simplicity check:** the design makes active cancellation
+    compile-visible, preserves single-use Tasks and the one loop clock, keeps queue policy bounded
+    and explicit, leaves the current Plant API untouched for the focused PLANT-02 decision, keeps
+    FTC/vendor details at their boundaries, and selects one named public construction route per
+    affected CLEAN-01 concept. Ordinary calls remain short:
+    `Tasks.runOnce(...)`, `Tasks.waitUntil(...)`, `Tasks.outputPulse(...)`,
+    `Tasks.outputQueue(...)`, `DriveOverlayStack.on(...)`, `plan.task(...)`, and `plan.query()`.
+    No new public type, compatibility shim, scheduler, writer, or lifecycle owner is introduced.
+  - **Breaking-change gate:** this is an intentional source/binary compatibility break for unknown
+    external callers, especially custom `Task` implementations and callers of the enumerated
+    constructors, aliases, or positional conveniences. In-repository migrations are mechanical,
+    but implementation must not start until the user explicitly approves this complete revised
+    Gate 1 design. Approval phrase:
+    **`Approve CLEAN-01 non-Plant bounded breaking cleanup design`**.
+  - **Bounded implementation:** after approval, fetch merged `origin/master`, create a fresh
+    `codex/clean-01-...` branch, implement only the enumerated removals/visibility changes, migrate
+    the one tool caller and affected tests, and synchronize Javadocs, Framework Overview, Tasks &
+    Macros Quickstart, Output Tasks & Queues, Supervisors & Pipelines, and Drive Guidance where their
+    public path changes. PLANT-02, INPUT-02 failure retention, RANGE-01, MAP-01, FTC-02, SOURCE-04,
+    BOUNDARY-01, CI-01, and all completed-task designs remain out of scope.
+  - **Verification plan:** add focused reflection/compile-contract coverage for the selected public
+    surface and required cancellation; retain lifecycle, timing, bounded-repeat, fail-stop,
+    and guidance behavior tests; run the focused suites, full
+    `:TeamCode:testDebugUnitTest`, and `:TeamCode:compileDebugJavaWithJavac`; count JUnit XML
+    outcomes; run `DocumentationLinksTest`, exhaustive removed/preferred qualified-call scans,
+    whitespace and `git diff --check`; then complete independent correctness, Framework Principles,
+    simplicity, scope, documentation, and test-validity reviews. No robot hardware evidence is
+    needed for compile-time/API cleanup whose retained implementations are behavior-preserving;
+    Android Studio review remains required before Gate 3 publication.
 
 ### PLANT-02 - One public Plant construction grammar
 
@@ -9466,7 +9671,7 @@ writer, and explicit lifecycle ownership.
   was applied, reverified, independently reviewed, and approved in Android Studio on the existing
   PLANT-02 branch. Gate 3 publication is authorized; no next tracker item is started. The servo periodicity,
   native-domain, scaling, public-path, caller, parameter, guard, result-type, hidden-runtime,
-  documentation, and verification questions remain resolved. CLEAN-01 remains Proposed
+  documentation, and verification questions remain resolved. CLEAN-01 remains Ready but unapproved
   and unimplemented; it performs no preparatory Plant deletion or caller migration while PLANT-02
   is active.
 - **Problem confirmed:** Plant construction currently exposes sixteen public starts: one

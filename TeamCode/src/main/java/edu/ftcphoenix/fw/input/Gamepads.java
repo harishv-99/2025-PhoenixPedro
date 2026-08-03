@@ -42,13 +42,6 @@ public final class Gamepads {
     }
 
     /**
-     * Alternate factory name (same as {@link #create(Gamepad, Gamepad)}).
-     */
-    public static Gamepads of(Gamepad gp1, Gamepad gp2) {
-        return create(gp1, gp2);
-    }
-
-    /**
      * Construct from already-wrapped {@link GamepadDevice}s.
      *
      * <p>Mainly useful for tests or advanced composition.</p>

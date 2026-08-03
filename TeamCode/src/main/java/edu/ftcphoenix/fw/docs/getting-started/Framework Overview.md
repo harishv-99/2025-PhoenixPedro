@@ -657,7 +657,7 @@ Phoenix gives you factories so your code reads like intent:
   writes
 * `DriveTasks` — `driveExclusivelyForSeconds(...)` for simple timed open-loop Auto/test movement when
   its Task is the sole behavior-command writer for the `DriveCommandSink`
-* `DriveGuidanceTasks` — execute a `DriveGuidancePlan` as a Task (autonomous-style guidance)
+* `DriveGuidancePlan.task(...)` — execute a guidance plan as an autonomous-style Task
 * `RouteTasks` — follow an external route through a generic `RouteFollower<RouteT>` adapter
 * `GoToPoseTasks` — convenience wrappers for common go-to-pose behaviors (`goToPoseFieldRelative`, `goToPoseTagRelative`, …)
 

@@ -18,10 +18,10 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * TaskRunner runner = new TaskRunner();
  *
  * // Wait until a sensor gate is ready.
- * runner.enqueue(new WaitUntilTask(ready));
+ * runner.enqueue(Tasks.waitUntil(ready));
  *
  * // Or: wait until ready, but give up after 2 seconds.
- * runner.enqueue(new WaitUntilTask(ready, 2.0));
+ * runner.enqueue(Tasks.waitUntil(ready, 2.0));
  * }</pre>
  *
  * <p>Active cancellation ends the wait immediately and reports
@@ -51,7 +51,7 @@ public final class WaitUntilTask implements Task {
     /**
      * Create a wait-until task with no timeout.
      */
-    public WaitUntilTask(BooleanSource condition) {
+    WaitUntilTask(BooleanSource condition) {
         this(condition, Double.POSITIVE_INFINITY);
     }
 
@@ -61,7 +61,7 @@ public final class WaitUntilTask implements Task {
      * @param condition  condition to wait for; task completes when this becomes true
      * @param timeoutSec timeout in seconds; must be {@code >= 0}
      */
-    public WaitUntilTask(BooleanSource condition, double timeoutSec) {
+    WaitUntilTask(BooleanSource condition, double timeoutSec) {
         this.condition = Objects.requireNonNull(condition, "condition is required");
         if (timeoutSec < 0.0) {
             throw new IllegalArgumentException("timeoutSec must be >= 0, got " + timeoutSec);

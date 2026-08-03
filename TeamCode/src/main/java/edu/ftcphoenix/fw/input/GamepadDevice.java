@@ -425,20 +425,6 @@ public final class GamepadDevice {
     }
 
     /**
-     * Alias for {@link #leftBumper()} to match common “LB/RB” naming in examples.
-     */
-    public BooleanSource lb() {
-        return leftBumper;
-    }
-
-    /**
-     * Alias for {@link #rightBumper()} to match common “LB/RB” naming in examples.
-     */
-    public BooleanSource rb() {
-        return rightBumper;
-    }
-
-    /**
      * D-pad up.
      *
      * @return a {@link BooleanSource} with edge detection
@@ -485,20 +471,6 @@ public final class GamepadDevice {
      * Right stick button (press the right stick).
      */
     public BooleanSource rightStickButton() {
-        return rightStickButton;
-    }
-
-    /**
-     * Alias for {@link #leftStickButton()} (common "LS" naming).
-     */
-    public BooleanSource ls() {
-        return leftStickButton;
-    }
-
-    /**
-     * Alias for {@link #rightStickButton()} (common "RS" naming).
-     */
-    public BooleanSource rs() {
         return rightStickButton;
     }
 

@@ -661,6 +661,8 @@ public final class TaskSingleUseContractTest {
     private static final class ThrowingStartTask implements Task {
         private final String name;
         private int startCount;
+        private boolean started;
+        private boolean cancelled;
 
         private ThrowingStartTask(String name) {
             this.name = name;
@@ -669,6 +671,7 @@ public final class TaskSingleUseContractTest {
         @Override
         public void start(LoopClock clock) {
             startCount++;
+            started = true;
             throw new ExpectedStartFailure();
         }
 
@@ -678,13 +681,21 @@ public final class TaskSingleUseContractTest {
         }
 
         @Override
+        public void cancel() {
+            if (!started || cancelled) {
+                return;
+            }
+            cancelled = true;
+        }
+
+        @Override
         public boolean isComplete() {
-            return false;
+            return cancelled;
         }
 
         @Override
         public TaskOutcome getOutcome() {
-            return TaskOutcome.NOT_DONE;
+            return cancelled ? TaskOutcome.CANCELLED : TaskOutcome.NOT_DONE;
         }
 
         @Override

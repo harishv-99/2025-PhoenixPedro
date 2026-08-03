@@ -94,6 +94,12 @@ public final class Tasks {
 
             /** {@inheritDoc} */
             @Override
+            public void cancel() {
+                // Already terminal and owns no temporary state.
+            }
+
+            /** {@inheritDoc} */
+            @Override
             public boolean isComplete() {
                 return true;
             }
@@ -129,8 +135,7 @@ public final class Tasks {
      * Create a {@link Task} that waits until a condition becomes {@code true}.
      *
      * <p>This wraps {@link WaitUntilTask} with no timeout. If the condition
-     * can get stuck, prefer {@link #waitUntil(BooleanSource, double)} or
-     * construct a {@link WaitUntilTask} directly with a timeout.</p>
+     * can get stuck, prefer {@link #waitUntil(BooleanSource, double)}.</p>
      *
      * @param condition condition to wait for
      */
@@ -291,10 +296,6 @@ public final class Tasks {
          */
         OutputPulseReadyStep maxRunSec(double maxRunSec);
 
-        /**
-         * Set both minimum and maximum run times at once.
-         */
-        OutputPulseReadyStep runWindow(double minRunSec, double maxRunSec);
     }
 
     /**
@@ -405,12 +406,6 @@ public final class Tasks {
         }
 
         @Override
-        public OutputPulseReadyStep runWindow(double minRunSec, double maxRunSec) {
-            this.minRunSec(minRunSec);
-            return this.maxRunSec(maxRunSec);
-        }
-
-        @Override
         public OutputPulseReadyStep idleOutput(double idleOutput) {
             if (!Double.isFinite(idleOutput)) {
                 throw new IllegalArgumentException("idleOutput must be finite, got " + idleOutput);
@@ -462,69 +457,6 @@ public final class Tasks {
      */
     public static OutputTask outputForSeconds(String name, double output, double durationSec) {
         return new OutputForSecondsTask(name, output, durationSec);
-    }
-
-    /**
-     * Wait for {@code startWhen}, then output {@code runOutput} until {@code doneWhen} is satisfied
-     * (and {@code minRunSec} has elapsed), or until {@code maxRunSec} elapses.
-     *
-     * <p>RUN and cooldown timing begin at their own start timestamps. If the done condition is
-     * already satisfied and no positive minimum is required, the task completes at idle. Otherwise
-     * a positive required run is exposed in the gate-opening cycle.</p>
-     */
-    public static OutputTask gatedOutputUntil(String name,
-                                              BooleanSource startWhen,
-                                              BooleanSource doneWhen,
-                                              ScalarSource runOutput,
-                                              double idleOutput,
-                                              double minRunSec,
-                                              double maxRunSec,
-                                              double cooldownSec) {
-
-        Objects.requireNonNull(startWhen, "startWhen");
-        Objects.requireNonNull(doneWhen, "doneWhen");
-        Objects.requireNonNull(runOutput, "runOutput");
-
-        return new GatedOutputUntilTask(name, startWhen, doneWhen, runOutput, idleOutput, minRunSec, maxRunSec, cooldownSec);
-    }
-
-    /**
-     * Convenience overload for constant run output and common defaults.
-     */
-    public static OutputTask gatedOutputUntil(String name,
-                                              BooleanSource startWhen,
-                                              BooleanSource doneWhen,
-                                              double runOutput,
-                                              double minRunSec,
-                                              double maxRunSec) {
-
-        return gatedOutputUntil(name,
-                startWhen,
-                doneWhen,
-                ScalarSource.constant(runOutput),
-                0.0,
-                minRunSec,
-                maxRunSec,
-                0.0);
-    }
-
-    /**
-     * Convenience overload: output until a condition is satisfied, up to a timeout. Its run
-     * interval begins when the task's immediate start gate opens.
-     */
-    public static OutputTask outputUntil(String name,
-                                         BooleanSource doneWhen,
-                                         double runOutput,
-                                         double maxRunSec) {
-
-        return gatedOutputUntil(name,
-                BooleanSource.constant(true),
-                doneWhen,
-                ScalarSource.constant(runOutput),
-                0.0,
-                0.0,
-                maxRunSec,
-                0.0);
     }
 
     // ---------------------------------------------------------------------

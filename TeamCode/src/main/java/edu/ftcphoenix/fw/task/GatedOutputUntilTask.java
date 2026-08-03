@@ -42,6 +42,8 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * {@code idleOutput}, and reports {@link TaskOutcome#CANCELLED}. Pre-start and terminal
  * cancellation are no-ops. This makes active output safe to abort during driver override,
  * mechanism shutdown, or mode transitions.</p>
+ *
+ * <p>Create this leaf Task through the staged {@link Tasks#outputPulse(String)} recipe.</p>
  */
 public final class GatedOutputUntilTask implements OutputTask {
 
@@ -84,14 +86,14 @@ public final class GatedOutputUntilTask implements OutputTask {
      * @param maxRunSec   maximum run time in seconds, must be {@code >= minRunSec}
      * @param cooldownSec cooldown time in seconds after completion, must be {@code >= 0}
      */
-    public GatedOutputUntilTask(String name,
-                                BooleanSource startWhen,
-                                BooleanSource doneWhen,
-                                ScalarSource runOutput,
-                                double idleOutput,
-                                double minRunSec,
-                                double maxRunSec,
-                                double cooldownSec) {
+    GatedOutputUntilTask(String name,
+                         BooleanSource startWhen,
+                         BooleanSource doneWhen,
+                         ScalarSource runOutput,
+                         double idleOutput,
+                         double minRunSec,
+                         double maxRunSec,
+                         double cooldownSec) {
         Objects.requireNonNull(startWhen, "startWhen is required");
         Objects.requireNonNull(doneWhen, "doneWhen is required");
         Objects.requireNonNull(runOutput, "runOutput is required");

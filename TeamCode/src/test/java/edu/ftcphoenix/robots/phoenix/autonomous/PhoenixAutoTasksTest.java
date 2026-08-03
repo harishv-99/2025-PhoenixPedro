@@ -873,6 +873,11 @@ public final class PhoenixAutoTasksTest {
         }
 
         @Override
+        public void cancel() {
+            // This fixture is terminal as soon as start returns and owns no temporary state.
+        }
+
+        @Override
         public boolean isComplete() {
             return complete;
         }
@@ -930,7 +935,9 @@ public final class PhoenixAutoTasksTest {
 
     private static final class InvalidCompletedOutcomeTask implements Task {
         private final TaskOutcome outcome;
+        private boolean started;
         private boolean complete;
+        private boolean cancelled;
 
         InvalidCompletedOutcomeTask(TaskOutcome outcome) {
             this.outcome = outcome;
@@ -938,12 +945,21 @@ public final class PhoenixAutoTasksTest {
 
         @Override
         public void start(LoopClock clock) {
-            // No external effect.
+            started = true;
         }
 
         @Override
         public void update(LoopClock clock) {
             complete = true;
+        }
+
+        @Override
+        public void cancel() {
+            if (!started || complete) {
+                return;
+            }
+            complete = true;
+            cancelled = true;
         }
 
         @Override
@@ -953,7 +969,7 @@ public final class PhoenixAutoTasksTest {
 
         @Override
         public TaskOutcome getOutcome() {
-            return outcome;
+            return cancelled ? TaskOutcome.CANCELLED : outcome;
         }
     }
 }

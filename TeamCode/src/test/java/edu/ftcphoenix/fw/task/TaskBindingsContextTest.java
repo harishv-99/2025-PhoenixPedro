@@ -120,7 +120,7 @@ public final class TaskBindingsContextTest {
     }
 
     @Test
-    public void mixedKindsEnqueueTasksInBindingDeclarationOrder() {
+    public void edgeAndChangeKindsEnqueueTasksInBindingDeclarationOrder() {
         ManualLoopClock manualClock = new ManualLoopClock();
         Bindings bindings = new Bindings();
         TaskRunner runner = new TaskRunner();
@@ -136,7 +136,6 @@ public final class TaskBindingsContextTest {
         taskBindings.mirrorOnChange(signal,
                 high -> Tasks.runOnce(() -> starts.add("mirror-" + high)));
         taskBindings.onRise(signal, () -> Tasks.runOnce(() -> starts.add("rise")));
-        taskBindings.whileHigh(signal, () -> Tasks.runOnce(() -> starts.add("high")));
 
         update(bindings, manualClock);
         runner.update(manualClock.clock());
@@ -147,7 +146,7 @@ public final class TaskBindingsContextTest {
         update(bindings, manualClock);
         runner.update(manualClock.clock());
 
-        assertEquals(Arrays.asList("toggle-on", "mirror-true", "rise", "high"), starts);
+        assertEquals(Arrays.asList("toggle-on", "mirror-true", "rise"), starts);
         assertTrue(runner.isIdle());
     }
 
@@ -157,8 +156,12 @@ public final class TaskBindingsContextTest {
     }
 
     private static final class HoldingTask implements Task {
+        private boolean started;
+        private boolean cancelled;
+
         @Override
         public void start(LoopClock clock) {
+            started = true;
             // Started by the runner; this task deliberately remains active.
         }
 
@@ -168,13 +171,21 @@ public final class TaskBindingsContextTest {
         }
 
         @Override
+        public void cancel() {
+            if (!started || cancelled) {
+                return;
+            }
+            cancelled = true;
+        }
+
+        @Override
         public boolean isComplete() {
-            return false;
+            return cancelled;
         }
 
         @Override
         public TaskOutcome getOutcome() {
-            return TaskOutcome.NOT_DONE;
+            return cancelled ? TaskOutcome.CANCELLED : TaskOutcome.NOT_DONE;
         }
     }
 }

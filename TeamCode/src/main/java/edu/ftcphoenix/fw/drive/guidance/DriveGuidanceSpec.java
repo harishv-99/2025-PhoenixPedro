@@ -24,7 +24,10 @@ import edu.ftcphoenix.fw.spatial.TranslationTarget2d;
  * </ol>
  *
  * <p>A spec intentionally contains <strong>no controller tuning</strong>. That keeps “what I want”
- * reusable across TeleOp overlays, autonomous tasks, and readiness queries.</p>
+ * reusable across TeleOp overlays, autonomous tasks, and readiness queries. Construct specs
+ * through the staged {@link DriveGuidance#spec()} or {@link DriveGuidance#plan()} grammar; the
+ * nested values remain readable result/configuration details rather than parallel construction
+ * paths.</p>
  */
 public final class DriveGuidanceSpec {
 
@@ -74,7 +77,7 @@ public final class DriveGuidanceSpec {
          * Creates a robot-relative translation target captured from the translation control frame
          * when guidance enables.
          */
-        public RobotRelativePoint(double forwardInches, double leftInches) {
+        RobotRelativePoint(double forwardInches, double leftInches) {
             this.forwardInches = forwardInches;
             this.leftInches = leftInches;
         }
@@ -91,18 +94,18 @@ public final class DriveGuidanceSpec {
         public final double maxAgeSec;
         public final FixedTagFieldPoseSolver.Config fieldPoseSolverConfig;
 
-        public AprilTags(AprilTagSensor sensor, CameraMountConfig cameraMount) {
+        AprilTags(AprilTagSensor sensor, CameraMountConfig cameraMount) {
             this(sensor, cameraMount, DEFAULT_MAX_AGE_SEC, FixedTagFieldPoseSolver.Config.defaults());
         }
 
-        public AprilTags(AprilTagSensor sensor, CameraMountConfig cameraMount, double maxAgeSec) {
+        AprilTags(AprilTagSensor sensor, CameraMountConfig cameraMount, double maxAgeSec) {
             this(sensor, cameraMount, maxAgeSec, FixedTagFieldPoseSolver.Config.defaults());
         }
 
-        public AprilTags(AprilTagSensor sensor,
-                         CameraMountConfig cameraMount,
-                         double maxAgeSec,
-                         FixedTagFieldPoseSolver.Config fieldPoseSolverConfig) {
+        AprilTags(AprilTagSensor sensor,
+                  CameraMountConfig cameraMount,
+                  double maxAgeSec,
+                  FixedTagFieldPoseSolver.Config fieldPoseSolverConfig) {
             this.sensor = Objects.requireNonNull(sensor, "sensor");
             this.cameraMount = Objects.requireNonNull(cameraMount, "cameraMount");
             this.maxAgeSec = maxAgeSec;
@@ -126,11 +129,11 @@ public final class DriveGuidanceSpec {
         public final double maxAgeSec;
         public final double minQuality;
 
-        public Localization(AbsolutePoseEstimator poseEstimator) {
+        Localization(AbsolutePoseEstimator poseEstimator) {
             this(poseEstimator, DEFAULT_MAX_AGE_SEC, DEFAULT_MIN_QUALITY);
         }
 
-        public Localization(AbsolutePoseEstimator poseEstimator, double maxAgeSec, double minQuality) {
+        Localization(AbsolutePoseEstimator poseEstimator, double maxAgeSec, double minQuality) {
             this.poseEstimator = Objects.requireNonNull(poseEstimator, "poseEstimator");
             this.maxAgeSec = maxAgeSec;
             this.minQuality = minQuality;
@@ -149,7 +152,7 @@ public final class DriveGuidanceSpec {
         public final double exitRangeInches;
         public final double blendSec;
 
-        public TranslationTakeover(double enterRangeInches, double exitRangeInches, double blendSec) {
+        TranslationTakeover(double enterRangeInches, double exitRangeInches, double blendSec) {
             this.enterRangeInches = enterRangeInches;
             this.exitRangeInches = exitRangeInches;
             this.blendSec = blendSec;
@@ -188,13 +191,13 @@ public final class DriveGuidanceSpec {
             this.lossPolicy = lossPolicy;
         }
 
-        public static ResolveWith create(SolveMode mode,
-                                         AprilTags aprilTags,
-                                         Localization localization,
-                                         TagLayout fixedAprilTagLayout,
-                                         TranslationTakeover translationTakeover,
-                                         OmegaPolicy omegaPolicy,
-                                         LossPolicy lossPolicy) {
+        static ResolveWith create(SolveMode mode,
+                                  AprilTags aprilTags,
+                                  Localization localization,
+                                  TagLayout fixedAprilTagLayout,
+                                  TranslationTakeover translationTakeover,
+                                  OmegaPolicy omegaPolicy,
+                                  LossPolicy lossPolicy) {
             Objects.requireNonNull(mode, "mode");
             LossPolicy lp = (lossPolicy != null) ? lossPolicy : LossPolicy.PASS_THROUGH;
             OmegaPolicy op = (omegaPolicy != null) ? omegaPolicy : OmegaPolicy.PREFER_APRIL_TAGS_WHEN_VALID;
@@ -287,7 +290,4 @@ public final class DriveGuidanceSpec {
         return DriveOverlayMask.NONE;
     }
 
-    public DriveOverlayMask suggestedMask() {
-        return requestedMask();
-    }
 }

@@ -687,12 +687,10 @@ Generic composition goes through `Tasks.*`. Its helpers include `sequence(...)`,
 `parallelAll(...)`, `parallelDeadline(...)`, `branchOnOutcome(...)`, and `withTimeout(...)`. An
 outer `withTimeout(...)` budget is different from a leaf Task's local timeout; see
 [`Tasks & Macros Quickstart`](<../design/Tasks & Macros Quickstart.md>) for the continuation and
-cleanup rules. Some public lower-level leaf Tasks, including `InstantTask`, `RunForSecondsTask`,
-and `WaitUntilTask`, remain available.
-Prefer the matching `Tasks` helper when it already covers the behavior; use a concrete leaf only
-when:
+cleanup rules. Ordinary leaf Tasks use the matching `Tasks` helper. `RunForSecondsTask` remains
+directly constructible for its distinct start/update/finish callback capability. Implement a
+custom Task only when:
 
-* Their callback or configuration surface provides something the facade does not.
 * You need a genuinely new behavior state machine that the existing factories do not cover.
 
 Team helper factories should still build their child graphs through `Tasks.*`; do not add another

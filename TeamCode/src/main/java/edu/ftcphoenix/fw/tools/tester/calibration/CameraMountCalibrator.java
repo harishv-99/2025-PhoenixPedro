@@ -301,7 +301,7 @@ public final class CameraMountCalibrator extends BaseTeleOpTester {
 
         // Toggle edit mode (RS). Edit mode lets you select which variable you're changing
         // instead of remembering which button maps to which axis.
-        calibrationControls.onRise(gamepads.p1().rs(), () -> editMode = !editMode);
+        calibrationControls.onRise(gamepads.p1().rightStickButton(), () -> editMode = !editMode);
 
         // D-pad:
         //  - QUICK mode: dpad X adjusts X, dpad Y adjusts Y (requested)

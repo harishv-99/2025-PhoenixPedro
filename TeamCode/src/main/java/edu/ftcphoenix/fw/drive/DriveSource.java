@@ -45,7 +45,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *   <li>{@link #scaled(double, double)} – unconditional scaling (useful for always-on “microdrive”).</li>
  *   <li>{@link #overlayWhen(BooleanSource, DriveOverlay, DriveOverlayMask)} – conditionally
  *       apply a {@link DriveOverlay} to override one or more components of this source.</li>
- *   <li>{@link #overlayStack()} – build a readable stack of multiple overlays.</li>
+ *   <li>{@link DriveOverlayStack#on(DriveSource)} – build a readable stack of multiple overlays.</li>
  *   <li>{@link #rateLimited(double, double)} – smooth drive commands at the source layer.</li>
  *   <li>{@link #blendedWith(DriveSource, double)} – blend this source with another using
  *       {@link DriveSignal#lerp(DriveSignal, double)}.</li>
@@ -512,16 +512,6 @@ public interface DriveSource extends Source<DriveSignal> {
                 composed.debugDump(dbg, prefix);
             }
         };
-    }
-
-    /**
-     * Start building an overlay stack on top of this drive source.
-     *
-     * <p>This is the recommended way to apply <em>multiple</em> overlays without nesting
-     * {@link #overlayWhen(BooleanSource, DriveOverlay, DriveOverlayMask)} calls.</p>
-     */
-    default DriveOverlayStack.Builder overlayStack() {
-        return DriveOverlayStack.on(this);
     }
 
     /**

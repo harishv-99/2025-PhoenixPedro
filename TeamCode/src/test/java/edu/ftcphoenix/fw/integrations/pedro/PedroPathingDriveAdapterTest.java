@@ -195,7 +195,7 @@ public final class PedroPathingDriveAdapterTest {
         DriveGuidanceTask.Config config = new DriveGuidanceTask.Config();
         config.positionTolInches = 0.25;
         config.timeoutSec = 5.0;
-        DriveGuidanceTask task = new DriveGuidanceTask(fixture.adapter, plan, config);
+        DriveGuidanceTask task = plan.task(fixture.adapter, config);
 
         // Phoenix's root heartbeat precedes the runner that starts and updates guidance.
         fixture.adapter.update(fixture.clock.clock());

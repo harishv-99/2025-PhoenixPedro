@@ -25,6 +25,15 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
  * behavior, compose one fresh Task graph instead of treating binding order as Task priority or
  * cancellation policy.</p>
  *
+ * <p>This adapter intentionally exposes event and change bindings, not level-triggered Task
+ * enqueueing. Use {@link Bindings#whileHigh(BooleanSource, Runnable)} or
+ * {@link Bindings#whileLow(BooleanSource, Runnable)} for a direct, synchronous, idempotent action
+ * on each matching loop. Use {@link OutputTaskRunner#whileHigh} or
+ * {@link OutputTaskRunner#whileLow} when held intent should maintain a bounded queue of fresh
+ * output Tasks and cancel that queue at the opposite level. A subsystem or service that needs one
+ * Task to own one complete held interval should own its private runner, enqueue once on the
+ * request edge, and call {@link TaskRunner#cancelAndClear()} on release.</p>
+ *
  * <h2>Usage</h2>
  *
  * <pre>{@code
@@ -90,32 +99,6 @@ public final class TaskBindings {
         Objects.requireNonNull(signal, "signal is required");
         Objects.requireNonNull(taskFactory, "taskFactory is required");
         bindings.mirrorOnChange(signal, high -> runner.enqueue(taskFactory.apply(high)));
-    }
-
-    /**
-     * Enqueue a task on every eligible update while the signal is high/true.
-     *
-     * <p>This is best used for <b>instant</b> tasks (set a target, update a mode, etc.).
-     * If the returned task takes time, repeatedly enqueuing a new instance each loop will
-     * create a backlog in the runner.</p>
-     */
-    public void whileHigh(BooleanSource signal, Supplier<Task> taskFactory) {
-        Objects.requireNonNull(signal, "signal is required");
-        Objects.requireNonNull(taskFactory, "taskFactory is required");
-        bindings.whileHigh(signal, () -> runner.enqueue(taskFactory.get()));
-    }
-
-    /**
-     * Enqueue a task on every eligible update while the signal is low/false.
-     *
-     * <p>This is best used for <b>instant</b> tasks (set a target, update a mode, etc.).
-     * If the returned task takes time, repeatedly enqueuing a new instance each loop will
-     * create a backlog in the runner.</p>
-     */
-    public void whileLow(BooleanSource signal, Supplier<Task> taskFactory) {
-        Objects.requireNonNull(signal, "signal is required");
-        Objects.requireNonNull(taskFactory, "taskFactory is required");
-        bindings.whileLow(signal, () -> runner.enqueue(taskFactory.get()));
     }
 
     /**

@@ -98,10 +98,10 @@ public final class DriveGuidanceTask implements Task {
     /**
      * Creates a named autonomous task that executes the supplied guidance plan.
      */
-    public DriveGuidanceTask(String debugName,
-                             DriveCommandSink drivebase,
-                             DriveGuidancePlan plan,
-                             Config cfg) {
+    DriveGuidanceTask(String debugName,
+                      DriveCommandSink drivebase,
+                      DriveGuidancePlan plan,
+                      Config cfg) {
         this.debugName = (debugName != null && !debugName.isEmpty()) ? debugName : "DriveGuidanceTask";
         this.drivebase = Objects.requireNonNull(drivebase, "drivebase");
         this.plan = Objects.requireNonNull(plan, "plan");
@@ -112,9 +112,9 @@ public final class DriveGuidanceTask implements Task {
     /**
      * Creates an autonomous guidance task with a default debug name.
      */
-    public DriveGuidanceTask(DriveCommandSink drivebase,
-                             DriveGuidancePlan plan,
-                             Config cfg) {
+    DriveGuidanceTask(DriveCommandSink drivebase,
+                      DriveGuidancePlan plan,
+                      Config cfg) {
         this("DriveGuidanceTask", drivebase, plan, cfg);
     }
 

@@ -95,8 +95,9 @@ The camera does not need to be centered or aligned with the shooter.
 
 ## Runtime ownership and cycle safety
 
-`DriveGuidancePlan` is reusable configuration; each call to `overlay()`, `query()`, or a Task factory
-creates fresh runtime state. Give each overlay instance exactly one activation owner. In ordinary
+`DriveGuidancePlan` is reusable configuration; each call to `overlay()`, `query()`, or
+`task(driveSink, taskConfig)` creates fresh runtime state. These plan-owned methods are the public
+construction paths for guidance runtimes. Give each overlay instance exactly one activation owner. In ordinary
 robot code that means calling `plan.overlay()` once for each stack layer instead of retaining one
 overlay and installing it in multiple layers or stacks:
 
