@@ -7,6 +7,11 @@ package edu.ftcphoenix.fw.core.hal;
  * {@code ScalarSource} so device-managed velocity control and framework-regulated velocity control
  * can share the same measurement abstraction.</p>
  *
+ * <p>Velocity unit mappings are zero-preserving: {@code 0.0} means zero velocity in every unit
+ * system. Hardware-neutral mapped Plants reject a non-finite realized command before calling this
+ * seam. A concrete output may impose additional native-unit limits, but this generic interface
+ * does not invent a universal hardware-independent maximum velocity.</p>
+ *
  * <h2>Typical usage</h2>
  *
  * <pre>{@code
@@ -19,7 +24,8 @@ public interface VelocityOutput {
     /**
      * Command the actuator to the requested velocity in the output's native velocity units.
      *
-     * @param velocity desired velocity command in the output's native units
+     * @param velocity desired finite velocity command in the output's native units; {@code 0.0}
+     *                 requests zero velocity
      */
     void setVelocity(double velocity);
 

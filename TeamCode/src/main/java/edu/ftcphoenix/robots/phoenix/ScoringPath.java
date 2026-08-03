@@ -491,7 +491,6 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
                     .crServo(cfg.nameCrServoShooterTransferRight, cfg.directionCrServoShooterTransferRight)
                     .andCrServo(cfg.nameCrServoShooterTransferLeft, cfg.directionCrServoShooterTransferLeft)
                     .scale(cfg.shooterTransferLeftScale)
-                    .bias(cfg.shooterTransferLeftBias)
                     .power()
                     .targetFromResolver(shooterTransferTargetResolver)
                     .build();

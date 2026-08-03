@@ -31,6 +31,21 @@ That ownership split matters during bring-up because fixes should land in the ow
 - field-fixed tag policy or practice-field overrides -> `PhoenixProfile.field`
 
 
+### Actuator mapping facts
+
+Phoenix's shooter-transfer CR-servo group keeps one
+`PhoenixProfile.scoring.shooterTransferLeftScale` value. It is a configured dimensionless speed ratio
+for the last-added left child, after the two `Direction` values account for physical mounting. There
+is no transfer bias field: normalized power zero must map to exact zero for both CR servos, while a
+nonzero additive offset would make an active zero command disagree with stop.
+
+The framework validates this scale as finite and preflights the complete `[-1.0, +1.0]` group image
+before fresh hardware effects. That numeric proof does not establish the correct physical ratio;
+confirm direction, relative speed, loading, and transfer behavior on the robot. If a future
+mechanism proves it needs additive or nonlinear per-wheel intent, model that pair inside its owner
+with two private Plants rather than hiding another command in an actuator map.
+
+
 ---
 
 ## Mechanism position calibration pattern
@@ -122,7 +137,10 @@ For periodic mechanisms such as trays or turrets, `establishReferenceAt(...)` es
 reference modulo the Plant period and preserves the nearest equivalent unwrapped position from the
 cue cycle's current native sample when the Plant was already referenced. When the current plant
 estimate is finite, the Plant rejects a non-finite final nearest-equivalence result before committing
-the new reference. General plant/native affine overflow remains a separate mapping-domain concern.
+the new reference. The complete candidate bounded affine map and derived public measurement must
+also remain finite before reference state changes. Each later realized FTC command still passes its
+raw-domain check. An unbounded core Plant-to-native conversion is checked individually before
+applied-target state or output.
 
 These finite-value checks do not prove the physical pose, mapping scale/sign, cue, travel, or hold
 is correct or safe. The future Phoenix mechanism owner must validate those facts on its robot.

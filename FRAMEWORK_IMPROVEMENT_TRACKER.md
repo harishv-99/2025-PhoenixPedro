@@ -150,7 +150,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 63 | CLEAN-01 | Alias and risky convenience cleanup | Done | The bounded non-Plant cleanup, migrations, synchronized guidance, automated verification, independent review, and Android Studio approval are complete. |
 | 64 | PLANT-02 | One public Plant construction grammar | Done | One shared Plant grammar, parallel target provenance, caller/docs migration, automated verification, independent review, and Android Studio approval are complete. |
 | 65 | RANGE-01 | ScalarRange construction validity | Done | Define and enforce finite, half-bounded, and unbounded range construction without allowing `NaN`. |
-| 66 | MAP-01 | FTC actuator mapping-domain validation | Proposed | Validate finite child transforms and raw actuator domains before command mapping can be silently clamped. |
+| 66 | MAP-01 | FTC actuator mapping-domain validation | Done | Layer finite affine and FTC-native-domain validation, preserve neutral zero, and remove unusable CR-servo bias. |
 | 67 | FTC-02 | Device-managed controller configuration validation | Proposed | Validate FTC PIDF/P, maximum-power, and related staged answers before SDK access or mode changes. |
 | 68 | SOURCE-04 | Successful source-cache commit semantics | Proposed | Audit stateful source wrappers that claim a cycle before upstream sampling or state transition succeeds. |
 | 69 | INPUT-02 | Binding update failure retention | Proposed | Make same-cycle binding failure behavior explicit for an effectful traversal that may already have fired callbacks. |
@@ -12111,23 +12111,319 @@ writer, and explicit lifecycle ownership.
 
 ### MAP-01 - FTC actuator mapping-domain validation
 
-- **Problem to confirm:** standard-servo endpoint maps and grouped child transforms may compute raw
-  values outside the SDK's `[0, 1]` servo domain and then be silently clamped, making commanded and
-  applied position meaning diverge. Non-finite affine inputs or arithmetic overflow can likewise
-  survive partial checks.
-- **Alternatives to compare:** finite scale/bias checks in the existing staged answers; raw-domain
-  validation only in standard-servo builders; require callers to pre-clamp endpoints; report
-  applied native clamp; or add endpoint/mapping value objects. Inventory direct mapped-Plant and
-  FtcActuators paths, but keep generic `ScalarRange` construction in RANGE-01.
-- **Leading hypothesis:** validate finite affine parameters at their existing FTC staged answers and
-  enforce `[0, 1]` only at the standard-servo boundary that knows that native domain. Preserve final
-  SDK clamping as defense, and add no wrapper unless a mapping is demonstrably stored or shared.
-  Calibration reference/offset answers remain exclusively in CAL-02 even when they contribute to a
-  later affine map.
-- **Completion:** every accepted endpoint/child transform is finite and maps the declared Plant range
-  into its native domain without silent configuration clamp; tests cover negative scale, endpoints,
-  group transforms, overflow, and command/applied truth.
-- **Decision record:** _Pending; split from API-03 on 2026-07-16._
+- **Gate 2 approval (2026-08-03):** the user explicitly replied
+  **`Approve MAP-01 layered mapping-domain breaking design`** after reviewing the revised
+  opposed-flywheel analysis. This authorizes only the bounded implementation, Phoenix migration,
+  documentation, tests, and verification recorded below; it does not authorize publication,
+  FTC-02, SOURCE-04, SAFE-04, or another tracker item. `origin/master` was fetched and remains
+  `b4b864ac56863d66fe46fd1e920eb1f44787f196`, exactly matching the current branch head and merge
+  base. MAP-01 is now **In progress** on
+  `codex/map-01-ftc-actuator-mapping-validation`.
+- **Decision gate (2026-08-03):** **Approved; implementation authorized.** MAP-01 is the sole active
+  item on
+  `codex/map-01-ftc-actuator-mapping-validation`, based exactly on merged
+  `origin/master@b4b864ac56863d66fe46fd1e920eb1f44787f196`. Research changed only this
+  tracker before approval; no Java implementation, test, Javadoc, guide, example, or Phoenix
+  production change had started. The approved audit preserves the one existing Plant grammar and
+  finds one public child-transform method with no truthful supported meaning.
+- **Research start (2026-08-02):** MAP-01 is the sole active item on
+  `codex/map-01-ftc-actuator-mapping-validation`, based exactly on merged
+  `origin/master@b4b864ac56863d66fe46fd1e920eb1f44787f196`. Gate 1 is read-only apart from
+  this tracker record: no Java implementation, test, Javadoc, guide, example, or Phoenix production
+  change has started. RANGE-01 is merged and Done; FTC-02, SOURCE-04, and every other proposed item
+  remain out of scope.
+- **Confirmed failure traces:**
+  1. Motor, standard-servo, and CR-servo group `.scale(...)` / `.bias(...)` answers currently assign
+     arbitrary `double` values. `NaN` also bypasses the later nonzero/default tests because every
+     ordered comparison with `NaN` is false.
+  2. A standard Servo recipe may declare `.bounded(-1.0, 1.0).nativeUnits()`, map its endpoints to
+     `[-0.25, 1.25]`, or let a child map shared native `0.8` through scale `1.0`, bias `0.3` to raw
+     `1.1`. `FtcHardware.servoPosition(...)` silently clamps the eventual command into `[0,1]`, while
+     the Plant still reports the logical target it accepted and applied.
+  3. Motor and CR-servo power children can likewise escape `[-1,1]`. More fundamentally,
+     `PowerOutput.setPower(0.0)` defines zero as neutral, but a nonzero child bias commands motion.
+     The current wrappers then bypass that bias during lifecycle `stop()`, so an ordinary zero target
+     and stop send contradictory child commands.
+  4. Device-managed motor velocity is defined by a zero-preserving whole-Plant mapping, yet a child
+     bias can turn top-level velocity zero into nonzero motor velocity while inverse feedback
+     subtracts that bias and can claim logical zero.
+  5. Core position and velocity maps validate their individual finite coefficients but not every
+     final multiply/add/subtract/divide. Finite inputs can therefore overflow to infinity during
+     bounded construction, an unbounded command, a reference-dependent conversion, or inverse
+     measurement conversion. Group outputs calculate and write children sequentially, so a later
+     mapped-child failure can occur after an earlier child moved.
+  6. `FtcHardware.motorPosition(...)` narrows `(int) Math.round(position)` without checking the
+     finite value or rounded `long` domain. `NaN`, infinity, and huge finite tick commands can become
+     plausible unrelated `int` targets before mode and power effects. Raw Servo clamps infinity and
+     forwards `NaN`; raw motor velocity caches, changes mode, and forwards any `double`.
+- **Complete construction/caller audit:** `FtcActuators.plant(HardwareMap)` owns FTC discovery,
+  direction, grouping, run modes, and raw actuator domains; `Plants.fromOutputs()` is the one
+  hardware-neutral custom-adapter/test/portable-host gateway and cannot assume a Servo `[0,1]` or
+  FTC integer-tick domain. Both already converge on the same neutral mapping engine, so there is no
+  second builder to consolidate and no public mapping object to add. All executable external
+  `rangeMapsToNative(...)` and `scaleToNative(...)` calls are focused tests and use valid finite
+  mappings, including intentional negative scales and reversed endpoints. Phoenix has the sole
+  maintained per-child call: its shooter-transfer CR servo uses scale `0.65` and bias `0.0`. There
+  is no production standard-servo group mapping. The current builders retain shared mutable parent
+  specifications, so complete validation must repeat at target selection/build rather than trusting
+  an earlier alias transition. No mapping answer itself performs hardware lookup; that pre-effect
+  ordering will be preserved.
+- **Opposed-flywheel design challenge (2026-08-03):** the user reported the prior Phoenix robot's
+  real arrangement: two flywheels on opposite sides of the artifact may need deliberately different
+  speeds to correct a shot that does not travel straight. Repository history confirms the legacy
+  `Phoenix3` and early framework Phoenix used two motors, but every checked-in implementation sent
+  them one equal shared velocity; separately declared left/right target fields were unused. Phoenix
+  later changed to one flywheel. No historical nonzero flywheel bias, RPM delta, or correction
+  survives in source, so the physical report establishes the need for differential correction but
+  does not establish that one constant native-unit delta fits multiple shot velocities.
+  - For the current affine child map `child = scale * shared + bias`, exact neutral requires
+    `child(0.0) == 0.0`, which mathematically requires `bias == 0.0`. The ordinary zero-preserving
+    correction is therefore a dimensionless speed ratio through the existing child `.scale(...)`:
+
+    ```java
+    Plant flywheels = FtcActuators.plant(hardwareMap)
+            .motor("flywheelLeft", Direction.FORWARD)
+            .andMotor("flywheelRight", Direction.REVERSE)
+            .scale(0.96) // right target/readback is 96% of the left/reference wheel
+            .velocity()
+            .deviceManagedWithDefaults()
+            .bounded(0.0, 2600.0)
+            .nativeUnits()
+            .velocityTolerance(100.0)
+            .targetFromNewCommand(0.0)
+            .build();
+    ```
+
+    At shared target `2500`, this commands logical native velocities `2500` and `2400`; at target
+    zero, both receive zero. Direction expresses the opposed mounting, while scale expresses only
+    the calibrated speed ratio. The grouped feedback path divides the second measurement by `0.96`
+    before aggregation, keeping both readings comparable in the one shared Plant coordinate.
+  - Active target zero and lifecycle `stop()` promise the same zero actuation, not an identical FTC
+    event sequence: an explicit zero may retain/acquire the branch's owned run mode, while `stop()`
+    may additionally release that mode. Group stop continues to bypass transforms and invoke every
+    child's natural stop.
+  - Do not redefine bias as `target == 0 ? 0 : scale * target + bias` or add a sign-aware active
+    offset. Those functions jump at zero, complicate reverse commands and saturation, leave a raw
+    feedback gap while wheels accelerate/coast through low speeds, and no longer have the simple
+    single-valued affine inverse on which grouped measurement depends. A continuous transition
+    would require trim magnitude, transition speed, piecewise forward/inverse formulas, and another
+    public mapping concept; no current multi-speed calibration selects that model.
+  - If measured shots at several velocities prove that a constant RPM delta or nonlinear curve is
+    materially better than a ratio, the mechanism owns two ordinary velocity Plants and computes
+    two explicit targets, making disabled zero, each wheel's bounds, and all-wheel readiness
+    visible. That is a truthful robot-owned paired-flywheel policy, not a generic actuator mapping
+    knob. Promote a reusable abstraction only after repeated callers establish its zero, direction,
+    transition, inverse, saturation, and readiness semantics.
+  - Existing grouped feedback is the average of inverse-mapped child measurements. It reports the
+    common group coordinate but cannot prove that every wheel is individually within tolerance;
+    mechanisms that require all-wheel readiness must inspect per-child feedback or use the separate
+    Plant design. MAP-01 will document this existing boundary rather than overclaiming it.
+- **Alternatives compared:**
+
+  | Design | Public complexity | Result |
+  | --- | ---: | --- |
+  | Documentation or caller pre-clamping | 0 concepts | Rejects nothing, duplicates formulas and SDK domains in mechanisms, and hides calibration errors as saturation |
+  | Validate only in raw adapters | 0 concepts | Detects too late to diagnose the recipe and can follow cache, mode, or earlier-child effects |
+  | Report the clamped native/per-child result | New result/status surface | Reports an after-write software transform, not hardware acknowledgement; overlaps SAFE-04 without making configuration valid |
+  | Public mapping/domain value object | New noun and factory | No caller stores, shares, or composes one, and the final branch/range/child facts are still required to validate it |
+  | Put FTC domains in `Plants` | No new type | Leaks Servo and SDK integer facts into the hardware-neutral gateway |
+  | Remove all child bias | Smaller but incomplete | Rejects legitimate standard-Servo and device-managed motor-position alignment |
+  | Retain CR bias but permit only zero | Misleading no-capability method | Every supported CR branch either requires zero preservation or exact identity |
+  | Existing child scale for paired flywheels | One ratio answer | Selected ordinary correction: continuous, zero-preserving, reversible, and compatible with inverse-mapped group feedback |
+  | Zero-gated/sign-aware velocity bias | New branch-specific semantic and edge rules | Reject: discontinuous at zero, ambiguous during coast-down, and not a truthful affine inverse |
+  | Two private velocity Plants in a shooter owner | No framework API; more owner code | Selected escape hatch only when multi-speed calibration or all-wheel readiness proves one ratio insufficient |
+  | **Selected layered validation in the existing grammar** | One method removed; no type or stage added | Rejects each fact at its earliest fully informed seam and keeps valid ordinary calls unchanged |
+- **Selected one-grammar design:**
+  1. Keep `nativeUnits()`, `scaleToNative(...)`, `rangeMapsToNative(...)`, and the meaningful group
+     `scale(...)` / `bias(...)` answers. They describe one parallel affine pipeline:
+     `Plant target -> shared Plant-to-native map -> child = scale * sharedNative + bias -> FTC
+     adapter`. Add no public wrapper, metadata capability, constructor, factory, or alternate path.
+  2. Remove `CrServoGroupAddedStep.bias(double)`, Phoenix's zero-only
+     `shooterTransferLeftBias` profile field/copy, and its `.bias(...)` call. Keep CR-servo
+     `.scale(...)`: it is useful and zero-preserving, including Phoenix's `0.65`. Motor bias remains
+     available because device-managed position alignment can use it; standard-Servo bias remains
+     available for fixed/mirrored linkage. A later motor branch rejects a retained bias when that
+     branch cannot give it truthful semantics.
+  3. Every retained child scale/bias setter first requires a finite answer, then assigns it. A bad
+     answer leaves the prior recipe unchanged so the same retained stage can retry. Once the range,
+     shared map, and control branch are known, evaluate the exact runtime arithmetic at both bounded
+     Plant endpoints and for every child. Affinity makes those two endpoints a complete proof even
+     for negative scale or reversed endpoints. Use the runtime operation order and inclusive exact
+     domain checks; do not tolerate or clamp a one-ULP overshoot. Re-run the complete preflight at
+     target selection and build to catch retained-parent mutation before hardware resolution.
+  4. Enforce domain facts only at their owning boundary:
+     - standard Servo final raw endpoint images must be finite and inside `[0.0, 1.0]`;
+       `nativeUnits()` consequently accepts only Plant bounds in that interval, while reversed
+       endpoint maps and valid mirrors such as child scale `-1`, bias `1` remain supported;
+     - motor/CR direct-power children must preserve neutral zero, so bias must compare equal to zero,
+       and their full `[-1.0, +1.0]` image must stay inside that same raw domain; signed and zero
+       scales remain valid when the complete image is valid;
+     - device-managed motor velocity requires finite nonzero child scales, zero bias, and finite
+       composed commands; it invents no hardware-independent maximum velocity;
+     - device-managed motor position requires finite nonzero child scales and finite bias; every
+       realized command is finite, rounded once to `long`, checked inside
+       `Integer.MIN_VALUE..Integer.MAX_VALUE`, then narrowed. Fractional ticks remain supported;
+     - grouped regulated motor/CR branches continue to support no child transform and now require
+       exact semantic defaults (`scale == 1.0`, `bias == 0.0`, accepting either signed zero) rather
+       than tolerance tests that silently ignore tiny values or admit `NaN`.
+  5. Core `Plants` remains domain-neutral. A fully known bounded affine map proves its endpoint
+     images finite before build. A dynamic reference computes and validates the candidate bounded
+     map locally before committing general reference/public-measurement state. `unbounded()` remains
+     supported because no finite affine coefficient can prove every possible `double`; every actual
+     forward conversion is instead computed into a temporary and checked before applied-target
+     commit or output. A runtime mapping failure is an actionable `IllegalStateException` and
+     invokes the output's best-effort natural stop. If stop normally returns, expose the same
+     stopped/applied state as an explicit Plant `stop()`; if stop fails, retain the prior
+     applied/status/resolution state and suppress that cleanup failure under the original mapping
+     failure. This deterministic mapping-failure policy does not define arbitrary SDK
+     write-failure/cache cleanup owned by SAFE-04.
+  6. Before grouped fan-out, compute and validate every child command into temporaries. No child is
+     written merely to discover that a later child has invalid mapping arithmetic. Inverse child,
+     aggregate, and final Plant-unit measurement arithmetic must also finish finite; otherwise the
+     measurement is unavailable `NaN` and `atTarget()` remains false. Use overflow-safe averaging so
+     equal large finite samples do not become unavailable only because their naive sum overflowed.
+  7. Add final numeric guards at the raw FTC seams that own the last representation:
+     `servoPosition(...)` rejects non-finite commands before cache/SDK but retains finite `[0,1]`
+     clamp as expert-call defense; `motorVelocity(...)` rejects non-finite commands before cache,
+     mode, or SDK with no magnitude ceiling; `motorPosition(...)` performs the checked finite
+     round/range/narrow sequence before cache, target, mode, or power and reports the submitted
+     rounded tick. Raw motor/CR `PowerOutput` non-finite/cache/write/stop failure semantics stay in
+     SAFE-04; MAP-01 only ensures framework-derived child mappings reach those ports finite and
+     in-range.
+- **Failure and recovery contract:** reject an invalid numeric answer with
+  `IllegalArgumentException` before mutation; reject an incompatible retained recipe/control-path
+  combination with `IllegalStateException`; and reject runtime affine overflow with
+  `IllegalStateException` before the invalid command is submitted. Diagnostics name the operation,
+  actuator family, child index/configured name where applicable, Plant endpoint or runtime target,
+  shared native value, child scale/bias, computed result, and required domain. Negative scales,
+  reversed endpoints, exact domain endpoints, signed zero, valid finite extremes, and a valid retry
+  are deliberately preserved. No configuration is silently clamped.
+- **Principles and scope check:** the selected design makes the existing fluent grammar truthful,
+  rejects errors at the earliest fully informed boundary, keeps FTC facts out of core, preserves
+  `PowerOutput` neutral zero and velocity zero-as-stop, and removes a public knob with no supported
+  meaning. It does not change `ScalarRange` shapes (RANGE-01), finite calibration inputs (CAL-02),
+  SDK PIDF/P or maximum power (FTC-02), source-cache retention (SOURCE-04), raw `PowerOutput`
+  failure/cache/cleanup or arbitrary SDK partial-write policy (SAFE-04), direction transforms, or
+  physical mechanism limits. Low-level clamping remains defense in depth for finite expert calls;
+  accepted framework recipes never rely on it. Software tests cannot validate linkage, travel,
+  gearing, sign, loading, speed, or physical stop behavior; each mechanism owner still must.
+- **Bounded implementation/documentation scope:** update the private mapping validators and grouped
+  wrappers in `FtcActuators`; the neutral builder/runtime arithmetic in `Plants`,
+  `MappedPositionPlant`, and `MappedVelocityPlant`; the three position/velocity FTC adapters in
+  `FtcHardware`; the affected output/Plant Javadocs; and the three Phoenix CR-servo zero-bias lines.
+  Synchronize Framework Principles, FTC Actuators & Plants (including the child formula, all
+  actuator families, the opposed-flywheel ratio example, and aggregate-readiness boundary),
+  Beginner's Guide, Framework Overview, Robot Calibration Tutorials, Mechanism Target Planning, and
+  Phoenix Calibration Guide. Replace the completed affine-overflow/tick-domain deferrals without
+  expanding into controller tuning or raw-output failure behavior. Before the Phoenix migration,
+  read Phoenix Architecture as its local design authority.
+- **Verification plan:** add focused tests for every retained child scale/bias non-finite value and
+  retry; standard-Servo exact/one-ULP/reversed/mirrored endpoint maps; power neutral-zero and full
+  range; opposed-flywheel positive/reverse/zero ratio commands and inverse feedback normalization;
+  device-managed velocity zero preservation; exact regulated defaults; bounded and unbounded
+  forward overflow; inverse/aggregate/final measurement overflow; dynamic-reference atomic retry;
+  checked motor tick rounding at both integer limits; low-level Servo/velocity pre-effect rejection;
+  all-child preflight; applied-target/cache truth; and unchanged natural stop. Retain the existing
+  negative-map, tolerance, reference, run-mode, identity, calibration, and regulator fail-stop
+  suites. Then run the focused suites, full `:TeamCode:testDebugUnitTest`,
+  `:TeamCode:compileDebugJavaWithJavac`, executable-caller/public-surface/stale-deferral scans,
+  Markdown link/fence and whitespace/final-LF checks, and `git diff --check`, followed by independent
+  correctness, Framework Principles, simplicity, documentation, scope, and test-validity review.
+  The Gate 1 baseline ran six relevant suites successfully: **81 tests, 0 failures, 0 errors, 0
+  skipped**; only the existing Java 8-on-JDK-21 and deprecation warnings remain.
+- **Decision record (revised 2026-08-03):** the layered mapping-domain design survives the complete
+  API, caller, history, opposed-flywheel, arithmetic, raw-domain, lifecycle, documentation, and
+  independent three-way review. The user challenge adds an ordinary ratio example, the explicit
+  constant/nonlinear robot-policy escape hatch, and an aggregate-readiness clarification; it does
+  not justify a discontinuous generic active-offset API or change the zero-bias contract. This
+  clarified record supersedes the earlier unapproved 2026-08-02 request.
+  Approving **`Approve MAP-01 layered mapping-domain breaking design`** authorizes only the bounded
+  implementation, Phoenix migration, documentation, tests, and verification above. It does not
+  authorize publication, FTC-02, SOURCE-04, SAFE-04, or any other tracker item.
+- **Gate 2 implementation (2026-08-03):** MAP-01 is **Verifying** on
+  `codex/map-01-ftc-actuator-mapping-validation`, still based exactly on fetched
+  `origin/master@b4b864ac56863d66fe46fd1e920eb1f44787f196`.
+  - The existing `Plants.fromOutputs()` / `FtcActuators.plant(...)` grammar remains the only Plant
+    grammar. No public mapping wrapper, factory, stage, or alternate construction path was added.
+    The breaking cleanup removes only CR-servo group `bias(...)` and Phoenix's zero-only
+    `shooterTransferLeftBias`; meaningful scale/bias answers remain on the actuator branches whose
+    native domains can give them truthful semantics.
+  - Core bounded maps now prove exact runtime-order endpoint arithmetic finite before construction.
+    Unbounded commands validate the realized conversion before applied-target commit or output;
+    dynamic position references validate a local candidate before publishing reference state; and
+    inverse overflow publishes unavailable `NaN` feedback. Mapping failure performs best-effort
+    natural stop with explicit-stop state on successful cleanup and prior applied/status/resolution
+    restoration when cleanup itself throws.
+  - FTC setters reject non-finite answers before mutation and repeat complete recipe checks at
+    target/build. Standard Servo, direct-power, device-managed velocity, device-managed position,
+    and regulated group branches enforce their owning native domains and exact identity/zero rules.
+    Every grouped command is precomputed before the group cache or any child write; raw Servo,
+    motor-velocity, and motor-position adapters perform their final finite/clamp or checked
+    round-to-`long`/integer-domain validation before cache, mode, target, power, or SDK effects.
+  - All shared mapping layers now interpret nonzero exactly: both signed zeros reject, while every
+    finite nonzero scale—including `Double.MIN_VALUE`—continues to the exact endpoint/domain proof.
+    Both regulated and device-managed bounded velocity maps reject shared endpoint overflow with
+    `IllegalArgumentException` before mapping mutation or hardware lookup; retained child/control
+    incompatibility and runtime overflow remain `IllegalStateException`.
+  - Group inverse feedback validates every child conversion and uses an overflow-safe arithmetic
+    mean. It reports the shared group coordinate, not proof that every child is individually ready.
+    The documented private escape hatch for nonlinear/delta correction or all-wheel readiness is
+    two ordinary Plants owned by the mechanism.
+  - Phoenix's shooter-transfer CR-servo keeps its zero-preserving `0.65` child scale and loses only
+    the unused zero bias. The opposed-flywheel example uses mounting `Direction` plus child
+    `.scale(0.96)`: a shared target of `2500` commands `2500`/`2400`, while target zero and
+    `stop()` both produce neutral zero.
+- **Layered failure boundary:** a core Plant-to-native mapping failure occurs before core applied
+  commit/output and owns the fail-stop state contract above. A later FTC child-transform/domain
+  rejection occurs inside the output adapter after the core submission point; it guarantees the
+  grouped/raw adapter cache stays at its prior valid command and no child is written, but does not
+  claim Plant-state rollback. Arbitrary output/SDK write failure and partial-write policy remain
+  explicitly owned by SAFE-04.
+- **Automated verification (2026-08-03):** Android Studio JBR ran the focused and complete checks.
+  - `MappedPlantAffineValidationTest` (11), `FtcActuatorMappingDomainValidationTest` (12),
+    `FtcHardwareCommandDomainValidationTest` (3), and `FtcPositionReferenceValidationTest` (5)
+    passed **31/31** with zero failures, errors, or skips. Coverage includes endpoint and runtime
+    overflow, retry/pre-effect timing, exact domains, tiny finite scales, opposed-flywheel
+    normalization, inverse/average failure, checked ticks, raw seams, and valid-command-then-failing
+    child fanout with unchanged group cache and SDK-visible child state.
+  - `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` succeeded: **1,141 tests across
+    123 suites, 0 failures, 0 errors, 0 skipped**. `DocumentationLinksTest` passed 5/5. Only the
+    existing Java 8 source/target-on-JDK-21 and deprecated FTC sample warnings remain.
+  - Public-surface, executable-caller, removed-name, CR-servo-bias, stale-deferral, and
+    epsilon-as-zero scans are clean. All **22** changed/untracked files have no trailing whitespace
+    and end in LF; all **8** changed Markdown files have balanced fences; `git diff --check` passes
+    apart from informational working-copy LF-to-CRLF warnings.
+- **Adversarial review (2026-08-03):** independent core/state, FTC/domain/test, and
+  API/principles/documentation reviews found no remaining blocker. Review initially caught a
+  regulated bounded-velocity proof that occurred only after hardware resolution, inherited
+  epsilon-as-zero checks that rejected legal tiny finite scales, insufficient prior-command cache
+  evidence, and an exception-taxonomy mismatch. The implementation and focused tests now close all
+  four findings; final cross-layer and documentation rechecks report no concrete issue.
+- **Hardware verification:** no robot run is required for this deterministic numeric, ordering, and
+  simulated pre-effect contract. Adopting mechanisms still must validate Servo linkage/travel,
+  motor direction/sign/scale, gearing, loading, attainable velocity, physical stop behavior, and—for
+  paired flywheels—the calibrated ratio, individual readiness needs, and shot straightness on the
+  real robot.
+- **Android Studio audit point (2026-08-03):** inspect the core bounded/unbounded/reference mapping
+  checks and fail-stop state restoration; FTC branch-specific preflight, exact-zero rules, grouped
+  precompute/cache ordering, inverse mean, and raw Servo/velocity/tick guards; the removed CR bias
+  and Phoenix field; the opposed-flywheel ratio/escape-hatch guidance; and the focused regression
+  tests. Confirm the one public grammar and the core-versus-FTC failure boundary. Review coordinates
+  are branch `codex/map-01-ftc-actuator-mapping-validation`, push URL
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, and target `master`. No file is staged,
+  committed, pushed, or merged, and no later tracker item has started.
+- **Combined review/publication authorization:** after completing the Android Studio review, use
+  **`MAP-01 looks good. Authorize committing the reviewed MAP-01 diff on
+  codex/map-01-ftc-actuator-mapping-validation, pushing that branch to
+  https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging it into
+  master.`**
+- **Manual verification and publication authorization (2026-08-03):** the user completed the
+  Android Studio review and sent the exact combined authorization above. MAP-01 is now **Done**;
+  Gate 3 may stage only this reviewed diff, create its single item commit, push
+  `codex/map-01-ftc-actuator-mapping-validation` to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, open its pull request, and merge that pull
+  request into `master`. This approval does not start or authorize FTC-02, SOURCE-04, SAFE-04, or
+  another tracker item.
 
 ### RANGE-01 - ScalarRange construction validity
 

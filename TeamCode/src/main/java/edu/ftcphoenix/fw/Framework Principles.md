@@ -373,8 +373,32 @@ not lie inside the Plant's target range: that range bounds legal commands, not w
 plant/native coordinate map may be anchored. `assumeCurrentPositionIs(...)` establishes its
 reference from the first finite native sample. When an already referenced periodic Plant has a
 finite current plant estimate, it resolves the nearest unwrapped equivalent locally and fails
-without committing a new reference if that final result is non-finite. General plant/native affine
-overflow remains a separate mapping-domain concern.
+without committing a new reference if that final result is non-finite.
+
+Plant/native mapping is a layered numeric contract, not an unchecked multiplication before the
+adapter. Hardware-neutral Plants own finite affine arithmetic in both directions. A bounded affine
+map whose reference is fully known and static proves its endpoint images finite before build; a
+dynamic position reference validates the complete candidate bounded map before committing reference
+or public-measurement state; and an unbounded map validates each actual forward conversion before
+applied-target commit or output.
+Inverse and aggregate feedback arithmetic must likewise finish finite or the measurement is
+unavailable and readiness is false. A runtime forward-mapping failure is reported before the
+invalid command is submitted and best-effort invokes the output's natural stop; a normally
+returning cleanup leaves the Plant in its ordinary stopped state. This contract must not turn
+overflow into a plausible finite command.
+
+`FtcActuators` then adds facts owned by the FTC boundary. Its complete pipeline is `Plant target ->
+shared Plant-to-native map -> childNative = childScale * sharedNative + childBias -> FTC adapter`.
+Every fully known static bounded endpoint is preflighted before hardware resolution. A mapping whose
+native offset depends on `assumeCurrentPositionIs(...)` or `needsReference(...)` validates candidate
+core arithmetic when the reference commits, then checks the selected FTC raw domain for each
+realized command before group fan-out. Standard-Servo commands are in `[0, 1]`;
+normalized motor/CR-servo power is in `[-1, +1]`; FTC motor velocity has no invented magnitude
+ceiling but must be finite; and motor-position commands must round into the SDK's integer-tick
+representation before narrowing. Power and velocity child transforms are scale-only so exact zero
+remains zero; position may use a finite child bias where its control path supports alignment. Keep
+raw finite Servo/power clamping only as boundary defense for expert calls, never as validation of a
+framework recipe.
 
 `holdAfterReference(...)` instead supplies a plant-unit logical command. It rejects `NaN` and
 infinities at the recipe step without changing the prior command, but a finite value still flows
@@ -651,6 +675,14 @@ lookup and comparison, while case remains significant. Within one motor, standar
 CR-servo command group, names must therefore be nonblank and distinct after trimming. Phoenix
 checks a name before accepting it into the staged group and validates the complete group before
 fresh hardware resolution or configuration, without changing the fluent call site.
+
+Per-child group transforms belong to that same staged recipe, not to a second group API. A child
+`scale(...)` is a static ratio and preserves zero. A finite child `bias(...)` is meaningful only on
+supported position branches; direct power and velocity reject it because target zero must command
+every child to zero. Regulated grouped branches require exact identity transforms. Precompute and
+validate all mapped child commands before writing the first child so a predictable later mapping
+error cannot create a partial write. This does not claim that sequential SDK writes are atomic or
+resolve arbitrary adapter failures.
 
 That check is deliberately local to the commanded group. It does not prove that differently named
 configuration entries are different physical devices, reserve a name globally, or prohibit a

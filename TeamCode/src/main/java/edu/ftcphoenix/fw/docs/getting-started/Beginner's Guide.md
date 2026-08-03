@@ -279,10 +279,15 @@ The builder asks a short sequence of guided questions:
 1. **Pick hardware**:
 
     * `.motor(name, direction)` then (optional) `.andMotor(name, direction)`
-        * After you add a second motor, you may optionally calibrate the <i>last added</i>
-          motor with `.scale(...)` / `.bias(...)` for device-managed grouped plants.
+        * After you add another motor, `.scale(...)` may give that <i>last added</i> child a fixed
+          ratio. A finite `.bias(...)` is position alignment only; power and velocity preserve
+          exact zero and reject an additive bias.
     * `.servo(name, direction)` then (optional) `.andServo(name, direction)`
+        * A last-added standard Servo may use finite scale/bias when its complete raw position
+          remains inside `[0.0, 1.0]`.
     * `.crServo(name, direction)` then (optional) `.andCrServo(name, direction)`
+        * A CR-servo child may use a finite scale; there is no misleading bias answer because
+          exact power zero must stop every child.
 
    FTC trims surrounding whitespace when it looks up a configured hardware name, but matching
    remains case-sensitive. Phoenix uses that same rule for each homogeneous command group: names
@@ -352,6 +357,21 @@ still must be finite.
 Velocity mapping is deliberately simpler: `scaleToNative(...)` changes only scale, not zero, so
 plant velocity `0.0` still means stop. Power target values are always normalized `[-1.0, +1.0]`, so
 the power builder does not ask for bounds.
+
+Phoenix checks the complete mapping as soon as the staged recipe knows enough to do so. A fully
+known bounded map checks both endpoint images before hardware lookup. A runtime reference checks
+its candidate core map before it becomes visible and checks the final FTC domain on each realized
+write; an unbounded map checks each actual conversion before output. Standard-Servo raw commands
+must stay inside `[0.0, 1.0]`, normalized power inside `[-1.0, +1.0]`, velocity commands must remain
+finite, and a motor-position command must round into the FTC integer-tick domain. A bad numeric
+answer does not change the earlier recipe, so code holding that stage can correct it and retry.
+Low-level clamping remains emergency boundary defense, not calibration policy.
+
+For two opposed flywheels, use opposite `Direction` values for mounting and a positive child
+`.scale(...)` only for a tested fixed speed ratio. A trajectory-dependent or additive trim is a
+two-wheel subsystem decision, not another builder mapping; the detailed
+[`FTC Actuators & Plants`](<../ftc-boundary/FTC Actuators & Plants.md#14-grouped-actuator-child-mappings>)
+guide shows the private-two-Plant pattern.
 
 After that required feedback answer, you may add optional dynamic guards through
 `.targetGuards()...doneTargetGuards()`. For a simple exact Plant, choose

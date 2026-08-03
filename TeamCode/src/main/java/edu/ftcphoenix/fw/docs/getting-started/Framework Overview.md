@@ -258,6 +258,12 @@ writing the request. Lifecycle `stop()` instead writes zero without acquiring or
 and the adapter never resets encoder position. The device-managed motor-position and motor-velocity
 outputs establish their corresponding modes when commanded.
 
+The FTC adapters also own their final numeric representation. Standard-Servo position is finite raw
+`[0.0, 1.0]`; motor velocity is finite with no invented generic speed ceiling; and motor position
+must round into the SDK's signed integer-tick target before any cache, mode, target, or power effect.
+Finite Servo and power clamping remains last-resort protection for direct expert calls, not a
+substitute for a valid Plant recipe.
+
 Run mode follows the command path, not the feedback choice. A framework-regulated motor uses the
 raw-power mode whether it reads an internal encoder or an external encoder. A separately named
 external-encoder channel remains measurement-only: Phoenix does not set its power, mode, or encoder
@@ -358,6 +364,32 @@ PositionPlant custom = Plants.fromOutputs()
 The two gateways have different starting evidence, not competing builder implementations. They
 share the same periodicity, range, mapping, guard, target, validation, and hidden runtime grammar.
 Command-only position omits feedback-only reference and tolerance questions.
+
+That shared engine evaluates one explicit pipeline:
+
+```text
+Plant target -> shared Plant-to-native map
+             -> child scale/bias transform
+             -> output adapter
+```
+
+Core `Plants` validates finite forward and inverse arithmetic without assuming an FTC device.
+`FtcActuators` adds the selected Servo, normalized-power, motor-velocity, or integer-position
+domain. A fully known static bounded affine map is proved at its endpoints before hardware lookup.
+A runtime reference validates the candidate core map before reference commit. An unbounded core map
+checks each actual Plant-to-native conversion before applied state or output. The later FTC layer
+precomputes every child transform and native-domain check before the first child write; it does not
+claim transactional Plant-state rollback. Mapping overflow is rejected rather than clamped into a
+plausible command.
+
+Group child scale is a fixed ratio. Power and velocity child maps are scale-only so exact active
+target zero commands every child to zero; a finite bias remains a position-only alignment where the
+branch supports it. Lifecycle stop also asks each child for its natural zero but may follow a
+different FTC mode/lifecycle sequence. Grouped feedback is an aggregate in the shared coordinate,
+not proof that every child is independently within tolerance. See
+[`FTC Actuators & Plants`](<../ftc-boundary/FTC Actuators & Plants.md#14-grouped-actuator-child-mappings>)
+for the opposed-flywheel ratio example and the subsystem-owned two-Plant escape for a proven
+additive/nonlinear trim.
 
 A direct power Plant already knows its only legal domain: normalized `[-1.0, +1.0]`. It clamps a
 finite out-of-range request before calling `PowerOutput`, while the FTC adapter keeps its own clamp

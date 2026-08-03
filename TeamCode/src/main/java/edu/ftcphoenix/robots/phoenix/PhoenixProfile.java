@@ -589,7 +589,6 @@ public final class PhoenixProfile {
         public Direction directionCrServoShooterTransferRight = Direction.FORWARD;
 
         public double shooterTransferLeftScale = 0.65;
-        public double shooterTransferLeftBias = 0.0;
 
         public String nameMotorShooterWheel = "shooterMotor";
         public Direction directionMotorShooterWheel = Direction.FORWARD;
@@ -647,7 +646,6 @@ public final class PhoenixProfile {
             c.nameCrServoShooterTransferRight = this.nameCrServoShooterTransferRight;
             c.directionCrServoShooterTransferRight = this.directionCrServoShooterTransferRight;
             c.shooterTransferLeftScale = this.shooterTransferLeftScale;
-            c.shooterTransferLeftBias = this.shooterTransferLeftBias;
             c.nameMotorShooterWheel = this.nameMotorShooterWheel;
             c.directionMotorShooterWheel = this.directionMotorShooterWheel;
             c.velocityMin = this.velocityMin;

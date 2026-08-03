@@ -415,12 +415,16 @@ public final class FtcHardware {
     /**
      * Create a Phoenix {@link PositionOutput} for an FTC standard servo instance.
      *
-     * <p>The adapter configures the servo direction immediately and clamps every commanded position
-     * to the servo domain {@code [0.0, 1.0]}.</p>
+     * <p>The adapter configures the servo direction immediately. Each command must be finite; an
+     * invalid value is rejected before the cached command or FTC SDK is touched. Finite commands
+     * are clamped to the servo domain {@code [0.0, 1.0]} as defense in depth for direct expert use.
+     * Framework-built Servo Plants validate their complete mapping before hardware resolution and
+     * do not rely on this clamp.</p>
      *
      * @param servo     FTC standard servo to command
      * @param direction logical forward direction for Phoenix commands
      * @return command-only position output backed by {@link Servo#setPosition(double)}
+     * @throws IllegalArgumentException if a commanded position is not finite
      */
     public static PositionOutput servoPosition(Servo servo, Direction direction) {
         if (servo == null) {
@@ -436,6 +440,7 @@ public final class FtcHardware {
 
             @Override
             public void setPosition(double position) {
+                requireFiniteCommand(position, "servo position");
                 last = MathUtil.clamp(position, 0.0, 1.0);
                 servo.setPosition(last);
             }
@@ -492,16 +497,21 @@ public final class FtcHardware {
      * Create a Phoenix {@link PositionOutput} for an FTC motor instance using
      * {@link DcMotor.RunMode#RUN_TO_POSITION}.
      *
-     * <p>Each call to {@link PositionOutput#setPosition(double)} writes the requested target in
-     * native encoder ticks, switches the motor into {@code RUN_TO_POSITION}, and reapplies the
-     * configured drive power. Calling {@link PositionOutput#stop()} powers the motor down and returns
-     * it to {@link DcMotor.RunMode#RUN_USING_ENCODER}.</p>
+     * <p>Each call to {@link PositionOutput#setPosition(double)} requires a finite native-tick
+     * target, rounds it with {@link Math#round(double)}, and requires that rounded {@code long} to
+     * fit the FTC signed 32-bit target domain. Validation finishes before the cached command,
+     * target, mode, or power is changed. The accepted rounded tick is then cached and written,
+     * the motor is switched into {@code RUN_TO_POSITION}, and the configured drive power is
+     * reapplied. Calling {@link PositionOutput#stop()} powers the motor down and returns it to
+     * {@link DcMotor.RunMode#RUN_USING_ENCODER}.</p>
      *
      * @param motor     FTC motor instance to command
      * @param direction logical forward direction for Phoenix commands
      * @param maxPower  power Phoenix reapplies after each new target command; values are clamped to
      *                  {@code [0.0, 1.0]}
      * @return command-only position output backed by {@code RUN_TO_POSITION}
+     * @throws IllegalArgumentException if a commanded position is non-finite or rounds outside the
+     * FTC signed 32-bit target-position domain
      */
     public static PositionOutput motorPosition(DcMotorEx motor,
                                                Direction direction,
@@ -520,8 +530,9 @@ public final class FtcHardware {
 
             @Override
             public void setPosition(double position) {
-                last = position;
-                motor.setTargetPosition((int) Math.round(position));
+                int targetTicks = checkedMotorTargetTicks(position);
+                last = targetTicks;
+                motor.setTargetPosition(targetTicks);
                 motor.setMode(DcMotor.RunMode.RUN_TO_POSITION);
                 motor.setPower(power);
             }
@@ -567,12 +578,15 @@ public final class FtcHardware {
      * Create a Phoenix {@link VelocityOutput} for an FTC motor instance using
      * {@link DcMotorEx#setVelocity(double)}.
      *
-     * <p>Each call to {@link VelocityOutput#setVelocity(double)} switches the motor to
-     * {@link DcMotor.RunMode#RUN_USING_ENCODER} before applying the requested velocity command.</p>
+     * <p>Each call to {@link VelocityOutput#setVelocity(double)} requires a finite native velocity
+     * and rejects invalid input before changing the cached command, motor mode, or FTC SDK velocity.
+     * A valid command switches the motor to {@link DcMotor.RunMode#RUN_USING_ENCODER} before applying
+     * the requested velocity. No hardware-independent magnitude ceiling is imposed.</p>
      *
      * @param motor     FTC motor instance to command
      * @param direction logical forward direction for Phoenix commands
      * @return command-only velocity output backed by {@link DcMotorEx#setVelocity(double)}
+     * @throws IllegalArgumentException if a commanded velocity is not finite
      */
     public static VelocityOutput motorVelocity(DcMotorEx motor,
                                                Direction direction) {
@@ -589,6 +603,7 @@ public final class FtcHardware {
 
             @Override
             public void setVelocity(double velocity) {
+                requireFiniteCommand(velocity, "motor velocity");
                 last = velocity;
                 motor.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
                 motor.setVelocity(velocity);
@@ -623,6 +638,25 @@ public final class FtcHardware {
         if (direction == null) {
             throw new IllegalArgumentException("direction is required");
         }
+    }
+
+    private static double requireFiniteCommand(double value, String description) {
+        if (!Double.isFinite(value)) {
+            throw new IllegalArgumentException(description + " command must be finite, got "
+                    + value);
+        }
+        return value;
+    }
+
+    private static int checkedMotorTargetTicks(double position) {
+        requireFiniteCommand(position, "motor position");
+        long rounded = Math.round(position);
+        if (rounded < Integer.MIN_VALUE || rounded > Integer.MAX_VALUE) {
+            throw new IllegalArgumentException("motor position command " + position + " rounds to "
+                    + rounded + " ticks outside the FTC signed 32-bit target domain ["
+                    + Integer.MIN_VALUE + ", " + Integer.MAX_VALUE + "]");
+        }
+        return (int) rounded;
     }
 
     private static String modeName(DcMotor.RunMode mode) {
