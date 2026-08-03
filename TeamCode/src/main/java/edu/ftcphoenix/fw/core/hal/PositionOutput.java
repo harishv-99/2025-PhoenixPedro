@@ -8,6 +8,11 @@ package edu.ftcphoenix.fw.core.hal;
  * through {@code ScalarSource} so the same readback abstraction can be used for internal encoders,
  * external encoders, potentiometers, and subsystem-defined mechanism units.</p>
  *
+ * <p>The native position domain belongs to the concrete output. Hardware-neutral mapped Plants
+ * require their realized Plant-to-native command to be finite before calling this seam, but they
+ * do not assume an FTC Servo range or an encoder-integer representation. Raw callers remain
+ * responsible for the concrete output's documented native domain.</p>
+ *
  * <h2>Typical examples</h2>
  *
  * <ul>
@@ -30,7 +35,7 @@ public interface PositionOutput {
     /**
      * Command the actuator to the requested position in the output's native position units.
      *
-     * @param position desired position command in the output's native units
+     * @param position desired finite position command in the output's native units and domain
      */
     void setPosition(double position);
 

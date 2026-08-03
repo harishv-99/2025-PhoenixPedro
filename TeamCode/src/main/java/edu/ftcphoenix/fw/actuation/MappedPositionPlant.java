@@ -36,6 +36,16 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * regulator once, normalizes the finite result to
  * {@code [-1.0, +1.0]}, and performs best-effort fail-stop cleanup before propagating a runtime
  * control/output failure.</p>
+ *
+ * <p>A fully bounded static map proves both exact endpoint images finite at construction. A
+ * dynamic reference validates the complete candidate map before committing its anchor or derived
+ * public measurement. Unbounded maps remain supported, so the direct position-output path computes
+ * each native command into a temporary and rejects a non-finite result before applied-target commit
+ * or output. It retains the mapping exception as primary while invoking the output's natural stop
+ * best-effort: successful cleanup publishes the same retained-position stopped state as
+ * {@link #stop()}, while a failed stop restores the prior applied/status/resolution facts and is
+ * suppressed. A non-finite inverse conversion publishes measurement {@link Double#NaN} and cannot
+ * be at target.</p>
  */
 final class MappedPositionPlant implements PositionPlant {
 
@@ -313,7 +323,7 @@ final class MappedPositionPlant implements PositionPlant {
          * Sets how many native units correspond to one plant unit.
          */
         public Builder nativePerPlantUnit(double nativePerPlantUnit) {
-            if (!Double.isFinite(nativePerPlantUnit) || Math.abs(nativePerPlantUnit) < 1.0e-12)
+            if (!Double.isFinite(nativePerPlantUnit) || nativePerPlantUnit == 0.0)
                 throw new IllegalArgumentException("nativePerPlantUnit must be finite and non-zero");
             this.nativePerPlantUnit = nativePerPlantUnit;
             return this;
@@ -423,8 +433,9 @@ final class MappedPositionPlant implements PositionPlant {
          *
          * @throws IllegalStateException if no target resolver was configured, or if a feedback plant
          *                               has no explicit plant-unit position tolerance
-         * @throws IllegalArgumentException if the configured range cannot contain a finite command
-         *                                  or a static guard fallback lies outside that range
+         * @throws IllegalArgumentException if the configured range cannot contain a finite command,
+         *                                  a bounded static-map endpoint is non-finite, or a static
+         *                                  guard fallback lies outside that range
          */
         public MappedPositionPlant build() {
             if (targetResolver == null)
@@ -449,7 +460,7 @@ final class MappedPositionPlant implements PositionPlant {
             throw new IllegalStateException("Regulated position plants require a regulator");
         if (periodicity == Periodicity.PERIODIC && (!(period > 0.0) || !Double.isFinite(period)))
             throw new IllegalArgumentException("Periodic position plants require finite period > 0");
-        if (!Double.isFinite(nativePerPlantUnit) || Math.abs(nativePerPlantUnit) < 1.0e-12)
+        if (!Double.isFinite(nativePerPlantUnit) || nativePerPlantUnit == 0.0)
             throw new IllegalArgumentException("nativePerPlantUnit must be finite and non-zero");
         if (tolerance < 0.0 || !Double.isFinite(tolerance))
             throw new IllegalArgumentException("positionTolerance must be finite and >= 0");
@@ -457,6 +468,14 @@ final class MappedPositionPlant implements PositionPlant {
         targetGuards.validateFallbackTargets(configuredRange, "PositionPlant");
         if ((referenceMode == ReferenceMode.ASSUME_CURRENT || referenceMode == ReferenceMode.NEEDS_REFERENCE) && nativeMeasurement == null) {
             throw new IllegalStateException(referenceMode + " requires native feedback so a reference can be established");
+        }
+        if (referenceMode == ReferenceMode.STATIC) {
+            requireFiniteBoundedMap(
+                    configuredRange,
+                    nativePerPlantUnit,
+                    plantReference,
+                    nativeReference,
+                    "PositionPlant configuration");
         }
     }
 
@@ -494,18 +513,18 @@ final class MappedPositionPlant implements PositionPlant {
         ScalarRange range = targetRange();
         PlantTargetContext context = PlantTargetContext.position(hasFeedback(), lastMeasurement,
                 range, periodicity, period(), requestedTarget, appliedTarget);
-        targetResolution = targetResolver.resolve(context, clock);
-        if (targetResolution != null && targetResolution.hasTarget()) {
-            requestedTarget = targetResolution.target();
+        PlantTargetResolution nextTargetResolution = targetResolver.resolve(context, clock);
+        if (nextTargetResolution != null && nextTargetResolution.hasTarget()) {
+            requestedTarget = nextTargetResolution.target();
         } else {
             requestedTarget = appliedTarget;
         }
 
         double candidate = Double.isFinite(requestedTarget) ? requestedTarget : appliedTarget;
-        PlantTargetStatus status = (targetResolution != null && targetResolution.hasTarget())
+        PlantTargetStatus status = (nextTargetResolution != null && nextTargetResolution.hasTarget())
                 ? PlantTargetStatus.ACCEPTED
-                : PlantTargetStatus.targetUnavailable(targetResolution != null
-                        ? targetResolution.reason()
+                : PlantTargetStatus.targetUnavailable(nextTargetResolution != null
+                        ? nextTargetResolution.reason()
                         : "missing plant target resolution");
         if (!range.valid) {
             status = PlantTargetStatus.referenceNotEstablished(range.reason);
@@ -519,8 +538,31 @@ final class MappedPositionPlant implements PositionPlant {
 
         PlantTargetGuards.Result guarded = PlantTargetSafety.applyGuards(
                 targetGuards, candidate, status, appliedTarget, range, "position", clock);
+
+        double nativeCommand = Double.NaN;
+        if (isReferenced() && positionOut != null) {
+            nativeCommand = toNative(guarded.target);
+            if (!Double.isFinite(nativeCommand)) {
+                IllegalStateException failure = new IllegalStateException(
+                        "PositionPlant.update(...) could not map finite Plant target "
+                                + guarded.target + " to a finite native position using "
+                                + "nativePosition = nativeReference + nativePerPlantUnit * "
+                                + "(plantPosition - plantReference), with nativePerPlantUnit="
+                                + nativePerPlantUnit + ", plantReference=" + plantReference
+                                + ", nativeReference=" + nativeReference
+                                + ", and result=" + nativeCommand
+                                + ". Check target magnitude and the Plant/native mapping.");
+                failRuntimeMapping(
+                        priorAppliedTarget,
+                        priorTargetStatus,
+                        priorTargetResolution,
+                        failure);
+            }
+        }
+
         appliedTarget = guarded.target;
         targetStatus = guarded.status;
+        targetResolution = nextTargetResolution;
 
         if (!isReferenced()) {
             stopNormalPositionOutput();
@@ -528,7 +570,7 @@ final class MappedPositionPlant implements PositionPlant {
             return;
         }
         if (positionOut != null) {
-            positionOut.setPosition(toNative(appliedTarget));
+            positionOut.setPosition(nativeCommand);
         } else if (regulatedPowerChannel != null) {
             regulatedActuationCompleted = false;
             lastAtTarget = false;
@@ -701,12 +743,13 @@ final class MappedPositionPlant implements PositionPlant {
     /**
      * {@inheritDoc}
      *
-     * <p>If an already referenced periodic mapping has a finite current plant estimate but its
-     * final nearest-equivalent result is non-finite, this implementation fails before committing
-     * the new reference.</p>
+     * <p>If an already referenced periodic mapping cannot produce both a finite current Plant
+     * estimate and a finite final nearest-equivalent result, this implementation fails before
+     * committing the new reference.</p>
      *
-     * @throws IllegalStateException if no finite native measurement has been cached or the
-     *                               periodic result described above is non-finite
+     * @throws IllegalStateException if no finite native measurement has been cached, the periodic
+     *                               result described above is non-finite, or the candidate bounded
+     *                               map has a non-finite endpoint image
      */
     @Override
     public void establishReferenceAt(double plantPosition) {
@@ -723,12 +766,13 @@ final class MappedPositionPlant implements PositionPlant {
     /**
      * {@inheritDoc}
      *
-     * <p>If an already referenced periodic mapping has a finite current plant estimate but its
-     * final nearest-equivalent result is non-finite, this implementation fails before committing
-     * the new reference.</p>
+     * <p>If an already referenced periodic mapping cannot produce both a finite current Plant
+     * estimate and a finite final nearest-equivalent result, this implementation fails before
+     * committing the new reference.</p>
      *
-     * @throws IllegalStateException if the current native sample is non-finite or the periodic
-     *                               result described above is non-finite
+     * @throws IllegalStateException if the current native sample is non-finite, the periodic result
+     *                               described above is non-finite, or the candidate bounded map has
+     *                               a non-finite endpoint image
      */
     @Override
     public void establishReferenceAt(double plantPosition, LoopClock clock) {
@@ -810,7 +854,11 @@ final class MappedPositionPlant implements PositionPlant {
 
     private void samplePlantMeasurement(LoopClock clock) {
         double nativeValue = sampleNative(clock);
-        lastMeasurement = isReferenced() && Double.isFinite(nativeValue) ? toPlant(nativeValue) : Double.NaN;
+        double plantMeasurement = isReferenced() && Double.isFinite(nativeValue)
+                ? toPlant(nativeValue)
+                : Double.NaN;
+        lastMeasurement = Double.isFinite(plantMeasurement) ? plantMeasurement : Double.NaN;
+        if (!Double.isFinite(lastMeasurement)) lastAtTarget = false;
     }
 
     private void establishReferenceFromNative(double requestedPlantReference, double nativeAtReference) {
@@ -819,17 +867,37 @@ final class MappedPositionPlant implements PositionPlant {
             // Resolve from the native sample supplied for this reference operation, not a cached
             // Plant measurement from an earlier owner update.
             double plantAtReference = toPlant(nativeAtReference);
-            if (Double.isFinite(plantAtReference)) {
-                double k = Math.rint((plantAtReference - requestedPlantReference) / period);
-                resolvedPlantReference = requestedPlantReference + k * period;
-                if (!Double.isFinite(resolvedPlantReference)) {
-                    throw new IllegalStateException("PositionPlant.establishReferenceAt(...) "
-                            + "could not resolve a finite periodic reference from requested plant "
-                            + "position " + requestedPlantReference + ", current plant position "
-                            + plantAtReference + ", and period " + period
-                            + ". Check coordinate magnitudes and the plant/native map.");
-                }
+            if (!Double.isFinite(plantAtReference)) {
+                throw new IllegalStateException("PositionPlant.establishReferenceAt(...) "
+                        + "could not convert native position " + nativeAtReference
+                        + " to a finite current Plant position before resolving the periodic "
+                        + "reference. Check coordinate magnitudes and the plant/native map.");
             }
+            double k = Math.rint((plantAtReference - requestedPlantReference) / period);
+            resolvedPlantReference = requestedPlantReference + k * period;
+            if (!Double.isFinite(resolvedPlantReference)) {
+                throw new IllegalStateException("PositionPlant.establishReferenceAt(...) "
+                        + "could not resolve a finite periodic reference from requested plant "
+                        + "position " + requestedPlantReference + ", current plant position "
+                        + plantAtReference + ", and period " + period
+                        + ". Check coordinate magnitudes and the plant/native map.");
+            }
+        }
+        try {
+            requireFiniteBoundedMap(
+                    configuredRange,
+                    nativePerPlantUnit,
+                    resolvedPlantReference,
+                    nativeAtReference,
+                    "PositionPlant.establishReferenceAt(...)");
+        } catch (IllegalArgumentException invalidCandidate) {
+            IllegalStateException failure = new IllegalStateException(
+                    invalidCandidate.getMessage(), invalidCandidate);
+            failRuntimeMapping(
+                    appliedTarget,
+                    targetStatus,
+                    targetResolution,
+                    failure);
         }
         plantReference = resolvedPlantReference;
         nativeReference = nativeAtReference;
@@ -845,6 +913,67 @@ final class MappedPositionPlant implements PositionPlant {
 
     private double toPlant(double nativePosition) {
         return plantReference + (nativePosition - nativeReference) / nativePerPlantUnit;
+    }
+
+    /**
+     * Proves a fully bounded affine position map using update's exact operation order.
+     */
+    static void requireFiniteBoundedMap(ScalarRange range,
+                                        double nativePerPlantUnit,
+                                        double plantReference,
+                                        double nativeReference,
+                                        String operation) {
+        if (range == null || !range.valid
+                || !Double.isFinite(range.minValue)
+                || !Double.isFinite(range.maxValue)) {
+            return;
+        }
+        requireFiniteBoundedEndpoint(
+                range.minValue,
+                nativePerPlantUnit,
+                plantReference,
+                nativeReference,
+                operation);
+        requireFiniteBoundedEndpoint(
+                range.maxValue,
+                nativePerPlantUnit,
+                plantReference,
+                nativeReference,
+                operation);
+    }
+
+    private static void requireFiniteBoundedEndpoint(double plantEndpoint,
+                                                     double nativePerPlantUnit,
+                                                     double plantReference,
+                                                     double nativeReference,
+                                                     String operation) {
+        double nativeEndpoint = nativeReference
+                + nativePerPlantUnit * (plantEndpoint - plantReference);
+        if (!Double.isFinite(nativeEndpoint)) {
+            throw new IllegalArgumentException(operation
+                    + " maps bounded Plant position endpoint " + plantEndpoint
+                    + " to non-finite native position " + nativeEndpoint
+                    + " with nativePerPlantUnit=" + nativePerPlantUnit
+                    + ", plantReference=" + plantReference
+                    + ", and nativeReference=" + nativeReference
+                    + ". Choose finite bounds and a mapping whose exact endpoint images are finite.");
+        }
+    }
+
+    private void failRuntimeMapping(double priorAppliedTarget,
+                                    PlantTargetStatus priorTargetStatus,
+                                    PlantTargetResolution priorTargetResolution,
+                                    IllegalStateException failure) {
+        regulatedActuationCompleted = false;
+        lastAtTarget = false;
+        restoreTargetState(priorAppliedTarget, priorTargetStatus, priorTargetResolution);
+        try {
+            stop();
+        } catch (RuntimeException cleanupFailure) {
+            suppress(failure, cleanupFailure);
+            restoreTargetState(priorAppliedTarget, priorTargetStatus, priorTargetResolution);
+        }
+        throw failure;
     }
 
     private void handleRegulatedUpdateFailure(double priorAppliedTarget,

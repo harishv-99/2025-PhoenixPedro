@@ -128,8 +128,12 @@ For periodic Plants, the Task's clocked `establishReferenceAt(...)` uses the cue
 native sample, treats the supplied value as a reference within the period, and preserves the nearest
 unwrapped equivalent from that sample. That makes repeated index marks useful for small drift
 corrections during a match. When the current plant estimate is finite, the Plant rejects a
-non-finite final nearest-equivalent result without committing that reference. General plant/native
-affine overflow remains a separate mapping-domain concern.
+non-finite final nearest-equivalent result without committing that reference. Reference commit also
+requires every endpoint and derived measurement of the complete candidate bounded affine map to be
+finite. An FTC raw-domain check then runs before each realized command whose native offset depended
+on that runtime reference. An unbounded core Plant-to-native conversion is checked individually
+before applied state or output, while the later FTC child/domain layer checks all children before
+the first child write.
 
 ### What “good” looks like
 

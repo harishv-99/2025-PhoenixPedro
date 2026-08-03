@@ -18,7 +18,15 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * <p>Most FTC robot code should use {@code FtcActuators.plant(...)}. Custom adapters, portable
  * hosts, and hardware-neutral tests that already own Phoenix output ports use
  * {@link #fromOutputs()}. The staged grammar asks each required coordinate, feedback, range,
- * mapping, tolerance, guard, and target question once, then hides the concrete runtime.</p>
+ * mapping, tolerance, guard, and target question once, then hides the concrete runtime. A fully
+ * bounded affine map must produce finite native values at both Plant endpoints using the runtime
+ * operation order. An unbounded map remains supported; each realized native command is checked
+ * before the Plant publishes it as applied or calls the output.</p>
+ *
+ * <p>A mapped feedback conversion that does not finish finite is exposed as unavailable
+ * {@link Double#NaN}, so it cannot satisfy Plant completion. If an otherwise valid unbounded or
+ * dynamically referenced map overflows at runtime, the Plant throws an actionable
+ * {@link IllegalStateException} and makes a best-effort call to the output's natural stop.</p>
  */
 public final class Plants {
 
@@ -209,7 +217,8 @@ public final class Plants {
          * @param nativeAtPlantMax finite native position at the declared Plant maximum
          * @return the shared guard and target-selection step
          * @throws IllegalArgumentException if the Plant span is not positive, either endpoint is
-         *                                  non-finite, or the resulting scale is zero/non-finite
+         *                                  non-finite, the resulting scale is zero/non-finite, or
+         *                                  either exact runtime endpoint image is non-finite
          * @throws IllegalStateException if mapping was already answered or configuration froze
          */
         TargetStep<PositionPlant> rangeMapsToNative(double nativeAtPlantMin,
@@ -249,7 +258,8 @@ public final class Plants {
          * @param plantPosition finite position in caller-facing Plant units
          * @param nativePosition finite corresponding native output position
          * @return the shared guard and target-selection step
-         * @throws IllegalArgumentException if either value is non-finite
+         * @throws IllegalArgumentException if either value is non-finite, or this anchor makes an
+         *                                  exact bounded-range endpoint image non-finite
          * @throws IllegalStateException if reference was already answered or configuration froze
          */
         TargetStep<PositionPlant> plantPositionMapsToNative(double plantPosition,
@@ -329,7 +339,8 @@ public final class Plants {
          * @param nativeAtPlantMax finite native position at the declared Plant maximum
          * @return the required Plant-unit position-tolerance step
          * @throws IllegalArgumentException if the Plant span is not positive, either endpoint is
-         *                                  non-finite, or the resulting scale is zero/non-finite
+         *                                  non-finite, the resulting scale is zero/non-finite, or
+         *                                  either exact runtime endpoint image is non-finite
          * @throws IllegalStateException if mapping was already answered or configuration froze
          */
         PositionToleranceStep rangeMapsToNative(double nativeAtPlantMin,
@@ -377,7 +388,8 @@ public final class Plants {
          * @param plantPosition finite position in caller-facing Plant units
          * @param nativePosition finite corresponding native feedback/output position
          * @return the required Plant-unit position-tolerance step
-         * @throws IllegalArgumentException if either value is non-finite
+         * @throws IllegalArgumentException if either value is non-finite, or this anchor makes an
+         *                                  exact bounded-range endpoint image non-finite
          * @throws IllegalStateException if reference was already answered or configuration froze
          */
         PositionToleranceStep plantPositionMapsToNative(double plantPosition,
@@ -385,6 +397,8 @@ public final class Plants {
 
         /**
          * Align the first finite native feedback sample with a supplied Plant position.
+         * The eventual update validates the complete bounded-map candidate before committing the
+         * reference or its derived public measurement.
          *
          * @param plantPosition finite position in caller-facing Plant units
          * @return the required Plant-unit position-tolerance step
@@ -455,7 +469,8 @@ public final class Plants {
          * @param nativeUnitsPerPlantVelocityUnit finite non-zero native velocity units per Plant
          *                                        velocity unit; negative values reverse direction
          * @return the required Plant-unit velocity-tolerance step
-         * @throws IllegalArgumentException if the scale is non-finite or zero
+         * @throws IllegalArgumentException if the scale is non-finite or zero, or a declared
+         *                                  bounded range has a non-finite exact native endpoint image
          * @throws IllegalStateException if mapping was already answered or configuration froze
          */
         VelocityToleranceStep scaleToNative(double nativeUnitsPerPlantVelocityUnit);
@@ -1013,6 +1028,8 @@ public final class Plants {
             if (!toleranceAnswered) {
                 throw new IllegalStateException("Velocity construction requires velocityTolerance(...) in Plant units");
             }
+            MappedVelocityPlant.requireFiniteBoundedMap(
+                    range, nativePerPlantUnit, "Plants velocity configuration");
         }
 
         @Override
@@ -1037,6 +1054,8 @@ public final class Plants {
                 throw new IllegalStateException("Velocity mapping has already been answered");
             }
             requireScale(scale);
+            MappedVelocityPlant.requireFiniteBoundedMap(
+                    range, scale, "Plants." + answer);
             nativePerPlantUnit = scale;
             mappingAnswered = true;
             return this;
@@ -1124,6 +1143,12 @@ public final class Plants {
             }
             double scale = (checkedNativeAtPlantMax - checkedNativeAtPlantMin) / plantSpan;
             requireScale(scale);
+            MappedPositionPlant.requireFiniteBoundedMap(
+                    range,
+                    scale,
+                    range.minValue,
+                    checkedNativeAtPlantMin,
+                    "Plants.rangeMapsToNative(...)");
             nativePerPlantUnit = scale;
             plantReference = range.minValue;
             nativeReference = checkedNativeAtPlantMin;
@@ -1145,6 +1170,12 @@ public final class Plants {
             if (referenceAnswered) {
                 throw new IllegalStateException("Position reference has already been answered");
             }
+            MappedPositionPlant.requireFiniteBoundedMap(
+                    range,
+                    nativePerPlantUnit,
+                    checkedPlantPosition,
+                    checkedNativePosition,
+                    answer);
             plantReference = checkedPlantPosition;
             nativeReference = checkedNativePosition;
             referenceAnswered = true;
@@ -1279,6 +1310,12 @@ public final class Plants {
         @Override
         protected void validateConfiguration() {
             requireCoordinateConfigured();
+            MappedPositionPlant.requireFiniteBoundedMap(
+                    range,
+                    nativePerPlantUnit,
+                    plantReference,
+                    nativeReference,
+                    "Plants commanded-position configuration");
         }
 
         @Override
@@ -1477,6 +1514,14 @@ public final class Plants {
                 throw new IllegalStateException("Feedback position construction requires "
                         + "positionTolerance(...) in Plant units");
             }
+            if (referenceMode == MappedPositionPlant.ReferenceMode.STATIC) {
+                MappedPositionPlant.requireFiniteBoundedMap(
+                        range,
+                        nativePerPlantUnit,
+                        plantReference,
+                        nativeReference,
+                        "Plants feedback-position configuration");
+            }
         }
 
         @Override
@@ -1525,7 +1570,7 @@ public final class Plants {
     }
 
     private static void requireScale(double scale) {
-        if (!Double.isFinite(scale) || Math.abs(scale) < 1.0e-12) {
+        if (!Double.isFinite(scale) || scale == 0.0) {
             throw new IllegalArgumentException("native units per Plant unit must be finite and non-zero, got "
                     + scale);
         }

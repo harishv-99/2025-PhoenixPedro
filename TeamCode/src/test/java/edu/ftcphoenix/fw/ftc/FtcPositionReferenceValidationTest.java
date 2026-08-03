@@ -71,8 +71,7 @@ public final class FtcPositionReferenceValidationTest {
         assertRawDoubleEquals(+0.0, privateDouble(staticAnswer, "nativeReference"));
 
         Plants.PositionToleranceStep extremePlantAnswer =
-                boundedDeviceManagedReferenceStep(hardwareMap, "lift",
-                        Math.nextDown(Double.MAX_VALUE), Double.MAX_VALUE, 1.0)
+                deviceManagedReferenceStep(hardwareMap, "lift", 1.0)
                         .plantPositionMapsToNative(Double.MAX_VALUE, 0.0);
         assertRawDoubleEquals(Double.MAX_VALUE,
                 privateDouble(extremePlantAnswer, "plantReference"));
@@ -80,7 +79,7 @@ public final class FtcPositionReferenceValidationTest {
                 privateDouble(extremePlantAnswer, "nativeReference"));
 
         Plants.PositionToleranceStep extremeNativeAnswer =
-                boundedDeviceManagedReferenceStep(hardwareMap, "lift", 0.0, 1.0, 1.0)
+                deviceManagedReferenceStep(hardwareMap, "lift", 1.0)
                         .plantPositionMapsToNative(0.0, -Double.MAX_VALUE);
         assertRawDoubleEquals(0.0,
                 privateDouble(extremeNativeAnswer, "plantReference"));

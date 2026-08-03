@@ -20,6 +20,14 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * velocity output or a framework-owned regulator over raw power. The regulated path evaluates its
  * regulator once, normalizes the finite result to {@code [-1.0, +1.0]}, and performs best-effort
  * fail-stop cleanup before propagating a runtime control/output failure.</p>
+ *
+ * <p>A fully bounded Plant/native map proves both exact endpoint products finite at construction.
+ * Unbounded maps are permitted, so the direct-output path calculates each native command into a
+ * temporary and rejects non-finite results before applied-target commit or output. That failure
+ * keeps the mapping exception primary while invoking the output's natural stop best-effort:
+ * successful cleanup publishes the same zero-applied stopped state as {@link #stop()}, while a
+ * failed stop retains the prior applied/status/resolution facts and is suppressed. A non-finite
+ * inverse conversion publishes measurement {@link Double#NaN} and cannot be at target.</p>
  */
 final class MappedVelocityPlant implements Plant {
 
@@ -158,7 +166,7 @@ final class MappedVelocityPlant implements Plant {
          * Sets how many native velocity units correspond to one plant velocity unit.
          */
         public Builder nativePerPlantUnit(double nativePerPlantUnit) {
-            if (!Double.isFinite(nativePerPlantUnit) || Math.abs(nativePerPlantUnit) < 1.0e-12) {
+            if (!Double.isFinite(nativePerPlantUnit) || nativePerPlantUnit == 0.0) {
                 throw new IllegalArgumentException("nativePerPlantUnit must be finite and non-zero");
             }
             this.nativePerPlantUnit = nativePerPlantUnit;
@@ -211,8 +219,9 @@ final class MappedVelocityPlant implements Plant {
          *
          * @throws IllegalStateException if no target resolver or plant-unit velocity tolerance was
          *                               configured
-         * @throws IllegalArgumentException if the configured range cannot contain a finite command
-         *                                  or a static guard fallback lies outside that range
+         * @throws IllegalArgumentException if the configured range cannot contain a finite command,
+         *                                  a bounded endpoint maps non-finite, or a static guard
+         *                                  fallback lies outside that range
          */
         public MappedVelocityPlant build() {
             if (targetResolver == null)
@@ -232,12 +241,14 @@ final class MappedVelocityPlant implements Plant {
             throw new IllegalStateException("VelocityPlant cannot use both velocity output and regulated power output");
         if (regulatedPowerOut != null && regulator == null)
             throw new IllegalStateException("Regulated velocity plants require a regulator");
-        if (!Double.isFinite(nativePerPlantUnit) || Math.abs(nativePerPlantUnit) < 1.0e-12)
+        if (!Double.isFinite(nativePerPlantUnit) || nativePerPlantUnit == 0.0)
             throw new IllegalArgumentException("nativePerPlantUnit must be finite and non-zero");
         if (tolerance < 0.0 || !Double.isFinite(tolerance))
             throw new IllegalArgumentException("velocityTolerance must be finite and >= 0");
         PlantTargetSafety.requireUsableConfiguredRange(configuredRange, "VelocityPlant");
         targetGuards.validateFallbackTargets(configuredRange, "VelocityPlant");
+        requireFiniteBoundedMap(
+                configuredRange, nativePerPlantUnit, "VelocityPlant configuration");
     }
 
     @Override
@@ -248,18 +259,18 @@ final class MappedVelocityPlant implements Plant {
         samplePlantMeasurement(clock);
         PlantTargetContext context = PlantTargetContext.simple(
                 true, lastMeasurement, configuredRange, requestedTarget, appliedTarget);
-        targetResolution = targetResolver.resolve(context, clock);
-        if (targetResolution != null && targetResolution.hasTarget()) {
-            requestedTarget = targetResolution.target();
+        PlantTargetResolution nextTargetResolution = targetResolver.resolve(context, clock);
+        if (nextTargetResolution != null && nextTargetResolution.hasTarget()) {
+            requestedTarget = nextTargetResolution.target();
         } else {
             requestedTarget = appliedTarget;
         }
 
         double candidate = Double.isFinite(requestedTarget) ? requestedTarget : appliedTarget;
-        PlantTargetStatus status = (targetResolution != null && targetResolution.hasTarget())
+        PlantTargetStatus status = (nextTargetResolution != null && nextTargetResolution.hasTarget())
                 ? PlantTargetStatus.ACCEPTED
-                : PlantTargetStatus.targetUnavailable(targetResolution != null
-                        ? targetResolution.reason()
+                : PlantTargetStatus.targetUnavailable(nextTargetResolution != null
+                        ? nextTargetResolution.reason()
                         : "missing plant target resolution");
         ScalarRange range = configuredRange;
         if (!range.valid) {
@@ -273,10 +284,31 @@ final class MappedVelocityPlant implements Plant {
         }
         PlantTargetGuards.Result guarded = PlantTargetSafety.applyGuards(
                 targetGuards, candidate, status, appliedTarget, range, "velocity", clock);
+
+        double nativeCommand = Double.NaN;
+        if (velocityOut != null) {
+            nativeCommand = toNative(guarded.target);
+            if (!Double.isFinite(nativeCommand)) {
+                IllegalStateException failure = new IllegalStateException(
+                        "VelocityPlant.update(...) could not map finite Plant target "
+                                + guarded.target + " to a finite native velocity using "
+                                + "nativeVelocity = plantVelocity * nativePerPlantUnit, with "
+                                + "nativePerPlantUnit=" + nativePerPlantUnit
+                                + " and result=" + nativeCommand
+                                + ". Check target magnitude and the Plant/native mapping.");
+                failRuntimeMapping(
+                        priorAppliedTarget,
+                        priorTargetStatus,
+                        priorTargetResolution,
+                        failure);
+            }
+        }
+
         appliedTarget = guarded.target;
         targetStatus = guarded.status;
+        targetResolution = nextTargetResolution;
         if (velocityOut != null) {
-            velocityOut.setVelocity(toNative(appliedTarget));
+            velocityOut.setVelocity(nativeCommand);
         } else {
             regulatedActuationCompleted = false;
             lastAtTarget = false;
@@ -404,7 +436,9 @@ final class MappedVelocityPlant implements Plant {
 
     private void samplePlantMeasurement(LoopClock clock) {
         lastNativeMeasurement = nativeMeasurement.getAsDouble(clock);
-        lastMeasurement = fromNative(lastNativeMeasurement);
+        double plantMeasurement = fromNative(lastNativeMeasurement);
+        lastMeasurement = Double.isFinite(plantMeasurement) ? plantMeasurement : Double.NaN;
+        if (!Double.isFinite(lastMeasurement)) lastAtTarget = false;
     }
 
     private double toNative(double plantVelocity) {
@@ -413,6 +447,52 @@ final class MappedVelocityPlant implements Plant {
 
     private double fromNative(double nativeVelocity) {
         return nativeVelocity / nativePerPlantUnit;
+    }
+
+    /**
+     * Proves a fully bounded zero-preserving velocity map using the same multiplication as update.
+     */
+    static void requireFiniteBoundedMap(ScalarRange range,
+                                        double nativePerPlantUnit,
+                                        String operation) {
+        if (range == null || !range.valid
+                || !Double.isFinite(range.minValue)
+                || !Double.isFinite(range.maxValue)) {
+            return;
+        }
+        requireFiniteBoundedEndpoint(
+                range.minValue, nativePerPlantUnit, operation);
+        requireFiniteBoundedEndpoint(
+                range.maxValue, nativePerPlantUnit, operation);
+    }
+
+    private static void requireFiniteBoundedEndpoint(double plantEndpoint,
+                                                     double nativePerPlantUnit,
+                                                     String operation) {
+        double nativeEndpoint = plantEndpoint * nativePerPlantUnit;
+        if (!Double.isFinite(nativeEndpoint)) {
+            throw new IllegalArgumentException(operation
+                    + " maps bounded Plant velocity endpoint " + plantEndpoint
+                    + " to non-finite native velocity " + nativeEndpoint
+                    + " with nativePerPlantUnit=" + nativePerPlantUnit
+                    + ". Choose finite bounds and a mapping whose exact endpoint images are finite.");
+        }
+    }
+
+    private void failRuntimeMapping(double priorAppliedTarget,
+                                    PlantTargetStatus priorTargetStatus,
+                                    PlantTargetResolution priorTargetResolution,
+                                    IllegalStateException failure) {
+        regulatedActuationCompleted = false;
+        lastAtTarget = false;
+        restoreTargetState(priorAppliedTarget, priorTargetStatus, priorTargetResolution);
+        try {
+            stop();
+        } catch (RuntimeException cleanupFailure) {
+            suppress(failure, cleanupFailure);
+            restoreTargetState(priorAppliedTarget, priorTargetStatus, priorTargetResolution);
+        }
+        throw failure;
     }
 
     private void handleRegulatedUpdateFailure(double priorAppliedTarget,

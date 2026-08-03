@@ -117,8 +117,14 @@ public interface PositionPlant extends Plant {
      * A periodic implementation selects its nearest unwrapped equivalence from that sample rather
      * than a cached measurement from an earlier loop.</p>
      *
+     * <p>An implementation with a finite bounded target range must validate the complete candidate
+     * Plant/native map before committing a new reference or derived public measurement. A mapping
+     * failure is atomic with respect to those reference facts and may invoke the Plant's documented
+     * fail-safe stop behavior.</p>
+     *
      * @param plantPosition finite reference value in plant units
      * @throws IllegalArgumentException if {@code plantPosition} is non-finite
+     * @throws IllegalStateException if the reference cannot produce a finite required mapping
      */
     void establishReferenceAt(double plantPosition);
 
@@ -132,6 +138,8 @@ public interface PositionPlant extends Plant {
      * @param plantPosition finite reference value in plant units
      * @param clock         current loop clock used to sample native feedback consistently
      * @throws IllegalArgumentException if {@code plantPosition} is non-finite
+     * @throws IllegalStateException if feedback is unavailable or the reference cannot produce a
+     *                               finite required mapping
      */
     default void establishReferenceAt(double plantPosition, LoopClock clock) {
         establishReferenceAt(plantPosition);

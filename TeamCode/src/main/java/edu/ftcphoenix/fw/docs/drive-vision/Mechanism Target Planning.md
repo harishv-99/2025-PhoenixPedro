@@ -70,6 +70,15 @@ For a ticks-based turret, values may be ticks. For an inches-based extension, va
 For a servo claw built with `rangeMapsToNative(0.30, 0.80)`, robot code and target planning can use
 logical `0.0..1.0` while the Plant maps those values to raw servo fractions internally.
 
+Target planning stops at the applied Plant target; it must not pre-clamp or duplicate the later
+native mapping. The realization pipeline is `Plant target -> shared Plant-to-native map -> optional
+per-child scale/bias -> output adapter`. Core Plants reject non-finite mapping arithmetic, while an
+FTC construction adds its actual Servo, normalized-power, velocity, or integer-position domain.
+Power and velocity child maps are scale-only so exact zero remains zero; additive child alignment is
+position-only. Invalid configuration is reported before hardware effects when the complete static
+map is known. At runtime, the core Plant-to-native conversion is checked before applied state or
+output; the later FTC layer precomputes every child/domain result before writing the first child.
+
 ## Advanced target-range protocol
 
 `ScalarRange` is the advanced value exchanged by a `PositionPlant`, `PlantTargetContext`, and the
@@ -756,5 +765,7 @@ The resolver should not decide when zero is trustworthy. Homing, indexing, manua
 semantic presets belong in the robot mechanism/service layer. Finite software values cannot prove
 the physical cue, pose, scale, reference, or hold is correct; the adopting mechanism must verify
 those facts. When a periodic re-reference has a finite current plant estimate, the Plant rejects a
-non-finite final nearest-equivalent result before commit. General plant/native affine overflow
-remains a separate mapping-domain concern.
+non-finite final nearest-equivalent result before commit. It also validates the complete candidate
+bounded affine map before reference or public-measurement state changes. A later realized command
+must still pass any native-domain check defined by its concrete output; an unbounded core
+Plant-to-native conversion is checked one at a time before applied-target commit or output.

@@ -47,6 +47,17 @@ import edu.ftcphoenix.fw.core.source.ScalarSource;
  * to native velocity {@code 0.0}. Phoenix therefore exposes velocity {@code nativeUnits()} and
  * {@code scaleToNative(...)} mappings, but not an offset-based velocity endpoint map.</p>
  *
+ * <h2>Grouped child mappings</h2>
+ *
+ * <p>A retained child transform uses {@code childNative = scale * sharedNative + bias}. Finite
+ * answers are checked before assignment, and every completed recipe is rechecked at target
+ * selection and build before hardware resolution. Standard Servo commands must remain in
+ * {@code [0.0, 1.0]}; direct motor/CR-servo power must preserve zero and remain in
+ * {@code [-1.0, +1.0]}; device-managed velocity must preserve zero; and device-managed motor
+ * position must round into FTC's signed 32-bit tick domain. Grouped outputs compute and validate
+ * every child command before changing their group cache or writing any child. Inverse-mapped
+ * grouped feedback returns {@link Double#NaN} if any child conversion or aggregate is non-finite.</p>
+ *
  * <h2>Grouped hardware names</h2>
  *
  * <p>Every motor, standard-servo, or CR-servo command group requires nonblank, distinct configured
@@ -168,7 +179,13 @@ public final class FtcActuators {
 
         /**
          * Build a direct normalized-power Plant over the selected motor or motor group. Its logical
-         * target range is always {@code [-1.0, +1.0]}.
+         * target range is always {@code [-1.0, +1.0]}. Before retaining this branch answer, every
+         * child must have exact zero bias and map both full-range endpoints inside the same raw
+         * power domain.
+         *
+         * @throws IllegalStateException if a retained child mapping violates neutral zero or the
+         * complete normalized-power domain; no hardware is resolved and the group can be corrected
+         * and retried
          */
         Plants.TargetStep<Plant> power();
 
@@ -192,16 +209,31 @@ public final class FtcActuators {
     }
 
     /**
-     * Group-aware motor builder step that exposes per-child scale/bias configuration.
+     * Group-aware motor builder step that exposes affine configuration for the most recently added
+     * child: {@code childNative = scale * sharedNative + bias}.
+     *
+     * <p>Both answers must be finite and are retained only after validation. The completed branch
+     * then validates the full composed child command: direct power and device-managed velocity
+     * require zero bias, regulated control requires exact identity, and device-managed position
+     * permits finite bias for encoder/linkage alignment subject to the FTC tick domain.</p>
      */
     public interface MotorGroupAddedStep extends MotorSingleStep {
         /**
-         * Set the scale applied to the most recently added motor in group target units.
+         * Set the dimensionless scale applied to the most recently added motor's shared native
+         * command.
+         *
+         * @throws IllegalArgumentException if {@code scale} is not finite; the prior value remains
+         * unchanged
          */
         MotorGroupAddedStep scale(double scale);
 
         /**
-         * Set the bias applied to the most recently added motor in group target units.
+         * Set the additive native-unit bias applied to the most recently added motor.
+         * A finite nonzero bias is meaningful only for device-managed position alignment; later
+         * power, velocity, and regulated branch answers reject it before hardware resolution.
+         *
+         * @throws IllegalArgumentException if {@code bias} is not finite; the prior value remains
+         * unchanged
          */
         MotorGroupAddedStep bias(double bias);
 
@@ -213,17 +245,29 @@ public final class FtcActuators {
     public interface MotorVelocityControlStep {
         /**
          * Use FTC device-managed velocity control with Phoenix defaults and continue to velocity
-         * target bounds.
+         * target bounds. The answer first validates that every retained child has finite nonzero
+         * scale and exact zero bias, so a rejected answer can be corrected and retried without
+         * hardware resolution.
+         *
+         * @throws IllegalStateException if a retained child mapping is incompatible
          */
         Plants.VelocityBoundsStep deviceManagedWithDefaults();
 
         /**
          * Enter the FTC device-managed velocity tuning branch before continuing to target bounds.
+         * The answer applies the same retryable child-mapping preflight as
+         * {@link #deviceManagedWithDefaults()}.
+         *
+         * @throws IllegalStateException if a retained child mapping is incompatible
          */
         MotorDeviceManagedVelocityStep deviceManaged();
 
         /**
          * Use a Phoenix-regulated velocity loop that drives motor power from native velocity feedback.
+         * Grouped regulated control requires exact child scale {@code 1.0} and bias {@code 0.0};
+         * this answer validates that identity before it is retained.
+         *
+         * @throws IllegalStateException if a grouped child mapping is not exact identity
          */
         MotorRegulatedVelocityFeedbackStep regulated();
     }
@@ -309,16 +353,27 @@ public final class FtcActuators {
     public interface MotorPositionControlStep {
         /**
          * Use FTC RUN_TO_POSITION with Phoenix defaults and continue to position periodicity.
+         * Finite nonzero child scales and finite position-alignment biases are validated before this
+         * answer is retained.
+         *
+         * @throws IllegalStateException if a retained child mapping is incompatible
          */
         Plants.PositionPeriodicityStep<Plants.FeedbackPositionBoundsStep> deviceManagedWithDefaults();
 
         /**
          * Enter the FTC RUN_TO_POSITION tuning branch before continuing to position periodicity.
+         * This applies the same retryable child-mapping preflight as
+         * {@link #deviceManagedWithDefaults()}.
+         *
+         * @throws IllegalStateException if a retained child mapping is incompatible
          */
         MotorDeviceManagedPositionStep deviceManaged();
 
         /**
          * Use a Phoenix-regulated loop that drives motor power from native position feedback.
+         * Grouped regulated control requires exact child scale {@code 1.0} and bias {@code 0.0}.
+         *
+         * @throws IllegalStateException if a grouped child mapping is not exact identity
          */
         MotorRegulatedPositionFeedbackStep regulated();
     }
@@ -423,16 +478,26 @@ public final class FtcActuators {
     }
 
     /**
-     * Group-aware servo builder step that exposes per-child scale/bias configuration.
+     * Group-aware standard-servo builder step that exposes an affine mapping for the most recently
+     * added child. Both values must be finite. At {@code nativeUnits()} or
+     * {@code rangeMapsToNative(...)}, the complete composed images of both Plant endpoints must lie
+     * exactly inside the raw Servo {@code [0.0, 1.0]} domain before the mapping answer is retained.
      */
     public interface ServoGroupAddedStep extends ServoSingleStep {
         /**
-         * Set the scale applied to the most recently added servo in group target units.
+         * Set the dimensionless scale applied to the most recently added servo's shared native
+         * command.
+         *
+         * @throws IllegalArgumentException if {@code scale} is not finite; the prior value remains
+         * unchanged
          */
         ServoGroupAddedStep scale(double scale);
 
         /**
-         * Set the bias applied to the most recently added servo in group target units.
+         * Set the additive raw-servo-unit bias applied to the most recently added servo.
+         *
+         * @throws IllegalArgumentException if {@code bias} is not finite; the prior value remains
+         * unchanged
          */
         ServoGroupAddedStep bias(double bias);
 
@@ -477,6 +542,10 @@ public final class FtcActuators {
     public interface ServoBoundedPositionMappingStep {
         /**
          * Use raw servo positions as plant units.
+         *
+         * @throws IllegalStateException if either bounded Plant endpoint, after every child affine
+         * mapping, is non-finite or outside raw Servo {@code [0.0, 1.0]}; the mapping answer remains
+         * available for retry
          */
         Plants.TargetStep<PositionPlant> nativeUnits();
 
@@ -488,6 +557,11 @@ public final class FtcActuators {
          * other words, if the declared plant range is {@code [min, max]}, then this method means
          * "plant {@code min} -> native {@code nativeAtPlantMin}" and
          * "plant {@code max} -> native {@code nativeAtPlantMax}".</p>
+         *
+         * @throws IllegalArgumentException if either endpoint or the resulting shared affine scale
+         * is not finite, or the scale is zero
+         * @throws IllegalStateException if either exact composed child endpoint is outside raw Servo
+         * {@code [0.0, 1.0]}; a rejected answer does not consume the mapping step
          */
         Plants.TargetStep<PositionPlant> rangeMapsToNative(double nativeAtPlantMin, double nativeAtPlantMax);
     }
@@ -507,7 +581,11 @@ public final class FtcActuators {
 
         /**
          * Build a direct normalized-power Plant over the selected CR servo or group. Its logical
-         * target range is always {@code [-1.0, +1.0]}.
+         * target range is always {@code [-1.0, +1.0]}. Every child scale must map both full-range
+         * endpoints inside that domain before this answer is retained.
+         *
+         * @throws IllegalStateException if a retained child scale escapes the raw power domain; no
+         * hardware is resolved and the group can be corrected and retried
          */
         Plants.TargetStep<Plant> power();
 
@@ -520,19 +598,24 @@ public final class FtcActuators {
     }
 
     /**
-     * Group-aware CR-servo builder step that exposes per-child scale/bias configuration.
+     * Group-aware CR-servo builder step that exposes zero-preserving per-child scaling.
+     *
+     * <p>Continuous-rotation-servo power has the same neutral-zero contract as every
+     * {@link PowerOutput}: a shared command of {@code 0.0} must command every child to
+     * {@code 0.0}. An additive child bias cannot satisfy that contract, so this step deliberately
+     * offers only scale.</p>
      */
     public interface CrServoGroupAddedStep extends CrServoSingleStep {
         /**
-         * Set the scale applied to the most recently added CR servo in group target units.
+         * Set the dimensionless scale applied to the most recently added CR servo's shared
+         * normalized-power command.
+         * The value must be finite. The complete direct-power recipe must also map the full
+         * {@code [-1.0, +1.0]} command range into that same raw child range.
+         *
+         * @throws IllegalArgumentException if {@code scale} is not finite; the prior value remains
+         * unchanged
          */
         CrServoGroupAddedStep scale(double scale);
-
-        /**
-         * Set the bias applied to the most recently added CR servo in group target units.
-         */
-        CrServoGroupAddedStep bias(double bias);
-
     }
 
     /**
@@ -550,6 +633,10 @@ public final class FtcActuators {
     public interface CrServoPositionControlStep {
         /**
          * Use a Phoenix-regulated loop that drives CR-servo power from native position feedback.
+         * A group requires exact child scale {@code 1.0}; direct-power scaling is not meaningful
+         * once one shared regulator owns the group output.
+         *
+         * @throws IllegalStateException if a grouped child scale is not exactly {@code 1.0}
          */
         CrServoRegulatedPositionFeedbackStep regulated();
     }
@@ -974,15 +1061,19 @@ public final class FtcActuators {
 
     private static final class PowerTargetBuilder extends FtcTargetBuilder<Plant> {
         private final Supplier<PowerOutput> output;
+        private final Runnable recipeValidator;
 
-        private PowerTargetBuilder(RecipeLifecycle lifecycle, Supplier<PowerOutput> output) {
+        private PowerTargetBuilder(RecipeLifecycle lifecycle,
+                                   Runnable recipeValidator,
+                                   Supplier<PowerOutput> output) {
             super(lifecycle, "power Plant");
+            this.recipeValidator = Objects.requireNonNull(recipeValidator, "recipeValidator");
             this.output = Objects.requireNonNull(output, "output");
         }
 
         @Override
         protected void validateRecipe() {
-            // The normalized power target range is fixed; hardware is resolved only below.
+            recipeValidator.run();
         }
 
         @Override
@@ -1138,21 +1229,27 @@ public final class FtcActuators {
         @Override
         public MotorGroupAddedStep scale(double scale) {
             lifecycle.requireMutable("motor scale(...)");
-            specs.get(lastIndex).scale = scale;
+            specs.get(lastIndex).scale = requireFiniteChildMappingValue(
+                    scale, "motor scale(...)", "scale");
             return this;
         }
 
         @Override
         public MotorGroupAddedStep bias(double bias) {
             lifecycle.requireMutable("motor bias(...)");
-            specs.get(lastIndex).bias = bias;
+            specs.get(lastIndex).bias = requireFiniteChildMappingValue(
+                    bias, "motor bias(...)", "bias");
             return this;
         }
 
         @Override
         public Plants.TargetStep<Plant> power() {
             lifecycle.requireMutable("power()");
-            return new PowerTargetBuilder(lifecycle, this::groupedMotorPowerWithMappings);
+            validateDirectPowerRecipe();
+            return new PowerTargetBuilder(
+                    lifecycle,
+                    this::validateDirectPowerRecipe,
+                    this::groupedMotorPowerWithMappings);
         }
 
         @Override
@@ -1172,22 +1269,24 @@ public final class FtcActuators {
                 Spec spec = specs.get(0);
                 return FtcHardware.motorPower(hw, spec.name, spec.direction);
             }
-            return new GroupedPowerOutput(groupedFtcMotorPowers());
+            return groupedMotorPowerOutput(groupedFtcMotorPowers());
         }
 
         private PowerOutput groupedMotorPowerWithMappings() {
             if (specs.size() == 1) {
                 Spec spec = specs.get(0);
-                return new ScaledBiasedPowerOutput(FtcHardware.motorPower(hw, spec.name, spec.direction), spec.scale, spec.bias);
+                return FtcHardware.motorPower(hw, spec.name, spec.direction);
             }
-            double[] scales = new double[specs.size()];
-            double[] biases = new double[specs.size()];
-            for (int i = 0; i < specs.size(); i++) {
-                Spec spec = specs.get(i);
-                scales[i] = spec.scale;
-                biases[i] = spec.bias;
-            }
-            return new GroupedPowerOutput(groupedFtcMotorPowers(), scales, biases);
+            return groupedMotorPowerOutput(groupedFtcMotorPowers());
+        }
+
+        private PowerOutput groupedMotorPowerOutput(List<PowerOutput> outputs) {
+            return new GroupedPowerOutput(
+                    outputs,
+                    childScales(specs),
+                    childBiases(specs),
+                    childNames(specs),
+                    "motor power");
         }
 
         /**
@@ -1222,7 +1321,8 @@ public final class FtcActuators {
                 scales[i] = spec.scale;
                 biases[i] = spec.bias;
             }
-            return new GroupedVelocityOutput(outs, scales, biases);
+            return new GroupedVelocityOutput(
+                    outs, scales, biases, childNames(specs), "motor velocity");
         }
 
         private ScalarSource groupedMotorVelocityMeasurement() {
@@ -1259,7 +1359,13 @@ public final class FtcActuators {
                 scales[i] = spec.scale;
                 biases[i] = spec.bias;
             }
-            return new GroupedPositionOutput(outs, scales, biases);
+            return new GroupedPositionOutput(
+                    outs,
+                    scales,
+                    biases,
+                    childNames(specs),
+                    PositionChildDomain.MOTOR_TICKS,
+                    "motor position");
         }
 
         private ScalarSource groupedMotorPositionMeasurement() {
@@ -1279,16 +1385,110 @@ public final class FtcActuators {
         private void requireDefaultGroupScalingForRegulated(String mode) {
             if (specs.size() <= 1) return;
             for (Spec spec : specs) {
-                if (Math.abs(spec.scale - 1.0) > 1e-9 || Math.abs(spec.bias) > 1e-9) {
-                    throw new IllegalStateException("Regulated motor " + mode + " control requires default group scaling/bias when built through FtcActuators. Build raw outputs manually for non-trivial per-motor mappings.");
+                requireFiniteChildSpec(spec, "regulated motor " + mode);
+                if (spec.scale != 1.0 || spec.bias != 0.0) {
+                    throw new IllegalStateException("Regulated motor " + mode
+                            + " control requires exact child scale 1.0 and bias 0.0 for motor '"
+                            + spec.name + "'; use separate Plants for non-trivial per-motor policy");
+                }
+            }
+        }
+
+        private void validateDirectPowerRecipe() {
+            for (int i = 0; i < specs.size(); i++) {
+                Spec spec = specs.get(i);
+                requireFiniteChildSpec(spec, "motor direct power");
+                if (spec.bias != 0.0) {
+                    throw new IllegalStateException("Motor direct power child " + (i + 1)
+                            + " ('" + spec.name + "') must preserve neutral zero with bias 0.0, got "
+                            + spec.bias);
+                }
+                validateMappedPowerEndpoint(
+                        "motor direct power", i, spec, -1.0);
+                validateMappedPowerEndpoint(
+                        "motor direct power", i, spec, 1.0);
+            }
+        }
+
+        private void validateDeviceManagedVelocityRecipe(ScalarRange targetRange,
+                                                         double nativePerPlantUnit) {
+            validateDeviceManagedVelocityChildMappings();
+            if (!targetRange.isUnbounded()) {
+                validateDeviceManagedVelocityEndpoint(
+                        targetRange.minValue, nativePerPlantUnit, "minimum");
+                validateDeviceManagedVelocityEndpoint(
+                        targetRange.maxValue, nativePerPlantUnit, "maximum");
+            }
+        }
+
+        private void validateDeviceManagedVelocityChildMappings() {
+            for (int i = 0; i < specs.size(); i++) {
+                Spec spec = specs.get(i);
+                requireFiniteChildSpec(spec, "device-managed motor velocity");
+                if (spec.scale == 0.0) {
+                    throw new IllegalStateException("Device-managed motor velocity child "
+                            + (i + 1) + " ('" + spec.name + "') requires non-zero scale");
+                }
+                if (spec.bias != 0.0) {
+                    throw new IllegalStateException("Device-managed motor velocity child "
+                            + (i + 1) + " ('" + spec.name
+                            + "') must preserve zero velocity with bias 0.0, got " + spec.bias);
+                }
+            }
+        }
+
+        private void validateDeviceManagedVelocityEndpoint(double plantEndpoint,
+                                                           double nativePerPlantUnit,
+                                                           String endpointName) {
+            double sharedNative = requireFiniteVelocityEndpoint(
+                    "Device-managed motor velocity " + endpointName + " Plant endpoint",
+                    plantEndpoint,
+                    nativePerPlantUnit);
+            for (int i = 0; i < specs.size(); i++) {
+                mappedChildCommand(
+                        "device-managed motor velocity " + endpointName + " endpoint",
+                        i,
+                        specs.get(i),
+                        sharedNative);
+            }
+        }
+
+        private void validateDeviceManagedPositionRecipe(double[] boundedStaticNativeEndpoints) {
+            for (MotorBuilder.Spec spec : specs) {
+                requireFiniteChildSpec(spec, "device-managed motor position");
+                if (spec.scale == 0.0) {
+                    throw new IllegalStateException("Device-managed motor position child '"
+                            + spec.name + "' requires non-zero scale");
+                }
+            }
+            if (boundedStaticNativeEndpoints == null) {
+                return;
+            }
+            for (int endpoint = 0; endpoint < boundedStaticNativeEndpoints.length; endpoint++) {
+                double sharedNative = boundedStaticNativeEndpoints[endpoint];
+                String endpointName = endpoint == 0 ? "minimum" : "maximum";
+                for (int i = 0; i < specs.size(); i++) {
+                    Spec spec = specs.get(i);
+                    double child = mappedChildCommand(
+                            "device-managed motor position " + endpointName + " endpoint",
+                            i,
+                            spec,
+                            sharedNative);
+                    checkedMotorPositionTicks(
+                            child,
+                            "device-managed motor position " + endpointName + " endpoint child "
+                                    + (i + 1) + " ('" + spec.name + "')");
                 }
             }
         }
 
         private void ensureFeedbackScalesNonZero(String mode) {
-            for (Spec spec : specs)
-                if (Math.abs(spec.scale) < 1e-9)
+            for (Spec spec : specs) {
+                requireFiniteChildSpec(spec, mode);
+                if (spec.scale == 0.0) {
                     throw new IllegalStateException(mode + " requires non-zero per-motor scale");
+                }
+            }
         }
     }
 
@@ -1475,9 +1675,9 @@ public final class FtcActuators {
                 throw new IllegalStateException("Motor velocity builder requires velocityTolerance(...) in plant velocity units");
             }
             if (controlKind == VelocityControlKind.DEVICE_MANAGED) {
-                parent.ensureFeedbackScalesNonZero("device-managed motor velocity");
+                parent.validateDeviceManagedVelocityRecipe(range, nativePerPlantUnit);
             } else {
-                parent.requireDefaultGroupScalingForRegulated("velocity");
+                validateRegulatedVelocityRecipe(range, nativePerPlantUnit);
                 if (feedback == null || regulator == null) {
                     throw new IllegalStateException("Regulated motor velocity requires a feedback answer "
                             + "(internalEncoder(), averageInternalEncoders(), externalEncoder(...), or "
@@ -1521,6 +1721,11 @@ public final class FtcActuators {
             if (controlKind != null) {
                 throw new IllegalStateException("Motor velocity control ownership has already been answered");
             }
+            if (answer == VelocityControlKind.DEVICE_MANAGED) {
+                parent.validateDeviceManagedVelocityChildMappings();
+            } else {
+                parent.requireDefaultGroupScalingForRegulated("velocity");
+            }
             controlKind = answer;
         }
 
@@ -1560,9 +1765,31 @@ public final class FtcActuators {
             if (mappingAnswered) {
                 throw new IllegalStateException("Motor velocity mapping has already been answered");
             }
-            nativePerPlantUnit = requireFiniteNonZero(
+            double checkedScale = requireFiniteNonZero(
                     scale, "nativeUnitsPerPlantVelocityUnit");
+            if (controlKind == VelocityControlKind.DEVICE_MANAGED) {
+                parent.validateDeviceManagedVelocityRecipe(range, checkedScale);
+            } else {
+                validateRegulatedVelocityRecipe(range, checkedScale);
+            }
+            nativePerPlantUnit = checkedScale;
             mappingAnswered = true;
+        }
+
+        private void validateRegulatedVelocityRecipe(ScalarRange targetRange,
+                                                       double mappingScale) {
+            parent.requireDefaultGroupScalingForRegulated("velocity");
+            if (targetRange.isUnbounded()) {
+                return;
+            }
+            requireFiniteVelocityEndpoint(
+                    "Regulated motor velocity minimum endpoint",
+                    targetRange.minValue,
+                    mappingScale);
+            requireFiniteVelocityEndpoint(
+                    "Regulated motor velocity maximum endpoint",
+                    targetRange.maxValue,
+                    mappingScale);
         }
     }
 
@@ -1676,8 +1903,11 @@ public final class FtcActuators {
             if (!(plantSpan > 0.0) || !Double.isFinite(plantSpan)) {
                 throw new IllegalArgumentException("rangeMapsToNative(...) requires finite Plant bounds with min < max");
             }
-            requireFiniteNonZero((nativeAtPlantMax - nativeAtPlantMin) / plantSpan,
+            double candidateScale = requireFiniteNonZero(
+                    (nativeAtPlantMax - nativeAtPlantMin) / plantSpan,
                     "native endpoint scale");
+            preflightPositionChildMapping(checkedBoundedNativeEndpoints(
+                    candidateScale, plantMin, nativeAtPlantMin));
             mappingKind = PositionMappingKind.ENDPOINTS;
             this.nativeAtPlantMin = nativeAtPlantMin;
             this.nativeAtPlantMax = nativeAtPlantMax;
@@ -1806,6 +2036,47 @@ public final class FtcActuators {
         protected abstract Plants.PositionPeriodicityStep<Plants.FeedbackPositionBoundsStep>
         createSharedPositionStart();
 
+        /** Validate a complete candidate child mapping before a one-shot mapping/reference answer. */
+        protected abstract void preflightPositionChildMapping(double[] boundedStaticNativeEndpoints);
+
+        /**
+         * Return the exact shared-native images of finite bounded endpoints when the static
+         * reference is already known. Dynamic reference modes are validated when their native
+         * anchor becomes available and again at the final grouped/raw command seam.
+         */
+        protected final double[] boundedStaticNativeEndpointsForValidation() {
+            if (!rangeAnswered || !bounded || referenceKind != PositionReferenceKind.STATIC) {
+                return null;
+            }
+
+            double scale;
+            double validationPlantReference;
+            double validationNativeReference;
+            if (mappingKind == PositionMappingKind.ENDPOINTS) {
+                double plantSpan = plantMax - plantMin;
+                double nativeSpan = nativeAtPlantMax - nativeAtPlantMin;
+                if (!Double.isFinite(plantSpan) || !(plantSpan > 0.0)
+                        || !Double.isFinite(nativeSpan)) {
+                    throw new IllegalStateException("Position endpoint map has non-finite span: "
+                            + "plantSpan=" + plantSpan + ", nativeSpan=" + nativeSpan);
+                }
+                scale = nativeSpan / plantSpan;
+                if (!Double.isFinite(scale) || scale == 0.0) {
+                    throw new IllegalStateException("Position endpoint map requires a finite, "
+                            + "non-zero native scale, got " + scale);
+                }
+                validationPlantReference = plantMin;
+                validationNativeReference = nativeAtPlantMin;
+            } else {
+                scale = nativePerPlantUnit;
+                validationPlantReference = plantReference;
+                validationNativeReference = nativeReference;
+            }
+
+            return checkedBoundedNativeEndpoints(
+                    scale, validationPlantReference, validationNativeReference);
+        }
+
         private Plants.PositionToleranceStep applyReference(Plants.PositionReferenceStep reference) {
             switch (referenceKind) {
                 case STATIC:
@@ -1834,7 +2105,9 @@ public final class FtcActuators {
             requireMutable(operation);
             requireRangeAnswered(operation);
             requireMappingUnanswered();
-            nativePerPlantUnit = requireFiniteNonZero(scale, "nativeUnitsPerPlantUnit");
+            double checkedScale = requireFiniteNonZero(scale, "nativeUnitsPerPlantUnit");
+            preflightPositionChildMapping(null);
+            nativePerPlantUnit = checkedScale;
             mappingKind = kind;
         }
 
@@ -1850,10 +2123,34 @@ public final class FtcActuators {
                     nativePosition, "FtcActuators." + operation,
                     "nativePosition", "native units");
             requireReferencePending(operation);
+            preflightPositionChildMapping(checkedBoundedNativeEndpoints(
+                    nativePerPlantUnit, checkedPlantPosition, checkedNativePosition));
             plantReference = checkedPlantPosition;
             nativeReference = checkedNativePosition;
             referenceKind = PositionReferenceKind.STATIC;
             return this;
+        }
+
+        private double[] checkedBoundedNativeEndpoints(double nativePerPlantUnit,
+                                                       double plantReference,
+                                                       double nativeReference) {
+            if (!rangeAnswered || !bounded) {
+                return null;
+            }
+            return new double[]{
+                    checkedPositionMap(
+                            plantMin,
+                            plantReference,
+                            nativeReference,
+                            nativePerPlantUnit,
+                            "bounded position minimum endpoint"),
+                    checkedPositionMap(
+                            plantMax,
+                            plantReference,
+                            nativeReference,
+                            nativePerPlantUnit,
+                            "bounded position maximum endpoint")
+            };
         }
 
         private void requirePeriodicityAnswered(String operation) {
@@ -2038,7 +2335,8 @@ public final class FtcActuators {
                             + "nativeFeedback(...)) and regulator(...)");
                 }
             } else {
-                parent.ensureFeedbackScalesNonZero("device-managed motor position");
+                parent.validateDeviceManagedPositionRecipe(
+                        boundedStaticNativeEndpointsForValidation());
             }
         }
 
@@ -2057,10 +2355,24 @@ public final class FtcActuators {
             return Plants.fromOutputs().regulatedPosition(power, measurement, regulator);
         }
 
+        @Override
+        protected void preflightPositionChildMapping(double[] boundedStaticNativeEndpoints) {
+            if (controlKind == PositionControlKind.DEVICE_MANAGED) {
+                parent.validateDeviceManagedPositionRecipe(boundedStaticNativeEndpoints);
+            } else if (controlKind == PositionControlKind.REGULATED) {
+                parent.requireDefaultGroupScalingForRegulated("position");
+            }
+        }
+
         private void answerControl(PositionControlKind answer, String operation) {
             requireMutable(operation);
             if (controlKind != null) {
                 throw new IllegalStateException("Motor position control ownership has already been answered");
+            }
+            if (answer == PositionControlKind.DEVICE_MANAGED) {
+                parent.validateDeviceManagedPositionRecipe(null);
+            } else {
+                parent.requireDefaultGroupScalingForRegulated("position");
             }
             controlKind = answer;
         }
@@ -2116,14 +2428,16 @@ public final class FtcActuators {
         @Override
         public ServoGroupAddedStep scale(double scale) {
             lifecycle.requireMutable("standard-servo scale(...)");
-            specs.get(lastIndex).scale = scale;
+            specs.get(lastIndex).scale = requireFiniteChildMappingValue(
+                    scale, "standard-servo scale(...)", "scale");
             return this;
         }
 
         @Override
         public ServoGroupAddedStep bias(double bias) {
             lifecycle.requireMutable("standard-servo bias(...)");
-            specs.get(lastIndex).bias = bias;
+            specs.get(lastIndex).bias = requireFiniteChildMappingValue(
+                    bias, "standard-servo bias(...)", "bias");
             return this;
         }
 
@@ -2147,7 +2461,76 @@ public final class FtcActuators {
                 scales[i] = spec.scale;
                 biases[i] = spec.bias;
             }
-            return new GroupedPositionOutput(outs, scales, biases);
+            return new GroupedPositionOutput(
+                    outs,
+                    scales,
+                    biases,
+                    childNames(specs),
+                    PositionChildDomain.SERVO_RAW,
+                    "standard-servo position");
+        }
+
+        private void validatePositionRecipe(double plantMin,
+                                            double plantMax,
+                                            PositionMappingKind mappingKind,
+                                            double nativeAtPlantMin,
+                                            double nativeAtPlantMax) {
+            final double sharedAtMin;
+            final double sharedAtMax;
+            if (mappingKind == PositionMappingKind.NATIVE) {
+                sharedAtMin = plantMin;
+                sharedAtMax = plantMax;
+            } else {
+                double plantSpan = plantMax - plantMin;
+                double nativeSpan = nativeAtPlantMax - nativeAtPlantMin;
+                if (!Double.isFinite(plantSpan) || !(plantSpan > 0.0)
+                        || !Double.isFinite(nativeSpan)) {
+                    throw new IllegalStateException("Standard-servo endpoint map has non-finite "
+                            + "span: plantSpan=" + plantSpan + ", nativeSpan=" + nativeSpan);
+                }
+                double nativePerPlantUnit = nativeSpan / plantSpan;
+                if (!Double.isFinite(nativePerPlantUnit) || nativePerPlantUnit == 0.0) {
+                    throw new IllegalStateException("Standard-servo endpoint map requires a finite, "
+                            + "non-zero native scale, got " + nativePerPlantUnit);
+                }
+                sharedAtMin = checkedPositionMap(
+                        plantMin,
+                        plantMin,
+                        nativeAtPlantMin,
+                        nativePerPlantUnit,
+                        "standard-servo minimum endpoint");
+                sharedAtMax = checkedPositionMap(
+                        plantMax,
+                        plantMin,
+                        nativeAtPlantMin,
+                        nativePerPlantUnit,
+                        "standard-servo maximum endpoint");
+            }
+
+            validateServoEndpoint(sharedAtMin, "minimum");
+            validateServoEndpoint(sharedAtMax, "maximum");
+        }
+
+        private void validateServoEndpoint(double sharedNative, String endpointName) {
+            if (!Double.isFinite(sharedNative)) {
+                throw new IllegalStateException("Standard-servo " + endpointName
+                        + " endpoint maps to non-finite shared native position " + sharedNative);
+            }
+            for (int i = 0; i < specs.size(); i++) {
+                MotorBuilder.Spec spec = specs.get(i);
+                requireFiniteChildSpec(spec, "standard-servo position");
+                double child = mappedChildCommand(
+                        "standard-servo " + endpointName + " endpoint",
+                        i,
+                        spec,
+                        sharedNative);
+                requireClosedDomain(
+                        child,
+                        0.0,
+                        1.0,
+                        "standard-servo " + endpointName + " endpoint child " + (i + 1)
+                                + " ('" + spec.name + "')");
+            }
         }
     }
 
@@ -2204,6 +2587,8 @@ public final class FtcActuators {
         @Override
         public Plants.TargetStep<PositionPlant> nativeUnits() {
             requireMappingPending("nativeUnits()");
+            parent.validatePositionRecipe(
+                    plantMin, plantMax, PositionMappingKind.NATIVE, 0.0, 0.0);
             mappingKind = PositionMappingKind.NATIVE;
             return this;
         }
@@ -2222,6 +2607,12 @@ public final class FtcActuators {
             }
             requireFiniteNonZero((nativeAtPlantMax - nativeAtPlantMin) / plantSpan,
                     "native endpoint scale");
+            parent.validatePositionRecipe(
+                    plantMin,
+                    plantMax,
+                    PositionMappingKind.ENDPOINTS,
+                    nativeAtPlantMin,
+                    nativeAtPlantMax);
             mappingKind = PositionMappingKind.ENDPOINTS;
             this.nativeAtPlantMin = nativeAtPlantMin;
             this.nativeAtPlantMax = nativeAtPlantMax;
@@ -2239,6 +2630,12 @@ public final class FtcActuators {
             if (mappingKind == null) {
                 throw new IllegalStateException("Standard-servo position builder requires nativeUnits() or rangeMapsToNative(...)");
             }
+            parent.validatePositionRecipe(
+                    plantMin,
+                    plantMax,
+                    mappingKind,
+                    nativeAtPlantMin,
+                    nativeAtPlantMax);
         }
 
         @Override
@@ -2317,21 +2714,19 @@ public final class FtcActuators {
         @Override
         public CrServoGroupAddedStep scale(double scale) {
             lifecycle.requireMutable("CR-servo scale(...)");
-            specs.get(lastIndex).scale = scale;
-            return this;
-        }
-
-        @Override
-        public CrServoGroupAddedStep bias(double bias) {
-            lifecycle.requireMutable("CR-servo bias(...)");
-            specs.get(lastIndex).bias = bias;
+            specs.get(lastIndex).scale = requireFiniteChildMappingValue(
+                    scale, "CR-servo scale(...)", "scale");
             return this;
         }
 
         @Override
         public Plants.TargetStep<Plant> power() {
             lifecycle.requireMutable("power()");
-            return new PowerTargetBuilder(lifecycle, this::groupedCrServoPowerWithMappings);
+            validateDirectPowerRecipe();
+            return new PowerTargetBuilder(
+                    lifecycle,
+                    this::validateDirectPowerRecipe,
+                    this::groupedCrServoPowerWithMappings);
         }
 
         @Override
@@ -2348,31 +2743,55 @@ public final class FtcActuators {
             List<PowerOutput> outs = new ArrayList<>();
             for (MotorBuilder.Spec spec : specs)
                 outs.add(FtcHardware.crServoPower(hw, spec.name, spec.direction));
-            return new GroupedPowerOutput(outs);
+            return groupedCrServoPowerOutput(outs);
         }
 
         private PowerOutput groupedCrServoPowerWithMappings() {
             if (specs.size() == 1) {
                 MotorBuilder.Spec spec = specs.get(0);
-                return new ScaledBiasedPowerOutput(FtcHardware.crServoPower(hw, spec.name, spec.direction), spec.scale, spec.bias);
+                return FtcHardware.crServoPower(hw, spec.name, spec.direction);
             }
             List<PowerOutput> outs = new ArrayList<>();
-            double[] scales = new double[specs.size()];
-            double[] biases = new double[specs.size()];
+            for (MotorBuilder.Spec spec : specs) {
+                outs.add(FtcHardware.crServoPower(hw, spec.name, spec.direction));
+            }
+            return groupedCrServoPowerOutput(outs);
+        }
+
+        private PowerOutput groupedCrServoPowerOutput(List<PowerOutput> outputs) {
+            return new GroupedPowerOutput(
+                    outputs,
+                    childScales(specs),
+                    childBiases(specs),
+                    childNames(specs),
+                    "CR-servo power");
+        }
+
+        private void validateDirectPowerRecipe() {
             for (int i = 0; i < specs.size(); i++) {
                 MotorBuilder.Spec spec = specs.get(i);
-                outs.add(FtcHardware.crServoPower(hw, spec.name, spec.direction));
-                scales[i] = spec.scale;
-                biases[i] = spec.bias;
+                requireFiniteChildSpec(spec, "CR-servo direct power");
+                if (spec.bias != 0.0) {
+                    throw new IllegalStateException("CR-servo direct power child " + (i + 1)
+                            + " ('" + spec.name + "') must preserve neutral zero with bias 0.0, got "
+                            + spec.bias);
+                }
+                validateMappedPowerEndpoint(
+                        "CR-servo direct power", i, spec, -1.0);
+                validateMappedPowerEndpoint(
+                        "CR-servo direct power", i, spec, 1.0);
             }
-            return new GroupedPowerOutput(outs, scales, biases);
         }
 
         private void requireDefaultGroupScalingForRegulated() {
             if (specs.size() <= 1) return;
-            for (MotorBuilder.Spec spec : specs)
-                if (Math.abs(spec.scale - 1.0) > 1e-9 || Math.abs(spec.bias) > 1e-9)
-                    throw new IllegalStateException("Regulated CR-servo position control requires default group scaling/bias through FtcActuators");
+            for (MotorBuilder.Spec spec : specs) {
+                requireFiniteChildSpec(spec, "regulated CR-servo position");
+                if (spec.scale != 1.0 || spec.bias != 0.0) {
+                    throw new IllegalStateException("Regulated CR-servo position control requires "
+                            + "exact child scale 1.0 and bias 0.0 for CR servo '" + spec.name + "'");
+                }
+            }
         }
     }
 
@@ -2394,6 +2813,7 @@ public final class FtcActuators {
             if (regulatedAnswered) {
                 throw new IllegalStateException("CR-servo position control ownership has already been answered");
             }
+            parent.requireDefaultGroupScalingForRegulated();
             regulatedAnswered = true;
             return this;
         }
@@ -2455,6 +2875,11 @@ public final class FtcActuators {
             return Plants.fromOutputs().regulatedPosition(power, measurement, regulator);
         }
 
+        @Override
+        protected void preflightPositionChildMapping(double[] boundedStaticNativeEndpoints) {
+            parent.requireDefaultGroupScalingForRegulated();
+        }
+
         private void requireFeedbackUnanswered(String operation) {
             requireMutable(operation);
             if (!regulatedAnswered) {
@@ -2466,65 +2891,43 @@ public final class FtcActuators {
         }
     }
 
-    private static final class ScaledBiasedPowerOutput implements PowerOutput {
-        private final PowerOutput output;
-        private final double scale;
-        private final double bias;
-        private double last;
-
-        private ScaledBiasedPowerOutput(PowerOutput output, double scale, double bias) {
-            this.output = Objects.requireNonNull(output, "output");
-            this.scale = scale;
-            this.bias = bias;
-        }
-
-        @Override
-        public void setPower(double power) {
-            last = power;
-            output.setPower(scale * power + bias);
-        }
-
-        @Override
-        public double getCommandedPower() {
-            return last;
-        }
-
-        @Override
-        public void stop() {
-            output.stop();
-            last = 0.0;
-        }
-    }
-
     private static final class GroupedPowerOutput implements PowerOutput {
         private final List<PowerOutput> outputs;
         private final double[] scales;
         private final double[] biases;
+        private final List<String> names;
+        private final String family;
         private double last;
 
-        private GroupedPowerOutput(List<PowerOutput> outputs) {
-            this(outputs, null, null);
-        }
-
-        private GroupedPowerOutput(List<PowerOutput> outputs, double[] scales, double[] biases) {
+        private GroupedPowerOutput(List<PowerOutput> outputs,
+                                   double[] scales,
+                                   double[] biases,
+                                   List<String> names,
+                                   String family) {
             this.outputs = new ArrayList<>(Objects.requireNonNull(outputs, "outputs"));
-            if (this.outputs.isEmpty())
-                throw new IllegalArgumentException("outputs must not be empty");
-            this.scales = scales != null ? scales.clone() : null;
-            this.biases = biases != null ? biases.clone() : null;
-            if ((this.scales != null && this.scales.length != this.outputs.size())
-                    || (this.biases != null && this.biases.length != this.outputs.size())) {
-                throw new IllegalArgumentException("outputs/scales/biases must have matching lengths");
-            }
+            this.scales = Objects.requireNonNull(scales, "scales").clone();
+            this.biases = Objects.requireNonNull(biases, "biases").clone();
+            this.names = new ArrayList<>(Objects.requireNonNull(names, "names"));
+            this.family = Objects.requireNonNull(family, "family");
+            requireMatchingChildShape(
+                    this.outputs.size(), this.scales, this.biases, this.names);
         }
 
         @Override
         public void setPower(double power) {
+            double[] childPowers = new double[outputs.size()];
+            for (int i = 0; i < outputs.size(); i++) {
+                childPowers[i] = mappedChildCommand(
+                        family + " runtime command", i, names.get(i), scales[i], biases[i], power);
+                requireClosedDomain(
+                        childPowers[i],
+                        -1.0,
+                        1.0,
+                        family + " runtime child " + (i + 1) + " ('" + names.get(i) + "')");
+            }
             last = power;
             for (int i = 0; i < outputs.size(); i++) {
-                double childPower = power;
-                if (scales != null) childPower = scales[i] * power + biases[i];
-                outputs.get(i).setPower(childPower);
+                outputs.get(i).setPower(childPowers[i]);
             }
         }
 
@@ -2540,25 +2943,59 @@ public final class FtcActuators {
         }
     }
 
+    private enum PositionChildDomain {
+        SERVO_RAW,
+        MOTOR_TICKS
+    }
+
     private static final class GroupedPositionOutput implements PositionOutput {
         private final List<PositionOutput> outputs;
         private final double[] scales;
         private final double[] biases;
+        private final List<String> names;
+        private final PositionChildDomain domain;
+        private final String family;
         private double last;
 
-        private GroupedPositionOutput(List<PositionOutput> outputs, double[] scales, double[] biases) {
+        private GroupedPositionOutput(List<PositionOutput> outputs,
+                                      double[] scales,
+                                      double[] biases,
+                                      List<String> names,
+                                      PositionChildDomain domain,
+                                      String family) {
             this.outputs = new ArrayList<>(Objects.requireNonNull(outputs, "outputs"));
-            this.scales = Objects.requireNonNull(scales, "scales");
-            this.biases = Objects.requireNonNull(biases, "biases");
-            if (this.outputs.isEmpty() || this.outputs.size() != scales.length || scales.length != biases.length)
-                throw new IllegalArgumentException("outputs/scales/biases must be non-empty and matching");
+            this.scales = Objects.requireNonNull(scales, "scales").clone();
+            this.biases = Objects.requireNonNull(biases, "biases").clone();
+            this.names = new ArrayList<>(Objects.requireNonNull(names, "names"));
+            this.domain = Objects.requireNonNull(domain, "domain");
+            this.family = Objects.requireNonNull(family, "family");
+            requireMatchingChildShape(
+                    this.outputs.size(), this.scales, this.biases, this.names);
         }
 
         @Override
         public void setPosition(double position) {
+            double[] childPositions = new double[outputs.size()];
+            for (int i = 0; i < outputs.size(); i++) {
+                String childDescription = family + " runtime child " + (i + 1)
+                        + " ('" + names.get(i) + "')";
+                childPositions[i] = mappedChildCommand(
+                        family + " runtime command",
+                        i,
+                        names.get(i),
+                        scales[i],
+                        biases[i],
+                        position);
+                if (domain == PositionChildDomain.SERVO_RAW) {
+                    requireClosedDomain(childPositions[i], 0.0, 1.0, childDescription);
+                } else {
+                    checkedMotorPositionTicks(childPositions[i], childDescription);
+                }
+            }
             last = position;
-            for (int i = 0; i < outputs.size(); i++)
-                outputs.get(i).setPosition(scales[i] * position + biases[i]);
+            for (int i = 0; i < outputs.size(); i++) {
+                outputs.get(i).setPosition(childPositions[i]);
+            }
         }
 
         @Override
@@ -2576,21 +3013,40 @@ public final class FtcActuators {
         private final List<VelocityOutput> outputs;
         private final double[] scales;
         private final double[] biases;
+        private final List<String> names;
+        private final String family;
         private double last;
 
-        private GroupedVelocityOutput(List<VelocityOutput> outputs, double[] scales, double[] biases) {
+        private GroupedVelocityOutput(List<VelocityOutput> outputs,
+                                      double[] scales,
+                                      double[] biases,
+                                      List<String> names,
+                                      String family) {
             this.outputs = new ArrayList<>(Objects.requireNonNull(outputs, "outputs"));
-            this.scales = Objects.requireNonNull(scales, "scales");
-            this.biases = Objects.requireNonNull(biases, "biases");
-            if (this.outputs.isEmpty() || this.outputs.size() != scales.length || scales.length != biases.length)
-                throw new IllegalArgumentException("outputs/scales/biases must be non-empty and matching");
+            this.scales = Objects.requireNonNull(scales, "scales").clone();
+            this.biases = Objects.requireNonNull(biases, "biases").clone();
+            this.names = new ArrayList<>(Objects.requireNonNull(names, "names"));
+            this.family = Objects.requireNonNull(family, "family");
+            requireMatchingChildShape(
+                    this.outputs.size(), this.scales, this.biases, this.names);
         }
 
         @Override
         public void setVelocity(double velocity) {
+            double[] childVelocities = new double[outputs.size()];
+            for (int i = 0; i < outputs.size(); i++) {
+                childVelocities[i] = mappedChildCommand(
+                        family + " runtime command",
+                        i,
+                        names.get(i),
+                        scales[i],
+                        biases[i],
+                        velocity);
+            }
             last = velocity;
-            for (int i = 0; i < outputs.size(); i++)
-                outputs.get(i).setVelocity(scales[i] * velocity + biases[i]);
+            for (int i = 0; i < outputs.size(); i++) {
+                outputs.get(i).setVelocity(childVelocities[i]);
+            }
         }
 
         @Override
@@ -2659,13 +3115,14 @@ public final class FtcActuators {
         return new ScalarSource() {
             @Override
             public double getAsDouble(edu.ftcphoenix.fw.core.time.LoopClock clock) {
-                double sum = 0.0;
-                int count = 0;
-                for (ScalarSource source : copy) {
-                    sum += source.getAsDouble(clock);
-                    count++;
+                double[] samples = new double[copy.size()];
+                for (int i = 0; i < copy.size(); i++) {
+                    samples[i] = copy.get(i).getAsDouble(clock);
+                    if (!Double.isFinite(samples[i])) {
+                        return Double.NaN;
+                    }
                 }
-                return count > 0 ? sum / count : Double.NaN;
+                return overflowSafeMean(samples);
             }
 
             @Override
@@ -2679,19 +3136,34 @@ public final class FtcActuators {
         if (sources == null || sources.isEmpty())
             throw new IllegalArgumentException("sources must not be empty");
         List<ScalarSource> copy = new ArrayList<>(sources);
+        double[] checkedScales = Objects.requireNonNull(scales, "scales").clone();
+        double[] checkedBiases = Objects.requireNonNull(biases, "biases").clone();
+        if (checkedScales.length != copy.size() || checkedBiases.length != copy.size()) {
+            throw new IllegalArgumentException("sources/scales/biases must have matching lengths");
+        }
         return new ScalarSource() {
             @Override
             public double getAsDouble(edu.ftcphoenix.fw.core.time.LoopClock clock) {
-                double sum = 0.0;
-                int count = 0;
+                double[] inverseMapped = new double[copy.size()];
                 for (int i = 0; i < copy.size(); i++) {
-                    if (Math.abs(scales[i]) < 1e-9) return Double.NaN;
+                    if (!Double.isFinite(checkedScales[i]) || checkedScales[i] == 0.0
+                            || !Double.isFinite(checkedBiases[i])) {
+                        return Double.NaN;
+                    }
                     double v = copy.get(i).getAsDouble(clock);
-                    if (!Double.isFinite(v)) return Double.NaN;
-                    sum += (v - biases[i]) / scales[i];
-                    count++;
+                    if (!Double.isFinite(v)) {
+                        return Double.NaN;
+                    }
+                    double withoutBias = v - checkedBiases[i];
+                    if (!Double.isFinite(withoutBias)) {
+                        return Double.NaN;
+                    }
+                    inverseMapped[i] = withoutBias / checkedScales[i];
+                    if (!Double.isFinite(inverseMapped[i])) {
+                        return Double.NaN;
+                    }
                 }
-                return count > 0 ? sum / count : Double.NaN;
+                return overflowSafeMean(inverseMapped);
             }
 
             @Override
@@ -2701,8 +3173,193 @@ public final class FtcActuators {
         }.memoized();
     }
 
+    private static double overflowSafeMean(double[] finiteValues) {
+        if (finiteValues == null || finiteValues.length == 0) {
+            return Double.NaN;
+        }
+        double maxMagnitude = 0.0;
+        for (double value : finiteValues) {
+            if (!Double.isFinite(value)) {
+                return Double.NaN;
+            }
+            maxMagnitude = Math.max(maxMagnitude, Math.abs(value));
+        }
+        if (maxMagnitude == 0.0) {
+            return 0.0;
+        }
+
+        double scaledSum = 0.0;
+        for (double value : finiteValues) {
+            scaledSum += value / maxMagnitude;
+        }
+        double mean = (scaledSum / finiteValues.length) * maxMagnitude;
+        return Double.isFinite(mean) ? mean : Double.NaN;
+    }
+
+    private static double[] childScales(List<MotorBuilder.Spec> specs) {
+        double[] values = new double[specs.size()];
+        for (int i = 0; i < specs.size(); i++) {
+            values[i] = specs.get(i).scale;
+        }
+        return values;
+    }
+
+    private static double[] childBiases(List<MotorBuilder.Spec> specs) {
+        double[] values = new double[specs.size()];
+        for (int i = 0; i < specs.size(); i++) {
+            values[i] = specs.get(i).bias;
+        }
+        return values;
+    }
+
+    private static List<String> childNames(List<MotorBuilder.Spec> specs) {
+        List<String> values = new ArrayList<>(specs.size());
+        for (MotorBuilder.Spec spec : specs) {
+            values.add(spec.name);
+        }
+        return values;
+    }
+
+    private static void requireMatchingChildShape(int outputCount,
+                                                  double[] scales,
+                                                  double[] biases,
+                                                  List<String> names) {
+        if (outputCount == 0 || scales.length != outputCount || biases.length != outputCount
+                || names.size() != outputCount) {
+            throw new IllegalArgumentException(
+                    "outputs/scales/biases/names must be non-empty and have matching lengths");
+        }
+    }
+
+    private static double requireFiniteChildMappingValue(double value,
+                                                         String operation,
+                                                         String argument) {
+        if (!Double.isFinite(value)) {
+            throw new IllegalArgumentException(operation + " " + argument
+                    + " must be finite, got " + value);
+        }
+        return value;
+    }
+
+    private static void requireFiniteChildSpec(MotorBuilder.Spec spec, String operation) {
+        if (!Double.isFinite(spec.scale) || !Double.isFinite(spec.bias)) {
+            throw new IllegalStateException(operation + " child '" + spec.name
+                    + "' requires finite scale and bias, got scale=" + spec.scale
+                    + ", bias=" + spec.bias);
+        }
+    }
+
+    private static double mappedChildCommand(String operation,
+                                             int childIndex,
+                                             MotorBuilder.Spec spec,
+                                             double sharedNative) {
+        return mappedChildCommand(
+                operation, childIndex, spec.name, spec.scale, spec.bias, sharedNative);
+    }
+
+    private static double mappedChildCommand(String operation,
+                                             int childIndex,
+                                             String childName,
+                                             double scale,
+                                             double bias,
+                                             double sharedNative) {
+        if (!Double.isFinite(sharedNative) || !Double.isFinite(scale) || !Double.isFinite(bias)) {
+            throw new IllegalStateException(operation + " child " + (childIndex + 1) + " ('"
+                    + childName + "') requires finite shared value, scale, and bias, got shared="
+                    + sharedNative + ", scale=" + scale + ", bias=" + bias);
+        }
+        double scaled = scale * sharedNative;
+        if (!Double.isFinite(scaled)) {
+            throw new IllegalStateException(operation + " child " + (childIndex + 1) + " ('"
+                    + childName + "') overflows scale * shared: scale=" + scale + ", shared="
+                    + sharedNative + ", result=" + scaled);
+        }
+        double child = scaled + bias;
+        if (!Double.isFinite(child)) {
+            throw new IllegalStateException(operation + " child " + (childIndex + 1) + " ('"
+                    + childName + "') overflows scaled + bias: scaled=" + scaled + ", bias="
+                    + bias + ", result=" + child);
+        }
+        return child;
+    }
+
+    private static void validateMappedPowerEndpoint(String operation,
+                                                    int childIndex,
+                                                    MotorBuilder.Spec spec,
+                                                    double sharedPower) {
+        double child = mappedChildCommand(operation, childIndex, spec, sharedPower);
+        requireClosedDomain(
+                child,
+                -1.0,
+                1.0,
+                operation + " child " + (childIndex + 1) + " ('" + spec.name
+                        + "') at shared endpoint " + sharedPower);
+    }
+
+    private static void requireClosedDomain(double value,
+                                            double min,
+                                            double max,
+                                            String description) {
+        if (!Double.isFinite(value) || value < min || value > max) {
+            throw new IllegalStateException(description + " must be finite and inside [" + min
+                    + ", " + max + "], got " + value);
+        }
+    }
+
+    private static int checkedMotorPositionTicks(double position, String description) {
+        if (!Double.isFinite(position)) {
+            throw new IllegalStateException(description
+                    + " must be a finite native motor position, got " + position);
+        }
+        long rounded = Math.round(position);
+        if (rounded < Integer.MIN_VALUE || rounded > Integer.MAX_VALUE) {
+            throw new IllegalStateException(description + " rounds to " + rounded
+                    + " ticks outside the FTC signed 32-bit target domain ["
+                    + Integer.MIN_VALUE + ", " + Integer.MAX_VALUE + "]");
+        }
+        return (int) rounded;
+    }
+
+    private static double checkedPositionMap(double plantPosition,
+                                             double plantReference,
+                                             double nativeReference,
+                                             double nativePerPlantUnit,
+                                             String description) {
+        double plantDelta = plantPosition - plantReference;
+        if (!Double.isFinite(plantDelta)) {
+            throw new IllegalStateException(description + " overflows plantPosition - "
+                    + "plantReference: plantPosition=" + plantPosition + ", plantReference="
+                    + plantReference + ", result=" + plantDelta);
+        }
+        double scaledDelta = nativePerPlantUnit * plantDelta;
+        if (!Double.isFinite(scaledDelta)) {
+            throw new IllegalStateException(description + " overflows native scale * plant delta: "
+                    + "scale=" + nativePerPlantUnit + ", delta=" + plantDelta + ", result="
+                    + scaledDelta);
+        }
+        double nativePosition = nativeReference + scaledDelta;
+        if (!Double.isFinite(nativePosition)) {
+            throw new IllegalStateException(description + " overflows native reference + scaled "
+                    + "delta: nativeReference=" + nativeReference + ", scaledDelta=" + scaledDelta
+                    + ", result=" + nativePosition);
+        }
+        return nativePosition;
+    }
+
+    private static double requireFiniteVelocityEndpoint(String description,
+                                                        double plantVelocity,
+                                                        double nativePerPlantUnit) {
+        double nativeVelocity = plantVelocity * nativePerPlantUnit;
+        if (!Double.isFinite(nativeVelocity)) {
+            throw new IllegalArgumentException(description + " " + plantVelocity
+                    + " overflows plantVelocity * nativePerPlantUnit with scale "
+                    + nativePerPlantUnit + ", producing " + nativeVelocity);
+        }
+        return nativeVelocity;
+    }
+
     private static double requireFiniteNonZero(double value, String name) {
-        if (!Double.isFinite(value) || Math.abs(value) < 1e-12)
+        if (!Double.isFinite(value) || value == 0.0)
             throw new IllegalArgumentException(name + " must be finite and non-zero");
         return value;
     }

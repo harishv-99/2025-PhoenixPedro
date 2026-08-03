@@ -178,6 +178,25 @@ control strategy already chosen in the staged builder, so student robot code sho
 standard Plants with manual `setMode(...)` calls. Each command path asserting its own mode supports
 an orderly handoff; it does not make simultaneous writers safe.
 
+### FTC numeric-domain ownership
+
+The FTC boundary also owns the last representation check that a hardware-neutral Plant cannot
+know:
+
+* a standard-Servo command must be finite and its raw domain is `[0.0, 1.0]`;
+* a motor-velocity command must be finite, but Phoenix does not invent a controller-independent
+  maximum ticks/second;
+* a motor-position command must be finite, round once to a `long`, fit inside the SDK's signed
+  integer target-position domain, and only then narrow to `int`; and
+* framework-derived motor/CR-servo power children must be finite and inside normalized
+  `[-1.0, +1.0]` before group fan-out.
+
+These checks happen before the cache, mode, target, or power effects owned by the corresponding raw
+adapter. The standard Servo adapter still clamps a finite direct expert command into `[0.0, 1.0]`,
+and the raw power adapters retain their finite saturation defense. Those clamps are last-resort
+boundary protection, not a way for an accepted Plant recipe to hide an invalid map. Raw
+`PowerOutput` write/cache/cleanup behavior after an adapter failure is a separate contract.
+
 ---
 
 ## 2. Behavior sources vs Plant target guards
@@ -286,6 +305,20 @@ Examples:
 .plantPositionMapsToNative(0.0, ARM_ZERO_TICKS) // plant position 0 maps to native encoder tick offset
 .devicePositionToleranceTicks(12)     // explicitly native/controller ticks
 ```
+
+The complete command pipeline is:
+
+```text
+Plant target
+    -> shared Plant-to-native map
+    -> childNative = childScale * sharedNative + childBias
+    -> FTC adapter
+```
+
+The hardware-neutral mapping engine owns finite arithmetic and reference state. `FtcActuators`
+adds the selected FTC family, control-path, and raw-domain facts. This is why
+`Plants.fromOutputs()` can validate overflow but cannot assume that an arbitrary `PositionOutput`
+uses the standard-Servo `[0.0, 1.0]` or FTC integer-tick domain.
 
 Every explicitly supplied position-reference component must be finite. These values define a
 coordinate anchor rather than a target request, so the plant-unit reference need not lie inside the
@@ -527,6 +560,13 @@ Periodic equivalence alone never wraps an exact target automatically.
 After periodicity and bounds, the builder asks how the public Plant coordinate maps to the selected
 native coordinate.
 
+Every explicit mapping coefficient or endpoint must be finite. An invalid numeric answer throws
+`IllegalArgumentException` before it changes the retained recipe, so a retained stage can retry
+with a valid value. A mapping that is numerically finite by itself but incompatible with the later
+actuator/control branch throws `IllegalStateException` when the staged recipe first has enough
+information to decide. Target selection and `build()` repeat the complete preflight before hardware
+resolution so an older retained builder alias cannot bypass it.
+
 ### `nativeUnits()`
 
 Use this when plant units are native units:
@@ -564,13 +604,23 @@ The two arguments are **native values**, not plant values:
 * `nativeAtPlantMin` = the native coordinate at the plant minimum from `bounded(min, max)`
 * `nativeAtPlantMax` = the native coordinate at the plant maximum from `bounded(min, max)`
 
-With declared plant bounds `plantMin` and `plantMax`, Phoenix builds the affine map:
+With declared plant bounds `plantMin` and `plantMax`, Phoenix first computes the scale, then uses
+the same multiply-before-add order as the runtime map:
 
 ```text
+nativePerPlantUnit = (nativeAtPlantMax - nativeAtPlantMin)
+                   / (plantMax - plantMin)
+
 native = nativeAtPlantMin
-       + ((plant - plantMin) / (plantMax - plantMin))
-         * (nativeAtPlantMax - nativeAtPlantMin)
+       + nativePerPlantUnit * (plant - plantMin)
 ```
+
+For every fully known static bounded affine map, Phoenix evaluates the same runtime arithmetic at
+both inclusive Plant endpoints before build. Affinity makes those endpoint images a complete
+numeric proof, including a negative scale or reversed native endpoints. The check is exact: a
+one-ULP raw-domain overshoot is rejected rather than rounded or clamped into place. A mapping whose
+native offset awaits `assumeCurrentPositionIs(...)` or `needsReference(...)` instead validates the
+candidate core map at reference commit and checks the FTC raw domain before each realized write.
 
 So for a servo declared as `bounded(-45.0, 90.0)`, calling `rangeMapsToNative(0.22, 0.76)` means
 “plant `-45.0` maps to raw servo `0.22`, and plant `90.0` maps to raw servo `0.76`.”
@@ -609,6 +659,22 @@ void update(LoopClock clock) {
 
 `rangeMapsToNative(...)` is intentionally not available after `unbounded()` because there is no
 finite plant range to map from.
+
+`unbounded()` still supports `nativeUnits()` and `scaleToNative(...)`; no finite scale can prove a
+safe result for every possible finite `double`. The hardware-neutral Plant therefore computes each
+actual Plant-to-native conversion into a temporary and requires a finite result before changing the
+applied target or calling the output. A dynamic position reference similarly validates its complete
+candidate core map before committing the reference or public-measurement state. The FTC output then
+precomputes every final child command and native-domain check before writing the first child; this
+later layer does not claim a transactional Plant-state rollback. Inverse child, aggregate, and final
+Plant-unit feedback arithmetic must finish finite; otherwise measurement is unavailable and
+`atTarget()` is false.
+
+A runtime forward-mapping overflow throws an actionable `IllegalStateException` before submitting
+the invalid command, then best-effort invokes the output's natural stop. If that cleanup returns
+normally, the Plant exposes its ordinary stopped state. If cleanup itself fails, that failure is
+suppressed under the original mapping failure and prior applied/status/resolution state is retained.
+This deterministic mapping policy does not claim that arbitrary SDK writes are transactional.
 
 ---
 
@@ -746,8 +812,10 @@ the cue cycle and preserves the nearest equivalent unwrapped position from that 
 from the prior Plant update's cached measurement. If a tray has period `360.0` degrees and the
 current estimate is `1081.5`, an index mark for reference `0.0` corrects the estimate to `1080.0`,
 not all the way back to zero. When the current plant estimate is finite, a non-finite final
-nearest-equivalent result fails without committing the new reference. General plant/native affine
-overflow remains a separate mapping-domain concern.
+nearest-equivalent result fails without committing the new reference. The same atomic rule covers
+the complete candidate affine map: every bounded endpoint image and derived public measurement
+must remain finite before the new reference becomes visible. A later unbounded core
+Plant-to-native conversion is checked individually before applied-target commit or output.
 
 These checks establish a software numeric contract only. They do not prove the mechanism is at the
 declared physical pose, that plant/native scale and sign are correct, that the cue is repeatable, or
@@ -797,6 +865,14 @@ two endpoints to raw servo fractions. Neither mapping choice decides periodicity
 linear physical linkage. For example,
 `.nonPeriodic().bounded(0.20, 0.80).nativeUnits()` expresses software-limited travel directly in raw
 servo fractions; no Servo-only shortcut changes what any of those three answers means.
+
+Before hardware lookup, the completed Servo recipe maps both Plant bounds through the shared map
+and every configured child transform. Every final raw endpoint must be finite and inside inclusive
+`[0.0, 1.0]`. Thus `.bounded(-1.0, 1.0).nativeUnits()` and
+`.rangeMapsToNative(-0.01, 1.01)` are configuration errors, while reversed endpoints and a valid
+mirror such as child scale `-1.0`, bias `1.0` remain legal. This software-domain proof says nothing
+about horn geometry, linkage linearity, collision, or safe physical travel; those remain mechanism
+calibration facts.
 
 ---
 
@@ -1164,19 +1240,106 @@ logic, not in the Plant's legal target range.
 
 ---
 
-## 14. Multi-motor groups
+## 14. Grouped actuator child mappings
 
-For grouped device-managed Plants, Phoenix supports per-child `scale(...)` / `bias(...)` and computes
-one aggregate measurement in group units.
+The staged hardware step has one child-transform grammar. The first actuator establishes the shared
+group coordinate. After each `andMotor(...)` or `andServo(...)`, `scale(...)` and a supported
+`bias(...)` apply to that most recently added child; `andCrServo(...)` exposes scale only. After the
+Plant's shared mapping, Phoenix computes:
 
-For grouped **regulated** Plants, the staged builder intentionally requires default per-child scaling
-and bias. If you need a more advanced grouped regulated mechanism, build one deliberate custom
-group-output adapter, then enter the same neutral grammar with
+```text
+childNative = childScale * sharedNative + childBias
+```
+
+Scale is a dimensionless static ratio. Bias is an additive native-unit position alignment; it is
+not a general “make this motor run a little faster” knob. Every supplied scale or retained bias must
+be finite. The later target/control branch applies the narrower rule it owns:
+
+| Group branch | Supported child transform |
+| --- | --- |
+| Motor or CR-servo direct power | finite scale, zero bias, complete `[-1.0, +1.0]` image |
+| Device-managed motor velocity | finite nonzero scale, zero bias, finite command; no invented speed ceiling |
+| Device-managed motor position | finite nonzero scale and finite bias; every realized rounded tick must fit `int` |
+| Standard-Servo position | finite scale and bias with complete raw image inside `[0.0, 1.0]` |
+| Grouped framework-regulated motor/CR-servo path | exact identity scale and zero bias |
+
+For every fully known bounded recipe, the shared map and every child endpoint are preflighted before
+hardware resolution. A runtime-dependent reference gets core candidate-map validation when it is
+established and a final FTC-domain check before each realized write. During operation, Phoenix
+computes and validates every child command into temporaries before writing the first child. That
+prevents a predictable later-child mapping error from moving an earlier child, but it does not make
+sequential SDK writes atomic if an actual device call fails.
+
+### Opposed flywheels with a fixed speed ratio
+
+Use `Direction` for opposed physical mounting and a positive child scale for a proven proportional
+speed ratio:
+
+```java
+this.flywheels = FtcActuators.plant(hardwareMap)
+        .motor("leftFlywheel", Direction.FORWARD)
+        .andMotor("rightFlywheel", Direction.REVERSE) // opposed mounting
+        .scale(0.96)                                   // positive speed ratio
+        .velocity()
+        .deviceManagedWithDefaults()
+        .bounded(0.0, MAX_VELOCITY_NATIVE)
+        .nativeUnits()
+        .velocityTolerance(VELOCITY_TOLERANCE_NATIVE)
+        .targetFromNewCommand(0.0)
+        .build();
+```
+
+A shared target of `2500.0` commands the reference child to `2500.0` and the scaled child to
+`2400.0`. An active target of exact zero passes through the scale and submits zero to both children.
+Lifecycle `stop()` invokes each child's natural stop directly. Those paths agree on zero actuation,
+but they need not have the same FTC mode acquisition or lifecycle sequence; for example, an active
+command may assert its device-managed mode while a lifecycle stop need not reacquire it.
+
+Grouped device-managed feedback inverse-maps each child's sample into shared group units and reports
+their overflow-safe arithmetic mean. Consequently, grouped `atTarget()` compares that aggregate
+with the one shared target; it is not proof that every motor is independently inside tolerance.
+Opposing child errors can cancel in the aggregate.
+
+If robot testing proves a constant additive or nonlinear trajectory trim, or readiness must prove
+each wheel independently, that mechanism has two commanded degrees of freedom rather than one
+scalar group target. Keep two private one-motor Plants inside the shooter subsystem and expose one
+semantic paired command:
+
+```java
+void setFlywheelVelocity(double baseVelocityNative,
+                         double trajectoryTrimVelocityNative) {
+    double left = baseVelocityNative == 0.0
+            ? 0.0 : baseVelocityNative + trajectoryTrimVelocityNative;
+    double right = baseVelocityNative == 0.0
+            ? 0.0 : baseVelocityNative - trajectoryTrimVelocityNative;
+
+    requireValidFlywheelPair(left, right); // validate both before changing either command
+    leftFlywheel.commandTarget().set(left);
+    rightFlywheel.commandTarget().set(right);
+}
+
+boolean flywheelsAtTarget() {
+    return leftFlywheel.atTarget() && rightFlywheel.atTarget();
+}
+```
+
+The subsystem constructs both Plants through the same `FtcActuators` grammar, owns their update and
+stop order, and does not expose them as peer dependencies to controls. Do not hide a live trim
+source inside a custom scalar output: that would give one scalar Plant a second unreported command.
+
+For a genuinely custom grouped **regulated** actuator with one truthful scalar target, an advanced
+adapter may still enter the neutral grammar through
 `Plants.fromOutputs().regulatedPosition(groupOutput, feedback, regulator)` or
-`Plants.fromOutputs().regulatedVelocity(groupOutput, feedback, regulator)`. That advanced adapter
-owns its complete group lifecycle and failure contract. Independently combining public
-`FtcHardware.motorPower(...)` outputs does not receive the standard builder's all-child mode
-preflight, so do not treat sequential child writes as an equivalent safe construction path.
+`Plants.fromOutputs().regulatedVelocity(groupOutput, feedback, regulator)`. That adapter owns its
+complete group lifecycle and failure contract. Independently combining public
+`FtcHardware.motorPower(...)` outputs does not receive the standard builder's all-child preflight,
+so sequential child writes are not an equivalent safe construction path.
 
-That restriction keeps the common builder path simple and makes ambiguous regulated group semantics
-fail fast with an actionable error.
+### Mapping failures and retry
+
+An invalid numeric scale/bias answer is rejected before mutation, so a retained builder stage may
+retry. An incompatible branch, such as a nonzero motor bias followed by `velocity()`, fails before
+fresh hardware effects once the complete recipe is known. Diagnostics identify the operation,
+actuator family and child, relevant endpoint or runtime value, transform, computed result, and
+required domain. Valid negative position scales, reversed endpoint maps, signed zero, exact domain
+boundaries, and later valid retry remain supported; configuration is never silently clamped.
