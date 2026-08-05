@@ -641,8 +641,10 @@ The builder is staged on purpose:
 2. **Pick target domain**: `power()`, `velocity()`, `position()`
    * Power has the fixed normalized range `[-1, +1]`; out-of-range requests clamp before output.
      `CLAMPED_TO_RANGE` is the active status unless a later guard supplies a more specific status.
-   * Velocity then asks loop ownership, bounds, plant/native units, and the required plant-unit
-     completion tolerance.
+   * Velocity asks loop ownership: `deviceManagedWithDefaults()`, the one-answer
+     `deviceManaged().velocityPidf(...)` tuning branch, or `regulated()` followed by one direct
+     feedback answer and `regulator(...)`. It then asks bounds, plant/native units, and the required
+     plant-unit completion tolerance.
 3. **For position Plants, answer guided position questions**:
    * motor position control: `deviceManagedWithDefaults()`, `deviceManaged()...doneDeviceManaged()`, or `regulated()` followed by one direct feedback answer and `regulator(...)`
    * periodicity: `nonPeriodic()` or `periodic(period)`
@@ -674,6 +676,26 @@ Ordinary robot code should normally choose `deviceManagedWithDefaults()` and ans
 required Plant tolerance. Phoenix does not use `DcMotor.isBusy()` for Plant completion, and the
 public FTC contract does not justify claiming that the controller stops correcting at its configured
 target-tolerance boundary.
+
+FTC device-managed tuning values are configuration answers, not runtime requests to saturate. The
+defaults shortcut calls no optional controller P, PIDF, or target-tolerance setter. Motor-position
+maximum power remains `1.0` unless the explicit branch answers `maxPower(...)`. That explicit
+motor-position tuning branch is a nonempty,
+multi-setting section: each of `maxPower(...)`, `outerPositionP(...)`,
+`innerVelocityPidf(...)`, and `devicePositionToleranceTicks(...)` may be answered once, and
+`doneDeviceManaged()` closes the section. Motor velocity has only the complete
+`velocityPidf(...)` answer, so that method advances directly to bounds without a `done...()` step.
+
+Every FTC device-managed P, I, D, or F coefficient must be finite and inside the inclusive,
+symmetric no-saturation domain of the pinned FTC SDK 11.1 REV public conversion:
+`[-Integer.MAX_VALUE / 65536.0, +Integer.MAX_VALUE / 65536.0]`. This is a representation boundary,
+not the complete raw wire-field range or a claim that any accepted gain is useful or safe. Negative
+coefficients remain legal, and accepted values remain subject to the controller's ordinary 1/65536
+quantization. Position `maxPower(...)` must be finite and in `[0.0, 1.0]`; the native controller
+answer `devicePositionToleranceTicks(...)` must be in `[0, 65535]`. Invalid configuration is
+rejected rather than clamped. Validate each answer before mutation and revalidate the complete,
+properly closed recipe before hardware lookup or configuration effects so retained-stage aliases
+cannot bypass the contract.
 
 Configured hardware names keep FTC's own identity semantics: surrounding whitespace is trimmed for
 lookup and comparison, while case remains significant. Within one motor, standard-servo, or

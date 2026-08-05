@@ -235,8 +235,7 @@ public final class FtcActuatorGroupIdentityValidationTest {
                 .motor("left", Direction.FORWARD);
         Plants.VelocityBoundsStep velocity = retainedVelocity.velocity()
                 .deviceManaged()
-                .velocityPidf(1.0, 2.0, 3.0, 4.0)
-                .doneDeviceManaged();
+                .velocityPidf(1.0, 2.0, 3.0, 4.0);
 
         assertThrows(IllegalArgumentException.class,
                 () -> retainedVelocity.andMotor(" left ", Direction.REVERSE));

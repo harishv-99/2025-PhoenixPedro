@@ -505,7 +505,6 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
                                 cfg.flywheelVelKi,
                                 cfg.flywheelVelKd,
                                 cfg.flywheelVelKf)
-                        .doneDeviceManaged()
                         .bounded(0.0, cfg.velocityMax)
                         .nativeUnits()
                         .velocityTolerance(cfg.velocityToleranceNative)
