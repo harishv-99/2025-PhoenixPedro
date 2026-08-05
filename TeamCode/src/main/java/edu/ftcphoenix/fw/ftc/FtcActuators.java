@@ -56,7 +56,10 @@ import edu.ftcphoenix.fw.core.source.ScalarSource;
  * {@code [-1.0, +1.0]}; device-managed velocity must preserve zero; and device-managed motor
  * position must round into FTC's signed 32-bit tick domain. Grouped outputs compute and validate
  * every child command before changing their group cache or writing any child. Inverse-mapped
- * grouped feedback returns {@link Double#NaN} if any child conversion or aggregate is non-finite.</p>
+ * grouped feedback returns {@link Double#NaN} if any child conversion or aggregate is non-finite.
+ * A motor-position child transform describes only the native position coordinate; temporary
+ * calibration-search power is a separate normalized command and fans out identically through each
+ * configured motor direction.</p>
  *
  * <h2>Grouped hardware names</h2>
  *
@@ -210,17 +213,20 @@ public final class FtcActuators {
 
     /**
      * Group-aware motor builder step that exposes affine configuration for the most recently added
-     * child: {@code childNative = scale * sharedNative + bias}.
+     * child's normal native coordinate: {@code childNative = scale * sharedNative + bias}.
      *
      * <p>Both answers must be finite and are retained only after validation. The completed branch
      * then validates the full composed child command: direct power and device-managed velocity
      * require zero bias, regulated control requires exact identity, and device-managed position
-     * permits finite bias for encoder/linkage alignment subject to the FTC tick domain.</p>
+     * permits finite bias for encoder/linkage alignment subject to the FTC tick domain. A
+     * device-managed position Plant's temporary raw-power calibration search does not apply this
+     * position transform.</p>
      */
     public interface MotorGroupAddedStep extends MotorSingleStep {
         /**
          * Set the dimensionless scale applied to the most recently added motor's shared native
-         * command.
+         * position or velocity coordinate, or to its direct-power command when that branch is
+         * selected. It does not scale temporary motor-position calibration-search power.
          *
          * @throws IllegalArgumentException if {@code scale} is not finite; the prior value remains
          * unchanged
@@ -228,7 +234,8 @@ public final class FtcActuators {
         MotorGroupAddedStep scale(double scale);
 
         /**
-         * Set the additive native-unit bias applied to the most recently added motor.
+         * Set the additive native-unit bias applied to the most recently added motor's normal
+         * native position coordinate.
          * A finite nonzero bias is meaningful only for device-managed position alignment; later
          * power, velocity, and regulated branch answers reject it before hardware resolution.
          *
@@ -347,8 +354,10 @@ public final class FtcActuators {
      * The mechanism or subsystem remains the sole Plant heartbeat owner, and its normal downstream
      * {@link Plant#update(edu.ftcphoenix.fw.core.time.LoopClock)} call is the sole search-command
      * writer. Search power must be finite in the inclusive normalized {@code [-1.0, +1.0]} range
-     * and is rejected before acquisition rather than clamped; the mechanism owner still chooses
-     * and physically validates a safe magnitude and direction.</p>
+     * and is rejected before acquisition rather than clamped. For a device-managed motor group,
+     * the shared search command is submitted identically to every child through its configured
+     * {@link Direction}; native position scale/bias is not a raw-power policy. The mechanism owner
+     * still chooses and physically validates a safe magnitude and direction.</p>
      */
     public interface MotorPositionControlStep {
         /**
@@ -1264,14 +1273,22 @@ public final class FtcActuators {
             return new MotorPositionBuilder(this);
         }
 
+        /**
+         * Build the exact shared-power fan-out used by regulation and position calibration search.
+         * Native position/velocity child mappings do not belong to this normalized-power channel.
+         */
         private PowerOutput groupedMotorPower() {
             if (specs.size() == 1) {
                 Spec spec = specs.get(0);
                 return FtcHardware.motorPower(hw, spec.name, spec.direction);
             }
-            return groupedMotorPowerOutput(groupedFtcMotorPowers());
+            return new IdentityGroupedPowerOutput(
+                    groupedFtcMotorPowers(),
+                    childNames(specs),
+                    "motor power");
         }
 
+        /** Build the child-mapped normalized-power fan-out used only by direct-power Plants. */
         private PowerOutput groupedMotorPowerWithMappings() {
             if (specs.size() == 1) {
                 Spec spec = specs.get(0);
@@ -2891,6 +2908,58 @@ public final class FtcActuators {
         }
     }
 
+    /**
+     * Exact shared-power fan-out. Every child is validated before any write, and the original
+     * value is copied directly so identity includes the signed-zero bit pattern.
+     */
+    private static final class IdentityGroupedPowerOutput implements PowerOutput {
+        private final List<PowerOutput> outputs;
+        private final List<String> names;
+        private final String family;
+        private double last;
+
+        private IdentityGroupedPowerOutput(List<PowerOutput> outputs,
+                                           List<String> names,
+                                           String family) {
+            this.outputs = new ArrayList<>(Objects.requireNonNull(outputs, "outputs"));
+            this.names = new ArrayList<>(Objects.requireNonNull(names, "names"));
+            this.family = Objects.requireNonNull(family, "family");
+            if (this.outputs.isEmpty() || this.outputs.size() != this.names.size()) {
+                throw new IllegalArgumentException(
+                        "Grouped identity power output children must be non-empty and match names");
+            }
+        }
+
+        @Override
+        public void setPower(double power) {
+            double[] childPowers = new double[outputs.size()];
+            for (int i = 0; i < outputs.size(); i++) {
+                childPowers[i] = power;
+                requireClosedDomain(
+                        childPowers[i],
+                        -1.0,
+                        1.0,
+                        family + " runtime child " + (i + 1) + " ('" + names.get(i) + "')");
+            }
+            last = power;
+            for (int i = 0; i < outputs.size(); i++) {
+                outputs.get(i).setPower(childPowers[i]);
+            }
+        }
+
+        @Override
+        public double getCommandedPower() {
+            return last;
+        }
+
+        @Override
+        public void stop() {
+            for (PowerOutput output : outputs) output.stop();
+            last = 0.0;
+        }
+    }
+
+    /** Child-mapped fan-out for direct normalized-power Plants. */
     private static final class GroupedPowerOutput implements PowerOutput {
         private final List<PowerOutput> outputs;
         private final double[] scales;
