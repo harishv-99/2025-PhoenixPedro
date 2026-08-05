@@ -85,7 +85,9 @@ independent optional tuning values before returning.
 Completed in the third builder cleanup pass. Motor velocity now follows the same guided shape as
 position, but without position-only concepts like periodicity, reference, and homing:
 
-1. choose velocity loop ownership (`deviceManagedWithDefaults()`, `deviceManaged()...doneDeviceManaged()`, or `regulated()` followed by one direct feedback answer and `regulator(...)`)
+1. choose velocity loop ownership (`deviceManagedWithDefaults()`, the one-answer
+   `deviceManaged().velocityPidf(...)` tuning branch, or `regulated()` followed by one direct
+   feedback answer and `regulator(...)`)
 2. choose legal velocity target bounds (`bounded(...)` or `unbounded()`)
 3. choose plant/native velocity mapping (`nativeUnits()` or `scaleToNative(...)`)
 4. answer the required plant-unit completion question exactly once with `velocityTolerance(...)`
@@ -100,6 +102,22 @@ Velocity uses a zero-preserving mapping only; no `rangeMapsToNative(...)` is exp
 As with the rest of the plant API, `bounded(...)`, the required tolerance, and resolved target values remain
 in plant units unless a method name explicitly calls out native/controller units. No hidden or
 native-unit tolerance shortcut remains.
+
+The controller-domain follow-up removed velocity `doneDeviceManaged()` because `velocityPidf(...)`
+is the branch's sole real answer and now advances directly to bounds. Position retains
+`deviceManaged()...doneDeviceManaged()` because its four independent optional settings form a real
+multi-setting section. That section must be nonempty, each knob is answered at most once, and
+`doneDeviceManaged()` closes it against repeated close or mutation through retained aliases. The
+defaults shortcut remains distinct and performs no optional controller setter.
+
+Every device-managed P, I, D, or F answer is finite and in the inclusive symmetric pinned FTC SDK
+11.1 REV public-conversion domain
+`[-Integer.MAX_VALUE / 65536.0, +Integer.MAX_VALUE / 65536.0]`. Negative coefficients remain legal
+and 1/65536 quantization remains; this is a no-saturation representation boundary, not the full raw
+field or a safe-gain recommendation. Position `maxPower(...)` is finite in `[0.0, 1.0]`, and
+`devicePositionToleranceTicks(...)` is in `[0, 65535]`. Invalid answers are rejected before recipe
+mutation, never clamped, and the complete branch is revalidated before hardware lookup or
+configuration effects.
 
 ### `actuation/Plants.fromOutputs()` shared Plant grammar
 

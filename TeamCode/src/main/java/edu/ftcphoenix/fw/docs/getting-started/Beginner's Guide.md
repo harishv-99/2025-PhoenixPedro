@@ -310,6 +310,9 @@ The builder asks a short sequence of guided questions:
       unless a later safety guard has a more specific active status.
     * `.velocity().deviceManagedWithDefaults().bounded(...).nativeUnits().velocityTolerance(...)`
       – motor velocity control with an explicit completion band in plant velocity units.
+      Use `.velocity().deviceManaged().velocityPidf(kP, kI, kD, kF).bounded(...)` only when you
+      deliberately need FTC controller PIDF tuning; the single complete PIDF answer advances
+      directly to bounds.
     * `.position()` – position control.
 
 3. **For position Plants, answer guided position questions**:
@@ -439,6 +442,14 @@ PositionPlant arm = FtcActuators.plant(hardwareMap)
         .build();
 ```
 
+This defaults shortcut performs no optional FTC controller P, PIDF, or target-tolerance setter call
+and uses position maximum power `1.0`. When an FTC controller override is genuinely needed, motor
+position instead uses the nonempty multi-setting
+`.deviceManaged() ... .doneDeviceManaged()` branch. Each optional position setting may be answered
+once, and `doneDeviceManaged()` closes that branch. Device-managed motor velocity has only one
+tuning answer, so `.deviceManaged().velocityPidf(kP, kI, kD, kF)` advances directly to bounds and
+does not use `doneDeviceManaged()`.
+
 Switch to a regulated path when you need an explicit feedback source or a custom regulator:
 
 ```java
@@ -515,6 +526,23 @@ Related device-managed tuning defaults:
 
 * `maxPower(...)` default: **1.0**
 * `outerPositionP(...)`, `innerVelocityPidf(...)`, and `velocityPidf(...)`: **unchanged unless set**
+
+Explicit controller settings are rejected, not clamped, when they fall outside their configuration
+domains:
+
+* every FTC device-managed P, I, D, or F value must be finite and inside the inclusive symmetric
+  pinned FTC SDK 11.1 REV public-conversion domain
+  `[-Integer.MAX_VALUE / 65536.0, +Integer.MAX_VALUE / 65536.0]` (approximately
+  `[-32767.99998474121, +32767.99998474121]`)
+* `maxPower(...)` must be finite and inside `[0.0, 1.0]`
+* `devicePositionToleranceTicks(...)` must be inside `[0, 65535]`
+
+The coefficient bound is a conversion/representation limit, not a safe-gain recommendation or the
+complete raw controller field. Negative coefficients remain allowed, and the controller's ordinary
+1/65536 quantization still applies. Phoenix validates each answer before changing the recipe and
+checks the finished branch again before hardware lookup or configuration. A bad first answer can be
+corrected, but a repeated setting, an empty position tuning section, or a change after
+`doneDeviceManaged()` is rejected.
 
 That separation keeps the common path simple: ordinary motor-position code normally uses
 `deviceManagedWithDefaults()`, chooses the required Plant tolerance, and reaches for the

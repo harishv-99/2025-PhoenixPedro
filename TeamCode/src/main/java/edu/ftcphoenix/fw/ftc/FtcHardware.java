@@ -479,9 +479,11 @@ public final class FtcHardware {
      * @param hw        FTC hardware map used to look up the motor
      * @param name      configured hardware name of the {@link DcMotorEx}
      * @param direction logical forward direction for Phoenix commands
-     * @param maxPower  power Phoenix reapplies after each new target command; typical FTC values are
-     *                  in {@code [0.0, 1.0]}
+     * @param maxPower  finite normalized power Phoenix reapplies after each new target command;
+     *                  must be in the inclusive {@code [0.0, 1.0]} domain
      * @return command-only position output backed by {@code RUN_TO_POSITION}
+     * @throws IllegalArgumentException if {@code maxPower} is non-finite or outside
+     * {@code [0.0, 1.0]}; validation finishes before hardware lookup or direction configuration
      */
     public static PositionOutput motorPosition(HardwareMap hw,
                                                String name,
@@ -490,6 +492,8 @@ public final class FtcHardware {
         requireHardwareMap(hw);
         requireName(name);
         requireDirection(direction);
+        FtcControllerConfigurationValidation.requireRunToPositionMaxPower(
+                maxPower, "FtcHardware.motorPosition(...)");
         return motorPosition(hw.get(DcMotorEx.class, name), direction, maxPower);
     }
 
@@ -507,11 +511,12 @@ public final class FtcHardware {
      *
      * @param motor     FTC motor instance to command
      * @param direction logical forward direction for Phoenix commands
-     * @param maxPower  power Phoenix reapplies after each new target command; values are clamped to
-     *                  {@code [0.0, 1.0]}
+     * @param maxPower  finite normalized power Phoenix reapplies after each new target command;
+     *                  must be in the inclusive {@code [0.0, 1.0]} domain
      * @return command-only position output backed by {@code RUN_TO_POSITION}
-     * @throws IllegalArgumentException if a commanded position is non-finite or rounds outside the
-     * FTC signed 32-bit target-position domain
+     * @throws IllegalArgumentException if {@code maxPower} is non-finite or outside
+     * {@code [0.0, 1.0]}, or if a commanded position is non-finite or rounds outside the FTC signed
+     * 32-bit target-position domain; construction validates power before direction configuration
      */
     public static PositionOutput motorPosition(DcMotorEx motor,
                                                Direction direction,
@@ -520,7 +525,9 @@ public final class FtcHardware {
             throw new IllegalArgumentException("motor is required");
         }
         requireDirection(direction);
-        final double power = MathUtil.clampAbs(maxPower, 1.0);
+        final double power =
+                FtcControllerConfigurationValidation.requireRunToPositionMaxPower(
+                        maxPower, "FtcHardware.motorPosition(...)");
         motor.setDirection(direction == Direction.REVERSE
                 ? DcMotorSimple.Direction.REVERSE
                 : DcMotorSimple.Direction.FORWARD);

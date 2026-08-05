@@ -280,18 +280,25 @@ public final class FtcActuators {
     }
 
     /**
-     * Optional tuning branch for FTC device-managed motor velocity control.
+     * Required one-answer tuning branch for FTC device-managed motor velocity control.
      */
     public interface MotorDeviceManagedVelocityStep {
         /**
-         * Override the FTC device-managed velocity PIDF coefficients.
+         * Override the FTC device-managed velocity PIDF coefficients and continue directly to
+         * target bounds.
+         *
+         * <p>Every coefficient must be finite and inside the inclusive, symmetric pinned FTC SDK
+         * 11.1 REV public conversion domain
+         * {@code [-Integer.MAX_VALUE / 65536.0, +Integer.MAX_VALUE / 65536.0]}. Negative
+         * coefficients remain representable; this structural domain is not a tuning
+         * recommendation.</p>
+         *
+         * @throws IllegalArgumentException if any coefficient is non-finite or outside the
+         * supported controller conversion domain; all four prior values remain unchanged
+         * @throws IllegalStateException if this recipe did not enter through
+         * {@link MotorVelocityControlStep#deviceManaged()}, or if this answer was already supplied
          */
-        MotorDeviceManagedVelocityStep velocityPidf(double p, double i, double d, double f);
-
-        /**
-         * Leave the device-managed velocity tuning branch and continue to target bounds.
-         */
-        Plants.VelocityBoundsStep doneDeviceManaged();
+        Plants.VelocityBoundsStep velocityPidf(double p, double i, double d, double f);
     }
 
     /**
@@ -388,31 +395,64 @@ public final class FtcActuators {
     }
 
     /**
-     * Optional tuning branch for FTC device-managed motor position control.
+     * Nonempty tuning branch for FTC device-managed motor position control. Each individual
+     * setting is optional, but at least one must be answered before the branch is closed.
      */
     public interface MotorDeviceManagedPositionStep {
         /**
-         * Set the motor power reapplied for each RUN_TO_POSITION target.
+         * Set the finite normalized maximum-power magnitude reapplied for each RUN_TO_POSITION
+         * target. The inclusive domain is {@code [0.0, 1.0]}; configuration is rejected rather than
+         * clamped.
+         *
+         * @throws IllegalArgumentException if {@code maxPower} is non-finite or outside
+         * {@code [0.0, 1.0]}
+         * @throws IllegalStateException if this setting was already answered, the tuning section is
+         * closed, or the recipe did not enter through {@link MotorPositionControlStep#deviceManaged()}
          */
         MotorDeviceManagedPositionStep maxPower(double maxPower);
 
         /**
-         * Set FTC's outer position-loop proportional coefficient.
+         * Set FTC's outer position-loop proportional coefficient in the inclusive, symmetric
+         * pinned controller public conversion domain
+         * {@code [-Integer.MAX_VALUE / 65536.0, +Integer.MAX_VALUE / 65536.0]}.
+         *
+         * @throws IllegalArgumentException if {@code outerPositionP} is non-finite or outside the
+         * supported controller conversion domain
+         * @throws IllegalStateException if this setting was already answered, the tuning section is
+         * closed, or the recipe did not enter through {@link MotorPositionControlStep#deviceManaged()}
          */
         MotorDeviceManagedPositionStep outerPositionP(double outerPositionP);
 
         /**
-         * Set FTC's inner velocity-loop PIDF coefficients used underneath RUN_TO_POSITION.
+         * Set FTC's inner velocity-loop PIDF coefficients used underneath RUN_TO_POSITION. Every
+         * coefficient must be finite and inside the inclusive, symmetric pinned controller public
+         * conversion domain
+         * {@code [-Integer.MAX_VALUE / 65536.0, +Integer.MAX_VALUE / 65536.0]}.
+         *
+         * @throws IllegalArgumentException if any coefficient is non-finite or outside the
+         * supported controller conversion domain; all four prior values remain unchanged
+         * @throws IllegalStateException if this setting was already answered, the tuning section is
+         * closed, or the recipe did not enter through {@link MotorPositionControlStep#deviceManaged()}
          */
         MotorDeviceManagedPositionStep innerVelocityPidf(double p, double i, double d, double f);
 
         /**
-         * Set FTC's native device target-position tolerance in encoder ticks.
+         * Set FTC's native device target-position tolerance in the inclusive {@code [0, 65535]}
+         * encoder-tick domain.
+         *
+         * @throws IllegalArgumentException if {@code ticks} is outside {@code [0, 65535]}
+         * @throws IllegalStateException if this setting was already answered, the tuning section is
+         * closed, or the recipe did not enter through {@link MotorPositionControlStep#deviceManaged()}
          */
         MotorDeviceManagedPositionStep devicePositionToleranceTicks(int ticks);
 
         /**
-         * Leave the device-managed tuning branch and continue to position periodicity.
+         * Close a nonempty device-managed tuning section and continue to position periodicity.
+         * Use {@link MotorPositionControlStep#deviceManagedWithDefaults()} instead of opening and
+         * immediately closing an empty section.
+         *
+         * @throws IllegalStateException if no tuning setting was accepted, this section was already
+         * closed, or the recipe did not enter through {@link MotorPositionControlStep#deviceManaged()}
          */
         Plants.PositionPeriodicityStep<Plants.FeedbackPositionBoundsStep> doneDeviceManaged();
     }
@@ -1104,7 +1144,11 @@ public final class FtcActuators {
         private double[] velocityPidf;
     }
 
-    private enum VelocityControlKind {DEVICE_MANAGED, REGULATED}
+    private enum VelocityControlKind {
+        DEVICE_MANAGED_DEFAULTS,
+        DEVICE_MANAGED_TUNED,
+        REGULATED
+    }
 
     // ---------------------------------------------------------------------------------------------
     // Builder-side feedback resolution
@@ -1517,6 +1561,9 @@ public final class FtcActuators {
             Plants.VelocityBoundsStep,
             Plants.VelocityMappingStep,
             Plants.VelocityToleranceStep {
+        private static final String VELOCITY_PIDF_OPERATION =
+                "FtcActuators.velocityPidf(...)";
+
         private final MotorBuilder parent;
         private final DeviceManagedVelocityConfig deviceConfig = new DeviceManagedVelocityConfig();
         private VelocityControlKind controlKind;
@@ -1536,28 +1583,29 @@ public final class FtcActuators {
 
         @Override
         public Plants.VelocityBoundsStep deviceManagedWithDefaults() {
-            answerControl(VelocityControlKind.DEVICE_MANAGED, "deviceManagedWithDefaults()");
+            answerControl(
+                    VelocityControlKind.DEVICE_MANAGED_DEFAULTS,
+                    "deviceManagedWithDefaults()");
             return this;
         }
 
         @Override
         public MotorDeviceManagedVelocityStep deviceManaged() {
-            answerControl(VelocityControlKind.DEVICE_MANAGED, "deviceManaged()");
+            answerControl(VelocityControlKind.DEVICE_MANAGED_TUNED, "deviceManaged()");
             return this;
         }
 
         @Override
-        public MotorDeviceManagedVelocityStep velocityPidf(double p, double i, double d, double f) {
+        public Plants.VelocityBoundsStep velocityPidf(double p, double i, double d, double f) {
             requireMutable("velocityPidf(...)");
-            requireControl(VelocityControlKind.DEVICE_MANAGED, "velocityPidf(...)");
-            deviceConfig.velocityPidf = new double[]{p, i, d, f};
-            return this;
-        }
-
-        @Override
-        public Plants.VelocityBoundsStep doneDeviceManaged() {
-            requireMutable("doneDeviceManaged()");
-            requireControl(VelocityControlKind.DEVICE_MANAGED, "doneDeviceManaged()");
+            requireControl(VelocityControlKind.DEVICE_MANAGED_TUNED, "velocityPidf(...)");
+            if (deviceConfig.velocityPidf != null) {
+                throw new IllegalStateException(
+                        "velocityPidf(...) has already been answered for this motor velocity Plant");
+            }
+            deviceConfig.velocityPidf =
+                    FtcControllerConfigurationValidation.requireControllerPidf(
+                            p, i, d, f, VELOCITY_PIDF_OPERATION);
             return this;
         }
 
@@ -1679,9 +1727,7 @@ public final class FtcActuators {
 
         @Override
         protected void validateRecipe() {
-            if (controlKind == null) {
-                throw new IllegalStateException("Motor velocity builder requires deviceManagedWithDefaults(), deviceManaged(), or regulated()");
-            }
+            validateControlConfiguration();
             if (!rangeAnswered) {
                 throw new IllegalStateException("Motor velocity builder requires bounded(...) or unbounded()");
             }
@@ -1691,7 +1737,7 @@ public final class FtcActuators {
             if (!velocityToleranceAnswered) {
                 throw new IllegalStateException("Motor velocity builder requires velocityTolerance(...) in plant velocity units");
             }
-            if (controlKind == VelocityControlKind.DEVICE_MANAGED) {
+            if (isDeviceManaged()) {
                 parent.validateDeviceManagedVelocityRecipe(range, nativePerPlantUnit);
             } else {
                 validateRegulatedVelocityRecipe(range, nativePerPlantUnit);
@@ -1714,7 +1760,7 @@ public final class FtcActuators {
         @Override
         protected Plants.TargetStep<Plant> createSharedTargetStep() {
             Plants.VelocityBoundsStep bounds;
-            if (controlKind == VelocityControlKind.DEVICE_MANAGED) {
+            if (isDeviceManaged()) {
                 ScalarSource measurement = parent.groupedMotorVelocityMeasurement();
                 VelocityOutput output = parent.groupedMotorVelocity(deviceConfig);
                 bounds = Plants.fromOutputs().deviceManagedVelocity(output, measurement);
@@ -1738,7 +1784,7 @@ public final class FtcActuators {
             if (controlKind != null) {
                 throw new IllegalStateException("Motor velocity control ownership has already been answered");
             }
-            if (answer == VelocityControlKind.DEVICE_MANAGED) {
+            if (answer != VelocityControlKind.REGULATED) {
                 parent.validateDeviceManagedVelocityChildMappings();
             } else {
                 parent.requireDefaultGroupScalingForRegulated("velocity");
@@ -1749,7 +1795,7 @@ public final class FtcActuators {
         private void requireControl(VelocityControlKind required, String operation) {
             if (controlKind != required) {
                 throw new IllegalStateException(operation + " requires "
-                        + (required == VelocityControlKind.DEVICE_MANAGED
+                        + (required == VelocityControlKind.DEVICE_MANAGED_TUNED
                         ? "deviceManaged()" : "regulated()"));
             }
         }
@@ -1784,13 +1830,41 @@ public final class FtcActuators {
             }
             double checkedScale = requireFiniteNonZero(
                     scale, "nativeUnitsPerPlantVelocityUnit");
-            if (controlKind == VelocityControlKind.DEVICE_MANAGED) {
+            if (isDeviceManaged()) {
                 parent.validateDeviceManagedVelocityRecipe(range, checkedScale);
             } else {
                 validateRegulatedVelocityRecipe(range, checkedScale);
             }
             nativePerPlantUnit = checkedScale;
             mappingAnswered = true;
+        }
+
+        private boolean isDeviceManaged() {
+            return controlKind == VelocityControlKind.DEVICE_MANAGED_DEFAULTS
+                    || controlKind == VelocityControlKind.DEVICE_MANAGED_TUNED;
+        }
+
+        private void validateControlConfiguration() {
+            if (controlKind == null) {
+                throw new IllegalStateException("Motor velocity builder requires "
+                        + "deviceManagedWithDefaults(), deviceManaged(), or regulated()");
+            }
+            if (controlKind == VelocityControlKind.DEVICE_MANAGED_DEFAULTS) {
+                if (deviceConfig.velocityPidf != null) {
+                    throw new IllegalStateException("deviceManagedWithDefaults() cannot retain "
+                            + "device-managed velocity tuning");
+                }
+                return;
+            }
+            if (controlKind == VelocityControlKind.DEVICE_MANAGED_TUNED) {
+                if (deviceConfig.velocityPidf == null) {
+                    throw new IllegalStateException("deviceManaged() requires velocityPidf(...) "
+                            + "before motor velocity bounds");
+                }
+                double[] c = deviceConfig.velocityPidf;
+                FtcControllerConfigurationValidation.requireControllerPidf(
+                        c[0], c[1], c[2], c[3], VELOCITY_PIDF_OPERATION);
+            }
         }
 
         private void validateRegulatedVelocityRecipe(ScalarRange targetRange,
@@ -1812,12 +1886,28 @@ public final class FtcActuators {
 
     private static final class DeviceManagedPositionConfig {
         private double maxPower = 1.0;
+        private boolean maxPowerAnswered;
         private Double outerPositionP;
+        private boolean outerPositionPAnswered;
         private double[] innerVelocityPidf;
+        private boolean innerVelocityPidfAnswered;
         private Integer devicePositionToleranceTicks;
+        private boolean devicePositionToleranceTicksAnswered;
+        private boolean tuningClosed;
+
+        private boolean hasAnyOverride() {
+            return maxPowerAnswered
+                    || outerPositionPAnswered
+                    || innerVelocityPidfAnswered
+                    || devicePositionToleranceTicksAnswered;
+        }
     }
 
-    private enum PositionControlKind {DEVICE_MANAGED, REGULATED}
+    private enum PositionControlKind {
+        DEVICE_MANAGED_DEFAULTS,
+        DEVICE_MANAGED_TUNED,
+        REGULATED
+    }
 
     private enum PositionMappingKind {NATIVE, SCALE, ENDPOINTS}
 
@@ -2209,6 +2299,14 @@ public final class FtcActuators {
 
     private static final class MotorPositionBuilder extends BasePositionBuilder implements MotorPositionControlStep,
             MotorDeviceManagedPositionStep, MotorRegulatedPositionFeedbackStep, MotorRegulatedPositionRegulatorStep {
+        private static final String MAX_POWER_OPERATION = "FtcActuators.maxPower(...)";
+        private static final String OUTER_POSITION_P_OPERATION =
+                "FtcActuators.outerPositionP(...)";
+        private static final String INNER_VELOCITY_PIDF_OPERATION =
+                "FtcActuators.innerVelocityPidf(...)";
+        private static final String DEVICE_POSITION_TOLERANCE_OPERATION =
+                "FtcActuators.devicePositionToleranceTicks(...)";
+
         private final MotorBuilder parent;
         private final DeviceManagedPositionConfig deviceConfig = new DeviceManagedPositionConfig();
         private PositionControlKind controlKind;
@@ -2223,51 +2321,85 @@ public final class FtcActuators {
         @Override
         public Plants.PositionPeriodicityStep<Plants.FeedbackPositionBoundsStep>
         deviceManagedWithDefaults() {
-            answerControl(PositionControlKind.DEVICE_MANAGED, "deviceManagedWithDefaults()");
+            answerControl(
+                    PositionControlKind.DEVICE_MANAGED_DEFAULTS,
+                    "deviceManagedWithDefaults()");
             return this;
         }
 
         @Override
         public MotorDeviceManagedPositionStep deviceManaged() {
-            answerControl(PositionControlKind.DEVICE_MANAGED, "deviceManaged()");
+            answerControl(PositionControlKind.DEVICE_MANAGED_TUNED, "deviceManaged()");
             return this;
         }
 
         @Override
         public MotorDeviceManagedPositionStep maxPower(double maxPower) {
-            requireDeviceManaged("maxPower(...)");
-            if (maxPower < 0.0) throw new IllegalArgumentException("maxPower must be >= 0");
-            deviceConfig.maxPower = maxPower;
+            requireOpenDeviceManagedTuning("maxPower(...)");
+            if (deviceConfig.maxPowerAnswered) {
+                throw new IllegalStateException(
+                        "maxPower(...) has already been answered for this motor position Plant");
+            }
+            double checked = FtcControllerConfigurationValidation.requireRunToPositionMaxPower(
+                    maxPower, MAX_POWER_OPERATION);
+            deviceConfig.maxPower = checked;
+            deviceConfig.maxPowerAnswered = true;
             return this;
         }
 
         @Override
         public MotorDeviceManagedPositionStep outerPositionP(double outerPositionP) {
-            requireDeviceManaged("outerPositionP(...)");
-            deviceConfig.outerPositionP = outerPositionP;
+            requireOpenDeviceManagedTuning("outerPositionP(...)");
+            if (deviceConfig.outerPositionPAnswered) {
+                throw new IllegalStateException("outerPositionP(...) has already been answered for "
+                        + "this motor position Plant");
+            }
+            double checked = FtcControllerConfigurationValidation.requireControllerCoefficient(
+                    outerPositionP, OUTER_POSITION_P_OPERATION, "outerPositionP");
+            deviceConfig.outerPositionP = checked;
+            deviceConfig.outerPositionPAnswered = true;
             return this;
         }
 
         @Override
         public MotorDeviceManagedPositionStep innerVelocityPidf(double p, double i, double d, double f) {
-            requireDeviceManaged("innerVelocityPidf(...)");
-            deviceConfig.innerVelocityPidf = new double[]{p, i, d, f};
+            requireOpenDeviceManagedTuning("innerVelocityPidf(...)");
+            if (deviceConfig.innerVelocityPidfAnswered) {
+                throw new IllegalStateException("innerVelocityPidf(...) has already been answered "
+                        + "for this motor position Plant");
+            }
+            deviceConfig.innerVelocityPidf =
+                    FtcControllerConfigurationValidation.requireControllerPidf(
+                            p, i, d, f, INNER_VELOCITY_PIDF_OPERATION);
+            deviceConfig.innerVelocityPidfAnswered = true;
             return this;
         }
 
         @Override
         public MotorDeviceManagedPositionStep devicePositionToleranceTicks(int ticks) {
-            requireDeviceManaged("devicePositionToleranceTicks(...)");
-            if (ticks < 0)
-                throw new IllegalArgumentException("devicePositionToleranceTicks must be >= 0");
-            deviceConfig.devicePositionToleranceTicks = ticks;
+            requireOpenDeviceManagedTuning("devicePositionToleranceTicks(...)");
+            if (deviceConfig.devicePositionToleranceTicksAnswered) {
+                throw new IllegalStateException("devicePositionToleranceTicks(...) has already "
+                        + "been answered for this motor position Plant");
+            }
+            int checked =
+                    FtcControllerConfigurationValidation.requireDevicePositionToleranceTicks(
+                            ticks, DEVICE_POSITION_TOLERANCE_OPERATION);
+            deviceConfig.devicePositionToleranceTicks = checked;
+            deviceConfig.devicePositionToleranceTicksAnswered = true;
             return this;
         }
 
         @Override
         public Plants.PositionPeriodicityStep<Plants.FeedbackPositionBoundsStep>
         doneDeviceManaged() {
-            requireDeviceManaged("doneDeviceManaged()");
+            requireOpenDeviceManagedTuning("doneDeviceManaged()");
+            if (!deviceConfig.hasAnyOverride()) {
+                throw new IllegalStateException("deviceManaged() requires at least one controller "
+                        + "override before doneDeviceManaged(); use "
+                        + "deviceManagedWithDefaults() when no override is needed");
+            }
+            deviceConfig.tuningClosed = true;
             return this;
         }
 
@@ -2352,6 +2484,7 @@ public final class FtcActuators {
                             + "nativeFeedback(...)) and regulator(...)");
                 }
             } else {
+                validateDeviceManagedConfiguration();
                 parent.validateDeviceManagedPositionRecipe(
                         boundedStaticNativeEndpointsForValidation());
             }
@@ -2360,7 +2493,7 @@ public final class FtcActuators {
         @Override
         protected Plants.PositionPeriodicityStep<Plants.FeedbackPositionBoundsStep>
         createSharedPositionStart() {
-            if (controlKind == PositionControlKind.DEVICE_MANAGED) {
+            if (isDeviceManaged()) {
                 ScalarSource measurement = parent.groupedMotorPositionMeasurement();
                 PositionOutput output = parent.groupedMotorPosition(deviceConfig);
                 Plants.DeviceManagedPositionStep start = Plants.fromOutputs()
@@ -2374,7 +2507,7 @@ public final class FtcActuators {
 
         @Override
         protected void preflightPositionChildMapping(double[] boundedStaticNativeEndpoints) {
-            if (controlKind == PositionControlKind.DEVICE_MANAGED) {
+            if (isDeviceManaged()) {
                 parent.validateDeviceManagedPositionRecipe(boundedStaticNativeEndpoints);
             } else if (controlKind == PositionControlKind.REGULATED) {
                 parent.requireDefaultGroupScalingForRegulated("position");
@@ -2386,7 +2519,7 @@ public final class FtcActuators {
             if (controlKind != null) {
                 throw new IllegalStateException("Motor position control ownership has already been answered");
             }
-            if (answer == PositionControlKind.DEVICE_MANAGED) {
+            if (answer != PositionControlKind.REGULATED) {
                 parent.validateDeviceManagedPositionRecipe(null);
             } else {
                 parent.requireDefaultGroupScalingForRegulated("position");
@@ -2394,10 +2527,57 @@ public final class FtcActuators {
             controlKind = answer;
         }
 
-        private void requireDeviceManaged(String operation) {
+        private void requireOpenDeviceManagedTuning(String operation) {
             requireMutable(operation);
-            if (controlKind != PositionControlKind.DEVICE_MANAGED) {
+            if (controlKind != PositionControlKind.DEVICE_MANAGED_TUNED) {
                 throw new IllegalStateException(operation + " requires deviceManaged()");
+            }
+            if (deviceConfig.tuningClosed) {
+                throw new IllegalStateException(operation
+                        + " cannot change the closed device-managed position tuning section");
+            }
+        }
+
+        private boolean isDeviceManaged() {
+            return controlKind == PositionControlKind.DEVICE_MANAGED_DEFAULTS
+                    || controlKind == PositionControlKind.DEVICE_MANAGED_TUNED;
+        }
+
+        private void validateDeviceManagedConfiguration() {
+            if (controlKind == PositionControlKind.DEVICE_MANAGED_DEFAULTS) {
+                if (deviceConfig.hasAnyOverride() || deviceConfig.tuningClosed) {
+                    throw new IllegalStateException("deviceManagedWithDefaults() cannot retain "
+                            + "device-managed position tuning");
+                }
+            } else if (controlKind == PositionControlKind.DEVICE_MANAGED_TUNED) {
+                if (!deviceConfig.hasAnyOverride()) {
+                    throw new IllegalStateException("deviceManaged() requires at least one "
+                            + "controller override before doneDeviceManaged(); use "
+                            + "deviceManagedWithDefaults() when no override is needed");
+                }
+                if (!deviceConfig.tuningClosed) {
+                    throw new IllegalStateException("Call doneDeviceManaged() after the "
+                            + "device-managed position controller overrides");
+                }
+            }
+
+            FtcControllerConfigurationValidation.requireRunToPositionMaxPower(
+                    deviceConfig.maxPower, MAX_POWER_OPERATION);
+            if (deviceConfig.outerPositionP != null) {
+                FtcControllerConfigurationValidation.requireControllerCoefficient(
+                        deviceConfig.outerPositionP,
+                        OUTER_POSITION_P_OPERATION,
+                        "outerPositionP");
+            }
+            if (deviceConfig.innerVelocityPidf != null) {
+                double[] c = deviceConfig.innerVelocityPidf;
+                FtcControllerConfigurationValidation.requireControllerPidf(
+                        c[0], c[1], c[2], c[3], INNER_VELOCITY_PIDF_OPERATION);
+            }
+            if (deviceConfig.devicePositionToleranceTicks != null) {
+                FtcControllerConfigurationValidation.requireDevicePositionToleranceTicks(
+                        deviceConfig.devicePositionToleranceTicks,
+                        DEVICE_POSITION_TOLERANCE_OPERATION);
             }
         }
 

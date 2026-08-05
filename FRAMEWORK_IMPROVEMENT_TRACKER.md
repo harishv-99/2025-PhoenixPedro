@@ -152,7 +152,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 65 | RANGE-01 | ScalarRange construction validity | Done | Define and enforce finite, half-bounded, and unbounded range construction without allowing `NaN`. |
 | 66 | MAP-01 | FTC actuator mapping-domain validation | Done | Layer finite affine and FTC-native-domain validation, preserve neutral zero, and remove unusable CR-servo bias. |
 | 67 | MAP-02 | Calibration-search power mapping separation | Done | Correct MAP-01's regression by keeping position-coordinate scale/bias out of grouped raw-power calibration search. |
-| 68 | FTC-02 | Device-managed controller configuration validation | Proposed | Validate FTC PIDF/P, maximum-power, and related staged answers before SDK access or mode changes. |
+| 68 | FTC-02 | Device-managed controller configuration validation | Done | The staged grammar, strict controller domains, synchronized callers/docs, automated verification, independent review, Android Studio approval, and publication authorization are complete. |
 | 69 | SOURCE-04 | Successful source-cache commit semantics | Proposed | Audit stateful source wrappers that claim a cycle before upstream sampling or state transition succeeds. |
 | 70 | INPUT-02 | Binding update failure retention | Proposed | Make same-cycle binding failure behavior explicit for an effectful traversal that may already have fired callbacks. |
 | 71 | BOUNDARY-01 | FTC boundary enforcement | Proposed | Fix existing import leaks, then add a focused forbidden-import check. |
@@ -12840,10 +12840,366 @@ writer, and explicit lifecycle ownership.
 
 ### FTC-02 - Device-managed controller configuration validation
 
+- **Decision gate (2026-08-04):** **Ready; breaking public-API and behavior approval required
+  before implementation.** FTC-02 remains the sole active item on
+  `codex/ftc-02-device-managed-controller-validation`, based exactly on merged
+  `origin/master@d1de79416231f7f7feaf4b802df1d16609aaeedb`. Research changed only this tracker;
+  no Java implementation, test, Javadoc, guide, example, or Phoenix production change has started.
+  The design removes the redundant velocity-tuning exit method, closes the multi-setting position
+  branch truthfully, rejects values that were formerly clamped or deferred, and enforces the
+  pinned FTC SDK 11.1 controller domains, so implementation requires explicit approval.
+  SOURCE-04, SAFE-04, and every other tracker item remain out of scope.
+- **Research start (2026-08-03):** FTC-02 is the sole active item on
+  `codex/ftc-02-device-managed-controller-validation`. Its initial tracker-only research was
+  preserved by immutable stash object `7e612af36844db4a3d820a6b07eb98928f0f1048` while MAP-02 was
+  corrected and merged, then restored onto the current base above. Gate 1 remains read-only apart
+  from this tracker record: no Java
+  implementation, test, Javadoc, guide, example, or Phoenix production change has started. MAP-02
+  is merged and Done; SOURCE-04, SAFE-04, and every other proposed item remain out of scope.
+- **Resume/revalidation (2026-08-04):** MAP-02 changed grouped motor-position calibration-search
+  power mapping and its defaults-path regression only. It added no controller-tuning stage, setting,
+  caller, or migration conflict. The complete FTC-02 public path, caller, SDK-source, staged-alias,
+  documentation, and verification audit was rerun on the current base before returning the item to
+  this approval gate; the preserved stash remains intact.
 - **Problem to confirm:** FTC device-managed velocity/position PIDF or P coefficients and maximum
   power are staged separately from framework `Pid`, but several paths accept non-finite values and
   excessive maximum power that is later clamped. SDK access or run-mode changes are too late to
   explain the configuration error.
+- **Confirmed failure traces:**
+  1. Velocity `velocityPidf(...)`, position `outerPositionP(...)`, and position
+     `innerVelocityPidf(...)` currently store every `double` unchanged. Build first resolves native
+     feedback and motors, then forwards those values to `DcMotorEx`. On the pinned FTC SDK 11.1
+     REV path, `NaN` can collapse to zero during coefficient conversion and infinities can become
+     extreme finite firmware values instead of producing a useful recipe error. In a position tuple, an
+     earlier outer-P SDK write can also occur before a later invalid inner tuple is encountered.
+  2. Position `maxPower(...)` rejects only values for which `value < 0.0`; therefore `NaN`, positive
+     infinity, and every finite value above `1.0` are retained. The later low-level adapter clamps
+     positive excursions to `1.0`, preserves `NaN`, and has already resolved hardware and written
+     motor direction before the bad configuration can become visible.
+  3. The distinct public `FtcHardware.motorPosition(..., maxPower)` adapter uses
+     `MathUtil.clampAbs(...)`. Contrary to its `[0, 1]` Javadoc, a finite negative value remains
+     negative, infinities become full signed power, and `NaN` survives; the motor-instance overload
+     then writes direction during construction. Validating only the guided builder would leave this
+     supported expert seam and its documentation contradiction open.
+  4. `devicePositionToleranceTicks(...)` rejects negatives but accepts every other `int`.
+     `DcMotorImplEx` initially only caches that answer; the pinned REV Hub target command later
+     requires the unsigned 16-bit range `[0, 65535]`. A value such as `65536` can therefore build and
+     configure successfully, then fail only when the first `RUN_TO_POSITION` target is submitted.
+  5. Velocity's tuning branch exposes only one possible answer but returns the same stage and
+     requires `.doneDeviceManaged()`. It permits the duplicate
+     `.deviceManaged().doneDeviceManaged()` spelling of the defaults path and makes every tuned call
+     answer an administrative question after its sole real choice, contrary to the staged-builder
+     principle.
+  6. Defaults and tuned device-managed entry currently share the same private control-kind value,
+     while each private builder implements all of its public stage interfaces. An explicit cast can
+     therefore reach a tuning setter after `deviceManagedWithDefaults()`, or reach later recipe
+     stages before the tuned branch is complete. Static staged typing guides ordinary code but does
+     not currently preserve the branch invariant against retained aliases.
+- **Complete public-path and caller audit:**
+  - `FtcActuators.plant(HardwareMap)` is the only ordinary FTC construction facade. Its optional
+    motor-velocity branch exposes `velocityPidf(p, i, d, f)`; its optional motor-position branch
+    exposes `maxPower(...)`, `outerPositionP(...)`, `innerVelocityPidf(...)`, and
+    `devicePositionToleranceTicks(...)`. `deviceManagedWithDefaults()` deliberately bypasses every
+    optional coefficient/tolerance write and keeps position maximum power at `1.0`.
+  - `FtcHardware.motorPosition(...)` is a distinct low-level output-adapter capability for custom
+    assembly, not a second Plant builder. Its three public overloads remain purposeful: the named
+    default-power overload is the concise optional-default path, the named explicit-power overload
+    validates configuration before lookup, and the motor-instance explicit-power overload supports
+    an already-owned device or focused test. The last two are the only other framework entry points
+    that accept a caller-supplied fixed device-managed setting. It exposes no P/PIDF/tolerance
+    grammar, remains public, and does not gain a motor-instance default overload merely for symmetry.
+  - `Plants.fromOutputs()` starts from already-owned Phoenix outputs, feedback, and regulators. It
+    cannot discover or configure FTC controller coefficients and is correctly outside the tuning
+    API. Direct calls to the FTC SDK outside Phoenix are also outside this framework contract.
+  - CR servos have direct normalized power and Phoenix-regulated position paths only. They have no
+    FTC device-managed position/velocity controller or P/PIDF/tolerance setting. The old completion
+    wording that included CR-servo device-managed paths was inaccurate; FTC-02 is motor-only.
+  - Phoenix `ScoringPath` is the sole executable tuned caller. Its data-only profile stores four
+    copied primitive flywheel fields and passes them once, inline, to `velocityPidf(...)`; the
+    disabled branch uses `deviceManagedWithDefaults()`. Six maintained shooter examples use only
+    the defaults path. No executable main-source caller tunes device-managed position.
+  - Compiled tests contain one additional tuned velocity recipe and two tuned position recipes. The
+    one low-level explicit-power test passes `0.5`. Maintained documentation has one tuned position
+    recipe in `FtcActuators` Javadoc and one tuned position plus one tuned velocity recipe in FTC
+    Actuators & Plants. No caller stores, returns, shares, composes, or independently validates either
+    public tuning stage or a generic FTC tuning tuple. Earlier staged-builder work deliberately
+    removed public device-managed control value objects; the audit found no new evidence for
+    restoring one.
+- **SDK and value-domain conclusions:**
+  - `build.dependencies.gradle` pins RobotCore and Hardware 11.1.0, whose resolved source artifacts
+    contain one concrete `DcMotorControllerEx` realization: the REV/Lynx controller. Each P/I/D/F or
+    outer-P answer must be finite and inside that pinned public conversion's symmetric
+    no-saturation domain: inclusive
+    `[-Integer.MAX_VALUE / 65536.0, +Integer.MAX_VALUE / 65536.0]` (approximately
+    `[-32767.99998474121, +32767.99998474121]`) in controller coefficient units. Preserve every
+    in-domain signed value and both signed zeros. `DcMotorEx` publishes no nonnegative tuning rule,
+    and the resolved conversion source explicitly documents a negative example; Phoenix therefore
+    does not infer positive gains. The controller converts through absolute magnitude plus sign into
+    signed 32-bit 16Q16 fields at 65536 counts per coefficient unit. The raw field also has the
+    asymmetric `Integer.MIN_VALUE` endpoint, but this public conversion cannot produce it. Outside
+    the selected symmetric domain, values saturate during Java narrowing; `NaN` becomes zero.
+    Ordinary in-domain values remain subject to expected 1/65536 quantization. This is the pinned
+    public conversion domain, not the complete raw wire-field domain or a claim that an in-domain
+    value is useful or safe.
+  - `maxPower` is a magnitude, not an arbitrary signed runtime command. Its complete portable
+    domain is finite normalized power in the inclusive `[0.0, 1.0]` range. Accept `-0.0`, `+0.0`,
+    and `1.0` unchanged; reject negative finite values, finite overshoot, `NaN`, and both infinities.
+    Do not turn a configuration mistake into full power.
+  - `devicePositionToleranceTicks` is an advanced native controller answer in the inclusive
+    `[0, 65535]` tick range supported by the pinned FTC/REV target command. This is independent
+    of required plant-unit `positionTolerance(...)`; neither can be derived from the other. A future
+    controller needing a wider device representation would require an explicit boundary decision,
+    not a late target-write failure in the current supported stack.
+  - Defaults remain exactly as documented: position maximum power is `1.0`, while Phoenix makes no
+    optional controller P, PIDF, or target-tolerance setter call unless explicitly answered. A
+    target still carries the SDK motor object's current cached tolerance (initially the pinned SDK
+    default `5`, or a value configured by another deliberate owner); Phoenix must not overwrite
+    that state merely to recreate the apparent initial default.
+- **Ordinary-code and alternative comparison:**
+
+  | Design | Representative tuned velocity call | Added public concepts | Result |
+  | --- | --- | ---: | --- |
+  | **Selected one-step staged validation** | `.deviceManaged().velocityPidf(p, i, d, f).bounded(...)` | 0 | Earliest errors, one answer per stage, and no administrative exit |
+  | Keep the current exit step | `.deviceManaged().velocityPidf(...).doneDeviceManaged().bounded(...)` | 0 | Preserves a known one-answer-stage violation and a duplicate defaults spelling |
+  | Direct ownership overload | `.deviceManaged(p, i, d, f).bounded(...)` | 0 methods, but one overload | Hides PIDF meaning inside the ownership verb and makes position/velocity ownership grammar diverge |
+  | Named combined shortcut | `.deviceManagedWithPidf(p, i, d, f).bounded(...)` | +1 method | Combines ownership and tuning into one five-argument question for one removed line |
+  | Immutable tuning value | `.velocityPidf(FtcPidf.of(...))` | +1 noun/factory | Reintroduces an immediately consumed wrapper with no caller reuse or composition |
+  | SDK deferral or clamping | unchanged | 0 | Leaves late effects, opaque conversion, and configuration mistakes disguised as plausible values |
+  | Framework regulation only | `.regulated()...regulator(...)` | 0 | Deletes a distinct controller-owned capability and forces different feedback/output ownership |
+
+  Position retains `.deviceManaged() ... .doneDeviceManaged()` because that branch genuinely allows
+  any useful nonempty subset of four independent settings in any order. `doneDeviceManaged()` closes
+  that section; an empty section directs the caller to `deviceManagedWithDefaults()`, and each
+  individual knob is answered at most once. The defaults shortcut remains the common path. No
+  ordinary defaults call gains a method or concept.
+- **Chosen public grammar and validation order:**
+  1. Keep all public tuning method names and primitive arguments. Change velocity
+     `velocityPidf(...)` to return `Plants.VelocityBoundsStep` and remove velocity
+     `doneDeviceManaged()`. Entering velocity `deviceManaged()` now requires exactly one complete
+     PIDF answer before bounds. Migrate exactly `ScoringPath` and the tuned velocity recipe in
+     `FtcActuatorGroupIdentityValidationTest`, plus maintained prose/examples; all defaults and
+     position calls remain source-identical.
+  2. Represent `deviceManagedWithDefaults()` and `deviceManaged()` as distinct private branch
+     answers, even though both ultimately use the FTC-managed loop. Every tuning setter must require
+     the tuned entry specifically. A caller that explicitly casts a defaults result to a tuning
+     interface fails structurally, leaves the defaults recipe usable, and causes no configuration or
+     lookup effect. Do not rely on the public static stage type as the only branch invariant.
+  3. At every tuning answer, enforce this precedence: shared lifecycle/frozen state, selected
+     control plus tuned-entry identity, open tuning section, duplicate knob, numeric arguments in
+     declaration order, then assignment. Validate all four tuple members before assigning any of
+     them. A rejected first answer marks no option, overwrites no prior setting, freezes nothing, and
+     permits a valid retry through a retained stage alias. A second answer to the same knob fails as
+     an already-answered question without replacing the first; after closure, the section-closed
+     error takes precedence over duplicate or numeric diagnostics.
+  4. Make position `doneDeviceManaged()` require at least one accepted override, mark the tuning
+     section closed, and reject repeated `doneDeviceManaged()` or any later setter through a retained
+     tuning-stage alias. This gives `deviceManagedWithDefaults()` and `deviceManaged()` distinct
+     meanings without adding another stage or option type.
+  5. Revalidate the complete private device-managed configuration through the existing recipe
+     preflight at target selection and build, before fresh feedback/motor lookup, direction, P/PIDF,
+     tolerance, target, mode, velocity, or power effects. Check tuned-branch completion before
+     generic bounds, mapping, or tolerance completeness so a cast-based stage bypass gets the
+     actionable controller-tuning error. This defense must ensure tuned velocity has its PIDF answer
+     and tuned position is nonempty and closed. Grouped recipes use the same already-validated
+     configuration for every child, so a predictable numeric error cannot appear after earlier child
+     configuration.
+  6. Apply the same maximum-power validator at both explicit-power
+     `FtcHardware.motorPosition(...)` overloads. Preserve read-only null/name/direction precedence,
+     but validate before `HardwareMap.get(...)` in the named overload and before `setDirection(...)`
+     in the motor-instance overload. Store the validator's unchanged accepted value directly; do not
+     retain a constructor-time clamp that could conceal future validation drift. The named
+     default-power overload continues to delegate with the valid constant `1.0`, and no
+     motor-instance default overload is added. Public configuration semantics are rejection, never
+     saturation; existing runtime raw-power defenses are unchanged.
+  7. Use one package-private FTC-boundary validation helper for coefficient slots, normalized
+     maximum power, and device-tolerance ticks so the guided facade and raw adapter cannot drift.
+     This is an internal precondition utility, not another builder, config object, or public value.
+     Diagnostics name the public operation and offending argument, identify FTC controller versus
+     normalized-power versus native-tick units, state the inclusive domain where one exists, and
+     include the received value.
+- **Failure, recovery, and SDK-write semantics:** an invalid first answer or raw-adapter argument
+  causes no lookup, direction, coefficient, tolerance, target, mode, velocity, power, feedback, or
+  command-state effect. A cast into tuning from the defaults branch or around a required tuning exit
+  likewise fails before those effects. Invalid-first/valid-retry works. A repeated knob or a setter
+  after position `doneDeviceManaged()` fails structurally and preserves the accepted closed recipe.
+  A valid build retains the current SDK-application order and motor-naming wrapper. If an arbitrary
+  SDK call rejects a structurally valid setting, the existing `IllegalStateException` naming that
+  motor and retaining the thrown cause remains truthful. No transaction or rollback across SDK-side
+  parameter caching, sequential P/PIDF/tolerance writes, mode reapplication, or grouped devices is
+  claimed; those hardware/partial-failure questions remain SAFE-04 territory.
+- **Framework Principles result:** the design validates configuration at the earliest owner that
+  knows its FTC meaning and again before construction effects, while leaving runtime target/output
+  defenses in their existing roles. It makes the velocity staged grammar answer one concept once,
+  preserves the multi-setting position tuning branch and the common defaults shortcut, adds no
+  inline-only wrapper, and keeps controller facts inside `fw.ftc`. Device-managed and regulated
+  Plants remain parallel because controller-owned and Phoenix-owned loops are materially different
+  capabilities. Plant mapping, target resolver, guard, tolerance, reference, lifecycle, and update
+  ownership do not change.
+- **Rejected scope/designs:** do not add or expose FTC SDK `PIDFCoefficients`, a Phoenix PIDF/P
+  bundle, nullable option config, controller-mode enum, max-power wrapper, or second factory. Do not
+  infer nonnegative gains or controller-specific safe gains, and do not present the selected
+  public-conversion bound as a tuning recommendation; do not merge outer position P with
+  inner velocity PIDF. Do not validate only at build, SDK apply, or final power write; do not
+  preserve clamping as public configuration policy. Do not change software
+  `Pid`/`PidfRegulator`, regulated control, `Plants.fromOutputs()`, CR-servo behavior, mapping/native
+  command domains, calibration inputs, Plant completion tolerances, Phoenix profile shape, runtime
+  SDK exception wrapping, or arbitrary partial-output cleanup.
+- **Bounded implementation and documentation scope:** update only the FTC controller validation
+  helper, `FtcActuators`, `FtcHardware`, the two tuned velocity callers, and focused FTC tests.
+  Synchronize their Javadocs plus the concise controller-configuration rule in Framework Principles,
+  the numeric-domain/tuning sections of FTC Actuators & Plants, and the compact defaults/tuning
+  explanation in the Beginner's Guide. Update the Builder Improvement Backlog's velocity grammar.
+  The Software PIDF Tuning Workflow and Layered Shooter Example already distinguish software from
+  device-managed PIDF; change them only if the removed velocity exit call or a directly stale claim
+  is present. Phoenix Calibration Guide, Phoenix Architecture, framework-regulated docs, and
+  production profile fields describe unchanged facts and need no forced edit.
+- **Verification plan:**
+  - Add a focused `FtcDeviceManagedControllerConfigurationValidationTest`. For velocity and inner
+    position PIDF, reject `NaN`, both infinities, and the immediately out-of-domain finite neighbor
+    in each P/I/D/F slot; for outer P, reject the same matrix. Accept both exact symmetric public-
+    conversion endpoints, representative signed values, and signed zero. Assert exact
+    operation/slot/controller diagnostics, tuple all-or-nothing behavior, invalid-first recovery,
+    duplicate-answer rejection, one-answer velocity behavior, and exact SDK forwarding. Compare raw
+    `double` bits where signed-zero preservation is part of the seam contract.
+  - For `maxPower`, reject the non-finite matrix, `Math.nextDown(0.0)`, and
+    `Math.nextUp(1.0)`; accept and preserve `-0.0`, `+0.0`, representative interior values, and
+    `1.0`. Cover the staged answer and both explicit low-level overloads before lookup/direction,
+    then prove the accepted value is the power reapplied with a target.
+  - Reject device tolerance `-1` and `65536`; accept `0` and `65535`. Prove retry/preservation and
+    zero SDK effects before build, then exact forwarding for one valid motor. Preserve the separate
+    plant-unit tolerance tests and do not infer controller stopping behavior.
+  - Prove defaults perform no P/PIDF/tolerance write and use maximum power `1.0`. For position
+    tuning, cover empty-section rejection, any one valid override, multiple distinct overrides in
+    arbitrary order, duplicate-setting rejection, branch close, repeated close, and retained-alias
+    mutation after close. Spot-check a valid configured group applies the same complete values once
+    per selected child, while invalid recipe values produce no first-child lookup/configuration.
+    Retain SDK-fault wrapping and explicitly avoid a rollback claim.
+  - Cast each defaults result to its tuning interface and prove tuned-only setters reject before
+    mutation or lookup, after which the original defaults recipe still builds with no optional
+    controller writes. Separately cast a tuned velocity builder to `VelocityBoundsStep` before PIDF
+    and a tuned position builder to its periodicity step before `doneDeviceManaged()`; prove final
+    recipe preflight reports the missing tuned answer/close before lookup.
+  - Pin the source-derived boundary assumptions against the public FTC 11.1 APIs: verify the Lynx
+    coefficient conversion's exact symmetric endpoints, adjacent overshoot saturation, `NaN`-to-zero
+    behavior, and the target-position command's public `0`/`65535` tolerance constants. These checks
+    detect a future SDK dependency change rather than treating proxy forwarding as representation
+    evidence.
+  - Add a compile/reflection contract check that velocity `velocityPidf(...)` returns the bounds
+    stage and velocity `doneDeviceManaged()` is absent, while position retains its multi-setting
+    exit. Re-scan every tuned/default caller and raw explicit-power occurrence.
+  - Run the focused FTC controller, group-identity, position-reference, command-domain, mapping,
+    feedback-tolerance, and motor-mode suites, then force
+    `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac`. Run Javadoc/compile,
+    Markdown-fence/link, trailing-whitespace/final-LF, and `git diff --check` checks; present the
+    complete unstaged diff and results for Android Studio review before publication.
+- **Software/hardware claim boundary:** no robot run is required to prove representation/range
+  rejection, error ordering, retained-stage recovery, lack of pre-rejection SDK effects, public
+  return types, or the pinned FTC 11.1 REV target-tolerance representation. Robot/controller
+  testing is still required to prove supported coefficient APIs, coefficient quantization and
+  useful/safe gains, maximum-power effects under load, controller tolerance behavior, encoder scale/sign,
+  grouped physical realization, and stop/failure behavior. In-domain coefficients, power, and
+  tolerance are structurally valid configuration, not mechanism readiness.
+- **Research verification note:** the focused baseline Gradle command did not exit before the
+  environment command timeout, but it generated fresh XML results first: the existing
+  `FtcActuatorGroupIdentityValidationTest` (21), `FtcPositionReferenceValidationTest` (5), and
+  `FtcHardwareCommandDomainValidationTest` (3) suites passed all 29 tests with zero failures,
+  errors, or skips. This is baseline evidence only; Gate 2 must run the focused and full
+  verification above against the actual FTC-02 implementation before review.
+- **Decision record (2026-08-04):** **Ready for explicit approval.** The staged controller-domain
+  design survives the complete implementation-path, public-path, caller, history, pinned-SDK-source,
+  value-domain, staged-grammar, retained-alias, documentation, and verification audit. Independent
+  reviews tightened defaults-versus-tuned branch identity, overload coverage, exception ordering,
+  and the exact symmetric public-conversion terminology without adding a public concept. Approving
+  **`Approve FTC-02 staged controller-domain breaking design`** authorizes only the bounded
+  breaking implementation, caller/doc migration, tests, and verification above; it does not
+  authorize publication, SOURCE-04, SAFE-04, or any other tracker item.
+- **Design approval (2026-08-04):** the user sent the exact approval phrase above. FTC-02 is now
+  **In progress** on `codex/ftc-02-device-managed-controller-validation` at fetched
+  `origin/master@d1de79416231f7f7feaf4b802df1d16609aaeedb`. Gate 2 may implement, document,
+  migrate, review, and verify only the approved bounded design. This approval does not authorize
+  staging, committing, pushing, opening or merging a pull request, publication, SOURCE-04,
+  SAFE-04, or another tracker item.
+- **Gate 2 implementation (2026-08-04):** FTC-02 is **Verifying** on
+  `codex/ftc-02-device-managed-controller-validation`, still based exactly on fetched
+  `origin/master@d1de79416231f7f7feaf4b802df1d16609aaeedb`. The complete diff remains unstaged.
+  - Velocity tuning is now the one-answer
+    `deviceManaged().velocityPidf(...).bounded(...)` grammar. The velocity tuning interface no
+    longer exposes `doneDeviceManaged()`, and `velocityPidf(...)` returns the bounds stage directly.
+    The only compiled tuned velocity callers, Phoenix `ScoringPath` and
+    `FtcActuatorGroupIdentityValidationTest`, were migrated by removing that exit call; defaults and
+    position recipes remain source-identical.
+  - Defaults and tuned entries now retain distinct private control answers. Every tuning setter
+    requires the tuned entry, position requires a nonempty set of independently optional overrides
+    before `doneDeviceManaged()`, each setting is single-answer, and the close prevents repeated
+    close or retained-alias mutation. Setter ordering is lifecycle, branch identity, open section,
+    duplicate, numeric declaration order, then mutation; PIDF tuples commit all-or-nothing.
+  - The new package-private `FtcControllerConfigurationValidation` owns the pinned FTC SDK 11.1 REV
+    symmetric public-conversion coefficient domain, finite normalized position maximum power in
+    `[0.0, 1.0]`, and native device tolerance in `[0, 65535]`. Accepted signed values and signed
+    zeros are retained unchanged. The complete private configuration is revalidated at target
+    selection and build before feedback lookup, motor lookup, direction, controller, target, mode,
+    velocity, or power effects.
+  - Both explicit-power `FtcHardware.motorPosition(...)` overloads use the same maximum-power
+    validator before named lookup or motor-instance direction configuration. The former
+    constructor-time clamp is removed; the named default overload still delegates with `1.0`, and
+    no new public overload, wrapper, config value, builder, or `Plants.fromOutputs()` path was added.
+  - Public Javadocs state the exact inclusive coefficient expression and power/tolerance domains.
+    Framework Principles, FTC Actuators & Plants, the Beginner's Guide, and Builder Improvement
+    Backlog describe the one-answer velocity grammar, the nonempty position section, defaults,
+    rejection/retry semantics, revalidation, and the representation-versus-physical-safety boundary.
+- **Verification (2026-08-04):**
+  - The seven focused suites passed **91/91** tests: the new
+    `FtcDeviceManagedControllerConfigurationValidationTest` (17), group identity (21), position
+    reference (5), low-level command-domain (3), actuator mapping-domain (13), feedback-tolerance
+    stage (3), and motor run-mode (29), with zero failures, errors, or skips. Coverage includes the
+    pinned SDK conversion/tolerance constants; every invalid coefficient slot and adjacent finite
+    boundary; exact coefficient endpoints; signed values and raw signed-zero bits; tuple atomicity;
+    invalid-first retry; duplicate and close precedence; defaults/tuned cast rejection; incomplete
+    cast-bypass preflight; maximum-power and tolerance endpoints; both raw overloads before effects;
+    grouped forwarding; defaults; and SDK-failure cause/name retention.
+  - Forced `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` completed successfully:
+    **124 suites / 1,159 tests**, zero failures, errors, or skips. A final TeamCode Java compile also
+    passed after the review-requested exact-domain Javadoc correction. Output contains only the
+    repository's existing Java 8 source/target deprecation warnings under Android Studio JBR 21.
+  - `DocumentationLinksTest` passed in the full run. All changed files have a final LF, changed
+    Markdown fences are balanced, caller/public-surface scans find no velocity PIDF chain retaining
+    `doneDeviceManaged()`, `git diff --check` passes apart from informational CRLF working-copy
+    warnings, the branch/HEAD/merge base still equal fetched `origin/master`, and immutable stash
+    object `7e612af36844db4a3d820a6b07eb98928f0f1048` remains available.
+- **Adversarial review (2026-08-04):** independent correctness/lifecycle/test and Framework
+  Principles/API/scope/documentation reviews find no remaining issue. The API review found that the
+  public coefficient Javadocs named but did not spell out the exact symmetric conversion bound; the
+  three affected method contracts now include the exact expression and were recompiled. Reviewers
+  then confirmed the arithmetic, validation/effect order, branch and alias behavior, overloads,
+  grouped forwarding, SDK wrapper semantics, one-grammar simplicity, caller/docs synchronization,
+  and bounded FTC-02 scope.
+- **Hardware verification boundary:** no robot run is required for the deterministic staged grammar,
+  finite/range rejection, SDK-representation constants, diagnostic ordering, retained-state
+  recovery, or pre-effect assertions. Robot/controller testing is still required to establish
+  supported coefficient behavior and quantization, useful and safe gains, maximum-power behavior
+  under load, tolerance behavior, encoder sign/scale, grouped physical realization, and stop/failure
+  behavior.
+- **Android Studio audit point (2026-08-04):** inspect the public velocity return type and absent
+  velocity exit, the position nonempty/close flags and validation ordering, the package-private
+  domain helper, both low-level maximum-power paths, the two mechanical caller migrations, the 17
+  focused tests, and the synchronized numeric-domain guidance. Confirm that defaults remain the
+  shortest path and perform no optional controller writes, accepted values are never silently
+  clamped, and git status contains only the eleven FTC-02 implementation, documentation, test, and
+  tracker files recorded in this implementation section.
+- **Required combined manual-review/publication reply:** after inspecting this unstaged diff in
+  Android Studio, use exactly:
+  **`FTC-02 looks good. Authorize committing the reviewed FTC-02 diff on
+  codex/ftc-02-device-managed-controller-validation, pushing that branch to
+  https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging it into
+  master.`**
+- **Manual verification and publication authorization (2026-08-04):** the user completed the
+  Android Studio review and sent the exact combined authorization above, then explicitly directed
+  the workflow to move to the next task after publication. FTC-02 is now **Done**; Gate 3 may stage
+  only this reviewed diff, create its single item commit, push
+  `codex/ftc-02-device-managed-controller-validation` to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, open its pull request, and merge that pull
+  request into `master`. The next item may enter Gate 1 only after the merge is fetched and verified;
+  this approval does not preapprove that item's design or implementation.
 - **Alternatives to compare:** validate each existing staged answer; add an immutable reusable FTC
   tuning value; defer to the SDK; clamp silently; or replace device-managed control with framework
   regulation. Compare actual callers to determine whether numeric overloads or a tuning bundle have
@@ -12854,7 +13210,10 @@ writer, and explicit lifecycle ownership.
   avoid a tuning wrapper used only inline.
 - **Completion:** focused tests cover all device-managed motor/CR-servo paths, invalid values before
   SDK side effects, boundary values, diagnostics with units, and unchanged valid student calls.
-- **Decision record:** _Pending; split from API-03 on 2026-07-16._
+- **Superseded seed note:** the alternatives, leading hypothesis, and completion wording above were
+  the 2026-07-16 research seed. The complete 2026-08-04 decision record supersedes its inaccurate
+  CR-servo scope and unchanged-call assumption while preserving its finite-validation, distinct-
+  capability, and no-inline-wrapper direction.
 
 ### CONFIG-01 - Owner-configuration snapshot audit
 

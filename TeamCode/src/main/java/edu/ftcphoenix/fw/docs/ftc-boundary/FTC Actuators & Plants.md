@@ -101,7 +101,9 @@ Motor velocity wiring asks a parallel but smaller set of questions:
 
 1. Which hardware? `motor(...)`
 2. Which target domain? `velocity()`
-3. Who manages the velocity loop? `deviceManagedWithDefaults()`, `deviceManaged()...doneDeviceManaged()`, or `regulated()` followed by one direct feedback answer and `regulator(...)`
+3. Who manages the velocity loop? `deviceManagedWithDefaults()`, the one-answer
+   `deviceManaged().velocityPidf(...)` tuning branch, or `regulated()` followed by one direct
+   feedback answer and `regulator(...)`
 4. What target bounds in Plant units are legal? `bounded(min, max)` with two finite endpoints, or
    `unbounded()`
 5. How do Plant velocity units map to native velocity units? `nativeUnits()` or `scaleToNative(...)`
@@ -363,7 +365,9 @@ ticks because the builder chose `nativeUnits()`.
 
 Enter `deviceManaged()` only when you want optional FTC motor-controller tuning. While in this
 branch, autocomplete shows only device-managed tuning knobs. `doneDeviceManaged()` returns to the
-main position questions.
+main position questions. The branch must contain at least one accepted override, each knob may be
+answered only once, and closing it prevents later changes even through a retained tuning-stage
+reference. Use `deviceManagedWithDefaults()` instead of opening an empty tuning section.
 
 ```java
 this.lift = FtcActuators.plant(hardwareMap)
@@ -389,6 +393,10 @@ Device-managed tuning options:
 * `outerPositionP(...)` — FTC outer position-loop proportional gain.
 * `innerVelocityPidf(...)` — FTC inner velocity-loop PIDF used under position mode.
 * `devicePositionToleranceTicks(...)` — FTC motor-controller target tolerance in native ticks.
+
+These are configuration answers, so Phoenix rejects invalid values instead of clamping them and
+checks them again before hardware lookup or controller effects. See
+[Controller-configuration domains](#controller-configuration-domains) for the exact contracts.
 
 Notice that plant-level `positionTolerance(...)` lives after coordinate mapping and reference policy
 because it is in plant units. It is a required one-time answer for this feedback Plant. Device-level
@@ -1078,6 +1086,42 @@ correcting at that boundary. Ordinary robot code should normally use
 `deviceManagedWithDefaults()` and choose only the required Plant tolerance; enter
 `deviceManaged()...doneDeviceManaged()` when an FTC controller override is deliberately needed.
 
+### Controller-configuration domains
+
+FTC device-managed P, I, D, and F coefficients—including `outerPositionP(...)`, every component of
+`innerVelocityPidf(...)`, and every component of velocity `velocityPidf(...)`—must be finite and
+inside this inclusive symmetric domain:
+
+```text
+[-Integer.MAX_VALUE / 65536.0, +Integer.MAX_VALUE / 65536.0]
+```
+
+That is approximately `[-32767.99998474121, +32767.99998474121]`. It is the no-saturation domain of
+the pinned FTC SDK 11.1 REV **public coefficient conversion**, not the complete raw wire-field range
+and not a recommendation that every representable gain is useful or safe. Phoenix does not infer a
+nonnegative-gain rule: negative values and both signed zeros remain valid. The controller still
+applies its ordinary 1/65536 coefficient quantization.
+
+The other explicit position-controller settings have their own domains:
+
+* `maxPower(...)` is a magnitude and must be finite and inside `[0.0, 1.0]`. Both signed zeros are
+  accepted. Negative values, overshoot, `NaN`, and infinities are rejected rather than saturated.
+* `devicePositionToleranceTicks(...)` must be inside the pinned FTC/REV native unsigned 16-bit
+  target-command range `[0, 65535]`.
+
+Every tuning answer is validated before it changes the recipe. A complete PIDF tuple is accepted
+all-or-nothing, a rejected first answer can be corrected through the same retained stage, and a
+second answer to the same knob is rejected without replacing the first. Position
+`doneDeviceManaged()` requires at least one accepted setting, closes the multi-setting section, and
+prevents repeated close or later setters. Phoenix revalidates the complete branch before hardware
+lookup or configuration so a retained-stage cast cannot bypass the staged grammar.
+
+The common defaults path remains deliberately smaller. `deviceManagedWithDefaults()` calls no
+optional controller P, PIDF, or target-tolerance setter and leaves position maximum power at `1.0`;
+it cannot later be turned into the explicit tuning branch. An explicit position branch also retains
+maximum power `1.0` unless it answers `maxPower(...)`. Those optional controller settings therefore
+remain unchanged unless the recipe deliberately supplies an override.
+
 ## 13. Velocity bounds, mapping, and tuning
 
 Motor velocity uses the same guided-builder rule as position: required conceptual questions are
@@ -1105,7 +1149,6 @@ this.shooter = FtcActuators.plant(hardwareMap)
         .velocity()
         .deviceManaged()
             .velocityPidf(kP, kI, kD, kF)
-            .doneDeviceManaged()
         .bounded(0.0, 2600.0)
         .nativeUnits()
         .velocityTolerance(50.0)
@@ -1113,10 +1156,12 @@ this.shooter = FtcActuators.plant(hardwareMap)
         .build();
 ```
 
-The velocity tuning branch intentionally exposes only `velocityPidf(...)`. The separate FTC
-position-loop gain (`outerPositionP(...)`) belongs to device-managed motor **position** mode, not
-pure velocity mode. This method writes FTC device-controller coefficients; it is distinct from
-Phoenix's software `PidfRegulator` and does not construct one.
+The velocity tuning branch intentionally exposes only the complete `velocityPidf(...)` answer, so
+that answer advances directly to bounds; there is no administrative `doneDeviceManaged()` step and
+no empty tuned spelling of the defaults path. The separate FTC position-loop gain
+(`outerPositionP(...)`) belongs to device-managed motor **position** mode, not pure velocity mode.
+This method writes FTC device-controller coefficients under the validation contract above; it is
+distinct from Phoenix's software `PidfRegulator` and does not construct one.
 
 Use `regulated()` when Phoenix should own the velocity loop and command raw motor power. This is the
 right path for custom power-based flywheel control, including optional battery-voltage compensation:
