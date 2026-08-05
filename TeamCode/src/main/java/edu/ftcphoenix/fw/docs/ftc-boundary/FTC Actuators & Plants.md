@@ -306,7 +306,7 @@ Examples:
 .devicePositionToleranceTicks(12)     // explicitly native/controller ticks
 ```
 
-The complete command pipeline is:
+The complete normal target-command pipeline is:
 
 ```text
 Plant target
@@ -319,6 +319,10 @@ The hardware-neutral mapping engine owns finite arithmetic and reference state. 
 adds the selected FTC family, control-path, and raw-domain facts. This is why
 `Plants.fromOutputs()` can validate overflow but cannot assume that an arbitrary `PositionOutput`
 uses the standard-Servo `[0.0, 1.0]` or FTC integer-tick domain.
+
+A temporary grouped device-managed motor-position calibration search is deliberately outside this
+position-coordinate pipeline. Its one normalized power command fans out identically through each
+motor's configured `Direction`; position scale and bias do not transform raw search power.
 
 Every explicitly supplied position-reference component must be finite. These values define a
 coordinate anchor rather than a target request, so the plant-unit reference need not lie inside the
@@ -771,6 +775,11 @@ It rejects `NaN`, infinities, and finite overshoot at the builder step. The dire
 `PositionPlant.beginCalibrationSearch(...)` seam enforces the same contract before changing
 search state or stopping the normal position output. Neither path clamps an invalid search command;
 low-level FTC adapter clamping remains boundary defense only.
+
+For a grouped device-managed motor-position Plant, the search output sends that shared normalized
+command unchanged to every child's logical raw-power port. Each configured `Direction` still owns
+physical opposition, while the group's normal position scale and native-tick bias continue to apply
+only to position targets and inverse feedback.
 
 The reference supplied to `establishReferenceAt(...)` must also be finite in plant units. The Task
 recipe rejects `NaN` or infinity at that answer before starting or changing its search lifecycle;
@@ -1245,7 +1254,7 @@ logic, not in the Plant's legal target range.
 The staged hardware step has one child-transform grammar. The first actuator establishes the shared
 group coordinate. After each `andMotor(...)` or `andServo(...)`, `scale(...)` and a supported
 `bias(...)` apply to that most recently added child; `andCrServo(...)` exposes scale only. After the
-Plant's shared mapping, Phoenix computes:
+Plant's shared mapping, normal target realization computes:
 
 ```text
 childNative = childScale * sharedNative + childBias
@@ -1262,6 +1271,11 @@ be finite. The later target/control branch applies the narrower rule it owns:
 | Device-managed motor position | finite nonzero scale and finite bias; every realized rounded tick must fit `int` |
 | Standard-Servo position | finite scale and bias with complete raw image inside `[0.0, 1.0]` |
 | Grouped framework-regulated motor/CR-servo path | exact identity scale and zero bias |
+
+Device-managed motor-position calibration search is not another position target. While search is
+active, Phoenix bypasses the position scale/bias transform and submits one validated normalized
+power command identically to each motor through its configured `Direction`. This preserves both
+position alignment during normal targeting and exact zero-as-stop during search.
 
 For every fully known bounded recipe, the shared map and every child endpoint are preflighted before
 hardware resolution. A runtime-dependent reference gets core candidate-map validation when it is

@@ -362,6 +362,9 @@ Calibration-search power is a normalized command in the inclusive `[-1.0, +1.0]`
 recipe and the built-in `PositionPlant` direct seam reject `NaN`, infinities, and finite overshoot
 before changing search state or touching an output; they do not clamp configuration mistakes into
 plausible search commands. Low-level adapter clamping remains defense in depth, not search policy.
+For a grouped FTC device-managed motor-position Plant, the shared search command fans out
+identically through each motor's configured `Direction`; native position scale and bias describe
+normal coordinate geometry and must not transform this raw-power command.
 Passing this structural check does not prove that a magnitude, direction, cue, or mechanical setup
 is safe for a particular robot; the mechanism owner must validate those physical choices.
 
@@ -387,8 +390,9 @@ invalid command is submitted and best-effort invokes the output's natural stop; 
 returning cleanup leaves the Plant in its ordinary stopped state. This contract must not turn
 overflow into a plausible finite command.
 
-`FtcActuators` then adds facts owned by the FTC boundary. Its complete pipeline is `Plant target ->
-shared Plant-to-native map -> childNative = childScale * sharedNative + childBias -> FTC adapter`.
+`FtcActuators` then adds facts owned by the FTC boundary. Its normal target-realization pipeline is
+`Plant target -> shared Plant-to-native map -> childNative = childScale * sharedNative + childBias
+-> FTC adapter`.
 Every fully known static bounded endpoint is preflighted before hardware resolution. A mapping whose
 native offset depends on `assumeCurrentPositionIs(...)` or `needsReference(...)` validates candidate
 core arithmetic when the reference commits, then checks the selected FTC raw domain for each
@@ -398,7 +402,8 @@ ceiling but must be finite; and motor-position commands must round into the SDK'
 representation before narrowing. Power and velocity child transforms are scale-only so exact zero
 remains zero; position may use a finite child bias where its control path supports alignment. Keep
 raw finite Servo/power clamping only as boundary defense for expert calls, never as validation of a
-framework recipe.
+framework recipe. Temporary grouped motor-position calibration search is outside that position
+pipeline and uses the identity normalized-power fan-out defined above.
 
 `holdAfterReference(...)` instead supplies a plant-unit logical command. It rejects `NaN` and
 infinities at the recipe step without changing the prior command, but a finite value still flows

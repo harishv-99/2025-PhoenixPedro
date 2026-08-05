@@ -1,6 +1,6 @@
 # Framework Improvement Tracker
 
-Last updated: 2026-08-02
+Last updated: 2026-08-04
 
 This file tracks proposed Phoenix framework improvements. It is deliberately a planning document:
 an item being listed here does **not** mean its current proposed solution has been approved. Each
@@ -151,14 +151,15 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 64 | PLANT-02 | One public Plant construction grammar | Done | One shared Plant grammar, parallel target provenance, caller/docs migration, automated verification, independent review, and Android Studio approval are complete. |
 | 65 | RANGE-01 | ScalarRange construction validity | Done | Define and enforce finite, half-bounded, and unbounded range construction without allowing `NaN`. |
 | 66 | MAP-01 | FTC actuator mapping-domain validation | Done | Layer finite affine and FTC-native-domain validation, preserve neutral zero, and remove unusable CR-servo bias. |
-| 67 | FTC-02 | Device-managed controller configuration validation | Proposed | Validate FTC PIDF/P, maximum-power, and related staged answers before SDK access or mode changes. |
-| 68 | SOURCE-04 | Successful source-cache commit semantics | Proposed | Audit stateful source wrappers that claim a cycle before upstream sampling or state transition succeeds. |
-| 69 | INPUT-02 | Binding update failure retention | Proposed | Make same-cycle binding failure behavior explicit for an effectful traversal that may already have fired callbacks. |
-| 70 | BOUNDARY-01 | FTC boundary enforcement | Proposed | Fix existing import leaks, then add a focused forbidden-import check. |
-| 71 | CI-01 | Framework verification in CI | Proposed | Run focused unit tests, TeamCode compilation, docs checks, and boundary checks. |
-| 72 | EXAMPLE-03 | Advanced moving-target reference | Proposed | Revisit only after common-path guidance, known software defects, docs, boundaries, and verification are clearer. |
-| 73 | SAFE-04 | PowerOutput failure cleanup and seam truth | Deferred | Current completion requires representative actuator observation; a narrower software-seam contract needs a new approved decision gate. |
-| 74 | CONFIG-01 | Owner-configuration snapshot audit | Deferred | Revisit specific owners only when a traced caller shows mutation drift or invalid retained state. |
+| 67 | MAP-02 | Calibration-search power mapping separation | Done | Correct MAP-01's regression by keeping position-coordinate scale/bias out of grouped raw-power calibration search. |
+| 68 | FTC-02 | Device-managed controller configuration validation | Proposed | Validate FTC PIDF/P, maximum-power, and related staged answers before SDK access or mode changes. |
+| 69 | SOURCE-04 | Successful source-cache commit semantics | Proposed | Audit stateful source wrappers that claim a cycle before upstream sampling or state transition succeeds. |
+| 70 | INPUT-02 | Binding update failure retention | Proposed | Make same-cycle binding failure behavior explicit for an effectful traversal that may already have fired callbacks. |
+| 71 | BOUNDARY-01 | FTC boundary enforcement | Proposed | Fix existing import leaks, then add a focused forbidden-import check. |
+| 72 | CI-01 | Framework verification in CI | Proposed | Run focused unit tests, TeamCode compilation, docs checks, and boundary checks. |
+| 73 | EXAMPLE-03 | Advanced moving-target reference | Proposed | Revisit only after common-path guidance, known software defects, docs, boundaries, and verification are clearer. |
+| 74 | SAFE-04 | PowerOutput failure cleanup and seam truth | Deferred | Current completion requires representative actuator observation; a narrower software-seam contract needs a new approved decision gate. |
+| 75 | CONFIG-01 | Owner-configuration snapshot audit | Deferred | Revisit specific owners only when a traced caller shows mutation drift or invalid retained state. |
 
 The completed order was intentionally front-loaded with testability, robot lifecycle, actuator
 safety, deterministic Task behavior, Pedro ownership, truthful route outcomes, and the reusable
@@ -12650,6 +12651,191 @@ writer, and explicit lifecycle ownership.
   `codex/range-01-scalar-range-validity` to
   `https://github.com/harishv-99/2025-PhoenixPedro.git`, open its pull request, and merge that pull
   request into `master`. This approval does not start or authorize MAP-01, FTC-02, SOURCE-04, or
+  another tracker item.
+
+### MAP-02 - Calibration-search power mapping separation
+
+- **Decision gate and approval (2026-08-04):** **Ready and approved; implementation is in
+  progress.** This is the sole active item on
+  `codex/map-02-calibration-search-power-separation`, based exactly on merged
+  `origin/master@148e5790629e694cb286908968b95c727be66fab`. After the complete direct-power scale
+  audit exposed the adjacent grouped-position search defect and presented the identity-fan-out
+  correction, the user directed: **“Okay proceed with the MAP-01 corrective task.”** That approval
+  authorizes only the bounded correction, regression coverage, synchronized contracts, and
+  verification recorded here. The unfinished FTC-02 Gate 1 tracker research is preserved in
+  immutable stash object `7e612af36844db4a3d820a6b07eb98928f0f1048` (currently `stash@{0}`),
+  created from `codex/ftc-02-device-managed-controller-validation` with message “preserve FTC-02
+  Gate 1 research before MAP correction.” FTC-02, SOURCE-04, SAFE-04, and every other item remain
+  out of scope.
+- **Confirmed regression and failure trace:**
+  1. A grouped FTC device-managed motor-position recipe legitimately retains a finite nonzero child
+     position scale and finite native-tick bias. Normal position commands and feedback use
+     `childNative = childScale * sharedNative + childBias` and its inverse.
+  2. `MotorPositionBuilder.createSharedPositionStart()` also installs
+     `parent.groupedMotorPower()` as the `PositionPlant`'s temporary calibration-search output.
+     `MappedPositionPlant.update(clock)` submits its already-validated normalized search command to
+     that `PowerOutput` unchanged while search is active.
+  3. Before MAP-01, `groupedMotorPower()` built an identity group, while the separately named
+     `groupedMotorPowerWithMappings()` alone applied configured child transforms to a direct-power
+     Plant. MAP-01 commit `39732b5` accidentally made both helpers call the same mapped-output
+     factory.
+  4. The current grouped search therefore misinterprets native position alignment as normalized
+     power: child search power becomes `positionScale * searchPower + positionBias`. A valid
+     position bias of `0.25` makes a shared search request of exact zero move that child at `0.25`;
+     a valid position scale of `2.0` turns `0.6` into `1.2` and throws at the grouped power domain
+     check. The latter precomputes every child before writing, so it avoids a predictable partial
+     write, but the recipe remains dimensionally wrong and can either move unexpectedly or fail a
+     valid search.
+- **Complete construction-path and caller audit:**
+  - `FtcActuators.plant(HardwareMap)` is the only ordinary FTC Plant gateway. Its grouped
+    device-managed motor-position branch is the only supported path that combines nonidentity
+    child position mappings with an automatically supplied raw-power calibration-search output.
+  - A single FTC motor has the implicit identity child transform. Grouped framework-regulated
+    motor and CR-servo branches already require exact scale `1.0` and bias `0.0`, so the correction
+    is behaviorally neutral there. Standard Servo position has no calibration search. Direct
+    motor/CR-servo power must continue using its validated child power scales.
+  - `Plants.fromOutputs()` is the distinct advanced/custom-adapter gateway. It accepts the caller's
+    already-owned `PowerOutput` and cannot infer that output's child policy; no change belongs in
+    hardware-neutral `Plants` or `MappedPositionPlant`. Public `FtcHardware` motor outputs are raw
+    adapter capabilities, not another grouped Plant recipe.
+  - No executable production, Phoenix, tool, or modern example currently builds a grouped
+    device-managed motor-position Plant. Existing grouped-position tests cover target mapping and
+    integer-domain preflight; calibration tests cover single-motor or hardware-neutral outputs.
+    The missing intersection explains why the regression passed the MAP-01 suite. Correcting a
+    framework-promised capability does not require manufacturing a production caller.
+  - Child scale/bias answers are inline staged facts but retain distinct value for velocity ratios
+    and position/linkage coordinates. This correction neither removes nor adds a public
+    construction layer, method, wrapper, selector, configuration object, or caller concept.
+- **Alternatives and simplicity comparison:**
+
+  | Design | Ordinary call-site change | Added concepts | Result |
+  | --- | ---: | ---: | --- |
+  | **Restore private identity search fan-out** | 0 lines | 0 | Keeps raw power in its own domain and restores the pre-MAP-01 meaning |
+  | No change or documentation only | 0 | 0 | Leaves zero able to move a child and valid normalized search able to fail |
+  | Require device-position `abs(scale) <= 1` and zero bias | 0 | 0 | Deletes valid native position ratios and encoder/linkage alignment to protect an unrelated power path |
+  | Apply only the sign of position scale to search | 0 | Hidden inferred policy | Still derives raw-power behavior from a position-coordinate fact and silently changes the prior identity contract |
+  | Add `searchScale(...)` or a search-mapping stage | +1 or more | New public policy | Makes every grouped position caller answer an uncommon raw-power question; additive bias would still violate neutral zero |
+  | Normalize position scales into power ratios | 0 | Hidden normalization | Invents motor-load policy from encoder geometry and makes requested search power cease to be the submitted group command |
+
+  A mechanism that genuinely needs different per-child open-loop homing commands has more than one
+  search degree of freedom. It should own separate private Plants or a deliberately advanced custom
+  group adapter rather than turning one scalar position group into an undocumented multi-command
+  policy.
+- **Chosen correction and invariants:**
+  1. Restore the existing private semantic split. `groupedMotorPower()` fans one normalized command
+     identically to every selected motor through each child's already configured `Direction`;
+     `groupedMotorPowerWithMappings()` alone applies configured child scale/bias for a direct-power
+     Plant.
+  2. Retain MAP-01's all-child temporary computation and exact `[-1.0,+1.0]` validation in both
+     the private identity and mapped grouped-power outputs. Identity search copies rather than
+     arithmetically remaps each command, so it preserves shared signed zero and exact boundaries
+     before the first child write. Do not claim transactional SDK writes if an actual child call
+     throws.
+  3. Keep position scale/bias unchanged for normal device-managed position targets and inverse
+     feedback. Keep direct-power full-domain preflight, grouped regulated identity rules,
+     calibration acquisition/release order, motor run-mode ownership, output stop behavior, and
+     Plant heartbeat ownership unchanged.
+  4. State the domain split explicitly: a position child transform is native-coordinate geometry,
+     while temporary calibration search is a distinct normalized raw-power command. The FTC group
+     applies the shared search command identically; configured motor `Direction` remains the wiring
+     answer for physical opposition. No child position bias may turn search zero into motion.
+- **Principles result:** the correction keeps one student grammar and no new answer, restores
+  neutral-zero `PowerOutput` meaning, prevents one domain's affine coordinate data from becoming
+  hidden policy in another domain, and leaves final hardware ownership at the FTC boundary. It is
+  the smallest local fix, preserves all valid position mappings, and keeps implementation,
+  Javadocs, and Markdown synchronized. The correction is deterministic at the software seam and
+  does not depend on unavailable hardware evidence.
+- **Bounded implementation and documentation scope:** change only the private grouped motor-power
+  construction in `FtcActuators`; add focused coverage to
+  `FtcActuatorMappingDomainValidationTest`; and synchronize the relevant `FtcActuators` Javadocs,
+  Framework Principles, FTC Actuators & Plants, Beginner's Guide, and Framework Overview wording.
+  No Phoenix production code, example call, public signature, `Plants`, `MappedPositionPlant`,
+  `FtcHardware`, calibration Task, controller configuration, raw failure cleanup, or physical
+  homing policy changes.
+- **Verification plan:**
+  - Build a grouped device-managed position Plant with a valid nonidentity position scale and bias.
+    Prove normal target commands still apply both, then enter direct calibration search and prove
+    shared `0.0`, representative positive/negative power, and exact boundaries reach both motors
+    unchanged rather than being scaled or biased.
+  - Prove search acquisition stops the normal position output, active update asserts the raw motor
+    mode, release submits natural zero, and the next normal update reasserts device-managed position
+    mode and the unchanged mapped position target. Preserve group cache and all-child preflight
+    assertions without claiming SDK transactionality.
+  - Retain and run the focused MAP-01 mapping-domain, calibration-search, and motor run-mode suites;
+    run full `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac`; count XML results;
+    scan every grouped-position/search caller and affected contract; run Markdown link/fence,
+    whitespace/final-LF, and `git diff --check` checks; then perform independent correctness,
+    Framework-Principles, simplicity/scope, documentation, and test-validity review.
+- **Hardware claim boundary:** software tests can prove exact commands submitted to the fake FTC
+  seams, mode ordering, neutral zero, preserved normal mapping, and no predictable prevalidation
+  partial write. They cannot prove that configured motor directions, homing magnitude, cue,
+  linkage, load sharing, or physical mechanism motion are safe. Those remain adopting-robot
+  validation.
+- **Gate 2 implementation (2026-08-04):** MAP-02 is **Verifying** on
+  `codex/map-02-calibration-search-power-separation`, still based exactly on
+  `origin/master@148e5790629e694cb286908968b95c727be66fab`.
+  - `groupedMotorPower()` now builds a private exact-identity grouped output for framework
+    regulation and device-managed position calibration search. It copies the shared normalized
+    command bit-for-bit—including signed zero—into every child temporary, validates the complete
+    group before cache or child effects, then fans out through the already configured motor
+    directions. `groupedMotorPowerWithMappings()` remains the sole direct-power path that applies
+    child scale/bias.
+  - Normal device-managed position targets and inverse feedback still use each child's native
+    position scale and tick bias. Search acquisition/release order, coordinated raw-mode preflight,
+    natural stop, next-cycle `RUN_TO_POSITION` restoration, Plant heartbeat ownership, and the
+    hardware-neutral `Plants.fromOutputs()` custom-output seam are unchanged. No public API,
+    builder answer, caller concept, Phoenix code, or example changed.
+  - The focused regression builds a two-motor position Plant whose second child has scale `2.0`,
+    bias `0.75`, and reverse direction. It proves normal target `3.0` still realizes ticks `3`/`7`;
+    search forwards `-1.0`, representative negative/positive values, both signed zeros, and `1.0`
+    unchanged; release writes natural zero; and normal targeting resumes. Direct invalid calls to
+    the private grouped seam prove cache, power/mode write counts, modes, and child values remain
+    unchanged before any hardware effect.
+  - `FtcActuators` Javadocs, Framework Principles, FTC Actuators & Plants, Beginner's Guide, and
+    Framework Overview now call the affine pipeline normal position realization and state the
+    separate identity normalized-power search rule.
+- **Automated verification (2026-08-04):** Android Studio JBR completed the post-review checks.
+  - `FtcActuatorMappingDomainValidationTest` (13), `PositionCalibrationTasksTest` (25),
+    `FtcMotorPowerRunModeTest` (29), and `FtcActuatorGroupIdentityValidationTest` (21) pass
+    **88/88** with zero failures, errors, or skips.
+  - `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` succeeds: **1,142 tests across
+    123 suites, 0 failures, 0 errors, 0 skipped**. `DocumentationLinksTest` passes 5/5. Only the
+    existing Java 8 source/target-on-JDK-21 and deprecated FTC sample warnings remain.
+  - Construction-path, executable-caller, advanced-output-seam, private-helper, and public-surface
+    scans are clean. No production, Phoenix, tool, or modern-example grouped device-managed
+    position caller requires migration. All **7** changed files have no trailing whitespace and end
+    in LF; all **5** changed Markdown files have balanced fences; all **51** checked local Markdown
+    links resolve; there are no untracked files; and `git diff --check` passes apart from
+    informational working-copy LF-to-CRLF warnings.
+- **Adversarial review (2026-08-04):** independent correctness/lifecycle/test,
+  Framework-Principles/API/scope, and documentation/caller reviews find no remaining issue. Review
+  caught the signed-zero arithmetic trap, incomplete invalid-command mode-effect assertions, stale
+  identity-class wording, task-specific test Javadoc, and a movable stash index. The final code,
+  test, and tracker now preserve exact identity, prove no invalid-command power or mode effects, use
+  task-neutral wording, and retain FTC-02 research by immutable stash object.
+- **Hardware verification:** no robot run is required for this deterministic mapping, raw-command,
+  and ordering correction. An adopting mechanism must still validate each configured direction,
+  search magnitude, cue, timeout/cancellation policy, linkage, load sharing, and physical motion on
+  the real robot.
+- **Android Studio audit point (2026-08-04):** inspect the private identity-versus-mapped grouped
+  power split in `FtcActuators`, the grouped nonidentity position/search regression and invalid-input
+  no-effect assertions, and the normal-target-versus-search wording in the five changed Markdown
+  files. Confirm normal target `3.0` remains `3`/`7`, search values reach both logical motor ports
+  unchanged through configured directions, and no public grammar changed. Review coordinates are
+  branch `codex/map-02-calibration-search-power-separation`, push URL
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, and target `master`. No file is staged,
+  committed, pushed, or merged, and no later tracker item has started.
+- **Combined review/publication authorization:** after completing the Android Studio review, use
+  **`MAP-02 looks good. Authorize committing the reviewed MAP-02 diff on
+  codex/map-02-calibration-search-power-separation, pushing that branch to
+  https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging it into
+  master.`**
+- **Manual verification and publication authorization (2026-08-04):** the user completed the
+  Android Studio review and sent the exact combined authorization above. MAP-02 is now **Done**;
+  Gate 3 may stage only this reviewed diff, create its single item commit, push
+  `codex/map-02-calibration-search-power-separation` to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, open its pull request, and merge that pull
+  request into `master`. This approval does not start or authorize FTC-02, SOURCE-04, SAFE-04, or
   another tracker item.
 
 ### FTC-02 - Device-managed controller configuration validation

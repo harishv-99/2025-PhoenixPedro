@@ -282,6 +282,8 @@ The builder asks a short sequence of guided questions:
         * After you add another motor, `.scale(...)` may give that <i>last added</i> child a fixed
           ratio. A finite `.bias(...)` is position alignment only; power and velocity preserve
           exact zero and reject an additive bias.
+        * A grouped device-managed position calibration search sends the same normalized power to
+          each motor through its configured direction; position scale/bias does not change it.
     * `.servo(name, direction)` then (optional) `.andServo(name, direction)`
         * A last-added standard Servo may use finite scale/bias when its complete raw position
           remains inside `[0.0, 1.0]`.

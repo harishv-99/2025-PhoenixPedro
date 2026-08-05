@@ -365,7 +365,7 @@ The two gateways have different starting evidence, not competing builder impleme
 share the same periodicity, range, mapping, guard, target, validation, and hidden runtime grammar.
 Command-only position omits feedback-only reference and tolerance questions.
 
-That shared engine evaluates one explicit pipeline:
+That shared engine evaluates one explicit normal target-realization pipeline:
 
 ```text
 Plant target -> shared Plant-to-native map
@@ -391,6 +391,10 @@ not proof that every child is independently within tolerance. See
 for the opposed-flywheel ratio example and the subsystem-owned two-Plant escape for a proven
 additive/nonlinear trim.
 
+Temporary grouped device-managed motor-position calibration search is a separate normalized-power
+path. It bypasses position scale/bias and sends the shared search command identically through each
+motor's configured `Direction`, so normal coordinate alignment cannot turn search zero into motion.
+
 A direct power Plant already knows its only legal domain: normalized `[-1.0, +1.0]`. It clamps a
 finite out-of-range request before calling `PowerOutput`, while the FTC adapter keeps its own clamp
 as final boundary defense.
@@ -411,7 +415,9 @@ power or invokes the final target resolver and applies hardware guards.
 Calibration-search power must be finite and inside the inclusive normalized range `[-1.0, +1.0]`.
 The Task recipe and direct `PositionPlant` seam reject invalid values immediately instead of relying on
 adapter clamping. The robot's mechanism owner still chooses and validates the safe magnitude,
-direction, cue, and mechanical setup.
+direction, cue, and mechanical setup. In a grouped device-managed motor-position Plant, every motor
+receives the same logical search-power value through its configured `Direction`; normal position
+scale/bias remains outside this temporary path.
 
 ---
 

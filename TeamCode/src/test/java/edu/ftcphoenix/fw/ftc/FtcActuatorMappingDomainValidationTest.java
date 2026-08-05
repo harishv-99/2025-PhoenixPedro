@@ -22,6 +22,7 @@ import edu.ftcphoenix.fw.actuation.Plant;
 import edu.ftcphoenix.fw.actuation.Plants;
 import edu.ftcphoenix.fw.actuation.PositionPlant;
 import edu.ftcphoenix.fw.core.hal.Direction;
+import edu.ftcphoenix.fw.core.hal.PowerOutput;
 import edu.ftcphoenix.fw.core.hal.PositionOutput;
 import edu.ftcphoenix.fw.core.hal.VelocityOutput;
 import edu.ftcphoenix.fw.testing.ManualLoopClock;
@@ -31,7 +32,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
-/** Focused MAP-01 coverage for FTC child mappings and final native command domains. */
+/** Focused coverage for FTC child mappings and final native command domains. */
 public final class FtcActuatorMappingDomainValidationTest {
 
     private static final double EPSILON = 1.0e-9;
@@ -497,6 +498,87 @@ public final class FtcActuatorMappingDomainValidationTest {
         assertEquals(2, runtimeSecond.lastTargetPosition);
     }
 
+    @Test
+    public void devicePositionCalibrationSearchBypassesChildPositionMapping() throws Exception {
+        TestHardwareMap hardwareMap = new TestHardwareMap();
+        MotorProbe first = hardwareMap.addMotor("first");
+        MotorProbe second = hardwareMap.addMotor("second");
+        PositionPlant plant = FtcActuators.plant(hardwareMap)
+                .motor("first", Direction.FORWARD)
+                .andMotor("second", Direction.REVERSE)
+                .scale(2.0)
+                .bias(0.75)
+                .position()
+                .deviceManagedWithDefaults()
+                .nonPeriodic()
+                .bounded(0.0, 10.0)
+                .nativeUnits()
+                .alreadyReferenced()
+                .positionTolerance(0.0)
+                .targetFromNewCommand(3.0)
+                .build();
+        ManualLoopClock clock = new ManualLoopClock();
+
+        plant.update(clock.clock());
+        assertEquals(3, first.lastTargetPosition);
+        assertEquals(7, second.lastTargetPosition);
+        assertEquals(DcMotor.RunMode.RUN_TO_POSITION, first.mode);
+        assertEquals(DcMotor.RunMode.RUN_TO_POSITION, second.mode);
+        assertEquals(DcMotorSimple.Direction.FORWARD, first.direction);
+        assertEquals(DcMotorSimple.Direction.REVERSE, second.direction);
+
+        PowerOutput groupedSearch = privateField(plant, "searchPowerOut", PowerOutput.class);
+        for (double searchPower : new double[]{-1.0, -0.4, -0.0, 0.0, 0.4, 1.0}) {
+            plant.beginCalibrationSearch(searchPower);
+            assertRawDoubleEquals(0.0, first.lastPower);
+            assertRawDoubleEquals(0.0, second.lastPower);
+            assertEquals(DcMotor.RunMode.RUN_USING_ENCODER, first.mode);
+            assertEquals(DcMotor.RunMode.RUN_USING_ENCODER, second.mode);
+
+            plant.update(clock.nextCycle(0.02));
+
+            assertRawDoubleEquals(searchPower, groupedSearch.getCommandedPower());
+            assertRawDoubleEquals(searchPower, first.lastPower);
+            assertRawDoubleEquals(searchPower, second.lastPower);
+            assertEquals(DcMotor.RunMode.RUN_WITHOUT_ENCODER, first.mode);
+            assertEquals(DcMotor.RunMode.RUN_WITHOUT_ENCODER, second.mode);
+
+            plant.endCalibrationSearch();
+            assertRawDoubleEquals(0.0, groupedSearch.getCommandedPower());
+            assertRawDoubleEquals(0.0, first.lastPower);
+            assertRawDoubleEquals(0.0, second.lastPower);
+            assertEquals(DcMotor.RunMode.RUN_WITHOUT_ENCODER, first.mode);
+            assertEquals(DcMotor.RunMode.RUN_WITHOUT_ENCODER, second.mode);
+
+            plant.update(clock.nextCycle(0.02));
+            assertEquals(3, first.lastTargetPosition);
+            assertEquals(7, second.lastTargetPosition);
+            assertEquals(DcMotor.RunMode.RUN_TO_POSITION, first.mode);
+            assertEquals(DcMotor.RunMode.RUN_TO_POSITION, second.mode);
+        }
+
+        int firstPowerWrites = first.powerWrites;
+        int secondPowerWrites = second.powerWrites;
+        int firstModeWrites = first.modeWrites;
+        int secondModeWrites = second.modeWrites;
+        DcMotor.RunMode firstMode = first.mode;
+        DcMotor.RunMode secondMode = second.mode;
+        double firstPower = first.lastPower;
+        double secondPower = second.lastPower;
+        for (double invalidPower : new double[]{Double.NaN, -1.01, 1.01}) {
+            expect(IllegalStateException.class, () -> groupedSearch.setPower(invalidPower));
+            assertRawDoubleEquals(0.0, groupedSearch.getCommandedPower());
+            assertEquals(firstPowerWrites, first.powerWrites);
+            assertEquals(secondPowerWrites, second.powerWrites);
+            assertEquals(firstModeWrites, first.modeWrites);
+            assertEquals(secondModeWrites, second.modeWrites);
+            assertEquals(firstMode, first.mode);
+            assertEquals(secondMode, second.mode);
+            assertRawDoubleEquals(firstPower, first.lastPower);
+            assertRawDoubleEquals(secondPower, second.lastPower);
+        }
+    }
+
     private static Plant velocityGroup(TestHardwareMap hardwareMap,
                                        String first,
                                        String second,
@@ -543,6 +625,10 @@ public final class FtcActuatorMappingDomainValidationTest {
             return;
         }
         fail("Expected " + expected.getSimpleName());
+    }
+
+    private static void assertRawDoubleEquals(double expected, double actual) {
+        assertEquals(Double.doubleToRawLongBits(expected), Double.doubleToRawLongBits(actual));
     }
 
     private static final class TestHardwareMap extends HardwareMap {
