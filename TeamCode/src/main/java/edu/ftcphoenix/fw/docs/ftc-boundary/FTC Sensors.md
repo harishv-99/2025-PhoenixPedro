@@ -58,9 +58,11 @@ ScalarSource directVelocityTicksPerSec =
         FtcSensors.motorVelocityTicksPerSec(hardwareMap, "armMotor");
 ```
 
-Both helpers memoize the hardware read per `LoopClock.cycle()`. Position is the SDK-observed signed
-32-bit count. Direct velocity is the SDK's motor-velocity reading; converting its units does not make
-its underlying controller representation wider.
+Both helpers publish one successful hardware read per `LoopClock.cycle()`. If an SDK read throws,
+the adapter does not cache zero or the preceding loop's value as a success; a later same-cycle call
+may retry. Position is the SDK-observed signed 32-bit count. Direct velocity is the SDK's
+motor-velocity reading; converting its units does not make its underlying controller representation
+wider.
 
 For ordinary built-in motor encoders, the regulated motor-velocity builder's
 `.internalEncoder(...)` answer uses direct SDK velocity. For a physically external incremental
@@ -123,8 +125,9 @@ BooleanSource ballAtGate = gateDistanceCm
 
 Notes:
 
-* `FtcSensors.distance*(...)` sources are **memoized per loop** so the hardware sensor is sampled
-  at most once per `LoopClock.cycle()`.
+* `FtcSensors.distance*(...)` sources publish **one successful sample per loop**. Repeated reads
+  reuse that result; a failed hardware read publishes no substitute and remains eligible for a
+  same-cycle retry.
 * For stable boolean gates, prefer **hysteresis** (threshold-domain stability) and then
   **debounce** (time-domain stability).
 

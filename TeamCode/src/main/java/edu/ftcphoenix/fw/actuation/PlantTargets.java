@@ -1121,6 +1121,24 @@ public final class PlantTargets {
         }
     }
 
+    /** Complete staged publication for one context-aware target resolution. */
+    private static final class ResolverCandidate {
+        final PlantTargetResolution resolution;
+        final double lastTarget;
+        final boolean unavailableActive;
+        final double heldMeasuredTarget;
+
+        ResolverCandidate(PlantTargetResolution resolution,
+                          double lastTarget,
+                          boolean unavailableActive,
+                          double heldMeasuredTarget) {
+            this.resolution = Objects.requireNonNull(resolution, "resolution");
+            this.lastTarget = lastTarget;
+            this.unavailableActive = unavailableActive;
+            this.heldMeasuredTarget = heldMeasuredTarget;
+        }
+    }
+
     private static final class EquivalentPositionsTargetResolver
             implements PlantTargetResolver, CommandTargetOwner {
         private final PlantTargetResolver logicalTarget;
@@ -1135,6 +1153,8 @@ public final class PlantTargets {
         private double lastTarget = Double.NaN;
         private boolean unavailableActive;
         private double heldMeasuredTarget = Double.NaN;
+        private boolean resolving;
+        private boolean resetting;
 
         EquivalentPositionsTargetResolver(PlantTargetResolver logicalTarget,
                                           CandidatePreference preference,
@@ -1163,62 +1183,94 @@ public final class PlantTargets {
         public PlantTargetResolution resolve(PlantTargetContext context, LoopClock clock) {
             Objects.requireNonNull(context, "context");
             long cycle = Objects.requireNonNull(clock, "clock").cycle();
+            if (resolving) {
+                throw new IllegalStateException(
+                        "Equivalent-position target resolution reentered; check the logical "
+                                + "target graph for a cycle");
+            }
+            if (resetting) {
+                throw new IllegalStateException(
+                        "Equivalent-position target cannot resolve while reset is in progress");
+            }
             if (cycle == lastCycle) return lastResolution;
-            if (unavailableKind == UnavailableKind.HOLD_MEASURED
-                    && hasSamplingGap(lastCycle, cycle)) {
-                unavailableActive = false;
-                heldMeasuredTarget = Double.NaN;
-            }
 
-            PlantTargetResolution logicalResolution = logicalTarget.resolve(context, clock);
-            if (logicalResolution == null) {
-                throw new NullPointerException(
-                        "Equivalent-position logical target returned null resolution");
-            }
+            resolving = true;
+            try {
+                double candidateLastTarget = lastTarget;
+                boolean candidateUnavailableActive = unavailableActive;
+                double candidateHeldMeasuredTarget = heldMeasuredTarget;
+                if (unavailableKind == UnavailableKind.HOLD_MEASURED
+                        && hasSamplingGap(lastCycle, cycle)) {
+                    candidateUnavailableActive = false;
+                    candidateHeldMeasuredTarget = Double.NaN;
+                }
 
-            PlantTargetResolution resolved;
-            if (!logicalResolution.hasTarget()) {
-                resolved = unavailable(context,
-                        "logical target unavailable: " + logicalResolution.reason());
-            } else if (context.periodicity() != PositionPlant.Periodicity.PERIODIC) {
-                resolved = unavailable(context,
-                        "equivalent positions require a periodic Plant coordinate");
-            } else if (!PeriodicTargetSelector.isUsableRange(context.targetRange())) {
-                resolved = unavailable(context, "plant target range is unavailable");
-            } else {
-                double measurement = selectionMeasurement(context);
-                if (!Double.isFinite(measurement)) {
-                    resolved = unavailable(context,
-                            "equivalent-position selection has no measurement or prior applied target");
+                PlantTargetResolution logicalResolution = logicalTarget.resolve(context, clock);
+                if (logicalResolution == null) {
+                    throw new NullPointerException(
+                            "Equivalent-position logical target returned null resolution");
+                }
+
+                ResolverCandidate candidate;
+                if (!logicalResolution.hasTarget()) {
+                    candidate = unavailableCandidate(context,
+                            "logical target unavailable: " + logicalResolution.reason(),
+                            candidateLastTarget,
+                            candidateUnavailableActive,
+                            candidateHeldMeasuredTarget);
+                } else if (context.periodicity() != PositionPlant.Periodicity.PERIODIC) {
+                    candidate = unavailableCandidate(context,
+                            "equivalent positions require a periodic Plant coordinate",
+                            candidateLastTarget,
+                            candidateUnavailableActive,
+                            candidateHeldMeasuredTarget);
+                } else if (!PeriodicTargetSelector.isUsableRange(context.targetRange())) {
+                    candidate = unavailableCandidate(context,
+                            "plant target range is unavailable",
+                            candidateLastTarget,
+                            candidateUnavailableActive,
+                            candidateHeldMeasuredTarget);
                 } else {
-                    double logicalValue = logicalResolution.target();
-                    double physicalTarget = PeriodicTargetSelector.select(
-                            logicalValue,
-                            context.period(),
-                            preference,
-                            measurement,
-                            context.targetRange());
-                    if (Double.isFinite(physicalTarget)) {
-                        unavailableActive = false;
-                        heldMeasuredTarget = Double.NaN;
-                        lastTarget = physicalTarget;
-                        resolved = logicalResolution.withEquivalentTarget(physicalTarget,
-                                "selected equivalent position for "
-                                        + logicalResolution.reason());
-                        if (commandTarget != null
-                                && !resolved.reportsCommandResolutionFor(commandTarget)) {
-                            resolved = resolved.withoutSelectedCommand(commandTarget);
-                        }
+                    double measurement = selectionMeasurement(context);
+                    if (!Double.isFinite(measurement)) {
+                        candidate = unavailableCandidate(context,
+                                "equivalent-position selection has no measurement or prior applied target",
+                                candidateLastTarget,
+                                candidateUnavailableActive,
+                                candidateHeldMeasuredTarget);
                     } else {
-                        resolved = unavailable(context,
-                                "logical target has no legal equivalent in the Plant range");
+                        double logicalValue = logicalResolution.target();
+                        double physicalTarget = PeriodicTargetSelector.select(
+                                logicalValue,
+                                context.period(),
+                                preference,
+                                measurement,
+                                context.targetRange());
+                        if (Double.isFinite(physicalTarget)) {
+                            PlantTargetResolution resolved =
+                                    logicalResolution.withEquivalentTarget(physicalTarget,
+                                            "selected equivalent position for "
+                                                    + logicalResolution.reason());
+                            if (commandTarget != null
+                                    && !resolved.reportsCommandResolutionFor(commandTarget)) {
+                                resolved = resolved.withoutSelectedCommand(commandTarget);
+                            }
+                            candidate = new ResolverCandidate(
+                                    resolved, physicalTarget, false, Double.NaN);
+                        } else {
+                            candidate = unavailableCandidate(context,
+                                    "logical target has no legal equivalent in the Plant range",
+                                    candidateLastTarget,
+                                    candidateUnavailableActive,
+                                    candidateHeldMeasuredTarget);
+                        }
                     }
                 }
-            }
 
-            lastResolution = resolved;
-            lastCycle = cycle;
-            return resolved;
+                return commit(candidate, cycle);
+            } finally {
+                resolving = false;
+            }
         }
 
         private double selectionMeasurement(PlantTargetContext context) {
@@ -1232,43 +1284,77 @@ public final class PlantTargets {
             return Double.NaN;
         }
 
-        private PlantTargetResolution unavailable(PlantTargetContext context, String reason) {
+        private ResolverCandidate unavailableCandidate(PlantTargetContext context,
+                                                       String reason,
+                                                       double candidateLastTarget,
+                                                       boolean candidateUnavailableActive,
+                                                       double candidateHeldMeasuredTarget) {
             PlantTargetResolution resolution;
             if (unavailableKind == UnavailableKind.REJECT) {
-                unavailableActive = true;
                 resolution = PlantTargetResolution.unavailable(reason);
+                candidateUnavailableActive = true;
             } else if (unavailableKind == UnavailableKind.FALLBACK) {
-                unavailableActive = true;
-                lastTarget = unavailableValue;
                 resolution = PlantTargetResolution.fallback(unavailableValue, reason);
+                candidateUnavailableActive = true;
+                candidateLastTarget = unavailableValue;
             } else if (unavailableKind == UnavailableKind.HOLD_LAST) {
-                unavailableActive = true;
-                double target = Double.isFinite(lastTarget) ? lastTarget : unavailableValue;
-                lastTarget = target;
+                double target = Double.isFinite(candidateLastTarget)
+                        ? candidateLastTarget
+                        : unavailableValue;
                 resolution = PlantTargetResolution.holdLast(target, reason);
+                candidateUnavailableActive = true;
+                candidateLastTarget = target;
             } else {
-                if (!unavailableActive || !Double.isFinite(heldMeasuredTarget)) {
-                    heldMeasuredTarget = context.feedbackAvailable()
+                if (!candidateUnavailableActive
+                        || !Double.isFinite(candidateHeldMeasuredTarget)) {
+                    candidateHeldMeasuredTarget = context.feedbackAvailable()
                             ? context.measurement()
                             : unavailableValue;
                 }
-                unavailableActive = true;
-                lastTarget = heldMeasuredTarget;
-                resolution = PlantTargetResolution.holdMeasured(heldMeasuredTarget, reason);
+                resolution = PlantTargetResolution.holdMeasured(
+                        candidateHeldMeasuredTarget, reason);
+                candidateUnavailableActive = true;
+                candidateLastTarget = candidateHeldMeasuredTarget;
             }
-            return commandTarget != null
+            PlantTargetResolution resolved = commandTarget != null
                     ? resolution.withoutSelectedCommand(commandTarget)
                     : resolution;
+            return new ResolverCandidate(resolved,
+                    candidateLastTarget,
+                    candidateUnavailableActive,
+                    candidateHeldMeasuredTarget);
+        }
+
+        private PlantTargetResolution commit(ResolverCandidate candidate, long cycle) {
+            lastTarget = candidate.lastTarget;
+            unavailableActive = candidate.unavailableActive;
+            heldMeasuredTarget = candidate.heldMeasuredTarget;
+            lastResolution = candidate.resolution;
+            lastCycle = cycle;
+            return candidate.resolution;
         }
 
         @Override
         public void reset() {
-            logicalTarget.reset();
-            lastResolution = PlantTargetResolution.unavailable("not sampled");
-            lastCycle = Long.MIN_VALUE;
-            lastTarget = Double.NaN;
-            unavailableActive = false;
-            heldMeasuredTarget = Double.NaN;
+            if (resolving) {
+                throw new IllegalStateException(
+                        "Equivalent-position target cannot reset while resolution is in progress");
+            }
+            if (resetting) {
+                throw new IllegalStateException("Equivalent-position target reset reentered");
+            }
+
+            resetting = true;
+            try {
+                logicalTarget.reset();
+                lastResolution = PlantTargetResolution.unavailable("not sampled");
+                lastCycle = Long.MIN_VALUE;
+                lastTarget = Double.NaN;
+                unavailableActive = false;
+                heldMeasuredTarget = Double.NaN;
+            } finally {
+                resetting = false;
+            }
         }
 
         @Override
@@ -1300,6 +1386,8 @@ public final class PlantTargets {
         private double lastTarget = Double.NaN;
         private boolean unavailableActive;
         private double heldMeasuredTarget = Double.NaN;
+        private boolean resolving;
+        private boolean resetting;
 
         PlannerTargetResolver(Source<PlantTargetRequest> requestSource,
                               CandidatePreference preference,
@@ -1325,61 +1413,112 @@ public final class PlantTargets {
 
         @Override
         public PlantTargetResolution resolve(PlantTargetContext context, LoopClock clock) {
+            Objects.requireNonNull(context, "context");
             long cycle = Objects.requireNonNull(clock, "clock").cycle();
+            if (resolving) {
+                throw new IllegalStateException(
+                        "Plant target planner resolution reentered; check the request source "
+                                + "graph for a cycle");
+            }
+            if (resetting) {
+                throw new IllegalStateException(
+                        "Plant target planner cannot resolve while reset is in progress");
+            }
             if (cycle == lastCycle) return lastResolution;
-            if (unavailableKind == UnavailableKind.HOLD_MEASURED
-                    && hasSamplingGap(lastCycle, cycle)) {
-                unavailableActive = false;
-                heldMeasuredTarget = Double.NaN;
-            }
-            lastCycle = cycle;
 
-            PlantTargetRequest request = requestSource.get(clock);
-            if (request == null || !request.hasAlternatives()) {
-                lastResolution = unavailable(context,
-                        request != null ? request.reason() : "missing plant target request");
-                return lastResolution;
-            }
+            resolving = true;
+            try {
+                double candidateLastTarget = lastTarget;
+                boolean candidateUnavailableActive = unavailableActive;
+                double candidateHeldMeasuredTarget = heldMeasuredTarget;
+                if (unavailableKind == UnavailableKind.HOLD_MEASURED
+                        && hasSamplingGap(lastCycle, cycle)) {
+                    candidateUnavailableActive = false;
+                    candidateHeldMeasuredTarget = Double.NaN;
+                }
 
-            AlternativeSearch search = chooseBest(request, context, clock);
-            AlternativeChoice best = search.choice;
-            if (best == null) {
-                lastResolution = unavailable(context, search.rejectionReason);
-                return lastResolution;
-            }
+                PlantTargetRequest request = requestSource.get(clock);
+                ResolverCandidate candidate;
+                if (request == null || !request.hasAlternatives()) {
+                    candidate = unavailableCandidate(context,
+                            request != null ? request.reason() : "missing plant target request",
+                            candidateLastTarget,
+                            candidateUnavailableActive,
+                            candidateHeldMeasuredTarget);
+                } else {
+                    AlternativeSearch search = chooseBest(request, context, clock);
+                    AlternativeChoice best = search.choice;
+                    if (best == null) {
+                        candidate = unavailableCandidate(context,
+                                search.rejectionReason,
+                                candidateLastTarget,
+                                candidateUnavailableActive,
+                                candidateHeldMeasuredTarget);
+                    } else {
+                        PlantTargetResolution resolution = PlantTargetResolution.planned(
+                                best.target,
+                                best.alternative,
+                                best.selectedAgeSec,
+                                best.clamped,
+                                best.clamped
+                                        ? "candidate clamped to range"
+                                        : "selected plant target candidate");
+                        candidate = new ResolverCandidate(
+                                resolution, best.target, false, Double.NaN);
+                    }
+                }
 
-            unavailableActive = false;
-            heldMeasuredTarget = Double.NaN;
-            lastTarget = best.target;
-            lastResolution = PlantTargetResolution.planned(
-                    best.target, best.alternative, best.selectedAgeSec, best.clamped,
-                    best.clamped
-                            ? "candidate clamped to range"
-                            : "selected plant target candidate");
-            return lastResolution;
+                return commit(candidate, cycle);
+            } finally {
+                resolving = false;
+            }
         }
 
-        private PlantTargetResolution unavailable(PlantTargetContext context, String reason) {
+        private ResolverCandidate unavailableCandidate(PlantTargetContext context,
+                                                       String reason,
+                                                       double candidateLastTarget,
+                                                       boolean candidateUnavailableActive,
+                                                       double candidateHeldMeasuredTarget) {
+            PlantTargetResolution resolution;
             if (unavailableKind == UnavailableKind.REJECT) {
-                unavailableActive = true;
-                return PlantTargetResolution.unavailable(reason);
+                resolution = PlantTargetResolution.unavailable(reason);
+                candidateUnavailableActive = true;
+            } else if (unavailableKind == UnavailableKind.FALLBACK) {
+                resolution = PlantTargetResolution.fallback(unavailableValue, reason);
+                candidateUnavailableActive = true;
+                candidateLastTarget = unavailableValue;
+            } else if (unavailableKind == UnavailableKind.HOLD_LAST) {
+                double target = Double.isFinite(candidateLastTarget)
+                        ? candidateLastTarget
+                        : unavailableValue;
+                resolution = PlantTargetResolution.holdLast(target, reason);
+                candidateUnavailableActive = true;
+                candidateLastTarget = target;
+            } else {
+                if (!candidateUnavailableActive
+                        || !Double.isFinite(candidateHeldMeasuredTarget)) {
+                    candidateHeldMeasuredTarget = context.feedbackAvailable()
+                            ? context.measurement()
+                            : unavailableValue;
+                }
+                resolution = PlantTargetResolution.holdMeasured(
+                        candidateHeldMeasuredTarget, reason);
+                candidateUnavailableActive = true;
+                candidateLastTarget = candidateHeldMeasuredTarget;
             }
-            if (unavailableKind == UnavailableKind.FALLBACK) {
-                unavailableActive = true;
-                lastTarget = unavailableValue;
-                return PlantTargetResolution.fallback(unavailableValue, reason);
-            }
-            if (unavailableKind == UnavailableKind.HOLD_LAST) {
-                unavailableActive = true;
-                double target = Double.isFinite(lastTarget) ? lastTarget : unavailableValue;
-                return PlantTargetResolution.holdLast(target, reason);
-            }
-            if (!unavailableActive || !Double.isFinite(heldMeasuredTarget)) {
-                heldMeasuredTarget = context.feedbackAvailable() ? context.measurement() : unavailableValue;
-            }
-            unavailableActive = true;
-            lastTarget = heldMeasuredTarget;
-            return PlantTargetResolution.holdMeasured(heldMeasuredTarget, reason);
+            return new ResolverCandidate(resolution,
+                    candidateLastTarget,
+                    candidateUnavailableActive,
+                    candidateHeldMeasuredTarget);
+        }
+
+        private PlantTargetResolution commit(ResolverCandidate candidate, long cycle) {
+            lastTarget = candidate.lastTarget;
+            unavailableActive = candidate.unavailableActive;
+            heldMeasuredTarget = candidate.heldMeasuredTarget;
+            lastResolution = candidate.resolution;
+            lastCycle = cycle;
+            return candidate.resolution;
         }
 
         private AlternativeSearch chooseBest(PlantTargetRequest request,
@@ -1502,12 +1641,25 @@ public final class PlantTargets {
 
         @Override
         public void reset() {
-            requestSource.reset();
-            lastResolution = PlantTargetResolution.unavailable("not sampled");
-            lastCycle = Long.MIN_VALUE;
-            lastTarget = Double.NaN;
-            unavailableActive = false;
-            heldMeasuredTarget = Double.NaN;
+            if (resolving) {
+                throw new IllegalStateException(
+                        "Plant target planner cannot reset while resolution is in progress");
+            }
+            if (resetting) {
+                throw new IllegalStateException("Plant target planner reset reentered");
+            }
+
+            resetting = true;
+            try {
+                requestSource.reset();
+                lastResolution = PlantTargetResolution.unavailable("not sampled");
+                lastCycle = Long.MIN_VALUE;
+                lastTarget = Double.NaN;
+                unavailableActive = false;
+                heldMeasuredTarget = Double.NaN;
+            } finally {
+                resetting = false;
+            }
         }
 
         @Override

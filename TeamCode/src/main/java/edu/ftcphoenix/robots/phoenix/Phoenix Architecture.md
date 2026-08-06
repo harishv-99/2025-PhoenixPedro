@@ -311,6 +311,22 @@ cycle/blend state but may safely borrow the same robot-owned spatial dependencie
 re-enabling either runtime clears only its local evaluation state; it does not reset
 `ScoringTargeting`'s selected-tag policy, localization, vision, or frame providers.
 
+`ScoringTargeting` follows the ordinary robot-source grammar instead of maintaining a private
+handwritten cycle cache. One `Source.of(this::calculateTargeting).memoized()` publishes a complete
+immutable calculation only after source/query reads, target lookup, interpolation, and field-pose
+work succeed. An existing `mapToBoolean(...).debouncedOn(...)` graph owns stable aim readiness, and
+one final `Source.of(...).memoized()` publishes `Status`. A failed calculation therefore cannot
+replace the current status with a stale/default success or partially advance readiness; a later
+nonrecursive same-cycle read may retry.
+
+The two Boolean gates exposed to `ScoringPath` are borrowed
+`Source.of(this::status).mapToBoolean(...)` projections. Their no-op raw adapter reset stops at that
+view rather than reaching service-owned state. During detached shutdown, `ScoringTargeting` resets
+its known selector, query, input, readiness, and publication owners once. `ScoringPath` uses the
+parallel primitive grammar for flywheel readiness—`BooleanSource.of(readbackPredicate)` followed by
+`debouncedOn(...)`—rather than another anonymous source/cache. Phoenix Auto derives its targeting
+wait from `Source.of(targeting::status).mapToBoolean(...)` as well.
+
 `PhoenixReadiness.teleOpPoseAssists(...)` evaluates the two checked-in Pinpoint calibration
 acknowledgements before those pose-dependent overlays are wired. If axes or pod offsets are not
 acknowledged, manual drive and all mechanism capabilities remain available, while auto-aim and

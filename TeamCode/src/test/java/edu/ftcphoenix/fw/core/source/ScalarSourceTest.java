@@ -11,6 +11,7 @@ import edu.ftcphoenix.fw.testing.ManualLoopClock;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -54,6 +55,50 @@ public final class ScalarSourceTest {
     }
 
     @Test
+    public void memoizedSourceRetriesFailureWithoutReturningZeroOrAStaleValue() {
+        ManualLoopClock time = new ManualLoopClock();
+        RuntimeException expected = new IllegalStateException("scalar sample failed");
+        int[] attempts = {0};
+        ScalarSource memoized = ScalarSource.of(() -> {
+            int attempt = ++attempts[0];
+            if (attempt == 1 || attempt == 3) {
+                throw expected;
+            }
+            return attempt == 2 ? 4.5 : 8.5;
+        }).memoized();
+
+        assertSame(expected, captureFailure(() -> memoized.getAsDouble(time.clock())));
+        assertEquals(4.5, memoized.getAsDouble(time.clock()), EPSILON);
+        assertEquals(4.5, memoized.getAsDouble(time.clock()), EPSILON);
+
+        time.nextCycle(0.02);
+        assertSame(expected, captureFailure(() -> memoized.getAsDouble(time.clock())));
+        assertEquals(8.5, memoized.getAsDouble(time.clock()), EPSILON);
+        assertEquals(8.5, memoized.getAsDouble(time.clock()), EPSILON);
+        assertEquals(4, attempts[0]);
+    }
+
+    @Test
+    public void scalarMemoizedSourceRejectsReentryThenRecovers() {
+        LoopClock clock = new ManualLoopClock().clock();
+        ScalarSource[] memoizedRef = new ScalarSource[1];
+        boolean[] reenter = {true};
+        ScalarSource raw = sampleClock -> reenter[0]
+                ? memoizedRef[0].getAsDouble(sampleClock)
+                : 6.0;
+        memoizedRef[0] = raw.memoized();
+
+        RuntimeException failure =
+                captureFailure(() -> memoizedRef[0].getAsDouble(clock));
+        assertTrue(failure instanceof IllegalStateException);
+        assertTrue(failure.getMessage().contains("sampling cycle"));
+
+        reenter[0] = false;
+        assertEquals(6.0, memoizedRef[0].getAsDouble(clock), EPSILON);
+        assertEquals(6.0, memoizedRef[0].getAsDouble(clock), EPSILON);
+    }
+
+    @Test
     public void holdLastValidDoesNotRejuvenateValueAcrossSameTimeReset() {
         MutableScalarSource raw = new MutableScalarSource(8.0);
         ManualLoopClock time = new ManualLoopClock(4.0);
@@ -85,6 +130,30 @@ public final class ScalarSourceTest {
                 assertTrue(expected.getMessage().contains("maxHoldSec"));
             }
         }
+    }
+
+    @Test
+    public void holdLastValidRetriesPredicateFailureWithoutChangingHistory() {
+        ManualLoopClock time = new ManualLoopClock();
+        MutableScalarSource raw = new MutableScalarSource(8.0);
+        boolean[] predicateFails = {false};
+        RuntimeException expected = new IllegalStateException("predicate failed");
+        ScalarSource held = raw.holdLastValid(value -> {
+            if (predicateFails[0]) {
+                throw expected;
+            }
+            return Double.isFinite(value);
+        }, 1.0, -1.0);
+
+        assertEquals(8.0, held.getAsDouble(time.clock()), EPSILON);
+        time.nextCycle(0.25);
+        raw.value = Double.NaN;
+        predicateFails[0] = true;
+        assertSame(expected, captureFailure(() -> held.getAsDouble(time.clock())));
+
+        predicateFails[0] = false;
+        assertEquals(8.0, held.getAsDouble(time.clock()), EPSILON);
+        assertEquals(8.0, held.getAsDouble(time.clock()), EPSILON);
     }
 
     @Test
@@ -258,6 +327,60 @@ public final class ScalarSourceTest {
     }
 
     @Test
+    public void ratePerSecondRetriesTimestampFailureFromItsLastPublishedBaseline() {
+        MutableScalarSource position = new MutableScalarSource(10.0);
+        LoopClock firstClock = new LoopClock();
+        firstClock.reset(0.0);
+        ScalarSource rate = position.ratePerSecond();
+
+        assertEquals(0.0, rate.getAsDouble(firstClock), EPSILON);
+
+        LoopClock wrongClock = new LoopClock();
+        wrongClock.reset(0.0);
+        wrongClock.update(1.0);
+        position.value = 12.0;
+        RuntimeException wrongClockFailure =
+                captureFailure(() -> rate.getAsDouble(wrongClock));
+        assertTrue(wrongClockFailure instanceof IllegalArgumentException);
+
+        firstClock.update(1.0);
+        assertEquals(2.0, rate.getAsDouble(firstClock), EPSILON);
+        assertEquals(2.0, rate.getAsDouble(firstClock), EPSILON);
+        assertEquals(3, position.sampleCount);
+    }
+
+    @Test
+    public void hysteresisAndHoldUnlessRetryWithoutPublishingPhantomState() {
+        ManualLoopClock time = new ManualLoopClock();
+        double[] value = {0.0};
+        boolean[] fail = {false};
+        RuntimeException expected = new IllegalStateException("value failed");
+        ScalarSource raw = ScalarSource.of(() -> {
+            if (fail[0]) {
+                throw expected;
+            }
+            return value[0];
+        });
+        BooleanSource above = raw.hysteresisAbove(10.0, 5.0);
+        ScalarSource held = raw.holdLastUnless(BooleanSource.constant(true), -1.0);
+
+        assertFalse(above.getAsBoolean(time.clock()));
+        assertEquals(0.0, held.getAsDouble(time.clock()), EPSILON);
+
+        time.nextCycle(0.02);
+        value[0] = 12.0;
+        fail[0] = true;
+        assertSame(expected, captureFailure(() -> above.getAsBoolean(time.clock())));
+        assertSame(expected, captureFailure(() -> held.getAsDouble(time.clock())));
+
+        fail[0] = false;
+        assertTrue(above.getAsBoolean(time.clock()));
+        assertTrue(above.getAsBoolean(time.clock()));
+        assertEquals(12.0, held.getAsDouble(time.clock()), EPSILON);
+        assertEquals(12.0, held.getAsDouble(time.clock()), EPSILON);
+    }
+
+    @Test
     public void ratePerSecondDebugDumpReportsLiveStateAndDelegates() {
         MutableScalarSource position = new MutableScalarSource(1.0);
         ManualLoopClock manualClock = new ManualLoopClock();
@@ -278,6 +401,16 @@ public final class ScalarSourceTest {
 
     private static double number(CapturingDebugSink debug, String key) {
         return ((Number) debug.data.get(key)).doubleValue();
+    }
+
+    private static RuntimeException captureFailure(Runnable action) {
+        try {
+            action.run();
+            fail("Expected source operation to fail");
+            return null;
+        } catch (RuntimeException failure) {
+            return failure;
+        }
     }
 
     private static final class MutableScalarSource implements ScalarSource {

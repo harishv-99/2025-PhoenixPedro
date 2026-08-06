@@ -20,7 +20,8 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * <p>Typical usage:</p>
  * <pre>{@code
  * ScalarSource desiredHeightIn = ScalarSource.constant(12.0);
- * ScalarSource measuredHeightIn = clock -> liftDistanceSensor.getDistance(DistanceUnit.INCH);
+ * ScalarSource measuredHeightIn =
+ *         ScalarSource.of(() -> liftDistanceSensor.getDistance(DistanceUnit.INCH));
  * Pid pid = Pid.withGains(0.12, 0.0, 0.0).setOutputLimits(-0.55, 0.55);
  *
  * ScalarSource liftPower = ScalarControllers.pid(desiredHeightIn, measuredHeightIn, pid);
@@ -49,10 +50,19 @@ public final class ScalarControllers {
     /**
      * Build a command source from a scalar error controller.
      *
-     * <p>The returned source samples the setpoint and measurement once per loop cycle, computes
-     * {@code error = setpoint - measurement}, and passes that error into {@code controller}. It
-     * memoizes the result by {@link LoopClock#cycle()} so multiple reads in the same loop do not
-     * advance controller state twice.</p>
+     * <p>The returned source publishes at most one successful controller output per loop cycle. It
+     * samples the setpoint and measurement, computes {@code error = setpoint - measurement}, and
+     * passes that error into {@code controller}; each child source governs its own same-cycle
+     * observation semantics. A setpoint or measurement failure happens before the controller
+     * attempt and may therefore resample either input on a same-cycle retry. Once the controller
+     * has been invoked, a {@link RuntimeException} is retained and rethrown by identity for the
+     * rest of that cycle because arbitrary controller state cannot be rolled back or safely
+     * advanced twice.</p>
+     *
+     * <p>{@link ScalarSource#reset()} resets the owned setpoint, measurement, and controller in
+     * that order. The returned source clears its committed diagnostics and retained attempt only
+     * after all three resets succeed. Sampling/reset overlap and recursive sampling fail fast with
+     * an actionable {@link IllegalStateException}.</p>
      *
      * <p>Use this when you already have a {@link PidController} (or compatible implementation) and
      * want a reusable command source you can clamp, combine, or feed into a {@code Plant}.</p>
@@ -66,27 +76,65 @@ public final class ScalarControllers {
 
         return new ScalarSource() {
             private long lastCycle = Long.MIN_VALUE;
+            private long controllerAttemptCycle = Long.MIN_VALUE;
+            private RuntimeException controllerFailure;
             private double lastSetpoint = 0.0;
             private double lastMeasurement = 0.0;
             private double lastError = 0.0;
             private double lastOutput = 0.0;
+            private boolean sampling;
+            private boolean resetting;
 
             /**
              * {@inheritDoc}
              */
             @Override
             public double getAsDouble(LoopClock clock) {
+                Objects.requireNonNull(clock, "clock");
+                if (sampling) {
+                    throw new IllegalStateException(
+                            "Scalar controller source sampling reentered; check the setpoint, "
+                                    + "measurement, and controller graph for a cycle");
+                }
+                if (resetting) {
+                    throw new IllegalStateException(
+                            "Scalar controller source cannot be sampled while reset is in progress");
+                }
+
                 long cyc = clock.cycle();
                 if (cyc == lastCycle) {
                     return lastOutput;
                 }
-                lastCycle = cyc;
+                if (cyc == controllerAttemptCycle && controllerFailure != null) {
+                    throw controllerFailure;
+                }
 
-                lastSetpoint = setpoint.getAsDouble(clock);
-                lastMeasurement = measurement.getAsDouble(clock);
-                lastError = lastSetpoint - lastMeasurement;
-                lastOutput = controller.update(lastError, clock.dtSec());
-                return lastOutput;
+                sampling = true;
+                try {
+                    double candidateSetpoint = setpoint.getAsDouble(clock);
+                    double candidateMeasurement = measurement.getAsDouble(clock);
+                    double candidateError = candidateSetpoint - candidateMeasurement;
+
+                    controllerAttemptCycle = cyc;
+                    controllerFailure = null;
+                    double candidateOutput;
+                    try {
+                        candidateOutput = controller.update(candidateError, clock.dtSec());
+                    } catch (RuntimeException failure) {
+                        controllerFailure = failure;
+                        throw failure;
+                    }
+
+                    lastSetpoint = candidateSetpoint;
+                    lastMeasurement = candidateMeasurement;
+                    lastError = candidateError;
+                    lastOutput = candidateOutput;
+                    controllerFailure = null;
+                    lastCycle = cyc;
+                    return candidateOutput;
+                } finally {
+                    sampling = false;
+                }
             }
 
             /**
@@ -94,14 +142,31 @@ public final class ScalarControllers {
              */
             @Override
             public void reset() {
-                setpoint.reset();
-                measurement.reset();
-                controller.reset();
-                lastCycle = Long.MIN_VALUE;
-                lastSetpoint = 0.0;
-                lastMeasurement = 0.0;
-                lastError = 0.0;
-                lastOutput = 0.0;
+                if (sampling) {
+                    throw new IllegalStateException(
+                            "Scalar controller source cannot reset while sampling is in progress");
+                }
+                if (resetting) {
+                    throw new IllegalStateException(
+                            "Scalar controller source reset reentered");
+                }
+
+                resetting = true;
+                try {
+                    setpoint.reset();
+                    measurement.reset();
+                    controller.reset();
+
+                    lastCycle = Long.MIN_VALUE;
+                    controllerAttemptCycle = Long.MIN_VALUE;
+                    controllerFailure = null;
+                    lastSetpoint = 0.0;
+                    lastMeasurement = 0.0;
+                    lastError = 0.0;
+                    lastOutput = 0.0;
+                } finally {
+                    resetting = false;
+                }
             }
 
             /**

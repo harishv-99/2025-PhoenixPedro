@@ -188,6 +188,13 @@ After a deliberate `LoopClock.reset(...)`, that retained identity fails closed u
 publishes a genuinely new frame/result in the current clock epoch. Robot code does not manage frame
 IDs, reset epochs, or timestamp caches.
 
+A robot that needs one semantic tag builds one `TagSelectionSource` with the staged
+`TagSelections.from(...).among(...).freshWithinSec(...).choose(...)...build()` grammar and shares
+that completed source. Selection samples, sticky/loss state, diagnostics, result, and cycle publish
+together only after the detection, freshness, policy, and enable reads succeed. A failure cannot
+silently latch a partial winner or make the previous result look current; recursive selection fails
+clearly and a later nonrecursive same-cycle call may retry.
+
 For Limelight, `ResultSnapshot.frameTimestamp()` is the owner's best SDK-supported estimate of
 camera exposure time: Control Hub receipt staleness plus the reported capture and targeting
 latencies are translated once when a new result identity appears. It is not a claim of measured

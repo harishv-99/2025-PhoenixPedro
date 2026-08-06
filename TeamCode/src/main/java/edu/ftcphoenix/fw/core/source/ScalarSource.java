@@ -40,13 +40,16 @@ public interface ScalarSource extends Source<Double> {
     /**
      * Memoize this scalar for the current {@link LoopClock#cycle()}.
      *
-     * <p>The returned source samples the upstream source at most once per cycle and returns the cached
-     * value for any additional reads in that same cycle. Prefer using this for raw hardware reads
+     * <p>The returned source publishes one successful upstream observation per cycle and returns
+     * that exact value for additional reads in the same cycle. A failed observation is not cached,
+     * so a later nonrecursive read in that cycle may retry. Prefer using this for raw hardware reads
      * (distance sensors, encoders) or any derived value consumed by multiple subsystems.</p>
      */
     default ScalarSource memoized() {
         ScalarSource self = this;
         return new ScalarSource() {
+            private final SourceOperationGuard guard =
+                    new SourceOperationGuard("memoized scalar source");
             private long lastCycle = Long.MIN_VALUE;
             private double last = 0.0;
 
@@ -55,13 +58,21 @@ public interface ScalarSource extends Source<Double> {
              */
             @Override
             public double getAsDouble(LoopClock clock) {
-                long cyc = clock.cycle();
-                if (cyc == lastCycle) {
+                guard.beginSample();
+                try {
+                    Objects.requireNonNull(clock, "clock");
+                    long cyc = clock.cycle();
+                    if (cyc == lastCycle) {
+                        return last;
+                    }
+
+                    double next = self.getAsDouble(clock);
+                    last = next;
+                    lastCycle = cyc;
                     return last;
+                } finally {
+                    guard.endSample();
                 }
-                lastCycle = cyc;
-                last = self.getAsDouble(clock);
-                return last;
             }
 
             /**
@@ -69,9 +80,14 @@ public interface ScalarSource extends Source<Double> {
              */
             @Override
             public void reset() {
-                self.reset();
-                lastCycle = Long.MIN_VALUE;
-                last = 0.0;
+                guard.beginReset();
+                try {
+                    self.reset();
+                    last = 0.0;
+                    lastCycle = Long.MIN_VALUE;
+                } finally {
+                    guard.endReset();
+                }
             }
 
             /**
@@ -100,6 +116,10 @@ public interface ScalarSource extends Source<Double> {
      * <p>The retained value carries a clock-owned timestamp, so the max hold is enforced even if
      * this source is not sampled every loop and a deliberate clock reset cannot rejuvenate it.</p>
      *
+     * <p>{@code isValid} is a side-effect-free value decision. If sampling or predicate evaluation
+     * throws, no held state is published and a later nonrecursive read in the same cycle may
+     * retry.</p>
+     *
      * @param isValid    predicate that defines which samples are valid
      * @param maxHoldSec finite maximum age of the held value in seconds; must be {@code >= 0}
      * @param fallback   value returned when no valid value is available (or the hold has expired)
@@ -113,6 +133,8 @@ public interface ScalarSource extends Source<Double> {
 
         ScalarSource self = this;
         return new ScalarSource() {
+            private final SourceOperationGuard guard =
+                    new SourceOperationGuard("held scalar source");
             private long lastCycle = Long.MIN_VALUE;
             private double lastOut = fallback;
 
@@ -127,32 +149,49 @@ public interface ScalarSource extends Source<Double> {
              */
             @Override
             public double getAsDouble(LoopClock clock) {
-                long cyc = clock.cycle();
-                if (cyc == lastCycle) {
-                    return lastOut;
-                }
-                lastCycle = cyc;
+                guard.beginSample();
+                try {
+                    Objects.requireNonNull(clock, "clock");
+                    long cyc = clock.cycle();
+                    if (cyc == lastCycle) {
+                        return lastOut;
+                    }
 
-                double cur = self.getAsDouble(clock);
-                if (isValid.test(cur)) {
-                    hasValid = true;
-                    lastValid = cur;
-                    lastValidTimestamp = clock.nowTimestamp();
-                    lastValidAgeSec = 0.0;
-                    lastOut = cur;
-                    return lastOut;
-                }
+                    double cur = self.getAsDouble(clock);
+                    boolean valid = isValid.test(cur);
 
-                lastValidAgeSec = hasValid
-                        ? lastValidTimestamp.ageSec(clock)
-                        : Double.POSITIVE_INFINITY;
-                if (Double.isFinite(lastValidAgeSec) && lastValidAgeSec <= maxHoldSec) {
-                    lastOut = lastValid;
-                    return lastOut;
-                }
+                    boolean nextHasValid = hasValid;
+                    double nextLastValid = lastValid;
+                    LoopTimestamp nextLastValidTimestamp = lastValidTimestamp;
+                    double nextLastValidAgeSec;
+                    double nextOut;
 
-                lastOut = fallback;
-                return lastOut;
+                    if (valid) {
+                        nextHasValid = true;
+                        nextLastValid = cur;
+                        nextLastValidTimestamp = clock.nowTimestamp();
+                        nextLastValidAgeSec = 0.0;
+                        nextOut = cur;
+                    } else {
+                        nextLastValidAgeSec = hasValid
+                                ? lastValidTimestamp.ageSec(clock)
+                                : Double.POSITIVE_INFINITY;
+                        nextOut = Double.isFinite(nextLastValidAgeSec)
+                                && nextLastValidAgeSec <= maxHoldSec
+                                ? lastValid
+                                : fallback;
+                    }
+
+                    hasValid = nextHasValid;
+                    lastValid = nextLastValid;
+                    lastValidTimestamp = nextLastValidTimestamp;
+                    lastValidAgeSec = nextLastValidAgeSec;
+                    lastOut = nextOut;
+                    lastCycle = cyc;
+                    return lastOut;
+                } finally {
+                    guard.endSample();
+                }
             }
 
             /**
@@ -160,13 +199,18 @@ public interface ScalarSource extends Source<Double> {
              */
             @Override
             public void reset() {
-                self.reset();
-                lastCycle = Long.MIN_VALUE;
-                lastOut = fallback;
-                hasValid = false;
-                lastValid = fallback;
-                lastValidTimestamp = LoopTimestamp.unavailable();
-                lastValidAgeSec = Double.POSITIVE_INFINITY;
+                guard.beginReset();
+                try {
+                    self.reset();
+                    lastOut = fallback;
+                    hasValid = false;
+                    lastValid = fallback;
+                    lastValidTimestamp = LoopTimestamp.unavailable();
+                    lastValidAgeSec = Double.POSITIVE_INFINITY;
+                    lastCycle = Long.MIN_VALUE;
+                } finally {
+                    guard.endReset();
+                }
             }
 
             /**
@@ -470,10 +514,15 @@ public interface ScalarSource extends Source<Double> {
      * without replacing the last accepted baseline. This helper does not unwrap fixed-width
      * counters, apply encoder counts-per-revolution conversion, or filter the result. Perform those
      * concerns in their appropriate source or hardware-boundary layers.</p>
+     *
+     * <p>A sampling or timestamp failure publishes neither a result nor a new baseline. A later
+     * nonrecursive read in the same cycle may retry from the last successfully published state.</p>
      */
     default ScalarSource ratePerSecond() {
         ScalarSource self = this;
         return new ScalarSource() {
+            private final SourceOperationGuard guard =
+                    new SourceOperationGuard("rate-per-second scalar source");
             private long lastCycle = Long.MIN_VALUE;
             private double lastOutput = 0.0;
 
@@ -484,61 +533,77 @@ public interface ScalarSource extends Source<Double> {
 
             @Override
             public double getAsDouble(LoopClock clock) {
-                Objects.requireNonNull(clock, "clock");
-                long cycle = clock.cycle();
-                if (cycle == lastCycle) {
+                guard.beginSample();
+                try {
+                    Objects.requireNonNull(clock, "clock");
+                    long cycle = clock.cycle();
+                    if (cycle == lastCycle) {
+                        return lastOutput;
+                    }
+
+                    double value = self.getAsDouble(clock);
+                    double nowSec = clock.nowSec();
+
+                    boolean nextHasBaseline = hasBaseline;
+                    double nextLastAcceptedValue = lastAcceptedValue;
+                    LoopTimestamp nextLastAcceptedTimestamp = lastAcceptedTimestamp;
+                    double nextLastFiniteRatePerSec = lastFiniteRatePerSec;
+                    double nextOutput;
+
+                    if (!Double.isFinite(value) || !Double.isFinite(nowSec)) {
+                        nextOutput = Double.NaN;
+                    } else {
+                        LoopTimestamp sampleTimestamp = clock.nowTimestamp();
+                        double elapsedSec = hasBaseline
+                                ? sampleTimestamp.secondsSince(lastAcceptedTimestamp)
+                                : Double.NaN;
+                        if (!hasBaseline || !Double.isFinite(elapsedSec) || elapsedSec < 0.0) {
+                            nextHasBaseline = true;
+                            nextLastAcceptedValue = value;
+                            nextLastAcceptedTimestamp = sampleTimestamp;
+                            nextLastFiniteRatePerSec = 0.0;
+                            nextOutput = 0.0;
+                        } else if (elapsedSec == 0.0) {
+                            nextOutput = lastFiniteRatePerSec;
+                        } else {
+                            double ratePerSec = (value - lastAcceptedValue) / elapsedSec;
+                            if (!Double.isFinite(ratePerSec)) {
+                                nextOutput = Double.NaN;
+                            } else {
+                                nextLastAcceptedValue = value;
+                                nextLastAcceptedTimestamp = sampleTimestamp;
+                                nextLastFiniteRatePerSec = ratePerSec;
+                                nextOutput = ratePerSec;
+                            }
+                        }
+                    }
+
+                    hasBaseline = nextHasBaseline;
+                    lastAcceptedValue = nextLastAcceptedValue;
+                    lastAcceptedTimestamp = nextLastAcceptedTimestamp;
+                    lastFiniteRatePerSec = nextLastFiniteRatePerSec;
+                    lastOutput = nextOutput;
+                    lastCycle = cycle;
                     return lastOutput;
+                } finally {
+                    guard.endSample();
                 }
-
-                double value = self.getAsDouble(clock);
-                double nowSec = clock.nowSec();
-                lastCycle = cycle;
-
-                if (!Double.isFinite(value) || !Double.isFinite(nowSec)) {
-                    lastOutput = Double.NaN;
-                    return lastOutput;
-                }
-
-                LoopTimestamp sampleTimestamp = clock.nowTimestamp();
-                double elapsedSec = hasBaseline
-                        ? sampleTimestamp.secondsSince(lastAcceptedTimestamp)
-                        : Double.NaN;
-                if (!hasBaseline || !Double.isFinite(elapsedSec) || elapsedSec < 0.0) {
-                    hasBaseline = true;
-                    lastAcceptedValue = value;
-                    lastAcceptedTimestamp = sampleTimestamp;
-                    lastFiniteRatePerSec = 0.0;
-                    lastOutput = 0.0;
-                    return lastOutput;
-                }
-
-                if (elapsedSec == 0.0) {
-                    lastOutput = lastFiniteRatePerSec;
-                    return lastOutput;
-                }
-
-                double ratePerSec = (value - lastAcceptedValue) / elapsedSec;
-                if (!Double.isFinite(ratePerSec)) {
-                    lastOutput = Double.NaN;
-                    return lastOutput;
-                }
-
-                lastAcceptedValue = value;
-                lastAcceptedTimestamp = sampleTimestamp;
-                lastFiniteRatePerSec = ratePerSec;
-                lastOutput = ratePerSec;
-                return lastOutput;
             }
 
             @Override
             public void reset() {
-                self.reset();
-                lastCycle = Long.MIN_VALUE;
-                lastOutput = 0.0;
-                hasBaseline = false;
-                lastAcceptedValue = Double.NaN;
-                lastAcceptedTimestamp = LoopTimestamp.unavailable();
-                lastFiniteRatePerSec = 0.0;
+                guard.beginReset();
+                try {
+                    self.reset();
+                    lastOutput = 0.0;
+                    hasBaseline = false;
+                    lastAcceptedValue = Double.NaN;
+                    lastAcceptedTimestamp = LoopTimestamp.unavailable();
+                    lastFiniteRatePerSec = 0.0;
+                    lastCycle = Long.MIN_VALUE;
+                } finally {
+                    guard.endReset();
+                }
             }
 
             @Override
@@ -638,12 +703,15 @@ public interface ScalarSource extends Source<Double> {
      * Create a hysteresis boolean that turns ON when {@code value <= enterThreshold} and
      * turns OFF when {@code value >= exitThreshold}.
      *
-     * <p>This is the common pattern for "idle" / "near zero" detection.</p>
+     * <p>This is the common pattern for "idle" / "near zero" detection. A failed upstream
+     * observation does not advance or cache the latch.</p>
      */
     default BooleanSource hysteresisBelow(double enterThreshold, double exitThreshold) {
         ScalarSource self = this;
         HysteresisBoolean latch = HysteresisBoolean.onWhenBelowOffWhenAbove(enterThreshold, exitThreshold);
         return new BooleanSource() {
+            private final SourceOperationGuard guard =
+                    new SourceOperationGuard("below-threshold hysteresis source");
             private long lastCycle = Long.MIN_VALUE;
             private boolean last = false;
 
@@ -652,13 +720,22 @@ public interface ScalarSource extends Source<Double> {
              */
             @Override
             public boolean getAsBoolean(LoopClock clock) {
-                long cyc = clock.cycle();
-                if (cyc == lastCycle) {
+                guard.beginSample();
+                try {
+                    Objects.requireNonNull(clock, "clock");
+                    long cyc = clock.cycle();
+                    if (cyc == lastCycle) {
+                        return last;
+                    }
+
+                    double value = self.getAsDouble(clock);
+                    boolean next = latch.update(value);
+                    last = next;
+                    lastCycle = cyc;
                     return last;
+                } finally {
+                    guard.endSample();
                 }
-                lastCycle = cyc;
-                last = latch.update(self.getAsDouble(clock));
-                return last;
             }
 
             /**
@@ -666,10 +743,15 @@ public interface ScalarSource extends Source<Double> {
              */
             @Override
             public void reset() {
-                self.reset();
-                latch.reset(false);
-                lastCycle = Long.MIN_VALUE;
-                last = false;
+                guard.beginReset();
+                try {
+                    self.reset();
+                    latch.reset(false);
+                    last = false;
+                    lastCycle = Long.MIN_VALUE;
+                } finally {
+                    guard.endReset();
+                }
             }
 
             /**
@@ -690,12 +772,15 @@ public interface ScalarSource extends Source<Double> {
      * Create a hysteresis boolean that turns ON when {@code value >= enterThreshold} and
      * turns OFF when {@code value <= exitThreshold}.
      *
-     * <p>This is the common pattern for "valid when high" detection.</p>
+     * <p>This is the common pattern for "valid when high" detection. A failed upstream
+     * observation does not advance or cache the latch.</p>
      */
     default BooleanSource hysteresisAbove(double enterThreshold, double exitThreshold) {
         ScalarSource self = this;
         HysteresisBoolean latch = HysteresisBoolean.onWhenAboveOffWhenBelow(enterThreshold, exitThreshold);
         return new BooleanSource() {
+            private final SourceOperationGuard guard =
+                    new SourceOperationGuard("above-threshold hysteresis source");
             private long lastCycle = Long.MIN_VALUE;
             private boolean last = false;
 
@@ -704,13 +789,22 @@ public interface ScalarSource extends Source<Double> {
              */
             @Override
             public boolean getAsBoolean(LoopClock clock) {
-                long cyc = clock.cycle();
-                if (cyc == lastCycle) {
+                guard.beginSample();
+                try {
+                    Objects.requireNonNull(clock, "clock");
+                    long cyc = clock.cycle();
+                    if (cyc == lastCycle) {
+                        return last;
+                    }
+
+                    double value = self.getAsDouble(clock);
+                    boolean next = latch.update(value);
+                    last = next;
+                    lastCycle = cyc;
                     return last;
+                } finally {
+                    guard.endSample();
                 }
-                lastCycle = cyc;
-                last = latch.update(self.getAsDouble(clock));
-                return last;
             }
 
             /**
@@ -718,10 +812,15 @@ public interface ScalarSource extends Source<Double> {
              */
             @Override
             public void reset() {
-                self.reset();
-                latch.reset(false);
-                lastCycle = Long.MIN_VALUE;
-                last = false;
+                guard.beginReset();
+                try {
+                    self.reset();
+                    latch.reset(false);
+                    last = false;
+                    lastCycle = Long.MIN_VALUE;
+                } finally {
+                    guard.endReset();
+                }
             }
 
             /**
@@ -826,39 +925,62 @@ public interface ScalarSource extends Source<Double> {
      * Hold the last output while {@code allowed} is low.
      *
      * <p>The first sampled value before any allowed sample is {@code initialValue}. This is a
-     * behavior-level source transform; plant hardware interlocks should use target guards.</p>
+     * behavior-level source transform; plant hardware interlocks should use target guards. A
+     * failed gate or value observation leaves the previously published state intact and may be
+     * retried in the same cycle.</p>
      */
     default ScalarSource holdLastUnless(BooleanSource allowed, double initialValue) {
         Objects.requireNonNull(allowed, "allowed");
         ScalarSource self = this;
         return new ScalarSource() {
+            private final SourceOperationGuard guard =
+                    new SourceOperationGuard("hold-unless scalar source");
             private double last = initialValue;
             private boolean hasAllowedSample = false;
             private long lastCycle = Long.MIN_VALUE;
 
             @Override
             public double getAsDouble(LoopClock clock) {
-                long cycle = clock != null ? clock.cycle() : Long.MIN_VALUE;
-                if (clock != null && cycle == lastCycle) {
+                guard.beginSample();
+                try {
+                    long cycle = clock != null ? clock.cycle() : Long.MIN_VALUE;
+                    if (clock != null && cycle == lastCycle) {
+                        return last;
+                    }
+
+                    boolean allowedNow = allowed.getAsBoolean(clock);
+                    double nextLast = last;
+                    boolean nextHasAllowedSample = hasAllowedSample;
+                    if (allowedNow) {
+                        nextLast = self.getAsDouble(clock);
+                        nextHasAllowedSample = true;
+                    } else if (!hasAllowedSample) {
+                        nextLast = initialValue;
+                    }
+
+                    last = nextLast;
+                    hasAllowedSample = nextHasAllowedSample;
+                    if (clock != null) {
+                        lastCycle = cycle;
+                    }
                     return last;
+                } finally {
+                    guard.endSample();
                 }
-                if (clock != null) lastCycle = cycle;
-                if (allowed.getAsBoolean(clock)) {
-                    last = self.getAsDouble(clock);
-                    hasAllowedSample = true;
-                } else if (!hasAllowedSample) {
-                    last = initialValue;
-                }
-                return last;
             }
 
             @Override
             public void reset() {
-                self.reset();
-                allowed.reset();
-                last = initialValue;
-                hasAllowedSample = false;
-                lastCycle = Long.MIN_VALUE;
+                guard.beginReset();
+                try {
+                    self.reset();
+                    allowed.reset();
+                    last = initialValue;
+                    hasAllowedSample = false;
+                    lastCycle = Long.MIN_VALUE;
+                } finally {
+                    guard.endReset();
+                }
             }
 
             @Override

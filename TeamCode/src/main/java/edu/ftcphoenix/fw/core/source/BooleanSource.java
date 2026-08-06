@@ -33,12 +33,15 @@ public interface BooleanSource extends Source<Boolean> {
     /**
      * Memoize this boolean for the current {@link LoopClock#cycle()}.
      *
-     * <p>The returned source samples the upstream source at most once per cycle and returns the cached
-     * value for any additional reads in that same cycle.</p>
+     * <p>The returned source publishes one successful upstream observation per cycle and returns
+     * that exact value for additional reads in the same cycle. A failed observation is not cached,
+     * so a later nonrecursive read in that cycle may retry.</p>
      */
     default BooleanSource memoized() {
         BooleanSource self = this;
         return new BooleanSource() {
+            private final SourceOperationGuard guard =
+                    new SourceOperationGuard("memoized Boolean source");
             private long lastCycle = Long.MIN_VALUE;
             private boolean last = false;
 
@@ -47,13 +50,21 @@ public interface BooleanSource extends Source<Boolean> {
              */
             @Override
             public boolean getAsBoolean(LoopClock clock) {
-                long cyc = clock.cycle();
-                if (cyc == lastCycle) {
+                guard.beginSample();
+                try {
+                    Objects.requireNonNull(clock, "clock");
+                    long cyc = clock.cycle();
+                    if (cyc == lastCycle) {
+                        return last;
+                    }
+
+                    boolean next = self.getAsBoolean(clock);
+                    last = next;
+                    lastCycle = cyc;
                     return last;
+                } finally {
+                    guard.endSample();
                 }
-                lastCycle = cyc;
-                last = self.getAsBoolean(clock);
-                return last;
             }
 
             /**
@@ -61,9 +72,14 @@ public interface BooleanSource extends Source<Boolean> {
              */
             @Override
             public void reset() {
-                self.reset();
-                lastCycle = Long.MIN_VALUE;
-                last = false;
+                guard.beginReset();
+                try {
+                    self.reset();
+                    last = false;
+                    lastCycle = Long.MIN_VALUE;
+                } finally {
+                    guard.endReset();
+                }
             }
 
             /**
@@ -247,14 +263,20 @@ public interface BooleanSource extends Source<Boolean> {
     /**
      * Debounce this boolean using a shared {@link DebounceBoolean} state machine.
      *
-     * <p>This is useful when you want to reset the debouncer explicitly, or share the same
-     * debouncer between multiple consumers.</p>
+     * <p>This is useful when you want to retain and inspect the debouncer explicitly. If one
+     * debouncer is deliberately shared by multiple wrapper graphs, it remains a single
+     * first-updater-wins state owner for each cycle.</p>
+     *
+     * <p>A failed upstream observation does not advance or cache the debouncer. Recursive sampling
+     * and sampling/reset overlap fail fast.</p>
      */
     default BooleanSource debounced(DebounceBoolean debouncer) {
         Objects.requireNonNull(debouncer, "debouncer");
         BooleanSource self = this;
 
         return new BooleanSource() {
+            private final SourceOperationGuard guard =
+                    new SourceOperationGuard("debounced Boolean source");
             private long lastCycle = Long.MIN_VALUE;
             private boolean last = false;
 
@@ -263,13 +285,22 @@ public interface BooleanSource extends Source<Boolean> {
              */
             @Override
             public boolean getAsBoolean(LoopClock clock) {
-                long cyc = clock.cycle();
-                if (cyc == lastCycle) {
+                guard.beginSample();
+                try {
+                    Objects.requireNonNull(clock, "clock");
+                    long cyc = clock.cycle();
+                    if (cyc == lastCycle) {
+                        return last;
+                    }
+
+                    boolean raw = self.getAsBoolean(clock);
+                    boolean next = debouncer.update(clock, raw);
+                    last = next;
+                    lastCycle = cyc;
                     return last;
+                } finally {
+                    guard.endSample();
                 }
-                lastCycle = cyc;
-                last = debouncer.update(clock, self.getAsBoolean(clock));
-                return last;
             }
 
             /**
@@ -277,10 +308,15 @@ public interface BooleanSource extends Source<Boolean> {
              */
             @Override
             public void reset() {
-                self.reset();
-                debouncer.reset(false);
-                lastCycle = Long.MIN_VALUE;
-                last = false;
+                guard.beginReset();
+                try {
+                    self.reset();
+                    debouncer.reset(false);
+                    last = false;
+                    lastCycle = Long.MIN_VALUE;
+                } finally {
+                    guard.endReset();
+                }
             }
 
             /**
@@ -305,11 +341,14 @@ public interface BooleanSource extends Source<Boolean> {
      * A one-loop pulse that is true only when this source transitions false -> true.
      *
      * <p>On the first sample after reset/construction, this returns false (no spurious edge).
-     * Sample every loop for best results.</p>
+     * Sample every loop for best results. A failed upstream observation does not advance the
+     * remembered edge state and may be retried in the same cycle.</p>
      */
     default BooleanSource risingEdge() {
         BooleanSource self = this;
         return new BooleanSource() {
+            private final SourceOperationGuard guard =
+                    new SourceOperationGuard("rising-edge Boolean source");
             private long lastCycle = Long.MIN_VALUE;
             private boolean initialized = false;
             private boolean prev = false;
@@ -320,23 +359,27 @@ public interface BooleanSource extends Source<Boolean> {
              */
             @Override
             public boolean getAsBoolean(LoopClock clock) {
-                long cyc = clock.cycle();
-                if (cyc == lastCycle) {
+                guard.beginSample();
+                try {
+                    Objects.requireNonNull(clock, "clock");
+                    long cyc = clock.cycle();
+                    if (cyc == lastCycle) {
+                        return last;
+                    }
+
+                    boolean cur = self.getAsBoolean(clock);
+                    boolean nextInitialized = true;
+                    boolean nextPrev = cur;
+                    boolean nextLast = initialized && cur && !prev;
+
+                    initialized = nextInitialized;
+                    prev = nextPrev;
+                    last = nextLast;
+                    lastCycle = cyc;
                     return last;
+                } finally {
+                    guard.endSample();
                 }
-                lastCycle = cyc;
-
-                boolean cur = self.getAsBoolean(clock);
-                if (!initialized) {
-                    initialized = true;
-                    prev = cur;
-                    last = false;
-                    return false;
-                }
-
-                last = cur && !prev;
-                prev = cur;
-                return last;
             }
 
             /**
@@ -344,11 +387,16 @@ public interface BooleanSource extends Source<Boolean> {
              */
             @Override
             public void reset() {
-                self.reset();
-                lastCycle = Long.MIN_VALUE;
-                initialized = false;
-                prev = false;
-                last = false;
+                guard.beginReset();
+                try {
+                    self.reset();
+                    initialized = false;
+                    prev = false;
+                    last = false;
+                    lastCycle = Long.MIN_VALUE;
+                } finally {
+                    guard.endReset();
+                }
             }
 
             /**
@@ -368,11 +416,14 @@ public interface BooleanSource extends Source<Boolean> {
      * A one-loop pulse that is true only when this source transitions true -> false.
      *
      * <p>On the first sample after reset/construction, this returns false (no spurious edge).
-     * Sample every loop for best results.</p>
+     * Sample every loop for best results. A failed upstream observation does not advance the
+     * remembered edge state and may be retried in the same cycle.</p>
      */
     default BooleanSource fallingEdge() {
         BooleanSource self = this;
         return new BooleanSource() {
+            private final SourceOperationGuard guard =
+                    new SourceOperationGuard("falling-edge Boolean source");
             private long lastCycle = Long.MIN_VALUE;
             private boolean initialized = false;
             private boolean prev = false;
@@ -383,23 +434,27 @@ public interface BooleanSource extends Source<Boolean> {
              */
             @Override
             public boolean getAsBoolean(LoopClock clock) {
-                long cyc = clock.cycle();
-                if (cyc == lastCycle) {
+                guard.beginSample();
+                try {
+                    Objects.requireNonNull(clock, "clock");
+                    long cyc = clock.cycle();
+                    if (cyc == lastCycle) {
+                        return last;
+                    }
+
+                    boolean cur = self.getAsBoolean(clock);
+                    boolean nextInitialized = true;
+                    boolean nextPrev = cur;
+                    boolean nextLast = initialized && !cur && prev;
+
+                    initialized = nextInitialized;
+                    prev = nextPrev;
+                    last = nextLast;
+                    lastCycle = cyc;
                     return last;
+                } finally {
+                    guard.endSample();
                 }
-                lastCycle = cyc;
-
-                boolean cur = self.getAsBoolean(clock);
-                if (!initialized) {
-                    initialized = true;
-                    prev = cur;
-                    last = false;
-                    return false;
-                }
-
-                last = !cur && prev;
-                prev = cur;
-                return last;
             }
 
             /**
@@ -407,11 +462,16 @@ public interface BooleanSource extends Source<Boolean> {
              */
             @Override
             public void reset() {
-                self.reset();
-                lastCycle = Long.MIN_VALUE;
-                initialized = false;
-                prev = false;
-                last = false;
+                guard.beginReset();
+                try {
+                    self.reset();
+                    initialized = false;
+                    prev = false;
+                    last = false;
+                    lastCycle = Long.MIN_VALUE;
+                } finally {
+                    guard.endReset();
+                }
             }
 
             /**
@@ -577,11 +637,16 @@ public interface BooleanSource extends Source<Boolean> {
     /**
      * Toggle state each time this source has a rising edge.
      *
+     * <p>A failed upstream observation leaves the toggle state unchanged and may be retried in the
+     * same cycle.</p>
+     *
      * @param initialState initial output state
      */
     default BooleanSource toggled(boolean initialState) {
         BooleanSource self = this;
         return new BooleanSource() {
+            private final SourceOperationGuard guard =
+                    new SourceOperationGuard("toggled Boolean source");
             private long lastCycle = Long.MIN_VALUE;
             private boolean initialized = false;
             private boolean prev = false;
@@ -592,24 +657,30 @@ public interface BooleanSource extends Source<Boolean> {
              */
             @Override
             public boolean getAsBoolean(LoopClock clock) {
-                long cyc = clock.cycle();
-                if (cyc == lastCycle) {
-                    return state;
-                }
-                lastCycle = cyc;
+                guard.beginSample();
+                try {
+                    Objects.requireNonNull(clock, "clock");
+                    long cyc = clock.cycle();
+                    if (cyc == lastCycle) {
+                        return state;
+                    }
 
-                boolean cur = self.getAsBoolean(clock);
-                if (!initialized) {
-                    initialized = true;
-                    prev = cur;
-                    return state;
-                }
+                    boolean cur = self.getAsBoolean(clock);
+                    boolean nextInitialized = true;
+                    boolean nextPrev = cur;
+                    boolean nextState = state;
+                    if (initialized && cur && !prev) {
+                        nextState = !state;
+                    }
 
-                if (cur && !prev) {
-                    state = !state;
+                    initialized = nextInitialized;
+                    prev = nextPrev;
+                    state = nextState;
+                    lastCycle = cyc;
+                    return state;
+                } finally {
+                    guard.endSample();
                 }
-                prev = cur;
-                return state;
             }
 
             /**
@@ -617,11 +688,16 @@ public interface BooleanSource extends Source<Boolean> {
              */
             @Override
             public void reset() {
-                self.reset();
-                lastCycle = Long.MIN_VALUE;
-                initialized = false;
-                prev = false;
-                state = initialState;
+                guard.beginReset();
+                try {
+                    self.reset();
+                    initialized = false;
+                    prev = false;
+                    state = initialState;
+                    lastCycle = Long.MIN_VALUE;
+                } finally {
+                    guard.endReset();
+                }
             }
 
             /**

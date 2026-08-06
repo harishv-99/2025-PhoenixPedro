@@ -28,7 +28,8 @@ That worked, but it created two recurring problems:
 
 `Source` unifies these into one simple rule:
 
-> A source produces a value once per loop, sampled with a `LoopClock`.
+> A source produces values on the shared `LoopClock`; a stateful source publishes no more than one
+> successful observation for a loop cycle.
 
 That makes stateful filters (debounce, hysteresis, rate limiting, etc.) straightforward and keeps
 logic consistent with the one-heartbeat loop.
@@ -88,6 +89,33 @@ left value determines the combined result. The combinator does not add a cache: 
 operand owns its own same-cycle protection, and no operand is sampled when the composite itself is
 not sampled. Use `choose(...)` when only one selected producer should be sampled.
 
+## Creating ordinary sources: one grammar
+
+For a clock-aware object value in robot code, use `Source.of(sample)` and then compose the existing
+decorators:
+
+```java
+Source<TargetingStatus> targetingStatus =
+        Source.of(this::calculateTargeting).memoized();
+
+BooleanSource targetSelected = targetingStatus
+        .mapToBoolean(status -> status.selection.hasSelection);
+```
+
+For a clockless primitive leaf, use the shorter primitive sibling:
+
+```java
+ScalarSource requestedSpeed = ScalarSource.of(() -> requestedSpeedRpm);
+BooleanSource overrideHeld = BooleanSource.of(() -> overrideButtonHeld);
+```
+
+`Source.constant(value)` remains the explicit fixed-object-value case. Ordinary code under
+`edu.ftcphoenix.robots` should not implement `Source` anonymously or hand-write a cycle cache.
+Direct implementation remains an advanced framework/integration seam for a named domain source
+whose type adds a real contract, such as `DriveSource`, `TimeAwareSource`, `AprilTagSensor`,
+`SpatialQuery`, or `DriveGuidanceQuery`. That extension seam is not a parallel construction recipe
+for an ordinary robot value.
+
 ---
 
 ## Plants as sources
@@ -135,8 +163,9 @@ ScalarSource gateDistanceCm = FtcSensors.distanceCm(distanceSensor);
 BooleanSource ballAtGate = gateDistanceCm.hysteresisBelow(6.0, 7.0).debouncedOnOff(0.05, 0.05);
 ```
 
-When you call `ballAtGate.getAsBoolean(clock)` multiple times in the same loop, it will not re-sample
-the underlying distance sensor more than once (as long as you memoize at the boundary).
+After the boundary publishes one successful distance observation, repeated reads in that loop use
+the exact same sample. If acquisition throws before publication, a later nonrecursive same-cycle
+read retries the sensor instead of receiving a plausible cached value.
 
 Rule of thumb:
 
@@ -149,9 +178,18 @@ A stateful owner that advances rate, activation, overlay, or guidance state prot
 Pure transforms such as drive scaling can remain stateless; they rely on each stateful dependency to
 honor its own cycle contract instead of adding another layer of hidden memory.
 
-When such an owner caches a result, it commits the cycle identity only after the complete sample
-succeeds. A failed sample is not recorded as a null or stale success; a caller may retry it in that
-cycle and receive the real failure or a newly successful result.
+When such an owner caches a result, it rejects recursive sampling, stages fallible work, publishes
+the complete state/result, and commits the cycle identity last. A failed sample is not recorded as
+a null, zero, false, or stale success; its prior committed state remains intact and a later
+nonrecursive call may retry in that cycle. Once an attempt succeeds, every repeated same-cycle read
+returns that exact published observation. Predicates supplied to a hold/filter are value decisions:
+keep them side-effect-free so a failed evaluation can be retried safely.
+
+`ScalarControllers.pid(...)` and `proportional(...)` have one deliberate boundary within this
+model. Target and measurement failures happen before controller invocation and remain retryable.
+Once an arbitrary stateful controller has been invoked, Phoenix cannot roll back its private
+integral/filter state. If that invocation throws, the returned source rethrows the same exception
+without invoking the controller again for the rest of that cycle; the next cycle may attempt again.
 
 ## Reset follows ownership
 
@@ -162,6 +200,11 @@ Those lifecycle changes remain explicit responsibilities of their actual owners.
 A structural source decorator normally resets its local memory and propagates reset through the
 source and gate children it wraps. If one stateful child is deliberately shared by multiple source
 graphs, their common owner must reset it at their common lifecycle boundary.
+
+Reset only while the graph is inactive. A structural decorator resets its children first and clears
+its own cache/history after all child resets succeed. If a child reset throws, the exception
+propagates; an earlier child may already have reset, but the decorator does not pretend that its own
+state was cleared or that generic rollback was possible.
 
 That propagation rule does not turn reusable specifications into ownership containers. A
 `SpatialQuery` built from a reusable `SpatialQuerySpec` borrows its frame providers, solve lanes,
@@ -189,9 +232,10 @@ ScalarSource armSpeedDegPerSec = armPositionDeg.ratePerSecond();
 ```
 
 The transform owns its sample history. It uses elapsed `clock.nowSec()` between samples it actually
-accepted rather than assuming it ran during the preceding `dtSec()` interval. It samples upstream at
-most once per `clock.cycle()`, returns the same cached result for repeated same-cycle reads, and uses
-the full interval across skipped cycles.
+accepted rather than assuming it ran during the preceding `dtSec()` interval. It publishes at most
+one successful result per `clock.cycle()`, returns that exact result for repeated same-cycle reads,
+and uses the full interval across skipped cycles. An upstream failure leaves the baseline intact and
+the current cycle eligible for a later nonrecursive retry.
 
 The first finite sample establishes the baseline and returns `0.0`. A zero-time sample retains the
 previous rate without consuming movement; a regressing clock re-establishes the baseline. A
@@ -320,6 +364,12 @@ Phoenix provides two related helpers:
 
 * `accumulate(step, initial)` — keep state until robot code explicitly calls `reset()`
 * `accumulateUntil(reset, step, initial)` — same idea, but reset automatically when a boolean signal is true
+
+Both helpers are transactional value reducers. Treat `initial` and the previous accumulated state
+as read-only, perform no external effects in `step`, and return a non-null immutable—or otherwise
+independently stable—next value. Returning the same immutable instance for an unchanged state is
+fine. Mutating a retained state object in place is not: neither Phoenix nor robot code could undo
+that mutation if a later read or reducer operation failed.
 
 Example (slot-local color memory):
 

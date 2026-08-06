@@ -7,7 +7,6 @@ import java.util.Objects;
 import edu.ftcphoenix.fw.actuation.Plant;
 import edu.ftcphoenix.fw.actuation.PlantTargetResolver;
 import edu.ftcphoenix.fw.actuation.PlantTargets;
-import edu.ftcphoenix.fw.core.control.DebounceBoolean;
 import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.source.ScalarSource;
@@ -446,7 +445,6 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
         private final PlantTargetResolver shooterTransferTargetResolver;
         private final PlantTargetResolver flywheelTargetResolver;
 
-        private final DebounceBoolean readyLatch = DebounceBoolean.onAfterOffImmediately(cfg.readyStableSec);
         private final BooleanSource flywheelReadySource;
 
         private double flywheelTargetNative = 0.0;
@@ -522,48 +520,27 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
                         .build();
             }
 
-            flywheelReadySource = new BooleanSource() {
-                private long lastCycle = Long.MIN_VALUE;
-                private boolean last = false;
+            flywheelReadySource = BooleanSource.of(this::flywheelWithinReadyBand)
+                    .debouncedOn(cfg.readyStableSec);
+        }
 
-                @Override
-                public boolean getAsBoolean(LoopClock clock) {
-                    long cyc = clock.cycle();
-                    if (cyc == lastCycle) {
-                        return last;
-                    }
-                    lastCycle = cyc;
+        private boolean flywheelWithinReadyBand() {
+            if (!execution.isFlywheelEnabled()) {
+                return false;
+            }
 
-                    if (!execution.isFlywheelEnabled()) {
-                        last = false;
-                        readyLatch.reset(false);
-                        return false;
-                    }
+            double target = Math.abs(flywheelTargetNative);
+            boolean enabled = target > 1e-6;
+            double leadSec = Math.max(0.0, cfg.readyPredictLeadSec);
+            double predicted = flywheelMeasuredAbs + flywheelMeasuredAccel * leadSec;
+            if (predicted < 0.0) {
+                predicted = 0.0;
+            }
 
-                    double target = Math.abs(flywheelTargetNative);
-                    boolean enabled = target > 1e-6;
-                    double leadSec = Math.max(0.0, cfg.readyPredictLeadSec);
-                    double predicted = flywheelMeasuredAbs + flywheelMeasuredAccel * leadSec;
-                    if (predicted < 0.0) {
-                        predicted = 0.0;
-                    }
-
-                    double errAtContact = predicted - target;
-                    boolean withinBand = enabled
-                            && errAtContact >= -cfg.velocityToleranceBelowNative
-                            && errAtContact <= cfg.velocityToleranceAboveNative;
-
-                    last = readyLatch.update(clock, withinBand);
-                    return last;
-                }
-
-                @Override
-                public void reset() {
-                    lastCycle = Long.MIN_VALUE;
-                    last = false;
-                    readyLatch.reset(false);
-                }
-            };
+            double errAtContact = predicted - target;
+            return enabled
+                    && errAtContact >= -cfg.velocityToleranceBelowNative
+                    && errAtContact <= cfg.velocityToleranceAboveNative;
         }
 
         BooleanSource flywheelReadySource() {
@@ -681,8 +658,8 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
         this.cfg = Objects.requireNonNull(config, "config").copy();
         this.targeting = Objects.requireNonNull(targeting, "targeting");
         this.clock = Objects.requireNonNull(clock, "clock");
-        this.aimOkToShoot = targeting.aimOkToShootSource().memoized();
-        this.shootOverride = targeting.aimOverrideSource().memoized();
+        this.aimOkToShoot = targeting.aimOkToShootSource();
+        this.shootOverride = targeting.aimOverrideSource();
         this.flywheelPidfWarning = null;
 
         this.inputs = new Inputs(cfg.velocityMin);

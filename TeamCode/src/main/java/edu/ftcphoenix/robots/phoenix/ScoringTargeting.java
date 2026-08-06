@@ -5,11 +5,11 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 
-import edu.ftcphoenix.fw.core.control.DebounceBoolean;
 import edu.ftcphoenix.fw.core.geometry.Pose2d;
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
 import edu.ftcphoenix.fw.core.math.InterpolatingTable1D;
 import edu.ftcphoenix.fw.core.source.BooleanSource;
+import edu.ftcphoenix.fw.core.source.Source;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.drive.DriveCommandSink;
 import edu.ftcphoenix.fw.drive.DriveOverlay;
@@ -98,56 +98,92 @@ public final class ScoringTargeting implements PhoenixCapabilities.Targeting {
         }
     }
 
+    /**
+     * Complete immutable result of the fallible targeting calculation for one loop.
+     *
+     * <p>Keeping this separate from readiness debounce means every query, lookup, interpolation,
+     * and pose calculation succeeds before readiness state advances or this service publishes a
+     * new {@link Status}. Upstream children still own their independently completed
+     * observations.</p>
+     */
+    private static final class TargetingCalculation {
+        final boolean autoAimEnabled;
+        final boolean aimOverride;
+        final boolean rawAimReady;
+        final TagSelectionResult selection;
+        final DriveGuidanceStatus aimStatus;
+        final String targetLabel;
+        final double aimOffsetForwardInches;
+        final double aimOffsetLeftInches;
+        final boolean hasSuggestedVelocity;
+        final double suggestedVelocityNative;
+        final Pose3d fieldToSelectedTag;
+        final Pose2d fieldToAimPoint;
+
+        TargetingCalculation(boolean autoAimEnabled,
+                             boolean aimOverride,
+                             boolean rawAimReady,
+                             TagSelectionResult selection,
+                             DriveGuidanceStatus aimStatus,
+                             String targetLabel,
+                             double aimOffsetForwardInches,
+                             double aimOffsetLeftInches,
+                             boolean hasSuggestedVelocity,
+                             double suggestedVelocityNative,
+                             Pose3d fieldToSelectedTag,
+                             Pose2d fieldToAimPoint) {
+            this.autoAimEnabled = autoAimEnabled;
+            this.aimOverride = aimOverride;
+            this.rawAimReady = rawAimReady;
+            this.selection = selection;
+            this.aimStatus = aimStatus;
+            this.targetLabel = targetLabel;
+            this.aimOffsetForwardInches = aimOffsetForwardInches;
+            this.aimOffsetLeftInches = aimOffsetLeftInches;
+            this.hasSuggestedVelocity = hasSuggestedVelocity;
+            this.suggestedVelocityNative = suggestedVelocityNative;
+            this.fieldToSelectedTag = fieldToSelectedTag;
+            this.fieldToAimPoint = fieldToAimPoint;
+        }
+
+        Status toStatus(double aimToleranceDeg,
+                        double aimReadyToleranceDeg,
+                        boolean aimReady) {
+            return new Status(
+                    autoAimEnabled,
+                    aimReady,
+                    aimReady || aimOverride,
+                    aimOverride,
+                    aimToleranceDeg,
+                    aimReadyToleranceDeg,
+                    selection,
+                    aimStatus,
+                    targetLabel,
+                    aimOffsetForwardInches,
+                    aimOffsetLeftInches,
+                    hasSuggestedVelocity,
+                    suggestedVelocityNative,
+                    fieldToSelectedTag,
+                    fieldToAimPoint
+            );
+        }
+    }
+
     private final PhoenixProfile.AutoAimConfig cfg;
     private final CameraMountConfig cameraMountConfig;
     private final TagLayout fieldTagLayout;
     private final BooleanSource autoAimEnabled;
     private final BooleanSource aimOverrideInput;
     private final InterpolatingTable1D shotVelocityTable;
-    private final DebounceBoolean aimReadyDebouncer;
     private final TagSelectionSource scoringSelection;
     private final DriveGuidancePlan aimPlan;
     private final DriveGuidanceQuery aimQuery;
     private final double aimReadyToleranceRad;
-
-    private final BooleanSource aimOkToShootSource = new BooleanSource() {
-        /**
-         * {@inheritDoc}
-         */
-        @Override
-        public boolean getAsBoolean(LoopClock clock) {
-            return status(clock).aimOkToShoot;
-        }
-    };
-
-    private final BooleanSource aimOverrideSource = new BooleanSource() {
-        /**
-         * {@inheritDoc}
-         */
-        @Override
-        public boolean getAsBoolean(LoopClock clock) {
-            return status(clock).aimOverride;
-        }
-    };
-
-    private long lastStatusCycle = Long.MIN_VALUE;
-    private Status lastStatus = new Status(
-            false,
-            true,
-            true,
-            false,
-            0.0,
-            0.0,
-            TagSelectionResult.none(Collections.emptySet()),
-            null,
-            "",
-            0.0,
-            0.0,
-            false,
-            Double.NaN,
-            null,
-            null
-    );
+    private final Source<TargetingCalculation> targetingCalculation;
+    private final BooleanSource stableAimReady;
+    private final Source<Status> statusSource;
+    private final BooleanSource aimOkToShootSource;
+    private final BooleanSource aimOverrideSource;
 
     /**
      * Creates the shared Phoenix scoring-targeting service.
@@ -184,7 +220,6 @@ public final class ScoringTargeting implements PhoenixCapabilities.Targeting {
         this.autoAimEnabled = Objects.requireNonNull(autoAimEnabled, "autoAimEnabled").memoized();
         this.aimOverrideInput = Objects.requireNonNull(aimOverrideInput, "aimOverrideInput").memoized();
         this.shotVelocityTable = Objects.requireNonNull(shotVelocityTable, "shotVelocityTable");
-        this.aimReadyDebouncer = DebounceBoolean.onAfterOffImmediately(this.cfg.aimReadyDebounceSec);
         this.aimReadyToleranceRad = Math.toRadians(this.cfg.aimReadyToleranceDeg);
 
         if (this.cfg.scoringTagIds().isEmpty()) {
@@ -232,6 +267,25 @@ public final class ScoringTargeting implements PhoenixCapabilities.Targeting {
                 .build();
 
         aimQuery = aimPlan.query();
+
+        targetingCalculation = Source.of(this::calculateTargeting).memoized();
+        stableAimReady = targetingCalculation
+                .mapToBoolean(calculation -> calculation.rawAimReady)
+                .debouncedOn(this.cfg.aimReadyDebounceSec);
+        statusSource = Source.of(clock -> {
+            TargetingCalculation calculation = targetingCalculation.get(clock);
+            boolean aimReady = !calculation.autoAimEnabled
+                    || stableAimReady.getAsBoolean(clock);
+            return calculation.toStatus(
+                    this.cfg.aimToleranceDeg,
+                    this.cfg.aimReadyToleranceDeg,
+                    aimReady
+            );
+        }).memoized();
+
+        Source<Status> statusView = Source.of(this::status);
+        aimOkToShootSource = statusView.mapToBoolean(status -> status.aimOkToShoot);
+        aimOverrideSource = statusView.mapToBoolean(status -> status.aimOverride);
     }
 
     /**
@@ -281,7 +335,7 @@ public final class ScoringTargeting implements PhoenixCapabilities.Targeting {
     }
 
     /**
-     * Updates the cached targeting snapshot for the current loop cycle.
+     * Updates the successfully published targeting snapshot for the current loop cycle.
      *
      * @param clock shared loop clock for the active OpMode cycle
      */
@@ -290,21 +344,18 @@ public final class ScoringTargeting implements PhoenixCapabilities.Targeting {
     }
 
     /**
-     * Returns the targeting snapshot for the current loop, sampling the underlying query at most
-     * once per cycle.
+     * Returns the targeting snapshot for the current loop. One successful observation is published
+     * per cycle; a failed value calculation remains eligible for a same-cycle retry.
      *
      * @param clock shared loop clock for the active OpMode cycle
      * @return cached targeting snapshot for the current cycle
      */
     @Override
     public Status status(LoopClock clock) {
-        Objects.requireNonNull(clock, "clock");
-        long cyc = clock.cycle();
-        if (cyc == lastStatusCycle) {
-            return lastStatus;
-        }
-        lastStatusCycle = cyc;
+        return statusSource.get(Objects.requireNonNull(clock, "clock"));
+    }
 
+    private TargetingCalculation calculateTargeting(LoopClock clock) {
         boolean autoAimNow = autoAimEnabled.getAsBoolean(clock);
         boolean aimOverrideNow = aimOverrideInput.getAsBoolean(clock);
         TagSelectionResult selection = scoringSelection.get(clock);
@@ -320,8 +371,6 @@ public final class ScoringTargeting implements PhoenixCapabilities.Targeting {
                         && aimStatus.hasOmegaError
                         && aimStatus.omegaWithin(aimReadyToleranceRad)
         );
-        boolean aimReadyNow = !autoAimNow || aimReadyDebouncer.update(clock, rawAimReady);
-        boolean aimOkToShootNow = aimReadyNow || aimOverrideNow;
 
         PhoenixProfile.AutoAimConfig.ScoringTarget target = selection.hasSelection
                 ? cfg.targetProfileForTag(selection.selectedTagId)
@@ -343,13 +392,10 @@ public final class ScoringTargeting implements PhoenixCapabilities.Targeting {
             ).then(new Pose2d(target.aimOffset.forwardInches, target.aimOffset.leftInches, 0.0));
         }
 
-        lastStatus = new Status(
+        return new TargetingCalculation(
                 autoAimNow,
-                aimReadyNow,
-                aimOkToShootNow,
                 aimOverrideNow,
-                cfg.aimToleranceDeg,
-                cfg.aimReadyToleranceDeg,
+                rawAimReady,
                 selection,
                 aimStatus,
                 target.label,
@@ -360,7 +406,6 @@ public final class ScoringTargeting implements PhoenixCapabilities.Targeting {
                 fieldToSelectedTag,
                 fieldToAimPoint
         );
-        return lastStatus;
     }
 
     /**
@@ -376,32 +421,18 @@ public final class ScoringTargeting implements PhoenixCapabilities.Targeting {
     }
 
     /**
-     * Clears cached selector/query state so the next loop starts a fresh targeting session.
+     * Clears owned selector, query, readiness, and publication state so the next loop starts a
+     * fresh targeting session.
+     *
+     * <p>The owning robot calls this only after detaching the complete graph during shutdown;
+     * sampling and reset must not overlap.</p>
      */
     public void reset() {
         scoringSelection.reset();
         aimQuery.reset();
-        autoAimEnabled.reset();
         aimOverrideInput.reset();
-        aimReadyDebouncer.reset(false);
-        lastStatusCycle = Long.MIN_VALUE;
-        lastStatus = new Status(
-                false,
-                true,
-                true,
-                false,
-                cfg.aimToleranceDeg,
-                cfg.aimReadyToleranceDeg,
-                TagSelectionResult.none(Collections.emptySet()),
-                null,
-                "",
-                0.0,
-                0.0,
-                false,
-                Double.NaN,
-                null,
-                null
-        );
+        stableAimReady.reset();
+        statusSource.reset();
     }
 
     private Map<Integer, References.TagPointOffset> buildAimOffsetsByTag() {

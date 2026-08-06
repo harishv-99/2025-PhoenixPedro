@@ -187,7 +187,11 @@ Examples:
 * `BooleanSource.toggled()`
 * drive rate limiters, conditional overlays, built overlay stacks, and guidance runtimes
 
-These wrappers only advance once per cycle <em>when sampled</em>. If you never sample an edge/toggle source during a cycle, it cannot observe that transition.
+These wrappers publish at most one successful advance per cycle <em>when sampled</em>. They reject
+recursive sampling. A failed value attempt leaves the wrapper's prior committed state and cycle
+unchanged, so a later nonrecursive same-cycle call may retry instead of receiving a plausible stale,
+null, zero, or false result. Once one attempt succeeds, repeated reads return that exact result. If
+you never sample an edge/toggle source during a cycle, it cannot observe that transition.
 
 Sampling a `BooleanSource.and(...)` or `or(...)` composite observes the left operand first. If that
 succeeds, it observes the right operand once regardless of the left Boolean value, then combines
@@ -205,12 +209,19 @@ runtime if two consumers genuinely need different masks. Pure transforms such as
 no advancing behavior state and need no extra cache.
 
 Cycle caches become valid only after a complete sample succeeds. If an upstream source, gate, or
-overlay throws, the owner does not publish stale or null output as that cycle's result.
+overlay throws, the owner does not publish stale or null output as that cycle's result. A source
+that reaches an arbitrary stateful scalar controller retains a controller-thrown exception for the
+rest of that cycle instead of replaying an invocation whose internal mutation cannot be rolled
+back; failures while reading its inputs still occur before that attempt boundary and remain
+retryable.
 
 An explicit `clock.reset(...)` advances the cycle identity, so the next sample cannot reuse a
 pre-reset cache entry. It does not reset a source or any controller state. A structural source
 graph's explicit `reset()` clears its own local state and propagates through wrapped source/gate
-children. In contrast, `SpatialQuery.reset()` is query-local: frame providers, solve lanes, sensors,
+children. Reset happens while the graph is inactive: a structural wrapper rejects overlap, resets
+children first, and clears local state only after every child succeeds. A child failure may leave
+earlier child resets observable, but generic source code does not claim rollback. In contrast,
+`SpatialQuery.reset()` is query-local: frame providers, solve lanes, sensors,
 estimators, and selection policies supplied through its reusable spec remain owned by their
 composition roots.
 

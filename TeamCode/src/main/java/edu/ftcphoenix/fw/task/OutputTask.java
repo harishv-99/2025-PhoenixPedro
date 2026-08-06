@@ -32,11 +32,18 @@ public interface OutputTask extends Task {
      *
      * <p>Contract:
      * <ul>
-     *   <li>Must be safe to call multiple times per loop.</li>
+     *   <li>This is a non-advancing, side-effect-free observation. Task state advances only through
+     *       the {@link Task} lifecycle methods.</li>
+     *   <li>Must be safe to call multiple times per loop and to retry when an observation throws.</li>
      *   <li>Should reflect the most recent {@link #update(edu.ftcphoenix.fw.core.time.LoopClock)} call.</li>
      *   <li>Should return a sensible value even while waiting (for example, 0 power while gated).</li>
      *   <li>A positive-duration run should expose its run value on the cycle when that interval begins.</li>
      * </ul>
+     *
+     * <p>An implementation must not mutate task state, write hardware, cancel or reschedule its
+     * runner, or invoke another effect from this method. {@link OutputTaskRunner} may retry a
+     * failed value observation in the same loop cycle; effects here would therefore be duplicated
+     * and cannot be rolled back truthfully.</p>
      */
     double getOutput();
 }

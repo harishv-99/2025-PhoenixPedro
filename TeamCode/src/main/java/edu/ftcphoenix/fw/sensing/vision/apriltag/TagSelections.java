@@ -357,6 +357,7 @@ public final class TagSelections {
         private String lastReason = "no selection";
         private double lastMetricValue = Double.NaN;
         private double lostSinceSec = Double.NaN;
+        private boolean operationInProgress = false;
 
         BuiltSelectionSource(Source<AprilTagDetections> detections,
                              Set<Integer> candidateIds,
@@ -387,41 +388,89 @@ public final class TagSelections {
          */
         @Override
         public TagSelectionResult get(LoopClock clock) {
+            if (operationInProgress) {
+                throw reentrantLifecycle("sample");
+            }
+            Objects.requireNonNull(clock, "clock");
             long cyc = clock.cycle();
             if (cyc == lastCycle) {
                 return last;
             }
-            lastCycle = cyc;
 
-            AprilTagDetections dets = Objects.requireNonNull(detections.get(clock), "detections returned null");
-            List<AprilTagObservation> candidates =
-                    dets.freshMatching(clock, candidateIds, maxAgeSec);
-            LinkedHashSet<Integer> visibleIds = new LinkedHashSet<Integer>();
-            for (AprilTagObservation obs : candidates) {
-                visibleIds.add(obs.id);
-            }
+            operationInProgress = true;
+            try {
+                // Work only against an unpublished copy. Detection acquisition, freshness,
+                // policy, enable, and loss calculations may all fail; none may partially advance
+                // the selector's sticky state or diagnostics.
+                CandidateState candidateState = new CandidateState(
+                        prevEnabled,
+                        selectedTagId,
+                        latched,
+                        lastPolicyName,
+                        lastReason,
+                        lastMetricValue,
+                        lostSinceSec
+                );
 
-            TagSelectionChoice preview = policy.choose(candidates);
-            if (preview != null) {
-                lastPolicyName = preview.policyName;
-                lastReason = preview.reason;
-                lastMetricValue = preview.metricValue;
-            }
+                AprilTagDetections dets = Objects.requireNonNull(
+                        detections.get(clock),
+                        "detections returned null"
+                );
+                List<AprilTagObservation> candidates =
+                        dets.freshMatching(clock, candidateIds, maxAgeSec);
+                LinkedHashSet<Integer> visibleIds = new LinkedHashSet<Integer>();
+                for (AprilTagObservation obs : candidates) {
+                    visibleIds.add(obs.id);
+                }
 
-            switch (mode) {
-                case CONTINUOUS:
-                    last = buildContinuousResult(preview, visibleIds);
-                    prevEnabled = false;
-                    return last;
-                case STICKY_WHEN:
-                    return stepStickyWhen(clock, preview, candidates, visibleIds);
-                case STICKY_UNTIL_RESET:
-                default:
-                    return stepStickyUntilReset(clock, preview, candidates, visibleIds);
+                TagSelectionChoice preview = policy.choose(candidates);
+                if (preview != null) {
+                    candidateState.policyName = preview.policyName;
+                    candidateState.reason = preview.reason;
+                    candidateState.metricValue = preview.metricValue;
+                }
+
+                switch (mode) {
+                    case CONTINUOUS:
+                        candidateState.result = buildContinuousResult(
+                                preview,
+                                visibleIds,
+                                candidateState.policyName
+                        );
+                        candidateState.prevEnabled = false;
+                        break;
+                    case STICKY_WHEN:
+                        stepStickyWhen(
+                                candidateState,
+                                clock,
+                                preview,
+                                candidates,
+                                visibleIds
+                        );
+                        break;
+                    case STICKY_UNTIL_RESET:
+                    default:
+                        stepStickyUntilReset(
+                                candidateState,
+                                clock,
+                                preview,
+                                candidates,
+                                visibleIds
+                        );
+                        break;
+                }
+
+                publish(candidateState);
+                lastCycle = cyc;
+                return last;
+            } finally {
+                operationInProgress = false;
             }
         }
 
-        private TagSelectionResult buildContinuousResult(TagSelectionChoice preview, Set<Integer> visibleIds) {
+        private static TagSelectionResult buildContinuousResult(TagSelectionChoice preview,
+                                                                 Set<Integer> visibleIds,
+                                                                 String priorPolicyName) {
             if (preview == null) {
                 return new TagSelectionResult(
                         false,
@@ -433,7 +482,7 @@ public final class TagSelections {
                         false,
                         AprilTagObservation.noTarget(),
                         visibleIds,
-                        lastPolicyName,
+                        priorPolicyName,
                         "no preview candidate",
                         Double.NaN
                 );
@@ -454,17 +503,18 @@ public final class TagSelections {
             );
         }
 
-        private TagSelectionResult stepStickyWhen(LoopClock clock,
-                                                  TagSelectionChoice preview,
-                                                  List<AprilTagObservation> candidates,
-                                                  Set<Integer> visibleIds) {
+        private void stepStickyWhen(CandidateState state,
+                                    LoopClock clock,
+                                    TagSelectionChoice preview,
+                                    List<AprilTagObservation> candidates,
+                                    Set<Integer> visibleIds) {
             boolean enabledNow = enabled.getAsBoolean(clock);
-            boolean rising = enabledNow && !prevEnabled;
-            prevEnabled = enabledNow;
+            boolean rising = enabledNow && !state.prevEnabled;
+            state.prevEnabled = enabledNow;
 
             if (!enabledNow) {
-                clearSelection();
-                last = new TagSelectionResult(
+                clearSelection(state);
+                state.result = new TagSelectionResult(
                         preview != null,
                         preview != null ? preview.observation.id : -1,
                         preview != null ? preview.observation : AprilTagObservation.noTarget(),
@@ -474,58 +524,61 @@ public final class TagSelections {
                         false,
                         AprilTagObservation.noTarget(),
                         visibleIds,
-                        preview != null ? preview.policyName : lastPolicyName,
+                        preview != null ? preview.policyName : state.policyName,
                         preview != null ? preview.reason : "selection inactive",
                         preview != null ? preview.metricValue : Double.NaN
                 );
-                return last;
+                return;
             }
 
-            if (rising || selectedTagId < 0) {
+            if (rising || state.selectedTagId < 0) {
                 if (preview != null) {
-                    latch(preview);
+                    latch(state, preview);
                 }
             }
 
-            last = buildStickyResult(clock, preview, candidates, visibleIds);
-            return last;
+            state.result = buildStickyResult(state, clock, preview, candidates, visibleIds);
         }
 
-        private TagSelectionResult stepStickyUntilReset(LoopClock clock,
-                                                        TagSelectionChoice preview,
-                                                        List<AprilTagObservation> candidates,
-                                                        Set<Integer> visibleIds) {
-            if (selectedTagId < 0 && preview != null) {
-                latch(preview);
+        private void stepStickyUntilReset(CandidateState state,
+                                          LoopClock clock,
+                                          TagSelectionChoice preview,
+                                          List<AprilTagObservation> candidates,
+                                          Set<Integer> visibleIds) {
+            if (state.selectedTagId < 0 && preview != null) {
+                latch(state, preview);
             }
-            last = buildStickyResult(clock, preview, candidates, visibleIds);
-            return last;
+            state.result = buildStickyResult(state, clock, preview, candidates, visibleIds);
         }
 
-        private TagSelectionResult buildStickyResult(LoopClock clock,
+        private TagSelectionResult buildStickyResult(CandidateState state,
+                                                     LoopClock clock,
                                                      TagSelectionChoice preview,
                                                      List<AprilTagObservation> candidates,
                                                      Set<Integer> visibleIds) {
-            AprilTagObservation selectedObs = findById(candidates, selectedTagId);
+            AprilTagObservation selectedObs = findById(candidates, state.selectedTagId);
             boolean hasFreshSelected = selectedObs != null && selectedObs.hasTarget;
 
-            if (selectedTagId >= 0) {
+            if (state.selectedTagId >= 0) {
                 if (hasFreshSelected) {
-                    lostSinceSec = Double.NaN;
-                } else if (Double.isNaN(lostSinceSec)) {
-                    lostSinceSec = clock.nowSec();
-                }
+                    state.lostSinceSec = Double.NaN;
+                } else {
+                    double nowSec = clock.nowSec();
+                    if (Double.isNaN(state.lostSinceSec)) {
+                        state.lostSinceSec = nowSec;
+                    }
 
-                if (!hasFreshSelected && Double.isFinite(reacquireAfterLossSec)
-                        && clock.nowSec() - lostSinceSec >= reacquireAfterLossSec) {
-                    if (preview != null) {
-                        latch(preview);
-                        selectedObs = preview.observation;
-                        hasFreshSelected = true;
-                    } else {
-                        clearSelection();
-                        selectedObs = AprilTagObservation.noTarget();
-                        hasFreshSelected = false;
+                    if (Double.isFinite(reacquireAfterLossSec)
+                            && nowSec - state.lostSinceSec >= reacquireAfterLossSec) {
+                        if (preview != null) {
+                            latch(state, preview);
+                            selectedObs = preview.observation;
+                            hasFreshSelected = true;
+                        } else {
+                            clearSelection(state);
+                            selectedObs = AprilTagObservation.noTarget();
+                            hasFreshSelected = false;
+                        }
                     }
                 }
             }
@@ -534,15 +587,15 @@ public final class TagSelections {
                     preview != null,
                     preview != null ? preview.observation.id : -1,
                     preview != null ? preview.observation : AprilTagObservation.noTarget(),
-                    selectedTagId >= 0,
-                    selectedTagId,
-                    latched,
+                    state.selectedTagId >= 0,
+                    state.selectedTagId,
+                    state.latched,
                     hasFreshSelected,
                     hasFreshSelected ? selectedObs : AprilTagObservation.noTarget(),
                     visibleIds,
-                    preview != null ? preview.policyName : lastPolicyName,
-                    preview != null ? preview.reason : lastReason,
-                    preview != null ? preview.metricValue : lastMetricValue
+                    preview != null ? preview.policyName : state.policyName,
+                    preview != null ? preview.reason : state.reason,
+                    preview != null ? preview.metricValue : state.metricValue
             );
         }
 
@@ -558,19 +611,30 @@ public final class TagSelections {
             return null;
         }
 
-        private void latch(TagSelectionChoice choice) {
-            selectedTagId = choice.observation.id;
-            latched = true;
-            lastPolicyName = choice.policyName;
-            lastReason = choice.reason;
-            lastMetricValue = choice.metricValue;
-            lostSinceSec = Double.NaN;
+        private static void latch(CandidateState state, TagSelectionChoice choice) {
+            state.selectedTagId = choice.observation.id;
+            state.latched = true;
+            state.policyName = choice.policyName;
+            state.reason = choice.reason;
+            state.metricValue = choice.metricValue;
+            state.lostSinceSec = Double.NaN;
         }
 
-        private void clearSelection() {
-            selectedTagId = -1;
-            latched = false;
-            lostSinceSec = Double.NaN;
+        private static void clearSelection(CandidateState state) {
+            state.selectedTagId = -1;
+            state.latched = false;
+            state.lostSinceSec = Double.NaN;
+        }
+
+        private void publish(CandidateState state) {
+            prevEnabled = state.prevEnabled;
+            selectedTagId = state.selectedTagId;
+            latched = state.latched;
+            lastPolicyName = state.policyName;
+            lastReason = state.reason;
+            lastMetricValue = state.metricValue;
+            lostSinceSec = state.lostSinceSec;
+            last = state.result;
         }
 
         /**
@@ -578,17 +642,37 @@ public final class TagSelections {
          */
         @Override
         public void reset() {
-            detections.reset();
-            if (enabled != null) {
-                enabled.reset();
+            if (operationInProgress) {
+                throw reentrantLifecycle("reset");
             }
-            lastCycle = Long.MIN_VALUE;
-            last = TagSelectionResult.none(Collections.emptySet());
-            prevEnabled = false;
-            clearSelection();
-            lastPolicyName = "none";
-            lastReason = "no selection";
-            lastMetricValue = Double.NaN;
+            operationInProgress = true;
+            try {
+                detections.reset();
+                if (enabled != null) {
+                    enabled.reset();
+                }
+
+                // Only publish the local reset after the complete owned child reset succeeds.
+                last = TagSelectionResult.none(Collections.emptySet());
+                prevEnabled = false;
+                selectedTagId = -1;
+                latched = false;
+                lastPolicyName = "none";
+                lastReason = "no selection";
+                lastMetricValue = Double.NaN;
+                lostSinceSec = Double.NaN;
+                lastCycle = Long.MIN_VALUE;
+            } finally {
+                operationInProgress = false;
+            }
+        }
+
+        private static IllegalStateException reentrantLifecycle(String operation) {
+            return new IllegalStateException(
+                    "TagSelectionSource cannot " + operation + " reentrantly while another "
+                            + "sample or reset is in progress; detection, policy, and enable "
+                            + "callbacks must not call back into their owning selector."
+            );
         }
 
         /**
@@ -607,6 +691,34 @@ public final class TagSelections {
                     .addData(p + ".reason", lastReason)
                     .addData(p + ".metricValue", lastMetricValue);
             detections.debugDump(dbg, p + ".detections");
+        }
+
+        /** Unpublished candidate for one all-or-nothing selector observation. */
+        private static final class CandidateState {
+            private boolean prevEnabled;
+            private int selectedTagId;
+            private boolean latched;
+            private String policyName;
+            private String reason;
+            private double metricValue;
+            private double lostSinceSec;
+            private TagSelectionResult result;
+
+            private CandidateState(boolean prevEnabled,
+                                   int selectedTagId,
+                                   boolean latched,
+                                   String policyName,
+                                   String reason,
+                                   double metricValue,
+                                   double lostSinceSec) {
+                this.prevEnabled = prevEnabled;
+                this.selectedTagId = selectedTagId;
+                this.latched = latched;
+                this.policyName = policyName;
+                this.reason = reason;
+                this.metricValue = metricValue;
+                this.lostSinceSec = lostSinceSec;
+            }
         }
     }
 }
