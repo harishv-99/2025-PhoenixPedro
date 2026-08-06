@@ -153,7 +153,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 66 | MAP-01 | FTC actuator mapping-domain validation | Done | Layer finite affine and FTC-native-domain validation, preserve neutral zero, and remove unusable CR-servo bias. |
 | 67 | MAP-02 | Calibration-search power mapping separation | Done | Correct MAP-01's regression by keeping position-coordinate scale/bias out of grouped raw-power calibration search. |
 | 68 | FTC-02 | Device-managed controller configuration validation | Done | The staged grammar, strict controller domains, synchronized callers/docs, automated verification, independent review, Android Studio approval, and publication authorization are complete. |
-| 69 | SOURCE-04 | Successful source-cache commit semantics | Proposed | Audit stateful source wrappers that claim a cycle before upstream sampling or state transition succeeds. |
+| 69 | SOURCE-04 | Successful source-cache commit semantics | Done | Commit value observations only after success, retain non-rollback controller failures, require value-style reducers, and make `Source.of(...)` the one ordinary robot-code adapter. |
 | 70 | INPUT-02 | Binding update failure retention | Proposed | Make same-cycle binding failure behavior explicit for an effectful traversal that may already have fired callbacks. |
 | 71 | BOUNDARY-01 | FTC boundary enforcement | Proposed | Fix existing import leaks, then add a focused forbidden-import check. |
 | 72 | CI-01 | Framework verification in CI | Proposed | Run focused unit tests, TeamCode compilation, docs checks, and boundary checks. |
@@ -13235,23 +13235,371 @@ writer, and explicit lifecycle ownership.
 
 ### SOURCE-04 - Successful source-cache commit semantics
 
-- **Problem to confirm:** several stateful `Source`, `ScalarSource`, and `BooleanSource` decorators
-  appear to record `clock.cycle()` before upstream sampling, validation, or their state transition
-  completes. If that work throws, a repeated same-cycle read may return a stale/default value or
-  skip the real operation even though Framework Principles say a value cache becomes valid only
-  after complete success.
-- **Alternatives to compare:** commit value/cycle only after complete success; retain and rethrow a
-  same-cycle failure for wrappers whose state transition cannot be rolled back; give every wrapper
-  an explicit attempt state; or narrow the principle. Classify each wrapper by whether sampling is a
-  transactional value calculation or an effectful state transition before choosing one rule.
-- **Leading hypothesis:** value-producing decorators should publish their cycle only after a
-  complete successful observation. A wrapper that can mutate irreversibly before failure needs the
-  explicit attempt/failure-retention model instead of pretending it is a retryable value cache.
-- **Completion:** every stateful core source wrapper has documented success, failure, reentry,
-  retry, reset, and same-cycle semantics; fault-injection tests prove no exception becomes a stale
-  success and ordinary robot call sites gain no new memoization or lifecycle ceremony.
-- **Decision record:** _Pending; split from the SOURCE-01 audit on 2026-07-24 and previously noted
-  during TARGET-01/CYCLE-01 reviews._
+- **Research start (2026-08-04):** SOURCE-04 is the sole active item on
+  `codex/source-04-successful-source-cache-commit-semantics`, based exactly on merged
+  `origin/master@57eeac5b79b65ce017859c82e3c605d5c85bf6e2`. FTC-02 is published and Done.
+  Gate 1 is read-only apart from this tracker record: no Java implementation, test, Javadoc, guide,
+  example, or Phoenix production change has started. INPUT-02, BOUNDARY-01, CI-01, and every other
+  proposed or deferred item remain out of scope.
+- **Decision record (2026-08-04):** **Ready; breaking behavior and accumulator-contract approval
+  required before implementation.** The audit confirms the leading hypothesis and identifies one
+  deliberate split: retry transactional value observations, but retain a failure after an arbitrary
+  stateful controller has been invoked because that invocation cannot be rolled back truthfully.
+  Ordinary source, Plant-target, output-queue, and Phoenix capability call sites keep their existing
+  names, arguments, and return types.
+  - **Approved one-grammar revision (2026-08-05):** the user defines robot code as every class under
+    `edu.ftcphoenix.robots` and approved implementation with “Let us implement this” after the
+    construction-path audit. Generic `Source.of(Function<LoopClock, T>)` currently has no repository
+    caller, while direct generic lambdas, anonymous implementations, and named domain implementations
+    are all possible because `Source` is a Java 8 functional interface. SOURCE-04 will deliberately
+    make the existing one-argument `Source.of(...)` the sole ordinary generic adaptation grammar and
+    migrate Phoenix's ad-hoc value views to that factory plus existing decorators. It will not add
+    `Source.of(sample, resetAction)`, `withReset(...)`, `owned(...)`, a `Sources` facade, a builder,
+    or clock-aware primitive overloads. `Source.constant(...)` remains the distinct fixed-value path.
+    Direct implementation remains the necessary framework/integration extension seam for named
+    domain sources such as `DriveSource`, `TimeAwareSource`, `AprilTagSensor`, `TagSelectionSource`,
+    `SpatialQuery`, and `DriveGuidanceQuery`; it is not an ordinary robot-code recipe. This revision
+    supersedes the earlier possibility of putting a reset callback or anonymous `Source` in
+    `ScoringTargeting`.
+  - **Confirmed stale-success traces:** `Source.memoized()`, `ScalarSource.memoized()`, and
+    `BooleanSource.memoized()` set `lastCycle` before calling the upstream source. On a first-use
+    failure, a second read in that cycle returns `null`, `0.0`, or `false`; after an earlier success,
+    it returns the prior cycle's value. The same preclaim occurs in generic/scalar holds, scalar
+    hysteresis and `holdLastUnless(...)`, Boolean debounce/edge/toggle wrappers, the advanced Plant
+    planner, and tag selection. `ScalarSource.ratePerSecond()` samples its input first but claims the
+    cycle before its timestamp/epoch calculation and baseline publication complete. An exception in
+    any named fallible step can therefore be converted into a plausible cached observation.
+    `Source.accumulateUntil(...)` is more severe: it can replace live state with `initial` before the
+    upstream sample or reducer fails, while still making a repeat look complete.
+  - **Reentry trace:** the same early claims let recursive sampling observe a partially initialized
+    or prior result instead of reporting a source-graph cycle. `OutputTaskRunner.output(clock)` can
+    return its prior output if an arbitrary `OutputTask.getOutput()` re-enters it; the source returned
+    by `activeSource()` can similarly expose intermediate queue state. Its existing catch paths do
+    not distinguish reentry from a successful repeated read. A value-getter failure is retryable;
+    an underlying Task lifecycle failure remains governed by TASK-03's total fail-stop semantics and
+    leaves the queue truthfully idle rather than pretending the old queue state was preserved.
+  - **Non-rollback trace:** `ScalarControllers.pid(...)` claims the cycle, samples setpoint and
+    measurement, and invokes the public `PidController.update(...)`. A custom controller may mutate
+    integral, filter, or other private state and then throw. Retrying that controller in the same
+    cycle could duplicate an irreversible transition; returning the default/prior output hides the
+    failure. Inputs that fail before controller invocation do not have this problem and remain
+    transactional value observations.
+  - **Complete core family audit:** the affected receiver-method layer is `Source.memoized()`,
+    `accumulate(...)`, `accumulateUntil(...)`, and `holdLastValid(...)`; the scalar
+    `memoized()`, `holdLastValid(...)`, `holdLastFinite(...)`, `ratePerSecond()`,
+    `hysteresisBelow(...)`, `hysteresisAbove(...)`, and `holdLastUnless(...)`, with both scalar
+    `rateLimited(...)` overloads inheriting the corrected upstream memo contract; and the Boolean
+    `memoized()`, `debouncedOn(...)`, `debouncedOnOff(...)`, `debounced(...)`, `risingEdge()`,
+    `fallingEdge()`, and `toggled(...)`, including both toggle overloads. Pure `map`, arithmetic,
+    predicate, logical, and `choose(...)` transformations own no advancing state and remain uncached.
+  - **Public construction-path and symmetry audit:** these decorators have one fluent receiver layer;
+    there is no competing facade, public concrete wrapper constructor, static wrapper factory, or
+    staged-builder spelling. The generic, scalar, and Boolean `memoized()` methods remain justified
+    parallel answers because the specialized interfaces preserve primitive sampling and covariant
+    return types. `debounced(DebounceBoolean)` remains the distinct advanced path for a deliberately
+    retained, inspectable debounce state owner; the convenience delay methods remain the ordinary
+    path. One `DebounceBoolean` must not be shared across independent wrapper graphs unless the caller
+    intentionally wants one first-updater-wins state owner. API-03 already established the separate
+    value of all four `ScalarControllers.pid/proportional` source factories versus the
+    `ScalarRegulator` Plant seam; all four factories converge on the corrected lifecycle rather than
+    gaining new overloads. Generic `Source.of(...)` earns its retained public place by becoming the
+    canonical null-checking, debug-identifiable, inline-fluent adapter for clock-aware object values;
+    a direct SAM lambda remains technically possible but is not taught as a parallel robot path.
+    The existing clockless `ScalarSource.of(DoubleSupplier)` and
+    `BooleanSource.of(BooleanSupplier)` remain the shorter primitive leaf adapters; symmetry alone
+    does not justify making every primitive caller accept an unused clock or adding clock-aware
+    overloads without a distinct state owner. No staged parameter object is added.
+
+    | Supported public path | Declared result | Current storage, reuse, or branching |
+    | --- | --- | --- |
+    | Generic receiver decorators | `Source<T>` or accumulator `Source<U>` | Returned graphs are stored/reused by FTC adapters and docs; accumulators have no executable caller. |
+    | Scalar receiver decorators | `ScalarSource`, except hysteresis returns `BooleanSource` | Returned graphs are stored as measurements, targets, controls, or fields; no competing construction layer exists. |
+    | Boolean receiver decorators | `BooleanSource` | Returned graphs are stored by bindings, Plant gates, Phoenix owners, tests, and examples. |
+    | Four `ScalarControllers.pid/proportional` overloads | `ScalarSource` | No compiled caller; the maintained design guide stores the result. API-03 preserves this seam. |
+    | `equivalentPositionsOf(ScalarTarget|PlantTargetResolver)` | `EquivalentPositionPreferenceStage` | Retained/branched stages occur only in tests; production, Phoenix, and tools have no caller. |
+    | `plan(PlantTargetRequest|Source<PlantTargetRequest>)` | `PlanPreferenceStage` | Retained/branched stages occur only in tests; current maintained examples otherwise chain inline. |
+    | `TagSelections.from(Source<AprilTagDetections>)` through its stages | `CandidateStep` through `BuildStep`, then `TagSelectionSource` | All current constructions chain stages inline; owners store the completed source. |
+    | `Tasks.outputQueue()` / `outputQueue(double)` | `OutputTaskRunner` | Stored by `ScoringPath`, TeleOp 07/09, docs, and tests; its constructor is package-private. |
+    | `OutputTaskRunner.activeSource()` / the runner itself | `BooleanSource` / `ScalarSource` | The views are composed into Plant overlays; the retained runner owns queue lifecycle. |
+
+  - **Caller audit:** generic memoization backs FTC color/RGBA adapters. Scalar memoization backs FTC
+    battery-voltage, distance, analog, encoder, velocity, actuator-feedback, mapped-Plant, Phoenix
+    control/targeting, and modern tool paths. Boolean memoization backs FTC touch/digital adapters,
+    Plant overlay gates, Phoenix controls/targeting/scoring, and guide examples. `ratePerSecond()` is
+    used by FTC external-encoder actuation and its focused tests. Root `Bindings` construction uses
+    rising/falling/toggle wrappers; Boolean debounce and scalar hold/rate tests exercise other
+    paths. Accumulators, scalar hysteresis, scalar `holdLastUnless`, and direct `ScalarControllers`
+    currently have documentation/test rather than executable robot callers; maintained accumulator
+    examples use enum value states. No current caller intentionally depends on a failed observation
+    becoming stale/default success or on recursive partial reads. The complete public FTC facade
+    inventory that installs these memo wrappers is 27 overload paths—17 scalar, 6 Boolean, and 4
+    generic—and each boundary family installs the corresponding wrapper internally rather than
+    asking students to add it.
+  - **Custom-owner audit:** `PlantTargets.equivalentPositionsOf(...)` has resolver and
+    `ScalarTarget` entry paths; `plan(...)` has fixed-request and live-source entry paths. The
+    equivalent resolver already commits its result/cycle after a child succeeds, and an existing
+    regression proves failure-then-success retry, but its hold/fallback fields can still change
+    before later resolution work finishes. The planner retains the original preclaim explicitly
+    assigned to SOURCE-04 by TARGET-05. Both advanced resolvers therefore join the transactional
+    correction without changing their staged grammars. Exact and overlay target inputs inherit the
+    corrected scalar/Boolean memo behavior; overlay arbitration itself is not a competing cycle
+    cache and retains its attempt diagnostics.
+  - **Tag, task-output, and Phoenix callers:** the one
+    `TagSelections.from(...).among(...).freshWithinSec(...).choose(...).<mode>.build()` grammar is
+    used by Phoenix targeting, two localization testers, two maintained shooter examples, docs, and
+    tests. Its own detection, freshness, stateless-policy, enable, sticky-selection, loss,
+    diagnostics, result, and cycle changes will publish atomically.
+    `OutputTaskRunner.getAsDouble/output/activeSource` is used by
+    `ScoringPath`, maintained examples, Plant overlay documentation, and task tests; only its
+    value-observation guard/commit changes, not Task scheduling or fail-stop cleanup.
+    `OutputTask.getOutput()` will explicitly document the contract its existing API implies: it is a
+    non-advancing, side-effect-free observation of state advanced by Task lifecycle methods and is
+    safe to retry. If `activeSource()` reaches a failing `TaskRunner.update()`, the runner still
+    best-effort cancels and empties itself, output caches still invalidate to idle, and a later
+    same-cycle observation may successfully report that real idle state. Output sampling snapshots
+    the runner's invalidation revision and refuses to publish a candidate if a reentrant cancellation
+    or other lifecycle action changed that revision, so a cancelled Task's value cannot overwrite the
+    required idle invalidation. That mismatch throws an actionable `IllegalStateException` without
+    overwriting the invalidation; the next nonrecursive call samples the runner's actual new state.
+    `ScoringTargeting.status(clock)` is Phoenix's robot-owned cached targeting snapshot and feeds two
+    exposed Boolean sources, PhoenixRobot's TeleOp/Auto status phases, `PhoenixAutoTasks`, scoring,
+    and telemetry. Drive assist separately consumes `ScoringTargeting.aimOverlay()` and
+    `ScoringPath.Status`; it does not read this targeting snapshot. A private immutable targeting
+    calculation source will perform the fallible source/query reads, target-profile lookup,
+    interpolation, and field-pose work and publish only after success. An existing
+    `mapToBoolean(...).debouncedOn(...)` graph will own readiness state, and one final
+    `Source.of(...).memoized()` value assembly will publish the status. A later assembly failure may
+    retry without advancing readiness twice because the successful readiness child owns its own
+    same-cycle result. Non-owning Boolean projections use `Source.of(this::status).mapToBoolean(...)`
+    so their resets stop at the borrowed raw adapter rather than reaching the service-owned graph.
+    `ScoringPath` replaces its private handwritten cycle/debounce source with
+    `BooleanSource.of(...).debouncedOn(...)`, and Phoenix Auto's clock-aware targeting wait derives a
+    Boolean through the same generic factory/mapping grammar. Reset also stops resetting the same
+    memoized `autoAimEnabled` alias twice:
+    `scoringSelection.reset()` already reaches that structural child, so the common targeting owner
+    does not invoke it again directly. This preserves Phoenix's existing service ownership and loop
+    phase while making shared-child reset ownership truthful.
+  - **Chosen transactional value contract:** each affected value owner first rejects recursive
+    sampling with an actionable `IllegalStateException`. It stages every fallible or extensible
+    operation before irreversible publication, uses locals wherever state can be staged, performs
+    any final nonthrowing state transition only after those failure points, publishes its complete
+    state/result, and commits `clock.cycle()` last. `inProgress` is cleared in `finally`. A
+    `RuntimeException` leaves this owner's previous committed state and cycle intact, although an
+    upstream child that completed before a later failure keeps its own independently owned
+    observation. A later nonrecursive call in the same cycle is eligible to retry. After one
+    success, every same-cycle read returns that exact committed observation until an explicit
+    owner-defined reset or invalidation. `OutputTaskRunner` therefore keys its view by cycle plus its
+    existing invalidation revision rather than allowing a successful cache to mask cancellation.
+    No failure value or exception cache is added to transactional wrappers.
+  - **Value-callback boundary:** the predicates accepted by generic/scalar `holdLastValid(...)` are
+    value decisions, not effect hooks. Their public contract will require side-effect-free evaluation
+    so a thrown predicate can be retried without duplicating caller effects. `TagSelectionPolicy`
+    already has the corresponding stateless contract, and `OutputTask.getOutput()` gains the
+    non-advancing value-observation wording above. An intentionally stateful or effectful operation
+    belongs in an owner with an explicit attempt/failure lifecycle, not inside one of these callbacks.
+  - **Chosen accumulator contract:** keep the two current method signatures and the familiar call
+    shape, but make them value reducers. `initial` and each prior accumulated state are read-only;
+    `step` must have no external effect or in-place mutation and must return a non-null immutable or
+    otherwise independently stable value. Returning the same immutable/value-semantic instance for
+    an unchanged state remains valid. The reset signal, upstream sample, and candidate reduced state
+    are staged, then state/result/cycle commit together. This is a public contract tightening:
+    current wording that mutable states “can work” is removed because the retained `initial`
+    reference is also the reset baseline and generic code cannot copy or roll back an object a
+    reducer mutated before throwing. There are no executable accumulator callers to migrate.
+  - **Chosen controller-attempt contract:** `ScalarControllers` stages setpoint and measurement as
+    retryable value reads. Immediately before `controller.update(error, dtSec)`, it records the one
+    non-rollback attempt for that cycle. A controller `RuntimeException` is retained by identity and
+    rethrown on every same-cycle repeat without replaying the controller. The next cycle may attempt
+    again. Setpoint, measurement, error, and output diagnostics publish together only after
+    controller success. A successful reset of its owned inputs/controller clears committed output,
+    attempt, and retained failure state.
+  - **Reset boundary:** structural wrappers preserve their documented child-reset ownership and
+    order, then clear their own local cache/history only after every child call succeeds. A child
+    reset failure is propagated; earlier children may already have reset, and generic code neither
+    pretends to roll back that graph nor advertises completed local publication. Sampling/reset
+    overlap or recursive reset fails fast instead of exposing partial local state. A successful reset
+    remains immediately observable within the current clock cycle and makes the next sample fresh.
+    `OutputTaskRunner` deliberately remains different: TASK-03's total
+    abort empties the runner and invalidates its output/active caches in `finally` even when Task
+    cancellation throws, so no failed cleanup can leave a runnable queue or non-idle output. The
+    task-output and runtime-query owners continue resetting only the collaborators they already own;
+    SOURCE-04 does not invent broader lifecycle ownership.
+  - **Ordinary robot-code comparison:** the selected design adds no sampling, retry, or cache
+    ceremony. The student still supplies only the sensor and behavior thresholds:
+
+    ```java
+    ScalarSource wheelSpeed = FtcSensors.motorVelocityTicksPerSec(hardwareMap, "shooter");
+    BooleanSource ready = wheelSpeed
+            .hysteresisAbove(2500.0, 2400.0)
+            .debouncedOn(0.10);
+    ```
+
+    A value accumulator likewise retains its one grammar:
+
+    ```java
+    Source<SlotColor> slot = samples.accumulateUntil(
+            newWindow,
+            (held, current) -> updateSlotColor(held, current),
+            SlotColor.EMPTY);
+    ```
+
+    A shared robot-owned value snapshot uses the same ordinary adapter and decorators rather than
+    implementing `Source` or a cycle cache:
+
+    ```java
+    Source<TargetingInputs> inputs = Source.of(this::calculateInputs).memoized();
+    BooleanSource ready = inputs
+            .mapToBoolean(TargetingInputs::rawAimReady)
+            .debouncedOn(0.10);
+    ```
+
+    Documentation/manual recovery would instead make robot code catch failures, reset or
+    pre-sample graphs, and coordinate every consumer. Attempt-state parameters, cache policy enums,
+    or separate `retryingMemoized()` names would add a decision that the framework can make from the
+    owner's actual semantics.
+  - **Framework Principles check:** successful-only publication directly enforces one successful
+    observation per cycle and prevents exceptions from becoming data. The controller exception is
+    the existing non-transactional-attempt rule applied at the narrow boundary where arbitrary
+    mutable behavior begins. Value reducers make reset and retry truthful without a copy/snapshot
+    abstraction. State stays with each source/resolver/service owner; FTC and Phoenix call sites add
+    no lifecycle step; Plants remain source-driven; Phoenix targeting retains its robot-owned policy
+    and documented loop order; and docs remain synchronized with behavior.
+  - **Rejected designs:** retaining every source failure contradicts the established value-cache
+    rule and would freeze transient hardware/read failures. Retrying the arbitrary controller can
+    double-advance hidden state. Giving every wrapper attempt/failure fields adds unnecessary state
+    and turns recoverable value failures into sticky failures. Merely moving `lastCycle` misses
+    accumulator/reset partial publication, hold timestamps, resolver sticky fields, selection
+    diagnostics, controller effects, and reentry. Fixing only the three `memoized()` methods leaves
+    identical defects in the higher-level wrappers. A `Supplier<U>`, copier, snapshot interface, or
+    second mutable-accumulator API adds a public state-management concept without a caller and still
+    cannot undo external effects. Removing memoization or asking composition roots to pre-sample
+    graphs duplicates ownership and breaks current FTC/Phoenix use. A two-argument
+    `Source.of(sample, resetAction)`, `withReset(...)`, or `owned(...)` spelling adds a second public
+    lifecycle-attachment decision for one shutdown-only robot owner, cannot roll back child resets,
+    and would either be asymmetric or force unused Scalar/Boolean siblings. Phoenix detaches the
+    complete targeting graph before its sole production reset, so the service can reset its known
+    owned sources explicitly and clear its derived caches last. Closing direct `Source`
+    implementation is also rejected: Java 8 has no sealed interface, and replacing the interface
+    would break its primitive/domain subinterfaces, functional use, and named integration owners.
+  - **Audited unchanged and adjacent scope:** CYCLE-01's drive, guidance, and spatial value caches,
+    `EquivalentPositionsTargetResolver`'s already successful child retry, FTC continuous-encoder and
+    AprilTag acquisition caches, and `DriveGuidanceSources.status(...)` already construct/read before
+    committing their cycle; they are regression-audited rather than redesigned. Direct
+    `DebounceBoolean`, `HysteresisBoolean`, `SlewRateLimiter`, and ScoringPath's private flywheel-ready
+    source have no extensible/fallible callback after their owned input is available, so they do not
+    need a failure cache. `Bindings.update(clock)` remains the separate INPUT-02 effectful traversal.
+    `PhoenixDriveAssistService.update(...)` is also an effectful update owner, not a value-cache
+    decorator; its preclaim is recorded for a later retained-failure audit rather than silently
+    folded into SOURCE-04. TaskRunner lifecycle, Pedro callbacks, vendor polling, and unrelated
+    null-clock/API cleanup remain out of scope.
+  - **Bounded implementation scope:** change only the affected stateful implementations and public
+    Javadocs in `Source`, `ScalarSource`, `BooleanSource`, `ScalarControllers`, `PlantTargets`,
+    `FtcSensors`, `TagSelections`, `TagSelectionSource`, `OutputTask`, `OutputTaskRunner`, and
+    `ScoringTargeting`, `ScoringPath`, and the small Phoenix Auto source adapters; add/extend focused
+    tests for those owners; and synchronize Framework
+    Principles, `Sources and Signals`, `Loop Structure`, `FTC Sensors`, `Output Tasks & Queues`,
+    `Mechanism Target Planning`, `AprilTag Localization & Fixed Layouts`,
+    `Framework Lanes & Robot Controls`,
+    `Recommended Robot Design`, `Shooter Case Study & Examples Walkthrough`, Phoenix Architecture,
+    and any maintained example wording found by the final caller search. Add no public class, method,
+    overload, builder stage, scheduler, or robot-code workaround.
+    In particular, boundary prose changes “sampled at most once per cycle” to “one successful
+    published observation per cycle”; a failed value attempt remains eligible for same-cycle retry.
+  - **Verification plan:** fault-inject first-use and post-success upstream, predicate, reducer,
+    timestamp, reset-signal, policy, enable, resolver, query, output-value, and controller failures.
+    Prove same-cycle retry for transactional owners; exact committed repetition after success; no
+    null/zero/false/stale substitute; no phantom Boolean edge/toggle/debounce transition; no partial
+    accumulator reset, hold history, planner fallback, sticky tag selection, or targeting status;
+    actionable reentry and recovery; shared-child reset exactly once; reset behavior;
+    `OutputTask.getOutput()` value-failure retry; cancellation/revision change during output sampling;
+    preserved Task lifecycle fail-stop/idle observation without replay; and exact same controller
+    exception identity without controller replay, followed by next-cycle/reset recovery. Run the
+    focused suites, full TeamCode unit suite and Java compilation, exhaustive stateful-owner/caller
+    and public-signature searches, documentation link/fence checks, independent
+    correctness/simplicity/test reviews, and
+    `git diff --check`.
+  - **Baseline evidence (2026-08-04):** before implementation, the focused
+    `BooleanSourceTest`, `ScalarSourceTest`, `SourceTimestampTest`,
+    `PlantTargetsEquivalentPositionsTest`, and `PlantTargetsPlannerFreshnessTest` run reports
+    **5 suites / 54 tests / 0 failures / 0 errors / 0 skipped**. This confirms the branch baseline;
+    the current suites do not fault-inject most named paths and therefore do not disprove the traced
+    bug. Gradle emits only the existing Java 8/JDK and FTC sample deprecation warnings.
+  - **Hardware boundary:** no robot hardware is required to prove deterministic Java cache,
+    exception, reentry, reset, and state-publication semantics. FTC sensor quality, physical response,
+    and controller tuning remain adopting-robot validation and are not claims of SOURCE-04.
+- **Implementation approval (2026-08-05):** after reviewing the one-grammar revision and confirming
+  that direct implementation remains only the necessary framework/integration extension seam, the
+  user replied “Let us implement this.” Gate 2 is authorized on
+  `codex/source-04-successful-source-cache-commit-semantics`. This does not authorize publication,
+  INPUT-02, the adjacent Phoenix update-owner audit, or another tracker item.
+- **Implementation (2026-08-05):** **Verifying.** The approved successful-publication contract is
+  implemented without adding a public class, factory, overload, builder stage, or alternate robot
+  grammar.
+  - Generic, scalar, and Boolean stateful decorators now reject recursive sampling and
+    sampling/reset overlap, stage fallible work, publish complete state before committing the cycle
+    identity, retry failed value attempts in the same cycle, and clear local state only after owned
+    child resets succeed. Generic accumulators now explicitly require side-effect-free value
+    reducers and immutable or independently stable returned state.
+  - `ScalarControllers` distinguishes retryable input acquisition from the non-rollback controller
+    attempt: a controller `RuntimeException` is retained by identity for the rest of that cycle,
+    successful diagnostics publish atomically, and a complete successful reset clears the attempt.
+  - Equivalent-position and advanced planner resolvers, tag selection, FTC sensor adapters, and
+    `OutputTaskRunner` now use successful-only publication at their actual owner. Output observation
+    caches include the runner invalidation revision, reject same-kind and cross-view reentry, keep
+    value-getter failures retryable, and preserve TaskRunner's existing total fail-stop/idle result
+    for lifecycle failures. `OutputTask.getOutput()` now states its non-advancing, side-effect-free,
+    retry-safe contract.
+  - Phoenix targeting now stages one immutable targeting calculation, derives readiness with the
+    existing Boolean decorators, and publishes final status through
+    `Source.of(...).memoized()`. Borrowed status projections stop at stateless `Source.of(...)`
+    adapters; scoring uses the same primitive decorator grammar for flywheel readiness; Auto uses
+    `Source.of(...).mapToBoolean(...)` or the clockless primitive factory as appropriate. No direct,
+    anonymous, or raw-lambda Source construction remains in production code under
+    `edu.ftcphoenix.robots`.
+  - Framework Principles, all eleven affected framework/Phoenix guides, Javadocs, and maintained
+    examples now teach `Source.of(sample)` as the one ordinary clock-aware object adapter,
+    `ScalarSource.of(...)` / `BooleanSource.of(...)` for clockless primitive leaves,
+    `Source.constant(...)` for fixed object values, and direct implementation only for named
+    framework/integration domain seams. The prose distinguishes a successful publication from a
+    failed retryable attempt and explicitly scopes failed-reset guarantees to wrapper-local state.
+- **Regression evidence (2026-08-05):** focused coverage was added or extended for generic,
+  scalar, and Boolean memo/accumulator/hold/rate/hysteresis/debounce/edge/toggle behavior;
+  controller input and retained-attempt failures plus diagnostics; equivalent/planner resolution,
+  including hold-measured recovery after a sampling gap; FTC sensor adapters; tag freshness,
+  policy, enable, sticky state, and diagnostics; output value/lifecycle/revision/reentry behavior;
+  and Phoenix targeting and flywheel-ready wiring. The Phoenix tests include a failure at the final
+  field-layout phase before readiness publication, same-cycle recovery, debounce preservation,
+  public-constructor flywheel wiring, same-cycle idempotence, disable/stop reset, and restart delay.
+- **Adversarial review (2026-08-05):** three independent reviews covered core transactional
+  correctness/tests, Plant/tag/output/Phoenix ownership, and the complete public construction-path
+  and student-simplicity audit. They found no production correctness, ownership, API-scope, or
+  framework-principle blocker. Review follow-up replaced one remaining clockless raw scalar lambda,
+  corrected “once per cycle” and reset-atomicity overclaims, documented `Source.of(...)` as a
+  stateless/no-op-reset adapter, added controller-diagnostic assertions, and closed the three
+  low-risk late-targeting, flywheel-ready, and hold-measured coverage gaps. Two initial assertions in
+  those added hardening tests incorrectly assumed backing-layout reads and cache survival across an
+  explicit owner reset; the tests were corrected to the established lifecycle contract without a
+  production change, and the focused rerun passed.
+- **Automated verification (2026-08-05):**
+  `./gradlew.bat --console=plain :TeamCode:testDebugUnitTest
+  :TeamCode:compileDebugJavaWithJavac` completed successfully. Generated XML reports contain
+  **131 suites / 1,207 tests / 0 failures / 0 errors / 0 skipped**. The output contains only the
+  existing Java 8-on-JDK-21 source/target and FTC sample deprecation warnings. Static checks found
+  exactly one generic `Source.of(...)` signature, no added public/protected Java declaration, and no
+  ordinary direct Source construction/implementation in production robot code. Validation covered
+  **12 changed Markdown files / 48 local links** and **37 changed or untracked files**; code fences,
+  local links, trailing whitespace, final newlines, and `git diff --check` all pass.
+- **Android Studio / hardware audit point (2026-08-05):** inspect successful publication/retry and
+  reset/reentry behavior in `Source`, `ScalarSource`, and `BooleanSource`; the retained controller
+  exception boundary; resolver/tag/output atomic publication; and the simplified
+  `ScoringTargeting`, `ScoringPath`, and Phoenix Auto source graph. No robot hardware is required to
+  verify these deterministic Java semantics. Physical sensor quality, mechanism response, and
+  controller tuning remain adopting-robot checks and are not claimed by SOURCE-04.
+- **Manual verification and publication authorization (2026-08-05):** the user confirmed
+  “SOURCE-04 looks good” and sent the exact combined authorization to commit the reviewed diff on
+  `codex/source-04-successful-source-cache-commit-semantics`, push it to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, open a pull request, and merge it into
+  `master`. SOURCE-04 is Done; this authorization does not start INPUT-02 or another tracker item.
 
 ### INPUT-02 - Binding update failure retention
 

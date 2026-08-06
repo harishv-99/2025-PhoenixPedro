@@ -27,8 +27,10 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * FTC-boundary adapters from FTC SDK devices to Phoenix sources.
  *
  * <p>This class mirrors {@link FtcHardware}, but for <b>sensor inputs</b> instead of actuator
- * outputs. Returned sources are memoized per loop by default so a device is sampled at most once
- * per {@link LoopClock#cycle()}, even when multiple consumers read it during the same loop.</p>
+ * outputs. Returned sources publish one successful memoized observation per
+ * {@link LoopClock#cycle()}, even when multiple consumers read them during the same loop. A sensor
+ * read that throws does not publish a default or prior value for the new cycle and remains eligible
+ * for a same-cycle retry; after one success, every consumer receives that exact observation.</p>
  *
  * <h2>Typical usage</h2>
  *

@@ -55,6 +55,15 @@ Phoenix is designed around a few core goals:
     * `DriveTasks.driveExclusivelyForSeconds(...)` only for simple Auto/test movement where that
       Task is the sole behavior-command writer for the drive sink
 
+   In ordinary code under `edu.ftcphoenix.robots`, adapt a clock-aware object value with
+   `Source.of(sample)` and then use the source's fluent decorators. Use
+   `ScalarSource.of(...)` or `BooleanSource.of(...)` for clockless primitive leaf suppliers, and
+   `Source.constant(...)` for a fixed object value. Do not hand-write an anonymous source or a
+   private cycle cache for these cases. Direct `Source` implementation is the advanced extension
+   seam for a named framework or integration abstraction that must add a domain contract, such as a
+   drive, timestamped-sensor, spatial-query, or guidance-query source; it is not a second ordinary
+   robot-code recipe.
+
    Mentors can go deeper (HAL, adapters, custom Tasks) when needed.
 
 4. **Composable building blocks**
@@ -98,6 +107,18 @@ Phoenix is designed around a few core goals:
    same-cycle result. Deliberate branch selection, such as `choose(...)`, remains lazy and samples
    only the selected producer. A cycle cache becomes valid only after the complete operation
    succeeds, so an exception cannot turn a retry into a stale or null success.
+   A transactional value source rejects recursive sampling, stages every fallible value operation,
+   publishes its complete state and result together, and commits the cycle last. A
+   `RuntimeException` leaves that owner's prior committed state and cycle unchanged, so a later
+   nonrecursive read in the same cycle may retry. Predicates and reducers supplied to these value
+   graphs are side-effect-free value operations. An accumulator treats its initial and prior state
+   as read-only and returns a non-null immutable, or otherwise independently stable, next value; it
+   never mutates retained state in place.
+   A scalar-controller source is the narrow exception inside the source family: it stages target
+   and measurement reads, then records the attempt immediately before invoking the arbitrary
+   stateful controller. If that invocation throws, it retains and rethrows that exact exception for
+   the rest of the cycle instead of replaying an operation whose private controller state cannot be
+   rolled back. A later cycle may try again.
    An effectful `update(clock)` owner is different when polling hardware, writing vendor state, or
    advancing a filter cannot be rolled back transactionally. It claims the cycle before starting
    those effects. A successful repeat is a no-op; a same-cycle repeat after a `RuntimeException`
@@ -1160,7 +1181,10 @@ Several core systems are **idempotent by cycle**:
 Reset follows ownership separately from cycle identity. Structural source decorators clear their
 local state and propagate `reset()` through the source/gate children that make up that source graph;
 an owner that shares a stateful child between graphs resets it only at the common lifecycle
-boundary. In contrast, runtime queries built from reusable specs borrow the spec's frame providers,
+boundary. Sampling and reset do not overlap. A structural decorator resets its children first and
+clears its own cache/history only after every child reset succeeds; a child failure propagates and
+may leave earlier children reset, but the decorator does not claim that its own publication was
+rolled back or cleared. In contrast, runtime queries built from reusable specs borrow the spec's frame providers,
 solve lanes, sensors, estimators, and selection policies. `SpatialQuery.reset()` clears only that
 query's cache; it does not reset those collaborators. Overlay composition similarly clears its own
 cache and activation bookkeeping without inventing a `DriveOverlay.reset()` hook.

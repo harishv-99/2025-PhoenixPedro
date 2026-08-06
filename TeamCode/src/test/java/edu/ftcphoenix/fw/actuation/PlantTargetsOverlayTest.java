@@ -411,6 +411,48 @@ public final class PlantTargetsOverlayTest {
     }
 
     @Test
+    public void plannerMeasuredHoldGapFailureRetainsCommittedEntryAndRetriesSameCycle() {
+        RuntimeException requestFailure = new IllegalStateException("request failed after gap");
+        boolean[] failRequest = {false};
+        int[] requestSamples = {0};
+        Source<PlantTargetRequest> request = Source.of(clock -> {
+            requestSamples[0]++;
+            if (failRequest[0]) throw requestFailure;
+            return PlantTargetRequest.none("no request");
+        });
+        PlantTargetResolver planner = PlantTargets.plan(request)
+                .nearestToMeasurement()
+                .rejectUnreachable()
+                .whenUnavailable().holdMeasuredTargetOnEntry(-1.0);
+        ManualLoopClock time = new ManualLoopClock();
+
+        PlantTargetResolution committed = planner.resolve(context(11.0), time.clock());
+        assertEquals(11.0, committed.target(), EPSILON);
+
+        time.nextCycle(0.02); // The planner is not sampled in this cycle.
+        LoopClock retryClock = time.nextCycle(0.02);
+        failRequest[0] = true;
+        try {
+            planner.resolve(context(22.0), retryClock);
+            fail("Expected the request failure");
+        } catch (RuntimeException actual) {
+            assertSame(requestFailure, actual);
+        }
+
+        CapturingDebugSink afterFailure = new CapturingDebugSink();
+        planner.debugDump(afterFailure, "planner");
+        assertSame(committed, afterFailure.data.get("planner.lastResolution"));
+
+        failRequest[0] = false;
+        PlantTargetResolution recovered = planner.resolve(context(22.0), retryClock);
+
+        assertEquals(PlantTargetResolution.Kind.HOLD_MEASURED_TARGET, recovered.kind());
+        assertEquals(22.0, recovered.target(), EPSILON);
+        assertSame(recovered, planner.resolve(context(99.0), retryClock));
+        assertEquals(3, requestSamples[0]);
+    }
+
+    @Test
     public void plannerMeasuredHoldResetStartsANewEntryWithinTheSameCycle() {
         PlantTargetResolver planner = PlantTargets.plan(
                         Source.constant(PlantTargetRequest.none("no request")))

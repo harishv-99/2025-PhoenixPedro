@@ -62,6 +62,24 @@ That means:
 - `holdUntilDisabled()` keeps that identity while the driver keeps holding aim,
 - aim, shooter range, and telemetry all reuse that one decision.
 
+The completed selector owns one successful publication per loop. Detection, freshness, policy,
+enable, sticky/loss state, diagnostics, and result commit together; a thrown value operation does
+not make an old or partial selection look current and a later nonrecursive same-cycle call may
+retry.
+
+When a robot-owned shooter service derives a shared immutable status around that selector, ordinary
+robot code uses the same source grammar as every other object value:
+
+```java
+Source<ShooterStatus> status = Source.of(this::calculateStatus).memoized();
+BooleanSource ready = status
+        .mapToBoolean(snapshot -> snapshot.rawReady)
+        .debouncedOn(0.10);
+```
+
+The service owns and resets that graph. Non-owning clients derive borrowed views through another
+`Source.of(service::status)` adapter; they do not implement sources or hand-write cycle caches.
+
 ---
 
 ## 3. Example 05: shooter + aim assist + vision distance

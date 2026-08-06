@@ -3,7 +3,7 @@ package edu.ftcphoenix.robots.phoenix.autonomous;
 import java.util.Objects;
 
 import edu.ftcphoenix.fw.core.source.BooleanSource;
-import edu.ftcphoenix.fw.core.time.LoopClock;
+import edu.ftcphoenix.fw.core.source.Source;
 import edu.ftcphoenix.fw.drive.DriveCommandSink;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceTask;
 import edu.ftcphoenix.fw.task.Task;
@@ -55,19 +55,14 @@ public final class PhoenixAutoTasks {
         final PhoenixCapabilities.Scoring scoring = capabilities.scoring();
         final PhoenixCapabilities.Targeting targeting = capabilities.targeting();
 
-        Task waitForTargetTask = Tasks.waitUntil(new BooleanSource() {
-            @Override
-            public boolean getAsBoolean(LoopClock clock) {
-                return targeting.status(clock).selection.hasSelection;
-            }
-        }, auto.waitForTargetSec);
+        BooleanSource targetSelected = Source.of(targeting::status)
+                .mapToBoolean(status -> status.selection.hasSelection);
+        Task waitForTargetTask = Tasks.waitUntil(targetSelected, auto.waitForTargetSec);
         Task aimTask = targeting.aimTask(driveSink, aimConfig(auto));
-        Task waitForShotTask = Tasks.waitUntil(new BooleanSource() {
-            @Override
-            public boolean getAsBoolean(LoopClock clock) {
-                return !scoring.hasPendingShots();
-            }
-        }, auto.waitForShotCompleteSec);
+        Task waitForShotTask = Tasks.waitUntil(
+                BooleanSource.of(() -> !scoring.hasPendingShots()),
+                auto.waitForShotCompleteSec
+        );
 
         return new PhoenixScoringAttemptTask(
                 scoring,

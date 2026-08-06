@@ -9,6 +9,7 @@ import edu.ftcphoenix.fw.testing.ManualLoopClock;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -268,6 +269,86 @@ public final class PlantTargetsPlannerFreshnessTest {
     }
 
     @Test
+    public void requestFailuresRetryWithoutPublishingDefaultOrPriorResolution() {
+        ManualLoopClock time = new ManualLoopClock();
+        ProbeRequestSource request = new ProbeRequestSource(
+                PlantTargetRequest.exact("first", 5.0));
+        PlantTargetResolver planner = ready(request)
+                .whenUnavailable().reportUnavailable();
+        RuntimeException firstFailure = new IllegalStateException("first request failure");
+        request.sampleFailure = firstFailure;
+
+        assertSame(firstFailure,
+                captureFailure(() -> planner.resolve(context(0.0), time.clock())));
+        request.sampleFailure = null;
+        PlantTargetResolution first = planner.resolve(context(0.0), time.clock());
+        assertEquals("first", first.selectedCandidateId());
+        assertEquals(5.0, first.target(), EPSILON);
+
+        request.request = PlantTargetRequest.exact("second", 6.0);
+        RuntimeException laterFailure = new IllegalArgumentException("later request failure");
+        request.sampleFailure = laterFailure;
+        LoopClock nextCycle = time.nextCycle(0.02);
+        assertSame(laterFailure,
+                captureFailure(() -> planner.resolve(context(0.0), nextCycle)));
+        request.sampleFailure = null;
+        PlantTargetResolution second = planner.resolve(context(0.0), nextCycle);
+
+        assertEquals("second", second.selectedCandidateId());
+        assertEquals(6.0, second.target(), EPSILON);
+        assertNotSame(first, second);
+        assertSame(second, planner.resolve(context(99.0), nextCycle));
+        assertEquals(4, request.samples);
+    }
+
+    @Test
+    public void recursiveRequestResolutionFailsFastAndAValueRetryCanRecover() {
+        final PlantTargetResolver[] planner = new PlantTargetResolver[1];
+        final boolean[] recurse = {true};
+        Source<PlantTargetRequest> request = clock -> {
+            if (recurse[0]) planner[0].resolve(context(0.0), clock);
+            return PlantTargetRequest.exact("recovered", 7.0);
+        };
+        planner[0] = ready(request).whenUnavailable().reportUnavailable();
+        ManualLoopClock time = new ManualLoopClock();
+
+        RuntimeException reentry = captureFailure(
+                () -> planner[0].resolve(context(0.0), time.clock()));
+        assertTrue(reentry instanceof IllegalStateException);
+        assertTrue(reentry.getMessage().contains("reentered"));
+
+        recurse[0] = false;
+        PlantTargetResolution recovered =
+                planner[0].resolve(context(0.0), time.clock());
+        assertEquals("recovered", recovered.selectedCandidateId());
+        assertEquals(7.0, recovered.target(), EPSILON);
+    }
+
+    @Test
+    public void failedRequestResetKeepsCommittedPlannerStateUntilResetSucceeds() {
+        ManualLoopClock time = new ManualLoopClock();
+        ProbeRequestSource request = new ProbeRequestSource(
+                PlantTargetRequest.exact("committed", 5.0));
+        PlantTargetResolver planner = ready(request)
+                .whenUnavailable().reportUnavailable();
+        PlantTargetResolution committed = planner.resolve(context(0.0), time.clock());
+        request.resetAction = () -> planner.resolve(context(0.0), time.clock());
+
+        RuntimeException overlap = captureFailure(planner::reset);
+        assertTrue(overlap instanceof IllegalStateException);
+        assertTrue(overlap.getMessage().contains("reset is in progress"));
+        assertSame(committed, planner.resolve(context(0.0), time.clock()));
+        assertEquals(1, request.samples);
+
+        request.resetAction = null;
+        planner.reset();
+        PlantTargetResolution afterReset = planner.resolve(context(0.0), time.clock());
+        assertNotSame(committed, afterReset);
+        assertEquals(2, request.samples);
+        assertEquals(2, request.resets);
+    }
+
+    @Test
     public void sameValueClockResetMissesCycleCacheAndRejectsPriorEpochObservation() {
         ManualLoopClock time = new ManualLoopClock(10.0);
         ProbeRequestSource request = new ProbeRequestSource(
@@ -444,10 +525,22 @@ public final class PlantTargetsPlannerFreshnessTest {
         }
     }
 
+    private static RuntimeException captureFailure(Runnable action) {
+        try {
+            action.run();
+            fail("Expected RuntimeException");
+            return null;
+        } catch (RuntimeException failure) {
+            return failure;
+        }
+    }
+
     private static final class ProbeRequestSource implements Source<PlantTargetRequest> {
         private PlantTargetRequest request;
         private int samples;
         private int resets;
+        private RuntimeException sampleFailure;
+        private Runnable resetAction;
 
         private ProbeRequestSource(PlantTargetRequest request) {
             this.request = request;
@@ -456,12 +549,14 @@ public final class PlantTargetsPlannerFreshnessTest {
         @Override
         public PlantTargetRequest get(LoopClock clock) {
             samples++;
+            if (sampleFailure != null) throw sampleFailure;
             return request;
         }
 
         @Override
         public void reset() {
             resets++;
+            if (resetAction != null) resetAction.run();
         }
     }
 }

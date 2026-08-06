@@ -286,6 +286,82 @@ public final class PlantTargetsEquivalentPositionsTest {
     }
 
     @Test
+    public void failedResolutionKeepsHoldHistoryAndRetriesWithoutPartialPublication() {
+        CountingTargetResolver child = new CountingTargetResolver(20.0);
+        PlantTargetResolver resolver = PlantTargets.equivalentPositionsOf(child)
+                .nearestToMeasurement()
+                .whenUnavailable().holdLastTarget(5.0);
+        ManualLoopClock time = new ManualLoopClock();
+
+        PlantTargetResolution selected = resolver.resolve(
+                periodicContext(350.0, ScalarRange.bounded(0.0, 720.0), 360.0),
+                time.clock());
+        assertEquals(380.0, selected.target(), EPSILON);
+
+        child.failNext = true;
+        LoopClock nextCycle = time.nextCycle(0.02);
+        RuntimeException failure = captureFailure(
+                () -> resolver.resolve(nonPeriodicContext(30.0), nextCycle));
+        assertEquals("probe failure", failure.getMessage());
+
+        PlantTargetResolution retried = resolver.resolve(
+                nonPeriodicContext(30.0), nextCycle);
+        assertEquals(PlantTargetResolution.Kind.HOLD_LAST_TARGET, retried.kind());
+        assertEquals(380.0, retried.target(), EPSILON);
+        assertSame(retried, resolver.resolve(nonPeriodicContext(40.0), nextCycle));
+    }
+
+    @Test
+    public void recursiveResolutionFailsFastAndAValueRetryCanRecover() {
+        final PlantTargetResolver[] resolver = new PlantTargetResolver[1];
+        final boolean[] recurse = {true};
+        PlantTargetResolver child = (context, clock) -> recurse[0]
+                ? resolver[0].resolve(context, clock)
+                : PlantTargetResolution.exact(20.0, "probe");
+        resolver[0] = PlantTargets.equivalentPositionsOf(child)
+                .nearestToMeasurement()
+                .whenUnavailable().reportUnavailable();
+        ManualLoopClock time = new ManualLoopClock();
+        PlantTargetContext context = periodicContext(
+                350.0, ScalarRange.bounded(0.0, 720.0), 360.0);
+
+        RuntimeException reentry = captureFailure(
+                () -> resolver[0].resolve(context, time.clock()));
+        assertTrue(reentry instanceof IllegalStateException);
+        assertTrue(reentry.getMessage().contains("reentered"));
+
+        recurse[0] = false;
+        assertEquals(380.0,
+                resolver[0].resolve(context, time.clock()).target(), EPSILON);
+    }
+
+    @Test
+    public void failedChildResetKeepsTheCommittedResolutionUntilResetSucceeds() {
+        CountingTargetResolver child = new CountingTargetResolver(20.0);
+        PlantTargetResolver resolver = PlantTargets.equivalentPositionsOf(child)
+                .nearestToMeasurement()
+                .whenUnavailable().reportUnavailable();
+        ManualLoopClock time = new ManualLoopClock();
+        PlantTargetContext context = periodicContext(
+                350.0, ScalarRange.bounded(0.0, 720.0), 360.0);
+        PlantTargetResolution committed = resolver.resolve(context, time.clock());
+        child.resetAction = () -> resolver.resolve(context, time.clock());
+
+        RuntimeException overlap = captureFailure(resolver::reset);
+        assertTrue(overlap instanceof IllegalStateException);
+        assertTrue(overlap.getMessage().contains("reset is in progress"));
+        assertSame(committed, resolver.resolve(context, time.clock()));
+        assertEquals(1, child.resolutions);
+
+        child.resetAction = null;
+        resolver.reset();
+        PlantTargetResolution afterReset = resolver.resolve(context, time.clock());
+        assertNotSame(committed, afterReset);
+        assertEquals(2, child.resolutions);
+        assertEquals(2, child.resets);
+    }
+
+    @Test
     public void transformedAdvancedPlanRetainsCandidateObservationMetadata() {
         ManualLoopClock time = new ManualLoopClock();
         LoopTimestamp timestamp = time.clock().nowTimestamp();
@@ -328,11 +404,22 @@ public final class PlantTargetsEquivalentPositionsTest {
                 ScalarRange.bounded(0.0, 100.0), Double.NaN, measurement);
     }
 
+    private static RuntimeException captureFailure(Runnable action) {
+        try {
+            action.run();
+            fail("Expected RuntimeException");
+            return null;
+        } catch (RuntimeException failure) {
+            return failure;
+        }
+    }
+
     private static final class CountingTargetResolver implements PlantTargetResolver {
         private final double target;
         private int resolutions;
         private int resets;
         private boolean failNext;
+        private Runnable resetAction;
 
         CountingTargetResolver(double target) {
             this.target = target;
@@ -351,6 +438,7 @@ public final class PlantTargetsEquivalentPositionsTest {
         @Override
         public void reset() {
             resets++;
+            if (resetAction != null) resetAction.run();
         }
     }
 }

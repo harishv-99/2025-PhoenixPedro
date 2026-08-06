@@ -56,7 +56,10 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * immediately and report the configured {@code idleOutput}, even if active output was sampled
  * earlier in the same cycle. {@link #cancelCurrent()} also invalidates caches, but intentionally
  * retains queued work; a later update, including another top-level update in the same cycle, may
- * therefore start the next queued output Task.</p>
+ * therefore start the next queued output Task. If cancellation, reset, or another invalidating
+ * lifecycle action re-enters an in-progress output/active observation, that observation fails
+ * rather than overwriting the invalidation; a later nonrecursive observation reports the runner's
+ * actual new state.</p>
  */
 public final class OutputTaskRunner implements ScalarSource {
 
@@ -65,10 +68,14 @@ public final class OutputTaskRunner implements ScalarSource {
 
     // Cache output per cycle so debug + multiple consumers don't re-read and risk ordering confusion.
     private long lastOutputCycle = Long.MIN_VALUE;
+    private long lastOutputRevision = Long.MIN_VALUE;
     private double lastOutput = 0.0;
 
     /** Shared revision lets every retained activeSource observe abort/failure invalidation. */
     private long invalidationRevision = 0L;
+
+    /** Shared by output and every active view so cross-kind recursion is also rejected. */
+    private boolean observationInProgress = false;
 
     /**
      * Create a queue with a fixed idle output.
@@ -283,7 +290,9 @@ public final class OutputTaskRunner implements ScalarSource {
      * {@code PlantTargets.overlay(...)} layer.</p>
      *
      * <p>The returned source calls {@link #update(LoopClock)} and memoizes by
-     * {@link LoopClock#cycle()} so it stays consistent within a loop.</p>
+     * {@link LoopClock#cycle()} plus this runner's lifecycle-invalidation revision. It publishes
+     * only after update and active-state inspection both succeed, so a failed observation can be
+     * retried in the same cycle. Recursive observation is rejected.</p>
      */
     public BooleanSource activeSource() {
         OutputTaskRunner self = this;
@@ -297,26 +306,31 @@ public final class OutputTaskRunner implements ScalarSource {
              */
             @Override
             public boolean getAsBoolean(LoopClock clock) {
+                if (self.observationInProgress) {
+                    throw reentrantObservation("active state");
+                }
+                Objects.requireNonNull(clock, "clock");
                 long cyc = clock.cycle();
                 long revision = self.invalidationRevision;
                 if (cyc == lastCycle && revision == lastRevision) {
                     return last;
                 }
-                lastCycle = cyc;
-                lastRevision = revision;
 
+                self.observationInProgress = true;
                 try {
                     // Ensure the queue state is current.
                     self.update(clock);
-                    last = self.hasActiveTask();
-                    lastRevision = self.invalidationRevision;
+                    boolean candidate = self.hasActiveTask();
+                    if (revision != self.invalidationRevision) {
+                        throw changedDuringObservation("active state");
+                    }
+
+                    last = candidate;
+                    lastRevision = revision;
+                    lastCycle = cyc;
                     return last;
-                } catch (RuntimeException failure) {
-                    // A failed sample must be retryable in the same cycle after fail-stop cleanup.
-                    lastCycle = Long.MIN_VALUE;
-                    lastRevision = Long.MIN_VALUE;
-                    last = false;
-                    throw failure;
+                } finally {
+                    self.observationInProgress = false;
                 }
             }
 
@@ -379,33 +393,62 @@ public final class OutputTaskRunner implements ScalarSource {
      * The current output value.
      *
      * <p>This samples the active task's {@link OutputTask#getOutput()} if present, otherwise
-     * returns the configured idle output.</p>
+     * returns the configured idle output. A complete successful observation is cached by cycle
+     * and lifecycle-invalidation revision. A failing value getter leaves the previous committed
+     * cache intact and may be retried in the same cycle. Recursive observation is rejected.</p>
      */
     public double output(LoopClock clock) {
+        if (observationInProgress) {
+            throw reentrantObservation("output");
+        }
+        Objects.requireNonNull(clock, "clock");
+
+        observationInProgress = true;
+        try {
+            return observeOutput(clock);
+        } finally {
+            observationInProgress = false;
+        }
+    }
+
+    /** Observe output while the caller owns {@link #observationInProgress}. */
+    private double observeOutput(LoopClock clock) {
         long cyc = clock.cycle();
-        if (cyc == lastOutputCycle) {
+        long revision = invalidationRevision;
+        if (cyc == lastOutputCycle && revision == lastOutputRevision) {
             return lastOutput;
         }
-        lastOutputCycle = cyc;
 
+        final boolean active;
         try {
-            if (!runner.hasActiveTask()) {
-                lastOutput = idleOutput;
-                return lastOutput;
-            }
-
-            Task cur = runner.currentTaskOrNull();
-            if (cur instanceof OutputTask) {
-                lastOutput = ((OutputTask) cur).getOutput();
-            } else {
-                // This should never happen because we only enqueue OutputTask, but fail safe.
-                lastOutput = idleOutput;
-            }
-            return lastOutput;
+            active = runner.hasActiveTask();
         } catch (RuntimeException failure) {
+            // Completion is Task lifecycle, so TaskRunner has fail-stopped and this owner must
+            // expose its real idle state rather than retaining the old queue observation.
             invalidateOutput();
             throw failure;
         }
+
+        double candidate = idleOutput;
+        if (active) {
+            Task cur = runner.currentTaskOrNull();
+            if (cur instanceof OutputTask) {
+                // This is a retryable value observation, not Task lifecycle. Do not invalidate or
+                // detach the Task merely because its getter threw.
+                candidate = ((OutputTask) cur).getOutput();
+            }
+        }
+
+        if (revision != invalidationRevision) {
+            // A getter or lifecycle callback cancelled/reset the queue. Preserve the idle
+            // invalidation it published; never overwrite it with the detached Task's candidate.
+            throw changedDuringObservation("output");
+        }
+
+        lastOutput = candidate;
+        lastOutputRevision = revision;
+        lastOutputCycle = cyc;
+        return lastOutput;
     }
 
     /**
@@ -415,8 +458,22 @@ public final class OutputTaskRunner implements ScalarSource {
      */
     @Override
     public double getAsDouble(LoopClock clock) {
-        update(clock);
-        return output(clock);
+        if (observationInProgress) {
+            throw reentrantObservation("output");
+        }
+        Objects.requireNonNull(clock, "clock");
+
+        observationInProgress = true;
+        try {
+            long revision = invalidationRevision;
+            update(clock);
+            if (revision != invalidationRevision) {
+                throw changedDuringObservation("output");
+            }
+            return observeOutput(clock);
+        } finally {
+            observationInProgress = false;
+        }
     }
 
     /**
@@ -465,8 +522,28 @@ public final class OutputTaskRunner implements ScalarSource {
     /** Return output sampling to the configured idle state, including within the current cycle. */
     private void invalidateOutput() {
         lastOutputCycle = Long.MIN_VALUE;
+        lastOutputRevision = Long.MIN_VALUE;
         lastOutput = idleOutput;
         invalidationRevision++;
+    }
+
+    /** Explain a recursive value observation without invoking arbitrary Task formatting code. */
+    private static IllegalStateException reentrantObservation(String observation) {
+        return new IllegalStateException(
+                "OutputTaskRunner cannot observe " + observation + " reentrantly; "
+                        + "OutputTask value getters and Task lifecycle callbacks must not sample "
+                        + "the same runner recursively."
+        );
+    }
+
+    /** Preserve a lifecycle invalidation that occurred during a staged value observation. */
+    private static IllegalStateException changedDuringObservation(String observation) {
+        return new IllegalStateException(
+                "OutputTaskRunner " + observation + " changed while it was being observed; "
+                        + "do not cancel, reset, or otherwise mutate the runner from an "
+                        + "OutputTask value getter or Task lifecycle callback. Retry after the "
+                        + "lifecycle action completes."
+        );
     }
 
     /** Compact diagnostic text that avoids invoking arbitrary task formatting code. */

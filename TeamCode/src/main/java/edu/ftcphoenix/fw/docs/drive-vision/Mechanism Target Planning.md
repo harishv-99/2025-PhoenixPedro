@@ -497,6 +497,12 @@ one unreachable-alternative policy, then `whenUnavailable()`. Optional observati
 tuning lives in `accept()...doneAccept()` after the required motion-semantics choices have been
 made.
 
+The built equivalent-position and advanced planning resolvers publish their selection, fallback or
+hold state, diagnostics, result, and cycle atomically after resolution succeeds. A request,
+measurement, range, policy, timestamp, or fallback failure therefore cannot partially advance a
+hold or overwrite the prior successful resolution. Recursive resolution fails clearly; a later
+nonrecursive call in the same cycle may retry a failed value attempt.
+
 ### Fixed and dynamic alternatives
 
 When every listed target genuinely satisfies the same goal, compose fixed alternatives directly:
@@ -520,7 +526,7 @@ A tray service can convert robot-specific inventory into Plant-unit alternatives
 chooses the best reachable representative.
 
 ```java
-Source<PlantTargetRequest> purpleToOutput = clock -> {
+Source<PlantTargetRequest> purpleToOutput = Source.of(clock -> {
     List<PlantTargetRequest> alternatives = new ArrayList<>();
 
     for (int slot = 0; slot < 3; slot++) {
@@ -534,7 +540,7 @@ Source<PlantTargetRequest> purpleToOutput = clock -> {
     }
 
     return PlantTargetRequest.oneOf(alternatives);
-};
+});
 
 PlantTargetResolver trayTarget = PlantTargets.plan(purpleToOutput)
         .nearestToMeasurement()
@@ -657,7 +663,7 @@ Spatial queries can still feed a mechanism target. The spatial solve chooses geo
 kinematics map that geometry into Plant units; `PlantTargets.plan(request)` resolves the Plant target.
 
 ```java
-Source<PlantTargetRequest> turretFacingRequest = clock -> {
+Source<PlantTargetRequest> turretFacingRequest = Source.of(clock -> {
     SpatialQueryResult facing = turretFacingQuery.get(clock);
     if (!facing.hasSolution()) {
         return PlantTargetRequest.none(facing.reason());
@@ -670,7 +676,7 @@ Source<PlantTargetRequest> turretFacingRequest = clock -> {
             facing.quality(),
             facing.timestamp()
     );
-};
+});
 
 PlantTargetResolver turretTarget = PlantTargets.plan(turretFacingRequest)
         .nearestToMeasurement()

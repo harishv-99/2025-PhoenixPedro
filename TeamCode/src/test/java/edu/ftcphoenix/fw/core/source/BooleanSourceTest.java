@@ -19,6 +19,120 @@ import static org.junit.Assert.fail;
 public final class BooleanSourceTest {
 
     @Test
+    public void memoizedRetriesFailureWithoutReturningFalseOrAStaleValue() {
+        ManualLoopClock time = new ManualLoopClock();
+        RuntimeException expected = new IllegalStateException("Boolean sample failed");
+        int[] attempts = {0};
+        BooleanSource memoized = BooleanSource.of(() -> {
+            int attempt = ++attempts[0];
+            if (attempt == 1 || attempt == 3) {
+                throw expected;
+            }
+            return attempt == 2;
+        }).memoized();
+
+        assertSame(expected, captureFailure(() -> memoized.getAsBoolean(time.clock())));
+        assertTrue(memoized.getAsBoolean(time.clock()));
+        assertTrue(memoized.getAsBoolean(time.clock()));
+
+        time.nextCycle(0.02);
+        assertSame(expected, captureFailure(() -> memoized.getAsBoolean(time.clock())));
+        assertFalse(memoized.getAsBoolean(time.clock()));
+        assertFalse(memoized.getAsBoolean(time.clock()));
+        assertEquals(4, attempts[0]);
+    }
+
+    @Test
+    public void booleanMemoizedSourceRejectsReentryThenRecovers() {
+        LoopClock clock = new ManualLoopClock().clock();
+        BooleanSource[] memoizedRef = new BooleanSource[1];
+        boolean[] reenter = {true};
+        BooleanSource raw = sampleClock -> reenter[0]
+                ? memoizedRef[0].getAsBoolean(sampleClock)
+                : true;
+        memoizedRef[0] = raw.memoized();
+
+        RuntimeException failure =
+                captureFailure(() -> memoizedRef[0].getAsBoolean(clock));
+        assertTrue(failure instanceof IllegalStateException);
+        assertTrue(failure.getMessage().contains("sampling cycle"));
+
+        reenter[0] = false;
+        assertTrue(memoizedRef[0].getAsBoolean(clock));
+        assertTrue(memoizedRef[0].getAsBoolean(clock));
+    }
+
+    @Test
+    public void debouncedSourceRetriesFailureBeforeAdvancingItsTimer() {
+        ManualLoopClock time = new ManualLoopClock();
+        ProbeBooleanSource raw = new ProbeBooleanSource("raw", false);
+        boolean[] fail = {false};
+        RuntimeException expected = new IllegalStateException("raw readiness failed");
+        BooleanSource fallibleRaw = sampleClock -> {
+            if (fail[0]) {
+                throw expected;
+            }
+            return raw.getAsBoolean(sampleClock);
+        };
+        BooleanSource ready = fallibleRaw.debouncedOn(0.10);
+
+        assertFalse(ready.getAsBoolean(time.clock()));
+
+        time.nextCycle(0.10);
+        raw.value = true;
+        fail[0] = true;
+        assertSame(expected, captureFailure(() -> ready.getAsBoolean(time.clock())));
+        assertEquals(1, raw.sampleCount);
+
+        fail[0] = false;
+        assertTrue(ready.getAsBoolean(time.clock()));
+        assertTrue(ready.getAsBoolean(time.clock()));
+        assertEquals(2, raw.sampleCount);
+    }
+
+    @Test
+    public void edgesAndToggleRetryFailureWithoutPublishingPhantomTransitions() {
+        ManualLoopClock risingTime = new ManualLoopClock();
+        FailingBooleanSource risingRaw = new FailingBooleanSource(false);
+        BooleanSource rising = risingRaw.risingEdge();
+        assertFalse(rising.getAsBoolean(risingTime.clock()));
+        risingTime.nextCycle(0.02);
+        risingRaw.value = true;
+        risingRaw.fail = true;
+        assertSame(risingRaw.failure,
+                captureFailure(() -> rising.getAsBoolean(risingTime.clock())));
+        risingRaw.fail = false;
+        assertTrue(rising.getAsBoolean(risingTime.clock()));
+        assertTrue(rising.getAsBoolean(risingTime.clock()));
+
+        ManualLoopClock fallingTime = new ManualLoopClock();
+        FailingBooleanSource fallingRaw = new FailingBooleanSource(true);
+        BooleanSource falling = fallingRaw.fallingEdge();
+        assertFalse(falling.getAsBoolean(fallingTime.clock()));
+        fallingTime.nextCycle(0.02);
+        fallingRaw.value = false;
+        fallingRaw.fail = true;
+        assertSame(fallingRaw.failure,
+                captureFailure(() -> falling.getAsBoolean(fallingTime.clock())));
+        fallingRaw.fail = false;
+        assertTrue(falling.getAsBoolean(fallingTime.clock()));
+        assertTrue(falling.getAsBoolean(fallingTime.clock()));
+
+        ManualLoopClock toggleTime = new ManualLoopClock();
+        FailingBooleanSource toggleRaw = new FailingBooleanSource(false);
+        BooleanSource toggled = toggleRaw.toggled();
+        assertFalse(toggled.getAsBoolean(toggleTime.clock()));
+        toggleTime.nextCycle(0.02);
+        toggleRaw.value = true;
+        toggleRaw.fail = true;
+        assertSame(toggleRaw.failure,
+                captureFailure(() -> toggled.getAsBoolean(toggleTime.clock())));
+        toggleRaw.fail = false;
+        assertTrue(toggled.getAsBoolean(toggleTime.clock()));
+        assertTrue(toggled.getAsBoolean(toggleTime.clock()));
+    }
+
+    @Test
     public void andAndOrPreserveBooleanTruthTables() {
         LoopClock clock = new ManualLoopClock().clock();
 
@@ -330,6 +444,25 @@ public final class BooleanSourceTest {
             if (events != null) {
                 events.add("reset:" + name);
             }
+        }
+    }
+
+    private static final class FailingBooleanSource implements BooleanSource {
+        private final RuntimeException failure =
+                new IllegalStateException("Boolean input failed");
+        private boolean value;
+        private boolean fail;
+
+        private FailingBooleanSource(boolean value) {
+            this.value = value;
+        }
+
+        @Override
+        public boolean getAsBoolean(LoopClock clock) {
+            if (fail) {
+                throw failure;
+            }
+            return value;
         }
     }
 }

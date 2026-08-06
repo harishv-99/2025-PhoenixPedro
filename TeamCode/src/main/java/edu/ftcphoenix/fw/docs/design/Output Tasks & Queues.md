@@ -52,6 +52,10 @@ It also exposes:
 
 - `getOutput()` — the scalar output for this loop
 
+`getOutput()` is a non-advancing, side-effect-free observation of state advanced by the Task's
+lifecycle methods. A runner may retry that value read after it throws, so a custom `OutputTask`
+must not hide effects or advance its phase in the getter.
+
 Timed output phases measure from the loop timestamp at which that phase begins, not from the
 preceding loop's `dtSec()`. When a positive-duration pulse's start gate opens, its run output is
 available to the downstream overlay/Plant phase in that loop before the pulse can finish. A
@@ -82,6 +86,14 @@ BooleanSource queueActive = feederQueue.activeSource();
 ```
 
 Call `feederQueue.update(clock)` once per loop before updating Plants that depend on its current output. Sampling `feederQueue.getAsDouble(clock)` also advances the queue, but explicit `update(clock)` keeps loop order easier to read.
+
+The runner publishes one successful output and active-state observation for a cycle and its current
+queue revision. A failing `getOutput()` does not turn the previous or idle value into a cached
+success; a later nonrecursive read may retry. Recursive output/view sampling is an actionable source
+graph error. If reentrant Task code cancels or otherwise changes the runner while an output is being
+sampled, the changed revision invalidates that candidate, so a cancelled Task's value cannot be
+published over the required idle state. The next nonrecursive observation reads the runner's actual
+state.
 
 ---
 
@@ -292,7 +304,9 @@ no abrupt queue-forgetting operation that can silently abandon active work.
 The same fail-stop rule applies if start, update, completion checking, or cancellation throws a
 `RuntimeException`. The runner best-effort cancels active or partially started work, clears all
 owned work and cached output, then rethrows the original failure with any cleanup failure
-suppressed.
+suppressed. This effectful lifecycle failure is not retried. Because cleanup truthfully leaves the
+queue idle and invalidates its value caches, a later same-cycle value observation may successfully
+report that real idle state.
 
 Typical abort situations:
 

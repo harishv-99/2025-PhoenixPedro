@@ -11,7 +11,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 
 /**
- * A {@code Source<T>} produces a value once per loop.
+ * A {@code Source<T>} produces values on the shared loop heartbeat.
  *
  * <p>Phoenix is built around a single loop heartbeat ({@link LoopClock}). Sources make that
  * heartbeat explicit: instead of reading raw values from random places, you build a small graph
@@ -19,8 +19,10 @@ import edu.ftcphoenix.fw.core.time.LoopTimestamp;
  * {@link LoopClock}.</p>
  *
  * <p>Sources may be stateless (pure functions of current inputs) or stateful (filters with memory).
- * Stateful sources should be <b>idempotent by</b> {@link LoopClock#cycle()} so that calling
- * {@link #get(LoopClock)} multiple times in the same cycle does not advance internal state twice.</p>
+ * Stateful sources should publish at most one <em>successful</em> observation for each
+ * {@link LoopClock#cycle()} so that repeated reads do not advance internal state twice. A failed
+ * value observation must not be published as a cached result; a later nonrecursive read in the
+ * same cycle may retry.</p>
  *
  * <p>This abstraction is the generalized form of the old {@code Axis} concept: "something that
  * returns a value each loop". For common primitives, see {@link ScalarSource} and
@@ -52,7 +54,11 @@ public interface Source<T> {
      * {@link #accumulateUntil(BooleanSource, BiFunction, Object)} instead of inventing an
      * out-of-band imperative call.</p>
      *
-     * <p>Implementations should make {@code reset()} safe, immediate, and idempotent.</p>
+     * <p>Implementations should make {@code reset()} safe, immediate, and idempotent. Framework
+     * stateful decorators reject sampling/reset overlap and recursive reset, reset owned children
+     * first, and clear their own local state only after every child reset succeeds. Child resets
+     * cannot be rolled back: if a later child reset fails, an earlier child may already be reset
+     * while the decorator's previously published local state remains intact.</p>
      */
     default void reset() {
         // no-op
@@ -126,13 +132,16 @@ public interface Source<T> {
      * <ul>
      *   <li>The upstream source must never return {@code null}.</li>
      *   <li>{@code initial} must be non-null.</li>
-     *   <li>{@code step} must return a non-null state.</li>
+     *   <li>{@code initial} and every prior accumulated state are read-only values.</li>
+     *   <li>{@code step} must have no external effects or in-place mutations.</li>
+     *   <li>{@code step} must return a non-null immutable or otherwise independently stable
+     *       value. Returning the same value-semantic instance for an unchanged state is valid.</li>
      * </ul>
      * </p>
      *
-     * <p>The accumulator state should usually behave like a small immutable value object or enum.
-     * Mutable state objects can work, but they make it easier to accidentally mutate the returned
-     * state from outside the source graph.</p>
+     * <p>A reducer failure leaves the previously published state intact and may be retried in the
+     * same cycle. Generic code cannot truthfully roll back a mutable object that the reducer changed
+     * before throwing, which is why mutable accumulator state is outside this contract.</p>
      *
      * @param step    reducer called as {@code step(previousState, currentSample)}
      * @param initial initial state, restored on {@link Source#reset()}
@@ -144,6 +153,8 @@ public interface Source<T> {
 
         Source<T> self = this;
         return new Source<U>() {
+            private final SourceOperationGuard guard =
+                    new SourceOperationGuard("accumulated source");
             private long lastCycle = Long.MIN_VALUE;
             private U state = initial;
 
@@ -152,15 +163,26 @@ public interface Source<T> {
              */
             @Override
             public U get(LoopClock clock) {
-                long cyc = clock.cycle();
-                if (cyc == lastCycle) {
-                    return state;
-                }
-                lastCycle = cyc;
+                guard.beginSample();
+                try {
+                    Objects.requireNonNull(clock, "clock");
+                    long cyc = clock.cycle();
+                    if (cyc == lastCycle) {
+                        return state;
+                    }
 
-                T cur = Objects.requireNonNull(self.get(clock), "source returned null");
-                state = Objects.requireNonNull(step.apply(state, cur), "step returned null");
-                return state;
+                    T cur = Objects.requireNonNull(self.get(clock), "source returned null");
+                    U nextState = Objects.requireNonNull(
+                            step.apply(state, cur),
+                            "step returned null"
+                    );
+
+                    state = nextState;
+                    lastCycle = cyc;
+                    return state;
+                } finally {
+                    guard.endSample();
+                }
             }
 
             /**
@@ -168,9 +190,14 @@ public interface Source<T> {
              */
             @Override
             public void reset() {
-                self.reset();
-                lastCycle = Long.MIN_VALUE;
-                state = initial;
+                guard.beginReset();
+                try {
+                    self.reset();
+                    state = initial;
+                    lastCycle = Long.MIN_VALUE;
+                } finally {
+                    guard.endReset();
+                }
             }
 
             /**
@@ -209,6 +236,12 @@ public interface Source<T> {
      * <p>When both {@code reset} and the upstream source are derived from the same sensor graph,
      * prefer memoizing the shared boundary reads so both paths observe the same per-loop sample.</p>
      *
+     * <p>The reducer has the same value contract as
+     * {@link #accumulate(BiFunction, Object)}: prior state is read-only, reduction has no external
+     * effects or in-place mutation, and the returned state is non-null and independently stable.
+     * The reset signal, current sample, and candidate reduced value are all observed before the
+     * new state is published.</p>
+     *
      * @param reset   one-loop or level-style reset signal; when true the accumulator is cleared
      * @param step    reducer called as {@code step(previousState, currentSample)}
      * @param initial initial state used after reset and on construction
@@ -223,6 +256,8 @@ public interface Source<T> {
 
         Source<T> self = this;
         return new Source<U>() {
+            private final SourceOperationGuard guard =
+                    new SourceOperationGuard("resettable accumulated source");
             private long lastCycle = Long.MIN_VALUE;
             private U state = initial;
 
@@ -231,19 +266,28 @@ public interface Source<T> {
              */
             @Override
             public U get(LoopClock clock) {
-                long cyc = clock.cycle();
-                if (cyc == lastCycle) {
+                guard.beginSample();
+                try {
+                    Objects.requireNonNull(clock, "clock");
+                    long cyc = clock.cycle();
+                    if (cyc == lastCycle) {
+                        return state;
+                    }
+
+                    boolean resetNow = reset.getAsBoolean(clock);
+                    U previousState = resetNow ? initial : state;
+                    T cur = Objects.requireNonNull(self.get(clock), "source returned null");
+                    U nextState = Objects.requireNonNull(
+                            step.apply(previousState, cur),
+                            "step returned null"
+                    );
+
+                    state = nextState;
+                    lastCycle = cyc;
                     return state;
+                } finally {
+                    guard.endSample();
                 }
-                lastCycle = cyc;
-
-                if (reset.getAsBoolean(clock)) {
-                    state = initial;
-                }
-
-                T cur = Objects.requireNonNull(self.get(clock), "source returned null");
-                state = Objects.requireNonNull(step.apply(state, cur), "step returned null");
-                return state;
             }
 
             /**
@@ -251,10 +295,15 @@ public interface Source<T> {
              */
             @Override
             public void reset() {
-                self.reset();
-                reset.reset();
-                lastCycle = Long.MIN_VALUE;
-                state = initial;
+                guard.beginReset();
+                try {
+                    self.reset();
+                    reset.reset();
+                    state = initial;
+                    lastCycle = Long.MIN_VALUE;
+                } finally {
+                    guard.endReset();
+                }
             }
 
             /**
@@ -296,6 +345,8 @@ public interface Source<T> {
      * <ul>
      *   <li>The upstream source must never return {@code null}.</li>
      *   <li>{@code fallback} must be non-null.</li>
+     *   <li>{@code isValid} is a side-effect-free value decision and may be retried after a
+     *       failure.</li>
      * </ul>
      * </p>
      *
@@ -313,6 +364,8 @@ public interface Source<T> {
 
         Source<T> self = this;
         return new Source<T>() {
+            private final SourceOperationGuard guard =
+                    new SourceOperationGuard("held generic source");
             private long lastCycle = Long.MIN_VALUE;
             private T lastOut = fallback;
 
@@ -327,32 +380,49 @@ public interface Source<T> {
              */
             @Override
             public T get(LoopClock clock) {
-                long cyc = clock.cycle();
-                if (cyc == lastCycle) {
-                    return lastOut;
-                }
-                lastCycle = cyc;
+                guard.beginSample();
+                try {
+                    Objects.requireNonNull(clock, "clock");
+                    long cyc = clock.cycle();
+                    if (cyc == lastCycle) {
+                        return lastOut;
+                    }
 
-                T cur = Objects.requireNonNull(self.get(clock), "source returned null");
-                if (isValid.test(cur)) {
-                    hasValid = true;
-                    lastValid = cur;
-                    lastValidTimestamp = clock.nowTimestamp();
-                    lastValidAgeSec = 0.0;
-                    lastOut = cur;
-                    return lastOut;
-                }
+                    T cur = Objects.requireNonNull(self.get(clock), "source returned null");
+                    boolean valid = isValid.test(cur);
 
-                lastValidAgeSec = hasValid
-                        ? lastValidTimestamp.ageSec(clock)
-                        : Double.POSITIVE_INFINITY;
-                if (Double.isFinite(lastValidAgeSec) && lastValidAgeSec <= maxHoldSec) {
-                    lastOut = lastValid;
-                    return lastOut;
-                }
+                    boolean nextHasValid = hasValid;
+                    T nextLastValid = lastValid;
+                    LoopTimestamp nextLastValidTimestamp = lastValidTimestamp;
+                    double nextLastValidAgeSec;
+                    T nextOut;
 
-                lastOut = fallback;
-                return lastOut;
+                    if (valid) {
+                        nextHasValid = true;
+                        nextLastValid = cur;
+                        nextLastValidTimestamp = clock.nowTimestamp();
+                        nextLastValidAgeSec = 0.0;
+                        nextOut = cur;
+                    } else {
+                        nextLastValidAgeSec = hasValid
+                                ? lastValidTimestamp.ageSec(clock)
+                                : Double.POSITIVE_INFINITY;
+                        nextOut = Double.isFinite(nextLastValidAgeSec)
+                                && nextLastValidAgeSec <= maxHoldSec
+                                ? lastValid
+                                : fallback;
+                    }
+
+                    hasValid = nextHasValid;
+                    lastValid = nextLastValid;
+                    lastValidTimestamp = nextLastValidTimestamp;
+                    lastValidAgeSec = nextLastValidAgeSec;
+                    lastOut = nextOut;
+                    lastCycle = cyc;
+                    return lastOut;
+                } finally {
+                    guard.endSample();
+                }
             }
 
             /**
@@ -360,13 +430,18 @@ public interface Source<T> {
              */
             @Override
             public void reset() {
-                self.reset();
-                lastCycle = Long.MIN_VALUE;
-                lastOut = fallback;
-                hasValid = false;
-                lastValid = fallback;
-                lastValidTimestamp = LoopTimestamp.unavailable();
-                lastValidAgeSec = Double.POSITIVE_INFINITY;
+                guard.beginReset();
+                try {
+                    self.reset();
+                    lastOut = fallback;
+                    hasValid = false;
+                    lastValid = fallback;
+                    lastValidTimestamp = LoopTimestamp.unavailable();
+                    lastValidAgeSec = Double.POSITIVE_INFINITY;
+                    lastCycle = Long.MIN_VALUE;
+                } finally {
+                    guard.endReset();
+                }
             }
 
             /**
@@ -471,10 +546,10 @@ public interface Source<T> {
     /**
      * Memoize this source for the current {@link LoopClock#cycle()}.
      *
-     * <p>The returned source samples the upstream source at most once per cycle and returns the cached
-     * value for any additional reads in that same cycle. This is the simplest way to enforce Phoenix's
-     * "one loop, one heartbeat" rule for values that may be expensive to compute or may change if read
-     * multiple times.</p>
+     * <p>The returned source publishes one successful upstream observation per cycle and returns
+     * that exact cached value for additional reads in the same cycle. A failed or null observation
+     * is not cached, so a later nonrecursive read in that cycle may retry. Recursive sampling and
+     * sampling/reset overlap fail fast with an actionable lifecycle error.</p>
      *
      * <p>Use this at <b>boundaries</b> (raw hardware reads, shared sensor signals, derived values used in
      * multiple places) to guarantee consistent results within a loop.</p>
@@ -482,6 +557,8 @@ public interface Source<T> {
     default Source<T> memoized() {
         Source<T> self = this;
         return new Source<T>() {
+            private final SourceOperationGuard guard =
+                    new SourceOperationGuard("memoized generic source");
             private long lastCycle = Long.MIN_VALUE;
             private T last = null;
 
@@ -490,13 +567,24 @@ public interface Source<T> {
              */
             @Override
             public T get(LoopClock clock) {
-                long cyc = clock.cycle();
-                if (cyc == lastCycle) {
+                guard.beginSample();
+                try {
+                    Objects.requireNonNull(clock, "clock");
+                    long cyc = clock.cycle();
+                    if (cyc == lastCycle) {
+                        return last;
+                    }
+
+                    T next = Objects.requireNonNull(
+                            self.get(clock),
+                            "memoized source returned null"
+                    );
+                    last = next;
+                    lastCycle = cyc;
                     return last;
+                } finally {
+                    guard.endSample();
                 }
-                lastCycle = cyc;
-                last = Objects.requireNonNull(self.get(clock), "memoized source returned null");
-                return last;
             }
 
             /**
@@ -504,9 +592,14 @@ public interface Source<T> {
              */
             @Override
             public void reset() {
-                self.reset();
-                lastCycle = Long.MIN_VALUE;
-                last = null;
+                guard.beginReset();
+                try {
+                    self.reset();
+                    last = null;
+                    lastCycle = Long.MIN_VALUE;
+                } finally {
+                    guard.endReset();
+                }
             }
 
             /**
@@ -527,10 +620,19 @@ public interface Source<T> {
     /**
      * Create a source from a function of the current {@link LoopClock}.
      *
-     * <p>This is the generic sibling of {@link ScalarSource#of(java.util.function.DoubleSupplier)}
-     * and {@link BooleanSource#of(java.util.function.BooleanSupplier)}. It is useful when you want
-     * to create a small derived source inline, especially one that depends on other sources sampled
-     * with the same clock.</p>
+     * <p>This is the ordinary generic adaptation grammar for robot code and the generic sibling of
+     * {@link ScalarSource#of(java.util.function.DoubleSupplier)} and
+     * {@link BooleanSource#of(java.util.function.BooleanSupplier)}. Use it for a small derived source
+     * inline, especially one that depends on other sources sampled with the same clock, then add
+     * stateful behavior with decorators such as {@link #memoized()}.</p>
+     *
+     * <p>Direct implementations remain the framework/integration extension seam for named reusable
+     * source abstractions with additional domain behavior; they are not a parallel ordinary
+     * robot-code recipe.</p>
+     *
+     * <p>The returned adapter is stateless: each call delegates to {@code fn}, and
+     * {@link #reset()} is a no-op. Add an owning decorator when the graph needs state or a
+     * lifecycle reset.</p>
      */
     static <T> Source<T> of(Function<? super LoopClock, ? extends T> fn) {
         Objects.requireNonNull(fn, "fn");
@@ -580,5 +682,53 @@ public interface Source<T> {
                         .addData(p + ".value", value);
             }
         };
+    }
+}
+
+/** Package-private lifecycle guard shared by the primitive and generic source decorators. */
+final class SourceOperationGuard {
+    private final String owner;
+    private boolean sampling;
+    private boolean resetting;
+
+    SourceOperationGuard(String owner) {
+        this.owner = Objects.requireNonNull(owner, "owner");
+    }
+
+    void beginSample() {
+        if (sampling) {
+            throw new IllegalStateException(
+                    "Cannot sample " + owner + " recursively; the source graph contains "
+                            + "a sampling cycle"
+            );
+        }
+        if (resetting) {
+            throw new IllegalStateException(
+                    "Cannot sample " + owner + " while its reset is in progress"
+            );
+        }
+        sampling = true;
+    }
+
+    void endSample() {
+        sampling = false;
+    }
+
+    void beginReset() {
+        if (sampling) {
+            throw new IllegalStateException(
+                    "Cannot reset " + owner + " while sampling is in progress"
+            );
+        }
+        if (resetting) {
+            throw new IllegalStateException(
+                    "Cannot reset " + owner + " recursively"
+            );
+        }
+        resetting = true;
+    }
+
+    void endReset() {
+        resetting = false;
     }
 }

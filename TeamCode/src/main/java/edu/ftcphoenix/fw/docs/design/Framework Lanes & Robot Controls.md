@@ -645,6 +645,23 @@ Why this matters:
 - mode clients can bind against shared capability families instead of raw internals
 - the composition root does not need to know specific button identities
 
+The same one-grammar rule applies when a robot-owned service publishes a shared immutable snapshot:
+
+```java
+private final Source<TargetingStatus> statusSource =
+        Source.of(this::calculateStatus).memoized();
+
+private final BooleanSource targetSelected =
+        Source.of(this::status)
+                .mapToBoolean(status -> status.selection.hasSelection);
+```
+
+The first graph owns publication state. The second is a borrowed projection: its raw `Source.of(...)`
+adapter has no reset action, so a consumer resetting that view cannot reset the service-owned graph.
+The common service owner resets its known children and publication source once at the inactive
+lifecycle boundary. Robot services do not implement anonymous sources or duplicate `lastCycle`
+caches for this pattern.
+
 ### Root bindings and optional control contexts
 
 The root `Bindings` object is the default. A declaration on it is always eligible, although its

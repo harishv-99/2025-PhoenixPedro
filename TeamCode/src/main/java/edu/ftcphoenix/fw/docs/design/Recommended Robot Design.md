@@ -166,6 +166,11 @@ Phoenix's `ScalarControllers` helper packages the common pattern:
 ScalarSource liftPower = ScalarControllers.pid(desiredHeightIn, measuredHeightIn, pid);
 ```
 
+The controller source stages target and measurement reads before invoking the stateful controller.
+Those value reads may be retried after failure. Once controller invocation begins, a thrown
+exception is retained and rethrown for that cycle rather than invoking potentially mutated
+controller state twice; a later cycle may try again.
+
 ### Pattern 3: event / classification supervision
 
 Examples:
@@ -184,6 +189,19 @@ teaching the FTC boundary adapter about your mechanism. If a supervisor owns tha
 explicitly (mode change, task restart, tester clear, or a state-machine transition), keep
 `reset()` on the composed source and call it from the owner instead of forcing every boundary into
 a synthetic `BooleanSource`.
+
+For an ordinary clock-aware object value, adapt the calculation with `Source.of(...)` and compose
+the decorators it needs:
+
+```java
+Source<Classification> classification =
+        Source.of(this::classifyCurrentSample).memoized();
+```
+
+Do not implement an anonymous `Source` or duplicate a `lastCycle` cache in robot code. Direct
+implementation is reserved for a named framework/integration extension with an additional domain
+contract; fixed object values use `Source.constant(...)`, and clockless primitive leaves use
+`ScalarSource.of(...)` or `BooleanSource.of(...)`.
 
 ### Pattern 4: spatial relation guidance
 
