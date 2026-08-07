@@ -1,226 +1,183 @@
 # Modern starter robot
 
-Use this example after the flat Beginner's Guide skeleton when you want the smallest compiling
-Phoenix robot structure shared by TeleOp and Auto. It has one direct mecanum drive, one intake
-mechanism, one mode-neutral intake capability, one controls owner, and one composition root. It has
-no vision, localization, route library, season strategy, presenter, supervisor, service, base
-OpMode, generator, or extra capability aggregate.
-
-All seven files live in
-[`edu.ftcphoenix.robots.examples.starter`](<../../../robots/examples/starter/>). They are robot code,
-not new framework APIs.
+Use this example as the smallest compiling Phoenix structure shared by TeleOp and Auto. It has one
+direct mecanum drive, one intake mechanism, one mode-neutral intake capability, one controls owner,
+and one declaration-only composition root. FTC lifecycle ceremony is supplied by
+`FtcRobotOpMode` and its framework-created `RobotProgram`; robot meanings and hardware ownership
+remain in the seven files under
+[`edu.ftcphoenix.robots.examples.starter`](<../../../robots/examples/starter/>).
 
 ## Read the seven files
 
-Read them in this order:
-
 | File | Job | What a student normally edits |
 |---|---|---|
-| [`StarterProfile.java`](<../../../robots/examples/starter/StarterProfile.java>) | Data-only, defensively copied hardware and tuning configuration | Fill the deliberately blocked physical configuration in `current()` only after checking the adopting robot. |
-| [`StarterIntake.java`](<../../../robots/examples/starter/StarterIntake.java>) | The one mode-neutral capability family and its small status vocabulary | Rename the capability and modes when the robot's mechanism meaning differs. |
-| [`StarterIntakeMechanism.java`](<../../../robots/examples/starter/StarterIntakeMechanism.java>) | Owns the intake Plant, final target resolver, update order, bounded intake Task, and stop command | Change the Plant realization when the mechanism hardware or safe behavior changes. |
-| [`StarterTeleOpControls.java`](<../../../robots/examples/starter/StarterTeleOpControls.java>) | Owns button meanings, bindings, slow mode, and the final manual `DriveSource` | Change driver/operator meanings here, not in framework primitives or the robot root. |
-| [`StarterRobot.java`](<../../../robots/examples/starter/StarterRobot.java>) | Composition root for validation, construction, one clock, mode lifecycle, loop order, telemetry commit, Task runner, and cleanup | Add a new owner only when the robot gains a real new capability or lifecycle need. |
-| [`StarterTeleOp.java`](<../../../robots/examples/starter/StarterTeleOp.java>) | Disabled thin FTC TeleOp client | Normally change only the Driver Station name and selected profile. |
-| [`StarterAuto.java`](<../../../robots/examples/starter/StarterAuto.java>) | Disabled tiny Auto client using one fresh bounded intake Task | Replace the one routine expression with the adopting robot's small Task composition. |
+| [`StarterProfile.java`](<../../../robots/examples/starter/StarterProfile.java>) | Data-only, defensively copied hardware/tuning configuration | Fill and physically review `current()`. |
+| [`StarterIntake.java`](<../../../robots/examples/starter/StarterIntake.java>) | Shared mode-neutral capability vocabulary | Rename the capability and modes for the real robot. |
+| [`StarterIntakeMechanism.java`](<../../../robots/examples/starter/StarterIntakeMechanism.java>) | Privately owns the intake Plant and implements `RobotProgram.Output` | Change hardware realization and safe stop behavior. |
+| [`StarterTeleOpControls.java`](<../../../robots/examples/starter/StarterTeleOpControls.java>) | Declares button meanings and exposes the final manual `DriveSource` | Change driver meanings here. |
+| [`StarterRobot.java`](<../../../robots/examples/starter/StarterRobot.java>) | Validates, constructs, and declares the mode-specific graph | Add real owners and their declaration order. |
+| [`StarterTeleOp.java`](<../../../robots/examples/starter/StarterTeleOp.java>) | Disabled one-method FTC TeleOp | Normally change only the name/profile selection. |
+| [`StarterAuto.java`](<../../../robots/examples/starter/StarterAuto.java>) | Disabled one-method Auto with one fresh root Task | Replace the routine expression. |
 
-The seven-file split is intentional. A single large OpMode would collapse the boundaries this
-example exists to teach. A generic base robot, template, or generator would hide or duplicate the
-same ownership before repeated robot use proves that another abstraction removes real work.
+The split is intentional. `FtcRobotOpMode` is not a season robot superclass and knows no intake,
+scoring, route, or strategy vocabulary. It owns only the reusable FTC callback/lifecycle contract.
 
 ## Configure before constructing hardware
 
-`StarterProfile.current()` is deliberately not runnable as checked in. Its physical fields remain
-unset or use sentinel values, and `hardwareConfigurationReviewed` remains false. Before the
-disabled TeleOp is enabled, edit that one profile method with the adopting robot's reviewed:
+`StarterProfile.current()` is deliberately not runnable as checked in. Before enabling either
+OpMode, fill and review:
 
-- four configured drive motor names and directions,
-- intake motor name and direction,
-- finite, nonzero, distinct collect and eject powers in `[-1.0, 1.0]`, and
-- `hardwareConfigurationReviewed = true` acknowledgement.
+- drive motor names/directions for TeleOp,
+- intake motor name/direction,
+- distinct finite nonzero collect/eject powers in `[-1, +1]`, and
+- `hardwareConfigurationReviewed = true`.
 
-The exact edit locations inside `current()` are:
+`StarterRobot.declareTeleOp(...)` validates the complete TeleOp profile before its first hardware
+lookup. `declareAuto(...)` validates only the shared intake facts, so an unused drive configuration
+does not block the tiny Auto. The acknowledgement records human review; it does not prove wiring,
+polarity, traction, or safe physical motion.
 
-| Configuration fact | Profile field |
-|---|---|
-| Drive motor names | `drive.wiring.frontLeftName`, `frontRightName`, `backLeftName`, `backRightName` |
-| Drive motor directions | `drive.wiring.frontLeftDirection`, `frontRightDirection`, `backLeftDirection`, `backRightDirection` |
-| Intake motor identity | `intake.motorName`, `intake.direction` |
-| Intake action powers | `intake.collectPower`, `intake.ejectPower` |
-| Human review acknowledgement | `hardwareConfigurationReviewed` |
+## The entire FTC hosts
 
-The tiny Auto constructs only the shared intake, so its validation does not require drive values.
-It still requires the reviewed intake name, direction, powers, and acknowledgement. TeleOp requires
-both the complete drive configuration and the shared intake configuration.
-
-`StarterRobot` copies and validates the complete mode-required profile before its first
-`HardwareMap` lookup or output. An incomplete profile therefore produces one actionable
-configuration error instead of partially acquiring hardware. Setting the acknowledgement records
-that a human reviewed the configuration; it does not prove wiring, direction, power safety,
-traction, or mechanical motion.
-
-Keep configuration facts in `StarterProfile`. Keep button meanings, Task ordering, and update order
-in code. Do not copy Phoenix season values into another robot or treat compilation as hardware
-validation.
-
-## The shared capability call path
-
-`StarterIntake` is the public, mode-neutral vocabulary. The Plant stays private to
-`StarterIntakeMechanism`, and neither mode client writes a target directly.
-
-The starter's construction path is also the canonical ordinary FTC mechanism pattern. The
-composition root supplies FTC resources and the mechanism's data-only config:
+TeleOp has one ordinary override:
 
 ```java
-intake = new StarterIntakeMechanism(hardwareMap, profile.intake);
-```
-
-The mechanism constructor defensively copies that config and constructs its Plant itself:
-
-```java
-StarterIntakeMechanism(HardwareMap hardwareMap, StarterProfile.IntakeConfig config) {
-    StarterProfile.IntakeConfig snapshot = Objects.requireNonNull(config, "config").copy();
-    requireActionPowers(snapshot.collectPower, snapshot.ejectPower);
-    collectPower = snapshot.collectPower;
-    ejectPower = snapshot.ejectPower;
-    plant = FtcActuators.plant(Objects.requireNonNull(hardwareMap, "hardwareMap"))
-            .motor(snapshot.motorName, snapshot.direction)
-            .power()
-            .targetFromNewCommand(STOPPED_POWER)
-            .build();
+public final class StarterTeleOp extends FtcRobotOpMode {
+    @Override
+    protected void configure(RobotProgram program) {
+        new StarterRobot(hardwareMap, StarterProfile.current())
+                .declareTeleOp(program, gamepad1);
+    }
 }
 ```
 
-That keeps hardware construction, the final resolver, the private Plant, and its update/stop
-lifecycle in one owner. `StarterIntakeMechanism` also has a package-private constructor that accepts
-a completed Plant, but it is explicitly a hardware-neutral focused-test seam. It is not a second
-ordinary composition-root pattern. A custom adapter, portable host, or advanced assembly may use a
-similarly labeled seam when it has a concrete reason.
-
-TeleOp follows this path:
-
-```text
-StarterTeleOp
-  -> StarterRobot.initTeleOp(...)
-  -> StarterTeleOpControls bindings
-  -> StarterIntake.setMode(...)
-  -> StarterIntakeMechanism
-  -> intake Plant
-```
-
-The ordinary control calls remain semantic:
+Auto is parallel:
 
 ```java
-bindings.onRise(
-        driver.a(),
-        () -> intake.setMode(StarterIntake.Mode.COLLECT)
-);
-bindings.onRise(
-        driver.b(),
-        () -> intake.setMode(StarterIntake.Mode.EJECT)
-);
-bindings.onRise(
-        driver.x(),
-        () -> intake.setMode(StarterIntake.Mode.STOPPED)
-);
+public final class StarterAuto extends FtcRobotOpMode {
+    @Override
+    protected void configure(RobotProgram program) {
+        new StarterRobot(hardwareMap, StarterProfile.current())
+                .declareAuto(program, 0.75);
+    }
+}
 ```
 
-Auto uses that same capability object rather than reaching into the mechanism:
+Neither file stores a clock, runner, lifecycle flags, robot field, or STOP method. The framework
+retains the program before configuration begins, freezes declarations when the method returns, and
+owns all later callbacks.
+
+## Declaration-only composition
+
+The TeleOp root constructs and immediately transfers each lifecycle owner:
 
 ```java
-robot.initAuto();
-robot.installAutoRoutine(robot.intake().collectForSeconds(0.75));
+StarterIntakeMechanism intake = program.output(
+        new StarterIntakeMechanism(hardwareMap, profile.intake));
+
+StarterTeleOpControls controls = new StarterTeleOpControls(
+        program.bindings(),
+        new GamepadDevice(gamepad1),
+        intake);
+
+program.drive(
+        controls.driveSource(),
+        FtcDrives.mecanum(hardwareMap, profile.drive));
+
+program.presenter((clock, telemetry) -> presentIntake(telemetry, intake));
 ```
 
-`collectForSeconds(...)` returns a fresh single-use Task. Its normal completion and active
-cancellation both restore the stopped request, while the root continues updating the downstream
-Plant once per Auto loop. A repeated run asks the capability for another fresh Task.
+Registration retains the same object immediately. If a later construction or declaration fails,
+the program still stops every already registered sibling. The source-driven drive joins output
+declaration order; it calls the sink heartbeat, samples the source, rejects non-finite components,
+clamps finite components, writes once, and stops the sink during cleanup.
 
-There is deliberately no one-member `StarterCapabilities` aggregate. `StarterIntake` already gives
-both clients the one cohesive family they need. Add an aggregate when a second independent family
-creates useful grouping, not merely to mirror a larger robot.
-
-## Thin mode clients
-
-Both OpModes only choose configuration, construct the root, choose a mode, and forward lifecycle.
-Their INIT calls are direct:
+Auto declares the same capability realization plus one fresh root:
 
 ```java
-robot = new StarterRobot(hardwareMap, telemetry, StarterProfile.current());
-robot.initTeleOp(gamepad1);           // TeleOp uses one driver
-// or:
-robot.initAuto();                     // Auto
+StarterIntakeMechanism intake = program.output(
+        new StarterIntakeMechanism(hardwareMap, profile.intake));
+Task root = intake.collectForSeconds(collectDurationSec);
+program.rootTask(root);
 ```
 
-The starter has one driver, so it does not wrap or pass `gamepad2`. Add a second
-`GamepadDevice` only when the robot actually has second-operator meanings.
+There is no one-member capability aggregate. `StarterIntake` is already the one cohesive family
+both modes need.
 
-The remaining lifecycle is equally direct:
+## Mechanism and controls ownership
+
+`StarterIntakeMechanism` receives `HardwareMap` plus a data-only config, defensively copies it,
+constructs its final command-backed Plant, and implements the downstream role:
+
+```java
+final class StarterIntakeMechanism
+        implements StarterIntake, RobotProgram.Output {
+    @Override
+    public void update(LoopClock clock) {
+        plant.update(clock);
+    }
+
+    @Override
+    public void stop() {
+        // request zero, then stop the private Plant/output
+    }
+}
+```
+
+The completed-Plant constructor remains package-private and explicitly hardware-neutral for tests.
+It is not a second ordinary construction path.
+
+Controls receive only `BindingRegistrar`. They declare mappings but cannot update or clear the
+program-owned graph:
+
+```java
+requiredBindings.onRise(driver.a(),
+        () -> intake.setMode(StarterIntake.Mode.COLLECT));
+requiredBindings.onRise(driver.b(),
+        () -> intake.setMode(StarterIntake.Mode.EJECT));
+requiredBindings.onRise(driver.x(),
+        () -> intake.setMode(StarterIntake.Mode.STOPPED));
+```
+
+## Managed lifecycle and order
+
+The framework applies:
 
 ```text
-INIT   -> construct StarterRobot, then initTeleOp(...) or initAuto()
-START  -> robot.start(getRuntime())
-loop   -> robot.update(getRuntime())
-STOP   -> robot.stop()
+INIT       reset clock -> configure/freeze -> presenters -> one commit
+INIT loop  clock -> presenters -> one commit
+START      reset clock -> service starts -> root Task start/first update -> exact-start outputs
+loop       clock -> services -> bindings -> Tasks -> outputs/drive -> presenters -> one commit
+STOP       cancel Tasks -> clear bindings -> outputs in order -> services in reverse order
 ```
 
-`StarterAuto` additionally installs its fresh root Task during INIT. It does not add a separate
-routine class for one expression. Introduce a robot-owned Auto plan/routine when path selection,
-outcome policy, or several named routines make that owner useful.
+INIT never advances services, bindings, Tasks, drive, or mechanisms. Exact-start output realization
+makes the Auto's positive-duration collect request observable even if the first regular loop is
+late. On a lifecycle `RuntimeException`, cleanup follows the same terminal path, retains the exact
+primary failure, and suppresses later cleanup failures. Repeated/reentrant STOP is inert; `Error`
+is not caught.
 
-## Loop and telemetry ownership
-
-The composition root makes the two active-loop orders visible:
-
-```text
-TeleOp: clock -> controls/bindings -> direct drive write -> intake Plant -> status rows -> commit
-Auto:   clock -> TaskRunner -> intake Plant -> status rows -> commit
-```
-
-The root advances its one `LoopClock` once per active cycle. Controls own manual drive shaping; the
-root performs the final direct-drive write. The intake mechanism remains the only Plant target and
-update owner. A Task changes the retained capability request before the downstream Plant phase, so
-each positive-duration command is observable.
-
-The root writes `intake.mode` and `intake.appliedTargetPower`; Auto adds `auto.idle`. The applied
-target is the Plant's cached final target after guards, not motor or mechanism readback. The root
-then calls `Telemetry.update()` once for the complete active-loop frame. It has no presenter because
-these few direct rows do not justify another owner. Extract an additive presenter when several
-callers need the same formatted snapshots or the required page becomes substantial. Keep optional
-`debugDump(...)` calls explicitly selected at the root; do not dump every object every frame or use
-a presenter to resample live state.
-
-## Cleanup ownership
-
-`StarterRobot.stop()` is idempotent and best-effort attempts every owner it constructed:
-
-1. cancel the current Auto Task and clear pending work when the runner exists,
-2. request zero and stop the intake Plant/output, and
-3. stop the direct drive owner when TeleOp constructed it.
-
-A root-owned configuration or construction failure, start failure, or active-loop failure enters
-the same fail-stop path, preserving the original failure and attaching later cleanup failures.
-Programming precondition errors such as installing a second Auto routine are rejected without
-changing an otherwise valid lifecycle. The OpModes do not duplicate these stops or expose a
-drop-without-cancel runner operation. A normally returning stop establishes an immediate zero
-submission at the output seam; physical motion must be checked on the robot.
+The starter's TeleOp output order is intake then drive because the intake is registered immediately
+after construction. That preserves failure cleanup without holding an unregistered hardware owner.
+Robots that require a different downstream order should arrange construction/declaration so every
+completed owner transfers immediately, or encapsulate tightly coupled outputs behind one truthful
+owner rather than creating an unsafe registration gap.
 
 ## Adapting the example
 
-For an ordinary new robot:
+For a new robot:
 
-1. complete and physically review `StarterProfile.current()`;
-2. rename `StarterIntake` and its modes to the robot's real capability vocabulary;
-3. keep final target resolvers, Plant construction, and Plant update order in the mechanism owner;
-4. map gamepads only in `StarterTeleOpControls`;
-5. let both TeleOp and Auto call the same capability;
-6. keep new policy in a supervisor/service only when that policy actually exists; and
-7. keep the root's construction, loop phases, telemetry commit, and cleanup explicit.
+1. complete and physically review the profile;
+2. rename the capability and modes to real robot meanings;
+3. keep Plant construction/update/stop in each mechanism output;
+4. pass `program.bindings()` into the controls owner;
+5. let TeleOp and Auto call the same capabilities;
+6. declare upstream computation as services and final realization as outputs; and
+7. keep `configure(program)` declarative rather than adding FTC lifecycle methods.
 
-The two OpModes remain `@Disabled` until the adopting team verifies the intake name, direction,
-polarity and power, clear space, and immediate STOP behavior on the actual robot. Before enabling
-TeleOp, also verify all four drive names and directions with the wheels safely raised. Software
-tests can prove ownership and cancellation semantics, but not those physical facts.
+The OpModes remain `@Disabled` until names, directions, power, clear space, wheel direction, and
+immediate STOP behavior are checked on the actual robot. Software tests prove declaration order,
+cancellation, and output-seam zero commands—not physical motion.
 
 ## Related reading
 
@@ -228,5 +185,4 @@ tests can prove ownership and cancellation semantics, but not those physical fac
 - [`../design/Framework Lanes & Robot Controls.md`](<../design/Framework Lanes & Robot Controls.md>)
 - [`../design/Robot Capabilities & Mode Clients.md`](<../design/Robot Capabilities & Mode Clients.md>)
 - [`../core-concepts/Loop Structure.md`](<../core-concepts/Loop Structure.md>)
-- [`Examples Progression & Layered Mechanisms.md`](<Examples Progression & Layered Mechanisms.md>)
 - [`../../Framework Principles.md`](<../../Framework Principles.md>)

@@ -1,8 +1,11 @@
 # Framework Overview
 
-Phoenix is a small FTC framework that helps you structure robot code around a clean, repeatable loop.
+Phoenix is a small FTC framework that helps you declare robot behavior around a clean, repeatable
+loop.
 
-The big idea is: **advance a single `LoopClock` once per OpMode cycle**, then run everything else (inputs, bindings, tasks, drive, mechanisms) off that clock.
+The big idea is: **ordinary robot code declares services, bindings, Tasks, outputs, drive, and
+presenters once; `FtcRobotOpMode` advances one `LoopClock` and manages their lifecycle**. A custom
+host may own the phases explicitly, but it must preserve the same one-heartbeat contract.
 
 Useful companions to this document are [`Framework Lanes & Robot Controls`](<../design/Framework Lanes & Robot Controls.md>), [`Robot Capabilities & Mode Clients`](<../design/Robot Capabilities & Mode Clients.md>), and [`Recommended Robot Design`](<../design/Recommended Robot Design.md>). Together they explain the ownership vocabulary, how to split framework lanes from robot code, how TeleOp and Auto should share mechanism APIs through robot-owned capability families, and how to choose the right internal behavior pattern for a mechanism.
 
@@ -28,7 +31,8 @@ Most robot code should only need imports from these packages:
 * `edu.ftcphoenix.fw.core.source` — the small signal vocabulary shared by controls and mechanisms,
   including the persistent `ScalarTarget` command.
 * `edu.ftcphoenix.fw.drive` — `DriveSignal`, `DriveSource`, `DriveCommandSink`, `MecanumDrivebase` (FTC-independent drive logic).
-* `edu.ftcphoenix.fw.ftc` — FTC entrypoints/adapters (for example, `FtcDrives` for drivetrain wiring and `FtcHaptics` for controller feedback).
+* `edu.ftcphoenix.fw.ftc` — the ordinary `FtcRobotOpMode`/`RobotProgram` lifecycle entry and FTC
+  adapters such as `FtcDrives` and `FtcHaptics`.
 * `edu.ftcphoenix.fw.ftc.ui` — telemetry UI helpers such as `SelectionMenu`, `MenuNavigator`, and `HardwareNamePicker`.
 * `edu.ftcphoenix.fw.sensing` — sensor-facing wrappers (vision, odometry, etc.).
 * `edu.ftcphoenix.fw.localization` — pose estimation (AprilTags, odometry, lightweight fusion, optional EKF-style fusion).
@@ -176,17 +180,21 @@ See [`Framework Lanes & Robot Controls`](<../design/Framework Lanes & Robot Cont
 
 Think of Phoenix as a few thin layers you stack:
 
-1. **OpMode / Robot code (you)**
+1. **OpMode / Robot declarations (you)**
 
-    * Owns the loop and decides what updates when.
+    * Override one `configure(RobotProgram)` method, construct robot-specific owners, and declare
+      their semantic roles and downstream order.
 2. **Input** (`fw.input`)
 
     * `Gamepads`, `GamepadDevice`, `ScalarSource`, `BooleanSource`.
     * `BooleanSource` supports edge detection (`risingEdge`/`fallingEdge`) and rise-to-toggle state
       via `BooleanSource.toggled()` (useful when enabling drive overlays).
-3. **Bindings** (`fw.input.binding`)
+3. **Managed program + Bindings** (`fw.ftc`, `fw.input.binding`)
 
-    * `Bindings` turns boolean signal edges, changes, levels, toggles, and nudges into actions.
+    * `RobotProgram` owns the one clock, private `Bindings`/`TaskRunner`, fixed phases, telemetry
+      commit, and fail-stop cleanup.
+    * Its `BindingRegistrar` turns boolean signal edges, changes, levels, toggles, and nudges into
+      actions without exposing another heartbeat.
 4. **Tasks / Macros** (`fw.task`, plus helpers in other packages)
 
     * `Task`, `TaskRunner`, `Tasks`, `ScalarTasks`, and the exclusive Auto/test helper in
@@ -525,10 +533,18 @@ example, keeps hold-end control, pose updates, callbacks, and manual drive insid
 `Follower.update()`. Its adapter therefore has one stable Auto composition-root owner and
 deduplicates any same-cycle update made by `RouteTask` or `DriveGuidanceTask`:
 
+The following call is the **current production-Phoenix RUNTIME-02 exception**. Production Phoenix
+still has an explicit mode lifecycle while its selector, readiness, retry, and handoff policies are
+audited separately:
+
 ```java
 PedroPathingRuntime pedro = Constants.createPhoenixAutoRuntime(hardwareMap, profile);
 robot.initAuto(pedro.driveAdapter(), pedro.motionPredictor());
 ```
+
+In an ordinary managed robot, a robot-owned service registers the localization owner and recurring
+adapter heartbeat with `program.service(...)`; Tasks still select routes. See the small compiling
+Pedro reference for that one-grammar form.
 
 The runtime owns one configured Pinpoint predictor and gives Pedro a passive localizer view of that
 same predictor. Phoenix therefore owns the localization/correction update first, Pedro sees that
@@ -783,14 +799,9 @@ If you need edges/toggles, use `risingEdge()` / `fallingEdge()` / `toggled()` (o
 Most commonly: **enqueue a macro** on rise.
 
 ```java
-import edu.ftcphoenix.fw.input.binding.Bindings;
-import edu.ftcphoenix.fw.task.TaskRunner;
-
-Bindings bindings = new Bindings();
-TaskRunner macros = new TaskRunner();
-
-bindings.onRise(gamepads.p1().y(), () ->
-        macros.enqueue(scoring.createShootOneDiscTask())
+program.taskBindings().onRise(
+        gamepads.p1().y(),
+        scoring::createShootOneDiscTask
 );
 ```
 
@@ -800,57 +811,42 @@ to its realization.
 For a continuous non-drive mechanism command, bind the scalar each loop instead of writing directly to a plant:
 
 ```java
-bindings.copyEachCycle(
+program.bindings().copyEachCycle(
         gamepads.p2().leftY().deadbandNormalized(0.08, -1.0, 1.0),
         lift::commandManualPower
 );
 ```
 
-Call **once per loop**:
-
-```java
-bindings.update(clock);
-```
+The managed program updates its private binding graph once per active loop and immediately advances
+its private Task runner afterward. Robot controls receive only `BindingRegistrar`; they do not own
+or forward another binding heartbeat. Direct `new Bindings()` and `new TaskRunner()` remain valid
+for framework tools and deliberate custom hosts, not the ordinary robot recipe.
 
 ---
 
-## A standard OpMode loop shape
+## A standard robot program shape
 
 This is the “everything has a place” pattern Phoenix is built around:
 
 ```java
-@Override
-public void start() {
-    clock.reset(getRuntime());
-}
+public final class MyTeleOp extends FtcRobotOpMode {
+    @Override
+    protected void configure(RobotProgram program) {
+        ScoringMechanism scoring = program.output(
+                new ScoringMechanism(hardwareMap, profile.scoring));
+        MyControls controls = new MyControls(
+                program.bindings(), new GamepadDevice(gamepad1), scoring);
 
-@Override
-public void loop() {
-    // 1) Clock
-    clock.update(getRuntime());
-
-    // 2) Bindings (may enqueue macros)
-    // Gamepad axes/buttons are Sources; they are sampled when you call get(...).
-    bindings.update(clock);
-
-    // 3) Tasks / macros
-    macroRunner.update(clock);
-
-    // 4) Drive
-    DriveSignal cmd = driveSource.get(clock).clamped();
-    drivebase.drive(cmd);
-
-    // 5) Mechanisms (each owner updates its private Plants)
-    scoring.update(clock);
-
-    // 6) Telemetry
-    telemetry.update();
+        program.drive(controls.driveSource(), FtcDrives.mecanum(hardwareMap, profile.drive));
+        program.presenter((clock, telemetry) ->
+                telemetry.addData("scoring.ready", scoring.status().ready()));
+    }
 }
 ```
 
-This is the normal TeleOp pattern: Tasks finish their decisions first, then the one final
-`DriveSource` writer commands the drivebase. Do not add an exclusive `DriveTasks` interval to this
-loop unless the ordinary final drive write is disabled for that interval.
+The framework owns `Clock -> Services -> Bindings -> Tasks -> Outputs/Drive -> Presenters -> one
+telemetry commit`. Tasks finish their decisions before downstream outputs. Do not add an exclusive
+`DriveTasks` interval while the program's ordinary final drive declaration is active.
 
 ---
 

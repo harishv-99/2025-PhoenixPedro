@@ -20,15 +20,17 @@ import edu.ftcphoenix.fw.task.TaskOutcome;
  * must deduplicate that call from the Task's same-cycle call. Pedro is one adapter that requires
  * this stable Auto-loop heartbeat.</p>
  *
- * <p>Typical usage:</p>
+ * <p>Ordinary managed Auto usage:</p>
  * <pre>{@code
  * Task nudgeForward = DriveTasks.driveExclusivelyForSeconds(
  *         autoDrive,
  *         new DriveSignal(0.20, 0.0, 0.0),
  *         0.15);
  *
- * runner.enqueue(nudgeForward);
+ * program.rootTask(nudgeForward);
  * }</pre>
+ *
+ * <p>A focused tester or custom host may instead use an explicitly owned private runner.</p>
  */
 public final class DriveTasks {
 

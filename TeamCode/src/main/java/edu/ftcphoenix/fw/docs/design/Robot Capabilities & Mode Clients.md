@@ -8,7 +8,7 @@ Read this when you want to answer questions like:
 - What API should both TeleOp and Auto talk to?
 - How should a robot split that API into a few cohesive interfaces?
 - What is parallel between the TeleOp side and the Auto side?
-- What should go in `initTeleOp()` versus `initAuto()`?
+- How should TeleOp and Auto declare different graphs through the same managed lifecycle?
 - How can a robot stay SOLID without exploding into dozens of tiny interfaces?
 
 Useful companions:
@@ -219,9 +219,11 @@ The Auto side does **not** need a universal `AutoControls` class just to mirror 
 
 ---
 
-## What should go in each init/start/update hook
+## What should go in the managed program
 
-The exact naming can vary, but this is the recommended ownership split.
+Ordinary FTC robot code has one lifecycle spelling: extend `FtcRobotOpMode` and override
+`configure(RobotProgram)`. TeleOp and Auto differ in the graph they declare, not in which lifecycle
+methods a student remembers to forward.
 
 ### `constructor`
 
@@ -235,54 +237,25 @@ Good:
 
 Avoid constructing half the robot here.
 
-### `initAny()`
+### `configure(RobotProgram)`
 
-Only truly mode-agnostic setup.
+Construct each truthful lifecycle owner and register it immediately:
 
-This can be empty if there is nothing useful to share.
+- `program.service(...)` for upstream sensing, localization, policy computation, or a required
+  vendor heartbeat;
+- `program.output(...)` for each mechanism/subsystem that privately owns its final Plants;
+- `program.bindings()` or `program.taskBindings()` for TeleOp meanings;
+- `program.drive(source, sink)` for the one final source-driven drive writer;
+- `program.rootTask(...)` for one fresh Auto routine; and
+- `program.presenter(...)` for additive INIT/active telemetry rows.
 
-### `initTeleOp()`
+The graph freezes when `configure(...)` returns. Construct a new OpMode/program for another mode or
+runtime rather than attempting a TeleOp/Auto cross-initialization.
 
-Usually owns:
-
-- create the TeleOp controls owner
-- create the shared runtime internals needed in TeleOp
-- create the shared capability families
-- bind TeleOp controls to capabilities
-- create TeleOp-only drive policy/runtime objects
-- emit INIT help text
-
-### `initAuto()`
-
-Usually owns:
-
-- create the shared runtime internals needed in Auto
-- create the shared capability families
-- create the shared auto runner, if the robot owns one
-- retain the lifecycle of a required external Auto drive sink when the mode client supplies one
-  through a backend-neutral seam
-- consume an explicit backend-neutral motion predictor when that same external runtime already owns
-  the physical odometry resource
-
-Treat mode initialization as one-shot for a robot-container lifetime. A second Auto initialization
-or a TeleOp/Auto cross-initialization should fail before it can overwrite the active ownership
-graph; construct a new robot container for another mode/runtime.
-
-For example, Phoenix's Pedro mode client constructs one `PedroPathingRuntime`, then calls
-`robot.initAuto(runtime.driveAdapter(), runtime.motionPredictor())`. `PhoenixRobot` learns neither
-Pedro route types nor follower configuration: it receives the two narrow backend-neutral seams it
-actually consumes. The explicit pair also prevents Auto initialization from silently creating a
-second Pinpoint owner. Once accepted, the robot advances the drive sink from its explicit Auto loop
-and includes its final stop in robot shutdown. The mode client may still pass that adapter to
-route/guidance Tasks for behavior commands, but it does not become a second lifecycle owner.
-
-Usually does **not** own:
-
-- the specific path library follower configuration for one auto
-- the actual autonomous routine selection
-- route/task composition for a specific strategy
-
-Those normally live in the Auto mode client or the Auto OpMode.
+TeleOp normally declares controls plus a drive source. Auto normally declares one fresh root Task
+and any route service. Both call the same mode-neutral capability methods and status snapshots. The
+specific follower configuration, route selection, and strategy remain in the Auto client, not in
+the shared capability family or generic framework.
 
 ### Auto-to-TeleOp state is a separate process boundary
 
@@ -313,51 +286,30 @@ hardware-accuracy check.
 
 See
 [`FTC Auto-to-TeleOp Handoff`](<../ftc-boundary/FTC Auto-to-TeleOp Handoff.md>)
-for the exact carrier contract and example.
+for the exact carrier contract and example. Its capture-before-cleanup callback remains a current
+production-Phoenix or advanced custom-host boundary until RUNTIME-02; RUNTIME-01 does not add a
+handoff hook to the ordinary managed-program grammar.
 
-### `startAny()`
+### Managed INIT, START, loop, and STOP
 
-Shared runtime reset such as clock reset.
+The final host owns these phases:
 
-### `startTeleOp()` / `startAuto()`
+```text
+INIT       reset clock -> configure/freeze -> presenters -> one telemetry commit
+INIT loop  clock -> presenters -> one telemetry commit
+START      reset clock -> service starts -> root Task start/first update -> outputs once
+loop       clock -> services -> bindings -> Tasks -> outputs/drive -> presenters -> one commit
+STOP       cancel Tasks -> clear bindings -> outputs in order -> services in reverse order
+```
 
-Only mode-specific arming/reset work that is not already shared.
+Capability methods only change robot intent or create fresh Tasks. Services own upstream updates;
+mechanisms/subsystems own final Plant realization as outputs. An Auto root is declared once with
+`program.rootTask(...)`, starts at the exact FTC boundary, and remains retained for cancellation and
+terminal status. The program's private runner is not another object in the normal robot graph.
 
-These can stay empty when no extra work is needed.
-
-When the composition root owns one installed autonomous root with a match-time budget, `startAuto()`
-should start that root immediately after the shared clock reset. Do not wait until the first later
-OpMode loop, because that silently shortens or shifts the budget. Phoenix exposes one INIT-only
-`installAutoRoutine(task)` path, keeps its `TaskRunner` private, rejects duplicate/late install or
-start, and retains the installed root for terminal telemetry. Its robot-owned pre-park Task may arm
-at START and defer physical child behavior until the first normal Auto task phase after current
-state producers and the external drive heartbeat.
-
-### `updateAny()`
-
-Shared timebase update and other truly common loop state.
-
-### `updateTeleOp()`
-
-Recommended shape:
-
-1. update shared state producers
-2. update controls
-3. update supervisors/services that consume those signals
-4. apply drive policy
-5. update subsystems
-6. emit telemetry/presentation
-
-### `updateAuto()`
-
-Recommended shape:
-
-1. update shared state producers
-2. update any retained external drive heartbeat that needs the current shared state
-3. update the auto task runner / routine
-4. update supervisors/services that consume those results
-5. update subsystems
-6. emit telemetry/presentation
+On configuration or runtime `RuntimeException`, the same terminal cleanup runs and preserves the
+original failure. An owner registered before a later configuration failure is still stopped, so
+construct and transfer each truthful service/output as soon as its constructor returns.
 
 If generic route or guidance Tasks also invoke the same stateful drive sink's update hook, that sink
 must make repeated calls in one `LoopClock.cycle()` idempotent. The composition root remains the
@@ -376,31 +328,18 @@ cancellation-like results. Direct cancellation cancels the active phase and must
 Any cleanup goes through the same robot capability family and clears only transient or held requests
 owned by the failed phase, leaving unrelated mechanism intent to its actual owner.
 
-### `stop()`
+### Current production Phoenix is the RUNTIME-02 exception
 
-When the robot composition root has the same lifetime as one FTC OpMode, prefer one public,
-idempotent owner-level stop operation. It should sequence all cleanup internally:
+Production `PhoenixRobot`, `PhoenixTeleOp`, and the Pedro Auto selector/base still use explicit
+`initAny`/mode-init, `startAny`/mode-start, `updateAny`/mode-update, installed-runner, and `stop`
+methods. That graph also owns selector retry, readiness, exact-start pose, route replacement,
+diagnostics, and Auto-to-TeleOp handoff policy. It is intentionally deferred to RUNTIME-02 so those
+policies are not silently changed.
 
-1. cancel mode-owned behavior such as bindings and task runners (`cancelAndClear()` is the runner's
-   total-abort operation)
-2. perform the final hardware-safe stop for physical sinks
-3. reset/release supporting services and resources
-
-Mode clients still stop resources they own separately. They must not separately stop a resource
-whose lifecycle they supplied to and transferred into the robot container. For example, Phoenix
-Pedro Auto passes its adapter and shared predictor to `initAuto(adapter, predictor)`, so
-`PhoenixRobot.stop()` cancels the task runner and then performs the adapter's final idempotent stop;
-the OpMode does not duplicate that sequence.
-
-This lifecycle ownership does not imply ownership of route strategy or every vendor subsystem. The
-Auto mode client still chooses routes and routines. Phoenix's project factory derives physical
-drivetrain/Pinpoint configuration from the selected profile, while the Pedro integration runtime
-owns the Follower graph and exposes one shared predictor. Pose-correction authority stays explicit
-without leaking Pedro types into the capability or robot-container API.
-
-Use separate public mode-specific stop phases only when those phases have independently useful
-lifetimes. Do not expose multiple methods merely to make every OpMode remember a required shutdown
-order.
+Treat those current method names as a description of production Phoenix, not a second ordinary
+recipe. New robot code uses `FtcRobotOpMode`/`RobotProgram`. A custom selector, calibration tool, or
+portable host may still own an explicit lifecycle when its policy materially differs, but it must
+retain the same one-clock, non-blocking, one-writer, one-commit, and fail-stop contracts.
 
 ---
 
@@ -431,13 +370,11 @@ A matching robot shape usually looks like this:
 ```text
 MyRobot
   ├─ framework lanes
-  ├─ subsystems
-  ├─ supervisors
-  ├─ services
-  ├─ presenter
+  ├─ subsystems declared as RobotProgram outputs
+  ├─ supervisors/services declared in the upstream service phase
+  ├─ additive presenters
   ├─ MyCapabilities
-  ├─ MyTeleOpControls
-  └─ TaskRunner autoRunner
+  └─ MyTeleOpControls (TeleOp only)
 ```
 
 And the mode clients look like this:

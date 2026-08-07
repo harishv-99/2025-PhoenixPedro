@@ -37,16 +37,20 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
  * <h2>Usage</h2>
  *
  * <pre>{@code
- * Bindings bindings = new Bindings();
- * TaskRunner runner = new TaskRunner();
- * TaskBindings tb = TaskBindings.of(bindings, runner);
+ * protected void configure(RobotProgram program) {
+ *     TaskBindings tasks = program.taskBindings();
  *
- * tb.onRise(gamepads.p2().y(), shooter::instantStartShooter);
- * tb.toggleOnRise(gamepads.p2().rightBumper(), shooter::instantStartShooter, shooter::instantStopShooter);
- * tb.mirrorOnChange(gamepads.p2().b(), high -> high
- *         ? shooter.instantStartTransfer(Shooter.TransferDirection.FORWARD)
- *         : shooter.instantStopTransfer());
+ *     tasks.onRise(gamepads.p2().y(), shooter::instantStartShooter);
+ *     tasks.toggleOnRise(
+ *             gamepads.p2().rightBumper(),
+ *             shooter::instantStartShooter,
+ *             shooter::instantStopShooter);
  * }</pre>
+ *
+ * <p>Ordinary FTC robot code gets this adapter from its framework-created
+ * {@link edu.ftcphoenix.fw.ftc.RobotProgram}; that program owns the shared binding and runner
+ * heartbeats. {@link #of(BindingRegistrar, TaskRunner)} remains the explicit construction seam for
+ * framework tools, calibration hosts, tests, and custom lifecycle integrations.</p>
  *
  * <p><b>Important:</b> Tasks are single-use. For that reason, this API takes {@link Supplier}
  * factories; each invocation must return a new Task instance for that signal event.</p>

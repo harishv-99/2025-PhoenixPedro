@@ -5,6 +5,7 @@ import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.hardware.Gamepad;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 
+import org.firstinspires.ftc.robotcore.external.Telemetry;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -14,11 +15,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import org.firstinspires.ftc.robotcore.external.Telemetry;
-
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
 import edu.ftcphoenix.fw.core.time.LoopTimestamp;
+import edu.ftcphoenix.fw.ftc.FtcRobotOpMode;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
+import edu.ftcphoenix.fw.task.TaskOutcome;
 import edu.ftcphoenix.robots.examples.pedro.BasicPedroAutoRobot;
 import edu.ftcphoenix.robots.examples.pedro.BasicPedroAutoRobotTest;
 import edu.ftcphoenix.robots.phoenix.PhoenixMatchHandoff;
@@ -31,7 +32,7 @@ import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
-/** Verifies that the disabled host forwards the complete FTC lifecycle to one example root. */
+/** Verifies that the disabled host declares the example through the managed FTC lifecycle. */
 public final class PhoenixBasicPedroAutoExampleTest {
 
     @Before
@@ -45,17 +46,23 @@ public final class PhoenixBasicPedroAutoExampleTest {
     }
 
     @Test
-    public void disabledOpModeForwardsInitStartLoopAndStop() {
+    public void disabledOpModeUsesManagedInitStartLoopAndStop() {
         List<String> events = new ArrayList<String>();
-        BasicPedroAutoRobot robot = BasicPedroAutoRobotTest.newRecordingRobot(events);
-        PhoenixBasicPedroAutoExample mode = new PhoenixBasicPedroAutoExample(() -> robot);
+        BasicPedroAutoRobot[] retainedRobot = new BasicPedroAutoRobot[1];
+        PhoenixBasicPedroAutoExample mode = new PhoenixBasicPedroAutoExample(program -> {
+            retainedRobot[0] = BasicPedroAutoRobotTest.newRecordingRobot(program, events);
+            return retainedRobot[0];
+        });
         AtomicInteger updateAttempts = new AtomicInteger();
-        mode.telemetry = recordingTelemetry(updateAttempts);
+        List<String> telemetryKeys = new ArrayList<String>();
+        mode.telemetry = recordingTelemetry(updateAttempts, telemetryKeys);
 
         mode.init();
         assertEquals(1, updateAttempts.get());
+        assertTrue(events.isEmpty());
         mode.init_loop();
         assertEquals(2, updateAttempts.get());
+        assertTrue(events.isEmpty());
         mode.start();
         assertEquals(2, updateAttempts.get());
         mode.loop();
@@ -64,24 +71,33 @@ public final class PhoenixBasicPedroAutoExampleTest {
         mode.stop();
 
         assertNotNull(PhoenixBasicPedroAutoExample.class.getAnnotation(Disabled.class));
+        assertTrue(FtcRobotOpMode.class.isAssignableFrom(PhoenixBasicPedroAutoExample.class));
         assertTrue(events.contains("startPose"));
         assertTrue(events.contains("task.cancel"));
         assertTrue(events.contains("plant.stop"));
         assertTrue(events.contains("drive.stop"));
-        assertTrue(robot.isStopped());
+        assertEquals(TaskOutcome.CANCELLED, retainedRobot[0].rootOutcome());
+        assertTrue(telemetryKeys.contains("example.expectedPhysicalStartPedro"));
+        assertTrue(telemetryKeys.contains("example.rootComplete"));
+        assertTrue(telemetryKeys.contains("example.rootOutcome"));
     }
 
     @Test
-    public void loopTelemetryFailureFailStopsTheOwnedRobot() {
+    public void activeTelemetryFailureFailStopsTheDeclaredProgram() {
         List<String> events = new ArrayList<String>();
-        BasicPedroAutoRobot robot = BasicPedroAutoRobotTest.newRecordingRobot(events);
-        PhoenixBasicPedroAutoExample mode = new PhoenixBasicPedroAutoExample(() -> robot);
+        PhoenixBasicPedroAutoExample mode = new PhoenixBasicPedroAutoExample(
+                program -> BasicPedroAutoRobotTest.newRecordingRobot(program, events)
+        );
         RuntimeException telemetryFailure = new RuntimeException("telemetry failed");
         AtomicInteger updateAttempts = new AtomicInteger();
+        mode.telemetry = throwingOnUpdateAttemptTelemetry(
+                telemetryFailure,
+                updateAttempts,
+                2
+        );
 
         mode.init();
         mode.start();
-        mode.telemetry = throwingOnUpdateTelemetry(telemetryFailure, updateAttempts);
 
         try {
             mode.loop();
@@ -90,15 +106,15 @@ public final class PhoenixBasicPedroAutoExampleTest {
             assertSame(telemetryFailure, failure);
         }
 
-        assertEquals(1, updateAttempts.get());
+        assertEquals(2, updateAttempts.get());
         assertTrue(events.contains("task.cancel"));
         assertTrue(events.contains("plant.stop"));
         assertTrue(events.contains("drive.stop"));
-        assertTrue(robot.isStopped());
+        mode.stop();
     }
 
     @Test
-    public void initInvalidatesPendingPhoenixMatchHandoff() {
+    public void configureInvalidatesPendingPhoenixMatchHandoff() {
         PhoenixMatchHandoff.publishFromAuto(
                 new EmptyOpMode(),
                 new PoseEstimate(
@@ -108,9 +124,13 @@ public final class PhoenixBasicPedroAutoExampleTest {
                         LoopTimestamp.unavailable()
                 )
         );
-        BasicPedroAutoRobot robot =
-                BasicPedroAutoRobotTest.newRecordingRobot(new ArrayList<String>());
-        PhoenixBasicPedroAutoExample mode = new PhoenixBasicPedroAutoExample(() -> robot);
+        PhoenixBasicPedroAutoExample mode = new PhoenixBasicPedroAutoExample(
+                program -> BasicPedroAutoRobotTest.newRecordingRobot(
+                        program,
+                        new ArrayList<String>()
+                )
+        );
+        mode.telemetry = inertTelemetry();
 
         mode.init();
 
@@ -134,16 +154,17 @@ public final class PhoenixBasicPedroAutoExampleTest {
         );
     }
 
-    private static Telemetry throwingOnUpdateTelemetry(
+    private static Telemetry throwingOnUpdateAttemptTelemetry(
             RuntimeException failure,
-            AtomicInteger updateAttempts
+            AtomicInteger updateAttempts,
+            int throwingAttempt
     ) {
         return (Telemetry) Proxy.newProxyInstance(
                 Telemetry.class.getClassLoader(),
                 new Class<?>[]{Telemetry.class},
                 (proxy, method, args) -> {
-                    if ("update".equals(method.getName())) {
-                        updateAttempts.incrementAndGet();
+                    if ("update".equals(method.getName())
+                            && updateAttempts.incrementAndGet() == throwingAttempt) {
                         throw failure;
                     }
                     return defaultValue(method.getReturnType());
@@ -151,13 +172,21 @@ public final class PhoenixBasicPedroAutoExampleTest {
         );
     }
 
-    private static Telemetry recordingTelemetry(AtomicInteger updateAttempts) {
+    private static Telemetry recordingTelemetry(
+            AtomicInteger updateAttempts,
+            List<String> telemetryKeys
+    ) {
         return (Telemetry) Proxy.newProxyInstance(
                 Telemetry.class.getClassLoader(),
                 new Class<?>[]{Telemetry.class},
                 (proxy, method, args) -> {
                     if ("update".equals(method.getName())) {
                         updateAttempts.incrementAndGet();
+                    } else if ("addData".equals(method.getName())
+                            && args != null
+                            && args.length > 0
+                            && args[0] instanceof String) {
+                        telemetryKeys.add((String) args[0]);
                     }
                     return defaultValue(method.getReturnType());
                 }

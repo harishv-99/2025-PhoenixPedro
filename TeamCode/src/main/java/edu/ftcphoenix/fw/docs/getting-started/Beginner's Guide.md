@@ -14,7 +14,8 @@ The goal is: **get a clean, non‑blocking TeleOp running quickly**.
 When you are ready to split that first loop into real robot-owned files, use the compiling
 [`Modern Starter Robot`](<../examples/Modern Starter Robot.md>). It is the smallest checked-in
 reference that gives TeleOp and Auto the same capability vocabulary without hiding lifecycle in a
-base class.
+robot-specific base class. Its FTC lifecycle host is the reusable framework boundary described
+below; its mechanisms and capability meanings remain ordinary robot code.
 
 ---
 
@@ -26,8 +27,10 @@ If you’re writing robot code, you’ll spend almost all your time in a small s
 * `edu.ftcphoenix.fw.core.source` — the small signal vocabulary shared by controls and mechanisms,
   especially the persistent `ScalarTarget` command.
 * `edu.ftcphoenix.fw.drive` — driving (`DriveSource`, `DriveSignal`, `MecanumDrivebase`).
-* `edu.ftcphoenix.fw.input` — gamepads/buttons + `Bindings`.
-* `edu.ftcphoenix.fw.task` — macros (`Task`, `TaskRunner`, `Tasks`).
+* `edu.ftcphoenix.fw.ftc` — `FtcRobotOpMode`, its framework-created `RobotProgram`, and FTC
+  hardware adapters.
+* `edu.ftcphoenix.fw.input` — gamepads/buttons plus the program's registration-only bindings.
+* `edu.ftcphoenix.fw.task` — macros (`Task`, `Tasks`, and `TaskBindings`).
 
 As you add sensors and pose estimation, you’ll also use:
 
@@ -50,7 +53,7 @@ If you’re curious *why* the packages are arranged this way, see [`Framework Ov
 
 Phoenix code is built around a few simple concepts:
 
-* **LoopClock** – keeps track of loop timing (`dtSec`) and a per-loop identity (`cycle`).
+* **RobotProgram** – owns one `LoopClock`, lifecycle, phase order, Task runner, and telemetry commit.
 * **Gamepads** – a consistent wrapper for FTC `gamepad1/gamepad2`.
 * **Buttons + Bindings** – edge detection and “do X when pressed / held” behavior.
 * **DriveSource → Drivebase** – turn inputs (or automation) into robot motion.
@@ -61,17 +64,18 @@ Everything is **non‑blocking**:
 
 * No `sleep(...)` in your loop.
 * No `while (!condition)` loops inside TeleOp.
-* You just update clocks, inputs, bindings, tasks, drive, and mechanisms once per loop.
+* You declare services, bindings, Tasks, drive, mechanisms, and presenters once; the program
+  updates them in one fixed order.
 
 ---
 
 ## 2. A minimal Phoenix TeleOp skeleton
 
-Here’s a simplified TeleOp that:
+Here’s a simplified ordinary TeleOp that:
 
 * Sets up mecanum drive.
-* Wires a shooter flywheel, transfer, and pusher as Plants.
-* Uses a `TaskRunner` for macros.
+* Constructs one Plant-owning shooter mechanism.
+* Declares button Task factories without constructing a runner.
 
 > Notes:
 >
@@ -80,126 +84,53 @@ Here’s a simplified TeleOp that:
 >   `frontLeftMotor`, `frontRightMotor`, `backLeftMotor`, `backRightMotor`.
 > * If your wiring or tuning differs, create `FtcDrives.MecanumConfig.defaults()`, change its
 >   `wiring`, `enableZeroPowerBrake`, or `drivebase` fields, and pass it to the same factory.
-> * This one-file layout is intentionally a first-loop teaching exception. In ordinary structured
->   robot code, the composition root calls `new Mechanism(hardwareMap, profile.mechanism)` and that
->   mechanism constructs, owns, updates, and stops its private Plants. Copy the loop ideas below,
->   then use the Modern Starter Robot for the production ownership boundary.
+> * `ShooterMechanism` below stands for a small robot-owned class. Its constructor receives
+>   `HardwareMap` plus data-only configuration, constructs and privately owns its Plants, and
+>   implements `RobotProgram.Output`. The checked-in starter shows the complete class.
 
 ```java
 import edu.ftcphoenix.fw.core.hal.Direction;
 
 @TeleOp(name = "PhoenixTeleOp", group = "Examples")
-public class PhoenixTeleOp extends OpMode {
-
-    // 1) Timekeeping
-    private final LoopClock clock = new LoopClock();
-
-    // 2) Inputs + bindings
-    private Gamepads gamepads;
-    private Bindings bindings;
-
-    // 3) Drive
-    private MecanumDrivebase drivebase;
-    private DriveSource driveSource;
-
-    // 4) Mechanisms (Plants)
-    private Plant shooter;
-    private Plant transfer;
-    private Plant pusher;
-
-    // 5) Macros
-    private final TaskRunner macroRunner = new TaskRunner();
-    private boolean stopped;
+public class PhoenixTeleOp extends FtcRobotOpMode {
 
     @Override
-    public void init() {
-        clock.reset(getRuntime());
+    protected void configure(RobotProgram program) {
+        GamepadDevice driver = new GamepadDevice(gamepad1);
+        ShooterMechanism shooter = program.output(
+                new ShooterMechanism(hardwareMap, ShooterConfig.current()));
 
-        // Gamepads + bindings
-        gamepads = Gamepads.create(gamepad1, gamepad2);
-        bindings = new Bindings();
-
-        // Drive
-        drivebase = FtcDrives.mecanum(hardwareMap);
-        driveSource = new GamepadDriveSource(
-                gamepads.p1().leftX(),
-                gamepads.p1().leftY(),
-                gamepads.p1().rightX(),
+        DriveSource driveSource = new GamepadDriveSource(
+                driver.leftX(),
+                driver.leftY(),
+                driver.rightX(),
                 GamepadDriveSource.Config.defaults()
-        ).scaledWhen(gamepads.p1().rightBumper(), 0.35, 0.20);
+        ).scaledWhen(driver.rightBumper(), 0.35, 0.20);
 
-        // Mechanism plants
-        initShooterPlants();
-
-        // Bind buttons to macros or modes
-        initBindings();
-    }
-
-    @Override
-    public void start() {
-        clock.reset(getRuntime());
-    }
-
-    @Override
-    public void loop() {
-        // 1) Clock
-        clock.update(getRuntime());
-
-        // 2) Inputs + bindings (edge detection lives here)
-        // Gamepad axes/buttons are Sources; they are sampled when you call get(...).
-        bindings.update(clock);
-
-        // 3) Macros (non-blocking tasks)
-        macroRunner.update(clock);
-
-        // 4) Drive (source shaping happens before the direct hardware write)
-        DriveSignal cmd = driveSource.get(clock).clamped();
-        drivebase.drive(cmd);
-
-        // 5) Mechanisms (Plants)
-        double dt = clock.dtSec();
-        shooter.update(clock);
-        transfer.update(clock);
-        pusher.update(clock);
-
-        // 6) Telemetry (optional)
-        telemetry.addData("dtSec", dt);
-        telemetry.update();
-    }
-
-    @Override
-    public void stop() {
-        if (stopped) {
-            return;
-        }
-        stopped = true;
-        CleanupActions.attemptAll(
-                macroRunner::cancelAndClear,
-                () -> { if (shooter != null) shooter.stop(); },
-                () -> { if (transfer != null) transfer.stop(); },
-                () -> { if (pusher != null) pusher.stop(); },
-                () -> { if (drivebase != null) drivebase.stop(); });
-    }
-
-    private void initShooterPlants() {
-        // ... see section 3
-    }
-
-    private void initBindings() {
-        // ... see section 6
+        program.drive(driveSource, FtcDrives.mecanum(hardwareMap));
+        program.taskBindings().onRise(driver.y(), shooter::createShootOneTask);
+        program.presenter((clock, telemetry) -> {
+            telemetry.addData("dtSec", clock.dtSec());
+            telemetry.addData("shooter.ready", shooter.status().ready());
+        });
     }
 }
 ```
 
-Keep this loop shape in mind:
+Keep this managed order in mind:
 
-> **Clock → Inputs → Bindings → Tasks → Drive → Plants → Telemetry**
+> **Clock → Services → Bindings → Tasks → Outputs/Drive → Presenters → one telemetry commit**
 
-This skeleton intentionally keeps every concern in one OpMode while introducing the framework.
-Do not grow it into a competition robot by continuing to add fields. The
-[`Modern Starter Robot`](<../examples/Modern Starter Robot.md>) shows the next step as seven small,
-compiling owners: profile, capability, mechanism realization, controls, composition root, TeleOp,
-and Auto.
+`FtcRobotOpMode` supplies final INIT/START/loop/STOP callbacks. INIT runs presenters only. START
+resets the clock, starts services, starts and first-updates the optional root Task, and realizes
+exact-start outputs once.
+STOP or a caught runtime failure cancels Tasks, clears bindings, stops outputs, and then stops
+services. Student code does not forward those calls.
+
+Do not grow this short OpMode by moving Plant graphs or game policy into it. The
+[`Modern Starter Robot`](<../examples/Modern Starter Robot.md>) shows the complete split into
+profile, capability, mechanism realization, controls, declaration-only composition, TeleOp, and
+Auto.
 
 In ordinary TeleOp, Tasks make decisions, update sources, or request Plant targets. The Drive phase
 then samples the one final composed `DriveSource` and writes the drivebase. Do not also use an
@@ -226,10 +157,9 @@ For the full philosophy, see [`Framework Lanes & Robot Controls`](<../design/Fra
 
 To control hardware in Phoenix, you wrap it as a **Plant**.
 
-The snippets in this section stay inside the one-file teaching skeleton above. When you split the
-robot into owners, put the same builder calls inside the mechanism constructor that receives
-`HardwareMap` and its data-only profile slice; do not move Plant construction into the composition
-root and pass the Plant back into the mechanism.
+The snippets in this section belong inside the `ShooterMechanism` constructor from the skeleton.
+That owner receives `HardwareMap` and its data-only profile slice; do not move Plant construction
+into the OpMode and pass the Plant back into the mechanism.
 
 The recommended way is to use the staged builder in
 `edu.ftcphoenix.fw.ftc.FtcActuators`:
@@ -690,8 +620,8 @@ Tasks report accidental reuse immediately instead of silently skipping part of a
 
 ## 6. Example: a simple shooter macro
 
-Assume you already created the simple command-backed Plants `shooter` and `transfer`, plus a
-`TaskRunner` named `macroRunner`.
+Assume `ShooterMechanism` already owns the simple command-backed Plants `shooter` and `transfer`.
+It exposes this fresh Task factory:
 
 ```java
 private Task buildShootOneDiscMacro() {
@@ -716,16 +646,16 @@ private Task buildShootOneDiscMacro() {
     return Tasks.sequence(spinUp, feedTransfer, holdBeforeSpinDown, spinDown);
 }
 
-private void initBindings() {
-    bindings.onRise(gamepads.p1().y(), () -> {
-        // Build a fresh task each time (tasks are single-use).
-        macroRunner.enqueue(buildShootOneDiscMacro());
-    });
-}
 ```
 
-Because you call `macroRunner.update(clock)` every loop, the macro runs over time
-without blocking TeleOp.
+The OpMode declares the button meaning without owning the runner:
+
+```java
+program.taskBindings().onRise(driver.y(), shooter::buildShootOneDiscMacro);
+```
+
+The factory is invoked on each accepted rise, so every run receives a fresh single-use Task. The
+program advances that Task after bindings and before the mechanism output in the same cycle.
 
 ---
 
@@ -775,9 +705,9 @@ public construction path merely to give the same composition a different class n
   one final `DriveSource` writer, and Pedro routes use route/guidance Tasks plus their independent
   composition-root heartbeat.
 
-* The **main loop shape** stays consistent:
+* The **managed program shape** stays consistent:
 
-  > Clock → Inputs → Bindings → Tasks → Drive → Plants → Telemetry
+  > Clock → Services → Bindings → Tasks → Outputs/Drive → Presenters → Telemetry commit
 
 Next steps:
 
@@ -788,4 +718,5 @@ Next steps:
 * Read [`Examples Progression & Layered Mechanisms`](<../examples/Examples Progression & Layered Mechanisms.md>) for the full examples roadmap, especially Examples 07-09, with Example 09 as the first explicit request/behavior/realization example.
 * Read [`Layered Shooter Example`](<../examples/Layered Shooter Example.md>) for the first explicit requests/behavior/realization mechanism walkthrough.
 * Read [`Shooter Case Study & Examples Walkthrough`](<../examples/Shooter Case Study & Examples Walkthrough.md>) for the shooter + vision case study.
-* Explore other examples (drive, tag aim, vision) — they all follow the same loop shape.
+* Explore the flat tool examples (drive, tag aim, vision) to see the advanced explicit phases; the
+  maintained robot examples use the managed program.

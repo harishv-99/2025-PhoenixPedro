@@ -35,7 +35,9 @@ import edu.ftcphoenix.fw.drive.route.RouteStatus;
  * interruption, replacement, failure, and unexplained terminal transitions. Raw Follower
  * lifecycle mutation is unsupported because it bypasses that retained status.</p>
  *
- * <p>Typical usage:</p>
+ * <p>The following snippet is the <strong>current production-Phoenix RUNTIME-02
+ * exception</strong>. Its {@code robot.initAuto(...)} and {@code robot.installAutoRoutine(...)}
+ * calls are not the ordinary managed-program grammar:</p>
  * <pre>{@code
  * PedroPathingRuntime runtime =
  *         Constants.createPhoenixAutoRuntime(hardwareMap, profile);
@@ -52,6 +54,10 @@ import edu.ftcphoenix.fw.drive.route.RouteStatus;
  * );
  * robot.installAutoRoutine(outbound);
  * }</pre>
+ * <p>Ordinary managed callers follow the checked-in {@code BasicPedroAutoRobot} pattern: a
+ * robot-owned service registers the recurring adapter heartbeat with
+ * {@code program.service(...)}, and the route-bearing routine is declared with
+ * {@code program.rootTask(...)}.</p>
  * <p>A multi-phase routine should retain that status-bearing Task and give it, plus its semantic
  * mechanism Tasks, to robot-owned policy. Generic sequences do not stop automatically after an
  * abnormal route result; the robot policy must gate later aiming, scoring, or other

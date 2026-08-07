@@ -1,6 +1,8 @@
 # Loop Structure
 
-Phoenix assumes that your OpMode loop is the “heartbeat” of the robot.
+Phoenix assumes that one OpMode loop is the “heartbeat” of the robot. In ordinary FTC robot code,
+`FtcRobotOpMode` and its framework-created `RobotProgram` own that heartbeat; robot code declares
+the owners that participate in it.
 
 This document explains:
 
@@ -24,9 +26,14 @@ This keeps behavior predictable and makes it much easier to reason about timing.
 
 ## 2. The recommended loop order
 
-Phoenix’s preferred ordering is:
+The ordinary managed ordering is:
 
-> **Clock → Sensors → Bindings → Tasks → Drive → Plants → Telemetry**
+> **Clock → Services → Bindings → Tasks → Outputs/Drive → Presenters → Telemetry commit**
+
+Services are upstream owners such as sensing, localization, and a required vendor heartbeat.
+Outputs are downstream realization owners such as Plant-backed mechanisms. The one optional
+source-driven drive joins output declaration order; declare it before mechanisms when that is the
+robot's intended realization order.
 
 ### 2.1 Why this order?
 
@@ -35,9 +42,10 @@ Phoenix’s preferred ordering is:
 * Many subsystems depend on `dtSec()` and `cycle()`.
 * Updating the clock once defines “this loop cycle” for every component.
 
-**Sensors before Bindings**
+**Services before Bindings**
 
-* If bindings depend on sensor signals (distance thresholds, vision targets, etc.), update those sensors first.
+* If bindings depend on sensor signals (distance thresholds, vision targets, etc.), update their
+  owning services first.
 * Gamepad axes/buttons are exposed as `ScalarSource`/`BooleanSource` and are sampled when you call
   `get(...)`.
 * Edge/toggle trackers (e.g., `risingEdge()`, `toggled()`) must be sampled each loop to avoid
@@ -48,22 +56,26 @@ Phoenix’s preferred ordering is:
 * Bindings typically enqueue tasks (macros).
 * If you enqueue in this cycle, you usually want the runner to see it immediately.
 
-**Tasks before Drive and Plants**
+**Tasks before outputs and drive**
 
 * Ordinary Tasks are the “decision layer”: they update behavior sources or request Plant targets.
   A position-calibration Task may also manage a temporary search lifecycle, but it never calls
   `plant.update(clock)`.
-* The Drive/Plants phases are the “actuation layer” that consumes those decisions.
+* The downstream Outputs/Drive phase is the “actuation layer” that consumes those decisions.
 * Each mechanism or subsystem remains the sole heartbeat owner for its private Plants, including
   while one of those Plants is in calibration-search mode.
-* In TeleOp, the Drive phase is the one final behavior-command writer. Tasks must not also write
-  imperatively to the same drive sink.
+* In TeleOp, the one `program.drive(...)` declaration is the final behavior-command writer at its
+  output-order position. Tasks must not also write imperatively to the same drive sink.
 
-**Drive before Plants**
+**Outputs and drive keep declaration order**
 
-* Drive is often the most time-sensitive and can benefit from being applied early.
-* Keeping one explicit drive phase makes the final `DriveSource` sample and hardware write easy to
-  find. Stateful source wrappers obtain timing from the shared clock when that graph is sampled.
+* Each output declaration identifies one final realization owner and one intentional place in the
+  downstream phase.
+* `program.drive(source, sink)` calls the sink heartbeat, samples the final source, rejects any
+  non-finite component, clamps finite components, and writes that command at its declaration
+  position.
+* A mechanism remains the sole updater of its private Plants; the program does not discover or
+  register raw Plants.
 
 **Telemetry last**
 
@@ -71,63 +83,59 @@ Phoenix’s preferred ordering is:
 
 ---
 
-## 3. A canonical loop template
+## 3. The canonical managed program
 
-Below is the active-cycle portion of a typical Phoenix loop. The compiling
-[`StarterTeleOp`](<../../../robots/examples/starter/StarterTeleOp.java>) and
-[`StarterRobot`](<../../../robots/examples/starter/StarterRobot.java>) show the structured host and
-composition-root form. For flat teaching OpModes, compare the complete
-[`TeleOp_03_ShooterMacro`](<../../tools/examples/TeleOp_03_ShooterMacro.java>) and the smaller
-drive-only [`TeleOp_01_MecanumBasic`](<../../tools/examples/TeleOp_01_MecanumBasic.java>).
+The compiling [`StarterTeleOp`](<../../../robots/examples/starter/StarterTeleOp.java>) shows the
+ordinary complete host. It overrides one configuration method, not five FTC lifecycle methods:
 
 ```java
-@Override
-public void start() {
-    clock.reset(getRuntime());
-}
+public final class MyTeleOp extends FtcRobotOpMode {
+    @Override
+    protected void configure(RobotProgram program) {
+        ShooterMechanism shooter = program.output(
+                new ShooterMechanism(hardwareMap, profile.shooter));
+        IntakeMechanism intake = program.output(
+                new IntakeMechanism(hardwareMap, profile.intake));
 
-@Override
-public void loop() {
-    // 1) Clock
-    clock.update(getRuntime());
+        MyControls controls = new MyControls(
+                program.bindings(), new GamepadDevice(gamepad1), shooter, intake);
+        program.drive(controls.driveSource(), FtcDrives.mecanum(hardwareMap, profile.drive));
 
-    // 2) Sensors (optional)
-    // scoringTarget.update(clock);
-
-    // 3) Bindings (may enqueue macros)
-    // Gamepad axes/buttons are Sources; they are sampled when you call get(...).
-    bindings.update(clock);
-
-    // 4) Tasks / macros
-    macroRunner.update(clock);
-
-    // 5) Drive
-    DriveSignal cmd = driveSource.get(clock).clamped();
-    drivebase.drive(cmd);      // applies motor power immediately
-
-    // 6) Plants (mechanisms)
-    double dtSec = clock.dtSec();
-    shooter.update(clock);
-    transfer.update(clock);
-    pusher.update(clock);
-
-    // 7) Telemetry
-    telemetry.addData("dtSec", dtSec);
-    telemetry.update();
+        program.presenter((clock, telemetry) -> {
+            telemetry.addData("dtSec", clock.dtSec());
+            telemetry.addData("shooter.ready", shooter.status().ready());
+        });
+    }
 }
 ```
 
-This excerpt intentionally omits construction and FTC STOP. In structured robot code, the thin
-OpMode calls its composition root's idempotent `stop()` once; that root cancels its runners and
-stops every mechanism, drive, haptic, vision, and vendor resource whose lifecycle it owns. In a
-flat teaching OpMode, the OpMode itself must cancel its active runner and stop every Plant, drive
-sink, and other resource it constructed. The linked compiling examples show both complete cleanup
-shapes; do not copy only the active-loop excerpt as a complete owner.
+The program owns one private `LoopClock`, `Bindings`, and `TaskRunner`. INIT advances only its clock
+and presenters; services, bindings, Tasks, drive, and outputs do not actuate. START resets the clock
+at the exact FTC boundary, starts services, starts and first-updates the optional root Task, then
+realizes outputs once.
+That exact-start realization keeps a positive-duration request observable even if the first active
+loop is delayed. Each active loop follows the fixed order above and commits telemetry exactly once.
+
+STOP and every caught lifecycle `RuntimeException` use one terminal cleanup order:
+
+```text
+cancel Tasks -> clear bindings -> stop outputs in declaration order -> stop services in reverse order
+```
+
+The first failure remains primary and later cleanup failures are suppressed. Repeated or reentrant
+STOP is inert. `Error` is not caught.
+
+The flat `TeleOp_01` through `TeleOp_09` files remain deliberately explicit teaching/tool hosts,
+and a custom selector or integration may need its own lifecycle. Such a host is the advanced
+exception: it must still own one clock, run the same semantic phase order, commit once, and perform
+complete fail-stop cleanup. Do not copy an active-loop excerpt without its construction and STOP
+ownership.
 
 That is the normal TeleOp ownership model: Tasks finish their decision/source/Plant-target work,
-then the one final Drive phase samples the composed `DriveSource` and writes the sink, and each
-mechanism performs the sole downstream update of its private Plants. A calibration-search Task can
-stage or release temporary search mode during the Task phase; it does not add another Plant update.
+then the downstream Outputs/Drive phase visits declarations in order. The one drive declaration
+samples the composed `DriveSource` and writes its sink, while each mechanism performs the sole
+update of its private Plants. A calibration-search Task can stage or release temporary search mode
+during the Task phase; it does not add another Plant update.
 
 For a simple open-loop Auto routine or drive tester with no competing final writer,
 `DriveTasks.driveExclusivelyForSeconds(...)` can own the sink for an interval. It calls the sink's
@@ -148,9 +156,11 @@ the robot intentionally repeats one reminder while a condition stays true, make 
 visible with a dedicated `Cooldown` for that event rather than calling `pulse(...)`
 unconditionally every loop.
 
-During OpMode cleanup, the owner that constructed each haptic sink calls `stop()`. A composition
-root may retain and stop the sink directly, or it may invoke cleanup on a robot-owned feedback
-owner that privately retains the sink; either way, the complete robot root owns reaching that
+In a managed program, register one robot-owned feedback owner as an output. It privately retains
+the haptic sinks, exposes semantic pulse methods to controls, has an intentionally no-op
+`update(clock)` because the sinks are command-only, and stops every sink from its `stop()` method.
+That is a truthful lifecycle/output role, not a fake heartbeat. A deliberate custom host may retain
+and stop its sinks directly; ordinary code relies on the program to reach the registered owner's
 cleanup path.
 For the `FtcHaptics` adapter, both pulse and stop are queued, best-effort SDK commands. The queue
 retains only the latest undelivered request, and a delivered request displaces the current effect;
@@ -225,14 +235,17 @@ earlier child resets observable, but generic source code does not claim rollback
 estimators, and selection policies supplied through its reusable spec remain owned by their
 composition roots.
 
-For buttons, the most common way to ensure sampling is to register a binding and call `Bindings.update(clock)` every loop.
+For buttons, ordinary robot code registers through `program.bindings()` and `RobotProgram` performs
+the one sample/update each active loop. Only an explicit custom binding owner calls
+`Bindings.update(clock)` directly.
 
 ### 4.2 Localization publishes one snapshot per cycle
 
-Call the robot's localization lane once in the Sensors phase. Phoenix localization predictors,
-absolute estimators, corrected estimators, and the owning FTC lane claim their first update attempt
-for that `clock.cycle()`. A successful repeat leaves the exact snapshot unchanged and does not poll
-hardware, solve tags, write Limelight orientation, advance a filter, or traverse the lane again.
+Call the robot's localization lane once from its robot-owned service in the Services phase. Phoenix
+localization predictors, absolute estimators, corrected estimators, and the owning FTC lane claim
+their first update attempt for that `clock.cycle()`. A successful repeat leaves the exact snapshot
+unchanged and does not poll hardware, solve tags, write Limelight orientation, advance a filter, or
+traverse the lane again.
 Reentrant update is a lifecycle error. If an attempt throws, a same-cycle repeat rethrows that
 failure rather than retrying effects that may already have happened.
 
@@ -285,7 +298,8 @@ Give such an adapter one stable composition-root heartbeat every Auto loop. If `
 `clock.cycle()` so the root and Task calls still produce exactly one vendor update. Vendor methods
 that secretly perform an update during a mode transition must count as that cycle's heartbeat.
 
-Phoenix Pedro Auto uses this explicit order:
+Current production Phoenix uses the following explicit order. It is the deferred RUNTIME-02
+exception, not the ordinary managed-program grammar:
 
 ```text
 Clock → Localization → Targeting → Pedro heartbeat → Auto Tasks → Scoring Plants → Telemetry
@@ -295,6 +309,10 @@ The production Pedro runtime shares the localization phase's one Pinpoint predic
 `Localizer` is passive: the downstream heartbeat verifies and consumes that current-cycle snapshot
 instead of polling odometry again. Accepted corrections pushed into the predictor are therefore
 visible to path control in the same heartbeat.
+
+The managed basic Pedro reference expresses the same dependency by declaring one service that owns
+localization before the recurring Pedro heartbeat; the program then runs that service before its
+root Task and downstream mechanism output.
 
 The heartbeat precedes the Task runner so the adapter can classify and retain route completion,
 timeout/stall, interruption, replacement, or an unknown terminal transition before the Task reads
@@ -361,6 +379,12 @@ Keep the normal loop order visible and mark only stable, high-level boundaries. 
 names the interval that just completed, starting at `startCycle(clock)` or the preceding
 `finishPhase(...)`. The profiler deliberately has no nested-span, callback, scheduler, sleep, or
 loop-rate API.
+
+The callback-shaped example below is an **advanced custom-host diagnostic**, not a second ordinary
+robot lifecycle grammar. `FtcRobotOpMode` keeps FTC callbacks final; normal robot code declares its
+services, bindings, Tasks, outputs, drive, and presenters through `configure(RobotProgram)`. Use a
+manual host like this only when a specialized tool or diagnostic must own phase instrumentation
+that the managed host does not expose.
 
 ```java
 private static final boolean DEBUG_LOOP_PHASES = false;
@@ -494,11 +518,10 @@ Treat one Driver Station update as a composed frame:
 
 Additive presenters and renderers do not call `clear()`, `clearAll()`, or `update()`. This lets an
 Auto host, route adapter, robot presenter, and diagnostic contributor share one frame without their
-call order accidentally hiding or prematurely committing another contributor's rows. During the
-active robot loop, the composition root normally owns that final commit. An outer OpMode still owns
-and commits frames that do not enter the active loop, such as INIT selection, construction failure,
-or start-error pages. A dedicated tester may likewise commit its exclusive screen when it is the
-complete-frame owner.
+call order accidentally hiding or prematurely committing another contributor's rows. An ordinary
+`RobotProgram` owns the final INIT and active commits. A custom selector/host still owns frames that
+do not enter such a program, such as selection, construction-failure, or retry pages. A dedicated
+tester may likewise commit its exclusive screen when it is the complete-frame owner.
 
 If you need structured optional debug output, prefer debug sinks:
 
@@ -543,7 +566,9 @@ while (!shooter.atTarget()) { }
 Good:
 
 * use `ScalarTasks.set(target, value).untilReachedBy(plant).cancelTo(...).build()` (or deliberately
-  choose `.leaveTargetOnCancel()`) or use `Tasks.waitUntil(...)`, then run it in a `TaskRunner`.
+  choose `.leaveTargetOnCancel()`) or use `Tasks.waitUntil(...)`, then declare it through
+  `program.rootTask(...)` or `program.taskBindings()`. An explicitly owned custom/private runner is
+  the advanced alternative.
 
 ### Mistake: missing edges by not sampling
 
@@ -555,7 +580,9 @@ Fix: make sure edge/toggle sources are sampled once per loop (e.g., by wiring th
 
 ### Mistake: double-running task updates
 
-If two helpers both call `macroRunner.update(clock)`, Phoenix prevents double-advancement in the same cycle — but the better design is still: update it exactly once, in your main loop.
+Ordinary robot code never advances the program's private runner. In a deliberate custom host, if two
+helpers both call `macroRunner.update(clock)`, Phoenix prevents double-advancement in the same cycle,
+but the custom host should still make exactly one update call in its explicit Task phase.
 
 ### Mistake: making a route Task the only follower heartbeat
 
@@ -574,8 +601,11 @@ Phoenix’s loop structure is intentionally boring:
 * one update order
 * no hidden time steps
 
-Stick to:
+For ordinary robot code, declare roles once and let `RobotProgram` keep:
 
-> Clock → Sensors → Bindings → Tasks → Drive → Plants → Telemetry
+> Clock → Services → Bindings → Tasks → Outputs/Drive → Presenters → Telemetry commit
 
-and the rest of the framework will behave predictably.
+For a deliberate custom host, spell out the equivalent sensor/service, Task, final-drive,
+mechanism, and frame phases explicitly.
+
+That keeps the rest of the framework predictable.

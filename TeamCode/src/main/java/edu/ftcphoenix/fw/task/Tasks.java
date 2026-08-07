@@ -18,7 +18,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * <p>Each returned Task is single-use. Call these helpers again, or retain a task-producing
  * supplier or factory, when behavior must repeat.</p>
  *
- * <p>Typical usage:</p>
+ * <p>Ordinary managed Auto usage:</p>
  *
  * <pre>{@code
  * Task auto = Tasks.sequence(
@@ -32,9 +32,12 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *     Tasks.waitForSeconds(0.5)
  * );
  *
- * TaskRunner runner = new TaskRunner();
- * runner.enqueue(auto);
+ * program.rootTask(auto);
  * }</pre>
+ *
+ * <p>For TeleOp events, register a fresh Task factory through
+ * {@code program.taskBindings()}. Only an explicitly custom or private host, framework tool, or
+ * test should construct and drive its own {@link TaskRunner}.</p>
  */
 public final class Tasks {
 

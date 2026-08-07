@@ -14,6 +14,7 @@ import edu.ftcphoenix.fw.actuation.Plants;
 import edu.ftcphoenix.fw.core.hal.PowerOutput;
 import edu.ftcphoenix.fw.core.source.ScalarTarget;
 import edu.ftcphoenix.fw.input.GamepadDevice;
+import edu.ftcphoenix.fw.input.binding.Bindings;
 import edu.ftcphoenix.fw.task.Task;
 import edu.ftcphoenix.fw.task.TaskOutcome;
 import edu.ftcphoenix.fw.task.Tasks;
@@ -32,15 +33,17 @@ public final class StarterIntakeAndControlsTest {
     public void controlsMapOnlyA_B_XToSemanticIntakeModes() {
         Gamepad driver = new Gamepad();
         RecordingIntake intake = new RecordingIntake();
+        Bindings bindings = new Bindings();
         StarterTeleOpControls controls = new StarterTeleOpControls(
+                bindings,
                 new GamepadDevice(driver),
                 intake);
         ManualLoopClock time = new ManualLoopClock();
 
-        controls.update(time.clock());
-        pulse(driver, controls, time, 'a');
-        pulse(driver, controls, time, 'b');
-        pulse(driver, controls, time, 'x');
+        bindings.update(time.clock());
+        pulse(driver, bindings, time, 'a');
+        pulse(driver, bindings, time, 'b');
+        pulse(driver, bindings, time, 'x');
 
         assertEquals(
                 Arrays.asList(
@@ -203,13 +206,13 @@ public final class StarterIntakeAndControlsTest {
     }
 
     private static void pulse(Gamepad driver,
-                              StarterTeleOpControls controls,
+                              Bindings bindings,
                               ManualLoopClock time,
                               char button) {
         setButton(driver, button, true);
-        controls.update(time.nextCycle(0.02));
+        bindings.update(time.nextCycle(0.02));
         setButton(driver, button, false);
-        controls.update(time.nextCycle(0.02));
+        bindings.update(time.nextCycle(0.02));
     }
 
     private static void setButton(Gamepad driver, char button, boolean value) {

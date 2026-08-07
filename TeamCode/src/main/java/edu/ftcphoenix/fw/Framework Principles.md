@@ -49,6 +49,8 @@ Phoenix is designed around a few core goals:
 
    Students primarily use:
 
+    * `FtcRobotOpMode` + its framework-created `RobotProgram` (to declare one ordinary FTC robot
+      program without forwarding lifecycle callbacks or manually advancing framework phases)
     * `FtcDrives.mecanum(hardwareMap)` (to create the direct FTC mecanum owner)
     * `FtcActuators.plant(hardwareMap) ... build()` (to create Plants)
     * `ScalarTasks` and `Tasks` (to create ordinary Tasks)
@@ -138,6 +140,20 @@ Phoenix is designed around a few core goals:
    Tasks may select behavior but must not become its only lifecycle owner. If both layers can reach
    the same update hook, the adapter must deduplicate by `clock.cycle()` and count any vendor-hidden
    update as that cycle's one heartbeat.
+
+   In ordinary FTC robot code, `FtcRobotOpMode` owns that heartbeat through one framework-created
+   `RobotProgram`. Robot code declares upstream services, bindings, an optional root Task,
+   downstream outputs, one optional source-driven drive, and additive presenters during
+   `configure(program)`; it does not call their lifecycle methods from FTC callbacks. The managed
+   active order is `Clock -> Services -> Bindings -> Tasks -> Outputs/Drive -> Presenters -> one
+   telemetry commit`. INIT advances only the clock and presenters, so configuration cannot
+   accidentally actuate hardware. START resets the same clock at the exact boundary, starts
+   services, starts and first-updates the optional root Task, and realizes outputs once so a
+   positive-duration request is observable before it can expire. The host fail-stops the complete
+   registered graph after a
+   `RuntimeException`. A custom selector, tester, portable host, or integration with materially
+   different lifecycle policy may own these phases explicitly, but that is the advanced exception,
+   not a second ordinary robot recipe.
 
    A route start also owns one execution identity. Its status and cancellation stay attached to
    that exact start even if a newer route replaces it. A vendor's idle or not-busy flag is not proof
@@ -1292,27 +1308,38 @@ Convert “driver intuition” at the boundaries (for example, in `GamepadDriveS
 
 ## 8. Recommended usage pattern
 
-A typical OpMode loop follows this shape:
-
-> Clock → Sensors → Bindings → Tasks → Drive → Plants → Telemetry
-
-In code (conceptually):
+An ordinary FTC OpMode declares roles once and lets the managed program apply the standard order:
 
 ```java
-clock.update(getRuntime());
+public final class MyTeleOp extends FtcRobotOpMode {
+    @Override
+    protected void configure(RobotProgram program) {
+        ScoringMechanism scoring = program.output(
+                new ScoringMechanism(hardwareMap, profile.scoring));
+        IntakeMechanism intake = program.output(
+                new IntakeMechanism(hardwareMap, profile.intake));
 
-// Gamepad axes/buttons are Sources; they are sampled when you call get(...).
-bindings.update(clock);
+        MyControls controls = new MyControls(
+                program.bindings(), new GamepadDevice(gamepad1), scoring, intake);
+        program.drive(controls.driveSource(), FtcDrives.mecanum(hardwareMap, profile.drive));
 
-macroRunner.update(clock); // may change requests/search state; never updates Plants
-
-drivebase.drive(driveSource.get(clock).clamped());
-
-scoringMechanism.update(clock); // sole update of its private Plants in owned order
-intakeMechanism.update(clock);
+        program.presenter((clock, telemetry) ->
+                telemetry.addData("scoring.ready", scoring.status().ready()));
+    }
+}
 ```
 
-The [`Loop Structure`](<docs/core-concepts/Loop Structure.md>) guide dives deeper into why this order matters.
+The framework owns:
+
+> Clock → Services → Bindings → Tasks → Outputs/Drive → Presenters → one telemetry commit
+
+Each mechanism remains the sole update/stop owner for its private Plants. A Task changes requests;
+it never adds another Plant heartbeat. A custom/manual host may spell out the same phases when it
+has a materially different lifecycle, but it must preserve the same one-clock, Task-before-output,
+one-writer, one-commit, and fail-stop contracts.
+
+The [`Loop Structure`](<docs/core-concepts/Loop Structure.md>) guide explains both the managed
+ordinary path and the advanced explicit-loop exception.
 
 ---
 

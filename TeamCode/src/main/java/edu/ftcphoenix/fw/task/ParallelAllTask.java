@@ -24,8 +24,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *
  * <p>Robot code constructs this composition through {@link Tasks}:</p>
  * <pre>{@code
- * TaskRunner runner = new TaskRunner();
- * runner.enqueue(Tasks.parallelAll(
+ * program.rootTask(Tasks.parallelAll(
  *     Tasks.waitUntil(sensorReady, 1.5),
  *     Tasks.outputForSeconds("intakePulse", 1.0, 0.20)
  * ));

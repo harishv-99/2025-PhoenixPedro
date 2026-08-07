@@ -1,171 +1,200 @@
 package edu.ftcphoenix.robots.examples.pedro;
 
+import com.pedropathing.geometry.Pose;
+
 import java.util.Objects;
+import java.util.function.Supplier;
 
 import edu.ftcphoenix.fw.core.lifecycle.CleanupActions;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.drive.DriveCommandSink;
+import edu.ftcphoenix.fw.ftc.RobotProgram;
 import edu.ftcphoenix.fw.integrations.pedro.PedroPathingRuntime;
 import edu.ftcphoenix.fw.localization.AbsolutePoseEstimator;
 import edu.ftcphoenix.fw.task.Task;
-import edu.ftcphoenix.fw.task.TaskRunner;
+import edu.ftcphoenix.fw.task.TaskOutcome;
 
 /**
- * Composition root for the basic Pedro Auto reference.
+ * Declares the complete basic Pedro Auto reference in one managed {@link RobotProgram}.
  *
- * <p>It owns one clock, one localization update, one recurring drive heartbeat, one root Task,
- * one mechanism realization, and their complete shutdown order.</p>
+ * <p>This object retains only read-only status used by presenters. The framework-owned program
+ * owns the LoopClock, TaskRunner, START/update state, fixed phase order, and terminal cleanup.</p>
  */
 public final class BasicPedroAutoRobot {
 
-    private final LoopClock clock = new LoopClock();
-    private final AbsolutePoseEstimator localization;
-    private final DriveCommandSink autoDrive;
-    private final Runnable applyStartingPose;
-    private final BasicPedroAutoMechanism mechanism;
+    private final Pose pedroStartPose;
     private final Task rootTask;
-    private final TaskRunner autoRunner = new TaskRunner();
-
-    private boolean startAttempted;
-    private boolean started;
-    private boolean stopped;
 
     /**
-     * Wires the validated Pedro runtime, fixed paths, mechanism, and matching routine together.
+     * Declare the validated Pedro service, mechanism output, and one fresh routine root.
+     *
+     * <p>The service is registered before paths or mechanism construction so a later failure is
+     * cleanup-covered by the already-retained program. The mechanism factory is invoked exactly
+     * once only after that ownership transfer; it must construct an ordinary mechanism that cleans
+     * any internally created Plant if its own constructor fails.</p>
+     *
+     * @param program framework-created declaration surface received by the OpMode
+     * @param runtime validated Pedro runtime
+     * @param mechanismFactory one-shot factory for the privately Plant-owning mechanism
      */
-    public BasicPedroAutoRobot(PedroPathingRuntime runtime,
-                               BasicPedroAutoPaths paths,
-                               BasicPedroAutoMechanism mechanism) {
+    public BasicPedroAutoRobot(RobotProgram program,
+                               PedroPathingRuntime runtime,
+                               Supplier<BasicPedroAutoMechanism> mechanismFactory) {
+        RobotProgram requiredProgram = Objects.requireNonNull(program, "program");
         PedroPathingRuntime requiredRuntime = Objects.requireNonNull(runtime, "runtime");
-        BasicPedroAutoPaths requiredPaths = Objects.requireNonNull(paths, "paths");
-        this.mechanism = Objects.requireNonNull(mechanism, "mechanism");
-        localization = Objects.requireNonNull(
+
+        AbsolutePoseEstimator localization = Objects.requireNonNull(
                 requiredRuntime.motionPredictor(),
                 "runtime.motionPredictor()"
         );
-        autoDrive = Objects.requireNonNull(
+        DriveCommandSink autoDrive = Objects.requireNonNull(
                 requiredRuntime.driveAdapter(),
                 "runtime.driveAdapter()"
         );
-        applyStartingPose = new Runnable() {
-            @Override
-            public void run() {
-                requiredRuntime.setStartingPose(requiredPaths.pedroStartPose());
-            }
-        };
-        rootTask = BasicPedroAutoRoutine.build(
-                requiredRuntime.driveAdapter(),
-                requiredPaths.practiceRoute(),
-                this.mechanism
+        PedroAutoService service = registerServiceOrStop(
+                requiredProgram,
+                new PedroAutoService(localization, autoDrive)
         );
+
+        BasicPedroAutoPaths paths = new BasicPedroAutoPaths(requiredRuntime);
+        Pose declaredStartPose = paths.pedroStartPose();
+        service.applyStartingPoseWith(() ->
+                requiredRuntime.setStartingPose(copyPose(declaredStartPose)));
+
+        Supplier<BasicPedroAutoMechanism> requiredMechanismFactory =
+                Objects.requireNonNull(mechanismFactory, "mechanismFactory");
+        BasicPedroAutoMechanism mechanism = Objects.requireNonNull(
+                requiredMechanismFactory.get(),
+                "mechanismFactory.get()"
+        );
+        registerOutputOrStop(requiredProgram, mechanism);
+
+        Task declaredRoot = BasicPedroAutoRoutine.build(
+                requiredRuntime.driveAdapter(),
+                paths.practiceRoute(),
+                mechanism
+        );
+        requiredProgram.rootTask(declaredRoot);
+
+        pedroStartPose = copyPose(declaredStartPose);
+        rootTask = declaredRoot;
     }
 
-    /** Narrow component constructor retained package-private for deterministic fake tests. */
-    BasicPedroAutoRobot(AbsolutePoseEstimator localization,
+    /** Narrow component declaration seam retained package-private for deterministic fake tests. */
+    BasicPedroAutoRobot(RobotProgram program,
+                        AbsolutePoseEstimator localization,
                         DriveCommandSink autoDrive,
                         Runnable applyStartingPose,
                         BasicPedroAutoMechanism mechanism,
                         Task rootTask) {
-        this.localization = Objects.requireNonNull(localization, "localization");
-        this.autoDrive = Objects.requireNonNull(autoDrive, "autoDrive");
-        this.applyStartingPose = Objects.requireNonNull(
-                applyStartingPose,
-                "applyStartingPose"
+        RobotProgram requiredProgram = Objects.requireNonNull(program, "program");
+        PedroAutoService service = new PedroAutoService(
+                Objects.requireNonNull(localization, "localization"),
+                Objects.requireNonNull(autoDrive, "autoDrive")
         );
-        this.mechanism = Objects.requireNonNull(mechanism, "mechanism");
-        this.rootTask = Objects.requireNonNull(rootTask, "rootTask");
+        service.applyStartingPoseWith(
+                Objects.requireNonNull(applyStartingPose, "applyStartingPose")
+        );
+        registerServiceOrStop(requiredProgram, service);
+
+        BasicPedroAutoMechanism requiredMechanism = Objects.requireNonNull(
+                mechanism,
+                "mechanism"
+        );
+        registerOutputOrStop(requiredProgram, requiredMechanism);
+
+        Task requiredRootTask = Objects.requireNonNull(rootTask, "rootTask");
+        requiredProgram.rootTask(requiredRootTask);
+        pedroStartPose = new Pose(0.0, 0.0, 0.0);
+        this.rootTask = requiredRootTask;
     }
 
-    /**
-     * Applies the declared start pose, resets the shared clock, and queues the root routine.
-     *
-     * <p>The Task is intentionally not advanced here. The first regular loop refreshes
-     * localization and the Pedro heartbeat before the runner starts the route.</p>
-     */
-    public void start(double runtimeSec) {
-        requireFinite(runtimeSec, "runtimeSec");
-        if (startAttempted) {
-            throw new IllegalStateException(
-                    "BasicPedroAutoRobot start() may be called only once per OpMode"
+    /** Return a defensive copy of the declared Pedro-coordinate physical starting pose. */
+    public Pose pedroStartPose() {
+        return copyPose(pedroStartPose);
+    }
+
+    /** Return whether the declared root routine is terminal. */
+    public boolean isRootComplete() {
+        return rootTask.isComplete();
+    }
+
+    /** Return the root routine's current retained outcome without advancing it. */
+    public TaskOutcome rootOutcome() {
+        return Objects.requireNonNull(
+                rootTask.getOutcome(),
+                "basic Pedro root Task returned null outcome"
+        );
+    }
+
+    private static PedroAutoService registerServiceOrStop(RobotProgram program,
+                                                           PedroAutoService service) {
+        try {
+            return program.service(service);
+        } catch (RuntimeException registrationFailure) {
+            throw CleanupActions.attemptAllAfterFailure(
+                    registrationFailure,
+                    service::stop
             );
         }
-        if (stopped) {
-            throw new IllegalStateException("BasicPedroAutoRobot cannot start after stop()");
-        }
-        startAttempted = true;
+    }
 
+    private static void registerOutputOrStop(RobotProgram program,
+                                             BasicPedroAutoMechanism mechanism) {
         try {
-            applyStartingPose.run();
-            if (stopped) {
-                throw new IllegalStateException(
-                        "BasicPedroAutoRobot was stopped while applying its starting pose"
-                );
+            program.output(mechanism);
+        } catch (RuntimeException registrationFailure) {
+            throw CleanupActions.attemptAllAfterFailure(
+                    registrationFailure,
+                    mechanism::stop
+            );
+        }
+    }
+
+    private static Pose copyPose(Pose source) {
+        Pose required = Objects.requireNonNull(source, "pedroStartPose");
+        return new Pose(required.getX(), required.getY(), required.getHeading());
+    }
+
+    /** Owns exact-start pose application, localization, Pedro heartbeat, and drive cleanup. */
+    private static final class PedroAutoService implements RobotProgram.Service {
+        private final AbsolutePoseEstimator localization;
+        private final DriveCommandSink autoDrive;
+        private Runnable applyStartingPose;
+
+        private PedroAutoService(AbsolutePoseEstimator localization,
+                                 DriveCommandSink autoDrive) {
+            this.localization = localization;
+            this.autoDrive = autoDrive;
+        }
+
+        private void applyStartingPoseWith(Runnable action) {
+            if (applyStartingPose != null) {
+                throw new IllegalStateException("Pedro starting pose action is already declared");
             }
-            clock.reset(runtimeSec);
-            autoRunner.enqueue(rootTask);
-            started = true;
-        } catch (RuntimeException startFailure) {
-            throw failStop(startFailure);
+            applyStartingPose = Objects.requireNonNull(action, "applyStartingPose");
         }
-    }
 
-    /** Advances the complete Auto graph once in its documented ownership order. */
-    public void update(double runtimeSec) {
-        if (stopped) {
-            return;
-        }
-        if (!started) {
-            throw new IllegalStateException(
-                    "BasicPedroAutoRobot update() requires start(runtimeSec) first"
+        @Override
+        public void start(LoopClock clock) {
+            Runnable startAction = Objects.requireNonNull(
+                    applyStartingPose,
+                    "Pedro starting pose action was not declared"
             );
-        }
-
-        try {
-            requireFinite(runtimeSec, "runtimeSec");
-            clock.update(runtimeSec);
+            startAction.run();
             localization.update(clock);
             autoDrive.update(clock);
-            autoRunner.update(clock);
-            mechanism.update(clock);
-        } catch (RuntimeException updateFailure) {
-            throw failStop(updateFailure);
         }
-    }
 
-    /** Returns whether no root work is queued or active. */
-    public boolean isAutoIdle() {
-        return autoRunner.isIdle();
-    }
-
-    /** Returns whether this composition root has completed its one-shot shutdown. */
-    public boolean isStopped() {
-        return stopped;
-    }
-
-    /**
-     * Cancels behavior, stops the mechanism, and immediately stops drive, attempting every owner.
-     */
-    public void stop() {
-        if (stopped) {
-            return;
+        @Override
+        public void update(LoopClock clock) {
+            localization.update(clock);
+            autoDrive.update(clock);
         }
-        stopped = true;
-        started = false;
 
-        CleanupActions.attemptAll(
-                autoRunner::cancelAndClear,
-                mechanism::stop,
-                autoDrive::stop
-        );
-    }
-
-    private RuntimeException failStop(RuntimeException primaryFailure) {
-        return CleanupActions.attemptAllAfterFailure(primaryFailure, this::stop);
-    }
-
-    private static void requireFinite(double value, String name) {
-        if (!Double.isFinite(value)) {
-            throw new IllegalArgumentException(name + " must be finite, got " + value);
+        @Override
+        public void stop() {
+            autoDrive.stop();
         }
     }
 }

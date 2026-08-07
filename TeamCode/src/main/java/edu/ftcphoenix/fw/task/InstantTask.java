@@ -8,10 +8,9 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * A {@link Task} that runs a single action once, immediately on {@link #start(LoopClock)}, and
  * then completes.
  *
- * <p>Typical usage:</p>
+ * <p>Ordinary managed Auto usage:</p>
  * <pre>{@code
- * TaskRunner runner = new TaskRunner();
- * runner.enqueue(Tasks.runOnce(() -> telemetry.addLine("Auto start")));
+ * program.rootTask(Tasks.runOnce(intake::start));
  * }</pre>
  *
  * <p>Semantics:</p>

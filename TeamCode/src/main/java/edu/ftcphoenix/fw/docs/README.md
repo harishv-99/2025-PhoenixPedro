@@ -11,7 +11,8 @@ If you are new to Phoenix, read in this order:
 1. [`getting-started/README.md`](<getting-started/README.md>)
 2. [`getting-started/Framework Overview.md`](<getting-started/Framework Overview.md>)
 3. [`getting-started/Beginner's Guide.md`](<getting-started/Beginner's Guide.md>)
-4. [`examples/Modern Starter Robot.md`](<examples/Modern Starter Robot.md>)
+4. [`examples/Modern Starter Robot.md`](<examples/Modern Starter Robot.md>) — the ordinary managed
+   FTC lifecycle and declaration grammar
 5. [`design/Framework Lanes & Robot Controls.md`](<design/Framework Lanes & Robot Controls.md>)
 6. [`core-concepts/Loop Structure.md`](<core-concepts/Loop Structure.md>)
 7. [`design/Tasks & Macros Quickstart.md`](<design/Tasks & Macros Quickstart.md>)

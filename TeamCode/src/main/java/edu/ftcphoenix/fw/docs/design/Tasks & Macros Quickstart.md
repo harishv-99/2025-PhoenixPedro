@@ -10,9 +10,9 @@ This guide explains how to use **Tasks** in the Phoenix framework to build non�
 We assume you already have an ordinary robot owner wired like the
 [`Modern Starter Robot`](<../examples/Modern Starter Robot.md>):
 
-* A `LoopClock` for timing.
-* `Gamepads` and `Bindings` for input.
-* Drive and mechanisms modeled as `DriveSource` / `MecanumDrivebase` and `Plant`s.
+* An `FtcRobotOpMode` receiving one framework-created `RobotProgram`.
+* Gamepad meanings declared through `program.bindings()` or `program.taskBindings()`.
+* Drive and Plant-owning mechanisms declared as the program's downstream outputs.
 
 Everything here is **non‑blocking** – there is no `sleep()` and no `while` loops that stall TeleOp.
 
@@ -35,55 +35,37 @@ These live in `edu.ftcphoenix.fw.spatial` and can be used in TeleOp, tasks, test
 
 ## 1. The big picture: Tasks coordinate behavior
 
-Phoenix code is built around three ideas:
+Phoenix Task behavior is built around three ideas:
 
 1. **Tasks** – small, reusable behaviors that run over time.
 2. **Plants** – things that accept a numeric target (motors, servos, etc.).
-3. **TaskRunner** – drives a queue of tasks every loop.
+3. **TaskRunner** – drives a queue of tasks every loop; an ordinary `RobotProgram` owns it
+   privately.
 
 You describe *what* should happen as a graph of tasks, and the framework figures out *when* each piece runs.
 
-Typical active-cycle flow in an OpMode:
+Typical ordinary TeleOp declaration:
 
 ```java
-public class MyTeleOp extends OpMode {
-    private final LoopClock clock = new LoopClock();
-    private final TaskRunner runner = new TaskRunner();
-
+public class MyTeleOp extends FtcRobotOpMode {
     @Override
-    public void start() {
-        clock.reset(getRuntime());
-    }
+    protected void configure(RobotProgram program) {
+        ScoringMechanism scoring = program.output(
+                new ScoringMechanism(hardwareMap, profile.scoring));
+        GamepadDevice driver = new GamepadDevice(gamepad1);
 
-    @Override
-    public void loop() {
-        // 0) Advance the loop clock once per cycle.
-        clock.update(getRuntime());
-
-        // 1) Update bindings.
-        // Gamepad axes/buttons are Sources; they are sampled when you call get(...).
-        bindings.update(clock);
-
-        // 2) Advance tasks.
-        runner.update(clock);
-
-        // 3) Apply the latest drive intent through one final writer.
-        DriveSignal driveSignal = driveSource.get(clock).clamped();
-        drivebase.drive(driveSignal);
-
-        // 4) Let each mechanism apply its latest targets to its private Plants.
-        scoring.update(clock);
-        // ... other mechanism owners.
+        program.taskBindings().onRise(driver.y(), scoring::createShootOneTask);
+        program.drive(driveSource(driver), FtcDrives.mecanum(hardwareMap, profile.drive));
     }
 }
 ```
 
-This is an active-cycle excerpt, not a complete OpMode owner. The compiling
-[`StarterTeleOp`](<../../../robots/examples/starter/StarterTeleOp.java>) delegates FTC STOP to the
-idempotent [`StarterRobot`](<../../../robots/examples/starter/StarterRobot.java>) composition root.
-The flat teaching [`TeleOp_03_ShooterMacro`](<../../tools/examples/TeleOp_03_ShooterMacro.java>)
-instead cancels its runner and stops every Plant and drive object it constructed. Use one of those
-complete cleanup shapes rather than growing this short excerpt into an owner without `stop()`.
+This is a complete FTC lifecycle shape: the framework starts and advances its private runner after
+bindings, then updates declared outputs and commits presenters. STOP and runtime failure actively
+cancel the runner before outputs stop. The flat teaching
+[`TeleOp_03_ShooterMacro`](<../../tools/examples/TeleOp_03_ShooterMacro.java>) deliberately shows
+the advanced explicit-owner form, where the custom host must cancel its runner and stop every
+resource itself.
 
 In ordinary TeleOp, Tasks do decision work, update sources, request Plant targets, or manage a
 temporary calibration-search recipe. They run before the one final `DriveSource` writer and the
@@ -155,10 +137,15 @@ when its Task starts and on each active cycle, so a positive interval is observa
 competing downstream drive writer. A zero-duration interval itself is immediate, though an
 explicitly configured follow-up or cooldown still runs.
 
-You almost never subclass `TaskRunner`. You just feed it tasks.
+Ordinary robot code does not construct or subclass `TaskRunner`; it declares an Auto root with
+`program.rootTask(...)` and input-created work with `program.taskBindings()`. A custom host,
+framework tool, or mechanism that genuinely owns a private bounded queue may construct a runner and
+must own its complete cancellation lifecycle.
 
-Use `cancelAndClear()` for driver override, mode switches, route interruption, and other total
-aborts. It asks the active Task to stop, if there is one, and always discards every queued Task.
+Inside an explicitly owned custom/private runner, use `cancelAndClear()` for driver override, mode
+switches, route interruption, and other total aborts. The managed program calls it automatically at
+terminal shutdown. It asks the active Task to stop, if there is one, and always discards every
+queued Task.
 Queued Tasks have not acquired resources and do not receive a pre-start cancellation callback.
 There is no abrupt queue-forgetting operation that can silently abandon the active Task.
 
@@ -170,7 +157,7 @@ exception is attached as suppressed rather than replacing the original failure.
 Aborting a runner or cancelling a Task does not make a started Task reusable. If the behavior is
 requested later, enqueue a new Task built by the same macro method or factory.
 
-Example:
+Advanced explicit-host example:
 
 ```java
 bindings.onRise(gamepads.p1().b(), runner::cancelAndClear);
@@ -347,9 +334,9 @@ target is the Plant's complete exact graph, bind it through
 
 `PositionCalibrationTasks.search(positionPlant)` is a narrow Task recipe for homing or indexing.
 It acquires and releases the temporary search mode, samples the cue, establishes the reference, and
-selects the success handoff; it never updates the Plant. Keep the normal loop order:
-`runner.update(clock)` first, then one `mechanism.update(clock)` that advances the mechanism's
-private Plants.
+selects the success handoff; it never updates the Plant. In an ordinary program, the private runner
+phase comes before the registered mechanism output, which advances its private Plants once. A
+custom host must preserve that same Task-before-mechanism order explicitly.
 
 `.withPower(...)` requires a finite normalized command in the inclusive `[-1.0, +1.0]` range and
 rejects `NaN`, infinities, and overshoot at that builder step. It does not clamp a bad recipe into a
@@ -502,8 +489,8 @@ A typical TeleOp macro flows like this:
 
 1. Driver presses a button.
 2. A macro `Task` is created (often a `Tasks.sequence(...)`).
-3. That task is enqueued into the `TaskRunner`.
-4. Each loop, `runner.update(clock)` advances the macro.
+3. `program.taskBindings()` enqueues it into the private `TaskRunner`.
+4. Each active program loop advances it before downstream outputs.
 
 ### 5.1 Wiring a simple shooter macro
 
@@ -549,19 +536,20 @@ public Task createShootOneDiscTask() {
 Bind a button to enqueue this macro:
 
 ```java
-bindings.onRise(shootButton,
-        () -> runner.enqueue(scoring.createShootOneDiscTask()));
+program.taskBindings().onRise(shootButton, scoring::createShootOneDiscTask);
 ```
 
 `scoring` is the semantic mechanism/capability visible to controls; its raw Plants stay private.
-The rest of your TeleOp loop calls `bindings.update(clock)`, `runner.update(clock)`, and then
-`scoring.update(clock)` in the mechanism phase.
+The program owns binding dispatch, Task advancement, and then `scoring.update(clock)` in its output
+phase.
 
 ---
 
 ## 6. Autonomous routines with Tasks
 
-The same patterns work in Autonomous – you just enqueue one big task (usually a sequence) in `init()` or `start()` and let it run.
+The same patterns work in Autonomous: build one fresh root graph during configuration and declare
+it with `program.rootTask(auto)`. The framework starts and first-updates it at the exact FTC START
+boundary, then owns its later advancement and cancellation.
 
 For a simple open-loop Auto or drive tester, the exclusive timed-drive helper is appropriate only
 when no route Task, guidance Task, or separate final `DriveSource` loop is also writing behavior
@@ -579,7 +567,7 @@ Task auto = Tasks.sequence(
     scoring.createShootThreeDiscTask()
 );
 
-runner.enqueue(auto);
+program.rootTask(auto);
 ```
 
 `driveExclusivelyForSeconds(...)` refreshes the sink and writes the requested signal on every active
@@ -695,9 +683,11 @@ For the full design rationale and more examples, see [`Output Tasks & Queues`](<
     * Save a macro method, `Supplier<Task>`, or `OutputTaskFactory` and ask it for a fresh task each
       time instead.
 
-* **Always call `runner.update(clock)` once per loop.**
+* **Give every runner exactly one lifecycle owner.**
 
-    * If you forget this, tasks will never progress.
+    * An ordinary `RobotProgram` owns its private runner automatically.
+    * A deliberate custom host or private bounded-queue owner must call its runner once per loop
+      and cancel it on every shutdown/failure path.
 
 * **Use the feedback branch only with the Plant that follows that target.**
 
@@ -719,7 +709,8 @@ For the full design rationale and more examples, see [`Output Tasks & Queues`](<
 ## 10. Summary
 
 * **`Task`** is the basic unit of non‑blocking behavior over time.
-* **`TaskRunner`** manages a queue of tasks and advances them with `update(clock)`.
+* **`TaskRunner`** manages a queue of tasks; ordinary robot code reaches the program-owned runner
+  through `rootTask(...)` and `taskBindings()` rather than constructing it.
   `cancelAndClear()` is the total-abort operation and lifecycle failures clear owned work before
   they are rethrown.
 * **`Tasks` factories** (`runOnce`, `waitForSeconds`, `waitUntil`, `sequence`, `parallelAll`,

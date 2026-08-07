@@ -4,7 +4,9 @@ This guide explains how the runnable framework examples fit together as one lear
 
 These numbered files are concept lessons, not a complete robot package. After learning the loop and
 mechanism patterns here, use [`Modern Starter Robot`](<Modern Starter Robot.md>) for the compiling
-profile/capability/controls/composition-root shape shared by TeleOp and Auto.
+profile/capability/controls/composition-root shape shared by TeleOp and Auto. Their explicit clocks
+and loop forwarding make each phase visible for teaching and custom-host work; ordinary FTC robot
+code uses `FtcRobotOpMode`/`RobotProgram` instead of copying that lifecycle ceremony.
 
 The short version is:
 

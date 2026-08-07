@@ -4,8 +4,8 @@ Use this example when you want the smallest checked-in Phoenix Auto that shows t
 supported Pedro Pathing lifecycle. It follows one fixed practice route, starts a mechanism Task
 only after confirmed route completion, chooses a safe mechanism fallback after a truthful timeout,
 and stops every owner deterministically. The code compiles against the project's pinned Pedro
-Pathing 2.1.2 dependency. It deliberately does not introduce an Auto DSL, a base OpMode, or another
-scheduler.
+Pathing 2.1.2 dependency. It uses the ordinary `FtcRobotOpMode`/`RobotProgram` lifecycle and
+deliberately does not introduce an Auto DSL, a robot superclass, or another scheduler.
 
 The four Phoenix-season-independent reference classes are under
 [`edu.ftcphoenix.robots.examples.pedro`](<../../../robots/examples/pedro/>). The disabled physical
@@ -19,42 +19,37 @@ Read them in this order:
 
 | File | Source lines | Job | What a new robot normally changes |
 |---|---:|---|---|
-| [`BasicPedroAutoMechanism.java`](<../../../robots/examples/pedro/BasicPedroAutoMechanism.java>) | 97 | Plant-backed intake capability that creates fresh, cancellation-safe Tasks | Replace it with an existing robot capability when one already owns the mechanism; otherwise change the Plant and action names/targets here. |
+| [`BasicPedroAutoMechanism.java`](<../../../robots/examples/pedro/BasicPedroAutoMechanism.java>) | 195 | Ordinary `(HardwareMap, Config)` Plant-backed intake output that creates fresh, cancellation-safe Tasks | Replace it with an existing robot capability when one already owns the mechanism; otherwise change its data-only configuration, Plant, and semantic actions here. |
 | [`BasicPedroAutoPaths.java`](<../../../robots/examples/pedro/BasicPedroAutoPaths.java>) | 52 | Declared physical start pose and one eagerly built fixed Pedro route | Change the start/end coordinates and path geometry here. Keep all coordinates explicitly in Pedro field inches and radians. |
 | [`BasicPedroAutoRoutine.java`](<../../../robots/examples/pedro/BasicPedroAutoRoutine.java>) | 50 | Route, success action, and timeout fallback composed with framework Task factories | Change semantic order, route timeout, capability actions, and the policy for each route result here. |
-| [`BasicPedroAutoRobot.java`](<../../../robots/examples/pedro/BasicPedroAutoRobot.java>) | 171 | Composition root for the shared clock, localization, recurring Pedro heartbeat, Task runner, Plant realization, and shutdown | Usually retain this shape. Add robot-owned sensor/service/capability updates only when the robot actually has them, preserving one explicit loop order. |
-| [`PhoenixBasicPedroAutoExample.java`](<../../../robots/phoenix/opmode/PhoenixBasicPedroAutoExample.java>) | 221 | Disabled FTC lifecycle host and this repository's physical hardware/runtime wiring | Replace this entire host boundary with the new robot's verified Pedro runtime and mechanism construction. Do not copy Phoenix hardware values into another robot. |
+| [`BasicPedroAutoRobot.java`](<../../../robots/examples/pedro/BasicPedroAutoRobot.java>) | 200 | Declaration-only composition root for the Pedro service, mechanism output, and one root routine | Retain the managed role shape. Add a service or output only when a real owner has that distinct job. |
+| [`PhoenixBasicPedroAutoExample.java`](<../../../robots/phoenix/opmode/PhoenixBasicPedroAutoExample.java>) | 114 | Disabled `FtcRobotOpMode` host with this repository's physical configuration/runtime wiring and presenters | Replace this host boundary with the new robot's verified Pedro runtime and mechanism configuration. Do not copy Phoenix hardware values into another robot. |
 
-> **Portable-host exception:** `BasicPedroAutoMechanism` deliberately has no FTC or Phoenix profile
-> dependency, so the Phoenix-specific host supplies one completed Plant through an explicitly
-> hardware-neutral adapter seam. This makes the four reference classes portable; it is not the
-> ordinary starter construction pattern. A normal robot mechanism should receive `HardwareMap` and
-> its validated profile slice, build and privately own its Plant, and leave the composition root
-> with one `new Mechanism(hardwareMap, profile.mechanism)` call. If a completed Plant does cross an
-> intentional custom seam, pass the Plant alone rather than also passing its command target.
+`BasicPedroAutoMechanism` now demonstrates the ordinary construction rule directly: its public
+constructor receives `HardwareMap` plus one data-only `Config`, snapshots and validates that
+configuration, and privately builds its final Plant. Its completed-Plant constructor is
+package-private and exists only for the explicitly hardware-neutral test/portable seam.
 
-The five files total **591 source lines**, including comments, Javadocs, imports, and blank lines.
-The four independent reference classes total 370 lines; the Phoenix-specific host is another 221.
+The five files total **611 source lines**, including comments, Javadocs, imports, and blank lines.
+The four season-independent reference classes total 497 lines; the Phoenix-specific host is
+another 114.
 These counts describe the current checked-in reference and should be updated when its documented
 ownership or safety seams change.
-That full count matters. A student maintaining or adapting the reference encounters about 15
+That full count matters. A student maintaining or adapting the reference encounters about 12
 concrete concepts, not merely the few calls in `BasicPedroAutoRoutine`:
 
 1. verified hardware/profile/runtime wiring,
-2. the FTC INIT/START/loop/STOP lifecycle,
+2. one `FtcRobotOpMode.configure(RobotProgram)` declaration boundary,
 3. a robot composition root,
 4. Pedro-coordinate poses and path construction,
-5. one shared `LoopClock`,
-6. predictor/localization update ownership,
-7. one recurring drive-adapter/follower heartbeat,
-8. retained route execution, status, and timeout,
-9. a `TaskRunner` and single-use Task graph,
-10. explicit outcome branching,
-11. a source-driven Plant with a command target,
-12. fresh mechanism capability Tasks,
-13. ordered mechanism realization,
-14. operator telemetry and physical-start readiness,
-15. and idempotent, best-effort cancellation/fail-stop cleanup.
+5. one service owning localization before the recurring Pedro heartbeat,
+6. retained route execution, status, and timeout,
+7. one single-use root Task graph,
+8. explicit outcome branching,
+9. a privately owned source-driven Plant and data-only mechanism configuration,
+10. fresh, cancellation-safe mechanism capability Tasks,
+11. additive telemetry and physical-start readiness,
+12. and framework-managed phase order plus idempotent, best-effort fail-stop cleanup.
 
 This is intentionally much smaller than the Phoenix season Auto graph, but it is still a complete
 ownership example rather than a claim that all robot code is one line.
@@ -63,10 +58,12 @@ ownership example rather than a claim that all robot code is one line.
 
 ### INIT
 
-`PhoenixBasicPedroAutoExample.init()` creates one real `PedroPathingRuntime`, builds the fixed path,
-uses the portable-host exception above to construct one intake Plant and capability, and wires
-`BasicPedroAutoRobot`. Construction does not start the route or move the mechanism. `init_loop()`
-keeps the expected physical placement and test warning visible.
+`PhoenixBasicPedroAutoExample.configure(...)` creates one real `PedroPathingRuntime` and passes a
+mechanism factory to `BasicPedroAutoRobot`. That declaration root immediately registers the Pedro
+service before it builds paths, invokes the factory once, immediately registers the resulting
+mechanism output, and declares one fresh root routine. Construction does not start the route or
+move the mechanism. The final framework-owned `init()` and `init_loop()` callbacks advance only the
+shared clock and presenters, keeping the expected physical placement and test warning visible.
 
 Only the host file imports `edu.ftcphoenix.robots.phoenix.PhoenixProfile`. It reuses this
 repository's already-owned hardware names and directions rather than publishing plausible-looking
@@ -75,49 +72,57 @@ readiness, scoring, targeting, season paths, or season strategy.
 
 ### START
 
-The composition root performs these steps once:
+The final framework host resets its one clock at the exact FTC START boundary, then performs these
+steps once:
 
-1. apply the declared Pedro starting pose through `PedroPathingRuntime.setStartingPose(...)`,
-2. reset the shared `LoopClock` at the exact FTC START runtime,
-3. enqueue the one fresh root Task.
+1. the Pedro service applies the declared starting pose,
+2. that service updates localization and gives the Pedro drive adapter its boundary heartbeat,
+3. the private runner starts and first-updates the one fresh root Task,
+4. the mechanism output realizes the resulting request once.
 
-The route is not advanced during `start()`. Its first update happens in the regular loop after the
-current localization snapshot and Pedro heartbeat exist. Applying the start pose is a software
-coordinate rebase; it does **not** prove that the robot was physically placed at that pose.
+This exact-start output pass preserves every positive-duration Task request even if the first FTC
+loop arrives after its time boundary. The route still sees a current localization snapshot and
+Pedro heartbeat before it starts; later same-cycle adapter calls deduplicate on the shared clock
+cycle. Applying the start pose is a software coordinate rebase; it does **not** prove that the
+robot was physically placed at that pose.
 
 ### Each loop
 
-`BasicPedroAutoRobot.update(...)` has one visible ownership order:
+`RobotProgram` applies one fixed ownership order:
 
 ```text
-LoopClock -> localization -> Pedro drive heartbeat -> TaskRunner -> mechanism Plant
+LoopClock -> Pedro service (localization -> drive heartbeat) -> Bindings
+          -> root/input Tasks -> mechanism output -> presenters -> telemetry commit
 ```
 
-The composition root advances the clock exactly once. The drive adapter then gives Pedro its one
-stable heartbeat even when no route Task is active. The active `RouteTask` may reach the same
-adapter later in that cycle, but the adapter deduplicates by `clock.cycle()` instead of updating the
-vendor follower twice. Finally, the mechanism Plant resolves and applies the capability's retained
-source-driven request.
+The framework advances the clock exactly once. The registered service gives Pedro its one stable
+heartbeat even when no route Task is active. The active `RouteTask` may reach the same adapter later
+in that cycle, but the adapter deduplicates by `clock.cycle()` instead of updating the vendor
+follower twice. Finally, the registered mechanism output resolves and applies the capability's
+retained source-driven request, and the host commits one complete telemetry frame.
 
-The OpMode owns only lifecycle forwarding and telemetry. It does not call raw Pedro
+The OpMode declares only robot-specific construction and presenters. It does not forward lifecycle
+steps or call raw Pedro
 `Follower.update()`, `followPath(...)`, `breakFollowing()`, pose-reset, or drivetrain methods.
 
 ### STOP and failures
 
-`BasicPedroAutoRobot.stop()` is idempotent and tries every cleanup owner in this order:
+The final framework host marks the program terminal first and tries every cleanup owner in this
+order:
 
 1. cancel the active Task and clear pending work,
-2. restore the mechanism's idle request and stop its Plant,
-3. stop the Pedro drive adapter immediately.
+2. clear input bindings,
+3. restore the mechanism's idle request and stop its Plant,
+4. stop the Pedro drive adapter immediately through the service's reverse-order cleanup phase.
 
 If an earlier cleanup throws a `RuntimeException`, later cleanup is still attempted and additional
-failures are suppressed onto the first one; an `Error` propagates immediately. The root keeps its
-terminal state and cleanup order visible, while `CleanupActions.attemptAll(...)` owns only those
-exception mechanics. A START or loop failure also enters this fail-stop path;
-`attemptAllAfterFailure(...)` preserves that original failure and attaches cleanup failures before
-the caller rethrows it. Active cancellation of the collection Task restores the intake's idle
-request; queued Tasks are never treated as though they had started. Partial FTC INIT construction
-also stops any already-created mechanism and drive owners before rethrowing the construction error.
+failures are suppressed onto the first one; an `Error` propagates immediately. A configuration,
+START, active-loop, presenter, or telemetry `RuntimeException` enters the same fail-stop path and
+retains that exact original failure. Active cancellation of the collection Task restores the
+intake's idle request; queued Tasks are never treated as though they had started. Because owners are
+registered immediately, a later configuration failure also stops every already-transferred owner.
+The mechanism constructor and declaration helper separately stop an owner that fails before its
+ownership transfer completes.
 
 ## The route-result policy
 
@@ -152,27 +157,29 @@ The normal edit path is:
 1. **Sync the supported framework baseline.** Bring over the current Pedro runtime/adapter, route
    execution/status, route Task, Task lifecycle, and their pinned dependencies before copying the
    example shape. An older generated Pedro OpMode is not an equivalent lifecycle owner.
-2. **Replace the host wiring file.** Construct one runtime from that robot's verified motor names,
-   directions, Pinpoint setup, field transform, follower tuning, and path constraints. Construct or
-   obtain its real capability owners. The host is the one intentionally robot-specific dependency
-   boundary.
+2. **Replace the host wiring file.** Extend `FtcRobotOpMode` and override only
+   `configure(RobotProgram)`. Construct one runtime from that robot's verified motor names,
+   directions, Pinpoint setup, field transform, follower tuning, and path constraints. Supply the
+   real mechanism's `HardwareMap` plus data-only configuration. The host is the intentionally
+   robot-specific composition boundary.
 3. **Edit `BasicPedroAutoPaths`.** Declare the required physical start and fixed path geometry. Build
    fixed routes eagerly through `runtime.pathBuilder()`. Use the separately documented start-time
    route factory only when geometry genuinely depends on a live fact.
 4. **Edit `BasicPedroAutoRoutine`.** Name the route, select its timeout, and state exactly what
    success, timeout, and cancellation-like endings mean. Return fresh Task graphs each time a
    routine can run.
-5. **Reuse or replace the capability pattern.** A robot with existing shooter/intake capabilities
-   should call those factories rather than copy `BasicPedroAutoMechanism`. The checked-in routine
-   and composition root intentionally name that concrete example capability, so adapt their
-   signatures when using another robot's capability; they are a readable pattern, not a generic
-   plug-in interface. Keep the Plant as the one final actuator owner and make active cancellation
-   safe.
-6. **Adapt the composition-root shape only as needed.** Keep one clock and one recurring Pedro
-   heartbeat, then place additional sensor, service, Task, drive, Plant, and telemetry phases
-   explicitly.
-7. **Keep the OpMode thin.** Construct during INIT, forward START/loop/STOP, and display required
-   placement/readiness facts. Do not move the routine into the OpMode.
+5. **Reuse or replace the capability pattern.** A robot with an existing shooter/intake capability
+   should call those Task factories rather than copy `BasicPedroAutoMechanism`. Otherwise, give the
+   mechanism `HardwareMap` plus its data-only configuration, let it privately own its final Plant,
+   implement `RobotProgram.Output`, and make active Task cancellation safe. The checked-in routine
+   names the concrete example capability, so adapt its signature rather than inventing a generic
+   plug-in interface.
+6. **Adapt the declaration root only as needed.** Register the Pedro service first, each mechanism
+   output immediately after construction, and one composed root Task. Let `RobotProgram` retain the
+   one clock, runner, fixed phase order, telemetry commit, and cleanup.
+7. **Keep the OpMode thin.** Construct and declare roles in `configure(...)`, then add read-only
+   presenters for placement/readiness facts. Do not override lifecycle callbacks or move routine
+   policy into the OpMode.
 
 The Pedro runtime checks its four mecanum motor names using FTC's trimmed, case-sensitive lookup
 identity. Blank or trim-equivalent duplicate names fail before fresh drivetrain hardware resolution
@@ -181,11 +188,13 @@ differently named Robot Configuration entries are wired to four different physic
 
 ## Portability boundary
 
-The four independent reference classes have no dependency on another robot project or its hardware
-constants. An adopting robot should keep its existing capability Tasks, sync the supported
-PEDRO/ROUTE/TASK framework baseline, and adapt the path, routine, composition-root, and host pattern
-to its own owners. Because `BasicPedroAutoRoutine` and `BasicPedroAutoRobot` name the concrete
-example mechanism type, they are a readable pattern rather than a drop-in generic base.
+The four reference classes have no dependency on another season robot or its hardware constants.
+The mechanism intentionally imports FTC `HardwareMap` because ordinary FTC mechanisms own their
+own Plant construction; only its package-private completed-Plant test seam is hardware-neutral. An
+adopting robot should keep its existing capability Tasks, sync the supported managed-runtime and
+PEDRO/ROUTE/TASK framework baseline, and adapt the configuration, path, routine, declaration root,
+and host to its own owners. Because `BasicPedroAutoRoutine` and `BasicPedroAutoRobot` name the
+concrete example mechanism type, they are a readable pattern rather than a drop-in generic base.
 
 The adopting robot must provide and verify its own motor names and directions, localization
 calibration, field convention, Pedro constraints, and follower tuning. Replace
