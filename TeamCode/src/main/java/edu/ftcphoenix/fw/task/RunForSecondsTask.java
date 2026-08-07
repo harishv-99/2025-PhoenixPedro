@@ -39,7 +39,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *       cancelled.</li>
  * </ul>
  *
- * <h2>Typical usage</h2>
+ * <h2>Ordinary managed Auto usage</h2>
  * <pre>{@code
  * // Example: run intakePlant at +1.0 for 0.7 seconds, then stop.
  * Task intakePulse = new RunForSecondsTask(
@@ -49,8 +49,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *     () -> intakeTarget.set(0.0)
  * );
  *
- * TaskRunner runner = new TaskRunner();
- * runner.enqueue(intakePulse);
+ * program.rootTask(intakePulse);
  * }</pre>
  *
  * <p><b>Note:</b> {@code onFinish} is shared by normal completion and cancellation. That makes it a

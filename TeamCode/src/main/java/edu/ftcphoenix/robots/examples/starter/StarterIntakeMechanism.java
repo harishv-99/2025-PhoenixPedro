@@ -9,10 +9,11 @@ import edu.ftcphoenix.fw.actuation.ScalarTasks;
 import edu.ftcphoenix.fw.core.lifecycle.CleanupActions;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.ftc.FtcActuators;
+import edu.ftcphoenix.fw.ftc.RobotProgram;
 import edu.ftcphoenix.fw.task.Task;
 
 /** Owns the starter intake's one final target resolver, Plant, update, and stop command. */
-final class StarterIntakeMechanism implements StarterIntake {
+final class StarterIntakeMechanism implements StarterIntake, RobotProgram.Output {
 
     private static final double STOPPED_POWER = 0.0;
 
@@ -75,11 +76,13 @@ final class StarterIntakeMechanism implements StarterIntake {
                 plant.getAppliedTarget());
     }
 
-    void update(LoopClock clock) {
+    @Override
+    public void update(LoopClock clock) {
         plant.update(clock);
     }
 
-    void stop() {
+    @Override
+    public void stop() {
         CleanupActions.attemptAll(
                 () -> plant.commandTarget().set(STOPPED_POWER),
                 plant::stop);

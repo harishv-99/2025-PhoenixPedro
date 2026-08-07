@@ -16,18 +16,20 @@ import edu.ftcphoenix.fw.task.TaskOutcome;
  * same underlying evaluation/controller engine (see {@link DriveGuidanceCore}), so behavior stays
  * consistent between TeleOp assist and autonomous execution.</p>
  *
- * <p>Typical usage:</p>
+ * <p>Ordinary managed Auto usage:</p>
  * <pre>{@code
  * DriveGuidanceTask.Config cfg = new DriveGuidanceTask.Config();
  * cfg.positionTolInches = 1.0;
  * cfg.headingTolRad = Math.toRadians(4.0);
  *
  * Task autoAlign = plan.task(drivebase, cfg);
- * runner.enqueue(autoAlign);
+ * program.rootTask(autoAlign);
  * }</pre>
  *
- * <p>The task can be interrupted cleanly via {@link #cancel()} or by calling
- * {@link edu.ftcphoenix.fw.task.TaskRunner#cancelAndClear()} on the owning runner.</p>
+ * <p>The managed program cancels its root Task during shutdown. A custom or private host,
+ * framework tool, or test that explicitly owns a runner may interrupt the Task via
+ * {@link #cancel()} or
+ * {@link edu.ftcphoenix.fw.task.TaskRunner#cancelAndClear()}.</p>
  *
  * <p>The Task calls {@link DriveCommandSink#update(LoopClock)} while active. A stateful external
  * drive adapter that also needs a heartbeat during mechanism/wait phases must have one stable

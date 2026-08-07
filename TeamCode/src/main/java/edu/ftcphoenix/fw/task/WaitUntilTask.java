@@ -13,16 +13,13 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * terms of {@link BooleanSource}, not a raw boolean supplier, so it composes naturally with the
  * clocked signal pipeline: debounce, hysteresis, memoization, edges, and related helpers.</p>
  *
- * <p>Typical usage:</p>
+ * <p>Ordinary managed Auto usage:</p>
  * <pre>{@code
- * TaskRunner runner = new TaskRunner();
- *
- * // Wait until a sensor gate is ready.
- * runner.enqueue(Tasks.waitUntil(ready));
- *
- * // Or: wait until ready, but give up after 2 seconds.
- * runner.enqueue(Tasks.waitUntil(ready, 2.0));
+ * // Wait until a sensor gate is ready, but give up after 2 seconds.
+ * program.rootTask(Tasks.waitUntil(ready, 2.0));
  * }</pre>
+ *
+ * <p>Use {@link Tasks#waitUntil(BooleanSource)} when the wait intentionally has no timeout.</p>
  *
  * <p>Active cancellation ends the wait immediately and reports
  * {@link TaskOutcome#CANCELLED}; pre-start and terminal cancellation are no-ops.</p>

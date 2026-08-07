@@ -45,7 +45,12 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * original as a suppressed exception. If an explicit {@link #cancelCurrent()} hook throws, its
  * queued follow-ups are also discarded; {@link #cancelAndClear()} always ends empty.</p>
  *
- * <h2>Typical usage</h2>
+ * <p>Ordinary FTC robot code declares one root or input-triggered Task through its
+ * framework-created {@link edu.ftcphoenix.fw.ftc.RobotProgram}; the program privately owns this
+ * runner. Construct a runner directly only when a mechanism owns a private queue or for framework
+ * tools, tests, calibration hosts, and custom lifecycle integrations.</p>
+ *
+ * <h2>Explicit/custom lifecycle usage</h2>
  * <pre>{@code
  * TaskRunner runner = new TaskRunner();
  * runner.enqueue(Tasks.waitForSeconds(0.2));

@@ -28,6 +28,9 @@ For larger robots, use this ownership pattern:
   - telemetry presenters
 
 A good composition root wires those owners together, but does not absorb their responsibilities.
+In ordinary FTC robot code, it declares those completed owners through one framework-created
+`RobotProgram`; the framework host owns FTC callback forwarding, the one clock, phase advancement,
+telemetry commit, and fail-stop cleanup.
 For custom vision, keep camera plumbing and trustworthy acquisition in the concrete framework
 owner, map robot meanings to processor enablement or pipeline transitions in one robot realization,
 and expose immutable timestamped robot snapshots to strategy. Do not make Auto or TeleOp interpret FTC/vendor
@@ -35,7 +38,9 @@ results, and do not pretend that webcam processors and Limelight pipelines have 
 
 ### Why this matters
 
-This keeps stable framework code reusable across seasons without turning the framework into a giant base robot class. It also keeps each robot's control scheme and game logic easy to find, instead of scattering it across convenience helpers and subsystem constructors.
+This keeps stable framework code reusable across seasons without turning the lifecycle host into a
+giant robot capability superclass. It also keeps each robot's control scheme and game logic easy to
+find, instead of scattering it across convenience helpers and subsystem constructors.
 
 Before reading the rest of this file, read [`Framework Lanes & Robot Controls`](<Framework Lanes & Robot Controls.md>). That document defines the ownership vocabulary used throughout the framework and shows how to build a robot from scratch without copying an older robot.
 
@@ -85,9 +90,10 @@ expressions.
 
 Think of a robot as four layers:
 
-1. **OpMode layer**
-   - TeleOp bindings
-   - Auto routines / route tasks
+1. **Program declaration layer**
+   - one `FtcRobotOpMode.configure(RobotProgram)` composition root
+   - TeleOp binding declarations
+   - one optional Auto root Task / route graph
 
 2. **Intent / capabilities layer**
    - robot-owned capability families such as `gamePiece()` or `targeting()`
@@ -259,15 +265,17 @@ In a single-module codebase, keep that pattern-5 code at the edges:
 
 ### Robot container / Robot class
 
-The robot container wires everything together and advances the loop in a clear order.
+The robot container wires everything together and declares each owner in a clear order. In the
+ordinary path it has no clock, Task runner, mode flags, FTC callback forwarding, or stop shell;
+`FtcRobotOpMode` owns those reusable mechanics through `RobotProgram`.
 
 It should usually own:
 
 - construction of stable FTC lanes and robot-owned mechanisms
 - the `HardwareMap` and validated profile slices passed into mechanism constructors
 - supervisor construction
-- gamepad bindings
-- top-level update order
+- gamepad binding declarations
+- service/output declaration order
 - shared debug/telemetry formatting
 
 It should usually **not** own:
@@ -280,10 +288,16 @@ It should usually **not** own:
 A robot container is the place where it should be obvious what exists on the robot. It is not the
 place where each mechanism's Plant graph or detailed behavior should live.
 
-### Coordinated cleanup remains explicit
+### Coordinated cleanup is automatic for declared program owners
 
-When a composition root owns several independent cleanup actions, mark the owner terminal or detach
-its references first, then list the real actions in their required safety order:
+An ordinary program immediately owns each registered service, output, drive sink, and root Task.
+Its terminal cleanup order is fixed: cancel Tasks, clear bindings, stop outputs in declaration
+order, then stop services in reverse declaration order. If later configuration or a runtime phase
+fails, already registered siblings are still cleaned and the exact primary failure is retained.
+
+Coordinated cleanup remains explicit in a deliberate custom host or inside one owner with several
+private resources. Such an owner marks itself terminal or detaches its references first, then lists
+its real actions in their required safety order:
 
 ```java
 public void stop() {
@@ -1175,16 +1189,24 @@ named `RouteTasks.followBuiltAtStart(...)` factory. Keep geometry and sensor int
 robot path factory; do not move them into the follower adapter or write a custom Task at each call
 site.
 
-For a stateful adapter such as Pedro, give the same object to the robot composition root once during
-Auto initialization:
+For a stateful adapter such as Pedro, register one robot-owned service during program
+configuration. That service owns localization first and the recurring adapter heartbeat second:
 
 ```java
 PedroPathingRuntime pedro = Constants.createPhoenixAutoRuntime(hardwareMap, profile);
-robot.initAuto(pedro.driveAdapter(), pedro.motionPredictor());
+BasicPedroAutoMechanism.Config mechanismConfig = BasicPedroAutoMechanism.Config.of(
+        profile.scoring.nameMotorIntake,
+        profile.scoring.directionMotorIntake,
+        profile.scoring.intakeMotorPower);
+BasicPedroAutoRobot robot = new BasicPedroAutoRobot(
+        program,
+        pedro,
+        () -> new BasicPedroAutoMechanism(hardwareMap, mechanismConfig));
 ```
 
-The robot owns `pedro.driveAdapter().update(clock)` on every Auto loop and its final stop. The
-routine still uses
+The registered service owns `pedro.motionPredictor().update(clock)` followed by
+`pedro.driveAdapter().update(clock)` on every Auto loop, then its final drive stop. The routine
+still uses
 `RouteTasks.follow("cycle", pedro.driveAdapter(), route, routeTimeoutSec)` and guidance Tasks
 normally; the adapter makes their same-cycle update calls harmless. The runtime's passive Pedro
 localizer reads the same current-cycle predictor that Phoenix localization updates, so this also
@@ -1366,26 +1388,25 @@ That keeps debugging readable without forcing the rest of the robot to know the 
 
 ---
 
-## Recommended update order inside the robot container
+## Recommended managed update order
 
-A typical loop order looks like this:
+A `RobotProgram` applies this fixed active order:
 
 1. advance `LoopClock`
-2. refresh sensors and stable acquisition/localization lanes
+2. update declared services such as sensors, acquisition/localization lanes, and required vendor heartbeats
 3. update input bindings
-4. update mode-owned Tasks, route execution, and supervisors so they publish this cycle's intent
-5. apply the one final drive command (or the integration's required stable heartbeat)
-6. update mechanisms/subsystems so their final target graphs realize that intent
-7. publish telemetry/debug snapshots
+4. update the private Task runner so it publishes this cycle's intent
+5. update declared outputs and the optional source-driven drive in declaration order
+6. invoke additive presenters
+7. commit telemetry once
 
-The important thing is not the exact wording. The important thing is that the order stays consistent
-and easy to read. In particular, do not update a Plant and then write the target that you expected it
-to apply in that same cycle. A third-party follower whose supported lifecycle requires an earlier
-root heartbeat is the documented integration exception; its adapter deduplicates a same-cycle Task
-call rather than creating a second timebase.
+The important thing is that declarations make this order easy to inspect. In particular, do not
+update a Plant and then write the target that you expected it to apply in that same cycle. A
+third-party follower whose supported lifecycle requires an earlier heartbeat belongs in a service;
+its adapter deduplicates a same-cycle Task call rather than creating a second timebase.
 
-If a robot grows, use helper methods so the container still reads like a composition root instead of
-becoming a 500-line control script.
+If a robot grows, use declaration helper methods so `configure(program)` still reads like a
+composition root instead of becoming a 500-line control script.
 
 ---
 

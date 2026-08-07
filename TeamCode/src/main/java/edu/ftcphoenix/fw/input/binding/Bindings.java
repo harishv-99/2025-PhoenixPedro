@@ -19,7 +19,12 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * object. Use {@link #contextWhen(BooleanSource, ActivationPolicy)} when a related group of mappings
  * should be eligible only while a mode or other condition is active.</p>
  *
- * <h2>Robot controls example</h2>
+ * <p>Ordinary FTC robot code receives a registration-only {@link BindingRegistrar} from its
+ * framework-created {@link edu.ftcphoenix.fw.ftc.RobotProgram}; the program owns this heartbeat
+ * and clearing. Construct {@code Bindings} directly only for framework tools, tests, calibration
+ * hosts, or a custom lifecycle that explicitly owns those operations.</p>
+ *
+ * <h2>Explicit/custom lifecycle example</h2>
  * <pre>{@code
  * Bindings bindings = new Bindings();
  *

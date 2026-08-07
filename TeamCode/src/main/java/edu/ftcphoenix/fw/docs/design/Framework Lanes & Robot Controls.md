@@ -27,7 +27,8 @@ Phoenix uses a few simple ownership rules.
 7. **Supervisors own policy and orchestration.**
 8. **Services own shared robot-specific computation.**
 9. **Presenters own human-facing output.**
-10. **The composition root wires everything together and owns loop order.**
+10. **The composition root wires everything together; `RobotProgram` owns the ordinary lifecycle
+    and fixed loop phases.**
 11. **Profiles hold data, not behavior.**
 
 A good rule of thumb is:
@@ -247,8 +248,8 @@ A **presenter** is a read-only object that formats status for humans.
 
 It should consume snapshots and avoid hidden control logic. A presenter that contributes to a
 shared telemetry frame is additive: it adds rows but does not clear telemetry or call
-`Telemetry.update()`. The composition root owns the complete active-loop frame and commits once
-after all required presenters and selected optional diagnostics have contributed.
+`Telemetry.update()`. An ordinary `RobotProgram` owns the complete INIT/active frame and commits
+once after all required presenters and selected optional diagnostics have contributed.
 
 Example:
 
@@ -262,12 +263,16 @@ A presenter answers:
 
 The **composition root** is the top-level runtime/container object.
 
-It should:
+In ordinary FTC robot code it should:
 
 - build the object graph
 - wire dependencies together
-- choose update order
-- own mode lifecycle
+- declare services and outputs in their intended order
+- declare bindings, an optional root Task, one optional drive pair, and presenters
+
+The framework-created `RobotProgram` owns mode lifecycle and the fixed phase order. A custom
+selector/tester host may still own an explicitly different lifecycle, but that is an advanced
+boundary rather than the ordinary robot shape.
 
 It should not quietly absorb policy that belongs elsewhere.
 
@@ -579,7 +584,6 @@ All TeleOp input semantics should live in one robot-owned controls object.
 ```java
 public final class MyTeleOpControls {
 
-    private final Bindings bindings = new Bindings();
     private final DriveSource manualDrive;
     private final ScalarSource manualTranslateMagnitude;
     private final BooleanSource assistEnabled;
@@ -587,7 +591,10 @@ public final class MyTeleOpControls {
     private final GamepadDevice driver;
     private final GamepadDevice operator;
 
-    public MyTeleOpControls(Gamepads gamepads, MyRobotProfile.ControlsConfig cfg) {
+    public MyTeleOpControls(BindingRegistrar bindings,
+                            Gamepads gamepads,
+                            MyRobotProfile.ControlsConfig cfg,
+                            MyCapabilities capabilities) {
         this.driver = gamepads.p1();
         this.operator = gamepads.p2();
         this.manualTranslateMagnitude = driver.leftStickMagnitude().memoized();
@@ -601,9 +608,6 @@ public final class MyTeleOpControls {
 
         this.assistEnabled = operator.leftBumper().memoized();
         this.override = operator.y().memoized();
-    }
-
-    public void bind(MyCapabilities capabilities) {
         MyCapabilities.GamePiece gamePiece = capabilities.gamePiece();
         MyCapabilities.Lift lift = capabilities.lift();
 
@@ -630,10 +634,6 @@ public final class MyTeleOpControls {
     public BooleanSource overrideSource() {
         return override;
     }
-
-    public void update(LoopClock clock) {
-        bindings.update(clock);
-    }
 }
 ```
 
@@ -644,6 +644,7 @@ Why this matters:
 - higher-level services can depend on input semantics through narrow sources instead of peeking at raw gamepads
 - mode clients can bind against shared capability families instead of raw internals
 - the composition root does not need to know specific button identities
+- controls cannot advance or clear the program-owned binding graph
 
 The same one-grammar rule applies when a robot-owned service publishes a shared immutable snapshot:
 
@@ -662,16 +663,19 @@ The common service owner resets its known children and publication source once a
 lifecycle boundary. Robot services do not implement anonymous sources or duplicate `lastCycle`
 caches for this pattern.
 
-### Root bindings and optional control contexts
+### Program bindings and advanced control contexts
 
-The root `Bindings` object is the default. A declaration on it is always eligible, although its
-action still follows the declared event or level—for example, `onRise(...)` runs only on a rise.
-Most simple robots need only this root object.
+`program.bindings()` is the ordinary registration-only surface. A declaration on it is always
+eligible, although its action still follows the declared event or level—for example,
+`onRise(...)` runs only on a rise. Most robots need only this surface, and the program owns its one
+update/clear lifecycle.
 
-Create a `Bindings.ControlContext` when a group of mappings shares one changing eligibility rule,
-such as normal versus endgame controls. The context offers the same applicable registration names
-as the root, but the root still owns the only update call. In this TeleOp example, `scoring` and
-`endgame` are robot capability families owned outside the framework:
+A custom tester or host that deliberately owns a mutable/rebuilt binding graph may construct
+`Bindings` directly and create a `Bindings.ControlContext` when a group of mappings shares one
+changing eligibility rule, such as normal versus calibration controls. The context offers the same
+applicable registration names as the root, but that custom root still owns the only update call.
+Do not construct a second `Bindings` beside an ordinary `RobotProgram`. In this advanced example,
+`scoring` and `endgame` are robot capability families owned outside the framework:
 
 ```java
 public final class MyTeleOpControls {
@@ -763,9 +767,10 @@ while it is unarmed, or when a sample is non-finite. A non-finite sample disarms
 
 Reusable menu, picker, tuner, and Task-binding helpers accept `BindingRegistrar`, the declaration-
 only capability shared by root `Bindings` and `ControlContext`. Students normally pass the object
-they already have; the interface does not expose `update`, `clear`, or context construction. The
-declarations made inside a helper join the global order at that helper's `bind(...)` call and create
-no hidden helper phase.
+returned by `program.bindings()`; the interface does not expose `update`, `clear`, or context
+construction. Advanced custom binding owners may pass a root or context instead. The declarations
+made inside a helper join the global order at that helper's `bind(...)` call and create no hidden
+helper phase.
 
 Build or rebuild the binding graph during initialization or between updates. A registration,
 `contextWhen(...)`, or `clear()` call made while `bindings.update(clock)` is sampling activations or
@@ -788,17 +793,18 @@ screen is not a new controls mode. See
 
 Although the FTC SDK exposes input and rumble through the same gamepad object, they have different
 roles in robot code. `GamepadDevice` remains an input source. The composition root creates one
-recipient-specific output sink for each controller that needs feedback, then gives that narrow sink
-to the controls owner or a dedicated driver-feedback owner that owns cue mapping:
+recipient-specific output sink for each controller that needs feedback, immediately transfers both
+sinks to one registered driver-feedback output, then gives controls only that semantic owner:
 
 ```java
-HapticSink driverHaptics = FtcHaptics.gamepad(gamepad1);
-HapticSink operatorHaptics = FtcHaptics.gamepad(gamepad2);
+DriverFeedbackOutput feedback = program.output(
+        new DriverFeedbackOutput(
+                FtcHaptics.gamepad(gamepad1),
+                FtcHaptics.gamepad(gamepad2)));
 
 controls = new MyTeleOpControls(
         gamepads,
-        driverHaptics,
-        operatorHaptics,
+        feedback,
         profile.controls
 );
 ```
@@ -809,7 +815,7 @@ example, a controls owner can bind a status edge to one fixed pulse:
 ```java
 bindings.onRise(
         intakeFull,
-        () -> operatorHaptics.pulse(1.0, 0.50)
+        () -> feedback.pulseOperator(1.0, 0.50)
 );
 ```
 
@@ -827,10 +833,39 @@ delivered pulse replaces the current effect. The adapter rounds a positive stren
 SDK's first nonzero command level up to that level, and rounds a positive sub-millisecond duration
 up to one millisecond. Controller rumble support and physical feel still vary; there is no
 availability or completion query.
-The composition root best-effort attempts `stop()` on every owned sink during OpMode cleanup (for
-example, with `CleanupActions.attemptAll(driverHaptics::stop, operatorHaptics::stop)`). That stop is
-also a queued SDK request rather than confirmation that the controller stopped immediately. The
-sink has no update heartbeat and creates no background owner.
+
+The robot-owned output is deliberately small:
+
+```java
+final class DriverFeedbackOutput implements RobotProgram.Output {
+    private final HapticSink driver;
+    private final HapticSink operator;
+
+    DriverFeedbackOutput(HapticSink driver, HapticSink operator) {
+        this.driver = Objects.requireNonNull(driver, "driver");
+        this.operator = Objects.requireNonNull(operator, "operator");
+    }
+
+    void pulseOperator(double strength, double durationSec) {
+        operator.pulse(strength, durationSec);
+    }
+
+    @Override
+    public void update(LoopClock clock) {
+        // Command-only sinks have no heartbeat.
+    }
+
+    @Override
+    public void stop() {
+        CleanupActions.attemptAll(driver::stop, operator::stop);
+    }
+}
+```
+
+Controls call semantic methods on `feedback`; they do not receive lifecycle ownership. Its no-op
+update is truthful because the output role here contributes cleanup and command ownership, not a
+fabricated periodic operation. A custom host may stop sinks directly. Either stop remains a queued
+SDK request rather than confirmation that a controller stopped immediately.
 
 
 ## Step 3.5: add one shared capability aggregate
@@ -975,7 +1010,7 @@ and not in the composition root.
 The subsystem owns the target resolvers and Plant update order.
 
 ```java
-public final class IntakeShooterSubsystem {
+public final class IntakeShooterSubsystem implements RobotProgram.Output {
 
     private final Plant intake;
     private final Plant feeder;
@@ -997,8 +1032,14 @@ public final class IntakeShooterSubsystem {
         // enqueue feed request
     }
 
+    @Override
     public void update(LoopClock clock) {
         // update queues/sources and then update source-driven Plants here
+    }
+
+    @Override
+    public void stop() {
+        // restore safe requests and stop every privately owned Plant
     }
 
     public Status status(LoopClock clock) {
@@ -1067,9 +1108,7 @@ public final class ScoringTargeting {
                             AprilTagSensor tagSensor,
                             CameraMountConfig cameraMount,
                             AbsolutePoseEstimator globalPose,
-                            TagLayout fieldTags,
-                            BooleanSource aimEnabled,
-                            BooleanSource aimOverride) {
+                            TagLayout fieldTags) {
         // build shared targeting logic here
     }
 
@@ -1094,16 +1133,15 @@ A service is often the right place to centralize anything that several parts of 
 ```java
 public final class MyTelemetryPresenter {
 
-    private final Telemetry telemetry;
-
-    public MyTelemetryPresenter(Telemetry telemetry) {
-        this.telemetry = telemetry;
+    private MyTelemetryPresenter() {
+        // Static additive formatter.
     }
 
-    public void emitTeleOp(MechanismStatus mechanism,
-                           SupervisorStatus supervisor,
-                           TargetingStatus targeting,
-                           PoseEstimate globalPose) {
+    public static void emitTeleOp(Telemetry telemetry,
+                                  MechanismStatus mechanism,
+                                  SupervisorStatus supervisor,
+                                  TargetingStatus targeting,
+                                  PoseEstimate globalPose) {
         telemetry.addData("mechanism.mode", mechanism.mode());
         telemetry.addData("targeting.ready", targeting.ready());
         telemetry.addData("pose", globalPose);
@@ -1116,80 +1154,70 @@ Do not hide robot control logic in the presenter. Keep required driver status on
 path. Optional internal diagnostics belong in state owners' `debugDump(DebugSink, prefix)` methods;
 the composition root selects which dump to call rather than asking every object to emit every loop.
 
-## Step 8: make the composition root boring
+## Step 8: make the composition root declarative
 
-The composition root should mostly assemble the graph and run the loop in a clear order.
+The composition root should assemble the graph and declare truthful roles, not forward lifecycle
+or execute policy:
 
 ```java
 public final class MyRobot {
+    private final MyCapabilities capabilities;
 
-    private final LoopClock clock = new LoopClock();
-    private final MyRobotProfile profile;
-
-    private MecanumDrivebase drive;
-    private AprilTagVisionLane vision;
-    private FtcOdometryAprilTagLocalizationLane localization;
-
-    private MyCapabilities capabilities;
-    private MyTeleOpControls controls;
-    private ScoringTargeting targeting;
-    private IntakeShooterSubsystem shooter;
-    private IntakeShooterSupervisor scoring;
-    private Telemetry telemetry;
-    private MyTelemetryPresenter telemetryPresenter;
-    private DriveSource driveSource;
-
-    public void initTeleOp() {
-        drive = FtcDrives.mecanum(hardwareMap, profile.drive);
-        vision = MyVisionFactory.create(hardwareMap, profile.vision);
-        localization = new FtcOdometryAprilTagLocalizationLane(
-                hardwareMap,
-                vision,
-                profile.field.fixedAprilTagLayout,
-                profile.localization
-        );
-
-        controls = new MyTeleOpControls(gamepads, profile.controls);
-        shooter = new IntakeShooterSubsystem(hardwareMap, profile.mechanism);
-        targeting = new ScoringTargeting(
+    public MyRobot(RobotProgram program,
+                   HardwareMap hardwareMap,
+                   Gamepads gamepads,
+                   MyRobotProfile profile) {
+        MySensingService sensing = program.service(
+                new MySensingService(
+                        hardwareMap,
+                        profile.vision,
+                        profile.localization,
+                        profile.field.fixedAprilTagLayout));
+        IntakeShooterSubsystem shooter = program.output(
+                new IntakeShooterSubsystem(hardwareMap, profile.mechanism));
+        IntakeShooterSupervisor scoring = new IntakeShooterSupervisor(shooter);
+        ScoringTargeting targeting = new ScoringTargeting(
                 profile.strategy,
-                vision.tagSensor(),
-                vision.cameraMountConfig(),
-                localization.globalEstimator(),
-                profile.field.fixedAprilTagLayout,
-                controls.assistEnabledSource(),
-                controls.overrideSource()
-        );
-        scoring = new IntakeShooterSupervisor(shooter);
-        telemetryPresenter = new MyTelemetryPresenter(telemetry);
+                sensing.tagSensor(),
+                sensing.cameraMountConfig(),
+                sensing.globalEstimator(),
+                profile.field.fixedAprilTagLayout);
+        program.service(new MyScoringPolicyService(targeting, scoring));
         capabilities = new MyRobotCapabilities(shooter, scoring, targeting);
 
-        controls.bind(capabilities);
-        driveSource = controls.manualDriveSource();
+        MyTeleOpControls controls = new MyTeleOpControls(
+                program.bindings(), gamepads, profile.controls, capabilities);
+
+        program.drive(controls.manualDriveSource(),
+                FtcDrives.mecanum(hardwareMap, profile.drive));
+        program.presenter((clock, telemetry) ->
+                MyTelemetryPresenter.emitTeleOp(
+                        telemetry,
+                        shooter.status(clock),
+                        scoring.status(),
+                        targeting.status(clock),
+                        sensing.globalPose()));
     }
 
-    public void updateTeleOp() {
-        localization.update(clock);
-        targeting.update(clock);
-        controls.update(clock);
-        scoring.update(clock);
-        drive.drive(driveSource.get(clock).clamped());
-        shooter.update(clock);
-        telemetryPresenter.emitTeleOp(
-                shooter.status(clock),
-                scoring.status(),
-                targeting.status(clock),
-                localization.globalPose()
-        );
-        telemetry.update(); // commit the complete active-loop frame once
+    public MyCapabilities capabilities() {
+        return capabilities;
     }
 }
 ```
 
-An outer OpMode may still own and commit a selection, INIT, or error frame that never enters this
-active loop. `DebugSink` remains an output seam only: choose optional diagnostics at this root's
-call site, and do not add a generic topic registry or frame wrapper without repeated callers that
-need a distinct capability.
+`MySensingService` internally fail-stops any partially constructed vision/localization children and
+exposes only backend-neutral sensing facts. It is registered before the next resource is built.
+`MyScoringPolicyService` then owns targeting-before-supervisor update order. Both are robot code,
+not generic framework lanes. `IntakeShooterSubsystem` is registered immediately as the sole owner
+of its private Plants. Grouping by role still makes every service run before every output; public
+call order does not turn the earlier output declaration into an upstream phase. The OpMode itself
+only chooses the profile and calls `new MyRobot(program, hardwareMap, gamepads, profile)` from
+`configure(program)`.
+
+A custom selector/host may still own and commit a selection, retry, or error frame that never
+enters a managed program. `DebugSink` remains an output seam only: choose optional diagnostics at
+the declaration/presenter boundary, and do not add a generic topic registry or frame wrapper
+without repeated callers that need a distinct capability.
 
 If the composition root starts containing lots of button semantics, aim thresholds, or mechanism timing rules, stop and move that behavior down into the right owner.
 

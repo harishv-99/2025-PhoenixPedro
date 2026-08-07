@@ -19,20 +19,19 @@ import java.util.List;
 import java.util.Map;
 
 import edu.ftcphoenix.fw.core.hal.Direction;
-import edu.ftcphoenix.fw.task.Task;
-import edu.ftcphoenix.fw.task.TaskOutcome;
-import edu.ftcphoenix.fw.task.Tasks;
+import edu.ftcphoenix.fw.ftc.FtcRobotOpMode;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
-/** Verifies starter configuration snapshots and the complete TeleOp/Auto lifecycle roots. */
+/** Verifies starter configuration snapshots, declarations, and the managed TeleOp/Auto hosts. */
 public final class StarterProfileAndRobotTest {
 
     @Test
-    public void profileCopyIsDeepAndRobotRetainsThatSnapshot() {
+    public void profileCopyIsDeepAndManagedHostRetainsThatSnapshot() {
         StarterProfile profile = readyProfile();
         StarterProfile copy = profile.copy();
 
@@ -53,35 +52,35 @@ public final class StarterProfileAndRobotTest {
         MotorProbe intakeMotor = hardwareMap.addMotor("intake");
         RecordingTelemetry telemetry = new RecordingTelemetry();
         StarterProfile source = readyProfile();
-        StarterRobot robot = new StarterRobot(hardwareMap, telemetry.proxy(), source);
+        StarterAuto mode = prepare(
+                new StarterAuto(source),
+                hardwareMap,
+                telemetry,
+                new Gamepad());
 
         source.intake.motorName = "missingAfterConstruction";
         source.intake.collectPower = -0.90;
-        robot.initAuto();
-        Task task = robot.intake().collectForSeconds(10.0);
-        robot.installAutoRoutine(task);
-        robot.start(0.0);
-        robot.update(0.02);
+        mode.init();
+        mode.start();
 
         assertEquals(1, hardwareMap.lookupCalls);
         assertEquals(0.65, intakeMotor.lastPower, 0.0);
-        robot.stop();
+        mode.stop();
     }
 
     @Test
     public void invalidSharedAndTeleOpConfigurationFailBeforeHardwareLookup() {
-        RecordingTelemetry telemetry = new RecordingTelemetry();
-
         StarterProfile invalidAuto = readyProfile();
         invalidAuto.intake.collectPower = 0.0;
         TestHardwareMap autoMap = new TestHardwareMap();
-        StarterRobot autoRobot = new StarterRobot(
+        StarterAuto autoMode = prepare(
+                new StarterAuto(invalidAuto),
                 autoMap,
-                telemetry.proxy(),
-                invalidAuto);
+                new RecordingTelemetry(),
+                new Gamepad());
         assertEquals(0, autoMap.lookupCalls);
 
-        IllegalStateException autoFailure = expectIllegalState(autoRobot::initAuto);
+        IllegalStateException autoFailure = expectIllegalState(autoMode::init);
         assertTrue(autoFailure.getMessage().contains("intake.collectPower"));
         assertTrue(autoFailure.getMessage().contains("nonzero"));
         assertEquals(0, autoMap.lookupCalls);
@@ -89,13 +88,14 @@ public final class StarterProfileAndRobotTest {
         StarterProfile invalidTeleOp = readyProfile();
         invalidTeleOp.drive.wiring.frontLeftName = invalidTeleOp.intake.motorName;
         TestHardwareMap teleOpMap = new TestHardwareMap();
-        StarterRobot teleOpRobot = new StarterRobot(
+        StarterTeleOp teleOpMode = prepare(
+                new StarterTeleOp(invalidTeleOp),
                 teleOpMap,
-                telemetry.proxy(),
-                invalidTeleOp);
+                new RecordingTelemetry(),
+                new Gamepad());
 
         IllegalStateException teleOpFailure = expectIllegalState(
-                () -> teleOpRobot.initTeleOp(new Gamepad()));
+                teleOpMode::init);
         assertTrue(teleOpFailure.getMessage().contains("duplicates another starter motor name"));
         assertEquals(0, teleOpMap.lookupCalls);
     }
@@ -106,70 +106,76 @@ public final class StarterProfileAndRobotTest {
         profile.drive = null;
         TestHardwareMap hardwareMap = new TestHardwareMap();
         hardwareMap.addMotor(profile.intake.motorName);
-        StarterRobot robot = new StarterRobot(
+        StarterAuto mode = prepare(
+                new StarterAuto(profile),
                 hardwareMap,
-                new RecordingTelemetry().proxy(),
-                profile);
+                new RecordingTelemetry(),
+                new Gamepad());
 
-        robot.initAuto();
+        mode.init();
 
         assertEquals(1, hardwareMap.lookupCalls);
-        robot.stop();
+        mode.stop();
     }
 
     @Test
-    public void teleOpLifecycleIsOneShotCommitsOncePerUpdateAndStopsOnce() {
+    public void teleOpDeclarationMapsControlsRealizesOutputsAndPresentsStatus() {
         StarterProfile profile = readyProfile();
         List<String> events = new ArrayList<String>();
         TestHardwareMap hardwareMap = fullTeleOpHardware(profile, events);
         RecordingTelemetry telemetry = new RecordingTelemetry(events);
-        StarterRobot robot = new StarterRobot(hardwareMap, telemetry.proxy(), profile);
         Gamepad driver = new Gamepad();
+        StarterTeleOp mode = prepare(
+                new StarterTeleOp(profile),
+                hardwareMap,
+                telemetry,
+                driver);
 
-        robot.initTeleOp(driver);
+        mode.init();
         assertEquals(5, hardwareMap.lookupCalls);
-        expectIllegalState(robot::initAuto);
-
-        robot.start(1.0);
-        expectIllegalState(() -> robot.start(1.1));
-
-        robot.update(1.02);
         assertEquals(1, telemetry.updateCalls);
         assertEquals(
                 Arrays.asList("intake.mode", "intake.appliedTargetPower"),
-                telemetry.dataKeys);
+                telemetry.lastFrameKeys);
         assertEquals(2, telemetry.dataRowsAtLastUpdate);
         assertEquals(0.0,
                 (Double) telemetry.dataValues.get("intake.appliedTargetPower"),
                 0.0);
 
+        mode.start();
+        mode.loop();
+        assertEquals(2, telemetry.updateCalls);
+        assertEquals(2, telemetry.dataRowsAtLastUpdate);
+
         events.clear();
         driver.a = true;
         driver.left_stick_y = -1.0f;
-        robot.update(1.04);
-        assertEquals(2, telemetry.updateCalls);
+        mode.loop();
+        assertEquals(3, telemetry.updateCalls);
         assertEquals(2, telemetry.dataRowsAtLastUpdate);
         assertEquals(
                 profile.intake.collectPower,
                 (Double) telemetry.dataValues.get("intake.appliedTargetPower"),
                 0.0);
-        assertEquals(StarterIntake.Mode.COLLECT, robot.intake().status().mode());
+        assertEquals(
+                StarterIntake.Mode.COLLECT,
+                telemetry.dataValues.get("intake.mode"));
         assertEquals(
                 profile.intake.collectPower,
                 hardwareMap.motor(profile.intake.motorName).lastPower,
                 0.0);
-        assertEventBefore(events, "power:frontLeft:", "power:intake:");
-        assertEventBefore(events, "power:intake:", "telemetry.row:intake.mode");
+        assertEventBefore(events, "power:intake:", "power:frontLeft:");
+        assertEventBefore(events, "power:frontLeft:", "telemetry.row:intake.mode");
         assertEventBefore(events, "telemetry.row:intake.appliedTargetPower", "telemetry.commit");
 
-        robot.stop();
+        mode.stop();
         assertAllMotorsStopped(hardwareMap, profile);
         int powerWritesAfterFirstStop = hardwareMap.totalPowerWrites();
 
-        robot.stop();
-        robot.update(1.06);
+        mode.stop();
+        mode.loop();
         assertEquals(powerWritesAfterFirstStop, hardwareMap.totalPowerWrites());
-        assertEquals(2, telemetry.updateCalls);
+        assertEquals(3, telemetry.updateCalls);
     }
 
     @Test
@@ -177,87 +183,85 @@ public final class StarterProfileAndRobotTest {
         StarterProfile profile = readyProfile();
         TestHardwareMap hardwareMap = fullTeleOpHardware(profile);
         RecordingTelemetry telemetry = new RecordingTelemetry();
-        StarterRobot robot = new StarterRobot(hardwareMap, telemetry.proxy(), profile);
+        StarterTeleOp mode = prepare(
+                new StarterTeleOp(profile),
+                hardwareMap,
+                telemetry,
+                new Gamepad());
 
-        robot.initTeleOp(new Gamepad());
-        robot.start(0.0);
+        mode.init();
+        mode.start();
         telemetry.failNextUpdate = true;
 
-        IllegalStateException failure = expectIllegalState(() -> robot.update(0.02));
+        IllegalStateException failure = expectIllegalState(mode::loop);
 
         assertTrue(failure.getMessage().contains("telemetry update failed"));
         assertAllMotorsStopped(hardwareMap, profile);
         int writesAfterFailure = hardwareMap.totalPowerWrites();
-        robot.update(0.04);
+        mode.loop();
         assertEquals(writesAfterFailure, hardwareMap.totalPowerWrites());
     }
 
     @Test
-    public void autoLifecycleRunsOneRootCommitsOnceAndCancelsBeforeStopCommand() {
+    public void autoDeclarationStartsOneFreshRootAndPresentsStatus() {
         StarterProfile profile = readyProfile();
         List<String> events = new ArrayList<String>();
         TestHardwareMap hardwareMap = new TestHardwareMap(events);
         MotorProbe intakeMotor = hardwareMap.addMotor(profile.intake.motorName);
         RecordingTelemetry telemetry = new RecordingTelemetry(events);
-        StarterRobot robot = new StarterRobot(hardwareMap, telemetry.proxy(), profile);
+        StarterAuto mode = prepare(
+                new StarterAuto(profile),
+                hardwareMap,
+                telemetry,
+                new Gamepad());
 
-        robot.initAuto();
-        Task collect = robot.intake().collectForSeconds(10.0);
-        robot.installAutoRoutine(new EventLoggingTask(collect, events));
-        expectIllegalState(() -> robot.installAutoRoutine(Tasks.noop()));
-        robot.start(0.0);
-
-        robot.update(0.02);
+        mode.init();
         assertEquals(1, telemetry.updateCalls);
         assertEquals(
                 Arrays.asList("intake.mode", "intake.appliedTargetPower", "auto.idle"),
-                telemetry.dataKeys);
+                telemetry.lastFrameKeys);
+        assertEquals(3, telemetry.dataRowsAtLastUpdate);
+        assertFalse((Boolean) telemetry.dataValues.get("auto.idle"));
+
+        mode.start();
+        assertEquals(
+                profile.intake.collectPower,
+                intakeMotor.lastPower,
+                0.0);
+
+        events.clear();
+        mode.loop();
+        assertEquals(2, telemetry.updateCalls);
         assertEquals(3, telemetry.dataRowsAtLastUpdate);
         assertEquals(
                 profile.intake.collectPower,
                 (Double) telemetry.dataValues.get("intake.appliedTargetPower"),
                 0.0);
-        assertEventBefore(events, "task.start", "power:intake:");
+        assertFalse((Boolean) telemetry.dataValues.get("auto.idle"));
         assertEventBefore(events, "power:intake:", "telemetry.row:intake.mode");
         assertEventBefore(events, "telemetry.row:auto.idle", "telemetry.commit");
-        assertEquals(TaskOutcome.NOT_DONE, collect.getOutcome());
-        assertEquals(profile.intake.collectPower, intakeMotor.lastPower, 0.0);
 
-        events.clear();
-        robot.stop();
-        assertEventBefore(events, "task.cancel", "power:intake:");
-        assertEquals(TaskOutcome.CANCELLED, collect.getOutcome());
+        mode.stop();
         assertEquals(0.0, intakeMotor.lastPower, 0.0);
-        assertEquals(StarterIntake.Mode.STOPPED, robot.intake().status().mode());
         int writesAfterFirstStop = intakeMotor.powerWrites;
 
-        robot.stop();
-        robot.update(0.04);
+        mode.stop();
+        mode.loop();
         assertEquals(writesAfterFirstStop, intakeMotor.powerWrites);
-        assertEquals(1, telemetry.updateCalls);
+        assertEquals(2, telemetry.updateCalls);
     }
 
-    @Test
-    public void autoAdvancesOneClockCyclePerRootUpdate() {
-        StarterProfile profile = readyProfile();
-        TestHardwareMap hardwareMap = new TestHardwareMap();
-        hardwareMap.addMotor(profile.intake.motorName);
-        StarterRobot robot = new StarterRobot(
-                hardwareMap,
-                new RecordingTelemetry().proxy(),
-                profile);
-        CycleRecordingTask routine = new CycleRecordingTask();
-
-        robot.initAuto();
-        robot.installAutoRoutine(routine);
-        robot.start(1.0);
-        robot.update(1.02);
-        robot.update(1.04);
-
-        assertEquals(2L, routine.startCycle);
-        assertEquals(Arrays.asList(2L, 3L), routine.updateCycles);
-        robot.stop();
-        assertTrue(routine.cancelled);
+    private static <T extends FtcRobotOpMode> T prepare(
+            T mode,
+            HardwareMap hardwareMap,
+            RecordingTelemetry telemetry,
+            Gamepad gamepad1) {
+        mode.hardwareMap = hardwareMap;
+        mode.telemetry = telemetry.proxy();
+        mode.gamepad1 = gamepad1;
+        mode.gamepad2 = new Gamepad();
+        mode.resetRuntime();
+        return mode;
     }
 
     private static StarterProfile readyProfile() {
@@ -330,87 +334,6 @@ public final class StarterProfileAndRobotTest {
             throw new AssertionError("unreachable");
         } catch (IllegalStateException expected) {
             return expected;
-        }
-    }
-
-    /** Active test Task that exposes which root clock cycles reached the Auto runner. */
-    private static final class CycleRecordingTask implements Task {
-        private final List<Long> updateCycles = new ArrayList<Long>();
-        private long startCycle = Long.MIN_VALUE;
-        private boolean started;
-        private boolean cancelled;
-
-        @Override
-        public void start(edu.ftcphoenix.fw.core.time.LoopClock clock) {
-            if (started) {
-                throw new IllegalStateException("CycleRecordingTask is single-use");
-            }
-            started = true;
-            startCycle = clock.cycle();
-        }
-
-        @Override
-        public void update(edu.ftcphoenix.fw.core.time.LoopClock clock) {
-            if (!started) {
-                throw new IllegalStateException("CycleRecordingTask must start before update");
-            }
-            updateCycles.add(clock.cycle());
-        }
-
-        @Override
-        public void cancel() {
-            if (started && !cancelled) {
-                cancelled = true;
-            }
-        }
-
-        @Override
-        public boolean isComplete() {
-            return cancelled;
-        }
-
-        @Override
-        public TaskOutcome getOutcome() {
-            return cancelled ? TaskOutcome.CANCELLED : TaskOutcome.NOT_DONE;
-        }
-    }
-
-    /** Delegates one real capability Task while exposing root-level Task ordering to the test. */
-    private static final class EventLoggingTask implements Task {
-        private final Task delegate;
-        private final List<String> events;
-
-        private EventLoggingTask(Task delegate, List<String> events) {
-            this.delegate = delegate;
-            this.events = events;
-        }
-
-        @Override
-        public void start(edu.ftcphoenix.fw.core.time.LoopClock clock) {
-            events.add("task.start");
-            delegate.start(clock);
-        }
-
-        @Override
-        public void update(edu.ftcphoenix.fw.core.time.LoopClock clock) {
-            events.add("task.update");
-            delegate.update(clock);
-        }
-
-        @Override
-        public void cancel() {
-            events.add("task.cancel");
-            delegate.cancel();
-        }
-
-        @Override
-        public boolean isComplete() {
-            return delegate.isComplete();
-        }
-
-        @Override
-        public TaskOutcome getOutcome() {
-            return delegate.getOutcome();
         }
     }
 
@@ -541,6 +464,7 @@ public final class StarterProfileAndRobotTest {
                 new Class<?>[]{Telemetry.class},
                 this);
         private final List<String> dataKeys = new ArrayList<String>();
+        private final List<String> lastFrameKeys = new ArrayList<String>();
         private final Map<String, Object> dataValues = new HashMap<String, Object>();
         private int updateCalls;
         private int dataRowsAtLastUpdate;
@@ -574,6 +498,8 @@ public final class StarterProfileAndRobotTest {
                     throw new IllegalStateException("telemetry update failed");
                 }
                 dataRowsAtLastUpdate = dataKeys.size() - committedDataRows;
+                lastFrameKeys.clear();
+                lastFrameKeys.addAll(dataKeys.subList(committedDataRows, dataKeys.size()));
                 committedDataRows = dataKeys.size();
                 updateCalls++;
                 return true;

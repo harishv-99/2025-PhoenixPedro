@@ -22,9 +22,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *
  * <p>Robot code constructs this composition through {@link Tasks}:</p>
  * <pre>{@code
- * TaskRunner runner = new TaskRunner();
- *
- * runner.enqueue(Tasks.sequence(
+ * program.rootTask(Tasks.sequence(
  *     Tasks.runOnce(() -> log("start")),
  *     Tasks.waitUntil(readySensor),
  *     Tasks.runOnce(() -> log("done"))

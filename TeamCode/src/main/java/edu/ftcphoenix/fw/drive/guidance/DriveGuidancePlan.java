@@ -220,7 +220,7 @@ public final class DriveGuidancePlan {
      * but the output is sent directly to a {@link DriveCommandSink} until the task reaches its
      * tolerance or timeout.</p>
      *
-     * <p>Typical usage:</p>
+     * <p>Ordinary managed Auto usage:</p>
      * <pre>{@code
      * DriveGuidancePlan plan = DriveGuidance.plan()
      *         .translateTo().fieldPointInches(48.0, 24.0)
@@ -228,7 +228,7 @@ public final class DriveGuidancePlan {
      *         .driveTuning().use(DriveGuidancePlan.Tuning.defaults()).doneDriveTuning()
      *         .build();
      *
-     * runner.enqueue(plan.task(drivebase, new DriveGuidanceTask.Config()));
+     * program.rootTask(plan.task(drivebase, new DriveGuidanceTask.Config()));
      * }</pre>
      */
     public DriveGuidanceTask task(DriveCommandSink drivebase, DriveGuidanceTask.Config cfg) {

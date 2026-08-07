@@ -3,13 +3,14 @@
 Use this section when you want concrete, runnable framework examples plus the design reasoning
 behind them.
 
-The examples folder now has five complementary docs:
+The examples folder now has five complementary docs. Start with the managed starter for ordinary
+robot code; the numbered examples keep their phases explicit as focused framework lessons:
 
-- a complete modern starter robot shared by TeleOp and Auto,
+- a complete `FtcRobotOpMode`/`RobotProgram` starter shared by TeleOp and Auto,
 - a progression guide for the full `TeleOp_01` → `TeleOp_09` sequence,
 - a dedicated walkthrough for the first explicit layered mechanism example,
 - a shooter-focused case study for the AprilTag aim-assist examples,
-- and a complete small Pedro autonomous lifecycle reference.
+- and a complete small Pedro autonomous reference using that same managed lifecycle.
 
 ## Read in this order
 

@@ -54,9 +54,10 @@ A robot container is a class that:
 - retains FTC resources and a defensive robot-profile snapshot
 - constructs subsystems with `HardwareMap` plus their data-only config, and creates supervisors
 - defines gamepad bindings
-- calls `update(...)` each loop in a clear order
+- immediately declares each lifecycle owner to the framework-created `RobotProgram`
 
-Many Phoenix robots start with a single `Robot` class used by TeleOp and Auto OpModes.
+Many Phoenix robots start with a single declaration-only `Robot` class used by TeleOp and Auto
+OpModes. `RobotProgram` then owns the fixed update and cleanup order.
 
 ### 2) Subsystem (target-resolver owner)
 
@@ -156,19 +157,21 @@ The subsystem:
 - owns the state (`desiredPose`)
 - exposes semantic commands and applies the target each loop
 
-The OpMode/RobotContainer becomes cleaner: it just binds inputs and calls `subsystem.update(clock)`.
-It constructs the owner, not the raw Plant:
+The composition root constructs and immediately registers the owner, not the raw Plant. It then
+binds inputs to semantic subsystem methods; `RobotProgram` owns the subsystem's update and stop
+calls:
 
 ```java
 // Composition root
-wrist = new WristSubsystem(hardwareMap, profile.wrist);
+WristSubsystem wrist = program.output(
+        new WristSubsystem(hardwareMap, profile.wrist));
 ```
 
 The corresponding mechanism constructor owns the low-level builder (the illustrative `WristConfig`
 is robot code, not a framework type):
 
 ```java
-final class WristSubsystem {
+final class WristSubsystem implements RobotProgram.Output {
     private final Plant wrist;
     private final double stowedPosition;
     private final double intakePosition;
@@ -194,11 +197,13 @@ final class WristSubsystem {
         wrist.commandTarget().set(targetFor(pose));
     }
 
-    void update(LoopClock clock) {
+    @Override
+    public void update(LoopClock clock) {
         wrist.update(clock);
     }
 
-    void stop() {
+    @Override
+    public void stop() {
         wrist.stop();
     }
 

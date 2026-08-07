@@ -17,8 +17,10 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *       no longer receive updates.</li>
  * </ol>
  *
- * <p>Tasks are intended to be used with a runner such as {@link TaskRunner}, which manages calling
- * {@code start()}, {@code update()}, and checking {@code isComplete()} each iteration.</p>
+ * <p>Ordinary FTC robot code gives one root Task to {@code RobotProgram.rootTask(...)} or creates
+ * fresh Tasks through {@code RobotProgram.taskBindings()}. The program owns the runner that calls
+ * {@code start()}, {@code update()}, and {@code isComplete()}. An explicitly custom or private
+ * host, framework tool, or test may instead own its {@link TaskRunner} and {@link LoopClock}.</p>
  *
  * <h2>Single-use lifecycle</h2>
  * <p>A Task instance may enter {@link #start(LoopClock)} once. Framework Tasks throw an actionable
@@ -38,7 +40,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * error; {@link Tasks#noop()} is the intentional always-success exception. Custom Tasks should
  * follow the same rules so runners and composites can clean them up predictably.</p>
  *
- * <p>Typical usage:</p>
+ * <p>Ordinary managed Auto usage:</p>
  * <pre>{@code
  * Task task = Tasks.sequence(
  *         Tasks.waitUntil(driverReady),
@@ -49,10 +51,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  *                 shooter::stopFeed)
  * );
  *
- * runner.enqueue(task);
- * // later in the loop...
- * clock.update(getRuntime());
- * runner.update(clock);
+ * program.rootTask(task);
  * }</pre>
  */
 public interface Task {

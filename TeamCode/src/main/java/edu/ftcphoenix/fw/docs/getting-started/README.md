@@ -6,9 +6,10 @@ Use this section for the first pass through Phoenix.
 
 1. [`Framework Overview.md`](<Framework Overview.md>)
 2. [`Beginner's Guide.md`](<Beginner's Guide.md>)
-3. [`../design/Framework Lanes & Robot Controls.md`](<../design/Framework Lanes & Robot Controls.md>)
-4. [`../core-concepts/Loop Structure.md`](<../core-concepts/Loop Structure.md>)
-5. [`../design/Tasks & Macros Quickstart.md`](<../design/Tasks & Macros Quickstart.md>)
+3. [`../examples/Modern Starter Robot.md`](<../examples/Modern Starter Robot.md>)
+4. [`../design/Framework Lanes & Robot Controls.md`](<../design/Framework Lanes & Robot Controls.md>)
+5. [`../core-concepts/Loop Structure.md`](<../core-concepts/Loop Structure.md>)
+6. [`../design/Tasks & Macros Quickstart.md`](<../design/Tasks & Macros Quickstart.md>)
 
 ## Then branch by need
 

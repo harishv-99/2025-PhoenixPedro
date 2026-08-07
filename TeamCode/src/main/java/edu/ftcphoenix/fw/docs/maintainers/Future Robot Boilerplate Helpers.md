@@ -5,6 +5,29 @@ framework into a season-specific robot superclass. The framework should carry bo
 setup UI, cleanup-failure aggregation, telemetry composition, and small integration seams. Robot
 code should still own game facts, mechanism vocabulary, retry policy, and strategy choices.
 
+## Implemented foundation: managed robot programs
+
+Repeated starter and Pedro roots proved one complete ordinary lifecycle contract. Phoenix now
+provides `FtcRobotOpMode` and its framework-created `RobotProgram`:
+
+```java
+public final class MyTeleOp extends FtcRobotOpMode {
+    @Override
+    protected void configure(RobotProgram program) {
+        IntakeMechanism intake = program.output(
+                new IntakeMechanism(hardwareMap, profile.intake));
+        MyControls controls = new MyControls(program.bindings(), gamepad1, intake);
+        program.drive(controls.driveSource(), FtcDrives.mecanum(hardwareMap, profile.drive));
+    }
+}
+```
+
+This host owns one clock, the fixed service/binding/Task/output/presenter order, one telemetry
+commit, and terminal cleanup. It is an FTC lifecycle owner, not a robot capability superclass:
+mechanisms still own Plants, controls still own operator meanings, services still own sensing or
+vendor heartbeats, and routines still own strategy. Production Phoenix's selector, retry,
+readiness, and handoff migration is deliberately a separate design gate.
+
 ## Design boundary
 
 Good framework candidates:
@@ -63,12 +86,14 @@ terminal or detach owned references when reentrant cleanup requires that guarant
 eligible cleanup actions in their required safety order. Do not use `CleanupActions` to continue
 ordinary robot commands after a failed prerequisite.
 
-### Deferred: generic retry-safe INIT runtime guard
+### Still deferred: generic retry-safe INIT replacement/retry guard
 
-A supplier-shaped `InitRuntimeGuard<T>` cannot clean a resource created before a throwing supplier
-returns `T`. Solving that generally would require a resource-registration and ownership-transfer
-scope, plus one framework-selected retry/replacement policy. Current Auto, tester, and calibration
-callers do not share that complete contract.
+A `RobotProgram` can clean every sibling registered before a later configuration failure because
+registration transfers ownership immediately. It still cannot recover a resource whose own
+constructor throws before returning or choose whether a failed selector/Auto construction is safe
+to retry. A generic replacement/retry guard would need one shared partial-owner transfer,
+error-presentation, retry-eligibility, and replacement policy. Current advanced Auto, tester, and
+calibration callers do not share that complete contract.
 
 Keep retry state and error presentation in the real owner for now. Reconsider a generic guard only
 after multiple callers independently share the same construction boundary, partial-owner transfer,
@@ -125,9 +150,9 @@ if (debugRoute) {
 telemetry.update(); // the complete-frame owner commits once
 ```
 
-This preserves visible ownership without introducing a second telemetry vocabulary. The active
-robot composition root normally owns its complete loop frame; an outer OpMode still owns an INIT,
-selector, or error frame that cannot enter that active loop.
+This preserves visible ownership without introducing a second telemetry vocabulary. An ordinary
+`RobotProgram` owns its complete INIT and active frames. A custom selector/host still owns a
+selection, retry, or error frame that cannot enter the managed program.
 
 A `TelemetryFrame` wrapper is not currently justified. It would duplicate the FTC add-data API and
 add a public noun without solving diagnostic volume: selection still belongs at the call site, and
@@ -138,30 +163,34 @@ that direct additive rendering cannot provide.
 Do not add a framework topic registry, prefix filter, or automatic whole-robot dump as a substitute.
 Those designs hide ownership or still traverse every diagnostic producer when output is disabled.
 
-## Candidate 4: external route auto host
+## Implemented boundary: external route lifecycle roles
 
-Phoenix now has Pedro-specific Auto glue in robot code, which is the right first step. A framework
-helper might eventually own the library-neutral parts of external-route Auto:
+`RobotProgram.Service` and the private root Task runner now own the library-neutral parts of a
+simple external-route Auto:
 
-- route follower start/stop lifecycle
-- adapter cleanup
-- route status telemetry hook
-- task cancellation on OpMode stop
+- recurring follower heartbeat and adapter stop through one service
+- one retained route start/result through the root Task graph
+- additive route-status presentation
+- Task cancellation on OpMode stop
 
-The framework should not know Pedro path geometry or strategy labels. At most, it should host an
-already-built route adapter and a robot-provided task sequence.
+The framework still does not know Pedro path geometry or strategy labels. Robot code registers the
+validated adapter heartbeat as a service and supplies one robot-owned Task sequence. A custom
+selector/retry host remains explicit until RUNTIME-02 proves how its extra policy should compose.
 
 ## Recommended order
 
-1. Keep the current UI primitives as the stable base.
-2. Watch whether another robot or selector repeats Phoenix's menu boilerplate.
-3. If yes, build `SetupWizard` before adding any new robot-specific selectors.
-4. Use `CleanupActions` only for ordered cleanup/error aggregation; keep retry and ownership policy
-   in each real owner.
-5. Reconsider `InitRuntimeGuard` only after multiple complete runtime owners share the same
+1. Use `FtcRobotOpMode`/`RobotProgram` for ordinary FTC robot programs; do not add a parallel base
+   robot or lifecycle builder.
+2. Keep the current UI primitives as the stable base.
+3. Watch whether another robot or selector repeats Phoenix's menu boilerplate.
+4. If yes, build `SetupWizard` before adding any new robot-specific selectors.
+5. Use `CleanupActions` only for explicit custom owners outside the managed program, or internally
+   for ordered cleanup/error aggregation; keep retry policy in each real owner.
+6. Reconsider an INIT replacement/retry guard only after multiple complete runtime owners share the same
    construction, partial-cleanup, retry, replacement, and presentation contract.
-6. Keep telemetry composition direct and additive; reconsider a frame helper only after repeated
+7. Keep telemetry composition direct and additive; reconsider a frame helper only after repeated
    callers demonstrate a capability beyond one explicit final commit.
 
-Do not add a generic robot superclass as the first response to boilerplate. Prefer small helpers that
-remove one repeated ceremony while leaving construction order and ownership visible in robot code.
+Do not turn the FTC lifecycle host into a generic robot superclass. Add only role capabilities that
+remove demonstrated repeated ceremony while leaving construction order and ownership visible in
+`configure(program)`.

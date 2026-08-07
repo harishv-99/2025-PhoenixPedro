@@ -40,6 +40,13 @@ persistent storage. Do not use this type as a global robot-state map or event bu
 
 ## Auto lifecycle
 
+The callback snippets in this section describe the **current production-Phoenix or advanced
+custom-host integration**. `FtcRobotOpMode` keeps its FTC callbacks final and RUNTIME-01 deliberately
+does not add a cleanup/handoff callback to the ordinary seven-method `RobotProgram` grammar.
+Production Phoenix's managed migration, including exact capture-before-cleanup and restore timing,
+is deferred to RUNTIME-02. A different robot that needs this handoff before then must retain an
+explicit custom host for this lifecycle boundary.
+
 Auto needs two visible boundaries because capture and cleanup have different safety requirements:
 
 1. Call `clear()` at the beginning of Auto `init()`. This prevents an older run from being accepted.

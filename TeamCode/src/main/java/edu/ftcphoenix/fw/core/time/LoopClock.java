@@ -20,15 +20,19 @@ import edu.ftcphoenix.fw.core.debug.DebugSink;
  * <h2>Cycle / frame id</h2>
  * <p>{@link #cycle()} increments once per call to {@link #update(double)} after the clock has been
  * started and once immediately at every explicit {@link #reset(double)} boundary. It never returns
- * to zero during this clock's lifetime. When robot code follows the intended pattern (calling
- * {@link #update(double)} exactly once per OpMode cycle), {@code cycle()} is a stable per-cycle
- * identity and a reset cannot alias a cached pre-reset cycle.</p>
+ * to zero during this clock's lifetime. A managed {@code RobotProgram} advances its shared clock
+ * exactly once per OpMode cycle, so {@code cycle()} is a stable per-cycle identity and a reset
+ * cannot alias a cached pre-reset cycle. An explicit custom host must preserve the same rule.</p>
  *
  * <p>This is useful for making other per-cycle systems (like input edge tracking and bindings)
  * idempotent: if their update methods are accidentally called twice in the same loop cycle, the
  * second call can be a no-op when it observes the same {@code clock.cycle()}.</p>
  *
- * <h2>Typical usage</h2>
+ * <p>Ordinary FTC robot code does not construct or advance this clock directly;
+ * {@code RobotProgram} owns that lifecycle. Direct use is reserved for an explicitly custom or
+ * private host, framework tool, calibration utility, or test.</p>
+ *
+ * <h2>Explicit custom/tool/test usage</h2>
  * <pre>{@code
  * LoopClock clock = new LoopClock();
  *

@@ -21,7 +21,12 @@ capability/routine/root types to its own mechanisms; it must not copy the Phoeni
 The guide counts all five robot-code files and documents the exact edit points, portability
 boundaries, and hardware checks that compilation cannot perform.
 
-## Production ownership
+## Current production Phoenix ownership (RUNTIME-02 exception)
+
+The explicit lifecycle call below describes the existing production Phoenix graph. It is not the
+ordinary managed-program recipe: new robot code uses `FtcRobotOpMode`/`RobotProgram`, as shown by
+the small compiling Auto reference above. Migrating production Phoenix's selector, readiness,
+retry, and handoff policies is intentionally deferred to RUNTIME-02.
 
 Phoenix Pedro Auto builds one `PedroPathingRuntime` through the project-specific constants factory:
 

@@ -1,6 +1,6 @@
 # Framework Improvement Tracker
 
-Last updated: 2026-08-04
+Last updated: 2026-08-06
 
 This file tracks proposed Phoenix framework improvements. It is deliberately a planning document:
 an item being listed here does **not** mean its current proposed solution has been approved. Each
@@ -154,12 +154,14 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 67 | MAP-02 | Calibration-search power mapping separation | Done | Correct MAP-01's regression by keeping position-coordinate scale/bias out of grouped raw-power calibration search. |
 | 68 | FTC-02 | Device-managed controller configuration validation | Done | The staged grammar, strict controller domains, synchronized callers/docs, automated verification, independent review, Android Studio approval, and publication authorization are complete. |
 | 69 | SOURCE-04 | Successful source-cache commit semantics | Done | Commit value observations only after success, retain non-rollback controller failures, require value-style reducers, and make `Source.of(...)` the one ordinary robot-code adapter. |
-| 70 | INPUT-02 | Binding update failure retention | Proposed | Make same-cycle binding failure behavior explicit for an effectful traversal that may already have fired callbacks. |
-| 71 | BOUNDARY-01 | FTC boundary enforcement | Proposed | Fix existing import leaks, then add a focused forbidden-import check. |
-| 72 | CI-01 | Framework verification in CI | Proposed | Run focused unit tests, TeamCode compilation, docs checks, and boundary checks. |
-| 73 | EXAMPLE-03 | Advanced moving-target reference | Proposed | Revisit only after common-path guidance, known software defects, docs, boundaries, and verification are clearer. |
-| 74 | SAFE-04 | PowerOutput failure cleanup and seam truth | Deferred | Current completion requires representative actuator observation; a narrower software-seam contract needs a new approved decision gate. |
-| 75 | CONFIG-01 | Owner-configuration snapshot audit | Deferred | Revisit specific owners only when a traced caller shows mutation drift or invalid retained state. |
+| 70 | RUNTIME-01 | Managed robot-program lifecycle | Done | Let ordinary FTC robot code declare services, bindings, Tasks, outputs, drive, and presenters once while one framework host owns the fixed lifecycle and fail-stop ceremony. |
+| 71 | RUNTIME-02 | Production Phoenix managed-runtime migration | Proposed | Migrate the production Phoenix selector, retry, readiness, handoff, and mode lifecycle only after a separate decision gate preserves those robot-specific policies. |
+| 72 | INPUT-02 | Binding update failure retention | Proposed | Make same-cycle binding failure behavior explicit for an effectful traversal that may already have fired callbacks. |
+| 73 | BOUNDARY-01 | FTC boundary enforcement | Proposed | Fix existing import leaks, then add a focused forbidden-import check. |
+| 74 | CI-01 | Framework verification in CI | Proposed | Run focused unit tests, TeamCode compilation, docs checks, and boundary checks. |
+| 75 | EXAMPLE-03 | Advanced moving-target reference | Proposed | Revisit only after common-path guidance, known software defects, docs, boundaries, and verification are clearer. |
+| 76 | SAFE-04 | PowerOutput failure cleanup and seam truth | Deferred | Current completion requires representative actuator observation; a narrower software-seam contract needs a new approved decision gate. |
+| 77 | CONFIG-01 | Owner-configuration snapshot audit | Deferred | Revisit specific owners only when a traced caller shows mutation drift or invalid retained state. |
 
 The completed order was intentionally front-loaded with testability, robot lifecycle, actuator
 safety, deterministic Task behavior, Pedro ownership, truthful route outcomes, and the reusable
@@ -13600,6 +13602,237 @@ writer, and explicit lifecycle ownership.
   `codex/source-04-successful-source-cache-commit-semantics`, push it to
   `https://github.com/harishv-99/2025-PhoenixPedro.git`, open a pull request, and merge it into
   `master`. SOURCE-04 is Done; this authorization does not start INPUT-02 or another tracker item.
+
+### RUNTIME-01 - Managed robot-program lifecycle
+
+- **Research start (2026-08-06):** RUNTIME-01 is the sole active item on
+  `codex/runtime-01-managed-robot-program-lifecycle`, based exactly on merged
+  `origin/master@7178f5140eef2687963b47364e511193024dc5cc`. SOURCE-04 is published and
+  Done. RUNTIME-02, INPUT-02, the production Phoenix lifecycle, tools/testers, and every other
+  proposed or deferred item remain outside this implementation.
+- **Decision record (2026-08-06):** **Ready; breaking lifecycle/API approval required before
+  implementation.** The user explicitly relaxed the earlier preference that students manually own
+  lifecycle and made shorter, safer ordinary robot code an important criterion. The resulting
+  design was compared with FTCLib's command scheduler/subsystem periodic model and NextFTC's
+  component/command lifecycle. Phoenix will adopt their useful lesson—students declare robot
+  behavior once and the framework owns FTC callback ceremony—without adopting global schedulers,
+  arbitrary periodic writers, default-command arbitration, or hidden Plant ownership.
+  - **Confirmed behavior and failure path:** the maintained modern starter and basic Pedro examples
+    independently own the same reusable state machine: one `LoopClock`, runtime validation,
+    START reset, binding and `TaskRunner` advancement, fixed downstream realization, telemetry
+    commit, terminal state, failure-triggered cancellation, ordered best-effort cleanup, and
+    repeated/reentrant STOP protection. `StarterRobot` is 226 source lines and
+    `BasicPedroAutoRobot` is 171 lines; much of each root is lifecycle shell rather than robot
+    meaning. Their thin OpModes still forward INIT/START/loop/STOP manually. Production
+    `PhoenixRobot` repeats the pattern with split `startAny`/mode-start and `updateAny`/mode-update
+    calls; omitting or reordering one half can omit the sole clock update or fail-stop boundary.
+    This last production migration also includes selector, retry, readiness, exact-start pose, and
+    Auto-to-TeleOp handoff policy, so it is deliberately assigned to RUNTIME-02 rather than hidden
+    in this first framework/API change.
+  - **Complete caller audit:** ordinary robot code means every file under
+    `edu.ftcphoenix.robots`. Direct FTC hosts are `StarterTeleOp`, `StarterAuto`,
+    `PhoenixBasicPedroAutoExample`, `PhoenixTeleOp`, and `PhoenixPedroAutoOpModeBase` plus its
+    selector subclass. Lifecycle-owning roots are `StarterRobot`, `BasicPedroAutoRobot`, and
+    `PhoenixRobot`; `PhoenixTeleOpControls` and `StarterTeleOpControls` also construct private
+    `Bindings`; the selector owns a separate INIT UI clock and bindings. Framework tool examples
+    and `FtcTeleOpTesterOpMode` are not ordinary robot code; the tester host is nevertheless a
+    proven final-callback/fail-stop precedent. RUNTIME-01 migrates only the modern starter and the
+    basic Pedro reference/host. Production Phoenix and selector code remain byte-for-byte lifecycle
+    clients until RUNTIME-02's separate decision gate.
+  - **Existing primitive audit:** `LoopClock` owns only time/cycle identity; `Bindings` owns only
+    one binding graph and heartbeat; `TaskRunner` owns only queued Task lifecycle; and
+    `CleanupActions` owns only exception aggregation. None can enforce the complete FTC lifecycle,
+    cross-owner phase order, one telemetry commit, or cleanup of already registered siblings.
+    `FtcTeleOpTesterOpMode` proves that final SDK callbacks, ownership-before-callback, terminal
+    detachment, exact primary failure retention, suppressed cleanup failures, and uncaught `Error`
+    semantics are practical at this boundary, but its tester vocabulary is not a robot runtime.
+  - **Public construction-path and distinct-capability audit:** the supported ordinary entry is one
+    abstract `FtcRobotOpMode` class in the FTC boundary. A robot overrides exactly one
+    `configure(RobotProgram program)` method. The framework constructs the one `RobotProgram`; it
+    has no public constructor, `builder()`, static `of(...)`, callback-stage builder, returned
+    program object, or second facade. Its declaration methods are the only supported layer:
+    `bindings()`, `taskBindings()`, `service(...)`, `output(...)`,
+    `drive(source, sink)`, `rootTask(...)`, and `presenter(...)`. Each declaration returns or
+    retains the exact supplied object immediately, and the graph freezes when `configure` returns.
+    The nested `Service`, `Output`, and `Presenter` roles provide distinct phase/lifecycle
+    capabilities; they are not duplicate construction spellings. `Service` owns an optional START
+    hook plus an upstream active heartbeat and reverse-order stop. `Output` owns downstream
+    realization and declaration-order stop. `Presenter` is additive, read-only frame formatting.
+    A source-driven drive pair is distinct because the host must call the optional sink heartbeat,
+    sample/clamp the final source, write it, and stop the sink as one output phase. Sources need no
+    registration. Plants are not registrable directly: ordinary mechanisms privately own their
+    Plants and implement `Output` so Plant order remains explicit inside the real owner.
+  - **Registration/parameter audit:** no staged builder or immediately consumed public parameter
+    wrapper is introduced. `BindingRegistrar` remains the registration-only capability and is
+    returned through a freeze-aware view backed by one private `Bindings`; `TaskBindings` is the
+    existing thin adapter over that same registrar and one private `TaskRunner`. Services, outputs,
+    drive sinks, and presenters are meaningful retained owners/callbacks, not one-step answer
+    objects. Registration rejects null, late declarations, duplicate owner identity across
+    lifecycle roles, a second drive, and a second root Task before changing retained state.
+  - **Ordinary call-site comparison:** the current starter client constructs `StarterRobot`, calls
+    `initTeleOp`/`initAuto`, optionally installs a Task, then forwards three FTC callbacks; the root
+    separately creates/updates/stops controls, drive, runner, mechanism, clock, and telemetry. In
+    the selected design, the OpMode supplies only robot decisions in one method: construct the
+    mechanism/profile, declare bindings, declare one source-driven drive or root Task, register
+    outputs, and add status rows. The student no longer supplies lifecycle state, clock calls,
+    phase method calls, telemetry commit, cancellation, or cleanup aggregation. A raw callback
+    executor removes fewer lines while making students name every lifecycle phase. A component
+    registry looks shorter but permits arbitrary same-phase writers and hides the source/Task/Plant
+    boundary. A returned builder/program adds a second construction layer and delayed ownership
+    transfer without shortening the decisions.
+  - **Chosen lifecycle:** INIT resets the private clock, invokes `configure`, freezes the graph,
+    renders presenters, and commits one frame. INIT-loop cycles advance that clock, render only
+    presenters, and commit once; services, bindings, Tasks, drive, and outputs never actuate during
+    INIT. START resets the same clock at the exact FTC boundary, starts services in declaration
+    order, starts and first-updates the optional root through the private runner, then realizes
+    outputs once. That boundary pass keeps every positive-duration Task request visible to its
+    downstream output even if the first active loop arrives after the request's duration. Each active
+    loop is fixed as `clock -> services -> Bindings -> TaskRunner -> outputs/drive -> presenters ->
+    telemetry.update()`. This makes binding-enqueued Tasks visible to the same runner phase and
+    Task-written targets visible to the same downstream output phase. Shutdown first marks the
+    program terminal, then attempts runner cancellation, binding clearing, outputs in declaration
+    order, and services in reverse declaration order. Configuration, START, active-loop, presenter,
+    or telemetry `RuntimeException` enters the same cleanup; the exact primary remains primary and
+    cleanup failures are suppressed. Explicit/reentrant/repeated STOP is inert after terminal
+    detachment. `Error` remains uncaught, matching existing framework policy.
+  - **FTC/Pedro boundary:** the managed class lives in `edu.ftcphoenix.fw.ftc` because it extends
+    FTC `OpMode`, receives FTC `Telemetry`, and owns SDK callback mapping. Core sources, Tasks,
+    Plants, drive contracts, and robot policy remain FTC-independent. The basic Pedro reference
+    registers localization plus the recurring Pedro adapter heartbeat as one `Service`, registers
+    its mechanism as one `Output`, and installs its routine as the root Task. Service-before-Task
+    and Task-before-output order preserves pose freshness, one follower heartbeat, truthful route
+    completion observation, and Plant realization. The route/path/result policy remains robot code.
+  - **Rejected designs:** documentation-only keeps the demonstrated omission/reordering and
+    fail-stop hazards. Generalizing only cleanup leaves clock and phase ownership duplicated. A
+    generic `BaseRobot`, `Component`, `Subsystem`, lane registry, reflection scan, or `updateAll()`
+    adds an unrestricted periodic-writer model and hides Plant/update ownership. A public
+    lifecycle-step/callback builder makes students restate the ceremony being removed. A
+    `LinearOpMode` host would replace the repository's iterative INIT-loop model and complicate
+    existing selector/readiness behavior. Returning a built `RobotProgram` requires delayed
+    ownership transfer and cannot clean a registered sibling if a later construction fails.
+    Registering raw Plants encourages composition roots to prebuild/inject them against the
+    ordinary mechanism rule. Automatically migrating production Phoenix would mix the reusable
+    runtime with selector/retry/handoff policy and violate the one-item gate.
+  - **Framework Principles check:** the design keeps one clock and one visible fixed order,
+    preserves non-blocking Tasks and source-driven Plants, gives each mechanism sole Plant
+    ownership, keeps FTC types at the FTC boundary, keeps robot meaning and season policy in robot
+    code, prevents invalid duplicate/late combinations early, and creates one normal public path.
+    It deliberately revises the earlier guidance that students forward lifecycle manually because
+    the user changed that priority and three maintained roots now demonstrate repeated, hazardous
+    ceremony. It is an FTC lifecycle host, not a robot capability superclass.
+  - **Bounded implementation scope:** add `RobotProgram` and `FtcRobotOpMode` with focused tests;
+    migrate `edu.ftcphoenix.robots.examples.starter` and the basic Pedro reference plus
+    `PhoenixBasicPedroAutoExample`; synchronize their affected Javadocs, Framework Principles,
+    beginner/loop/task/design/starter/Pedro/maintainer guides, navigation text, and source-line or
+    concept counts. Do not migrate `PhoenixRobot`, `PhoenixTeleOp`,
+    `PhoenixPedroAutoOpModeBase`, the selector, framework tool examples, testers, legacy/sample
+    code, or unrelated APIs.
+  - **Verification plan:** focused host tests cover exact INIT/START clock boundaries, presenter-only
+    INIT, root start, complete active phase order, binding-enqueued Task and downstream output in the
+    same cycle, one drive heartbeat/sample/write, fresh `TaskBindings`, graph freeze, nulls,
+    duplicate identity, second drive/root, and no raw Plant path. Failure matrices cover partial
+    configuration, every START/loop/telemetry phase, normal/stop-before-start/repeated/reentrant
+    cleanup, order, exact primary identity, suppression order, and uncaught `Error`. Migrated starter
+    and Pedro tests cover declaration-only roots, no INIT actuation, pose-before-route,
+    one follower heartbeat, Task-before-Plant, cancellation, and stopped outputs. Run focused
+    suites, full TeamCode unit tests and Java compilation, XML result counts, exhaustive caller/API
+    searches, documented line/concept counts, Markdown link/fence checks, whitespace checks,
+    independent correctness/Principles/simplicity reviews, and `git diff --check`. Robot hardware is
+    not required for lifecycle semantics; configured names/directions, physical stop, localization,
+    route motion, and mechanism response remain adopting-robot validation.
+- **Implementation approval (2026-08-06):** after reviewing the robot-code before/after examples,
+  FTCLib/NextFTC comparison, exact role APIs, phase order, cleanup semantics, and the deliberate
+  RUNTIME-02 split, the user replied “Implement the plan.” Gate 2 is authorized on
+  `codex/runtime-01-managed-robot-program-lifecycle`. This does not
+  authorize publication or implementation of RUNTIME-02.
+- **Gate 2 implementation (2026-08-06):** RUNTIME-01 is **Verifying** on
+  `codex/runtime-01-managed-robot-program-lifecycle`, still based exactly on
+  `origin/master@7178f5140eef2687963b47364e511193024dc5cc`. The complete diff remains unstaged.
+  - `RobotProgram` and final-callback `FtcRobotOpMode` implement the approved one-path declaration
+    grammar, exact INIT/START boundaries, fixed active order, one telemetry commit, and terminal
+    fail-stop cleanup. The program has no public constructor, builder, raw-Plant path, or public
+    lifecycle step; its seven public declarations remain `bindings`, `taskBindings`, `service`,
+    `output`, `drive`, `rootTask`, and `presenter`.
+  - Reentrant STOP publishes terminal state before any later participant can act. Drive sink/source
+    callbacks cannot write after STOP, final drive components must be finite before clamping, and a
+    binding-triggered STOP first unwinds the protected traversal before running the ordinary
+    runner-to-bindings-to-outputs-to-reverse-services cleanup order. Primary and suppressed cleanup
+    failures therefore keep the same order in every shutdown path.
+  - The modern starter and basic Pedro reference/host use the managed path. Starter controls receive
+    only `BindingRegistrar`; mechanisms privately own their Plants as outputs. Pedro registers its
+    localization/adapter heartbeat service before later construction, then its mechanism output and
+    one root routine. Production Phoenix selector, retry, readiness, handoff, TeleOp, and Auto
+    lifecycle remain unchanged for RUNTIME-02; only the already-disabled basic Pedro example host
+    adopts RUNTIME-01.
+  - Framework Principles, public lifecycle/clock/Task/Pedro Javadocs, and the affected beginner,
+    loop, Task, design, starter, Pedro, navigation, handoff, and maintainer guides now teach one
+    ordinary managed grammar. Direct clock/runner/binding ownership and explicit production Phoenix
+    callbacks remain available but are labeled custom/tool/test or the current RUNTIME-02 exception.
+- **Verification (2026-08-06):**
+  - Seven focused lifecycle/starter/Pedro suites pass **49/49** tests: managed host (22), starter
+    mechanism/controls (6), starter profile/root (6), Pedro mechanism (4), Pedro root (4), Pedro
+    routine (4), and the disabled physical host (3). Coverage includes exact phase boundaries,
+    declaration/API shape, partial construction, every runtime phase, reentrant STOP from bindings
+    and drive callbacks, finite-drive rejection, cleanup/suppression order, and migrated behavior.
+  - Unfiltered `:TeamCode:compileDebugJavaWithJavac :TeamCode:testDebugUnitTest` passes with
+    **132 suites / 1,229 tests / 0 failures / 0 errors / 0 skipped**. A final TeamCode Java compile
+    also passes after the public Javadoc synchronization. Output contains only the repository's
+    existing Java 8 source/target deprecation warnings under Android Studio JBR 21.
+  - `DocumentationLinksTest` passes. The five Pedro robot-code files remain exactly **611 lines**
+    (497 season-independent plus the 114-line disabled Phoenix host) and the documented 12 concepts
+    remain accurate; the seven-file starter is 609 lines. Changed Markdown links/fences, final-LF,
+    caller/API/scope scans, production-Phoenix diff scope, and `git diff --check` pass. HEAD and the
+    merge base remain the fetched `origin/master` commit above.
+- **Adversarial review (2026-08-06):** independent core lifecycle, API/capability, Framework
+  Principles, caller, and documentation reviews find no remaining issue. Review-discovered
+  reentrant drive and binding cleanup hazards, non-finite drive acceptance, pre-update output-stop
+  wording, command-only haptic ownership, stale manual lifecycle examples, and production-Phoenix
+  exception labels were corrected and regression-checked. Final reviewers confirmed fixed order,
+  failure identity/suppression, one ordinary grammar, advanced capability retention, and bounded
+  RUNTIME-01 scope.
+- **Hardware verification boundary:** no robot run is required for the deterministic callback
+  mapping, declaration freeze, single clock/runner ownership, phase order, finite validation,
+  cancellation, or cleanup aggregation. Adopting-robot testing is still required for configured
+  names/directions, physical stop behavior, mechanism response, localization, Pedro route motion,
+  and controller feedback.
+- **Android Studio audit point (2026-08-06):** inspect `RobotProgram`, `FtcRobotOpMode`, and their
+  22-test lifecycle matrix; compare the declaration-only starter TeleOp/Auto and basic Pedro host/root
+  with their former callback-forwarding roots; verify the exact START service/root/output boundary,
+  binding-reentrant cleanup, finite drive guard, private Plant ownership, and synchronized ordinary
+  versus advanced documentation. Confirm production Phoenix lifecycle changes are limited to the
+  disabled `PhoenixBasicPedroAutoExample`, and git status contains only the recorded RUNTIME-01
+  implementation, migration, documentation, test, and tracker files.
+- **Required combined manual-review/publication reply:** after inspecting this unstaged diff in
+  Android Studio, use exactly:
+  **`RUNTIME-01 looks good. Authorize committing the reviewed RUNTIME-01 diff on
+  codex/runtime-01-managed-robot-program-lifecycle, pushing that branch to
+  https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging it into
+  master.`**
+- **Manual verification and publication authorization (2026-08-06):** the user completed the
+  Android Studio review and sent the exact combined authorization above, then explicitly directed
+  the workflow to move to the next task after publication. RUNTIME-01 is now **Done**; Gate 3 may
+  stage only this reviewed diff, create its single item commit, push
+  `codex/runtime-01-managed-robot-program-lifecycle` to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, open a pull request, and merge that pull
+  request into `master`. The next item may enter Gate 1 only after the merge is fetched and verified;
+  this approval does not preapprove that item's design or implementation.
+
+### RUNTIME-02 - Production Phoenix managed-runtime migration
+
+- **Problem to confirm:** production `PhoenixRobot`, `PhoenixTeleOp`, and the Pedro Auto host split
+  common/mode lifecycle forwarding and repeat managed-runtime ceremony, but their INIT selector,
+  retry eligibility, readiness blocking, exact-start pose, route replacement, diagnostics, and
+  Auto-to-TeleOp handoff policies are more complex than the RUNTIME-01 starter/reference callers.
+- **Required decision gate:** after RUNTIME-01 is reviewed and published, trace every production
+  Phoenix callback, construction/partial-cleanup owner, mode transition, selector retry, readiness
+  page, handoff write/clear, telemetry frame, and test. Compare direct adoption, a narrow adapter,
+  and leaving advanced lifecycle explicit. Show complete Phoenix TeleOp and Auto call sites, not
+  only the outer host methods.
+- **Leading hypothesis:** use the same `FtcRobotOpMode`/`RobotProgram` grammar where it removes real
+  ceremony, while keeping selector/retry/handoff and season policy in explicit Phoenix owners.
+  Extend the framework only if a capability is independently reusable and cannot be expressed by
+  RUNTIME-01's approved roles.
+- **Decision record:** _Pending. Do not alter production Phoenix lifecycle as part of RUNTIME-01._
 
 ### INPUT-02 - Binding update failure retention
 
