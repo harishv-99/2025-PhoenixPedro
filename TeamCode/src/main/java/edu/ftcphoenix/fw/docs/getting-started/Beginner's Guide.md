@@ -121,9 +121,10 @@ Keep this managed order in mind:
 
 > **Clock → Services → Bindings → Tasks → Outputs/Drive → Presenters → one telemetry commit**
 
-`FtcRobotOpMode` supplies final INIT/START/loop/STOP callbacks. INIT runs presenters only. START
-resets the clock, starts services, starts and first-updates the optional root Task, and realizes
-exact-start outputs once.
+`FtcRobotOpMode` supplies final INIT/START/loop/STOP callbacks. INIT runs the optional data-only
+prestart owner and presenters. START freezes prestart before resetting the clock; `READY` starts
+services, starts and first-updates the optional root Task, and realizes exact-start outputs once,
+while `BLOCKED` keeps active roles inert and continues presenters.
 STOP or a caught runtime failure cancels Tasks, clears bindings, stops outputs, and then stops
 services. Student code does not forward those calls.
 

@@ -45,7 +45,7 @@ public final class PhoenixReadinessTest {
     public void explicitPedroTestAllowsButClearlyWarnsAboutRelaxedChecks() {
         PhoenixProfile profile = calibratedProfile();
         profile.calibration.pinpointPodOffsetsCalibrated = false;
-        PhoenixAutoSpec spec = spec(PhoenixAutoSpec.Alliance.RED,
+        PhoenixAutoSpec spec = spec(PhoenixAlliance.RED,
                 PhoenixAutoStrategyId.PEDRO_INTEGRATION_TEST);
 
         PhoenixReadiness.Result result = PhoenixReadiness.pedroAuto(
@@ -74,7 +74,7 @@ public final class PhoenixReadinessTest {
     public void unverifiedAxesBlockEvenTheExplicitPedroTest() {
         PhoenixProfile profile = calibratedProfile();
         profile.calibration.pinpointAxesVerified = false;
-        PhoenixAutoSpec spec = spec(PhoenixAutoSpec.Alliance.BLUE,
+        PhoenixAutoSpec spec = spec(PhoenixAlliance.BLUE,
                 PhoenixAutoStrategyId.PEDRO_INTEGRATION_TEST);
 
         PhoenixReadiness.Result result = PhoenixReadiness.pedroAuto(
@@ -99,7 +99,7 @@ public final class PhoenixReadinessTest {
     public void matchAutoBlocksUncalibratedOffsetsAndIntegrationOnlyGeometry() {
         PhoenixProfile profile = calibratedProfile();
         profile.calibration.pinpointPodOffsetsCalibrated = false;
-        PhoenixAutoSpec spec = spec(PhoenixAutoSpec.Alliance.RED,
+        PhoenixAutoSpec spec = spec(PhoenixAlliance.RED,
                 PhoenixAutoStrategyId.SAFE_PRELOAD);
 
         PhoenixReadiness.Result result = PhoenixReadiness.pedroAuto(
@@ -122,9 +122,9 @@ public final class PhoenixReadinessTest {
     @Test
     public void DriverStationPurposeMustMatchTheSelectedStrategy() {
         PhoenixProfile profile = calibratedProfile();
-        PhoenixAutoSpec ordinary = spec(PhoenixAutoSpec.Alliance.RED,
+        PhoenixAutoSpec ordinary = spec(PhoenixAlliance.RED,
                 PhoenixAutoStrategyId.SAFE_PRELOAD);
-        PhoenixAutoSpec integration = spec(PhoenixAutoSpec.Alliance.RED,
+        PhoenixAutoSpec integration = spec(PhoenixAlliance.RED,
                 PhoenixAutoStrategyId.PEDRO_INTEGRATION_TEST);
 
         PhoenixReadiness.Result ordinaryFromTestEntry = PhoenixReadiness.pedroAuto(
@@ -155,7 +155,7 @@ public final class PhoenixReadinessTest {
         PhoenixProfile profile = calibratedProfile();
 
         for (PhoenixAutoStrategyId strategy : PhoenixAutoStrategyId.values()) {
-            PhoenixAutoSpec spec = spec(PhoenixAutoSpec.Alliance.BLUE, strategy);
+            PhoenixAutoSpec spec = spec(PhoenixAlliance.BLUE, strategy);
             for (PhoenixReadiness.AutoPurpose purpose : PhoenixReadiness.AutoPurpose.values()) {
                 PhoenixReadiness.Result result = PhoenixReadiness.pedroAuto(
                         spec,
@@ -180,12 +180,29 @@ public final class PhoenixReadinessTest {
     }
 
     @Test
+    public void allianceScoringTagMappingIsModeNeutralAndDefensivelyCopied() {
+        PhoenixProfile profile = calibratedProfile();
+        profile.autoAim.redAllianceScoringTagId = 41;
+        profile.autoAim.blueAllianceScoringTagId = 42;
+
+        assertEquals(41, profile.autoAim.scoringTagIdFor(PhoenixAlliance.RED));
+        assertEquals(42, profile.autoAim.scoringTagIdFor(PhoenixAlliance.BLUE));
+
+        PhoenixProfile copy = profile.copy();
+        profile.autoAim.redAllianceScoringTagId = 51;
+        profile.autoAim.blueAllianceScoringTagId = 52;
+
+        assertEquals(41, copy.autoAim.scoringTagIdFor(PhoenixAlliance.RED));
+        assertEquals(42, copy.autoAim.scoringTagIdFor(PhoenixAlliance.BLUE));
+    }
+
+    @Test
     public void selectedAllianceFactsIgnoreTheInactiveAlliance() {
         PhoenixProfile profile = calibratedProfile();
-        profile.autoAim.scoringTargets.remove(profile.auto.blueAllianceScoringTagId);
+        profile.autoAim.scoringTargets.remove(profile.autoAim.blueAllianceScoringTagId);
         profile.field.fixedAprilTagLayout = new SimpleTagLayout()
                 .add(
-                        profile.auto.redAllianceScoringTagId,
+                        profile.autoAim.redAllianceScoringTagId,
                         0.0,
                         0.0,
                         0.0,
@@ -193,10 +210,10 @@ public final class PhoenixReadinessTest {
                         0.0,
                         0.0
                 );
-        PhoenixAutoSpec red = spec(PhoenixAutoSpec.Alliance.RED,
-                PhoenixAutoStrategyId.SAFE_PRELOAD);
-
-        PhoenixReadiness.Result result = PhoenixReadiness.autoProfile(red, profile);
+        PhoenixReadiness.Result result = PhoenixReadiness.allianceScoringTarget(
+                PhoenixAlliance.RED,
+                profile
+        );
 
         assertTrue(result.isAllowed());
         assertTrue(result.issues().isEmpty());
@@ -206,15 +223,16 @@ public final class PhoenixReadinessTest {
     public void selectedAllianceTargetMustExistInCatalogAndFixedLayout() {
         PhoenixProfile missingCatalogTarget = calibratedProfile();
         missingCatalogTarget.autoAim.scoringTargets.remove(
-                missingCatalogTarget.auto.redAllianceScoringTagId
+                missingCatalogTarget.autoAim.redAllianceScoringTagId
         );
-        PhoenixAutoSpec red = spec(PhoenixAutoSpec.Alliance.RED,
-                PhoenixAutoStrategyId.SAFE_PRELOAD);
 
         PhoenixReadiness.Result catalogResult =
-                PhoenixReadiness.autoProfile(red, missingCatalogTarget);
+                PhoenixReadiness.allianceScoringTarget(
+                        PhoenixAlliance.RED,
+                        missingCatalogTarget
+                );
         assertEquals(
-                Arrays.asList("auto.selected_target_missing"),
+                Arrays.asList("targeting.selected_scoring_tag_missing"),
                 issueIds(catalogResult)
         );
 
@@ -222,10 +240,47 @@ public final class PhoenixReadinessTest {
         missingFixedTarget.field.fixedAprilTagLayout = new SimpleTagLayout()
                 .add(20, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
         PhoenixReadiness.Result layoutResult =
-                PhoenixReadiness.autoProfile(red, missingFixedTarget);
+                PhoenixReadiness.allianceScoringTarget(
+                        PhoenixAlliance.RED,
+                        missingFixedTarget
+                );
         assertEquals(
-                Arrays.asList("auto.selected_target_not_fixed"),
+                Arrays.asList("targeting.selected_scoring_tag_not_fixed"),
                 issueIds(layoutResult)
+        );
+    }
+
+    @Test
+    public void allianceTargetErrorsNameTheExactSharedProfileField() {
+        PhoenixProfile redInvalid = calibratedProfile();
+        redInvalid.autoAim.redAllianceScoringTagId = -1;
+
+        PhoenixReadiness.Result redResult = PhoenixReadiness.allianceScoringTarget(
+                PhoenixAlliance.RED,
+                redInvalid
+        );
+        assertEquals(
+                Arrays.asList("targeting.selected_scoring_tag_id_invalid"),
+                issueIds(redResult)
+        );
+        assertIssueNamesField(
+                redResult.issues().get(0),
+                "PhoenixProfile.autoAim.redAllianceScoringTagId"
+        );
+
+        PhoenixProfile blueInvalid = calibratedProfile();
+        blueInvalid.autoAim.blueAllianceScoringTagId = -2;
+        PhoenixReadiness.Result blueResult = PhoenixReadiness.allianceScoringTarget(
+                PhoenixAlliance.BLUE,
+                blueInvalid
+        );
+        assertEquals(
+                Arrays.asList("targeting.selected_scoring_tag_id_invalid"),
+                issueIds(blueResult)
+        );
+        assertIssueNamesField(
+                blueResult.issues().get(0),
+                "PhoenixProfile.autoAim.blueAllianceScoringTagId"
         );
     }
 
@@ -234,7 +289,7 @@ public final class PhoenixReadinessTest {
         PhoenixProfile profile = calibratedProfile();
         profile.calibration.pinpointAxesVerified = false;
         profile.calibration.pinpointPodOffsetsCalibrated = false;
-        PhoenixAutoSpec spec = spec(PhoenixAutoSpec.Alliance.RED,
+        PhoenixAutoSpec spec = spec(PhoenixAlliance.RED,
                 PhoenixAutoStrategyId.SAFE_PRELOAD);
 
         PhoenixReadiness.Result result = PhoenixReadiness.pedroAuto(
@@ -279,7 +334,7 @@ public final class PhoenixReadinessTest {
         return profile;
     }
 
-    private static PhoenixAutoSpec spec(PhoenixAutoSpec.Alliance alliance,
+    private static PhoenixAutoSpec spec(PhoenixAlliance alliance,
                                         PhoenixAutoStrategyId strategy) {
         return PhoenixAutoSpec.builder()
                 .alliance(alliance)
@@ -302,5 +357,10 @@ public final class PhoenixReadinessTest {
             }
         }
         return false;
+    }
+
+    private static void assertIssueNamesField(PhoenixReadiness.Issue issue, String fieldName) {
+        assertTrue(issue.message().contains(fieldName));
+        assertTrue(issue.remediation().contains(fieldName));
     }
 }

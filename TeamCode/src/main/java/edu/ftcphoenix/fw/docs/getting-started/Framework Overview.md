@@ -533,24 +533,38 @@ example, keeps hold-end control, pose updates, callbacks, and manual drive insid
 `Follower.update()`. Its adapter therefore has one stable Auto composition-root owner and
 deduplicates any same-cycle update made by `RouteTask` or `DriveGuidanceTask`:
 
-The following call is the **current production-Phoenix RUNTIME-02 exception**. Production Phoenix
-still has an explicit mode lifecycle while its selector, readiness, retry, and handoff policies are
-audited separately:
+Production Phoenix TeleOp and Pedro Auto both use the ordinary managed program. Auto declares one
+data-only `Prestart`, one stable Pedro service, one root Task, scoring output, presenters, and an
+optional typed stop handoff:
 
 ```java
 PedroPathingRuntime pedro = Constants.createPhoenixAutoRuntime(hardwareMap, profile);
-robot.initAuto(pedro.driveAdapter(), pedro.motionPredictor());
+robot.declareAuto(
+        program,
+        pedro.driveAdapter(),
+        pedro.motionPredictor(),
+        frozenEligibleTagIds,
+        BooleanSource.constant(true),
+        BooleanSource.constant(false),
+        () -> pedro.setStartingPose(frozenPedroStartPose())
+);
 ```
 
-In an ordinary managed robot, a robot-owned service registers the localization owner and recurring
-adapter heartbeat with `program.service(...)`; Tasks still select routes. See the small compiling
-Pedro reference for that one-grammar form.
+The two boolean sources are the Auto targeting policies: ordinary Phoenix Auto keeps auto aim
+enabled and the manual override disabled. An advanced direct assembly may supply clock-aware
+policies through this same declaration method; it does not take over lifecycle callbacks.
+
+At START, prestart freezes the spec before the shared clock resets. `READY` applies the frozen pose
+and begins services/Tasks/outputs; `BLOCKED` keeps them inert and continues presenters. Fixed roots
+are built eagerly. A selector declares `Tasks.buildAtStart(...)` for only its Task graph, never for
+hardware construction. `RobotProgram` owns the sole clock, recurring adapter heartbeat, failure
+cleanup, and final stop.
 
 The runtime owns one configured Pinpoint predictor and gives Pedro a passive localizer view of that
 same predictor. Phoenix therefore owns the localization/correction update first, Pedro sees that
 current-cycle pose in its downstream heartbeat, and no second Pinpoint object resets or polls the
-device. Apply the route's Pedro start pose through `pedro.setStartingPose(...)` before the first
-heartbeat.
+device. Apply the frozen route's Pedro start pose through the service's exact-START action before
+the first heartbeat.
 
 Tasks still select routes and guidance; they do not become the only Pedro lifecycle owner. The
 adapter also uses Pedro's immediate typed break operation for cancellation/shutdown instead of

@@ -12,6 +12,7 @@ import com.pedropathing.paths.PathPoint;
 
 import org.junit.Test;
 
+import edu.ftcphoenix.robots.phoenix.PhoenixAlliance;
 import edu.ftcphoenix.robots.phoenix.autonomous.PhoenixAutoSpec;
 import edu.ftcphoenix.robots.phoenix.autonomous.PhoenixAutoStrategyId;
 
@@ -28,49 +29,45 @@ public final class PhoenixPedroPathFactoryTest {
 
     @Test
     public void everyCheckedInSelectionIsExplicitlyIntegrationOnly() {
-        for (PhoenixAutoSpec.Alliance alliance : PhoenixAutoSpec.Alliance.values()) {
+        for (PhoenixAlliance alliance : PhoenixAlliance.values()) {
             for (PhoenixAutoSpec.StartPosition startPosition
                     : PhoenixAutoSpec.StartPosition.values()) {
-                for (PhoenixAutoSpec.PartnerPlan partnerPlan
-                        : PhoenixAutoSpec.PartnerPlan.values()) {
-                    for (PhoenixAutoStrategyId strategy : PhoenixAutoStrategyId.values()) {
-                        PhoenixAutoSpec spec = PhoenixAutoSpec.builder()
-                                .alliance(alliance)
-                                .startPosition(startPosition)
-                                .partnerPlan(partnerPlan)
-                                .strategy(strategy)
-                                .build();
+                for (PhoenixAutoStrategyId strategy : PhoenixAutoStrategyId.values()) {
+                    PhoenixAutoSpec spec = PhoenixAutoSpec.builder()
+                            .alliance(alliance)
+                            .startPosition(startPosition)
+                            .strategy(strategy)
+                            .build();
 
-                        PhoenixPedroPathFactory.RouteAvailability availability =
-                                PhoenixPedroPathFactory.routeAvailabilityFor(spec);
+                    PhoenixPedroPathFactory.RouteAvailability availability =
+                            PhoenixPedroPathFactory.routeAvailabilityFor(spec);
 
-                        assertEquals(
-                                PhoenixPedroPathFactory.RouteAvailability.Maturity.INTEGRATION_ONLY,
-                                availability.maturity
-                        );
-                        assertFalse(availability.isMatchReady());
-                        assertTrue(availability.reason.contains("integration placeholder"));
-                        assertTrue(availability.reason.contains(spec.summary()));
-                        assertFinite(availability.expectedPedroStartPose.getX());
-                        assertFinite(availability.expectedPedroStartPose.getY());
-                        assertFinite(availability.expectedPedroStartPose.getHeading());
-                        assertEquals(
-                                0.0,
-                                availability.expectedPedroStartPose.getX(),
-                                EPSILON
-                        );
-                        assertEquals(
-                                startPosition == PhoenixAutoSpec.StartPosition.AUDIENCE
-                                        ? 0.0 : 24.0,
-                                availability.expectedPedroStartPose.getY(),
-                                EPSILON
-                        );
-                        assertEquals(
-                                alliance == PhoenixAutoSpec.Alliance.RED ? 0.0 : Math.PI,
-                                availability.expectedPedroStartPose.getHeading(),
-                                EPSILON
-                        );
-                    }
+                    assertEquals(
+                            PhoenixPedroPathFactory.RouteAvailability.Maturity.INTEGRATION_ONLY,
+                            availability.maturity
+                    );
+                    assertFalse(availability.isMatchReady());
+                    assertTrue(availability.reason.contains("integration placeholder"));
+                    assertTrue(availability.reason.contains(spec.summary()));
+                    assertFinite(availability.expectedPedroStartPose.getX());
+                    assertFinite(availability.expectedPedroStartPose.getY());
+                    assertFinite(availability.expectedPedroStartPose.getHeading());
+                    assertEquals(
+                            0.0,
+                            availability.expectedPedroStartPose.getX(),
+                            EPSILON
+                    );
+                    assertEquals(
+                            startPosition == PhoenixAutoSpec.StartPosition.AUDIENCE
+                                    ? 0.0 : 24.0,
+                            availability.expectedPedroStartPose.getY(),
+                            EPSILON
+                    );
+                    assertEquals(
+                            alliance == PhoenixAlliance.RED ? 0.0 : Math.PI,
+                            availability.expectedPedroStartPose.getHeading(),
+                            EPSILON
+                    );
                 }
             }
         }

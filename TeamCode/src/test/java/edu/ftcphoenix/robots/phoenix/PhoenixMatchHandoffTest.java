@@ -12,6 +12,7 @@ import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.Consumer;
 
 import edu.ftcphoenix.fw.core.geometry.Pose2d;
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
@@ -26,7 +27,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
-/** Host-side checks for Phoenix's narrow final-Auto-pose handoff. */
+/** Host-side checks for Phoenix's narrow final-Auto-pose/alliance handoff. */
 public final class PhoenixMatchHandoffTest {
 
     @Before
@@ -40,13 +41,13 @@ public final class PhoenixMatchHandoffTest {
     }
 
     @Test
-    public void validAutoPoseIsForwardedExactlyOnce() {
+    public void validAutoPoseAndAllianceAreForwardedExactlyOnce() {
         TestAuto auto = new TestAuto();
         TestTeleOp teleOp = new TestTeleOp();
-        RecordingPoseReceiver receiver = new RecordingPoseReceiver();
+        RecordingMatchReceiver receiver = new RecordingMatchReceiver();
         PoseEstimate estimate = estimate(12.5, -7.25, 1.75, true);
 
-        PhoenixMatchHandoff.publishFromAuto(auto, estimate);
+        PhoenixMatchHandoff.publishFromAuto(auto, estimate, PhoenixAlliance.BLUE);
 
         assertEquals(
                 PhoenixMatchHandoff.RestoreResult.RESTORED,
@@ -54,6 +55,7 @@ public final class PhoenixMatchHandoffTest {
         );
         assertEquals(1, receiver.calls);
         assertEquals(new Pose2d(12.5, -7.25, 1.75), receiver.lastPose);
+        assertEquals(PhoenixAlliance.BLUE, receiver.lastAlliance);
 
         assertEquals(
                 PhoenixMatchHandoff.RestoreResult.ALREADY_CONSUMED,
@@ -64,7 +66,7 @@ public final class PhoenixMatchHandoffTest {
 
     @Test
     public void missingSnapshotLeavesReceiverUntouched() {
-        RecordingPoseReceiver receiver = new RecordingPoseReceiver();
+        RecordingMatchReceiver receiver = new RecordingMatchReceiver();
 
         assertEquals(
                 PhoenixMatchHandoff.RestoreResult.MISSING,
@@ -120,7 +122,7 @@ public final class PhoenixMatchHandoffTest {
                 "finite xInches"
         );
 
-        RecordingPoseReceiver receiver = new RecordingPoseReceiver();
+        RecordingMatchReceiver receiver = new RecordingMatchReceiver();
         assertEquals(
                 PhoenixMatchHandoff.RestoreResult.MISSING,
                 PhoenixMatchHandoff.restoreForTeleOp(new TestTeleOp(), receiver)
@@ -133,21 +135,31 @@ public final class PhoenixMatchHandoffTest {
         PoseEstimate valid = estimate(1.0, 2.0, 3.0, true);
 
         try {
-            PhoenixMatchHandoff.publishFromAuto(null, valid);
+            PhoenixMatchHandoff.publishFromAuto(null, valid, PhoenixAlliance.RED);
             fail("Expected a null Auto OpMode to be rejected");
         } catch (NullPointerException expected) {
             assertTrue(expected.getMessage().contains("Auto OpMode"));
         }
         try {
-            PhoenixMatchHandoff.publishFromAuto(new TestAuto(), null);
+            PhoenixMatchHandoff.publishFromAuto(
+                    new TestAuto(),
+                    null,
+                    PhoenixAlliance.RED
+            );
             fail("Expected a null final estimate to be rejected");
         } catch (NullPointerException expected) {
             assertTrue(expected.getMessage().contains("pose estimate"));
         }
         try {
+            PhoenixMatchHandoff.publishFromAuto(new TestAuto(), valid, null);
+            fail("Expected a null frozen alliance to be rejected");
+        } catch (NullPointerException expected) {
+            assertTrue(expected.getMessage().contains("frozen Auto alliance"));
+        }
+        try {
             PhoenixMatchHandoff.restoreForTeleOp(
                     null,
-                    (Pose2d fieldToRobotPose) -> {
+                    (fieldToRobotPose, alliance) -> {
                     }
             );
             fail("Expected a null TeleOp OpMode to be rejected");
@@ -155,8 +167,12 @@ public final class PhoenixMatchHandoffTest {
             assertTrue(expected.getMessage().contains("TeleOp OpMode"));
         }
 
-        PhoenixMatchHandoff.publishFromAuto(new TestAuto(), valid);
-        RecordingPoseReceiver receiver = new RecordingPoseReceiver();
+        PhoenixMatchHandoff.publishFromAuto(
+                new TestAuto(),
+                valid,
+                PhoenixAlliance.RED
+        );
+        RecordingMatchReceiver receiver = new RecordingMatchReceiver();
         assertEquals(
                 PhoenixMatchHandoff.RestoreResult.RESTORED,
                 PhoenixMatchHandoff.restoreForTeleOp(new TestTeleOp(), receiver)
@@ -168,20 +184,21 @@ public final class PhoenixMatchHandoffTest {
     public void nullReceiverIsRejectedWithoutConsumingTheSnapshot() {
         PhoenixMatchHandoff.publishFromAuto(
                 new TestAuto(),
-                estimate(1.0, 2.0, 3.0, true)
+                estimate(1.0, 2.0, 3.0, true),
+                PhoenixAlliance.BLUE
         );
 
         try {
             PhoenixMatchHandoff.restoreForTeleOp(
                     new TestTeleOp(),
-                    (PhoenixMatchHandoff.PoseReceiver) null
+                    (PhoenixMatchHandoff.MatchReceiver) null
             );
             fail("Expected a missing receiver to be rejected");
         } catch (NullPointerException expected) {
-            assertTrue(expected.getMessage().contains("pose receiver"));
+            assertTrue(expected.getMessage().contains("match receiver"));
         }
 
-        RecordingPoseReceiver receiver = new RecordingPoseReceiver();
+        RecordingMatchReceiver receiver = new RecordingMatchReceiver();
         assertEquals(
                 PhoenixMatchHandoff.RestoreResult.RESTORED,
                 PhoenixMatchHandoff.restoreForTeleOp(new TestTeleOp(), receiver)
@@ -202,12 +219,14 @@ public final class PhoenixMatchHandoffTest {
         assertNotNull(PhoenixMatchHandoff.class.getMethod(
                 "publishFromAuto",
                 OpMode.class,
-                PoseEstimate.class
+                PoseEstimate.class,
+                PhoenixAlliance.class
         ));
         assertNotNull(PhoenixMatchHandoff.class.getMethod(
                 "restoreForTeleOp",
                 OpMode.class,
-                PhoenixRobot.class
+                PhoenixRobot.class,
+                Consumer.class
         ));
 
         List<String> publicMethods = new ArrayList<>();
@@ -235,7 +254,7 @@ public final class PhoenixMatchHandoffTest {
                 PhoenixMatchHandoff.RestoreResult.class.getModifiers()
         ));
         assertFalse(Modifier.isPublic(
-                PhoenixMatchHandoff.PoseReceiver.class.getModifiers()
+                PhoenixMatchHandoff.MatchReceiver.class.getModifiers()
         ));
     }
 
@@ -250,7 +269,9 @@ public final class PhoenixMatchHandoffTest {
             lifecycle.restore(expected);
             fail("Expected restore before TeleOp initialization to fail");
         } catch (IllegalStateException expectedFailure) {
-            assertTrue(expectedFailure.getMessage().contains("initTeleOp()"));
+            assertTrue(expectedFailure.getMessage().contains(
+                    "declareTeleOp(program, eligibleScoringTagIds)"
+            ));
         }
 
         lifecycle.initialize(resetter);
@@ -272,7 +293,9 @@ public final class PhoenixMatchHandoffTest {
             lifecycle.restore(expected);
             fail("Expected restore after robot stop to fail");
         } catch (IllegalStateException expectedFailure) {
-            assertTrue(expectedFailure.getMessage().contains("initTeleOp()"));
+            assertTrue(expectedFailure.getMessage().contains(
+                    "declareTeleOp(program, eligibleScoringTagIds)"
+            ));
         }
         assertEquals(1, resetter.calls);
     }
@@ -295,7 +318,11 @@ public final class PhoenixMatchHandoffTest {
 
     private static void assertPublishRejected(PoseEstimate estimate, String messageFragment) {
         try {
-            PhoenixMatchHandoff.publishFromAuto(new TestAuto(), estimate);
+            PhoenixMatchHandoff.publishFromAuto(
+                    new TestAuto(),
+                    estimate,
+                    PhoenixAlliance.RED
+            );
             fail("Expected invalid final Auto pose to be rejected");
         } catch (IllegalArgumentException expected) {
             assertTrue(expected.getMessage(), expected.getMessage().contains(messageFragment));
@@ -321,15 +348,17 @@ public final class PhoenixMatchHandoffTest {
         );
     }
 
-    private static final class RecordingPoseReceiver
-            implements PhoenixMatchHandoff.PoseReceiver {
+    private static final class RecordingMatchReceiver
+            implements PhoenixMatchHandoff.MatchReceiver {
         private int calls;
         private Pose2d lastPose;
+        private PhoenixAlliance lastAlliance;
 
         @Override
-        public void restore(Pose2d fieldToRobotPose) {
+        public void restore(Pose2d fieldToRobotPose, PhoenixAlliance alliance) {
             calls++;
             lastPose = fieldToRobotPose;
+            lastAlliance = alliance;
         }
     }
 

@@ -144,14 +144,15 @@ requiredBindings.onRise(driver.x(),
 The framework applies:
 
 ```text
-INIT       reset clock -> configure/freeze -> presenters -> one commit
-INIT loop  clock -> presenters -> one commit
-START      reset clock -> service starts -> root Task start/first update -> exact-start outputs
+INIT       reset clock -> configure/freeze graph -> optional prestart -> presenters -> one commit
+INIT loop  clock -> optional prestart -> presenters -> one commit
+START      freeze prestart -> reset clock -> service starts -> root start/first update -> exact-start outputs
 loop       clock -> services -> bindings -> Tasks -> outputs/drive -> presenters -> one commit
 STOP       cancel Tasks -> clear bindings -> outputs in order -> services in reverse order
 ```
 
-INIT never advances services, bindings, Tasks, drive, or mechanisms. Exact-start output realization
+INIT never advances services, bindings, Tasks, drive, or mechanisms. An optional prestart owner is
+data-only and may block START while presenters continue. Exact-start output realization
 makes the Auto's positive-duration collect request observable even if the first regular loop is
 late. On a lifecycle `RuntimeException`, cleanup follows the same terminal path, retains the exact
 primary failure, and suppresses later cleanup failures. Repeated/reentrant STOP is inert; `Error`

@@ -47,24 +47,17 @@ import edu.ftcphoenix.fw.core.math.MathUtil;
  * a drivebase (such as {@link edu.ftcphoenix.fw.drive.MecanumDrivebase}):</p>
  *
  * <pre>{@code
- * public final class PhoenixRobot {
- *     private final MecanumDrivebase drivebase;
- *     private final DriveSource driveSource;
- *
- *     public PhoenixRobot(HardwareMap hw, Gamepads pads) {
- *         GamepadDevice driver = pads.p1();
- *         this.drivebase = FtcDrives.mecanum(hw);
- *         this.driveSource = new GamepadDriveSource(
+ * public final class ExampleTeleOp extends FtcRobotOpMode {
+ *     @Override
+ *     protected void configure(RobotProgram program) {
+ *         GamepadDevice driver = Gamepads.create(gamepad1, gamepad2).p1();
+ *         DriveSource driveSource = new GamepadDriveSource(
  *                 driver.leftX(),
  *                 driver.leftY(),
  *                 driver.rightX(),
  *                 GamepadDriveSource.Config.defaults()
  *         );
- *     }
- *
- *     public void updateTeleOp(LoopClock clock) {
- *         DriveSignal signal = driveSource.get(clock).clamped();
- *         drivebase.drive(signal);
+ *         program.drive(driveSource, FtcDrives.mecanum(hardwareMap));
  *     }
  * }
  * }</pre>

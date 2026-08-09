@@ -25,17 +25,19 @@ public final class MyTeleOp extends FtcRobotOpMode {
 This host owns one clock, the fixed service/binding/Task/output/presenter order, one telemetry
 commit, and terminal cleanup. It is an FTC lifecycle owner, not a robot capability superclass:
 mechanisms still own Plants, controls still own operator meanings, services still own sensing or
-vendor heartbeats, and routines still own strategy. Production Phoenix's selector, retry,
-readiness, and handoff migration is deliberately a separate design gate.
+vendor heartbeats, and routines still own strategy. Production Phoenix now uses this path for both
+TeleOp and Pedro Auto. Auto expresses INIT selection/readiness through one data-only `Prestart`,
+selected root construction through `Tasks.buildAtStart(...)`, and match publication through the
+typed `stopHandoff(...)` transaction; it does not own a parallel FTC lifecycle.
 
 ## Design boundary
 
 Good framework candidates:
 
 - repeated FTC lifecycle safety patterns
-- INIT-time selector screens and locked summaries
-- partial-build cleanup mechanics
-- retry/error display after multiple callers prove the same policy
+- additional INIT policy roles beyond the one aggregated `Prestart`, only after multiple callers
+  prove they cannot compose behind that owner
+- generic hardware-graph rebuild/retry after multiple safe callers prove the need
 - repeated telemetry-frame ownership ceremony, once multiple callers demonstrate it
 - route-library adapter seams
 - small typed helpers that prevent invalid setup states
@@ -99,7 +101,7 @@ Keep retry state and error presentation in the real owner for now. Reconsider a 
 after multiple callers independently share the same construction boundary, partial-owner transfer,
 cleanup-failure policy, retry eligibility, replacement rules, and telemetry contract.
 
-## Candidate 2: generic Auto/setup wizard
+## Candidate 2: generic prestart setup wizard
 
 `SelectionMenu`, `MenuNavigator`, `ConfirmationScreen`, and `SummaryScreen` are now general, but a
 robot-specific selector still repeats a lot of enum menu boilerplate. A future framework helper could
@@ -108,23 +110,23 @@ provide a wizard for common INIT setup flows:
 ```java
 SetupWizard<PhoenixAutoSpec.Builder, PhoenixAutoSpec> wizard = SetupWizard
         .builder("Phoenix Auto Setup", PhoenixAutoSpec.builder())
-        .enumStep("Alliance", PhoenixAutoSpec.Alliance.class,
+        .enumStep("Alliance", PhoenixAlliance.class,
                 PhoenixAutoSpec.Builder::alliance,
                 PhoenixAutoSpec.Builder::alliance)
         .enumStep("Start Position", PhoenixAutoSpec.StartPosition.class,
                 PhoenixAutoSpec.Builder::startPosition,
                 PhoenixAutoSpec.Builder::startPosition)
-        .enumStep("Partner Plan", PhoenixAutoSpec.PartnerPlan.class,
-                PhoenixAutoSpec.Builder::partnerPlan,
-                PhoenixAutoSpec.Builder::partnerPlan)
         .enumStep("Strategy", PhoenixAutoStrategyId.class,
                 PhoenixAutoSpec.Builder::strategy,
                 PhoenixAutoSpec.Builder::strategy)
-        .confirmWith(PhoenixAutoSpec.Builder::build);
+        .summarizeWith(PhoenixAutoSpec.Builder::build);
 ```
 
-The helper would own the menu plumbing, breadcrumbs, confirmation page, and summary lock. The robot
-would still provide the enum values, labels, filtering rules, and final spec builder.
+The helper would own menu plumbing, breadcrumbs, and a read-only summary. The robot's aggregated
+`Prestart` would still own the one FTC START freeze and readiness decision; the wizard would not add
+a second confirmation state. The robot would still provide enum values, labels, filtering rules,
+and the final spec builder. `ConfirmationScreen` remains a separate primitive for flows that truly
+need an explicit confirm/cancel action.
 
 Build this only after two robots or two substantial selectors want the same pattern. Until then, the
 current UI primitives are flexible enough.
@@ -151,8 +153,8 @@ telemetry.update(); // the complete-frame owner commits once
 ```
 
 This preserves visible ownership without introducing a second telemetry vocabulary. An ordinary
-`RobotProgram` owns its complete INIT and active frames. A custom selector/host still owns a
-selection, retry, or error frame that cannot enter the managed program.
+`RobotProgram` owns its complete INIT, blocked, and active frames. A portable tool or deliberately
+custom host still owns a frame that cannot enter the managed program.
 
 A `TelemetryFrame` wrapper is not currently justified. It would duplicate the FTC add-data API and
 add a public noun without solving diagnostic volume: selection still belongs at the call site, and
@@ -165,17 +167,20 @@ Those designs hide ownership or still traverse every diagnostic producer when ou
 
 ## Implemented boundary: external route lifecycle roles
 
-`RobotProgram.Service` and the private root Task runner now own the library-neutral parts of a
-simple external-route Auto:
+`RobotProgram.Prestart`, `Service`, the private root Task runner, and `stopHandoff(...)` now own the
+library-neutral parts of an external-route Auto:
 
+- data-only INIT selection/readiness with a fail-closed blocked start
 - recurring follower heartbeat and adapter stop through one service
 - one retained route start/result through the root Task graph
 - additive route-status presentation
-- Task cancellation on OpMode stop
+- Task cancellation and cleanup-gated handoff publication on OpMode stop
 
 The framework still does not know Pedro path geometry or strategy labels. Robot code registers the
-validated adapter heartbeat as a service and supplies one robot-owned Task sequence. A custom
-selector/retry host remains explicit until RUNTIME-02 proves how its extra policy should compose.
+validated adapter heartbeat as a service and supplies one robot-owned Task sequence. Production
+Phoenix uses these roles directly: selection freezes through `Prestart`, a selectable root uses
+`Tasks.buildAtStart(...)`, and typed handoff publication remains cleanup-gated without raw FTC
+callback ownership.
 
 ## Recommended order
 

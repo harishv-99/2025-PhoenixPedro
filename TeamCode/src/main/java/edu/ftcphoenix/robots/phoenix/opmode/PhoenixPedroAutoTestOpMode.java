@@ -2,6 +2,7 @@ package edu.ftcphoenix.robots.phoenix.opmode;
 
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 
+import edu.ftcphoenix.robots.phoenix.PhoenixAlliance;
 import edu.ftcphoenix.robots.phoenix.PhoenixReadiness;
 import edu.ftcphoenix.robots.phoenix.autonomous.PhoenixAutoSpec;
 import edu.ftcphoenix.robots.phoenix.autonomous.PhoenixAutoStrategyId;
@@ -15,24 +16,20 @@ import edu.ftcphoenix.robots.phoenix.autonomous.PhoenixAutoStrategyId;
  * still block motion, and incomplete pod offsets remain a persistent warning.</p>
  */
 @Autonomous(name = "Phoenix: Pedro Auto Test", group = "Phoenix")
-public final class PhoenixPedroAutoTestOpMode extends PhoenixPedroAutoOpModeBase {
-
-    /** Allow integration-only geometry only from this explicitly named test entry. */
-    @Override
-    PhoenixReadiness.AutoPurpose autoPurpose() {
-        return PhoenixReadiness.AutoPurpose.PEDRO_INTEGRATION_TEST;
-    }
+public final class PhoenixPedroAutoTestOpMode extends PhoenixAutoOpMode {
 
     /**
      * {@inheritDoc}
      */
     @Override
-    protected PhoenixAutoSpec autoSpec() {
-        return PhoenixAutoSpec.builder()
-                .alliance(PhoenixAutoSpec.Alliance.RED)
-                .startPosition(PhoenixAutoSpec.StartPosition.AUDIENCE)
-                .partnerPlan(PhoenixAutoSpec.PartnerPlan.NONE)
-                .strategy(PhoenixAutoStrategyId.PEDRO_INTEGRATION_TEST)
-                .build();
+    protected PhoenixAutoSetup autoSetup() {
+        return PhoenixAutoSetup.fromFixedSpec(
+                PhoenixAutoSpec.builder()
+                        .alliance(PhoenixAlliance.RED)
+                        .startPosition(PhoenixAutoSpec.StartPosition.AUDIENCE)
+                        .strategy(PhoenixAutoStrategyId.PEDRO_INTEGRATION_TEST)
+                        .build(),
+                PhoenixReadiness.AutoPurpose.PEDRO_INTEGRATION_TEST
+        );
     }
 }

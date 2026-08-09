@@ -497,16 +497,18 @@ public final class FtcRobotOpModeTest {
                 assertTrue(!Plant.class.isAssignableFrom(parameterType));
             }
         }
-        assertEquals(7, publicDeclarationCount);
+        assertEquals(9, publicDeclarationCount);
         assertEquals(
                 new HashSet<String>(Arrays.asList(
                         "bindings",
                         "taskBindings",
+                        "prestart",
                         "service",
                         "output",
                         "drive",
                         "rootTask",
-                        "presenter"
+                        "presenter",
+                        "stopHandoff"
                 )),
                 publicDeclarationNames
         );

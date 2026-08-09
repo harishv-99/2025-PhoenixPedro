@@ -671,7 +671,7 @@ public final class PhoenixAutoTasksTest {
         }
 
         @Override
-        public ScoringTargeting.Status status(LoopClock clock) {
+        public ScoringTargeting.Status status() {
             return targetingStatus(hasSelection);
         }
 

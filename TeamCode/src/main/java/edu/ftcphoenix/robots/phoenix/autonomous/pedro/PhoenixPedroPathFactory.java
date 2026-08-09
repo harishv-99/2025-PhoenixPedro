@@ -10,6 +10,7 @@ import com.pedropathing.paths.PathChain;
 import java.util.Objects;
 
 import edu.ftcphoenix.fw.integrations.pedro.PedroPathingRuntime;
+import edu.ftcphoenix.robots.phoenix.PhoenixAlliance;
 import edu.ftcphoenix.robots.phoenix.PhoenixCapabilities;
 import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
 import edu.ftcphoenix.robots.phoenix.autonomous.PhoenixAutoSpec;
@@ -20,7 +21,7 @@ import edu.ftcphoenix.robots.phoenix.autonomous.PhoenixAutoSpec;
  * <p>This class owns Pedro geometry and path-builder calls. It does not decide which strategy should
  * run; {@link PhoenixPedroAutoRoutineFactory} makes that decision from {@link PhoenixAutoSpec}. The
  * current checked-in paths are still intentionally small integration placeholders, but the ownership
- * seam is now ready for real alliance/start/partner route geometry.</p>
+ * seam is now ready for real alliance/start/strategy route geometry.</p>
  */
 public final class PhoenixPedroPathFactory {
 
@@ -131,7 +132,7 @@ public final class PhoenixPedroPathFactory {
      * the same configurable straight-line integration placeholder, so no selection is match-ready
      * yet.</p>
      *
-     * @param spec exact alliance/start/partner/strategy selection
+     * @param spec exact alliance/start/strategy selection
      * @return immutable maturity and expected-start declaration for {@code spec}
      */
     public static RouteAvailability routeAvailabilityFor(PhoenixAutoSpec spec) {
@@ -349,7 +350,7 @@ public final class PhoenixPedroPathFactory {
     private static Pose expectedStartPoseFor(PhoenixAutoSpec spec) {
         // Placeholder Pedro frame: real field poses should replace these branches when routes are added.
         double y = spec.startPosition == PhoenixAutoSpec.StartPosition.AUDIENCE ? 0.0 : 24.0;
-        double heading = spec.alliance == PhoenixAutoSpec.Alliance.RED ? 0.0 : Math.PI;
+        double heading = spec.alliance == PhoenixAlliance.RED ? 0.0 : Math.PI;
         return new Pose(0.0, y, heading);
     }
 

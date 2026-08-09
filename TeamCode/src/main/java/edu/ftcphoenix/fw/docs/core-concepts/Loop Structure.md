@@ -109,10 +109,12 @@ public final class MyTeleOp extends FtcRobotOpMode {
 }
 ```
 
-The program owns one private `LoopClock`, `Bindings`, and `TaskRunner`. INIT advances only its clock
-and presenters; services, bindings, Tasks, drive, and outputs do not actuate. START resets the clock
-at the exact FTC boundary, starts services, starts and first-updates the optional root Task, then
-realizes outputs once.
+The program owns one private `LoopClock`, `Bindings`, and `TaskRunner`. It may also own one
+aggregated, data-only `RobotProgram.Prestart`. INIT advances the clock, updates that prestart role,
+then runs presenters; services, bindings, Tasks, drive, and outputs do not actuate. START freezes
+prestart exactly once before resetting the clock. `READY` starts services, starts and first-updates
+the optional root Task, then realizes outputs once. `BLOCKED` starts none of them and continues only
+the clock and presenters so the reason stays visible.
 That exact-start realization keeps a positive-duration request observable even if the first active
 loop is delayed. Each active loop follows the fixed order above and commits telemetry exactly once.
 
@@ -125,11 +127,16 @@ cancel Tasks -> clear bindings -> stop outputs in declaration order -> stop serv
 The first failure remains primary and later cleanup failures are suppressed. Repeated or reentrant
 STOP is inert. `Error` is not caught.
 
-The flat `TeleOp_01` through `TeleOp_09` files remain deliberately explicit teaching/tool hosts,
-and a custom selector or integration may need its own lifecycle. Such a host is the advanced
-exception: it must still own one clock, run the same semantic phase order, commit once, and perform
-complete fail-stop cleanup. Do not copy an active-loop excerpt without its construction and STOP
-ownership.
+If a selected root depends on data frozen at START, use
+`Tasks.buildAtStart(name, taskSupplier)`. It defers only one Task graph; hardware/resource owners
+still belong in `configure(program)`. A typed `program.stopHandoff(capture, publish, invalidate)`
+supports Auto-to-TeleOp transfer without a custom FTC lifecycle: capture occurs only on normal
+ACTIVE STOP, publication waits for successful cleanup, and every other path invalidates.
+
+The flat `TeleOp_01` through `TeleOp_09` files remain deliberately explicit teaching/tool hosts.
+Such a host is an advanced exception: it must still own one clock, run the same semantic phase
+order, commit once, and perform complete fail-stop cleanup. Do not copy an active-loop excerpt
+without its construction and STOP ownership.
 
 That is the normal TeleOp ownership model: Tasks finish their decision/source/Plant-target work,
 then the downstream Outputs/Drive phase visits declarations in order. The one drive declaration
@@ -298,21 +305,28 @@ Give such an adapter one stable composition-root heartbeat every Auto loop. If `
 `clock.cycle()` so the root and Task calls still produce exactly one vendor update. Vendor methods
 that secretly perform an update during a mode transition must count as that cycle's heartbeat.
 
-Current production Phoenix uses the following explicit order. It is the deferred RUNTIME-02
-exception, not the ordinary managed-program grammar:
+Production Phoenix uses the same managed grammar for TeleOp and Pedro Auto. Its Auto service owns
+the following upstream order:
 
 ```text
-Clock → Localization → Targeting → Pedro heartbeat → Auto Tasks → Scoring Plants → Telemetry
+Clock → Vision readiness → Localization → Targeting → Pedro heartbeat → Auto Tasks → Scoring Plants → Telemetry
 ```
+
+`PhoenixAutoOpMode` supplies only `PhoenixAutoSetup`; inherited final FTC callbacks own the shared
+clock and managed lifecycle. INIT selection is data-only. At START, `Prestart` freezes the spec,
+then the program resets its clock and the service applies the frozen Pedro pose before the order
+above. A selector root uses `Tasks.buildAtStart(...)`; fixed roots and paths are built eagerly.
+The Phoenix/Pedro hardware graph is constructed once during configuration and is never retried or
+replaced inside the same OpMode.
 
 The production Pedro runtime shares the localization phase's one Pinpoint predictor. Its Pedro
 `Localizer` is passive: the downstream heartbeat verifies and consumes that current-cycle snapshot
 instead of polling odometry again. Accepted corrections pushed into the predictor are therefore
 visible to path control in the same heartbeat.
 
-The managed basic Pedro reference expresses the same dependency by declaring one service that owns
-localization before the recurring Pedro heartbeat; the program then runs that service before its
-root Task and downstream mechanism output.
+The managed basic Pedro reference uses the same dependency: one service owns localization before
+the recurring Pedro heartbeat; the program runs that service before its root Task and downstream
+mechanism output.
 
 The heartbeat precedes the Task runner so the adapter can classify and retain route completion,
 timeout/stall, interruption, replacement, or an unknown terminal transition before the Task reads
@@ -432,18 +446,20 @@ public void loop() {
     if (DEBUG_LOOP_PHASES) {
         loopPhases.debugDump(debugSink, "loopPhases");
     }
-    telemetry.update(); // the complete-frame owner commits once
-    loopPhases.finishPhase("telemetry");
+    presentStatus(telemetry); // additive: does not clear or commit
+    loopPhases.finishPhase("presentation");
 
     loopPhases.finishCycle(clock);
+    telemetry.update(); // the complete-frame owner commits once, outside this profile span
 }
 ```
 
 Leave `DEBUG_LOOP_PHASES` false during ordinary robot operation. When it is true,
-`snapshot()` and `debugDump(...)` report only fully completed cycles. Because telemetry is rendered
-before its own phase can finish, that phase first appears on the next telemetry frame. Use stable
-literal names such as `"localization"` and `"tasks"`; do not generate one name per device, route,
-or target.
+`snapshot()` and `debugDump(...)` report only fully completed cycles, so the rows shown during one
+cycle describe the preceding completed span. This example deliberately ends at `presentation`
+before `telemetry.update()` and therefore makes no claim about Driver Station commit latency. Use
+stable literal names such as `"localization"`, `"tasks"`, and `"presentation"`; do not generate
+one name per device, route, or target.
 
 The reported seconds are monotonic elapsed wall time. They can include operating-system scheduling
 pauses and profiler overhead; they are not CPU time and do not cover work before `startCycle` or
@@ -517,11 +533,10 @@ Treat one Driver Station update as a composed frame:
 3. The owner of that complete frame calls `telemetry.update()` exactly once.
 
 Additive presenters and renderers do not call `clear()`, `clearAll()`, or `update()`. This lets an
-Auto host, route adapter, robot presenter, and diagnostic contributor share one frame without their
+Auto prestart owner, route adapter, robot presenter, and diagnostic contributor share one frame without their
 call order accidentally hiding or prematurely committing another contributor's rows. An ordinary
-`RobotProgram` owns the final INIT and active commits. A custom selector/host still owns frames that
-do not enter such a program, such as selection, construction-failure, or retry pages. A dedicated
-tester may likewise commit its exclusive screen when it is the complete-frame owner.
+`RobotProgram` owns the final INIT, blocked, and active commits. A custom portable host or dedicated
+tester may still commit an exclusive screen when it is the complete-frame owner.
 
 If you need structured optional debug output, prefer debug sinks:
 

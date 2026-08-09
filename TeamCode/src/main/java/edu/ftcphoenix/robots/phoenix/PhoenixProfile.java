@@ -6,6 +6,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 import edu.ftcphoenix.fw.core.hal.Direction;
@@ -81,9 +82,7 @@ public final class PhoenixProfile {
      */
     public CalibrationConfig calibration = new CalibrationConfig();
 
-    /**
-     * Auto-aim / selected-tag tuning.
-     */
+    /** Auto-aim, scoring-AprilTag selection, and selected-target tuning shared by both modes. */
     public AutoAimConfig autoAim = new AutoAimConfig();
 
     /**
@@ -750,22 +749,6 @@ public final class PhoenixProfile {
         public double waitForShotCompleteSec = 2.5;
 
         /**
-         * Scoring target id Auto should keep when a red-alliance spec narrows the targeting catalog.
-         *
-         * <p>The id stays in the profile rather than {@code PhoenixAutoProfiles} so field-specific
-         * target choices can be tuned in one checked-in robot config location.</p>
-         */
-        public int redAllianceScoringTagId = 24;
-
-        /**
-         * Scoring target id Auto should keep when a blue-alliance spec narrows the targeting catalog.
-         *
-         * <p>The id stays in the profile rather than {@code PhoenixAutoProfiles} so field-specific
-         * target choices can be tuned in one checked-in robot config location.</p>
-         */
-        public int blueAllianceScoringTagId = 20;
-
-        /**
          * Distance used by the checked-in Pedro integration placeholder path.
          */
         public double pedroIntegrationTestDistanceIn = 12.0;
@@ -790,23 +773,28 @@ public final class PhoenixProfile {
             c.aimMaxNoGuidanceSec = this.aimMaxNoGuidanceSec;
             c.waitForTargetSec = this.waitForTargetSec;
             c.waitForShotCompleteSec = this.waitForShotCompleteSec;
-            c.redAllianceScoringTagId = this.redAllianceScoringTagId;
-            c.blueAllianceScoringTagId = this.blueAllianceScoringTagId;
             c.pedroIntegrationTestDistanceIn = this.pedroIntegrationTestDistanceIn;
             return c;
         }
     }
 
     /**
-     * Auto-aim / selected-tag profile values.
+     * Mode-neutral scoring-AprilTag selection and auto-aim profile values.
      *
      * <p>
-     * This section owns targeting and shot-selection policy only. Robot-specific drive-assist tuning
-     * such as shoot-brace lives in {@link DriveAssistConfig} so the config boundary matches the
-     * runtime ownership boundary.
+     * This section owns the alliance-to-scoring-tag mapping, complete scoring-target catalog,
+     * targeting policy, and shot-selection policy used by both TeleOp and Auto. Robot-specific
+     * drive-assist tuning such as shoot-brace lives in {@link DriveAssistConfig} so the config
+     * boundary matches the runtime ownership boundary.
      * </p>
      */
     public static final class AutoAimConfig {
+        /** Scoring AprilTag id eligible when {@link PhoenixAlliance#RED} is selected. */
+        public int redAllianceScoringTagId = 24;
+
+        /** Scoring AprilTag id eligible when {@link PhoenixAlliance#BLUE} is selected. */
+        public int blueAllianceScoringTagId = 20;
+
         /**
          * Catalog of scoring targets keyed by tag id. Insertion order is preserved for menus,
          * telemetry, and deterministic profile diffs.
@@ -858,6 +846,31 @@ public final class PhoenixProfile {
          * Creates an auto-aim config initialized with Phoenix defaults.
          */
         public AutoAimConfig() {
+        }
+
+        /**
+         * Return the configured scoring AprilTag id for one selected match alliance.
+         *
+         * <p>This is a data lookup only. Use
+         * {@link PhoenixReadiness#allianceScoringTarget(PhoenixAlliance, PhoenixProfile)} before
+         * arming targeting to validate the selected id against the catalog and fixed field
+         * layout.</p>
+         *
+         * @param alliance selected Phoenix match alliance
+         * @return configured eligible scoring AprilTag id for that alliance
+         */
+        public int scoringTagIdFor(PhoenixAlliance alliance) {
+            PhoenixAlliance requiredAlliance = Objects.requireNonNull(alliance, "alliance");
+            switch (requiredAlliance) {
+                case RED:
+                    return redAllianceScoringTagId;
+                case BLUE:
+                    return blueAllianceScoringTagId;
+                default:
+                    throw new IllegalArgumentException(
+                            "Unsupported Phoenix alliance: " + requiredAlliance
+                    );
+            }
         }
 
         /**
@@ -920,9 +933,16 @@ public final class PhoenixProfile {
          */
         public AutoAimConfig copy() {
             AutoAimConfig c = new AutoAimConfig();
-            c.scoringTargets = new LinkedHashMap<Integer, ScoringTarget>();
-            for (Map.Entry<Integer, ScoringTarget> entry : this.scoringTargets.entrySet()) {
-                c.scoringTargets.put(entry.getKey(), entry.getValue().copy());
+            c.redAllianceScoringTagId = this.redAllianceScoringTagId;
+            c.blueAllianceScoringTagId = this.blueAllianceScoringTagId;
+            if (this.scoringTargets == null) {
+                c.scoringTargets = null;
+            } else {
+                c.scoringTargets = new LinkedHashMap<Integer, ScoringTarget>();
+                for (Map.Entry<Integer, ScoringTarget> entry : this.scoringTargets.entrySet()) {
+                    ScoringTarget target = entry.getValue();
+                    c.scoringTargets.put(entry.getKey(), target != null ? target.copy() : null);
+                }
             }
             c.aimToleranceDeg = this.aimToleranceDeg;
             c.aimKp = this.aimKp;

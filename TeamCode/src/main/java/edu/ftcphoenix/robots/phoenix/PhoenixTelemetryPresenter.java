@@ -2,6 +2,8 @@ package edu.ftcphoenix.robots.phoenix;
 
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 
+import java.util.Objects;
+
 import edu.ftcphoenix.fw.core.math.MathUtil;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceStatus;
 import edu.ftcphoenix.fw.ftc.vision.VisionReadiness;
@@ -13,32 +15,33 @@ import edu.ftcphoenix.fw.task.Task;
 /**
  * Additive driver-facing telemetry formatting for Phoenix TeleOp and Auto.
  *
- * <p>This presenter contributes rows to its bound FTC telemetry sink but never clears or commits
- * a frame. The Phoenix composition root owns the complete active-loop frame and calls
+ * <p>This presenter contributes rows to the FTC telemetry sink supplied for each presentation but
+ * never retains, clears, or commits that sink. The active lifecycle owner owns the complete frame
+ * and calls
  * {@link Telemetry#update()} after every contributor has rendered.</p>
  */
 public final class PhoenixTelemetryPresenter {
 
-    private final Telemetry telemetry;
     private final PhoenixProfile profile;
 
     /**
-     * Creates a telemetry presenter bound to one telemetry sink and one Phoenix profile snapshot.
+     * Creates a telemetry presenter bound only to one Phoenix profile snapshot.
      *
-     * @param telemetry FTC telemetry sink to write into; when {@code null}, emission becomes a no-op
-     * @param profile   profile snapshot used to label values such as estimator mode
+     * @param profile profile snapshot used to label values such as estimator mode
      */
-    public PhoenixTelemetryPresenter(Telemetry telemetry, PhoenixProfile profile) {
-        this.telemetry = telemetry;
-        this.profile = profile.copy();
+    public PhoenixTelemetryPresenter(PhoenixProfile profile) {
+        this.profile = Objects.requireNonNull(profile, "profile").copy();
     }
 
     /**
      * Adds the standard Phoenix TeleOp telemetry block to the current frame.
      *
      * <p>This method neither clears nor commits telemetry.</p>
+     *
+     * @param telemetry FTC telemetry sink to write into; when {@code null}, emission is a no-op
      */
-    public void emitTeleOp(ScoringPath.Status scoring,
+    public void emitTeleOp(Telemetry telemetry,
+                           ScoringPath.Status scoring,
                            ScoringTargeting.Status targeting,
                            PhoenixDriveAssistService.Status driveAssist,
                            PhoenixReadiness.Result poseAssistReadiness,
@@ -49,14 +52,14 @@ public final class PhoenixTelemetryPresenter {
             return;
         }
 
-        emitScoringTelemetry(scoring, "scoring");
-        emitScoringIntentTelemetry(scoring);
-        emitAimSummary(targeting);
-        emitDriveAssistTelemetry(driveAssist);
-        emitTeleOpReadiness(poseAssistReadiness);
-        emitVisionReadiness(visionReadiness);
-        emitPoseTelemetry(globalPose, odomPose);
-        emitTargetTelemetry(targeting);
+        emitScoringTelemetry(telemetry, scoring, "scoring");
+        emitScoringIntentTelemetry(telemetry, scoring);
+        emitAimSummary(telemetry, targeting);
+        emitDriveAssistTelemetry(telemetry, driveAssist);
+        emitTeleOpReadiness(telemetry, poseAssistReadiness);
+        emitVisionReadiness(telemetry, visionReadiness);
+        emitPoseTelemetry(telemetry, globalPose, odomPose);
+        emitTargetTelemetry(telemetry, targeting);
     }
 
     /**
@@ -65,9 +68,10 @@ public final class PhoenixTelemetryPresenter {
      * <p>This additive helper neither clears nor commits telemetry. The composition root uses it
      * both on the INIT help frame and inside the ordinary TeleOp frame.</p>
      *
+     * @param telemetry FTC telemetry sink to write into; when {@code null}, emission is a no-op
      * @param readiness immutable Phoenix readiness result for auto-aim and shoot-brace
      */
-    void emitTeleOpReadiness(PhoenixReadiness.Result readiness) {
+    void emitTeleOpReadiness(Telemetry telemetry, PhoenixReadiness.Result readiness) {
         if (telemetry == null || readiness == null) {
             return;
         }
@@ -88,8 +92,11 @@ public final class PhoenixTelemetryPresenter {
      * Adds the standard Phoenix Auto telemetry block to the current frame.
      *
      * <p>This method neither clears nor commits telemetry.</p>
+     *
+     * @param telemetry FTC telemetry sink to write into; when {@code null}, emission is a no-op
      */
-    public void emitAuto(ScoringPath.Status scoring,
+    public void emitAuto(Telemetry telemetry,
+                         ScoringPath.Status scoring,
                          ScoringTargeting.Status targeting,
                          Task installedAutoRoutine,
                          VisionReadiness visionReadiness,
@@ -108,16 +115,16 @@ public final class PhoenixTelemetryPresenter {
                 installedAutoRoutine != null ? installedAutoRoutine.getOutcome() : "NOT_INSTALLED"
         );
 
-        emitScoringTelemetry(scoring, "scoring");
-        emitScoringIntentTelemetry(scoring);
-        emitAimSummary(targeting);
-        emitVisionReadiness(visionReadiness);
-        emitPoseTelemetry(globalPose, odomPose);
-        emitTargetTelemetry(targeting);
+        emitScoringTelemetry(telemetry, scoring, "scoring");
+        emitScoringIntentTelemetry(telemetry, scoring);
+        emitAimSummary(telemetry, targeting);
+        emitVisionReadiness(telemetry, visionReadiness);
+        emitPoseTelemetry(telemetry, globalPose, odomPose);
+        emitTargetTelemetry(telemetry, targeting);
     }
 
     /** Emit camera-component readiness independently from target visibility. */
-    private void emitVisionReadiness(VisionReadiness readiness) {
+    private void emitVisionReadiness(Telemetry telemetry, VisionReadiness readiness) {
         if (readiness == null) {
             return;
         }
@@ -128,7 +135,9 @@ public final class PhoenixTelemetryPresenter {
         telemetry.addData("vision.readinessReason", readiness.reason());
     }
 
-    private void emitScoringTelemetry(ScoringPath.Status scoring, String prefix) {
+    private void emitScoringTelemetry(Telemetry telemetry,
+                                      ScoringPath.Status scoring,
+                                      String prefix) {
         if (scoring == null) {
             return;
         }
@@ -159,7 +168,7 @@ public final class PhoenixTelemetryPresenter {
         telemetry.addData(p + ".feedOut", scoring.feedOutput);
     }
 
-    private void emitScoringIntentTelemetry(ScoringPath.Status scoring) {
+    private void emitScoringIntentTelemetry(Telemetry telemetry, ScoringPath.Status scoring) {
         if (scoring == null) {
             return;
         }
@@ -172,7 +181,7 @@ public final class PhoenixTelemetryPresenter {
         telemetry.addData("shoot.active", scoring.shootActive);
     }
 
-    private void emitAimSummary(ScoringTargeting.Status targeting) {
+    private void emitAimSummary(Telemetry telemetry, ScoringTargeting.Status targeting) {
         if (targeting == null) {
             return;
         }
@@ -182,7 +191,8 @@ public final class PhoenixTelemetryPresenter {
         telemetry.addData("aim.enabled", targeting.autoAimEnabled);
     }
 
-    private void emitDriveAssistTelemetry(PhoenixDriveAssistService.Status driveAssist) {
+    private void emitDriveAssistTelemetry(Telemetry telemetry,
+                                          PhoenixDriveAssistService.Status driveAssist) {
         if (driveAssist == null) {
             return;
         }
@@ -193,7 +203,9 @@ public final class PhoenixTelemetryPresenter {
         telemetry.addData("drive.manualTranslateMag", driveAssist.manualTranslateMagnitude);
     }
 
-    private void emitPoseTelemetry(PoseEstimate globalPose, PoseEstimate odomPose) {
+    private void emitPoseTelemetry(Telemetry telemetry,
+                                   PoseEstimate globalPose,
+                                   PoseEstimate odomPose) {
         if (globalPose != null) {
             telemetry.addData("pose.global", globalPose);
             telemetry.addData("pose.global.mode", profile.localization.correctedEstimatorMode);
@@ -213,7 +225,7 @@ public final class PhoenixTelemetryPresenter {
         }
     }
 
-    private void emitTargetTelemetry(ScoringTargeting.Status targeting) {
+    private void emitTargetTelemetry(Telemetry telemetry, ScoringTargeting.Status targeting) {
         if (targeting == null) {
             return;
         }

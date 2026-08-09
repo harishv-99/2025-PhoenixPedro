@@ -6,12 +6,11 @@ import java.util.Objects;
 
 import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.source.ScalarSource;
-import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.drive.DriveSource;
 import edu.ftcphoenix.fw.drive.source.GamepadDriveSource;
 import edu.ftcphoenix.fw.input.GamepadDevice;
 import edu.ftcphoenix.fw.input.Gamepads;
-import edu.ftcphoenix.fw.input.binding.Bindings;
+import edu.ftcphoenix.fw.input.binding.BindingRegistrar;
 
 /**
  * Phoenix TeleOp controls owner.
@@ -32,7 +31,7 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
 public final class PhoenixTeleOpControls {
 
     private final PhoenixProfile.TeleOpControlsConfig cfg;
-    private final Bindings bindings = new Bindings();
+    private final BindingRegistrar bindingRegistrar;
     private final DriveSource manualDrive;
     private final ScalarSource manualTranslateMagnitude;
     private final BooleanSource autoAimEnabled;
@@ -49,11 +48,18 @@ public final class PhoenixTeleOpControls {
      * robot capability families exist.
      * </p>
      *
-     * @param gamepads wrapped gamepad sources used to map driver/operator controls
-     * @param config   TeleOp control-layer config; defensively copied for local ownership
+     * @param bindingRegistrar managed program registration surface that owns no independent
+     *                         heartbeat in this controls object
+     * @param gamepads         wrapped gamepad sources used to map driver/operator controls
+     * @param config           TeleOp control-layer config; defensively copied for local ownership
      */
-    public PhoenixTeleOpControls(Gamepads gamepads,
+    public PhoenixTeleOpControls(BindingRegistrar bindingRegistrar,
+                                 Gamepads gamepads,
                                  PhoenixProfile.TeleOpControlsConfig config) {
+        this.bindingRegistrar = Objects.requireNonNull(
+                bindingRegistrar,
+                "bindingRegistrar"
+        );
         Objects.requireNonNull(gamepads, "gamepads");
         this.cfg = Objects.requireNonNull(config, "config").copy();
 
@@ -81,13 +87,15 @@ public final class PhoenixTeleOpControls {
     }
 
     /**
-     * Registers the Phoenix scoring control semantics with this controls owner.
+     * Registers the Phoenix scoring control semantics on the managed binding registrar.
      *
      * <p>
      * TeleOp binds against the shared robot capability families instead of directly depending on
      * Phoenix internals. That keeps the control layer mode-neutral and leaves room for Auto to use
      * the same vocabulary through tasks instead of button bindings. Future frame-valued manual
-     * mechanism commands should also be registered here via {@code Bindings.copyEachCycle(...)}.
+     * mechanism commands should also be registered here through
+     * {@code BindingRegistrar.copyEachCycle(...)}. The managed program retains the one heartbeat
+     * and cleanup owner for every declaration made here.
      * </p>
      *
      * @param capabilities shared Phoenix capability families exposed by the robot container
@@ -96,17 +104,17 @@ public final class PhoenixTeleOpControls {
         PhoenixCapabilities.Scoring scoring =
                 Objects.requireNonNull(capabilities, "capabilities").scoring();
 
-        bindings.toggleOnRise(operator.a(), scoring::setIntakeEnabled);
-        bindings.toggleOnRise(operator.rightBumper(), scoring::setFlywheelEnabled);
+        bindingRegistrar.toggleOnRise(operator.a(), scoring::setIntakeEnabled);
+        bindingRegistrar.toggleOnRise(operator.rightBumper(), scoring::setFlywheelEnabled);
 
         // Declaration order is intentional: if capture and a nudge rise in the same input frame,
         // capture the suggested velocity first and then apply the student's selected adjustment.
-        bindings.onRise(operator.leftBumper(), scoring::captureSuggestedShotVelocity);
+        bindingRegistrar.onRise(operator.leftBumper(), scoring::captureSuggestedShotVelocity);
 
-        bindings.mirrorOnChange(operator.b(), scoring::setShootingEnabled);
-        bindings.mirrorOnChange(operator.x(), scoring::setEjectEnabled);
+        bindingRegistrar.mirrorOnChange(operator.b(), scoring::setShootingEnabled);
+        bindingRegistrar.mirrorOnChange(operator.x(), scoring::setEjectEnabled);
 
-        bindings.nudgeOnRise(
+        bindingRegistrar.nudgeOnRise(
                 operator.dpadUp(),
                 operator.dpadDown(),
                 cfg.selectedVelocityStepNative,
@@ -157,21 +165,6 @@ public final class PhoenixTeleOpControls {
     }
 
     /**
-     * Returns the current manual translation-stick magnitude.
-     *
-     * <p>
-     * Phoenix uses this to decide when the driver is still actively translating during shoot-brace
-     * behavior. Exposing it here keeps drive-input semantics inside the controls owner.
-     * </p>
-     *
-     * @param clock shared loop clock used to sample the stick magnitude source
-     * @return current left-stick magnitude in [0, 1]
-     */
-    public double manualTranslateMagnitude(LoopClock clock) {
-        return manualTranslateMagnitude.getAsDouble(clock);
-    }
-
-    /**
      * Emits the standard Phoenix TeleOp control help block during INIT.
      *
      * @param telemetry FTC telemetry sink to write to; ignored when {@code null}
@@ -191,24 +184,4 @@ public final class PhoenixTeleOpControls {
         telemetry.addLine("P2: DPad Up/Down=adjust selected velocity");
     }
 
-    /**
-     * Advances the binding state machine for the current loop cycle.
-     *
-     * @param clock shared loop clock for the active OpMode cycle
-     */
-    public void update(LoopClock clock) {
-        bindings.update(clock);
-    }
-
-    /**
-     * Clears all remembered edge/toggle state.
-     *
-     * <p>
-     * Call this when TeleOp is shutting down or when the controls owner is being discarded so the
-     * next activation starts from a clean slate.
-     * </p>
-     */
-    public void clear() {
-        bindings.clear();
-    }
 }

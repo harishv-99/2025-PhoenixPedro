@@ -142,18 +142,25 @@ Phoenix is designed around a few core goals:
    update as that cycle's one heartbeat.
 
    In ordinary FTC robot code, `FtcRobotOpMode` owns that heartbeat through one framework-created
-   `RobotProgram`. Robot code declares upstream services, bindings, an optional root Task,
-   downstream outputs, one optional source-driven drive, and additive presenters during
+   `RobotProgram`. Robot code declares one optional INIT-only `Prestart`, upstream services,
+   bindings, an optional root Task, downstream outputs, one optional source-driven drive, and additive presenters during
    `configure(program)`; it does not call their lifecycle methods from FTC callbacks. The managed
    active order is `Clock -> Services -> Bindings -> Tasks -> Outputs/Drive -> Presenters -> one
-   telemetry commit`. INIT advances only the clock and presenters, so configuration cannot
-   accidentally actuate hardware. START resets the same clock at the exact boundary, starts
-   services, starts and first-updates the optional root Task, and realizes outputs once so a
-   positive-duration request is observable before it can expire. The host fail-stops the complete
-   registered graph after a
-   `RuntimeException`. A custom selector, tester, portable host, or integration with materially
-   different lifecycle policy may own these phases explicitly, but that is the advanced exception,
-   not a second ordinary robot recipe.
+   telemetry commit`. INIT advances the clock, then the optional data-only `Prestart`, then
+   presenters, so configuration cannot accidentally actuate hardware. START freezes `Prestart`
+   exactly once before resetting the same clock. `READY` starts services, starts and first-updates
+   the optional root Task, and realizes outputs once so a positive-duration request is observable
+   before it can expire. `BLOCKED` keeps services, bindings, Tasks, and outputs inert while the
+   clock and presenters continue. A `Prestart` owns no hardware/resource lifecycle or stop hook.
+   Use `Tasks.buildAtStart(...)` when a root Task depends on frozen data; do not defer hardware graph
+   construction through it.
+
+   The host fail-stops the complete registered graph after a `RuntimeException`. A typed
+   `stopHandoff(capture, publish, invalidate)` may capture cached state only on normal STOP from
+   ACTIVE, publishes only after complete cleanup succeeds, and invalidates on every non-publication
+   path. TeleOp and Auto are parallel clients of this one managed grammar. A custom portable host
+   or diagnostic with genuinely incompatible lifecycle requirements is the advanced exception,
+   not a second robot recipe or a reason to retain a private mode clock/runner.
 
    A route start also owns one execution identity. Its status and cancellation stay attached to
    that exact start even if a newer route replaces it. A vendor's idle or not-busy flag is not proof
@@ -246,9 +253,10 @@ Phoenix is designed around a few core goals:
    readiness result. Do not add a second generic validation language, scatter exceptions through
    OpModes, or let a successful constructor claim that an entire Auto is armed.
 
-   * A blocking result must prevent hardware behavior from being installed or started, including
-     any START-without-confirmation path. Warnings and blockers required by drivers belong in
-     always-on telemetry with a concrete remediation, not only in `debugDump(...)`.
+   * A blocking result must prevent hardware behavior from being installed or started on every
+     START path, including one reached from an unfinished selector. Warnings and blockers required
+     by drivers belong in always-on telemetry with a concrete remediation, not only in
+     `debugDump(...)`.
    * Gate only the behavior that depends on a missing fact when a safe partial mode exists. For
      example, incomplete localization calibration may disable pose-dependent TeleOp assists while
      leaving manual drive and mechanisms available.

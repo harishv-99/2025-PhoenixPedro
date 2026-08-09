@@ -15,8 +15,9 @@ import edu.ftcphoenix.robots.phoenix.autonomous.pedro.PhoenixPedroPathFactory;
  *
  * <p>The framework and Pedro integration validate their own reusable construction contracts.
  * This utility owns the robot policy that those lower layers cannot know: which calibration
- * acknowledgements Phoenix requires, which alliance target belongs to the selected Auto, and
- * whether integration-only geometry may run from a particular Driver Station entry.</p>
+ * acknowledgements Phoenix requires, which scoring AprilTag belongs to the selected match
+ * alliance, and whether integration-only geometry may run from a particular Driver Station
+ * entry.</p>
  *
  * <p>Every factory returns an immutable, deterministically ordered {@link Result}. Mode clients
  * may render all issues during INIT and use {@link Result#requireAllowed(String)} at the arming
@@ -183,20 +184,24 @@ public final class PhoenixReadiness {
     }
 
     /**
-     * Evaluate the selected alliance's Auto target catalog and fixed-field facts.
+     * Evaluate one selected alliance's scoring-AprilTag catalog and fixed-field facts.
      *
-     * <p>The inactive alliance target is intentionally irrelevant. This check validates configured
-     * field facts only; it never requires the target tag to be visible during INIT.</p>
+     * <p>TeleOp and Auto use this same mode-neutral policy. The inactive alliance target is
+     * intentionally irrelevant. This check validates configured field facts only; it never
+     * requires the selected scoring tag to be visible during INIT.</p>
      *
-     * @param spec selected autonomous setup
+     * @param alliance selected match alliance
      * @param profile profile snapshot to validate
-     * @return immutable readiness report
+     * @return immutable readiness report for the selected alliance's scoring target
      */
-    public static Result autoProfile(PhoenixAutoSpec spec, PhoenixProfile profile) {
-        Objects.requireNonNull(spec, "spec");
+    public static Result allianceScoringTarget(
+            PhoenixAlliance alliance,
+            PhoenixProfile profile
+    ) {
+        Objects.requireNonNull(alliance, "alliance");
         Objects.requireNonNull(profile, "profile");
         List<Issue> issues = new ArrayList<Issue>();
-        addAutoProfileIssues(issues, spec, profile);
+        addAllianceScoringTargetIssues(issues, alliance, profile);
         return new Result(issues);
     }
 
@@ -204,8 +209,8 @@ public final class PhoenixReadiness {
      * Evaluate the complete Phoenix-owned policy for one Pedro autonomous request.
      *
      * <p>Successful Pedro runtime construction remains the integration layer's responsibility.
-     * This report combines only Phoenix-owned purpose, calibration, alliance-fact, and route-
-     * maturity rules. Issues are returned in deterministic policy order.</p>
+     * This report combines only Phoenix-owned purpose, calibration, alliance scoring-target, and
+     * route-maturity rules. Issues are returned in deterministic policy order.</p>
      *
      * @param spec selected autonomous setup
      * @param profile profile snapshot to validate
@@ -226,8 +231,36 @@ public final class PhoenixReadiness {
         List<Issue> issues = new ArrayList<Issue>();
         addPurposeIssues(issues, spec, purpose);
         addCalibrationIssues(issues, profile, purpose);
-        addAutoProfileIssues(issues, spec, profile);
+        addAllianceScoringTargetIssues(issues, spec.alliance, profile);
         addRouteIssues(issues, routeAvailability, purpose);
+        return new Result(issues);
+    }
+
+    /**
+     * Evaluate only whether one strategy belongs to the requesting Auto purpose and has suitable
+     * route geometry.
+     *
+     * <p>Selector rows use this narrow report so a whole-mode calibration or targeting blocker is
+     * shown on the review summary and at START instead of falsely making every strategy row look
+     * unavailable.</p>
+     *
+     * @param spec candidate autonomous strategy and geometry selection
+     * @param purpose Driver Station entry requesting the routine
+     * @return immutable purpose/route report for that strategy row
+     */
+    public static Result pedroAutoStrategy(
+            PhoenixAutoSpec spec,
+            AutoPurpose purpose
+    ) {
+        Objects.requireNonNull(spec, "spec");
+        Objects.requireNonNull(purpose, "purpose");
+        List<Issue> issues = new ArrayList<Issue>();
+        addPurposeIssues(issues, spec, purpose);
+        addRouteIssues(
+                issues,
+                PhoenixPedroPathFactory.routeAvailabilityFor(spec),
+                purpose
+        );
         return new Result(issues);
     }
 
@@ -296,25 +329,25 @@ public final class PhoenixReadiness {
         }
     }
 
-    private static void addAutoProfileIssues(List<Issue> issues,
-                                             PhoenixAutoSpec spec,
-                                             PhoenixProfile profile) {
-        if (profile.auto == null) {
+    private static void addAllianceScoringTargetIssues(List<Issue> issues,
+                                                       PhoenixAlliance alliance,
+                                                       PhoenixProfile profile) {
+        if (profile.autoAim == null) {
             issues.add(issue(
-                    "auto.config_missing",
+                    "targeting.config_missing",
                     Severity.BLOCKING,
-                    "PhoenixProfile.auto is missing, so the selected alliance target cannot be resolved.",
-                    "Restore a PhoenixProfile.AutoConfig with red and blue alliance scoring tag ids."
+                    "PhoenixProfile.autoAim is missing, so the selected alliance scoring AprilTag cannot be resolved.",
+                    "Restore a PhoenixProfile.AutoAimConfig with its alliance scoring tag ids and target catalog."
             ));
             return;
         }
 
-        int tagId = selectedAllianceTagId(spec, profile.auto);
-        String tagField = selectedAllianceTagField(spec);
+        int tagId = profile.autoAim.scoringTagIdFor(alliance);
+        String tagField = selectedAllianceTagField(alliance);
 
         if (tagId < 0) {
             issues.add(issue(
-                    "auto.selected_target_id_invalid",
+                    "targeting.selected_scoring_tag_id_invalid",
                     Severity.BLOCKING,
                     tagField + " must be a non-negative AprilTag id, but was " + tagId + ".",
                     "Set " + tagField + " to the selected alliance's fixed scoring AprilTag id."
@@ -322,9 +355,9 @@ public final class PhoenixReadiness {
             return;
         }
 
-        if (profile.autoAim == null || profile.autoAim.scoringTargets == null) {
+        if (profile.autoAim.scoringTargets == null) {
             issues.add(issue(
-                    "auto.target_catalog_missing",
+                    "targeting.scoring_target_catalog_missing",
                     Severity.BLOCKING,
                     "PhoenixProfile.autoAim.scoringTargets is missing.",
                     "Restore the scoring-target catalog and add the selected alliance tag id " + tagId + "."
@@ -332,9 +365,9 @@ public final class PhoenixReadiness {
         } else {
             if (profile.autoAim.scoringTargets.get(tagId) == null) {
                 issues.add(issue(
-                        "auto.selected_target_missing",
+                        "targeting.selected_scoring_tag_missing",
                         Severity.BLOCKING,
-                        "Selected " + spec.alliance.label() + " Auto tag id " + tagId
+                        "Selected " + alliance.label() + " alliance scoring tag id " + tagId
                                 + " (" + tagField + ") is not in PhoenixProfile.autoAim.scoringTargets.",
                         "Add a scoring-target entry keyed by tag id " + tagId
                                 + ", or correct " + tagField + "."
@@ -345,7 +378,7 @@ public final class PhoenixReadiness {
         TagLayout fixedLayout = profile.field == null ? null : profile.field.fixedAprilTagLayout;
         if (fixedLayout == null) {
             issues.add(issue(
-                    "auto.fixed_tag_layout_missing",
+                    "targeting.fixed_tag_layout_missing",
                     Severity.BLOCKING,
                     "PhoenixProfile.field.fixedAprilTagLayout is missing.",
                     "Configure a fixed-field TagLayout containing the selected alliance scoring tag id "
@@ -353,9 +386,9 @@ public final class PhoenixReadiness {
             ));
         } else if (!fixedLayout.has(tagId)) {
             issues.add(issue(
-                    "auto.selected_target_not_fixed",
+                    "targeting.selected_scoring_tag_not_fixed",
                     Severity.BLOCKING,
-                    "Selected " + spec.alliance.label() + " Auto tag id " + tagId
+                    "Selected " + alliance.label() + " alliance scoring tag id " + tagId
                             + " is not in PhoenixProfile.field.fixedAprilTagLayout.",
                     "Use the correct season/practice fixed-tag layout, or correct " + tagField + "."
             ));
@@ -388,17 +421,15 @@ public final class PhoenixReadiness {
         }
     }
 
-    private static int selectedAllianceTagId(PhoenixAutoSpec spec,
-                                             PhoenixProfile.AutoConfig auto) {
-        return spec.alliance == PhoenixAutoSpec.Alliance.RED
-                ? auto.redAllianceScoringTagId
-                : auto.blueAllianceScoringTagId;
-    }
-
-    private static String selectedAllianceTagField(PhoenixAutoSpec spec) {
-        return spec.alliance == PhoenixAutoSpec.Alliance.RED
-                ? "PhoenixProfile.auto.redAllianceScoringTagId"
-                : "PhoenixProfile.auto.blueAllianceScoringTagId";
+    private static String selectedAllianceTagField(PhoenixAlliance alliance) {
+        switch (alliance) {
+            case RED:
+                return "PhoenixProfile.autoAim.redAllianceScoringTagId";
+            case BLUE:
+                return "PhoenixProfile.autoAim.blueAllianceScoringTagId";
+            default:
+                throw new IllegalArgumentException("Unsupported Phoenix alliance: " + alliance);
+        }
     }
 
     private static Issue issue(String id,

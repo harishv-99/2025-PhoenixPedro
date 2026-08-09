@@ -1,4 +1,4 @@
-package edu.ftcphoenix.robots.phoenix.opmode;
+package edu.ftcphoenix.robots.examples.pedro;
 
 import com.pedropathing.geometry.Pose;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
@@ -14,8 +14,6 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.ftc.FtcRobotOpMode;
 import edu.ftcphoenix.fw.ftc.RobotProgram;
 import edu.ftcphoenix.fw.integrations.pedro.PedroPathingRuntime;
-import edu.ftcphoenix.robots.examples.pedro.BasicPedroAutoMechanism;
-import edu.ftcphoenix.robots.examples.pedro.BasicPedroAutoRobot;
 import edu.ftcphoenix.robots.phoenix.PhoenixMatchHandoff;
 import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
 
@@ -24,23 +22,25 @@ import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
  *
  * <p>This is the only example file tied to Phoenix hardware configuration. A new robot replaces
  * this host wiring while retaining the small path, routine, capability, and managed-program
- * declaration shape.</p>
+ * declaration shape. Production and diagnostic Phoenix-season entries instead extend
+ * {@code PhoenixAutoOpMode}; this generic example uses the same underlying
+ * {@link FtcRobotOpMode}/{@link RobotProgram} grammar without constructing the season robot.</p>
  */
 @Autonomous(name = "FW Pedro Auto: Basic Reference", group = "Framework Examples")
 @Disabled
-public final class PhoenixBasicPedroAutoExample extends FtcRobotOpMode {
+public final class BasicPedroAutoExample extends FtcRobotOpMode {
 
     private final Function<RobotProgram, BasicPedroAutoRobot> testRobotFactory;
     private BasicPedroAutoRobot robot;
     private PedroPathingRuntime pedroRuntime;
 
     /** Creates the Driver Station entry using this repository's real Phoenix configuration. */
-    public PhoenixBasicPedroAutoExample() {
+    public BasicPedroAutoExample() {
         testRobotFactory = null;
     }
 
     /** Test-only construction seam; it is deliberately not a public extension API. */
-    PhoenixBasicPedroAutoExample(
+    BasicPedroAutoExample(
             Function<RobotProgram, BasicPedroAutoRobot> testRobotFactory
     ) {
         this.testRobotFactory = Objects.requireNonNull(testRobotFactory, "testRobotFactory");

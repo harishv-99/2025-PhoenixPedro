@@ -1,182 +1,169 @@
 package edu.ftcphoenix.robots.phoenix.opmode;
 
-import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.hardware.Gamepad;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 
 import org.firstinspires.ftc.robotcore.external.Telemetry;
-import org.junit.After;
-import org.junit.Before;
 import org.junit.Test;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.lang.reflect.Proxy;
-import java.util.ArrayList;
-import java.util.List;
 
-import edu.ftcphoenix.fw.core.geometry.Pose2d;
-import edu.ftcphoenix.fw.core.geometry.Pose3d;
-import edu.ftcphoenix.fw.core.time.LoopTimestamp;
+import edu.ftcphoenix.fw.core.source.BooleanSource;
+import edu.ftcphoenix.fw.core.source.Source;
+import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.drive.DriveCommandSink;
 import edu.ftcphoenix.fw.drive.DriveSignal;
-import edu.ftcphoenix.fw.localization.PoseEstimate;
-import edu.ftcphoenix.fw.localization.PoseResetter;
+import edu.ftcphoenix.fw.drive.DriveSource;
+import edu.ftcphoenix.fw.ftc.FtcRobotOpMode;
+import edu.ftcphoenix.fw.ftc.RobotProgram;
+import edu.ftcphoenix.fw.localization.MotionPredictor;
+import edu.ftcphoenix.fw.task.Task;
 import edu.ftcphoenix.robots.phoenix.PhoenixMatchHandoff;
 import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
 import edu.ftcphoenix.robots.phoenix.PhoenixRobot;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
-/** Verifies Phoenix TeleOp's one-shot restore and initialization-failure cleanup boundary. */
+/** Verifies Phoenix TeleOp's managed-only host and exact-START drive boundary. */
 public final class PhoenixTeleOpTest {
 
-    @Before
-    public void clearHandoffBeforeTest() {
-        PhoenixMatchHandoff.clear();
-    }
+    @Test
+    public void productionTeleOpUsesOnlyTheManagedConfigureCallback() throws Exception {
+        assertEquals(FtcRobotOpMode.class, PhoenixTeleOp.class.getSuperclass());
 
-    @After
-    public void clearHandoffAfterTest() {
-        PhoenixMatchHandoff.clear();
+        Method configure = PhoenixTeleOp.class.getDeclaredMethod(
+                "configure",
+                RobotProgram.class
+        );
+        assertTrue(Modifier.isProtected(configure.getModifiers()));
+        assertFalse(Modifier.isStatic(configure.getModifiers()));
+
+        assertNoDeclaredTeleOpMethod("init");
+        assertNoDeclaredTeleOpMethod("init_loop");
+        assertNoDeclaredTeleOpMethod("start");
+        assertNoDeclaredTeleOpMethod("loop");
+        assertNoDeclaredTeleOpMethod("stop");
     }
 
     @Test
-    public void restoreFailureStopsInitializedRobotAndPreservesCleanupFailure()
+    public void robotSurfaceUsesOneManagedDeclarationGrammarForTeleOpAndAuto() throws Exception {
+        assertNotNull(PhoenixRobot.class.getMethod(
+                "declareTeleOp",
+                RobotProgram.class,
+                Source.class
+        ));
+        assertNotNull(PhoenixRobot.class.getMethod(
+                "teleOpPresenter",
+                PhoenixMatchHandoff.RestoreResult.class
+        ));
+        assertNotNull(PhoenixRobot.class.getMethod(
+                "declareAuto",
+                RobotProgram.class,
+                DriveCommandSink.class,
+                MotionPredictor.class,
+                Source.class,
+                BooleanSource.class,
+                BooleanSource.class,
+                Runnable.class
+        ));
+        assertNotNull(PhoenixRobot.class.getMethod("autoPresenter", Task.class));
+
+        assertNoPublicRobotMethod("initAny");
+        assertNoPublicRobotMethod("initTeleOp");
+        assertNoPublicRobotMethod("startAny", double.class);
+        assertNoPublicRobotMethod("startTeleOp");
+        assertNoPublicRobotMethod("updateAny", double.class);
+        assertNoPublicRobotMethod("updateTeleOp");
+        assertNoPublicRobotMethod("initAuto", DriveCommandSink.class, MotionPredictor.class);
+        assertNoPublicRobotMethod("installAutoRoutine", Task.class);
+        assertNoPublicRobotMethod("startAuto", double.class);
+        assertNoPublicRobotMethod("updateAuto", double.class);
+        assertNoPublicRobotMethod("stopAuto");
+        assertNoPublicRobotMethod("stop");
+    }
+
+    @Test
+    public void managedDriveSourceWritesZeroAtStartBeforeSamplingDriverIntent()
             throws Exception {
-        RuntimeException restoreFailure = new IllegalStateException("controlled restore failure");
-        RuntimeException cleanupFailure = new IllegalStateException("controlled cleanup failure");
-        PhoenixMatchHandoff.publishFromAuto(
-                new EmptyOpMode(),
-                new PoseEstimate(
-                        new Pose3d(14.0, -6.0, 0.0, 0.75, 0.0, 0.0),
-                        true,
-                        1.0,
-                        LoopTimestamp.unavailable()
-                )
-        );
-
-        PhoenixRobot robot = uninitializedRobot();
-        initializeRestoreLifecycle(
-                robot,
-                new PoseResetter() {
-                    @Override
-                    public void setPose(Pose2d pose) {
-                        throw restoreFailure;
-                    }
-                }
-        );
-        setField(
-                PhoenixRobot.class,
-                robot,
-                "autonomousDrive",
-                new DriveCommandSink() {
-                    @Override
-                    public void drive(DriveSignal signal) {
-                        // No hardware in this lifecycle regression.
-                    }
-
-                    @Override
-                    public void stop() {
-                        throw cleanupFailure;
-                    }
-                }
-        );
-
-        try {
-            PhoenixTeleOp.restoreInitializedRobotOrStop(new EmptyOpMode(), robot);
-            fail("expected restore failure");
-        } catch (RuntimeException failure) {
-            assertSame(restoreFailure, failure);
-            assertEquals(1, failure.getSuppressed().length);
-            assertSame(cleanupFailure, failure.getSuppressed()[0]);
-        }
-
-        assertNull(getField(PhoenixRobot.class, robot, "autonomousDrive"));
-        Object lifecycle = getField(PhoenixRobot.class, robot, "teleOpPoseRestore");
-        assertNull(getField(lifecycle.getClass(), lifecycle, "poseResetter"));
-    }
-
-    @Test
-    public void missingHandoffFallbackSharesTheCommittedInitReadinessFrame() {
-        List<String> pendingEntries = new ArrayList<>();
-        List<List<String>> committedFrames = new ArrayList<>();
-        Telemetry recordingTelemetry = (Telemetry) Proxy.newProxyInstance(
-                Telemetry.class.getClassLoader(),
-                new Class<?>[]{Telemetry.class},
-                (proxy, method, args) -> {
-                    if ("addData".equals(method.getName()) || "addLine".equals(method.getName())) {
-                        pendingEntries.add(java.util.Arrays.toString(args));
-                    } else if ("update".equals(method.getName())) {
-                        committedFrames.add(new ArrayList<>(pendingEntries));
-                        pendingEntries.clear();
-                    }
-                    Class<?> returnType = method.getReturnType();
-                    if (returnType == boolean.class) {
-                        return true;
-                    }
-                    if (returnType == int.class) {
-                        return 0;
-                    }
-                    return null;
-                }
-        );
-
-        recordingTelemetry.addLine("ordinary controls and pose-assist readiness");
-        PhoenixTeleOp.publishAutoHandoffTelemetry(
-                recordingTelemetry,
-                PhoenixMatchHandoff.RestoreResult.MISSING
-        );
-
-        assertEquals(1, committedFrames.size());
-        String initFrame = committedFrames.get(0).toString();
-        assertTrue(initFrame.contains("ordinary controls and pose-assist readiness"));
-        assertTrue(initFrame.contains("teleop.autoHandoff"));
-        assertTrue(initFrame.contains("MISSING"));
-        assertTrue(initFrame.contains("normally initialized TeleOp pose"));
-    }
-
-    private static PhoenixRobot uninitializedRobot() {
-        return new PhoenixRobot(
+        PhoenixRobot robot = new PhoenixRobot(
                 new HardwareMap(null, null),
                 inertTelemetry(),
                 new Gamepad(),
                 new Gamepad(),
                 PhoenixProfile.current()
         );
+        int[] activeSamples = {0};
+        DriveSource activeSource = clock -> {
+            activeSamples[0]++;
+            return new DriveSignal(0.7, -0.4, 0.25);
+        };
+        DriveSource managedSource = constructManagedDriveSource(robot, activeSource);
+        LoopClock clock = new LoopClock();
+        clock.reset(0.0);
+
+        DriveSignal exactStart = managedSource.get(clock);
+        assertEquals(0.0, exactStart.axial, 0.0);
+        assertEquals(0.0, exactStart.lateral, 0.0);
+        assertEquals(0.0, exactStart.omega, 0.0);
+        assertEquals(0, activeSamples[0]);
+
+        setField(robot, "teleOpOrdinaryLoopReached", true);
+        clock.update(0.02);
+        DriveSignal active = managedSource.get(clock);
+        assertEquals(0.7, active.axial, 0.0);
+        assertEquals(-0.4, active.lateral, 0.0);
+        assertEquals(0.25, active.omega, 0.0);
+        assertEquals(1, activeSamples[0]);
     }
 
-    private static void initializeRestoreLifecycle(PhoenixRobot robot,
-                                                   PoseResetter poseResetter)
-            throws Exception {
-        Object lifecycle = getField(PhoenixRobot.class, robot, "teleOpPoseRestore");
-        Method initialize = lifecycle.getClass().getDeclaredMethod(
-                "initialize",
-                PoseResetter.class
-        );
-        initialize.setAccessible(true);
-        initialize.invoke(lifecycle, poseResetter);
+    private static DriveSource constructManagedDriveSource(
+            PhoenixRobot robot,
+            DriveSource activeSource
+    ) throws Exception {
+        for (Class<?> nested : PhoenixRobot.class.getDeclaredClasses()) {
+            if (!"ManagedTeleOpDriveSource".equals(nested.getSimpleName())) {
+                continue;
+            }
+            Constructor<?> constructor = nested.getDeclaredConstructor(
+                    PhoenixRobot.class,
+                    DriveSource.class
+            );
+            constructor.setAccessible(true);
+            return (DriveSource) constructor.newInstance(robot, activeSource);
+        }
+        throw new AssertionError("PhoenixRobot.ManagedTeleOpDriveSource was not found");
     }
 
-    private static void setField(Class<?> owner,
-                                 Object target,
-                                 String name,
-                                 Object value) throws Exception {
-        Field field = owner.getDeclaredField(name);
+    private static void setField(Object target, String name, Object value) throws Exception {
+        Field field = target.getClass().getDeclaredField(name);
         field.setAccessible(true);
         field.set(target, value);
     }
 
-    private static Object getField(Class<?> owner,
-                                   Object target,
-                                   String name) throws Exception {
-        Field field = owner.getDeclaredField(name);
-        field.setAccessible(true);
-        return field.get(target);
+    private static void assertNoDeclaredTeleOpMethod(String name, Class<?>... parameterTypes) {
+        try {
+            PhoenixTeleOp.class.getDeclaredMethod(name, parameterTypes);
+            fail("Expected managed PhoenixTeleOp not to declare " + name);
+        } catch (NoSuchMethodException expected) {
+            // The final callbacks are inherited from FtcRobotOpMode.
+        }
+    }
+
+    private static void assertNoPublicRobotMethod(String name, Class<?>... parameterTypes) {
+        try {
+            PhoenixRobot.class.getMethod(name, parameterTypes);
+            fail("Expected legacy PhoenixRobot." + name + " to be removed");
+        } catch (NoSuchMethodException expected) {
+            // Managed RobotProgram declaration owns both mode lifecycles.
+        }
     }
 
     private static Telemetry inertTelemetry() {
@@ -194,15 +181,5 @@ public final class PhoenixTeleOpTest {
                     return null;
                 }
         );
-    }
-
-    private static final class EmptyOpMode extends OpMode {
-        @Override
-        public void init() {
-        }
-
-        @Override
-        public void loop() {
-        }
     }
 }

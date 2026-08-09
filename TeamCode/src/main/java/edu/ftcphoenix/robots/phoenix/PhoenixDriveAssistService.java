@@ -3,12 +3,15 @@ package edu.ftcphoenix.robots.phoenix;
 import java.util.Objects;
 
 import edu.ftcphoenix.fw.core.control.HysteresisBoolean;
+import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.source.ScalarSource;
+import edu.ftcphoenix.fw.core.source.Source;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.drive.DriveOverlay;
 import edu.ftcphoenix.fw.drive.DriveOverlayMask;
 import edu.ftcphoenix.fw.drive.DriveOverlayStack;
+import edu.ftcphoenix.fw.drive.DriveSignal;
 import edu.ftcphoenix.fw.drive.DriveSource;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidance;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidancePlan;
@@ -74,14 +77,15 @@ public final class PhoenixDriveAssistService {
     }
 
     private final ScalarSource manualTranslateMagnitude;
+    private final Source<ScoringPath.Status> scoringStatusSource;
     private final BooleanSource autoAimRequested;
     private final BooleanSource autoAimEnabled;
     private final boolean poseAssistsAvailable;
     private final HysteresisBoolean shootBraceLatch;
+    private final Source<Status> statusSource;
     private final DriveSource driveSource;
 
-    private long lastStatusCycle = Long.MIN_VALUE;
-    private Status lastStatus = new Status(false, false, false, false, 0.0);
+    private Status lastStatus;
 
     /**
      * Creates the Phoenix drive-assist service.
@@ -89,6 +93,7 @@ public final class PhoenixDriveAssistService {
      * @param config                      robot-specific drive-assist tuning snapshot copied for local ownership
      * @param manualDrive                 base manual drive source from the controls owner
      * @param manualTranslateMagnitude    source describing the driver's current translation-stick magnitude
+     * @param scoringStatusSource         current scoring snapshot source sampled as part of the final drive read
      * @param autoAimEnabled              source that requests omega-only auto aim when held
      * @param poseAssistsAvailable        whether checked-in localization calibration permits pose-dependent assists
      * @param globalAbsolutePoseEstimator shared global pose estimator used by the shoot-brace pose lock
@@ -97,6 +102,7 @@ public final class PhoenixDriveAssistService {
     public PhoenixDriveAssistService(PhoenixProfile.DriveAssistConfig config,
                                      DriveSource manualDrive,
                                      ScalarSource manualTranslateMagnitude,
+                                     Source<ScoringPath.Status> scoringStatusSource,
                                      BooleanSource autoAimEnabled,
                                      boolean poseAssistsAvailable,
                                      AbsolutePoseEstimator globalAbsolutePoseEstimator,
@@ -104,6 +110,10 @@ public final class PhoenixDriveAssistService {
         PhoenixProfile.DriveAssistConfig cfg = Objects.requireNonNull(config, "config").copy();
         Objects.requireNonNull(manualDrive, "manualDrive");
         this.manualTranslateMagnitude = Objects.requireNonNull(manualTranslateMagnitude, "manualTranslateMagnitude");
+        this.scoringStatusSource = Objects.requireNonNull(
+                scoringStatusSource,
+                "scoringStatusSource"
+        );
         this.poseAssistsAvailable = poseAssistsAvailable;
         this.autoAimRequested = Objects.requireNonNull(autoAimEnabled, "autoAimEnabled")
                 .memoized();
@@ -119,10 +129,14 @@ public final class PhoenixDriveAssistService {
                 shootBrace.exitTranslateMagnitude
         );
 
-        this.driveSource = DriveOverlayStack.on(manualDrive)
+        this.statusSource = Source.of(this::calculateStatus).memoized();
+        BooleanSource shootBraceEnabled = this.statusSource
+                .mapToBoolean(status -> status.shootBraceEnabled);
+
+        DriveSource assistedDrive = DriveOverlayStack.on(manualDrive)
                 .add(
                         "shootBrace",
-                        BooleanSource.of(shootBraceLatch::get),
+                        shootBraceEnabled,
                         DriveGuidance.poseLock(
                                 globalAbsolutePoseEstimator,
                                 DriveGuidancePlan.Tuning.defaults()
@@ -139,6 +153,44 @@ public final class PhoenixDriveAssistService {
                 )
                 .build();
         this.lastStatus = new Status(poseAssistsAvailable, false, false, false, 0.0);
+
+        this.driveSource = new DriveSource() {
+            @Override
+            public DriveSignal get(LoopClock clock) {
+                // Publish the policy snapshot before any overlay samples its derived gates.
+                statusSource.get(clock);
+                return assistedDrive.get(clock);
+            }
+
+            @Override
+            public void reset() {
+                assistedDrive.reset();
+                shootBraceLatch.reset(false);
+                lastStatus = new Status(
+                        poseAssistsAvailable,
+                        false,
+                        false,
+                        false,
+                        0.0
+                );
+            }
+
+            @Override
+            public void debugDump(DebugSink dbg, String prefix) {
+                if (dbg == null) {
+                    return;
+                }
+                String p = (prefix == null || prefix.isEmpty()) ? "driveAssist" : prefix;
+                Status status = lastStatus;
+                dbg.addData(p + ".class", "PhoenixDriveAssistSource")
+                        .addData(p + ".poseAssistsAvailable", status.poseAssistsAvailable)
+                        .addData(p + ".autoAimRequested", status.autoAimRequested)
+                        .addData(p + ".shootBraceEligible", status.shootBraceEligible)
+                        .addData(p + ".shootBraceEnabled", status.shootBraceEnabled)
+                        .addData(p + ".manualTranslateMagnitude", status.manualTranslateMagnitude);
+                assistedDrive.debugDump(dbg, p + ".assisted");
+            }
+        };
     }
 
     /**
@@ -155,29 +207,14 @@ public final class PhoenixDriveAssistService {
         return driveSource;
     }
 
-    /**
-     * Advances the service for the current loop.
-     *
-     * <p>
-     * Call this after controls and scoring policy have updated for the loop so the service can
-     * compute a consistent assist snapshot from current input semantics and scoring state.
-     * </p>
-     *
-     * @param clock         shared loop clock for the active OpMode cycle
-     * @param scoringStatus current scoring-path snapshot that describes whether Phoenix is actively shooting
-     */
-    public void update(LoopClock clock, ScoringPath.Status scoringStatus) {
-        Objects.requireNonNull(clock, "clock");
-        long cycle = clock.cycle();
-        if (cycle == lastStatusCycle) {
-            return;
-        }
-        lastStatusCycle = cycle;
-
+    private Status calculateStatus(LoopClock clock) {
+        ScoringPath.Status scoringStatus = Objects.requireNonNull(
+                scoringStatusSource.get(clock),
+                "scoringStatusSource returned null"
+        );
         boolean autoAimRequested = this.autoAimRequested.getAsBoolean(clock);
         double manualTranslateMag = manualTranslateMagnitude.getAsDouble(clock);
         boolean shootBraceEligible = poseAssistsAvailable
-                && scoringStatus != null
                 && scoringStatus.shootActive;
         boolean shootBraceEnabled;
 
@@ -188,36 +225,27 @@ public final class PhoenixDriveAssistService {
             shootBraceEnabled = shootBraceLatch.update(manualTranslateMag);
         }
 
-        lastStatus = new Status(
+        Status calculated = new Status(
                 poseAssistsAvailable,
                 autoAimRequested,
                 shootBraceEligible,
                 shootBraceEnabled,
                 manualTranslateMag
         );
+        lastStatus = calculated;
+        return calculated;
     }
 
     /**
      * Returns the most recently computed drive-assist snapshot.
      *
-     * <p>
-     * The returned value is updated by {@link #update(LoopClock, ScoringPath.Status)}. Callers should
-     * update the service once per loop and then treat this status object as the single shared
-     * snapshot for telemetry and other read-only consumers.
-     * </p>
+     * <p>The final source returned by {@link #driveSource()} publishes this snapshot once per loop
+     * as part of the same read that produces the drive command. Downstream telemetry can therefore
+     * consume one stable status without another imperative service heartbeat.</p>
      *
      * @return latest computed drive-assist status snapshot
      */
     public Status status() {
         return lastStatus;
-    }
-
-    /**
-     * Clears internal assist state so the next activation starts fresh.
-     */
-    public void reset() {
-        shootBraceLatch.reset(false);
-        lastStatusCycle = Long.MIN_VALUE;
-        lastStatus = new Status(poseAssistsAvailable, false, false, false, 0.0);
     }
 }

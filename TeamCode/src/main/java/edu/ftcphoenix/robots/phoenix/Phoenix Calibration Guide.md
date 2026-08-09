@@ -19,7 +19,8 @@ Phoenix keeps calibration ownership intentionally clean:
 - `ScoringPath` -> scoring policy, requests, mechanism actuation, and status
 - `ScoringTargeting` -> selected-tag policy, aim status, and shot suggestions
 - `PhoenixReadiness` -> immutable mode-specific calibration/field/route warnings and blockers
-- `PhoenixRobot` -> composition root and loop owner
+- `PhoenixRobot` -> composition root; declares managed TeleOp or Auto roles
+- `RobotProgram` -> managed mode clock, phase order, prestart policy, telemetry commit, and cleanup
 
 That ownership split matters during bring-up because fixes should land in the owner of the behavior:
 
@@ -119,11 +120,11 @@ the mechanism should predictably hold that exact position.
 Create a fresh search Task for each homing attempt. Search Task objects follow the framework's
 single-use lifecycle and are not restarted after they have begun.
 
-For a future Phoenix mechanism, `PhoenixRobot` advances the Task runner before calling the owning
-mechanism's update. The search Task owns its cue, reference, timeout, and handoff recipe but never
-calls `lift.update(clock)`; the mechanism remains the sole Plant heartbeat owner. If the search is
-still active, that one downstream update submits its staged power. If the Task releases the search
-first, the same phase evaluates the normal final resolver.
+For a future Phoenix mechanism, `RobotProgram` advances Tasks before calling the owning
+mechanism's update in both TeleOp and Auto. The search Task owns its cue, reference, timeout, and
+handoff recipe but never calls `lift.update(clock)`; the mechanism remains the sole Plant heartbeat
+owner. If the search is still active, that one downstream update submits its staged power. If the
+Task releases the search first, the same phase evaluates the normal final resolver.
 
 `holdAfterReference(0.0)` changes the Plant's graph-owned command before that handoff; the complete
 resolver can still mask or transform it. Use `resumeTargeting()` when success should preserve the
@@ -343,12 +344,12 @@ bounded calibration work; it does not make the route or localization match-ready
 
 ### Readiness shown by production OpModes
 
-Phoenix match Auto also requires the selected alliance scoring tag in both
-`PhoenixProfile.autoAim.scoringTargets` and `PhoenixProfile.field.fixedAprilTagLayout`, plus route
-geometry deliberately classified `MATCH_READY` by `PhoenixPedroPathFactory`. Current checked-in
-placeholder geometry is `INTEGRATION_ONLY`, so static match entries and the selector correctly show
-`BLOCKED` even after localization calibration is complete. The dedicated Pedro test entry alone can
-show `TEST` and run that geometry.
+Phoenix TeleOp and Auto both require their selected alliance scoring tag in
+`PhoenixProfile.autoAim.scoringTargets` and `PhoenixProfile.field.fixedAprilTagLayout`. Match Auto
+additionally requires route geometry deliberately classified `MATCH_READY` by
+`PhoenixPedroPathFactory`. Current checked-in placeholder geometry is `INTEGRATION_ONLY`, so static
+match entries and the selector correctly show `BLOCKED` even after localization calibration is
+complete. The dedicated Pedro test entry alone can show `TEST` and run that geometry.
 
 Auto INIT displays the exact expected Pedro-field x/y/heading (inches/degrees) for physical
 placement. Setting the Pedro start pose rebases the software coordinate system; it does not sense

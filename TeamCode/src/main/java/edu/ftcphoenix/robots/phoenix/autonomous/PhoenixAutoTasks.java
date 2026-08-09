@@ -3,7 +3,6 @@ package edu.ftcphoenix.robots.phoenix.autonomous;
 import java.util.Objects;
 
 import edu.ftcphoenix.fw.core.source.BooleanSource;
-import edu.ftcphoenix.fw.core.source.Source;
 import edu.ftcphoenix.fw.drive.DriveCommandSink;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceTask;
 import edu.ftcphoenix.fw.task.Task;
@@ -42,9 +41,10 @@ public final class PhoenixAutoTasks {
      *
      * <p>Each phase must succeed before the next phase begins. Target-selection, aiming, and shot-
      * drain timeouts remain {@link edu.ftcphoenix.fw.task.TaskOutcome#TIMEOUT}; cancellation and
-     * unknown terminal outcomes likewise remain visible to the owning Auto routine. If an abnormal
-     * ending occurs after the shot request, the Task best-effort asks scoring to cancel that
-     * transient action.</p>
+     * unknown terminal outcomes likewise remain visible to the owning Auto routine. Phoenix's
+     * Pedro routine treats that bounded target/scoring timeout as the explicit return/park
+     * fallback trigger; it is not a START-readiness failure. If an abnormal ending occurs after
+     * the shot request, the Task best-effort asks scoring to cancel that transient action.</p>
      */
     public static Task aimAndShootOne(PhoenixCapabilities capabilities,
                                       DriveCommandSink driveSink,
@@ -55,8 +55,9 @@ public final class PhoenixAutoTasks {
         final PhoenixCapabilities.Scoring scoring = capabilities.scoring();
         final PhoenixCapabilities.Targeting targeting = capabilities.targeting();
 
-        BooleanSource targetSelected = Source.of(targeting::status)
-                .mapToBoolean(status -> status.selection.hasSelection);
+        BooleanSource targetSelected = BooleanSource.of(
+                () -> targeting.status().selection.hasSelection
+        );
         Task waitForTargetTask = Tasks.waitUntil(targetSelected, auto.waitForTargetSec);
         Task aimTask = targeting.aimTask(driveSink, aimConfig(auto));
         Task waitForShotTask = Tasks.waitUntil(

@@ -2,9 +2,12 @@ package edu.ftcphoenix.robots.phoenix;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
+import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.geometry.Pose2d;
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
 import edu.ftcphoenix.fw.core.math.InterpolatingTable1D;
@@ -14,6 +17,7 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.drive.DriveCommandSink;
 import edu.ftcphoenix.fw.drive.DriveOverlay;
 import edu.ftcphoenix.fw.drive.DriveOverlayMask;
+import edu.ftcphoenix.fw.drive.DriveOverlayOutput;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidance;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidancePlan;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceQuery;
@@ -32,15 +36,35 @@ import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelectionSource;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.TagSelections;
 import edu.ftcphoenix.fw.spatial.References;
 import edu.ftcphoenix.fw.task.Task;
+import edu.ftcphoenix.fw.task.Tasks;
 
 /**
  * Shared targeting service for Phoenix scoring.
  *
  * <p>This class owns selected-tag policy, the auto-aim guidance query, and range-based shot
  * suggestions. Higher-level code reads one cached {@link Status} snapshot per loop instead
- * of re-sampling the stateful guidance query in multiple places.</p>
+ * of re-sampling the stateful guidance query in multiple places. The robot supplies which
+ * configured scoring tags are eligible; that set is sampled and frozen before this service's
+ * first detection selection.</p>
  */
 public final class ScoringTargeting implements PhoenixCapabilities.Targeting {
+
+    /** One session's exact eligible selector and guidance graph. */
+    private static final class AimRuntime {
+        private final Set<Integer> eligibleTagIds;
+        private final TagSelectionSource selection;
+        private final DriveGuidancePlan plan;
+        private final DriveGuidanceQuery query;
+
+        private AimRuntime(Set<Integer> eligibleTagIds,
+                           TagSelectionSource selection,
+                           DriveGuidancePlan plan) {
+            this.eligibleTagIds = Objects.requireNonNull(eligibleTagIds, "eligibleTagIds");
+            this.selection = Objects.requireNonNull(selection, "selection");
+            this.plan = Objects.requireNonNull(plan, "plan");
+            this.query = plan.query();
+        }
+    }
 
     /**
      * Immutable status snapshot for Phoenix scoring-target selection and auto-aim.
@@ -170,20 +194,25 @@ public final class ScoringTargeting implements PhoenixCapabilities.Targeting {
     }
 
     private final PhoenixProfile.AutoAimConfig cfg;
+    private final FixedTagFieldPoseSolver.Config fieldPoseCfg;
+    private final AprilTagSensor tagSensor;
     private final CameraMountConfig cameraMountConfig;
+    private final AbsolutePoseEstimator globalAbsolutePoseEstimator;
     private final TagLayout fieldTagLayout;
+    private final Source<Set<Integer>> eligibleScoringTagIds;
     private final BooleanSource autoAimEnabled;
     private final BooleanSource aimOverrideInput;
     private final InterpolatingTable1D shotVelocityTable;
-    private final TagSelectionSource scoringSelection;
-    private final DriveGuidancePlan aimPlan;
-    private final DriveGuidanceQuery aimQuery;
     private final double aimReadyToleranceRad;
     private final Source<TargetingCalculation> targetingCalculation;
     private final BooleanSource stableAimReady;
     private final Source<Status> statusSource;
     private final BooleanSource aimOkToShootSource;
     private final BooleanSource aimOverrideSource;
+    private AimRuntime aimRuntime;
+    private long aimRuntimeGeneration;
+    private boolean targetingCalculationInProgress;
+    private Status latestStatus;
 
     /**
      * Creates the shared Phoenix scoring-targeting service.
@@ -194,6 +223,9 @@ public final class ScoringTargeting implements PhoenixCapabilities.Targeting {
      * @param cameraMountConfig           fixed camera extrinsics for the current robot profile
      * @param globalAbsolutePoseEstimator current global pose-estimator lane used by adaptive guidance
      * @param fieldTagLayout              fixed field tag layout for the current game
+     * @param eligibleScoringTagIds       robot-owned source of the non-empty configured scoring-tag
+     *                                    subset eligible in the current mode; sampled once and
+     *                                    defensively frozen before the first detection selection
      * @param autoAimEnabled              driver enable source that activates sticky target selection and the aim overlay
      * @param aimOverrideInput            driver override source that bypasses aim readiness gates when held
      * @param shotVelocityTable           range-to-velocity table used for fresh target-based shot suggestions
@@ -204,69 +236,31 @@ public final class ScoringTargeting implements PhoenixCapabilities.Targeting {
                             CameraMountConfig cameraMountConfig,
                             AbsolutePoseEstimator globalAbsolutePoseEstimator,
                             TagLayout fieldTagLayout,
+                            Source<Set<Integer>> eligibleScoringTagIds,
                             BooleanSource autoAimEnabled,
                             BooleanSource aimOverrideInput,
                             InterpolatingTable1D shotVelocityTable) {
         this.cfg = Objects.requireNonNull(config, "config").copy();
-        FixedTagFieldPoseSolver.Config fieldPoseCfg =
+        this.fieldPoseCfg =
                 FixedTagFieldPoseSolver.Config.normalizedValidatedCopyOf(
                         Objects.requireNonNull(aprilTagFieldPoseConfig, "aprilTagFieldPoseConfig"),
                         "ScoringTargeting.aprilTagFieldPoseConfig"
                 );
-        Objects.requireNonNull(tagSensor, "tagSensor");
+        this.tagSensor = Objects.requireNonNull(tagSensor, "tagSensor");
         this.cameraMountConfig = Objects.requireNonNull(cameraMountConfig, "cameraMountConfig");
-        Objects.requireNonNull(globalAbsolutePoseEstimator, "globalAbsolutePoseEstimator");
+        this.globalAbsolutePoseEstimator = Objects.requireNonNull(
+                globalAbsolutePoseEstimator,
+                "globalAbsolutePoseEstimator"
+        );
         this.fieldTagLayout = Objects.requireNonNull(fieldTagLayout, "fieldTagLayout");
+        this.eligibleScoringTagIds = Objects.requireNonNull(
+                eligibleScoringTagIds,
+                "ScoringTargeting eligibleScoringTagIds source is required"
+        );
         this.autoAimEnabled = Objects.requireNonNull(autoAimEnabled, "autoAimEnabled").memoized();
         this.aimOverrideInput = Objects.requireNonNull(aimOverrideInput, "aimOverrideInput").memoized();
         this.shotVelocityTable = Objects.requireNonNull(shotVelocityTable, "shotVelocityTable");
         this.aimReadyToleranceRad = Math.toRadians(this.cfg.aimReadyToleranceDeg);
-
-        if (this.cfg.scoringTagIds().isEmpty()) {
-            throw new IllegalArgumentException(
-                    "Phoenix auto-aim requires at least one scoring target in PhoenixProfile.autoAim.scoringTargets"
-            );
-        }
-
-        TagLayout scoringTagLayout = TagLayouts.subsetOrSame(
-                this.fieldTagLayout,
-                this.cfg.scoringTagIds(),
-                "Phoenix scoring fixed-tag layout"
-        );
-
-        scoringSelection = TagSelections.from(tagSensor)
-                .among(this.cfg.scoringTagIds())
-                .freshWithinSec(this.cfg.selectionMaxAgeSec)
-                .choose(TagSelectionPolicies.smallestAbsRobotBearing(this.cameraMountConfig))
-                .stickyWhen(this.autoAimEnabled)
-                .reacquireAfterLossSec(this.cfg.selectionReacquireSec)
-                .build();
-
-        DriveGuidancePlan.Tuning aimTuning = DriveGuidancePlan.Tuning.defaults()
-                .withAimKp(this.cfg.aimKp)
-                .withMaxOmegaCmd(this.cfg.aimMaxOmegaCmd)
-                .withMinOmegaCmd(this.cfg.aimMinOmegaCmd)
-                .withAimDeadbandRad(Math.toRadians(this.cfg.aimToleranceDeg));
-
-        aimPlan = DriveGuidance.plan()
-                .faceTo()
-                .point(References.relativeToSelectedTagPoint(scoringSelection, buildAimOffsetsByTag()))
-                .solveWith()
-                .adaptive()
-                .localization(globalAbsolutePoseEstimator)
-                .aprilTags(tagSensor, this.cameraMountConfig)
-                .aprilTagMaxAgeSec(this.cfg.selectionMaxAgeSec)
-                .aprilTagFieldPoseConfig(fieldPoseCfg)
-                .fixedAprilTagLayout(scoringTagLayout)
-                .omegaPolicy(DriveGuidanceSpec.OmegaPolicy.PREFER_APRIL_TAGS_WHEN_VALID)
-                .onLoss(DriveGuidanceSpec.LossPolicy.PASS_THROUGH)
-                .doneAdaptive()
-                .driveTuning()
-                .use(aimTuning)
-                .doneDriveTuning()
-                .build();
-
-        aimQuery = aimPlan.query();
 
         targetingCalculation = Source.of(this::calculateTargeting).memoized();
         stableAimReady = targetingCalculation
@@ -283,21 +277,23 @@ public final class ScoringTargeting implements PhoenixCapabilities.Targeting {
             );
         }).memoized();
 
-        Source<Status> statusView = Source.of(this::status);
-        aimOkToShootSource = statusView.mapToBoolean(status -> status.aimOkToShoot);
-        aimOverrideSource = statusView.mapToBoolean(status -> status.aimOverride);
+        latestStatus = initialStatus();
+        aimOkToShootSource = BooleanSource.of(() -> status().aimOkToShoot);
+        aimOverrideSource = BooleanSource.of(() -> status().aimOverride);
     }
 
     /**
      * Returns a fresh auto-aim overlay built from this service's shared plan.
      *
      * <p>Call this during initialization and keep the returned overlay for the lifetime of the
-     * owning drive stack. Each overlay has its own runtime state.</p>
+     * owning drive stack. The wrapper resolves its private guidance delegate after the managed
+     * targeting service has frozen eligibility on its first active update. Each overlay has its
+     * own controller runtime state.</p>
      *
      * @return new omega-only/plan-configured drive overlay for scoring auto-aim
      */
     public DriveOverlay aimOverlay() {
-        return aimPlan.overlay();
+        return new DeferredAimOverlay();
     }
 
     /**
@@ -313,7 +309,13 @@ public final class ScoringTargeting implements PhoenixCapabilities.Targeting {
      */
     @Override
     public Task aimTask(DriveCommandSink driveSink, DriveGuidanceTask.Config cfg) {
-        return aimPlan.task(driveSink, cfg);
+        DriveCommandSink requiredDriveSink = Objects.requireNonNull(driveSink, "driveSink");
+        return Tasks.buildAtStart(
+                "Phoenix scoring aim",
+                () -> requireAimRuntime("start the scoring aim Task")
+                        .plan
+                        .task(requiredDriveSink, cfg)
+        );
     }
 
     /**
@@ -340,30 +342,75 @@ public final class ScoringTargeting implements PhoenixCapabilities.Targeting {
      * @param clock shared loop clock for the active OpMode cycle
      */
     public void update(LoopClock clock) {
-        status(clock);
+        Status nextStatus = statusSource.get(Objects.requireNonNull(clock, "clock"));
+        latestStatus = nextStatus;
     }
 
     /**
-     * Returns the targeting snapshot for the current loop. One successful observation is published
-     * per cycle; a failed value calculation remains eligible for a same-cycle retry.
+     * Returns the latest targeting snapshot successfully published by {@link #update(LoopClock)}.
      *
-     * @param clock shared loop clock for the active OpMode cycle
-     * @return cached targeting snapshot for the current cycle
+     * <p>This read is clockless and side-effect-free. If an update fails, the preceding published
+     * snapshot remains available and the transactional source graph remains eligible for a
+     * same-cycle retry.</p>
+     *
+     * @return latest successfully published targeting snapshot, or the conservative initial
+     * snapshot before the first successful update
      */
     @Override
-    public Status status(LoopClock clock) {
-        return statusSource.get(Objects.requireNonNull(clock, "clock"));
+    public Status status() {
+        return latestStatus;
     }
 
     private TargetingCalculation calculateTargeting(LoopClock clock) {
-        boolean autoAimNow = autoAimEnabled.getAsBoolean(clock);
-        boolean aimOverrideNow = aimOverrideInput.getAsBoolean(clock);
-        TagSelectionResult selection = scoringSelection.get(clock);
+        if (targetingCalculationInProgress) {
+            throw new IllegalStateException(
+                    "ScoringTargeting cannot calculate or reset reentrantly while its eligibility, "
+                            + "selection, or guidance graph is being evaluated."
+            );
+        }
+        targetingCalculationInProgress = true;
+        try {
+            boolean autoAimNow = autoAimEnabled.getAsBoolean(clock);
+            boolean aimOverrideNow = aimOverrideInput.getAsBoolean(clock);
+            AimRuntime runtime = aimRuntime;
+            if (runtime == null) {
+                AimRuntime candidate = buildAimRuntime(clock);
+
+                // Commit the complete immutable runtime before the first stateful sensor/selector
+                // read. If that later read fails, a same-cycle retry keeps the exact frozen
+                // eligibility and selector instead of rebuilding from a possibly changed source.
+                aimRuntime = candidate;
+                aimRuntimeGeneration++;
+                runtime = candidate;
+            }
+            TagSelectionResult selection = Objects.requireNonNull(
+                    runtime.selection.get(clock),
+                    "Phoenix scoring tag selector returned null"
+            );
+            return calculateTargeting(
+                    clock,
+                    runtime,
+                    selection,
+                    autoAimNow,
+                    aimOverrideNow
+            );
+        } finally {
+            targetingCalculationInProgress = false;
+        }
+    }
+
+    private TargetingCalculation calculateTargeting(
+            LoopClock clock,
+            AimRuntime runtime,
+            TagSelectionResult selection,
+            boolean autoAimNow,
+            boolean aimOverrideNow
+    ) {
         if (selection == null) {
             selection = TagSelectionResult.none(Collections.emptySet());
         }
 
-        DriveGuidanceStatus aimStatus = aimQuery.sample(clock, DriveOverlayMask.OMEGA_ONLY);
+        DriveGuidanceStatus aimStatus = runtime.query.sample(clock, DriveOverlayMask.OMEGA_ONLY);
         boolean hasAimReference = !autoAimNow || selection.hasSelection;
         boolean rawAimReady = !autoAimNow || (
                 hasAimReference
@@ -409,18 +456,6 @@ public final class ScoringTargeting implements PhoenixCapabilities.Targeting {
     }
 
     /**
-     * Returns a target-derived velocity suggestion when a fresh selected observation exists.
-     *
-     * @param clock                  shared loop clock for the active OpMode cycle
-     * @param fallbackVelocityNative value to return when no fresh range observation is available
-     * @return fresh target-derived velocity recommendation, or {@code fallbackVelocityNative} when unavailable
-     */
-    public double suggestedVelocityNative(LoopClock clock, double fallbackVelocityNative) {
-        Status status = status(clock);
-        return status.hasSuggestedVelocity ? status.suggestedVelocityNative : fallbackVelocityNative;
-    }
-
-    /**
      * Clears owned selector, query, readiness, and publication state so the next loop starts a
      * fresh targeting session.
      *
@@ -428,19 +463,246 @@ public final class ScoringTargeting implements PhoenixCapabilities.Targeting {
      * sampling and reset must not overlap.</p>
      */
     public void reset() {
-        scoringSelection.reset();
-        aimQuery.reset();
+        if (targetingCalculationInProgress) {
+            throw new IllegalStateException(
+                    "ScoringTargeting cannot reset while its eligibility, selection, or guidance "
+                            + "graph is being evaluated. Detach the complete drive/targeting graph "
+                            + "before shutdown reset."
+            );
+        }
+
+        AimRuntime runtime = aimRuntime;
+        if (runtime != null) {
+            runtime.selection.reset();
+            runtime.query.reset();
+        } else {
+            tagSensor.reset();
+            autoAimEnabled.reset();
+        }
+        eligibleScoringTagIds.reset();
+        aimRuntime = null;
+        aimRuntimeGeneration++;
         aimOverrideInput.reset();
         stableAimReady.reset();
         statusSource.reset();
+        latestStatus = initialStatus();
     }
 
-    private Map<Integer, References.TagPointOffset> buildAimOffsetsByTag() {
+    private Status initialStatus() {
+        PhoenixProfile.AutoAimConfig.ScoringTarget target = cfg.defaultTargetProfile(-1);
+        return new Status(
+                false,
+                false,
+                false,
+                false,
+                cfg.aimToleranceDeg,
+                cfg.aimReadyToleranceDeg,
+                TagSelectionResult.none(Collections.<Integer>emptySet()),
+                null,
+                target.label,
+                target.aimOffset.forwardInches,
+                target.aimOffset.leftInches,
+                false,
+                Double.NaN,
+                null,
+                null
+        );
+    }
+
+    private AimRuntime buildAimRuntime(LoopClock clock) {
+        if (cfg.scoringTargets == null) {
+            throw new IllegalArgumentException(
+                    "PhoenixProfile.autoAim.scoringTargets is required before Phoenix targeting "
+                            + "can freeze eligibleScoringTagIds. The managed prestart readiness "
+                            + "screen must block START until the selected alliance target exists."
+            );
+        }
+
+        Set<Integer> configuredTagIds =
+                new LinkedHashSet<Integer>(cfg.scoringTargets.keySet());
+        if (configuredTagIds.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "Phoenix auto-aim requires at least one entry in "
+                            + "PhoenixProfile.autoAim.scoringTargets before targeting starts."
+            );
+        }
+
+        Set<Integer> suppliedEligibleTagIds = eligibleScoringTagIds.get(clock);
+        if (suppliedEligibleTagIds == null) {
+            throw new IllegalArgumentException(
+                    "ScoringTargeting eligibleScoringTagIds source returned null; return the "
+                            + "non-empty selected-mode subset of PhoenixProfile.autoAim.scoringTargets."
+            );
+        }
+        if (suppliedEligibleTagIds.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "ScoringTargeting eligibleScoringTagIds must contain at least one configured "
+                            + "scoring tag."
+            );
+        }
+
+        LinkedHashSet<Integer> eligibleSnapshot = new LinkedHashSet<Integer>();
+        for (Integer tagId : suppliedEligibleTagIds) {
+            if (tagId == null) {
+                throw new IllegalArgumentException(
+                        "ScoringTargeting eligibleScoringTagIds must not contain null."
+                );
+            }
+            if (!configuredTagIds.contains(tagId)
+                    || cfg.scoringTargets.get(tagId) == null) {
+                throw new IllegalArgumentException(
+                        "ScoringTargeting eligibleScoringTagIds contains tag id " + tagId
+                                + " that is not a usable entry in "
+                                + "PhoenixProfile.autoAim.scoringTargets. Configured tag ids: "
+                                + configuredTagIds + "."
+                );
+            }
+            if (!fieldTagLayout.has(tagId)) {
+                throw new IllegalArgumentException(
+                        "ScoringTargeting eligibleScoringTagIds contains tag id " + tagId
+                                + " that is not in PhoenixProfile.field.fixedAprilTagLayout. "
+                                + "Managed TeleOp/Auto readiness must block START until the "
+                                + "selected alliance scoring tag has a fixed field pose."
+                );
+            }
+            eligibleSnapshot.add(tagId);
+        }
+
+        Set<Integer> frozenEligibleTagIds = Collections.unmodifiableSet(eligibleSnapshot);
+        TagLayout scoringTagLayout = TagLayouts.subsetOrSame(
+                fieldTagLayout,
+                frozenEligibleTagIds,
+                "Phoenix eligible scoring fixed-tag layout"
+        );
+        TagSelectionSource scoringSelection = TagSelections.from(tagSensor)
+                .among(frozenEligibleTagIds)
+                .freshWithinSec(cfg.selectionMaxAgeSec)
+                .choose(TagSelectionPolicies.smallestAbsRobotBearing(cameraMountConfig))
+                .stickyWhen(autoAimEnabled)
+                .reacquireAfterLossSec(cfg.selectionReacquireSec)
+                .build();
+
+        DriveGuidancePlan.Tuning aimTuning = DriveGuidancePlan.Tuning.defaults()
+                .withAimKp(cfg.aimKp)
+                .withMaxOmegaCmd(cfg.aimMaxOmegaCmd)
+                .withMinOmegaCmd(cfg.aimMinOmegaCmd)
+                .withAimDeadbandRad(Math.toRadians(cfg.aimToleranceDeg));
+
+        DriveGuidancePlan aimPlan = DriveGuidance.plan()
+                .faceTo()
+                .point(References.relativeToSelectedTagPoint(
+                        scoringSelection,
+                        buildAimOffsetsByTag(frozenEligibleTagIds)
+                ))
+                .solveWith()
+                .adaptive()
+                .localization(globalAbsolutePoseEstimator)
+                .aprilTags(tagSensor, cameraMountConfig)
+                .aprilTagMaxAgeSec(cfg.selectionMaxAgeSec)
+                .aprilTagFieldPoseConfig(fieldPoseCfg)
+                .fixedAprilTagLayout(scoringTagLayout)
+                .omegaPolicy(DriveGuidanceSpec.OmegaPolicy.PREFER_APRIL_TAGS_WHEN_VALID)
+                .onLoss(DriveGuidanceSpec.LossPolicy.PASS_THROUGH)
+                .doneAdaptive()
+                .driveTuning()
+                .use(aimTuning)
+                .doneDriveTuning()
+                .build();
+
+        return new AimRuntime(frozenEligibleTagIds, scoringSelection, aimPlan);
+    }
+
+    private AimRuntime requireAimRuntime(String operation) {
+        AimRuntime runtime = aimRuntime;
+        if (runtime == null) {
+            throw new IllegalStateException(
+                    "Cannot " + operation + " before ScoringTargeting.update(clock) freezes the "
+                            + "selected alliance's eligible scoring target. Managed TeleOp/Auto "
+                            + "starts targeting before drive overlays and Tasks; custom hosts must "
+                            + "preserve that lifecycle order."
+            );
+        }
+        return runtime;
+    }
+
+    private Map<Integer, References.TagPointOffset> buildAimOffsetsByTag(
+            Set<Integer> eligibleTagIds
+    ) {
         LinkedHashMap<Integer, References.TagPointOffset> offsets = new LinkedHashMap<Integer, References.TagPointOffset>();
-        for (Map.Entry<Integer, PhoenixProfile.AutoAimConfig.ScoringTarget> entry : cfg.scoringTargetsById().entrySet()) {
-            PhoenixProfile.AutoAimConfig.AimOffset aimOffset = entry.getValue().aimOffset;
-            offsets.put(entry.getKey(), References.pointOffset(aimOffset.forwardInches, aimOffset.leftInches));
+        for (Integer tagId : eligibleTagIds) {
+            PhoenixProfile.AutoAimConfig.ScoringTarget target = cfg.scoringTargets.get(tagId);
+            PhoenixProfile.AutoAimConfig.AimOffset aimOffset = target.aimOffset;
+            offsets.put(tagId, References.pointOffset(
+                    aimOffset.forwardInches,
+                    aimOffset.leftInches
+            ));
         }
         return offsets;
+    }
+
+    /** One activation-owned wrapper that resolves its plan after managed targeting start. */
+    private final class DeferredAimOverlay implements DriveOverlay {
+        private DriveOverlay delegate;
+        private AimRuntime installedRuntime;
+        private long installedGeneration = Long.MIN_VALUE;
+        private boolean enabled;
+
+        @Override
+        public DriveOverlayOutput get(LoopClock clock) {
+            return requireDelegate(clock, "sample the Phoenix scoring aim overlay").get(clock);
+        }
+
+        @Override
+        public void onEnable(LoopClock clock) {
+            DriveOverlay requiredDelegate =
+                    requireDelegate(clock, "enable the Phoenix scoring aim overlay");
+            requiredDelegate.onEnable(clock);
+            enabled = true;
+        }
+
+        @Override
+        public void onDisable(LoopClock clock) {
+            if (delegate != null && enabled) {
+                delegate.onDisable(clock);
+            }
+            enabled = false;
+        }
+
+        @Override
+        public void debugDump(DebugSink dbg, String prefix) {
+            if (dbg == null) {
+                return;
+            }
+            String p = (prefix == null || prefix.isEmpty()) ? "phoenixAim" : prefix;
+            AimRuntime current = aimRuntime;
+            dbg.addData(p + ".runtimeReady", current != null)
+                    .addData(p + ".delegateCreated", delegate != null)
+                    .addData(p + ".enabled", enabled)
+                    .addData(p + ".runtimeGeneration", aimRuntimeGeneration);
+            if (current != null) {
+                dbg.addData(p + ".eligibleTagIds", current.eligibleTagIds.toString());
+            }
+            if (delegate != null) {
+                delegate.debugDump(dbg, p + ".delegate");
+            }
+        }
+
+        private DriveOverlay requireDelegate(LoopClock clock, String operation) {
+            Objects.requireNonNull(clock, "clock");
+            AimRuntime current = requireAimRuntime(operation);
+            if (delegate == null) {
+                delegate = current.plan.overlay();
+                installedRuntime = current;
+                installedGeneration = aimRuntimeGeneration;
+            } else if (installedRuntime != current
+                    || installedGeneration != aimRuntimeGeneration) {
+                throw new IllegalStateException(
+                        "A Phoenix scoring aim overlay cannot be reused after "
+                                + "ScoringTargeting.reset(). Detach the old drive graph and obtain "
+                                + "a fresh aimOverlay() for the next managed session."
+                );
+            }
+            return delegate;
+        }
     }
 }

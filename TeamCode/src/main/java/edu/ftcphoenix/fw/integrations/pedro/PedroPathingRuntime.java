@@ -29,18 +29,20 @@ import edu.ftcphoenix.fw.localization.MotionPredictor;
 /**
  * Production Pedro Auto runtime with one drivetrain writer and one Pinpoint hardware owner.
  *
- * <p>The following short form documents the <strong>current production-Phoenix RUNTIME-02
- * exception</strong>, not ordinary managed-program usage:</p>
+ * <p>The following short form documents production Phoenix managed Auto:</p>
  * <pre>{@code
  * PedroPathingRuntime runtime = PedroPathingRuntime.create(...);
- * robot.initAuto(runtime.driveAdapter(), runtime.motionPredictor());
- * runtime.setStartingPose(paths.pedroStartPose);
+ * robot.declareAuto(
+ *         program,
+ *         runtime.driveAdapter(),
+ *         runtime.motionPredictor(),
+ *         frozenEligibleTagIds,
+ *         BooleanSource.constant(true),
+ *         BooleanSource.constant(false),
+ *         () -&gt; runtime.setStartingPose(frozenPedroStartPose())
+ * );
+ * program.rootTask(rootRoutine);
  * }</pre>
- *
- * <p>Ordinary managed callers follow the checked-in {@code BasicPedroAutoRobot} pattern: a
- * robot-owned service registers the localization owner and recurring adapter heartbeat with
- * {@code program.service(...)}, then declares the composed Auto routine with
- * {@code program.rootTask(...)}.</p>
  *
  * <p>The supplied {@link PinpointOdometryPredictor} remains the only object that initializes,
  * polls, resets, or rebases Pinpoint. Pedro receives a passive same-cycle view of its snapshots.

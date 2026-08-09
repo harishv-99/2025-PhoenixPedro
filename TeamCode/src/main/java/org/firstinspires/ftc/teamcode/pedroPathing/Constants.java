@@ -90,8 +90,9 @@ public final class Constants {
      * Build Pedro's native Pinpoint/Follower graph for generated tuning tools only.
      *
      * <p>This follower owns and polls Pinpoint inside {@link Follower#update()}. Never pass it to
-     * {@code PhoenixRobot.initAuto}; production uses {@link #createPhoenixAutoRuntime(HardwareMap,
-     * PhoenixProfile)} so Phoenix and Pedro cannot become competing Pinpoint owners.</p>
+     * Phoenix's managed Auto declaration; production uses
+     * {@link #createPhoenixAutoRuntime(HardwareMap, PhoenixProfile)} so Phoenix and Pedro cannot
+     * become competing Pinpoint owners.</p>
      */
     public static Follower createToolOnlyNativeFollower(HardwareMap hardwareMap) {
         HardwareMap requiredHardwareMap = Objects.requireNonNull(hardwareMap, "hardwareMap");

@@ -2,7 +2,6 @@ package edu.ftcphoenix.robots.phoenix;
 
 import java.util.Objects;
 
-import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.drive.DriveCommandSink;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceTask;
 import edu.ftcphoenix.fw.task.Task;
@@ -119,9 +118,12 @@ public final class PhoenixCapabilities {
     public interface Targeting {
 
         /**
-         * Returns the current targeting status snapshot.
+         * Returns the latest targeting status snapshot published by the targeting service.
+         *
+         * <p>Reading this snapshot never advances targeting state. The robot runtime publishes a
+         * new snapshot from the shared loop heartbeat before downstream decisions and outputs run.</p>
          */
-        ScoringTargeting.Status status(LoopClock clock);
+        ScoringTargeting.Status status();
 
         /**
          * Creates an autonomous aim task using Phoenix's shared targeting service.

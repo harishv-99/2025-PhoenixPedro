@@ -64,7 +64,7 @@ For a hardware picker, the hardware name is a natural id. For an autonomous sele
 `MenuNavigator` owns a stack of `MenuScreen`s. It is the right tool when a UI has levels:
 
 ```text
-Auto Setup > Red > Audience > Partner Plan > Strategy
+Auto Setup > Red > Audience > Strategy
 ```
 
 The navigator:
@@ -93,7 +93,7 @@ root `Bindings` or a context through `BindingRegistrar`; the root still owns the
 
 `SelectionMenus` contains convenience factories for common menu shapes. The first general helper is
 `forEnum(...)`, which turns an enum into one `SelectionMenu` row per value. This is especially useful
-for pre-start setup screens such as alliance, start position, partner plan, or strategy.
+for pre-start setup screens such as alliance, start position, or strategy.
 
 ```java
 SelectionMenu<Alliance> alliance = SelectionMenus.forEnum("Alliance", Alliance.class);
@@ -116,43 +116,49 @@ Y: home/reset
 Example:
 
 ```java
-ConfirmationScreen confirm = ConfirmationScreen.builder("Confirm Auto")
-        .row("Alliance", "RED")
-        .row("Start", "AUDIENCE")
-        .row("Strategy", "Safe Preload")
-        .warning("Verify this before pressing START.")
-        .onConfirm(() -> buildSelectedAuto())
+ConfirmationScreen confirm = ConfirmationScreen.builder("Reset Calibration?")
+        .row("Sensor", selectedSensorName)
+        .warning("This clears the saved reference.")
+        .onConfirm(() -> resetSelectedCalibration())
         .build();
 ```
 
-Use it after a multi-step selector, before building hardware-heavy runtime objects or applying a
-calibration reset.
+Use it in a tester or another explicit-action flow before applying a calibration reset or similar
+operation. An ordinary managed `RobotProgram.Prestart` remains data-only and never defers hardware
+graph construction behind this screen.
+
+Keep it for flows that genuinely need a distinct confirm/cancel action. Phoenix Auto does not: its
+read-only summary remains editable through a separate action, and FTC START is its sole freeze
+boundary.
 
 ## `SummaryScreen`
 
-`SummaryScreen` is a read-only status page for after a setup flow has already produced or applied
-its result. It is useful when the visible UI must stop changing after the runtime object graph has
-been built.
+`SummaryScreen` is a read-only status or review page. It is useful after a flow has produced a
+result, and also before an external lifecycle boundary such as FTC START applies a currently
+selected value. Unlike `ConfirmationScreen`, pressing `A` does not imply an apply action.
 
 Example:
 
 ```java
-SummaryScreen locked = SummaryScreen.builder("Phoenix Auto Locked")
-        .status("LOCKED", "Phoenix + Pedro are initialized for this spec.")
+SummaryScreen review = SummaryScreen.builder("Phoenix Auto Selection")
+        .status("READY", "FTC START will freeze this setup.")
         .row("Alliance", spec.alliance)
         .row("Start", spec.startPosition)
         .row("Strategy", spec.strategy)
+        .controls("START: freeze selection | X: edit selection")
+        .onSecondary(() -> navigator.setRoot(allianceScreen()))
         .consumeBack(true)
         .consumeHome(true)
-        .controls("START: run selected Auto | B/Y: locked after initialization")
         .build();
 
-navigator.setRoot(locked);
+navigator.setRoot(review);
 ```
 
-Use it after confirmation when changing the previous choices would no longer rebuild the underlying
-robot runtime. That prevents a Driver Station menu from showing one setup while the already-created
-robot and route queue are using another.
+Phoenix uses this shape after the strategy choice. Hardware is already owned, the summary performs
+no confirmation, and `X` returns to the selector. The one `RobotProgram.Prestart.freezeForStart()`
+boundary freezes the visible data and decides whether behavior may start. A locked post-action page
+remains another valid use; consume back/home when the caller must prevent visible state from
+drifting away from already-applied state.
 
 ## `UiControls`
 
@@ -207,7 +213,7 @@ ConfirmationScreen:
   final review before confirm/cancel flows
 
 SummaryScreen:
-  read-only status or locked-result pages after a setup flow has already applied
+  read-only review, status, or locked-result pages; no implied A-to-apply action
 
 HardwareNamePicker:
   FTC hardware-name enumeration
@@ -216,4 +222,5 @@ Robot/tester/auto code:
   what a selected value actually does
 ```
 
-This split is meant to support both current tester menus and future pre-start autonomous selectors without turning the framework into a robot-specific menu system.
+This split supports tester menus and pre-start autonomous selectors without turning the framework
+into a robot-specific menu system.

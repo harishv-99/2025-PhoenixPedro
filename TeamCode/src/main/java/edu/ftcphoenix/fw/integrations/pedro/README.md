@@ -1,187 +1,73 @@
-# Pedro integration
+# Pedro Pathing integration
 
-This folder is Phoenix's explicit boundary for Pedro Pathing. Core framework packages stay free of
-`com.pedropathing.*`; reusable adapter, field-transform, and runtime ownership code lives here;
-robot-specific paths and strategies remain under the owning robot package. Phoenix production paths
-live under `robots/phoenix/autonomous/pedro/`; the independent beginner reference lives under
-`robots/examples/pedro/`.
+The Pedro integration is a narrow vendor boundary. Core Phoenix Tasks and robot capabilities do
+not depend on Pedro types; the adapter owns conversion, follower lifecycle, route status, and the
+final drivetrain stop.
 
-## Small compiling Auto reference
+## Production ownership
 
-Start with [`Pedro Autonomous Reference`](<../../docs/examples/Pedro Autonomous Reference.md>) when
-you need the complete lifecycle without the Phoenix season graph. Its five robot-code files show one
-fixed practice path, a Plant-backed capability Task, explicit success/timeout/cancellation policy,
-one recurring follower heartbeat, deterministic stop, and a thin FTC OpMode.
-
-Four reference files are independent of Phoenix season code. The fifth,
-`PhoenixBasicPedroAutoExample`, is a disabled host that uses this repository's real Phoenix profile
-only to compile-check the physical construction and FTC INIT/START/loop/STOP boundary. A new robot
-replaces that host with its own verified runtime and mechanism wiring and adapts the concrete
-capability/routine/root types to its own mechanisms; it must not copy the Phoenix hardware profile.
-The guide counts all five robot-code files and documents the exact edit points, portability
-boundaries, and hardware checks that compilation cannot perform.
-
-## Current production Phoenix ownership (RUNTIME-02 exception)
-
-The explicit lifecycle call below describes the existing production Phoenix graph. It is not the
-ordinary managed-program recipe: new robot code uses `FtcRobotOpMode`/`RobotProgram`, as shown by
-the small compiling Auto reference above. Migrating production Phoenix's selector, readiness,
-retry, and handoff policies is intentionally deferred to RUNTIME-02.
-
-Phoenix Pedro Auto builds one `PedroPathingRuntime` through the project-specific constants factory:
+Construct one `PedroPathingRuntime` during `FtcRobotOpMode.configure(program)`. Its
+`MotionPredictor` is the only Pinpoint hardware owner, and its `PedroPathingDriveAdapter` is the
+only Follower heartbeat and drivetrain writer.
 
 ```java
-PedroPathingRuntime runtime =
-        Constants.createPhoenixAutoRuntime(hardwareMap, selectedProfile);
+PedroPathingRuntime pedro =
+        Constants.createPhoenixAutoRuntime(hardwareMap, profile);
 
-robot.initAuto(runtime.driveAdapter(), runtime.motionPredictor());
-runtime.setStartingPose(paths.pedroStartPose);
+robot.declareAuto(
+        program,
+        pedro.driveAdapter(),
+        pedro.motionPredictor(),
+        frozenEligibleTagIds,
+        BooleanSource.constant(true),
+        BooleanSource.constant(false),
+        () -> pedro.setStartingPose(frozenPedroStartPose())
+);
+program.rootTask(rootRoutine);
 ```
 
-Successful runtime construction proves only this integration graph's configuration and ownership
-contracts. It does not decide whether robot-specific calibration acknowledgements, field facts, or
-route geometry are ready for a match; keep that combined arming policy in the robot mode client.
+Those boolean sources keep ordinary Auto aim enabled with no manual override. Advanced direct
+assembly can provide other clock-aware targeting policies through the same managed declaration;
+the adapter heartbeat and cleanup still belong to `RobotProgram`.
 
-The runtime contains exactly one of each production owner:
+The managed service calls the adapter once at START and once per active loop. Route and guidance
+Tasks may call the same adapter hook; `PedroPathingDriveAdapter` deduplicates by
+`LoopClock.cycle()`, including updates hidden inside vendor calls.
 
-- one profile-configured `PinpointOdometryPredictor`, which alone acquires, configures, resets,
-  polls, and rebases Pinpoint; its update is cycle-safe and zero-time samples cannot consume motion
-  before a positive timestamp interval exists;
-- one passive Pedro `Localizer`, which converts and consumes the predictor's immutable current-cycle
-  pose/velocity/physical-heading snapshot without polling hardware;
-- one valid native Pedro mecanum drivetrain and `Follower`;
-- one `PedroPathingDriveAdapter`, which owns the Follower heartbeat, per-route terminal
-  classification, and final drivetrain stop.
+At START, the program has already frozen any `RobotProgram.Prestart` policy and reset the shared
+clock. Phoenix then applies the frozen start pose, updates vision readiness, localization,
+targeting, and the Pedro heartbeat, starts/first-updates the root Task, and finally realizes robot
+outputs. There is no separate Pedro or Auto clock.
 
-Build production paths with `runtime.pathBuilder()`. Pedro 2.1.2's no-argument
-`Follower.pathBuilder()` reads a process-wide mutable constraint default; the runtime instead passes
-an independent copy of its validated `PathConstraints` to every builder. The pinned Pedro
-`PathBuilder.build()` also replaces explicit per-path constraints with that global default while
-constructing a `PathChain`; the runtime contains this vendor defect and restores both its checked
-defaults and any deliberate per-path overrides. Robot path code keeps Pedro's normal fluent builder
-API and does not need a repair step.
+## Routes
 
-Build fixed geometry eagerly during the mode client's pre-start construction and pass it to the
-ordinary `RouteTasks.follow("outbound", adapter, route, taskTimeoutSec)` path. Every route factory
-requires a nonblank diagnostic name. A bounded factory also requires a finite, positive Task-level
-timeout; zero, negative, and non-finite values are configuration errors rather than hidden
-no-timeout sentinels.
+Use `RouteTasks.follow(...)` when fixed geometry is already known during construction. Use
+`RouteTasks.followBuiltAtStart(...)` when geometry genuinely depends on the current pose or another
+fact that should be sampled exactly once when that route phase begins.
 
-When a return or fallback must begin at the follower's live pose, keep that decision in the
-robot-owned path factory and pass a quick lambda to
-`RouteTasks.followBuiltAtStart("return", adapter, routeFactory, taskTimeoutSec)`. The lambda runs
-exactly once when its Route Task starts, after the composition root's current-cycle localization
-and Pedro heartbeat. It may use the runtime's supported read-only Follower inspection, but it must
-still build through `runtime.pathBuilder()` and must not call raw Follower lifecycle methods.
+If an entire selected root depends on data frozen at FTC START, wrap only the Task construction:
 
-If robot policy deliberately does not want a Task-level deadline, use the parallel, explicit
-`followWithoutTaskTimeout(...)` or `followBuiltAtStartWithoutTaskTimeout(...)` factory. Those names
-disable only `RouteStatus.TASK_TIMEOUT`; the follower can still report
-`FOLLOWER_TIMEOUT_OR_STALL`.
-
-`PhoenixRobot` receives only backend-neutral `DriveCommandSink` and `MotionPredictor` seams. It does
-not learn Pedro route types or configuration. Auto loop order remains:
-
-```text
-Clock -> Phoenix localization/correction -> targeting -> Pedro heartbeat
-      -> Auto Tasks -> scoring -> telemetry
+```java
+program.rootTask(Tasks.buildAtStart(
+        "selectedAuto",
+        () -> buildRoutine(frozenSpec())
+));
 ```
 
-The adapter prepares the passive localizer with the shared `LoopClock` immediately before its one
-vendor heartbeat. The localizer fails closed unless the Pinpoint snapshot belongs to that exact
-cycle. Route and guidance Tasks may call the adapter's update hook too; `LoopClock.cycle()`
-deduplication makes those later calls no-ops.
+`Tasks.buildAtStart(...)` is not a hardware factory. Hardware, resource owners, and stable services
+must already be registered during `configure(program)`.
 
-Phoenix localization runs first and may call the same predictor through its corrected estimator.
-Pinpoint's owner-local guard makes that the cycle's one physical poll; Pedro consumes the immutable
-snapshot rather than updating it. Fusion/EKF separately consume each positive-duration predictor
-delta end timestamp only once, so an extra localization-layer call cannot double the corrected pose
-even though Pedro and Phoenix intentionally share the predictor.
+Each route start returns a per-start execution. Completion remains attached to that exact start and
+is classified as endpoint success, timeout/stall, interruption, replacement, failure, or unknown.
+Never infer success solely from Pedro becoming idle.
 
-Every `follow(pathChain)` returns a backend-neutral `RouteExecution` for that exact run. During the
-owned heartbeat, the adapter retains the expected path identity and classifies the transition while
-Pedro's progress and endpoint evidence still exists. It reports `COMPLETED` only when the original
-final path reaches its parametric end and its endpoint velocity, translation, and heading
-constraints pass. A stuck segment or follower endpoint timeout reports
-`FOLLOWER_TIMEOUT_OR_STALL`; adapter/callback stop or manual takeover reports `INTERRUPTED`; a
-supported later follow reports `REPLACED`; and a detectable unexplained terminal transition reports
-`UNKNOWN_TERMINAL` rather than guessed success. In particular, a non-parametric segment advance
-stops the whole route as a stall instead of silently skipping ahead. Raw lifecycle calls remain
-unsupported because they can erase the evidence needed for truthful classification.
+## Cleanup
 
-`RouteTask` adds the Task-owned `TASK_TIMEOUT` and `CANCELLED` distinctions and exposes the final
-backend-neutral value through `getRouteStatus()`. Its cancellation uses that one execution handle,
-so late cleanup of an older Task cannot stop a replacement route.
+`RobotProgram` cancels the root first, stops downstream mechanism outputs, then stops services in
+reverse declaration order. Phoenix's managed Pedro service makes `stop()` write physical zero
+immediately, including after reentrant callbacks, before targeting reset and vision close finish.
+The adapter's stop and same-cycle deduplication are idempotent.
 
-That status is a fact, not a recovery decision. A robot routine must retain the exact `RouteTask`,
-gate position-dependent scoring on its completed status, and explicitly choose continue, fallback,
-or abort for every other result. Phoenix's conservative routine bounds its complete outbound-plus-
-scoring pre-park policy with `Tasks.withTimeout(...)`, then permits one live-pose park after normal
-completion, a local follower/Task timeout, or successful match-time cleanup. It aborts on
-interruption, replacement, cancellation, failure, unknown termination, direct root cancellation,
-or failed cleanup. The park is outside the timer, so starting it early cannot cause a second park at
-the threshold. Cleanup stays in the robot capability layer; the Pedro adapter neither chooses game
-strategy nor writes mechanism state.
-
-Keep `RouteTask`'s local timeout when its exact `TASK_TIMEOUT` fact matters. A generic outer timeout
-uses ordinary child cancellation and therefore leaves the route child `CANCELLED` while the wrapper
-reports `TIMEOUT`; it cannot substitute for route-specific terminal classification.
-
-`getLatestRouteStatus()` provides the newest backend-neutral value for Driver Station telemetry.
-Code making a decision about one particular route should retain that route's `RouteTask` or
-`RouteExecution` instead of consulting the mutable latest-route view.
-
-Raw Follower lifecycle calls are unsupported in production Phoenix Auto. Do not call
-`followPath(...)`, `breakFollowing()`, `startTeleopDrive()`, `update()`, or pose-reset methods on the
-Follower from robot code; those calls bypass heartbeat ownership or the per-execution status.
-Build routes through `runtime.pathBuilder()`, set the initial pose through the runtime, command
-routes/guidance through the adapter, and use adapter/robot stop. Read-only Follower inspection at
-the integration boundary remains valid.
-
-## Pose contract
-
-Phoenix Decode explicitly selects `PedroFieldTransform.decodeInvertedFtc()`. It inverse-tests pose
-origin, axes, absolute heading, and velocity rotation rather than relying on Pedro 2.1.2's broken
-FTC inverse transform. Phoenix values stay in the current FTC field frame, inches, radians, and
-CCW-positive yaw; Pedro values are explicitly tagged `PedroCoordinates`.
-
-Apply the route start pose through `PedroPathingRuntime.setStartingPose(...)` before the first
-heartbeat. Raw Follower pose/IMU resets are rejected because they bypass Phoenix correction history
-and timing. By default, accepted AprilTag corrections are pushed into the shared predictor before
-the Pedro heartbeat, so path following and targeting see the same corrected pose in that cycle.
-Disabling predictor push remains the explicit targeting-only policy; Phoenix telemetry displays raw
-predictor pose, corrected global pose, and their drift.
-
-The robot mode client may apply the same declared start during INIT and reapply it at the exact FTC
-START boundary, provided neither call occurs after the first heartbeat. This is a software
-coordinate rebase and publication check, not an independent observation of physical field
-placement. Show the expected physical start with an explicit Pedro-field label to the drive team,
-or use a separately trustworthy field-absolute observation if an automatic placement check is
-required.
-
-## Configuration and tuning tools
-
-The project factory derives motor names/directions and Pinpoint name/offsets/resolution/directions/
-yaw scalar from the selected defensive `PhoenixProfile` snapshot. `Constants` retains Pedro-only
-follower/controller/drivetrain/path tuning. Mecanum motor names follow FTC's trimmed,
-case-sensitive lookup identity; blank or trim-equivalent duplicate names fail before fresh
-drivetrain hardware resolution or configuration. Unsupported reset assumptions and non-finite
-tuning also fail during pre-start construction with a setting-specific message. Name validation is
-group-local configuration checking: it neither proves physical device identity nor globally
-reserves a configured name for this runtime.
-Human acknowledgements such as verified pod directions or calibrated offsets remain robot-owned
-readiness facts; numeric construction validation must not silently claim that those procedures were
-performed.
-
-Pedro's generated `Tuning` menu and standalone `PedroTest` use
-`Constants.createToolOnlyNativeFollower(hardwareMap)`. That clearly named tool path uses Pedro's
-native Pinpoint lifecycle because those vendor tools call only `Follower.update()`. Never pass the
-tool-only follower to Phoenix Auto; it is not a second production option.
-
-## Related docs
-
-- [`../../docs/examples/Pedro Autonomous Reference.md`](<../../docs/examples/Pedro Autonomous Reference.md>)
-- [`../../docs/core-concepts/Loop Structure.md`](<../../docs/core-concepts/Loop Structure.md>)
-- [`../../docs/design/Recommended Robot Design.md`](<../../docs/design/Recommended Robot Design.md>)
-- [`../../docs/drive-vision/AprilTag Localization & Fixed Layouts.md`](<../../docs/drive-vision/AprilTag Localization & Fixed Layouts.md>)
-- [`../../Framework Principles.md`](<../../Framework Principles.md>)
+Generated Pedro tuning OpModes may use their native Follower/Pinpoint graph. That graph is tool-only
+and must never be combined with the production runtime, because doing so creates competing Pinpoint
+owners and drivetrain heartbeats.
