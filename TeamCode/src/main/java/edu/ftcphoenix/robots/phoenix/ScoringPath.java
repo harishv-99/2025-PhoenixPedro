@@ -8,10 +8,12 @@ import edu.ftcphoenix.fw.actuation.Plant;
 import edu.ftcphoenix.fw.actuation.PlantTargetResolver;
 import edu.ftcphoenix.fw.actuation.PlantTargets;
 import edu.ftcphoenix.fw.core.debug.DebugSink;
+import edu.ftcphoenix.fw.core.lifecycle.CleanupActions;
 import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.source.ScalarSource;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.ftc.FtcActuators;
+import edu.ftcphoenix.fw.ftc.RobotProgram;
 import edu.ftcphoenix.fw.supervisor.HeldValue;
 import edu.ftcphoenix.fw.supervisor.RequestCounter;
 import edu.ftcphoenix.fw.task.OutputTask;
@@ -33,7 +35,7 @@ import edu.ftcphoenix.fw.task.Tasks;
  * <p>Keeping those roles explicit makes it easier for TeleOp and Auto to share the same public API
  * without allowing plant writes or queue state to leak out through capability methods.</p>
  */
-public final class ScoringPath implements PhoenixCapabilities.Scoring {
+public final class ScoringPath implements PhoenixCapabilities.Scoring, RobotProgram.Output {
 
     private enum FeedMode {
         IDLE("IDLE"),
@@ -276,8 +278,14 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
         }
 
         void stop() {
-            clearTransientShotWork();
-            setFlywheelEnabled(false);
+            flywheelEnabled = false;
+            CleanupActions.attemptAll(
+                    this::clearTransientShotWork,
+                    this::resetExecutionState
+            );
+        }
+
+        private void resetExecutionState() {
             applyIdleFeedBase();
             lastFeedMode = FeedMode.IDLE;
             prevIntakeRequested = false;
@@ -446,6 +454,7 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
         private final PlantTargetResolver flywheelTargetResolver;
 
         private final BooleanSource flywheelReadySource;
+        private boolean stopped;
 
         private double flywheelTargetNative = 0.0;
         private double flywheelMeasuredNative = 0.0;
@@ -473,55 +482,80 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
                             execution.feedPulseOutputSource().scaled(cfg.feedScaleShooterTransfer))
                     .build();
 
-            plantIntakeMotor = FtcActuators.plant(hardwareMap)
-                    .motor(cfg.nameMotorIntake, cfg.directionMotorIntake)
-                    .power()
-                    .targetFromResolver(intakeMotorTargetResolver)
-                    .build();
-
-            plantIntakeTransfer = FtcActuators.plant(hardwareMap)
-                    .crServo(cfg.nameCrServoIntakeTransfer, cfg.directionCrServoIntakeTransfer)
-                    .power()
-                    .targetFromResolver(intakeTransferTargetResolver)
-                    .build();
-
-            plantShooterTransfer = FtcActuators.plant(hardwareMap)
-                    .crServo(cfg.nameCrServoShooterTransferRight, cfg.directionCrServoShooterTransferRight)
-                    .andCrServo(cfg.nameCrServoShooterTransferLeft, cfg.directionCrServoShooterTransferLeft)
-                    .scale(cfg.shooterTransferLeftScale)
-                    .power()
-                    .targetFromResolver(shooterTransferTargetResolver)
-                    .build();
-
-            if (cfg.applyFlywheelVelocityPIDF) {
-                plantFlywheel = FtcActuators.plant(hardwareMap)
-                        .motor(cfg.nameMotorShooterWheel, cfg.directionMotorShooterWheel)
-                        .velocity()
-                        .deviceManaged()
-                        .velocityPidf(
-                                cfg.flywheelVelKp,
-                                cfg.flywheelVelKi,
-                                cfg.flywheelVelKd,
-                                cfg.flywheelVelKf)
-                        .bounded(0.0, cfg.velocityMax)
-                        .nativeUnits()
-                        .velocityTolerance(cfg.velocityToleranceNative)
-                        .targetFromResolver(flywheelTargetResolver)
+            Plant builtIntakeMotor = null;
+            Plant builtIntakeTransfer = null;
+            Plant builtShooterTransfer = null;
+            Plant builtFlywheel = null;
+            BooleanSource builtFlywheelReadySource;
+            try {
+                builtIntakeMotor = FtcActuators.plant(hardwareMap)
+                        .motor(cfg.nameMotorIntake, cfg.directionMotorIntake)
+                        .power()
+                        .targetFromResolver(intakeMotorTargetResolver)
                         .build();
-            } else {
-                plantFlywheel = FtcActuators.plant(hardwareMap)
-                        .motor(cfg.nameMotorShooterWheel, cfg.directionMotorShooterWheel)
-                        .velocity()
-                        .deviceManagedWithDefaults()
-                        .bounded(0.0, cfg.velocityMax)
-                        .nativeUnits()
-                        .velocityTolerance(cfg.velocityToleranceNative)
-                        .targetFromResolver(flywheelTargetResolver)
+
+                builtIntakeTransfer = FtcActuators.plant(hardwareMap)
+                        .crServo(cfg.nameCrServoIntakeTransfer, cfg.directionCrServoIntakeTransfer)
+                        .power()
+                        .targetFromResolver(intakeTransferTargetResolver)
                         .build();
+
+                builtShooterTransfer = FtcActuators.plant(hardwareMap)
+                        .crServo(cfg.nameCrServoShooterTransferRight, cfg.directionCrServoShooterTransferRight)
+                        .andCrServo(cfg.nameCrServoShooterTransferLeft, cfg.directionCrServoShooterTransferLeft)
+                        .scale(cfg.shooterTransferLeftScale)
+                        .power()
+                        .targetFromResolver(shooterTransferTargetResolver)
+                        .build();
+
+                if (cfg.applyFlywheelVelocityPIDF) {
+                    builtFlywheel = FtcActuators.plant(hardwareMap)
+                            .motor(cfg.nameMotorShooterWheel, cfg.directionMotorShooterWheel)
+                            .velocity()
+                            .deviceManaged()
+                            .velocityPidf(
+                                    cfg.flywheelVelKp,
+                                    cfg.flywheelVelKi,
+                                    cfg.flywheelVelKd,
+                                    cfg.flywheelVelKf)
+                            .bounded(0.0, cfg.velocityMax)
+                            .nativeUnits()
+                            .velocityTolerance(cfg.velocityToleranceNative)
+                            .targetFromResolver(flywheelTargetResolver)
+                            .build();
+                } else {
+                    builtFlywheel = FtcActuators.plant(hardwareMap)
+                            .motor(cfg.nameMotorShooterWheel, cfg.directionMotorShooterWheel)
+                            .velocity()
+                            .deviceManagedWithDefaults()
+                            .bounded(0.0, cfg.velocityMax)
+                            .nativeUnits()
+                            .velocityTolerance(cfg.velocityToleranceNative)
+                            .targetFromResolver(flywheelTargetResolver)
+                            .build();
+                }
+
+                builtFlywheelReadySource = BooleanSource.of(this::flywheelWithinReadyBand)
+                        .debouncedOn(cfg.readyStableSec);
+            } catch (RuntimeException primaryFailure) {
+                final Plant rollbackFlywheel = builtFlywheel;
+                final Plant rollbackIntakeMotor = builtIntakeMotor;
+                final Plant rollbackIntakeTransfer = builtIntakeTransfer;
+                final Plant rollbackShooterTransfer = builtShooterTransfer;
+                throw CleanupActions.attemptAllAfterFailure(
+                        primaryFailure,
+                        () -> stopIfConstructed(rollbackFlywheel),
+                        () -> stopIfConstructed(rollbackIntakeMotor),
+                        () -> stopIfConstructed(rollbackIntakeTransfer),
+                        () -> stopIfConstructed(rollbackShooterTransfer)
+                );
             }
 
-            flywheelReadySource = BooleanSource.of(this::flywheelWithinReadyBand)
-                    .debouncedOn(cfg.readyStableSec);
+            plantIntakeMotor = builtIntakeMotor;
+            plantIntakeTransfer = builtIntakeTransfer;
+            plantShooterTransfer = builtShooterTransfer;
+            plantFlywheel = builtFlywheel;
+            flywheelReadySource = builtFlywheelReadySource;
         }
 
         private boolean flywheelWithinReadyBand() {
@@ -603,17 +637,23 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
         }
 
         void stop() {
-            resetFlywheelReady();
+            if (stopped) {
+                return;
+            }
+            stopped = true;
             flywheelTargetNative = 0.0;
             flywheelMeasuredNative = 0.0;
             flywheelMeasuredAbs = 0.0;
             flywheelMeasuredAccel = 0.0;
             flywheelMeasuredAccelAbs = 0.0;
             prevFlywheelMeasuredAbs = 0.0;
-            plantFlywheel.stop();
-            plantIntakeMotor.stop();
-            plantIntakeTransfer.stop();
-            plantShooterTransfer.stop();
+            CleanupActions.attemptAll(
+                    this::resetFlywheelReady,
+                    plantFlywheel::stop,
+                    plantIntakeMotor::stop,
+                    plantIntakeTransfer::stop,
+                    plantShooterTransfer::stop
+            );
         }
 
         void debugDump(DebugSink dbg, String prefix) {
@@ -630,7 +670,6 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
     }
 
     private final PhoenixProfile.ScoringPathConfig cfg;
-    private final LoopClock clock;
     private final ScoringTargeting targeting;
     private final BooleanSource aimOkToShoot;
     private final BooleanSource shootOverride;
@@ -641,6 +680,7 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
     private final Realization realization;
 
     private Status lastStatus;
+    private boolean stopped;
 
     /**
      * Creates the Phoenix scoring path and claims ownership of all scoring-path actuators.
@@ -648,16 +688,13 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
      * @param hardwareMap FTC hardware map used to resolve the configured devices
      * @param config      scoring-path configuration snapshot
      * @param targeting   shared targeting service used for aim gates and shot-velocity suggestions
-     * @param clock       shared loop clock used when capturing the current targeting suggestion
      */
     public ScoringPath(HardwareMap hardwareMap,
                        PhoenixProfile.ScoringPathConfig config,
-                       ScoringTargeting targeting,
-                       LoopClock clock) {
+                       ScoringTargeting targeting) {
         Objects.requireNonNull(hardwareMap, "hardwareMap");
         this.cfg = Objects.requireNonNull(config, "config").copy();
         this.targeting = Objects.requireNonNull(targeting, "targeting");
-        this.clock = Objects.requireNonNull(clock, "clock");
         this.aimOkToShoot = targeting.aimOkToShootSource();
         this.shootOverride = targeting.aimOverrideSource();
         this.flywheelPidfWarning = null;
@@ -665,7 +702,11 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
         this.inputs = new Inputs(cfg.velocityMin);
         this.execution = new Execution();
         this.realization = new Realization(hardwareMap);
-        this.lastStatus = buildStatus(null);
+        try {
+            this.lastStatus = buildStatus(null);
+        } catch (RuntimeException primaryFailure) {
+            throw CleanupActions.attemptAllAfterFailure(primaryFailure, realization::stop);
+        }
     }
 
     @Override
@@ -727,7 +768,10 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
 
     @Override
     public void captureSuggestedShotVelocity() {
-        setSelectedVelocityNative(targeting.suggestedVelocityNative(clock, inputs.selectedVelocityNative.get()));
+        ScoringTargeting.Status targetingStatus = targeting.status();
+        if (targetingStatus.hasSuggestedVelocity) {
+            setSelectedVelocityNative(targetingStatus.suggestedVelocityNative);
+        }
     }
 
     @Override
@@ -755,8 +799,12 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
      * updates the flywheel, execution advances the feed queue using that fresh flywheel readback,
      * and realization finally writes the feed plants.</p>
      */
+    @Override
     public void update(LoopClock clock) {
         Objects.requireNonNull(clock, "clock");
+        if (stopped) {
+            throw new IllegalStateException("ScoringPath cannot update after stop");
+        }
 
         execution.updateBeforeFlywheel(clock);
         realization.updateFlywheel(clock);
@@ -793,14 +841,23 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
     /**
      * Stops all scoring-path outputs and clears transient loop state.
      *
-     * <p>This clears held motion requests and pending shot work, but it intentionally preserves the
-     * selected flywheel velocity so the next activation can reuse the operator's last selection.</p>
+     * <p>Cleanup is terminal, idempotent, and best-effort: every owned Plant is asked to stop in a
+     * stable order, the first runtime failure remains primary, and later failures are suppressed.
+     * The selected flywheel velocity remains visible in the final status snapshot, but this output
+     * cannot be updated again after stop.</p>
      */
+    @Override
     public void stop() {
-        inputs.stopMotionRequests();
-        execution.stop();
-        realization.stop();
-        lastStatus = buildStatus(null);
+        if (stopped) {
+            return;
+        }
+        stopped = true;
+        CleanupActions.attemptAll(
+                inputs::stopMotionRequests,
+                execution::stop,
+                realization::stop,
+                () -> lastStatus = buildStatus(null)
+        );
     }
 
     private Status buildStatus(LoopClock clockOrNull) {
@@ -852,6 +909,12 @@ public final class ScoringPath implements PhoenixCapabilities.Scoring {
         if (power > 1.0) return 1.0;
         if (power < -1.0) return -1.0;
         return power;
+    }
+
+    private static void stopIfConstructed(Plant plant) {
+        if (plant != null) {
+            plant.stop();
+        }
     }
 
     private double clampVelocity(double velocityNative) {

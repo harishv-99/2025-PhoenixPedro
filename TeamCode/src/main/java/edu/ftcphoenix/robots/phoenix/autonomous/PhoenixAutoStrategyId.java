@@ -18,10 +18,12 @@ public enum PhoenixAutoStrategyId {
      */
     PRELOAD_AND_PARK("Preload + Park", "Score preload, then finish in a safe parked state.", "OK"),
 
-    /**
-     * Strategy slot for routes that coordinate lane ownership with the alliance partner.
-     */
-    PARTNER_AWARE_CYCLE("Partner-Aware Cycle", "Choose the cycle lane based on the partner plan.", "WARN"),
+    /** Strategy slot reserved for a future route with concrete partner-aware behavior. */
+    PARTNER_AWARE_CYCLE(
+            "Partner-Aware Cycle",
+            "Reserved until a concrete partner-aware route is implemented.",
+            "WARN"
+    ),
 
     /**
      * Explicit Pedro integration exercise kept separate from competition strategy names.
@@ -39,7 +41,7 @@ public enum PhoenixAutoStrategyId {
     }
 
     /**
-     * Human-facing label for telemetry menus and confirmation screens.
+     * Human-facing label for telemetry menus and read-only summaries.
      */
     public String label() {
         return label;

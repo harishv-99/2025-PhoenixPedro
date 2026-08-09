@@ -8,17 +8,26 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.drive.DriveCommandSink;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceTask;
 import edu.ftcphoenix.fw.input.Gamepads;
+import edu.ftcphoenix.fw.input.binding.Bindings;
 import edu.ftcphoenix.fw.task.Task;
 import edu.ftcphoenix.fw.testing.ManualLoopClock;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 
 /** Protects Phoenix's intentional cross-kind control declaration order. */
 public final class PhoenixTeleOpControlsTest {
+
+    @Test
+    public void controlsExposeRegistrationButNoIndependentBindingLifecycle() {
+        for (java.lang.reflect.Method method : PhoenixTeleOpControls.class.getDeclaredMethods()) {
+            assertFalse("controls must not own an update heartbeat", method.getName().equals("update"));
+            assertFalse("controls must not own binding cleanup", method.getName().equals("clear"));
+        }
+    }
 
     @Test
     public void simultaneousSuggestedVelocityCapturePrecedesStudentNudge() {
@@ -27,26 +36,27 @@ public final class PhoenixTeleOpControlsTest {
         PhoenixProfile.TeleOpControlsConfig config = new PhoenixProfile.TeleOpControlsConfig();
         config.selectedVelocityStepNative = 40.0;
 
+        Bindings bindingRoot = new Bindings();
         PhoenixTeleOpControls controls = new PhoenixTeleOpControls(
-                Gamepads.create(driver, operator), config);
+                bindingRoot, Gamepads.create(driver, operator), config);
         RecordingScoring scoring = new RecordingScoring(2_000.0);
         controls.bind(new PhoenixCapabilities(scoring, new UnusedTargeting()));
 
         ManualLoopClock manualClock = new ManualLoopClock();
-        update(controls, manualClock); // Establish edge and mirror baselines.
+        update(bindingRoot, manualClock); // Establish edge and mirror baselines.
         scoring.calls.clear();
 
         operator.left_bumper = true;
         operator.dpad_up = true;
-        update(controls, manualClock);
+        update(bindingRoot, manualClock);
 
         assertEquals(Arrays.asList("capture", "adjust"), scoring.calls);
         assertEquals(2_040.0, scoring.selectedVelocityNative, 0.0);
     }
 
-    private static void update(PhoenixTeleOpControls controls, ManualLoopClock manualClock) {
+    private static void update(Bindings bindingRoot, ManualLoopClock manualClock) {
         manualClock.nextCycle(0.02);
-        controls.update(manualClock.clock());
+        bindingRoot.update(manualClock.clock());
     }
 
     private static final class RecordingScoring implements PhoenixCapabilities.Scoring {
@@ -116,7 +126,7 @@ public final class PhoenixTeleOpControlsTest {
 
     private static final class UnusedTargeting implements PhoenixCapabilities.Targeting {
         @Override
-        public ScoringTargeting.Status status(LoopClock clock) {
+        public ScoringTargeting.Status status() {
             return null;
         }
 

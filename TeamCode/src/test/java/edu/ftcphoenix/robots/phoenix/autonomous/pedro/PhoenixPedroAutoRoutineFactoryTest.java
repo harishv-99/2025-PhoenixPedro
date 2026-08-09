@@ -13,7 +13,6 @@ import org.junit.Test;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 
-import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.drive.DriveCommandSink;
 import edu.ftcphoenix.fw.drive.guidance.DriveGuidanceTask;
 import edu.ftcphoenix.fw.integrations.pedro.PedroPathingDriveAdapter;
@@ -179,7 +178,7 @@ public final class PhoenixPedroAutoRoutineFactoryTest {
 
     private static final class FactoryTargeting implements PhoenixCapabilities.Targeting {
         @Override
-        public ScoringTargeting.Status status(LoopClock clock) {
+        public ScoringTargeting.Status status() {
             return null;
         }
 

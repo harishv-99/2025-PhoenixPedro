@@ -2,44 +2,16 @@ package edu.ftcphoenix.robots.phoenix.autonomous;
 
 import java.util.Objects;
 
+import edu.ftcphoenix.robots.phoenix.PhoenixAlliance;
+
 /**
  * Immutable description of the autonomous setup chosen for Phoenix.
  *
  * <p>This object is deliberately robot-owned. The framework UI can help operators choose values, and
- * Pedro-specific code can turn those values into paths, but the meaning of alliance, start position,
- * partner plan, and strategy belongs to Phoenix.</p>
+ * Pedro-specific code can turn those values into paths, but the meaning of alliance, start
+ * position, and strategy belongs to Phoenix.</p>
  */
 public final class PhoenixAutoSpec {
-
-    /**
-     * Alliance color selected for the match.
-     */
-    public enum Alliance {
-        RED("Red", "Use red scoring target policy."),
-        BLUE("Blue", "Use blue scoring target policy.");
-
-        private final String label;
-        private final String help;
-
-        Alliance(String label, String help) {
-            this.label = label;
-            this.help = help;
-        }
-
-        /**
-         * Human-facing label.
-         */
-        public String label() {
-            return label;
-        }
-
-        /**
-         * One-line menu help.
-         */
-        public String help() {
-            return help;
-        }
-    }
 
     /**
      * Starting location within the selected alliance side.
@@ -72,59 +44,19 @@ public final class PhoenixAutoSpec {
     }
 
     /**
-     * Match-to-match partner coordination assumption.
-     */
-    public enum PartnerPlan {
-        NONE("None", "Do not reserve a lane for partner behavior."),
-        PARTNER_TAKES_NEAR_LANE("Partner takes near lane", "Avoid the lane closest to Phoenix's start."),
-        PARTNER_TAKES_CENTER_LANE("Partner takes center lane", "Avoid the center lane during cycling."),
-        PARTNER_SCORES_FIRST("Partner scores first", "Delay or choose a path that does not race the partner."),
-        PARTNER_PARKS_ONLY("Partner parks only", "Assume Phoenix owns scoring/cycle traffic.");
-
-        private final String label;
-        private final String help;
-
-        PartnerPlan(String label, String help) {
-            this.label = label;
-            this.help = help;
-        }
-
-        /**
-         * Human-facing label.
-         */
-        public String label() {
-            return label;
-        }
-
-        /**
-         * One-line menu help.
-         */
-        public String help() {
-            return help;
-        }
-    }
-
-    /**
      * Selected alliance color.
      */
-    public final Alliance alliance;
+    public final PhoenixAlliance alliance;
     /**
      * Selected start position.
      */
     public final StartPosition startPosition;
-    /**
-     * Selected partner coordination assumption.
-     */
-    public final PartnerPlan partnerPlan;
-    /**
-     * Selected autonomous strategy id.
-     */
+    /** Selected autonomous strategy id. */
     public final PhoenixAutoStrategyId strategy;
 
     private PhoenixAutoSpec(Builder b) {
         this.alliance = Objects.requireNonNull(b.alliance, "alliance");
         this.startPosition = Objects.requireNonNull(b.startPosition, "startPosition");
-        this.partnerPlan = Objects.requireNonNull(b.partnerPlan, "partnerPlan");
         this.strategy = Objects.requireNonNull(b.strategy, "strategy");
     }
 
@@ -138,11 +70,10 @@ public final class PhoenixAutoSpec {
     /**
      * Convenience factory for static safe audience-side entries.
      */
-    public static PhoenixAutoSpec audienceSafe(Alliance alliance) {
+    public static PhoenixAutoSpec audienceSafe(PhoenixAlliance alliance) {
         return builder()
                 .alliance(alliance)
                 .startPosition(StartPosition.AUDIENCE)
-                .partnerPlan(PartnerPlan.NONE)
                 .strategy(PhoenixAutoStrategyId.SAFE_PRELOAD)
                 .build();
     }
@@ -153,17 +84,13 @@ public final class PhoenixAutoSpec {
     public String summary() {
         return alliance.label() + " / "
                 + startPosition.label() + " / "
-                + partnerPlan.label() + " / "
                 + strategy.label();
     }
 
-    /**
-     * Mutable builder used by selector UIs before a final immutable spec is confirmed.
-     */
+    /** Mutable builder used by selector UIs before the immutable spec is frozen at START. */
     public static final class Builder {
-        private Alliance alliance = Alliance.RED;
+        private PhoenixAlliance alliance = PhoenixAlliance.RED;
         private StartPosition startPosition = StartPosition.AUDIENCE;
-        private PartnerPlan partnerPlan = PartnerPlan.NONE;
         private PhoenixAutoStrategyId strategy = PhoenixAutoStrategyId.SAFE_PRELOAD;
 
         private Builder() {
@@ -172,7 +99,7 @@ public final class PhoenixAutoSpec {
         /**
          * Set the selected alliance.
          */
-        public Builder alliance(Alliance alliance) {
+        public Builder alliance(PhoenixAlliance alliance) {
             this.alliance = Objects.requireNonNull(alliance, "alliance");
             return this;
         }
@@ -182,14 +109,6 @@ public final class PhoenixAutoSpec {
          */
         public Builder startPosition(StartPosition startPosition) {
             this.startPosition = Objects.requireNonNull(startPosition, "startPosition");
-            return this;
-        }
-
-        /**
-         * Set the selected partner plan.
-         */
-        public Builder partnerPlan(PartnerPlan partnerPlan) {
-            this.partnerPlan = Objects.requireNonNull(partnerPlan, "partnerPlan");
             return this;
         }
 
@@ -204,7 +123,7 @@ public final class PhoenixAutoSpec {
         /**
          * Current builder alliance, useful for live menu summaries.
          */
-        public Alliance alliance() {
+        public PhoenixAlliance alliance() {
             return alliance;
         }
 
@@ -213,13 +132,6 @@ public final class PhoenixAutoSpec {
          */
         public StartPosition startPosition() {
             return startPosition;
-        }
-
-        /**
-         * Current builder partner plan, useful for live menu summaries.
-         */
-        public PartnerPlan partnerPlan() {
-            return partnerPlan;
         }
 
         /**

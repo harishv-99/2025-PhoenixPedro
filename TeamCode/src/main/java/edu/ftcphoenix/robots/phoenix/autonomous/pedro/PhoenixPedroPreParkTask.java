@@ -103,8 +103,8 @@ final class PhoenixPedroPreParkTask implements Task {
             return;
         }
 
-        // startAuto() arms the root at FTC START. Do not begin route behavior until a later loop,
-        // after the composition root has refreshed localization, targeting, and Pedro once.
+        // RobotProgram arms the root at FTC START. Do not begin route behavior until a later loop,
+        // after the managed service has refreshed localization, targeting, and Pedro once.
         if (phase == Phase.ARMED && clock.cycle() == armedCycle) {
             return;
         }

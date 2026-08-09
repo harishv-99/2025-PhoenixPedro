@@ -1,6 +1,6 @@
 # Framework Improvement Tracker
 
-Last updated: 2026-08-06
+Last updated: 2026-08-09
 
 This file tracks proposed Phoenix framework improvements. It is deliberately a planning document:
 an item being listed here does **not** mean its current proposed solution has been approved. Each
@@ -155,7 +155,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 68 | FTC-02 | Device-managed controller configuration validation | Done | The staged grammar, strict controller domains, synchronized callers/docs, automated verification, independent review, Android Studio approval, and publication authorization are complete. |
 | 69 | SOURCE-04 | Successful source-cache commit semantics | Done | Commit value observations only after success, retain non-rollback controller failures, require value-style reducers, and make `Source.of(...)` the one ordinary robot-code adapter. |
 | 70 | RUNTIME-01 | Managed robot-program lifecycle | Done | Let ordinary FTC robot code declare services, bindings, Tasks, outputs, drive, and presenters once while one framework host owns the fixed lifecycle and fail-stop ceremony. |
-| 71 | RUNTIME-02 | Production Phoenix managed-runtime migration | Proposed | Migrate the production Phoenix selector, retry, readiness, handoff, and mode lifecycle only after a separate decision gate preserves those robot-specific policies. |
+| 71 | RUNTIME-02 | Production Phoenix managed-runtime migration | Done | Managed Auto/TeleOp lifecycle, shared-alliance targeting, truthful prestart UI, legacy cleanup, synchronized documentation, automated verification, Android Studio review, and publication authorization are complete. |
 | 72 | INPUT-02 | Binding update failure retention | Proposed | Make same-cycle binding failure behavior explicit for an effectful traversal that may already have fired callbacks. |
 | 73 | BOUNDARY-01 | FTC boundary enforcement | Proposed | Fix existing import leaks, then add a focused forbidden-import check. |
 | 74 | CI-01 | Framework verification in CI | Proposed | Run focused unit tests, TeamCode compilation, docs checks, and boundary checks. |
@@ -13819,6 +13819,13 @@ writer, and explicit lifecycle ownership.
 
 ### RUNTIME-02 - Production Phoenix managed-runtime migration
 
+- **Research start (2026-08-06):** RUNTIME-02 is the sole active item on
+  `codex/runtime-02-production-phoenix-managed-runtime`, based exactly on the verified RUNTIME-01
+  merge at `origin/master@d602af446a8865fb721f58556bdc8f843eca9b8c`. This gate is auditing the
+  production TeleOp, static/test/selected Pedro Auto entries, retry and partial-cleanup ownership,
+  readiness screens, exact-start pose, root/route lifecycle, diagnostics, telemetry frames, and
+  Auto-to-TeleOp handoff before any production lifecycle implementation. INPUT-02 and every other
+  proposed or deferred item remain outside this scope.
 - **Problem to confirm:** production `PhoenixRobot`, `PhoenixTeleOp`, and the Pedro Auto host split
   common/mode lifecycle forwarding and repeat managed-runtime ceremony, but their INIT selector,
   retry eligibility, readiness blocking, exact-start pose, route replacement, diagnostics, and
@@ -13832,7 +13839,502 @@ writer, and explicit lifecycle ownership.
   ceremony, while keeping selector/retry/handoff and season policy in explicit Phoenix owners.
   Extend the framework only if a capability is independently reusable and cannot be expressed by
   RUNTIME-01's approved roles.
-- **Decision record:** _Pending. Do not alter production Phoenix lifecycle as part of RUNTIME-01._
+- **Decision record (2026-08-06):** **Ready; breaking production-Phoenix API/lifecycle approval
+  required before implementation.** The complete callback, owner, caller, telemetry, handoff, and
+  test audit supports a deliberately hybrid design: production TeleOp is an ordinary managed
+  program, while the shared Pedro Auto base remains one explicitly advanced robot-owned host. That
+  is one ordinary grammar plus one materially different policy boundary, not two competing
+  framework entry points.
+  - **Confirmed ordinary TeleOp fit:** current `PhoenixTeleOp` manually forwards four FTC
+    callbacks, and `PhoenixRobot` splits START and every active loop across `...Any` plus
+    TeleOp-specific methods. Nothing in TeleOp requires late graph construction, retry, or a
+    cleanup transaction. Vision readiness, localization, targeting, bindings, scoring realization,
+    final source-driven drive, presentation, one commit, and fail-stop cleanup all map to the
+    existing `RobotProgram` roles. `PhoenixTeleOp` will extend `FtcRobotOpMode` and override only
+    `configure(RobotProgram)`.
+  - **Selected TeleOp call site:** retain the existing default-profile and explicit-profile
+    `PhoenixRobot` constructors; do not add a parallel static factory or builder. Configuration
+    constructs the robot, calls one `robot.declareTeleOp(program)`, consumes/applies the match
+    handoff after localization exists, then registers `robot.teleOpPresenter(restoreResult)`. The
+    handoff presenter is additive and never commits. A restore or later configuration failure
+    escapes the one configuration callback and the managed host stops every already-registered
+    owner.
+
+    ```java
+    public final class PhoenixTeleOp extends FtcRobotOpMode {
+        @Override
+        protected void configure(RobotProgram program) {
+            PhoenixRobot robot =
+                    new PhoenixRobot(hardwareMap, telemetry, gamepad1, gamepad2);
+            robot.declareTeleOp(program);
+            PhoenixMatchHandoff.RestoreResult restore =
+                    PhoenixMatchHandoff.restoreForTeleOp(this, robot);
+            program.presenter(robot.teleOpPresenter(restore));
+        }
+    }
+    ```
+
+  - **Selected TeleOp owner mapping:** `declareTeleOp(...)` receives the managed binding registrar
+    instead of constructing a private `Bindings`; registers vision-readiness, localization, and
+    targeting service owners in dependency order; registers `ScoringPath` as the downstream Plant
+    output; and declares the final drive-assist source plus mecanum sink after scoring. Service
+    START closes the pose-restore window and publishes an exact-boundary localization/targeting
+    snapshot. The mandatory managed START realization updates scoring once and intentionally sends
+    drive zero; manual/assisted drive begins on the first ordinary active loop. INIT presenters
+    repeat help, readiness, and handoff status until START, then switch to active snapshots.
+  - **One managed TeleOp clock:** remove the TeleOp use of `PhoenixRobot`'s private `LoopClock`.
+    `ScoringTargeting.update(clock)` transactionally retains its latest successfully published
+    status; the capability read becomes clockless `status()`. `ScoringPath` no longer stores a
+    clock merely to capture a suggested velocity; it reads that published targeting snapshot and
+    preserves the selected velocity when no suggestion is available. `PhoenixTeleOpControls`
+    receives `BindingRegistrar` and loses its private `Bindings`, public update, and public clear
+    path. `PhoenixDriveAssistService` makes its same-cycle policy calculation part of the final
+    stateful drive source sampled after scoring rather than pretending to be an upstream service or
+    a second imperative drive writer.
+  - **Why production Auto remains explicit:** the selector samples UI bindings during INIT, may
+    construct only after confirmation, may retry an ordinarily cleaned failure with a fresh graph,
+    permanently blocks retry after uncertain cleanup, and performs one guarded construction attempt
+    if START bypasses confirmation. Match Auto also reasserts the selected Pedro pose before clock
+    reset/root start and performs a two-sided handoff transaction: capture one cached pose before
+    cleanup, then publish only after all cleanup succeeds. The managed program freezes after one
+    configuration callback, treats INIT presenters as read-only, terminalizes on construction
+    failure, resets the clock before service START, performs a mandatory START output update, and
+    has no post-success cleanup publication boundary. Forcing Auto into those seven roles would
+    change policy rather than remove ceremony.
+  - **Selected Auto API cleanup:** keep selector, readiness, route construction/replacement, exact
+    start pose, and handoff policy in the shared Phoenix Pedro Auto base. Keep the one private
+    Phoenix Auto clock and root runner behind that advanced host, but collapse each split lifecycle
+    pair: delete no-op `initAny()`, replace `startAny(runtime); startAuto()` with
+    `startAuto(runtime)`, and replace `updateAny(runtime); updateAuto()` with
+    `updateAuto(runtime)`. Retain the two-argument ordinary and four-argument advanced `initAuto`
+    forms because the latter supplies distinct enable/override sources rather than another
+    lifecycle spelling. Static Auto entries remain one-decision `autoSpec()` classes.
+
+    ```java
+    // The explicit outer policy remains visible in the shared Auto base.
+    pedroRuntime.setStartingPose(expectedPedroStartPose);
+    robot.startAuto(startRuntimeSec);
+
+    emitAutoReadinessTelemetry();
+    emitPedroDebugTelemetry();
+    robot.updateAuto(getRuntime());
+    ```
+
+  - **Auto behavior preserved:** no hardware graph is created while readiness blocks; selector
+    choices lock to the installed graph; START-without-confirmation uses the same readiness/build
+    path; the declared Pedro pose is applied before the Auto clock/root boundary; and the active
+    order remains vision readiness -> localization -> targeting -> recurring Pedro heartbeat ->
+    installed root -> scoring Plants -> snapshots/presentation -> one commit. Route execution
+    identity and `COMPLETED`, timeout/stall, interruption, `REPLACED`, failure, cancellation, and
+    unknown terminal truth remain in the existing adapter/Task boundary. Capture, cleanup,
+    publication, repeated STOP, match-versus-test eligibility, and missing/stale TeleOp fallback
+    remain robot-owned and unchanged.
+  - **Failure completion:** managed TeleOp gains `FtcRobotOpMode`'s configuration, START, active-loop,
+    presentation, commit, and reentrant-STOP fail-stop behavior. Explicit Auto start, sidecar
+    rendering, active update, and commit failures must revoke handoff eligibility, stop the retained
+    graph best-effort, preserve the original failure, and attach cleanup failures in deterministic
+    order. Retry remains allowed only when the preceding attempt proved cleanup complete.
+  - **Required `ScoringPath` ownership hardening:** `ScoringPath.Realization` currently constructs
+    four Plants sequentially without cleaning earlier completed Plants if a later construction
+    fails, and its stop paths can abandon later owners after the first exception. A managed program
+    cannot clean an output whose constructor never returned or penetrate that output's private
+    Plant graph. RUNTIME-02 therefore includes local staged construction rollback plus idempotent,
+    best-effort scoring/Plant stop with stable order, primary failure retention, and suppressed
+    later failures. This is required migration correctness, not unrelated mechanism cleanup.
+  - **Deliberate diagnostic boundary:** do not add `afterCommit`, an INIT-behavior role, a public
+    `RobotProgram` session/driver, a telemetry proxy, or another framework lifecycle hook. The
+    disabled Phoenix `LoopPhaseProfiler` will retain all synchronous Phoenix phase measurements but
+    finish immediately before the framework-owned commit; its last phase becomes `presentation`
+    rather than claiming to include `telemetry.update()`. Apply that truthful phase vocabulary to
+    both modes and document that FTC telemetry-commit latency is outside the Phoenix span. This is
+    the only deliberate diagnostic reduction; robot behavior, safety, readiness, routing, and
+    handoff capabilities remain available. If exact commit timing later has a second proven caller,
+    it requires its own reusable decision gate.
+  - **Alternatives rejected:** direct migration of all Auto entries needs late/retryable graph
+    construction, active INIT, a pre-clock START hook, transactional cleanup callbacks, and
+    post-commit observation; adding those would create the second public lifecycle language the
+    work is trying to avoid. A public advanced `RobotProgram` host/session exposes manual lifecycle
+    steps and a second construction path for one robot-specific caller. Leaving all production
+    Phoenix explicit preserves unnecessary TeleOp clock/binding/callback ceremony and misses the
+    RUNTIME-01 benefit. Documentation-only and merely collapsing `...Any` calls do not give
+    ordinary TeleOp managed fail-stop ownership. A generic component registry, scheduler, or
+    mutable late-install program remains outside scope.
+  - **Framework Principles check:** the selected split uses the one approved managed grammar for an
+    ordinary mode and labels only a materially different selector/handoff host as advanced. Each
+    runtime still has exactly one clock; Tasks remain non-blocking and single-use; services precede
+    decisions; scoring alone updates its private Plants; final drive remains source-driven with one
+    sink; presenters remain read-only/additive; FTC/Pedro types stay at their boundaries; the Auto
+    client retains season strategy; and every completed resource gains one fail-stop owner. No new
+    framework class, method, overload, builder, lifecycle role, scheduler, or Plant path is added.
+  - **Bounded implementation scope:** migrate `PhoenixTeleOp`, the TeleOp side of `PhoenixRobot`,
+    `PhoenixTeleOpControls`, `PhoenixDriveAssistService`, `ScoringTargeting`, `ScoringPath`, and
+    `PhoenixTelemetryPresenter`; collapse only the shared Auto lifecycle pairs and harden its failure
+    handoff in `PhoenixRobot`/`PhoenixPedroAutoOpModeBase`. Preserve the selector screens,
+    readiness decisions, profile/hardware facts, path/routine strategy, Pedro integration semantics,
+    capability meanings, testers, starter/reference examples, and framework public API. Update
+    Phoenix Architecture, the Pedro robot README, Framework Principles, Loop Structure, Robot
+    Capabilities & Mode Clients, FTC Auto-to-TeleOp Handoff, framework overview/maintainer wording,
+    and all affected Javadocs/examples in the same diff.
+  - **Verification plan:** extend the generic-host mapping tests only where production declaration
+    behavior is Phoenix-specific; migrate TeleOp host, controls, drive-assist, targeting-source,
+    telemetry-ownership, readiness, handoff, shutdown, and scoring tests; and retain the full Pedro
+    Auto base/selector matrix. Add fault injection for every later scoring Plant construction,
+    repeated/pre-update stop, each scoring cleanup failure, managed exact-START scoring plus drive
+    zero, INIT help/readiness/handoff repetition, clockless published targeting status, same-cycle
+    drive-source stability, Auto start/sidecar/service/Task/output/presenter/commit failure, retry
+    eligibility, route replacement truth, and capture/cleanup/publication ordering. Run focused
+    suites, the full TeamCode unit suite and Java compile, public API/caller/clock/Bindings scans,
+    documentation link/fence checks, independent lifecycle/Auto/simplicity reviews, and
+    `git diff --check`. Hardware remains required for configured names/directions, physical zero,
+    localization, route motion, and scoring response, not for deterministic lifecycle semantics.
+- **Implementation approval (2026-08-07):** the user approved the recorded
+  **managed-TeleOp / explicit-policy-Auto breaking design** and separately directed the
+  implementation to clean up legacy approaches and code. Gate 2 is authorized on
+  `codex/runtime-02-production-phoenix-managed-runtime`, based on the fetched RUNTIME-01 merge
+  `origin/master@d602af446a8865fb721f58556bdc8f843eca9b8c`. Remove superseded `...Any` lifecycle
+  pairs, the manual TeleOp host path, private TeleOp binding ownership, replaced targeting reads,
+  and stale callers/docs/tests rather than retaining deprecated aliases. Preserve only the
+  explicit Auto lifecycle with distinct selector, retry, exact-start, readiness, and handoff value.
+  This approval does not authorize publication or INPUT-02.
+- **Gate 2 implementation (2026-08-07):** RUNTIME-02 is **Verifying** on
+  `codex/runtime-02-production-phoenix-managed-runtime`, still based exactly on
+  `origin/master@d602af446a8865fb721f58556bdc8f843eca9b8c`. The complete item diff remains
+  unstaged and uncommitted for Android Studio review.
+  - `PhoenixTeleOp` now extends final-callback `FtcRobotOpMode` and overrides only
+    `configure(RobotProgram)`. `PhoenixRobot.declareTeleOp(program)` declares the managed binding
+    registrar, vision/localization/targeting services, scoring output, one final source-driven
+    drive, and the additive presenter. INIT performs no heartbeat or actuation; exact START
+    publishes vision/localization/targeting, realizes scoring once, and writes drive zero; manual
+    and assisted drive first run in the ordinary active loop.
+  - TeleOp has no private clock, `Bindings`, lifecycle forwarding, separate telemetry commit, or
+    imperative drive-assist heartbeat. `ScoringTargeting.update(clock)` transactionally publishes
+    one retained snapshot and `status()` is clockless. `ScoringPath` no longer retains a clock for
+    target capture, while `PhoenixDriveAssistService` calculates and publishes policy inside the
+    final drive-source read after scoring. Presenters accept the current frame sink, remain
+    additive, and finish Phoenix profiling at `presentation` before the lifecycle owner commits.
+  - `ScoringPath` now rolls back each completed Plant if later construction fails and performs one
+    terminal, idempotent, ordered best-effort stop across execution and realization. The managed
+    host can therefore own the returned output without leaving an unreachable partial mechanism
+    graph behind.
+  - Production Pedro Auto remains the one explicitly named policy host. Its surface is
+    `initAuto(...)`, `installAutoRoutine(...)`, `startAuto(runtime)`, `updateAuto(runtime)`, and
+    `stopAuto()`. Selector/retry/readiness, pose-before-clock START, route truth, and capture-cleanup-
+    publish handoff policy are preserved. Update-before-start and repeated-start guards now run
+    before any clock or heartbeat mutation; start, sidecar, update, presenter, and commit failures
+    revoke handoff eligibility, detach owners, stop once, retain the exact primary failure, and
+    append cleanup or error-frame failures in deterministic suppression order.
+  - Superseded code was deleted instead of deprecated: no `initAny`/`startAny`/`updateAny`, manual
+    TeleOp lifecycle, zero-argument Auto lifecycle, generic `PhoenixRobot.stop()`, private TeleOp
+    binding owner, clock-taking targeting status/suggestion, public controls/drive-assist update or
+    clear path, `PhoenixShutdown`, or corresponding compatibility test remains. The only direct
+    Phoenix clock/Bindings owners are the approved explicit Auto heartbeat and selector INIT UI.
+    Framework Principles, Phoenix architecture/calibration, Pedro integration, lifecycle,
+    capability, handoff, overview, maintainer, recommended-design, lanes, and shooter-case-study
+    guidance now teach the same current grammar and name only live Phoenix owners.
+- **Automated verification (2026-08-07):**
+  - Unfiltered `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` passes with
+    **133 suites / 1,238 tests / 0 failures / 0 errors / 0 skipped**. Output contains only the
+    repository's existing Java 8 source/target warnings under Android Studio JBR 21.
+  - Focused lifecycle runs pass the managed Phoenix host, targeting publication, final drive-assist
+    source, scoring rollback/stop, Auto root, telemetry ownership, and complete Pedro Auto host
+    suites. Regressions prove INIT inertness; exact START sensing -> scoring -> zero-drive order;
+    first-loop driver intent; one telemetry commit; single/reentrant cleanup; pre-start/repeated-
+    start guards before the clock or heartbeat; original start failure retention when error-frame
+    commit also fails; and every later scoring-Plant construction/stop failure.
+  - Exhaustive current-source/caller scans find no superseded lifecycle names, `PhoenixShutdown`,
+    generic stop, zero-argument Auto start/update, clock-taking targeting snapshot/suggestion,
+    zero-argument status method reference passed to `Source.of`, or manual TeleOp callback/clock/
+    binding owner. The remaining explicit clock/bindings are confined to the Pedro Auto runtime and
+    selector UI. Telemetry commits are confined to the managed framework owner or explicit Auto
+    frame owner.
+  - `DocumentationLinksTest` passes **5/5**; all **14** modified Markdown files have balanced fences;
+    local-link, stale-API, modified/untracked trailing-whitespace, and `git diff --check` scans pass.
+    Normal Git LF-to-CRLF working-copy notices are informational.
+  - Independent lifecycle/Principles, public-surface/Auto, legacy-removal, and documentation reviews
+    are clean after corrections for update-before-start, repeated-start clock mutation, compound
+    Pedro start/error-frame failure retention, the exact managed START integration seam, and stale
+    status/drive-assist/Pedro role wording. Review confirms no unrelated cleanup and no capability
+    loss beyond the approved profiler boundary that excludes telemetry-commit latency.
+- **Android Studio and hardware review handoff (2026-08-07):** inspect the now declaration-only
+  `PhoenixTeleOp`, the managed registration/start/stop order in `PhoenixRobot`, `ScoringPath`
+  construction rollback and stop order, Pedro retry/start/update/handoff paths, and the synchronized
+  architecture/examples. Hardware is still required to validate configured FTC names, directions,
+  modes, physical zero, camera readiness/frame timing, Pinpoint/localization behavior, scoring
+  commands/readback, Pedro route motion, physical robot placement, and Auto-to-TeleOp pose accuracy.
+  Gate 2 deliberately stops with the diff unstaged. If Android Studio review succeeds, the exact
+  combined Gate 3 prompt is:
+  **`RUNTIME-02 looks good. Authorize committing the reviewed RUNTIME-02 diff on
+  codex/runtime-02-production-phoenix-managed-runtime, pushing that branch to
+  https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging it into
+  master.`**
+
+- **Gate 2 design reopened (2026-08-07):** before reviewing or publishing the hybrid result, the
+  user challenged the claim that production Pedro Auto intrinsically requires a separate raw
+  `OpMode` lifecycle and asked for the NextFTC/FTCLib/Pedro integration comparison to be rerun in
+  Plan mode. The audit separated the selector's INIT policy from Pedro's actual lifecycle. Current
+  NextFTC composes Pedro as a component under its ordinary OpMode host and represents route
+  following as a normal command; FTCLib's applicable lesson is likewise that the host owns the
+  scheduler lifecycle while robot code declares behavior. Phoenix's checked-in managed basic
+  Pedro reference already proves that start-pose application, a persistent follower heartbeat,
+  route Tasks, mechanism outputs, and fail-stop cleanup fit `FtcRobotOpMode`/`RobotProgram`.
+  Therefore the preceding hybrid design, verification handoff, and publication prompt are
+  superseded; the existing unstaged TeleOp and cleanup work remains valuable, but RUNTIME-02 is
+  returned to **In progress** for the replacement design below.
+- **Replacement decision record (2026-08-07):** **Ready; unified managed-Auto/Pedro-component
+  breaking redesign approved before implementation.** Ordinary production Phoenix Auto will use
+  the same final-callback `FtcRobotOpMode` host as TeleOp. A narrow one-owner prestart role updates
+  data-only selection and non-actuating observations during INIT, then freezes once at START and
+  returns `READY` or `BLOCKED`. A blocked program starts no services, Tasks, or outputs and keeps
+  presenting the actionable robot-owned readiness result. Pedro becomes one stable managed
+  service/heartbeat; route following remains a Task. The framework gains only the independently
+  reusable boundaries that the audit proved missing: `RobotProgram.prestart(...)`,
+  `Tasks.buildAtStart(name, factory)`, and one typed capture-cleanup-publish STOP handoff
+  transaction. It does not gain a generic component registry, root-task supplier overload,
+  mutable late-install program, or another scheduler.
+  - The hardware/resource graph is constructed once during INIT and never rebuilt for a changed
+    selection or failed attempt. INIT selection is data-only and freezes to one immutable
+    `PhoenixAutoSpec` at START. Removing same-OpMode hardware-construction retry is the one
+    intentional capability reduction; a construction failure requires restarting the OpMode.
+  - Structural blockers remain fail-closed: purpose/strategy mismatch, required calibration
+    acknowledgements, missing alliance target/field facts, and non-match-ready route geometry.
+    Every currently checked-in Phoenix route remains `INTEGRATION_ONLY`, so match entries stay
+    visibly blocked until real geometry is deliberately validated. Expected AprilTag or game-piece
+    uncertainty is not a generic readiness blocker: a robot routine waits for its own finite
+    decision interval, then constructs and runs an explicit tested fallback branch.
+  - One `PhoenixAutoOpMode extends FtcRobotOpMode` convenience base exposes only
+    `autoSetup()`. `PhoenixAutoSetup.fromFixedSpec(...)` and
+    `fromInitSelection(...)` are parallel data/policy choices behind the same internal declaration
+    path. Static, selector, and Pedro-test entries do not override FTC callbacks.
+  - Fixed geometry remains eager when its spec is known. Selection- or sensor-dependent Task
+    graphs use the one `Tasks.buildAtStart(...)` wrapper; later pose-dependent Pedro geometry keeps
+    the existing `RouteTasks.followBuiltAtStart(...)` boundary and truthful per-start execution.
+  - Build targeting from one full defensive profile. Replace `PhoenixAutoProfiles` construction-
+    time filtering with a robot-owned eligible-tag source: TeleOp supplies all configured scoring
+    tags, while frozen Auto supplies only its selected alliance tag. Filter before selection and
+    sticky policy so the opposite-alliance tag can never become the scoring target.
+  - Normal active order is clock -> vision/localization/targeting/Pedro service -> bindings -> root
+    Task -> scoring output -> presenter -> one framework commit. START freezes prestart state,
+    resets the clock, applies the exact Pedro start pose before the first localization/heartbeat,
+    starts and first-updates the root, then realizes scoring once. STOP captures a cached match pose
+    only from a normally active match Auto, cleans Tasks/outputs/services completely, and publishes
+    only after every cleanup succeeds; all other paths invalidate the handoff.
+  - Delete the raw `PhoenixPedroAutoOpModeBase`, Phoenix's private Auto clock/runner and manual
+    Auto lifecycle, selector-owned lifecycle clock/hardware retry, direct OpMode Pedro/telemetry/
+    handoff callbacks, and construction-time profile filtering rather than retaining deprecated
+    aliases. Preserve the already-implemented managed TeleOp migration, targeting snapshot
+    publication, drive-assist source ownership, and `ScoringPath` construction/cleanup hardening.
+  - Verification covers prestart READY/BLOCKED ordering, lazy Task construction and cancellation,
+    transactional handoff including reentrant STOP, one hardware construction, selection freeze,
+    exact start-pose/service/root/output order, one Pedro heartbeat per cycle, alliance target
+    isolation, timed sensor fallback, route truth, and immediate physical zero. Run focused suites,
+    full `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac`, XML counts, caller/API/
+    stale-lifecycle scans, Markdown link/fence checks, adversarial simplicity/Principles reviews,
+    and `git diff --check`; retain physical robot validation for wiring, camera/Pinpoint timing,
+    route motion, scoring response, stop power, placement, and handoff accuracy.
+- **Replacement implementation approval (2026-08-07):** after receiving the complete Plan-mode
+  replacement specification, the user replied **`Implement the plan.`** This authorizes only the
+  revised RUNTIME-02 implementation, caller/documentation migration, tests, and verification on
+  `codex/runtime-02-production-phoenix-managed-runtime`, still based exactly on fetched
+  `origin/master@d602af446a8865fb721f58556bdc8f843eca9b8c`. The diff remains unstaged and
+  uncommitted until a new Android Studio review and combined publication authorization. It does not
+  authorize publication, INPUT-02, or another tracker item.
+- **Replacement Gate 2 implementation (2026-08-07):** RUNTIME-02 is **Verifying** on
+  `codex/runtime-02-production-phoenix-managed-runtime`, based exactly on
+  `origin/master@d602af446a8865fb721f58556bdc8f843eca9b8c`. This current handoff supersedes the
+  earlier hybrid implementation handoff. The complete item diff remains unstaged and uncommitted
+  for Android Studio review.
+  - `RobotProgram` now accepts one optional data-only `Prestart`, freezes it once before the START
+    clock reset, and supports `READY` or presenter-only `BLOCKED` execution. One typed
+    `stopHandoff(capture, publish, invalidate)` transaction terminalizes before capture, cleans the
+    complete graph, publishes only after successful cleanup, and invalidates every other path,
+    including lifecycle failure and reentrant STOP. `Tasks.buildAtStart(name, factory)` is the one
+    public deferred-Task construction path; its package-private wrapper preserves single-use,
+    retained-child, failure-cleanup, cancellation, outcome, and nested-debug semantics.
+  - Every production or diagnostic Phoenix-season Auto now extends `PhoenixAutoOpMode`, overrides
+    only `autoSetup()`, and inherits final FTC callbacks from `FtcRobotOpMode`. The two parallel
+    setup choices are `PhoenixAutoSetup.fromFixedSpec(...)` and
+    `fromInitSelection(...)`; both feed one internal `PhoenixAutoProgram`. INIT selection mutates
+    only data, START freezes one immutable spec, fixed roots build eagerly, selected roots use
+    `Tasks.buildAtStart(...)`, and the hardware/resource graph is constructed exactly once.
+  - Pedro is one stable managed service rather than an OpMode host. START applies the frozen pose,
+    then updates vision, localization, targeting, and the recurring Pedro heartbeat before the root
+    Task and scoring output. Active loops retain that order; STOP cancels the root, stops scoring,
+    writes immediate Pedro zero, resets targeting, and closes vision. Match pose handoff captures
+    one cached estimate before cleanup and publishes only after that entire order succeeds.
+  - Phoenix uses one full defensive profile. `ScoringTargeting` freezes a validated robot-owned
+    eligible-tag subset before reading detections or sticky policy, so Auto exposes only the frozen
+    alliance tag while TeleOp exposes every configured scoring tag. The single managed
+    `PhoenixRobot.declareAuto(...)` boundary also retains the former advanced clock-aware auto-aim
+    enable and override policies; ordinary Phoenix Auto supplies constant enabled/no-override
+    values. Therefore same-OpMode hardware-construction retry remains the only intentional runtime
+    capability reduction in the replacement design.
+  - The raw `PhoenixPedroAutoOpModeBase`, private Auto clock/runner, manual Auto lifecycle,
+    selector hardware retry, construction-time `PhoenixAutoProfiles`, direct Phoenix telemetry
+    commits, and corresponding compatibility tests are deleted. The disabled generic Pedro
+    reference was renamed/moved to `robots.examples.pedro.BasicPedroAutoExample`: it remains a
+    managed `FtcRobotOpMode` example for a new/different robot and no longer appears to be a second
+    Phoenix-season Auto recipe. Managed TeleOp, targeting snapshot publication, final drive-source
+    ownership, and `ScoringPath` staged construction/best-effort cleanup from the approved first
+    implementation remain intact.
+- **Replacement automated verification (2026-08-07):**
+  - Clean unfiltered
+    `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac` passes with **134 suites /
+    1,227 tests / 0 failures / 0 errors / 0 skipped** under Android Studio JBR 21. Output contains
+    only the repository's existing Java 8 source/target and deprecated-SDK warnings.
+  - Focused regression evidence includes `RobotProgramPrestartAndHandoffTest` **12/12**,
+    `BuildAtStartTaskTest` **9/9**, `PhoenixAutoPrestartTest` **3/3**,
+    `PhoenixManagedAutoLifecycleTest` **2/2**, `ScoringTargetingSourceTest` **5/5**, and the moved
+    `BasicPedroAutoExampleTest` **3/3**. These prove INIT inertness, real selector freeze and
+    alliance isolation, READY/BLOCKED behavior, exact START/service/root/output order, immediate
+    STOP zero and idempotent cleanup, lazy child lifecycle, transactional handoff including
+    reentrant STOP, and retained advanced aim/override policy.
+  - `DocumentationLinksTest` passes **5/5**; all **17** modified Markdown files have balanced
+    fences. Modified/untracked trailing-whitespace and `git diff --check` scans pass. Current-source
+    scans find zero deleted Auto types, zero superseded Phoenix lifecycle calls, zero raw FTC
+    callbacks or `OpMode` base in the Phoenix-season package, zero private Phoenix clocks, zero
+    manual Phoenix telemetry commits, and only the approved INIT-selector `Bindings` owner.
+  - Independent lifecycle/Framework-Principles, Phoenix/Pedro capability, target-eligibility,
+    student-simplicity, public-construction-path, legacy-removal, and documentation reviews are
+    clean after fixing one stale reflected signature, preserving the advanced aim/override inputs,
+    moving the generic reference out of the Phoenix season package, and correcting handoff/order
+    wording. No redundant public constructor, overload, alternate host, or deferred-Task layer
+    remains.
+- **Replacement Android Studio and hardware review handoff (2026-08-07):** inspect
+  `RobotProgram` prestart/BLOCKED/handoff transitions, `Tasks.buildAtStart(...)`, the one-method
+  `PhoenixAutoOpMode` entries, `PhoenixAutoPrestart` freeze/readiness/eligibility behavior,
+  `PhoenixAutoProgram` declaration order, and `PhoenixRobot` managed Auto start/update/stop order.
+  Also inspect the deleted raw Auto host/profile filtering and the synchronized architecture/Pedro/
+  handoff guides. Robot hardware is still required to validate configured FTC names, directions,
+  modes, physical zero, camera readiness/frame timing, Pinpoint/localization behavior, scoring
+  commands/readback, Pedro route motion and placement, and Auto-to-TeleOp pose accuracy. Gate 2
+  deliberately stops with the diff unstaged. If Android Studio review succeeds, the exact combined
+  Gate 3 prompt is:
+  **`RUNTIME-02 looks good. Authorize committing the reviewed RUNTIME-02 diff on
+  codex/runtime-02-production-phoenix-managed-runtime, pushing that branch to
+  https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging it into
+  master.`**
+
+- **Replacement design correction reopened (2026-08-07):** the user correctly observed that the
+  implemented alliance restriction applies only to Auto while ordinary TeleOp still supplies the
+  complete scoring-tag catalog. The current `ScoringTargeting` implementation is specifically
+  scoring-AprilTag based: eligibility is a set of tag ids, selection reads `AprilTagSensor`, and
+  target status/range/aim points are anchored to the selected tag. Adaptive aim may subsequently
+  prefer global localization, and the full field tag layout remains available to localization;
+  this filter does not restrict localization tags or a generic vision/object-targeting lane.
+- **Menu audit:** only the `Phoenix Auto Selector` entry shows an INIT menu. The fixed red, fixed
+  blue, and Pedro test entries still use prestart freeze/readiness but show no navigator. The
+  selector edits alliance, start position, partner plan, and strategy as data-only
+  `PhoenixAutoSpec` values; it does not construct or replace hardware. The final confirmation
+  screen is currently advisory: FTC START freezes the current builder/default even if that screen
+  was never reached, and readiness alone chooses `READY` or `BLOCKED`.
+- **Corrective decision record (2026-08-07):** **Ready; explicit breaking robot-API approval is
+  required before implementation.** Promote alliance from Auto-nested
+  `PhoenixAutoSpec.Alliance` to one robot-level `PhoenixAlliance`, because Auto and TeleOp are
+  parallel clients of the same match fact. Move the red/blue scoring-tag mappings from Auto-only
+  `PhoenixProfile.AutoConfig` to shared targeting configuration; TeleOp must not reach through an
+  autonomous configuration lane to resolve its target. Keep one `Phoenix TeleOp` Driver Station
+  entry and add one package-private, one-screen `PhoenixTeleOpPrestart`: gamepad 1 selects RED or
+  BLUE during INIT, the visible deterministic default is RED, and FTC START is the sole immutable
+  freeze. Do
+  not add red/blue TeleOp classes, a public TeleOp setup/builder, a second clock/binding heartbeat,
+  or a direct handoff-to-targeting policy source. Expand Phoenix's existing immutable match
+  snapshot to carry the frozen Auto alliance beside the final pose. A fresh handoff seeds the
+  visible TeleOp menu; missing, skipped, blocked, failed, stale, or cleanup-failed Auto leaves its
+  documented RED default. In either case the TeleOp prestart remains the sole editable owner and
+  its START-frozen value is the sole targeting authority, so handoff state never competes with the
+  menu and the operator may correct the seed during INIT.
+  - Replace the ordinary `PhoenixRobot.declareTeleOp(program)` path rather than retain overloads:
+    the internal TeleOp composition path passes the prestart's frozen singleton scoring-tag source
+    to targeting. Auto passes the same shape from its own frozen `PhoenixAlliance`. Both modes
+    therefore apply alliance-eligible scoring AprilTag ids before preview/sticky selection, while
+    localization retains the complete fixed-tag layout.
+  - Reuse the selected-alliance profile/readiness validation for TeleOp so a missing/invalid mapped
+    tag, catalog entry, or fixed-layout entry is an actionable INIT blocker instead of a first-use
+    targeting failure. Preserve standalone TeleOp and the handoff's existing fresh/one-shot/
+    cleanup-gated semantics; adding alliance changes only the robot-owned immutable payload.
+  - Make the audited Auto selector truthful at the same boundary. Delete `PartnerPlan` from
+    `PhoenixAutoSpec` and the menu because no route, routine, or policy consumes it; it can return
+    when it controls real behavior. Remove the advisory confirmation state/screen and advance from
+    the final strategy choice to a read-only summary. FTC START remains the one confirmation/freeze
+    boundary. Alliance, start position, and strategy remain because each affects actual policy or
+    route construction; unavailable strategies remain visibly blocked by route readiness.
+  - Synchronize Phoenix Architecture, Pedro/targeting guidance, Javadocs, telemetry wording, all
+    Auto callers/tests, and new TeleOp prestart/lifecycle tests. Verification will rerun the full
+    TeamCode unit/compile gate, targeted selector/eligibility/handoff suites, API/stale-name scans,
+    docs checks, independent review, and diff/whitespace checks. Hardware validation remains
+    required for menu controls, camera observations, physical aim, and match transition behavior.
+  - Exact Gate 2 approval phrase:
+    **`Approve RUNTIME-02 shared-alliance and truthful-menu correction design.`**
+- **Corrective implementation approval (2026-08-08):** the user replied
+  **`Approve RUNTIME-02 shared-alliance and truthful-menu correction design.`** Gate 2 is resumed
+  for only this recorded correction on `codex/runtime-02-production-phoenix-managed-runtime`, after
+  fetching and confirming both `HEAD` and `origin/master` remain
+  `d602af446a8865fb721f58556bdc8f843eca9b8c`. The complete RUNTIME-02 diff remains unstaged and
+  uncommitted. This approval does not authorize publication, INPUT-02, or any other tracker item.
+- **Corrective implementation handoff (2026-08-08):** **Verifying; Android Studio and robot review
+  remain before Gate 3 publication.** The approved shared-alliance and truthful-menu correction is
+  complete on `codex/runtime-02-production-phoenix-managed-runtime`; the complete RUNTIME-02 diff
+  remains unstaged and uncommitted.
+  - One robot-level `PhoenixAlliance` is now the shared Auto/TeleOp match fact. Red/blue scoring-tag
+    mappings live in the mode-neutral auto-aim profile, both mode clients freeze the selected
+    alliance at FTC START, and both provide the same singleton eligible-tag Source shape to
+    `PhoenixRobot`. There is one production `Phoenix TeleOp` entry with a visible RED default and a
+    package-private D-pad-only INIT selector. A fresh successful Auto handoff carries pose plus
+    alliance and only seeds that editable TeleOp draft; it never becomes a competing policy source.
+  - `ScoringTargeting` now constructs one exact immutable runtime for the frozen eligible subset:
+    selector, fixed-layout view, offset map, guidance plan, and query. It publishes that complete
+    runtime before the first sensor/selector read, so sensor or query failure cannot resample or
+    drift alliance eligibility on a same-cycle retry. Inactive catalog/layout facts cannot enter
+    the active plan. Fresh deferred overlays own independent controller state, reject reuse after
+    owner reset, and Auto aim Tasks resolve through `Tasks.buildAtStart(...)` only after the managed
+    targeting service has initialized. Missing catalog/layout facts remain data-only actionable
+    prestart blockers rather than eager construction failures.
+  - The Auto selector now contains only alliance, start position, and strategy—the three facts that
+    affect behavior. `PartnerPlan` and the advisory confirmation screen are deleted. Strategy rows
+    use strategy/route readiness only, while the read-only summary and START policy retain complete
+    calibration/targeting/route readiness. The summary replaces generic menu controls with the
+    truthful `START: freeze selection | X: edit selection` hint and never advertises A/B/Y actions.
+  - Verification under Android Studio JBR 21 passes
+    `:TeamCode:testDebugUnitTest :TeamCode:compileDebugJavaWithJavac`: **135 suites / 1,241 tests /
+    0 failures / 0 errors / 0 skipped**. The focused `ScoringTargetingSourceTest` passes **12/12**,
+    covering exact selected/inactive layout isolation, missing-catalog deferral, validation before
+    sensor acquisition, frozen eligibility across sensor/query failure, deferred consumer ordering,
+    and fresh-overlay reset ownership. The final `PhoenixAutoPrestartTest` passes **5/5** after its
+    global-blocker fixture explicitly marks Pinpoint axes unverified. Build output contains only the
+    repository's existing Java 8 source/target and deprecated FTC SDK warnings.
+  - `git diff --check` passes; untracked trailing-whitespace matches are zero; all **18** modified or
+    untracked Markdown files have balanced fences; production/docs stale-name scans find zero
+    `PhoenixAutoSpec.Alliance`, `PartnerPlan`, deleted Phoenix Auto bases/profiles, false summary
+    wording, or raw Phoenix OpMode lifecycle callbacks. One production Phoenix TeleOp entry remains,
+    and both mode prestarts visibly return frozen singleton tag sets. The full suite includes the
+    documentation-link tests.
+  - Independent read-only surface and adversarial code reviews report no remaining findings after
+    the eager full-catalog targeting, strategy-row readiness, inherited-control hint, stale wording,
+    and handoff-documentation findings were corrected.
+  - Android Studio review should inspect `PhoenixAlliance`, `PhoenixProfile`, `PhoenixReadiness`,
+    both Phoenix prestart/program pairs, `PhoenixMatchHandoff`, `SummaryScreen`, and
+    `ScoringTargeting`, then trace START/STOP ordering through `PhoenixRobot` and `RobotProgram`.
+    On robot, verify the RED default and D-pad alliance edit, Auto-handoff seed override, selected
+    alliance tag isolation with both tags visible, full-layout localization, blocked-profile
+    presentation, physical aim response, immediate STOP zero, real route motion, and pose/alliance
+    handoff accuracy. Unit tests cannot establish camera timing, wiring/directions, mechanism power,
+    Pedro motion, physical placement, or match-transition accuracy.
+  - Publication coordinates are branch
+    `codex/runtime-02-production-phoenix-managed-runtime`, push URL
+    `https://github.com/harishv-99/2025-PhoenixPedro.git`, and target `master`; `HEAD` and the last
+    fetched `origin/master` are both `d602af446a8865fb721f58556bdc8f843eca9b8c`.
+  - Exact combined Gate 3 authorization requested after review:
+    **`RUNTIME-02 looks good. Authorize committing the reviewed RUNTIME-02 diff on
+    codex/runtime-02-production-phoenix-managed-runtime, pushing that branch to
+    https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging it into
+    master.`**
+- **Gate 3 approval (2026-08-09):** the user supplied the exact combined authorization above,
+  recording successful manual review and authorizing the reviewed RUNTIME-02 diff to be committed
+  on `codex/runtime-02-production-phoenix-managed-runtime`, pushed to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, opened as a pull request, and merged into
+  `master`. Physical robot validation remains adopting-robot work for the explicitly listed wiring,
+  motion, camera, mechanism, placement, and match-transition facts; the publication claim remains
+  bounded to the reviewed software lifecycle contract and passing software verification.
 
 ### INPUT-02 - Binding update failure retention
 

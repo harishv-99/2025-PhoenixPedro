@@ -16,6 +16,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import edu.ftcphoenix.fw.core.source.BooleanSource;
+import edu.ftcphoenix.fw.core.source.Source;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 import edu.ftcphoenix.fw.localization.AbsolutePoseEstimator;
@@ -24,14 +25,16 @@ import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagDetections;
 import edu.ftcphoenix.fw.sensing.vision.apriltag.AprilTagSensor;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 /** Robot-level regression coverage for the source-backed flywheel-ready gate. */
 public final class ScoringPathFlywheelReadySourceTest {
 
     @Test
-    public void readinessIsDisabledDebouncedCycleStableAndRestartedAfterStop() {
+    public void readinessIsDisabledDebouncedCycleStableAndStopIsTerminalIdempotent() {
         PhoenixProfile profile = PhoenixProfile.defaults();
         PhoenixProfile.ScoringPathConfig config = profile.scoring.copy();
         config.readyPredictLeadSec = 0.0;
@@ -43,13 +46,21 @@ public final class ScoringPathFlywheelReadySourceTest {
         ScoringPath scoring = new ScoringPath(
                 hardwareMap,
                 config,
-                targetingFor(profile),
-                clock
+                targetingFor(profile)
         );
         BooleanSource ready = scoring.flywheelReady();
 
         clock.reset(0.0);
+        scoring.setSelectedVelocityNative(config.velocityMax);
+        scoring.captureSuggestedShotVelocity();
         scoring.update(clock);
+        assertEquals(
+                "an unavailable published suggestion must preserve the caller's selected velocity",
+                config.velocityMax,
+                scoring.status().selectedVelocityNative,
+                0.0
+        );
+        scoring.setSelectedVelocityNative(config.velocityMin);
         assertFalse("matching velocity must not report ready while disabled", ready.getAsBoolean(clock));
 
         scoring.setFlywheelEnabled(true);
@@ -83,15 +94,16 @@ public final class ScoringPathFlywheelReadySourceTest {
 
         scoring.stop();
         assertFalse("stop must reset a same-cycle ready observation", ready.getAsBoolean(clock));
+        assertFalse(scoring.status().flywheelEnabled);
+        scoring.stop();
 
-        scoring.setFlywheelEnabled(true);
         clock.update(0.14);
-        scoring.update(clock);
-        assertFalse("restart after stop must earn the readiness delay again", ready.getAsBoolean(clock));
-
-        clock.update(0.20);
-        scoring.update(clock);
-        assertTrue("restart after stop may become ready after the delay", ready.getAsBoolean(clock));
+        try {
+            scoring.update(clock);
+            fail("expected terminal scoring output to reject update after stop");
+        } catch (IllegalStateException expected) {
+            assertTrue(expected.getMessage().contains("after stop"));
+        }
     }
 
     private static ScoringTargeting targetingFor(PhoenixProfile profile) {
@@ -102,6 +114,7 @@ public final class ScoringPathFlywheelReadySourceTest {
                 CameraMountConfig.identity(),
                 new NoPoseEstimator(),
                 profile.field.fixedAprilTagLayout,
+                Source.constant(profile.autoAim.scoringTagIds()),
                 BooleanSource.constant(true),
                 BooleanSource.constant(false),
                 profile.autoAim.shotVelocityTable

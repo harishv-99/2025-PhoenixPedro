@@ -6,20 +6,20 @@ import com.qualcomm.robotcore.hardware.HardwareMap;
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 
 import java.util.Objects;
+import java.util.Set;
 
-import edu.ftcphoenix.fw.core.debug.DebugSink;
 import edu.ftcphoenix.fw.core.debug.LoopPhaseProfiler;
-import edu.ftcphoenix.fw.core.debug.NullDebugSink;
 import edu.ftcphoenix.fw.core.geometry.Pose2d;
 import edu.ftcphoenix.fw.core.lifecycle.CleanupActions;
 import edu.ftcphoenix.fw.core.source.BooleanSource;
+import edu.ftcphoenix.fw.core.source.Source;
 import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.drive.DriveCommandSink;
 import edu.ftcphoenix.fw.drive.DriveSignal;
 import edu.ftcphoenix.fw.drive.DriveSource;
-import edu.ftcphoenix.fw.drive.MecanumDrivebase;
 import edu.ftcphoenix.fw.ftc.FtcDrives;
 import edu.ftcphoenix.fw.ftc.FtcTelemetryDebugSink;
+import edu.ftcphoenix.fw.ftc.RobotProgram;
 import edu.ftcphoenix.fw.ftc.localization.FtcOdometryAprilTagLocalizationLane;
 import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLane;
 import edu.ftcphoenix.fw.ftc.vision.VisionReadiness;
@@ -28,66 +28,187 @@ import edu.ftcphoenix.fw.localization.MotionPredictor;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
 import edu.ftcphoenix.fw.localization.PoseResetter;
 import edu.ftcphoenix.fw.task.Task;
-import edu.ftcphoenix.fw.task.TaskRunner;
 
 /**
- * Central robot container / composition root for Phoenix.
+ * Phoenix composition root.
  *
- * <p>
- * Phoenix follows the framework's principle-driven split explicitly:
- * </p>
- * <ul>
- *   <li>{@link MecanumDrivebase} owns the final TeleOp drivetrain writes and stop lifecycle.</li>
- *   <li>{@link PhoenixVisionFactory} selects a concrete {@link AprilTagVisionLane} backend from the active profile.</li>
- *   <li>{@link FtcOdometryAprilTagLocalizationLane} owns stable localization strategy and pose production.</li>
- *   <li>{@link PhoenixCapabilities} exposes Phoenix's shared mode-neutral capability families.</li>
- *   <li>{@link PhoenixTeleOpControls} owns all TeleOp input semantics, including drive controls.</li>
- *   <li>{@link ScoringTargeting} owns target selection, aim status, and shot suggestions.</li>
- *   <li>{@link PhoenixDriveAssistService} owns robot-specific drive-assist policy layered on top of manual drive.</li>
- *   <li>The Auto {@link DriveCommandSink} and {@link MotionPredictor} stay vendor-neutral while
- *       Phoenix owns loop order and drive shutdown lifecycle.</li>
- *   <li>{@link ScoringPath} owns scoring policy, final target-resolver composition, and scoring-path Plant update order.</li>
- *   <li>{@link PhoenixTelemetryPresenter} owns additive driver-facing telemetry formatting, while
- *       this composition root commits each complete active-loop telemetry frame.</li>
- * </ul>
+ * <p>Ordinary TeleOp uses one declarative grammar: construct this object, call
+ * {@link #declareTeleOp(RobotProgram, Source)} with its frozen scoring-tag eligibility, restore
+ * the optional match snapshot, and register
+ * {@link #teleOpPresenter(PhoenixMatchHandoff.RestoreResult)}. The framework then owns the clock,
+ * lifecycle callbacks, bindings, output heartbeat, telemetry commit, and fail-stop cleanup.</p>
+ *
+ * <p>Auto uses the same declaration grammar through {@link #declareAuto(RobotProgram,
+ * DriveCommandSink, MotionPredictor, Source, BooleanSource, BooleanSource, Runnable)}. The managed
+ * program owns FTC callbacks, the one clock, root Task, output order, telemetry commit, and
+ * fail-stop cleanup in both modes. Phoenix still owns its hardware graph and service ordering;
+ * alliance selection, Pedro route geometry, targeting policy, and routine composition remain
+ * outside this mode-neutral composition root.</p>
  */
 public final class PhoenixRobot {
 
     private static final boolean ENABLE_LOOP_PHASE_PROFILING = false;
 
-    private final LoopClock clock = new LoopClock();
-    private final PhoenixShutdown shutdown = new PhoenixShutdown();
+    /**
+     * Package-private construction seam for a hardware-neutral managed-TeleOp host test.
+     *
+     * <p>Ordinary robot code has only the public {@link HardwareMap} constructors. This seam is
+     * instance-scoped, changes no lifecycle grammar, and still makes {@link PhoenixRobot} construct
+     * and privately retain its complete mechanism graph.</p>
+     */
+    interface TeleOpHardwareAssembly {
+        AprilTagVisionLane createVision(HardwareMap hardwareMap, PhoenixProfile profile);
+
+        FtcOdometryAprilTagLocalizationLane createLocalization(
+                HardwareMap hardwareMap,
+                AprilTagVisionLane vision,
+                PhoenixProfile profile
+        );
+
+        ScoringPath createScoring(
+                HardwareMap hardwareMap,
+                PhoenixProfile profile,
+                ScoringTargeting targeting
+        );
+
+        DriveCommandSink createDrive(HardwareMap hardwareMap, PhoenixProfile profile);
+    }
+
+    /** Package-private hardware-neutral seam for managed-Auto lifecycle tests. */
+    interface AutoHardwareAssembly {
+        AprilTagVisionLane createVision(HardwareMap hardwareMap, PhoenixProfile profile);
+
+        FtcOdometryAprilTagLocalizationLane createLocalization(
+                MotionPredictor motionPredictor,
+                AprilTagVisionLane vision,
+                PhoenixProfile profile
+        );
+
+        ScoringPath createScoring(
+                HardwareMap hardwareMap,
+                PhoenixProfile profile,
+                ScoringTargeting targeting
+        );
+    }
+
+    private static final TeleOpHardwareAssembly FTC_TELEOP_HARDWARE =
+            new TeleOpHardwareAssembly() {
+                @Override
+                public AprilTagVisionLane createVision(
+                        HardwareMap hardwareMap,
+                        PhoenixProfile profile
+                ) {
+                    return PhoenixVisionFactory.create(hardwareMap, profile.vision);
+                }
+
+                @Override
+                public FtcOdometryAprilTagLocalizationLane createLocalization(
+                        HardwareMap hardwareMap,
+                        AprilTagVisionLane vision,
+                        PhoenixProfile profile
+                ) {
+                    return new FtcOdometryAprilTagLocalizationLane(
+                            hardwareMap,
+                            vision,
+                            profile.field.fixedAprilTagLayout,
+                            profile.localization
+                    );
+                }
+
+                @Override
+                public ScoringPath createScoring(
+                        HardwareMap hardwareMap,
+                        PhoenixProfile profile,
+                        ScoringTargeting targeting
+                ) {
+                    return new ScoringPath(hardwareMap, profile.scoring, targeting);
+                }
+
+                @Override
+                public DriveCommandSink createDrive(
+                        HardwareMap hardwareMap,
+                        PhoenixProfile profile
+                ) {
+                    return FtcDrives.mecanum(hardwareMap, profile.drive);
+                }
+            };
+
+    private static final AutoHardwareAssembly FTC_AUTO_HARDWARE =
+            new AutoHardwareAssembly() {
+                @Override
+                public AprilTagVisionLane createVision(
+                        HardwareMap hardwareMap,
+                        PhoenixProfile profile
+                ) {
+                    return PhoenixVisionFactory.create(hardwareMap, profile.vision);
+                }
+
+                @Override
+                public FtcOdometryAprilTagLocalizationLane createLocalization(
+                        MotionPredictor motionPredictor,
+                        AprilTagVisionLane vision,
+                        PhoenixProfile profile
+                ) {
+                    return FtcOdometryAprilTagLocalizationLane.withPredictor(
+                            motionPredictor,
+                            vision,
+                            profile.field.fixedAprilTagLayout,
+                            profile.localization
+                    );
+                }
+
+                @Override
+                public ScoringPath createScoring(
+                        HardwareMap hardwareMap,
+                        PhoenixProfile profile,
+                        ScoringTargeting targeting
+                ) {
+                    return new ScoringPath(hardwareMap, profile.scoring, targeting);
+                }
+            };
+
+    private enum RuntimeMode {
+        NEW,
+        MANAGED_TELEOP,
+        MANAGED_AUTO
+    }
+
     private final HardwareMap hardwareMap;
-    private final Telemetry telemetry;
     private final Gamepads gamepads;
     private final PhoenixProfile profile;
+    private final TeleOpHardwareAssembly teleOpHardwareAssembly;
+    private final AutoHardwareAssembly autoHardwareAssembly;
     private final PhoenixTelemetryPresenter telemetryPresenter;
     private final LoopPhaseProfiler loopPhaseProfiler;
-    private final DebugSink loopPhaseDebugSink;
     private final TeleOpPoseRestoreLifecycle teleOpPoseRestore =
             new TeleOpPoseRestoreLifecycle();
 
+    private RuntimeMode mode = RuntimeMode.NEW;
     private PhoenixCapabilities capabilities;
-    private MecanumDrivebase drive;
     private AprilTagVisionLane vision;
     private FtcOdometryAprilTagLocalizationLane localization;
     private ScoringPath scoringPath;
     private ScoringTargeting scoringTargeting;
+
+    // Managed-TeleOp graph and read-only presentation state.
     private PhoenixTeleOpControls teleOpControls;
     private PhoenixDriveAssistService driveAssists;
-    private DriveSource teleOpDriveSource;
     private PhoenixReadiness.Result teleOpPoseAssistReadiness;
-    private AutoRoutineLifecycle autoRoutineLifecycle;
-    private DriveCommandSink autonomousDrive;
+    private VisionReadiness teleOpVisionReadiness =
+            VisionReadiness.notReady("Phoenix TeleOp has not reached FTC START");
+    private boolean teleOpStartBoundaryReached;
+    private boolean teleOpOrdinaryLoopReached;
+    private boolean teleOpProfileCycleActive;
+    private boolean teleOpPresenterCreated;
 
-    /**
-     * Creates a Phoenix robot container using the shared checked-in Phoenix profile.
-     *
-     * @param hardwareMap FTC hardware map used to create robot hardware owners
-     * @param telemetry   FTC telemetry sink for driver-facing status output
-     * @param gamepad1    first driver gamepad reference
-     * @param gamepad2    second driver gamepad reference
-     */
+    // Managed-Auto presentation state.
+    private VisionReadiness autoVisionReadiness =
+            VisionReadiness.notReady("Phoenix Auto has not reached FTC START");
+    private boolean autoStartBoundaryReached;
+    private boolean autoProfileCycleActive;
+    private boolean autoPresenterCreated;
+
+    /** Create Phoenix using the checked-in profile snapshot. */
     public PhoenixRobot(HardwareMap hardwareMap,
                         Telemetry telemetry,
                         Gamepad gamepad1,
@@ -95,655 +216,796 @@ public final class PhoenixRobot {
         this(hardwareMap, telemetry, gamepad1, gamepad2, PhoenixProfile.current());
     }
 
-    /**
-     * Creates a Phoenix robot container using an explicit profile snapshot.
-     *
-     * @param hardwareMap FTC hardware map used to create robot hardware owners
-     * @param telemetry   FTC telemetry sink for driver-facing status output
-     * @param gamepad1    first driver gamepad reference
-     * @param gamepad2    second driver gamepad reference
-     * @param profile     Phoenix profile to copy and own for the lifetime of this robot container
-     */
+    /** Create Phoenix using an explicit defensively copied profile. */
     public PhoenixRobot(HardwareMap hardwareMap,
                         Telemetry telemetry,
                         Gamepad gamepad1,
                         Gamepad gamepad2,
                         PhoenixProfile profile) {
+        this(
+                hardwareMap,
+                telemetry,
+                gamepad1,
+                gamepad2,
+                profile,
+                FTC_TELEOP_HARDWARE,
+                FTC_AUTO_HARDWARE
+        );
+    }
+
+    /** Hardware-neutral host-test construction; not a robot-code construction path. */
+    PhoenixRobot(HardwareMap hardwareMap,
+                 Telemetry telemetry,
+                 Gamepad gamepad1,
+                 Gamepad gamepad2,
+                 PhoenixProfile profile,
+                 TeleOpHardwareAssembly teleOpHardwareAssembly) {
+        this(
+                hardwareMap,
+                telemetry,
+                gamepad1,
+                gamepad2,
+                profile,
+                teleOpHardwareAssembly,
+                FTC_AUTO_HARDWARE
+        );
+    }
+
+    /** Hardware-neutral lifecycle-test construction; not an ordinary robot-code path. */
+    PhoenixRobot(HardwareMap hardwareMap,
+                 Telemetry telemetry,
+                 Gamepad gamepad1,
+                 Gamepad gamepad2,
+                 PhoenixProfile profile,
+                 TeleOpHardwareAssembly teleOpHardwareAssembly,
+                 AutoHardwareAssembly autoHardwareAssembly) {
         this.hardwareMap = Objects.requireNonNull(hardwareMap, "hardwareMap");
-        this.telemetry = Objects.requireNonNull(telemetry, "telemetry");
+        Objects.requireNonNull(telemetry, "telemetry");
         this.gamepads = Gamepads.create(gamepad1, gamepad2);
         this.profile = Objects.requireNonNull(profile, "profile").copy();
-        this.telemetryPresenter = new PhoenixTelemetryPresenter(telemetry, this.profile);
+        this.teleOpHardwareAssembly = Objects.requireNonNull(
+                teleOpHardwareAssembly,
+                "teleOpHardwareAssembly"
+        );
+        this.autoHardwareAssembly = Objects.requireNonNull(
+                autoHardwareAssembly,
+                "autoHardwareAssembly"
+        );
+        this.telemetryPresenter = new PhoenixTelemetryPresenter(this.profile);
         this.loopPhaseProfiler = LoopPhaseProfiler.create(ENABLE_LOOP_PHASE_PROFILING);
-        this.loopPhaseDebugSink = ENABLE_LOOP_PHASE_PROFILING
-                ? new FtcTelemetryDebugSink(telemetry)
-                : NullDebugSink.INSTANCE;
     }
 
     /**
-     * Performs mode-agnostic initialization.
+     * Declare Phoenix's complete ordinary TeleOp program.
      *
-     * <p>
-     * Phoenix currently performs all meaningful work in mode-specific initialization, so this is an
-     * intentional no-op hook that preserves the surrounding lifecycle shape.
-     * </p>
-     */
-    public void initAny() {
-    }
-
-    /**
-     * Initializes the full Phoenix TeleOp runtime.
+     * <p>The declaration order is vision readiness, localization, targeting, managed bindings,
+     * scoring realization, final drive, and presentation. Every hardware/resource owner is
+     * registered immediately. If later configuration fails, {@link RobotProgram} performs the one
+     * best-effort cleanup transaction.</p>
      *
-     * <p>
-     * This method wires the framework lanes, shared Phoenix capability families, robot-specific
-     * controls, scoring services, drive overlays, and driver-facing telemetry help text. Call it
-     * once while the OpMode is in INIT before any TeleOp updates begin.
-     * If construction fails, every Phoenix owner that was successfully created is stopped before
-     * the original failure is rethrown. This stages the ordinary TeleOp help/readiness rows; the
-     * mode client adds any mode-boundary status and commits the one complete INIT telemetry frame.
-     * </p>
+     * <p>At FTC START, services refresh their snapshots, scoring realizes once, and the final drive
+     * writes an explicit zero. Manual and assisted driving starts in the first ordinary active
+     * loop. No TeleOp behavior or hardware is advanced during INIT.</p>
+     *
+     * @param program configuring managed program supplied by the FTC host
+     * @param eligibleScoringTagIds non-empty configured scoring-AprilTag subset selected by the
+     *                              mode client's frozen alliance policy
      */
-    public void initTeleOp() {
-        shutdown.beginInitialization("initTeleOp");
-        try {
-            initTeleOpRuntime();
-        } catch (RuntimeException initializationFailure) {
-            throw CleanupActions.attemptAllAfterFailure(
-                    initializationFailure,
-                    this::stop
-            );
-        }
-    }
+    public void declareTeleOp(
+            RobotProgram program,
+            Source<Set<Integer>> eligibleScoringTagIds
+    ) {
+        RobotProgram requiredProgram = Objects.requireNonNull(
+                program,
+                "Phoenix TeleOp program is required"
+        );
+        Source<Set<Integer>> requiredEligibleScoringTagIds = Objects.requireNonNull(
+                eligibleScoringTagIds,
+                "Phoenix TeleOp eligibleScoringTagIds source is required"
+        );
+        beginMode(RuntimeMode.MANAGED_TELEOP, "declareTeleOp");
+        loopPhaseProfiler.reset();
 
-    /** Build the TeleOp-owned and shared runtime after lifecycle validation. */
-    private void initTeleOpRuntime() {
-        drive = FtcDrives.mecanum(hardwareMap, profile.drive);
-        teleOpControls = new PhoenixTeleOpControls(gamepads, profile.controls);
+        teleOpControls = new PhoenixTeleOpControls(
+                requiredProgram.bindings(),
+                gamepads,
+                profile.controls
+        );
         teleOpPoseAssistReadiness = PhoenixReadiness.teleOpPoseAssists(profile);
+
         BooleanSource enabledAutoAim = teleOpControls.autoAimEnabledSource()
                 .and(BooleanSource.constant(teleOpPoseAssistReadiness.isAllowed()))
                 .memoized();
-        initSharedRuntimeWithOwnedPredictor(
+
+        vision = Objects.requireNonNull(
+                teleOpHardwareAssembly.createVision(hardwareMap, profile),
+                "TeleOp hardware assembly returned null vision"
+        );
+        ManagedTeleOpVisionService visionService = new ManagedTeleOpVisionService(vision);
+        registerServiceOrClean(requiredProgram, visionService, vision::close);
+
+        localization = Objects.requireNonNull(
+                teleOpHardwareAssembly.createLocalization(
+                        hardwareMap,
+                        vision,
+                        profile
+                ),
+                "TeleOp hardware assembly returned null localization"
+        );
+        requiredProgram.service(new ManagedTeleOpLocalizationService(localization));
+        teleOpPoseRestore.initialize(localization.globalEstimator());
+
+        scoringTargeting = createTargeting(
+                requiredEligibleScoringTagIds,
                 enabledAutoAim,
                 teleOpControls.aimOverrideSource()
         );
-        capabilities = createCapabilities();
+        requiredProgram.service(new ManagedTeleOpTargetingService(scoringTargeting));
 
+        scoringPath = Objects.requireNonNull(
+                teleOpHardwareAssembly.createScoring(
+                        hardwareMap,
+                        profile,
+                        scoringTargeting
+                ),
+                "TeleOp hardware assembly returned null scoring path"
+        );
+        ManagedTeleOpScoringOutput scoringOutput =
+                new ManagedTeleOpScoringOutput(scoringPath);
+        registerOutputOrClean(requiredProgram, scoringOutput, scoringPath::stop);
+
+        capabilities = createCapabilities();
         teleOpControls.bind(capabilities);
 
+        Source<ScoringPath.Status> scoringStatus =
+                Source.of(ignoredClock -> scoringPath.status());
         driveAssists = new PhoenixDriveAssistService(
                 profile.driveAssist,
                 teleOpControls.manualDriveSource(),
                 teleOpControls.manualTranslateMagnitudeSource(),
+                scoringStatus,
                 teleOpControls.autoAimEnabledSource(),
                 teleOpPoseAssistReadiness.isAllowed(),
                 localization.globalEstimator(),
                 scoringTargeting.aimOverlay()
         );
-        teleOpDriveSource = driveAssists.driveSource();
 
-        teleOpControls.emitInitHelp(telemetry);
-        telemetryPresenter.emitTeleOpReadiness(teleOpPoseAssistReadiness);
-        teleOpPoseRestore.initialize(localization.globalEstimator());
-    }
-
-    /**
-     * Initializes the Phoenix autonomous runtime using one owned external drive lifecycle,
-     * always-on auto-aim, and no manual override.
-     *
-     * <p>Phoenix depends only on {@link DriveCommandSink}; a Pedro, Road Runner, or custom adapter
-     * remains responsible for its vendor-specific behavior. Phoenix owns the supplied sink's
-     * recurring {@link DriveCommandSink#update(LoopClock)} call and final
-     * {@link DriveCommandSink#stop()} for this robot lifetime. Call one mode initialization exactly
-     * once per {@code PhoenixRobot}; create a new robot container for another mode/runtime.</p>
-     *
-     * <p>The drive sink and predictor are supplied as an explicit pair because an external route
-     * runtime may own both drivetrain actuation and the physical odometry resource. Requiring both
-     * seams prevents Phoenix from silently constructing a second hardware predictor for Auto.</p>
-     *
-     * <p>Success means this composition root's shared services and routine lifecycle are available;
-     * the Auto mode client must separately decide whether its exact calibration, field facts, and
-     * route are ready before installing or starting behavior.</p>
-     *
-     * @param autonomousDrive external Auto drive owner; must not be null
-     * @param motionPredictor predictor owned by the same Auto runtime; must not be null
-     */
-    public void initAuto(DriveCommandSink autonomousDrive,
-                         MotionPredictor motionPredictor) {
-        initAuto(
-                autonomousDrive,
-                motionPredictor,
-                BooleanSource.constant(true),
-                BooleanSource.constant(false)
+        DriveCommandSink drive = Objects.requireNonNull(
+                teleOpHardwareAssembly.createDrive(hardwareMap, profile),
+                "TeleOp hardware assembly returned null drive sink"
         );
-    }
-
-    /**
-     * Initializes the Phoenix autonomous runtime with an owned external drive lifecycle and
-     * explicit auto-aim enable / override sources.
-     *
-     * <p>
-     * This creates the same shared runtime and {@link PhoenixCapabilities} surface used in TeleOp,
-     * owns the supplied drive sink's per-loop update and shutdown, and leaves route geometry plus
-     * autonomous task composition outside the robot container.
-     * If construction fails, every Phoenix owner that was successfully created is stopped before
-     * the original failure is rethrown. Repeated or cross-mode initialization is rejected before
-     * the active ownership graph can be overwritten.
-     * </p>
-     *
-     * @param autonomousDrive     external Auto drive owner; must not be null
-     * @param motionPredictor     predictor owned by the same Auto runtime; must not be null
-     * @param autoAimEnabledSource source that controls whether target selection + aim gating are active
-     * @param aimOverrideSource    source that bypasses aim-readiness gating when true
-     */
-    public void initAuto(DriveCommandSink autonomousDrive,
-                         MotionPredictor motionPredictor,
-                         BooleanSource autoAimEnabledSource,
-                         BooleanSource aimOverrideSource) {
-        shutdown.beginInitialization("initAuto");
+        ManagedTeleOpDriveSink driveSink = new ManagedTeleOpDriveSink(drive);
         try {
-            this.autonomousDrive = Objects.requireNonNull(
-                    autonomousDrive,
-                    "autonomousDrive"
+            requiredProgram.drive(
+                    new ManagedTeleOpDriveSource(driveAssists.driveSource()),
+                    driveSink
             );
-            initSharedRuntimeWithPredictor(
-                    Objects.requireNonNull(motionPredictor, "motionPredictor"),
-                    autoAimEnabledSource,
-                    aimOverrideSource
-            );
-            capabilities = createCapabilities();
-            autoRoutineLifecycle = new AutoRoutineLifecycle();
-        } catch (RuntimeException initializationFailure) {
+        } catch (RuntimeException registrationFailure) {
             throw CleanupActions.attemptAllAfterFailure(
-                    initializationFailure,
-                    this::stop
+                    registrationFailure,
+                    driveSink::stop
             );
         }
     }
 
-    /** Build the ordinary TeleOp localization lane, including its owned Pinpoint predictor. */
-    private void initSharedRuntimeWithOwnedPredictor(BooleanSource autoAimEnabledSource,
-                                                     BooleanSource aimOverrideSource) {
-        vision = PhoenixVisionFactory.create(hardwareMap, profile.vision);
-        localization = new FtcOdometryAprilTagLocalizationLane(
-                hardwareMap,
-                vision,
-                profile.field.fixedAprilTagLayout,
-                profile.localization
+    /**
+     * Return Phoenix's one additive TeleOp presenter after the match-handoff decision is known.
+     *
+     * <p>During INIT it repeats controls, pose-assist readiness, and handoff status. After START it
+     * presents only already-published robot snapshots. It never clears or commits telemetry.</p>
+     *
+     * @param restoreResult result of consuming Phoenix's Auto-to-TeleOp match snapshot
+     * @return presenter to register with the same managed program
+     */
+    public RobotProgram.Presenter teleOpPresenter(
+            PhoenixMatchHandoff.RestoreResult restoreResult
+    ) {
+        requireMode(RuntimeMode.MANAGED_TELEOP, "create the TeleOp presenter");
+        PhoenixMatchHandoff.RestoreResult requiredResult = Objects.requireNonNull(
+                restoreResult,
+                "Phoenix TeleOp handoff result is required"
         );
-
-        initSharedServices(autoAimEnabledSource, aimOverrideSource);
-    }
-
-    /** Build Auto localization around the predictor already owned by the external drive runtime. */
-    private void initSharedRuntimeWithPredictor(MotionPredictor motionPredictor,
-                                                BooleanSource autoAimEnabledSource,
-                                                BooleanSource aimOverrideSource) {
-        vision = PhoenixVisionFactory.create(hardwareMap, profile.vision);
-        localization = FtcOdometryAprilTagLocalizationLane.withPredictor(
-                Objects.requireNonNull(motionPredictor, "motionPredictor"),
-                vision,
-                profile.field.fixedAprilTagLayout,
-                profile.localization
-        );
-
-        initSharedServices(autoAimEnabledSource, aimOverrideSource);
-    }
-
-    /** Build the mode-neutral Phoenix services after vision and localization ownership is fixed. */
-    private void initSharedServices(BooleanSource autoAimEnabledSource,
-                                    BooleanSource aimOverrideSource) {
-
-        scoringTargeting = new ScoringTargeting(
-                profile.autoAim,
-                profile.localization.aprilTags.fieldPoseSolver.copy(),
-                vision.tagSensor(),
-                vision.cameraMountConfig(),
-                localization.globalEstimator(),
-                profile.field.fixedAprilTagLayout,
-                Objects.requireNonNull(autoAimEnabledSource, "autoAimEnabledSource"),
-                Objects.requireNonNull(aimOverrideSource, "aimOverrideSource"),
-                profile.autoAim.shotVelocityTable
-        );
-
-        scoringPath = new ScoringPath(
-                hardwareMap,
-                profile.scoring,
-                scoringTargeting,
-                clock
-        );
-    }
-
-    private PhoenixCapabilities createCapabilities() {
-        return new PhoenixCapabilities(
-                requireScoringPath(),
-                requireScoringTargeting()
+        if (teleOpPresenterCreated) {
+            throw new IllegalStateException(
+                    "Phoenix TeleOp already created its presenter; register exactly one presenter"
+            );
+        }
+        teleOpPresenterCreated = true;
+        return (clock, frameTelemetry) -> presentTeleOp(
+                clock,
+                frameTelemetry,
+                requiredResult
         );
     }
 
     /**
-     * Resets shared lifecycle state for any mode.
+     * Declare Phoenix's complete managed Auto hardware and service graph.
      *
-     * <p>For Auto, this is the exact Phoenix lifecycle boundary for FTC START and closes the
-     * pre-start routine installation window before {@link #startAuto()} begins the installed
-     * root.</p>
+     * <p>The caller retains strategy data and the root routine. Phoenix immediately transfers the
+     * supplied drive owner into the program, then constructs vision, localization, targeting, and
+     * scoring exactly once. At START the service applies the frozen Pedro pose before its first
+     * vision, localization, targeting, and vendor-heartbeat updates. Ordinary Phoenix Auto passes
+     * always-enabled auto aim and no override; a direct advanced assembly may supply other
+     * clock-aware policies without taking lifecycle ownership away from the managed program.</p>
      *
-     * @param runtime current FTC runtime in seconds
+     * @param program managed program that immediately owns every completed resource
+     * @param autonomousDrive sole Auto drive heartbeat and stop owner
+     * @param motionPredictor predictor owned by the same Auto runtime
+     * @param eligibleScoringTagIds non-empty configured scoring-tag subset eligible in this mode
+     * @param autoAimEnabledSource policy that enables target selection and aim gating
+     * @param aimOverrideSource policy that bypasses aim-readiness gating while true
+     * @param applyStartingPose exact-START action that applies the frozen Auto pose
      */
-    public void startAny(double runtime) {
+    public void declareAuto(
+            RobotProgram program,
+            DriveCommandSink autonomousDrive,
+            MotionPredictor motionPredictor,
+            Source<Set<Integer>> eligibleScoringTagIds,
+            BooleanSource autoAimEnabledSource,
+            BooleanSource aimOverrideSource,
+            Runnable applyStartingPose
+    ) {
+        RobotProgram requiredProgram = Objects.requireNonNull(
+                program,
+                "Phoenix Auto program is required"
+        );
+        beginMode(RuntimeMode.MANAGED_AUTO, "declareAuto");
         loopPhaseProfiler.reset();
-        clock.reset(runtime);
-        teleOpPoseRestore.markStartBoundary();
-        if (autoRoutineLifecycle != null) {
-            autoRoutineLifecycle.markStartBoundary();
-        }
-    }
 
-    /**
-     * Starts TeleOp-specific runtime state.
-     *
-     * <p>
-     * Phoenix currently does not need an additional TeleOp start action beyond the shared clock
-     * reset, so this remains an explicit no-op lifecycle hook.
-     * </p>
-     */
-    public void startTeleOp() {
-    }
-
-    /**
-     * Starts autonomous-specific runtime state.
-     *
-     * <p>The one routine installed before {@link #startAny(double)} starts immediately on the shared
-     * clock's exact FTC START boundary. This gives every match-time budget the same zero-delta
-     * timestamp instead of delaying its start until the first regular loop.</p>
-     *
-     * @throws IllegalStateException if Auto is not initialized, {@link #startAny(double)} has not
-     *                               established the FTC START boundary, no root is installed, or
-     *                               this Auto runtime has already started
-     */
-    public void startAuto() {
-        requireAutoRoutineLifecycle().start(clock);
-    }
-
-    /**
-     * Updates shared lifecycle state for any mode.
-     *
-     * @param runtime current FTC runtime in seconds
-     */
-    public void updateAny(double runtime) {
-        clock.update(runtime);
-    }
-
-    /**
-     * Advances one TeleOp loop.
-     *
-     * <p>The OpMode must call {@link #updateAny(double)} exactly once earlier in the same loop so
-     * this method and every owned component observe the current shared-clock cycle.</p>
-     *
-     * <p>
-     * Loop order is intentionally explicit: vision component readiness, localization lane,
-     * targeting, controls, scoring path, drive-assist service, drivebase, then telemetry
-     * presentation and one complete-frame telemetry commit. When the private loop-phase diagnostic
-     * is enabled, it observes those same boundaries and stages the preceding completed sample
-     * before that commit. Callers must not perform a second commit for the same active loop.
-     * </p>
-     */
-    public void updateTeleOp() {
-        if (drive == null
-                || vision == null
-                || localization == null
-                || scoringPath == null
-                || scoringTargeting == null
-                || teleOpControls == null
-                || driveAssists == null
-                || teleOpDriveSource == null) {
-            return;
-        }
-
-        loopPhaseProfiler.startCycle(clock);
-
-        VisionReadiness visionReadiness = vision.readiness(clock);
-        loopPhaseProfiler.finishPhase("visionReadiness");
-
-        localization.update(clock);
-        loopPhaseProfiler.finishPhase("localization");
-
-        scoringTargeting.update(clock);
-        loopPhaseProfiler.finishPhase("targeting");
-
-        teleOpControls.update(clock);
-        loopPhaseProfiler.finishPhase("controls");
-
-        scoringPath.update(clock);
-        ScoringPath.Status scoringStatus = scoringPath.status();
-        loopPhaseProfiler.finishPhase("scoring");
-
-        driveAssists.update(clock, scoringStatus);
-        DriveSignal cmd = teleOpDriveSource.get(clock).clamped();
-        loopPhaseProfiler.finishPhase("driveAssist");
-
-        drive.drive(cmd);
-        loopPhaseProfiler.finishPhase("drive");
-
-        ScoringTargeting.Status targetingStatus = scoringTargeting.status(clock);
-        PhoenixDriveAssistService.Status driveAssistStatus = driveAssists.status();
-        PoseEstimate globalPose = localization.globalEstimator().getEstimate();
-        PoseEstimate odomPose = localization.predictor().getEstimate();
-        loopPhaseProfiler.finishPhase("snapshots");
-
-        if (ENABLE_LOOP_PHASE_PROFILING) {
-            loopPhaseProfiler.debugDump(loopPhaseDebugSink, "loopProfile");
-        }
-        telemetryPresenter.emitTeleOp(
-                scoringStatus,
-                targetingStatus,
-                driveAssistStatus,
-                teleOpPoseAssistReadiness,
-                visionReadiness,
-                globalPose,
-                odomPose
+        ManagedAutoService autoService = new ManagedAutoService(
+                Objects.requireNonNull(autonomousDrive, "autonomousDrive"),
+                Objects.requireNonNull(applyStartingPose, "applyStartingPose")
         );
-        telemetry.update();
-        loopPhaseProfiler.finishPhase("telemetry");
-        loopPhaseProfiler.finishCycle(clock);
-    }
+        registerServiceOrClean(requiredProgram, autoService, autoService::stop);
 
-    /**
-     * Advances one autonomous loop.
-     *
-     * <p>The OpMode must call {@link #updateAny(double)} exactly once earlier in the same loop so
-     * this method and every owned component observe the current shared-clock cycle.</p>
-     *
-     * <p>Loop order is explicit and matches Phoenix ownership boundaries: vision component
-     * readiness, localization, targeting, the continuously owned external drive heartbeat, the
-     * installed autonomous root, the scoring path, and finally one complete-frame telemetry
-     * commit. The Auto OpMode may stage readiness and Pedro sidecar rows before this method; they
-     * are committed with the Phoenix rows. Optional loop-phase diagnostics observe the same
-     * boundaries and never supply behavior timing. Callers must not perform a second commit for
-     * the same active loop.</p>
-     */
-    public void updateAuto() {
-        if (vision == null
-                || localization == null
-                || scoringPath == null
-                || scoringTargeting == null
-                || autoRoutineLifecycle == null
-                || autonomousDrive == null) {
-            return;
-        }
-
-        loopPhaseProfiler.startCycle(clock);
-
-        VisionReadiness visionReadiness = vision.readiness(clock);
-        loopPhaseProfiler.finishPhase("visionReadiness");
-
-        localization.update(clock);
-        loopPhaseProfiler.finishPhase("localization");
-
-        scoringTargeting.update(clock);
-        loopPhaseProfiler.finishPhase("targeting");
-
-        autonomousDrive.update(clock);
-        loopPhaseProfiler.finishPhase("drive");
-
-        autoRoutineLifecycle.update(clock);
-        loopPhaseProfiler.finishPhase("tasks");
-
-        scoringPath.update(clock);
-        ScoringPath.Status scoringStatus = scoringPath.status();
-        loopPhaseProfiler.finishPhase("scoring");
-
-        ScoringTargeting.Status targetingStatus = scoringTargeting.status(clock);
-        PoseEstimate globalPose = localization.globalEstimator().getEstimate();
-        PoseEstimate odomPose = localization.predictor().getEstimate();
-        loopPhaseProfiler.finishPhase("snapshots");
-
-        if (ENABLE_LOOP_PHASE_PROFILING) {
-            loopPhaseProfiler.debugDump(loopPhaseDebugSink, "loopProfile");
-        }
-        telemetryPresenter.emitAuto(
-                scoringStatus,
-                targetingStatus,
-                autoRoutineLifecycle.installedRoutine(),
-                visionReadiness,
-                globalPose,
-                odomPose
+        vision = Objects.requireNonNull(
+                autoHardwareAssembly.createVision(hardwareMap, profile),
+                "Auto hardware assembly returned null vision"
         );
-        telemetry.update();
-        loopPhaseProfiler.finishPhase("telemetry");
-        loopPhaseProfiler.finishCycle(clock);
+        autoService.attachVision(vision);
+
+        localization = Objects.requireNonNull(
+                autoHardwareAssembly.createLocalization(
+                        Objects.requireNonNull(motionPredictor, "motionPredictor"),
+                        vision,
+                        profile
+                ),
+                "Auto hardware assembly returned null localization"
+        );
+        autoService.attachLocalization(localization);
+
+        scoringTargeting = createTargeting(
+                Objects.requireNonNull(
+                        eligibleScoringTagIds,
+                        "eligibleScoringTagIds"
+                ),
+                Objects.requireNonNull(
+                        autoAimEnabledSource,
+                        "autoAimEnabledSource"
+                ),
+                Objects.requireNonNull(
+                        aimOverrideSource,
+                        "aimOverrideSource"
+                )
+        );
+        autoService.attachTargeting(scoringTargeting);
+
+        scoringPath = Objects.requireNonNull(
+                autoHardwareAssembly.createScoring(
+                        hardwareMap,
+                        profile,
+                        scoringTargeting
+                ),
+                "Auto hardware assembly returned null scoring path"
+        );
+        ManagedAutoScoringOutput scoringOutput = new ManagedAutoScoringOutput(scoringPath);
+        registerOutputOrClean(requiredProgram, scoringOutput, scoringPath::stop);
+        capabilities = createCapabilities();
     }
 
-    /**
-     * Installs the one root autonomous routine for this Phoenix runtime.
-     *
-     * <p>Call this exactly once after {@link #initAuto(DriveCommandSink, MotionPredictor)} and before
-     * {@link #startAny(double)}. Normal Auto entries install during INIT; a guarded selector may
-     * finish construction at the beginning of its FTC {@code start()} callback before forwarding
-     * that lifecycle boundary. The root Task may internally compose every route, mechanism action,
-     * deadline, and fallback needed by the selected strategy.</p>
-     *
-     * @param task fresh single-use root Task for the selected autonomous routine
-     * @throws NullPointerException  if {@code task} is null
-     * @throws IllegalStateException if Auto is not initialized, a root is already installed, or
-     *                               {@link #startAny(double)} has closed the installation window
-     */
-    public void installAutoRoutine(Task task) {
-        requireAutoRoutineLifecycle().install(task);
+    /** Return Phoenix's one additive managed-Auto presenter for the declared root routine. */
+    public RobotProgram.Presenter autoPresenter(Task rootRoutine) {
+        requireMode(RuntimeMode.MANAGED_AUTO, "create the Auto presenter");
+        Task requiredRoot = Objects.requireNonNull(rootRoutine, "rootRoutine");
+        if (autoPresenterCreated) {
+            throw new IllegalStateException(
+                    "Phoenix Auto already created its presenter; register exactly one presenter"
+            );
+        }
+        autoPresenterCreated = true;
+        return (clock, frameTelemetry) -> presentAuto(
+                clock,
+                frameTelemetry,
+                requiredRoot
+        );
     }
 
-    /**
-     * Returns Phoenix's shared mode-neutral capability families.
-     *
-     * @return initialized capability-family façade for the active mode
-     */
+    /** Return Phoenix's initialized shared, mode-neutral capability vocabulary. */
     public PhoenixCapabilities capabilities() {
-        return requireCapabilities();
-    }
-
-    /**
-     * Stops the complete Phoenix runtime exactly once.
-     *
-     * <p>Behavior owners are canceled first, physical scoring and drive outputs are stopped next,
-     * and supporting targeting/vision resources are released afterward. All ownership references
-     * are detached before cleanup begins, making repeated or reentrant calls harmless.</p>
-     *
-     * <p>If one owner throws, the remaining cleanup actions still run. The first runtime failure is
-     * rethrown after cleanup, with later failures attached as suppressed exceptions.</p>
-     */
-    public void stop() {
-        AutoRoutineLifecycle autoRoutineToStop = autoRoutineLifecycle;
-        PhoenixTeleOpControls controlsToStop = teleOpControls;
-        PhoenixDriveAssistService assistsToStop = driveAssists;
-        ScoringPath scoringToStop = scoringPath;
-        DriveCommandSink autonomousDriveToStop = autonomousDrive;
-        MecanumDrivebase driveToStop = drive;
-        ScoringTargeting targetingToStop = scoringTargeting;
-        AprilTagVisionLane visionToStop = vision;
-
-        autoRoutineLifecycle = null;
-        teleOpControls = null;
-        driveAssists = null;
-        teleOpDriveSource = null;
-        teleOpPoseAssistReadiness = null;
-        autonomousDrive = null;
-        scoringPath = null;
-        drive = null;
-        scoringTargeting = null;
-        vision = null;
-        capabilities = null;
-        localization = null;
-        teleOpPoseRestore.clear();
-
-        Runnable cancelAuto = autoRoutineToStop == null
-                ? null
-                : autoRoutineToStop::cancelAndClear;
-        Runnable clearControls = controlsToStop == null ? null : controlsToStop::clear;
-        Runnable resetAssists = assistsToStop == null ? null : assistsToStop::reset;
-        Runnable stopScoring = scoringToStop == null ? null : scoringToStop::stop;
-        Runnable stopAutonomousDrive = autonomousDriveToStop == null
-                ? null
-                : autonomousDriveToStop::stop;
-        Runnable stopDrive = driveToStop == null ? null : driveToStop::stop;
-        Runnable resetTargeting = targetingToStop == null ? null : targetingToStop::reset;
-        Runnable closeVision = visionToStop == null ? null : visionToStop::close;
-
-        shutdown.run(
-                cancelAuto,
-                clearControls,
-                resetAssists,
-                stopScoring,
-                stopAutonomousDrive,
-                stopDrive,
-                resetTargeting,
-                closeVision
-        );
-    }
-
-    /**
-     * Applies one accepted Auto-to-TeleOp field pose before the FTC START boundary.
-     *
-     * <p>This package-private seam keeps the localization owner private. The robot-owned handoff
-     * validates and consumes its process-local snapshot, while this composition root alone decides
-     * how an accepted field pose rebases the active TeleOp estimator.</p>
-     *
-     * @param fieldToRobotPose accepted immutable pose in the Phoenix field frame
-     * @throws NullPointerException  if {@code fieldToRobotPose} is null
-     * @throws IllegalArgumentException if any planar pose component is not finite
-     * @throws IllegalStateException if TeleOp localization is not initialized or FTC START has
-     *                               already been reached
-     */
-    void restoreTeleOpPose(Pose2d fieldToRobotPose) {
-        teleOpPoseRestore.restore(fieldToRobotPose);
-    }
-
-    private PhoenixCapabilities requireCapabilities() {
         if (capabilities == null) {
             throw new IllegalStateException("Phoenix capabilities are not initialized");
         }
         return capabilities;
     }
 
-    private ScoringPath requireScoringPath() {
-        if (scoringPath == null) {
-            throw new IllegalStateException("Phoenix scoring path is not initialized");
-        }
-        return scoringPath;
+    /** Apply one accepted match pose while managed TeleOp is declared and still in INIT. */
+    void restoreTeleOpPose(Pose2d fieldToRobotPose) {
+        requireMode(RuntimeMode.MANAGED_TELEOP, "restore the Auto-to-TeleOp pose");
+        teleOpPoseRestore.restore(fieldToRobotPose);
     }
 
-    private ScoringTargeting requireScoringTargeting() {
-        if (scoringTargeting == null) {
-            throw new IllegalStateException("Phoenix targeting runtime is not initialized");
-        }
-        return scoringTargeting;
+    private ScoringTargeting createTargeting(Source<Set<Integer>> eligibleScoringTagIds,
+                                              BooleanSource autoAimEnabledSource,
+                                              BooleanSource aimOverrideSource) {
+        return new ScoringTargeting(
+                profile.autoAim,
+                profile.localization.aprilTags.fieldPoseSolver.copy(),
+                vision.tagSensor(),
+                vision.cameraMountConfig(),
+                localization.globalEstimator(),
+                profile.field.fixedAprilTagLayout,
+                eligibleScoringTagIds,
+                autoAimEnabledSource,
+                aimOverrideSource,
+                profile.autoAim.shotVelocityTable
+        );
     }
 
-    private AutoRoutineLifecycle requireAutoRoutineLifecycle() {
-        if (autoRoutineLifecycle == null) {
+    private PhoenixCapabilities createCapabilities() {
+        if (scoringPath == null || scoringTargeting == null) {
             throw new IllegalStateException(
-                    "Phoenix Auto is not initialized; call initAuto(...) before installing or "
-                            + "starting an autonomous routine"
+                    "Phoenix cannot create capabilities before scoring and targeting exist"
             );
         }
-        return autoRoutineLifecycle;
+        return new PhoenixCapabilities(scoringPath, scoringTargeting);
     }
 
-    /**
-     * Package-private lifecycle owner behind Phoenix's one-root Auto API.
-     *
-     * <p>The {@link TaskRunner} remains an implementation detail. Retaining the installed root
-     * separately keeps terminal phase/outcome telemetry available after the runner releases a
-     * completed Task.</p>
-     */
-    static final class AutoRoutineLifecycle {
-        private final TaskRunner runner = new TaskRunner();
-        private Task installedRoutine;
-        private boolean startBoundaryReached;
-        private boolean started;
+    private void presentTeleOp(LoopClock clock,
+                               Telemetry frameTelemetry,
+                               PhoenixMatchHandoff.RestoreResult restoreResult) {
+        Objects.requireNonNull(clock, "Phoenix TeleOp presentation clock is required");
+        Telemetry requiredTelemetry = Objects.requireNonNull(
+                frameTelemetry,
+                "Phoenix TeleOp frame telemetry is required"
+        );
 
-        /** Install exactly one fresh root before the Phoenix lifecycle reaches FTC START. */
-        void install(Task task) {
-            Task requiredTask = Objects.requireNonNull(
-                    task,
-                    "Phoenix auto routine is required"
+        if (!teleOpStartBoundaryReached) {
+            teleOpControls.emitInitHelp(requiredTelemetry);
+            telemetryPresenter.emitTeleOpReadiness(
+                    requiredTelemetry,
+                    teleOpPoseAssistReadiness
             );
-            if (startBoundaryReached || started) {
-                throw new IllegalStateException(
-                        "Phoenix auto routine installation is pre-start only; call "
-                                + "installAutoRoutine(...) before startAny(...) and startAuto()"
+            requiredTelemetry.addData("teleop.matchHandoff", restoreResult);
+            if (restoreResult != PhoenixMatchHandoff.RestoreResult.RESTORED) {
+                requiredTelemetry.addLine(
+                        "Match handoff was not restored; TeleOp keeps its normal pose and owns "
+                                + "the displayed alliance selection."
                 );
             }
-            if (installedRoutine != null) {
-                throw new IllegalStateException(
-                        "Phoenix Auto already has an installed routine; install exactly one root "
-                                + "Task for each PhoenixRobot"
-                );
-            }
-            installedRoutine = requiredTask;
+            return;
         }
 
-        /** Record that FTC START has closed the pre-start installation window. */
-        void markStartBoundary() {
-            startBoundaryReached = true;
+        ScoringPath.Status scoringStatus = scoringPath.status();
+        ScoringTargeting.Status targetingStatus = scoringTargeting.status();
+        PhoenixDriveAssistService.Status driveAssistStatus = driveAssists.status();
+        PoseEstimate globalPose = localization.globalEstimator().getEstimate();
+        PoseEstimate odomPose = localization.predictor().getEstimate();
+        finishTeleOpProfilePhase("snapshots");
+
+        if (ENABLE_LOOP_PHASE_PROFILING) {
+            loopPhaseProfiler.debugDump(
+                    new FtcTelemetryDebugSink(requiredTelemetry),
+                    "loopProfile"
+            );
         }
-
-        /** Start the installed root once at the current shared-clock boundary. */
-        void start(LoopClock clock) {
-            Objects.requireNonNull(clock, "Phoenix Auto start clock is required");
-            if (started) {
-                throw new IllegalStateException(
-                        "Phoenix Auto has already started; create a new PhoenixRobot for another "
-                                + "autonomous run"
-                );
-            }
-            if (installedRoutine == null) {
-                throw new IllegalStateException(
-                        "Phoenix Auto cannot start without an installed routine; call "
-                                + "installAutoRoutine(...) before startAny(runtime)"
-                );
-            }
-            if (!startBoundaryReached) {
-                throw new IllegalStateException(
-                        "Phoenix Auto cannot start before startAny(runtime) resets the shared "
-                                + "LoopClock at FTC START"
-                );
-            }
-
-            // Publish the terminal lifecycle state before invoking arbitrary Task callbacks so a
-            // reentrant or throwing start cannot schedule the root a second time.
-            started = true;
-            runner.enqueue(installedRoutine);
-            runner.update(clock);
-        }
-
-        /** Advance the private one-root runner during the ordinary Phoenix Auto Task phase. */
-        void update(LoopClock clock) {
-            runner.update(clock);
-        }
-
-        /** Cancel active work and discard any pending runner state during total robot shutdown. */
-        void cancelAndClear() {
-            runner.cancelAndClear();
-        }
-
-        /** Return the retained root for active and terminal telemetry. */
-        Task installedRoutine() {
-            return installedRoutine;
-        }
-
+        telemetryPresenter.emitTeleOp(
+                requiredTelemetry,
+                scoringStatus,
+                targetingStatus,
+                driveAssistStatus,
+                teleOpPoseAssistReadiness,
+                teleOpVisionReadiness,
+                globalPose,
+                odomPose
+        );
+        finishTeleOpProfilePhase("presentation");
+        finishTeleOpProfileCycle(clock);
     }
 
-    /**
-     * Package-private lifecycle guard for the narrow pre-START TeleOp pose-reset seam.
-     *
-     * <p>Keeping this state separate from FTC hardware construction lets its boundary rules be
-     * verified with a fake {@link PoseResetter} on the host JVM.</p>
-     */
+    private void presentAuto(LoopClock clock,
+                             Telemetry frameTelemetry,
+                             Task rootRoutine) {
+        Objects.requireNonNull(clock, "Phoenix Auto presentation clock is required");
+        Telemetry requiredTelemetry = Objects.requireNonNull(
+                frameTelemetry,
+                "Phoenix Auto frame telemetry is required"
+        );
+        if (!autoStartBoundaryReached) {
+            requiredTelemetry.addLine(
+                    "Phoenix Auto hardware is configured and remains inert until START is allowed."
+            );
+            return;
+        }
+
+        ScoringPath.Status scoringStatus = scoringPath.status();
+        ScoringTargeting.Status targetingStatus = scoringTargeting.status();
+        PoseEstimate globalPose = localization.globalEstimator().getEstimate();
+        PoseEstimate odomPose = localization.predictor().getEstimate();
+        finishAutoProfilePhase("snapshots");
+
+        if (ENABLE_LOOP_PHASE_PROFILING) {
+            loopPhaseProfiler.debugDump(
+                    new FtcTelemetryDebugSink(requiredTelemetry),
+                    "loopProfile"
+            );
+        }
+        telemetryPresenter.emitAuto(
+                requiredTelemetry,
+                scoringStatus,
+                targetingStatus,
+                rootRoutine,
+                autoVisionReadiness,
+                globalPose,
+                odomPose
+        );
+        finishAutoProfilePhase("presentation");
+        finishAutoProfileCycle(clock);
+    }
+
+    private void beginMode(RuntimeMode selectedMode, String operation) {
+        if (mode != RuntimeMode.NEW) {
+            throw new IllegalStateException(
+                    operation + " cannot run because this PhoenixRobot already selected " + mode
+                            + "; create a new PhoenixRobot for another mode or runtime"
+            );
+        }
+        mode = selectedMode;
+    }
+
+    private void requireMode(RuntimeMode requiredMode, String operation) {
+        if (mode != requiredMode) {
+            throw new IllegalStateException(
+                    "PhoenixRobot cannot " + operation + " while its mode is " + mode
+                            + "; expected " + requiredMode
+            );
+        }
+    }
+
+    private static <T extends RobotProgram.Service> T registerServiceOrClean(
+            RobotProgram program,
+            T service,
+            Runnable cleanup
+    ) {
+        try {
+            return program.service(service);
+        } catch (RuntimeException registrationFailure) {
+            throw CleanupActions.attemptAllAfterFailure(registrationFailure, cleanup);
+        }
+    }
+
+    private static <T extends RobotProgram.Output> T registerOutputOrClean(
+            RobotProgram program,
+            T output,
+            Runnable cleanup
+    ) {
+        try {
+            return program.output(output);
+        } catch (RuntimeException registrationFailure) {
+            throw CleanupActions.attemptAllAfterFailure(registrationFailure, cleanup);
+        }
+    }
+
+    private void finishTeleOpProfilePhase(String name) {
+        if (teleOpProfileCycleActive) {
+            loopPhaseProfiler.finishPhase(name);
+        }
+    }
+
+    private void finishTeleOpProfileCycle(LoopClock clock) {
+        if (!teleOpProfileCycleActive) {
+            return;
+        }
+        loopPhaseProfiler.finishCycle(clock);
+        teleOpProfileCycleActive = false;
+    }
+
+    private void finishAutoProfilePhase(String name) {
+        if (autoProfileCycleActive) {
+            loopPhaseProfiler.finishPhase(name);
+        }
+    }
+
+    private void finishAutoProfileCycle(LoopClock clock) {
+        if (!autoProfileCycleActive) {
+            return;
+        }
+        loopPhaseProfiler.finishCycle(clock);
+        autoProfileCycleActive = false;
+    }
+
+    /** Managed owner of vision readiness and its close lifecycle. */
+    private final class ManagedTeleOpVisionService implements RobotProgram.Service {
+        private final AprilTagVisionLane ownedVision;
+
+        private ManagedTeleOpVisionService(AprilTagVisionLane ownedVision) {
+            this.ownedVision = ownedVision;
+        }
+
+        @Override
+        public void start(LoopClock clock) {
+            loopPhaseProfiler.reset();
+            teleOpStartBoundaryReached = true;
+            teleOpOrdinaryLoopReached = false;
+            teleOpPoseRestore.markStartBoundary();
+            teleOpVisionReadiness = ownedVision.readiness(clock);
+        }
+
+        @Override
+        public void update(LoopClock clock) {
+            teleOpOrdinaryLoopReached = true;
+            loopPhaseProfiler.startCycle(clock);
+            teleOpProfileCycleActive = true;
+            teleOpVisionReadiness = ownedVision.readiness(clock);
+            finishTeleOpProfilePhase("visionReadiness");
+        }
+
+        @Override
+        public void stop() {
+            CleanupActions.attemptAll(ownedVision::close, teleOpPoseRestore::clear);
+        }
+    }
+
+    /** Managed localization heartbeat; its hardware resource is owned by the vision/predictor graph. */
+    private final class ManagedTeleOpLocalizationService implements RobotProgram.Service {
+        private final FtcOdometryAprilTagLocalizationLane ownedLocalization;
+
+        private ManagedTeleOpLocalizationService(
+                FtcOdometryAprilTagLocalizationLane ownedLocalization
+        ) {
+            this.ownedLocalization = ownedLocalization;
+        }
+
+        @Override
+        public void start(LoopClock clock) {
+            ownedLocalization.update(clock);
+        }
+
+        @Override
+        public void update(LoopClock clock) {
+            ownedLocalization.update(clock);
+            finishTeleOpProfilePhase("localization");
+        }
+
+        @Override
+        public void stop() {
+            // The lane's stable resources are stopped by their explicit vision/output owners.
+        }
+    }
+
+    /** Managed targeting publisher and reset owner. */
+    private final class ManagedTeleOpTargetingService implements RobotProgram.Service {
+        private final ScoringTargeting ownedTargeting;
+
+        private ManagedTeleOpTargetingService(ScoringTargeting ownedTargeting) {
+            this.ownedTargeting = ownedTargeting;
+        }
+
+        @Override
+        public void start(LoopClock clock) {
+            ownedTargeting.update(clock);
+        }
+
+        @Override
+        public void update(LoopClock clock) {
+            ownedTargeting.update(clock);
+            finishTeleOpProfilePhase("targeting");
+        }
+
+        @Override
+        public void stop() {
+            ownedTargeting.reset();
+        }
+    }
+
+    /** Downstream scoring owner with transparent optional profiling boundaries. */
+    private final class ManagedTeleOpScoringOutput implements RobotProgram.Output {
+        private final ScoringPath ownedScoring;
+
+        private ManagedTeleOpScoringOutput(ScoringPath ownedScoring) {
+            this.ownedScoring = ownedScoring;
+        }
+
+        @Override
+        public void update(LoopClock clock) {
+            finishTeleOpProfilePhase("controls");
+            ownedScoring.update(clock);
+            finishTeleOpProfilePhase("scoring");
+        }
+
+        @Override
+        public void stop() {
+            ownedScoring.stop();
+        }
+    }
+
+    /** Final source that makes exact START zero distinct from the first ordinary drive loop. */
+    private final class ManagedTeleOpDriveSource implements DriveSource {
+        private final DriveSource activeSource;
+
+        private ManagedTeleOpDriveSource(DriveSource activeSource) {
+            this.activeSource = activeSource;
+        }
+
+        @Override
+        public DriveSignal get(LoopClock clock) {
+            DriveSignal signal = teleOpOrdinaryLoopReached
+                    ? activeSource.get(clock)
+                    : DriveSignal.zero();
+            finishTeleOpProfilePhase("driveAssist");
+            return signal;
+        }
+
+        @Override
+        public void reset() {
+            activeSource.reset();
+        }
+    }
+
+    /** Final drive sink wrapper that keeps physical write timing in Phoenix's diagnostics. */
+    private final class ManagedTeleOpDriveSink implements DriveCommandSink {
+        private final DriveCommandSink ownedSink;
+
+        private ManagedTeleOpDriveSink(DriveCommandSink ownedSink) {
+            this.ownedSink = ownedSink;
+        }
+
+        @Override
+        public void update(LoopClock clock) {
+            ownedSink.update(clock);
+        }
+
+        @Override
+        public void drive(DriveSignal signal) {
+            ownedSink.drive(signal);
+            finishTeleOpProfilePhase("drive");
+        }
+
+        @Override
+        public void stop() {
+            ownedSink.stop();
+        }
+    }
+
+    /** Stable managed owner of the complete upstream Auto update and cleanup order. */
+    private final class ManagedAutoService implements RobotProgram.Service {
+        private final DriveCommandSink autoDrive;
+        private final Runnable applyStartingPose;
+        private AprilTagVisionLane ownedVision;
+        private FtcOdometryAprilTagLocalizationLane ownedLocalization;
+        private ScoringTargeting ownedTargeting;
+        private boolean stopped;
+
+        private ManagedAutoService(DriveCommandSink autoDrive,
+                                   Runnable applyStartingPose) {
+            this.autoDrive = autoDrive;
+            this.applyStartingPose = applyStartingPose;
+        }
+
+        private void attachVision(AprilTagVisionLane vision) {
+            if (ownedVision != null) {
+                throw new IllegalStateException("Phoenix Auto vision is already attached");
+            }
+            ownedVision = Objects.requireNonNull(vision, "vision");
+        }
+
+        private void attachLocalization(FtcOdometryAprilTagLocalizationLane localization) {
+            if (ownedLocalization != null) {
+                throw new IllegalStateException("Phoenix Auto localization is already attached");
+            }
+            ownedLocalization = Objects.requireNonNull(localization, "localization");
+        }
+
+        private void attachTargeting(ScoringTargeting targeting) {
+            if (ownedTargeting != null) {
+                throw new IllegalStateException("Phoenix Auto targeting is already attached");
+            }
+            ownedTargeting = Objects.requireNonNull(targeting, "targeting");
+        }
+
+        @Override
+        public void start(LoopClock clock) {
+            requireComplete();
+            loopPhaseProfiler.reset();
+            autoStartBoundaryReached = true;
+            applyStartingPose.run();
+            autoVisionReadiness = ownedVision.readiness(clock);
+            ownedLocalization.update(clock);
+            ownedTargeting.update(clock);
+            autoDrive.update(clock);
+        }
+
+        @Override
+        public void update(LoopClock clock) {
+            requireComplete();
+            loopPhaseProfiler.startCycle(clock);
+            autoProfileCycleActive = true;
+
+            autoVisionReadiness = ownedVision.readiness(clock);
+            finishAutoProfilePhase("visionReadiness");
+            ownedLocalization.update(clock);
+            finishAutoProfilePhase("localization");
+            ownedTargeting.update(clock);
+            finishAutoProfilePhase("targeting");
+            autoDrive.update(clock);
+            finishAutoProfilePhase("drive");
+        }
+
+        @Override
+        public void stop() {
+            if (stopped) {
+                return;
+            }
+            stopped = true;
+            ScoringTargeting targetingToStop = ownedTargeting;
+            AprilTagVisionLane visionToStop = ownedVision;
+            ownedTargeting = null;
+            ownedLocalization = null;
+            ownedVision = null;
+            autoProfileCycleActive = false;
+
+            CleanupActions.attemptAll(
+                    autoDrive::stop,
+                    () -> {
+                        if (targetingToStop != null) {
+                            targetingToStop.reset();
+                        }
+                    },
+                    () -> {
+                        if (visionToStop != null) {
+                            visionToStop.close();
+                        }
+                    }
+            );
+        }
+
+        private void requireComplete() {
+            if (stopped
+                    || ownedVision == null
+                    || ownedLocalization == null
+                    || ownedTargeting == null) {
+                throw new IllegalStateException(
+                        "Phoenix managed Auto service graph is incomplete or already stopped"
+                );
+            }
+        }
+    }
+
+    /** Downstream managed Auto scoring owner. */
+    private final class ManagedAutoScoringOutput implements RobotProgram.Output {
+        private final ScoringPath ownedScoring;
+
+        private ManagedAutoScoringOutput(ScoringPath ownedScoring) {
+            this.ownedScoring = ownedScoring;
+        }
+
+        @Override
+        public void update(LoopClock clock) {
+            finishAutoProfilePhase("tasks");
+            ownedScoring.update(clock);
+            finishAutoProfilePhase("scoring");
+        }
+
+        @Override
+        public void stop() {
+            ownedScoring.stop();
+        }
+    }
+
+    /** Guard for the narrow managed-TeleOp pose-restore window. */
     static final class TeleOpPoseRestoreLifecycle {
         private PoseResetter poseResetter;
         private boolean startBoundaryReached;
 
-        /** Install the TeleOp localization reset capability after initialization succeeds. */
         void initialize(PoseResetter poseResetter) {
             if (this.poseResetter != null) {
                 throw new IllegalStateException(
@@ -757,12 +1019,10 @@ public final class PhoenixRobot {
             );
         }
 
-        /** Close the restore window at the shared FTC START boundary. */
         void markStartBoundary() {
             startBoundaryReached = true;
         }
 
-        /** Apply one validated field pose while TeleOp localization is initialized and pre-START. */
         void restore(Pose2d fieldToRobotPose) {
             Pose2d requiredPose = Objects.requireNonNull(
                     fieldToRobotPose,
@@ -778,8 +1038,8 @@ public final class PhoenixRobot {
             }
             if (poseResetter == null) {
                 throw new IllegalStateException(
-                        "Cannot restore the Auto pose because Phoenix TeleOp localization is not "
-                                + "initialized; call initTeleOp() first"
+                        "Cannot restore the Auto pose because Phoenix TeleOp is not declared; "
+                                + "call declareTeleOp(program, eligibleScoringTagIds) first"
                 );
             }
             if (startBoundaryReached) {
@@ -791,7 +1051,6 @@ public final class PhoenixRobot {
             poseResetter.setPose(requiredPose);
         }
 
-        /** Detach the localization capability when the robot ownership graph stops. */
         void clear() {
             poseResetter = null;
             startBoundaryReached = false;

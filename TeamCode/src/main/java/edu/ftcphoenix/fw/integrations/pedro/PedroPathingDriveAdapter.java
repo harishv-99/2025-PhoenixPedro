@@ -35,16 +35,20 @@ import edu.ftcphoenix.fw.drive.route.RouteStatus;
  * interruption, replacement, failure, and unexplained terminal transitions. Raw Follower
  * lifecycle mutation is unsupported because it bypasses that retained status.</p>
  *
- * <p>The following snippet is the <strong>current production-Phoenix RUNTIME-02
- * exception</strong>. Its {@code robot.initAuto(...)} and {@code robot.installAutoRoutine(...)}
- * calls are not the ordinary managed-program grammar:</p>
+ * <p>Production Phoenix Auto transfers this adapter into the ordinary managed program:</p>
  * <pre>{@code
  * PedroPathingRuntime runtime =
  *         Constants.createPhoenixAutoRuntime(hardwareMap, profile);
  * PedroPathingDriveAdapter adapter = runtime.driveAdapter();
- * robot.initAuto(adapter, runtime.motionPredictor());
- * runtime.setStartingPose(pedroStartPose);
- * // Phoenix now owns every-loop adapter update and final stop.
+ * robot.declareAuto(
+ *         program,
+ *         adapter,
+ *         runtime.motionPredictor(),
+ *         frozenEligibleTagIds,
+ *         BooleanSource.constant(true),
+ *         BooleanSource.constant(false),
+ *         () -&gt; runtime.setStartingPose(frozenPedroStartPose())
+ * );
  *
  * RouteTask&lt;PathChain&gt; outbound = RouteTasks.follow(
  *         "outbound",
@@ -52,12 +56,10 @@ import edu.ftcphoenix.fw.drive.route.RouteStatus;
  *         outboundPath,
  *         4.0
  * );
- * robot.installAutoRoutine(outbound);
+ * program.rootTask(outbound);
  * }</pre>
- * <p>Ordinary managed callers follow the checked-in {@code BasicPedroAutoRobot} pattern: a
- * robot-owned service registers the recurring adapter heartbeat with
- * {@code program.service(...)}, and the route-bearing routine is declared with
- * {@code program.rootTask(...)}.</p>
+ * <p>The managed service owns the recurring heartbeat and final physical zero. Route Tasks may
+ * share the hook because same-cycle calls are deduplicated.</p>
  * <p>A multi-phase routine should retain that status-bearing Task and give it, plus its semantic
  * mechanism Tasks, to robot-owned policy. Generic sequences do not stop automatically after an
  * abnormal route result; the robot policy must gate later aiming, scoring, or other

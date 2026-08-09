@@ -7,11 +7,13 @@ and stops every owner deterministically. The code compiles against the project's
 Pathing 2.1.2 dependency. It uses the ordinary `FtcRobotOpMode`/`RobotProgram` lifecycle and
 deliberately does not introduce an Auto DSL, a robot superclass, or another scheduler.
 
-The four Phoenix-season-independent reference classes are under
-[`edu.ftcphoenix.robots.examples.pedro`](<../../../robots/examples/pedro/>). The disabled physical
-host is under [`edu.ftcphoenix.robots.phoenix.opmode`](<../../../robots/phoenix/opmode/>). Everything
-in both locations is **robot code**, including the composition root and host OpMode; the short
-routine method is not the whole cost of the example.
+The four Phoenix-season-independent reference classes and their disabled physical host are under
+[`edu.ftcphoenix.robots.examples.pedro`](<../../../robots/examples/pedro/>). Everything there is
+**robot code**, including the composition root and host OpMode; the short routine method is not the
+whole cost of the example. The host uses this repository's Phoenix hardware configuration only as a
+concrete adapter for the generic example. It is not a second production Phoenix-season Auto path:
+production Phoenix entries use `PhoenixAutoOpMode`, while a new robot uses the framework's base
+`FtcRobotOpMode` grammar shown here.
 
 ## Read the five files
 
@@ -23,7 +25,7 @@ Read them in this order:
 | [`BasicPedroAutoPaths.java`](<../../../robots/examples/pedro/BasicPedroAutoPaths.java>) | 52 | Declared physical start pose and one eagerly built fixed Pedro route | Change the start/end coordinates and path geometry here. Keep all coordinates explicitly in Pedro field inches and radians. |
 | [`BasicPedroAutoRoutine.java`](<../../../robots/examples/pedro/BasicPedroAutoRoutine.java>) | 50 | Route, success action, and timeout fallback composed with framework Task factories | Change semantic order, route timeout, capability actions, and the policy for each route result here. |
 | [`BasicPedroAutoRobot.java`](<../../../robots/examples/pedro/BasicPedroAutoRobot.java>) | 200 | Declaration-only composition root for the Pedro service, mechanism output, and one root routine | Retain the managed role shape. Add a service or output only when a real owner has that distinct job. |
-| [`PhoenixBasicPedroAutoExample.java`](<../../../robots/phoenix/opmode/PhoenixBasicPedroAutoExample.java>) | 114 | Disabled `FtcRobotOpMode` host with this repository's physical configuration/runtime wiring and presenters | Replace this host boundary with the new robot's verified Pedro runtime and mechanism configuration. Do not copy Phoenix hardware values into another robot. |
+| [`BasicPedroAutoExample.java`](<../../../robots/examples/pedro/BasicPedroAutoExample.java>) | 114 | Disabled generic `FtcRobotOpMode` host adapted to this repository's physical configuration/runtime wiring and presenters | Replace this host boundary with the new robot's verified Pedro runtime and mechanism configuration. Do not copy Phoenix hardware values into another robot. |
 
 `BasicPedroAutoMechanism` now demonstrates the ordinary construction rule directly: its public
 constructor receives `HardwareMap` plus one data-only `Config`, snapshots and validates that
@@ -31,8 +33,8 @@ configuration, and privately builds its final Plant. Its completed-Plant constru
 package-private and exists only for the explicitly hardware-neutral test/portable seam.
 
 The five files total **611 source lines**, including comments, Javadocs, imports, and blank lines.
-The four season-independent reference classes total 497 lines; the Phoenix-specific host is
-another 114.
+The four season-independent reference classes total 497 lines; the concrete hardware-adapter host
+is another 114.
 These counts describe the current checked-in reference and should be updated when its documented
 ownership or safety seams change.
 That full count matters. A student maintaining or adapting the reference encounters about 12
@@ -58,7 +60,7 @@ ownership example rather than a claim that all robot code is one line.
 
 ### INIT
 
-`PhoenixBasicPedroAutoExample.configure(...)` creates one real `PedroPathingRuntime` and passes a
+`BasicPedroAutoExample.configure(...)` creates one real `PedroPathingRuntime` and passes a
 mechanism factory to `BasicPedroAutoRobot`. That declaration root immediately registers the Pedro
 service before it builds paths, invokes the factory once, immediately registers the resulting
 mechanism output, and declares one fresh root routine. Construction does not start the route or
@@ -198,13 +200,13 @@ concrete example mechanism type, they are a readable pattern rather than a drop-
 
 The adopting robot must provide and verify its own motor names and directions, localization
 calibration, field convention, Pedro constraints, and follower tuning. Replace
-`PhoenixBasicPedroAutoExample` with a host that uses exactly one runtime factory and the robot's
+`BasicPedroAutoExample` with a host that uses exactly one runtime factory and the robot's
 existing mechanisms; do not retain the Phoenix profile import. Android Studio compilation in the
 adopting project and deliberate on-robot validation remain required steps.
 
 ## Hardware walkthrough
 
-`PhoenixBasicPedroAutoExample` is `@Disabled` intentionally. Its path is a real 12-inch practice
+`BasicPedroAutoExample` is `@Disabled` intentionally. Its path is a real 12-inch practice
 line in Pedro coordinates, from `(24, 24, 0)` to `(36, 24, 0)` in inches/radians; it is not a match
 route and it is not safe merely because it compiles.
 

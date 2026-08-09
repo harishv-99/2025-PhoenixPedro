@@ -653,7 +653,7 @@ private final Source<TargetingStatus> statusSource =
         Source.of(this::calculateStatus).memoized();
 
 private final BooleanSource targetSelected =
-        Source.of(this::status)
+        Source.of(ignoredClock -> status())
                 .mapToBoolean(status -> status.selection.hasSelection);
 ```
 
@@ -888,7 +888,7 @@ public interface MyCapabilities {
     }
 
     interface Targeting {
-        TargetingStatus status(LoopClock clock);
+        TargetingStatus status();
         Task aimTask(DriveCommandSink driveSink, DriveGuidanceTask.Config cfg);
     }
 }
@@ -928,6 +928,7 @@ public final class MyDriveAssistService {
 
     private final DriveSource driveSource;
     private final ScalarSource manualTranslateMagnitude;
+    private final Source<SupervisorStatus> supervisorStatus;
     private final BooleanSource assistRequested;
     private final HysteresisBoolean braceLatch;
     private DriveAssistStatus lastStatus = new DriveAssistStatus(false, false, false, 0.0);
@@ -935,20 +936,27 @@ public final class MyDriveAssistService {
     public MyDriveAssistService(MyRobotProfile.DriveAssistConfig cfg,
                                 DriveSource manualDrive,
                                 ScalarSource manualTranslateMagnitude,
+                                Source<SupervisorStatus> supervisorStatus,
                                 BooleanSource assistRequested,
                                 AbsolutePoseEstimator globalPose,
                                 DriveOverlay assistOverlay) {
         this.manualTranslateMagnitude = manualTranslateMagnitude;
-        this.assistRequested = assistRequested;
+        this.supervisorStatus = supervisorStatus;
+        this.assistRequested = assistRequested.memoized();
         this.braceLatch = HysteresisBoolean.onWhenBelowOffWhenAbove(
                 cfg.shootBrace.enterTranslateMagnitude,
                 cfg.shootBrace.exitTranslateMagnitude
         );
 
-        this.driveSource = DriveOverlayStack.on(manualDrive)
+        Source<DriveAssistStatus> statusSource =
+                Source.of(this::calculateStatus).memoized();
+        BooleanSource braceEnabled = statusSource
+                .mapToBoolean(status -> status.braceEnabled);
+
+        DriveSource assistedDrive = DriveOverlayStack.on(manualDrive)
                 .add(
                         "shootBrace",
-                        BooleanSource.of(braceLatch::get),
+                        braceEnabled,
                         DriveGuidance.poseLock(
                                 globalPose,
                                 DriveGuidancePlan.Tuning.defaults()
@@ -957,16 +965,33 @@ public final class MyDriveAssistService {
                         ),
                         DriveOverlayMask.TRANSLATION_ONLY
                 )
-                .add("assist", assistRequested, assistOverlay, DriveOverlayMask.OMEGA_ONLY)
+                .add("assist", this.assistRequested, assistOverlay, DriveOverlayMask.OMEGA_ONLY)
                 .build();
+
+        this.driveSource = new DriveSource() {
+            @Override
+            public DriveSignal get(LoopClock clock) {
+                // Publish policy before the overlay stack samples its derived gates.
+                statusSource.get(clock);
+                return assistedDrive.get(clock);
+            }
+
+            @Override
+            public void reset() {
+                assistedDrive.reset();
+                braceLatch.reset(false);
+                lastStatus = new DriveAssistStatus(false, false, false, 0.0);
+            }
+        };
     }
 
     public DriveSource driveSource() {
         return driveSource;
     }
 
-    public void update(LoopClock clock, MechanismSupervisorStatus supervisorStatus) {
-        boolean braceEligible = supervisorStatus != null && supervisorStatus.actionActive();
+    private DriveAssistStatus calculateStatus(LoopClock clock) {
+        SupervisorStatus supervisor = supervisorStatus.get(clock);
+        boolean braceEligible = supervisor != null && supervisor.actionActive();
         double translateMag = manualTranslateMagnitude.getAsDouble(clock);
 
         boolean braceEnabled;
@@ -977,12 +1002,14 @@ public final class MyDriveAssistService {
             braceEnabled = braceLatch.update(translateMag);
         }
 
-        lastStatus = new DriveAssistStatus(
+        DriveAssistStatus calculated = new DriveAssistStatus(
                 assistRequested.getAsBoolean(clock),
                 braceEligible,
                 braceEnabled,
                 translateMag
         );
+        lastStatus = calculated;
+        return calculated;
     }
 
     public DriveAssistStatus status() {
@@ -997,6 +1024,7 @@ Why this boundary works:
 - the service owns how robot policy reshapes drive behavior
 - the subsystem and supervisor stay focused on the mechanism
 - the composition root stays boring
+- the final drive read computes and publishes policy once; there is no second imperative heartbeat
 
 When in doubt, ask:
 
@@ -1015,6 +1043,7 @@ public final class IntakeShooterSubsystem implements RobotProgram.Output {
     private final Plant intake;
     private final Plant feeder;
     private final Plant flywheel;
+    private Status lastStatus = new Status(/* initial snapshot fields */);
 
     public IntakeShooterSubsystem(HardwareMap hardwareMap, MyRobotProfile.MechanismConfig cfg) {
         // build plants here
@@ -1035,6 +1064,7 @@ public final class IntakeShooterSubsystem implements RobotProgram.Output {
     @Override
     public void update(LoopClock clock) {
         // update queues/sources and then update source-driven Plants here
+        lastStatus = new Status(/* current snapshot fields */);
     }
 
     @Override
@@ -1042,8 +1072,8 @@ public final class IntakeShooterSubsystem implements RobotProgram.Output {
         // restore safe requests and stop every privately owned Plant
     }
 
-    public Status status(LoopClock clock) {
-        return new Status(/* snapshot fields */);
+    public Status status() {
+        return lastStatus;
     }
 }
 ```
@@ -1104,6 +1134,9 @@ A service is ideal for targeting, shot planning, or pose-based decisions.
 ```java
 public final class ScoringTargeting {
 
+    private TargetingStatus lastStatus =
+            new TargetingStatus(/* initial snapshot fields */);
+
     public ScoringTargeting(MyRobotProfile.StrategyConfig cfg,
                             AprilTagSensor tagSensor,
                             CameraMountConfig cameraMount,
@@ -1113,15 +1146,19 @@ public final class ScoringTargeting {
     }
 
     public void update(LoopClock clock) {
-        // cache one status snapshot per loop
+        lastStatus = new TargetingStatus(/* current snapshot fields */);
     }
 
-    public TargetingStatus status(LoopClock clock) {
-        // return the cached snapshot
+    public TargetingStatus status() {
+        return lastStatus;
     }
 
     public BooleanSource aimOkToShootSource() {
         // expose a narrow reusable signal
+    }
+
+    public DriveOverlay aimOverlay() {
+        // expose one robot-specific omega overlay
     }
 }
 ```
@@ -1141,9 +1178,11 @@ public final class MyTelemetryPresenter {
                                   MechanismStatus mechanism,
                                   SupervisorStatus supervisor,
                                   TargetingStatus targeting,
+                                  DriveAssistStatus driveAssist,
                                   PoseEstimate globalPose) {
         telemetry.addData("mechanism.mode", mechanism.mode());
         telemetry.addData("targeting.ready", targeting.ready());
+        telemetry.addData("drive.assist", driveAssist.assistRequested);
         telemetry.addData("pose", globalPose);
         // Additive only: do not clear or call telemetry.update().
     }
@@ -1188,14 +1227,24 @@ public final class MyRobot {
         MyTeleOpControls controls = new MyTeleOpControls(
                 program.bindings(), gamepads, profile.controls, capabilities);
 
-        program.drive(controls.manualDriveSource(),
+        MyDriveAssistService driveAssist = new MyDriveAssistService(
+                profile.driveAssist,
+                controls.manualDriveSource(),
+                controls.manualTranslateMagnitudeSource(),
+                Source.of(ignoredClock -> scoring.status()),
+                controls.assistEnabledSource(),
+                sensing.globalEstimator(),
+                targeting.aimOverlay());
+
+        program.drive(driveAssist.driveSource(),
                 FtcDrives.mecanum(hardwareMap, profile.drive));
         program.presenter((clock, telemetry) ->
                 MyTelemetryPresenter.emitTeleOp(
                         telemetry,
-                        shooter.status(clock),
+                        shooter.status(),
                         scoring.status(),
-                        targeting.status(clock),
+                        targeting.status(),
+                        driveAssist.status(),
                         sensing.globalPose()));
     }
 
@@ -1214,8 +1263,9 @@ call order does not turn the earlier output declaration into an upstream phase. 
 only chooses the profile and calls `new MyRobot(program, hardwareMap, gamepads, profile)` from
 `configure(program)`.
 
-A custom selector/host may still own and commit a selection, retry, or error frame that never
-enters a managed program. `DebugSink` remains an output seam only: choose optional diagnostics at
+A portable tool or deliberately custom host may still own and commit a frame that never enters a
+managed program. Ordinary robot selectors compose behind the program's one data-only `Prestart`.
+`DebugSink` remains an output seam only: choose optional diagnostics at
 the declaration/presenter boundary, and do not add a generic topic registry or frame wrapper
 without repeated callers that need a distinct capability.
 
@@ -1357,9 +1407,9 @@ Phoenix is the reference example for this split:
 - field facts: `PhoenixProfile.field.fixedAprilTagLayout`
 - capability family: `PhoenixCapabilities.scoring()` / `PhoenixCapabilities.targeting()`
 - controls owner: `PhoenixTeleOpControls`
-- subsystem: `Shooter`
-- supervisor: `ShooterSupervisor`
-- service: `ScoringTargeting`
+- scoring mechanism and execution-policy owner: `ScoringPath`, internally split into `Inputs` → `Execution` → `Realization`
+- targeting service: `ScoringTargeting`
+- drive-assist policy service: `PhoenixDriveAssistService`
 - presenter: `PhoenixTelemetryPresenter`
 - composition root: `PhoenixRobot`
 - profile: `PhoenixProfile`

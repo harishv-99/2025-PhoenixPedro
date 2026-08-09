@@ -401,7 +401,7 @@ public interface MyCapabilities {
     }
 
     interface Targeting {
-        TargetingStatus status(LoopClock clock);
+        TargetingStatus status();
         Task aimTask(DriveCommandSink driveSink, DriveGuidanceTask.Config cfg);
     }
 }

@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.DoubleConsumer;
+import java.util.function.Supplier;
 
 import edu.ftcphoenix.fw.core.lifecycle.CleanupActions;
 import edu.ftcphoenix.fw.core.source.BooleanSource;
@@ -43,6 +44,39 @@ import edu.ftcphoenix.fw.task.TaskRunner;
  * stop owner.</p>
  */
 public final class RobotProgram {
+
+    /** Result of freezing the program's optional INIT-only policy at FTC START. */
+    public enum StartDisposition {
+        /** Start the declared services, root Task, and outputs normally. */
+        READY,
+        /** Keep every service, Task, binding, and output inert while presenters remain visible. */
+        BLOCKED
+    }
+
+    /**
+     * INIT-only policy owner for menu selection, readiness, and non-actuating observations.
+     *
+     * <p>The program invokes this role before presenters in every INIT frame, then freezes it
+     * exactly once before resetting the shared clock at FTC START. A prestart owner does not own
+     * resources and has no stop hook. It must not command outputs, advance an active vendor
+     * heartbeat, or commit telemetry.</p>
+     */
+    public interface Prestart {
+
+        /**
+         * Update data-only INIT policy for the current frame.
+         *
+         * @param clock shared program clock for the current INIT frame
+         */
+        void update(LoopClock clock);
+
+        /**
+         * Freeze the final start policy before the program resets its clock.
+         *
+         * @return whether active behavior may start; never {@code null}
+         */
+        StartDisposition freezeForStart();
+    }
 
     /**
      * Upstream loop owner such as localization, sensing, or a vendor integration heartbeat.
@@ -107,8 +141,9 @@ public final class RobotProgram {
         /**
          * Add rows without clearing or committing telemetry and without advancing robot state.
          *
-         * <p>Presenters run after configuration, in every INIT loop, and after active outputs. The
-         * framework calls {@link Telemetry#update()} exactly once after all presenters return.</p>
+         * <p>Presenters run after configuration, in every INIT loop, after active outputs, and in
+         * every presenter-only loop after a blocked START. The framework calls
+         * {@link Telemetry#update()} exactly once after all presenters return.</p>
          *
          * @param clock shared program clock for the current frame
          * @param telemetry additive FTC telemetry destination
@@ -121,6 +156,7 @@ public final class RobotProgram {
         READY,
         STARTING,
         ACTIVE,
+        BLOCKED,
         TERMINAL
     }
 
@@ -136,10 +172,13 @@ public final class RobotProgram {
     private final IdentityHashMap<Object, String> registrations = new IdentityHashMap<>();
 
     private State state = State.CONFIGURING;
+    private Prestart prestart;
     private Task rootTask;
+    private StopHandoff<?> stopHandoff;
     private boolean driveDeclared;
     private boolean bindingsUpdating;
     private boolean bindingCleanupPending;
+    private boolean bindingHandoffEligible;
 
     /** Framework-only construction; ordinary robot code receives the retained instance. */
     RobotProgram(Telemetry telemetry) {
@@ -165,6 +204,29 @@ public final class RobotProgram {
      */
     public TaskBindings taskBindings() {
         return taskBindings;
+    }
+
+    /**
+     * Declare the optional one INIT-only policy owner and return that exact object.
+     *
+     * @param prestart data-only INIT policy owner
+     * @param <T> concrete prestart type
+     * @return the exact supplied prestart owner
+     * @throws NullPointerException if {@code prestart} is null
+     * @throws IllegalStateException if configuration has ended, a prestart owner already exists,
+     *                               or this object identity is already registered
+     */
+    public <T extends Prestart> T prestart(T prestart) {
+        requireConfiguring("declare prestart policy");
+        T required = Objects.requireNonNull(prestart, "prestart is required");
+        if (this.prestart != null) {
+            throw new IllegalStateException(
+                    "RobotProgram already has a prestart declaration; aggregate INIT selection, "
+                            + "readiness, and observations behind one Prestart owner");
+        }
+        reserveIdentity(required, "prestart");
+        this.prestart = required;
+        return required;
     }
 
     /**
@@ -277,6 +339,55 @@ public final class RobotProgram {
         presenters.add(required);
     }
 
+    /**
+     * Declare the optional typed Auto-to-TeleOp publication transaction.
+     *
+     * <p>The program invalidates stale state immediately. On a normal STOP from ACTIVE it marks
+     * itself terminal, captures one cached value before cleanup, attempts the complete cleanup
+     * sequence, and publishes only after cleanup succeeds. Every other stop or
+     * {@code RuntimeException} path invalidates instead. Capture, cleanup, publication, and
+     * invalidation failures preserve the first failure and attach later cleanup failures in
+     * execution order. {@link Error Errors} are not caught.</p>
+     *
+     * @param captureBeforeCleanup captures one stable value without advancing robot state
+     * @param publishAfterSuccessfulCleanup publishes that value only after complete cleanup
+     * @param invalidate clears any previously published value on non-publication paths
+     * @param <T> captured value type
+     * @throws NullPointerException if an argument is null
+     * @throws IllegalStateException if configuration has ended or a handoff already exists
+     */
+    public <T> void stopHandoff(
+            Supplier<? extends T> captureBeforeCleanup,
+            Consumer<? super T> publishAfterSuccessfulCleanup,
+            Runnable invalidate) {
+        requireConfiguring("declare a stop handoff");
+        Supplier<? extends T> requiredCapture = Objects.requireNonNull(
+                captureBeforeCleanup,
+                "captureBeforeCleanup is required"
+        );
+        Consumer<? super T> requiredPublish = Objects.requireNonNull(
+                publishAfterSuccessfulCleanup,
+                "publishAfterSuccessfulCleanup is required"
+        );
+        Runnable requiredInvalidate = Objects.requireNonNull(
+                invalidate,
+                "invalidate is required"
+        );
+        if (stopHandoff != null) {
+            throw new IllegalStateException(
+                    "RobotProgram already has a stop handoff; aggregate publication behind one "
+                            + "typed transaction");
+        }
+
+        StopHandoff<T> retained = new StopHandoff<>(
+                requiredCapture,
+                requiredPublish,
+                requiredInvalidate
+        );
+        stopHandoff = retained;
+        retained.invalidate();
+    }
+
     /** Initialize the shared clock before robot declarations can inspect FTC-owned resources. */
     void beginInit(double runtimeSec) {
         requireState(State.CONFIGURING, "begin INIT");
@@ -289,24 +400,46 @@ public final class RobotProgram {
         state = State.READY;
     }
 
-    /** Render and commit the first presenter-only INIT frame. */
+    /** Update prestart policy, then render and commit the first INIT frame. */
     void presentConfiguredInit() {
         requireState(State.READY, "present INIT telemetry");
+        updatePrestart(State.READY);
+        if (state != State.READY) {
+            return;
+        }
         presentAndCommit(State.READY);
     }
 
-    /** Advance the INIT clock and render presenters without advancing behavior or outputs. */
+    /** Advance the INIT clock and prestart policy, then render presenters. */
     void initLoop(double runtimeSec) {
         requireState(State.READY, "run INIT loop");
         clock.update(requireFiniteRuntime(runtimeSec));
+        updatePrestart(State.READY);
+        if (state != State.READY) {
+            return;
+        }
         presentAndCommit(State.READY);
     }
 
-    /** Start services and the optional root Task at the exact FTC START boundary. */
+    /** Freeze prestart policy, then start active owners at the exact FTC START boundary. */
     void start(double runtimeSec) {
         requireState(State.READY, "start");
-        clock.reset(requireFiniteRuntime(runtimeSec));
         state = State.STARTING;
+        StartDisposition disposition = prestart == null
+                ? StartDisposition.READY
+                : Objects.requireNonNull(
+                        prestart.freezeForStart(),
+                        "prestart.freezeForStart() returned null; return READY or BLOCKED"
+                );
+        if (state != State.STARTING) {
+            return;
+        }
+        clock.reset(requireFiniteRuntime(runtimeSec));
+
+        if (disposition == StartDisposition.BLOCKED) {
+            state = State.BLOCKED;
+            return;
+        }
 
         for (int index = 0; index < services.size(); index++) {
             services.get(index).start(clock);
@@ -334,8 +467,13 @@ public final class RobotProgram {
 
     /** Advance one complete active program cycle in the fixed documented order. */
     void loop(double runtimeSec) {
-        requireState(State.ACTIVE, "run active loop");
+        requireLoopState();
         clock.update(requireFiniteRuntime(runtimeSec));
+
+        if (state == State.BLOCKED) {
+            presentAndCommit(State.BLOCKED);
+            return;
+        }
 
         for (int index = 0; index < services.size(); index++) {
             services.get(index).update(clock);
@@ -381,10 +519,12 @@ public final class RobotProgram {
 
     /** Mark terminal first, then attempt every cleanup action in its fixed ownership order. */
     void stop() {
-        boolean abortBindingTraversal = bindingsUpdating && state != State.TERMINAL;
-        Runnable[] actions = claimCleanupActions();
+        State previousState = state;
+        boolean abortBindingTraversal = bindingsUpdating && previousState != State.TERMINAL;
+        boolean handoffEligible = previousState == State.ACTIVE;
+        Runnable[] actions = claimCleanupActions(handoffEligible);
         if (actions.length != 0) {
-            CleanupActions.attemptAll(actions);
+            finishNormalStop(handoffEligible, actions);
         }
         if (abortBindingTraversal) {
             throw new BindingTraversalStopped();
@@ -397,11 +537,14 @@ public final class RobotProgram {
                 primaryFailure,
                 "primaryFailure is required"
         );
-        Runnable[] actions = claimCleanupActions();
+        Runnable[] actions = claimCleanupActions(false);
         if (actions.length == 0) {
             return required;
         }
-        return CleanupActions.attemptAllAfterFailure(required, actions);
+        return CleanupActions.attemptAllAfterFailure(
+                required,
+                cleanupAndInvalidationActions(actions)
+        );
     }
 
     /** Return whether this program has already claimed its one cleanup pass. */
@@ -412,6 +555,15 @@ public final class RobotProgram {
     private void updateOutputs(State expectedState) {
         for (int index = 0; index < outputs.size(); index++) {
             outputs.get(index).update(clock);
+            if (state != expectedState) {
+                return;
+            }
+        }
+    }
+
+    private void updatePrestart(State expectedState) {
+        if (prestart != null) {
+            prestart.update(clock);
             if (state != expectedState) {
                 return;
             }
@@ -431,7 +583,7 @@ public final class RobotProgram {
     /**
      * Claim cleanup exactly once and snapshot callbacks after publishing terminal state.
      */
-    private Runnable[] claimCleanupActions() {
+    private Runnable[] claimCleanupActions(boolean handoffEligible) {
         if (state == State.TERMINAL) {
             return new Runnable[0];
         }
@@ -442,6 +594,7 @@ public final class RobotProgram {
             // Defer the whole cleanup sequence so Bindings.clear remains first structurally and
             // every cleanup failure retains the same primary/suppression order as ordinary STOP.
             bindingCleanupPending = true;
+            bindingHandoffEligible = handoffEligible;
             return new Runnable[0];
         }
         return cleanupActions();
@@ -469,16 +622,68 @@ public final class RobotProgram {
             return primaryFailure;
         }
         bindingCleanupPending = false;
+        boolean handoffEligible = bindingHandoffEligible;
+        bindingHandoffEligible = false;
         Runnable[] actions = cleanupActions();
         if (primaryFailure == null) {
             try {
-                CleanupActions.attemptAll(actions);
+                finishNormalStop(handoffEligible, actions);
                 return null;
-            } catch (RuntimeException cleanupFailure) {
-                return cleanupFailure;
+            } catch (RuntimeException stopFailure) {
+                return stopFailure;
             }
         }
-        return CleanupActions.attemptAllAfterFailure(primaryFailure, actions);
+        return CleanupActions.attemptAllAfterFailure(
+                primaryFailure,
+                cleanupAndInvalidationActions(actions)
+        );
+    }
+
+    /** Complete one normal terminal transaction after state and traversal are stable. */
+    private void finishNormalStop(boolean handoffEligible, Runnable[] cleanupActions) {
+        if (!handoffEligible || stopHandoff == null) {
+            CleanupActions.attemptAll(cleanupAndInvalidationActions(cleanupActions));
+            return;
+        }
+
+        Object captured;
+        try {
+            captured = stopHandoff.capture();
+        } catch (RuntimeException captureFailure) {
+            throw CleanupActions.attemptAllAfterFailure(
+                    captureFailure,
+                    cleanupAndInvalidationActions(cleanupActions)
+            );
+        }
+
+        try {
+            CleanupActions.attemptAll(cleanupActions);
+        } catch (RuntimeException cleanupFailure) {
+            throw CleanupActions.attemptAllAfterFailure(
+                    cleanupFailure,
+                    stopHandoff::invalidate
+            );
+        }
+
+        try {
+            stopHandoff.publish(captured);
+        } catch (RuntimeException publicationFailure) {
+            throw CleanupActions.attemptAllAfterFailure(
+                    publicationFailure,
+                    stopHandoff::invalidate
+            );
+        }
+    }
+
+    /** Append invalidation only on paths that cannot publish a handoff value. */
+    private Runnable[] cleanupAndInvalidationActions(Runnable[] cleanupActions) {
+        if (stopHandoff == null) {
+            return cleanupActions;
+        }
+        Runnable[] combined = new Runnable[cleanupActions.length + 1];
+        System.arraycopy(cleanupActions, 0, combined, 0, cleanupActions.length);
+        combined[cleanupActions.length] = stopHandoff::invalidate;
+        return combined;
     }
 
     private void reserveIdentity(Object candidate, String role) {
@@ -512,6 +717,14 @@ public final class RobotProgram {
         }
     }
 
+    private void requireLoopState() {
+        if (state != State.ACTIVE && state != State.BLOCKED) {
+            throw new IllegalStateException(
+                    "RobotProgram cannot run loop while its state is " + state
+                            + "; FtcRobotOpMode owns this lifecycle");
+        }
+    }
+
     private static double requireFiniteRuntime(double runtimeSec) {
         if (!Double.isFinite(runtimeSec)) {
             throw new IllegalArgumentException(
@@ -524,6 +737,36 @@ public final class RobotProgram {
     private static final class BindingTraversalStopped extends RuntimeException {
         private BindingTraversalStopped() {
             super(null, null, false, false);
+        }
+    }
+
+    /** Type-safe declaration adapted to one private erased lifecycle transaction. */
+    private static final class StopHandoff<T> {
+        private final Supplier<? extends T> capture;
+        private final Consumer<? super T> publish;
+        private final Runnable invalidate;
+
+        private StopHandoff(
+                Supplier<? extends T> capture,
+                Consumer<? super T> publish,
+                Runnable invalidate) {
+            this.capture = capture;
+            this.publish = publish;
+            this.invalidate = invalidate;
+        }
+
+        private T capture() {
+            return capture.get();
+        }
+
+        private void publish(Object value) {
+            @SuppressWarnings("unchecked")
+            T typedValue = (T) value;
+            publish.accept(typedValue);
+        }
+
+        private void invalidate() {
+            invalidate.run();
         }
     }
 

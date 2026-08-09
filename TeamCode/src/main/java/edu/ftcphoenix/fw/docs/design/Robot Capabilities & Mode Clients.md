@@ -259,8 +259,8 @@ the shared capability family or generic framework.
 
 ### Auto-to-TeleOp state is a separate process boundary
 
-FTC creates a new OpMode and robot container for TeleOp. When that new runtime needs one fact from
-the completed Auto, use one robot-owned immutable snapshot carried by
+FTC creates a new OpMode and robot container for TeleOp. When that new runtime needs a small set of
+facts from the completed Auto, use one robot-owned immutable snapshot carried by
 `FtcAutoToTeleOpHandoff<T>`. The framework owns the typed, fresh, consume-once process slot; the
 robot owns which facts cross, which Auto is eligible to publish, how TeleOp applies them, and what
 missing/stale data means.
@@ -286,18 +286,20 @@ hardware-accuracy check.
 
 See
 [`FTC Auto-to-TeleOp Handoff`](<../ftc-boundary/FTC Auto-to-TeleOp Handoff.md>)
-for the exact carrier contract and example. Its capture-before-cleanup callback remains a current
-production-Phoenix or advanced custom-host boundary until RUNTIME-02; RUNTIME-01 does not add a
-handoff hook to the ordinary managed-program grammar.
+for the exact carrier contract and example. Production Phoenix restores the snapshot during its
+managed TeleOp declaration, after localization is registered and before START. The pose restores
+localization; the frozen Auto alliance only seeds TeleOp's visible, still-editable draft. Its
+managed Pedro Auto registers `RobotProgram.stopHandoff(...)`, which captures only after a normally
+active match run becomes terminal and publishes only after complete cleanup succeeds.
 
 ### Managed INIT, START, loop, and STOP
 
 The final host owns these phases:
 
 ```text
-INIT       reset clock -> configure/freeze -> presenters -> one telemetry commit
-INIT loop  clock -> presenters -> one telemetry commit
-START      reset clock -> service starts -> root Task start/first update -> outputs once
+INIT       reset clock -> configure/freeze graph -> prestart -> presenters -> one telemetry commit
+INIT loop  clock -> prestart -> presenters -> one telemetry commit
+START      freeze prestart -> reset clock -> service starts -> root start/first update -> outputs once
 loop       clock -> services -> bindings -> Tasks -> outputs/drive -> presenters -> one commit
 STOP       cancel Tasks -> clear bindings -> outputs in order -> services in reverse order
 ```
@@ -306,6 +308,8 @@ Capability methods only change robot intent or create fresh Tasks. Services own 
 mechanisms/subsystems own final Plant realization as outputs. An Auto root is declared once with
 `program.rootTask(...)`, starts at the exact FTC boundary, and remains retained for cancellation and
 terminal status. The program's private runner is not another object in the normal robot graph.
+When prestart returns `BLOCKED`, START runs no services, Tasks, bindings, or outputs; later loops
+advance only the clock and presenters.
 
 On configuration or runtime `RuntimeException`, the same terminal cleanup runs and preserves the
 original failure. An owner registered before a later configuration failure is still stopped, so
@@ -328,18 +332,29 @@ cancellation-like results. Direct cancellation cancels the active phase and must
 Any cleanup goes through the same robot capability family and clears only transient or held requests
 owned by the failed phase, leaving unrelated mechanism intent to its actual owner.
 
-### Current production Phoenix is the RUNTIME-02 exception
+### Production Phoenix uses one managed path
 
-Production `PhoenixRobot`, `PhoenixTeleOp`, and the Pedro Auto selector/base still use explicit
-`initAny`/mode-init, `startAny`/mode-start, `updateAny`/mode-update, installed-runner, and `stop`
-methods. That graph also owns selector retry, readiness, exact-start pose, route replacement,
-diagnostics, and Auto-to-TeleOp handoff policy. It is intentionally deferred to RUNTIME-02 so those
-policies are not silently changed.
+Production `PhoenixTeleOp` is an ordinary `FtcRobotOpMode`. Its only override is
+`configure(program)`, which delegates to one package-private `PhoenixTeleOpProgram`. That owner
+receives the entry's explicit `PhoenixAlliance.RED` default, installs the visible D-pad-only
+`PhoenixTeleOpPrestart`, constructs `PhoenixRobot`, passes the
+prestart's START-frozen singleton scoring-tag source to `declareTeleOp(...)`, consumes the optional
+pose-and-alliance snapshot after localization exists, and registers additive presenters.
+`PhoenixTeleOpControls` registers with the program's binding registrar, scoring is declared before
+the one final drive, and the program owns the sole TeleOp clock, lifecycle, telemetry commit, and
+fail-stop cleanup.
 
-Treat those current method names as a description of production Phoenix, not a second ordinary
-recipe. New robot code uses `FtcRobotOpMode`/`RobotProgram`. A custom selector, calibration tool, or
-portable host may still own an explicit lifecycle when its policy materially differs, but it must
-retain the same one-clock, non-blocking, one-writer, one-commit, and fail-stop contracts.
+Phoenix Auto is parallel: every Phoenix-season entry extends `PhoenixAutoOpMode` and returns one
+`PhoenixAutoSetup`. `PhoenixAutoProgram` declares one data-only prestart selector/readiness owner,
+the complete stable hardware/service graph, one root Task, and presenters into `RobotProgram`.
+Fixed setup uses `fromFixedSpec(...)`; selector setup uses `fromInitSelection(...)` and defers only
+the selected Task graph through `Tasks.buildAtStart(...)`.
+
+The program freezes selection before its clock reset, supports a fail-closed `BLOCKED` state, and
+uses `stopHandoff(...)` for capture-before-cleanup/publish-after-success semantics. There is no
+Phoenix private Auto clock/runner, raw FTC callback host, same-OpMode hardware rebuild, or parallel
+manual lifecycle API. Custom calibration tools and portable hosts remain advanced exceptions; they
+do not define the ordinary robot recipe.
 
 ---
 
@@ -359,11 +374,15 @@ public interface MyCapabilities {
     }
 
     interface Targeting {
-        TargetingStatus status(LoopClock clock);
+        TargetingStatus status();
         Task aimTask(DriveCommandSink driveSink, DriveGuidanceTask.Config cfg);
     }
 }
 ```
+
+Here the targeting service publishes one status during the upstream service phase. Capability
+clients and presenters read that immutable snapshot without advancing the service or supplying a
+clock.
 
 A matching robot shape usually looks like this:
 

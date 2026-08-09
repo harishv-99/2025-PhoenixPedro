@@ -10,14 +10,14 @@ import java.util.List;
  * Read-only FTC telemetry screen for showing a compact state summary.
  *
  * <p>{@link ConfirmationScreen} is for a review page that can trigger confirm/cancel callbacks.
- * {@code SummaryScreen} is the quieter sibling used after something has already happened: an
- * autonomous selector has been locked, a tester has finished setup, or a calibration flow wants to
- * show a stable status page. The screen renders labeled rows and optional status/help/warning text,
- * but it does not imply that pressing {@code A} will apply an action.</p>
+ * {@code SummaryScreen} is the quieter sibling for a read-only review or stable result: an
+ * autonomous selector may show its current draft before FTC START, a tester may finish setup, or a
+ * calibration flow may show stable status. The screen renders labeled rows and optional
+ * status/help/warning text, but it does not imply that pressing {@code A} will apply an action.</p>
  *
- * <p>The screen can consume back/home actions when it represents a locked state. That lets a caller
- * replace a setup wizard with a single immutable summary after the robot runtime has been built,
- * preventing the visible menu state from drifting away from the already-initialized robot state.</p>
+ * <p>The screen can consume back/home actions when it represents a stable review state. A caller
+ * may expose explicit edit navigation through another action, or replace a completed setup wizard
+ * with one immutable summary after the robot runtime has been built.</p>
  */
 public final class SummaryScreen implements MenuScreen {
     /**
@@ -94,6 +94,9 @@ public final class SummaryScreen implements MenuScreen {
 
         /**
          * Set an optional controls reminder line for this screen.
+         *
+         * <p>When present, this screen-specific line replaces the navigator context's generic
+         * controls hint so the read-only summary never advertises inactive actions.</p>
          */
         public Builder controls(String controlsLine) {
             this.controlsLine = cleanOrNull(controlsLine);
@@ -245,8 +248,9 @@ public final class SummaryScreen implements MenuScreen {
         if (controlsLine != null) {
             telemetry.addLine("");
             telemetry.addLine(controlsLine);
+        } else if (ctx.controlsHint() != null) {
+            telemetry.addLine("Controls: " + ctx.controlsHint());
         }
-        if (ctx.controlsHint() != null) telemetry.addLine("Controls: " + ctx.controlsHint());
         if (ctx.footer() != null) telemetry.addLine(ctx.footer());
     }
 

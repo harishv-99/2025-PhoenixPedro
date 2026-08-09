@@ -14,6 +14,7 @@ import java.lang.reflect.Proxy;
 import edu.ftcphoenix.fw.core.geometry.Pose3d;
 import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
+import edu.ftcphoenix.robots.phoenix.PhoenixAlliance;
 import edu.ftcphoenix.robots.phoenix.PhoenixMatchHandoff;
 import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
 import edu.ftcphoenix.robots.phoenix.PhoenixRobot;
@@ -43,7 +44,8 @@ public final class PhoenixTestersOpModeTest {
                         true,
                         1.0,
                         LoopTimestamp.unavailable()
-                )
+                ),
+                PhoenixAlliance.RED
         );
 
         PhoenixTestersOpMode mode = new PhoenixTestersOpMode();
@@ -53,7 +55,8 @@ public final class PhoenixTestersOpModeTest {
                 PhoenixMatchHandoff.RestoreResult.MISSING,
                 PhoenixMatchHandoff.restoreForTeleOp(
                         new EmptyOpMode(),
-                        uninitializedRobot()
+                        uninitializedRobot(),
+                        alliance -> { }
                 )
         );
     }

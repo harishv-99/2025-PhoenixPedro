@@ -2,6 +2,7 @@ package edu.ftcphoenix.fw.task;
 
 import java.util.Objects;
 import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
 
 import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.source.ScalarSource;
@@ -186,6 +187,40 @@ public final class Tasks {
      */
     public static Task runOnce(Runnable action) {
         return new InstantTask(Objects.requireNonNull(action, "action is required"));
+    }
+
+    /**
+     * Create a Task whose child graph is built exactly once when this wrapper starts.
+     *
+     * <p>Use this when the behavior graph depends on state that is intentionally frozen at the
+     * Task's own start boundary, such as an Autonomous selection or a sensor fact observed after
+     * an earlier phase. Keep {@code factory.get()} quick and non-blocking. Fixed behavior that is
+     * already known should still be built eagerly.</p>
+     *
+     * <pre>{@code
+     * Task selectedAuto = Tasks.buildAtStart(
+     *         "selected Auto",
+     *         () -> autoRoutines.forSpec(selection.frozenSpec()));
+     * }</pre>
+     *
+     * <p>Creating, inspecting, debugging, or cancelling the returned Task before start does not
+     * invoke the factory. Its first {@link Task#start(LoopClock)} call claims the wrapper's
+     * single-use lifecycle, invokes the factory once, retains the returned child, and starts that
+     * child with the same clock. A second start fails before invoking the factory again.</p>
+     *
+     * <p>The factory must return a fresh non-null Task and must not return this wrapper itself. If
+     * child start throws after partially acquiring state, the wrapper becomes terminal and
+     * best-effort actively cancels that retained child while preserving the start failure as the
+     * primary exception.</p>
+     *
+     * @param debugName nonblank diagnostic name for the deferred behavior
+     * @param factory factory that creates one fresh child Task at this wrapper's start boundary
+     * @return a fresh single-use Task that forwards the retained child's lifecycle and outcome
+     * @throws IllegalArgumentException if {@code debugName} is blank
+     * @throws NullPointerException if {@code factory} is {@code null}
+     */
+    public static Task buildAtStart(String debugName, Supplier<? extends Task> factory) {
+        return new BuildAtStartTask(debugName, factory);
     }
 
     // ---------------------------------------------------------------------

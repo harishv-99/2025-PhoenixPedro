@@ -6,7 +6,7 @@ import com.qualcomm.robotcore.eventloop.opmode.OpMode;
  * FTC iterative OpMode host for one declarative Phoenix {@link RobotProgram}.
  *
  * <p>Ordinary robot code overrides only {@link #configure(RobotProgram)}. The final FTC callbacks
- * own the shared clock, presenter-only INIT frames, exact START boundary, fixed active phase order,
+ * own the shared clock, optional prestart policy, exact START boundary, fixed active phase order,
  * one telemetry commit, and terminal fail-stop cleanup.</p>
  *
  * <pre>{@code
@@ -25,8 +25,10 @@ import com.qualcomm.robotcore.eventloop.opmode.OpMode;
  *
  * <p>If configuration or a runtime phase throws a {@link RuntimeException}, this host becomes
  * terminal, cancels Tasks, clears bindings, stops outputs, and stops services before rethrowing the
- * exact original failure. Cleanup failures are suppressed on that primary. Explicit, repeated, or
- * reentrant STOP is idempotent. {@link Error Errors} are not caught.</p>
+ * exact original failure. Cleanup failures are suppressed on that primary. An optional
+ * {@link RobotProgram#stopHandoff(java.util.function.Supplier, java.util.function.Consumer,
+ * Runnable) stop handoff} publishes only after a normal active STOP cleans up successfully.
+ * Explicit, repeated, or reentrant STOP is idempotent. {@link Error Errors} are not caught.</p>
  */
 public abstract class FtcRobotOpMode extends OpMode {
 
@@ -45,7 +47,7 @@ public abstract class FtcRobotOpMode extends OpMode {
      */
     protected abstract void configure(RobotProgram program);
 
-    /** Construct, freeze, and present the program without actuating services, Tasks, or outputs. */
+    /** Construct, freeze, update prestart policy, and present without active actuation. */
     @Override
     public final void init() {
         if (terminal) {
@@ -75,7 +77,7 @@ public abstract class FtcRobotOpMode extends OpMode {
         }
     }
 
-    /** Advance only the clock and additive presenters, then commit one INIT frame. */
+    /** Advance the clock and prestart policy, then present and commit one INIT frame. */
     @Override
     public final void init_loop() {
         RobotProgram active = activeProgram();
@@ -89,7 +91,7 @@ public abstract class FtcRobotOpMode extends OpMode {
         }
     }
 
-    /** Start services, the root Task, and exact-start output realization once. */
+    /** Freeze prestart policy, then either block inertly or start active owners once. */
     @Override
     public final void start() {
         RobotProgram active = activeProgram();
@@ -103,7 +105,7 @@ public abstract class FtcRobotOpMode extends OpMode {
         }
     }
 
-    /** Advance one fixed active program cycle. */
+    /** Advance one active cycle, or one presenter-only frame while start is blocked. */
     @Override
     public final void loop() {
         RobotProgram active = activeProgram();

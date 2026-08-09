@@ -78,7 +78,8 @@ BooleanSource ready = status
 ```
 
 The service owns and resets that graph. Non-owning clients derive borrowed views through another
-`Source.of(service::status)` adapter; they do not implement sources or hand-write cycle caches.
+`Source.of(ignoredClock -> service.status())` adapter; they do not implement sources or hand-write
+cycle caches.
 
 ---
 

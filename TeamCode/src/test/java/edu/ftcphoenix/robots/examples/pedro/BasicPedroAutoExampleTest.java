@@ -1,4 +1,4 @@
-package edu.ftcphoenix.robots.phoenix.opmode;
+package edu.ftcphoenix.robots.examples.pedro;
 
 import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
@@ -20,8 +20,7 @@ import edu.ftcphoenix.fw.core.time.LoopTimestamp;
 import edu.ftcphoenix.fw.ftc.FtcRobotOpMode;
 import edu.ftcphoenix.fw.localization.PoseEstimate;
 import edu.ftcphoenix.fw.task.TaskOutcome;
-import edu.ftcphoenix.robots.examples.pedro.BasicPedroAutoRobot;
-import edu.ftcphoenix.robots.examples.pedro.BasicPedroAutoRobotTest;
+import edu.ftcphoenix.robots.phoenix.PhoenixAlliance;
 import edu.ftcphoenix.robots.phoenix.PhoenixMatchHandoff;
 import edu.ftcphoenix.robots.phoenix.PhoenixProfile;
 import edu.ftcphoenix.robots.phoenix.PhoenixRobot;
@@ -33,7 +32,7 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 /** Verifies that the disabled host declares the example through the managed FTC lifecycle. */
-public final class PhoenixBasicPedroAutoExampleTest {
+public final class BasicPedroAutoExampleTest {
 
     @Before
     public void clearHandoffBeforeTest() {
@@ -49,7 +48,7 @@ public final class PhoenixBasicPedroAutoExampleTest {
     public void disabledOpModeUsesManagedInitStartLoopAndStop() {
         List<String> events = new ArrayList<String>();
         BasicPedroAutoRobot[] retainedRobot = new BasicPedroAutoRobot[1];
-        PhoenixBasicPedroAutoExample mode = new PhoenixBasicPedroAutoExample(program -> {
+        BasicPedroAutoExample mode = new BasicPedroAutoExample(program -> {
             retainedRobot[0] = BasicPedroAutoRobotTest.newRecordingRobot(program, events);
             return retainedRobot[0];
         });
@@ -70,8 +69,8 @@ public final class PhoenixBasicPedroAutoExampleTest {
         mode.stop();
         mode.stop();
 
-        assertNotNull(PhoenixBasicPedroAutoExample.class.getAnnotation(Disabled.class));
-        assertTrue(FtcRobotOpMode.class.isAssignableFrom(PhoenixBasicPedroAutoExample.class));
+        assertNotNull(BasicPedroAutoExample.class.getAnnotation(Disabled.class));
+        assertTrue(FtcRobotOpMode.class.isAssignableFrom(BasicPedroAutoExample.class));
         assertTrue(events.contains("startPose"));
         assertTrue(events.contains("task.cancel"));
         assertTrue(events.contains("plant.stop"));
@@ -85,7 +84,7 @@ public final class PhoenixBasicPedroAutoExampleTest {
     @Test
     public void activeTelemetryFailureFailStopsTheDeclaredProgram() {
         List<String> events = new ArrayList<String>();
-        PhoenixBasicPedroAutoExample mode = new PhoenixBasicPedroAutoExample(
+        BasicPedroAutoExample mode = new BasicPedroAutoExample(
                 program -> BasicPedroAutoRobotTest.newRecordingRobot(program, events)
         );
         RuntimeException telemetryFailure = new RuntimeException("telemetry failed");
@@ -122,9 +121,10 @@ public final class PhoenixBasicPedroAutoExampleTest {
                         true,
                         1.0,
                         LoopTimestamp.unavailable()
-                )
+                ),
+                PhoenixAlliance.RED
         );
-        PhoenixBasicPedroAutoExample mode = new PhoenixBasicPedroAutoExample(
+        BasicPedroAutoExample mode = new BasicPedroAutoExample(
                 program -> BasicPedroAutoRobotTest.newRecordingRobot(
                         program,
                         new ArrayList<String>()
@@ -138,7 +138,8 @@ public final class PhoenixBasicPedroAutoExampleTest {
                 PhoenixMatchHandoff.RestoreResult.MISSING,
                 PhoenixMatchHandoff.restoreForTeleOp(
                         new EmptyOpMode(),
-                        uninitializedPhoenixRobot()
+                        uninitializedPhoenixRobot(),
+                        alliance -> { }
                 )
         );
         mode.stop();
