@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 
 import edu.ftcphoenix.fw.actuation.Plant;
+import edu.ftcphoenix.fw.actuation.PlantTargetStatus;
 import edu.ftcphoenix.fw.actuation.Plants;
 import edu.ftcphoenix.fw.actuation.PositionPlant;
 import edu.ftcphoenix.fw.core.hal.Direction;
@@ -143,6 +144,152 @@ public final class FtcActuatorMappingDomainValidationTest {
         crMap.assertNoLookup();
         crServos.scale(-1.0).power().targetFromNewCommand(1.0).build();
         assertEquals(2, crMap.lookupCount);
+    }
+
+    @Test
+    public void groupedStopAttemptsEveryChildAndPreservesFailureOrder() {
+        TestHardwareMap hardwareMap = new TestHardwareMap();
+        MotorProbe first = hardwareMap.addMotor("first");
+        MotorProbe second = hardwareMap.addMotor("second");
+        Plant plant = FtcActuators.plant(hardwareMap)
+                .motor("first", Direction.FORWARD)
+                .andMotor("second", Direction.FORWARD)
+                .power()
+                .targetFromNewCommand(0.5)
+                .build();
+        plant.update(new ManualLoopClock().clock());
+
+        RuntimeException firstFailure = new IllegalStateException("first stop failed");
+        RuntimeException secondFailure = new IllegalStateException("second stop failed");
+        first.stopPowerFailure = firstFailure;
+        second.stopPowerFailure = secondFailure;
+        int firstAttempts = first.powerAttempts;
+        int secondAttempts = second.powerAttempts;
+
+        RuntimeException thrown = null;
+        try {
+            plant.stop();
+        } catch (RuntimeException failure) {
+            thrown = failure;
+        }
+
+        assertTrue("The first child failure must remain primary", thrown == firstFailure);
+        assertEquals(firstAttempts + 1, first.powerAttempts);
+        assertEquals(secondAttempts + 1, second.powerAttempts);
+        assertEquals(1, thrown.getSuppressed().length);
+        assertTrue("The later child failure must be suppressed in order",
+                thrown.getSuppressed()[0] == secondFailure);
+        assertEquals("A failed physical stop must retain the last applied target fact",
+                0.5, plant.getAppliedTarget(), 0.0);
+        assertEquals(PlantTargetStatus.Kind.ACCEPTED, plant.getTargetStatus().kind());
+        assertTrue(plant.getTargetResolution().hasTarget());
+
+        plant.stop();
+        assertEquals("A terminal Plant must not retry a failed physical stop",
+                firstAttempts + 1, first.powerAttempts);
+        assertEquals("A terminal Plant must not retry a failed physical stop",
+                secondAttempts + 1, second.powerAttempts);
+    }
+
+    @Test
+    public void groupedVelocityStopAttemptsEveryChildInOrderAndTerminalPlantDoesNotRetry() {
+        TestHardwareMap hardwareMap = new TestHardwareMap();
+        MotorProbe first = hardwareMap.addMotor("first");
+        MotorProbe second = hardwareMap.addMotor("second");
+        Plant plant = FtcActuators.plant(hardwareMap)
+                .motor("first", Direction.FORWARD)
+                .andMotor("second", Direction.FORWARD)
+                .velocity()
+                .deviceManagedWithDefaults()
+                .bounded(-10.0, 10.0)
+                .nativeUnits()
+                .velocityTolerance(0.0)
+                .targetFromNewCommand(2.0)
+                .build();
+        ManualLoopClock clock = new ManualLoopClock();
+        plant.update(clock.clock());
+
+        RuntimeException firstFailure = new IllegalStateException("first velocity stop failed");
+        RuntimeException secondFailure = new IllegalStateException("second velocity stop failed");
+        first.stopPowerFailure = firstFailure;
+        second.stopPowerFailure = secondFailure;
+        int firstPowerAttempts = first.powerAttempts;
+        int secondPowerAttempts = second.powerAttempts;
+        int firstVelocityWrites = first.velocityWrites.size();
+        int secondVelocityWrites = second.velocityWrites.size();
+
+        RuntimeException thrown = null;
+        try {
+            plant.stop();
+        } catch (RuntimeException failure) {
+            thrown = failure;
+        }
+
+        assertTrue("The first velocity child failure must remain primary", thrown == firstFailure);
+        assertEquals(firstPowerAttempts + 1, first.powerAttempts);
+        assertEquals(secondPowerAttempts + 1, second.powerAttempts);
+        assertEquals(firstVelocityWrites + 1, first.velocityWrites.size());
+        assertEquals(secondVelocityWrites + 1, second.velocityWrites.size());
+        assertEquals(1, thrown.getSuppressed().length);
+        assertTrue("The later velocity child failure must be suppressed in order",
+                thrown.getSuppressed()[0] == secondFailure);
+        assertEquals(2.0, plant.getAppliedTarget(), 0.0);
+        assertEquals(PlantTargetStatus.Kind.ACCEPTED, plant.getTargetStatus().kind());
+
+        plant.stop();
+        plant.commandTarget().set(4.0);
+        plant.update(clock.nextCycle(0.02));
+        assertEquals(firstPowerAttempts + 1, first.powerAttempts);
+        assertEquals(secondPowerAttempts + 1, second.powerAttempts);
+        assertEquals(firstVelocityWrites + 1, first.velocityWrites.size());
+        assertEquals(secondVelocityWrites + 1, second.velocityWrites.size());
+    }
+
+    @Test
+    public void groupedPositionStopAttemptsEveryChildInOrderAndTerminalPlantDoesNotRetry() {
+        TestHardwareMap hardwareMap = new TestHardwareMap();
+        ServoProbe first = hardwareMap.addServo("first");
+        ServoProbe second = hardwareMap.addServo("second");
+        PositionPlant plant = FtcActuators.plant(hardwareMap)
+                .servo("first", Direction.FORWARD)
+                .andServo("second", Direction.FORWARD)
+                .position()
+                .nonPeriodic()
+                .bounded(0.0, 1.0)
+                .nativeUnits()
+                .targetFromNewCommand(0.6)
+                .build();
+        ManualLoopClock clock = new ManualLoopClock();
+        plant.update(clock.clock());
+
+        RuntimeException firstFailure = new IllegalStateException("first position stop failed");
+        RuntimeException secondFailure = new IllegalStateException("second position stop failed");
+        first.stopPositionFailure = firstFailure;
+        second.stopPositionFailure = secondFailure;
+        int firstAttempts = first.positionAttempts;
+        int secondAttempts = second.positionAttempts;
+
+        RuntimeException thrown = null;
+        try {
+            plant.stop();
+        } catch (RuntimeException failure) {
+            thrown = failure;
+        }
+
+        assertTrue("The first position child failure must remain primary", thrown == firstFailure);
+        assertEquals(firstAttempts + 1, first.positionAttempts);
+        assertEquals(secondAttempts + 1, second.positionAttempts);
+        assertEquals(1, thrown.getSuppressed().length);
+        assertTrue("The later position child failure must be suppressed in order",
+                thrown.getSuppressed()[0] == secondFailure);
+        assertEquals(0.6, plant.getAppliedTarget(), 0.0);
+        assertEquals(PlantTargetStatus.Kind.ACCEPTED, plant.getTargetStatus().kind());
+
+        plant.stop();
+        plant.commandTarget().set(0.2);
+        plant.update(clock.nextCycle(0.02));
+        assertEquals(firstAttempts + 1, first.positionAttempts);
+        assertEquals(secondAttempts + 1, second.positionAttempts);
     }
 
     @Test
@@ -354,7 +501,7 @@ public final class FtcActuatorMappingDomainValidationTest {
     }
 
     @Test
-    public void unboundedVelocityPrecomputesEveryChildBeforeAnyFanoutAndPreservesCaches()
+    public void unboundedVelocityPreflightIsAtomicThenPlantFailStopsAndCanRetry()
             throws Exception {
         TestHardwareMap hardwareMap = new TestHardwareMap();
         MotorProbe first = hardwareMap.addMotor("first");
@@ -381,17 +528,44 @@ public final class FtcActuatorMappingDomainValidationTest {
         int secondVelocityWrites = second.velocityWrites.size();
         int firstModeWrites = first.modeWrites;
         int secondModeWrites = second.modeWrites;
+        int firstPowerWrites = first.powerWrites;
+        int secondPowerWrites = second.powerWrites;
 
         plant.commandTarget().set(Double.MAX_VALUE);
         expect(IllegalStateException.class,
                 () -> plant.update(time.nextCycle(0.02)));
-        assertEquals(1.0, groupOutput.getCommandedVelocity(), 0.0);
-        assertEquals(firstVelocityWrites, first.velocityWrites.size());
-        assertEquals(secondVelocityWrites, second.velocityWrites.size());
+
+        // The invalid grouped command itself is atomic: the sole later child write is the
+        // Plant-level compensating natural stop, never a partially mapped target.
+        assertEquals(0.0, groupOutput.getCommandedVelocity(), 0.0);
+        assertEquals(firstVelocityWrites + 1, first.velocityWrites.size());
+        assertEquals(secondVelocityWrites + 1, second.velocityWrites.size());
+        assertEquals(0.0, first.velocityWrites.get(firstVelocityWrites), 0.0);
+        assertEquals(0.0, second.velocityWrites.get(secondVelocityWrites), 0.0);
         assertEquals(firstModeWrites, first.modeWrites);
         assertEquals(secondModeWrites, second.modeWrites);
-        assertEquals(1.0, first.lastVelocity, 0.0);
-        assertEquals(2.0, second.lastVelocity, 0.0);
+        assertEquals(firstPowerWrites + 1, first.powerWrites);
+        assertEquals(secondPowerWrites + 1, second.powerWrites);
+        assertEquals(0.0, first.lastVelocity, 0.0);
+        assertEquals(0.0, second.lastVelocity, 0.0);
+        assertEquals(0.0, first.lastPower, 0.0);
+        assertEquals(0.0, second.lastPower, 0.0);
+        assertEquals(0.0, plant.getAppliedTarget(), 0.0);
+        assertEquals(PlantTargetStatus.Kind.STOPPED, plant.getTargetStatus().kind());
+
+        plant.commandTarget().set(0.5);
+        plant.update(time.nextCycle(0.02));
+
+        assertEquals(0.5, groupOutput.getCommandedVelocity(), 0.0);
+        assertEquals(firstVelocityWrites + 2, first.velocityWrites.size());
+        assertEquals(secondVelocityWrites + 2, second.velocityWrites.size());
+        assertEquals(0.5, first.lastVelocity, 0.0);
+        assertEquals(1.0, second.lastVelocity, 0.0);
+        assertEquals(firstModeWrites + 1, first.modeWrites);
+        assertEquals(secondModeWrites + 1, second.modeWrites);
+        assertEquals(firstPowerWrites + 1, first.powerWrites);
+        assertEquals(secondPowerWrites + 1, second.powerWrites);
+        assertEquals(0.5, plant.getAppliedTarget(), 0.0);
     }
 
     @Test
@@ -428,7 +602,7 @@ public final class FtcActuatorMappingDomainValidationTest {
     }
 
     @Test
-    public void devicePositionStaticPreflightIsRetryableAndRuntimeChecksAllChildrenBeforeWrite()
+    public void devicePositionPreflightIsAtomicThenPlantFailStopsAndCanRetry()
             throws Exception {
         TestHardwareMap boundedMap = new TestHardwareMap();
         boundedMap.addMotor("left");
@@ -487,15 +661,45 @@ public final class FtcActuatorMappingDomainValidationTest {
         runtimePlant.commandTarget().set(Integer.MAX_VALUE);
         expect(IllegalStateException.class,
                 () -> runtimePlant.update(runtimeClock.nextCycle(0.02)));
+
+        // Runtime mapping still preflights every child before any target fanout. The subsequent
+        // Plant-level fail-stop retains position commands while removing RUN_TO_POSITION power.
+        // The position and calibration-power outputs are distinct owned seams even though this FTC
+        // adapter happens to back both with one motor, so both zero-power stops must be attempted.
         assertEquals(1.0, groupOutput.getCommandedPosition(), 0.0);
         assertEquals(firstTargetWrites, runtimeFirst.targetPositionWrites);
         assertEquals(secondTargetWrites, runtimeSecond.targetPositionWrites);
-        assertEquals(firstModeWrites, runtimeFirst.modeWrites);
-        assertEquals(secondModeWrites, runtimeSecond.modeWrites);
-        assertEquals(firstPowerWrites, runtimeFirst.powerWrites);
-        assertEquals(secondPowerWrites, runtimeSecond.powerWrites);
+        assertEquals(firstModeWrites + 1, runtimeFirst.modeWrites);
+        assertEquals(secondModeWrites + 1, runtimeSecond.modeWrites);
+        assertEquals(firstPowerWrites + 2, runtimeFirst.powerWrites);
+        assertEquals(secondPowerWrites + 2, runtimeSecond.powerWrites);
         assertEquals(1, runtimeFirst.lastTargetPosition);
         assertEquals(2, runtimeSecond.lastTargetPosition);
+        assertEquals(DcMotor.RunMode.RUN_USING_ENCODER, runtimeFirst.mode);
+        assertEquals(DcMotor.RunMode.RUN_USING_ENCODER, runtimeSecond.mode);
+        assertEquals(0.0, runtimeFirst.lastPower, 0.0);
+        assertEquals(0.0, runtimeSecond.lastPower, 0.0);
+        // The generic Plant cannot infer that an arbitrary throwing PositionOutput was atomic, so
+        // its conservative effect fact remains the attempted candidate even though this grouped
+        // adapter's own cache and child-write evidence prove that no partial fanout occurred.
+        assertEquals((double) Integer.MAX_VALUE, runtimePlant.getAppliedTarget(), 0.0);
+        assertEquals(PlantTargetStatus.Kind.STOPPED, runtimePlant.getTargetStatus().kind());
+
+        runtimePlant.commandTarget().set(2.0);
+        runtimePlant.update(runtimeClock.nextCycle(0.02));
+
+        assertEquals(2.0, groupOutput.getCommandedPosition(), 0.0);
+        assertEquals(firstTargetWrites + 1, runtimeFirst.targetPositionWrites);
+        assertEquals(secondTargetWrites + 1, runtimeSecond.targetPositionWrites);
+        assertEquals(firstModeWrites + 2, runtimeFirst.modeWrites);
+        assertEquals(secondModeWrites + 2, runtimeSecond.modeWrites);
+        assertEquals(firstPowerWrites + 3, runtimeFirst.powerWrites);
+        assertEquals(secondPowerWrites + 3, runtimeSecond.powerWrites);
+        assertEquals(2, runtimeFirst.lastTargetPosition);
+        assertEquals(4, runtimeSecond.lastTargetPosition);
+        assertEquals(DcMotor.RunMode.RUN_TO_POSITION, runtimeFirst.mode);
+        assertEquals(DcMotor.RunMode.RUN_TO_POSITION, runtimeSecond.mode);
+        assertEquals(2.0, runtimePlant.getAppliedTarget(), 0.0);
     }
 
     @Test
@@ -689,6 +893,8 @@ public final class FtcActuatorMappingDomainValidationTest {
         private int targetPositionWrites;
         private int modeWrites;
         private int powerWrites;
+        private int powerAttempts;
+        private RuntimeException stopPowerFailure;
         private DcMotor.RunMode mode = DcMotor.RunMode.RUN_WITHOUT_ENCODER;
         private DcMotorSimple.Direction direction = DcMotorSimple.Direction.FORWARD;
 
@@ -710,7 +916,12 @@ public final class FtcActuatorMappingDomainValidationTest {
             }
             if ("getDirection".equals(name)) return direction;
             if ("setPower".equals(name)) {
-                lastPower = (double) args[0];
+                double power = (double) args[0];
+                powerAttempts++;
+                if (power == 0.0 && stopPowerFailure != null) {
+                    throw stopPowerFailure;
+                }
+                lastPower = power;
                 powerWrites++;
                 return null;
             }
@@ -743,6 +954,8 @@ public final class FtcActuatorMappingDomainValidationTest {
     private static final class ServoProbe {
         private final Servo servo;
         private double lastPosition;
+        private int positionAttempts;
+        private RuntimeException stopPositionFailure;
         private Servo.Direction direction = Servo.Direction.FORWARD;
 
         private ServoProbe() {
@@ -758,6 +971,8 @@ public final class FtcActuatorMappingDomainValidationTest {
                 return objectMethod(proxy, name, args, "ServoProbe");
             }
             if ("setPosition".equals(name)) {
+                positionAttempts++;
+                if (stopPositionFailure != null) throw stopPositionFailure;
                 lastPosition = (double) args[0];
                 return null;
             }

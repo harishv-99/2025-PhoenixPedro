@@ -65,7 +65,8 @@ request when the managed program starts it.
 cancellation. When cancellation happens while the managed loop remains active, the next output
 phase realizes that request through the same Plant. FTC STOP and runtime failure are stronger
 lifecycle endings: the host best-effort cancels active work and then calls the registered
-mechanism's `stop()` immediately; it does not promise another ordinary output update.
+mechanism's `stop()` immediately. The Plant applies its natural final stop and becomes terminal; it
+does not depend on another ordinary output update or a rewritten command target.
 
 The parallel ending choice is `.leaveThere()`, which keeps the timed request after completion or
 active cancellation. Use it only when leaving that request active is the intended robot behavior.

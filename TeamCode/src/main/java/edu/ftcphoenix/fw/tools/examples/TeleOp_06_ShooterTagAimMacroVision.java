@@ -463,8 +463,6 @@ public final class TeleOp_06_ShooterTagAimMacroVision extends OpMode {
         lastMacroStatus = "cancelled";
         CleanupActions.attemptAll(
                 macroRunner::cancelAndClear,
-                () -> { if (shooter != null) shooter.commandTarget().set(0.0); },
-                () -> { if (transfer != null) transfer.commandTarget().set(0.0); },
                 () -> { if (shooter != null) shooter.stop(); },
                 () -> { if (transfer != null) transfer.stop(); },
                 () -> { if (pusher != null) pusher.stop(); },

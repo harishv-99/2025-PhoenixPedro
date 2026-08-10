@@ -697,11 +697,6 @@ public final class FtcMotorPowerRunModeTest {
         assertEquals(0.4, powered.power, EPSILON);
 
         events.clear();
-        plant.reset();
-
-        assertTrue("Plant reset must not touch either FTC device", events.values.isEmpty());
-        assertEquals(DcMotor.RunMode.STOP_AND_RESET_ENCODER, encoder.runMode);
-
         plant.stop();
 
         assertEquals(Arrays.asList("powered.setPower(0.0)"), events.values);

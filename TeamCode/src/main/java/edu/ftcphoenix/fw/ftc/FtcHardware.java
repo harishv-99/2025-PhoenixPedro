@@ -397,8 +397,10 @@ public final class FtcHardware {
     /**
      * Create a Phoenix {@link PositionOutput} for a named FTC standard servo.
      *
-     * <p>The returned output uses the servo's usual {@code 0.0 .. 1.0} position domain and reports
-     * the most recent commanded value through {@link PositionOutput#getCommandedPosition()}.</p>
+     * <p>The returned output uses the servo's usual {@code 0.0 .. 1.0} position domain. It reports
+     * {@link Double#NaN} until a position has been submitted successfully, then reports the most
+     * recent successfully submitted value through {@link PositionOutput#getCommandedPosition()}.
+     * Stopping it before that first command does not write a position.</p>
      *
      * @param hw FTC hardware map used to look up the servo
      * @param name configured hardware name of the {@link Servo}
@@ -418,8 +420,12 @@ public final class FtcHardware {
      * <p>The adapter configures the servo direction immediately. Each command must be finite; an
      * invalid value is rejected before the cached command or FTC SDK is touched. Finite commands
      * are clamped to the servo domain {@code [0.0, 1.0]} as defense in depth for direct expert use.
-     * Framework-built Servo Plants validate their complete mapping before hardware resolution and
-     * do not rely on this clamp.</p>
+     * The cached command is committed only after {@link Servo#setPosition(double)} returns
+     * successfully. Until then, {@link PositionOutput#getCommandedPosition()} returns
+     * {@link Double#NaN} and {@link PositionOutput#stop()} does not read or write a servo position.
+     * Afterward, {@code stop()} reasserts the last successfully submitted position. Framework-built
+     * Servo Plants validate their complete mapping before hardware resolution and do not rely on
+     * this clamp.</p>
      *
      * @param servo     FTC standard servo to command
      * @param direction logical forward direction for Phoenix commands
@@ -436,18 +442,27 @@ public final class FtcHardware {
                 : Servo.Direction.FORWARD);
 
         return new PositionOutput() {
-            private double last;
+            private double last = Double.NaN;
+            private boolean hasSubmittedPosition;
 
             @Override
             public void setPosition(double position) {
                 requireFiniteCommand(position, "servo position");
-                last = MathUtil.clamp(position, 0.0, 1.0);
-                servo.setPosition(last);
+                double next = MathUtil.clamp(position, 0.0, 1.0);
+                servo.setPosition(next);
+                last = next;
+                hasSubmittedPosition = true;
             }
 
             @Override
             public double getCommandedPosition() {
                 return last;
+            }
+
+            @Override
+            public void stop() {
+                if (!hasSubmittedPosition) return;
+                servo.setPosition(last);
             }
         };
     }

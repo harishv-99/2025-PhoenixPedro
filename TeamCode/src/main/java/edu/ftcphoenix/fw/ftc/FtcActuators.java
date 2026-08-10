@@ -6,6 +6,7 @@ import com.qualcomm.robotcore.hardware.HardwareMap;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 import edu.ftcphoenix.fw.actuation.Plant;
@@ -19,6 +20,7 @@ import edu.ftcphoenix.fw.core.hal.Direction;
 import edu.ftcphoenix.fw.core.hal.PositionOutput;
 import edu.ftcphoenix.fw.core.hal.PowerOutput;
 import edu.ftcphoenix.fw.core.hal.VelocityOutput;
+import edu.ftcphoenix.fw.core.lifecycle.CleanupActions;
 import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.core.source.ScalarSource;
 
@@ -55,11 +57,14 @@ import edu.ftcphoenix.fw.core.source.ScalarSource;
  * {@code [0.0, 1.0]}; direct motor/CR-servo power must preserve zero and remain in
  * {@code [-1.0, +1.0]}; device-managed velocity must preserve zero; and device-managed motor
  * position must round into FTC's signed 32-bit tick domain. Grouped outputs compute and validate
- * every child command before changing their group cache or writing any child. Inverse-mapped
- * grouped feedback returns {@link Double#NaN} if any child conversion or aggregate is non-finite.
+ * every child command before changing their group cache or writing any child. This prevents a
+ * partial requested-command fan-out; if rejection propagates through a Plant update, the Plant may
+ * then invoke the group's natural stop as a separate fail-safe cleanup. Inverse-mapped grouped
+ * feedback returns {@link Double#NaN} if any child conversion or aggregate is non-finite.
  * A motor-position child transform describes only the native position coordinate; temporary
  * calibration-search power is a separate normalized command and fans out identically through each
- * configured motor direction.</p>
+ * configured motor direction. Stopping a grouped output attempts every child in declaration order;
+ * if several stops fail, the first failure remains primary and later failures are suppressed.</p>
  *
  * <h2>Grouped hardware names</h2>
  *
@@ -3134,7 +3139,7 @@ public final class FtcActuators {
 
         @Override
         public void stop() {
-            for (PowerOutput output : outputs) output.stop();
+            attemptAllStops(outputs, PowerOutput::stop);
             last = 0.0;
         }
     }
@@ -3187,7 +3192,7 @@ public final class FtcActuators {
 
         @Override
         public void stop() {
-            for (PowerOutput output : outputs) output.stop();
+            attemptAllStops(outputs, PowerOutput::stop);
             last = 0.0;
         }
     }
@@ -3254,7 +3259,7 @@ public final class FtcActuators {
 
         @Override
         public void stop() {
-            for (PositionOutput output : outputs) output.stop();
+            attemptAllStops(outputs, PositionOutput::stop);
         }
     }
 
@@ -3305,7 +3310,7 @@ public final class FtcActuators {
 
         @Override
         public void stop() {
-            for (VelocityOutput output : outputs) output.stop();
+            attemptAllStops(outputs, VelocityOutput::stop);
             last = 0.0;
         }
     }
@@ -3313,6 +3318,17 @@ public final class FtcActuators {
     // ---------------------------------------------------------------------------------------------
     // Helpers
     // ---------------------------------------------------------------------------------------------
+
+    private static <T> void attemptAllStops(
+            List<T> outputs,
+            Consumer<? super T> stopAction) {
+        Runnable[] stopActions = new Runnable[outputs.size()];
+        for (int index = 0; index < outputs.size(); index++) {
+            T output = outputs.get(index);
+            stopActions[index] = () -> stopAction.accept(output);
+        }
+        CleanupActions.attemptAll(stopActions);
+    }
 
     private static void ensureMotorFeedbackAvailable(List<MotorBuilder.Spec> motorSpecs, String domain) {
         if (motorSpecs == null || motorSpecs.isEmpty()) {

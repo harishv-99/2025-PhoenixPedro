@@ -42,10 +42,11 @@ import edu.ftcphoenix.fw.core.time.LoopClock;
  * public measurement. Unbounded maps remain supported, so the direct position-output path computes
  * each native command into a temporary and rejects a non-finite result before applied-target commit
  * or output. It retains the mapping exception as primary while invoking the output's natural stop
- * best-effort: successful cleanup publishes the same retained-position stopped state as
- * {@link #stop()}, while a failed stop restores the prior applied/status/resolution facts and is
- * suppressed. A non-finite inverse conversion publishes measurement {@link Double#NaN} and cannot
- * be at target.</p>
+ * best-effort: successful cleanup publishes the same retained-position stopped diagnostic state
+ * as {@link #stop()}, while a failed stop restores the prior applied/status/resolution facts and is
+ * suppressed. Unlike explicit {@code stop()}, this internal fail-stop is nonterminal so an
+ * advanced host may correct the cause and retry. A non-finite inverse conversion publishes
+ * measurement {@link Double#NaN} and cannot be at target.</p>
  */
 final class MappedPositionPlant implements PositionPlant {
 
@@ -83,6 +84,7 @@ final class MappedPositionPlant implements PositionPlant {
     private final PlantTargetResolver targetResolver;
     private final ScalarTarget commandTarget;
     private final PlantTargetGuards targetGuards;
+    private final PlantLifecycle lifecycle = new PlantLifecycle();
     private final Periodicity periodicity;
     private final double period;
     private final ScalarRange configuredRange;
@@ -481,11 +483,14 @@ final class MappedPositionPlant implements PositionPlant {
 
     @Override
     public void update(LoopClock clock) {
+        if (!lifecycle.isActive()) return;
         if (pendingAssume) {
             double nativeNow = sampleNative(clock);
+            if (!lifecycle.isActive()) return;
             if (Double.isFinite(nativeNow))
                 establishReferenceFromNative(assumedPlantPosition, nativeNow);
         }
+        if (!lifecycle.isActive()) return;
 
         if (searchState != SearchState.IDLE) {
             // A reentrant update during acquisition must neither resume normal targeting nor submit
@@ -499,7 +504,38 @@ final class MappedPositionPlant implements PositionPlant {
                 return;
             }
             samplePlantMeasurement(clock);
-            if (searchPowerOut != null) searchPowerOut.setPower(searchPower);
+            if (!lifecycle.isActive()) return;
+            double effectAppliedTarget = appliedTarget;
+            PlantTargetStatus effectTargetStatus = targetStatus;
+            PlantTargetResolution effectTargetResolution = targetResolution;
+            RuntimeException effectFailure = null;
+            try {
+                if (searchPowerOut != null) searchPowerOut.setPower(searchPower);
+            } catch (RuntimeException failure) {
+                effectFailure = failure;
+            }
+            if (!lifecycle.isActive()) {
+                try {
+                    enforceTerminalStopAfterReentrantEffect(
+                            effectAppliedTarget, effectTargetStatus, effectTargetResolution);
+                } catch (RuntimeException cleanupFailure) {
+                    effectFailure = suppress(effectFailure, cleanupFailure);
+                }
+            }
+            if (effectFailure != null) {
+                if (lifecycle.isActive()) {
+                    failStopOutputFailure(
+                            effectAppliedTarget,
+                            effectTargetStatus,
+                            effectTargetResolution,
+                            effectAppliedTarget,
+                            effectTargetStatus,
+                            effectTargetResolution,
+                            effectFailure);
+                }
+                throw effectFailure;
+            }
+            if (!lifecycle.isActive()) return;
             targetResolution = PlantTargetResolution.holdLast(appliedTarget, "calibration search active");
             lastAtTarget = false;
             targetStatus = PlantTargetStatus.holdingLast("calibration search active");
@@ -510,17 +546,20 @@ final class MappedPositionPlant implements PositionPlant {
         PlantTargetStatus priorTargetStatus = targetStatus;
         PlantTargetResolution priorTargetResolution = targetResolution;
         samplePlantMeasurement(clock);
+        if (!lifecycle.isActive()) return;
         ScalarRange range = targetRange();
         PlantTargetContext context = PlantTargetContext.position(hasFeedback(), lastMeasurement,
                 range, periodicity, period(), requestedTarget, appliedTarget);
         PlantTargetResolution nextTargetResolution = targetResolver.resolve(context, clock);
+        if (!lifecycle.isActive()) return;
+        double nextRequestedTarget;
         if (nextTargetResolution != null && nextTargetResolution.hasTarget()) {
-            requestedTarget = nextTargetResolution.target();
+            nextRequestedTarget = nextTargetResolution.target();
         } else {
-            requestedTarget = appliedTarget;
+            nextRequestedTarget = appliedTarget;
         }
 
-        double candidate = Double.isFinite(requestedTarget) ? requestedTarget : appliedTarget;
+        double candidate = Double.isFinite(nextRequestedTarget) ? nextRequestedTarget : appliedTarget;
         PlantTargetStatus status = (nextTargetResolution != null && nextTargetResolution.hasTarget())
                 ? PlantTargetStatus.ACCEPTED
                 : PlantTargetStatus.targetUnavailable(nextTargetResolution != null
@@ -538,6 +577,8 @@ final class MappedPositionPlant implements PositionPlant {
 
         PlantTargetGuards.Result guarded = PlantTargetSafety.applyGuards(
                 targetGuards, candidate, status, appliedTarget, range, "position", clock);
+        if (!lifecycle.isActive()) return;
+        requestedTarget = nextRequestedTarget;
 
         double nativeCommand = Double.NaN;
         if (isReferenced() && positionOut != null) {
@@ -563,6 +604,9 @@ final class MappedPositionPlant implements PositionPlant {
         appliedTarget = guarded.target;
         targetStatus = guarded.status;
         targetResolution = nextTargetResolution;
+        double effectAppliedTarget = appliedTarget;
+        PlantTargetStatus effectTargetStatus = targetStatus;
+        PlantTargetResolution effectTargetResolution = targetResolution;
 
         if (!isReferenced()) {
             stopNormalPositionOutput();
@@ -570,16 +614,59 @@ final class MappedPositionPlant implements PositionPlant {
             return;
         }
         if (positionOut != null) {
-            positionOut.setPosition(nativeCommand);
+            RuntimeException effectFailure = null;
+            try {
+                positionOut.setPosition(nativeCommand);
+            } catch (RuntimeException failure) {
+                effectFailure = failure;
+            }
+            if (!lifecycle.isActive()) {
+                try {
+                    enforceTerminalStopAfterReentrantEffect(
+                            effectAppliedTarget, effectTargetStatus, effectTargetResolution);
+                } catch (RuntimeException cleanupFailure) {
+                    effectFailure = suppress(effectFailure, cleanupFailure);
+                }
+            }
+            if (effectFailure != null) {
+                if (lifecycle.isActive()) {
+                    failStopOutputFailure(
+                            priorAppliedTarget,
+                            priorTargetStatus,
+                            priorTargetResolution,
+                            effectAppliedTarget,
+                            effectTargetStatus,
+                            effectTargetResolution,
+                            effectFailure);
+                }
+                throw effectFailure;
+            }
+            if (!lifecycle.isActive()) return;
         } else if (regulatedPowerChannel != null) {
             regulatedActuationCompleted = false;
             lastAtTarget = false;
             try {
-                regulatedPowerChannel.update(appliedTarget, lastMeasurement, clock);
+                regulatedPowerChannel.update(appliedTarget, lastMeasurement, clock, lifecycle);
             } catch (RuntimeException failure) {
                 handleRegulatedUpdateFailure(
                         priorAppliedTarget, priorTargetStatus, priorTargetResolution, failure);
+                if (!lifecycle.isActive()
+                        && regulatedPowerChannel.terminalStopReassertRequired()) {
+                    try {
+                        enforceTerminalStopAfterReentrantEffect(
+                                effectAppliedTarget, effectTargetStatus, effectTargetResolution);
+                    } catch (RuntimeException cleanupFailure) {
+                        suppress(failure, cleanupFailure);
+                    }
+                }
                 throw failure;
+            }
+            if (!lifecycle.isActive()) {
+                if (regulatedPowerChannel.terminalStopReassertRequired()) {
+                    enforceTerminalStopAfterReentrantEffect(
+                            effectAppliedTarget, effectTargetStatus, effectTargetResolution);
+                }
+                return;
             }
             regulatedActuationCompleted = true;
         }
@@ -587,25 +674,9 @@ final class MappedPositionPlant implements PositionPlant {
     }
 
     @Override
-    public void reset() {
-        regulatedActuationCompleted = false;
-        lastAtTarget = false;
-        targetResolver.reset();
-        targetGuards.reset();
-        if (nativeMeasurement != null) nativeMeasurement.reset();
-        if (regulatedPowerChannel != null) regulatedPowerChannel.reset();
-        lastMeasurement = Double.NaN;
-        lastNativeMeasurement = Double.NaN;
-        targetStatus = PlantTargetStatus.STOPPED;
-        targetResolution = PlantTargetResolution.unavailable("not sampled");
-        if (referenceMode == ReferenceMode.ASSUME_CURRENT) {
-            referenced = false;
-            pendingAssume = true;
-        }
-    }
-
-    @Override
     public void stop() {
+        if (!lifecycle.claimStop()) return;
+
         double priorAppliedTarget = appliedTarget;
         PlantTargetStatus priorTargetStatus = targetStatus;
         PlantTargetResolution priorTargetResolution = targetResolution;
@@ -615,38 +686,9 @@ final class MappedPositionPlant implements PositionPlant {
         // stop throws, a later update must not refresh search power.
         searchState = SearchState.IDLE;
 
-        RuntimeException primary = null;
-        boolean allOutputStopsSucceeded = true;
-        if (positionOut != null) {
-            try {
-                positionOut.stop();
-            } catch (RuntimeException failure) {
-                allOutputStopsSucceeded = false;
-                primary = failure;
-            }
-        }
-        if (regulatedPowerChannel != null) {
-            try {
-                regulatedPowerChannel.stop(searchPowerOut);
-            } catch (RuntimeException failure) {
-                primary = suppress(primary, failure);
-            }
-            allOutputStopsSucceeded &= regulatedPowerChannel.lastStopSubmitted();
-        }
-        if (searchPowerOut != null && regulatedPowerChannel == null) {
-            try {
-                searchPowerOut.stop();
-            } catch (RuntimeException failure) {
-                allOutputStopsSucceeded = false;
-                primary = suppress(primary, failure);
-            }
-        }
-        try {
-            targetGuards.reset();
-        } catch (RuntimeException failure) {
-            primary = suppress(primary, failure);
-        }
-        if (allOutputStopsSucceeded) {
+        StopOutcome outputStop = stopOwnedOutputs();
+        RuntimeException primary = outputStop.failure;
+        if (outputStop.allOutputsStopped) {
             markSuccessfullyStopped();
         } else {
             restoreTargetState(priorAppliedTarget, priorTargetStatus, priorTargetResolution);
@@ -753,6 +795,7 @@ final class MappedPositionPlant implements PositionPlant {
      */
     @Override
     public void establishReferenceAt(double plantPosition) {
+        lifecycle.requireActive("PositionPlant.establishReferenceAt(...)");
         double validatedPlantPosition =
                 PositionCalibrationValueValidation.requireFinitePlantValue(
                         plantPosition,
@@ -776,12 +819,14 @@ final class MappedPositionPlant implements PositionPlant {
      */
     @Override
     public void establishReferenceAt(double plantPosition, LoopClock clock) {
+        lifecycle.requireActive("PositionPlant.establishReferenceAt(...)");
         double validatedPlantPosition =
                 PositionCalibrationValueValidation.requireFinitePlantValue(
                         plantPosition,
                         "PositionPlant.establishReferenceAt(...)",
                         "plantPosition");
         double nativeNow = sampleNative(clock);
+        lifecycle.requireActive("PositionPlant.establishReferenceAt(...)");
         if (!Double.isFinite(nativeNow))
             throw new IllegalStateException("Cannot establish position reference from non-finite native measurement");
         establishReferenceFromNative(validatedPlantPosition, nativeNow);
@@ -801,6 +846,7 @@ final class MappedPositionPlant implements PositionPlant {
      */
     @Override
     public void beginCalibrationSearch(double power) {
+        lifecycle.requireActive("PositionPlant.beginCalibrationSearch(...)");
         if (searchPowerOut == null)
             throw new IllegalStateException("This PositionPlant does not support calibration search drive");
         if (searchState != SearchState.IDLE)
@@ -840,7 +886,7 @@ final class MappedPositionPlant implements PositionPlant {
         regulatedActuationCompleted = false;
         lastAtTarget = false;
         if (positionOut != null) positionOut.stop();
-        if (regulatedPowerChannel != null) regulatedPowerChannel.stop();
+        if (regulatedPowerChannel != null) regulatedPowerChannel.stopWhileActive(lifecycle);
     }
 
     private double sampleNative(LoopClock clock) {
@@ -848,12 +894,15 @@ final class MappedPositionPlant implements PositionPlant {
             lastNativeMeasurement = Double.NaN;
             return Double.NaN;
         }
-        lastNativeMeasurement = nativeMeasurement.getAsDouble(clock);
-        return lastNativeMeasurement;
+        double nativeValue = nativeMeasurement.getAsDouble(clock);
+        if (!lifecycle.isActive()) return Double.NaN;
+        lastNativeMeasurement = nativeValue;
+        return nativeValue;
     }
 
     private void samplePlantMeasurement(LoopClock clock) {
         double nativeValue = sampleNative(clock);
+        if (!lifecycle.isActive()) return;
         double plantMeasurement = isReferenced() && Double.isFinite(nativeValue)
                 ? toPlant(nativeValue)
                 : Double.NaN;
@@ -967,13 +1016,62 @@ final class MappedPositionPlant implements PositionPlant {
         regulatedActuationCompleted = false;
         lastAtTarget = false;
         restoreTargetState(priorAppliedTarget, priorTargetStatus, priorTargetResolution);
+        failStopOutputFailure(
+                priorAppliedTarget,
+                priorTargetStatus,
+                priorTargetResolution,
+                priorAppliedTarget,
+                priorTargetStatus,
+                priorTargetResolution,
+                failure);
+        throw failure;
+    }
+
+    private void failStopOutputFailure(
+            double priorAppliedTarget,
+            PlantTargetStatus priorTargetStatus,
+            PlantTargetResolution priorTargetResolution,
+            double effectAppliedTarget,
+            PlantTargetStatus effectTargetStatus,
+            PlantTargetResolution effectTargetResolution,
+            RuntimeException failure) {
+        regulatedActuationCompleted = false;
+        lastAtTarget = false;
+        searchState = SearchState.IDLE;
+        StopOutcome outputStop = stopOwnedOutputs();
+        if (outputStop.failure != null) suppress(failure, outputStop.failure);
+
+        if (!lifecycle.isActive()) {
+            if (outputStop.allOutputsStopped) {
+                markSuccessfullyStopped();
+            } else {
+                restoreTargetState(
+                        effectAppliedTarget, effectTargetStatus, effectTargetResolution);
+            }
+            return;
+        }
+
+        boolean cleanupSucceeded = outputStop.allOutputsStopped && outputStop.failure == null;
         try {
-            stop();
+            targetGuards.reset();
         } catch (RuntimeException cleanupFailure) {
             suppress(failure, cleanupFailure);
+            cleanupSucceeded = false;
+        }
+        if (!lifecycle.isActive()) {
+            try {
+                enforceTerminalStopAfterReentrantEffect(
+                        effectAppliedTarget, effectTargetStatus, effectTargetResolution);
+            } catch (RuntimeException cleanupFailure) {
+                suppress(failure, cleanupFailure);
+            }
+            return;
+        }
+        if (cleanupSucceeded) {
+            markSuccessfullyStopped();
+        } else {
             restoreTargetState(priorAppliedTarget, priorTargetStatus, priorTargetResolution);
         }
-        throw failure;
     }
 
     private void handleRegulatedUpdateFailure(double priorAppliedTarget,
@@ -982,12 +1080,16 @@ final class MappedPositionPlant implements PositionPlant {
                                               RuntimeException failure) {
         regulatedActuationCompleted = false;
         lastAtTarget = false;
+        if (!lifecycle.isActive()) return;
+        boolean guardCleanupSucceeded = true;
         try {
             targetGuards.reset();
         } catch (RuntimeException cleanupFailure) {
             suppress(failure, cleanupFailure);
+            guardCleanupSucceeded = false;
         }
-        if (regulatedPowerChannel.lastStopSubmitted()) {
+        if (!lifecycle.isActive()) return;
+        if (regulatedPowerChannel.lastStopCompleted() && guardCleanupSucceeded) {
             markSuccessfullyStopped();
         } else {
             restoreTargetState(priorAppliedTarget, priorTargetStatus, priorTargetResolution);
@@ -997,6 +1099,74 @@ final class MappedPositionPlant implements PositionPlant {
     private void markSuccessfullyStopped() {
         targetStatus = PlantTargetStatus.STOPPED;
         targetResolution = PlantTargetResolution.unavailable("plant stopped");
+    }
+
+    private void enforceTerminalStopAfterReentrantEffect(
+            double effectAppliedTarget,
+            PlantTargetStatus effectTargetStatus,
+            PlantTargetResolution effectTargetResolution) {
+        searchState = SearchState.IDLE;
+        StopOutcome outputStop = regulatedPowerChannel == null
+                ? stopOwnedOutputs()
+                : reassertRegulatedTerminalOutputs();
+        if (outputStop.allOutputsStopped) {
+            markSuccessfullyStopped();
+        } else {
+            restoreTargetState(effectAppliedTarget, effectTargetStatus, effectTargetResolution);
+        }
+        if (outputStop.failure != null) throw outputStop.failure;
+    }
+
+    /** Reassert only physical terminal outputs; the reentrant public stop already reset control. */
+    private StopOutcome reassertRegulatedTerminalOutputs() {
+        RuntimeException failure = null;
+        try {
+            regulatedPowerChannel.reassertTerminalOutputStop(searchPowerOut);
+        } catch (RuntimeException stopFailure) {
+            failure = stopFailure;
+        }
+        return new StopOutcome(regulatedPowerChannel.lastStopSubmitted(), failure);
+    }
+
+    /** Stop every distinct realization output without changing this Plant's lifecycle latch. */
+    private StopOutcome stopOwnedOutputs() {
+        RuntimeException primary = null;
+        boolean allOutputStopsSucceeded = true;
+        if (positionOut != null) {
+            try {
+                positionOut.stop();
+            } catch (RuntimeException failure) {
+                allOutputStopsSucceeded = false;
+                primary = failure;
+            }
+        }
+        if (regulatedPowerChannel != null) {
+            try {
+                regulatedPowerChannel.stop(searchPowerOut);
+            } catch (RuntimeException failure) {
+                primary = suppress(primary, failure);
+            }
+            allOutputStopsSucceeded &= regulatedPowerChannel.lastStopSubmitted();
+        }
+        if (searchPowerOut != null && regulatedPowerChannel == null) {
+            try {
+                searchPowerOut.stop();
+            } catch (RuntimeException failure) {
+                allOutputStopsSucceeded = false;
+                primary = suppress(primary, failure);
+            }
+        }
+        return new StopOutcome(allOutputStopsSucceeded, primary);
+    }
+
+    private static final class StopOutcome {
+        private final boolean allOutputsStopped;
+        private final RuntimeException failure;
+
+        private StopOutcome(boolean allOutputsStopped, RuntimeException failure) {
+            this.allOutputsStopped = allOutputsStopped;
+            this.failure = failure;
+        }
     }
 
     private void restoreTargetState(double priorAppliedTarget,

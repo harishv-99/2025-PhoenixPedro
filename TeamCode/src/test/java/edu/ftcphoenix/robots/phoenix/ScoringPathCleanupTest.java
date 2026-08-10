@@ -100,7 +100,8 @@ public final class ScoringPathCleanupTest {
                 Arrays.asList(
                         "intake.power",
                         "intakeTransfer.power",
-                        "shooterTransferRight.power"
+                        "shooterTransferRight.power",
+                        "shooterTransferLeft.power"
                 ),
                 hardwareMap.stopEvents
         );
@@ -140,7 +141,8 @@ public final class ScoringPathCleanupTest {
                         "flywheel.velocity",
                         "intake.power",
                         "intakeTransfer.power",
-                        "shooterTransferRight.power"
+                        "shooterTransferRight.power",
+                        "shooterTransferLeft.power"
                 ),
                 hardwareMap.stopEvents
         );

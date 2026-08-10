@@ -103,8 +103,6 @@ public final class DrivetrainMotorDirectionTester extends BaseTeleOpTester {
 
         motorControls.mirrorOnChange(gamepads.p1().b(),
                 high -> plantBR.commandTarget().set(high ? TEST_POWER : 0.0));
-
-        stopAll();
     }
 
     @Override

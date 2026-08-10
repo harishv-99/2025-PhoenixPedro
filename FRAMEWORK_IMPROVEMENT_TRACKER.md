@@ -1,6 +1,6 @@
 # Framework Improvement Tracker
 
-Last updated: 2026-08-09
+Last updated: 2026-08-10
 
 This file tracks proposed Phoenix framework improvements. It is deliberately a planning document:
 an item being listed here does **not** mean its current proposed solution has been approved. Each
@@ -164,6 +164,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 77 | CONFIG-01 | Owner-configuration snapshot audit | Deferred | Revisit specific owners only when a traced caller shows mutation drift or invalid retained state. |
 | 78 | DOC-02 | Beginner-first current-state documentation | Done | Replace the sprawling entry path with one short overview, one linear starter course, task-oriented help, and separated reference/advanced material. |
 | 79 | DOC-03 | Generated Phoenix documentation site | Done | Build the canonical Markdown and Javadocs into one searchable static site without adding a second authored documentation source. |
+| 80 | PLANT-03 | Terminal Plant lifecycle | Done | Make `Plant.stop()` terminal, remove broad `Plant.reset()`, and keep recoverable output fail-stop internal. |
 
 The completed order was intentionally front-loaded with testability, robot lifecycle, actuator
 safety, deterministic Task behavior, Pedro ownership, truthful route outcomes, and the reusable
@@ -10515,6 +10516,175 @@ writer, and explicit lifecycle ownership.
   explicitly replied **`PLANT-02 looks good`**. This approves the reviewed implementation and
   authorizes Gate 3 commit, pull-request publication, and merge. No robot-hardware result is claimed
   or required for this construction-grammar and ownership consolidation.
+
+### PLANT-03 - Terminal Plant lifecycle
+
+- **Gate 2 approval (2026-08-10):** after reviewing why lifecycle cleanup currently clears a
+  command target before stopping its Plant, the user approved the complete revised plan by directing
+  **`Implement the plan.`** The approved design makes public `Plant.stop()` terminal, adds no second
+  public pause/resume/output-stop path, removes public `Plant.reset()`, preserves internal
+  recoverable fail-stop, and keeps concrete position-output stop behavior truthful. The branch
+  `codex/plant-03-terminal-plant-lifecycle` is based exactly on fetched `origin/master` merge
+  `395a1b26fa988b3ee823f6ed3655c1ffaddfe2f0`. Publication is not authorized.
+- **Status and ordering:** **Done.** PLANT-03 alone owns this lifecycle change. INPUT-02,
+  BOUNDARY-01, CI-01, deferred hardware items, and unrelated cleanup remain out of scope.
+- **Confirmed behavior:** every current Plant implementation applies an immediate realization-
+  specific stop but remains updateable. A later `update(clock)` samples the unchanged resolver and
+  can reapply a nonzero target. Beginner and tool cleanup therefore clears command targets before
+  calling `stop()`, which works only for command-backed graphs and does not generalize to read-only,
+  overlaid, equivalent-position, or planned resolvers. Direct power, mapped velocity, and mapped
+  position implementations have no terminal latch. Mapped runtime-mapping failure currently calls
+  public `stop()` and a focused test intentionally proves corrected-input retry on a later update.
+- **Caller audit:** ordinary mechanisms and modern examples use Plant stop for terminal owner or
+  OpMode cleanup. `ScoringPath` and the Pedro mechanism already latch their containing owner before
+  stopping Plants. The sole reuse exception is `DrivetrainMotorDirectionTester`, which calls
+  `stopAll()` during initialization and later updates the same four Plants; its construction already
+  creates zero commands without a hardware write, so the unnecessary initialization stop can be
+  removed while retaining final cleanup. Calibration uses its explicit acquire/release mode and
+  owned output stops rather than public Plant stop. No production robot code calls `Plant.reset()`;
+  its repository callers are focused tests.
+- **Reset audit:** `Plant.reset()` is not one narrow operation. Depending on runtime it resets the
+  resolver graph (including a normal `ScalarTarget` back to its initial value), target guards,
+  measurement/filter caches, regulator state, completion evidence, cached target/measurement facts,
+  and `assumeCurrentPositionIs(...)` reference acquisition. It sends no hardware stop and is not
+  used by the managed runtime. Tuning already resets its retained regulator explicitly, source and
+  resolver owners have their own reset contracts, and homing/reference changes use explicit
+  PositionPlant APIs. Keeping or renaming this broad Plant operation would preserve a second
+  lifecycle concept without a production caller; remove it and construct a fresh Plant for another
+  lifetime.
+- **Output-semantics audit:** a target domain alone cannot define physical stop. Power and velocity
+  outputs submit zero. A standard-servo `PositionOutput` reasserts its cached position command, an
+  FTC `RUN_TO_POSITION` motor removes power and returns to `RUN_USING_ENCODER`, and a regulated
+  position Plant stops its power channel and controller. All satisfy one Plant contract: invoke the
+  owned realization's natural final stop, then never realize another target. Do not claim that all
+  position Plants actively hold, and do not add a different `PositionPlant.stop()` API.
+- **Alternatives considered:** document the existing two-action cleanup; make stop mutate a command
+  target when one exists; add public `pause()`, `stopOutput()`, `resume()`, or `restart()`; reset or
+  disable every resolver graph; keep `Plant.reset()` active-only; rename and narrow reset; make every
+  internal fail-stop terminal; or make explicit public stop terminal while keeping output-level
+  recovery private. Documentation alone leaves the stale-update hazard. Target mutation cannot
+  cover planned/read-only graphs and can disturb shared intent. A public nonterminal stop bypasses
+  the source graph and gives students two stop meanings. Resolver reset can mutate shared sources
+  and restore a nonzero initial command. Universal failure terminality would remove an existing
+  focused recovery capability even though the managed runtime already aborts on the propagated
+  exception.
+- **Simplicity comparison:** current terminal power cleanup requires both “clear this particular
+  graph's persistent request” and “stop its realization.” The selected ordinary call supplies one
+  concept and one line, `plant.stop()`, for exact, composed, read-only, and planned Plants. During an
+  active match, a mechanism still expresses idle or hold through its existing semantic command,
+  target, overlay, or guard; there is no second Plant lifecycle verb. Removing reset also prevents a
+  student from guessing whether it means stop, restart, home, clear PID history, or restore initial
+  intent.
+- **Chosen design:** latch a Plant terminal before any external stop callback. A later update is an
+  inert no-op before feedback, resolver/plan, guard, regulator, or output work. Repeated stop is
+  harmless, and a throwing stop still leaves the Plant terminal. Concrete runtimes retain their
+  natural output behavior, invalidate completion, and report successful stopped target truth:
+  power/velocity applied targets become zero while position retains its last applied position.
+  Resolver graphs and command targets are not changed. There is no public restart or stopped-output
+  bypass. Remove `Plant.reset()` rather than defining post-stop reset semantics.
+- **Reentrancy and cleanup:** terminal state is claimed before external callbacks, and an in-flight
+  update checks it before committing or submitting later work so reentrant stop cannot be
+  overwritten. Each Plant and grouped output attempts every distinct owned stop/reset action in
+  stable order, retains the first runtime failure, and suppresses later failures. A successfully
+  stopped Plant exposes `STOPPED`; a failed physical stop does not invent zero/hold proof even though
+  the lifecycle remains terminal.
+- **Internal retry policy:** low-level `PowerOutput`/`VelocityOutput`/`PositionOutput.stop()` and the
+  regulated-channel cleanup remain nonterminal implementation operations. Calibration search can
+  stop normal realization and later resume. Mapping, regulator, or output failure immediately
+  best-effort fail-stops and propagates the original failure, but does not invoke terminal public
+  Plant stop. If an advanced/custom host corrects the cause, a later update may retry; the ordinary
+  managed runtime still treats the propagated failure as terminal program cleanup.
+- **Position lifecycle after stop:** calibration acquisition and reference-changing methods reject
+  a terminal Plant before sampling or changing state; releasing an inactive search stays harmless.
+  Holding during operation remains a normal target behavior and is not spelled with lifecycle stop.
+- **Bounded implementation scope:** update the Plant interface and the three hidden runtime
+  families, the narrow grouped-output cleanup needed for complete Plant stop, affected modern
+  owners/examples/testers, focused tests, Framework Principles, the FTC/target-planning guides, the
+  beginner mechanism lesson, cheat sheet, and directly affected Javadocs. Do not change drive-sink
+  stop semantics, Task cancellation, resolver/source reset APIs, hardware controller policy, or
+  unrelated lifecycle owners.
+- **Verification plan:** cover direct power, device-managed and regulated velocity, command/device-
+  managed/regulated position, grouped outputs, stop before/after update, repeated and failed stop,
+  reentrant stop, inert post-stop update, plan and feedback non-sampling, post-stop target mutation,
+  calibration/reference rejection, and preserved transient fail-stop retry. Replace Plant-reset
+  tests with fresh-Plant or actual-owner reset tests. Re-run focused actuation/FTC/starter/Pedro
+  suites, all TeamCode unit tests, Java compilation, documentation checks, `git diff --check`, and
+  repository-wide searches for removed `Plant.reset()` and redundant lifecycle target clearing.
+- **Gate 2 implementation (2026-08-10):** **Verifying.** A package-private lifecycle latch now makes
+  every direct, mapped, and regulated Plant terminal before an external stop callback can run.
+  Later updates return before feedback, resolver/plan, guards, controllers, or hardware; repeated
+  stop is inert; a throwing stop remains terminal; and no resolver, planner, overlay, guard, or
+  command-target graph is rewritten. Public `Plant.reset()` and its callers are removed rather than
+  replaced by a pause, resume, restart, or second output-stop verb.
+  - Power and velocity natural stop establish applied zero only after their output stop returns.
+    Position Plants retain the last applied position fact while command, device-managed, and
+    regulated realizations perform their own truthful stop. FTC standard-servo adapters reassert the
+    last successfully submitted position, and stop before the first successful command performs no
+    invented position write. Group stops attempt every child in declaration order and suppress
+    later failures under the first `RuntimeException`.
+  - Mapping, controller, guard, and output failures retain a private, nonterminal fail-stop so an
+    advanced host may correct the cause and retry. Reentrant terminal-stop checkpoints prevent an
+    outer callback from publishing or applying later work. Regulated outputs reassert physical zero
+    after a reentrant write without resetting the regulator twice. Post-stop calibration/reference
+    mutation is rejected, while ending an already inactive search remains harmless.
+  - Modern mechanism, example, tester, starter, Pedro, and scoring cleanup now calls only terminal
+    Plant stop while preserving independent Task, queue, service, vision, and drive cleanup. Active
+    zero/velocity requests and position hold remain ordinary source-graph behavior rather than
+    lifecycle stop.
+- **Regulated-position parallelism audit (2026-08-10):** the user challenged whether calibration
+  search reusing regulated output breaks API parallelism. It reuses the same `PowerOutput` channel,
+  not the same numeric power: normal mode submits regulator results and mutually exclusive search
+  mode submits its independent requested power. A device-managed position Plant genuinely needs an
+  additional raw-power adapter because its normal `PositionOutput` cannot express open-loop power;
+  `FtcActuators` derives both adapters from the same named motor group. Requiring a second regulated
+  search-output answer would repeat an already known fact and permit an accidental peer writer.
+  The API is unchanged; canonical Javadocs and the FTC guide now state this distinction explicitly.
+- **Adversarial review (2026-08-10):** three independent reviews covered core lifecycle and
+  reentrancy, exhaustive failure/test behavior, and modern caller/documentation consistency. Their
+  findings led to physical-only regulated stop reassertion, single regulator reset, safe
+  pre-command FTC servo stop, corrected requested-versus-lifecycle starter status, additional
+  grouped failure-order and retry coverage, and removal of stale reset/target-clear wording. A
+  final independent regulated-position API/principles audit found no reason to add another builder
+  stage or output owner.
+- **Automated verification (2026-08-10):** focused terminal lifecycle, regulated-channel, FTC
+  mapping-domain, FTC hardware-command, and mapped-configuration integration suites passed. The
+  authoritative final
+  `./gradlew.bat --console=plain :TeamCode:testDebugUnitTest
+  :TeamCode:compileDebugJavaWithJavac --no-daemon` run completed successfully; retained XML reports
+  contain **136 suites / 1,274 tests / 0 failures / 0 errors / 0 skipped**, including documentation
+  link validation. `:TeamCode:phoenixJavadocs` also completed successfully. Output contains only the
+  existing Java 8-on-JDK-21 source/target and FTC sample deprecation warnings. `git diff --check`,
+  a scan of all **47 changed or untracked files**, and trailing-whitespace checks pass. Searches find
+  no Plant reset declaration, no modern Plant reset candidate, and no zero-target-then-Plant-stop
+  cleanup idiom.
+- **Generated-site limitation (2026-08-10):** strict local Zensical generation could not run because
+  this machine exposes only the Microsoft Store `python.exe` alias and has no `py`, `uv`, or
+  `zensical` command. No system tool was installed for this item. Markdown links are covered by the
+  full Java suite and Javadocs are green; the existing GitHub Pages workflow will perform strict
+  Zensical generation after an authorized publication.
+- **Android Studio / hardware audit point (2026-08-10):** inspect `Plant`, `PositionPlant`,
+  `PlantLifecycle`, the three Plant runtime families, `RegulatedPowerChannel`, `FtcHardware` servo
+  behavior, grouped FTC stop aggregation, migrated cleanup callers, and
+  `PlantTerminalLifecycleTest`. Trace explicit stop, internal fail-stop, reentrant output callbacks,
+  regulated calibration search, and stop-before-first-servo-command. These deterministic lifecycle
+  and adapter-call contracts require no robot run. Real hardware is still required to validate the
+  physical motor/servo response, safe mechanism direction, controller tuning, and whether each
+  realization's natural stop is appropriate for its mechanism.
+- **Gate 2 review coordinates (2026-08-10):** the complete reviewed diff was left unstaged and
+  uncommitted on `codex/plant-03-terminal-plant-lifecycle`, based exactly on
+  `origin/master@395a1b26fa988b3ee823f6ed3655c1ffaddfe2f0`. The push URL is
+  `https://github.com/harishv-99/2025-PhoenixPedro.git` and the pull-request target is `master`. The
+  exact combined prompt presented after implementation was:
+  **`PLANT-03 looks good. Authorize committing the reviewed PLANT-03 diff on
+  codex/plant-03-terminal-plant-lifecycle, pushing that branch to
+  https://github.com/harishv-99/2025-PhoenixPedro.git, opening a pull request, and merging it into
+  master.`**
+- **Manual verification and publication authorization (2026-08-10):** the user completed the
+  Android Studio review and sent the exact combined authorization above. PLANT-03 is now **Done**;
+  Gate 3 may stage only this reviewed diff, create its single item commit, push
+  `codex/plant-03-terminal-plant-lifecycle` to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, open its pull request, and merge that pull
+  request into `master`. This authorization does not start INPUT-02 or another tracker item.
 
 ### CTRL-01 - Final scalar-regulator output constraints
 

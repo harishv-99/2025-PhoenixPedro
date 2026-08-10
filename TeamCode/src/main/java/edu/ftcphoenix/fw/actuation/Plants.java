@@ -67,7 +67,8 @@ public final class Plants {
          *
          * <p>The following stages require caller-facing periodicity, legal Plant-unit bounds, and
          * the Plant-to-native map. This path has no feedback, reference acquisition, or completion
-         * tolerance.</p>
+         * tolerance. The supplied output owns its natural stop behavior, including safe behavior
+         * when stopped before its first position command.</p>
          *
          * @param out native position output commanded only by the built Plant's lifecycle methods
          * @return the required position-periodicity step
@@ -79,9 +80,10 @@ public final class Plants {
         /**
          * Select device-managed position output with an explicit native-position feedback source.
          *
-         * <p>The device owns position actuation. The Plant uses {@code nativeMeasurement} for
-         * reference and completion, and may optionally receive a distinct raw-power output for
-         * calibration search before periodicity is answered.</p>
+         * <p>The device owns position actuation and its natural stop behavior, including safe
+         * behavior when stopped before its first position command. The Plant uses
+         * {@code nativeMeasurement} for reference and completion, and may optionally receive a
+         * distinct raw-power output for calibration search before periodicity is answered.</p>
          *
          * @param out native position output
          * @param nativeMeasurement position feedback in the output adapter's native units
@@ -107,8 +109,10 @@ public final class Plants {
         /**
          * Select framework-regulated position over normalized power and native-position feedback.
          *
-         * <p>The same {@code out} is used both for normal regulation and calibration search; no
-         * second search-output answer is required or supported.</p>
+         * <p>The same {@code out} channel is used for normal regulation and calibration search,
+         * but the runtime command values are independent: normal control submits the regulator's
+         * result, while an active search submits its explicitly requested search power. The modes
+         * are mutually exclusive, so no second search-output answer is required or supported.</p>
          *
          * @param out normalized power output
          * @param nativeMeasurement position feedback in native units
@@ -1590,6 +1594,7 @@ public final class Plants {
         private final PlantTargetResolver targetResolver;
         private final ScalarTarget commandTarget;
         private final PlantTargetGuards guards;
+        private final PlantLifecycle lifecycle = new PlantLifecycle();
 
         private double requestedTarget = Double.NaN;
         private double appliedTarget;
@@ -1604,41 +1609,99 @@ public final class Plants {
 
         @Override
         public final void update(LoopClock clock) {
+            if (!lifecycle.isActive()) return;
             double priorAppliedTarget = appliedTarget;
             PlantTargetStatus priorTargetStatus = targetStatus;
             PlantTargetResolution priorTargetResolution = targetResolution;
             prepareTargetContext(clock);
+            if (!lifecycle.isActive()) return;
             PlantTargetContext context = targetContext(clock);
-            targetResolution = targetResolver.resolve(context, clock);
-            if (targetResolution != null && targetResolution.hasTarget()) {
-                requestedTarget = targetResolution.target();
+            if (!lifecycle.isActive()) return;
+            PlantTargetResolution nextTargetResolution = targetResolver.resolve(context, clock);
+            if (!lifecycle.isActive()) return;
+            double nextRequestedTarget;
+            if (nextTargetResolution != null && nextTargetResolution.hasTarget()) {
+                nextRequestedTarget = nextTargetResolution.target();
             } else {
-                requestedTarget = appliedTarget;
+                nextRequestedTarget = appliedTarget;
             }
 
-            double candidate = sanitizeRequestedTarget(requestedTarget);
+            double candidate = sanitizeRequestedTarget(nextRequestedTarget);
             PlantTargetStatus status;
-            if (targetResolution == null || !targetResolution.hasTarget()) {
-                status = PlantTargetStatus.targetUnavailable(targetResolution != null
-                        ? targetResolution.reason()
+            if (nextTargetResolution == null || !nextTargetResolution.hasTarget()) {
+                status = PlantTargetStatus.targetUnavailable(nextTargetResolution != null
+                        ? nextTargetResolution.reason()
                         : "missing plant target resolution");
                 candidate = appliedTarget;
             } else {
-                status = candidate == requestedTarget
+                status = candidate == nextRequestedTarget
                         ? PlantTargetStatus.ACCEPTED
                         : PlantTargetStatus.clampedToRange("target sanitized to finite value");
             }
 
             PlantTargetGuards.Result result = PlantTargetSafety.applyGuards(
                     guards, candidate, status, appliedTarget, context.targetRange(), "Plant", clock);
+            if (!lifecycle.isActive()) return;
+            requestedTarget = nextRequestedTarget;
             appliedTarget = result.target;
             targetStatus = result.status;
+            targetResolution = nextTargetResolution;
+            double effectAppliedTarget = appliedTarget;
+            PlantTargetStatus effectTargetStatus = targetStatus;
+            PlantTargetResolution effectTargetResolution = targetResolution;
+            RuntimeException effectFailure = null;
             try {
                 applyTarget(appliedTarget, clock);
+            } catch (RuntimeException failure) {
+                effectFailure = failure;
+            }
+            if (!lifecycle.isActive()) {
+                try {
+                    enforceTerminalStopAfterReentrantEffect(
+                            effectAppliedTarget, effectTargetStatus, effectTargetResolution);
+                } catch (RuntimeException cleanupFailure) {
+                    effectFailure = suppress(effectFailure, cleanupFailure);
+                }
+                if (effectFailure != null) throw effectFailure;
+                return;
+            }
+            if (effectFailure != null) {
+                failStopAfterUpdateFailure(
+                        priorAppliedTarget,
+                        priorTargetStatus,
+                        priorTargetResolution,
+                        effectAppliedTarget,
+                        effectTargetStatus,
+                        effectTargetResolution,
+                        effectFailure);
+                throw effectFailure;
+            }
+
+            try {
                 updateStatus(clock);
             } catch (RuntimeException failure) {
-                onUpdateFailure(priorAppliedTarget, priorTargetStatus, priorTargetResolution, failure);
-                throw failure;
+                effectFailure = failure;
+            }
+            if (!lifecycle.isActive()) {
+                try {
+                    enforceTerminalStopAfterReentrantEffect(
+                            effectAppliedTarget, effectTargetStatus, effectTargetResolution);
+                } catch (RuntimeException cleanupFailure) {
+                    effectFailure = suppress(effectFailure, cleanupFailure);
+                }
+                if (effectFailure != null) throw effectFailure;
+                return;
+            }
+            if (effectFailure != null) {
+                failStopAfterUpdateFailure(
+                        priorAppliedTarget,
+                        priorTargetStatus,
+                        priorTargetResolution,
+                        effectAppliedTarget,
+                        effectTargetStatus,
+                        effectTargetResolution,
+                        effectFailure);
+                throw effectFailure;
             }
         }
 
@@ -1656,12 +1719,6 @@ public final class Plants {
         protected abstract void applyTarget(double target, LoopClock clock);
 
         protected void updateStatus(LoopClock clock) {
-        }
-
-        protected void onUpdateFailure(double priorAppliedTarget,
-                                       PlantTargetStatus priorTargetStatus,
-                                       PlantTargetResolution priorTargetResolution,
-                                       RuntimeException failure) {
         }
 
         @Override
@@ -1695,19 +1752,10 @@ public final class Plants {
             return commandTarget;
         }
 
-        @Override
-        public void reset() {
-            targetResolver.reset();
-            guards.reset();
-            requestedTarget = Double.NaN;
-            appliedTarget = 0.0;
-            targetStatus = PlantTargetStatus.STOPPED;
-            targetResolution = PlantTargetResolution.unavailable("not sampled");
-        }
-
         protected final void markStopped(double appliedAfterStop) {
             appliedTarget = appliedAfterStop;
             targetStatus = PlantTargetStatus.STOPPED;
+            targetResolution = PlantTargetResolution.unavailable("plant stopped");
         }
 
         protected final void restoreTargetState(double priorAppliedTarget,
@@ -1718,11 +1766,102 @@ public final class Plants {
             targetResolution = priorTargetResolution;
         }
 
-        /**
-         * Reset dynamic guard state after a hard stop so later updates start from a clean guard chain.
-         */
-        protected final void resetTargetGuards() {
-            guards.reset();
+        /** Apply this realization's natural output stop without changing Plant lifecycle state. */
+        protected abstract void stopOutput();
+
+        /** Applied-target fact established by a successful natural output stop. */
+        protected abstract double appliedTargetAfterStop();
+
+        @Override
+        public final void stop() {
+            if (!lifecycle.claimStop()) return;
+
+            double priorAppliedTarget = appliedTarget;
+            PlantTargetStatus priorTargetStatus = targetStatus;
+            PlantTargetResolution priorTargetResolution = targetResolution;
+            RuntimeException primary = null;
+            boolean outputStopSucceeded = false;
+            try {
+                stopOutput();
+                outputStopSucceeded = true;
+            } catch (RuntimeException failure) {
+                primary = failure;
+            }
+
+            if (outputStopSucceeded) {
+                markStopped(appliedTargetAfterStop());
+            } else {
+                restoreTargetState(priorAppliedTarget, priorTargetStatus, priorTargetResolution);
+            }
+            if (primary != null) throw primary;
+        }
+
+        private void enforceTerminalStopAfterReentrantEffect(
+                double effectAppliedTarget,
+                PlantTargetStatus effectTargetStatus,
+                PlantTargetResolution effectTargetResolution) {
+            try {
+                stopOutput();
+                markStopped(appliedTargetAfterStop());
+            } catch (RuntimeException failure) {
+                restoreTargetState(effectAppliedTarget, effectTargetStatus, effectTargetResolution);
+                throw failure;
+            }
+        }
+
+        private void failStopAfterUpdateFailure(
+                double priorAppliedTarget,
+                PlantTargetStatus priorTargetStatus,
+                PlantTargetResolution priorTargetResolution,
+                double effectAppliedTarget,
+                PlantTargetStatus effectTargetStatus,
+                PlantTargetResolution effectTargetResolution,
+                RuntimeException failure) {
+            boolean outputStopSucceeded = false;
+            try {
+                stopOutput();
+                outputStopSucceeded = true;
+            } catch (RuntimeException cleanupFailure) {
+                suppress(failure, cleanupFailure);
+            }
+
+            if (!lifecycle.isActive()) {
+                if (outputStopSucceeded) {
+                    markStopped(appliedTargetAfterStop());
+                } else {
+                    restoreTargetState(
+                            effectAppliedTarget, effectTargetStatus, effectTargetResolution);
+                }
+                return;
+            }
+
+            boolean cleanupSucceeded = outputStopSucceeded;
+            try {
+                guards.reset();
+            } catch (RuntimeException cleanupFailure) {
+                suppress(failure, cleanupFailure);
+                cleanupSucceeded = false;
+            }
+            if (!lifecycle.isActive()) {
+                try {
+                    enforceTerminalStopAfterReentrantEffect(
+                            effectAppliedTarget, effectTargetStatus, effectTargetResolution);
+                } catch (RuntimeException cleanupFailure) {
+                    suppress(failure, cleanupFailure);
+                }
+                return;
+            }
+            if (cleanupSucceeded) {
+                markStopped(appliedTargetAfterStop());
+            } else {
+                restoreTargetState(priorAppliedTarget, priorTargetStatus, priorTargetResolution);
+            }
+        }
+
+        private static RuntimeException suppress(RuntimeException primary, RuntimeException additional) {
+            if (primary == null) return additional;
+            if (primary != additional) primary.addSuppressed(additional);
+            return primary;
         }
 
         @Override
@@ -1755,10 +1894,13 @@ public final class Plants {
         }
 
         @Override
-        public void stop() {
+        protected void stopOutput() {
             out.stop();
-            resetTargetGuards();
-            markStopped(0.0);
+        }
+
+        @Override
+        protected double appliedTargetAfterStop() {
+            return 0.0;
         }
     }
 

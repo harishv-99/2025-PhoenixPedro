@@ -54,7 +54,7 @@ public final class RegulatedPowerChannelTest {
 
         for (int i = 0; i < rawCommands.length; i++) {
             fixture.regulator.result = rawCommands[i];
-            fixture.channel.update(17.0, 11.0, clock);
+            fixture.channel.update(17.0, 11.0, clock, fixture.lifecycle);
 
             assertSameBits(rawCommands[i], fixture.channel.regulatorOutput());
             assertSameBits(expectedCommands[i], fixture.channel.normalizedPowerCommand());
@@ -76,9 +76,9 @@ public final class RegulatedPowerChannelTest {
         LoopClock sameCycle = new ManualLoopClock().clock();
 
         fixture.regulator.result = 0.25;
-        fixture.channel.update(5.0, 1.0, sameCycle);
+        fixture.channel.update(5.0, 1.0, sameCycle, fixture.lifecycle);
         fixture.regulator.result = -0.75;
-        fixture.channel.update(4.0, 2.0, sameCycle);
+        fixture.channel.update(4.0, 2.0, sameCycle, fixture.lifecycle);
 
         assertEquals(2, fixture.regulator.updateCount);
         assertEquals(2, fixture.output.setPowerCount);
@@ -101,7 +101,8 @@ public final class RegulatedPowerChannelTest {
             RuntimeException failure = expectRuntime(() -> fixture.channel.update(
                     4200.0,
                     2000.0,
-                    new ManualLoopClock().clock()));
+                    new ManualLoopClock().clock(),
+                    fixture.lifecycle));
 
             assertTrue(failure instanceof IllegalStateException);
             assertContains(failure.getMessage(),
@@ -138,7 +139,8 @@ public final class RegulatedPowerChannelTest {
         RuntimeException primary = expectRuntime(() -> fixture.channel.update(
                 3.0,
                 2.0,
-                new ManualLoopClock().clock()));
+                new ManualLoopClock().clock(),
+                fixture.lifecycle));
 
         assertTrue(primary instanceof IllegalStateException);
         assertEquals(2, primary.getSuppressed().length);
@@ -168,7 +170,8 @@ public final class RegulatedPowerChannelTest {
         RuntimeException observed = expectRuntime(() -> fixture.channel.update(
                 1.0,
                 0.0,
-                new ManualLoopClock().clock()));
+                new ManualLoopClock().clock(),
+                fixture.lifecycle));
 
         assertSame(regulatorFailure, observed);
         assertEquals(2, observed.getSuppressed().length);
@@ -195,7 +198,8 @@ public final class RegulatedPowerChannelTest {
         RuntimeException observed = expectRuntime(() -> fixture.channel.update(
                 7.0,
                 2.0,
-                new ManualLoopClock().clock()));
+                new ManualLoopClock().clock(),
+                fixture.lifecycle));
 
         assertSame(outputFailure, observed);
         assertEquals(0, observed.getSuppressed().length);
@@ -217,7 +221,7 @@ public final class RegulatedPowerChannelTest {
     public void resetDoesNotWriteAndRetainsTheLastSubmittedCommand() {
         Fixture fixture = new Fixture("test.reset");
         fixture.regulator.result = 0.45;
-        fixture.channel.update(1.0, 0.0, new ManualLoopClock().clock());
+        fixture.channel.update(1.0, 0.0, new ManualLoopClock().clock(), fixture.lifecycle);
         fixture.events.clear();
 
         fixture.channel.reset();
@@ -361,7 +365,8 @@ public final class RegulatedPowerChannelTest {
         Error observedRegulatorError = expectError(() -> regulatorErrorFixture.channel.update(
                 1.0,
                 0.0,
-                new ManualLoopClock().clock()));
+                new ManualLoopClock().clock(),
+                regulatorErrorFixture.lifecycle));
 
         assertSame(regulatorError, observedRegulatorError);
         assertEquals(Arrays.asList("regulator.update"), regulatorErrorFixture.events);
@@ -376,7 +381,8 @@ public final class RegulatedPowerChannelTest {
         Error observedOutputError = expectError(() -> outputErrorFixture.channel.update(
                 1.0,
                 0.0,
-                new ManualLoopClock().clock()));
+                new ManualLoopClock().clock(),
+                outputErrorFixture.lifecycle));
 
         assertSame(outputError, observedOutputError);
         assertEquals(Arrays.asList("regulator.update", "output.setPower"),
@@ -402,7 +408,7 @@ public final class RegulatedPowerChannelTest {
                         "shooter.flywheel.regulator.probeUpdateCount")).intValue());
 
         fixture.regulator.result = 1.2;
-        fixture.channel.update(3.0, 1.0, new ManualLoopClock().clock());
+        fixture.channel.update(3.0, 1.0, new ManualLoopClock().clock(), fixture.lifecycle);
         CapturingDebugSink debug = new CapturingDebugSink();
 
         fixture.channel.debugDump(debug, "shooter.flywheel");
@@ -418,7 +424,7 @@ public final class RegulatedPowerChannelTest {
     private static Fixture updatedFixture(String controlPath, double command) {
         Fixture fixture = new Fixture(controlPath);
         fixture.regulator.result = command;
-        fixture.channel.update(1.0, 0.0, new ManualLoopClock().clock());
+        fixture.channel.update(1.0, 0.0, new ManualLoopClock().clock(), fixture.lifecycle);
         fixture.events.clear();
         return fixture;
     }
@@ -472,6 +478,7 @@ public final class RegulatedPowerChannelTest {
         private final List<String> events = new ArrayList<>();
         private final ProbePowerOutput output = new ProbePowerOutput(events);
         private final ProbeRegulator regulator = new ProbeRegulator(events);
+        private final PlantLifecycle lifecycle = new PlantLifecycle();
         private final RegulatedPowerChannel channel;
 
         private Fixture(String controlPath) {

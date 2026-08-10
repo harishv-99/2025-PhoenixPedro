@@ -54,7 +54,10 @@ public interface PositionOutput {
      *
      * <p>The default implementation simply re-commands the most recent target, which is appropriate
      * for many set-and-hold actuators such as standard servos. Implementations may override this if
-     * the underlying device exposes a more explicit stop behavior.</p>
+     * the underlying device exposes a more explicit stop behavior. An adapter that can be stopped
+     * before its first {@link #setPosition(double)} must either return a safe, truthful initial
+     * command from {@link #getCommandedPosition()} or override this method with a safe pre-command
+     * action such as doing nothing; it must not invent and submit an arbitrary position.</p>
      */
     default void stop() {
         setPosition(getCommandedPosition());

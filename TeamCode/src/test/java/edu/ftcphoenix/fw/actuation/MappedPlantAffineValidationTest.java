@@ -120,6 +120,15 @@ public final class MappedPlantAffineValidationTest {
         assertEquals(1, output.setCalls);
         assertEquals(1, output.stopCalls);
         assertEquals(0.0, output.commanded, 0.0);
+
+        plant.commandTarget().set(3.0);
+        plant.update(clock.nextCycle(0.02));
+
+        assertEquals(3.0, plant.getAppliedTarget(), 0.0);
+        assertEquals(PlantTargetStatus.Kind.ACCEPTED, plant.getTargetStatus().kind());
+        assertEquals(2, output.setCalls);
+        assertEquals(1, output.stopCalls);
+        assertEquals(6.0, output.commanded, 0.0);
     }
 
     @Test
@@ -148,6 +157,15 @@ public final class MappedPlantAffineValidationTest {
         assertEquals(1, output.setCalls);
         assertEquals(1, output.stopCalls);
         assertEquals(2.0, output.commanded, 0.0);
+
+        plant.commandTarget().set(3.0);
+        plant.update(clock.nextCycle(0.02));
+
+        assertEquals(3.0, plant.getAppliedTarget(), 0.0);
+        assertEquals(PlantTargetStatus.Kind.ACCEPTED, plant.getTargetStatus().kind());
+        assertEquals(2, output.setCalls);
+        assertEquals(1, output.stopCalls);
+        assertEquals(6.0, output.commanded, 0.0);
     }
 
     @Test

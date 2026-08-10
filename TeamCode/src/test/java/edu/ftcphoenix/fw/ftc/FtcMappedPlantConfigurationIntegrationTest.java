@@ -15,10 +15,14 @@ import java.util.HashMap;
 import java.util.Map;
 
 import edu.ftcphoenix.fw.actuation.Plant;
+import edu.ftcphoenix.fw.actuation.PlantTargetContext;
+import edu.ftcphoenix.fw.actuation.PlantTargetResolution;
+import edu.ftcphoenix.fw.actuation.PlantTargetResolver;
 import edu.ftcphoenix.fw.actuation.PlantTargets;
 import edu.ftcphoenix.fw.actuation.PositionPlant;
 import edu.ftcphoenix.fw.core.hal.Direction;
 import edu.ftcphoenix.fw.core.source.ScalarTarget;
+import edu.ftcphoenix.fw.core.time.LoopClock;
 import edu.ftcphoenix.fw.testing.ManualLoopClock;
 
 import static org.junit.Assert.assertEquals;
@@ -195,6 +199,54 @@ public final class FtcMappedPlantConfigurationIntegrationTest {
         assertFalse(plant.hasFeedback());
     }
 
+    @Test
+    public void servoPlantsStoppedBeforeFirstUpdateDoNotResolveOrWrite() {
+        TestHardwareMap hardwareMap = new TestHardwareMap();
+        ServoProbe singleServo = hardwareMap.addServo("single");
+        ServoProbe leftServo = hardwareMap.addServo("left");
+        ServoProbe rightServo = hardwareMap.addServo("right");
+        CountingResolver singleResolver = new CountingResolver();
+        CountingResolver groupResolver = new CountingResolver();
+
+        PositionPlant singlePlant = FtcActuators.plant(hardwareMap)
+                .servo("single", Direction.FORWARD)
+                .position()
+                .nonPeriodic()
+                .bounded(0.0, 1.0)
+                .nativeUnits()
+                .targetFromResolver(singleResolver)
+                .build();
+        PositionPlant groupPlant = FtcActuators.plant(hardwareMap)
+                .servo("left", Direction.FORWARD)
+                .andServo("right", Direction.REVERSE)
+                .position()
+                .nonPeriodic()
+                .bounded(0.0, 1.0)
+                .nativeUnits()
+                .targetFromResolver(groupResolver)
+                .build();
+
+        singlePlant.stop();
+        groupPlant.stop();
+
+        assertEquals(0, singleServo.positionWriteCount);
+        assertEquals(0, leftServo.positionWriteCount);
+        assertEquals(0, rightServo.positionWriteCount);
+
+        LoopClock clock = new ManualLoopClock().clock();
+        singlePlant.update(clock);
+        groupPlant.update(clock);
+
+        assertEquals(0, singleResolver.resolutionCount);
+        assertEquals(0, groupResolver.resolutionCount);
+        assertEquals(0, singleServo.positionWriteCount);
+        assertEquals(0, leftServo.positionWriteCount);
+        assertEquals(0, rightServo.positionWriteCount);
+        assertTrue(Double.isNaN(singleServo.commandedPosition));
+        assertTrue(Double.isNaN(leftServo.commandedPosition));
+        assertTrue(Double.isNaN(rightServo.commandedPosition));
+    }
+
     /** In-memory HardwareMap that avoids Android-only SDK discovery in local JVM tests. */
     private static final class TestHardwareMap extends HardwareMap {
         private final Map<String, HardwareDevice> devices = new HashMap<>();
@@ -290,6 +342,7 @@ public final class FtcMappedPlantConfigurationIntegrationTest {
     /** Dynamic standard servo with an observable raw position command. */
     private static final class ServoProbe {
         private double commandedPosition = Double.NaN;
+        private int positionWriteCount;
         private Servo.Direction direction = Servo.Direction.FORWARD;
         private final Servo servo;
 
@@ -307,6 +360,7 @@ public final class FtcMappedPlantConfigurationIntegrationTest {
             }
             if ("setPosition".equals(name)) {
                 commandedPosition = (double) args[0];
+                positionWriteCount++;
                 return null;
             }
             if ("getPosition".equals(name)) return commandedPosition;
@@ -320,6 +374,16 @@ public final class FtcMappedPlantConfigurationIntegrationTest {
             if ("getConnectionInfo".equals(name)) return "test";
             if ("getVersion".equals(name)) return 1;
             return defaultValue(method.getReturnType());
+        }
+    }
+
+    private static final class CountingResolver implements PlantTargetResolver {
+        private int resolutionCount;
+
+        @Override
+        public PlantTargetResolution resolve(PlantTargetContext context, LoopClock clock) {
+            resolutionCount++;
+            return PlantTargetResolution.exact(0.5, "counted test target");
         }
     }
 

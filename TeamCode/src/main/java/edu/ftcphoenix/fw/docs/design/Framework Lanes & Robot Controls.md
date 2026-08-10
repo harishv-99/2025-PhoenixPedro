@@ -1072,7 +1072,7 @@ public final class IntakeShooterSubsystem implements RobotProgram.Output {
 
     @Override
     public void stop() {
-        // restore safe requests and stop every privately owned Plant
+        // cancel independently owned work, then terminally stop every private Plant
     }
 
     public Status status() {

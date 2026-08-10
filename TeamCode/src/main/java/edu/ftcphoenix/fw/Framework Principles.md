@@ -223,8 +223,15 @@ command or planned intent
   mechanism remains the one Plant heartbeat and final writer.
 - Open-loop Plants may hold a command but cannot claim sensor-based arrival. A feedback move names
   the exact graph-owned command target it writes and the feedback Plant that proves completion.
-- Robot shutdown resets coordinated requests, queues, overlays, and mechanisms through their
-  owners. Cancelling one Task cannot erase unrelated persistent requests.
+- `Plant.stop()` is the one final Plant lifecycle operation. It latches the Plant terminal, invokes
+  the realization's natural stop, and makes later updates inert before resolver, plan, feedback,
+  guard, controller, or hardware work. It does not rewrite the command target or reset the resolver
+  graph; construct a fresh Plant for another lifetime. During an active match, request zero power,
+  zero velocity, or a position hold through the existing source graph rather than stopping the
+  Plant.
+- Robot shutdown separately cancels coordinated Tasks, queues, services, and other owned work, then
+  stops each Plant. Cancelling one Task cannot erase unrelated persistent requests, and terminal
+  Plant stop does not need to discover or disable every kind of upstream resolver.
 
 ### Drive
 

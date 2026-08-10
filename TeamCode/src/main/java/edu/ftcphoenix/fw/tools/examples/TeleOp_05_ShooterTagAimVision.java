@@ -364,7 +364,6 @@ public final class TeleOp_05_ShooterTagAimVision extends OpMode {
     public void stop() {
         shooterEnabled = false;
         CleanupActions.attemptAll(
-                () -> { if (shooter != null) shooter.commandTarget().set(0.0); },
                 () -> { if (shooter != null) shooter.stop(); },
                 () -> { if (drivebase != null) drivebase.stop(); },
                 this::closeVisionOwner

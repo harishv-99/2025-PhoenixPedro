@@ -69,9 +69,10 @@ was physically placed.
 ### STOP and failures
 
 `RobotProgram` marks the graph terminal, cancels active Task work, clears bindings, stops outputs,
-and stops services in reverse declaration order. The mechanism restores its idle request and stops
-its Plant; the Pedro service applies physical zero immediately. Later cleanup is still attempted
-after a `RuntimeException`, with additional cleanup failures suppressed onto the first failure.
+and stops services in reverse declaration order. The mechanism terminally stops its Plant without
+rewriting the retained request; that power Plant submits zero immediately and never updates again.
+The Pedro service also applies physical zero immediately. Later cleanup is still attempted after a
+`RuntimeException`, with additional cleanup failures suppressed onto the first failure.
 
 The same fail-stop path handles configuration, START, loop, presenter, or telemetry failures.
 Owners registered before a later construction failure are already covered by program cleanup, and
