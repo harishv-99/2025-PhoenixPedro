@@ -1,6 +1,7 @@
 package edu.ftcphoenix.robots.phoenix.tester;
 
 import edu.ftcphoenix.fw.tools.tester.TesterSuite;
+import edu.ftcphoenix.fw.tools.tester.StandardTesters;
 import edu.ftcphoenix.fw.tools.tester.calibration.CalibrationWalkthroughBuilder;
 
 /**
@@ -21,10 +22,16 @@ public final class PhoenixCalibrationWalkthrough {
                 .setHelp("Run steps in order. A: enter step | BACK: go back")
                 .setMaxVisibleItems(8);
 
+        int actuatorBringUpStep = guide.addStep(
+                "HW: Actuator Bring-up",
+                "Establish each raw motor or servo direction and any appropriate safe endpoints; copy the result into PhoenixProfile.",
+                StandardTesters::createActuatorBringUp
+        );
+
         guide.addStep(
-                "HW: Drivetrain Motor Direction",
-                "Optional but recommended on first bring-up: verify each wheel would drive the robot forward.",
-                PhoenixRobotTesters::drivetrainMotorDirection
+                "HW: Configured Drivetrain Verification",
+                "After HW: Actuator Bring-up facts are copied into PhoenixProfile, verify each configured wheel with the chassis raised.",
+                PhoenixRobotTesters::configuredDrivetrainVerification
         );
 
         guide.addStep(
@@ -55,7 +62,7 @@ public final class PhoenixCalibrationWalkthrough {
                 PhoenixRobotTesters::pinpointPodOffsets
         );
 
-        int fusionStep = guide.addStep(
+        guide.addStep(
                 "Loc: Pinpoint + Field Corrections",
                 "Validate Phoenix's default corrected-global localizer after camera mount and Pinpoint calibration look good.",
                 PhoenixRobotTesters::globalLocalizationStatus,
@@ -69,7 +76,11 @@ public final class PhoenixCalibrationWalkthrough {
                 PhoenixRobotTesters::pinpointAprilTagEkf
         );
 
-        guide.setFallbackSelectedIndex(fusionStep);
-        return guide.build();
+        // Hardware-fact steps intentionally have no profile-completion predicate. Override the
+        // status-based builder suggestion so a new student is never dropped into a later camera
+        // step before seeing the physical-safety entry point.
+        TesterSuite suite = guide.build();
+        suite.setSelectedIndex(actuatorBringUpStep);
+        return suite;
     }
 }

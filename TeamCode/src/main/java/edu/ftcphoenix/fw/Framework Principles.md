@@ -271,6 +271,10 @@ finite range clamping and loss of target evidence through explicit status rather
 - Construction proves that software configuration is coherent; it does not prove readiness,
   calibration, physical placement, wiring, or safe power. `defaults()` is not a hardware safety
   review.
+- A generic actuator bring-up tool may establish the exact FTC direction, submitted command, or
+  encoder sample it observed. It must not relabel command cache as physical feedback, discover a
+  limit by collision/stall, choose robot-owned Plant units, or claim that captured endpoints remain
+  safe under production load.
 - Requested, applied, measured, ready, and complete are separate facts. An open-loop command cannot
   claim physical arrival, and a software pose rebase cannot claim that the robot moved.
 - Cleanup helpers may aggregate best-effort actions and exceptions, but they do not choose resources,
@@ -381,6 +385,7 @@ If an answer is unclear, simplify ownership or naming before introducing another
 | Spatial observations | [`Spatial Queries`](<docs/drive-vision/Spatial Queries.md>) |
 | Pedro route lifecycle | [`Pedro integration`](<integrations/pedro/README.md>) |
 | Production route example | [`Pedro Autonomous Reference`](<docs/examples/Pedro Autonomous Reference.md>) |
+| Actuator facts and safe endpoints | [`Actuator Bring-up`](<docs/testing-calibration/Actuator Bring-up.md>) |
 | Tuning and calibration evidence | [`Software PIDF Tuning Workflow`](<docs/testing-calibration/Software PIDF Tuning Workflow.md>) |
 | Documentation and maintainer practices | [`Maintainer Notes`](<docs/maintainers/Maintainer Notes.md>) |
 

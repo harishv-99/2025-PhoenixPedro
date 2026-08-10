@@ -2,28 +2,26 @@
 
 The tester framework separates:
 
-- **category suites**, where every tester has one obvious home
-- **guided walkthrough suites**, where a robot can present a recommended bring-up order for students
+- **one canonical generic tool per hardware fact**, such as `HW: Actuator Bring-up`; and
+- **robot-specific guided suites**, which order those facts with configured integration and
+  localization checks.
 
-This avoids turning the top-level tester menu into a long flat list while still preserving a “start here” path for a fresh robot.
+The framework home is already a short start-here path: actuator bring-up, calibration/localization,
+and advanced diagnostics. A robot walkthrough is useful only when it adds that robot's checked-in
+configuration, status, and recommended order.
 
 ## Design rules
 
 These are the framework rules the walkthrough helpers are built around.
 
-### One natural home for each tester
+### One implementation for each fact
 
-Individual testers should live in category menus such as:
+Do not build another motor-power or servo-position screen for a robot project. Reuse the canonical
+actuator wizard for raw configured-device facts, then add only genuinely robot-specific checks such
+as configured drivetrain verification or a complete mechanism test.
 
-- hardware bring-up
-- calibration and localization
-- robot-specific system groups
-
-That is where students and mentors browse once they already know what they want.
-
-### Duplication is only intentional in walkthroughs
-
-A walkthrough may repeat links to those same testers because its job is different: it is a teaching path, not a taxonomy.
+A walkthrough may point to the same factory because its job is ordering, but it must not fork the
+controls, safety behavior, or evidence contract.
 
 ### Status belongs near the walkthrough step
 
@@ -72,13 +70,13 @@ A builder that produces a normal `TesterSuite`, but with a few calibration-speci
 
 ## Typical pattern for a robot project
 
-A robot project should usually expose three entry points:
+A robot project should usually add two required kinds of entry, plus one optional kind, beside the
+framework's canonical actuator tool:
 
 1. a **guided calibration walkthrough**
 2. a **robot-specific calibration/localization category**
-3. a **robot-specific hardware bring-up category**
-
-Phoenix uses this pattern.
+3. optionally, a **robot-specific configured-system verification** when it proves something the raw
+   device wizard cannot
 
 ## Example
 
@@ -98,15 +96,16 @@ public final class ExampleRobotTesters {
                 ExampleRobotTesters::createCalibrationSuite
         );
 
-        suite.add(
-                "Example: Hardware Bring-up",
-                "Robot-specific hardware sanity checks.",
-                ExampleRobotTesters::createHardwareSuite
-        );
     }
 
     public static TesterSuite createWalkthrough() {
         CalibrationWalkthroughBuilder guide = new CalibrationWalkthroughBuilder("Example Calibration Walkthrough");
+
+        guide.addStep(
+                "HW: Actuator Bring-up",
+                "Establish one configured device's direction and optional safe endpoints.",
+                StandardTesters::createActuatorBringUp
+        );
 
         guide.addStep(
                 "Calib: Camera Mount",
@@ -169,6 +168,7 @@ A calibration system is easiest to learn when it is documented in two directions
 The framework docs follow that structure:
 
 - [`Robot Calibration Tutorials`](<Robot Calibration Tutorials.md>) for the full ordered path
+- [`Actuator Bring-up`](<Actuator Bring-up.md>) for the canonical generic hardware workflow
 - subsystem docs should link back into the relevant section of that tutorial when calibration matters
 
 ## Menu wording recommendations

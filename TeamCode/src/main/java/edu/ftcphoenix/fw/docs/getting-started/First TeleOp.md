@@ -56,14 +56,17 @@ profile.drive.drivebase.maxLateral = 0.25;
 profile.drive.drivebase.maxOmega = 0.20;
 ```
 
-The directions show a common value shape, not facts about your drivetrain. Verify each one with the
-wheels raised. All five starter motor names must be nonblank and distinct after trimming; matching
+The directions show a common value shape, not facts about your drivetrain. Before enabling the
+starter, run **FW: Testers → HW: Actuator Bring-up** with the wheels raised and isolate each of the
+four configured motors. Test which temporary `Direction` makes that wheel's positive rotation
+contribute to robot-forward motion, then copy the four reported values here. All five starter motor
+names must be nonblank and distinct after trimming; matching
 is case-sensitive. The explicit scales keep a full stick request conservative during first motion;
 the framework defaults are valid normalized values, not reviewed physical limits for your robot.
 Increase one scale at a time only after controlled floor tests prove the current value safe.
 
-After reviewing the names, directions, three conservative scales, and the intake from the mechanism
-checkpoint, set:
+After copying the isolated direction results and reviewing the names, three conservative scales,
+and intake from the mechanism checkpoint, set:
 
 ```java
 profile.hardwareConfigurationReviewed = true;
@@ -169,7 +172,9 @@ Select **FW Starter: TeleOp**.
 ## 6. Test in stages
 
 1. With both sticks and all triggers released, press INIT. Nothing should move.
-2. Reconfirm neutral controls, then press START with the wheels raised.
+2. Reconfirm neutral controls, then press Driver Station START with the wheels raised. This production-mode check
+   verifies that the copied directions, four-motor grouping, mecanum transform, and final writer
+   work together; it is not replaced by the isolated wizard.
 3. Test forward, strafe, and turn separately at low stick input.
 4. Hold right bumper and confirm translation and turning are slower.
 5. Release the sticks and verify all drive motors command zero.
@@ -210,7 +215,8 @@ spaces and confirm the expected configuration is selected.
 **One wheel runs backward.**
 
 Press STOP. Correct that wheel's `Direction` in the profile, rebuild, and repeat the raised-wheel
-test. Do not compensate with scattered negative powers.
+test. If the isolated result is uncertain, return to **HW: Actuator Bring-up** first. Do not
+compensate with scattered negative powers.
 
 **The intake keeps running after A or B is released.**
 

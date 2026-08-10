@@ -7,17 +7,23 @@ import com.qualcomm.robotcore.hardware.configuration.typecontainers.MotorConfigu
 import com.qualcomm.robotcore.util.RobotLog;
 
 import org.firstinspires.ftc.robotcore.external.Telemetry;
+import org.firstinspires.ftc.robotcore.external.navigation.Rotation;
 
 import java.util.Locale;
 
 import edu.ftcphoenix.fw.core.source.BooleanSource;
 import edu.ftcphoenix.fw.tools.tester.BaseTeleOpTester;
+import edu.ftcphoenix.fw.tools.tester.StandardTesters;
 import edu.ftcphoenix.fw.ftc.ui.HardwareNamePicker;
 import edu.ftcphoenix.fw.input.binding.Bindings;
 import edu.ftcphoenix.fw.tools.tester.ui.ScalarTuner;
 
 /**
  * Generic tester for a configured {@link DcMotor}/{@link DcMotorEx} that lets you vary motor power.
+ *
+ * <p><b>Advanced diagnostic:</b> ordinary direction and safe-endpoint setup should enter the one
+ * device-first path from {@link StandardTesters#createActuatorBringUp()}. Use this class directly
+ * only when motor power and encoder/velocity evidence are specifically needed.</p>
  *
  * <h2>Selection</h2>
  * If constructed without a motor name (or the preferred name cannot be resolved), shows a picker
@@ -29,11 +35,10 @@ import edu.ftcphoenix.fw.tools.tester.ui.ScalarTuner;
  *   <li><b>RUN (motor chosen)</b>:
  *     <ul>
  *       <li>A: enable/disable output</li>
- *       <li>X: invert</li>
- *       <li>START: fine/coarse step</li>
+ *       <li>X: disarm/zero, then invert the command sign</li>
+ *       <li>gamepad START: fine/coarse step</li>
  *       <li>Dpad Up/Down: step power</li>
- *       <li>Left stick Y: live override (sets target while moved)</li>
- *       <li>B: zero</li>
+ *       <li>B: hold-priority disarm and zero</li>
  *       <li>Y: start/stop direct-vs-derived velocity capture in Logcat</li>
  *       <li>Right bumper: skip one comparison sample without blocking the motor loop</li>
  *       <li>BACK: return to picker (change motor)</li>
@@ -47,6 +52,10 @@ import edu.ftcphoenix.fw.tools.tester.ui.ScalarTuner;
  * {@code PhoenixEncoderVelocity} Logcat tag. It temporarily selects
  * {@link DcMotor.RunMode#RUN_WITHOUT_ENCODER} for safe open-loop testing and restores the prior mode
  * afterward. It does not select a production feedback strategy.</p>
+ *
+ * <p>Selection and INIT are observation-only. Driver Station START prepares the selected motor at
+ * zero output. Each held control must be released before its next edge can act; B remains a
+ * level-sensitive priority stop throughout RUN.</p>
  */
 public final class DcMotorPowerTester extends BaseTeleOpTester {
 
@@ -64,6 +73,10 @@ public final class DcMotorPowerTester extends BaseTeleOpTester {
 
     private boolean ready = false;
     private boolean opModeStarted = false;
+    private boolean motorPreparationStarted = false;
+    private boolean motorPrepared = false;
+    private boolean restorationAttempted = false;
+    private RuntimeException retainedRestorationFailure = null;
     private long selectedMotorCycle = Long.MIN_VALUE;
     private String resolveError = null;
 
@@ -76,7 +89,7 @@ public final class DcMotorPowerTester extends BaseTeleOpTester {
     private boolean directVelocityAvailable;
     private boolean coherentHardwareSnapshot;
     private String bulkCachingModeAtSample = "unavailable";
-    private boolean bulkCachingModeRestored;
+    private boolean bulkCachingModePreserved;
     private String velocityMeasurementStatus;
     private String velocityMeasurementError;
     private double lastSubmittedPower;
@@ -116,6 +129,7 @@ public final class DcMotorPowerTester extends BaseTeleOpTester {
     @Override
     protected void onInit() {
         opModeStarted = false;
+        lastSubmittedPower = Double.NaN;
         resetPowerControl();
 
         picker = new HardwareNamePicker(
@@ -125,9 +139,6 @@ public final class DcMotorPowerTester extends BaseTeleOpTester {
                 "Dpad: highlight | A: choose | X: refresh"
         );
         picker.refresh();
-
-        // Stick override maps directly to [-1..+1] target (Phoenix leftY is +up, -down).
-        power.attachAxis(gamepads.p1().leftY(), 0.08, v -> v);
 
         // Prefer name passed in (RobotConfig), but fall back to picker if it fails.
         if (preferredName != null && !preferredName.trim().isEmpty()) {
@@ -161,12 +172,20 @@ public final class DcMotorPowerTester extends BaseTeleOpTester {
         power.bind(
                 liveControls,
                 gamepads.p1().a(),         // enable
-                gamepads.p1().x(),         // invert
+                null,                      // safe command-sign inversion is declared below
                 gamepads.p1().start(),     // fine/coarse
                 gamepads.p1().dpadUp(),    // inc
                 gamepads.p1().dpadDown(),  // dec
                 gamepads.p1().b()          // zero
         );
+
+        liveControls.onRise(gamepads.p1().x(), () -> {
+            if (power.isEnabled()) {
+                power.toggleEnabled();
+            }
+            power.zero();
+            power.toggleInvert();
+        });
 
         // Keep diagnostic capture opt-in so the ordinary motor-power tester stays quiet in Logcat.
         liveControls.onRise(gamepads.p1().y(), () -> {
@@ -198,9 +217,9 @@ public final class DcMotorPowerTester extends BaseTeleOpTester {
             stopAndRestoreSelectedMotor();
         } finally {
             endVelocityCapture("BACK");
-            clearSelectedMotor();
-            resolveError = null;
         }
+        clearSelectedMotor();
+        resolveError = null;
 
         picker.clearChoice();
         picker.refresh();
@@ -230,18 +249,24 @@ public final class DcMotorPowerTester extends BaseTeleOpTester {
             renderPicker();
             return;
         }
+        if (gamepads.p1().b().getAsBoolean(clock)) {
+            applyHeldStopAndRender();
+            return;
+        }
         updateAndRender();
     }
 
     /** {@inheritDoc} */
     @Override
     protected void onStart() {
-        // START resets the shared clock. Require a fresh A press before any nonzero command.
+        // Driver Station START resets the shared clock. Require a fresh A press before nonzero.
         opModeStarted = true;
         endVelocityCapture("START_CLOCK_RESET");
         resetPowerControl();
         resetVelocityComparison();
-        applyPowerAfterSample(0.0);
+        if (ready) {
+            prepareSelectedMotor();
+        }
     }
 
     /** {@inheritDoc} */
@@ -283,18 +308,16 @@ public final class DcMotorPowerTester extends BaseTeleOpTester {
         }
 
         try {
-            originalRunMode = motor.getMode();
-            motor.setPower(0.0);
-            lastSubmittedPower = 0.0;
-            motor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-            if (motor.getMode() != DcMotor.RunMode.RUN_WITHOUT_ENCODER) {
-                throw new IllegalStateException("motor did not enter RUN_WITHOUT_ENCODER");
-            }
-
+            // Selection is observation-only. Driver Station START owns the first hardware write
+            // and run-mode change so INIT cannot actuate a highlighted or selected motor.
+            motor.getMode();
             selectedLynxModule = findSelectedLynxModule();
             resetPowerControl();
             ready = true;
             selectedMotorCycle = clock.cycle();
+            if (opModeStarted) {
+                prepareSelectedMotor();
+            }
         } catch (RuntimeException ex) {
             RuntimeException cleanupFailure = null;
             try {
@@ -302,21 +325,19 @@ public final class DcMotorPowerTester extends BaseTeleOpTester {
             } catch (RuntimeException cleanupEx) {
                 cleanupFailure = cleanupEx;
             }
-            clearSelectedMotor();
             if (cleanupFailure != null) {
                 ex.addSuppressed(cleanupFailure);
                 throw new IllegalStateException(
                         "Cannot prepare selected motor and cleanup did not complete",
                         ex);
             }
+            clearSelectedMotor();
             resolveError = "Cannot prepare selected motor for safe open-loop testing: "
                     + describe(ex);
         }
     }
 
     private void updateAndRender() {
-        power.updateFromAxis(clock, this::controlsActive);
-
         double nextCommand = power.applied();
         double priorCommand = lastSubmittedPower;
         boolean skipped = captureVelocityComparison && skipNextVelocityComparisonSample;
@@ -337,7 +358,10 @@ public final class DcMotorPowerTester extends BaseTeleOpTester {
 
         if (captureVelocityComparison) {
             if (skipped) {
-                logSkippedVelocityComparison(priorCommand, commandIssuedAfterSample);
+                logSkippedVelocityComparison(
+                        priorCommand,
+                        commandIssuedAfterSample,
+                        "RIGHT_BUMPER_ONE_SHOT");
             } else if (velocitySample != null) {
                 logVelocityComparison(
                         velocitySample,
@@ -349,6 +373,26 @@ public final class DcMotorPowerTester extends BaseTeleOpTester {
         }
 
         renderTelemetry(lastSubmittedPower, velocitySample);
+    }
+
+    /** Give a physically held B priority over edge-triggered enable and diagnostic controls. */
+    private void applyHeldStopAndRender() {
+        if (power.isEnabled()) {
+            power.toggleEnabled();
+        }
+        power.zero();
+        velocitySample = null;
+        velocityMeasurementStatus = "B HELD - zero submitted; sample skipped";
+        velocityMeasurementError = null;
+        double priorCommand = lastSubmittedPower;
+        double issuedCommand = applyPowerAfterSample(0.0);
+        if (captureVelocityComparison) {
+            logSkippedVelocityComparison(
+                    priorCommand,
+                    issuedCommand,
+                    "B_HELD_PRIORITY_STOP");
+        }
+        renderTelemetry(lastSubmittedPower, null);
     }
 
     /** Issue the next motor command, falling back to a best-effort physical zero on failure. */
@@ -392,20 +436,71 @@ public final class DcMotorPowerTester extends BaseTeleOpTester {
             power.toggleEnabled();
         }
         power.zero();
+        if (power.isInverted()) {
+            power.toggleInvert();
+        }
     }
 
     /** Require a distinct post-selection input cycle before any test control can become active. */
     private boolean controlsActive() {
-        return ready && opModeStarted && clock.cycle() != selectedMotorCycle;
+        return ready
+                && opModeStarted
+                && motorPrepared
+                && !gamepads.p1().b().getAsBoolean(clock)
+                && clock.cycle() != selectedMotorCycle;
+    }
+
+    /** Acquire the selected motor for RUN without allowing any INIT-phase writes. */
+    private void prepareSelectedMotor() {
+        if (motor == null || motorPrepared) {
+            return;
+        }
+
+        originalRunMode = motor.getMode();
+        if (originalRunMode == DcMotor.RunMode.STOP_AND_RESET_ENCODER) {
+            originalRunMode = null;
+            throw new IllegalStateException(
+                    "Selected motor is in STOP_AND_RESET_ENCODER. Put it in a normal run mode "
+                            + "before starting motor-power diagnostics; this tester never resets "
+                            + "or restores encoder-reset mode.");
+        }
+        restorationAttempted = false;
+        retainedRestorationFailure = null;
+        motorPreparationStarted = true;
+        try {
+            motor.setPower(0.0);
+            lastSubmittedPower = 0.0;
+            motor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+            if (motor.getMode() != DcMotor.RunMode.RUN_WITHOUT_ENCODER) {
+                throw new IllegalStateException("motor did not enter RUN_WITHOUT_ENCODER");
+            }
+            motorPrepared = true;
+        } catch (RuntimeException preparationFailure) {
+            try {
+                stopAndRestoreSelectedMotor();
+            } catch (RuntimeException cleanupFailure) {
+                if (cleanupFailure != preparationFailure) {
+                    preparationFailure.addSuppressed(cleanupFailure);
+                }
+            }
+            throw new IllegalStateException(
+                    "Cannot prepare selected motor for safe open-loop testing",
+                    preparationFailure);
+        }
     }
 
     /** Attempt both physical zero and mode restoration, then surface any cleanup failure. */
     private void stopAndRestoreSelectedMotor() {
-        if (motor == null) {
+        if (motor == null || !motorPreparationStarted) {
             originalRunMode = null;
-            lastSubmittedPower = 0.0;
+            lastSubmittedPower = Double.NaN;
             return;
         }
+        if (restorationAttempted) {
+            if (retainedRestorationFailure != null) throw retainedRestorationFailure;
+            return;
+        }
+        restorationAttempted = true;
 
         RuntimeException cleanupFailure = null;
         try {
@@ -427,15 +522,17 @@ public final class DcMotorPowerTester extends BaseTeleOpTester {
             } else {
                 cleanupFailure.addSuppressed(restoreEx);
             }
-        } finally {
-            originalRunMode = null;
         }
-
         if (cleanupFailure != null) {
-            throw new IllegalStateException(
+            retainedRestorationFailure = new IllegalStateException(
                     "Failed to command motor zero and/or restore its prior run mode",
                     cleanupFailure);
+            throw retainedRestorationFailure;
         }
+
+        originalRunMode = null;
+        motorPreparationStarted = false;
+        motorPrepared = false;
     }
 
     /** Clear references only after the selected hardware has been made safe and restored. */
@@ -445,8 +542,12 @@ public final class DcMotorPowerTester extends BaseTeleOpTester {
         motorEx = null;
         selectedLynxModule = null;
         originalRunMode = null;
+        motorPreparationStarted = false;
+        motorPrepared = false;
+        restorationAttempted = false;
+        retainedRestorationFailure = null;
         selectedMotorCycle = Long.MIN_VALUE;
-        lastSubmittedPower = 0.0;
+        lastSubmittedPower = Double.NaN;
         resetVelocityComparison();
     }
 
@@ -499,10 +600,15 @@ public final class DcMotorPowerTester extends BaseTeleOpTester {
         t.addLine("Motor: " + motorName);
         t.addData("Enable [A]", power.isEnabled() ? "ON" : "OFF");
         t.addData("Invert [X]", power.isInverted() ? "ON" : "OFF");
-        t.addData("Step [START]", "%s (%.2f)", power.isFine() ? "FINE" : "COARSE", power.step());
-        t.addData("Power target [Dpad U/D | LeftStickY]", "%.2f", power.target());
-        t.addData("Power applied", "%.2f", appliedPower);
-        t.addData("Zero [B]", "target -> 0.00");
+        t.addData("Step [gamepad START]", "%s (%.2f)",
+                power.isFine() ? "FINE" : "COARSE", power.step());
+        t.addData("Power target [Dpad U/D]", "%.2f", power.target());
+        if (Double.isFinite(appliedPower)) {
+            t.addData("Last submitted power", "%.2f", appliedPower);
+        } else {
+            t.addData("Last submitted power", "not submitted in this selection");
+        }
+        t.addData("Stop [B]", "hold: disarm + power 0.00");
 
         if (!opModeStarted) {
             t.addData("Output lock", "INIT - start the OpMode, then press A to arm");
@@ -525,7 +631,10 @@ public final class DcMotorPowerTester extends BaseTeleOpTester {
                 t.addData("Skip one sample [Right bumper]", "non-blocking");
                 t.addData("Comparison status", velocityMeasurementStatus);
                 t.addData("Coherent REV bulk snapshot", coherentHardwareSnapshot ? "YES" : "NO");
-                t.addData("Original bulk mode preserved", bulkCachingModeRestored ? "YES" : "NO");
+                t.addData("Bulk-caching mode preserved",
+                        selectedLynxModule == null
+                                ? "N/A - no matched REV module"
+                                : (bulkCachingModePreserved ? "YES" : "NO"));
                 t.addData("Row eligible for tachometer comparison",
                         isTachometerComparisonRowEligible(comparison) ? "YES" : "NO");
 
@@ -601,17 +710,16 @@ public final class DcMotorPowerTester extends BaseTeleOpTester {
         directVelocityAvailable = false;
         coherentHardwareSnapshot = false;
         bulkCachingModeAtSample = "unavailable";
-        bulkCachingModeRestored = false;
+        // This diagnostic observes the configured mode but never calls setBulkCachingMode().
+        bulkCachingModePreserved = selectedLynxModule != null;
 
         int positionTicks;
         double directVelocityTicksPerSec = Double.NaN;
-        LynxModule.BulkCachingMode originalBulkCachingMode = null;
-        boolean temporarilyEnabledManualCaching = false;
 
         try {
             if (selectedLynxModule != null) {
-                originalBulkCachingMode = selectedLynxModule.getBulkCachingMode();
-                bulkCachingModeAtSample = String.valueOf(originalBulkCachingMode);
+                bulkCachingModeAtSample = String.valueOf(
+                        selectedLynxModule.getBulkCachingMode());
 
                 LynxModule.BulkData bulkData = selectedLynxModule.getBulkData();
                 if (bulkData == null || bulkData.isFake()) {
@@ -620,15 +728,20 @@ public final class DcMotorPowerTester extends BaseTeleOpTester {
                     return null;
                 }
 
-                // OFF would make the public getters issue separate transactions. MANUAL makes both
-                // getters consume the explicit bulk snapshot; switching back to OFF clears it.
-                if (originalBulkCachingMode == LynxModule.BulkCachingMode.OFF) {
-                    selectedLynxModule.setBulkCachingMode(LynxModule.BulkCachingMode.MANUAL);
-                    temporarilyEnabledManualCaching = true;
-                }
-
-                positionTicks = motor.getCurrentPosition();
-                directVelocityTicksPerSec = readDirectVelocityOnce();
+                // Read both values from this one explicit packet. getBulkData() always performs a
+                // transaction regardless of the configured caching mode, so the diagnostic never
+                // changes the module-wide caching policy merely to obtain coherent evidence.
+                int motorPort = motor.getPortNumber();
+                boolean reverseForMotorApi = isOperationalDirectionReversed();
+                int rawPositionTicks = bulkData.getMotorCurrentPosition(motorPort);
+                int rawVelocityTicksPerSec = bulkData.getMotorVelocity(motorPort);
+                // Match DcMotorImpl/DcMotorImplEx public getter coordinates exactly: configured
+                // direction is combined with the configured motor-type orientation.
+                positionTicks = reverseForMotorApi ? -rawPositionTicks : rawPositionTicks;
+                directVelocityTicksPerSec = reverseForMotorApi
+                        ? -rawVelocityTicksPerSec
+                        : rawVelocityTicksPerSec;
+                directVelocityAvailable = true;
                 coherentHardwareSnapshot = true;
             } else {
                 // Keep the tester usable for non-REV controllers, but make such evidence ineligible.
@@ -640,22 +753,6 @@ public final class DcMotorPowerTester extends BaseTeleOpTester {
             velocityMeasurementStatus = "POSITION READ FAILED - baseline retained";
             velocityMeasurementError = "Snapshot/position read failed: " + describe(ex);
             return null;
-        } finally {
-            if (selectedLynxModule != null && temporarilyEnabledManualCaching) {
-                try {
-                    selectedLynxModule.setBulkCachingMode(originalBulkCachingMode);
-                    bulkCachingModeRestored = true;
-                } catch (RuntimeException ex) {
-                    appendVelocityMeasurementError("Bulk-caching mode restore failed: "
-                            + describe(ex));
-                    velocityMeasurementStatus = appendStatus(
-                            velocityMeasurementStatus,
-                            "BULK MODE RESTORE FAILED");
-                }
-            } else if (selectedLynxModule != null) {
-                // MANUAL/AUTO were not changed; the production setting remains intact.
-                bulkCachingModeRestored = true;
-            }
         }
 
         velocitySample = velocityComparison.sample(
@@ -678,12 +775,35 @@ public final class DcMotorPowerTester extends BaseTeleOpTester {
                     velocityMeasurementStatus,
                     "SNAPSHOT NOT COHERENT");
         }
-        if (!bulkCachingModeRestored) {
+        if (selectedLynxModule != null && !bulkCachingModePreserved) {
             velocityMeasurementStatus = appendStatus(
                     velocityMeasurementStatus,
-                    "BULK MODE NOT CONFIRMED RESTORED");
+                    "BULK MODE NOT PRESERVED");
         }
         return velocitySample;
+    }
+
+    /** Reproduce the pinned FTC SDK motor-getter direction normalization for one bulk packet. */
+    private boolean isOperationalDirectionReversed() {
+        DcMotor.Direction configuredDirection = motor.getDirection();
+        MotorConfigurationType motorType = motor.getMotorType();
+        Rotation motorOrientation = motorType == null ? null : motorType.getOrientation();
+        return operationalDirection(configuredDirection, motorOrientation)
+                == DcMotor.Direction.REVERSE;
+    }
+
+    /** Package-private pure form used to pin all four direction/orientation combinations in tests. */
+    static DcMotor.Direction operationalDirection(DcMotor.Direction configuredDirection,
+                                                   Rotation motorOrientation) {
+        if (configuredDirection == null) {
+            throw new IllegalArgumentException("configured motor direction is required");
+        }
+        if (motorOrientation == null) {
+            throw new IllegalArgumentException("configured motor orientation is required");
+        }
+        boolean reverse = (configuredDirection == DcMotor.Direction.REVERSE)
+                ^ (motorOrientation == Rotation.CCW);
+        return reverse ? DcMotor.Direction.REVERSE : DcMotor.Direction.FORWARD;
     }
 
     /** Read the optional direct SDK velocity exactly once for the current acquisition. */
@@ -757,7 +877,7 @@ public final class DcMotorPowerTester extends BaseTeleOpTester {
                 && sample.derivedVelocityAvailable
                 && directVelocityAvailable
                 && coherentHardwareSnapshot
-                && bulkCachingModeRestored
+                && bulkCachingModePreserved
                 && isHighRateRevPortEligible();
     }
 
@@ -770,7 +890,7 @@ public final class DcMotorPowerTester extends BaseTeleOpTester {
         directVelocityAvailable = false;
         coherentHardwareSnapshot = false;
         bulkCachingModeAtSample = "unavailable";
-        bulkCachingModeRestored = false;
+        bulkCachingModePreserved = false;
         velocityMeasurementStatus = "WARMING UP";
         velocityMeasurementError = null;
     }
@@ -805,7 +925,8 @@ public final class DcMotorPowerTester extends BaseTeleOpTester {
         String controllerClass = "unavailable";
         String controllerConnection = "unavailable";
         String currentMode = "unavailable";
-        String direction = "unavailable";
+        DcMotor.Direction configuredDirection = null;
+        Rotation configuredMotorOrientation = null;
         String moduleAddress = "unavailable";
         String moduleSerial = "unavailable";
         String moduleFirmware = "unavailable";
@@ -831,7 +952,7 @@ public final class DcMotorPowerTester extends BaseTeleOpTester {
         } catch (RuntimeException ignored) {
         }
         try {
-            direction = String.valueOf(motor.getDirection());
+            configuredDirection = motor.getDirection();
         } catch (RuntimeException ignored) {
         }
         if (selectedLynxModule != null) {
@@ -855,6 +976,7 @@ public final class DcMotorPowerTester extends BaseTeleOpTester {
         try {
             MotorConfigurationType motorType = motor.getMotorType();
             if (motorType != null) {
+                configuredMotorOrientation = motorType.getOrientation();
                 configuredTicksPerRev = motorType.getTicksPerRev();
                 configuredMaxRpm = motorType.getMaxRPM();
             }
@@ -869,7 +991,8 @@ public final class DcMotorPowerTester extends BaseTeleOpTester {
                                 + "highRateRevPortEligible=%s,controllerClass=%s,"
                                 + "controllerConnection=%s,moduleMatched=%s,moduleAddress=%s,"
                                 + "moduleSerial=%s,moduleFirmware=%s,bulkCachingModeBeforeCapture=%s,"
-                                + "originalRunMode=%s,currentRunMode=%s,direction=%s,"
+                                + "originalRunMode=%s,currentRunMode=%s,configuredDirection=%s,"
+                                + "configuredMotorOrientation=%s,operationalDirection=%s,"
                                 + "configuredTicksPerRev=%.3f,configuredMaxRpm=%.3f,"
                                 + "configuredMotorTypeIsNotPhysicalEncoderIdentity=true,"
                                 + "coherentSnapshotRecordedPerDataRow=true",
@@ -887,7 +1010,17 @@ public final class DcMotorPowerTester extends BaseTeleOpTester {
                         csvSafe(bulkCachingMode),
                         csvSafe(String.valueOf(originalRunMode)),
                         csvSafe(currentMode),
-                        csvSafe(direction),
+                        csvSafe(configuredDirection == null
+                                ? "unavailable"
+                                : String.valueOf(configuredDirection)),
+                        csvSafe(configuredMotorOrientation == null
+                                ? "unavailable"
+                                : String.valueOf(configuredMotorOrientation)),
+                        csvSafe(configuredDirection == null || configuredMotorOrientation == null
+                                ? "unavailable"
+                                : String.valueOf(operationalDirection(
+                                        configuredDirection,
+                                        configuredMotorOrientation))),
                         configuredTicksPerRev,
                         configuredMaxRpm));
     }
@@ -900,7 +1033,7 @@ public final class DcMotorPowerTester extends BaseTeleOpTester {
                         + "priorCommand,commandIssuedAfterSample,positionTicks,deltaTicks,sampleIntervalSec,"
                         + "directTicksPerSec,derivedTicksPerSec,"
                         + "directMinusDerivedTicksPerSec,directAvailable,derivedAvailable,"
-                        + "coherentHardwareSnapshot,bulkCachingMode,bulkCachingModeRestored,"
+                        + "coherentHardwareSnapshot,bulkCachingMode,bulkCachingModePreserved,"
                         + "highRateRevPortEligible,tachometerComparisonRowEligible,status,warning");
     }
 
@@ -933,7 +1066,7 @@ public final class DcMotorPowerTester extends BaseTeleOpTester {
                         String.valueOf(sample.derivedVelocityAvailable),
                         String.valueOf(coherentHardwareSnapshot),
                         csvSafe(bulkCachingModeAtSample),
-                        String.valueOf(bulkCachingModeRestored),
+                        String.valueOf(bulkCachingModePreserved),
                         String.valueOf(isHighRateRevPortEligible()),
                         String.valueOf(isTachometerComparisonRowEligible(sample)),
                         csvSafe(velocityMeasurementStatus),
@@ -944,14 +1077,15 @@ public final class DcMotorPowerTester extends BaseTeleOpTester {
 
     /** Record a deliberate non-blocking sample gap. */
     private void logSkippedVelocityComparison(double priorCommand,
-                                              double commandIssuedAfterSample) {
+                                              double commandIssuedAfterSample,
+                                              String reason) {
         RobotLog.ii(
                 VELOCITY_COMPARISON_LOG_TAG,
                 String.format(
                         Locale.US,
                         "ENCODER_VELOCITY_SKIPPED,session=%d,motorName=%s,cycle=%d,timeSec=%.9f,"
                                 + "loopDtSec=%.9f,priorCommand=%.4f,commandIssuedAfterSample=%.4f,"
-                                + "reason=one-shot-nonblocking-skip,status=%s,warning=%s",
+                                + "reason=%s,status=%s,warning=%s",
                         velocityCaptureSession,
                         csvSafe(motorName),
                         clock.cycle(),
@@ -959,6 +1093,7 @@ public final class DcMotorPowerTester extends BaseTeleOpTester {
                         clock.dtSec(),
                         priorCommand,
                         commandIssuedAfterSample,
+                        csvSafe(reason),
                         csvSafe(velocityMeasurementStatus),
                         csvSafe(velocityMeasurementError == null
                                 ? "none"
@@ -975,7 +1110,7 @@ public final class DcMotorPowerTester extends BaseTeleOpTester {
                         "ENCODER_VELOCITY_ERROR,session=%d,motorName=%s,cycle=%d,timeSec=%.9f,"
                                 + "loopDtSec=%.9f,priorCommand=%.4f,commandIssuedAfterSample=%.4f,"
                                 + "coherentHardwareSnapshot=%s,bulkCachingMode=%s,"
-                                + "bulkCachingModeRestored=%s,status=%s,error=%s",
+                                + "bulkCachingModePreserved=%s,status=%s,error=%s",
                         velocityCaptureSession,
                         csvSafe(motorName),
                         clock.cycle(),
@@ -985,7 +1120,7 @@ public final class DcMotorPowerTester extends BaseTeleOpTester {
                         commandIssuedAfterSample,
                         String.valueOf(coherentHardwareSnapshot),
                         csvSafe(bulkCachingModeAtSample),
-                        String.valueOf(bulkCachingModeRestored),
+                        String.valueOf(bulkCachingModePreserved),
                         csvSafe(velocityMeasurementStatus),
                         csvSafe(velocityMeasurementError)));
     }

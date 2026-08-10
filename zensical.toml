@@ -66,6 +66,7 @@ nav = [
   ] },
   { "Testing and calibration" = [
     { "Testing and calibration home" = "fw/docs/testing-calibration/README.md" },
+    { "Actuator bring-up" = "fw/docs/testing-calibration/Actuator Bring-up.md" },
     { "Robot calibration tutorials" = "fw/docs/testing-calibration/Robot Calibration Tutorials.md" },
     { "Software PIDF tuning" = "fw/docs/testing-calibration/Software PIDF Tuning Workflow.md" },
     { "Guided calibration walkthroughs" = "fw/docs/testing-calibration/Guided Calibration Walkthroughs.md" },

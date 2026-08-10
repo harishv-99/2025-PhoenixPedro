@@ -11,16 +11,13 @@ import edu.ftcphoenix.fw.ftc.vision.AprilTagVisionLaneFactory;
 import edu.ftcphoenix.fw.ftc.vision.FtcLimelightAprilTagVisionLane;
 import edu.ftcphoenix.fw.localization.fusion.OdometryCorrectionFusionEstimator;
 import edu.ftcphoenix.fw.sensing.vision.CameraMountConfig;
-import edu.ftcphoenix.fw.tools.tester.calibration.CalibrationWalkthroughBuilder;
 import edu.ftcphoenix.fw.tools.tester.calibration.CameraMountCalibrator;
 import edu.ftcphoenix.fw.tools.tester.calibration.PinpointAxisDirectionTester;
 import edu.ftcphoenix.fw.tools.tester.calibration.PinpointPodOffsetCalibrator;
-import edu.ftcphoenix.fw.tools.tester.hardware.CrServoPowerTester;
 import edu.ftcphoenix.fw.tools.tester.hardware.DcMotorPositionTester;
 import edu.ftcphoenix.fw.tools.tester.hardware.DcMotorPowerTester;
 import edu.ftcphoenix.fw.tools.tester.hardware.DcMotorVelocityTester;
 import edu.ftcphoenix.fw.tools.tester.hardware.NormalizedColorSensorTester;
-import edu.ftcphoenix.fw.tools.tester.hardware.ServoPositionTester;
 import edu.ftcphoenix.fw.tools.tester.localization.AprilTagLocalizationTester;
 import edu.ftcphoenix.fw.tools.tester.localization.PinpointAprilTagFusionLocalizationTester;
 
@@ -37,11 +34,9 @@ import edu.ftcphoenix.fw.tools.tester.localization.PinpointAprilTagFusionLocaliz
  *       {@code fw} still get a meaningful tester tree immediately.</li>
  * </ul>
  *
- * <p>The standalone home suite goes a bit farther than the embedded registration path. It includes
- * a generic bring-up walkthrough plus default-config Pinpoint/global-localization tools that are
- * useful when no robot project has supplied better-configured wrappers yet. The embedded path stays
- * conservative about robot-specific duplication, but now exposes both standard AprilTag backends:
- * webcam and Limelight.</p>
+ * <p>Both paths expose the same ordinary actuator entry: one device-first bring-up wizard. Typed
+ * motor diagnostics with genuinely different evidence remain under an explicitly advanced menu;
+ * they are not parallel beginner recipes.</p>
  */
 public final class StandardTesters {
 
@@ -58,15 +53,21 @@ public final class StandardTesters {
         if (suite == null) return;
 
         suite.add(
+                "HW: Actuator Bring-up",
+                "Select one configured motor or servo by name to establish direction and optional safe endpoints.",
+                StandardTesters::createActuatorBringUp
+        );
+
+        suite.add(
                 "Framework: Calibration & Localization",
                 "Framework-owned camera-mount, AprilTag, and localization tools for webcam and Limelight backends.",
                 StandardTesters::createCalibrationAndLocalizationSuite
         );
 
         suite.add(
-                "Framework: Hardware Testers",
-                "Generic DcMotor / Servo / CRServo / color-sensor bring-up tools.",
-                StandardTesters::createHardwareSuite
+                "Advanced: Hardware Diagnostics",
+                "Specialized motor and sensor diagnostics after ordinary actuator bring-up.",
+                StandardTesters::createAdvancedHardwareDiagnosticsSuite
         );
     }
 
@@ -79,12 +80,12 @@ public final class StandardTesters {
     public static TesterSuite createSuite() {
         TesterSuite suite = new TesterSuite()
                 .setTitle("Framework Tester Home")
-                .setHelp("Guide first for a fresh robot. Dpad: select | A: enter | BACK: back");
+                .setHelp("Start with actuator bring-up. Dpad: select | A: enter | BACK: back");
 
         suite.add(
-                "Guide: Framework Bring-up",
-                "Recommended order when you only have the framework tester tree available.",
-                StandardTesters::createWalkthrough
+                "HW: Actuator Bring-up",
+                "Select one configured motor or servo by name to establish direction and optional safe endpoints.",
+                StandardTesters::createActuatorBringUp
         );
 
         suite.add(
@@ -94,81 +95,27 @@ public final class StandardTesters {
         );
 
         suite.add(
-                "Framework: Hardware Testers",
-                "Generic DcMotor / Servo / CRServo / color-sensor bring-up tools.",
-                StandardTesters::createHardwareSuite
+                "Advanced: Hardware Diagnostics",
+                "Specialized motor and sensor diagnostics after ordinary actuator bring-up.",
+                StandardTesters::createAdvancedHardwareDiagnosticsSuite
         );
 
         return suite;
     }
 
     /**
-     * Creates a simple framework-owned bring-up guide for teams that only copied {@code fw}.
+     * Creates the one ordinary actuator bring-up workflow.
      *
-     * <p>These steps are intentionally untracked because the framework, by itself, does not own a
-     * robot profile where calibration completion can be persisted. Robot projects should still create
-     * their own richer walkthroughs with explicit status checks.</p>
+     * <p>The declared return type intentionally hides the package-private implementation. Robot
+     * projects should embed all standard entries through {@link #register(TesterSuite)}; this
+     * factory is the canonical reuse hook for a direct single-tool host or an ordered
+     * robot-specific walkthrough. Use {@link #register(TesterSuite)} for the complete standard
+     * tester home.</p>
+     *
+     * @return inactive device-first actuator bring-up tester
      */
-    public static TesterSuite createWalkthrough() {
-        CalibrationWalkthroughBuilder guide = new CalibrationWalkthroughBuilder("Framework Bring-up Guide")
-                .setHelp("Run steps in order. A: enter step | BACK: go back")
-                .setMaxVisibleItems(10);
-
-        guide.addStep(
-                "HW: DcMotor Power",
-                "Select each drivetrain motor and verify direction one at a time.",
-                DcMotorPowerTester::new
-        );
-
-        guide.addStep(
-                "Calib: Camera Mount (Webcam)",
-                "Use when your AprilTag backend is a standard FTC webcam. Solve robot->camera and paste the printed CameraMountConfig.ofDegrees(...).",
-                StandardTesters::createGenericWebcamCameraMountTester
-        );
-
-        guide.addStep(
-                "Calib: Camera Mount (Limelight)",
-                "Use when your AprilTag backend is a Limelight. Solve robot->camera from Limelight fiducials and paste the printed CameraMountConfig.ofDegrees(...).",
-                StandardTesters::createGenericLimelightCameraMountTester
-        );
-
-        guide.addStep(
-                "Loc: AprilTag Localization (Webcam)",
-                "Sanity-check tag detection and the AprilTag-only field pose solve using a webcam-backed lane.",
-                StandardTesters::createGenericWebcamAprilTagLocalizationTester
-        );
-
-        guide.addStep(
-                "Loc: AprilTag Localization (Limelight)",
-                "Sanity-check the same AprilTag-only field pose solve using Limelight fiducials.",
-                StandardTesters::createGenericLimelightAprilTagLocalizationTester
-        );
-
-        guide.addStep(
-                "Calib: Pinpoint Axis Check",
-                "Pick the Pinpoint device name if needed, then verify +X forward, +Y left, heading CCW+.",
-                StandardTesters::createGenericPinpointAxisCheckTester
-        );
-
-        guide.addStep(
-                "Calib: Pinpoint Pod Offsets",
-                "Pick the Pinpoint device name if needed. Manual by-hand samples work without drive wiring; robot-owned wrappers can also supply AprilTag assist.",
-                StandardTesters::createGenericPinpointPodOffsetTester
-        );
-
-        guide.addStep(
-                "Loc: Pinpoint + Field Corrections (Webcam)",
-                "Pick the Pinpoint device name if needed. The tester opens a webcam-backed AprilTag lane and uses raw AprilTag correction with an identity camera mount until you calibrate it.",
-                StandardTesters::createGenericPinpointAprilTagFusionTesterWebcam
-        );
-
-        guide.addStep(
-                "Loc: Pinpoint + Field Corrections (Limelight)",
-                "Pick the Pinpoint device name if needed. The tester opens a Limelight-backed AprilTag lane and uses raw AprilTag correction with an identity camera mount until you calibrate it.",
-                StandardTesters::createGenericPinpointAprilTagFusionTesterLimelight
-        );
-
-        return guide.build();
+    public static TeleOpTester createActuatorBringUp() {
+        return new ActuatorBringUpTester();
     }
 
     /**
@@ -271,47 +218,33 @@ public final class StandardTesters {
         return suite;
     }
 
-    /**
-     * Framework hardware bring-up tools.
-     */
-    public static TesterSuite createHardwareSuite() {
+    /** Specialized diagnostics that provide evidence beyond ordinary actuator bring-up. */
+    private static TesterSuite createAdvancedHardwareDiagnosticsSuite() {
         TesterSuite suite = new TesterSuite()
-                .setTitle("Framework Hardware Testers")
-                .setHelp("Generic hardware sanity-check tools.")
+                .setTitle("Advanced Hardware Diagnostics")
+                .setHelp("Use after direction and safe endpoints are established in actuator bring-up.")
                 .setMaxVisibleItems(8);
 
         suite.add(
-                "HW: DcMotor Power",
-                "Open-loop motor power test; optional direct-vs-derived encoder velocity logging.",
+                "Advanced: Motor Power & Encoder Evidence",
+                "Open-loop motor power plus optional direct-vs-derived encoder velocity logging.",
                 DcMotorPowerTester::new
         );
 
         suite.add(
-                "HW: DcMotor Position",
-                "RUN_TO_POSITION encoder target test (target + power + stick nudge).",
+                "Advanced: Motor Position",
+                "Driver Station START-locked RUN_TO_POSITION diagnostic with stepped target and power.",
                 DcMotorPositionTester::new
         );
 
         suite.add(
-                "HW: DcMotor Velocity",
-                "DcMotorEx velocity closed-loop test (setVelocity + target + stick nudge).",
+                "Advanced: Motor Velocity",
+                "Driver Station START-locked DcMotorEx setVelocity diagnostic with stepped target.",
                 DcMotorVelocityTester::new
         );
 
         suite.add(
-                "HW: CRServo Power",
-                "Continuous rotation servo power test (enable, invert, step, stick override).",
-                CrServoPowerTester::new
-        );
-
-        suite.add(
-                "HW: Servo Position",
-                "Standard servo position test (enable=hold, invert, step, stick override).",
-                ServoPositionTester::new
-        );
-
-        suite.add(
-                "HW: Color Sensor (Normalized)",
+                "Advanced: Normalized Color Sensor",
                 "NormalizedColorSensor bring-up (ratios + alpha/chroma + HSV, optional raw RGBA detail, live gain tuning).",
                 NormalizedColorSensorTester::new
         );

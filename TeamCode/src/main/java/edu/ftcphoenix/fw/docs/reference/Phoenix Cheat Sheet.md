@@ -141,10 +141,15 @@ for another lifecycle.
 
 ## Choose a Plant recipe
 
+Before copying a new actuator into a mechanism, run
+[`HW: Actuator Bring-up`](<../testing-calibration/Actuator Bring-up.md>) to establish its FTC
+direction and any human-approved safe native endpoints. The wizard reports evidence; the mechanism
+still chooses meaningful Plant units, bounds, mapping, reference, and production policy.
+
 | Hardware goal | Builder branch |
 |---|---|
 | Motor or CR-servo power | `.power()` |
-| Standard-servo position | `.position()` with `[0, 1]` native servo commands |
+| Standard-servo position | `.position()`; choose Plant units/bounds, then map into native servo commands `[0, 1]` |
 | Motor velocity | `.velocity()` then choose device-managed or framework-regulated control |
 | Motor or CR-servo position | `.position()` then answer control, periodicity, bounds, units, reference, and feedback questions |
 

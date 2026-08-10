@@ -23,8 +23,8 @@ Read these two pages before the numbered lessons:
 ## Core beginner course
 
 1. [`Build and Run.md`](<Build and Run.md>) — build the project before connecting motion hardware.
-2. [`First Mechanism.md`](<First Mechanism.md>) — configure one intake motor and run a safe Auto
-   checkpoint.
+2. [`First Mechanism.md`](<First Mechanism.md>) — use the actuator bring-up wizard, copy one tested
+   motor direction, and run a safe Auto checkpoint.
 3. [`First TeleOp.md`](<First TeleOp.md>) — add conservatively limited drive motors and map A/B/X
    controls.
 4. [`First Task and Auto.md`](<First Task and Auto.md>) — run timed behavior without blocking.
@@ -47,8 +47,10 @@ The optional Pedro track starts at its separate
 - Robot behavior must not sleep or wait in a blocking loop. Use a `Task` for work over time.
 - A mechanism privately owns its Plants and exposes robot meanings such as `collect()` or
   `collectForSeconds(...)`.
-- Verify names, directions, limits, physical placement, and immediate STOP behavior on the actual
-  robot. A successful build cannot prove those facts.
+- Establish one actuator's direction and optional safe endpoints with
+  [`HW: Actuator Bring-up`](<../testing-calibration/Actuator Bring-up.md>), then verify names,
+  directions, limits, physical placement, and immediate STOP behavior in the production owner. A
+  successful build cannot prove those facts.
 
 ## After the course
 

@@ -1,13 +1,20 @@
 # Robot calibration tutorials
 
-This is the framework's start-to-finish bring-up path for the core calibration steps that most FTC robots need before localization and driver assists are trustworthy.
+This is the framework's start-to-finish path for the calibration steps most FTC robots need before
+mechanisms, localization, and driver assists are trustworthy.
 
-The framework provides two complementary ways to reach this material:
+Start new actuators through one ordinary device-first path:
 
-- a **guided walkthrough menu** inside the tester tree for students who want one recommended order
-- a **category-based tester tree** for teams who already know which individual tool they want
+- run **FW: Testers → HW: Actuator Bring-up**;
+- isolate one configured device;
+- establish its direction and, when appropriate, already-backed-off safe endpoint evidence;
+- copy those facts into robot configuration; and
+- verify them again through the real mechanism or drivetrain owner.
 
-That split is intentional. The walkthrough is allowed to duplicate entries. Individual testers should still have one clear home in the category menus.
+Read [`Actuator bring-up`](<Actuator Bring-up.md>) before first motion. A robot-specific guided
+walkthrough may order later integration and localization checks, but it should reuse this hardware
+fact rather than invent another generic actuator workflow. Direct controller/encoder experiments
+live under **Advanced: Hardware Diagnostics**.
 
 ## Before you start
 
@@ -20,6 +27,17 @@ For the best experience:
 - make sure the camera can see tags clearly
 - bring a laptop open to `RobotConfig` so you can paste values immediately
 - change one thing at a time, then rerun the relevant tester
+
+## Actuator direction and safe endpoints
+
+The canonical runbook is [`Actuator bring-up`](<Actuator Bring-up.md>). It distinguishes motor
+ticks, standard-servo `0.0..1.0` command endpoints, physical safe travel, Plant units/bounds,
+mapping, and runtime reference. Use it before the reference choices below.
+
+The generic wizard can report direction alone, or direction plus two human-approved endpoints for a
+bounded DC motor or standard servo. It cannot automatically discover hard stops, infer CR-servo
+position, choose meaningful Plant units, establish an incremental encoder's durable zero, or tune
+PIDF.
 
 ## Mechanism position references
 
@@ -155,23 +173,27 @@ the first child write.
 - a periodic mechanism resets its unwrapped position to zero every time an index mark appears
 - drivers need to remember raw servo endpoint values instead of logical mechanism positions
 
-## Drivetrain motor direction
+## Drivetrain direction and integration
 
 ### Why this comes first
 
 Before you trust odometry or autonomous motion, each drivetrain motor should contribute in the direction you think it does. This is the fastest possible sanity check after wiring a fresh robot.
 
-### Tester
+### Testers
 
-- Framework generic tools: `HW: DcMotor Power`
-- Robot-specific shortcut when available: `HW: Drivetrain Motor Direction`
+- Raw configured-device fact: `HW: Actuator Bring-up`
+- Robot-specific check when available: `HW: Configured Drivetrain Verification`
+- Final check: the production TeleOp with all wheels safely raised
 
 ### Procedure
 
-1. Use the robot-specific drivetrain direction tester if your project provides one.
-2. Command each wheel individually.
-3. Confirm the intended “forward” test really tries to drive the robot forward.
-4. Fix any reversed drivetrain motor config before continuing.
+1. In the generic wizard, command each configured motor individually and decide which FTC
+   `Direction` makes its positive rotation contribute to robot-forward motion.
+2. Copy those direction facts into the robot profile and rebuild.
+3. If the project provides configured-drivetrain verification, run it to confirm the profile and
+   hardware-name wiring select the expected wheel one at a time.
+4. With all wheels raised, run the production TeleOp and test forward, strafe, and turn separately.
+5. Fix the profile rather than compensating with scattered negative powers.
 
 ### Good result
 
@@ -193,7 +215,7 @@ position counter. A high-count-rate external encoder therefore needs evidence fr
 firmware, port, SDK, and loop configuration before either reading becomes the production default.
 Motor configuration metadata is not proof of which physical encoder is connected.
 
-`HW: DcMotor Power` includes a measurement-only comparison for this purpose. For safe open-loop
+The advanced motor-power diagnostic includes a measurement-only comparison for this purpose. For safe open-loop
 power testing it temporarily selects `RUN_WITHOUT_ENCODER`, then restores the motor's prior mode
 after commanding zero when the tester stops or returns to the picker. It does not filter either
 reading, correct an apparent velocity wrap, or change any Plant feedback API.
@@ -216,7 +238,8 @@ reading, correct an apparent velocity wrap, or change any Plant feedback API.
 
 ### Procedure
 
-1. Run `FW: Testers`, open `Framework: Hardware Testers`, and select `HW: DcMotor Power`.
+1. Run `FW: Testers`, open `Advanced: Hardware Diagnostics`, and select the motor power/encoder
+   evidence diagnostic.
 2. Choose the motor/encoder entry, then start the OpMode from Driver Station with the power target
    still at zero. Output remains disarmed until you deliberately press A.
 3. In Android Studio Logcat, filter for the tag `PhoenixEncoderVelocity`.
@@ -239,12 +262,14 @@ port, matched REV module address/serial/firmware, original bulk-caching mode, mo
 direction, and configured motor-type values. Those configured motor-type values are labeled
 metadata, not physical encoder identification.
 
-On a matched REV module, each accepted loop explicitly obtains one fresh bulk snapshot. If the
-module's mode is `OFF`, the tester switches to `MANUAL` only while both public motor getters consume
-that snapshot, then restores `OFF`; existing `MANUAL` or `AUTO` settings are left unchanged. Each
-data row records whether the snapshot was coherent and the original mode was preserved. This keeps
-the direct and position readings comparable without silently changing the production stack's
-bulk-caching policy.
+On a matched REV module, each accepted loop explicitly obtains one fresh bulk snapshot and reads
+that motor port's position and direct velocity from the same packet. The tester applies the same
+configured-direction plus motor-type-orientation normalization as the FTC motor getters, so both
+values use the public motor coordinate. It observes but never changes the module's `OFF`, `MANUAL`,
+or `AUTO` caching mode. The explicit snapshot does clear and refill that module's current bulk cache,
+so use this isolated diagnostic as the only hub-cache owner in the OpMode; do not run it beside
+another same-cycle cache consumer. Each data row records snapshot coherence and that the configured
+mode was preserved.
 
 Each `ENCODER_VELOCITY_DATA` row records the session, motor name, loop cycle/time, enabled state,
 target power, the command held before measurement, the command issued afterward, position,
@@ -472,9 +497,7 @@ The covariance-aware EKF-style estimator is intentionally not the first thing te
 
 ## How this maps to the tester menus
 
-The intended navigation pattern is:
-
-1. **Guided walkthrough** when starting from a fresh robot
-2. **Category menus** once you already know which system you are working on
-
-That keeps the walkthrough student-friendly without turning the entire tester tree into one long duplicated checklist.
+Use **HW: Actuator Bring-up** for ordinary motor/servo hardware facts, **Framework: Calibration &
+Localization** for camera/pose work, and **Advanced: Hardware Diagnostics** only for a distinct
+controller or measurement investigation. A robot-specific walkthrough may order those checks for
+one robot, but it does not create a second generic actuator path.
