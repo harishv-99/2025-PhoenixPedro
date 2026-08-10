@@ -21,7 +21,7 @@ import edu.ftcphoenix.fw.tools.tester.TesterSuite;
  *
  * <p>Status is now passed to the shared framework menu as an item tag instead of being embedded in
  * the label text. That keeps step labels stable while still making completion state easy to scan on
- * the Driver Station.</p>
+ * the selected telemetry console.</p>
  */
 public final class CalibrationWalkthroughBuilder {
 

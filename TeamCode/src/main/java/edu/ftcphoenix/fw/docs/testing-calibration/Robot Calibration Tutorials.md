@@ -5,7 +5,8 @@ mechanisms, localization, and driver assists are trustworthy.
 
 Start new actuators through one ordinary device-first path:
 
-- run **FW: Testers → HW: Actuator Bring-up**;
+- run either **FW: Testers (Driver Station) → HW: Actuator Bring-up** or **FW: Testers (Panels) →
+  HW: Actuator Bring-up**;
 - isolate one configured device;
 - establish its direction and, when appropriate, already-backed-off safe endpoint evidence;
 - copy those facts into robot configuration; and
@@ -238,10 +239,10 @@ reading, correct an apparent velocity wrap, or change any Plant feedback API.
 
 ### Procedure
 
-1. Run `FW: Testers`, open `Advanced: Hardware Diagnostics`, and select the motor power/encoder
-   evidence diagnostic.
-2. Choose the motor/encoder entry, then start the OpMode from Driver Station with the power target
-   still at zero. Output remains disarmed until you deliberately press A.
+1. Run either tester entry, open `Advanced: Hardware Diagnostics`, and select the motor
+   power/encoder evidence diagnostic.
+2. Choose the motor/encoder entry, then start the OpMode with the power target still at zero.
+   Output remains disarmed until you deliberately press A.
 3. In Android Studio Logcat, filter for the tag `PhoenixEncoderVelocity`.
 4. Press Y to start capture. The first position-derived value deliberately reports unavailable
    until two positive-time samples exist. Confirm telemetry says the matched REV snapshot is

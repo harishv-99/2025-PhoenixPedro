@@ -40,7 +40,7 @@ import edu.ftcphoenix.fw.tools.tester.ui.IntTuner;
  * device-first path from {@link StandardTesters#createActuatorBringUp()}. Use this class directly
  * only to exercise an isolated {@link DcMotorEx} velocity channel.</p>
  *
- * <p><b>Lifecycle:</b> selection and INIT are observation-only. Driver Station START prepares the
+ * <p><b>Lifecycle:</b> selection and INIT are observation-only. OpMode START prepares the
  * selected motor. Each held control must be released before its next edge can act; B remains a
  * level-sensitive priority stop throughout RUN.</p>
  *
@@ -523,7 +523,7 @@ public final class DcMotorVelocityTester extends BaseTeleOpTester {
         t.addData("Stop [B]", "disable + velocity 0");
 
         if (!opModeStarted) {
-            t.addData("Output lock", "INIT - press Driver Station START, release controls, then press A");
+            t.addData("Output lock", "INIT - start the OpMode, release controls, then press A");
         }
         if (testerError != null) {
             t.addData("Tester error", testerError);

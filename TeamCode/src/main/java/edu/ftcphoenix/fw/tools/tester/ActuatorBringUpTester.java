@@ -1170,9 +1170,9 @@ final class ActuatorBringUpTester extends BaseTeleOpTester {
         if (selected.kind == DeviceKind.SERVO && servoBootstrapRequired) {
             return "INIT inspection only; Servo.getPosition() reported unknown state (NaN). "
                     + "Read the bootstrap warning, "
-                    + "then press Driver Station START.";
+                    + "then start the OpMode.";
         }
-        return "INIT inspection only. Press Driver Station START, release controls, then press A "
+        return "INIT inspection only. Start the OpMode, release controls, then press A "
                 + "to prepare and arm.";
     }
 

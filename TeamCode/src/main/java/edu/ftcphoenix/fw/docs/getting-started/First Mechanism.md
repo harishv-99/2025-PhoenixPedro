@@ -37,10 +37,12 @@ checkpoint before adding a drivetrain.
 
 ## 1. Establish the motor direction in the generic wizard
 
-Leave both starter OpModes disabled. Deploy the project and run **FW: Testers**, then open
-**HW: Actuator Bring-up** and choose `[DC motor] YOUR_INTAKE_NAME`.
+Leave both starter OpModes disabled. Deploy the project and run either
+**FW: Testers (Driver Station)** or **FW: Testers (Panels)**, then open **HW: Actuator Bring-up**
+and choose `[DC motor] YOUR_INTAKE_NAME`. The entry name chooses the sole input owner; read the
+[`testing console guide`](<../testing-calibration/README.md>) before using Panels.
 
-1. Press Driver Station START with every control neutral.
+1. Start the OpMode with every control neutral.
 2. Press A to arm, then hold the right bumper briefly to test positive command at the initial
    `0.05` power. Use the left bumper only to cross-check negative command.
 3. Press B and confirm that the chosen positive direction means `COLLECT` for this mechanism.

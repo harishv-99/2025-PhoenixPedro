@@ -53,7 +53,7 @@ import edu.ftcphoenix.fw.tools.tester.ui.ScalarTuner;
  * {@link DcMotor.RunMode#RUN_WITHOUT_ENCODER} for safe open-loop testing and restores the prior mode
  * afterward. It does not select a production feedback strategy.</p>
  *
- * <p>Selection and INIT are observation-only. Driver Station START prepares the selected motor at
+ * <p>Selection and INIT are observation-only. OpMode START prepares the selected motor at
  * zero output. Each held control must be released before its next edge can act; B remains a
  * level-sensitive priority stop throughout RUN.</p>
  */
@@ -259,7 +259,7 @@ public final class DcMotorPowerTester extends BaseTeleOpTester {
     /** {@inheritDoc} */
     @Override
     protected void onStart() {
-        // Driver Station START resets the shared clock. Require a fresh A press before nonzero.
+        // OpMode START resets the shared clock. Require a fresh A press before nonzero.
         opModeStarted = true;
         endVelocityCapture("START_CLOCK_RESET");
         resetPowerControl();
@@ -308,7 +308,7 @@ public final class DcMotorPowerTester extends BaseTeleOpTester {
         }
 
         try {
-            // Selection is observation-only. Driver Station START owns the first hardware write
+            // Selection is observation-only. OpMode START owns the first hardware write
             // and run-mode change so INIT cannot actuate a highlighted or selected motor.
             motor.getMode();
             selectedLynxModule = findSelectedLynxModule();

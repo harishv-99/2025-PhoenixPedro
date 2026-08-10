@@ -44,11 +44,11 @@ import edu.ftcphoenix.fw.tools.tester.ui.ScalarTuner;
  * <p><b>Notes:</b> RUN_TO_POSITION requires a meaningful encoder reading. If your motor/encoder
  * is not configured or supported, the motor may not move as expected.</p>
  *
- * <p><b>Lifecycle:</b> selection and INIT are observation-only. Driver Station START prepares the
+ * <p><b>Lifecycle:</b> selection and INIT are observation-only. OpMode START prepares the
  * selected motor. Each held control must be released before its next edge can act; B remains a
  * level-sensitive priority stop throughout RUN. The target is
- * anchored to the current encoder reading when the motor is selected and again when Driver Station
- * START prepares it; this diagnostic never resets the encoder.</p>
+ * anchored to the current encoder reading when the motor is selected and again when OpMode START
+ * prepares it; this diagnostic never resets the encoder.</p>
  *
  * <p><b>Safety:</b> the initial movement power is deliberately conservative, power is set to 0,
  * and original motor settings are restored on stop.</p>
@@ -557,7 +557,7 @@ public final class DcMotorPositionTester extends BaseTeleOpTester {
         t.addData("Stop [B]", "disable + power 0");
 
         if (!opModeStarted) {
-            t.addData("Output lock", "INIT - press Driver Station START, release controls, then press A");
+            t.addData("Output lock", "INIT - start the OpMode, release controls, then press A");
         }
         if (testerError != null) {
             t.addData("Tester error", testerError);

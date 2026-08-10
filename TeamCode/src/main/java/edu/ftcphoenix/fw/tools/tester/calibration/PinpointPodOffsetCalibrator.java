@@ -50,8 +50,8 @@ import edu.ftcphoenix.fw.input.binding.Bindings;
  *   <li><b>Right stick X</b>: Manual rotate (when drive is configured)</li>
  * </ul>
  *
- * <p><b>Important:</b> robot movement only happens after you press <b>PLAY</b> on the Driver Station.
- * In <b>INIT</b> (before PLAY), this tester can still show status and (optionally) let you select an
+ * <p><b>Important:</b> robot movement only happens after you start the OpMode.
+ * In <b>INIT</b> (before START), this tester can still show status and (optionally) let you select an
  * AprilTag vision device for assist, but it will not command the motors.</p>
  *
  * <p>Optional: enable AprilTag assist to subtract real translation while sampling. This is useful if the
@@ -1141,7 +1141,9 @@ public final class PinpointPodOffsetCalibrator extends BaseTeleOpTester {
         // Instructions (dynamic by phase)
         ctx.telemetry.addLine();
         if (initPhase) {
-            ctx.telemetry.addLine("IMPORTANT: Press PLAY to enable motor movement (auto sample / stick rotate).");
+            ctx.telemetry.addLine(
+                    "IMPORTANT: Start the OpMode to enable motor movement "
+                            + "(auto sample / stick rotate).");
         }
         switch (phase) {
             case IDLE:

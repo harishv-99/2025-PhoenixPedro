@@ -10,6 +10,7 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import edu.ftcphoenix.fw.tools.tester.TeleOpTester;
@@ -62,6 +63,217 @@ public final class FtcTeleOpTesterOpModeTest {
         mode.loop();
         mode.stop();
         assertEquals(1, mode.createCalls);
+    }
+
+    @Test
+    public void invalidConsoleShapesAreActionableAndTerminalBeforeTesterCreation() {
+        assertInvalidConsole(
+                null,
+                "createTesterConsole() returned null; return a configured TesterConsole"
+        );
+        assertInvalidConsole(
+                new RecordingConsole(null, new Gamepad(), new Gamepad()),
+                "TesterConsole.telemetry() returned null"
+        );
+        assertInvalidConsole(
+                new RecordingConsole(new RecordingTelemetry().proxy(), null, new Gamepad()),
+                "TesterConsole.gamepad1() returned null"
+        );
+        assertInvalidConsole(
+                new RecordingConsole(new RecordingTelemetry().proxy(), new Gamepad(), null),
+                "TesterConsole.gamepad2() returned null"
+        );
+    }
+
+    @Test
+    public void consoleFactoryFailureIsReportedBeforeTesterCreationAndIsTerminal() {
+        RecordingTelemetry telemetry = new RecordingTelemetry();
+        TestOpMode mode = configuredMode(telemetry);
+        RecordingTester tester = new RecordingTester();
+        RuntimeException primary =
+                new IllegalStateException("controlled console factory failure");
+        mode.created = tester;
+        mode.consoleCreateFailure = primary;
+
+        assertSame(primary, expectRuntimeException(mode::init));
+
+        assertEquals(1, mode.consoleCreateCalls);
+        assertEquals(0, mode.createCalls);
+        assertEquals(0, tester.initCalls);
+        assertEquals(0, tester.stopCalls);
+        assertTrue(telemetry.contains("createTesterConsole() failed"));
+        assertTrue(telemetry.contains("controlled console factory failure"));
+        assertTrue(telemetry.contains("acquire no hardware in its factory"));
+
+        mode.init();
+        mode.init_loop();
+        mode.start();
+        mode.loop();
+        mode.stop();
+        assertEquals(1, mode.consoleCreateCalls);
+        assertEquals(0, mode.createCalls);
+    }
+
+    @Test
+    public void consoleObjectsAreSnapshottedOnceAndRemainStable() {
+        RecordingTelemetry initialTelemetry = new RecordingTelemetry();
+        RecordingTelemetry replacementTelemetry = new RecordingTelemetry();
+        Gamepad initialGamepad1 = new Gamepad();
+        Gamepad initialGamepad2 = new Gamepad();
+        Gamepad replacementGamepad1 = new Gamepad();
+        Gamepad replacementGamepad2 = new Gamepad();
+        RecordingConsole console = new RecordingConsole(
+                initialTelemetry.proxy(),
+                initialGamepad1,
+                initialGamepad2
+        );
+        console.replacementTelemetry = replacementTelemetry.proxy();
+        console.replacementGamepad1 = replacementGamepad1;
+        console.replacementGamepad2 = replacementGamepad2;
+
+        TestOpMode mode = configuredMode(new RecordingTelemetry());
+        RecordingTester tester = new RecordingTester();
+        mode.useCustomConsole = true;
+        mode.createdConsole = console;
+        mode.created = tester;
+
+        mode.init();
+        mode.init_loop();
+        mode.start();
+        mode.loop();
+
+        assertEquals(1, console.telemetryCalls);
+        assertEquals(1, console.gamepad1Calls);
+        assertEquals(1, console.gamepad2Calls);
+        assertEquals(4, console.sampleCalls);
+        assertSame(initialTelemetry.proxy(), tester.ctx.telemetry);
+        assertSame(initialGamepad1, tester.ctx.gamepad1);
+        assertSame(initialGamepad2, tester.ctx.gamepad2);
+
+        assertSame(replacementTelemetry.proxy(), console.telemetry());
+        assertSame(replacementGamepad1, console.gamepad1());
+        assertSame(replacementGamepad2, console.gamepad2());
+        assertSame(initialTelemetry.proxy(), tester.ctx.telemetry);
+        assertSame(initialGamepad1, tester.ctx.gamepad1);
+        assertSame(initialGamepad2, tester.ctx.gamepad2);
+        mode.stop();
+    }
+
+    @Test
+    public void samplesExactlyOnceImmediatelyBeforeEveryTesterCallback() {
+        RecordingTelemetry telemetry = new RecordingTelemetry();
+        TestOpMode mode = configuredMode(telemetry);
+        RecordingConsole console = new RecordingConsole(
+                telemetry.proxy(),
+                new Gamepad(),
+                new Gamepad()
+        );
+        RecordingTester tester = new RecordingTester();
+        List<String> events = new ArrayList<String>();
+        console.sampleEvents = events;
+        tester.lifecycleEvents = events;
+        mode.useCustomConsole = true;
+        mode.createdConsole = console;
+        mode.created = tester;
+
+        mode.init();
+        mode.init_loop();
+        mode.start();
+        mode.loop();
+
+        assertEquals(Arrays.asList(
+                "sample",
+                "init",
+                "sample",
+                "initLoop",
+                "sample",
+                "start",
+                "sample",
+                "loop"
+        ), events);
+        assertEquals(4, console.sampleCalls);
+        mode.stop();
+    }
+
+    @Test
+    public void initialSampleFailureTerminalizesWithoutStoppingUntouchedTester() {
+        RecordingTelemetry telemetry = new RecordingTelemetry();
+        TestOpMode mode = configuredMode(telemetry);
+        RecordingConsole console = new RecordingConsole(
+                telemetry.proxy(),
+                new Gamepad(),
+                new Gamepad()
+        );
+        RecordingTester tester = new RecordingTester();
+        RuntimeException primary = new IllegalStateException("controlled initial sample failure");
+        console.sampleFailure = primary;
+        mode.useCustomConsole = true;
+        mode.createdConsole = console;
+        mode.created = tester;
+
+        RuntimeException thrown = expectRuntimeException(mode::init);
+
+        assertSame(primary, thrown);
+        assertArrayEquals(new Throwable[0], thrown.getSuppressed());
+        assertEquals(1, mode.createCalls);
+        assertEquals(1, console.sampleCalls);
+        assertEquals(0, tester.initCalls);
+        assertEquals(0, tester.stopCalls);
+        assertTerminalCallbacksDoNothing(mode, tester);
+    }
+
+    @Test
+    public void runtimeSampleFailuresStopRetainedTesterOnceAndSuppressCleanupFailure() {
+        for (Callback callback : Callback.values()) {
+            RecordingTelemetry telemetry = new RecordingTelemetry();
+            TestOpMode mode = configuredMode(telemetry);
+            RecordingConsole console = new RecordingConsole(
+                    telemetry.proxy(),
+                    new Gamepad(),
+                    new Gamepad()
+            );
+            RecordingTester tester = new RecordingTester();
+            RuntimeException primary =
+                    new IllegalStateException("controlled " + callback + " sample failure");
+            RuntimeException cleanup =
+                    new IllegalArgumentException("controlled " + callback + " cleanup failure");
+            mode.useCustomConsole = true;
+            mode.createdConsole = console;
+            mode.created = tester;
+            mode.init();
+            console.sampleFailure = primary;
+            tester.stopFailure = cleanup;
+
+            RuntimeException thrown = expectRuntimeException(() -> callback.invoke(mode));
+
+            assertSame(primary, thrown);
+            assertArrayEquals(new Throwable[]{cleanup}, thrown.getSuppressed());
+            assertEquals(2, console.sampleCalls);
+            assertEquals(0, tester.initLoopCalls);
+            assertEquals(0, tester.startCalls);
+            assertEquals(0, tester.loopCalls);
+            assertEquals(1, tester.stopCalls);
+            assertTerminalCallbacksDoNothing(mode, tester);
+        }
+    }
+
+    @Test
+    public void defaultConsoleRetainsThePhysicalOpModeObjects() {
+        RecordingTelemetry telemetry = new RecordingTelemetry();
+        TestOpMode mode = configuredMode(telemetry);
+        RecordingTester tester = new RecordingTester();
+        Telemetry expectedTelemetry = mode.telemetry;
+        Gamepad expectedGamepad1 = mode.gamepad1;
+        Gamepad expectedGamepad2 = mode.gamepad2;
+        mode.created = tester;
+
+        mode.init();
+
+        assertSame(expectedTelemetry, tester.ctx.telemetry);
+        assertSame(expectedGamepad1, tester.ctx.gamepad1);
+        assertSame(expectedGamepad2, tester.ctx.gamepad2);
+        assertEquals(1, mode.consoleCreateCalls);
+        mode.stop();
     }
 
     @Test
@@ -297,6 +509,37 @@ public final class FtcTeleOpTesterOpModeTest {
         assertEquals(1, tester.stopCalls);
     }
 
+    private static void assertInvalidConsole(
+            FtcTeleOpTesterOpMode.TesterConsole invalidConsole,
+            String expectedMessage
+    ) {
+        RecordingTelemetry telemetry = new RecordingTelemetry();
+        TestOpMode mode = configuredMode(telemetry);
+        RecordingTester tester = new RecordingTester();
+        mode.useCustomConsole = true;
+        mode.createdConsole = invalidConsole;
+        mode.created = tester;
+
+        RuntimeException thrown = expectRuntimeException(mode::init);
+
+        assertTrue(thrown instanceof IllegalStateException);
+        assertTrue(thrown.getMessage().contains(expectedMessage));
+        assertEquals(1, mode.consoleCreateCalls);
+        assertEquals(0, mode.createCalls);
+        assertEquals(0, tester.initCalls);
+        assertEquals(0, tester.stopCalls);
+        assertTrue(telemetry.contains(expectedMessage));
+        assertTrue(telemetry.contains("acquire no hardware in its factory"));
+
+        mode.init();
+        mode.init_loop();
+        mode.start();
+        mode.loop();
+        mode.stop();
+        assertEquals(1, mode.consoleCreateCalls);
+        assertEquals(0, mode.createCalls);
+    }
+
     private static void assertTerminalCallbacksDoNothing(
             TestOpMode mode,
             RecordingTester tester
@@ -383,10 +626,26 @@ public final class FtcTeleOpTesterOpModeTest {
 
     private static final class TestOpMode extends FtcTeleOpTesterOpMode {
         TeleOpTester created;
+        TesterConsole createdConsole;
         RuntimeException createFailure;
+        RuntimeException consoleCreateFailure;
         Runnable createAction;
         int createCalls;
+        int consoleCreateCalls;
+        boolean useCustomConsole;
         double runtimeSec;
+
+        @Override
+        protected TesterConsole createTesterConsole() {
+            consoleCreateCalls++;
+            if (consoleCreateFailure != null) {
+                throw consoleCreateFailure;
+            }
+            if (useCustomConsole) {
+                return createdConsole;
+            }
+            return super.createTesterConsole();
+        }
 
         @Override
         protected TeleOpTester createTester() {
@@ -406,6 +665,70 @@ public final class FtcTeleOpTesterOpModeTest {
         }
     }
 
+    private static final class RecordingConsole
+            implements FtcTeleOpTesterOpMode.TesterConsole {
+        private final Telemetry initialTelemetry;
+        private final Gamepad initialGamepad1;
+        private final Gamepad initialGamepad2;
+        Telemetry replacementTelemetry;
+        Gamepad replacementGamepad1;
+        Gamepad replacementGamepad2;
+        RuntimeException sampleFailure;
+        List<String> sampleEvents;
+        int telemetryCalls;
+        int gamepad1Calls;
+        int gamepad2Calls;
+        int sampleCalls;
+
+        RecordingConsole(
+                Telemetry initialTelemetry,
+                Gamepad initialGamepad1,
+                Gamepad initialGamepad2
+        ) {
+            this.initialTelemetry = initialTelemetry;
+            this.initialGamepad1 = initialGamepad1;
+            this.initialGamepad2 = initialGamepad2;
+        }
+
+        @Override
+        public Telemetry telemetry() {
+            telemetryCalls++;
+            if (telemetryCalls > 1 && replacementTelemetry != null) {
+                return replacementTelemetry;
+            }
+            return initialTelemetry;
+        }
+
+        @Override
+        public Gamepad gamepad1() {
+            gamepad1Calls++;
+            if (gamepad1Calls > 1 && replacementGamepad1 != null) {
+                return replacementGamepad1;
+            }
+            return initialGamepad1;
+        }
+
+        @Override
+        public Gamepad gamepad2() {
+            gamepad2Calls++;
+            if (gamepad2Calls > 1 && replacementGamepad2 != null) {
+                return replacementGamepad2;
+            }
+            return initialGamepad2;
+        }
+
+        @Override
+        public void sampleInputs() {
+            sampleCalls++;
+            if (sampleEvents != null) {
+                sampleEvents.add("sample");
+            }
+            if (sampleFailure != null) {
+                throw sampleFailure;
+            }
+        }
+    }
+
     private static final class RecordingTester implements TeleOpTester {
         TesterContext ctx;
         RuntimeException nameFailure;
@@ -418,6 +741,7 @@ public final class FtcTeleOpTesterOpModeTest {
         Runnable nameAction;
         Runnable initAction;
         Runnable stopAction;
+        List<String> lifecycleEvents;
         int nameCalls;
         int initCalls;
         int initLoopCalls;
@@ -447,6 +771,7 @@ public final class FtcTeleOpTesterOpModeTest {
         public void init(TesterContext ctx) {
             initCalls++;
             this.ctx = ctx;
+            recordLifecycle("init");
             if (initAction != null) {
                 initAction.run();
             }
@@ -463,6 +788,7 @@ public final class FtcTeleOpTesterOpModeTest {
             initLoopCalls++;
             initLoopDtSec = dtSec;
             initLoopCycle = ctx.clock.cycle();
+            recordLifecycle("initLoop");
             if (initLoopFailure != null) {
                 throw initLoopFailure;
             }
@@ -473,6 +799,7 @@ public final class FtcTeleOpTesterOpModeTest {
             startCalls++;
             startDtSec = ctx.clock.dtSec();
             startCycle = ctx.clock.cycle();
+            recordLifecycle("start");
             if (startFailure != null) {
                 throw startFailure;
             }
@@ -483,6 +810,7 @@ public final class FtcTeleOpTesterOpModeTest {
             loopCalls++;
             loopDtSec = dtSec;
             loopCycle = ctx.clock.cycle();
+            recordLifecycle("loop");
             if (loopFailure != null) {
                 throw loopFailure;
             }
@@ -496,6 +824,12 @@ public final class FtcTeleOpTesterOpModeTest {
             }
             if (stopFailure != null) {
                 throw stopFailure;
+            }
+        }
+
+        private void recordLifecycle(String event) {
+            if (lifecycleEvents != null) {
+                lifecycleEvents.add(event);
             }
         }
     }

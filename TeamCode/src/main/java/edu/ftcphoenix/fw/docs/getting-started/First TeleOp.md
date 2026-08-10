@@ -57,10 +57,11 @@ profile.drive.drivebase.maxOmega = 0.20;
 ```
 
 The directions show a common value shape, not facts about your drivetrain. Before enabling the
-starter, run **FW: Testers → HW: Actuator Bring-up** with the wheels raised and isolate each of the
-four configured motors. Test which temporary `Direction` makes that wheel's positive rotation
-contribute to robot-forward motion, then copy the four reported values here. All five starter motor
-names must be nonblank and distinct after trimming; matching
+starter, run either **FW: Testers (Driver Station) → HW: Actuator Bring-up** or
+**FW: Testers (Panels) → HW: Actuator Bring-up** with the wheels raised and isolate each of the four
+configured motors. Test which temporary `Direction` makes that wheel's positive rotation contribute to
+robot-forward motion, then copy the four reported values here. All five starter motor names must be
+nonblank and distinct after trimming; matching
 is case-sensitive. The explicit scales keep a full stick request conservative during first motion;
 the framework defaults are valid normalized values, not reviewed physical limits for your robot.
 Increase one scale at a time only after controlled floor tests prove the current value safe.
